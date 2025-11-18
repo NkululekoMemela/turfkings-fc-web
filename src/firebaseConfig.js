@@ -1,9 +1,6 @@
 // src/firebaseConfig.js
 import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  serverTimestamp,
-} from "firebase/firestore";
+import { getFirestore, serverTimestamp } from "firebase/firestore";
 import {
   getAuth,
   GoogleAuthProvider,
@@ -23,7 +20,7 @@ const firebaseConfig = {
   measurementId: "G-T1R4WCY56V"
 };
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 // Firestore
 export const db = getFirestore(app);
@@ -31,7 +28,7 @@ export { serverTimestamp }; // handy helper
 
 // Auth
 export const auth = getAuth(app);
-const provider = new GoogleAuthProvider();
+export const provider = new GoogleAuthProvider();
 
 export function signInWithGoogle() {
   return signInWithPopup(auth, provider);
@@ -41,6 +38,5 @@ export function logOut() {
   return signOut(auth);
 }
 
-// ✅ NEW: Storage for player photos
+// ✅ Storage for player photos (or anything else)
 export const storage = getStorage(app);
-

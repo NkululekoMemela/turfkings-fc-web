@@ -12,6 +12,7 @@ import {
   createDefaultState,
 } from "./storage/gameRepository.js";
 import { computeNextFromResult } from "./core/rotation.js";
+import { subscribeToState } from "./storage/firebaseRepository.js";
 
 const PAGE_LANDING = "landing";
 const PAGE_LIVE = "live";
@@ -45,9 +46,28 @@ export default function App() {
   const [backupCode, setBackupCode] = useState("");
   const [backupError, setBackupError] = useState("");
 
+  // 🌩 Helper: centralised state update for local edits
+  const updateState = (updater) => {
+    setState((prev) => {
+      const next =
+        typeof updater === "function" ? updater(prev) : updater;
+      saveState(next); // localStorage + Firebase mirror
+      return next;
+    });
+  };
+
+  // ✅ Realtime subscription to Firestore full app state.
   useEffect(() => {
-    saveState(state);
-  }, [state]);
+    const unsubscribe = subscribeToState((cloudState) => {
+      if (!cloudState) return;
+      // Use raw setState so we do NOT call saveState again.
+      setState(cloudState);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   const {
     teams,
@@ -81,7 +101,7 @@ export default function App() {
 
   // ---------- LANDING HANDLERS ----------
   const handleUpdatePairing = (match) => {
-    setState((prev) => ({
+    updateState((prev) => ({
       ...prev,
       currentMatch: match,
     }));
@@ -98,8 +118,6 @@ export default function App() {
 
   // Spectator wants to view an ongoing match
   const handleGoToLiveAsSpectator = () => {
-    // Always allow going to spectator page.
-    // SpectatorPage itself will show "no active match" if Firestore is empty.
     setPage(PAGE_SPECTATOR);
   };
 
@@ -127,14 +145,14 @@ export default function App() {
 
   // ---------- LIVE MATCH HANDLERS ----------
   const handleAddEvent = (event) => {
-    setState((prev) => ({
+    updateState((prev) => ({
       ...prev,
       currentEvents: [...prev.currentEvents, event],
     }));
   };
 
   const handleDeleteEvent = (index) => {
-    setState((prev) => {
+    updateState((prev) => {
       const copy = [...prev.currentEvents];
       copy.splice(index, 1);
       return { ...prev, currentEvents: copy };
@@ -142,7 +160,7 @@ export default function App() {
   };
 
   const handleUndoLastEvent = () => {
-    setState((prev) => {
+    updateState((prev) => {
       if (prev.currentEvents.length === 0) return prev;
       const copy = [...prev.currentEvents];
       copy.pop();
@@ -151,7 +169,7 @@ export default function App() {
   };
 
   const handleConfirmEndMatch = (summary) => {
-    setState((prev) => {
+    updateState((prev) => {
       const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
 
       const rotationResult = computeNextFromResult(prev.streaks, {
@@ -211,7 +229,7 @@ export default function App() {
     setSecondsLeft(MATCH_SECONDS);
     setHasLiveMatch(false);
 
-    setState((prev) => ({
+    updateState((prev) => ({
       ...prev,
       currentEvents: [], // throw away in-progress events
     }));
@@ -221,7 +239,7 @@ export default function App() {
 
   // ---------- SQUADS ----------
   const handleUpdateTeams = (updatedTeams) => {
-    setState((prev) => ({
+    updateState((prev) => ({
       ...prev,
       teams: updatedTeams,
     }));
@@ -277,7 +295,7 @@ export default function App() {
       return;
     }
     downloadStateToFile();
-    setState(createDefaultState());
+    updateState(createDefaultState());
     closeBackupModal();
   };
 
@@ -321,7 +339,14 @@ export default function App() {
       )}
 
       {page === PAGE_SPECTATOR && (
-        <SpectatorPage onBackToLanding={handleBackToLanding} />
+        <SpectatorPage
+          teams={teams}
+          currentMatchNo={currentMatchNo}
+          currentMatch={currentMatch}
+          currentEvents={currentEvents}
+          results={results}
+          onBackToLanding={handleBackToLanding}
+        />
       )}
 
       {page === PAGE_STATS && (
