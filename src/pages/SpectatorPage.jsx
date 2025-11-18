@@ -37,6 +37,9 @@ export function SpectatorPage(props) {
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState("");
 
+  // local countdown state for smoother timer
+  const [localSecondsLeft, setLocalSecondsLeft] = useState(null);
+
   useEffect(() => {
     const ref = doc(db, "matches", "current");
 
@@ -44,9 +47,21 @@ export function SpectatorPage(props) {
       ref,
       (snap) => {
         if (snap.exists()) {
-          setMatchDoc(snap.data());
+          const data = snap.data();
+          setMatchDoc(data);
+
+          // sync local timer with server secondsLeft if available
+          if (
+            typeof data.secondsLeft === "number" &&
+            Number.isFinite(data.secondsLeft)
+          ) {
+            setLocalSecondsLeft(Math.max(data.secondsLeft, 0));
+          } else {
+            setLocalSecondsLeft(null);
+          }
         } else {
           setMatchDoc(null);
+          setLocalSecondsLeft(null);
         }
         setLoading(false);
       },
@@ -68,7 +83,6 @@ export function SpectatorPage(props) {
     events = [],
     finalSummary,
     isFinished,
-    secondsLeft,
   } = matchDoc || {};
 
   // ✅ Always compute from events live; only fall back to finalSummary
@@ -110,10 +124,33 @@ export function SpectatorPage(props) {
     );
   }, [events]);
 
-  const hasLiveTimer =
-    typeof secondsLeft === "number" && Number.isFinite(secondsLeft);
+  // 🔁 Local 1-second countdown for smoother timer
+  useEffect(() => {
+    if (!matchDoc) return;
+    if (isFinished) return;
+    if (
+      localSecondsLeft == null ||
+      !Number.isFinite(localSecondsLeft) ||
+      localSecondsLeft <= 0
+    ) {
+      return;
+    }
 
-  const timerText = hasLiveTimer ? formatSeconds(secondsLeft) : "--:--";
+    const id = setInterval(() => {
+      setLocalSecondsLeft((prev) => {
+        if (prev == null) return prev;
+        const next = prev - 1;
+        return next >= 0 ? next : 0;
+      });
+    }, 1000);
+
+    return () => clearInterval(id);
+  }, [matchDoc, isFinished, localSecondsLeft]);
+
+  const hasLiveTimer =
+    localSecondsLeft != null && Number.isFinite(localSecondsLeft);
+
+  const timerText = hasLiveTimer ? formatSeconds(localSecondsLeft) : "--:--";
 
   return (
     <div className="page live-page">
