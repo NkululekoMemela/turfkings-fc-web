@@ -12,7 +12,7 @@ import {
   createDefaultState,
 } from "./storage/gameRepository.js";
 import { computeNextFromResult } from "./core/rotation.js";
-import { loadStateFromFirebase } from "./storage/firebaseRepository.js"; // 🔥 NEW
+import { subscribeToState } from "./storage/firebaseRepository.js"; // 🔥 NEW
 
 const PAGE_LANDING = "landing";
 const PAGE_LIVE = "live";
@@ -46,40 +46,33 @@ export default function App() {
   const [backupCode, setBackupCode] = useState("");
   const [backupError, setBackupError] = useState("");
 
-  // 🌩 Cloud sync flags (optional, internal only for now)
-  const [cloudLoaded, setCloudLoaded] = useState(false);
+  // 🌩 Helper: centralised state update for local edits
+  // This ensures every local change is saved to localStorage + Firestore.
+  const updateState = (updater) => {
+    setState((prev) => {
+      const next =
+        typeof updater === "function" ? updater(prev) : updater;
+      saveState(next); // localStorage + Firebase mirror
+      return next;
+    });
+  };
 
-  // ✅ Auto-save to localStorage + Firebase whenever state changes
+  // ❌ We REMOVE the old auto-save effect:
+  // useEffect(() => {
+  //   saveState(state);
+  // }, [state]);
+
+  // ✅ Realtime subscription to Firestore full app state.
+  // This lets other devices' updates flow into this device.
   useEffect(() => {
-    saveState(state);
-  }, [state]);
-
-  // ✅ On first mount, try to load full state from Firebase
-  useEffect(() => {
-    let cancelled = false;
-
-    async function syncFromCloud() {
-      try {
-        const cloudState = await loadStateFromFirebase();
-        if (!cloudState || cancelled) {
-          setCloudLoaded(true);
-          return;
-        }
-        // Override local state with cloud version
-        setState(cloudState);
-        // Ensure localStorage is in sync for offline use
-        saveState(cloudState);
-      } catch (err) {
-        console.error("Failed to load cloud state, using local only:", err);
-      } finally {
-        if (!cancelled) setCloudLoaded(true);
-      }
-    }
-
-    syncFromCloud();
+    const unsubscribe = subscribeToState((cloudState) => {
+      if (!cloudState) return;
+      // IMPORTANT: use raw setState so we do NOT call saveState again.
+      setState(cloudState);
+    });
 
     return () => {
-      cancelled = true;
+      if (unsubscribe) unsubscribe();
     };
   }, []);
 
@@ -115,7 +108,7 @@ export default function App() {
 
   // ---------- LANDING HANDLERS ----------
   const handleUpdatePairing = (match) => {
-    setState((prev) => ({
+    updateState((prev) => ({
       ...prev,
       currentMatch: match,
     }));
@@ -161,14 +154,14 @@ export default function App() {
 
   // ---------- LIVE MATCH HANDLERS ----------
   const handleAddEvent = (event) => {
-    setState((prev) => ({
+    updateState((prev) => ({
       ...prev,
       currentEvents: [...prev.currentEvents, event],
     }));
   };
 
   const handleDeleteEvent = (index) => {
-    setState((prev) => {
+    updateState((prev) => {
       const copy = [...prev.currentEvents];
       copy.splice(index, 1);
       return { ...prev, currentEvents: copy };
@@ -176,7 +169,7 @@ export default function App() {
   };
 
   const handleUndoLastEvent = () => {
-    setState((prev) => {
+    updateState((prev) => {
       if (prev.currentEvents.length === 0) return prev;
       const copy = [...prev.currentEvents];
       copy.pop();
@@ -185,7 +178,7 @@ export default function App() {
   };
 
   const handleConfirmEndMatch = (summary) => {
-    setState((prev) => {
+    updateState((prev) => {
       const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
 
       const rotationResult = computeNextFromResult(prev.streaks, {
@@ -245,7 +238,7 @@ export default function App() {
     setSecondsLeft(MATCH_SECONDS);
     setHasLiveMatch(false);
 
-    setState((prev) => ({
+    updateState((prev) => ({
       ...prev,
       currentEvents: [], // throw away in-progress events
     }));
@@ -255,7 +248,7 @@ export default function App() {
 
   // ---------- SQUADS ----------
   const handleUpdateTeams = (updatedTeams) => {
-    setState((prev) => ({
+    updateState((prev) => ({
       ...prev,
       teams: updatedTeams,
     }));
@@ -311,7 +304,7 @@ export default function App() {
       return;
     }
     downloadStateToFile();
-    setState(createDefaultState());
+    updateState(createDefaultState());
     closeBackupModal();
   };
 
@@ -403,7 +396,7 @@ export default function App() {
                   setBackupError("");
                 }}
               />
-            {backupError && <p className="error-text">{backupError}</p>}
+              {backupError && <p className="error-text">{backupError}</p>}
             </div>
             <div className="actions-row">
               <button className="secondary-btn" onClick={closeBackupModal}>
