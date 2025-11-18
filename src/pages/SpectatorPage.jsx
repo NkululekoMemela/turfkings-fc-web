@@ -1,10 +1,10 @@
 // src/pages/SpectatorPage.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
-import { db } from "../firebaseConfig";
+import { db } from "../firebaseConfig.js";
 import { doc, onSnapshot } from "firebase/firestore";
 
-// same helper used in LiveMatchPage (we reimplement here)
+// same helper used in LiveMatchPage (reimplemented here)
 function formatSeconds(s) {
   const v = typeof s === "number" && !Number.isNaN(s) ? s : 0;
   const m = Math.floor(v / 60)
@@ -68,31 +68,35 @@ export function SpectatorPage(props) {
     events = [],
     finalSummary,
     isFinished,
+    secondsLeft,
   } = matchDoc || {};
 
-  // 🔧 FIX: only use finalSummary if the match is finished.
+  // ✅ Always compute from events live; only fall back to finalSummary
   const computedScores = useMemo(() => {
     if (!matchDoc) return { goalsA: 0, goalsB: 0 };
 
-    // If match has finished and we have a final summary, use that.
-    if (isFinished && finalSummary && typeof finalSummary.goalsA === "number") {
+    if (events && events.length > 0) {
+      let gA = 0;
+      let gB = 0;
+      for (const e of events) {
+        if (e.type === "goal") {
+          if (e.teamId === matchDoc.teamAId) gA += 1;
+          if (e.teamId === matchDoc.teamBId) gB += 1;
+        }
+      }
+      return { goalsA: gA, goalsB: gB };
+    }
+
+    // fallback for old finished matches with only finalSummary stored
+    if (finalSummary && typeof finalSummary.goalsA === "number") {
       return {
         goalsA: finalSummary.goalsA,
         goalsB: finalSummary.goalsB,
       };
     }
 
-    // Otherwise compute live from events
-    let gA = 0;
-    let gB = 0;
-    for (const e of events) {
-      if (e.type === "goal") {
-        if (e.teamId === matchDoc.teamAId) gA += 1;
-        if (e.teamId === matchDoc.teamBId) gB += 1;
-      }
-    }
-    return { goalsA: gA, goalsB: gB };
-  }, [matchDoc, events, finalSummary, isFinished]);
+    return { goalsA: 0, goalsB: 0 };
+  }, [matchDoc, events, finalSummary]);
 
   const { goalsA, goalsB } = computedScores;
 
@@ -105,6 +109,11 @@ export function SpectatorPage(props) {
       (a, b) => (a.timeSeconds || 0) - (b.timeSeconds || 0)
     );
   }, [events]);
+
+  const hasLiveTimer =
+    typeof secondsLeft === "number" && Number.isFinite(secondsLeft);
+
+  const timerText = hasLiveTimer ? formatSeconds(secondsLeft) : "--:--";
 
   return (
     <div className="page live-page">
@@ -154,9 +163,12 @@ export function SpectatorPage(props) {
                   Match finished – final score below.
                 </span>
               ) : (
-                <span className="muted">
-                  Match in progress – updates are live.
-                </span>
+                <>
+                  <div className="timer-display">{timerText}</div>
+                  <span className="muted" style={{ marginLeft: "0.75rem" }}>
+                    Match in progress – updates are live.
+                  </span>
+                </>
               )}
             </div>
 

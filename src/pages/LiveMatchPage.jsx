@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 
 // 🔥 Firebase imports (Firestore only – no auth UI here)
-import { db } from "../firebaseConfig";
+import { db } from "../firebaseConfig.js";
 import {
   doc,
   updateDoc,
@@ -66,38 +66,63 @@ function getShortName(label) {
 
 // ---------- Firestore helper functions ----------
 
-async function appendEventToFirestore(event, summaryInfo) {
+async function appendEventToFirestore(
+  event,
+  summaryInfo,
+  secondsLeft,
+  matchSeconds
+) {
   try {
     const ref = doc(db, "matches", MATCH_DOC_ID);
 
-    // Try update first (if doc exists)
+    const common = {
+      ...summaryInfo,
+      matchSeconds: matchSeconds ?? 0,
+      secondsLeft:
+        typeof secondsLeft === "number" ? Math.max(secondsLeft, 0) : null,
+      isFinished: false,
+      lastUpdated: serverTimestamp(),
+    };
+
+    // Try update first
     try {
       await updateDoc(ref, {
         events: arrayUnion(event),
-        lastUpdated: serverTimestamp(),
-        ...summaryInfo,
+        ...common,
       });
     } catch (_) {
       // If doc doesn’t exist yet, create it
-      await setDoc(ref, {
-        events: [event],
-        createdAt: serverTimestamp(),
-        lastUpdated: serverTimestamp(),
-        ...summaryInfo,
-      });
+      await setDoc(
+        ref,
+        {
+          events: [event],
+          createdAt: serverTimestamp(),
+          ...common,
+        },
+        { merge: true }
+      );
     }
   } catch (err) {
     console.error("⚠️ Failed to mirror event to Firestore:", err);
   }
 }
 
-async function overwriteEventsInFirestore(allEvents, summaryInfo) {
+async function overwriteEventsInFirestore(
+  allEvents,
+  summaryInfo,
+  secondsLeft,
+  matchSeconds
+) {
   try {
     const ref = doc(db, "matches", MATCH_DOC_ID);
     await setDoc(
       ref,
       {
         events: allEvents,
+        matchSeconds: matchSeconds ?? 0,
+        secondsLeft:
+          typeof secondsLeft === "number" ? Math.max(secondsLeft, 0) : null,
+        isFinished: false,
         lastUpdated: serverTimestamp(),
         ...summaryInfo,
       },
@@ -108,7 +133,12 @@ async function overwriteEventsInFirestore(allEvents, summaryInfo) {
   }
 }
 
-async function writeFinalSummaryToFirestore(finalSummary, events) {
+async function writeFinalSummaryToFirestore(
+  finalSummary,
+  events,
+  secondsLeft,
+  matchSeconds
+) {
   try {
     const ref = doc(db, "matches", MATCH_DOC_ID);
     await setDoc(
@@ -118,6 +148,9 @@ async function writeFinalSummaryToFirestore(finalSummary, events) {
         events,
         isFinished: true,
         finishedAt: serverTimestamp(),
+        matchSeconds: matchSeconds ?? 0,
+        secondsLeft:
+          typeof secondsLeft === "number" ? Math.max(secondsLeft, 0) : 0,
         lastUpdated: serverTimestamp(),
       },
       { merge: true }
@@ -144,25 +177,9 @@ export function LiveMatchPage({
   onGoToStats,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch;
-
-  const teamA = getTeamById(teams, teamAId) || {
-    id: teamAId,
-    label: "Team A",
-    captain: "",
-    players: [],
-  };
-  const teamB = getTeamById(teams, teamBId) || {
-    id: teamBId,
-    label: "Team B",
-    captain: "",
-    players: [],
-  };
-  const standbyTeam = getTeamById(teams, standbyId) || {
-    id: standbyId,
-    label: "Standby",
-    captain: "",
-    players: [],
-  };
+  const teamA = getTeamById(teams, teamAId);
+  const teamB = getTeamById(teams, teamBId);
+  const standbyTeam = getTeamById(teams, standbyId);
 
   // 🔍 detect mobile for compact scoreboard labels
   const [isMobile, setIsMobile] = useState(() => {
@@ -233,7 +250,6 @@ export function LiveMatchPage({
   }, []);
 
   // ⏱️ Timer is controlled in App.jsx. Here we only react to timeUp.
-  // When timeUp flips true, start alarm loop every 10s
   useEffect(() => {
     if (!timeUp) {
       stopAlarmLoop(alarmLoopRef);
@@ -270,6 +286,33 @@ export function LiveMatchPage({
     };
   }, [timeUp]);
 
+  // 🔔 Push timer updates to Firestore every 5 seconds (and last 5 seconds)
+  useEffect(() => {
+    if (!running) return;
+    if (secondsLeft == null) return;
+
+    const shouldPush =
+      secondsLeft <= 5 || secondsLeft % 5 === 0; // 60s match -> ~12 writes
+
+    if (!shouldPush) return;
+
+    const pushTimer = async () => {
+      try {
+        const ref = doc(db, "matches", MATCH_DOC_ID);
+        await updateDoc(ref, {
+          secondsLeft: Math.max(secondsLeft, 0),
+          matchSeconds: matchSeconds ?? 0,
+          isFinished: false,
+          lastUpdated: serverTimestamp(),
+        });
+      } catch (err) {
+        // ignore if doc missing – it will be created on first event
+      }
+    };
+
+    pushTimer();
+  }, [secondsLeft, running, matchSeconds]);
+
   const formattedTime = useMemo(() => {
     const m = Math.floor(secondsLeft / 60)
       .toString()
@@ -290,7 +333,6 @@ export function LiveMatchPage({
 
   const assistOptions = playersForSelectedTeam.filter((p) => p !== scorerName);
 
-  // This is what we mirror into Firestore so SpectatorPage can show teams
   const basicSummary = {
     matchNumber: currentMatchNo,
     teamAId,
@@ -319,8 +361,8 @@ export function LiveMatchPage({
     onAddEvent(event);
     setAssistName("");
 
-    // mirror to Firestore
-    appendEventToFirestore(event, basicSummary);
+    // mirror
+    appendEventToFirestore(event, basicSummary, secondsLeft, matchSeconds);
   };
 
   const handleEndMatchClick = () => {
@@ -361,16 +403,21 @@ export function LiveMatchPage({
       goalsB,
     };
 
-    // local rotation + saving
+    // local
     onConfirmEndMatch(summary);
 
-    // mirror final summary + events (for spectator)
+    // mirror final summary + events
     const finalSummary = {
       ...basicSummary,
       goalsA,
       goalsB,
     };
-    writeFinalSummaryToFirestore(finalSummary, currentEvents);
+    writeFinalSummaryToFirestore(
+      finalSummary,
+      currentEvents,
+      secondsLeft,
+      matchSeconds
+    );
   };
 
   // Delete with captain password
@@ -397,7 +444,12 @@ export function LiveMatchPage({
     if (deleteIndex !== null) {
       onDeleteEvent(deleteIndex);
       const newEvents = currentEvents.filter((_, i) => i !== deleteIndex);
-      overwriteEventsInFirestore(newEvents, basicSummary);
+      overwriteEventsInFirestore(
+        newEvents,
+        basicSummary,
+        secondsLeft,
+        matchSeconds
+      );
     }
     handleCancelDelete();
   };
@@ -429,7 +481,7 @@ export function LiveMatchPage({
     setBackPassword("");
     setBackError("");
 
-    overwriteEventsInFirestore([], basicSummary);
+    overwriteEventsInFirestore([], basicSummary, secondsLeft, matchSeconds);
     onBackToLanding();
   };
 
@@ -455,7 +507,12 @@ export function LiveMatchPage({
     }
     onUndoLastEvent();
     const newEvents = currentEvents.slice(0, -1);
-    overwriteEventsInFirestore(newEvents, basicSummary);
+    overwriteEventsInFirestore(
+      newEvents,
+      basicSummary,
+      secondsLeft,
+      matchSeconds
+    );
     setShowUndoModal(false);
     setUndoPassword("");
     setUndoError("");
@@ -469,15 +526,12 @@ export function LiveMatchPage({
       <header className="header">
         <h1>Match #{currentMatchNo}</h1>
         <p>
-          On-field: <strong>{teamA.label}</strong>
-          {teamA.captain ? ` (c: ${teamA.captain})` : ""} vs{" "}
-          <strong>{teamB.label}</strong>
-          {teamB.captain ? ` (c: ${teamB.captain})` : ""}
+          On-field: <strong>{teamA.label}</strong> (c: {teamA.captain}) vs{" "}
+          <strong>{teamB.label}</strong> (c: {teamB.captain})
         </p>
         <p>
           Standby:{" "}
-          <strong>{standbyTeam.label}</strong>
-          {standbyTeam.captain ? ` (c: ${standbyTeam.captain})` : ""}
+          <strong>{standbyTeam.label}</strong> (c: {standbyTeam.captain})
         </p>
       </header>
 
