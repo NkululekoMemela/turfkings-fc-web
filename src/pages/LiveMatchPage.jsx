@@ -70,7 +70,7 @@ async function appendEventToFirestore(event, summaryInfo) {
   try {
     const ref = doc(db, "matches", MATCH_DOC_ID);
 
-    // Try update first
+    // Try update first (if doc exists)
     try {
       await updateDoc(ref, {
         events: arrayUnion(event),
@@ -144,9 +144,25 @@ export function LiveMatchPage({
   onGoToStats,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch;
-  const teamA = getTeamById(teams, teamAId);
-  const teamB = getTeamById(teams, teamBId);
-  const standbyTeam = getTeamById(teams, standbyId);
+
+  const teamA = getTeamById(teams, teamAId) || {
+    id: teamAId,
+    label: "Team A",
+    captain: "",
+    players: [],
+  };
+  const teamB = getTeamById(teams, teamBId) || {
+    id: teamBId,
+    label: "Team B",
+    captain: "",
+    players: [],
+  };
+  const standbyTeam = getTeamById(teams, standbyId) || {
+    id: standbyId,
+    label: "Standby",
+    captain: "",
+    players: [],
+  };
 
   // 🔍 detect mobile for compact scoreboard labels
   const [isMobile, setIsMobile] = useState(() => {
@@ -274,6 +290,7 @@ export function LiveMatchPage({
 
   const assistOptions = playersForSelectedTeam.filter((p) => p !== scorerName);
 
+  // This is what we mirror into Firestore so SpectatorPage can show teams
   const basicSummary = {
     matchNumber: currentMatchNo,
     teamAId,
@@ -302,7 +319,7 @@ export function LiveMatchPage({
     onAddEvent(event);
     setAssistName("");
 
-    // mirror
+    // mirror to Firestore
     appendEventToFirestore(event, basicSummary);
   };
 
@@ -344,10 +361,10 @@ export function LiveMatchPage({
       goalsB,
     };
 
-    // local
+    // local rotation + saving
     onConfirmEndMatch(summary);
 
-    // mirror final summary + events
+    // mirror final summary + events (for spectator)
     const finalSummary = {
       ...basicSummary,
       goalsA,
@@ -452,12 +469,15 @@ export function LiveMatchPage({
       <header className="header">
         <h1>Match #{currentMatchNo}</h1>
         <p>
-          On-field: <strong>{teamA.label}</strong> (c: {teamA.captain}) vs{" "}
-          <strong>{teamB.label}</strong> (c: {teamB.captain})
+          On-field: <strong>{teamA.label}</strong>
+          {teamA.captain ? ` (c: ${teamA.captain})` : ""} vs{" "}
+          <strong>{teamB.label}</strong>
+          {teamB.captain ? ` (c: ${teamB.captain})` : ""}
         </p>
         <p>
           Standby:{" "}
-          <strong>{standbyTeam.label}</strong> (c: {standbyTeam.captain})
+          <strong>{standbyTeam.label}</strong>
+          {standbyTeam.captain ? ` (c: ${standbyTeam.captain})` : ""}
         </p>
       </header>
 
@@ -626,7 +646,11 @@ export function LiveMatchPage({
           <ul>
             {currentEvents.map((e, idx) => {
               const team =
-                e.teamId === teamAId ? teamA : e.teamId === teamBId ? teamB : null;
+                e.teamId === teamAId
+                  ? teamA
+                  : e.teamId === teamBId
+                  ? teamB
+                  : null;
               const typeLabel = e.type === "shibobo" ? "Shibobo" : "Goal";
               return (
                 <li key={e.id} className="event-item">

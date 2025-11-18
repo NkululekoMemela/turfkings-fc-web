@@ -70,18 +70,19 @@ export function SpectatorPage(props) {
     isFinished,
   } = matchDoc || {};
 
+  // 🔧 FIX: only use finalSummary if the match is finished.
   const computedScores = useMemo(() => {
     if (!matchDoc) return { goalsA: 0, goalsB: 0 };
 
-    // If finalSummary is present (after match), prefer that
-    if (finalSummary && typeof finalSummary.goalsA === "number") {
+    // If match has finished and we have a final summary, use that.
+    if (isFinished && finalSummary && typeof finalSummary.goalsA === "number") {
       return {
         goalsA: finalSummary.goalsA,
         goalsB: finalSummary.goalsB,
       };
     }
 
-    // Otherwise compute on the fly from events
+    // Otherwise compute live from events
     let gA = 0;
     let gB = 0;
     for (const e of events) {
@@ -91,7 +92,7 @@ export function SpectatorPage(props) {
       }
     }
     return { goalsA: gA, goalsB: gB };
-  }, [matchDoc, events, finalSummary]);
+  }, [matchDoc, events, finalSummary, isFinished]);
 
   const { goalsA, goalsB } = computedScores;
 

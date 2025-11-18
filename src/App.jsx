@@ -12,7 +12,7 @@ import {
   createDefaultState,
 } from "./storage/gameRepository.js";
 import { computeNextFromResult } from "./core/rotation.js";
-import { subscribeToState } from "./storage/firebaseRepository.js"; // 🔥 NEW
+import { subscribeToState } from "./storage/firebaseRepository.js";
 
 const PAGE_LANDING = "landing";
 const PAGE_LIVE = "live";
@@ -47,7 +47,6 @@ export default function App() {
   const [backupError, setBackupError] = useState("");
 
   // 🌩 Helper: centralised state update for local edits
-  // This ensures every local change is saved to localStorage + Firestore.
   const updateState = (updater) => {
     setState((prev) => {
       const next =
@@ -57,17 +56,11 @@ export default function App() {
     });
   };
 
-  // ❌ We REMOVE the old auto-save effect:
-  // useEffect(() => {
-  //   saveState(state);
-  // }, [state]);
-
   // ✅ Realtime subscription to Firestore full app state.
-  // This lets other devices' updates flow into this device.
   useEffect(() => {
     const unsubscribe = subscribeToState((cloudState) => {
       if (!cloudState) return;
-      // IMPORTANT: use raw setState so we do NOT call saveState again.
+      // Use raw setState so we do NOT call saveState again.
       setState(cloudState);
     });
 
@@ -125,8 +118,6 @@ export default function App() {
 
   // Spectator wants to view an ongoing match
   const handleGoToLiveAsSpectator = () => {
-    // Always allow going to spectator page.
-    // SpectatorPage itself will show "no active match" if Firestore is empty.
     setPage(PAGE_SPECTATOR);
   };
 
@@ -348,7 +339,14 @@ export default function App() {
       )}
 
       {page === PAGE_SPECTATOR && (
-        <SpectatorPage onBackToLanding={handleBackToLanding} />
+        <SpectatorPage
+          teams={teams}
+          currentMatchNo={currentMatchNo}
+          currentMatch={currentMatch}
+          currentEvents={currentEvents}
+          results={results}
+          onBackToLanding={handleBackToLanding}
+        />
       )}
 
       {page === PAGE_STATS && (
