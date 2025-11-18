@@ -12,6 +12,7 @@ import {
   createDefaultState,
 } from "./storage/gameRepository.js";
 import { computeNextFromResult } from "./core/rotation.js";
+import { loadStateFromFirebase } from "./storage/firebaseRepository.js"; // 🔥 NEW
 
 const PAGE_LANDING = "landing";
 const PAGE_LIVE = "live";
@@ -45,9 +46,42 @@ export default function App() {
   const [backupCode, setBackupCode] = useState("");
   const [backupError, setBackupError] = useState("");
 
+  // 🌩 Cloud sync flags (optional, internal only for now)
+  const [cloudLoaded, setCloudLoaded] = useState(false);
+
+  // ✅ Auto-save to localStorage + Firebase whenever state changes
   useEffect(() => {
     saveState(state);
   }, [state]);
+
+  // ✅ On first mount, try to load full state from Firebase
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncFromCloud() {
+      try {
+        const cloudState = await loadStateFromFirebase();
+        if (!cloudState || cancelled) {
+          setCloudLoaded(true);
+          return;
+        }
+        // Override local state with cloud version
+        setState(cloudState);
+        // Ensure localStorage is in sync for offline use
+        saveState(cloudState);
+      } catch (err) {
+        console.error("Failed to load cloud state, using local only:", err);
+      } finally {
+        if (!cancelled) setCloudLoaded(true);
+      }
+    }
+
+    syncFromCloud();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const {
     teams,
@@ -369,7 +403,7 @@ export default function App() {
                   setBackupError("");
                 }}
               />
-              {backupError && <p className="error-text">{backupError}</p>}
+            {backupError && <p className="error-text">{backupError}</p>}
             </div>
             <div className="actions-row">
               <button className="secondary-btn" onClick={closeBackupModal}>

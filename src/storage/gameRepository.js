@@ -1,8 +1,7 @@
-// src/storage/gameRepository.js
-
 import { TEAMS } from "../core/teams.js";
 import { createInitialStreaks } from "../core/rotation.js";
 import { loadRawState, saveRawState } from "./localStorageClient.js";
+import { saveStateToFirebase } from "./firebaseRepository.js"; // 🔥 NEW
 
 export function createDefaultState() {
   const teams = TEAMS;
@@ -30,7 +29,6 @@ export function loadState() {
   const raw = loadRawState();
   if (!raw) return createDefaultState();
 
-  // migration if old state doesn’t have teams
   if (!raw.teams) {
     raw.teams = TEAMS;
     raw.streaks = raw.streaks || createInitialStreaks(TEAMS);
@@ -40,5 +38,8 @@ export function loadState() {
 }
 
 export function saveState(state) {
+  // 1️⃣ Local backup
   saveRawState(state);
+  // 2️⃣ Cloud mirror
+  saveStateToFirebase(state);
 }
