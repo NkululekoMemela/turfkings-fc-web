@@ -13,7 +13,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
-// Treat these as captain/admin passwords (you can choose which is “admin”)
+// Treat these as captain/admin passwords
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 
 // Document where we mirror the current match
@@ -22,7 +22,7 @@ const MATCH_DOC_ID = "current";
 // ✅ Correct URL for GitHub Pages subpath (and dev)
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 
-// ✅ Single Audio instance
+// ✅ Single Audio instance (CAPTAIN ONLY – spectator has no audio)
 const matchEndSound =
   typeof Audio !== "undefined" ? new Audio(SOUND_URL) : null;
 
@@ -58,13 +58,49 @@ function getShortName(label) {
   };
   if (map[label]) return map[label];
 
-  // Generic fallback: first 3 non-space letters
   const cleaned = label.replace(/team/gi, "").trim();
   if (!cleaned) return label;
   return cleaned.slice(0, 3).toUpperCase();
 }
 
 // ---------- Firestore helper functions ----------
+
+// 🔁 Called whenever a **new match** starts (new rotation).
+// This *completely overwrites* the previous match document so
+// spectators don't see stale scores.
+async function hardResetMatchDoc(summaryInfo, matchSeconds) {
+  try {
+    const ref = doc(db, "matches", MATCH_DOC_ID);
+    await setDoc(
+      ref,
+      {
+        matchNumber: summaryInfo.matchNumber,
+        teamAId: summaryInfo.teamAId,
+        teamBId: summaryInfo.teamBId,
+        standbyId: summaryInfo.standbyId,
+        teamALabel: summaryInfo.teamALabel,
+        teamBLabel: summaryInfo.teamBLabel,
+        standbyLabel: summaryInfo.standbyLabel,
+
+        // wipe dynamic stuff from previous match
+        events: [],
+        goalsA: 0,
+        goalsB: 0,
+        finalSummary: null,
+        isFinished: false,
+
+        matchSeconds: matchSeconds ?? 0,
+        secondsLeft: matchSeconds ?? 0,
+
+        createdAt: serverTimestamp(),
+        lastUpdated: serverTimestamp(),
+      },
+      { merge: false } // 🔥 full overwrite
+    );
+  } catch (err) {
+    console.error("⚠️ Failed to hard reset match doc:", err);
+  }
+}
 
 async function appendEventToFirestore(
   event,
@@ -84,14 +120,12 @@ async function appendEventToFirestore(
       lastUpdated: serverTimestamp(),
     };
 
-    // Try update first
     try {
       await updateDoc(ref, {
         events: arrayUnion(event),
         ...common,
       });
     } catch (_) {
-      // If doc doesn’t exist yet, create it
       await setDoc(
         ref,
         {
@@ -223,7 +257,7 @@ export function LiveMatchPage({
   // 🔁 alarm loop ref (for repeated beeps + vibration)
   const alarmLoopRef = useRef(null);
 
-  // ✅ Mobile autoplay unlock
+  // ✅ Mobile autoplay unlock (captain only)
   useEffect(() => {
     if (!matchEndSound) return;
     const unlock = async () => {
@@ -256,7 +290,6 @@ export function LiveMatchPage({
       return;
     }
 
-    // first alarm immediately
     (async () => {
       try {
         if (matchEndSound) {
@@ -286,14 +319,12 @@ export function LiveMatchPage({
     };
   }, [timeUp]);
 
-  // 🔔 Push timer updates to Firestore every 5 seconds (and last 5 seconds)
+  // 🔔 Push timer updates to Firestore every 5 seconds (captain -> spectators)
   useEffect(() => {
     if (!running) return;
     if (secondsLeft == null) return;
 
-    const shouldPush =
-      secondsLeft <= 5 || secondsLeft % 5 === 0; // 60s match -> ~12 writes
-
+    const shouldPush = secondsLeft <= 5 || secondsLeft % 5 === 0;
     if (!shouldPush) return;
 
     const pushTimer = async () => {
@@ -306,7 +337,7 @@ export function LiveMatchPage({
           lastUpdated: serverTimestamp(),
         });
       } catch (err) {
-        // ignore if doc missing – it will be created on first event
+        // ignore if doc missing – it will be created on first event/reset
       }
     };
 
@@ -343,6 +374,33 @@ export function LiveMatchPage({
     standbyLabel: standbyTeam.label,
   };
 
+  // 🧹 HARD RESET FIRESTORE WHENEVER A NEW MATCH STARTS
+  // Assumption: every time we navigate to this page, it's a *new* match
+  // (we're not resuming old ones).
+  useEffect(() => {
+    hardResetMatchDoc(
+      {
+        matchNumber: currentMatchNo,
+        teamAId,
+        teamBId,
+        standbyId,
+        teamALabel: teamA.label,
+        teamBLabel: teamB.label,
+        standbyLabel: standbyTeam.label,
+      },
+      matchSeconds
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    currentMatchNo,
+    teamAId,
+    teamBId,
+    standbyId,
+    teamA.label,
+    teamB.label,
+    standbyTeam.label,
+  ]);
+
   // ---------- Event & match actions ----------
 
   const handleAddEvent = async () => {
@@ -350,18 +408,16 @@ export function LiveMatchPage({
 
     const event = {
       id: Date.now().toString(),
-      type: eventType, // "goal" or "shibobo"
+      type: eventType,
       teamId: scoringTeamId,
       scorer: scorerName,
       assist: eventType === "goal" && assistName ? assistName : null,
       timeSeconds: matchSeconds - secondsLeft,
     };
 
-    // local
     onAddEvent(event);
     setAssistName("");
 
-    // mirror
     appendEventToFirestore(event, basicSummary, secondsLeft, matchSeconds);
   };
 
@@ -390,7 +446,6 @@ export function LiveMatchPage({
   };
 
   const handleConfirmFinal = () => {
-    // 🛑 stop alarm immediately
     stopAlarmLoop(alarmLoopRef);
 
     setShowConfirmModal(false);
@@ -403,10 +458,8 @@ export function LiveMatchPage({
       goalsB,
     };
 
-    // local
     onConfirmEndMatch(summary);
 
-    // mirror final summary + events
     const finalSummary = {
       ...basicSummary,
       goalsA,
@@ -474,7 +527,6 @@ export function LiveMatchPage({
       return;
     }
 
-    // 🛑 stop any alarm
     stopAlarmLoop(alarmLoopRef);
 
     setShowBackModal(false);
@@ -543,7 +595,6 @@ export function LiveMatchPage({
           )}
         </div>
 
-        {/* 🔁 Compact mobile-friendly score row */}
         <div className="score-row">
           <div className="score-team">
             <strong className="score-team-name">{displayNameA}</strong>
@@ -615,7 +666,6 @@ export function LiveMatchPage({
             </button>
           </div>
 
-          {/* Goal vs Shibobo player selection */}
           {eventType === "goal" ? (
             <>
               <div className="field-row">
@@ -753,7 +803,7 @@ export function LiveMatchPage({
         </div>
       </section>
 
-      {/* End match confirm modal */}
+      {/* Modals: end, delete, back, undo */}
       {showConfirmModal && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -786,7 +836,6 @@ export function LiveMatchPage({
         </div>
       )}
 
-      {/* Delete event confirm modal */}
       {showDeleteModal && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -826,7 +875,6 @@ export function LiveMatchPage({
         </div>
       )}
 
-      {/* Back button confirm modal */}
       {showBackModal && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -869,7 +917,6 @@ export function LiveMatchPage({
         </div>
       )}
 
-      {/* Undo last confirm modal */}
       {showUndoModal && (
         <div className="modal-backdrop">
           <div className="modal">
