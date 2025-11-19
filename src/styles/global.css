@@ -854,3 +854,507 @@ th {
   outline: 2px solid #e9d5ff;
   outline-offset: 2px;
 }
+
+
+/* ===== Stats page tab pills ===== */
+.stats-tabs .secondary-btn {
+  border-radius: 999px;
+  padding: 0.45rem 1.4rem;
+}
+
+/* Highlight the selected stats tab (reuse Lineups fancy colors) */
+.stats-tabs .secondary-btn.active {
+  border-color: #38bdf8;
+  background: linear-gradient(135deg, #22c55e, #38bdf8);
+  color: #0b1220;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.7);
+}
+
+
+/* ========== NEWS & HIGHLIGHTS PAGE ========== */
+
+.news-page .card {
+  background: linear-gradient(145deg, #0b1120, #020617);
+}
+
+.news-header-actions {
+  margin-top: 0.65rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* Hero layout */
+
+.news-hero-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+.news-hero-main {
+  flex: 2 1 260px;
+}
+
+.news-hero-side {
+  flex: 1 1 200px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.news-hero-text {
+  margin: 0.25rem 0;
+}
+
+.news-stat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.news-stat-chip {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(15, 23, 42, 0.9);
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.news-stat-chip span {
+  font-weight: 600;
+  color: #e5f3ff;
+}
+
+/* Headlines + biggest win grid */
+
+.news-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.news-column {
+  flex: 1 1 0;
+}
+
+.news-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.news-list-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: flex-start;
+}
+
+.news-tag {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #e5f3ff;
+}
+
+.news-match-feature {
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  background: radial-gradient(circle at top, #0f172a, #020617);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+}
+
+.news-match-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+  color: #cbd5f5;
+}
+
+.news-match-scoreline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+
+.news-match-scoreline .score {
+  font-size: 1.2rem;
+}
+
+.news-match-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+}
+
+/* Match-by-match recap list */
+
+.news-match-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.news-match-item {
+  padding: 0.6rem 0.4rem;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+}
+
+.news-match-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.news-match-number {
+  font-size: 0.85rem;
+  color: #cbd5f5;
+}
+
+.news-match-scoreline {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+}
+
+.news-match-scoreline .score {
+  font-weight: 700;
+}
+
+.news-event-list {
+  list-style: none;
+  padding: 0.25rem 0 0 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.news-event-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.news-event-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.news-event-text {
+  min-width: 0;
+}
+
+.news-event-text strong {
+  font-weight: 600;
+}
+
+.news-match-item .small {
+  font-size: 0.8rem;
+}
+
+/* Responsive layout for news grid */
+
+@media (min-width: 900px) {
+  .news-grid {
+    flex-direction: row;
+  }
+}
+
+
+/* ===== MVP CARD ===== */
+
+.news-mvp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mvp-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.mvp-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 20%, #38bdf8, #0f172a);
+  border: 2px solid rgba(248, 250, 252, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.8);
+}
+
+.mvp-initials {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #f9fafb;
+}
+
+.mvp-label {
+  margin: 0 0 0.2rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #a5b4fc;
+}
+
+.mvp-name {
+  margin: 0;
+}
+
+.mvp-team {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+  color: #d1fae5;
+}
+
+.mvp-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mvp-stat-pill {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  background: rgba(15, 23, 42, 0.9);
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mvp-stat-pill strong {
+  font-size: 0.95rem;
+}
+
+/* ===== STREAK WATCH ===== */
+
+.news-streak-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.streak-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.streak-pill {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.9rem;
+  background: radial-gradient(circle at top left, #065f46, #022c22);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.streak-tag {
+  display: inline-block;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 243, 208, 0.6);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.35rem;
+}
+
+.streak-main {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
+}
+
+.streak-sub {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #a7f3d0;
+}
+
+/* ===== YEAR-END FUNCTION ===== */
+
+.year-end-card {
+  background: radial-gradient(circle at top, #0b1120, #020617);
+}
+
+.year-end-lead {
+  margin-top: 0.2rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  color: #bfdbfe;
+}
+
+
+.mvp-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 20%, #38bdf8, #0f172a);
+}
+
+.mvp-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mvp-initials {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #e5e7eb;
+}
+
+
+/* MVP avatar styling */
+.mvp-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 30% 20%, #38bdf8, #0f172a);
+  border: 2px solid rgba(248, 250, 252, 0.75);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.6);
+}
+
+.mvp-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mvp-initials {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #e5e7eb;
+}
+
+/* Black-suit / tuxedo vibe for year-end card */
+.news-page .year-end-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, #111827 0, #020617 55%, #000000 100%);
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* subtle pinstripe overlay */
+.news-page .year-end-card::before {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  background-image:
+    linear-gradient(
+      135deg,
+      rgba(148, 163, 184, 0.10) 1px,
+      transparent 1px
+    ),
+    linear-gradient(45deg, rgba(15, 23, 42, 0.7), transparent);
+  background-size: 14px 14px, 100% 100%;
+  opacity: 0.9;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+/* keep content above the pinstripe overlay */
+.news-page .year-end-card > * {
+  position: relative;
+}
+
+.year-end-lead {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+
+/* Injury tribute card */
+.injury-tribute-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: center;
+  background: radial-gradient(circle at top left, #0f172a 0, #020617 55%);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  /* keep everything (especially the photo) inside the card radius */
+  overflow: hidden;
+}
+
+.injury-photo-wrapper {
+  flex: 0 0 220px;
+  max-width: 260px;
+  /* let the card control the outer rounding */
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.65);
+}
+
+.injury-photo {
+  width: 100%;
+  height: auto;         /* keep aspect ratio */
+  display: block;
+  object-fit: cover;
+}
+
+.injury-text {
+  flex: 1 1 260px;
+}
+
+.injury-text h2 {
+  margin-top: 0;
+  margin-bottom: 0.4rem;
+}
+
+.injury-cta {
+  margin-top: 0.6rem;
+  font-weight: 600;
+  color: #bbf7d0;
+}
+
+/* stack nicely on small screens */
+@media (max-width: 640px) {
+  .injury-tribute-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .injury-photo-wrapper {
+    width: 100%;
+    max-width: none;
+  }
+}

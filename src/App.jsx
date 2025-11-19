@@ -6,6 +6,8 @@ import { StatsPage } from "./pages/StatsPage.jsx";
 import { SquadsPage } from "./pages/SquadsPage.jsx";
 import { FormationsPage } from "./pages/FormationsPage.jsx";
 import { SpectatorPage } from "./pages/SpectatorPage.jsx";
+import { NewsPage } from "./pages/NewsPage.jsx";
+
 import {
   loadState,
   saveState,
@@ -14,12 +16,15 @@ import {
 import { computeNextFromResult } from "./core/rotation.js";
 import { subscribeToState } from "./storage/firebaseRepository.js";
 
+import { week1Results, week1Events } from "./seed/week1Data.js";
+
 const PAGE_LANDING = "landing";
 const PAGE_LIVE = "live";
 const PAGE_STATS = "stats";
 const PAGE_SQUADS = "squads";
 const PAGE_FORMATIONS = "formations";
 const PAGE_SPECTATOR = "spectator";
+const PAGE_NEWS = "news";
 
 const MASTER_CODE = "3333"; // Nkululeko admin code
 
@@ -77,6 +82,7 @@ export default function App() {
     results,
     allEvents,
     streaks,
+    matchDayHistory = [],
   } = state;
 
   // 🔁 Main countdown timer – runs regardless of which "page" is showing
@@ -258,44 +264,82 @@ export default function App() {
     setBackupError("");
   };
 
-  const downloadStateToFile = () => {
-    if (typeof window === "undefined") return;
-    const dataStr = JSON.stringify(state, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const now = new Date();
-    const ts =
-      now.getFullYear().toString() +
-      String(now.getMonth() + 1).padStart(2, "0") +
-      String(now.getDate()).padStart(2, "0") +
-      "-" +
-      String(now.getHours()).padStart(2, "0") +
-      String(now.getMinutes()).padStart(2, "0");
-    a.href = url;
-    a.download = `turfkings-5aside-${ts}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleBackupSaveOnly = () => {
+  const requireAdminCode = () => {
     if (backupCode.trim() !== MASTER_CODE) {
       setBackupError("Invalid admin code.");
-      return;
+      return false;
     }
-    downloadStateToFile();
+    return true;
+  };
+
+  // Clear current week ONLY (no saving)
+  const handleClearOnly = () => {
+    if (!requireAdminCode()) return;
+
+    updateState((prev) => ({
+      ...prev,
+      currentMatchNo: 1,
+      currentMatch: {
+        teamAId: prev.teams?.[0]?.id ?? null,
+        teamBId: prev.teams?.[1]?.id ?? null,
+        standbyId: prev.teams?.[2]?.id ?? null,
+      },
+      streaks: prev.streaks
+        ? Object.fromEntries(Object.keys(prev.streaks).map((tid) => [tid, 0]))
+        : {},
+      currentEvents: [],
+      allEvents: [],
+      results: [],
+      // keep teams and matchDayHistory
+      matchDayHistory: prev.matchDayHistory || [],
+    }));
+
     closeBackupModal();
   };
 
-  const handleBackupSaveAndClear = () => {
-    if (backupCode.trim() !== MASTER_CODE) {
-      setBackupError("Invalid admin code.");
-      return;
-    }
-    downloadStateToFile();
-    updateState(createDefaultState());
+  // Save match-day to Firebase (via state mirror) and clear current week
+  const handleSaveAndClearMatchDay = () => {
+    if (!requireAdminCode()) return;
+
+    const now = new Date();
+    const id =
+      now.getFullYear().toString() +
+      "-" +
+      String(now.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(now.getDate()).padStart(2, "0");
+
+    updateState((prev) => {
+      const entry = {
+        id,
+        createdAt: now.toISOString(),
+        results: prev.results || [],
+        allEvents: prev.allEvents || [],
+      };
+
+      const newHistory = [...(prev.matchDayHistory || []), entry];
+
+      return {
+        ...prev,
+        matchDayHistory: newHistory,
+        currentMatchNo: 1,
+        currentMatch: {
+          teamAId: prev.teams?.[0]?.id ?? null,
+          teamBId: prev.teams?.[1]?.id ?? null,
+          standbyId: prev.teams?.[2]?.id ?? null,
+        },
+        streaks: prev.streaks
+          ? Object.fromEntries(
+              Object.keys(prev.streaks).map((tid) => [tid, 0])
+            )
+          : {},
+        currentEvents: [],
+        allEvents: [],
+        results: [],
+      };
+    });
+
+    // updateState already mirrored to Firebase via saveState
     closeBackupModal();
   };
 
@@ -354,12 +398,24 @@ export default function App() {
           teams={teams}
           results={results}
           allEvents={allEvents}
+          archivedResults={week1Results}
+          archivedEvents={week1Events}
           cameFromLive={statsReturnPage === PAGE_LIVE}
           onBack={() =>
             statsReturnPage === PAGE_LIVE
               ? handleBackToLive()
               : handleBackToLanding()
           }
+          onGoToNews={() => setPage(PAGE_NEWS)}
+        />
+      )}
+
+      {page === PAGE_NEWS && (
+        <NewsPage
+          teams={teams}
+          results={results}
+          allEvents={allEvents}
+          onBack={() => setPage(PAGE_STATS)}
         />
       )}
 
@@ -380,8 +436,8 @@ export default function App() {
           <div className="modal">
             <h3>Save / Clear Turf Kings Data</h3>
             <p>
-              Save all matches, events and squads to a file. You can optionally
-              clear the browser after saving to reclaim space.
+              Save this match-day to Firebase (via state sync) and start a fresh
+              week, or clear the current week without saving.
             </p>
             <div className="field-row">
               <label>Admin code (Nkululeko)</label>
@@ -400,14 +456,14 @@ export default function App() {
               <button className="secondary-btn" onClick={closeBackupModal}>
                 Cancel
               </button>
-              <button className="secondary-btn" onClick={handleBackupSaveOnly}>
-                Save only
+              <button className="secondary-btn" onClick={handleClearOnly}>
+                Clear only
               </button>
               <button
                 className="primary-btn"
-                onClick={handleBackupSaveAndClear}
+                onClick={handleSaveAndClearMatchDay}
               >
-                Save &amp; clear
+                Save to Firebase &amp; clear
               </button>
             </div>
           </div>
