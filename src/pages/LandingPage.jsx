@@ -8,6 +8,7 @@ import TeamPhoto from "../assets/TurfKings.jpg";
 // 🔥 Firebase auth
 import { auth, signInWithGoogle, logOut } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
+import { isCaptainEmail } from "../core/captainAuth.js"; // captain email guard
 
 const CAPTAIN_CODES = ["11", "22", "3333"]; // any captain can approve pairing override
 
@@ -48,7 +49,7 @@ export function LandingPage({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // 🔐 Firebase auth state (captain vs spectator)
+  // 🔐 Firebase auth state
   const [currentUser, setCurrentUser] = useState(null);
   const [authError, setAuthError] = useState("");
 
@@ -59,7 +60,10 @@ export function LandingPage({
     return () => unsub();
   }, []);
 
-  const isCaptain = !!currentUser;
+  // ✅ Only these emails are allowed to actually be captains
+  const userEmail = currentUser?.email || "";
+  const canBeCaptain = currentUser && isCaptainEmail(userEmail);
+  const isCaptain = !!canBeCaptain;
 
   const handleSignInClick = async () => {
     try {
@@ -201,8 +205,14 @@ export function LandingPage({
                   <strong>
                     {currentUser.displayName || currentUser.email}
                   </strong>{" "}
-                  (captain)
+                  {isCaptain ? "(captain)" : "(spectator)"}
                 </span>
+                {!isCaptain && (
+                  <p className="muted small">
+                    This account is not registered as a TurfKings captain –
+                    match control is locked.
+                  </p>
+                )}
                 <button
                   className="secondary-btn"
                   type="button"
@@ -221,7 +231,7 @@ export function LandingPage({
                   type="button"
                   onClick={handleSignInClick}
                 >
-                  Sign in as captain
+                  Sign in (captains use their email)
                 </button>
               </>
             )}
@@ -299,7 +309,7 @@ export function LandingPage({
           <>
             <p className="muted">
               You can follow the live game, see stats and view squads, but only
-              signed-in captains can control the match or change squads.
+              registered captains can control the match or change squads.
             </p>
             <div className="actions-row landing-actions">
               <button

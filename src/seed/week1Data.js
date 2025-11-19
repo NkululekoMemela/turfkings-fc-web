@@ -1,5 +1,5 @@
 // src/seed/week1Data.js
-// Official Week 1 data (matches 1–15 only) taken from the JSON export.
+// Official Week 1 data (matches 1–13 only) taken from the JSON export.
 
 export const week1Results = [
     {
@@ -131,26 +131,6 @@ export const week1Results = [
       goalsB: 0,
       winnerId: "team-mdu",
       isDraw: false,
-    },
-    {
-      matchNo: 14,
-      teamAId: "team-mdu",
-      teamBId: "team-nk",
-      standbyId: "team-enoch",
-      goalsA: 2,
-      goalsB: 0,
-      winnerId: "team-mdu",
-      isDraw: false,
-    },
-    {
-      matchNo: 15,
-      teamAId: "team-mdu",
-      teamBId: "team-enoch",
-      standbyId: "team-nk",
-      goalsA: 0,
-      goalsB: 0,
-      winnerId: null,
-      isDraw: true,
     },
   ];
   
@@ -397,42 +377,6 @@ export const week1Results = [
       assist: null,
       timeSeconds: 107,
       matchNo: 13,
-    },
-    {
-      id: "1762979730026",
-      type: "shibobo",
-      teamId: "team-nk",
-      scorer: "Dayaan",
-      assist: null,
-      timeSeconds: 95,
-      matchNo: 14,
-    },
-    {
-      id: "1762979738493",
-      type: "shibobo",
-      teamId: "team-mdu",
-      scorer: "Josh",
-      assist: null,
-      timeSeconds: 103,
-      matchNo: 14,
-    },
-    {
-      id: "1762979747195",
-      type: "goal",
-      teamId: "team-mdu",
-      scorer: "Josh",
-      assist: "Humbu",
-      timeSeconds: 112,
-      matchNo: 14,
-    },
-    {
-      id: "1762979755521",
-      type: "goal",
-      teamId: "team-mdu",
-      scorer: "Chad",
-      assist: null,
-      timeSeconds: 120,
-      matchNo: 14,
     },
   ];
   

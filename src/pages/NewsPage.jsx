@@ -2,7 +2,7 @@
 import React, { useMemo } from "react";
 import JaydTribute from "../assets/Jayd_Tribute.jpeg"; // <- tribute photo
 
-const BAD_MATCH_NUMBERS = new Set([16, 17]); // drop these from week-1 archive
+const BAD_MATCH_NUMBERS = new Set([14, 15, 16, 17]); // drop these from week-1 archive
 
 // change this if I guessed the wrong name
 const injuredPlayerName = "Jayd";

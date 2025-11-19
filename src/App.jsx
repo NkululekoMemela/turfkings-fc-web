@@ -17,6 +17,8 @@ import { computeNextFromResult } from "./core/rotation.js";
 import { subscribeToState } from "./storage/firebaseRepository.js";
 
 import { week1Results, week1Events } from "./seed/week1Data.js";
+// ❌ REMOVE this line – we don't need captainAuth in App
+// import { resolveRoleForUser, isCaptainEmail } from "./core/captainAuth.js";
 
 const PAGE_LANDING = "landing";
 const PAGE_LIVE = "live";
