@@ -17,9 +17,8 @@ import { computeNextFromResult } from "./core/rotation.js";
 import { subscribeToState } from "./storage/firebaseRepository.js";
 
 import { week1Results, week1Events } from "./seed/week1Data.js";
-// ❌ REMOVE this line – we don't need captainAuth in App
-// import { resolveRoleForUser, isCaptainEmail } from "./core/captainAuth.js";
 
+// Page constants
 const PAGE_LANDING = "landing";
 const PAGE_LIVE = "live";
 const PAGE_STATS = "stats";
@@ -85,9 +84,37 @@ export default function App() {
     allEvents,
     streaks,
     matchDayHistory = [],
-  } = state;
+    // if Firestore stores a player photo map, we surface it here
+    playerPhotosByName = {},
+  } = state || createDefaultState();
 
-  // 🔁 Main countdown timer – runs regardless of which "page" is showing
+  // ---------- FULL-TOURNAMENT DATA FOR NEWS ----------
+  // 1) Firebase history (previous weeks)
+  const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
+    (day) => day?.results || []
+  );
+  const archivedEventsFromHistory = (matchDayHistory || []).flatMap(
+    (day) => day?.allEvents || []
+  );
+
+  // 2) Seed Week 1 data as fallback ONLY if there is no Firebase history yet
+  const hasFirebaseHistory = (matchDayHistory || []).length > 0;
+  const seedResultsForArchive = hasFirebaseHistory ? [] : week1Results;
+  const seedEventsForArchive = hasFirebaseHistory ? [] : week1Events;
+
+  // 3) Combine: seed (if needed) + Firebase history + current week
+  const fullResults = [
+    ...seedResultsForArchive,
+    ...archivedResultsFromHistory,
+    ...(results || []),
+  ];
+  const fullEvents = [
+    ...seedEventsForArchive,
+    ...archivedEventsFromHistory,
+    ...(allEvents || []),
+  ];
+
+  // ---------- TIMER ----------
   useEffect(() => {
     if (!running) return;
     if (secondsLeft <= 0) return;
@@ -415,11 +442,18 @@ export default function App() {
       {page === PAGE_NEWS && (
         <NewsPage
           teams={teams}
-          results={results}
-          allEvents={allEvents}
+          // full tournament: previous weeks + current week
+          results={fullResults}
+          allEvents={fullEvents}
+          // this match-day only (current week)
+          currentResults={results}
+          currentEvents={allEvents}
+          // let MVP/avatar use Firebase / team photos if available
+          playerPhotosByName={playerPhotosByName}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
+
 
       {page === PAGE_SQUADS && (
         <SquadsPage

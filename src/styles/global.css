@@ -1358,3 +1358,33 @@ th {
     max-width: none;
   }
 }
+
+.news-recap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pill-toggle-group {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.pill-toggle {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pill-toggle-active {
+  background: #0f172a;
+  color: #f9fafb;
+}

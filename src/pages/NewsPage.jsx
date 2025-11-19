@@ -1,5 +1,5 @@
 // src/pages/NewsPage.jsx
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import JaydTribute from "../assets/Jayd_Tribute.jpeg"; // <- tribute photo
 
 const BAD_MATCH_NUMBERS = new Set([14, 15, 16, 17]); // drop these from week-1 archive
@@ -9,8 +9,12 @@ const injuredPlayerName = "Jayd";
 
 export function NewsPage({
   teams,
+  // full tournament (seed + previous weeks + current week)
   results,
   allEvents,
+  // current match-day only
+  currentResults,
+  currentEvents,
   onBack,
   // OPTIONAL: map { [playerName]: photoUrl } passed down from Firebase
   playerPhotosByName,
@@ -68,15 +72,44 @@ export function NewsPage({
   const getPlayerPhoto = (name) =>
     name ? mergedPhotoMap[name] || null : null;
 
-  // ---------- CLEAN DATA (full tournament, minus 16 & 17) ----------
-  const cleanResults = useMemo(
-    () => (results || []).filter((r) => r && !BAD_MATCH_NUMBERS.has(r.matchNo)),
-    [results]
+  // ---------- RAW DATA SPLIT ----------
+  const fullResultsRaw = results || [];
+  const fullEventsRaw = allEvents || [];
+  const weekResultsRaw = currentResults || [];
+  const weekEventsRaw = currentEvents || [];
+
+  // ---------- CLEAN DATA (FULL TOURNAMENT) ----------
+  const cleanTournamentResults = useMemo(
+    () =>
+      fullResultsRaw.filter(
+        (r) => r && !BAD_MATCH_NUMBERS.has(r.matchNo)
+      ),
+    [fullResultsRaw]
   );
 
-  const cleanEvents = useMemo(
-    () => (allEvents || []).filter((e) => e && !BAD_MATCH_NUMBERS.has(e.matchNo)),
-    [allEvents]
+  const cleanTournamentEvents = useMemo(
+    () =>
+      fullEventsRaw.filter(
+        (e) => e && !BAD_MATCH_NUMBERS.has(e.matchNo)
+      ),
+    [fullEventsRaw]
+  );
+
+  // ---------- CLEAN DATA (THIS MATCH-DAY) ----------
+  const cleanWeekResults = useMemo(
+    () =>
+      weekResultsRaw.filter(
+        (r) => r && !BAD_MATCH_NUMBERS.has(r.matchNo)
+      ),
+    [weekResultsRaw]
+  );
+
+  const cleanWeekEvents = useMemo(
+    () =>
+      weekEventsRaw.filter(
+        (e) => e && !BAD_MATCH_NUMBERS.has(e.matchNo)
+      ),
+    [weekEventsRaw]
   );
 
   // ---------- TEAM TABLE (full tournament so far) ----------
@@ -97,7 +130,7 @@ export function NewsPage({
       };
     });
 
-    cleanResults.forEach((r) => {
+    cleanTournamentResults.forEach((r) => {
       const a = base[r.teamAId];
       const b = base[r.teamBId];
       if (!a || !b) return;
@@ -144,7 +177,7 @@ export function NewsPage({
     });
 
     return arr;
-  }, [teams, cleanResults]);
+  }, [teams, cleanTournamentResults]);
 
   const tableLeader = teamStats[0] || null;
 
@@ -163,7 +196,7 @@ export function NewsPage({
       return stats[name];
     };
 
-    cleanEvents.forEach((e) => {
+    cleanTournamentEvents.forEach((e) => {
       if (e.scorer) {
         const s = getOrCreate(e.scorer);
         if (e.type === "goal") {
@@ -184,7 +217,7 @@ export function NewsPage({
       p.total = p.goals + p.assists + p.shibobos;
     });
     return arr;
-  }, [cleanEvents, playerTeamMap]);
+  }, [cleanTournamentEvents, playerTeamMap]);
 
   const topScorer = useMemo(() => {
     let best = null;
@@ -240,14 +273,14 @@ export function NewsPage({
   // ---------- STREAK STATS (full tournament) ----------
   const streakStats = useMemo(() => {
     const byMatch = new Map();
-    cleanResults.forEach((r) => {
+    cleanTournamentResults.forEach((r) => {
       byMatch.set(r.matchNo, {
         scorers: new Set(),
         assisters: new Set(),
       });
     });
 
-    cleanEvents.forEach((e) => {
+    cleanTournamentEvents.forEach((e) => {
       const rec = byMatch.get(e.matchNo);
       if (!rec) return;
       if (e.scorer && e.type === "goal") {
@@ -309,18 +342,18 @@ export function NewsPage({
     }
 
     return { bestGoal, bestAssist };
-  }, [cleanResults, cleanEvents, playerTeamMap]);
+  }, [cleanTournamentResults, cleanTournamentEvents, playerTeamMap]);
 
   // ---------- GLOBAL NUMBERS (full tournament) ----------
-  const totalMatches = cleanResults.length;
-  const totalGoals = cleanResults.reduce(
+  const totalMatches = cleanTournamentResults.length;
+  const totalGoals = cleanTournamentResults.reduce(
     (acc, r) => acc + (r.goalsA || 0) + (r.goalsB || 0),
     0
   );
 
   const biggestWin = useMemo(() => {
     let best = null;
-    cleanResults.forEach((r) => {
+    cleanTournamentResults.forEach((r) => {
       const gA = r.goalsA || 0;
       const gB = r.goalsB || 0;
       const diff = Math.abs(gA - gB);
@@ -331,17 +364,24 @@ export function NewsPage({
       }
     });
     return best;
-  }, [cleanResults]);
+  }, [cleanTournamentResults]);
 
-  const sortedResults = useMemo(() => {
-    const arr = cleanResults.slice();
+  // ---------- RECAP TOGGLE (week vs full) ----------
+  const [recapScope, setRecapScope] = useState("week"); // "week" | "all"
+
+  const recapResults = useMemo(() => {
+    const base =
+      recapScope === "week" ? cleanWeekResults : cleanTournamentResults;
+    const arr = base.slice();
     arr.sort((a, b) => a.matchNo - b.matchNo);
     return arr;
-  }, [cleanResults]);
+  }, [recapScope, cleanWeekResults, cleanTournamentResults]);
 
-  const eventsByMatch = useMemo(() => {
+  const recapEventsByMatch = useMemo(() => {
+    const src =
+      recapScope === "week" ? cleanWeekEvents : cleanTournamentEvents;
     const map = new Map();
-    cleanEvents.forEach((e) => {
+    src.forEach((e) => {
       if (e.matchNo == null) return;
       if (!map.has(e.matchNo)) map.set(e.matchNo, []);
       map.get(e.matchNo).push(e);
@@ -350,7 +390,7 @@ export function NewsPage({
       list.sort((a, b) => (a.timeSeconds || 0) - (b.timeSeconds || 0))
     );
     return map;
-  }, [cleanEvents]);
+  }, [recapScope, cleanWeekEvents, cleanTournamentEvents]);
 
   // ---------- RENDER ----------
   return (
@@ -417,7 +457,7 @@ export function NewsPage({
         </div>
       </section>
 
-      {/* HEADLINES + BIGGEST WIN */}
+      {/* HEADLINES + BIGGEST WIN (full tournament) */}
       <section className="card news-grid">
         <div className="news-column">
           <h2>Headlines</h2>
@@ -493,7 +533,7 @@ export function NewsPage({
         </div>
       </section>
 
-      {/* TOURNAMENT MVP CARD */}
+      {/* TOURNAMENT MVP CARD (full tournament) */}
       {bestOverall && (
         <section className="card news-mvp-card">
           <div className="mvp-hero">
@@ -541,10 +581,10 @@ export function NewsPage({
         </section>
       )}
 
-      {/* STREAK WATCH */}
+      {/* STREAK WATCH (full tournament) */}
       <section className="card news-streak-card">
         <h2>Streak watch</h2>
-        {(!streakStats.bestGoal && !streakStats.bestAssist) ? (
+        {!streakStats.bestGoal && !streakStats.bestAssist ? (
           <p className="muted">
             No streaks yet – once players start scoring and assisting in
             back-to-back games, their names will light up here.
@@ -644,17 +684,42 @@ export function NewsPage({
         </div>
       </section>
 
-      {/* MATCH-BY-MATCH RECAP */}
+      {/* MATCH-BY-MATCH RECAP (toggle week vs full) */}
       <section className="card">
-        <h2>Match-by-match recap</h2>
-        {sortedResults.length === 0 ? (
+        <div className="news-recap-header">
+          <h2>Match-by-match recap</h2>
+          <div className="pill-toggle-group">
+            <button
+              className={
+                "pill-toggle" +
+                (recapScope === "week" ? " pill-toggle-active" : "")
+              }
+              onClick={() => setRecapScope("week")}
+            >
+              This match-day
+            </button>
+            <button
+              className={
+                "pill-toggle" +
+                (recapScope === "all" ? " pill-toggle-active" : "")
+              }
+              onClick={() => setRecapScope("all")}
+            >
+              Full record
+            </button>
+          </div>
+        </div>
+
+        {recapResults.length === 0 ? (
           <p className="muted">
-            No matches recorded yet. Start a live match to see a recap here.
+            {recapScope === "week"
+              ? "No matches recorded for this match-day yet."
+              : "No matches recorded yet. Start a live match to see a recap here."}
           </p>
         ) : (
           <ul className="news-match-list">
-            {sortedResults.map((r) => {
-              const events = eventsByMatch.get(r.matchNo) || [];
+            {recapResults.map((r) => {
+              const events = recapEventsByMatch.get(r.matchNo) || [];
               return (
                 <li key={r.matchNo} className="news-match-item">
                   <div className="news-match-header">
@@ -719,3 +784,5 @@ function getInitials(name) {
   }
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
+
+
