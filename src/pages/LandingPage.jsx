@@ -25,7 +25,8 @@ export function LandingPage({
   onGoToSquads,
   onOpenBackupModal,
   onGoToLiveAsSpectator, // for viewers
-  onGoToFormations, // formations page
+  onGoToFormations, // formations page (now also where you manage squads)
+  onGoToNews, // 🔥 NEW: News & Highlights
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch;
 
@@ -298,8 +299,13 @@ export function LandingPage({
             >
               View Stats
             </button>
-            <button className="secondary-btn" onClick={onGoToSquads}>
-              Manage Squads
+            {/* 🔥 Replaced "Manage Squads" with News & Highlights */}
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={onGoToNews}
+            >
+              News &amp; Highlights
             </button>
             <button className="secondary-btn" onClick={onOpenBackupModal}>
               Save / Clear Data
@@ -326,19 +332,20 @@ export function LandingPage({
               >
                 View Stats
               </button>
+              {/* 🔥 Spectators also get News & Highlights instead of "View Squads" */}
               <button
                 className="secondary-btn"
                 type="button"
-                onClick={onGoToSquads}
+                onClick={onGoToNews}
               >
-                View Squads
+                News &amp; Highlights
               </button>
             </div>
           </>
         )}
       </section>
 
-      {/* Ribbon */}
+      {/* Ribbon stays here, above the team photo */}
       <section className="ticker">
         <div className="ticker-inner">
           <span>{ribbonText}</span>

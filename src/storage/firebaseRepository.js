@@ -6,6 +6,9 @@ import {
   getDoc,
   setDoc,
   onSnapshot,
+  collection,
+  addDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 
 // Single document for now: full TurfKings app state
@@ -75,4 +78,41 @@ export function subscribeToState(callback) {
     }
   );
   return unsubscribe;
+}
+
+/**
+ * Submit a single peer rating to Firestore.
+ * Called from PeerReviewPage.
+ *
+ * The document is stored in the "peerRatings" collection.
+ * Ratings are ANONYMOUS: we do not store raterName.
+ */
+export async function submitPeerRating({
+  targetName,
+  attack,
+  defence,
+  gk,
+  comment,
+}) {
+  const cleanTarget = (targetName || "").trim();
+  if (!cleanTarget) {
+    throw new Error("Missing target name");
+  }
+
+  const payload = {
+    targetName: cleanTarget,
+    attack:
+      typeof attack === "number" && !Number.isNaN(attack) ? attack : null,
+    defence:
+      typeof defence === "number" && !Number.isNaN(defence)
+        ? defence
+        : null,
+    gk:
+      typeof gk === "number" && !Number.isNaN(gk) ? gk : null,
+    comment: (comment || "").trim() || null,
+    createdAt: serverTimestamp(),
+  };
+
+  const colRef = collection(db, "peerRatings");
+  await addDoc(colRef, payload);
 }

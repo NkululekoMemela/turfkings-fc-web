@@ -1,5 +1,5 @@
 // src/pages/NewsPage.jsx
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import JaydTribute from "../assets/Jayd_Tribute.jpeg"; // <- tribute photo
 
 const BAD_MATCH_NUMBERS = new Set([14, 15, 16, 17]); // drop these from week-1 archive
@@ -28,6 +28,13 @@ export function NewsPage({
 
   const getTeamName = (id) => teamById.get(id)?.label || "Unknown";
 
+  const getTeamAbbrev = (teamName) => {
+    if (!teamName || typeof teamName !== "string") return "";
+    const trimmed = teamName.trim();
+    if (!trimmed) return "";
+    return trimmed.slice(0, 3).toUpperCase();
+  };
+
   // Map player -> team label (first team that contains the player)
   const playerTeamMap = useMemo(() => {
     const map = {};
@@ -42,6 +49,12 @@ export function NewsPage({
     });
     return map;
   }, [teams]);
+
+  const getPlayerTeamAbbrev = (playerName) => {
+    const teamName = playerTeamMap[playerName];
+    if (!teamName) return "";
+    return getTeamAbbrev(teamName);
+  };
 
   // Map player -> photo URL (Firebase + team metadata)
   const mergedPhotoMap = useMemo(() => {
@@ -71,6 +84,12 @@ export function NewsPage({
 
   const getPlayerPhoto = (name) =>
     name ? mergedPhotoMap[name] || null : null;
+
+  // For the little date label for "This match-day"
+  const todayLabel = useMemo(
+    () => formatMatchDayDate(new Date()),
+    []
+  );
 
   // ---------- RAW DATA SPLIT ----------
   const fullResultsRaw = results || [];
@@ -359,7 +378,11 @@ export function NewsPage({
       const diff = Math.abs(gA - gB);
       const goals = gA + gB;
       if (diff === 0) return; // ignore draws
-      if (!best || diff > best.diff || (diff === best.diff && goals > best.goals)) {
+      if (
+        !best ||
+        diff > best.diff ||
+        (diff === best.diff && goals > best.goals)
+      ) {
         best = { ...r, diff, goals };
       }
     });
@@ -392,6 +415,228 @@ export function NewsPage({
     return map;
   }, [recapScope, cleanWeekEvents, cleanTournamentEvents]);
 
+  // ---------- RESPONSIVE FLAG FOR YEAR-END CARD ----------
+  const [isNarrow, setIsNarrow] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (typeof window !== "undefined") {
+        setIsNarrow(window.innerWidth < 640);
+      }
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // ---------- STYLE OBJECTS FOR YEAR-END PREMIUM CARD ----------
+  const yearEndCardStyle = {
+    display: isNarrow ? "flex" : "grid",
+    flexDirection: isNarrow ? "column" : undefined,
+    gridTemplateColumns: isNarrow
+      ? undefined
+      : "minmax(0, 3fr) minmax(0, 2fr)",
+    gap: isNarrow ? "1rem" : "1.5rem",
+    padding: isNarrow ? "1.2rem" : "1.8rem",
+    borderRadius: "1.5rem",
+    background:
+      "radial-gradient(circle at top left, rgba(248,250,252,0.22), transparent 55%)," +
+      "radial-gradient(circle at bottom right, rgba(248,250,252,0.18), transparent 60%)," +
+      "linear-gradient(135deg, #020617, #111827 45%, #0b1120 100%)",
+    boxShadow:
+      "0 18px 45px rgba(15,23,42,0.85), 0 0 0 1px rgba(148,163,184,0.18)",
+    color: "#e5e7eb",
+    alignItems: "stretch",
+    marginBottom: "1.75rem",
+  };
+
+  const yearEndPillStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    padding: "0.22rem 0.8rem",
+    borderRadius: "999px",
+    background: "rgba(15,23,42,0.9)",
+    border: "1px solid rgba(148,163,184,0.45)",
+    fontSize: "0.8rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: "#e5e7eb",
+  };
+
+  const yearEndHeadingStyle = {
+    fontSize: isNarrow ? "1.3rem" : "1.5rem",
+    fontWeight: 700,
+    margin: "0.6rem 0 0.25rem",
+    color: "#f9fafb",
+  };
+
+  const yearEndSubStyle = {
+    fontSize: "0.92rem",
+    color: "#cbd5f5",
+    marginBottom: "0.7rem",
+  };
+
+  const yearEndMetaRowStyle = {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "0.55rem",
+    margin: "0.5rem 0 0.9rem",
+    fontSize: "0.85rem",
+    color: "#e5e7eb",
+  };
+
+  const metaChipStyle = {
+    padding: "0.28rem 0.75rem",
+    borderRadius: "999px",
+    background: "rgba(15,23,42,0.85)",
+    border: "1px solid rgba(148,163,184,0.4)",
+  };
+
+  const bulletListStyle = {
+    listStyle: "none",
+    paddingLeft: 0,
+    margin: "0.4rem 0 0",
+    fontSize: "0.88rem",
+    color: "#e5e7eb",
+  };
+
+  const artContainerStyle = {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: "1.25rem",
+    background:
+      "radial-gradient(circle at 20% 0%, rgba(251,191,36,0.27), transparent 55%)," +
+      "radial-gradient(circle at 90% 80%, rgba(251,113,133,0.32), transparent 60%)," +
+      "linear-gradient(145deg, #020617, #111827)",
+    minHeight: isNarrow ? "170px" : "210px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: isNarrow ? "0.4rem" : 0,
+  };
+
+  const artGlassHaloStyle = {
+    position: "absolute",
+    width: isNarrow ? "170px" : "210px",
+    height: isNarrow ? "170px" : "210px",
+    borderRadius: "999px",
+    border: "1px solid rgba(248,250,252,0.2)",
+    boxShadow:
+      "0 0 60px rgba(251,191,36,0.22), 0 0 120px rgba(251,113,133,0.18)",
+    opacity: 0.9,
+  };
+
+  const artInnerOrbStyle = {
+    position: "absolute",
+    width: isNarrow ? "120px" : "140px",
+    height: isNarrow ? "120px" : "140px",
+    borderRadius: "999px",
+    background:
+      "radial-gradient(circle, rgba(15,23,42,0.9) 0%, rgba(15,23,42,0.1) 70%, transparent 100%)",
+  };
+
+  const suitCardStyle = {
+    position: "relative",
+    zIndex: 2,
+    padding: isNarrow ? "0.7rem 0.9rem" : "0.9rem 1.15rem",
+    borderRadius: "1rem",
+    background:
+      "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(15,23,42,0.75))",
+    border: "1px solid rgba(148,163,184,0.6)",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 14px 35px rgba(15,23,42,0.9)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "0.35rem",
+    maxWidth: isNarrow ? "80%" : "100%",
+  };
+
+  const suitTitleRowStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.45rem",
+    fontSize: "0.9rem",
+    color: "#f9fafb",
+  };
+
+  const suitEmojiStyle = { fontSize: "1.4rem" };
+  const glassesRowStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.35rem",
+    fontSize: "1.35rem",
+    marginTop: "0.15rem",
+  };
+
+  const glassesLabelStyle = {
+    fontSize: "0.8rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#e5e7eb",
+    opacity: 0.9,
+  };
+
+  const sparkleRowStyle = {
+    display: "flex",
+    gap: "0.4rem",
+    marginTop: "0.1rem",
+    fontSize: "0.8rem",
+    color: "#e5e7eb",
+    opacity: 0.9,
+  };
+
+  const artCornerBadgeStyle = {
+    position: "absolute",
+    right: "0.9rem",
+    top: "0.9rem",
+    padding: "0.3rem 0.7rem",
+    borderRadius: "999px",
+    border: "1px solid rgba(248,250,252,0.65)",
+    background: "rgba(15,23,42,0.9)",
+    fontSize: "0.7rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.12em",
+    color: "#f9fafb",
+  };
+
+  const artBottomRibbonStyle = {
+    position: "absolute",
+    left: "-12%",
+    bottom: "14%",
+    width: "140%",
+    height: "40px",
+    background:
+      "linear-gradient(90deg, rgba(251,191,36,0.95), rgba(251,113,133,0.95))",
+    transform: "rotate(-4deg)",
+    opacity: 0.85,
+  };
+
+  const artBottomRibbonInnerStyle = {
+    position: "absolute",
+    inset: "6px 10px",
+    borderRadius: "999px",
+    border: "1px solid rgba(248,250,252,0.6)",
+  };
+
+  const artBottomTextStyle = {
+    position: "absolute",
+    left: "14%",
+    bottom: "21%",
+    fontSize: "0.78rem",
+    fontWeight: 600,
+    letterSpacing: "0.18em",
+    textTransform: "uppercase",
+    color: "#020617",
+    zIndex: 2,
+  };
+
+  // ---------- INJURED PLAYER / TRIBUTE AVATAR ----------
+  const injuredAvatarUrl =
+    (injuredPlayerName && mergedPhotoMap[injuredPlayerName]) ||
+    JaydTribute;
+
   // ---------- RENDER ----------
   return (
     <div className="page news-page">
@@ -407,15 +652,104 @@ export function NewsPage({
         </div>
       </header>
 
+      {/* YEAR-END FUNCTION – PREMIUM CARD (FIRST CARD) */}
+      <section className="card year-end-premium-card" style={yearEndCardStyle}>
+        {/* Left: text content */}
+        <div style={{ minWidth: 0 }}>
+          <div style={yearEndPillStyle}>
+            <span>✨ Special Event</span>
+            <span style={{ fontSize: "0.9rem" }}>• Year-End Function</span>
+          </div>
+
+          <h2 style={yearEndHeadingStyle}>TurfKings Year-End Function</h2>
+          <p style={yearEndSubStyle}>
+            We&apos;re closing off the season in proper TurfKings style —
+            sharp fits, chilled drinks and a full-squad night out. 🏆
+          </p>
+
+          <div style={yearEndMetaRowStyle}>
+            <span style={metaChipStyle}>📅 Friday · 5 December</span>
+            <span style={metaChipStyle}>⏰ 18:00</span>
+            <span style={metaChipStyle}>
+              📍 Haveva · Lower Main Road · Observatory
+            </span>
+          </div>
+
+          <ul style={bulletListStyle}>
+            <li>• Dress code: Smart / suit vibes – leave the bibs at home.</li>
+            <li>• Season recap: comebacks, wild scorelines & classic banter.</li>
+            <li>• Photos, speeches and plenty of off-the-pitch linking.</li>
+          </ul>
+
+          <p
+            style={{
+              marginTop: "0.7rem",
+              fontSize: "0.85rem",
+              opacity: 0.95,
+            }}
+          >
+            🧊 <strong>Coolerboxes & bottles are encouraged</strong> – bring your
+            own drinks. There&apos;s a small fee for walking in with them, but
+            it works out cheaper and keeps the vibe relaxed for the whole night. (<strong>R180 </strong>per coolerbox) and (<strong>R80 </strong> per whisky/brandy/gin bottle)
+          </p>
+        </div>
+
+        {/* Right: visual art (suit + wine glasses) */}
+        <div style={artContainerStyle} aria-hidden="true">
+          <div style={artGlassHaloStyle} />
+          <div style={artInnerOrbStyle} />
+
+          <div style={suitCardStyle}>
+            <div style={suitTitleRowStyle}>
+              <span style={suitEmojiStyle}>🤵‍♂️</span>
+              <div>
+                <div style={{ fontSize: "0.78rem", opacity: 0.8 }}>
+                  Dress Code
+                </div>
+                <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
+                  Suits & Smart Fits
+                </div>
+              </div>
+            </div>
+
+            <div style={glassesRowStyle}>
+              <span>🥂</span>
+              <span>🥂</span>
+              <div style={glassesLabelStyle}>TurfKings Toast</div>
+            </div>
+
+            <div style={sparkleRowStyle}>
+              <span>✦ Awards</span>
+              <span>✦ Photos</span>
+              <span>✦ Stories</span>
+            </div>
+          </div>
+
+          <div style={artCornerBadgeStyle}>Year-End 2025</div>
+
+          {/* Ribbon + bottom text only on wider screens to avoid overlap on mobile */}
+          {!isNarrow && (
+            <>
+              <div style={artBottomRibbonStyle}>
+                <div style={artBottomRibbonInnerStyle} />
+              </div>
+              <div style={artBottomTextStyle}>
+                5 DECEMBER · 18:00 · HAVEVA
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
       {/* HERO SUMMARY (full tournament) */}
       <section className="card news-hero-card">
         <div className="news-hero-main">
           <h2>Tournament recap</h2>
           <p className="news-hero-text">
             So far we&apos;ve logged{" "}
-            <strong>{totalMatches || 0}</strong> matches and{" "}
-            <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side
-            league.
+              <strong>{totalMatches || 0}</strong> matches and{" "}
+              <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side
+              league.
           </p>
           {tableLeader && (
             <p className="news-hero-text">
@@ -506,7 +840,7 @@ export function NewsPage({
         </div>
 
         <div className="news-column">
-          <h2>Match of the night</h2>
+          <h2>Match of the Tournament</h2>
           {biggestWin ? (
             <div className="news-match-feature">
               <p className="news-match-label">
@@ -604,7 +938,8 @@ export function NewsPage({
                   {streakStats.bestGoal.teamName &&
                   streakStats.bestGoal.teamName !== "—"
                     ? `Flying for ${streakStats.bestGoal.teamName}.`
-                    : "Free roaming finisher energy."}
+                    : "Free roaming finisher energy."
+                  }
                 </p>
               </div>
             )}
@@ -623,7 +958,8 @@ export function NewsPage({
                   {streakStats.bestAssist.teamName &&
                   streakStats.bestAssist.teamName !== "—"
                     ? `Playmaking for ${streakStats.bestAssist.teamName}.`
-                    : "Sharing the shine with everyone."}
+                    : "Sharing the shine with everyone."
+                  }
                 </p>
               </div>
             )}
@@ -631,39 +967,17 @@ export function NewsPage({
         )}
       </section>
 
-      {/* YEAR-END FUNCTION CARD */}
-      <section className="card year-end-card">
-        <h2>Year-end function: 5 December</h2>
-        <p className="year-end-lead">
-          We&apos;re closing off the TurfKings season in style.
-        </p>
-        <p>
-          <strong>Date:</strong> 5 December &nbsp;|&nbsp;
-          <strong>Time:</strong> 18:00 &nbsp;|&nbsp;
-          <strong>Venue:</strong> Haveva, Lower Main Road, Observatory.
-        </p>
-        <p>
-          Dress code: smart-casual with a touch of TurfKings flavour – think
-          clean sneakers, your best drip, maybe even your team colours.
-        </p>
-        <p>
-          Bring your cooler-box with drinks and alcohol. There&apos;ll be a
-          small fee to walk in with them, but it&apos;s more than worth it for
-          a relaxed night with the squad, vibes, and plenty of football talk.
-        </p>
-      </section>
-
       {/* INJURY TRIBUTE CARD */}
       <section className="card injury-tribute-card">
         <div className="injury-photo-wrapper">
           <img
-            src={JaydTribute}
+            src={injuredAvatarUrl}
             alt="Injury tribute"
             className="injury-photo"
           />
         </div>
         <div className="injury-text">
-          <h2>Looking forward to Jayd's recovery</h2>
+          <h2>Looking forward to Jayd&apos;s recovery</h2>
           <p>
             In the middle of this shot – standing between{" "}
             <strong>Enock</strong> and the brilliant{" "}
@@ -725,6 +1039,9 @@ export function NewsPage({
                   <div className="news-match-header">
                     <span className="news-match-number">
                       Match #{r.matchNo}
+                      {recapScope === "week" && (
+                        <span> – {todayLabel}</span>
+                      )}
                     </span>
                     <span className="news-match-scoreline">
                       <span>{getTeamName(r.teamAId)}</span>
@@ -740,20 +1057,28 @@ export function NewsPage({
                     </p>
                   ) : (
                     <ul className="news-event-list">
-                      {events.map((e) => (
-                        <li key={e.id} className="news-event-item">
-                          <span className="news-event-time">
-                            {formatSecondsSafe(e.timeSeconds)}
-                          </span>
-                          <span className="news-event-text">
-                            <strong>
-                              {e.type === "shibobo" ? "Shibobo" : "Goal"}
-                            </strong>{" "}
-                            – {e.scorer}
-                            {e.assist ? ` (assist: ${e.assist})` : ""}
-                          </span>
-                        </li>
-                      ))}
+                      {events.map((e) => {
+                        const abbr = getPlayerTeamAbbrev(e.scorer);
+                        const assistPart = e.assist
+                          ? ` (assist: ${e.assist})`
+                          : "";
+                        const teamSuffix = abbr ? `, ${abbr}` : "";
+                        return (
+                          <li key={e.id} className="news-event-item">
+                            <span className="news-event-time">
+                              {formatSecondsSafe(e.timeSeconds)}
+                            </span>
+                            <span className="news-event-text">
+                              <strong>
+                                {e.type === "shibobo" ? "Shibobo" : "Goal"}
+                              </strong>{" "}
+                              – {e.scorer}
+                              {assistPart}
+                              {teamSuffix}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </li>
@@ -785,4 +1110,33 @@ function getInitials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+function formatMatchDayDate(input) {
+  let d = null;
+  if (input instanceof Date) {
+    d = input;
+  } else if (typeof input === "string") {
+    const tmp = new Date(input);
+    if (!Number.isNaN(tmp.getTime())) d = tmp;
+  }
 
+  if (!d) return "";
+
+  const day = d.getDate().toString().padStart(2, "0");
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const month = months[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+}

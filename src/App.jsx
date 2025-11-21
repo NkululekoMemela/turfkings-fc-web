@@ -7,6 +7,8 @@ import { SquadsPage } from "./pages/SquadsPage.jsx";
 import { FormationsPage } from "./pages/FormationsPage.jsx";
 import { SpectatorPage } from "./pages/SpectatorPage.jsx";
 import { NewsPage } from "./pages/NewsPage.jsx";
+import { PlayerCardPage } from "./pages/PlayerCardPage.jsx";
+import { PeerReviewPage } from "./pages/PeerReviewPage.jsx";
 
 import {
   loadState,
@@ -17,6 +19,7 @@ import { computeNextFromResult } from "./core/rotation.js";
 import { subscribeToState } from "./storage/firebaseRepository.js";
 
 import { week1Results, week1Events } from "./seed/week1Data.js";
+import { usePeerRatings } from "./hooks/usePeerRatings.js";
 
 // Page constants
 const PAGE_LANDING = "landing";
@@ -26,6 +29,8 @@ const PAGE_SQUADS = "squads";
 const PAGE_FORMATIONS = "formations";
 const PAGE_SPECTATOR = "spectator";
 const PAGE_NEWS = "news";
+const PAGE_PLAYER_CARDS = "player-cards";
+const PAGE_PEER_REVIEW = "peer-review";
 
 const MASTER_CODE = "3333"; // Nkululeko admin code
 
@@ -35,6 +40,9 @@ const MATCH_SECONDS = 5 * 60; // use 1 * 10 for testing
 export default function App() {
   const [page, setPage] = useState(PAGE_LANDING);
   const [state, setState] = useState(() => loadState());
+
+  // 💬 live peer ratings from Firestore
+  const peerRatingsFromHook = usePeerRatings();
 
   // where to go back from Stats: landing or live
   const [statsReturnPage, setStatsReturnPage] = useState(PAGE_LANDING);
@@ -86,10 +94,13 @@ export default function App() {
     matchDayHistory = [],
     // if Firestore stores a player photo map, we surface it here
     playerPhotosByName = {},
+    // (old) peerRatingsByPlayer from state is ignored in favour of live hook
   } = state || createDefaultState();
 
-  // ---------- FULL-TOURNAMENT DATA FOR NEWS ----------
-  // 1) Firebase history (previous weeks)
+  // effective peer ratings to pass down
+  const peerRatingsByPlayer = peerRatingsFromHook || {};
+
+  // ---------- FULL-TOURNAMENT DATA FOR NEWS PAGE ----------
   const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
     (day) => day?.results || []
   );
@@ -97,12 +108,10 @@ export default function App() {
     (day) => day?.allEvents || []
   );
 
-  // 2) Seed Week 1 data as fallback ONLY if there is no Firebase history yet
   const hasFirebaseHistory = (matchDayHistory || []).length > 0;
   const seedResultsForArchive = hasFirebaseHistory ? [] : week1Results;
   const seedEventsForArchive = hasFirebaseHistory ? [] : week1Events;
 
-  // 3) Combine: seed (if needed) + Firebase history + current week
   const fullResults = [
     ...seedResultsForArchive,
     ...archivedResultsFromHistory,
@@ -114,6 +123,16 @@ export default function App() {
     ...(allEvents || []),
   ];
 
+  // ---------- FULL SEASON DATASET FOR STATS & PLAYER CARDS ----------
+  const fullSeasonResultsForStats = [
+    ...week1Results,
+    ...(results || []),
+  ];
+  const fullSeasonEventsForStats = [
+    ...week1Events,
+    ...(allEvents || []),
+  ];
+
   // ---------- TIMER ----------
   useEffect(() => {
     if (!running) return;
@@ -122,9 +141,8 @@ export default function App() {
     const id = setInterval(() => {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
-          // hit zero
           setRunning(false);
-          setTimeUp(true); // LiveMatchPage will react and ring alarm
+          setTimeUp(true);
           return 0;
         }
         return prev - 1;
@@ -143,7 +161,6 @@ export default function App() {
   };
 
   const handleStartMatch = () => {
-    // Captain starts a new match
     setSecondsLeft(MATCH_SECONDS);
     setTimeUp(false);
     setRunning(true);
@@ -151,12 +168,10 @@ export default function App() {
     setPage(PAGE_LIVE);
   };
 
-  // Spectator wants to view an ongoing match
   const handleGoToLiveAsSpectator = () => {
     setPage(PAGE_SPECTATOR);
   };
 
-  // Stats: remember where we came from
   const handleGoToStats = (fromPage) => {
     setStatsReturnPage(fromPage);
     setPage(PAGE_STATS);
@@ -248,16 +263,13 @@ export default function App() {
       };
     });
 
-    // after match is ended, reset timer ready for next game
     setRunning(false);
     setTimeUp(false);
     setSecondsLeft(MATCH_SECONDS);
     setHasLiveMatch(false);
-
     setPage(PAGE_LANDING);
   };
 
-  // Discard current match (Cancel Game as captain) and go to landing
   const handleDiscardMatchAndBack = () => {
     setRunning(false);
     setTimeUp(false);
@@ -266,7 +278,7 @@ export default function App() {
 
     updateState((prev) => ({
       ...prev,
-      currentEvents: [], // throw away in-progress events
+      currentEvents: [],
     }));
 
     setPage(PAGE_LANDING);
@@ -301,7 +313,6 @@ export default function App() {
     return true;
   };
 
-  // Clear current week ONLY (no saving)
   const handleClearOnly = () => {
     if (!requireAdminCode()) return;
 
@@ -319,14 +330,12 @@ export default function App() {
       currentEvents: [],
       allEvents: [],
       results: [],
-      // keep teams and matchDayHistory
       matchDayHistory: prev.matchDayHistory || [],
     }));
 
     closeBackupModal();
   };
 
-  // Save match-day to Firebase (via state mirror) and clear current week
   const handleSaveAndClearMatchDay = () => {
     if (!requireAdminCode()) return;
 
@@ -368,7 +377,6 @@ export default function App() {
       };
     });
 
-    // updateState already mirrored to Firebase via saveState
     closeBackupModal();
   };
 
@@ -389,6 +397,7 @@ export default function App() {
           onOpenBackupModal={openBackupModal}
           onGoToLiveAsSpectator={handleGoToLiveAsSpectator}
           onGoToFormations={handleGoToFormations}
+          onGoToNews={() => setPage(PAGE_NEWS)}
         />
       )}
 
@@ -436,35 +445,58 @@ export default function App() {
               : handleBackToLanding()
           }
           onGoToNews={() => setPage(PAGE_NEWS)}
+          onGoToPlayerCards={() => setPage(PAGE_PLAYER_CARDS)}
+          onGoToPeerReview={() => setPage(PAGE_PEER_REVIEW)}
         />
       )}
 
       {page === PAGE_NEWS && (
         <NewsPage
           teams={teams}
-          // full tournament: previous weeks + current week
           results={fullResults}
           allEvents={fullEvents}
-          // this match-day only (current week)
           currentResults={results}
           currentEvents={allEvents}
-          // let MVP/avatar use Firebase / team photos if available
           playerPhotosByName={playerPhotosByName}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
 
+      {page === PAGE_PLAYER_CARDS && (
+        <PlayerCardPage
+          teams={teams}
+          allEvents={fullSeasonEventsForStats}
+          peerRatingsByPlayer={peerRatingsByPlayer}
+          playerPhotosByName={playerPhotosByName}
+          onBack={() => setPage(PAGE_STATS)}
+        />
+      )}
+
+      {page === PAGE_PEER_REVIEW && (
+        <PeerReviewPage
+          teams={teams}
+          playerPhotosByName={playerPhotosByName}
+          onBack={() => setPage(PAGE_STATS)}
+        />
+      )}
 
       {page === PAGE_SQUADS && (
         <SquadsPage
           teams={teams}
           onUpdateTeams={handleUpdateTeams}
-          onBack={handleBackToLanding}
+          // ⬅️ go back to Lineups & Formations
+          onBack={() => setPage(PAGE_FORMATIONS)}
         />
       )}
 
       {page === PAGE_FORMATIONS && (
-        <FormationsPage teams={teams} onBack={handleBackToLanding} />
+        <FormationsPage
+          teams={teams}
+          playerPhotosByName={playerPhotosByName}
+          onBack={handleBackToLanding}
+          // 🔥 New: Manage Squads from Lineups & Formations
+          onGoToSquads={handleGoToSquads}
+        />
       )}
 
       {showBackupModal && (
@@ -472,8 +504,8 @@ export default function App() {
           <div className="modal">
             <h3>Save / Clear Turf Kings Data</h3>
             <p>
-              Save this match-day to Firebase (via state sync) and start a fresh
-              week, or clear the current week without saving.
+              Save this match-day to Firebase (via state sync) and start a
+              fresh week, or clear the current week without saving.
             </p>
             <div className="field-row">
               <label>Admin code (Nkululeko)</label>
