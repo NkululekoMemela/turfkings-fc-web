@@ -251,7 +251,13 @@ function slugFromName(name) {
   return name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
 }
 
-export function FormationsPage({ teams, currentMatch, onBack, onGoToSquads }) {
+export function FormationsPage({
+  teams,
+  currentMatch,
+  playerPhotosByName = {},   // 🔥 NEW: seeded from App (state)
+  onBack,
+  onGoToSquads,
+}) {
   // Gmail-based auth (for photo protection)
   const { authUser, signInWithGoogle, signOut, canEditPlayer } = useAuth();
 
@@ -325,12 +331,23 @@ export function FormationsPage({ teams, currentMatch, onBack, onGoToSquads }) {
     formationsMap[defaultFormationId] ||
     Object.values(formationsMap)[0];
 
-  // -------- player photos (DB-backed) --------
-  const [playerPhotos, setPlayerPhotos] = useState({});
+  // -------- player photos (DB-backed + seeded from App) --------
+  const [playerPhotos, setPlayerPhotos] = useState(
+    playerPhotosByName || {}
+  );
   const [photoPlayer, setPhotoPlayer] = useState("");
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoMessage, setPhotoMessage] = useState("");
   const [showPhotoPanel, setShowPhotoPanel] = useState(false); // collapsible
+
+  // 🔥 Merge photos coming from App state (playerPhotosByName) into local map
+  useEffect(() => {
+    if (!playerPhotosByName) return;
+    setPlayerPhotos((prev) => ({
+      ...playerPhotosByName,
+      ...prev, // keep any that were added locally
+    }));
+  }, [playerPhotosByName]);
 
   // players available for photo dropdown
   const playersForPhotoSelect = useMemo(() => {
@@ -340,19 +357,21 @@ export function FormationsPage({ teams, currentMatch, onBack, onGoToSquads }) {
     return selectedTeam?.players || [];
   }, [gameType, turfKingsPlayers, selectedTeam]);
 
-  // load photos once
+  // load photos from Firestore once and MERGE into current map
   useEffect(() => {
     async function loadPhotos() {
       try {
         const snap = await getDocs(collection(db, "playerPhotos"));
-        const map = {};
-        snap.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (data?.name && data?.photoData) {
-            map[data.name] = data.photoData;
-          }
+        setPlayerPhotos((prev) => {
+          const map = { ...prev };
+          snap.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data?.name && data?.photoData) {
+              map[data.name] = data.photoData;
+            }
+          });
+          return map;
         });
-        setPlayerPhotos(map);
       } catch (err) {
         console.error("Failed to load player photos:", err);
       }

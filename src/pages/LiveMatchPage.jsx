@@ -591,7 +591,7 @@ export function LiveMatchPage({
         <div className="timer-row">
           <div className="timer-display">{formattedTime}</div>
           {timeUp && (
-            <span className="timer-warning">Time is up – end match!</span>
+            <span className="timer-warning">⏱️ Time is up – end match!</span>
           )}
         </div>
 
@@ -620,7 +620,7 @@ export function LiveMatchPage({
                 type="button"
                 onClick={() => setEventType("goal")}
               >
-                Goal
+                ⚽🦵 Goal
               </button>
               <button
                 className={
@@ -632,7 +632,7 @@ export function LiveMatchPage({
                   setAssistName("");
                 }}
               >
-                Shibobo
+                ⚽️🙌 Save
               </button>
             </div>
           </div>
@@ -728,7 +728,7 @@ export function LiveMatchPage({
             type="button"
             onClick={handleAddEvent}
           >
-            Add Event
+            ✍🏻 Add Event
           </button>
         </div>
 
@@ -769,7 +769,7 @@ export function LiveMatchPage({
                       type="button"
                       onClick={() => handleRequestDelete(idx)}
                     >
-                      delete
+                      ❌ delete
                     </button>
                   </div>
                 </li>
@@ -784,21 +784,21 @@ export function LiveMatchPage({
             type="button"
             onClick={handleBackClick}
           >
-            Cancel Game
+            ⛔ Cancel Game
           </button>
           <button
             className="secondary-btn"
             type="button"
             onClick={onGoToStats}
           >
-            View Stats
+            📊 View Stats
           </button>
           <button
             className="primary-btn"
             type="button"
             onClick={handleEndMatchClick}
           >
-            End Match
+            🤝 End & Close Match
           </button>
         </div>
       </section>
@@ -910,7 +910,7 @@ export function LiveMatchPage({
                 type="button"
                 onClick={handleConfirmDiscardAndBack}
               >
-                Discard &amp; go back
+                ⚠️ Don't save this game
               </button>
             </div>
           </div>

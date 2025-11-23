@@ -13,13 +13,15 @@ export function PlayerCardPage({
   onBack,
 }) {
   // ----- Auth: who is currently signed in? -----
-  const auth = useAuth();
-  const user = auth?.user || null;
+  const { authUser } = useAuth() || {};
+  const user = authUser || null;
 
   const authDisplayName = useMemo(
     () =>
       user?.displayName
         ? user.displayName.trim().toLowerCase()
+        : user?.email
+        ? user.email.trim().toLowerCase()
         : "",
     [user]
   );
@@ -43,7 +45,6 @@ export function PlayerCardPage({
         snap.forEach((docSnap) => {
           const data = docSnap.data();
           if (data?.name && data?.photoData) {
-            // We keep it simple here: name -> photoData (URL/base64)
             map[data.name] = data.photoData;
           }
         });
@@ -70,7 +71,7 @@ export function PlayerCardPage({
     return map;
   }, [teams]);
 
-  // ----- Player photo resolver (merge Firebase + team metadata + prop) -----
+  // ----- Player photo resolver (merge prop + Firebase + team metadata) -----
   const mergedPhotoMap = useMemo(() => {
     // start with prop + Firestore avatars
     const map = {
@@ -346,8 +347,9 @@ export function PlayerCardPage({
         {/* Small identity hint so players know to sign in before editing photos */}
         {user ? (
           <p className="subtitle">
-            Signed in as <strong>{user.displayName || user.email}</strong>.
-            Your own card will be tagged as <strong>“You”</strong>.
+            Signed in as{" "}
+            <strong>{user.displayName || user.email}</strong>. Your own
+            card will be tagged as <strong>“You”</strong>.
           </p>
         ) : (
           <p className="subtitle">
@@ -424,6 +426,8 @@ export function PlayerCardPage({
                         src={p.photoUrl}
                         alt={p.name}
                         className="fifa-photo-img"
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <span className="fifa-photo-placeholder">

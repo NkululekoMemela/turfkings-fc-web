@@ -85,21 +85,24 @@ export function subscribeToState(callback) {
  * Called from PeerReviewPage.
  *
  * The document is stored in the "peerRatings" collection.
- * Ratings are ANONYMOUS: we do not store raterName.
  */
 export async function submitPeerRating({
+  raterName,
   targetName,
   attack,
   defence,
   gk,
   comment,
 }) {
+  const cleanRater = (raterName || "").trim();
   const cleanTarget = (targetName || "").trim();
-  if (!cleanTarget) {
-    throw new Error("Missing target name");
+
+  if (!cleanRater || !cleanTarget) {
+    throw new Error("Missing rater or target name");
   }
 
   const payload = {
+    raterName: cleanRater,
     targetName: cleanTarget,
     attack:
       typeof attack === "number" && !Number.isNaN(attack) ? attack : null,
@@ -107,8 +110,7 @@ export async function submitPeerRating({
       typeof defence === "number" && !Number.isNaN(defence)
         ? defence
         : null,
-    gk:
-      typeof gk === "number" && !Number.isNaN(gk) ? gk : null,
+    gk: typeof gk === "number" && !Number.isNaN(gk) ? gk : null,
     comment: (comment || "").trim() || null,
     createdAt: serverTimestamp(),
   };

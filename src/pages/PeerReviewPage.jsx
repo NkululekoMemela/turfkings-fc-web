@@ -1,15 +1,17 @@
 // src/pages/PeerReviewPage.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { submitPeerRating } from "../storage/firebaseRepository.js";
 
 const LOCAL_VOTE_PREFIX = "turfkings_peer_vote_v1";
 
 export function PeerReviewPage({
   teams,
-  playerPhotosByName = {},
+  playerPhotosByName = {}, // { "Enoch": "/photos/enoch.jpg", ... }
+  currentUserName = null, // optional – can be wired from AuthContext via App.jsx
   onBack,
 }) {
   const [selectedRater, setSelectedRater] = useState(null);
+  const [raterLocked, setRaterLocked] = useState(false); // true = verified identity
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [attack, setAttack] = useState(0);
   const [defence, setDefence] = useState(0);
@@ -19,7 +21,32 @@ export function PeerReviewPage({
   const [submitting, setSubmitting] = useState(false);
   const [filterTeam, setFilterTeam] = useState("ALL");
 
-  // ---- build flat player list from teams ----
+  // ---------- Helpers for names & photos ----------
+
+  const normaliseName = (name) =>
+    (name || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+  // Try to mirror how PlayerCard/Formations would look up photos:
+  const getPhotoFor = (name) => {
+    if (!name) return null;
+    const raw = playerPhotosByName[name];
+    if (raw) return raw;
+
+    const n = normaliseName(name);
+    const underscored = n.replace(/\s+/g, "_");
+
+    return playerPhotosByName[n] || playerPhotosByName[underscored] || null;
+  };
+
+  const getInitials = (name) => {
+    if (!name) return "";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0][0] || "";
+    return (parts[0][0] || "") + (parts[1][0] || "");
+  };
+
+  // ---------- Build flat player list from teams ----------
+
   const allPlayers = useMemo(() => {
     const list = [];
     (teams || []).forEach((t) => {
@@ -58,6 +85,19 @@ export function PeerReviewPage({
     [allPlayers]
   );
 
+  // 🔐 If the signed-in user name matches a squad player, auto-select & lock
+  useEffect(() => {
+    if (
+      currentUserName &&
+      allPlayerNames.includes(currentUserName) &&
+      !selectedRater
+    ) {
+      setSelectedRater(currentUserName);
+      setRaterLocked(true);
+      setStatusMsg("");
+    }
+  }, [currentUserName, allPlayerNames, selectedRater]);
+
   const teamsForFilter = useMemo(() => {
     const labels = new Set();
     (teams || []).forEach((t) => labels.add(t.label));
@@ -72,19 +112,8 @@ export function PeerReviewPage({
     });
   }, [allPlayers, selectedRater, filterTeam]);
 
-  const getPhotoFor = (name) => {
-    if (!name) return null;
-    return playerPhotosByName[name] || null;
-  };
+  // ---------- Star rating helpers ----------
 
-  const getInitials = (name) => {
-    if (!name) return "";
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0][0] || "";
-    return (parts[0][0] || "") + (parts[1][0] || "");
-  };
-
-  // star click handlers
   const handleStarClick = (setter, value) => {
     setter(value);
     setStatusMsg("");
@@ -113,6 +142,8 @@ export function PeerReviewPage({
     </div>
   );
 
+  // ---------- Submit ----------
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setStatusMsg("");
@@ -126,11 +157,8 @@ export function PeerReviewPage({
       return;
     }
 
-    // safety: ensure both are valid players
     if (!allPlayerNames.includes(selectedRater)) {
-      setStatusMsg(
-        "Only players on the Turf Kings squads can vote."
-      );
+      setStatusMsg("Only players on the Turf Kings squads can vote.");
       return;
     }
     if (!allPlayerNames.includes(selectedTarget)) {
@@ -171,7 +199,7 @@ export function PeerReviewPage({
 
     try {
       const docData = {
-        // rater name is intentionally NOT stored -> anonymous
+        raterName: selectedRater,
         targetName: selectedTarget,
         attack: attack || null,
         defence: defence || null,
@@ -191,7 +219,6 @@ export function PeerReviewPage({
       }
 
       setStatusMsg("✅ Thanks, your rating has been saved.");
-      // reset target + ratings but keep rater for more votes
       setSelectedTarget(null);
       setAttack(0);
       setDefence(0);
@@ -206,6 +233,19 @@ export function PeerReviewPage({
       setSubmitting(false);
     }
   };
+
+  const handleChangeRater = () => {
+    if (raterLocked) return; // don’t allow change when verified from auth
+    setSelectedRater(null);
+    setSelectedTarget(null);
+    setAttack(0);
+    setDefence(0);
+    setGk(0);
+    setComment("");
+    setStatusMsg("");
+  };
+
+  // ---------- Render ----------
 
   return (
     <div className="page peer-review-page">
@@ -230,22 +270,20 @@ export function PeerReviewPage({
             <h2>Step 1 – Who are you?</h2>
             {selectedRater && (
               <div className="peer-current-rater">
-                Voting as <strong>{selectedRater}</strong>{" "}
-                <button
-                  type="button"
-                  className="link-btn"
-                  onClick={() => {
-                    setSelectedRater(null);
-                    setSelectedTarget(null);
-                    setAttack(0);
-                    setDefence(0);
-                    setGk(0);
-                    setComment("");
-                    setStatusMsg("");
-                  }}
-                >
-                  change
-                </button>
+                Voting as{" "}
+                <strong>
+                  {selectedRater}
+                  {raterLocked ? " (verified)" : ""}
+                </strong>{" "}
+                {!raterLocked && (
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={handleChangeRater}
+                  >
+                    change
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -264,11 +302,14 @@ export function PeerReviewPage({
                     className="player-chip-btn"
                     onClick={() => {
                       setSelectedRater(p.name);
+                      setRaterLocked(false);
                       setStatusMsg("");
                     }}
                   >
-                    {p.name}
-                    {p.teamLabel ? ` (${p.teamLabel})` : ""}
+                    <span className="chip-name">{p.name}</span>
+                    {p.teamLabel && (
+                      <span className="chip-team">{p.teamLabel}</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -309,7 +350,7 @@ export function PeerReviewPage({
                 </div>
               </div>
 
-              {/* Player cards */}
+              {/* Player cards WITH PHOTOS (like PlayerCard/Formations) */}
               <div className="peer-player-grid">
                 {candidateTargets.length === 0 && (
                   <p className="muted small">
@@ -318,7 +359,7 @@ export function PeerReviewPage({
                 )}
                 {candidateTargets.map((p) => {
                   const isActive = selectedTarget === p.name;
-                  const photo = getPhotoFor(p.name);
+                  const photoUrl = getPhotoFor(p.name);
                   const initials = getInitials(p.name);
 
                   return (
@@ -334,10 +375,13 @@ export function PeerReviewPage({
                       }}
                     >
                       <div className="peer-player-avatar">
-                        {photo ? (
-                          <div
+                        {photoUrl ? (
+                          <img
+                            src={photoUrl}
+                            alt={p.name}
                             className="peer-avatar-photo"
-                            style={{ backgroundImage: `url(${photo})` }}
+                            loading="lazy"
+                            decoding="async"
                           />
                         ) : (
                           <div className="peer-avatar-fallback">
@@ -366,7 +410,9 @@ export function PeerReviewPage({
                         {selectedTarget}
                       </span>
                     ) : (
-                      <span className="muted">no teammate selected yet</span>
+                      <span className="muted">
+                        no teammate selected yet
+                      </span>
                     )}
                   </h3>
 

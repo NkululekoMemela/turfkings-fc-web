@@ -52,8 +52,10 @@ export function StatsPage({
     [archivedEvents, currentEvents]
   );
 
-  const visibleResults = viewMode === "season" ? seasonResults : currentResults;
-  const visibleEvents = viewMode === "season" ? seasonEvents : currentEvents;
+  const visibleResults =
+    viewMode === "season" ? seasonResults : currentResults;
+  const visibleEvents =
+    viewMode === "season" ? seasonEvents : currentEvents;
 
   // ---------- TEAM TABLE (points, GD, etc.) ----------
   const teamStats = useMemo(() => {
@@ -286,17 +288,18 @@ export function StatsPage({
           <button className="secondary-btn" onClick={onBack}>
             Back
           </button>
-          <button
-            className="secondary-btn"
-            onClick={onGoToPlayerCards}
-          >
-            Player cards
-          </button>
+          {/* swapped order: Rate Player first, then Player cards */}
           <button
             className="secondary-btn"
             onClick={onGoToPeerReview}
           >
             Rate Player
+          </button>
+          <button
+            className="secondary-btn"
+            onClick={onGoToPlayerCards}
+          >
+            Player cards
           </button>
         </div>
       </header>
@@ -400,6 +403,7 @@ export function StatsPage({
                 <tr>
                   <th>#</th>
                   <th>Team</th>
+                  <th>Pts</th>
                   <th>P</th>
                   <th>W</th>
                   <th>D</th>
@@ -407,7 +411,7 @@ export function StatsPage({
                   <th>GF</th>
                   <th>GA</th>
                   <th>GD</th>
-                  <th>Pts</th>
+
                 </tr>
               </thead>
               <tbody>
@@ -416,13 +420,14 @@ export function StatsPage({
                     <td>{idx + 1}</td>
                     <td>{t.name}</td>
                     <td>{t.played}</td>
+                    <td>{t.points}</td>
                     <td>{t.won}</td>
                     <td>{t.drawn}</td>
                     <td>{t.lost}</td>
                     <td>{t.goalsFor}</td>
                     <td>{t.goalsAgainst}</td>
                     <td>{t.goalDiff}</td>
-                    <td>{t.points}</td>
+
                   </tr>
                 ))}
               </tbody>

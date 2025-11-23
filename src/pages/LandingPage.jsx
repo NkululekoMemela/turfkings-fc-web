@@ -290,14 +290,14 @@ export function LandingPage({
         {isCaptain ? (
           <div className="actions-row landing-actions">
             <button className="primary-btn" onClick={onStartMatch}>
-              Start Match
+            ⚽ Start Match
             </button>
             <button
               className="secondary-btn"
               onClick={() => onGoToStats()}
               type="button"
             >
-              View Stats
+              📊 View Stats
             </button>
             {/* 🔥 Replaced "Manage Squads" with News & Highlights */}
             <button
@@ -305,7 +305,7 @@ export function LandingPage({
               type="button"
               onClick={onGoToNews}
             >
-              News &amp; Highlights
+              📝 News &amp; Highlights
             </button>
             <button className="secondary-btn" onClick={onOpenBackupModal}>
               Save / Clear Data
@@ -323,14 +323,14 @@ export function LandingPage({
                 type="button"
                 onClick={handleSpectatorLiveClick}
               >
-                {hasLiveMatch ? "View Live Match" : "Live Match (waiting…)"}
+                {hasLiveMatch ? "⚽ View Live Match" : "⚽ Live Match (waiting…)"}
               </button>
               <button
                 className="secondary-btn"
                 type="button"
                 onClick={() => onGoToStats()}
               >
-                View Stats
+                📊 View Stats
               </button>
               {/* 🔥 Spectators also get News & Highlights instead of "View Squads" */}
               <button
@@ -338,7 +338,7 @@ export function LandingPage({
                 type="button"
                 onClick={onGoToNews}
               >
-                News &amp; Highlights
+                📝 News &amp; Highlights
               </button>
             </div>
           </>
@@ -383,7 +383,7 @@ export function LandingPage({
             rel="noreferrer"
             className="website-btn"
           >
-            ⚽ Messi vs Ronaldo
+            ⚔️ Messi vs Ronaldo
           </a>
         </div>
       </section>

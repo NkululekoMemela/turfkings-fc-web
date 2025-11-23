@@ -2014,3 +2014,182 @@ th {
   font-size: 0.8rem;
   color: #9ca3af;
 }
+
+
+/* ---- Peer review chips & cards tweaks ---- */
+
+.player-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #f9fafb; /* bright text */
+  font-size: 0.8rem;
+}
+
+.player-chip-btn:hover {
+  border-color: rgba(96, 165, 250, 0.9);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.chip-initial {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(37, 99, 235, 0.9);
+  font-weight: 600;
+}
+
+.chip-name {
+  font-weight: 500;
+  color: #f9fafb;
+}
+
+.chip-team {
+  color: #94a3b8;
+}
+
+/* Player cards */
+
+.peer-player-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.9rem;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(30, 64, 175, 0.6);
+  color: #f9fafb;
+}
+
+.peer-player-card:hover {
+  border-color: rgba(96, 165, 250, 1);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.7);
+}
+
+.peer-player-card.active {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.8);
+}
+
+.peer-player-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.peer-avatar-photo {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+}
+
+.peer-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 20%, #38bdf8, #1d4ed8);
+  color: #f9fafb;
+  font-weight: 600;
+}
+
+.peer-player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.peer-player-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f9fafb; /* brighter */
+}
+
+.peer-player-team {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+/* Live match – centre and enlarge Goal/Shibobo + team buttons */
+.live-page .event-input .team-toggle {
+  display: flex;
+  justify-content: center;   /* centre horizontally */
+  align-items: center;
+  gap: 0.75rem;              /* space between buttons */
+  flex-wrap: wrap;
+  margin: 0.5rem 0 1rem;
+}
+
+.live-page .event-input .toggle-btn {
+  min-width: 120px;          /* make them wider */
+  padding: 0.6rem 1.4rem;    /* bigger tap area */
+  border-radius: 999px;      /* pill shape */
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+/* Last-3 form dots in Team Standings */
+.form-cell {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.form-dot {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* Win = green */
+.form-w {
+  background: rgba(34, 197, 94, 0.18);   /* soft green */
+  border: 1px solid #22c55e;
+  color: #bbf7d0;
+}
+
+/* Draw = grey/blue */
+.form-d {
+  background: rgba(148, 163, 184, 0.18);
+  border: 1px solid #94a3b8;
+  color: #e2e8f0;
+}
+
+/* Loss = red */
+.form-l {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid #ef4444;
+  color: #fecaca;
+}
+
+
+/* Wrapper already scrolls horizontally */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* Sticky "Team" column in standings */
+.stats-table .sticky-col {
+  position: sticky;
+  left: 0;
+  background: rgba(15, 23, 42, 0.98); /* match your table bg */
+  backdrop-filter: blur(4px);
+  z-index: 2;
+}

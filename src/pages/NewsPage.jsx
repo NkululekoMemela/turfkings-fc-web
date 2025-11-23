@@ -90,6 +90,7 @@ export function NewsPage({
     () => formatMatchDayDate(new Date()),
     []
   );
+  
 
   // ---------- RAW DATA SPLIT ----------
   const fullResultsRaw = results || [];
@@ -389,22 +390,16 @@ export function NewsPage({
     return best;
   }, [cleanTournamentResults]);
 
-  // ---------- RECAP TOGGLE (week vs full) ----------
-  const [recapScope, setRecapScope] = useState("week"); // "week" | "all"
-
+  // ---------- RECAP (THIS MATCH-DAY ONLY) ----------
   const recapResults = useMemo(() => {
-    const base =
-      recapScope === "week" ? cleanWeekResults : cleanTournamentResults;
-    const arr = base.slice();
+    const arr = cleanWeekResults.slice();
     arr.sort((a, b) => a.matchNo - b.matchNo);
     return arr;
-  }, [recapScope, cleanWeekResults, cleanTournamentResults]);
+  }, [cleanWeekResults]);
 
   const recapEventsByMatch = useMemo(() => {
-    const src =
-      recapScope === "week" ? cleanWeekEvents : cleanTournamentEvents;
     const map = new Map();
-    src.forEach((e) => {
+    cleanWeekEvents.forEach((e) => {
       if (e.matchNo == null) return;
       if (!map.has(e.matchNo)) map.set(e.matchNo, []);
       map.get(e.matchNo).push(e);
@@ -413,7 +408,7 @@ export function NewsPage({
       list.sort((a, b) => (a.timeSeconds || 0) - (b.timeSeconds || 0))
     );
     return map;
-  }, [recapScope, cleanWeekEvents, cleanTournamentEvents]);
+  }, [cleanWeekEvents]);
 
   // ---------- RESPONSIVE FLAG FOR YEAR-END CARD ----------
   const [isNarrow, setIsNarrow] = useState(false);
@@ -628,7 +623,8 @@ export function NewsPage({
     fontWeight: 600,
     letterSpacing: "0.18em",
     textTransform: "uppercase",
-    color: "#020617",
+    padding: "0.0rem 0.2rem",
+    color: "#f9fafb",
     zIndex: 2,
   };
 
@@ -677,8 +673,6 @@ export function NewsPage({
 
           <ul style={bulletListStyle}>
             <li>• Dress code: Smart / suit vibes – leave the bibs at home.</li>
-            <li>• Season recap: comebacks, wild scorelines & classic banter.</li>
-            <li>• Photos, speeches and plenty of off-the-pitch linking.</li>
           </ul>
 
           <p
@@ -690,7 +684,9 @@ export function NewsPage({
           >
             🧊 <strong>Coolerboxes & bottles are encouraged</strong> – bring your
             own drinks. There&apos;s a small fee for walking in with them, but
-            it works out cheaper and keeps the vibe relaxed for the whole night. (<strong>R180 </strong>per coolerbox) and (<strong>R80 </strong> per whisky/brandy/gin bottle)
+            it works out cheaper and keeps the vibe relaxed for the whole night.{" "}
+            (<strong>R180 </strong>per coolerbox) and (<strong>R80 </strong> per
+            whisky/brandy/gin bottle)
           </p>
         </div>
 
@@ -701,7 +697,7 @@ export function NewsPage({
 
           <div style={suitCardStyle}>
             <div style={suitTitleRowStyle}>
-              <span style={suitEmojiStyle}>🤵‍♂️</span>
+              <span style={suitEmojiStyle}>🎩</span>
               <div>
                 <div style={{ fontSize: "0.78rem", opacity: 0.8 }}>
                   Dress Code
@@ -719,9 +715,9 @@ export function NewsPage({
             </div>
 
             <div style={sparkleRowStyle}>
-              <span>✦ Awards</span>
               <span>✦ Photos</span>
               <span>✦ Stories</span>
+              <span>✦ Drinks</span>
             </div>
           </div>
 
@@ -747,15 +743,15 @@ export function NewsPage({
           <h2>Tournament recap</h2>
           <p className="news-hero-text">
             So far we&apos;ve logged{" "}
-              <strong>{totalMatches || 0}</strong> matches and{" "}
-              <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side
-              league.
+            <strong>{totalMatches || 0}</strong> matches and{" "}
+            <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side
+            league.
           </p>
           {tableLeader && (
             <p className="news-hero-text">
               <strong>{tableLeader.name}</strong> currently lead the table with{" "}
-              <strong>{tableLeader.points}</strong> points and a goal
-              difference of <strong>{tableLeader.goalDiff}</strong> from{" "}
+              <strong>{tableLeader.points}</strong> points and a goal difference
+              of <strong>{tableLeader.goalDiff}</strong> from{" "}
               {tableLeader.played} games.
             </p>
           )}
@@ -811,8 +807,8 @@ export function NewsPage({
               <li className="news-list-item">
                 <span className="news-tag">Goals</span>
                 <span>
-                  <strong>{topScorer.name}</strong> leads the golden-boot
-                  race with {topScorer.goals} goals so far.
+                  <strong>{topScorer.name}</strong> leads the golden-boot race
+                  with {topScorer.goals} goals so far.
                 </span>
               </li>
             )}
@@ -831,8 +827,8 @@ export function NewsPage({
               <li className="news-list-item">
                 <span className="news-tag">Info</span>
                 <span>
-                  No stats yet – start a live match to generate your first
-                  round of TurfKings news.
+                  No stats yet – start a live match to generate your first round
+                  of TurfKings news.
                 </span>
               </li>
             )}
@@ -860,8 +856,8 @@ export function NewsPage({
             </div>
           ) : (
             <p className="muted">
-              We&apos;ll highlight the biggest win once a few games have
-              been played.
+              We&apos;ll highlight the biggest win once a few games have been
+              played.
             </p>
           )}
         </div>
@@ -929,8 +925,7 @@ export function NewsPage({
               <div className="streak-pill">
                 <span className="streak-tag">Goal streak</span>
                 <p className="streak-main">
-                  <strong>{streakStats.bestGoal.name}</strong>{" "}
-                  has scored in{" "}
+                  <strong>{streakStats.bestGoal.name}</strong> has scored in{" "}
                   <strong>{streakStats.bestGoal.length}</strong>{" "}
                   match{streakStats.bestGoal.length > 1 ? "es" : ""} in a row.
                 </p>
@@ -948,10 +943,9 @@ export function NewsPage({
               <div className="streak-pill">
                 <span className="streak-tag">Assist streak</span>
                 <p className="streak-main">
-                  <strong>{streakStats.bestAssist.name}</strong>{" "}
-                  has dropped assists in{" "}
-                  <strong>{streakStats.bestAssist.length}</strong>{" "}
-                  straight game
+                  <strong>{streakStats.bestAssist.name}</strong> has dropped
+                  assists in{" "}
+                  <strong>{streakStats.bestAssist.length}</strong> straight game
                   {streakStats.bestAssist.length > 1 ? "s" : ""}.
                 </p>
                 <p className="streak-sub">
@@ -980,55 +974,35 @@ export function NewsPage({
           <h2>Looking forward to Jayd&apos;s recovery</h2>
           <p>
             In the middle of this shot – standing between{" "}
-            <strong>Enock</strong> and the brilliant{" "}
-            <strong>Justin</strong> – is{" "}
+            <strong>Enock</strong> and the brilliant <strong>Justin</strong> – is{" "}
             <strong>{injuredPlayerName}</strong>, our teammate battling a
             long-term injury.
           </p>
           <p>
             <strong>Ebrahim</strong> is dropping a knee in front, but the whole
             frame is really about the player in the centre: a reminder of the
-            energy, link-up and calm presence we can&apos;t wait to have back
-            on the pitch.
+            energy, link-up and calm presence we can&apos;t wait to have back on
+            the pitch.
           </p>
           <p className="injury-cta">
-            From the whole TurfKings family: speedy recovery, bro – your spot
-            is waiting.
+            From the whole TurfKings family: speedy recovery, bro – your spot is
+            waiting.
           </p>
         </div>
       </section>
 
-      {/* MATCH-BY-MATCH RECAP (toggle week vs full) */}
+      {/* MATCH-BY-MATCH RECAP (this match-day only) */}
       <section className="card">
         <div className="news-recap-header">
           <h2>Match-by-match recap</h2>
-          <div className="pill-toggle-group">
-            <button
-              className={
-                "pill-toggle" +
-                (recapScope === "week" ? " pill-toggle-active" : "")
-              }
-              onClick={() => setRecapScope("week")}
-            >
-              This match-day
-            </button>
-            <button
-              className={
-                "pill-toggle" +
-                (recapScope === "all" ? " pill-toggle-active" : "")
-              }
-              onClick={() => setRecapScope("all")}
-            >
-              Full record
-            </button>
-          </div>
+          <span className="news-recap-subtitle">
+            Match-day {todayLabel}
+          </span>
         </div>
 
         {recapResults.length === 0 ? (
           <p className="muted">
-            {recapScope === "week"
-              ? "No matches recorded for this match-day yet."
-              : "No matches recorded yet. Start a live match to see a recap here."}
+            No matches recorded for this match-day yet.
           </p>
         ) : (
           <ul className="news-match-list">
@@ -1038,10 +1012,7 @@ export function NewsPage({
                 <li key={r.matchNo} className="news-match-item">
                   <div className="news-match-header">
                     <span className="news-match-number">
-                      Match #{r.matchNo}
-                      {recapScope === "week" && (
-                        <span> – {todayLabel}</span>
-                      )}
+                      Match #{r.matchNo} – {todayLabel}
                     </span>
                     <span className="news-match-scoreline">
                       <span>{getTeamName(r.teamAId)}</span>

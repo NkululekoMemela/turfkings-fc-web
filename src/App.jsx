@@ -20,6 +20,7 @@ import { subscribeToState } from "./storage/firebaseRepository.js";
 
 import { week1Results, week1Events } from "./seed/week1Data.js";
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
+import { useAuth } from "./auth/AuthContext.jsx"; // ✅ NEW
 
 // Page constants
 const PAGE_LANDING = "landing";
@@ -40,6 +41,14 @@ const MATCH_SECONDS = 5 * 60; // use 1 * 10 for testing
 export default function App() {
   const [page, setPage] = useState(PAGE_LANDING);
   const [state, setState] = useState(() => loadState());
+
+  // 🔐 current signed-in user (from AuthContext)
+  const { user } = useAuth() || {};
+  const currentUserName =
+    user?.displayName ||
+    user?.shortName ||
+    user?.name ||
+    null;
 
   // 💬 live peer ratings from Firestore
   const peerRatingsFromHook = usePeerRatings();
@@ -476,6 +485,7 @@ export default function App() {
         <PeerReviewPage
           teams={teams}
           playerPhotosByName={playerPhotosByName}
+          currentUserName={currentUserName}   // ✅ pass signed-in name
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
@@ -484,8 +494,7 @@ export default function App() {
         <SquadsPage
           teams={teams}
           onUpdateTeams={handleUpdateTeams}
-          // ⬅️ go back to Lineups & Formations
-          onBack={() => setPage(PAGE_FORMATIONS)}
+          onBack={() => setPage(PAGE_FORMATIONS)} // ⬅️ go back to Lineups & Formations
         />
       )}
 
@@ -494,7 +503,7 @@ export default function App() {
           teams={teams}
           playerPhotosByName={playerPhotosByName}
           onBack={handleBackToLanding}
-          // 🔥 New: Manage Squads from Lineups & Formations
+          // 🔥 Manage Squads from Lineups & Formations
           onGoToSquads={handleGoToSquads}
         />
       )}
@@ -504,8 +513,8 @@ export default function App() {
           <div className="modal">
             <h3>Save / Clear Turf Kings Data</h3>
             <p>
-              Save this match-day to Firebase (via state sync) and start a
-              fresh week, or clear the current week without saving.
+              Save this match-day to Firebase (via state sync) and start a fresh
+              week, or clear the current week without saving.
             </p>
             <div className="field-row">
               <label>Admin code (Nkululeko)</label>
