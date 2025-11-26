@@ -1,14 +1,25 @@
 // src/pages/SquadsPage.jsx
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  collection,
+  onSnapshot,
+  addDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db } from "../firebaseConfig"; // ✅ existing Firebase config
 
 const MASTER_CODE = "3333"; // Nkululeko only
 const UNSEEDED_ID = "__unseeded__";
-const EXTRA_PLAYERS_KEY = "turfkings_extra_players_v1"; // shared with FormationsPage
 
-// Helper: enforce "Title Case" (capital letter at the beginning of each word)
+// 🔥 New canonical collection (same as EntryPage & FormationsPage)
+const MEMBERS_COLLECTION = "members";
+
+// Helper: enforce "Title Case"
 function toTitleCase(name) {
-  return name
+  return String(name || "")
     .trim()
     .toLowerCase()
     .split(/\s+/)
@@ -17,60 +28,128 @@ function toTitleCase(name) {
     .join(" ");
 }
 
-function loadUnseededPlayers() {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(EXTRA_PLAYERS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveUnseededPlayers(list) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(EXTRA_PLAYERS_KEY, JSON.stringify(list));
-  } catch {
-    // ignore quota errors
-  }
+// Helper: find members by canonical fullName
+function findMembersByName(allPlayers, canonicalName) {
+  const lower = canonicalName.toLowerCase();
+  return allPlayers.filter((p) => {
+    const baseName = p.fullName || p.name || "";
+    const name = toTitleCase(baseName);
+    return name.toLowerCase() === lower;
+  });
 }
 
 export function SquadsPage({ teams, onUpdateTeams, onBack }) {
+  // Local editable copy of teams (seeded squads)
   const [localTeams, setLocalTeams] = useState(() =>
     teams.map((t) => ({ ...t, players: [...t.players] }))
   );
 
-  // 🔥 Unseeded / database-only players (not assigned to a team)
-  const [unseededPlayers, setUnseededPlayers] = useState(() =>
-    loadUnseededPlayers()
-  );
+  // 🔥 All members from Firestore `members` collection
+  const [allPlayers, setAllPlayers] = useState([]);
+  const [playersLoading, setPlayersLoading] = useState(true);
+  const [playersError, setPlayersError] = useState("");
 
+  // Input state + errors for add fields
   const [pendingNames, setPendingNames] = useState({});
   const [addErrors, setAddErrors] = useState({}); // per-team / unseeded add error
 
+  // Admin save modal
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
 
-  // Persist unseeded players to localStorage
+  // ---------------- FIRESTORE MEMBERS SUBSCRIPTION ----------------
   useEffect(() => {
-    saveUnseededPlayers(unseededPlayers);
+    setPlayersLoading(true);
+    setPlayersError("");
+
+    const colRef = collection(db, MEMBERS_COLLECTION);
+    const unsub = onSnapshot(
+      colRef,
+      (snap) => {
+        const list = snap.docs.map((d) => {
+          const data = d.data() || {};
+          return {
+            id: d.id,
+            ...data,
+          };
+        });
+        console.log("[Squads] Firestore members snapshot:", list);
+        setAllPlayers(list);
+        setPlayersLoading(false);
+      },
+      (err) => {
+        console.error("[Squads] Error loading members:", err);
+        setPlayersError("Could not load players from database.");
+        setPlayersLoading(false);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Canonical list of all player names in DB (Title Case, unique, active only)
+  const allPlayerNames = useMemo(() => {
+    const set = new Set();
+    allPlayers.forEach((p) => {
+      const status = p.status || "active";
+      if (status !== "active") return;
+      const baseName = p.fullName || p.name || "";
+      const name = toTitleCase(baseName);
+      if (name) set.add(name);
+    });
+    const arr = Array.from(set).sort((a, b) => a.localeCompare(b));
+    console.log("[Squads] allPlayerNames (active members):", arr);
+    return arr;
+  }, [allPlayers]);
+
+  // Players currently assigned to teams (from localTeams)
+  const playersAssignedToTeams = useMemo(() => {
+    const set = new Set();
+    localTeams.forEach((t) => {
+      (t.players || []).forEach((p) => {
+        const name = toTitleCase(p);
+        if (name) set.add(name);
+      });
+    });
+    const arr = Array.from(set).sort((a, b) => a.localeCompare(b));
+    console.log("[Squads] playersAssignedToTeams:", arr);
+    return arr;
+  }, [localTeams]);
+
+  const playersAssignedToTeamsLower = useMemo(() => {
+    const s = new Set();
+    playersAssignedToTeams.forEach((n) => s.add(n.toLowerCase()));
+    return s;
+  }, [playersAssignedToTeams]);
+
+  // 🔥 Unseeded players = active members that are NOT in any team
+  const unseededPlayers = useMemo(() => {
+    const arr = allPlayers.filter((p) => {
+      const status = p.status || "active";
+      if (status !== "active") return false;
+      const baseName = p.fullName || p.name || "";
+      const name = toTitleCase(baseName);
+      if (!name) return false;
+      return !playersAssignedToTeamsLower.has(name.toLowerCase());
+    });
+    console.log("[Squads] unseededPlayers (active members not in squads):", arr);
+    return arr;
+  }, [allPlayers, playersAssignedToTeamsLower]);
+
+  // For team dropdowns: available players are ONLY unseeded players (by name)
+  const availableForTeams = useMemo(() => {
+    const set = new Set();
+    unseededPlayers.forEach((p) => {
+      const baseName = p.fullName || p.name || "";
+      const name = toTitleCase(baseName);
+      if (name) set.add(name);
+    });
+    const arr = Array.from(set).sort((a, b) => a.localeCompare(b));
+    console.log("[Squads] availableForTeams (unseeded names):", arr);
+    return arr;
   }, [unseededPlayers]);
 
-  // Players currently assigned to teams
-  const playersAssignedToTeams = Array.from(
-    new Set(localTeams.flatMap((t) => t.players || []))
-  ).sort((a, b) => a.localeCompare(b));
-
-  // For team dropdowns: available players are ONLY unseeded players
-  const availableForTeams = [...unseededPlayers].sort((a, b) =>
-    a.localeCompare(b)
-  );
-
-  // For Unseeded dropdown: available players are ONLY players currently in teams
+  // For Unseeded dropdown: suggestions = players currently assigned to teams
   const availableForUnseeded = playersAssignedToTeams;
 
   const handlePendingChange = (id, value) => {
@@ -79,53 +158,76 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
     setAddErrors((prev) => ({ ...prev, [id]: "" }));
   };
 
-  const handleAddPlayer = (id) => {
+  // Helper: create a new member in DB if they don't exist yet
+  const ensureMemberInDb = async (canonicalName) => {
+    const matches = findMembersByName(allPlayers, canonicalName);
+    if (matches.length > 0) {
+      return; // already exists in DB
+    }
+    try {
+      console.log("[Squads] Creating NEW DB member:", canonicalName);
+      await addDoc(collection(db, MEMBERS_COLLECTION), {
+        fullName: canonicalName,
+        shortName: canonicalName.split(" ")[0],
+        email: "",
+        role: "player",
+        status: "active",
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error("[Squads] Error creating member in DB:", err);
+    }
+  };
+
+  const handleAddPlayer = async (id) => {
     const raw = pendingNames[id] || "";
     const trimmed = raw.trim();
     if (!trimmed) return;
 
-    // 🔤 Enforce Title Case
     const canonicalName = toTitleCase(trimmed);
     const lowerName = canonicalName.toLowerCase();
 
+    console.log("[Squads] handleAddPlayer", { id, canonicalName });
+
     // locate where this player currently lives (if anywhere)
     const teamIndex = localTeams.findIndex((t) =>
-      (t.players || []).some((p) => p.toLowerCase() === lowerName)
+      (t.players || []).some(
+        (p) => toTitleCase(p).toLowerCase() === lowerName
+      )
     );
-    const inUnseeded = unseededPlayers.some(
-      (p) => p.toLowerCase() === lowerName
-    );
+    const inAnyTeam = teamIndex >= 0;
 
     if (id === UNSEEDED_ID) {
       // --- Adding to Unseeded bin ---
-      if (inUnseeded) {
+      const alreadyInDb = findMembersByName(allPlayers, canonicalName).length;
+      if (!inAnyTeam && alreadyInDb > 0) {
+        // Already in DB but not in any team ==> already unseeded
         setAddErrors((prev) => ({
           ...prev,
-          [id]: `${canonicalName} is already in Unseeded players.`,
+          [id]: `${canonicalName} is already unseeded (in the database but not in any team).`,
         }));
         return;
       }
 
-      if (teamIndex >= 0) {
-        // Move from team -> Unseeded
-        const teamId = localTeams[teamIndex].id;
+      if (inAnyTeam) {
+        // Move from team -> Unseeded (just remove from team;
+        // DB member remains so they show up in unseeded)
         setLocalTeams((prev) =>
           prev.map((t, idx) =>
             idx === teamIndex
               ? {
                   ...t,
                   players: t.players.filter(
-                    (p) => p.toLowerCase() !== lowerName
+                    (p) => toTitleCase(p).toLowerCase() !== lowerName
                   ),
                 }
               : t
           )
         );
-        setUnseededPlayers((prev) => [...prev, canonicalName]);
-      } else {
-        // Brand new player -> Unseeded
-        setUnseededPlayers((prev) => [...prev, canonicalName]);
       }
+
+      // Make sure there is a DB record for this player
+      await ensureMemberInDb(canonicalName);
     } else {
       // --- Adding to a TEAM ---
       const targetIndex = localTeams.findIndex((t) => t.id === id);
@@ -139,7 +241,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
 
       const targetTeam = localTeams[targetIndex];
       const alreadyInTarget = (targetTeam.players || []).some(
-        (p) => p.toLowerCase() === lowerName
+        (p) => toTitleCase(p).toLowerCase() === lowerName
       );
       if (alreadyInTarget) {
         setAddErrors((prev) => ({
@@ -149,7 +251,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
         return;
       }
 
-      if (teamIndex >= 0 && teamIndex !== targetIndex) {
+      if (inAnyTeam && teamIndex !== targetIndex) {
         // Player is in a DIFFERENT team; require move via Unseeded first
         const existingTeam = localTeams[teamIndex];
         setAddErrors((prev) => ({
@@ -159,28 +261,18 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
         return;
       }
 
-      if (inUnseeded) {
-        // Move from Unseeded -> this team
-        setUnseededPlayers((prev) =>
-          prev.filter((p) => p.toLowerCase() !== lowerName)
-        );
-        setLocalTeams((prev) =>
-          prev.map((t, idx) =>
-            idx === targetIndex
-              ? { ...t, players: [...t.players, canonicalName] }
-              : t
-          )
-        );
-      } else {
-        // Brand new player -> directly into this team
-        setLocalTeams((prev) =>
-          prev.map((t, idx) =>
-            idx === targetIndex
-              ? { ...t, players: [...t.players, canonicalName] }
-              : t
-          )
-        );
-      }
+      // If they were unseeded (in DB but not in any team), that's fine:
+      // we just add them to this team.
+      setLocalTeams((prev) =>
+        prev.map((t, idx) =>
+          idx === targetIndex
+            ? { ...t, players: [...t.players, canonicalName] }
+            : t
+        )
+      );
+
+      // Ensure DB record exists
+      await ensureMemberInDb(canonicalName);
     }
 
     setPendingNames((prev) => ({ ...prev, [id]: "" }));
@@ -200,8 +292,29 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
     );
   };
 
-  const handleRemoveUnseeded = (player) => {
-    setUnseededPlayers((prev) => prev.filter((p) => p !== player));
+  // Remove player completely from DB (only affects unseeded players)
+  const handleRemoveUnseeded = async (playerName) => {
+    const canonicalName = toTitleCase(playerName);
+    const matches = findMembersByName(allPlayers, canonicalName);
+
+    if (matches.length === 0) return;
+
+    const ok =
+      typeof window !== "undefined"
+        ? window.confirm(
+            `Remove ${canonicalName} from the Turf Kings database? This does not affect past stats, but they will disappear from the unseeded pool.`
+          )
+        : true;
+
+    if (!ok) return;
+
+    try {
+      await Promise.all(
+        matches.map((p) => deleteDoc(doc(db, MEMBERS_COLLECTION, p.id)))
+      );
+    } catch (err) {
+      console.error("[Squads] Error deleting member from DB:", err);
+    }
   };
 
   const handleSaveClick = () => {
@@ -222,7 +335,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
       setSaveError("Invalid admin code.");
       return;
     }
-    // Save teams but STAY on this page. Unseeded players are already persisted to localStorage.
+    // Save teams but STAY on this page.
     onUpdateTeams(localTeams);
     handleCancelSave(); // just close modal
   };
@@ -231,16 +344,11 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
     <div className="page squads-page">
       <header className="header">
         <h1>Manage Squads</h1>
-        <p className="subtitle">
-          Adjust player lists and manage{" "}
-          <strong>Unseeded players (database-only)</strong>. Changes affect
-          future matches – past stats stay as they were.
-          <br />
-          <strong>
-            Player names are stored in Title Case and are unique across all
-            teams and Unseeded players.
-          </strong>
-        </p>
+
+        {playersLoading && (
+          <p className="muted small">Loading players from database…</p>
+        )}
+        {playersError && <p className="error-text">{playersError}</p>}
       </header>
 
       <section className="card">
@@ -271,6 +379,11 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
                       )}
                     </li>
                   ))}
+                  {team.players.length === 0 && (
+                    <li className="player-row muted small">
+                      No players yet in this squad.
+                    </li>
+                  )}
                 </ul>
 
                 <div className="add-player-row">
@@ -310,25 +423,51 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
             <h2>Unseeded players</h2>
             <p className="muted small">
               These players are stored in the Turf Kings database but are not
-              assigned to any team yet. They are still available in{" "}
-              <strong>Lineups &amp; Formations</strong>.
+              assigned to any team yet. They are available in{" "}
+              <strong>Lineups &amp; Formations (11-a-side)</strong> and in the{" "}
+              <strong>picture selection</strong> UI.
             </p>
 
             <ul className="player-list">
-              {unseededPlayers.map((p) => (
-                <li key={p} className="player-row">
-                  <span>{p}</span>
-                  <button
-                    className="link-btn"
-                    onClick={() => handleRemoveUnseeded(p)}
-                  >
-                    remove
-                  </button>
-                </li>
-              ))}
+              {unseededPlayers.map((p) => {
+                const name = p.fullName
+                  ? toTitleCase(p.fullName)
+                  : p.name
+                  ? toTitleCase(p.name)
+                  : "Unknown";
+                const roles = p.roles || {};
+                const roleTag =
+                  typeof p.role === "string" ? p.role.toLowerCase() : null;
+                return (
+                  <li key={p.id} className="player-row">
+                    <span>
+                      {name}{" "}
+                      {roles.coach && (
+                        <span className="tag tag-coach">Coach</span>
+                      )}
+                      {roles.admin && (
+                        <span className="tag tag-admin">Admin</span>
+                      )}
+                      {roleTag === "coach" && (
+                        <span className="tag tag-coach">Coach</span>
+                      )}
+                      {roleTag === "admin" && (
+                        <span className="tag tag-admin">Admin</span>
+                      )}
+                    </span>
+                    <button
+                      className="link-btn"
+                      onClick={() => handleRemoveUnseeded(name)}
+                    >
+                      ❌ delete?
+                    </button>
+                  </li>
+                );
+              })}
               {unseededPlayers.length === 0 && (
                 <li className="player-row muted small">
-                  No unseeded players yet.
+                  No unseeded players right now. New approved members will
+                  appear here automatically.
                 </li>
               )}
             </ul>
@@ -336,7 +475,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
             <div className="add-player-row">
               <input
                 className="text-input"
-                placeholder="Add NEW / move from team..."
+                placeholder="Move from team / add manual player..."
                 list="players-db-unseeded"
                 value={pendingNames[UNSEEDED_ID] || ""}
                 onChange={(e) =>
@@ -361,6 +500,9 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
             {addErrors[UNSEEDED_ID] && (
               <p className="error-text small">{addErrors[UNSEEDED_ID]}</p>
             )}
+
+            {/* Tiny debug aid, muted */}
+
           </div>
         </div>
 

@@ -419,8 +419,8 @@ export function StatsPage({
                   <tr key={t.teamId}>
                     <td>{idx + 1}</td>
                     <td>{t.name}</td>
-                    <td>{t.played}</td>
                     <td>{t.points}</td>
+                    <td>{t.played}</td>
                     <td>{t.won}</td>
                     <td>{t.drawn}</td>
                     <td>{t.lost}</td>
@@ -439,7 +439,7 @@ export function StatsPage({
       {/* MAIN COMBINED PLAYER TABLE */}
       {activeTab === "combined" && (
         <section className="card">
-          <h2>Player Rankings (Total = Goals + Assists + Shibobo)</h2>
+          <h2>Player Rankings (Total = Goals + Assists + Saves)</h2>
           <div className="table-wrapper">
             <table className="stats-table">
               <thead>
@@ -449,7 +449,7 @@ export function StatsPage({
                   <th>Team</th>
                   <th>Goals</th>
                   <th>Assists</th>
-                  <th>Shibobo</th>
+                  <th>Saves</th>
                   <th>G-A-S</th>
                 </tr>
               </thead>

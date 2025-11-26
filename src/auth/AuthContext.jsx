@@ -1,133 +1,170 @@
 // src/auth/AuthContext.jsx
-import React, { createContext, useContext, useState, useMemo } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useMemo,
+} from "react";
+import {
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+} from "firebase/auth";
+import { auth, db } from "../firebaseConfig";
+import { collection, getDocs, query, where } from "firebase/firestore";
 
-/**
- * Captain accounts (special role, can edit any player)
- */
-const CAPTAIN_EMAILS = {
-  "nmbulungeni@gmail.com": "Enoch",
-  "mduduzi933@gmail.com": "Mdu",
-  "nkululekolerato@gmail.com": "NK",
-};
+// ---------- helpers ----------
 
-/**
- * Map Gmail -> playerId in TurfKings.
- * playerId is a slug like "enoch", "nk", etc. (we'll use the same ids
- * when building player cards from names in PlayerCardPage).
- *
- * Add more rows here as you collect gmails.
- */
-const PLAYER_EMAIL_MAP = {
-  "nmbulungeni@gmail.com": "enoch",
-  "mduduzi933@gmail.com": "mdu",
-  "nkululekolerato@gmail.com": "nk",
-  // "someoneelse@gmail.com": "barlo",
-};
-
-/**
- * Turn an email into an auth profile:
- * - role: "captain" | "player" | "guest"
- * - playerId: which card they own (if any)
- */
-function deriveAuthProfileFromEmail(emailRaw) {
-  if (!emailRaw) return null;
-  const email = emailRaw.trim();
-  const emailLower = email.toLowerCase();
-
-  const isCaptain = Object.keys(CAPTAIN_EMAILS).some(
-    (e) => e.toLowerCase() === emailLower
-  );
-
-  const mappedEntry = Object.entries(PLAYER_EMAIL_MAP).find(
-    ([em]) => em.toLowerCase() === emailLower
-  );
-  const playerId = mappedEntry ? mappedEntry[1] : null;
-
-  const role = isCaptain ? "captain" : playerId ? "player" : "guest";
-
-  return {
-    email,
-    emailLower,
-    displayName:
-      CAPTAIN_EMAILS[email] ||
-      email.split("@")[0] ||
-      "TurfKings user",
-    role,
-    playerId, // which player card they own (if any)
-  };
+function slugFromName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
 }
+
+// Special TurfKings emails that are at least captains
+const CAPTAIN_EMAILS = new Set([
+  "nmbulungeni@gmail.com", // Enoch
+  "mduduzi933@gmail.com",  // Mdu
+  "nkululekolerato@gmail.com", // you
+]);
+
+// Your admin email (full powers)
+const ADMIN_EMAIL = "nkululekolerato@gmail.com";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [authUser, setAuthUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  /**
-   * TEMP: fake Google sign-in
-   * ----------------------------------
-   * For now we just ask the user to type their Gmail.
-   * Later this is where you plug in real Firebase Google Auth.
-   */
+  // Listen to Firebase auth state
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        setAuthUser(null);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const email = (firebaseUser.email || "").toLowerCase();
+
+        let role = "player";
+        let fullName = firebaseUser.displayName || "";
+        let shortName =
+          fullName && fullName.includes(" ")
+            ? fullName.split(" ")[0]
+            : fullName || "";
+        let status = "active";
+        let memberId = null;
+
+        // 1) Try Firestore: members doc matching this email
+        try {
+          const membersRef = collection(db, "members");
+          const q = query(membersRef, where("email", "==", email));
+          const snap = await getDocs(q);
+
+          if (!snap.empty) {
+            const docSnap = snap.docs[0];
+            const data = docSnap.data() || {};
+            memberId = docSnap.id;
+            role = data.role || role;
+            fullName = data.fullName || fullName;
+            shortName = data.shortName || shortName;
+            status = data.status || status;
+          } else {
+            // 2) Fallback: known captain emails
+            if (CAPTAIN_EMAILS.has(email)) {
+              role = "captain";
+            }
+          }
+        } catch (err) {
+          console.error("[Auth] Failed to read members doc:", err);
+          if (CAPTAIN_EMAILS.has(email)) {
+            role = "captain";
+          }
+        }
+
+        // 3) Hard override for you: admin
+        if (email === ADMIN_EMAIL) {
+          role = "admin";
+        }
+
+        const isAdmin = role === "admin";
+        const isCaptain = role === "captain" || isAdmin;
+        const playerId = shortName ? slugFromName(shortName) : null;
+
+        setAuthUser({
+          uid: firebaseUser.uid,
+          email,
+          firebaseUser,
+          role,
+          fullName,
+          shortName,
+          status,
+          memberId,
+          isAdmin,
+          isCaptain,
+          playerId,
+        });
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
+  // ---- actions ----
+
   const signInWithGoogle = async () => {
-    try {
-      const email = window.prompt(
-        "Enter your Gmail to verify your identity (this should match what Nkululeko has on record):"
-      );
-      if (!email) return null;
-
-      const profile = deriveAuthProfileFromEmail(email);
-      if (!profile) {
-        alert(
-          "Could not derive a profile from that email. Please check the address."
-        );
-        return null;
-      }
-
-      setAuthUser(profile);
-
-      if (profile.role === "guest") {
-        alert(
-          "You are signed in, but your email is not yet linked to a specific player card.\n" +
-            "Ask Nkululeko to map this Gmail to your player name so you can edit your own card."
-        );
-      }
-
-      return profile;
-    } catch (err) {
-      console.error("signInWithGoogle error:", err);
-      return null;
-    }
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
   };
 
-  const signOut = () => {
-    setAuthUser(null);
+  const signOutUser = async () => {
+    await firebaseSignOut(auth);
   };
 
   /**
-   * Permission check: can this logged-in user edit a specific player card?
-   * - captains: yes, for all.
-   * - players: only their own playerId.
+   * Can this logged-in user edit a specific player card?
+   * - admin: everything
+   * - captain: any player
+   * - player: only their own card
    */
-  const canEditPlayer = (playerId) => {
+  const canEditPlayer = (targetPlayerId) => {
     if (!authUser) return false;
-    if (authUser.role === "captain") return true;
-    if (!authUser.playerId) return false;
-    return authUser.playerId === playerId;
+
+    if (authUser.isAdmin) return true;
+    if (authUser.isCaptain) return true;
+
+    if (!targetPlayerId) return false;
+    return authUser.playerId && authUser.playerId === targetPlayerId;
   };
 
   const value = useMemo(
     () => ({
       authUser,
+      loading,
       signInWithGoogle,
-      signOut,
+      signOut: signOutUser,
       canEditPlayer,
     }),
-    [authUser]
+    [authUser, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error("useAuth must be used inside <AuthProvider>");
+  }
+  return ctx;
 }

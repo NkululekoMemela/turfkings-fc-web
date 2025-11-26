@@ -2193,3 +2193,63 @@ th {
   backdrop-filter: blur(4px);
   z-index: 2;
 }
+
+/* Spectator pill base */
+.pill-toggle-spectator {
+  background: #020617;
+  color: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+/* Spectator when active (selected) */
+.pill-toggle-spectator-active {
+  background: #f9fafb;
+  color: #020617;
+  border-color: #020617;
+}
+
+/* ==== Pill toggle (player / spectator) ==== */
+
+.pill-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: #020617;          /* near-black bar */
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.7),
+              0 10px 30px rgba(15, 23, 42, 0.8);
+}
+
+.pill-toggle {
+  border: none;
+  outline: none;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  background: transparent;
+  color: #f9fafb;               /* white text on dark background */
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.18s ease-out,
+    color 0.18s ease-out,
+    box-shadow 0.18s ease-out,
+    transform 0.08s ease-out;
+}
+
+.pill-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.pill-toggle-active {
+  background: #f9fafb;          /* white pill */
+  color: #020617;               /* black/dark text */
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.65),
+    0 8px 20px rgba(15, 23, 42, 0.85);
+}
+
+.pill-toggle:focus-visible {
+  outline: 2px solid #e5e7eb;
+  outline-offset: 2px;
+}

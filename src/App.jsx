@@ -1,5 +1,6 @@
 // src/App.jsx
 import React, { useEffect, useState } from "react";
+import { EntryPage } from "./pages/EntryPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { LiveMatchPage } from "./pages/LiveMatchPage.jsx";
 import { StatsPage } from "./pages/StatsPage.jsx";
@@ -19,10 +20,11 @@ import { computeNextFromResult } from "./core/rotation.js";
 import { subscribeToState } from "./storage/firebaseRepository.js";
 
 import { week1Results, week1Events } from "./seed/week1Data.js";
+import { week2Results, week2Events } from "./seed/week2Data.js";
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
-import { useAuth } from "./auth/AuthContext.jsx"; // ✅ NEW
 
 // Page constants
+const PAGE_ENTRY = "entry";
 const PAGE_LANDING = "landing";
 const PAGE_LIVE = "live";
 const PAGE_STATS = "stats";
@@ -39,16 +41,43 @@ const MASTER_CODE = "3333"; // Nkululeko admin code
 const MATCH_SECONDS = 5 * 60; // use 1 * 10 for testing
 
 export default function App() {
-  const [page, setPage] = useState(PAGE_LANDING);
-  const [state, setState] = useState(() => loadState());
+  // ---------- PAGE & IDENTITY ----------
+  const [page, setPage] = useState(() => {
+    if (typeof window === "undefined") return PAGE_ENTRY;
+    const saved = window.localStorage.getItem("tk_currentPage_v2");
+    // always land on Entry first if we don't have an identity yet
+    return saved || PAGE_ENTRY;
+  });
 
-  // 🔐 current signed-in user (from AuthContext)
-  const { user } = useAuth() || {};
-  const currentUserName =
-    user?.displayName ||
-    user?.shortName ||
-    user?.name ||
-    null;
+  // identity payload from EntryPage
+  const [identity, setIdentity] = useState(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem("tk_identity_v1");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // keep current page in localStorage (but never force-clear state)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("tk_currentPage_v2", page);
+    }
+  }, [page]);
+
+  const handleEntryComplete = (payload) => {
+    // payload: { role, memberId?, fullName?, shortName?, email?, status? }
+    setIdentity(payload);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("tk_identity_v1", JSON.stringify(payload));
+    }
+    setPage(PAGE_LANDING);
+  };
+
+  // ---------- APP STATE (MATCHES etc.) ----------
+  const [state, setState] = useState(() => loadState());
 
   // 💬 live peer ratings from Firestore
   const peerRatingsFromHook = usePeerRatings();
@@ -56,7 +85,7 @@ export default function App() {
   // where to go back from Stats: landing or live
   const [statsReturnPage, setStatsReturnPage] = useState(PAGE_LANDING);
 
-  // 🔁 TIMER STATE LIVES IN APP (so it survives page switches)
+  // ⏱️ TIMER STATE LIVES IN APP (so it survives page switches)
   const [secondsLeft, setSecondsLeft] = useState(MATCH_SECONDS);
   const [running, setRunning] = useState(false);
   const [timeUp, setTimeUp] = useState(false);
@@ -101,9 +130,7 @@ export default function App() {
     allEvents,
     streaks,
     matchDayHistory = [],
-    // if Firestore stores a player photo map, we surface it here
     playerPhotosByName = {},
-    // (old) peerRatingsByPlayer from state is ignored in favour of live hook
   } = state || createDefaultState();
 
   // effective peer ratings to pass down
@@ -118,14 +145,22 @@ export default function App() {
   );
 
   const hasFirebaseHistory = (matchDayHistory || []).length > 0;
-  const seedResultsForArchive = hasFirebaseHistory ? [] : week1Results;
-  const seedEventsForArchive = hasFirebaseHistory ? [] : week1Events;
+
+  // If Firebase already has history, we assume it includes past weeks.
+  // If it's empty, we fall back to hard-coded Week 1 + Week 2 seed data.
+  const seedResultsForArchive = hasFirebaseHistory
+    ? []
+    : [...week1Results, ...week2Results];
+  const seedEventsForArchive = hasFirebaseHistory
+    ? []
+    : [...week1Events, ...week2Events];
 
   const fullResults = [
     ...seedResultsForArchive,
     ...archivedResultsFromHistory,
     ...(results || []),
   ];
+
   const fullEvents = [
     ...seedEventsForArchive,
     ...archivedEventsFromHistory,
@@ -135,10 +170,12 @@ export default function App() {
   // ---------- FULL SEASON DATASET FOR STATS & PLAYER CARDS ----------
   const fullSeasonResultsForStats = [
     ...week1Results,
+    ...week2Results,
     ...(results || []),
   ];
   const fullSeasonEventsForStats = [
     ...week1Events,
+    ...week2Events,
     ...(allEvents || []),
   ];
 
@@ -334,7 +371,9 @@ export default function App() {
         standbyId: prev.teams?.[2]?.id ?? null,
       },
       streaks: prev.streaks
-        ? Object.fromEntries(Object.keys(prev.streaks).map((tid) => [tid, 0]))
+        ? Object.fromEntries(
+            Object.keys(prev.streaks).map((tid) => [tid, 0])
+          )
         : {},
       currentEvents: [],
       allEvents: [],
@@ -391,6 +430,16 @@ export default function App() {
 
   return (
     <div className="app-root">
+      {/* ---------- ENTRY / IDENTITY PAGE ---------- */}
+      {page === PAGE_ENTRY && (
+        <EntryPage
+          identity={identity}
+          onComplete={handleEntryComplete}
+          onDevSkipToLanding={() => setPage(PAGE_LANDING)}
+        />
+      )}
+
+      {/* ---------- MAIN APP PAGES ---------- */}
       {page === PAGE_LANDING && (
         <LandingPage
           teams={teams}
@@ -407,6 +456,8 @@ export default function App() {
           onGoToLiveAsSpectator={handleGoToLiveAsSpectator}
           onGoToFormations={handleGoToFormations}
           onGoToNews={() => setPage(PAGE_NEWS)}
+          onGoToEntryDev={() => setPage(PAGE_ENTRY)}
+          identity={identity}
         />
       )}
 
@@ -445,8 +496,8 @@ export default function App() {
           teams={teams}
           results={results}
           allEvents={allEvents}
-          archivedResults={week1Results}
-          archivedEvents={week1Events}
+          archivedResults={[...week1Results, ...week2Results]}
+          archivedEvents={[...week1Events, ...week2Events]}
           cameFromLive={statsReturnPage === PAGE_LIVE}
           onBack={() =>
             statsReturnPage === PAGE_LIVE
@@ -467,7 +518,7 @@ export default function App() {
           currentResults={results}
           currentEvents={allEvents}
           playerPhotosByName={playerPhotosByName}
-          onBack={() => setPage(PAGE_STATS)}
+          onBack={handleBackToLanding} // ⬅ back to LandingPage
         />
       )}
 
@@ -485,7 +536,7 @@ export default function App() {
         <PeerReviewPage
           teams={teams}
           playerPhotosByName={playerPhotosByName}
-          currentUserName={currentUserName}   // ✅ pass signed-in name
+          identity={identity}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
@@ -494,20 +545,22 @@ export default function App() {
         <SquadsPage
           teams={teams}
           onUpdateTeams={handleUpdateTeams}
-          onBack={() => setPage(PAGE_FORMATIONS)} // ⬅️ go back to Lineups & Formations
+          onBack={() => setPage(PAGE_FORMATIONS)}
         />
       )}
 
       {page === PAGE_FORMATIONS && (
         <FormationsPage
           teams={teams}
+          currentMatch={currentMatch}
           playerPhotosByName={playerPhotosByName}
+          identity={identity}
           onBack={handleBackToLanding}
-          // 🔥 Manage Squads from Lineups & Formations
           onGoToSquads={handleGoToSquads}
         />
       )}
 
+      {/* BACKUP MODAL */}
       {showBackupModal && (
         <div className="modal-backdrop">
           <div className="modal">

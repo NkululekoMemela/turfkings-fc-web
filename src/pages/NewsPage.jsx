@@ -15,7 +15,7 @@ export function NewsPage({
   // current match-day only
   currentResults,
   currentEvents,
-  onBack,
+  onBack, // <-- now expected to go to LandingPage
   // OPTIONAL: map { [playerName]: photoUrl } passed down from Firebase
   playerPhotosByName,
 }) {
@@ -90,7 +90,6 @@ export function NewsPage({
     () => formatMatchDayDate(new Date()),
     []
   );
-  
 
   // ---------- RAW DATA SPLIT ----------
   const fullResultsRaw = results || [];
@@ -642,8 +641,9 @@ export function NewsPage({
           Automatic recap built from your full TurfKings match history.
         </p>
         <div className="news-header-actions">
+          {/* 🔙 Now conceptually “Back to Landing page” */}
           <button className="secondary-btn" onClick={onBack}>
-            Back to stats
+            Back to main page
           </button>
         </div>
       </header>

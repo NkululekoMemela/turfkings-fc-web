@@ -4,15 +4,21 @@ import { submitPeerRating } from "../storage/firebaseRepository.js";
 
 const LOCAL_VOTE_PREFIX = "turfkings_peer_vote_v1";
 
+const EMAIL_TO_PLAYER_NAME = {
+  "nkululekolerato@gmail.com": "Nkululeko",
+  "nmbulungeni@gmail.com": "Enoch",
+  "mduduzi933@gmail.com": "Mdu",
+};
+
 export function PeerReviewPage({
   teams,
-  playerPhotosByName = {}, // { "Enoch": "/photos/enoch.jpg", ... }
-  currentUserName = null, // optional – can be wired from AuthContext via App.jsx
+  playerPhotosByName = {},
+  identity = null, // { role, memberId, fullName, shortName, email, ... }
   onBack,
 }) {
   const [selectedRater, setSelectedRater] = useState(null);
-  const [raterLocked, setRaterLocked] = useState(false); // true = verified identity
-  const [selectedTarget, setSelectedTarget] = useState(null);
+  const [raterLocked, setRaterLocked] = useState(false);
+  const [selectedTargets, setSelectedTargets] = useState([]);
   const [attack, setAttack] = useState(0);
   const [defence, setDefence] = useState(0);
   const [gk, setGk] = useState(0);
@@ -21,16 +27,14 @@ export function PeerReviewPage({
   const [submitting, setSubmitting] = useState(false);
   const [filterTeam, setFilterTeam] = useState("ALL");
 
-  // ---------- Helpers for names & photos ----------
-
+  // ---------- Helpers ----------
   const normaliseName = (name) =>
     (name || "").trim().toLowerCase().replace(/\s+/g, " ");
 
-  // Try to mirror how PlayerCard/Formations would look up photos:
   const getPhotoFor = (name) => {
     if (!name) return null;
-    const raw = playerPhotosByName[name];
-    if (raw) return raw;
+    const direct = playerPhotosByName[name];
+    if (direct) return direct;
 
     const n = normaliseName(name);
     const underscored = n.replace(/\s+/g, "_");
@@ -45,14 +49,12 @@ export function PeerReviewPage({
     return (parts[0][0] || "") + (parts[1][0] || "");
   };
 
-  // ---------- Build flat player list from teams ----------
-
+  // ---------- Build flat player list ----------
   const allPlayers = useMemo(() => {
     const list = [];
     (teams || []).forEach((t) => {
       (t.players || []).forEach((p) => {
-        const name =
-          typeof p === "string" ? p : p?.name || p?.displayName;
+        const name = typeof p === "string" ? p : p?.name || p?.displayName;
         if (!name) return;
         list.push({
           name,
@@ -61,7 +63,6 @@ export function PeerReviewPage({
       });
     });
 
-    // unique by name
     const seen = new Set();
     const unique = [];
     list.forEach((p) => {
@@ -70,7 +71,6 @@ export function PeerReviewPage({
       unique.push(p);
     });
 
-    // sort by team then name
     unique.sort((a, b) => {
       if (a.teamLabel !== b.teamLabel) {
         return a.teamLabel.localeCompare(b.teamLabel);
@@ -85,18 +85,55 @@ export function PeerReviewPage({
     [allPlayers]
   );
 
-  // 🔐 If the signed-in user name matches a squad player, auto-select & lock
+  // ---------- Identity / eligibility ----------
+  const entryRole = identity?.role || null;
+  const isEntryPlayer =
+    entryRole === "player" ||
+    entryRole === "captain" ||
+    entryRole === "admin";
+  const isSpectator = entryRole === "spectator";
+  const isSignedInPlayer = !!identity && isEntryPlayer;
+
+  // ---------- Auto-select rater ----------
   useEffect(() => {
-    if (
-      currentUserName &&
-      allPlayerNames.includes(currentUserName) &&
-      !selectedRater
-    ) {
-      setSelectedRater(currentUserName);
-      setRaterLocked(true);
-      setStatusMsg("");
+    if (!isSignedInPlayer) return;
+    if (selectedRater) return;
+
+    let candidateName =
+      identity?.fullName ||
+      identity?.shortName ||
+      (identity?.email && EMAIL_TO_PLAYER_NAME[identity.email.toLowerCase()]) ||
+      null;
+
+    if (!candidateName && identity?.email) {
+      const email = identity.email.toLowerCase();
+      candidateName = EMAIL_TO_PLAYER_NAME[email] || null;
     }
-  }, [currentUserName, allPlayerNames, selectedRater]);
+
+    if (!candidateName) return;
+
+    const normCandidate = normaliseName(candidateName);
+
+    let matched =
+      allPlayerNames.find((n) => normaliseName(n) === normCandidate) || null;
+
+    if (!matched && identity?.email) {
+      const email = identity.email.toLowerCase();
+      const alias = EMAIL_TO_PLAYER_NAME[email];
+      if (alias) {
+        matched =
+          allPlayerNames.find(
+            (n) => normaliseName(n) === normaliseName(alias)
+          ) || alias;
+      }
+    }
+
+    const finalName = matched || candidateName;
+
+    setSelectedRater(finalName);
+    setRaterLocked(true);
+    setStatusMsg("");
+  }, [identity, allPlayerNames, isSignedInPlayer, selectedRater]);
 
   const teamsForFilter = useMemo(() => {
     const labels = new Set();
@@ -112,8 +149,7 @@ export function PeerReviewPage({
     });
   }, [allPlayers, selectedRater, filterTeam]);
 
-  // ---------- Star rating helpers ----------
-
+  // ---------- Stars ----------
   const handleStarClick = (setter, value) => {
     setter(value);
     setStatusMsg("");
@@ -127,9 +163,7 @@ export function PeerReviewPage({
           <button
             key={v}
             type="button"
-            className={
-              v <= value ? "star-btn star-filled" : "star-btn star-empty"
-            }
+            className={v <= value ? "star-btn star-filled" : "star-btn star-empty"}
             onClick={() => handleStarClick(setter, v)}
           >
             ★
@@ -142,32 +176,32 @@ export function PeerReviewPage({
     </div>
   );
 
-  // ---------- Submit ----------
+  const toggleTarget = (name) => {
+    setSelectedTargets((prev) =>
+      prev.includes(name)
+        ? prev.filter((n) => n !== name)
+        : [...prev, name]
+    );
+    setStatusMsg("");
+  };
 
+  // ---------- Submit ----------
   const handleSubmit = async (e) => {
     e.preventDefault();
     setStatusMsg("");
 
+    if (!isSignedInPlayer) {
+      setStatusMsg("Peer voting is reserved for Turf Kings players.");
+      return;
+    }
+
     if (!selectedRater) {
-      setStatusMsg("Step 1: tap your own name first.");
-      return;
-    }
-    if (!selectedTarget) {
-      setStatusMsg("Step 2: tap the teammate you want to rate.");
+      setStatusMsg("Step 1: confirm who you are first.");
       return;
     }
 
-    if (!allPlayerNames.includes(selectedRater)) {
-      setStatusMsg("Only players on the Turf Kings squads can vote.");
-      return;
-    }
-    if (!allPlayerNames.includes(selectedTarget)) {
-      setStatusMsg("Please pick a valid teammate.");
-      return;
-    }
-
-    if (selectedRater === selectedTarget) {
-      setStatusMsg("You can’t rate yourself – pick a teammate instead.");
+    if (selectedTargets.length === 0) {
+      setStatusMsg("Step 2: tap one or more teammates to rate.");
       return;
     }
 
@@ -179,47 +213,64 @@ export function PeerReviewPage({
       return;
     }
 
-    const voteKey = `${LOCAL_VOTE_PREFIX}:${selectedTarget.toLowerCase()}`;
+    const raterNorm = normaliseName(selectedRater);
+    const nowIso = new Date().toISOString();
+    const docsToSend = [];
 
     try {
-      if (typeof window !== "undefined") {
-        const already = window.localStorage.getItem(voteKey);
-        if (already) {
-          setStatusMsg(
-            "You’ve already rated this player from this device. Thank you!"
-          );
-          return;
+      selectedTargets.forEach((targetName) => {
+        const targetNorm = normaliseName(targetName);
+        const voteKey = `${LOCAL_VOTE_PREFIX}:${raterNorm}:${targetNorm}`;
+
+        if (typeof window !== "undefined") {
+          const already = window.localStorage.getItem(voteKey);
+          if (already) {
+            return;
+          }
         }
-      }
+
+        const docData = {
+          raterName: selectedRater,
+          targetName,
+          attack: attack || null,
+          defence: defence || null,
+          gk: gk || null,
+          comment: comment.trim() || null,
+          createdAt: nowIso,
+        };
+
+        docsToSend.push({ docData, voteKey });
+      });
     } catch {
-      // ignore localStorage issues
+      // ignore localStorage errors
+    }
+
+    if (docsToSend.length === 0) {
+      setStatusMsg(
+        "You’ve already rated these teammates from this device. Thank you!"
+      );
+      return;
     }
 
     setSubmitting(true);
 
     try {
-      const docData = {
-        raterName: selectedRater,
-        targetName: selectedTarget,
-        attack: attack || null,
-        defence: defence || null,
-        gk: gk || null,
-        comment: comment.trim() || null,
-        createdAt: new Date().toISOString(),
-      };
-
-      await submitPeerRating(docData);
+      await Promise.all(
+        docsToSend.map(({ docData }) => submitPeerRating(docData))
+      );
 
       try {
         if (typeof window !== "undefined") {
-          window.localStorage.setItem(voteKey, "1");
+          docsToSend.forEach(({ voteKey }) => {
+            window.localStorage.setItem(voteKey, "1");
+          });
         }
       } catch {
         // ignore
       }
 
-      setStatusMsg("✅ Thanks, your rating has been saved.");
-      setSelectedTarget(null);
+      setStatusMsg("✅ Thanks, your ratings have been saved.");
+      setSelectedTargets([]);
       setAttack(0);
       setDefence(0);
       setGk(0);
@@ -227,7 +278,7 @@ export function PeerReviewPage({
     } catch (err) {
       console.error("Peer rating submit error", err);
       setStatusMsg(
-        "⚠️ Something went wrong saving your rating. Please try again."
+        "⚠️ Something went wrong saving your ratings. Please try again."
       );
     } finally {
       setSubmitting(false);
@@ -235,9 +286,9 @@ export function PeerReviewPage({
   };
 
   const handleChangeRater = () => {
-    if (raterLocked) return; // don’t allow change when verified from auth
+    if (raterLocked) return;
     setSelectedRater(null);
-    setSelectedTarget(null);
+    setSelectedTargets([]);
     setAttack(0);
     setDefence(0);
     setGk(0);
@@ -245,8 +296,14 @@ export function PeerReviewPage({
     setStatusMsg("");
   };
 
-  // ---------- Render ----------
+  const signedInName =
+    selectedRater ||
+    identity?.fullName ||
+    identity?.shortName ||
+    identity?.email ||
+    null;
 
+  // ---------- Render ----------
   return (
     <div className="page peer-review-page">
       <header className="header">
@@ -264,15 +321,15 @@ export function PeerReviewPage({
       </header>
 
       <section className="card peer-card">
-        {/* STEP 1: WHO ARE YOU? */}
+        {/* STEP 1 */}
         <div className="peer-step">
           <div className="peer-step-header">
             <h2>Step 1 – Who are you?</h2>
-            {selectedRater && (
+            {signedInName && isSignedInPlayer && (
               <div className="peer-current-rater">
                 Voting as{" "}
                 <strong>
-                  {selectedRater}
+                  {selectedRater || signedInName}
                   {raterLocked ? " (verified)" : ""}
                 </strong>{" "}
                 {!raterLocked && (
@@ -288,11 +345,30 @@ export function PeerReviewPage({
             )}
           </div>
 
-          {!selectedRater && (
+          {!isSignedInPlayer && (
+            <>
+              {isSpectator ? (
+                <p className="muted small">
+                  You are signed in as a spectator. Only{" "}
+                  <strong>Turf Kings players</strong> can submit peer ratings.
+                  Use the player sign-in on the home screen.
+                </p>
+              ) : (
+                <p className="muted small">
+                  You are not signed in as a Turf Kings player. Peer voting is
+                  reserved for{" "}
+                  <strong>signed-in Turf Kings players</strong>. Use the sign-in
+                  on the home screen.
+                </p>
+              )}
+            </>
+          )}
+
+          {isSignedInPlayer && !selectedRater && (
             <>
               <p className="muted small">
-                Tap your name from the Turf Kings squads. Only players in
-                the squads can submit ratings.
+                Tap your name from the Turf Kings squads. Only players in the
+                squads can submit ratings.
               </p>
               <div className="peer-player-chip-row">
                 {allPlayers.map((p) => (
@@ -317,16 +393,18 @@ export function PeerReviewPage({
           )}
         </div>
 
-        {/* STEP 2: PICK TEAMMATE + RATE */}
+        {/* STEP 2 */}
         <div className="peer-step">
-          <h2>Step 2 – Rate a teammate</h2>
-          {!selectedRater && (
+          <h2>Step 2 – Rate your teammates</h2>
+
+          {!isSignedInPlayer && (
             <p className="muted">
-              Select yourself in Step 1 before choosing a teammate.
+              We need to know who you are in Step 1 before you can rate
+              teammates.
             </p>
           )}
 
-          {selectedRater && (
+          {isSignedInPlayer && selectedRater && (
             <>
               {/* Filters */}
               <div className="peer-filter-row">
@@ -341,7 +419,7 @@ export function PeerReviewPage({
                       }`}
                       onClick={() => {
                         setFilterTeam(label);
-                        setSelectedTarget(null);
+                        setSelectedTargets([]);
                       }}
                     >
                       {label === "ALL" ? "All teams" : label}
@@ -350,7 +428,7 @@ export function PeerReviewPage({
                 </div>
               </div>
 
-              {/* Player cards WITH PHOTOS (like PlayerCard/Formations) */}
+              {/* Player cards (multi-select) */}
               <div className="peer-player-grid">
                 {candidateTargets.length === 0 && (
                   <p className="muted small">
@@ -358,7 +436,7 @@ export function PeerReviewPage({
                   </p>
                 )}
                 {candidateTargets.map((p) => {
-                  const isActive = selectedTarget === p.name;
+                  const isActive = selectedTargets.includes(p.name);
                   const photoUrl = getPhotoFor(p.name);
                   const initials = getInitials(p.name);
 
@@ -369,10 +447,7 @@ export function PeerReviewPage({
                       className={`peer-player-card ${
                         isActive ? "active" : ""
                       }`}
-                      onClick={() => {
-                        setSelectedTarget(p.name);
-                        setStatusMsg("");
-                      }}
+                      onClick={() => toggleTarget(p.name)}
                     >
                       <div className="peer-player-avatar">
                         {photoUrl ? (
@@ -405,14 +480,14 @@ export function PeerReviewPage({
                 <div className="peer-rating-card">
                   <h3>
                     Rating{" "}
-                    {selectedTarget ? (
+                    {selectedTargets.length > 0 ? (
                       <span className="highlight-name">
-                        {selectedTarget}
+                        {selectedTargets.length === 1
+                          ? selectedTargets[0]
+                          : `${selectedTargets.length} teammates`}
                       </span>
                     ) : (
-                      <span className="muted">
-                        no teammate selected yet
-                      </span>
+                      <span className="muted">no teammate selected yet</span>
                     )}
                   </h3>
 
@@ -441,7 +516,7 @@ export function PeerReviewPage({
                       className="primary-btn"
                       disabled={submitting}
                     >
-                      {submitting ? "Sending..." : "Submit rating"}
+                      {submitting ? "Sending..." : "Submit rating(s)"}
                     </button>
                     <button
                       type="button"

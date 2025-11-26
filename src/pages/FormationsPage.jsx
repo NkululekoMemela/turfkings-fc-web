@@ -8,12 +8,36 @@ import {
   getDocs,
   setDoc,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
-import { useAuth } from "../auth/AuthContext";
+
+// ---------------- HELPERS ----------------
+
+// Title Case helper
+function toTitleCase(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+// Small helper for Firestore document ids (for photos)
+function slugFromName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
 
 // ---------------- GAME TYPES ----------------
 const GAME_TYPE_5 = "5";
 const GAME_TYPE_11 = "11";
+
+// Single source of truth for people
+const MEMBERS_COLLECTION = "members";
 
 // ------------- 5-A-SIDE FORMATIONS -------------
 const FORMATIONS_5 = {
@@ -246,22 +270,16 @@ function resolveTeamLineup(
   return buildDefaultLineup(players, defaultFormationId, formationsMap);
 }
 
-// small helper for Firestore document ids
-function slugFromName(name) {
-  return name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-}
-
 export function FormationsPage({
   teams,
   currentMatch,
-  playerPhotosByName = {},   // 🔥 NEW: seeded from App (state)
+  playerPhotosByName = {},
+  identity = null, // ✅ from EntryPage (same as PeerReviewPage)
+  authUser = null, // optional – Firebase user if you want it
   onBack,
   onGoToSquads,
 }) {
-  // Gmail-based auth (for photo protection)
-  const { authUser, signInWithGoogle, signOut, canEditPlayer } = useAuth();
-
-  // ✅ For now: everyone can edit lineups (5s + 11s) for brainstorming
+  // ✅ Everyone can edit lineups (brainstorming & screenshots)
   const canEditLineups = true;
 
   // all saved lineups (per teamId, per game type)
@@ -280,11 +298,59 @@ export function FormationsPage({
   const selectedTeam =
     teams.find((t) => t.id === selectedTeamId) || teams[0] || null;
 
-  // full Turf Kings player pool = all unique players from all teams
-  const turfKingsPlayers = useMemo(
-    () => Array.from(new Set(teams.flatMap((t) => t.players || []))),
-    [teams]
+  // ---------- MEMBERS FROM FIRESTORE (for 11s + player pool) ----------
+  const [members, setMembers] = useState([]);
+
+  useEffect(() => {
+    const colRef = collection(db, MEMBERS_COLLECTION);
+    const unsub = onSnapshot(
+      colRef,
+      (snap) => {
+        const list = snap.docs.map((d) => {
+          const data = d.data() || {};
+          return {
+            id: d.id,
+            fullName: toTitleCase(data.fullName || ""),
+            status: data.status || "active",
+          };
+        });
+        const active = list.filter((m) => m.status === "active");
+        active.sort((a, b) => a.fullName.localeCompare(b.fullName));
+        setMembers(active);
+      },
+      (err) => {
+        console.error("Error loading members for formations:", err);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  const dbPlayerNames = useMemo(
+    () => members.map((m) => m.fullName),
+    [members]
   );
+
+  // full Turf Kings player pool = all unique players from all teams + active members
+  const turfKingsPlayers = useMemo(() => {
+    const set = new Set();
+
+    // seeded squads
+    teams.forEach((t) => {
+      (t.players || []).forEach((p) => {
+        const name = toTitleCase(p);
+        if (name) set.add(name);
+      });
+    });
+
+    // DB players (active members, includes unseeded like Zenande)
+    dbPlayerNames.forEach((name) => {
+      const canon = toTitleCase(name);
+      if (canon) set.add(canon);
+    });
+
+    const arr = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return arr;
+  }, [teams, dbPlayerNames]);
 
   const formationsMap =
     gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
@@ -296,7 +362,7 @@ export function FormationsPage({
   // which player list to use for seeding this mode
   const playerPool =
     gameType === GAME_TYPE_11
-      ? turfKingsPlayers
+      ? turfKingsPlayers // ALL players for 11s
       : selectedTeam?.players || [];
 
   const [lineup, setLineup] = useState(() =>
@@ -324,7 +390,14 @@ export function FormationsPage({
     setLineup(next);
     setSelectedPlayer(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeamId, selectedTeam, gameType, lineupsByTeam, teams]);
+  }, [
+    selectedTeamId,
+    selectedTeam,
+    gameType,
+    lineupsByTeam,
+    teams,
+    turfKingsPlayers,
+  ]);
 
   const formation =
     formationsMap[lineup.formationId] ||
@@ -332,30 +405,19 @@ export function FormationsPage({
     Object.values(formationsMap)[0];
 
   // -------- player photos (DB-backed + seeded from App) --------
-  const [playerPhotos, setPlayerPhotos] = useState(
-    playerPhotosByName || {}
-  );
-  const [photoPlayer, setPhotoPlayer] = useState("");
+  const [playerPhotos, setPlayerPhotos] = useState(playerPhotosByName || {});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoMessage, setPhotoMessage] = useState("");
   const [showPhotoPanel, setShowPhotoPanel] = useState(false); // collapsible
 
-  // 🔥 Merge photos coming from App state (playerPhotosByName) into local map
+  // merge photos coming from App state (playerPhotosByName) into local map
   useEffect(() => {
     if (!playerPhotosByName) return;
     setPlayerPhotos((prev) => ({
       ...playerPhotosByName,
-      ...prev, // keep any that were added locally
+      ...prev,
     }));
   }, [playerPhotosByName]);
-
-  // players available for photo dropdown
-  const playersForPhotoSelect = useMemo(() => {
-    if (gameType === GAME_TYPE_11) {
-      return turfKingsPlayers;
-    }
-    return selectedTeam?.players || [];
-  }, [gameType, turfKingsPlayers, selectedTeam]);
 
   // load photos from Firestore once and MERGE into current map
   useEffect(() => {
@@ -379,39 +441,52 @@ export function FormationsPage({
     loadPhotos();
   }, []);
 
-  // keep selected "photo player" in sync with mode / pool
-  useEffect(() => {
-    const players = playersForPhotoSelect;
-    const first = players[0] || "";
-    setPhotoPlayer((prev) =>
-      prev && players.includes(prev) ? prev : first
-    );
-  }, [playersForPhotoSelect]);
+  // ---------- VERIFIED PLAYER (same idea as PeerReview) ----------
+
+  const verifiedPlayerName = useMemo(() => {
+    // Only care about real TurfKings roles
+    const role = identity?.role || null;
+    const isRealPlayer =
+      role === "player" || role === "captain" || role === "admin";
+
+    if (!isRealPlayer) return null;
+
+    const rawName =
+      identity.fullName ||
+      identity.shortName ||
+      identity.displayName ||
+      identity.name ||
+      null;
+
+    if (!rawName) return null;
+
+    const candidate = toTitleCase(rawName);
+
+    // If their name is in the TurfKings pool, snap to that canonical spelling
+    const match =
+      turfKingsPlayers.find(
+        (p) => p.toLowerCase() === candidate.toLowerCase()
+      ) || candidate;
+
+    return match;
+  }, [identity, turfKingsPlayers]);
+
+  const isVerifiedPlayer = !!verifiedPlayerName;
+  const photoPlayer = verifiedPlayerName;
 
   const handlePhotoFileChange = async (e) => {
     const file = e.target.files?.[0];
-    if (!file || !photoPlayer) return;
+    if (!file) return;
+
+    if (!isVerifiedPlayer || !photoPlayer) {
+      setPhotoMessage(
+        "We can't tell which player you are. Please verify your player identity on the home screen first."
+      );
+      e.target.value = "";
+      return;
+    }
 
     setPhotoMessage("");
-
-    const playerId = slugFromName(photoPlayer);
-
-    // 🔒 Identity check via Gmail profile
-    if (!authUser) {
-      setPhotoMessage(
-        "You must sign in with your Gmail before uploading a photo."
-      );
-      e.target.value = "";
-      return;
-    }
-    if (!canEditPlayer(playerId)) {
-      setPhotoMessage(
-        `You are signed in as ${authUser.email}, which is not linked to ${photoPlayer}'s card. Ask Nkululeko to map your Gmail to this player, or sign in with the correct address.`
-      );
-      e.target.value = "";
-      return;
-    }
-
     setUploadingPhoto(true);
 
     try {
@@ -431,6 +506,8 @@ export function FormationsPage({
           teamId: selectedTeam ? selectedTeam.id : "turf_kings",
           photoData: dataUrl,
           updatedAt: serverTimestamp(),
+          // optional: who uploaded
+          uploadedByEmail: authUser?.email || identity?.email || null,
         },
         { merge: true }
       );
@@ -650,10 +727,9 @@ export function FormationsPage({
 
         <h1>Lineups &amp; Formations</h1>
         <p className="subtitle">
-          Design{" "}
-          <strong>5-a-side and 11-a-side lineups</strong> for your Turf Kings
-          teams. Everyone can move players around on this device to brainstorm
-          shapes and take screenshots.
+          Design <strong>5-a-side and 11-a-side lineups</strong> for your Turf
+          Kings teams. Everyone can move players around on this device to
+          brainstorm shapes and take screenshots.
         </p>
       </header>
 
@@ -708,8 +784,9 @@ export function FormationsPage({
               <label>11-a-side squad</label>
               <p className="muted small">
                 Using full Turf Kings player pool{" "}
-                <strong>({turfKingsPlayers.length} players)</strong>. Perfect
-                for brainstorming XI ideas.
+                <strong>({turfKingsPlayers.length} players)</strong>. Includes
+                new sign-ups like Zenande even before they are seeded into
+                squads.
               </p>
             </div>
           )}
@@ -845,56 +922,20 @@ export function FormationsPage({
                   the TurfKings database for future awards and player cards.
                 </p>
 
-                {/* Auth status / actions */}
                 <div className="field-row">
-                  {authUser ? (
-                    <div className="muted small">
-                      <p>
-                        Signed in as <strong>{authUser.email}</strong>{" "}
-                        {authUser.role === "captain"
-                          ? "(captain – can update any player)."
-                          : authUser.playerId
-                          ? "(you can update your own card)."
-                          : "(email not yet linked to a specific player – ask Nkululeko)."}
-                      </p>
-                      <button
-                        type="button"
-                        className="secondary-btn"
-                        onClick={signOut}
-                      >
-                        Sign out
-                      </button>
-                    </div>
-                  ) : (
+                  {isVerifiedPlayer ? (
                     <p className="muted small">
-                      You are not signed in.{" "}
-                      <button
-                        type="button"
-                        className="link-btn"
-                        onClick={signInWithGoogle}
-                      >
-                        Sign in with your Gmail
-                      </button>{" "}
-                      so uploads are linked to your player card.
+                      Uploading as{" "}
+                      <strong>{verifiedPlayerName}</strong>{" "}
+                      (verified on the home screen).
+                    </p>
+                  ) : (
+                    <p className="error-text small">
+                      We can&apos;t tell which player you are. Please verify
+                      your player identity on the home screen before uploading a
+                      photo.
                     </p>
                   )}
-                </div>
-
-                <div className="field-row">
-                  <label>Player</label>
-                  <select
-                    value={photoPlayer}
-                    onChange={(e) => {
-                      setPhotoPlayer(e.target.value);
-                      setPhotoMessage("");
-                    }}
-                  >
-                    {playersForPhotoSelect.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
                 </div>
 
                 <div className="field-row">
@@ -903,7 +944,7 @@ export function FormationsPage({
                     type="file"
                     accept="image/*"
                     onChange={handlePhotoFileChange}
-                    disabled={uploadingPhoto}
+                    disabled={uploadingPhoto || !isVerifiedPlayer}
                   />
                 </div>
 
