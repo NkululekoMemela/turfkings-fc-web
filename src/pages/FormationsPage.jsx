@@ -1,19 +1,43 @@
 // src/pages/FormationsPage.jsx
 
-import React, { useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth, db } from "../firebaseConfig";
+import React, { useEffect, useMemo, useState } from "react";
+import { db } from "../firebaseConfig";
 import {
   collection,
   doc,
   getDocs,
   setDoc,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
+
+// ---------------- HELPERS ----------------
+
+// Title Case helper
+function toTitleCase(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+// Small helper for Firestore document ids (for photos)
+function slugFromName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
 
 // ---------------- GAME TYPES ----------------
 const GAME_TYPE_5 = "5";
 const GAME_TYPE_11 = "11";
+
+// Single source of truth for people
+const MEMBERS_COLLECTION = "members";
 
 // ------------- 5-A-SIDE FORMATIONS -------------
 const FORMATIONS_5 = {
@@ -50,7 +74,6 @@ const FORMATIONS_5 = {
       { id: "p5", label: "GK", x: 50, y: 88 },
     ],
   },
-  // 1 attacker, 1 mid, 2 defenders
   "1-1-2": {
     id: "1-1-2",
     label: "1-1-2",
@@ -119,6 +142,57 @@ const FORMATIONS_11 = {
       { id: "p11", label: "GK", x: 50, y: 88 },
     ],
   },
+  "4-2-3-1": {
+    id: "4-2-3-1",
+    label: "4-2-3-1",
+    positions: [
+      { id: "p1", label: "ST", x: 50, y: 18 },
+      { id: "p2", label: "LAM", x: 30, y: 30 },
+      { id: "p3", label: "CAM", x: 50, y: 30 },
+      { id: "p4", label: "RAM", x: 70, y: 30 },
+      { id: "p5", label: "LDM", x: 38, y: 42 },
+      { id: "p6", label: "RDM", x: 62, y: 42 },
+      { id: "p7", label: "LB", x: 22, y: 62 },
+      { id: "p8", label: "LCB", x: 38, y: 70 },
+      { id: "p9", label: "RCB", x: 62, y: 70 },
+      { id: "p10", label: "RB", x: 78, y: 62 },
+      { id: "p11", label: "GK", x: 50, y: 88 },
+    ],
+  },
+  "3-4-3": {
+    id: "3-4-3",
+    label: "3-4-3",
+    positions: [
+      { id: "p1", label: "LW", x: 20, y: 20 },
+      { id: "p2", label: "ST", x: 50, y: 18 },
+      { id: "p3", label: "RW", x: 80, y: 20 },
+      { id: "p4", label: "LCM", x: 35, y: 38 },
+      { id: "p5", label: "RCM", x: 65, y: 38 },
+      { id: "p6", label: "LWB", x: 25, y: 50 },
+      { id: "p7", label: "RWB", x: 75, y: 50 },
+      { id: "p8", label: "LCB", x: 32, y: 68 },
+      { id: "p9", label: "CB", x: 50, y: 72 },
+      { id: "p10", label: "RCB", x: 68, y: 68 },
+      { id: "p11", label: "GK", x: 50, y: 88 },
+    ],
+  },
+  "4-1-4-1": {
+    id: "4-1-4-1",
+    label: "4-1-4-1",
+    positions: [
+      { id: "p1", label: "ST", x: 50, y: 18 },
+      { id: "p2", label: "LM", x: 25, y: 32 },
+      { id: "p3", label: "LCM", x: 40, y: 36 },
+      { id: "p4", label: "RCM", x: 60, y: 36 },
+      { id: "p5", label: "RM", x: 75, y: 32 },
+      { id: "p6", label: "CDM", x: 50, y: 46 },
+      { id: "p7", label: "LB", x: 22, y: 62 },
+      { id: "p8", label: "LCB", x: 38, y: 70 },
+      { id: "p9", label: "RCB", x: 62, y: 70 },
+      { id: "p10", label: "RB", x: 78, y: 62 },
+      { id: "p11", label: "GK", x: 50, y: 88 },
+    ],
+  },
 };
 
 const DEFAULT_FORMATION_ID_11 = "4-3-3";
@@ -160,9 +234,7 @@ function buildDefaultLineup(playerList, formationId, formationsMap) {
   return { formationId: formation.id, positions };
 }
 
-// resolve which lineup to use for a given team + game type:
-// supports old flat {formationId, positions} (5-a-side only)
-// and new shape { "5": {...}, "11": {...} }
+// resolve which lineup to use for a given team + game type
 function resolveTeamLineup(
   team,
   gameType,
@@ -198,21 +270,17 @@ function resolveTeamLineup(
   return buildDefaultLineup(players, defaultFormationId, formationsMap);
 }
 
-// small helper for Firestore document ids
-function slugFromName(name) {
-  return name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-}
-
-export function FormationsPage({ teams, currentMatch, onBack }) {
-  // auth -> only captains edit lineups, everyone can view / upload photos
-  const [currentUser, setCurrentUser] = useState(null);
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user || null);
-    });
-    return () => unsub();
-  }, []);
-  const isCaptain = !!currentUser;
+export function FormationsPage({
+  teams,
+  currentMatch,
+  playerPhotosByName = {},
+  identity = null, // ✅ from EntryPage (same as PeerReviewPage)
+  authUser = null, // optional – Firebase user if you want it
+  onBack,
+  onGoToSquads,
+}) {
+  // ✅ Everyone can edit lineups (brainstorming & screenshots)
+  const canEditLineups = true;
 
   // all saved lineups (per teamId, per game type)
   const [lineupsByTeam, setLineupsByTeam] = useState(() =>
@@ -230,10 +298,59 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
   const selectedTeam =
     teams.find((t) => t.id === selectedTeamId) || teams[0] || null;
 
-  // full Turf Kings player pool = all unique players from all teams
-  const turfKingsPlayers = Array.from(
-    new Set(teams.flatMap((t) => t.players || []))
+  // ---------- MEMBERS FROM FIRESTORE (for 11s + player pool) ----------
+  const [members, setMembers] = useState([]);
+
+  useEffect(() => {
+    const colRef = collection(db, MEMBERS_COLLECTION);
+    const unsub = onSnapshot(
+      colRef,
+      (snap) => {
+        const list = snap.docs.map((d) => {
+          const data = d.data() || {};
+          return {
+            id: d.id,
+            fullName: toTitleCase(data.fullName || ""),
+            status: data.status || "active",
+          };
+        });
+        const active = list.filter((m) => m.status === "active");
+        active.sort((a, b) => a.fullName.localeCompare(b.fullName));
+        setMembers(active);
+      },
+      (err) => {
+        console.error("Error loading members for formations:", err);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  const dbPlayerNames = useMemo(
+    () => members.map((m) => m.fullName),
+    [members]
   );
+
+  // full Turf Kings player pool = all unique players from all teams + active members
+  const turfKingsPlayers = useMemo(() => {
+    const set = new Set();
+
+    // seeded squads
+    teams.forEach((t) => {
+      (t.players || []).forEach((p) => {
+        const name = toTitleCase(p);
+        if (name) set.add(name);
+      });
+    });
+
+    // DB players (active members, includes unseeded like Zenande)
+    dbPlayerNames.forEach((name) => {
+      const canon = toTitleCase(name);
+      if (canon) set.add(canon);
+    });
+
+    const arr = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return arr;
+  }, [teams, dbPlayerNames]);
 
   const formationsMap =
     gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
@@ -245,7 +362,7 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
   // which player list to use for seeding this mode
   const playerPool =
     gameType === GAME_TYPE_11
-      ? turfKingsPlayers
+      ? turfKingsPlayers // ALL players for 11s
       : selectedTeam?.players || [];
 
   const [lineup, setLineup] = useState(() =>
@@ -273,33 +390,50 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
     setLineup(next);
     setSelectedPlayer(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeamId, selectedTeam, gameType, lineupsByTeam, teams]);
+  }, [
+    selectedTeamId,
+    selectedTeam,
+    gameType,
+    lineupsByTeam,
+    teams,
+    turfKingsPlayers,
+  ]);
 
   const formation =
     formationsMap[lineup.formationId] ||
     formationsMap[defaultFormationId] ||
     Object.values(formationsMap)[0];
 
-  // -------- player photos (DB-backed) --------
-  const [playerPhotos, setPlayerPhotos] = useState({});
-  const [photoPlayer, setPhotoPlayer] = useState("");
+  // -------- player photos (DB-backed + seeded from App) --------
+  const [playerPhotos, setPlayerPhotos] = useState(playerPhotosByName || {});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoMessage, setPhotoMessage] = useState("");
   const [showPhotoPanel, setShowPhotoPanel] = useState(false); // collapsible
 
-  // load photos once
+  // merge photos coming from App state (playerPhotosByName) into local map
+  useEffect(() => {
+    if (!playerPhotosByName) return;
+    setPlayerPhotos((prev) => ({
+      ...playerPhotosByName,
+      ...prev,
+    }));
+  }, [playerPhotosByName]);
+
+  // load photos from Firestore once and MERGE into current map
   useEffect(() => {
     async function loadPhotos() {
       try {
         const snap = await getDocs(collection(db, "playerPhotos"));
-        const map = {};
-        snap.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (data?.name && data?.photoData) {
-            map[data.name] = data.photoData;
-          }
+        setPlayerPhotos((prev) => {
+          const map = { ...prev };
+          snap.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data?.name && data?.photoData) {
+              map[data.name] = data.photoData;
+            }
+          });
+          return map;
         });
-        setPlayerPhotos(map);
       } catch (err) {
         console.error("Failed to load player photos:", err);
       }
@@ -307,18 +441,50 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
     loadPhotos();
   }, []);
 
-  // keep selected "photo player" in sync with team
-  useEffect(() => {
-    const players = selectedTeam?.players || [];
-    const first = players[0] || "";
-    setPhotoPlayer((prev) =>
-      prev && players.includes(prev) ? prev : first
-    );
-  }, [selectedTeam]);
+  // ---------- VERIFIED PLAYER (same idea as PeerReview) ----------
+
+  const verifiedPlayerName = useMemo(() => {
+    // Only care about real TurfKings roles
+    const role = identity?.role || null;
+    const isRealPlayer =
+      role === "player" || role === "captain" || role === "admin";
+
+    if (!isRealPlayer) return null;
+
+    const rawName =
+      identity.fullName ||
+      identity.shortName ||
+      identity.displayName ||
+      identity.name ||
+      null;
+
+    if (!rawName) return null;
+
+    const candidate = toTitleCase(rawName);
+
+    // If their name is in the TurfKings pool, snap to that canonical spelling
+    const match =
+      turfKingsPlayers.find(
+        (p) => p.toLowerCase() === candidate.toLowerCase()
+      ) || candidate;
+
+    return match;
+  }, [identity, turfKingsPlayers]);
+
+  const isVerifiedPlayer = !!verifiedPlayerName;
+  const photoPlayer = verifiedPlayerName;
 
   const handlePhotoFileChange = async (e) => {
     const file = e.target.files?.[0];
-    if (!file || !photoPlayer) return;
+    if (!file) return;
+
+    if (!isVerifiedPlayer || !photoPlayer) {
+      setPhotoMessage(
+        "We can't tell which player you are. Please verify your player identity on the home screen first."
+      );
+      e.target.value = "";
+      return;
+    }
 
     setPhotoMessage("");
     setUploadingPhoto(true);
@@ -337,10 +503,11 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
         doc(db, "playerPhotos", docId),
         {
           name: photoPlayer,
-          // teamId is optional now since 11-a-side is the full club
           teamId: selectedTeam ? selectedTeam.id : "turf_kings",
           photoData: dataUrl,
           updatedAt: serverTimestamp(),
+          // optional: who uploaded
+          uploadedByEmail: authUser?.email || identity?.email || null,
         },
         { merge: true }
       );
@@ -392,11 +559,10 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
       let nextEntry;
 
       if (!prevEntry) {
-        // first time saving for this team
-        nextEntry = { [GAME_TYPE_5]: updatedLineup };
-        if (gameType === GAME_TYPE_11) {
-          nextEntry = { [GAME_TYPE_11]: updatedLineup };
-        }
+        nextEntry =
+          gameType === GAME_TYPE_11
+            ? { [GAME_TYPE_11]: updatedLineup }
+            : { [GAME_TYPE_5]: updatedLineup };
       } else if (prevEntry.formationId) {
         // legacy shape -> migrate
         if (gameType === GAME_TYPE_5) {
@@ -422,7 +588,7 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
   };
 
   const handleFormationChange = (e) => {
-    if (!isCaptain) return;
+    if (!canEditLineups) return;
     const newFormationId = e.target.value;
     const formationsForType =
       gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
@@ -450,7 +616,7 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
   };
 
   const handleBenchClick = (playerName) => {
-    if (!isCaptain) return;
+    if (!canEditLineups) return;
     if (
       selectedPlayer &&
       selectedPlayer.from === "bench" &&
@@ -464,7 +630,7 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
   };
 
   const handlePitchClick = (posId) => {
-    if (!isCaptain) return;
+    if (!canEditLineups) return;
 
     const currentAtPos = lineup.positions[posId] || null;
 
@@ -508,7 +674,7 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
   };
 
   const handleClearSpot = (posId) => {
-    if (!isCaptain) return;
+    if (!canEditLineups) return;
     const newPositions = { ...lineup.positions, [posId]: null };
     const updated = { ...lineup, positions: newPositions };
     setLineup(updated);
@@ -522,9 +688,18 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
     return (
       <div className="page lineups-page">
         <header className="header">
-          <button className="secondary-btn" type="button" onClick={onBack}>
-            ← Back to Home
-          </button>
+          <div className="header-top-row">
+            <button className="secondary-btn" type="button" onClick={onBack}>
+              ← Back to Home
+            </button>
+            <button
+              className="primary-btn"
+              type="button"
+              onClick={onGoToSquads}
+            >
+              Manage Squads
+            </button>
+          </div>
           <h1>Lineups &amp; Formations</h1>
         </header>
         <section className="card">
@@ -537,17 +712,24 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
   return (
     <div className="page lineups-page">
       <header className="header">
-        <button className="secondary-btn" type="button" onClick={onBack}>
-          ← Back to Home
-        </button>
+        <div className="header-top-row">
+          <button className="secondary-btn" type="button" onClick={onBack}>
+            ← Back to Home
+          </button>
+          <button
+            className="primary-btn"
+            type="button"
+            onClick={onGoToSquads}
+          >
+            Manage Squads
+          </button>
+        </div>
+
         <h1>Lineups &amp; Formations</h1>
         <p className="subtitle">
-          Design{" "}
-          <strong>5-a-side and 11-a-side lineups</strong> for your Turf Kings
-          teams.{" "}
-          <strong>
-            {isCaptain ? "Tap to edit lineups." : "Spectator mode – view only."}
-          </strong>
+          Design <strong>5-a-side and 11-a-side lineups</strong> for your Turf
+          Kings teams. Everyone can move players around on this device to
+          brainstorm shapes and take screenshots.
         </p>
       </header>
 
@@ -557,27 +739,26 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
           <div className="field-row inline-field">
             <label>Game type</label>
             <div className="segmented-toggle">
-                <button
+              <button
                 type="button"
                 className={`segmented-option ${
-                    gameType === GAME_TYPE_5 ? "active" : ""
+                  gameType === GAME_TYPE_5 ? "active" : ""
                 }`}
                 onClick={() => handleGameTypeClick(GAME_TYPE_5)}
-                >
+              >
                 5-a-side
-                </button>
-                <button
+              </button>
+              <button
                 type="button"
                 className={`segmented-option ${
-                    gameType === GAME_TYPE_11 ? "active" : ""
+                  gameType === GAME_TYPE_11 ? "active" : ""
                 }`}
                 onClick={() => handleGameTypeClick(GAME_TYPE_11)}
-                >
+              >
                 11-a-side
-                </button>
+              </button>
             </div>
           </div>
-
 
           {/* TEAM: buttons only for 5-a-side */}
           {gameType === GAME_TYPE_5 ? (
@@ -603,8 +784,9 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
               <label>11-a-side squad</label>
               <p className="muted small">
                 Using full Turf Kings player pool{" "}
-                <strong>({turfKingsPlayers.length} players)</strong>. Any
-                captain can set the starting XI and bench.
+                <strong>({turfKingsPlayers.length} players)</strong>. Includes
+                new sign-ups like Zenande even before they are seeded into
+                squads.
               </p>
             </div>
           )}
@@ -615,7 +797,7 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
               value={formation.id}
               onChange={handleFormationChange}
               className="lineups-select"
-              disabled={!isCaptain}
+              disabled={!canEditLineups}
             >
               {Object.values(formationsMap).map((f) => (
                 <option key={f.id} value={f.id}>
@@ -679,9 +861,8 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
               })}
             </div>
             <p className="muted helper-text">
-              {isCaptain
-                ? "Tap a player on the bench, then tap a spot on the pitch to place them. Double-click a spot to clear it."
-                : "Lineup set by captains. You are viewing the current shape on the pitch."}
+              Tap a bench player, then tap a spot on the pitch to place them.
+              Double-click a spot to clear it.
             </p>
           </div>
 
@@ -705,7 +886,7 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
                           isSelected ? "selected" : ""
                         }`}
                         onClick={() => handleBenchClick(p)}
-                        disabled={!isCaptain}
+                        disabled={!canEditLineups}
                       >
                         {p}
                       </button>
@@ -737,26 +918,24 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
               <div className="photo-upload-block">
                 <h4>Player photo</h4>
                 <p className="muted small">
-                  Any player can upload a profile picture. Photos are saved in
-                  the database for future awards (Player of the Month, top
-                  scorers, etc.).
+                  Upload a profile picture for your card. Photos are stored in
+                  the TurfKings database for future awards and player cards.
                 </p>
 
                 <div className="field-row">
-                  <label>Player</label>
-                  <select
-                    value={photoPlayer}
-                    onChange={(e) => {
-                      setPhotoPlayer(e.target.value);
-                      setPhotoMessage("");
-                    }}
-                  >
-                    {(selectedTeam.players || []).map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
+                  {isVerifiedPlayer ? (
+                    <p className="muted small">
+                      Uploading as{" "}
+                      <strong>{verifiedPlayerName}</strong>{" "}
+                      (verified on the home screen).
+                    </p>
+                  ) : (
+                    <p className="error-text small">
+                      We can&apos;t tell which player you are. Please verify
+                      your player identity on the home screen before uploading a
+                      photo.
+                    </p>
+                  )}
                 </div>
 
                 <div className="field-row">
@@ -765,7 +944,7 @@ export function FormationsPage({ teams, currentMatch, onBack }) {
                     type="file"
                     accept="image/*"
                     onChange={handlePhotoFileChange}
-                    disabled={uploadingPhoto}
+                    disabled={uploadingPhoto || !isVerifiedPlayer}
                   />
                 </div>
 

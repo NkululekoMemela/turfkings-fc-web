@@ -18,8 +18,13 @@ body {
   min-height: 100vh;
   display: flex;
   justify-content: center;
-  padding: 1.5rem;
-  background: radial-gradient(circle at top, #60a5fa 0, #020617 95%);
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at 0% 0%, #1d4ed8 0, transparent 55%),
+    radial-gradient(circle at 100% 100%, #22c55e 0, transparent 55%),
+    radial-gradient(circle at 100% 0%, #a855f7 0, transparent 55%),
+    linear-gradient(135deg, #020617, #020617);
+  color: #e5e7eb;
 }
 
 .page {
@@ -28,11 +33,12 @@ body {
   color: #e5e7eb;
 }
 
-/* ========== PAGE THEMES ========== */
-
-.landing-page .card {
-  background: linear-gradient(145deg, #1e3a8a, #0f172a);
+.page.landing-page {
+  max-width: 1120px;
+  width: 100%;
 }
+
+/* ========== PAGE THEMES ========== */
 
 .live-page .card {
   background: linear-gradient(145deg, #111827, #020617);
@@ -47,57 +53,76 @@ body {
   background: linear-gradient(145deg, #4c1d95, #1e1b4b);
 }
 
-/* ========== HEADER & CARD ========== */
+/* ========== HEADER & CARDS (LANDING) ========== */
 
 .header {
-  margin-bottom: 1.25rem;
+  margin-bottom: 18px;
 }
 
-.header h1 {
-  margin: 0 0 0.35rem;
-  font-size: 2.4rem;
-}
-
-.subtitle {
-  margin: 0;
-  color: #cbd5f5;
-  font-size: 0.95rem;
-}
-
-.card {
-  border-radius: 0.9rem;
-  padding: 1.5rem 1.75rem;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
-  margin-bottom: 1.25rem;
-}
-
-h2 {
-  margin-top: 0;
-}
-
-/* Logo + title row on landing page */
 .header-title {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  justify-content: flex-start;
+  gap: 14px;
 }
 
-/* Small circular logo */
-.header .tk-logo {
-  width: 40px !important;
-  height: 40px !important;
+.tk-logo {
+  width: 52px;
+  height: 52px;
   border-radius: 999px;
-  object-fit: contain;
+  object-fit: cover;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  background: radial-gradient(circle at 30% 20%, #ffffff 0, #e5e7eb 30%, #e2e8f0 60%, #0f172a 100%);
 }
 
-.website-links {
+.header-title h1 {
+  font-size: clamp(1.9rem, 3vw, 2.3rem);
+  letter-spacing: 0.04em;
+}
+
+.subtitle {
+  margin-top: 4px;
+  font-size: 0.95rem;
+  color: #9ca3af;
+}
+
+.header-top-row {
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.auth-status {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  justify-content: center;
+  gap: 10px 16px;
+  align-items: center;
 }
 
+.auth-text {
+  font-size: 0.95rem;
+}
+
+/* Glass cards (default for landing + shared) */
+.card {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(56, 189, 248, 0.08) 0, transparent 45%),
+    radial-gradient(circle at 100% 100%, rgba(34, 197, 94, 0.05) 0, transparent 50%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.98));
+  border-radius: 24px;
+  padding: 20px 22px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow:
+    0 18px 45px rgba(15, 23, 42, 0.85),
+    0 0 0 1px rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(18px);
+}
+
+.card h2 {
+  font-size: 1.4rem;
+  margin-bottom: 14px;
+}
 
 /* ========== FLEX ROWS (GENERIC) ========== */
 
@@ -112,7 +137,7 @@ h2 {
 }
 
 .actions-row {
-  justify-content: flex-end;
+  justify-content: center;
   margin-top: 0.85rem;
 }
 
@@ -126,8 +151,8 @@ h2 {
 .team-select label {
   display: block;
   font-size: 0.85rem;
-  color: #cbd5f5;
-  margin-bottom: 0.25rem;
+  margin-bottom: 6px;
+  color: #9ca3af;
 }
 
 select {
@@ -139,67 +164,6 @@ select {
   color: #e5e7eb;
 }
 
-.text-input {
-  width: 100%;
-  padding: 0.4rem 0.55rem;
-  border-radius: 0.5rem;
-  border: 1px solid #4b5563;
-  background: #020617;
-  color: #e5e7eb;
-}
-
-/* Buttons */
-
-.primary-btn,
-.secondary-btn,
-.toggle-btn {
-  border-radius: 999px;
-  border: none;
-  padding: 0.5rem 1.05rem;
-  font-size: 0.95rem;
-  cursor: pointer;
-}
-
-.primary-btn {
-  background: #22c55e;
-  color: #022c22;
-  font-weight: 600;
-}
-
-.primary-btn:hover {
-  background: #16a34a;
-}
-
-.secondary-btn {
-  background: rgba(15, 23, 42, 0.9);
-  color: #e5e7eb;
-  border: 1px solid #4b5563;
-}
-
-.secondary-btn:hover {
-  background: #1f2937;
-}
-
-/* Emphasis on team names in header & standby line */
-.score-team strong,
-.standby-label strong,
-.header p strong {
-  font-size: 0.95rem;
-}
-
-/* ========== LANDING PAGE EXTRAS ========== */
-
-.vs-label {
-  font-weight: 600;
-}
-
-.standby-label {
-  margin-top: 0.75rem;
-  font-size: 0.95rem;
-  color: #e5e7eb;
-}
-
-/* Make long option text not overflow (we shorten label in JS on mobile) */
 .team-select select {
   width: 100%;
   max-width: 100%;
@@ -208,9 +172,82 @@ select {
   text-overflow: ellipsis;
 }
 
-/* ---- LANDING MAIN BUTTONS (Start / View Stats / Manage Squads / Save) ---- */
+.text-input {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
+  outline: none;
+}
 
-/* Base: row layout, compact buttons */
+.text-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.7);
+}
+
+/* Buttons */
+
+.primary-btn,
+.secondary-btn,
+.toggle-btn,
+.website-btn {
+  border-radius: 999px;
+  border: none;
+  padding: 10px 20px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease-out,
+    box-shadow 0.12s ease-out,
+    background 0.15s ease-out,
+    color 0.15s ease-out;
+  white-space: nowrap;
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #ecfdf3;
+  box-shadow: 0 14px 28px rgba(22, 163, 74, 0.5);
+  font-weight: 600;
+}
+
+.primary-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 34px rgba(22, 163, 74, 0.7);
+}
+
+.primary-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 18px rgba(22, 163, 74, 0.5);
+}
+
+.secondary-btn {
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+}
+
+.secondary-btn:hover {
+  background: rgba(30, 64, 175, 0.9);
+  border-color: rgba(129, 140, 248, 0.9);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(30, 64, 175, 0.6);
+}
+
+.toggle-btn {
+  background: #111827;
+  color: #e5e7eb;
+  border: 1px solid #4b5563;
+}
+
+.toggle-btn.active {
+  background: #2563eb;
+  border-color: #60a5fa;
+}
+
+/* Landing main button group */
 .landing-page .actions-row {
   justify-content: center;
   flex-wrap: wrap;
@@ -229,19 +266,49 @@ select {
   justify-content: center;
 }
 
+/* Emphasis on team names in header & standby line */
+.score-team strong,
+.standby-label strong,
+.header p strong {
+  font-size: 0.95rem;
+}
+
+/* ========== LANDING PAGE MATCH BLOCK ========== */
+
+.match-setup-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.vs-label {
+  font-weight: 700;
+  font-size: 1.05rem;
+  text-align: center;
+  color: #e5e7eb;
+  padding-bottom: 4px;
+}
+
+.standby-label {
+  margin-top: 2px;
+  font-size: 0.96rem;
+  color: #d1d5db;
+}
+
 /* ========== TEAM PHOTO & WEBSITE BUTTON ========== */
 
 .team-photo-card {
-  margin-top: 1rem;
-  padding: 0;            /* remove card padding around the image */
+  padding: 10px;
 }
 
 .team-photo {
   width: 100%;
-  max-width: none;       /* allow it to grow with the card */
-  border-radius: 0.75rem;
+  border-radius: 20px;
+  object-fit: cover;
   display: block;
-  margin: 0 auto;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.9);
 }
 
 .website-card {
@@ -249,54 +316,51 @@ select {
   text-align: center;
 }
 
+.website-links {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .website-btn {
-  display: inline-block;
-  padding: 0.75rem 1.75rem;
-  border-radius: 999px;
-  background-color: #05213f;
-  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-decoration: none;
-  font-weight: 600;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
-  transition: background-color 0.2s ease;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.25) 0, transparent 60%),
+    rgba(15, 23, 42, 0.98);
+  color: #e5e7eb;
+  border: 1px solid rgba(30, 64, 175, 0.9);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.9);
 }
 
 .website-btn:hover {
-  background-color: #0056b3;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.35) 0, transparent 60%),
+    rgba(15, 23, 42, 1);
+  transform: translateY(-1px);
 }
 
-/* ========== TICKER (SCROLLING RIBBON) ========== */
+/* ========== TICKER / RIBBON ========== */
 
 .ticker {
-  margin-top: 1rem;
-  margin-bottom: 1.5rem;
-  overflow: hidden;
-  white-space: nowrap;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 999px;
-  padding: 0.35rem 0.75rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-  font-size: 0.95rem;
+  margin: 14px 0 18px;
 }
 
 .ticker-inner {
-  display: inline-block;
-  padding-left: 100%; /* start off-screen to the right */
-  animation: ticker-scroll 30s linear infinite;
-}
-
-.ticker-inner span {
-  display: inline-block;
-  padding-right: 100%; /* enough space to scroll fully */
-}
-
-@keyframes ticker-scroll {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-100%);
-  }
+  border-radius: 999px;
+  padding: 8px 18px;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(56, 189, 248, 0.35) 0, transparent 55%),
+    radial-gradient(circle at 100% 50%, rgba(34, 197, 94, 0.25) 0, transparent 55%),
+    linear-gradient(90deg, #020617, #0f172a);
+  border: 1px solid rgba(96, 165, 250, 0.7);
+  color: #e5e7eb;
+  font-size: 0.9rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* ========== TIMER & SCOREBOARD ========== */
@@ -325,10 +389,9 @@ select {
 .score-team {
   text-align: center;
   flex: 1 1 0;
-  min-width: 0; /* allow shrink on mobile */
+  min-width: 0;
 }
 
-/* Name on scoreboard */
 .score-team-name {
   display: block;
   font-size: 1rem;
@@ -354,7 +417,7 @@ select {
 }
 
 .field-row {
-  margin-bottom: 0.6rem;
+  margin: 14px 0;
 }
 
 .field-row label {
@@ -367,18 +430,6 @@ select {
   display: flex;
   gap: 0.6rem;
   margin-bottom: 0.6rem;
-}
-
-.toggle-btn {
-  flex: 1;
-  background: #111827;
-  color: #e5e7eb;
-  border: 1px solid #4b5563;
-}
-
-.toggle-btn.active {
-  background: #2563eb;
-  border-color: #60a5fa;
 }
 
 .event-log {
@@ -413,14 +464,19 @@ select {
   text-decoration: underline;
 }
 
+/* ========== TEXT HELPERS ========== */
+
 .muted {
   color: #9ca3af;
 }
 
+.muted.small {
+  font-size: 0.8rem;
+}
+
 .error-text {
   color: #f97373;
-  font-size: 0.8rem;
-  margin-top: 0.15rem;
+  font-size: 0.85rem;
 }
 
 /* ========== MODALS ========== */
@@ -428,20 +484,25 @@ select {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.76);
+  background: radial-gradient(circle at 10% 0%, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.98));
+  backdrop-filter: blur(6px);
   display: flex;
-  justify-content: center;
   align-items: center;
-  z-index: 20;
+  justify-content: center;
+  z-index: 40;
 }
 
 .modal {
-  background: #020617;
-  padding: 1.1rem 1.4rem;
-  border-radius: 0.85rem;
-  max-width: 460px;
-  width: 90%;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+  background: linear-gradient(135deg, #020617, #020617);
+  border-radius: 20px;
+  padding: 20px 22px;
+  width: min(420px, 95vw);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.9);
+}
+
+.modal h3 {
+  margin-bottom: 6px;
 }
 
 /* ========== TABLES (STATS PAGE) ========== */
@@ -509,69 +570,6 @@ th {
 .add-player-row {
   display: flex;
   gap: 0.5rem;
-}
-
-/* ========== RESPONSIVE TWEAKS ========== */
-
-@media (min-width: 1024px) {
-  .header h1 {
-    font-size: 2.7rem;
-  }
-
-  .timer-display {
-    font-size: 2.5rem;
-  }
-
-  .score-number {
-    font-size: 2.8rem;
-  }
-}
-
-/* Mobile-specific tweaks */
-@media (max-width: 480px) {
-  /* Smaller header on phones */
-  .header h1 {
-    font-size: 1.9rem;
-    line-height: 1.1;
-  }
-
-  .subtitle {
-    font-size: 0.85rem;
-  }
-
-  /* Keep score row side-by-side & tighter */
-  .score-row {
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-
-  .score-team-name {
-    font-size: 0.9rem;
-  }
-
-  .score-number {
-    font-size: 2.2rem;
-  }
-
-  .score-dash {
-    font-size: 2rem;
-  }
-
-  .timer-display {
-    font-size: 2rem;
-  }
-
-  /* Landing buttons: stacked, ~80% of card width, but not gigantic */
-  .landing-page .actions-row {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .landing-page .actions-row .primary-btn,
-  .landing-page .actions-row .secondary-btn {
-    width: 80%;
-    max-width: 260px;
-  }
 }
 
 /* ========== LINEUPS & FORMATIONS ========== */
@@ -822,7 +820,7 @@ th {
 .segmented-toggle {
   display: inline-flex;
   align-items: center;
-  background: #090318;          /* purple track */
+  background: #090318;
   border-radius: 999px;
   padding: 3px;
   gap: 2px;
@@ -832,20 +830,20 @@ th {
 .segmented-option {
   border: none;
   background: transparent;
-  color: #f9f5ff;               /* light text on purple */
+  color: #f9f5ff;
   padding: 6px 18px;
   border-radius: 999px;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.18s ease, color 0.18s ease,
-    transform 0.12s ease, box-shadow 0.18s ease;
+    transform 0.12s.ease, box-shadow 0.18s ease;
   white-space: nowrap;
 }
 
 .segmented-option.active {
-  background: #ffffff;          /* white pill */
-  color: #0c041b;               /* purple text */
+  background: #ffffff;
+  color: #0c041b;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
   transform: translateY(-1px);
 }
@@ -853,4 +851,1674 @@ th {
 .segmented-option:focus-visible {
   outline: 2px solid #e9d5ff;
   outline-offset: 2px;
+}
+
+/* ===== Stats page tab pills ===== */
+.stats-tabs .secondary-btn {
+  border-radius: 999px;
+  padding: 0.45rem 1.4rem;
+}
+
+.stats-tabs .secondary-btn.active {
+  border-color: #38bdf8;
+  background: linear-gradient(135deg, #22c55e, #38bdf8);
+  color: #0b1220;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.7);
+}
+
+/* ========== NEWS & HIGHLIGHTS PAGE ========== */
+
+.news-page .card {
+  background: linear-gradient(145deg, #0b1120, #020617);
+}
+
+.news-header-actions {
+  margin-top: 0.65rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* Hero layout */
+.news-hero-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+.news-hero-main {
+  flex: 2 1 260px;
+}
+
+.news-hero-side {
+  flex: 1 1 200px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.news-hero-text {
+  margin: 0.25rem 0;
+}
+
+.news-stat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.news-stat-chip {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(15, 23, 42, 0.9);
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.news-stat-chip span {
+  font-weight: 600;
+  color: #e5f3ff;
+}
+
+/* Headlines + biggest win grid */
+.news-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.news-column {
+  flex: 1 1 0;
+}
+
+.news-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.news-list-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: flex-start;
+}
+
+.news-tag {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #e5f3ff;
+}
+
+.news-match-feature {
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  background: radial-gradient(circle at top, #0f172a, #020617);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+}
+
+.news-match-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+  color: #cbd5f5;
+}
+
+.news-match-scoreline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+
+.news-match-scoreline .score {
+  font-size: 1.2rem;
+}
+
+.news-match-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+}
+
+/* Match-by-match recap list */
+.news-match-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.news-match-item {
+  padding: 0.6rem 0.4rem;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+}
+
+.news-match-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.news-match-number {
+  font-size: 0.85rem;
+  color: #cbd5f5;
+}
+
+.news-match-item .small {
+  font-size: 0.8rem;
+}
+
+.news-event-list {
+  list-style: none;
+  padding: 0.25rem 0 0 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.news-event-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.news-event-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.news-event-text {
+  min-width: 0;
+}
+
+.news-event-text strong {
+  font-weight: 600;
+}
+
+/* Responsive layout for news grid */
+@media (min-width: 900px) {
+  .news-grid {
+    flex-direction: row;
+  }
+}
+
+/* ===== MVP CARD ===== */
+
+.news-mvp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mvp-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.mvp-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 30% 20%, #38bdf8, #0f172a);
+  border: 2px solid rgba(248, 250, 252, 0.75);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.6);
+}
+
+.mvp-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mvp-initials {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #e5e7eb;
+}
+
+.mvp-label {
+  margin: 0 0 0.2rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #a5b4fc;
+}
+
+.mvp-name {
+  margin: 0;
+}
+
+.mvp-team {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+  color: #d1fae5;
+}
+
+.mvp-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mvp-stat-pill {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  background: rgba(15, 23, 42, 0.9);
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mvp-stat-pill strong {
+  font-size: 0.95rem;
+}
+
+/* ===== STREAK WATCH ===== */
+
+.news-streak-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.streak-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.streak-pill {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.9rem;
+  background: radial-gradient(circle at top left, #065f46, #022c22);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.streak-tag {
+  display: inline-block;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 243, 208, 0.6);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.35rem;
+}
+
+.streak-main {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
+}
+
+.streak-sub {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #a7f3d0;
+}
+
+/* ===== YEAR-END FUNCTION ===== */
+
+.year-end-card {
+  background: radial-gradient(circle at top, #0b1120, #020617);
+}
+
+.year-end-lead {
+  margin-top: 0.2rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  color: #bfdbfe;
+}
+
+/* Black-suit / tuxedo vibe for year-end card */
+.news-page .year-end-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, #111827 0, #020617 55%, #000000 100%);
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* subtle pinstripe overlay */
+.news-page .year-end-card::before {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  background-image:
+    linear-gradient(
+      135deg,
+      rgba(148, 163, 184, 0.10) 1px,
+      transparent 1px
+    ),
+    linear-gradient(45deg, rgba(15, 23, 42, 0.7), transparent);
+  background-size: 14px 14px, 100% 100%;
+  opacity: 0.9;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+.news-page .year-end-card > * {
+  position: relative;
+}
+
+.year-end-lead {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+/* Injury tribute card */
+.injury-tribute-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: center;
+  background: radial-gradient(circle at top left, #0f172a 0, #020617 55%);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  overflow: hidden;
+}
+
+.injury-photo-wrapper {
+  flex: 0 0 220px;
+  max-width: 260px;
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.65);
+}
+
+.injury-photo {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
+.injury-text {
+  flex: 1 1 260px;
+}
+
+.injury-text h2 {
+  margin-top: 0;
+  margin-bottom: 0.4rem;
+}
+
+.injury-cta {
+  margin-top: 0.6rem;
+  font-weight: 600;
+  color: #bbf7d0;
+}
+
+@media (max-width: 640px) {
+  .injury-tribute-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .injury-photo-wrapper {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+/* News recap header + pill toggle */
+.news-recap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pill-toggle-group {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.pill-toggle {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pill-toggle-active {
+  background: #0f172a;
+  color: #f9fafb;
+}
+
+/* ==== PLAYER CARD PAGE (FIFA-STYLE, DARKER PALETTE) ==== */
+/* =========================================
+   PLAYER CARDS – centering + comfortable gaps
+   ========================================= */
+
+/* Outer wrapper for the grid card */
+.player-card-grid-card {
+  padding: 1.6rem;
+  max-width: 1320px;     /* keep whole block nicely centered */
+  margin: 0 auto;
+}
+
+/* Main grid: centred, with generous gaps */
+.player-card-grid {
+  display: grid;
+  grid-template-columns: 1fr;          /* phones: 1 per row */
+  gap: 1.6rem 1.8rem;                  /* row / column gaps */
+  justify-items: stretch;
+}
+
+/* Each card fills its cell, no weird widths */
+.player-card.fifa-card {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 2 columns: small tablets / landscape phones */
+@media (min-width: 640px) {
+  .player-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 3 columns: tablets / small laptops */
+@media (min-width: 900px) {
+  .player-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* 4 columns: big desktop screens */
+@media (min-width: 1200px) {
+  .player-card-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+
+/* Shield-like card */
+.player-card.fifa-card {
+  position: relative;
+  padding: 1.1rem 1.2rem 1.3rem;
+  border-radius: 22px 22px 18px 18px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.18), transparent 55%),
+    linear-gradient(145deg, #020617 0%, #0f172a 40%, #111827 70%, #1f2937 100%);
+  color: #e5e7eb;
+  border: 1px solid rgba(248, 250, 252, 0.16);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+/* subtle top highlight */
+.player-card.fifa-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle at top center,
+    rgba(250, 204, 21, 0.35),
+    transparent 60%
+  );
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.player-card.fifa-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* TOP: rating + photo */
+.fifa-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.4rem;
+}
+
+.fifa-rating-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-weight: 700;
+}
+
+.fifa-rating-score {
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
+.fifa-rating-pos {
+  margin-top: 0.1rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  opacity: 0.9;
+}
+
+/* photo box */
+.fifa-photo-wrap {
+  width: 110px;
+  height: 140px;
+  overflow: hidden;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 0%, #facc15, #78350f);
+  border: 2px solid rgba(15, 23, 42, 0.7);
+}
+
+.fifa-photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fifa-photo-placeholder {
+  width: 110px;
+  height: 140px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+/* NAME BAR */
+.fifa-name-bar {
+  margin-top: 0.2rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 10px;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.45),
+    rgba(15, 23, 42, 0.8)
+  );
+  color: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.fifa-name {
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.fifa-team {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+/* MID: stats vs peer chips */
+.fifa-mid-row {
+  margin-top: 0.45rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.fifa-chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e5e7eb;
+  font-size: 0.78rem;
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.fifa-chip .chip-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+.fifa-chip .chip-value {
+  font-weight: 600;
+}
+
+/* ATTRIBUTES GRID (4 cells) */
+.fifa-attr-grid {
+  margin-top: 0.55rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.7rem;
+}
+
+.fifa-attr-cell {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+}
+
+.fifa-attr-label {
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.fifa-attr-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.fifa-attr-desc {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.fifa-attr-unrated .fifa-attr-value {
+  opacity: 0.4;
+}
+
+/* Bottom raw stats row */
+.fifa-bottom-stats {
+  margin-top: 0.6rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.7);
+  font-size: 0.78rem;
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+/* profile line at very bottom */
+.player-card-style {
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+}
+
+/* Filters */
+.player-card-filters {
+  margin-bottom: 0.75rem;
+}
+
+.player-card-filters-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.player-card-filter label {
+  display: block;
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+
+.player-card-filter select,
+.player-card-filter input {
+  min-width: 180px;
+}
+
+/* Mobile tweaks for FIFA cards */
+@media (max-width: 480px) {
+  .player-card.fifa-card {
+    padding: 1rem 0.9rem 1.1rem;
+  }
+
+  .fifa-card-top {
+    align-items: center;
+  }
+
+  .fifa-bottom-stats {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+}
+
+/* ========== RESPONSIVE (GLOBAL) ========== */
+
+@media (min-width: 1024px) {
+  .header-title h1 {
+    font-size: 2.7rem;
+  }
+
+  .timer-display {
+    font-size: 2.5rem;
+  }
+
+  .score-number {
+    font-size: 2.8rem;
+  }
+}
+
+/* Mobile-specific tweaks */
+@media (max-width: 768px) {
+  .app-root {
+    padding: 16px 10px;
+  }
+
+  .card {
+    padding: 18px 16px;
+    border-radius: 20px;
+  }
+
+  /* Keep three columns but tighten gap */
+  .match-setup-row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .vs-label {
+    padding-bottom: 0;
+    font-size: 0.95rem;
+  }
+
+  .header-top-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .landing-page .actions-row {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .landing-page .actions-row .primary-btn,
+  .landing-page .actions-row .secondary-btn {
+    width: 80%;
+    max-width: 260px;
+  }
+
+  .ticker-inner {
+    font-size: 0.82rem;
+  }
+
+  /* Scoreboard tweaks */
+  .score-row {
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .score-team-name {
+    font-size: 0.9rem;
+  }
+
+  .score-number {
+    font-size: 2.2rem;
+  }
+
+  .score-dash {
+    font-size: 2rem;
+  }
+
+  .timer-display {
+    font-size: 2rem;
+  }
+
+  .header-title h1 {
+    font-size: 1.9rem;
+    line-height: 1.1;
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+  }
+}
+
+/* === Make ticker scroll again (curved pill + smooth scroll) === */
+
+.ticker {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Keep the pill (glass ribbon) fixed + curved */
+.ticker-inner {
+  position: relative;
+  overflow: hidden;        /* clip the moving text inside */
+}
+
+/* Animate only the text, not the pill */
+.ticker-inner span {
+  display: inline-block;
+  white-space: nowrap;
+  padding-left: 100%;      /* start fully off-screen to the right */
+  padding-right: 100%;     /* room to exit on the left before looping */
+  animation: ticker-scroll 30s linear infinite;
+}
+
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);        /* text just about to appear from the right */
+  }
+  100% {
+    transform: translateX(-100%);    /* text has fully moved out to the left */
+  }
+}
+
+/* === Stats header buttons: Back left, other two on the right === */
+
+.stats-page .stats-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* Push the 2nd button ("News & highlights") to the right.
+   The 3rd ("Player cards") will naturally sit next to it. */
+.stats-page .stats-header-actions button:nth-child(2) {
+  margin-left: auto;
+}
+
+/* Keep them compact, no stretching */
+.stats-page .stats-header-actions button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* ---------- Mobile layout (stack nicely, no cut-off) ---------- */
+@media (max-width: 600px) {
+  /* Use a small grid on phones so layout is controlled */
+  .stats-page .stats-header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  /* Back: full-width on its own row, left-aligned */
+  .stats-page .stats-header-actions button:nth-child(1) {
+    grid-column: 1 / -1;
+    justify-self: flex-start;
+  }
+
+  /* News & highlights + Player cards: share the next row, right side */
+  .stats-page .stats-header-actions button:nth-child(2),
+  .stats-page .stats-header-actions button:nth-child(3) {
+    grid-column: auto;
+    justify-self: end;
+  }
+}
+
+/* Make match rows feel clickable */
+.stats-table .match-row {
+  cursor: pointer;
+}
+
+/* Smooth background transitions on cells */
+.stats-table .match-row td {
+  transition: background-color 0.15s ease;
+}
+
+/* Hover hint when not expanded */
+.stats-table .match-row:hover td {
+  background-color: rgba(148, 163, 184, 0.16); /* subtle grey/blue */
+}
+
+/* Slightly different colour when expanded (stronger and on cells) */
+.stats-table .match-row.expanded td {
+  background-color: rgba(59, 130, 246, 0.22); /* soft blue tint */
+}
+
+/* Keep the same colour even when hovering an expanded row */
+.stats-table .match-row.expanded:hover td {
+  background-color: rgba(59, 130, 246, 0.24);
+}
+
+/* Shade the scorers pane (details row) with a slightly different tint */
+.stats-table .match-details-row td {
+  background-color: rgba(19, 43, 80, 0.22); /* soft blue tint for scorers */
+  transition: background-color 0.15s ease;
+  border-top: 1px solid rgba(15, 23, 42, 0.8);
+}
+
+/* Little caret icon next to match number */
+.match-toggle-indicator {
+  opacity: 0.85;
+  font-size: 0.9rem;
+}
+
+/* Scorer lines under each team */
+.team-scorers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+}
+
+.scorer-line {
+  white-space: nowrap;
+}
+
+.player-card-you {
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.9),
+    0 12px 28px rgba(56, 189, 248, 0.45);
+}
+
+.you-pill {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #bbf7d0;
+}
+
+
+/* ----- Peer Review premium styling ----- */
+
+.peer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.peer-step {
+  border-top: 1px solid rgba(148, 163, 184, 0.4);
+  padding-top: 1rem;
+}
+
+.peer-step:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.peer-step-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.peer-current-rater {
+  font-size: 0.9rem;
+}
+
+.peer-player-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.player-chip-btn {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.7);
+  color: #e5e7eb;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.player-chip-btn:hover {
+  border-color: #f97316;
+}
+
+.peer-filter-row {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.peer-player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.peer-player-card {
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.peer-player-card.active {
+  border-color: #f97316;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.8);
+}
+
+.peer-player-avatar {
+  flex-shrink: 0;
+}
+
+.peer-avatar-photo {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background-size: cover;
+  background-position: center;
+  border: 2px solid #f97316;
+}
+
+.peer-avatar-fallback {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 64, 175, 0.85);
+  color: #e5e7eb;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.peer-player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.peer-player-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.peer-player-team {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.peer-rating-form {
+  margin-top: 1rem;
+}
+
+.peer-rating-card {
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.highlight-name {
+  color: #f97316;
+}
+
+.star-rating-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.star-rating-label {
+  min-width: 90px;
+  font-size: 0.85rem;
+}
+
+.star-rating-stars {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.star-btn {
+  border: none;
+  background: transparent;
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.star-filled {
+  color: #fbbf24;
+}
+
+.star-empty {
+  color: #4b5563;
+}
+
+.star-rating-value {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+
+/* ---- Peer review chips & cards tweaks ---- */
+
+.player-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #f9fafb; /* bright text */
+  font-size: 0.8rem;
+}
+
+.player-chip-btn:hover {
+  border-color: rgba(96, 165, 250, 0.9);
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.chip-initial {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(37, 99, 235, 0.9);
+  font-weight: 600;
+}
+
+.chip-name {
+  font-weight: 500;
+  color: #f9fafb;
+}
+
+.chip-team {
+  color: #94a3b8;
+}
+
+/* Player cards */
+
+.peer-player-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.9rem;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(30, 64, 175, 0.6);
+  color: #f9fafb;
+}
+
+.peer-player-card:hover {
+  border-color: rgba(96, 165, 250, 1);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.7);
+}
+
+.peer-player-card.active {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.8);
+}
+
+.peer-player-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.peer-avatar-photo {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+}
+
+.peer-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 20%, #38bdf8, #1d4ed8);
+  color: #f9fafb;
+  font-weight: 600;
+}
+
+.peer-player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.peer-player-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f9fafb; /* brighter */
+}
+
+.peer-player-team {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+/* Live match – centre and enlarge Goal/Shibobo + team buttons */
+.live-page .event-input .team-toggle {
+  display: flex;
+  justify-content: center;   /* centre horizontally */
+  align-items: center;
+  gap: 0.75rem;              /* space between buttons */
+  flex-wrap: wrap;
+  margin: 0.5rem 0 1rem;
+}
+
+.live-page .event-input .toggle-btn {
+  min-width: 120px;          /* make them wider */
+  padding: 0.6rem 1.4rem;    /* bigger tap area */
+  border-radius: 999px;      /* pill shape */
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+/* Last-3 form dots in Team Standings */
+.form-cell {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.form-dot {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* Win = green */
+.form-w {
+  background: rgba(34, 197, 94, 0.18);   /* soft green */
+  border: 1px solid #22c55e;
+  color: #bbf7d0;
+}
+
+/* Draw = grey/blue */
+.form-d {
+  background: rgba(148, 163, 184, 0.18);
+  border: 1px solid #94a3b8;
+  color: #e2e8f0;
+}
+
+/* Loss = red */
+.form-l {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid #ef4444;
+  color: #fecaca;
+}
+
+
+/* Wrapper already scrolls horizontally */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* Sticky "Team" column in standings */
+.stats-table .sticky-col {
+  position: sticky;
+  left: 0;
+  background: rgba(15, 23, 42, 0.98); /* match your table bg */
+  backdrop-filter: blur(4px);
+  z-index: 2;
+}
+
+/* Spectator pill base */
+.pill-toggle-spectator {
+  background: #020617;
+  color: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+/* Spectator when active (selected) */
+.pill-toggle-spectator-active {
+  background: #f9fafb;
+  color: #020617;
+  border-color: #020617;
+}
+
+/* ==== Pill toggle (player / spectator) ==== */
+
+.pill-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: #020617;          /* near-black bar */
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.7),
+              0 10px 30px rgba(15, 23, 42, 0.8);
+}
+
+.pill-toggle {
+  border: none;
+  outline: none;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  background: transparent;
+  color: #f9fafb;               /* white text on dark background */
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.18s ease-out,
+    color 0.18s ease-out,
+    box-shadow 0.18s ease-out,
+    transform 0.08s ease-out;
+}
+
+.pill-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.pill-toggle-active {
+  background: #f9fafb;          /* white pill */
+  color: #020617;               /* black/dark text */
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.65),
+    0 8px 20px rgba(15, 23, 42, 0.85);
+}
+
+.pill-toggle:focus-visible {
+  outline: 2px solid #e5e7eb;
+  outline-offset: 2px;
+}
+
+
+/* ========== PEER RATINGS ========== */
+
+.peer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.peer-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.peer-step-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.peer-current-rater {
+  font-size: 0.85rem;
+  color: #e5e7eb;
+}
+
+/* Filter row */
+.peer-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Grid of player cards */
+.peer-player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.75rem;
+  align-items: flex-start; /* let tall cards grow, no overlap */
+}
+
+/* Individual card */
+.peer-player-card {
+  background: radial-gradient(circle at top left, #020617 0, #020617 40%, #020617 100%);
+  border-radius: 1.25rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+/* active & rated states */
+.peer-player-card.active {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.55),
+    0 10px 30px rgba(15, 23, 42, 0.7);
+}
+
+.peer-player-card.rated {
+  border-color: #22c55e;
+  background: radial-gradient(circle at top left, #022c22, #020617);
+}
+
+/* top row: avatar + name button */
+.peer-player-main {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* avatar */
+.peer-player-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 0%, #38bdf8, #0f172a);
+}
+
+.peer-avatar-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.peer-avatar-fallback {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #e5e7eb;
+}
+
+/* text in card */
+.peer-player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.peer-player-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.peer-player-team {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+/* little green pill that says "Rated this week" */
+.peer-player-rated-tag {
+  margin-top: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(22, 163, 74, 0.14);
+  color: #4ade80;
+}
+
+/* inline rating panel inside card */
+.peer-player-rating-inline {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* star rows */
+.star-rating-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.star-rating-label {
+  min-width: 4.2rem;
+}
+
+.star-rating-stars {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.star-btn {
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.star-btn.star-filled {
+  color: #facc15;
+}
+
+.star-btn.star-empty {
+  color: #4b5563;
+}
+
+.star-rating-value {
+  min-width: 2.5rem;
+  text-align: right;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+/* small textarea inside card */
+.peer-player-rating-inline .peer-field textarea {
+  resize: vertical;
+  min-height: 48px;
+  max-height: 96px;
+}
+
+
+
+
+
+/* Make the active card behave like a little panel with room for the form */
+.peer-player-card.active {
+  align-items: flex-start;
+}
+
+/* Compact inline rating form so it doesn’t spill out of the card */
+.peer-inline-form {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.2);
+  font-size: 0.75rem;          /* smaller text */
+  line-height: 1.2;
+  max-height: 190px;           /* 🔒 hard cap so it never overflows */
+  overflow-y: auto;            /* scroll *inside* if needed */
+}
+
+/* Smaller, tighter star rows */
+.peer-inline-form .star-rating-row {
+  margin: 0.15rem 0;
+}
+
+.peer-inline-form .star-rating-label {
+  font-size: 0.72rem;
+}
+
+.peer-inline-form .star-rating-stars .star-btn {
+  font-size: 0.85rem;
+  padding: 0 0.15rem;
+}
+
+/* Tiny “Skip / 3/5” text */
+.peer-inline-form .star-rating-value {
+  font-size: 0.7rem;
+}
+
+/* Compact textarea */
+.peer-inline-form textarea.text-input {
+  font-size: 0.75rem;
+  min-height: 2.4rem;
+  padding: 0.35rem 0.5rem;
+}
+
+/* Compact action row + button */
+.peer-inline-form .peer-inline-actions {
+  margin-top: 0.45rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.peer-inline-form .peer-inline-actions .primary-btn {
+  font-size: 0.78rem;
+  padding: 0.4rem 0.9rem;
+}
+
+/* Make sure grid behaves nicely on small screens */
+.peer-player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .peer-player-grid {
+    grid-template-columns: 1fr;
+  }
 }

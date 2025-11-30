@@ -5,11 +5,22 @@ import { getTeamById } from "../core/teams.js";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 
-// 🔥 Firebase auth
-import { auth, signInWithGoogle, logOut } from "../firebaseConfig";
+// 🔥 Firebase auth (only need auth object here)
+import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
+import { isCaptainEmail } from "../core/captainAuth.js"; // captain email guard
 
 const CAPTAIN_CODES = ["11", "22", "3333"]; // any captain can approve pairing override
+
+// 💡 Fancy “selected pill” style (kept from your chosen version, but with black text)
+const activePrimaryStyle = {
+  background:
+    "radial-gradient(circle at 0% 0%, rgba(56,189,248,0.25), transparent 55%), radial-gradient(circle at 100% 100%, rgba(59,130,246,0.35), transparent 55%), linear-gradient(90deg, #22d3ee, #38bdf8, #6366f1)",
+  color: "#000000", // ⬅️ black text
+  boxShadow:
+    "0 0 0 1px rgba(148, 255, 255, 0.35), 0 0 24px rgba(56,189,248,0.50)",
+  border: "none",
+};
 
 export function LandingPage({
   teams,
@@ -24,7 +35,10 @@ export function LandingPage({
   onGoToSquads,
   onOpenBackupModal,
   onGoToLiveAsSpectator, // for viewers
-  onGoToFormations, // formations page
+  onGoToFormations, // formations page (now also where you manage squads)
+  onGoToNews, // News & Highlights
+  onGoToEntryDev, // goes to EntryPage (identity screen)
+  identity, // who this human said they are on EntryPage
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch;
 
@@ -48,9 +62,8 @@ export function LandingPage({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // 🔐 Firebase auth state (captain vs spectator)
+  // 🔐 Firebase auth state (for header + captain permissions)
   const [currentUser, setCurrentUser] = useState(null);
-  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -59,25 +72,32 @@ export function LandingPage({
     return () => unsub();
   }, []);
 
-  const isCaptain = !!currentUser;
+  // Captain gating is still based on email:
+  const userEmail = currentUser?.email || "";
+  const isCaptain = currentUser && isCaptainEmail(userEmail);
 
-  const handleSignInClick = async () => {
-    try {
-      setAuthError("");
-      await signInWithGoogle();
-    } catch (err) {
-      console.error("Sign-in failed:", err);
-      setAuthError("Could not sign in. Please try again.");
-    }
-  };
+  // ---------- Entry identity label ----------
+  const entryRole = identity?.role || null;
+  let entryIdentityLabel = "";
+  if (entryRole === "admin") {
+    entryIdentityLabel = "admin";
+  } else if (entryRole === "captain") {
+    entryIdentityLabel = "captain";
+  } else if (entryRole === "player") {
+    entryIdentityLabel = "player";
+  } else if (entryRole === "spectator") {
+    entryIdentityLabel = "spectator";
+  }
 
-  const handleSignOutClick = async () => {
-    try {
-      setAuthError("");
-      await logOut();
-    } catch (err) {
-      console.error("Sign-out failed:", err);
-      setAuthError("Could not sign out. Please try again.");
+  // ---------- Role label for Firebase user ----------
+  let roleLabel = "";
+  if (isCaptain) {
+    roleLabel = "(captain)";
+  }
+
+  const handleChangeIdentityClick = () => {
+    if (onGoToEntryDev) {
+      onGoToEntryDev();
     }
   };
 
@@ -191,44 +211,46 @@ export function LandingPage({
         </div>
         <p className="subtitle">Grand Central – 17:30–19:00</p>
 
-        {/* 🔐 Auth block */}
+        {/* 🔐 Auth + identity block (no sign-in/out here) */}
         <div className="header-top-row">
           <div className="auth-status">
             {currentUser ? (
-              <>
-                <span className="auth-text">
-                  Signed in as{" "}
-                  <strong>
-                    {currentUser.displayName || currentUser.email}
-                  </strong>{" "}
-                  (captain)
-                </span>
-                <button
-                  className="secondary-btn"
-                  type="button"
-                  onClick={handleSignOutClick}
-                >
-                  Sign out
-                </button>
-              </>
+              <span className="auth-text">
+                Signed in as{" "}
+                <strong>{currentUser.displayName || currentUser.email}</strong>{" "}
+                {roleLabel && <span>{roleLabel}</span>}
+                {entryIdentityLabel && (
+                  <>
+                    {"  "}
+                    <span className="muted small">
+                      Entry identity: <strong>{entryIdentityLabel}</strong>
+                    </span>
+                  </>
+                )}
+              </span>
             ) : (
               <>
                 <span className="auth-text">
                   You&apos;re in <strong>spectator mode</strong>
                 </span>
-                <button
-                  className="primary-btn"
-                  type="button"
-                  onClick={handleSignInClick}
-                >
-                  Sign in as captain
-                </button>
+                {entryIdentityLabel && (
+                  <span className="muted small">
+                    Entry identity: <strong>{entryIdentityLabel}</strong>
+                  </span>
+                )}
               </>
             )}
           </div>
-        </div>
 
-        {authError && <p className="error-text">{authError}</p>}
+          {/* This is now the ONLY header button – goes back to EntryPage */}
+          <button
+            className="secondary-btn"
+            type="button"
+            onClick={handleChangeIdentityClick}
+          >
+            signin
+          </button>
+        </div>
       </header>
 
       <section className="card">
@@ -275,21 +297,38 @@ export function LandingPage({
           </strong>
         </p>
 
-        {/* 🔁 Buttons: captain vs spectator */}
+        {/* 🔁 Buttons: captain vs everyone else */}
         {isCaptain ? (
           <div className="actions-row landing-actions">
-            <button className="primary-btn" onClick={onStartMatch}>
-              Start Match
+            {/* ✅ Highlighted start match */}
+            <button
+              className="primary-btn"
+              style={activePrimaryStyle}
+              onClick={onStartMatch}
+              type="button"
+            >
+              ⚽ Start Match
             </button>
             <button
               className="secondary-btn"
               onClick={() => onGoToStats()}
               type="button"
             >
-              View Stats
+              📊 View Stats
             </button>
-            <button className="secondary-btn" onClick={onGoToSquads}>
-              Manage Squads
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={onGoToFormations}
+            >
+              🧩 Lineups &amp; Formations
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={onGoToNews}
+            >
+              📝 News &amp; Highlights
             </button>
             <button className="secondary-btn" onClick={onOpenBackupModal}>
               Save / Clear Data
@@ -298,37 +337,45 @@ export function LandingPage({
         ) : (
           <>
             <p className="muted">
-              You can follow the live game, see stats and view squads, but only
-              signed-in captains can control the match or change squads.
+              You can follow the live game
             </p>
             <div className="actions-row landing-actions">
+              {/* ✅ Same highlight for spectator primary button */}
               <button
                 className="primary-btn"
+                style={activePrimaryStyle}
                 type="button"
                 onClick={handleSpectatorLiveClick}
               >
-                {hasLiveMatch ? "View Live Match" : "Live Match (waiting…)"}
+                {hasLiveMatch ? "⚽ View Live Match" : "⚽ Live Match (waiting…)"}
               </button>
               <button
                 className="secondary-btn"
                 type="button"
                 onClick={() => onGoToStats()}
               >
-                View Stats
+                📊 View Stats
+              </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={onGoToFormations}
+              >
+                🧩 Lineups &amp; Formations
               </button>
               <button
                 className="secondary-btn"
                 type="button"
-                onClick={onGoToSquads}
+                onClick={onGoToNews}
               >
-                View Squads
+                📝 News &amp; Highlights
               </button>
             </div>
           </>
         )}
       </section>
 
-      {/* Ribbon */}
+      {/* Ribbon stays here, above the team photo */}
       <section className="ticker">
         <div className="ticker-inner">
           <span>{ribbonText}</span>
@@ -340,17 +387,9 @@ export function LandingPage({
         <img src={TeamPhoto} alt="Turf Kings team" className="team-photo" />
       </section>
 
-      {/* Website + formations links */}
+      {/* External links (website + fun link) */}
       <section className="card website-card">
         <div className="website-links">
-          <button
-            type="button"
-            className="website-btn"
-            onClick={onGoToFormations}
-          >
-            🧩 Lineups &amp; Formations
-          </button>
-
           <a
             href="https://nkululeko-memela0205.github.io/packetcodeofficial.github.io/"
             target="_blank"
@@ -366,7 +405,7 @@ export function LandingPage({
             rel="noreferrer"
             className="website-btn"
           >
-            ⚽ Messi vs Ronaldo
+            ⚔️ Messi vs Ronaldo
           </a>
         </div>
       </section>
@@ -398,6 +437,26 @@ export function LandingPage({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Dev button back to EntryPage (keep for now) */}
+      {onGoToEntryDev && (
+        <div
+          style={{
+            position: "fixed",
+            right: "0.75rem",
+            bottom: "0.5rem",
+            zIndex: 40,
+          }}
+        >
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={onGoToEntryDev}
+          >
+            Dev: Entry
+          </button>
         </div>
       )}
     </div>

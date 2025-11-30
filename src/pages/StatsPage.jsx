@@ -1,8 +1,22 @@
 // src/pages/StatsPage.jsx
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useMemberNameMap } from "../core/nameMapping.js";
 
-export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
+export function StatsPage({
+  teams,
+  results,
+  allEvents,
+  cameFromLive,
+  currentMatchDay, // still accepted but no longer used – safe to keep
+  onBack,
+  onGoToPlayerCards, // navigate to Player Cards page
+  onGoToPeerReview,  // navigate to Peer Review page
+  // archived “previous weeks” data:
+  archivedResults = [],
+  archivedEvents = [],
+  // NEW: members from Firestore
+  members = [],
+}) {
   // ---------- Helpers ----------
   const teamById = useMemo(() => {
     const map = new Map();
@@ -12,18 +26,55 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
 
   const getTeamName = (id) => teamById.get(id)?.label || "Unknown";
 
+  // Member-based name normalisation
+  const { normalizeName } = useMemberNameMap(members);
+
   // Map player -> team label (first team that contains the player)
   const playerTeamMap = useMemo(() => {
     const map = {};
     teams.forEach((t) => {
       (t.players || []).forEach((p) => {
-        if (!map[p]) {
-          map[p] = t.label;
+        const rawName = typeof p === "string" ? p : p?.name || p?.displayName;
+        const name = normalizeName(rawName);
+        if (name && !map[name]) {
+          map[name] = t.label;
         }
       });
     });
     return map;
-  }, [teams]);
+  }, [teams, normalizeName]);
+
+  // ---------- VIEW MODE: CURRENT WEEK vs FULL SEASON ----------
+  const [viewMode, setViewMode] = useState("current"); // "current" | "season"
+
+  const currentResults = results || [];
+  const currentEvents = allEvents || [];
+
+  const seasonResults = useMemo(
+    () => [...(archivedResults || []), ...currentResults],
+    [archivedResults, currentResults]
+  );
+
+  const seasonEvents = useMemo(
+    () => [...(archivedEvents || []), ...currentEvents],
+    [archivedEvents, currentEvents]
+  );
+
+  const visibleResults =
+    viewMode === "season" ? seasonResults : currentResults;
+  const visibleEventsRaw =
+    viewMode === "season" ? seasonEvents : currentEvents;
+
+  // ---------- NORMALISED EVENTS (names mapped to members) ----------
+  const visibleEvents = useMemo(
+    () =>
+      (visibleEventsRaw || []).map((e) => ({
+        ...e,
+        scorer: normalizeName(e.scorer),
+        assist: normalizeName(e.assist),
+      })),
+    [visibleEventsRaw, normalizeName]
+  );
 
   // ---------- TEAM TABLE (points, GD, etc.) ----------
   const teamStats = useMemo(() => {
@@ -43,7 +94,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
       };
     });
 
-    results.forEach((r) => {
+    (visibleResults || []).forEach((r) => {
       const a = base[r.teamAId];
       const b = base[r.teamBId];
       if (!a || !b) return;
@@ -88,7 +139,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
     });
 
     return arr;
-  }, [teams, results]);
+  }, [teams, visibleResults]);
 
   // ---------- PLAYER STATS (goals, assists, shibobos) ----------
   const playerStats = useMemo(() => {
@@ -106,7 +157,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
       return stats[playerName];
     };
 
-    allEvents.forEach((e) => {
+    (visibleEvents || []).forEach((e) => {
       if (!e.scorer && !e.assist) return;
 
       if (e.scorer) {
@@ -123,31 +174,28 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
       }
     });
 
-    // attach team name + total if available
     Object.values(stats).forEach((p) => {
       p.teamName = playerTeamMap[p.name] || "—";
-      p.total = p.goals + p.assists + p.shibobos; // 👈 combined total
+      p.total = p.goals + p.assists + p.shibobos;
     });
 
     return Object.values(stats);
-  }, [allEvents, playerTeamMap]);
+  }, [visibleEvents, playerTeamMap]);
 
-  // Combined player rankings (main table: total = goals + assists + shibobos)
   const combinedLeaderboard = useMemo(() => {
     const arr = playerStats
       .filter((p) => (p.total || 0) > 0)
       .slice();
     arr.sort((x, y) => {
-      if (y.total !== x.total) return y.total - x.total;       // sort by total first
-      if (y.goals !== x.goals) return y.goals - x.goals;       // then goals
-      if (y.assists !== x.assists) return y.assists - x.assists; // then assists
-      if (y.shibobos !== x.shibobos) return y.shibobos - x.shibobos; // then shibobos
+      if (y.total !== x.total) return y.total - x.total;
+      if (y.goals !== x.goals) return y.goals - x.goals;
+      if (y.assists !== x.assists) return y.assists - x.assists;
+      if (y.shibobos !== x.shibobos) return y.shibobos - x.shibobos;
       return x.name.localeCompare(y.name);
     });
     return arr;
   }, [playerStats]);
 
-  // Top scorers table: goals only + team
   const goalLeaderboard = useMemo(() => {
     const arr = playerStats.filter((p) => p.goals > 0).slice();
     arr.sort((x, y) => {
@@ -157,7 +205,6 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
     return arr;
   }, [playerStats]);
 
-  // Playmakers table: assists only + team
   const assistLeaderboard = useMemo(() => {
     const arr = playerStats.filter((p) => p.assists > 0).slice();
     arr.sort((x, y) => {
@@ -169,14 +216,14 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
 
   // ---------- FULL MATCH LIST + EVENTS BREAKDOWN ----------
   const sortedResults = useMemo(() => {
-    const arr = results.slice();
+    const arr = (visibleResults || []).slice();
     arr.sort((a, b) => a.matchNo - b.matchNo);
     return arr;
-  }, [results]);
+  }, [visibleResults]);
 
   const eventsByMatch = useMemo(() => {
     const map = new Map();
-    allEvents.forEach((e) => {
+    (visibleEvents || []).forEach((e) => {
       if (e.matchNo == null) return;
       if (!map.has(e.matchNo)) map.set(e.matchNo, []);
       map.get(e.matchNo).push(e);
@@ -189,7 +236,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
       });
     });
     return map;
-  }, [allEvents]);
+  }, [visibleEvents]);
 
   const [expandedMatchNo, setExpandedMatchNo] = useState(null);
 
@@ -248,67 +295,120 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
     };
   }, [cameFromLive, onBack]);
 
-  // ---------- TABS: which table is visible ----------
-  // options: "matches", "combined", "goals", "assists", "teams"
-  const [activeTab, setActiveTab] = useState("teams"); // default to Team Standings
+  // ---------- TABS ----------
+  const [activeTab, setActiveTab] = useState("teams");
 
   // ---------- RENDER ----------
   return (
     <div className="page stats-page">
       <header className="header">
         <h1>Stats &amp; Leaderboards</h1>
-        <button className="secondary-btn" onClick={onBack}>
-          Back
-        </button>
+        <div className="stats-header-actions">
+          <button className="secondary-btn" onClick={onBack}>
+            Back
+          </button>
+          {/* swapped order: Rate Player first, then Player cards */}
+          <button
+            className="secondary-btn"
+            onClick={onGoToPeerReview}
+          >
+            Rate Player
+          </button>
+          <button
+            className="secondary-btn"
+            onClick={onGoToPlayerCards}
+          >
+            Player cards
+          </button>
+        </div>
       </header>
 
-      {/* Tab buttons */}
+      {/* Controls: view mode + tab buttons */}
       <section className="card">
         <h2>View</h2>
-        <div className="actions-row stats-tabs">
-          {/* Team Standings + Match Results (left side) */}
-          <button
-            className={
-              activeTab === "teams" ? "secondary-btn active" : "secondary-btn"
-            }
-            onClick={() => setActiveTab("teams")}
-          >
-            Team Standings
-          </button>
-          <button
-            className={
-              activeTab === "matches" ? "secondary-btn active" : "secondary-btn"
-            }
-            onClick={() => setActiveTab("matches")}
-          >
-            Match Results
-          </button>
 
-          {/* Rest of buttons */}
-          <button
-            className={
-              activeTab === "goals" ? "secondary-btn active" : "secondary-btn"
-            }
-            onClick={() => setActiveTab("goals")}
-          >
-            Top Scorers
-          </button>
-          <button
-            className={
-              activeTab === "assists" ? "secondary-btn active" : "secondary-btn"
-            }
-            onClick={() => setActiveTab("assists")}
-          >
-            Playmakers
-          </button>
-          <button
-            className={
-              activeTab === "combined" ? "secondary-btn active" : "secondary-btn"
-            }
-            onClick={() => setActiveTab("combined")}
-          >
-            Summary Player Stats
-          </button>
+        <div className="stats-controls">
+          <div className="stats-controls-left">
+            <div className="segment-wrapper">
+              <div className="segmented-toggle">
+                <button
+                  type="button"
+                  className={
+                    viewMode === "current"
+                      ? "segmented-option active"
+                      : "segmented-option"
+                  }
+                  onClick={() => setViewMode("current")}
+                >
+                  Current week
+                </button>
+                <button
+                  type="button"
+                  className={
+                    viewMode === "season"
+                      ? "segmented-option active"
+                      : "segmented-option"
+                  }
+                  onClick={() => setViewMode("season")}
+                >
+                  Full season
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="actions-row stats-tabs">
+            <button
+              className={
+                activeTab === "teams"
+                  ? "secondary-btn active"
+                  : "secondary-btn"
+              }
+              onClick={() => setActiveTab("teams")}
+            >
+              Team Standings
+            </button>
+            <button
+              className={
+                activeTab === "matches"
+                  ? "secondary-btn active"
+                  : "secondary-btn"
+              }
+              onClick={() => setActiveTab("matches")}
+            >
+              Match Results
+            </button>
+            <button
+              className={
+                activeTab === "goals"
+                  ? "secondary-btn active"
+                  : "secondary-btn"
+              }
+              onClick={() => setActiveTab("goals")}
+            >
+              Top Scorers
+            </button>
+            <button
+              className={
+                activeTab === "assists"
+                  ? "secondary-btn active"
+                  : "secondary-btn"
+              }
+              onClick={() => setActiveTab("assists")}
+            >
+              Playmakers
+            </button>
+            <button
+              className={
+                activeTab === "combined"
+                  ? "secondary-btn active"
+                  : "secondary-btn"
+              }
+              onClick={() => setActiveTab("combined")}
+            >
+              Summary Player Stats
+            </button>
+          </div>
         </div>
       </section>
 
@@ -322,6 +422,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
                 <tr>
                   <th>#</th>
                   <th>Team</th>
+                  <th>Pts</th>
                   <th>P</th>
                   <th>W</th>
                   <th>D</th>
@@ -329,7 +430,6 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
                   <th>GF</th>
                   <th>GA</th>
                   <th>GD</th>
-                  <th>Pts</th>
                 </tr>
               </thead>
               <tbody>
@@ -337,6 +437,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
                   <tr key={t.teamId}>
                     <td>{idx + 1}</td>
                     <td>{t.name}</td>
+                    <td>{t.points}</td>
                     <td>{t.played}</td>
                     <td>{t.won}</td>
                     <td>{t.drawn}</td>
@@ -344,7 +445,6 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
                     <td>{t.goalsFor}</td>
                     <td>{t.goalsAgainst}</td>
                     <td>{t.goalDiff}</td>
-                    <td>{t.points}</td>
                   </tr>
                 ))}
               </tbody>
@@ -356,7 +456,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
       {/* MAIN COMBINED PLAYER TABLE */}
       {activeTab === "combined" && (
         <section className="card">
-          <h2>Player Rankings (Total = Goals + Assists + Shibobo)</h2>
+          <h2>Player Rankings (Total = Goals + Assists + Saves)</h2>
           <div className="table-wrapper">
             <table className="stats-table">
               <thead>
@@ -366,7 +466,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
                   <th>Team</th>
                   <th>Goals</th>
                   <th>Assists</th>
-                  <th>Shibobo</th>
+                  <th>Saves</th>
                   <th>G-A-S</th>
                 </tr>
               </thead>
@@ -395,7 +495,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
         </section>
       )}
 
-      {/* TOP SCORERS TABLE: GOALS ONLY + TEAM */}
+      {/* TOP SCORERS */}
       {activeTab === "goals" && (
         <section className="card">
           <h2>Top Scorers</h2>
@@ -431,7 +531,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
         </section>
       )}
 
-      {/* PLAYMAKERS TABLE: ASSISTS ONLY + TEAM */}
+      {/* PLAYMAKERS */}
       {activeTab === "assists" && (
         <section className="card">
           <h2>Top Playmakers (Assists)</h2>
@@ -467,7 +567,7 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
         </section>
       )}
 
-      {/* MATCH RESULTS + CLICK FOR EVENT BREAKDOWN */}
+      {/* MATCH RESULTS */}
       {activeTab === "matches" && (
         <section className="card">
           <h2>All Match Results</h2>
@@ -505,13 +605,27 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
                   const isExpanded = expandedMatchNo === r.matchNo;
                   const events = eventsByMatch.get(r.matchNo) || [];
 
+                  const teamAEvents = events.filter(
+                    (e) => e.teamId === r.teamAId && e.scorer
+                  );
+                  const teamBEvents = events.filter(
+                    (e) => e.teamId === r.teamBId && e.scorer
+                  );
+
                   return (
                     <React.Fragment key={r.matchNo}>
                       <tr
-                        className={isExpanded ? "match-row expanded" : "match-row"}
+                        className={
+                          isExpanded ? "match-row expanded" : "match-row"
+                        }
                         onClick={() => toggleMatchDetails(r.matchNo)}
                       >
-                        <td>{r.matchNo}</td>
+                        <td>
+                          <span className="match-toggle-indicator">
+                            {isExpanded ? "▾" : "▸"}
+                          </span>{" "}
+                          {r.matchNo}
+                        </td>
                         <td>{teamAName}</td>
                         <td>
                           {r.goalsA} – {r.goalsB}
@@ -521,31 +635,65 @@ export function StatsPage({ teams, results, allEvents, cameFromLive, onBack }) {
                       </tr>
                       {isExpanded && (
                         <tr className="match-details-row">
-                          <td colSpan={5}>
+                          <td />
+                          <td>
                             {events.length === 0 ? (
-                              <p className="muted">
-                                No event breakdown recorded for this match.
-                              </p>
-                            ) : (
-                              <ul className="event-details-list">
-                                {events.map((e) => {
-                                  const teamName = getTeamName(e.teamId);
-                                  const label =
-                                    e.type === "shibobo" ? "Shibobo" : "Goal";
-                                  const t = formatSecondsSafe(e.timeSeconds);
+                              <span className="muted">
+                                No event breakdown recorded.
+                              </span>
+                            ) : teamAEvents.length === 0 ? null : (
+                              <div className="team-scorers">
+                                {teamAEvents.map((e) => {
+                                  const actionLabel =
+                                    e.type === "shibobo"
+                                      ? "shibobo"
+                                      : "goal";
                                   return (
-                                    <li key={e.id}>
-                                      [{t}] {teamName} – <strong>{label}</strong>:{" "}
+                                    <div
+                                      key={e.id}
+                                      className="scorer-line"
+                                    >
                                       {e.scorer}
                                       {e.assist
                                         ? ` (assist: ${e.assist})`
-                                        : ""}
-                                    </li>
+                                        : ""}{" "}
+                                      – {actionLabel}
+                                    </div>
                                   );
                                 })}
-                              </ul>
+                              </div>
                             )}
                           </td>
+                          <td />
+                          <td>
+                            {events.length === 0 ? (
+                              <span className="muted">
+                                No event breakdown recorded.
+                              </span>
+                            ) : teamBEvents.length === 0 ? null : (
+                              <div className="team-scorers">
+                                {teamBEvents.map((e) => {
+                                  const actionLabel =
+                                    e.type === "shibobo"
+                                      ? "shibobo"
+                                      : "goal";
+                                  return (
+                                    <div
+                                      key={e.id}
+                                      className="scorer-line"
+                                    >
+                                      {e.scorer}
+                                      {e.assist
+                                        ? ` (assist: ${e.assist})`
+                                        : ""}{" "}
+                                      – {actionLabel}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
+                          <td />
                         </tr>
                       )}
                     </React.Fragment>
