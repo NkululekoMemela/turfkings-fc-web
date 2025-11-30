@@ -1,6 +1,7 @@
 // src/pages/NewsPage.jsx
 import React, { useMemo, useState, useEffect } from "react";
 import JaydTribute from "../assets/Jayd_Tribute.jpeg"; // <- tribute photo
+import { RSVPModal } from "../components/RSVPModal.jsx";
 
 const BAD_MATCH_NUMBERS = new Set([14, 15, 16, 17]); // drop these from week-1 archive
 
@@ -15,9 +16,11 @@ export function NewsPage({
   // current match-day only
   currentResults,
   currentEvents,
-  onBack, // <-- now expected to go to LandingPage
+  onBack, // <-- goes to LandingPage
   // OPTIONAL: map { [playerName]: photoUrl } passed down from Firebase
   playerPhotosByName,
+  // identity from App.jsx (EntryPage)
+  identity,
 }) {
   // ---------- Helpers ----------
   const teamById = useMemo(() => {
@@ -260,7 +263,8 @@ export function NewsPage({
       if (
         !best ||
         p.assists > best.assists ||
-        (p.assists === best.assists && p.name.localeCompare(best.name) < 0)
+        (p.assists === best.assists &&
+          p.name.localeCompare(best.name) < 0)
       ) {
         best = p;
       }
@@ -422,6 +426,13 @@ export function NewsPage({
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // RSVP modal state for year-end function
+  const [showRSVP, setShowRSVP] = useState(false);
+
+  const handleOpenRSVP = () => {
+    setShowRSVP(true);
+  };
 
   // ---------- STYLE OBJECTS FOR YEAR-END PREMIUM CARD ----------
   const yearEndCardStyle = {
@@ -641,7 +652,6 @@ export function NewsPage({
           Automatic recap built from your full TurfKings match history.
         </p>
         <div className="news-header-actions">
-          {/* 🔙 Now conceptually “Back to Landing page” */}
           <button className="secondary-btn" onClick={onBack}>
             Back to main page
           </button>
@@ -659,8 +669,8 @@ export function NewsPage({
 
           <h2 style={yearEndHeadingStyle}>TurfKings Year-End Function</h2>
           <p style={yearEndSubStyle}>
-            We&apos;re closing off the season in proper TurfKings style —
-            sharp fits, chilled drinks and a full-squad night out. 🏆
+            We&apos;re closing off the season in proper TurfKings style 
+            full-squad night out. 🏆
           </p>
 
           <div style={yearEndMetaRowStyle}>
@@ -682,12 +692,49 @@ export function NewsPage({
               opacity: 0.95,
             }}
           >
-            🧊 <strong>Coolerboxes & bottles are encouraged</strong> – bring your
-            own drinks. There&apos;s a small fee for walking in with them, but
-            it works out cheaper and keeps the vibe relaxed for the whole night.{" "}
-            (<strong>R180 </strong>per coolerbox) and (<strong>R80 </strong> per
-            whisky/brandy/gin bottle)
+            🧊 <strong>Coolerboxes &amp; bottles are encouraged</strong> – bring
+            your own drinks. There&apos;s a small fee for walking in with them,
+            but it works out cheaper and keeps the vibe relaxed for the whole
+            night. (<strong>R180 </strong>per coolerbox) and (
+            <strong>R80 </strong> per whisky/brandy/gin bottle). 
           </p>
+
+          <p
+            style={{
+              marginTop: "0.7rem",
+              fontSize: "0.85rem",
+              opacity: 0.95,
+            }}
+          >
+            💰 <strong>Cover charge:</strong> Is <strong>R100</strong> per player +{" "}
+            <strong>R75</strong> per friend (max 3) for food/bites. Use the RSVP list to
+            confirm your spot and who you&apos;re bringing. Basically, you pay only R100 
+            if you don't drink and you'll come alone, just bring your water bottle. 
+            This will be a big night 💪.
+          </p>
+
+          {/* RSVP BUTTON */}
+          <div style={{ marginTop: "1rem" }}>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={handleOpenRSVP}
+              style={{ padding: "0.65rem 1.2rem", fontSize: "0.9rem" }}
+            >
+              🎟️ View / Manage RSVP List
+            </button>
+            {!identity && (
+              <p
+                style={{
+                  fontSize: "0.8rem",
+                  marginTop: "0.35rem",
+                  opacity: 0.8,
+                }}
+              >
+                Please sign in on the main page to RSVP.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Right: visual art (suit + wine glasses) */}
@@ -703,7 +750,7 @@ export function NewsPage({
                   Dress Code
                 </div>
                 <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
-                  Suits & Smart Fits
+                  Suits &amp; Smart Fits
                 </div>
               </div>
             </div>
@@ -933,8 +980,7 @@ export function NewsPage({
                   {streakStats.bestGoal.teamName &&
                   streakStats.bestGoal.teamName !== "—"
                     ? `Flying for ${streakStats.bestGoal.teamName}.`
-                    : "Free roaming finisher energy."
-                  }
+                    : "Free roaming finisher energy."}
                 </p>
               </div>
             )}
@@ -952,8 +998,7 @@ export function NewsPage({
                   {streakStats.bestAssist.teamName &&
                   streakStats.bestAssist.teamName !== "—"
                     ? `Playmaking for ${streakStats.bestAssist.teamName}.`
-                    : "Sharing the shine with everyone."
-                  }
+                    : "Sharing the shine with everyone."}
                 </p>
               </div>
             )}
@@ -1058,6 +1103,14 @@ export function NewsPage({
           </ul>
         )}
       </section>
+
+      {/* RSVP MODAL FOR YEAR-END FUNCTION */}
+      {showRSVP && (
+        <RSVPModal
+          identity={identity}
+          onClose={() => setShowRSVP(false)}
+        />
+      )}
     </div>
   );
 }

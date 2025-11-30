@@ -13,6 +13,9 @@ import {
   doc,
   serverTimestamp,
   setDoc,
+  query,
+  orderBy,
+  limit,          // ⬅️ NEW: for withdrawal popup subscription
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
@@ -114,6 +117,46 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
 
   const isAdmin =
     currentUser && currentUser.email && isCaptainEmail(currentUser.email);
+
+  // 🔔 NEW: withdrawal popup state
+  const [withdrawalAlert, setWithdrawalAlert] = useState(null);
+
+  // Listen for latest withdrawal docs (admin only)
+  useEffect(() => {
+    if (!isAdmin) return; // only captains/admins see this popup
+
+    const q = query(
+      collection(db, "yearEndRSVP_withdrawals"),
+      orderBy("withdrawnAt", "desc"),
+      limit(1)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      if (snap.empty) return;
+      const docSnap = snap.docs[0];
+      const data = docSnap.data() || {};
+      if (!data.withdrawnAt) return;
+
+      const lastSeen = Number(
+        window.localStorage.getItem("tk_lastSeenWithdrawal_ts") || 0
+      );
+
+      // Only show if this is newer than what this device has already seen
+      if (data.withdrawnAt > lastSeen) {
+        setWithdrawalAlert({
+          name: data.name || "Unknown player",
+          friends: data.friends || 0,
+          withdrawnAt: data.withdrawnAt,
+        });
+        window.localStorage.setItem(
+          "tk_lastSeenWithdrawal_ts",
+          String(data.withdrawnAt)
+        );
+      }
+    });
+
+    return () => unsub();
+  }, [isAdmin]);
 
   // ---------- IDENTITY CHOICE ----------
   const [mode, setMode] = useState(() => {
@@ -612,6 +655,59 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
             in the dropdown above.
           </p>
         </section>
+      )}
+
+      {/* 🔔 WITHDRAWAL POPUP (ADMIN ONLY, bottom of screen) */}
+      {isAdmin && withdrawalAlert && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "1rem",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 2000,
+            padding: "0.9rem 1rem",
+            borderRadius: "0.75rem",
+            background:
+              "linear-gradient(135deg, rgba(248,113,113,0.15), #111827)",
+            border: "1px solid rgba(248,113,113,0.8)",
+            color: "#f9fafb",
+            boxShadow: "0 14px 40px rgba(15,23,42,0.9)",
+            maxWidth: "420px",
+            width: "calc(100% - 2rem)",
+            fontSize: "0.85rem",
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>
+            Player pulled out
+          </div>
+          <div>
+            <strong>{withdrawalAlert.name}</strong> has pulled out of the
+            year-end function
+            {withdrawalAlert.friends
+              ? ` (with ${withdrawalAlert.friends} friend${
+                  withdrawalAlert.friends === 1 ? "" : "s"
+                })`
+              : ""}
+            .
+          </div>
+          <button
+            type="button"
+            onClick={() => setWithdrawalAlert(null)}
+            style={{
+              marginTop: "0.6rem",
+              padding: "0.3rem 0.7rem",
+              borderRadius: "999px",
+              border: "none",
+              background: "rgba(59,130,246,0.18)",
+              color: "#bfdbfe",
+              fontSize: "0.8rem",
+              cursor: "pointer",
+            }}
+          >
+            Close
+          </button>
+        </div>
       )}
 
       {/* DEV BUTTON */}

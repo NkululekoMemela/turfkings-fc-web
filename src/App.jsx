@@ -23,6 +23,9 @@ import { week1Results, week1Events } from "./seed/week1Data.js";
 import { week2Results, week2Events } from "./seed/week2Data.js";
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
 
+// 🔁 NEW: live members list from Firestore
+import { useMembers } from "./hooks/useMembers.js";
+
 // Page constants
 const PAGE_ENTRY = "entry";
 const PAGE_LANDING = "landing";
@@ -59,6 +62,9 @@ export default function App() {
       return null;
     }
   });
+
+  // 🔁 NEW: live members list from Firestore ("members" collection)
+  const members = useMembers();
 
   // keep current page in localStorage (but never force-clear state)
   useEffect(() => {
@@ -131,6 +137,7 @@ export default function App() {
     streaks,
     matchDayHistory = [],
     playerPhotosByName = {},
+    yearEndAttendance = [], // 🆕 already in your version
   } = state || createDefaultState();
 
   // effective peer ratings to pass down
@@ -434,6 +441,7 @@ export default function App() {
       {page === PAGE_ENTRY && (
         <EntryPage
           identity={identity}
+          members={members} // 🔁 NEW: drive dropdown from Firestore members
           onComplete={handleEntryComplete}
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}
         />
@@ -507,6 +515,7 @@ export default function App() {
           onGoToNews={() => setPage(PAGE_NEWS)}
           onGoToPlayerCards={() => setPage(PAGE_PLAYER_CARDS)}
           onGoToPeerReview={() => setPage(PAGE_PEER_REVIEW)}
+          members={members} // 🔁 NEW: for name normalisation in stats
         />
       )}
 
@@ -518,7 +527,17 @@ export default function App() {
           currentResults={results}
           currentEvents={allEvents}
           playerPhotosByName={playerPhotosByName}
-          onBack={handleBackToLanding} // ⬅ back to LandingPage
+          identity={identity}
+          yearEndAttendance={yearEndAttendance}
+          onUpdateYearEndAttendance={(nextList) =>
+            updateState((prev) => ({
+              ...prev,
+              yearEndAttendance: nextList,
+            }))
+          }
+          onGoToSignIn={() => setPage(PAGE_ENTRY)}
+          onBack={handleBackToLanding}
+          members={members} // 🔁 NEW: for name normalisation in news/mvp
         />
       )}
 

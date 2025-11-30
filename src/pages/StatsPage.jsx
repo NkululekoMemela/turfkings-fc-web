@@ -1,5 +1,6 @@
 // src/pages/StatsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useMemberNameMap } from "../core/nameMapping.js";
 
 export function StatsPage({
   teams,
@@ -13,6 +14,8 @@ export function StatsPage({
   // archived “previous weeks” data:
   archivedResults = [],
   archivedEvents = [],
+  // NEW: members from Firestore
+  members = [],
 }) {
   // ---------- Helpers ----------
   const teamById = useMemo(() => {
@@ -23,18 +26,23 @@ export function StatsPage({
 
   const getTeamName = (id) => teamById.get(id)?.label || "Unknown";
 
+  // Member-based name normalisation
+  const { normalizeName } = useMemberNameMap(members);
+
   // Map player -> team label (first team that contains the player)
   const playerTeamMap = useMemo(() => {
     const map = {};
     teams.forEach((t) => {
       (t.players || []).forEach((p) => {
-        if (!map[p]) {
-          map[p] = t.label;
+        const rawName = typeof p === "string" ? p : p?.name || p?.displayName;
+        const name = normalizeName(rawName);
+        if (name && !map[name]) {
+          map[name] = t.label;
         }
       });
     });
     return map;
-  }, [teams]);
+  }, [teams, normalizeName]);
 
   // ---------- VIEW MODE: CURRENT WEEK vs FULL SEASON ----------
   const [viewMode, setViewMode] = useState("current"); // "current" | "season"
@@ -54,8 +62,19 @@ export function StatsPage({
 
   const visibleResults =
     viewMode === "season" ? seasonResults : currentResults;
-  const visibleEvents =
+  const visibleEventsRaw =
     viewMode === "season" ? seasonEvents : currentEvents;
+
+  // ---------- NORMALISED EVENTS (names mapped to members) ----------
+  const visibleEvents = useMemo(
+    () =>
+      (visibleEventsRaw || []).map((e) => ({
+        ...e,
+        scorer: normalizeName(e.scorer),
+        assist: normalizeName(e.assist),
+      })),
+    [visibleEventsRaw, normalizeName]
+  );
 
   // ---------- TEAM TABLE (points, GD, etc.) ----------
   const teamStats = useMemo(() => {
@@ -411,7 +430,6 @@ export function StatsPage({
                   <th>GF</th>
                   <th>GA</th>
                   <th>GD</th>
-
                 </tr>
               </thead>
               <tbody>
@@ -427,7 +445,6 @@ export function StatsPage({
                     <td>{t.goalsFor}</td>
                     <td>{t.goalsAgainst}</td>
                     <td>{t.goalDiff}</td>
-
                   </tr>
                 ))}
               </tbody>

@@ -10,15 +10,35 @@ const EMAIL_TO_PLAYER_NAME = {
   "mduduzi933@gmail.com": "Mdu",
 };
 
+// Week id = date (YYYY-MM-DD) of the Sunday for this week.
+function getCurrentWeekKey() {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sunday
+  const sunday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - day
+  );
+  const y = sunday.getFullYear();
+  const m = String(sunday.getMonth() + 1).padStart(2, "0");
+  const d = String(sunday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export function PeerReviewPage({
   teams,
   playerPhotosByName = {},
-  identity = null, // { role, memberId, fullName, shortName, email, ... }
+  identity = null,
   onBack,
 }) {
+  const [weekKey] = useState(() => getCurrentWeekKey());
+
   const [selectedRater, setSelectedRater] = useState(null);
   const [raterLocked, setRaterLocked] = useState(false);
-  const [selectedTargets, setSelectedTargets] = useState([]);
+
+  // Single active target (card that is open for rating)
+  const [activeTarget, setActiveTarget] = useState(null);
+
   const [attack, setAttack] = useState(0);
   const [defence, setDefence] = useState(0);
   const [gk, setGk] = useState(0);
@@ -26,6 +46,9 @@ export function PeerReviewPage({
   const [statusMsg, setStatusMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [filterTeam, setFilterTeam] = useState("ALL");
+
+  // Names (normalised) already rated by this rater *this week*
+  const [ratedTargets, setRatedTargets] = useState([]);
 
   // ---------- Helpers ----------
   const normaliseName = (name) =>
@@ -135,6 +158,35 @@ export function PeerReviewPage({
     setStatusMsg("");
   }, [identity, allPlayerNames, isSignedInPlayer, selectedRater]);
 
+  // ---------- Load "already rated this week" from localStorage ----------
+  useEffect(() => {
+    if (!selectedRater) return;
+    if (typeof window === "undefined") return;
+
+    const rNorm = normaliseName(selectedRater);
+    const ratedSet = new Set();
+
+    try {
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (!key || !key.startsWith(LOCAL_VOTE_PREFIX + ":")) continue;
+
+        const parts = key.split(":");
+        // prefix : weekKey : raterNorm : targetNorm
+        if (parts.length < 4) continue;
+        const [, storedWeek, storedRater, storedTarget] = parts;
+
+        if (storedWeek === weekKey && storedRater === rNorm) {
+          ratedSet.add(storedTarget);
+        }
+      }
+    } catch {
+      // ignore localStorage issues
+    }
+
+    setRatedTargets(Array.from(ratedSet));
+  }, [selectedRater, weekKey]);
+
   const teamsForFilter = useMemo(() => {
     const labels = new Set();
     (teams || []).forEach((t) => labels.add(t.label));
@@ -176,18 +228,34 @@ export function PeerReviewPage({
     </div>
   );
 
-  const toggleTarget = (name) => {
-    setSelectedTargets((prev) =>
-      prev.includes(name)
-        ? prev.filter((n) => n !== name)
-        : [...prev, name]
-    );
+  // ---------- Selecting a target card ----------
+  const handleSelectTarget = (name) => {
     setStatusMsg("");
+    // If you click the same card again, collapse it
+    if (activeTarget === name) {
+      setActiveTarget(null);
+      return;
+    }
+    setActiveTarget(name);
+
+    const norm = normaliseName(name);
+    // For now we always reset stars when opening a card
+    if (!ratedTargets.includes(norm)) {
+      setAttack(0);
+      setDefence(0);
+      setGk(0);
+      setComment("");
+    } else {
+      // If already rated, still allow a new rating – start blank
+      setAttack(0);
+      setDefence(0);
+      setGk(0);
+      setComment("");
+    }
   };
 
-  // ---------- Submit ----------
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // ---------- Submit for a single target ----------
+  const handleSubmitForTarget = async (targetName) => {
     setStatusMsg("");
 
     if (!isSignedInPlayer) {
@@ -200,8 +268,8 @@ export function PeerReviewPage({
       return;
     }
 
-    if (selectedTargets.length === 0) {
-      setStatusMsg("Step 2: tap one or more teammates to rate.");
+    if (!targetName) {
+      setStatusMsg("Tap a teammate first, then submit their rating.");
       return;
     }
 
@@ -214,71 +282,64 @@ export function PeerReviewPage({
     }
 
     const raterNorm = normaliseName(selectedRater);
-    const nowIso = new Date().toISOString();
-    const docsToSend = [];
+    const targetNorm = normaliseName(targetName);
+    const voteKey = `${LOCAL_VOTE_PREFIX}:${weekKey}:${raterNorm}:${targetNorm}`;
 
     try {
-      selectedTargets.forEach((targetName) => {
-        const targetNorm = normaliseName(targetName);
-        const voteKey = `${LOCAL_VOTE_PREFIX}:${raterNorm}:${targetNorm}`;
-
-        if (typeof window !== "undefined") {
-          const already = window.localStorage.getItem(voteKey);
-          if (already) {
-            return;
-          }
+      if (typeof window !== "undefined") {
+        const already = window.localStorage.getItem(voteKey);
+        if (already) {
+          setStatusMsg(
+            `You’ve already rated ${targetName} for this week. Thank you!`
+          );
+          return;
         }
-
-        const docData = {
-          raterName: selectedRater,
-          targetName,
-          attack: attack || null,
-          defence: defence || null,
-          gk: gk || null,
-          comment: comment.trim() || null,
-          createdAt: nowIso,
-        };
-
-        docsToSend.push({ docData, voteKey });
-      });
+      }
     } catch {
-      // ignore localStorage errors
+      // ignore
     }
 
-    if (docsToSend.length === 0) {
-      setStatusMsg(
-        "You’ve already rated these teammates from this device. Thank you!"
-      );
-      return;
-    }
+    const nowIso = new Date().toISOString();
+    const docData = {
+      raterName: selectedRater,
+      targetName,
+      attack: attack || null,
+      defence: defence || null,
+      gk: gk || null,
+      comment: comment.trim() || null,
+      createdAt: nowIso,
+      weekKey,
+    };
 
     setSubmitting(true);
 
     try {
-      await Promise.all(
-        docsToSend.map(({ docData }) => submitPeerRating(docData))
-      );
+      await submitPeerRating(docData);
 
       try {
         if (typeof window !== "undefined") {
-          docsToSend.forEach(({ voteKey }) => {
-            window.localStorage.setItem(voteKey, "1");
-          });
+          window.localStorage.setItem(voteKey, "1");
         }
       } catch {
         // ignore
       }
 
-      setStatusMsg("✅ Thanks, your ratings have been saved.");
-      setSelectedTargets([]);
+      setRatedTargets((prev) => {
+        if (prev.includes(targetNorm)) return prev;
+        return [...prev, targetNorm];
+      });
+
+      // Auto-close card after save
+      setActiveTarget(null);
       setAttack(0);
       setDefence(0);
       setGk(0);
       setComment("");
+      setStatusMsg(`✅ Saved rating for ${targetName}.`);
     } catch (err) {
       console.error("Peer rating submit error", err);
       setStatusMsg(
-        "⚠️ Something went wrong saving your ratings. Please try again."
+        "⚠️ Something went wrong saving this rating. Please try again."
       );
     } finally {
       setSubmitting(false);
@@ -288,12 +349,13 @@ export function PeerReviewPage({
   const handleChangeRater = () => {
     if (raterLocked) return;
     setSelectedRater(null);
-    setSelectedTargets([]);
+    setActiveTarget(null);
     setAttack(0);
     setDefence(0);
     setGk(0);
     setComment("");
     setStatusMsg("");
+    setRatedTargets([]);
   };
 
   const signedInName =
@@ -419,7 +481,7 @@ export function PeerReviewPage({
                       }`}
                       onClick={() => {
                         setFilterTeam(label);
-                        setSelectedTargets([]);
+                        setActiveTarget(null);
                       }}
                     >
                       {label === "ALL" ? "All teams" : label}
@@ -428,7 +490,7 @@ export function PeerReviewPage({
                 </div>
               </div>
 
-              {/* Player cards (multi-select) */}
+              {/* Player cards with inline rating */}
               <div className="peer-player-grid">
                 {candidateTargets.length === 0 && (
                   <p className="muted small">
@@ -436,98 +498,93 @@ export function PeerReviewPage({
                   </p>
                 )}
                 {candidateTargets.map((p) => {
-                  const isActive = selectedTargets.includes(p.name);
+                  const isActive = activeTarget === p.name;
+                  const targetNorm = normaliseName(p.name);
+                  const isRated = ratedTargets.includes(targetNorm);
                   const photoUrl = getPhotoFor(p.name);
                   const initials = getInitials(p.name);
 
                   return (
-                    <button
+                    <div
                       key={p.name + "-target"}
-                      type="button"
                       className={`peer-player-card ${
                         isActive ? "active" : ""
-                      }`}
-                      onClick={() => toggleTarget(p.name)}
+                      } ${isRated ? "rated" : ""}`}
                     >
-                      <div className="peer-player-avatar">
-                        {photoUrl ? (
-                          <img
-                            src={photoUrl}
-                            alt={p.name}
-                            className="peer-avatar-photo"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ) : (
-                          <div className="peer-avatar-fallback">
-                            {initials}
-                          </div>
-                        )}
-                      </div>
-                      <div className="peer-player-meta">
-                        <div className="peer-player-name">{p.name}</div>
-                        <div className="peer-player-team">
-                          {p.teamLabel || "—"}
+                      <button
+                        type="button"
+                        className="peer-player-main"
+                        onClick={() => handleSelectTarget(p.name)}
+                      >
+                        <div className="peer-player-avatar">
+                          {photoUrl ? (
+                            <img
+                              src={photoUrl}
+                              alt={p.name}
+                              className="peer-avatar-photo"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          ) : (
+                            <div className="peer-avatar-fallback">
+                              {initials}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </button>
+                        <div className="peer-player-meta">
+                          <div className="peer-player-name">{p.name}</div>
+                          <div className="peer-player-team">
+                            {p.teamLabel || "—"}
+                          </div>
+                          {isRated && (
+                            <div className="peer-player-rated-tag">
+                              Rated this week
+                            </div>
+                          )}
+                        </div>
+                      </button>
+
+                      {isActive && (
+                        <div className="peer-player-rating-inline">
+                          {renderStarsRow("Attack", attack, setAttack)}
+                          {renderStarsRow("Defence", defence, setDefence)}
+                          {renderStarsRow("Goalkeeping", gk, setGk)}
+
+                          <div className="peer-field">
+                            <label>Quick comment (optional)</label>
+                            <textarea
+                              className="text-input"
+                              rows={2}
+                              placeholder="Short note – strengths, improvements, compliments..."
+                              value={comment}
+                              onChange={(e) => setComment(e.target.value)}
+                            />
+                          </div>
+
+                          <div className="actions-row">
+                            <button
+                              type="button"
+                              className="primary-btn"
+                              disabled={submitting}
+                              onClick={() => handleSubmitForTarget(p.name)}
+                            >
+                              {submitting
+                                ? "Sending..."
+                                : `Save rating for ${p.name}`}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
 
-              {/* Rating controls */}
-              <form className="peer-rating-form" onSubmit={handleSubmit}>
-                <div className="peer-rating-card">
-                  <h3>
-                    Rating{" "}
-                    {selectedTargets.length > 0 ? (
-                      <span className="highlight-name">
-                        {selectedTargets.length === 1
-                          ? selectedTargets[0]
-                          : `${selectedTargets.length} teammates`}
-                      </span>
-                    ) : (
-                      <span className="muted">no teammate selected yet</span>
-                    )}
-                  </h3>
-
-                  {renderStarsRow("Attack", attack, setAttack)}
-                  {renderStarsRow("Defence", defence, setDefence)}
-                  {renderStarsRow("Goalkeeping", gk, setGk)}
-
-                  <div className="peer-field">
-                    <label>Quick comment (optional)</label>
-                    <textarea
-                      className="text-input"
-                      rows={3}
-                      placeholder="Short note – strengths, improvements, compliments..."
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                    />
-                  </div>
-
-                  {statusMsg && (
-                    <p className="status-text">{statusMsg}</p>
-                  )}
-
-                  <div className="actions-row">
-                    <button
-                      type="submit"
-                      className="primary-btn"
-                      disabled={submitting}
-                    >
-                      {submitting ? "Sending..." : "Submit rating(s)"}
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={onBack}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </form>
+              {statusMsg && (
+                <p className="status-text" style={{ marginTop: "0.75rem" }}>
+                  {statusMsg}
+                </p>
+              )}
             </>
           )}
         </div>

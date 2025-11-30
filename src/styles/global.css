@@ -2253,3 +2253,272 @@ th {
   outline: 2px solid #e5e7eb;
   outline-offset: 2px;
 }
+
+
+/* ========== PEER RATINGS ========== */
+
+.peer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.peer-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.peer-step-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.peer-current-rater {
+  font-size: 0.85rem;
+  color: #e5e7eb;
+}
+
+/* Filter row */
+.peer-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Grid of player cards */
+.peer-player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.75rem;
+  align-items: flex-start; /* let tall cards grow, no overlap */
+}
+
+/* Individual card */
+.peer-player-card {
+  background: radial-gradient(circle at top left, #020617 0, #020617 40%, #020617 100%);
+  border-radius: 1.25rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+/* active & rated states */
+.peer-player-card.active {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.55),
+    0 10px 30px rgba(15, 23, 42, 0.7);
+}
+
+.peer-player-card.rated {
+  border-color: #22c55e;
+  background: radial-gradient(circle at top left, #022c22, #020617);
+}
+
+/* top row: avatar + name button */
+.peer-player-main {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* avatar */
+.peer-player-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 0%, #38bdf8, #0f172a);
+}
+
+.peer-avatar-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.peer-avatar-fallback {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #e5e7eb;
+}
+
+/* text in card */
+.peer-player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.peer-player-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.peer-player-team {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+/* little green pill that says "Rated this week" */
+.peer-player-rated-tag {
+  margin-top: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(22, 163, 74, 0.14);
+  color: #4ade80;
+}
+
+/* inline rating panel inside card */
+.peer-player-rating-inline {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* star rows */
+.star-rating-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.star-rating-label {
+  min-width: 4.2rem;
+}
+
+.star-rating-stars {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.star-btn {
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.star-btn.star-filled {
+  color: #facc15;
+}
+
+.star-btn.star-empty {
+  color: #4b5563;
+}
+
+.star-rating-value {
+  min-width: 2.5rem;
+  text-align: right;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+/* small textarea inside card */
+.peer-player-rating-inline .peer-field textarea {
+  resize: vertical;
+  min-height: 48px;
+  max-height: 96px;
+}
+
+
+
+
+
+/* Make the active card behave like a little panel with room for the form */
+.peer-player-card.active {
+  align-items: flex-start;
+}
+
+/* Compact inline rating form so it doesn’t spill out of the card */
+.peer-inline-form {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.2);
+  font-size: 0.75rem;          /* smaller text */
+  line-height: 1.2;
+  max-height: 190px;           /* 🔒 hard cap so it never overflows */
+  overflow-y: auto;            /* scroll *inside* if needed */
+}
+
+/* Smaller, tighter star rows */
+.peer-inline-form .star-rating-row {
+  margin: 0.15rem 0;
+}
+
+.peer-inline-form .star-rating-label {
+  font-size: 0.72rem;
+}
+
+.peer-inline-form .star-rating-stars .star-btn {
+  font-size: 0.85rem;
+  padding: 0 0.15rem;
+}
+
+/* Tiny “Skip / 3/5” text */
+.peer-inline-form .star-rating-value {
+  font-size: 0.7rem;
+}
+
+/* Compact textarea */
+.peer-inline-form textarea.text-input {
+  font-size: 0.75rem;
+  min-height: 2.4rem;
+  padding: 0.35rem 0.5rem;
+}
+
+/* Compact action row + button */
+.peer-inline-form .peer-inline-actions {
+  margin-top: 0.45rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.peer-inline-form .peer-inline-actions .primary-btn {
+  font-size: 0.78rem;
+  padding: 0.4rem 0.9rem;
+}
+
+/* Make sure grid behaves nicely on small screens */
+.peer-player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .peer-player-grid {
+    grid-template-columns: 1fr;
+  }
+}

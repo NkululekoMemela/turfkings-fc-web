@@ -56,6 +56,45 @@ export function PlayerCardPage({
     loadPhotos();
   }, []);
 
+  // ----- Load members to map raw name -> shortName (display name) -----
+  const [memberNameIndex, setMemberNameIndex] = useState({});
+
+  useEffect(() => {
+    async function loadMembers() {
+      try {
+        const snap = await getDocs(collection(db, "members"));
+        const index = {};
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const fullName = (data.fullName || "").trim();
+          const shortName = (data.shortName || fullName || "").trim();
+
+          if (!shortName && !fullName) return;
+
+          const fullLower = fullName.toLowerCase();
+          const shortLower = shortName.toLowerCase();
+
+          // Map both the fullName and the shortName to the official shortName
+          if (fullLower) index[fullLower] = shortName;
+          if (shortLower) index[shortLower] = shortName;
+        });
+
+        setMemberNameIndex(index);
+      } catch (err) {
+        console.error("Failed to load members for PlayerCardPage:", err);
+      }
+    }
+
+    loadMembers();
+  }, []);
+
+  const resolveDisplayName = (rawName) => {
+    if (!rawName || typeof rawName !== "string") return rawName;
+    const key = rawName.trim().toLowerCase();
+    return memberNameIndex[key] || rawName;
+  };
+
   // ----- Map player -> team label -----
   const playerTeamMap = useMemo(() => {
     const map = {};
@@ -103,19 +142,29 @@ export function PlayerCardPage({
     return map;
   }, [teams, playerPhotosByName, cloudPhotos]);
 
-  const getPlayerPhoto = (name) => {
-    if (!name) return null;
+  // 🔑 NEW: try both raw name and displayName when resolving photos
+  const getPlayerPhoto = (rawName, displayName) => {
+    const candidates = [];
 
-    if (mergedPhotoMap[name]) return mergedPhotoMap[name];
+    if (rawName) candidates.push(rawName);
+    if (displayName && displayName !== rawName) candidates.push(displayName);
 
-    const target = name.trim().toLowerCase();
-    if (!target) return null;
+    // 1) Exact key matches first
+    for (const cand of candidates) {
+      if (mergedPhotoMap[cand]) return mergedPhotoMap[cand];
+    }
 
-    for (const [key, url] of Object.entries(mergedPhotoMap)) {
-      if (!key) continue;
-      if (key.trim().toLowerCase() === target) {
-        return url;
-      }
+    // 2) Case-insensitive match fallback
+    const lowerEntries = Object.entries(mergedPhotoMap).map(([k, url]) => [
+      (k || "").trim().toLowerCase(),
+      url,
+    ]);
+
+    for (const cand of candidates) {
+      const target = cand.trim().toLowerCase();
+      if (!target) continue;
+      const match = lowerEntries.find(([k]) => k === target);
+      if (match) return match[1];
     }
 
     return null;
@@ -266,16 +315,23 @@ export function PlayerCardPage({
       const overallRounded = Math.round(overall * 10) / 10;
       const styleLabel = makeStyleLabel(attackAvg, defenceAvg, gkAvg);
 
-      // ----- Identity: is this the signed-in user? -----
+      // ----- Identity: is this the signed-in user? (still based on raw name) -----
       const isYou =
         !!authDisplayName &&
         typeof name === "string" &&
         name.trim().toLowerCase() === authDisplayName;
 
+      // 🔤 Official display name from members.shortName (fallback to raw)
+      const displayName = resolveDisplayName(name);
+
+      // 🔗 Photo: try raw name, then displayName (shortName)
+      const photoUrl = getPlayerPhoto(name, displayName);
+
       out.push({
-        name,
+        name, // raw name used for stats / keys
+        displayName,
         teamName: playerTeamMap[name] || "—",
-        photoUrl: getPlayerPhoto(name),
+        photoUrl,
         goals: stats.goals,
         assists: stats.assists,
         shibobos: stats.shibobos,
@@ -290,11 +346,13 @@ export function PlayerCardPage({
       });
     });
 
-    // sort: highest overall, then goals, then name
+    // sort: highest overall, then goals, then display name
     out.sort((a, b) => {
       if (b.overall !== a.overall) return b.overall - a.overall;
       if (b.goals !== a.goals) return b.goals - a.goals;
-      return a.name.localeCompare(b.name);
+      const nameA = (a.displayName || a.name || "").toString();
+      const nameB = (b.displayName || b.name || "").toString();
+      return nameA.localeCompare(nameB);
     });
 
     return out;
@@ -305,6 +363,7 @@ export function PlayerCardPage({
     mergedPhotoMap,
     teams,
     authDisplayName,
+    memberNameIndex,
   ]);
 
   // ----- Filters -----
@@ -322,8 +381,9 @@ export function PlayerCardPage({
       }
       if (!search) return true;
       const q = search.toLowerCase();
+      const display = (p.displayName || p.name || "").toLowerCase();
       return (
-        p.name.toLowerCase().includes(q) ||
+        display.includes(q) ||
         (p.teamName && p.teamName.toLowerCase().includes(q))
       );
     });
@@ -403,138 +463,141 @@ export function PlayerCardPage({
           </p>
         ) : (
           <div className="player-card-grid">
-            {filteredPlayers.map((p) => (
-              <article
-                key={p.name}
-                className={
-                  p.isYou
-                    ? "player-card fifa-card player-card-you"
-                    : "player-card fifa-card"
-                }
-              >
-                <div className="fifa-card-top">
-                  <div className="fifa-rating-block">
-                    <span className="fifa-rating-score">
-                      {p.overall.toFixed(1)}
-                    </span>
-                    <span className="fifa-rating-pos">ALL</span>
-                  </div>
-
-                  <div className="fifa-photo-wrap">
-                    {p.photoUrl ? (
-                      <img
-                        src={p.photoUrl}
-                        alt={p.name}
-                        className="fifa-photo-img"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    ) : (
-                      <span className="fifa-photo-placeholder">
-                        {getInitials(p.name)}
+            {filteredPlayers.map((p) => {
+              const displayName = p.displayName || p.name || "";
+              return (
+                <article
+                  key={p.name}
+                  className={
+                    p.isYou
+                      ? "player-card fifa-card player-card-you"
+                      : "player-card fifa-card"
+                  }
+                >
+                  <div className="fifa-card-top">
+                    <div className="fifa-rating-block">
+                      <span className="fifa-rating-score">
+                        {p.overall.toFixed(1)}
                       </span>
-                    )}
+                      <span className="fifa-rating-pos">ALL</span>
+                    </div>
+
+                    <div className="fifa-photo-wrap">
+                      {p.photoUrl ? (
+                        <img
+                          src={p.photoUrl}
+                          alt={displayName}
+                          className="fifa-photo-img"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <span className="fifa-photo-placeholder">
+                          {getInitials(displayName)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="fifa-name-bar">
-                  <span className="fifa-name">
-                    {p.name}
-                    {p.isYou && (
-                      <span className="you-pill"> • You</span>
-                    )}
-                  </span>
-                  <span className="fifa-team">{p.teamName}</span>
-                </div>
-
-                <div className="fifa-mid-row">
-                  <div className="fifa-chip">
-                    <span className="chip-label">Stats</span>
-                    <span className="chip-value">
-                      {p.statsScore10.toFixed(1)}/10
+                  <div className="fifa-name-bar">
+                    <span className="fifa-name">
+                      {displayName}
+                      {p.isYou && (
+                        <span className="you-pill"> • You</span>
+                      )}
                     </span>
+                    <span className="fifa-team">{p.teamName}</span>
                   </div>
-                  <div className="fifa-chip">
-                    <span className="chip-label">Peer</span>
-                    <span className="chip-value">
-                      {p.peerScore10 != null
-                        ? `${p.peerScore10.toFixed(1)}/10`
-                        : "Not rated yet"}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="fifa-attr-grid">
-                  <div className="fifa-attr-cell">
-                    <span className="fifa-attr-label">ATT</span>
-                    {p.attackAvg != null ? (
-                      <>
-                        <span className="fifa-attr-value">
-                          {p.attackAvg.toFixed(1)}/5
-                        </span>
-                        <span className="fifa-attr-desc">ATTACK</span>
-                      </>
-                    ) : (
-                      <span className="fifa-attr-desc fifa-attr-unrated">
-                        No votes yet
+                  <div className="fifa-mid-row">
+                    <div className="fifa-chip">
+                      <span className="chip-label">Stats</span>
+                      <span className="chip-value">
+                        {p.statsScore10.toFixed(1)}/10
                       </span>
-                    )}
-                  </div>
-
-                  <div className="fifa-attr-cell">
-                    <span className="fifa-attr-label">DEF</span>
-                    {p.defenceAvg != null ? (
-                      <>
-                        <span className="fifa-attr-value">
-                          {p.defenceAvg.toFixed(1)}/5
-                        </span>
-                        <span className="fifa-attr-desc">DEFENCE</span>
-                      </>
-                    ) : (
-                      <span className="fifa-attr-desc fifa-attr-unrated">
-                        No votes yet
+                    </div>
+                    <div className="fifa-chip">
+                      <span className="chip-label">Peer</span>
+                      <span className="chip-value">
+                        {p.peerScore10 != null
+                          ? `${p.peerScore10.toFixed(1)}/10`
+                          : "Not rated yet"}
                       </span>
-                    )}
+                    </div>
                   </div>
 
-                  <div className="fifa-attr-cell">
-                    <span className="fifa-attr-label">GK</span>
-                    {p.gkAvg != null ? (
-                      <>
-                        <span className="fifa-attr-value">
-                          {p.gkAvg.toFixed(1)}/5
+                  <div className="fifa-attr-grid">
+                    <div className="fifa-attr-cell">
+                      <span className="fifa-attr-label">ATT</span>
+                      {p.attackAvg != null ? (
+                        <>
+                          <span className="fifa-attr-value">
+                            {p.attackAvg.toFixed(1)}/5
+                          </span>
+                          <span className="fifa-attr-desc">ATTACK</span>
+                        </>
+                      ) : (
+                        <span className="fifa-attr-desc fifa-attr-unrated">
+                          No votes yet
                         </span>
-                        <span className="fifa-attr-desc">
-                          GOALKEEPING
+                      )}
+                    </div>
+
+                    <div className="fifa-attr-cell">
+                      <span className="fifa-attr-label">DEF</span>
+                      {p.defenceAvg != null ? (
+                        <>
+                          <span className="fifa-attr-value">
+                            {p.defenceAvg.toFixed(1)}/5
+                          </span>
+                          <span className="fifa-attr-desc">DEFENCE</span>
+                        </>
+                      ) : (
+                        <span className="fifa-attr-desc fifa-attr-unrated">
+                          No votes yet
                         </span>
-                      </>
-                    ) : (
-                      <span className="fifa-attr-desc fifa-attr-unrated">
-                        No votes yet
+                      )}
+                    </div>
+
+                    <div className="fifa-attr-cell">
+                      <span className="fifa-attr-label">GK</span>
+                      {p.gkAvg != null ? (
+                        <>
+                          <span className="fifa-attr-value">
+                            {p.gkAvg.toFixed(1)}/5
+                          </span>
+                          <span className="fifa-attr-desc">
+                            GOALKEEPING
+                          </span>
+                        </>
+                      ) : (
+                        <span className="fifa-attr-desc fifa-attr-unrated">
+                          No votes yet
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="fifa-attr-cell">
+                      <span className="fifa-attr-label">G+A+S</span>
+                      <span className="fifa-attr-value">
+                        {p.goals + p.assists + p.shibobos}
                       </span>
-                    )}
+                      <span className="fifa-attr-desc">TOTAL</span>
+                    </div>
                   </div>
 
-                  <div className="fifa-attr-cell">
-                    <span className="fifa-attr-label">G+A+S</span>
-                    <span className="fifa-attr-value">
-                      {p.goals + p.assists + p.shibobos}
-                    </span>
-                    <span className="fifa-attr-desc">TOTAL</span>
+                  <div className="fifa-bottom-stats">
+                    <span>⚽ {p.goals} Goals</span>
+                    <span>🎯 {p.assists} Assists</span>
+                    <span>🌀 {p.shibobos} Shibobos</span>
                   </div>
-                </div>
 
-                <div className="fifa-bottom-stats">
-                  <span>⚽ {p.goals} Goals</span>
-                  <span>🎯 {p.assists} Assists</span>
-                  <span>🌀 {p.shibobos} Shibobos</span>
-                </div>
-
-                {p.styleLabel && (
-                  <p className="player-card-style">{p.styleLabel}</p>
-                )}
-              </article>
-            ))}
+                  {p.styleLabel && (
+                    <p className="player-card-style">{p.styleLabel}</p>
+                  )}
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
