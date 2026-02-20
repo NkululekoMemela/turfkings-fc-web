@@ -19,11 +19,9 @@ import {
 import { computeNextFromResult } from "./core/rotation.js";
 import { subscribeToState } from "./storage/firebaseRepository.js";
 
-import { week1Results, week1Events } from "./seed/week1Data.js";
-import { week2Results, week2Events } from "./seed/week2Data.js";
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
 
-// 🔁 NEW: live members list from Firestore
+// 🔁 live members list from Firestore
 import { useMembers } from "./hooks/useMembers.js";
 
 // Page constants
@@ -39,20 +37,12 @@ const PAGE_PLAYER_CARDS = "player-cards";
 const PAGE_PEER_REVIEW = "peer-review";
 
 const MASTER_CODE = "3333"; // Nkululeko admin code
-
-// ⏱️ Match duration in seconds (change here only)
-const MATCH_SECONDS = 5 * 60; // use 1 * 10 for testing
+const MATCH_SECONDS = 5 * 60; // 5 minutes
 
 export default function App() {
   // ---------- PAGE & IDENTITY ----------
-  const [page, setPage] = useState(() => {
-    if (typeof window === "undefined") return PAGE_ENTRY;
-    const saved = window.localStorage.getItem("tk_currentPage_v2");
-    // always land on Entry first if we don't have an identity yet
-    return saved || PAGE_ENTRY;
-  });
+  const [page, setPage] = useState(PAGE_ENTRY);
 
-  // identity payload from EntryPage
   const [identity, setIdentity] = useState(() => {
     if (typeof window === "undefined") return null;
     try {
@@ -63,18 +53,9 @@ export default function App() {
     }
   });
 
-  // 🔁 NEW: live members list from Firestore ("members" collection)
   const members = useMembers();
 
-  // keep current page in localStorage (but never force-clear state)
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("tk_currentPage_v2", page);
-    }
-  }, [page]);
-
   const handleEntryComplete = (payload) => {
-    // payload: { role, memberId?, fullName?, shortName?, email?, status? }
     setIdentity(payload);
     if (typeof window !== "undefined") {
       window.localStorage.setItem("tk_identity_v1", JSON.stringify(payload));
@@ -82,43 +63,34 @@ export default function App() {
     setPage(PAGE_LANDING);
   };
 
-  // ---------- APP STATE (MATCHES etc.) ----------
+  // ---------- APP STATE ----------
   const [state, setState] = useState(() => loadState());
-
-  // 💬 live peer ratings from Firestore
   const peerRatingsFromHook = usePeerRatings();
+  const peerRatingsByPlayer = peerRatingsFromHook || {};
 
-  // where to go back from Stats: landing or live
   const [statsReturnPage, setStatsReturnPage] = useState(PAGE_LANDING);
 
-  // ⏱️ TIMER STATE LIVES IN APP (so it survives page switches)
   const [secondsLeft, setSecondsLeft] = useState(MATCH_SECONDS);
   const [running, setRunning] = useState(false);
   const [timeUp, setTimeUp] = useState(false);
-
-  // Is there currently a live match in progress (on this device)?
   const [hasLiveMatch, setHasLiveMatch] = useState(false);
 
-  // backup / clear modal
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupCode, setBackupCode] = useState("");
   const [backupError, setBackupError] = useState("");
 
-  // 🌩 Helper: centralised state update for local edits
   const updateState = (updater) => {
     setState((prev) => {
-      const next =
-        typeof updater === "function" ? updater(prev) : updater;
+      const next = typeof updater === "function" ? updater(prev) : updater;
       saveState(next); // localStorage + Firebase mirror
       return next;
     });
   };
 
-  // ✅ Realtime subscription to Firestore full app state.
+  // ✅ Firestore subscription
   useEffect(() => {
     const unsubscribe = subscribeToState((cloudState) => {
       if (!cloudState) return;
-      // Use raw setState so we do NOT call saveState again.
       setState(cloudState);
     });
 
@@ -137,54 +109,47 @@ export default function App() {
     streaks,
     matchDayHistory = [],
     playerPhotosByName = {},
-    yearEndAttendance = [], // 🆕 already in your version
+    yearEndAttendance = [],
   } = state || createDefaultState();
 
-  // effective peer ratings to pass down
-  const peerRatingsByPlayer = peerRatingsFromHook || {};
-
-  // ---------- FULL-TOURNAMENT DATA FOR NEWS PAGE ----------
+  // ---------- HISTORY (Firebase) ----------
   const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
     (day) => day?.results || []
   );
+
   const archivedEventsFromHistory = (matchDayHistory || []).flatMap(
     (day) => day?.allEvents || []
   );
 
   const hasFirebaseHistory = (matchDayHistory || []).length > 0;
 
-  // If Firebase already has history, we assume it includes past weeks.
-  // If it's empty, we fall back to hard-coded Week 1 + Week 2 seed data.
-  const seedResultsForArchive = hasFirebaseHistory
-    ? []
-    : [...week1Results, ...week2Results];
-  const seedEventsForArchive = hasFirebaseHistory
-    ? []
-    : [...week1Events, ...week2Events];
+  // ---------- NEWS DATASET (NO SEEDS) ----------
+  // Firebase history + current week only
+  const fullResults = [...archivedResultsFromHistory, ...(results || [])];
+  const fullEvents = [...archivedEventsFromHistory, ...(allEvents || [])];
 
-  const fullResults = [
-    ...seedResultsForArchive,
-    ...archivedResultsFromHistory,
-    ...(results || []),
-  ];
+  // ---------- STATS + PLAYER CARDS DATASET (NO SEEDS) ----------
+  const fullSeasonResultsForStats = [...archivedResultsFromHistory, ...(results || [])];
+  const fullSeasonEventsForStats = [...archivedEventsFromHistory, ...(allEvents || [])];
 
-  const fullEvents = [
-    ...seedEventsForArchive,
-    ...archivedEventsFromHistory,
-    ...(allEvents || []),
-  ];
-
-  // ---------- FULL SEASON DATASET FOR STATS & PLAYER CARDS ----------
-  const fullSeasonResultsForStats = [
-    ...week1Results,
-    ...week2Results,
-    ...(results || []),
-  ];
-  const fullSeasonEventsForStats = [
-    ...week1Events,
-    ...week2Events,
-    ...(allEvents || []),
-  ];
+  // Optional debug (safe in dev + build)
+  useEffect(() => {
+    console.log("[TK DEBUG] Archive status (NO SEEDS)", {
+      hasFirebaseHistory,
+      matchDayHistoryLength: (matchDayHistory || []).length,
+      archivedResultsFromHistory: archivedResultsFromHistory.length,
+      archivedEventsFromHistory: archivedEventsFromHistory.length,
+      currentResults: (results || []).length,
+      currentEvents: (allEvents || []).length,
+    });
+  }, [
+    hasFirebaseHistory,
+    matchDayHistory,
+    archivedResultsFromHistory.length,
+    archivedEventsFromHistory.length,
+    results,
+    allEvents,
+  ]);
 
   // ---------- TIMER ----------
   useEffect(() => {
@@ -205,12 +170,18 @@ export default function App() {
     return () => clearInterval(id);
   }, [running, secondsLeft]);
 
-  // ---------- LANDING HANDLERS ----------
+  // ---------- NAV ----------
+  const handleGoToStats = (fromPage) => {
+    setStatsReturnPage(fromPage);
+    setPage(PAGE_STATS);
+  };
+
+  const handleBackToLanding = () => setPage(PAGE_LANDING);
+  const handleBackToLive = () => setPage(PAGE_LIVE);
+
+  // ---------- LANDING ----------
   const handleUpdatePairing = (match) => {
-    updateState((prev) => ({
-      ...prev,
-      currentMatch: match,
-    }));
+    updateState((prev) => ({ ...prev, currentMatch: match }));
   };
 
   const handleStartMatch = () => {
@@ -221,32 +192,11 @@ export default function App() {
     setPage(PAGE_LIVE);
   };
 
-  const handleGoToLiveAsSpectator = () => {
-    setPage(PAGE_SPECTATOR);
-  };
+  const handleGoToLiveAsSpectator = () => setPage(PAGE_SPECTATOR);
+  const handleGoToSquads = () => setPage(PAGE_SQUADS);
+  const handleGoToFormations = () => setPage(PAGE_FORMATIONS);
 
-  const handleGoToStats = (fromPage) => {
-    setStatsReturnPage(fromPage);
-    setPage(PAGE_STATS);
-  };
-
-  const handleGoToSquads = () => {
-    setPage(PAGE_SQUADS);
-  };
-
-  const handleGoToFormations = () => {
-    setPage(PAGE_FORMATIONS);
-  };
-
-  const handleBackToLanding = () => {
-    setPage(PAGE_LANDING);
-  };
-
-  const handleBackToLive = () => {
-    setPage(PAGE_LIVE);
-  };
-
-  // ---------- LIVE MATCH HANDLERS ----------
+  // ---------- LIVE MATCH ----------
   const handleAddEvent = (event) => {
     updateState((prev) => ({
       ...prev,
@@ -329,20 +279,13 @@ export default function App() {
     setSecondsLeft(MATCH_SECONDS);
     setHasLiveMatch(false);
 
-    updateState((prev) => ({
-      ...prev,
-      currentEvents: [],
-    }));
-
+    updateState((prev) => ({ ...prev, currentEvents: [] }));
     setPage(PAGE_LANDING);
   };
 
   // ---------- SQUADS ----------
   const handleUpdateTeams = (updatedTeams) => {
-    updateState((prev) => ({
-      ...prev,
-      teams: updatedTeams,
-    }));
+    updateState((prev) => ({ ...prev, teams: updatedTeams }));
   };
 
   // ---------- BACKUP / CLEAR ----------
@@ -378,14 +321,12 @@ export default function App() {
         standbyId: prev.teams?.[2]?.id ?? null,
       },
       streaks: prev.streaks
-        ? Object.fromEntries(
-            Object.keys(prev.streaks).map((tid) => [tid, 0])
-          )
+        ? Object.fromEntries(Object.keys(prev.streaks).map((tid) => [tid, 0]))
         : {},
       currentEvents: [],
       allEvents: [],
       results: [],
-      matchDayHistory: prev.matchDayHistory || [],
+      matchDayHistory: prev.matchDayHistory || [], // history remains
     }));
 
     closeBackupModal();
@@ -422,9 +363,7 @@ export default function App() {
           standbyId: prev.teams?.[2]?.id ?? null,
         },
         streaks: prev.streaks
-          ? Object.fromEntries(
-              Object.keys(prev.streaks).map((tid) => [tid, 0])
-            )
+          ? Object.fromEntries(Object.keys(prev.streaks).map((tid) => [tid, 0]))
           : {},
         currentEvents: [],
         allEvents: [],
@@ -437,17 +376,15 @@ export default function App() {
 
   return (
     <div className="app-root">
-      {/* ---------- ENTRY / IDENTITY PAGE ---------- */}
       {page === PAGE_ENTRY && (
         <EntryPage
           identity={identity}
-          members={members} // 🔁 NEW: drive dropdown from Firestore members
+          members={members}
           onComplete={handleEntryComplete}
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}
         />
       )}
 
-      {/* ---------- MAIN APP PAGES ---------- */}
       {page === PAGE_LANDING && (
         <LandingPage
           teams={teams}
@@ -504,18 +441,16 @@ export default function App() {
           teams={teams}
           results={results}
           allEvents={allEvents}
-          archivedResults={[...week1Results, ...week2Results]}
-          archivedEvents={[...week1Events, ...week2Events]}
+          archivedResults={archivedResultsFromHistory}
+          archivedEvents={archivedEventsFromHistory}
           cameFromLive={statsReturnPage === PAGE_LIVE}
           onBack={() =>
-            statsReturnPage === PAGE_LIVE
-              ? handleBackToLive()
-              : handleBackToLanding()
+            statsReturnPage === PAGE_LIVE ? handleBackToLive() : handleBackToLanding()
           }
           onGoToNews={() => setPage(PAGE_NEWS)}
           onGoToPlayerCards={() => setPage(PAGE_PLAYER_CARDS)}
           onGoToPeerReview={() => setPage(PAGE_PEER_REVIEW)}
-          members={members} // 🔁 NEW: for name normalisation in stats
+          members={members}
         />
       )}
 
@@ -530,14 +465,11 @@ export default function App() {
           identity={identity}
           yearEndAttendance={yearEndAttendance}
           onUpdateYearEndAttendance={(nextList) =>
-            updateState((prev) => ({
-              ...prev,
-              yearEndAttendance: nextList,
-            }))
+            updateState((prev) => ({ ...prev, yearEndAttendance: nextList }))
           }
           onGoToSignIn={() => setPage(PAGE_ENTRY)}
           onBack={handleBackToLanding}
-          members={members} // 🔁 NEW: for name normalisation in news/mvp
+          members={members}
         />
       )}
 
@@ -579,7 +511,6 @@ export default function App() {
         />
       )}
 
-      {/* BACKUP MODAL */}
       {showBackupModal && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -608,10 +539,7 @@ export default function App() {
               <button className="secondary-btn" onClick={handleClearOnly}>
                 Clear only
               </button>
-              <button
-                className="primary-btn"
-                onClick={handleSaveAndClearMatchDay}
-              >
+              <button className="primary-btn" onClick={handleSaveAndClearMatchDay}>
                 Save to Firebase &amp; clear
               </button>
             </div>

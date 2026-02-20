@@ -1,8 +1,78 @@
-// src/pages/PlayerCardPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../firebaseConfig";
 import { collection, getDocs } from "firebase/firestore";
 import { useAuth } from "../auth/AuthContext.jsx";
+
+// ---------------- HELPERS ----------------
+
+function toTitleCase(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// For legacy photo doc ids (and your FormationsPage uploader)
+function slugFromName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function safeLower(s) {
+  return String(s || "").trim().toLowerCase();
+}
+
+function firstNameOf(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[0] : "";
+}
+
+// ----- Helpers -----
+function safeNumber(v) {
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  return null;
+}
+
+function getInitials(name) {
+  if (!name || typeof name !== "string") return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function makeStyleLabel(attackAvg, defenceAvg, gkAvg) {
+  const vals = [
+    { key: "attack", val: attackAvg ?? -1 },
+    { key: "defence", val: defenceAvg ?? -1 },
+    { key: "gk", val: gkAvg ?? -1 },
+  ];
+
+  const best = vals.reduce(
+    (acc, cur) => (cur.val > acc.val ? cur : acc),
+    { key: null, val: -1 }
+  );
+
+  if (best.val < 0) return "";
+
+  if (best.key === "attack") {
+    return "Profile: direct attacker, loves getting into scoring positions.";
+  }
+  if (best.key === "defence") {
+    return "Profile: defensive anchor, breaks up play and protects the back.";
+  }
+  if (best.key === "gk") {
+    return "Profile: safe hands in goal, big presence between the posts.";
+  }
+  return "";
+}
+
+// ---------------- PAGE ----------------
 
 export function PlayerCardPage({
   teams,
@@ -16,15 +86,13 @@ export function PlayerCardPage({
   const { authUser } = useAuth() || {};
   const user = authUser || null;
 
-  const authDisplayName = useMemo(
-    () =>
-      user?.displayName
-        ? user.displayName.trim().toLowerCase()
-        : user?.email
-        ? user.email.trim().toLowerCase()
-        : "",
-    [user]
-  );
+  // Normalize auth displayName/email for "You" tag
+  const authIdentityKey = useMemo(() => {
+    const dn = safeLower(user?.displayName || "");
+    const em = safeLower(user?.email || "");
+    // displayName is usually best if it matches members.fullName
+    return dn || em || "";
+  }, [user]);
 
   // --- FULL SEASON EVENTS (archived + current) ---
   const seasonEvents = useMemo(
@@ -32,23 +100,143 @@ export function PlayerCardPage({
     [archivedEvents, allEvents]
   );
 
-  const peerRatings = peerRatingsByPlayer || {};
+  const peerRatingsRaw = peerRatingsByPlayer || {};
+
+  // ----- Load members: build canonical resolver -----
+  // Goal: collapse "Scott" and "Scott Eyono" to one canonical = members.fullName
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [nameToCanonical, setNameToCanonical] = useState({});
+  const [canonicalToShort, setCanonicalToShort] = useState({});
+
+  useEffect(() => {
+    async function loadMembers() {
+      try {
+        const snap = await getDocs(collection(db, "members"));
+
+        const mapNameToCanon = {};
+        const mapCanonToShort = {};
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+
+          const fullName = toTitleCase(data.fullName || "");
+          const shortName = toTitleCase(data.shortName || "") || fullName;
+
+          if (!fullName) return;
+
+          mapCanonToShort[safeLower(fullName)] = shortName;
+
+          // Keys we should recognize as THIS player:
+          const keys = new Set();
+
+          // full + short
+          keys.add(safeLower(fullName));
+          keys.add(safeLower(shortName));
+
+          // slug doc id style
+          keys.add(slugFromName(fullName));
+          keys.add(slugFromName(shortName));
+
+          // first name fallback (only if unique later — but still helps)
+          const fn = safeLower(firstNameOf(fullName));
+          if (fn) keys.add(fn);
+
+          // optional aliases field if you ever add it later
+          const aliases = Array.isArray(data.aliases) ? data.aliases : [];
+          aliases.forEach((a) => {
+            const aa = toTitleCase(a);
+            if (aa) {
+              keys.add(safeLower(aa));
+              keys.add(slugFromName(aa));
+            }
+          });
+
+          // map all keys -> canonical fullName
+          keys.forEach((k) => {
+            if (!k) return;
+            // Don't overwrite if already set — keeps first match stable
+            if (!mapNameToCanon[k]) mapNameToCanon[k] = fullName;
+          });
+        });
+
+        setNameToCanonical(mapNameToCanon);
+        setCanonicalToShort(mapCanonToShort);
+        setMembersLoaded(true);
+      } catch (err) {
+        console.error("Failed to load members for PlayerCardPage:", err);
+        setMembersLoaded(true);
+      }
+    }
+
+    loadMembers();
+  }, []);
+
+  const resolveCanonicalName = (rawName) => {
+    if (!rawName || typeof rawName !== "string") return "";
+    const tc = toTitleCase(rawName);
+    if (!tc) return "";
+
+    const direct = nameToCanonical[safeLower(tc)];
+    if (direct) return direct;
+
+    // try by slug
+    const bySlug = nameToCanonical[slugFromName(tc)];
+    if (bySlug) return bySlug;
+
+    // try first name
+    const fn = safeLower(firstNameOf(tc));
+    if (fn && nameToCanonical[fn]) return nameToCanonical[fn];
+
+    // fallback: return title cased raw
+    return tc;
+  };
+
+  const resolveShortDisplay = (canonicalFullName) => {
+    const key = safeLower(canonicalFullName);
+    return canonicalToShort[key] || canonicalFullName;
+  };
 
   // ----- Firestore player photos (same source as FormationsPage) -----
-  const [cloudPhotos, setCloudPhotos] = useState({});
+  const [cloudPhotosRaw, setCloudPhotosRaw] = useState({}); // keep raw map
+  const [cloudPhotosIndex, setCloudPhotosIndex] = useState({}); // multi-key lookup
 
   useEffect(() => {
     async function loadPhotos() {
       try {
         const snap = await getDocs(collection(db, "playerPhotos"));
-        const map = {};
+        const raw = {};
+        const idx = {};
+
         snap.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (data?.name && data?.photoData) {
-            map[data.name] = data.photoData;
+          const data = docSnap.data() || {};
+          const docId = docSnap.id; // often slugFromName(name)
+          const name = toTitleCase(data.name || "");
+
+          if (!data.photoData) return;
+
+          // store raw
+          if (name) raw[name] = data.photoData;
+
+          // index keys
+          const keys = new Set();
+
+          if (name) {
+            keys.add(safeLower(name));
+            keys.add(slugFromName(name));
+            const fn = safeLower(firstNameOf(name));
+            if (fn) keys.add(fn);
           }
+
+          if (docId) keys.add(safeLower(docId));
+
+          keys.forEach((k) => {
+            if (!k) return;
+            if (!idx[k]) idx[k] = data.photoData;
+          });
         });
-        setCloudPhotos(map);
+
+        setCloudPhotosRaw(raw);
+        setCloudPhotosIndex(idx);
       } catch (err) {
         console.error("Failed to load player photos for cards:", err);
       }
@@ -56,115 +244,76 @@ export function PlayerCardPage({
     loadPhotos();
   }, []);
 
-  // ----- Load members to map raw name -> shortName (display name) -----
-  const [memberNameIndex, setMemberNameIndex] = useState({});
+  // ----- Merge photo sources: prop + Firestore + team metadata -----
+  const mergedPhotoIndex = useMemo(() => {
+    const idx = {};
 
-  useEffect(() => {
-    async function loadMembers() {
-      try {
-        const snap = await getDocs(collection(db, "members"));
-        const index = {};
-
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          const fullName = (data.fullName || "").trim();
-          const shortName = (data.shortName || fullName || "").trim();
-
-          if (!shortName && !fullName) return;
-
-          const fullLower = fullName.toLowerCase();
-          const shortLower = shortName.toLowerCase();
-
-          // Map both the fullName and the shortName to the official shortName
-          if (fullLower) index[fullLower] = shortName;
-          if (shortLower) index[shortLower] = shortName;
-        });
-
-        setMemberNameIndex(index);
-      } catch (err) {
-        console.error("Failed to load members for PlayerCardPage:", err);
-      }
-    }
-
-    loadMembers();
-  }, []);
-
-  const resolveDisplayName = (rawName) => {
-    if (!rawName || typeof rawName !== "string") return rawName;
-    const key = rawName.trim().toLowerCase();
-    return memberNameIndex[key] || rawName;
-  };
-
-  // ----- Map player -> team label -----
-  const playerTeamMap = useMemo(() => {
-    const map = {};
-    (teams || []).forEach((t) => {
-      (t.players || []).forEach((p) => {
-        const name =
-          typeof p === "string" ? p : p?.name || p?.displayName;
-        if (name && !map[name]) {
-          map[name] = t.label;
-        }
-      });
-    });
-    return map;
-  }, [teams]);
-
-  // ----- Player photo resolver (merge prop + Firebase + team metadata) -----
-  const mergedPhotoMap = useMemo(() => {
-    // start with prop + Firestore avatars
-    const map = {
-      ...(playerPhotosByName || {}),
-      ...(cloudPhotos || {}),
+    const addPhotoKey = (key, url) => {
+      const k = safeLower(key);
+      if (!k || !url) return;
+      if (!idx[k]) idx[k] = url;
     };
 
+    // 1) props map (likely keyed by name)
+    Object.entries(playerPhotosByName || {}).forEach(([k, url]) => {
+      addPhotoKey(k, url);
+      addPhotoKey(slugFromName(k), url);
+      addPhotoKey(firstNameOf(k), url);
+    });
+
+    // 2) Firestore indexed
+    Object.entries(cloudPhotosIndex || {}).forEach(([k, url]) => {
+      addPhotoKey(k, url);
+    });
+
+    // 3) team metadata
     (teams || []).forEach((t) => {
-      // team-level map: t.playerPhotos = { [name]: url }
-      if (t.playerPhotos) {
-        Object.entries(t.playerPhotos).forEach(([name, url]) => {
-          if (name && url && !map[name]) {
-            map[name] = url;
-          }
+      if (t?.playerPhotos) {
+        Object.entries(t.playerPhotos).forEach(([k, url]) => {
+          addPhotoKey(k, url);
+          addPhotoKey(slugFromName(k), url);
+          addPhotoKey(firstNameOf(k), url);
         });
       }
 
-      // per-player object: { name, photoUrl }
-      (t.players || []).forEach((p) => {
+      (t?.players || []).forEach((p) => {
         if (p && typeof p === "object") {
-          const name = p.name || p.displayName;
-          if (name && p.photoUrl && !map[name]) {
-            map[name] = p.photoUrl;
+          const nm = p.name || p.displayName || "";
+          if (nm && p.photoUrl) {
+            addPhotoKey(nm, p.photoUrl);
+            addPhotoKey(slugFromName(nm), p.photoUrl);
+            addPhotoKey(firstNameOf(nm), p.photoUrl);
           }
         }
       });
     });
 
-    return map;
-  }, [teams, playerPhotosByName, cloudPhotos]);
+    return idx;
+  }, [playerPhotosByName, cloudPhotosIndex, teams]);
 
-  // 🔑 NEW: try both raw name and displayName when resolving photos
-  const getPlayerPhoto = (rawName, displayName) => {
+  const getPlayerPhoto = (canonicalFullName, shortName = "") => {
     const candidates = [];
 
-    if (rawName) candidates.push(rawName);
-    if (displayName && displayName !== rawName) candidates.push(displayName);
+    const cn = toTitleCase(canonicalFullName || "");
+    const sn = toTitleCase(shortName || "");
 
-    // 1) Exact key matches first
-    for (const cand of candidates) {
-      if (mergedPhotoMap[cand]) return mergedPhotoMap[cand];
-    }
+    if (cn) candidates.push(cn);
+    if (sn && sn !== cn) candidates.push(sn);
 
-    // 2) Case-insensitive match fallback
-    const lowerEntries = Object.entries(mergedPhotoMap).map(([k, url]) => [
-      (k || "").trim().toLowerCase(),
-      url,
-    ]);
+    // also try first names
+    const fn1 = firstNameOf(cn);
+    const fn2 = firstNameOf(sn);
+    if (fn1) candidates.push(fn1);
+    if (fn2 && fn2 !== fn1) candidates.push(fn2);
 
-    for (const cand of candidates) {
-      const target = cand.trim().toLowerCase();
-      if (!target) continue;
-      const match = lowerEntries.find(([k]) => k === target);
-      if (match) return match[1];
+    // and slugs
+    if (cn) candidates.push(slugFromName(cn));
+    if (sn) candidates.push(slugFromName(sn));
+
+    // 1) exact-ish (case-insensitive via index)
+    for (const c of candidates) {
+      const k = safeLower(c);
+      if (k && mergedPhotoIndex[k]) return mergedPhotoIndex[k];
     }
 
     return null;
@@ -197,91 +346,131 @@ export function PlayerCardPage({
     return out;
   }, [seasonEvents]);
 
-  // ----- Aggregate stats from FULL SEASON events -----
+  // ----- Canonicalize peer ratings keys -----
+  const peerRatingsCanon = useMemo(() => {
+    const out = {};
+    Object.entries(peerRatingsRaw || {}).forEach(([rawName, val]) => {
+      const canon = resolveCanonicalName(rawName);
+      if (!canon) return;
+
+      // merge if duplicates exist
+      if (!out[canon]) {
+        out[canon] = val;
+      } else {
+        // Prefer the one with more votes if you store that, else keep existing
+        out[canon] = out[canon] || val;
+      }
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerRatingsRaw, nameToCanonical, membersLoaded]);
+
+  // ----- Aggregate stats from FULL SEASON events (CANONICAL) -----
   const statsByPlayer = useMemo(() => {
     const stats = {};
 
-    const ensure = (name) => {
-      if (!stats[name]) {
-        stats[name] = {
-          name,
+    const ensure = (canonName) => {
+      if (!stats[canonName]) {
+        stats[canonName] = {
+          name: canonName, // canonical
           goals: 0,
           assists: 0,
           shibobos: 0,
           rawStatsScore: 0,
         };
       }
-      return stats[name];
+      return stats[canonName];
     };
 
     uniqueEvents.forEach((e) => {
       if (!e) return;
 
       if (e.scorer) {
-        const s = ensure(e.scorer);
-        if (e.type === "goal") {
-          s.goals += 1;
-        } else if (e.type === "shibobo") {
-          s.shibobos += 1;
+        const canonScorer = resolveCanonicalName(e.scorer);
+        if (canonScorer) {
+          const s = ensure(canonScorer);
+          if (e.type === "goal") s.goals += 1;
+          else if (e.type === "shibobo") s.shibobos += 1;
         }
       }
 
       if (e.assist) {
-        const a = ensure(e.assist);
-        a.assists += 1;
+        const canonAssist = resolveCanonicalName(e.assist);
+        if (canonAssist) {
+          const a = ensure(canonAssist);
+          a.assists += 1;
+        }
       }
     });
 
-    // apply weights: goals=3, assists=2, shibobo=1
+    // weights: goals=3, assists=2, shibobo=1
     Object.values(stats).forEach((p) => {
       p.rawStatsScore = p.goals * 3 + p.assists * 2 + p.shibobos * 1;
     });
 
     return stats;
-  }, [uniqueEvents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uniqueEvents, nameToCanonical, membersLoaded]);
 
-  // ----- Normalise stats to /10 and combine with peer ratings -----
+  // ----- Map canonical player -> team label -----
+  const playerTeamMap = useMemo(() => {
+    const map = {};
+
+    (teams || []).forEach((t) => {
+      (t.players || []).forEach((p) => {
+        const raw =
+          typeof p === "string" ? p : p?.name || p?.displayName || "";
+        const canon = resolveCanonicalName(raw);
+        if (canon && !map[canon]) {
+          map[canon] = t.label;
+        }
+      });
+    });
+
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teams, nameToCanonical, membersLoaded]);
+
+  // ----- Normalise stats to /10 and combine with peer ratings (CANONICAL) -----
   const playersWithRatings = useMemo(() => {
     const allNames = new Set([
-      ...Object.keys(statsByPlayer),
-      ...Object.keys(peerRatings),
+      ...Object.keys(statsByPlayer || {}),
+      ...Object.keys(peerRatingsCanon || {}),
     ]);
 
     // include everyone in squads so nobody disappears
     (teams || []).forEach((t) => {
       (t.players || []).forEach((p) => {
-        const name =
-          typeof p === "string" ? p : p?.name || p?.displayName;
-        if (name) allNames.add(name);
+        const raw =
+          typeof p === "string" ? p : p?.name || p?.displayName || "";
+        const canon = resolveCanonicalName(raw);
+        if (canon) allNames.add(canon);
       });
     });
 
     // max for normalisation
     let maxRaw = 0;
-    Object.values(statsByPlayer).forEach((p) => {
+    Object.values(statsByPlayer || {}).forEach((p) => {
       if (p.rawStatsScore > maxRaw) maxRaw = p.rawStatsScore;
     });
     if (maxRaw <= 0) maxRaw = 1;
 
     const out = [];
 
-    allNames.forEach((name) => {
-      if (!name) return;
+    allNames.forEach((canonName) => {
+      if (!canonName) return;
 
-      const stats = statsByPlayer[name] || {
-        name,
+      const stats = statsByPlayer[canonName] || {
+        name: canonName,
         goals: 0,
         assists: 0,
         shibobos: 0,
         rawStatsScore: 0,
       };
 
-      const peer = peerRatings[name] || null;
+      const peer = peerRatingsCanon[canonName] || null;
 
-      const statsScore10 = Math.min(
-        10,
-        (stats.rawStatsScore / maxRaw) * 10
-      );
+      const statsScore10 = Math.min(10, (stats.rawStatsScore / maxRaw) * 10);
 
       let attackAvg = null;
       let defenceAvg = null;
@@ -305,32 +494,28 @@ export function PlayerCardPage({
         }
       }
 
-      let overall;
-      if (peerScore10 != null) {
-        overall = 0.5 * statsScore10 + 0.5 * peerScore10;
-      } else {
-        overall = statsScore10;
-      }
+      const overall =
+        peerScore10 != null ? 0.5 * statsScore10 + 0.5 * peerScore10 : statsScore10;
 
       const overallRounded = Math.round(overall * 10) / 10;
       const styleLabel = makeStyleLabel(attackAvg, defenceAvg, gkAvg);
 
-      // ----- Identity: is this the signed-in user? (still based on raw name) -----
+      const displayName = canonName; // full name on the card (uniform)
+      const shortName = resolveShortDisplay(canonName);
+
+      const photoUrl = getPlayerPhoto(canonName, shortName);
+
+      // "You" tag: compare canonicalized auth displayName against canonical
       const isYou =
-        !!authDisplayName &&
-        typeof name === "string" &&
-        name.trim().toLowerCase() === authDisplayName;
-
-      // 🔤 Official display name from members.shortName (fallback to raw)
-      const displayName = resolveDisplayName(name);
-
-      // 🔗 Photo: try raw name, then displayName (shortName)
-      const photoUrl = getPlayerPhoto(name, displayName);
+        !!authIdentityKey &&
+        safeLower(resolveCanonicalName(authIdentityKey)) === safeLower(canonName);
 
       out.push({
-        name, // raw name used for stats / keys
-        displayName,
-        teamName: playerTeamMap[name] || "—",
+        id: safeLower(canonName), // stable key
+        name: canonName, // canonical key
+        displayName, // show full name uniformly
+        shortName, // available if you want first-name UI later
+        teamName: playerTeamMap[canonName] || "—",
         photoUrl,
         goals: stats.goals,
         assists: stats.assists,
@@ -350,20 +535,21 @@ export function PlayerCardPage({
     out.sort((a, b) => {
       if (b.overall !== a.overall) return b.overall - a.overall;
       if (b.goals !== a.goals) return b.goals - a.goals;
-      const nameA = (a.displayName || a.name || "").toString();
-      const nameB = (b.displayName || b.name || "").toString();
-      return nameA.localeCompare(nameB);
+      return String(a.displayName || "").localeCompare(String(b.displayName || ""));
     });
 
     return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     statsByPlayer,
-    peerRatings,
+    peerRatingsCanon,
     playerTeamMap,
-    mergedPhotoMap,
     teams,
-    authDisplayName,
-    memberNameIndex,
+    authIdentityKey,
+    nameToCanonical,
+    canonicalToShort,
+    mergedPhotoIndex,
+    membersLoaded,
   ]);
 
   // ----- Filters -----
@@ -372,20 +558,14 @@ export function PlayerCardPage({
 
   const filteredPlayers = useMemo(() => {
     return playersWithRatings.filter((p) => {
-      if (
-        teamFilter !== "ALL" &&
-        p.teamName &&
-        p.teamName !== teamFilter
-      ) {
+      if (teamFilter !== "ALL" && p.teamName && p.teamName !== teamFilter) {
         return false;
       }
       if (!search) return true;
       const q = search.toLowerCase();
-      const display = (p.displayName || p.name || "").toLowerCase();
-      return (
-        display.includes(q) ||
-        (p.teamName && p.teamName.toLowerCase().includes(q))
-      );
+      const dn = (p.displayName || "").toLowerCase();
+      const tn = (p.teamName || "").toLowerCase();
+      return dn.includes(q) || tn.includes(q);
     });
   }, [playersWithRatings, teamFilter, search]);
 
@@ -404,17 +584,15 @@ export function PlayerCardPage({
           Ratings built from TurfKings stats and squad peer reviews.
         </p>
 
-        {/* Small identity hint so players know to sign in before editing photos */}
         {user ? (
           <p className="subtitle">
-            Signed in as{" "}
-            <strong>{user.displayName || user.email}</strong>. Your own
-            card will be tagged as <strong>“You”</strong>.
+            Signed in as <strong>{user.displayName || user.email}</strong>. Your
+            own card will be tagged as <strong>“You”</strong>.
           </p>
         ) : (
           <p className="subtitle">
-            Not signed in – use Google sign-in on the landing page so your
-            photo changes can be tied to your identity.
+            Not signed in – use Google sign-in on the landing page so your photo
+            changes can be tied to your identity.
           </p>
         )}
 
@@ -458,8 +636,8 @@ export function PlayerCardPage({
       <section className="card player-card-grid-card">
         {filteredPlayers.length === 0 ? (
           <p className="muted">
-            No players to show yet – record some games or add peer ratings
-            to unlock player cards.
+            No players to show yet – record some games or add peer ratings to
+            unlock player cards.
           </p>
         ) : (
           <div className="player-card-grid">
@@ -467,7 +645,7 @@ export function PlayerCardPage({
               const displayName = p.displayName || p.name || "";
               return (
                 <article
-                  key={p.name}
+                  key={p.id}
                   className={
                     p.isYou
                       ? "player-card fifa-card player-card-you"
@@ -502,9 +680,7 @@ export function PlayerCardPage({
                   <div className="fifa-name-bar">
                     <span className="fifa-name">
                       {displayName}
-                      {p.isYou && (
-                        <span className="you-pill"> • You</span>
-                      )}
+                      {p.isYou && <span className="you-pill"> • You</span>}
                     </span>
                     <span className="fifa-team">{p.teamName}</span>
                   </div>
@@ -566,9 +742,7 @@ export function PlayerCardPage({
                           <span className="fifa-attr-value">
                             {p.gkAvg.toFixed(1)}/5
                           </span>
-                          <span className="fifa-attr-desc">
-                            GOALKEEPING
-                          </span>
+                          <span className="fifa-attr-desc">GOALKEEPING</span>
                         </>
                       ) : (
                         <span className="fifa-attr-desc fifa-attr-unrated">
@@ -603,45 +777,4 @@ export function PlayerCardPage({
       </section>
     </div>
   );
-}
-
-// ----- Helpers -----
-function safeNumber(v) {
-  if (typeof v === "number" && !Number.isNaN(v)) return v;
-  return null;
-}
-
-function getInitials(name) {
-  if (!name || typeof name !== "string") return "?";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-function makeStyleLabel(attackAvg, defenceAvg, gkAvg) {
-  const vals = [
-    { key: "attack", val: attackAvg ?? -1 },
-    { key: "defence", val: defenceAvg ?? -1 },
-    { key: "gk", val: gkAvg ?? -1 },
-  ];
-
-  const best = vals.reduce(
-    (acc, cur) => (cur.val > acc.val ? cur : acc),
-    { key: null, val: -1 }
-  );
-
-  if (best.val < 0) return "";
-
-  if (best.key === "attack") {
-    return "Profile: direct attacker, loves getting into scoring positions.";
-  }
-  if (best.key === "defence") {
-    return "Profile: defensive anchor, breaks up play and protects the back.";
-  }
-  if (best.key === "gk") {
-    return "Profile: safe hands in goal, big presence between the posts.";
-  }
-  return "";
 }

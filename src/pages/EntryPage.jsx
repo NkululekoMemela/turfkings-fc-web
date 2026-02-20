@@ -461,7 +461,11 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
           <h2>Confirm your player identity</h2>
           <div className="field-column" style={{ marginTop: "1rem" }}>
             <label>Select your name (Turf Kings player list)</label>
-            <select
+            <p className="muted small" style={{ marginTop: "0.25rem" }}>
+              There are {activeMembers.length} players on the list – scroll or look for
+              your number.
+            </p>
+              <select
               className="text-input"
               value={selectedMemberId}
               onChange={(e) => {
@@ -471,18 +475,25 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
               }}
             >
               <option value="">Select your name...</option>
-              {activeMembers.map((m) => (
+
+              {/* Active players, numbered 1, 2, 3, ... */}
+              {activeMembers.map((m, idx) => (
                 <option key={m.id} value={m.id}>
-                  {m.fullName}
+                  {idx + 1}. {m.fullName}
                 </option>
               ))}
-              {pendingMembers.map((m) => (
+
+              {/* Pending players, continue numbering after active list */}
+              {pendingMembers.map((m, idx) => (
                 <option key={m.id} value={m.id}>
-                  {m.fullName} (pending approval)
+                  {activeMembers.length + idx + 1}. {m.fullName} (pending approval)
                 </option>
               ))}
             </select>
           </div>
+
+
+
 
           <div className="actions-row" style={{ marginTop: "1rem" }}>
             <button

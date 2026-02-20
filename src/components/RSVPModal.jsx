@@ -33,7 +33,9 @@ export function RSVPModal({ identity, onClose }) {
   const [paymentOpen, setPaymentOpen] = useState(false); // collapsed by default
   const [editing, setEditing] = useState(false); // view vs edit mode
 
-  const identityEmail = (identity?.email || identity?.user?.email || "").trim().toLowerCase();
+  const identityEmail = (identity?.email || identity?.user?.email || "")
+    .trim()
+    .toLowerCase();
 
   // 🔑 Admin detection – ONLY real admin, not all captains
   const isAdmin =
@@ -70,8 +72,7 @@ export function RSVPModal({ identity, onClose }) {
 
   const currentEmail = identity?.email || identity?.user?.email || null;
 
-  const existing =
-    attendees.find((a) => a.name === currentUser) || null;
+  const existing = attendees.find((a) => a.name === currentUser) || null;
 
   // Separate active vs withdrawn attendees
   const activeAttendees = attendees.filter((a) => !a.withdrawn);
@@ -231,13 +232,16 @@ export function RSVPModal({ identity, onClose }) {
     );
   }
 
-  // toggle "paid" directly from the attendees list, only for the current user
+  // 🔁 toggle "paid" from the attendees list
+  // - normal users: only their own row
+  // - admin: can toggle anyone
   async function togglePaidFromList(attendee) {
-    if (!currentUser) return;
-    if (attendee.name !== currentUser) return;
+    if (!currentUser && !isAdmin) return;
+    if (!isAdmin && attendee.name !== currentUser) return;
 
     const newPaid = !attendee.paid;
     setError("");
+
     await setDoc(
       doc(db, "yearEndRSVP", attendee.name),
       {
@@ -681,7 +685,10 @@ export function RSVPModal({ identity, onClose }) {
                   attendees
                     .slice()
                     // Active first, withdrawn after
-                    .sort((a, b) => Number(!!a.withdrawn) - Number(!!b.withdrawn))
+                    .sort(
+                      (a, b) =>
+                        Number(!!a.withdrawn) - Number(!!b.withdrawn)
+                    )
                     .map((a, idx) => {
                       const perPlayerAmount =
                         PLAYER_FEE + FRIEND_FEE * (a.friends || 0);
@@ -726,8 +733,10 @@ export function RSVPModal({ identity, onClose }) {
                                 (pulled out)
                               </span>
                             )}
+
+                            {/* Paid / checkbox logic */}
                             {!isWithdrawn &&
-                              (isSelf ? (
+                              (isSelf || isAdmin ? (
                                 <label
                                   style={{
                                     display: "inline-flex",
@@ -741,7 +750,11 @@ export function RSVPModal({ identity, onClose }) {
                                     checked={!!a.paid}
                                     onChange={() => togglePaidFromList(a)}
                                   />
-                                  <span>I have paid</span>
+                                  <span>
+                                    {isSelf
+                                      ? "I have paid"
+                                      : "Mark as paid"}
+                                  </span>
                                 </label>
                               ) : (
                                 a.paid && (

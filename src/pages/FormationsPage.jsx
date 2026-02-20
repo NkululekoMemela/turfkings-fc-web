@@ -24,6 +24,10 @@ function toTitleCase(name) {
     .join(" ");
 }
 
+function normKey(x) {
+  return String(x || "").trim().toLowerCase();
+}
+
 // Small helper for Firestore document ids (for photos)
 function slugFromName(name) {
   return String(name || "")
@@ -258,7 +262,6 @@ function resolveTeamLineup(
       if (formationsMap[existing.formationId]) return existing;
       return buildDefaultLineup(players, defaultFormationId, formationsMap);
     }
-    // 11-a-side: no saved lineup yet, build default from full pool
     return buildDefaultLineup(players, defaultFormationId, formationsMap);
   }
 
@@ -274,18 +277,16 @@ export function FormationsPage({
   teams,
   currentMatch,
   playerPhotosByName = {},
-  identity = null, // ✅ from EntryPage (same as PeerReviewPage)
-  authUser = null, // optional – Firebase user if you want it
+  identity = null, // from EntryPage
+  authUser = null,
   onBack,
   onGoToSquads,
 }) {
-  // ✅ Everyone can edit lineups (brainstorming & screenshots)
+  // Everyone can edit lineups
   const canEditLineups = true;
 
   // all saved lineups (per teamId, per game type)
-  const [lineupsByTeam, setLineupsByTeam] = useState(() =>
-    loadSavedLineups()
-  );
+  const [lineupsByTeam, setLineupsByTeam] = useState(() => loadSavedLineups());
 
   // which team is being shown (prefer the team A from current match if provided)
   const initialTeamId =
@@ -298,7 +299,7 @@ export function FormationsPage({
   const selectedTeam =
     teams.find((t) => t.id === selectedTeamId) || teams[0] || null;
 
-  // ---------- MEMBERS FROM FIRESTORE (for 11s + player pool) ----------
+  // ---------- MEMBERS FROM FIRESTORE (canonical people) ----------
   const [members, setMembers] = useState([]);
 
   useEffect(() => {
@@ -308,13 +309,23 @@ export function FormationsPage({
       (snap) => {
         const list = snap.docs.map((d) => {
           const data = d.data() || {};
+          const fullName = toTitleCase(data.fullName || data.name || "");
+          const shortName = toTitleCase(
+            data.shortName || data.displayName || ""
+          );
+          const aliases = Array.isArray(data.aliases)
+            ? data.aliases.map((a) => toTitleCase(a)).filter(Boolean)
+            : [];
           return {
             id: d.id,
-            fullName: toTitleCase(data.fullName || ""),
+            fullName,
+            shortName,
+            aliases,
             status: data.status || "active",
           };
         });
-        const active = list.filter((m) => m.status === "active");
+
+        const active = list.filter((m) => (m.status || "active") === "active");
         active.sort((a, b) => a.fullName.localeCompare(b.fullName));
         setMembers(active);
       },
@@ -325,130 +336,145 @@ export function FormationsPage({
     return () => unsub();
   }, []);
 
-  const dbPlayerNames = useMemo(
-    () => members.map((m) => m.fullName),
-    [members]
-  );
+  // Build resolver maps so we can snap ANY old label to one canonical display name
+  const memberResolver = useMemo(() => {
+    const byAny = new Map(); // key -> member
+    const firstNameCounts = new Map(); // firstNameLower -> count
 
-  // full Turf Kings player pool = all unique players from all teams + active members
-  const turfKingsPlayers = useMemo(() => {
-    const set = new Set();
+    members.forEach((m) => {
+      const keys = new Set();
 
-    // seeded squads
-    teams.forEach((t) => {
-      (t.players || []).forEach((p) => {
-        const name = toTitleCase(p);
-        if (name) set.add(name);
+      keys.add(normKey(m.id));
+      if (m.fullName) keys.add(normKey(m.fullName));
+      if (m.shortName) keys.add(normKey(m.shortName));
+      (m.aliases || []).forEach((a) => keys.add(normKey(a)));
+
+      // count first names for safe short matching
+      const first = normKey((m.fullName || "").split(" ")[0]);
+      if (first) firstNameCounts.set(first, (firstNameCounts.get(first) || 0) + 1);
+
+      keys.forEach((k) => {
+        if (k) byAny.set(k, m);
       });
     });
 
-    // DB players (active members, includes unseeded like Zenande)
-    dbPlayerNames.forEach((name) => {
-      const canon = toTitleCase(name);
-      if (canon) set.add(canon);
-    });
+    function resolve(rawLabel) {
+      const raw = toTitleCase(rawLabel || "");
+      const k = normKey(raw);
+      if (!k) return { display: "", member: null };
 
-    const arr = Array.from(set).sort((a, b) => a.localeCompare(b));
-    return arr;
-  }, [teams, dbPlayerNames]);
+      // 1) exact match
+      const exact = byAny.get(k);
+      if (exact) return { display: exact.fullName || raw, member: exact };
 
-  const formationsMap =
-    gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
-  const defaultFormationId =
-    gameType === GAME_TYPE_11
-      ? DEFAULT_FORMATION_ID_11
-      : DEFAULT_FORMATION_ID_5;
+      // 2) slug match
+      const slug = normKey(slugFromName(raw));
+      const bySlug = byAny.get(slug);
+      if (bySlug) return { display: bySlug.fullName || raw, member: bySlug };
 
-  // which player list to use for seeding this mode
-  const playerPool =
-    gameType === GAME_TYPE_11
-      ? turfKingsPlayers // ALL players for 11s
-      : selectedTeam?.players || [];
+      // 3) first-name match ONLY if unique
+      const first = normKey(raw.split(" ")[0]);
+      if (first && firstNameCounts.get(first) === 1) {
+        const candidate = byAny.get(first);
+        if (candidate) return { display: candidate.fullName || raw, member: candidate };
+      }
 
-  const [lineup, setLineup] = useState(() =>
-    resolveTeamLineup(
-      selectedTeam,
-      gameType,
-      lineupsByTeam,
-      formationsMap,
-      defaultFormationId,
-      playerPool
-    )
-  );
+      // 4) fallback
+      return { display: raw, member: null };
+    }
 
-  // keep lineup in sync if team, game type, or stored lineups change
-  useEffect(() => {
-    if (!selectedTeam) return;
-    const next = resolveTeamLineup(
-      selectedTeam,
-      gameType,
-      lineupsByTeam,
-      formationsMap,
-      defaultFormationId,
-      playerPool
-    );
-    setLineup(next);
-    setSelectedPlayer(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    selectedTeamId,
-    selectedTeam,
-    gameType,
-    lineupsByTeam,
-    teams,
-    turfKingsPlayers,
-  ]);
+    return { resolve };
+  }, [members]);
 
-  const formation =
-    formationsMap[lineup.formationId] ||
-    formationsMap[defaultFormationId] ||
-    Object.values(formationsMap)[0];
+  // Canonical display for any input name (FULL NAME for storage)
+  const canonicalName = (raw) => memberResolver.resolve(raw).display;
 
-  // -------- player photos (DB-backed + seeded from App) --------
+  // UI-only: compact label (first name / shortName), but DO NOT change stored names
+  const displayCompactName = (raw) => {
+    if (!raw) return "";
+    const resolved = memberResolver.resolve(raw);
+
+    const m = resolved?.member;
+    const full = resolved?.display || toTitleCase(raw);
+
+    if (m) {
+      const sn = String(m.shortName || "").trim();
+      if (sn) return sn;
+      return String(m.fullName || full).split(/\s+/)[0] || full;
+    }
+
+    return String(full).split(/\s+/)[0] || full;
+  };
+
+  // ---------------- photos (DB-backed + seeded from App) ----------------
   const [playerPhotos, setPlayerPhotos] = useState(playerPhotosByName || {});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoMessage, setPhotoMessage] = useState("");
   const [showPhotoPanel, setShowPhotoPanel] = useState(false); // collapsible
 
-  // merge photos coming from App state (playerPhotosByName) into local map
   useEffect(() => {
     if (!playerPhotosByName) return;
     setPlayerPhotos((prev) => ({
-      ...playerPhotosByName,
       ...prev,
+      ...playerPhotosByName,
     }));
   }, [playerPhotosByName]);
 
-  // load photos from Firestore once and MERGE into current map
+  // Load ALL photos and re-key them to canonical member fullName where possible
   useEffect(() => {
     async function loadPhotos() {
       try {
         const snap = await getDocs(collection(db, "playerPhotos"));
+        const rawPhotos = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          if (data?.photoData) {
+            rawPhotos.push({
+              docId: docSnap.id,
+              name: data.name || "",
+              photoData: data.photoData,
+            });
+          }
+        });
+
         setPlayerPhotos((prev) => {
-          const map = { ...prev };
-          snap.forEach((docSnap) => {
-            const data = docSnap.data();
-            if (data?.name && data?.photoData) {
-              map[data.name] = data.photoData;
+          const next = { ...prev };
+
+          rawPhotos.forEach((p) => {
+            const candidates = [
+              p.name,
+              toTitleCase(p.name),
+              p.docId,
+              toTitleCase(p.docId.replace(/_/g, " ")),
+            ].filter(Boolean);
+
+            let assignedKey = null;
+
+            for (const c of candidates) {
+              const resolved = memberResolver.resolve(c);
+              if (resolved?.display) {
+                assignedKey = resolved.display;
+                break;
+              }
             }
+
+            const fallbackKey = toTitleCase(p.name || p.docId || "Unknown");
+            next[assignedKey || fallbackKey] = p.photoData;
           });
-          return map;
+
+          return next;
         });
       } catch (err) {
         console.error("Failed to load player photos:", err);
       }
     }
     loadPhotos();
-  }, []);
+  }, [memberResolver]);
 
-  // ---------- VERIFIED PLAYER (same idea as PeerReview) ----------
-
+  // ---------- VERIFIED PLAYER (for photo upload) ----------
   const verifiedPlayerName = useMemo(() => {
-    // Only care about real TurfKings roles
     const role = identity?.role || null;
-    const isRealPlayer =
-      role === "player" || role === "captain" || role === "admin";
-
+    const isRealPlayer = role === "player" || role === "captain" || role === "admin";
     if (!isRealPlayer) return null;
 
     const rawName =
@@ -459,17 +485,8 @@ export function FormationsPage({
       null;
 
     if (!rawName) return null;
-
-    const candidate = toTitleCase(rawName);
-
-    // If their name is in the TurfKings pool, snap to that canonical spelling
-    const match =
-      turfKingsPlayers.find(
-        (p) => p.toLowerCase() === candidate.toLowerCase()
-      ) || candidate;
-
-    return match;
-  }, [identity, turfKingsPlayers]);
+    return canonicalName(rawName);
+  }, [identity, memberResolver]);
 
   const isVerifiedPlayer = !!verifiedPlayerName;
   const photoPlayer = verifiedPlayerName;
@@ -490,7 +507,6 @@ export function FormationsPage({
     setUploadingPhoto(true);
 
     try {
-      // convert image to data URL (simple, works well for avatars)
       const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
@@ -499,14 +515,14 @@ export function FormationsPage({
       });
 
       const docId = slugFromName(photoPlayer);
+
       await setDoc(
         doc(db, "playerPhotos", docId),
         {
-          name: photoPlayer,
+          name: photoPlayer, // canonical full name
           teamId: selectedTeam ? selectedTeam.id : "turf_kings",
           photoData: dataUrl,
           updatedAt: serverTimestamp(),
-          // optional: who uploaded
           uploadedByEmail: authUser?.email || identity?.email || null,
         },
         { merge: true }
@@ -526,20 +542,98 @@ export function FormationsPage({
     }
   };
 
-  // -------- selection state: click a bench player or on-pitch player to move / swap --------
+  // ---------------- player pools (canonicalised) ----------------
+
+  const dbPlayerNames = useMemo(() => {
+    return members.map((m) => m.fullName).filter(Boolean);
+  }, [members]);
+
+  const turfKingsPlayers = useMemo(() => {
+    const set = new Set();
+
+    teams.forEach((t) => {
+      (t.players || []).forEach((p) => {
+        const canon = canonicalName(p);
+        if (canon) set.add(canon);
+      });
+    });
+
+    dbPlayerNames.forEach((name) => {
+      const canon = canonicalName(name);
+      if (canon) set.add(canon);
+    });
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [teams, dbPlayerNames, memberResolver]);
+
+  const canonicalTeams = useMemo(() => {
+    return (teams || []).map((t) => ({
+      ...t,
+      players: (t.players || []).map((p) => canonicalName(p)).filter(Boolean),
+      captain: canonicalName(t.captain || ""),
+    }));
+  }, [teams, memberResolver]);
+
+  const selectedTeamCanonical =
+    canonicalTeams.find((t) => t.id === selectedTeamId) || canonicalTeams[0] || null;
+
+  const formationsMap = gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
+  const defaultFormationId =
+    gameType === GAME_TYPE_11 ? DEFAULT_FORMATION_ID_11 : DEFAULT_FORMATION_ID_5;
+
+  const playerPool =
+    gameType === GAME_TYPE_11 ? turfKingsPlayers : selectedTeamCanonical?.players || [];
+
+  const [lineup, setLineup] = useState(() =>
+    resolveTeamLineup(
+      selectedTeamCanonical,
+      gameType,
+      lineupsByTeam,
+      formationsMap,
+      defaultFormationId,
+      playerPool
+    )
+  );
+
+  useEffect(() => {
+    if (!selectedTeamCanonical) return;
+
+    const next = resolveTeamLineup(
+      selectedTeamCanonical,
+      gameType,
+      lineupsByTeam,
+      formationsMap,
+      defaultFormationId,
+      playerPool
+    );
+
+    const canonPositions = {};
+    Object.keys(next.positions || {}).forEach((posId) => {
+      const v = next.positions[posId];
+      canonPositions[posId] = v ? canonicalName(v) : null;
+    });
+
+    const canonicalised = { ...next, positions: canonPositions };
+
+    setLineup(canonicalised);
+    setSelectedPlayer(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTeamId, gameType, lineupsByTeam, memberResolver, canonicalTeams, turfKingsPlayers]);
+
+  const formation =
+    formationsMap[lineup.formationId] ||
+    formationsMap[defaultFormationId] ||
+    Object.values(formationsMap)[0];
+
+  // -------- selection state --------
   const [selectedPlayer, setSelectedPlayer] = useState(null);
-  // selectedPlayer = { from: "bench" | "pitch", name, posId? }
 
   const allPlayers =
-    gameType === GAME_TYPE_11
-      ? turfKingsPlayers
-      : selectedTeam?.players || [];
-  const assignedNames = new Set(
-    Object.values(lineup.positions).filter(Boolean)
-  );
+    gameType === GAME_TYPE_11 ? turfKingsPlayers : selectedTeamCanonical?.players || [];
+
+  const assignedNames = new Set(Object.values(lineup.positions).filter(Boolean));
   const benchPlayers = allPlayers.filter((p) => !assignedNames.has(p));
 
-  // TEAM selection via buttons (only relevant for 5-a-side)
   const handleTeamClick = (teamId) => {
     setSelectedTeamId(teamId);
     setSelectedPlayer(null);
@@ -554,6 +648,14 @@ export function FormationsPage({
 
   const saveTeamLineup = (teamId, updatedLineup) => {
     if (!teamId) return;
+
+    const canonPositions = {};
+    Object.keys(updatedLineup.positions || {}).forEach((posId) => {
+      const v = updatedLineup.positions[posId];
+      canonPositions[posId] = v ? canonicalName(v) : null;
+    });
+    const canonLineup = { ...updatedLineup, positions: canonPositions };
+
     setLineupsByTeam((prev) => {
       const prevEntry = prev[teamId];
       let nextEntry;
@@ -561,27 +663,19 @@ export function FormationsPage({
       if (!prevEntry) {
         nextEntry =
           gameType === GAME_TYPE_11
-            ? { [GAME_TYPE_11]: updatedLineup }
-            : { [GAME_TYPE_5]: updatedLineup };
+            ? { [GAME_TYPE_11]: canonLineup }
+            : { [GAME_TYPE_5]: canonLineup };
       } else if (prevEntry.formationId) {
-        // legacy shape -> migrate
         if (gameType === GAME_TYPE_5) {
-          nextEntry = { [GAME_TYPE_5]: updatedLineup };
+          nextEntry = { [GAME_TYPE_5]: canonLineup };
         } else {
-          nextEntry = {
-            [GAME_TYPE_5]: prevEntry,
-            [GAME_TYPE_11]: updatedLineup,
-          };
+          nextEntry = { [GAME_TYPE_5]: prevEntry, [GAME_TYPE_11]: canonLineup };
         }
       } else {
-        // already in multi-mode shape
-        nextEntry = { ...prevEntry, [gameType]: updatedLineup };
+        nextEntry = { ...prevEntry, [gameType]: canonLineup };
       }
 
-      const updatedMap = {
-        ...prev,
-        [teamId]: nextEntry,
-      };
+      const updatedMap = { ...prev, [teamId]: nextEntry };
       saveLineups(updatedMap);
       return updatedMap;
     });
@@ -590,13 +684,11 @@ export function FormationsPage({
   const handleFormationChange = (e) => {
     if (!canEditLineups) return;
     const newFormationId = e.target.value;
-    const formationsForType =
-      gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
+    const formationsForType = gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
     const newFormation =
       formationsForType[newFormationId] ||
       formationsForType[Object.keys(formationsForType)[0]];
 
-    // preserve current on-pitch players in order as best as possible
     const currentPlayersInOrder = formation.positions
       .map((pos) => lineup.positions[pos.id])
       .filter(Boolean);
@@ -609,20 +701,15 @@ export function FormationsPage({
     const updated = { formationId: newFormation.id, positions: newPositions };
     setLineup(updated);
 
-    if (selectedTeam) {
-      saveTeamLineup(selectedTeam.id, updated);
+    if (selectedTeamCanonical) {
+      saveTeamLineup(selectedTeamCanonical.id, updated);
     }
     setSelectedPlayer(null);
   };
 
   const handleBenchClick = (playerName) => {
     if (!canEditLineups) return;
-    if (
-      selectedPlayer &&
-      selectedPlayer.from === "bench" &&
-      selectedPlayer.name === playerName
-    ) {
-      // unselect
+    if (selectedPlayer && selectedPlayer.from === "bench" && selectedPlayer.name === playerName) {
       setSelectedPlayer(null);
       return;
     }
@@ -634,7 +721,6 @@ export function FormationsPage({
 
     const currentAtPos = lineup.positions[posId] || null;
 
-    // nothing selected -> select this on-pitch player (to move)
     if (!selectedPlayer) {
       if (!currentAtPos) return;
       setSelectedPlayer({ from: "pitch", name: currentAtPos, posId });
@@ -644,17 +730,14 @@ export function FormationsPage({
     const newPositions = { ...lineup.positions };
 
     if (selectedPlayer.from === "bench") {
-      // place new player from bench into this position
       const name = selectedPlayer.name;
 
-      // remove them from any other position just in case
       Object.keys(newPositions).forEach((key) => {
         if (newPositions[key] === name) newPositions[key] = null;
       });
 
       newPositions[posId] = name;
     } else if (selectedPlayer.from === "pitch") {
-      // swap / move between pitch positions
       const fromPos = selectedPlayer.posId;
       const fromName = selectedPlayer.name;
       const toName = currentAtPos;
@@ -666,8 +749,8 @@ export function FormationsPage({
     const updated = { ...lineup, positions: newPositions };
     setLineup(updated);
 
-    if (selectedTeam) {
-      saveTeamLineup(selectedTeam.id, updated);
+    if (selectedTeamCanonical) {
+      saveTeamLineup(selectedTeamCanonical.id, updated);
     }
 
     setSelectedPlayer(null);
@@ -678,13 +761,13 @@ export function FormationsPage({
     const newPositions = { ...lineup.positions, [posId]: null };
     const updated = { ...lineup, positions: newPositions };
     setLineup(updated);
-    if (selectedTeam) {
-      saveTeamLineup(selectedTeam.id, updated);
+    if (selectedTeamCanonical) {
+      saveTeamLineup(selectedTeamCanonical.id, updated);
     }
     setSelectedPlayer(null);
   };
 
-  if (!selectedTeam) {
+  if (!selectedTeamCanonical) {
     return (
       <div className="page lineups-page">
         <header className="header">
@@ -692,11 +775,7 @@ export function FormationsPage({
             <button className="secondary-btn" type="button" onClick={onBack}>
               ← Back to Home
             </button>
-            <button
-              className="primary-btn"
-              type="button"
-              onClick={onGoToSquads}
-            >
+            <button className="primary-btn" type="button" onClick={onGoToSquads}>
               Manage Squads
             </button>
           </div>
@@ -716,43 +795,34 @@ export function FormationsPage({
           <button className="secondary-btn" type="button" onClick={onBack}>
             ← Back to Home
           </button>
-          <button
-            className="primary-btn"
-            type="button"
-            onClick={onGoToSquads}
-          >
+          <button className="primary-btn" type="button" onClick={onGoToSquads}>
             Manage Squads
           </button>
         </div>
 
         <h1>Lineups &amp; Formations</h1>
         <p className="subtitle">
-          Design <strong>5-a-side and 11-a-side lineups</strong> for your Turf
-          Kings teams. Everyone can move players around on this device to
-          brainstorm shapes and take screenshots.
+          Design <strong>5-a-side and 11-a-side lineups</strong> for your Turf Kings
+          teams. Everyone can move players around on this device to brainstorm
+          shapes and take screenshots.
         </p>
       </header>
 
       <section className="card lineups-card">
         <div className="lineups-controls">
-          {/* Game type toggle FIRST */}
           <div className="field-row inline-field">
             <label>Game type</label>
             <div className="segmented-toggle">
               <button
                 type="button"
-                className={`segmented-option ${
-                  gameType === GAME_TYPE_5 ? "active" : ""
-                }`}
+                className={`segmented-option ${gameType === GAME_TYPE_5 ? "active" : ""}`}
                 onClick={() => handleGameTypeClick(GAME_TYPE_5)}
               >
                 5-a-side
               </button>
               <button
                 type="button"
-                className={`segmented-option ${
-                  gameType === GAME_TYPE_11 ? "active" : ""
-                }`}
+                className={`segmented-option ${gameType === GAME_TYPE_11 ? "active" : ""}`}
                 onClick={() => handleGameTypeClick(GAME_TYPE_11)}
               >
                 11-a-side
@@ -760,18 +830,15 @@ export function FormationsPage({
             </div>
           </div>
 
-          {/* TEAM: buttons only for 5-a-side */}
           {gameType === GAME_TYPE_5 ? (
             <div className="field-row inline-field">
               <label>Team (5-a-side)</label>
               <div className="team-pill-row">
-                {teams.map((t) => (
+                {canonicalTeams.map((t) => (
                   <button
                     key={t.id}
                     type="button"
-                    className={`team-pill-btn ${
-                      t.id === selectedTeam.id ? "active" : ""
-                    }`}
+                    className={`team-pill-btn ${t.id === selectedTeamCanonical.id ? "active" : ""}`}
                     onClick={() => handleTeamClick(t.id)}
                   >
                     {t.label}
@@ -784,9 +851,7 @@ export function FormationsPage({
               <label>11-a-side squad</label>
               <p className="muted small">
                 Using full Turf Kings player pool{" "}
-                <strong>({turfKingsPlayers.length} players)</strong>. Includes
-                new sign-ups like Zenande even before they are seeded into
-                squads.
+                <strong>({turfKingsPlayers.length} players)</strong>.
               </p>
             </div>
           )}
@@ -823,14 +888,14 @@ export function FormationsPage({
                   selectedPlayer &&
                   selectedPlayer.from === "pitch" &&
                   selectedPlayer.posId === pos.id;
+
+                // photos keyed by canonical full name
                 const photoData = name ? playerPhotos[name] : null;
 
                 return (
                   <div
                     key={pos.id}
-                    className={`pitch-position ${
-                      name ? "has-player" : ""
-                    } ${isSelected ? "selected" : ""}`}
+                    className={`pitch-position ${name ? "has-player" : ""} ${isSelected ? "selected" : ""}`}
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                     onClick={() => handlePitchClick(pos.id)}
                     onDoubleClick={(e) => {
@@ -840,18 +905,13 @@ export function FormationsPage({
                   >
                     <div className="player-token">
                       <div
-                        className={`player-shirt ${
-                          photoData ? "with-photo" : ""
-                        }`}
-                        style={
-                          photoData
-                            ? { backgroundImage: `url(${photoData})` }
-                            : {}
-                        }
+                        className={`player-shirt ${photoData ? "with-photo" : ""}`}
+                        style={photoData ? { backgroundImage: `url(${photoData})` } : {}}
                       />
                       <div className="player-label">
+                        {/* ✅ UI only: compact (first/short). Storage remains full name */}
                         <span className="player-name">
-                          {name || "Empty"}
+                          {name ? displayCompactName(name) : "Empty"}
                         </span>
                         <span className="position-tag">{pos.label}</span>
                       </div>
@@ -882,13 +942,12 @@ export function FormationsPage({
                     <li key={p}>
                       <button
                         type="button"
-                        className={`bench-player ${
-                          isSelected ? "selected" : ""
-                        }`}
+                        className={`bench-player ${isSelected ? "selected" : ""}`}
                         onClick={() => handleBenchClick(p)}
                         disabled={!canEditLineups}
                       >
-                        {p}
+                        {/* ✅ UI only */}
+                        {displayCompactName(p)}
                       </button>
                     </li>
                   );
@@ -925,15 +984,12 @@ export function FormationsPage({
                 <div className="field-row">
                   {isVerifiedPlayer ? (
                     <p className="muted small">
-                      Uploading as{" "}
-                      <strong>{verifiedPlayerName}</strong>{" "}
-                      (verified on the home screen).
+                      Uploading as <strong>{verifiedPlayerName}</strong>.
                     </p>
                   ) : (
                     <p className="error-text small">
-                      We can&apos;t tell which player you are. Please verify
-                      your player identity on the home screen before uploading a
-                      photo.
+                      We can&apos;t tell which player you are. Please verify your
+                      player identity on the home screen before uploading a photo.
                     </p>
                   )}
                 </div>
@@ -948,12 +1004,8 @@ export function FormationsPage({
                   />
                 </div>
 
-                {uploadingPhoto && (
-                  <p className="muted small">Uploading photo…</p>
-                )}
-                {photoMessage && (
-                  <p className="muted small">{photoMessage}</p>
-                )}
+                {uploadingPhoto && <p className="muted small">Uploading photo…</p>}
+                {photoMessage && <p className="muted small">{photoMessage}</p>}
               </div>
             )}
           </div>

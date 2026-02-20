@@ -2,11 +2,16 @@
 import React, { useMemo, useState, useEffect } from "react";
 import JaydTribute from "../assets/Jayd_Tribute.jpeg"; // <- tribute photo
 import { RSVPModal } from "../components/RSVPModal.jsx";
+import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
 
 const BAD_MATCH_NUMBERS = new Set([14, 15, 16, 17]); // drop these from week-1 archive
 
 // change this if I guessed the wrong name
 const injuredPlayerName = "Jayd";
+
+// Google Maps link for Haveva
+const VENUE_MAP_URL =
+  "https://www.google.com/maps/search/?api=1&query=Haveva%20Lower%20Main%20Road%20Observatory";
 
 export function NewsPage({
   teams,
@@ -21,6 +26,11 @@ export function NewsPage({
   playerPhotosByName,
   // identity from App.jsx (EntryPage)
   identity,
+  yearEndAttendance,
+  onUpdateYearEndAttendance,
+  onGoToSignIn,
+  members,
+  initialProgramOpen, // optional: auto-open Program modal (e.g. #program link)
 }) {
   // ---------- Helpers ----------
   const teamById = useMemo(() => {
@@ -434,6 +444,16 @@ export function NewsPage({
     setShowRSVP(true);
   };
 
+  // Year-end program modal state
+  const [showProgramModal, setShowProgramModal] = useState(false);
+
+  // Optional auto-open when linked via hash (#program)
+  useEffect(() => {
+    if (initialProgramOpen) {
+      setShowProgramModal(true);
+    }
+  }, [initialProgramOpen]);
+
   // ---------- STYLE OBJECTS FOR YEAR-END PREMIUM CARD ----------
   const yearEndCardStyle = {
     display: isNarrow ? "flex" : "grid",
@@ -643,6 +663,29 @@ export function NewsPage({
     (injuredPlayerName && mergedPhotoMap[injuredPlayerName]) ||
     JaydTribute;
 
+  // ---------- helper to render clickable venue pill ----------
+  const renderVenueChip = () => (
+    <a
+      href={VENUE_MAP_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        ...metaChipStyle,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.35rem",
+        cursor: "pointer",
+        textDecoration: "none",
+        color: "#e5e7eb",
+      }}
+    >
+      <span role="img" aria-label="Location pin">
+        📍
+      </span>
+      <span>Haveva · Lower Main Road · Observatory</span>
+    </a>
+  );
+
   // ---------- RENDER ----------
   return (
     <div className="page news-page">
@@ -669,16 +712,14 @@ export function NewsPage({
 
           <h2 style={yearEndHeadingStyle}>TurfKings Year-End Function</h2>
           <p style={yearEndSubStyle}>
-            We&apos;re closing off the season in proper TurfKings style 
-            full-squad night out. 🏆
+            We&apos;re closing off the season in proper TurfKings style – full
+            squad night out. 🏆
           </p>
 
           <div style={yearEndMetaRowStyle}>
             <span style={metaChipStyle}>📅 Friday · 5 December</span>
-            <span style={metaChipStyle}>⏰ 18:00</span>
-            <span style={metaChipStyle}>
-              📍 Haveva · Lower Main Road · Observatory
-            </span>
+            <span style={metaChipStyle}>⏰ 18:00 arrival · 19:30 program</span>
+            {renderVenueChip()}
           </div>
 
           <ul style={bulletListStyle}>
@@ -695,8 +736,8 @@ export function NewsPage({
             🧊 <strong>Coolerboxes &amp; bottles are encouraged</strong> – bring
             your own drinks. There&apos;s a small fee for walking in with them,
             but it works out cheaper and keeps the vibe relaxed for the whole
-            night. (<strong>R180 </strong>per coolerbox) and (
-            <strong>R80 </strong> per whisky/brandy/gin bottle). 
+            night. (<strong>R180</strong> per coolerbox) and (
+            <strong>R80</strong> per whisky/brandy/gin bottle).
           </p>
 
           <p
@@ -706,35 +747,52 @@ export function NewsPage({
               opacity: 0.95,
             }}
           >
-            💰 <strong>Cover charge:</strong> Is <strong>R100</strong> per player +{" "}
-            <strong>R75</strong> per friend (max 3) for food/bites. Use the RSVP list to
-            confirm your spot and who you&apos;re bringing. Basically, you pay only R100 
-            if you don't drink and you'll come alone, just bring your water bottle. 
-            This will be a big night 💪.
+            💰 <strong>Cover charge:</strong> <strong>R100</strong> per player +{" "}
+            <strong>R75</strong> per friend (max 3) for food/bites. Use the RSVP
+            list to confirm your spot and who you&apos;re bringing. If you&apos;re
+            not drinking and you&apos;re coming solo, it&apos;s basically{" "}
+            <strong>R100</strong> for a full night out with the squad.
           </p>
 
-          {/* RSVP BUTTON */}
-          <div style={{ marginTop: "1rem" }}>
+          {/* RSVP + PROGRAM BUTTONS */}
+          <div
+            style={{
+              marginTop: "1rem",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.6rem",
+            }}
+          >
             <button
               type="button"
               className="primary-btn"
               onClick={handleOpenRSVP}
               style={{ padding: "0.65rem 1.2rem", fontSize: "0.9rem" }}
             >
-              🎟️ View / Manage RSVP List
+              🎟️ Manage RSVP 
             </button>
-            {!identity && (
-              <p
-                style={{
-                  fontSize: "0.8rem",
-                  marginTop: "0.35rem",
-                  opacity: 0.8,
-                }}
-              >
-                Please sign in on the main page to RSVP.
-              </p>
-            )}
+
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => setShowProgramModal(true)}
+              style={{ padding: "0.65rem 1.1rem", fontSize: "0.9rem" }}
+            >
+              📋 View Program
+            </button>
           </div>
+
+          {!identity && (
+            <p
+              style={{
+                fontSize: "0.8rem",
+                marginTop: "0.35rem",
+                opacity: 0.8,
+              }}
+            >
+              Please sign in on the main page to RSVP and see who&apos;s in.
+            </p>
+          )}
         </div>
 
         {/* Right: visual art (suit + wine glasses) */}
@@ -1109,6 +1167,14 @@ export function NewsPage({
         <RSVPModal
           identity={identity}
           onClose={() => setShowRSVP(false)}
+        />
+      )}
+
+      {/* YEAR-END PROGRAM MODAL */}
+      {showProgramModal && (
+        <YearEndProgramModal
+          identity={identity}
+          onClose={() => setShowProgramModal(false)}
         />
       )}
     </div>
