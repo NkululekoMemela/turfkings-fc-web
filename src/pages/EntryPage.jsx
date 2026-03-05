@@ -1,6 +1,6 @@
 // src/pages/EntryPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import TurfKingsLogo from "../assets/TurfKings_logo.jpg";
+import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 
 import { auth, signInWithGoogle } from "../firebaseConfig";

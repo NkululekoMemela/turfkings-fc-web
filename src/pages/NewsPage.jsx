@@ -1,36 +1,36 @@
 // src/pages/NewsPage.jsx
 import React, { useMemo, useState, useEffect } from "react";
 import JaydTribute from "../assets/Jayd_Tribute.jpeg"; // <- tribute photo
+import JerseyImage from "../assets/Jersey.jpeg"; // <- new kit advert image
 import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
 
-const BAD_MATCH_NUMBERS = new Set([14, 15, 16, 17]); // drop these from week-1 archive
+import {
+  subscribeToKitOrders,
+  upsertKitOrder,
+  removeKitOrder,
+} from "../storage/firebaseRepository.js";
 
-// change this if I guessed the wrong name
+const BAD_MATCH_NUMBERS = new Set([14, 15, 16, 17]); // drop these from week-1 archive
 const injuredPlayerName = "Jayd";
 
-// Google Maps link for Haveva
 const VENUE_MAP_URL =
   "https://www.google.com/maps/search/?api=1&query=Haveva%20Lower%20Main%20Road%20Observatory";
 
 export function NewsPage({
   teams,
-  // full tournament (seed + previous weeks + current week)
   results,
   allEvents,
-  // current match-day only
   currentResults,
   currentEvents,
-  onBack, // <-- goes to LandingPage
-  // OPTIONAL: map { [playerName]: photoUrl } passed down from Firebase
+  onBack,
   playerPhotosByName,
-  // identity from App.jsx (EntryPage)
   identity,
   yearEndAttendance,
   onUpdateYearEndAttendance,
   onGoToSignIn,
   members,
-  initialProgramOpen, // optional: auto-open Program modal (e.g. #program link)
+  initialProgramOpen,
 }) {
   // ---------- Helpers ----------
   const teamById = useMemo(() => {
@@ -53,8 +53,7 @@ export function NewsPage({
     const map = {};
     (teams || []).forEach((t) => {
       (t.players || []).forEach((p) => {
-        const name =
-          typeof p === "string" ? p : p?.name || p?.displayName;
+        const name = typeof p === "string" ? p : p?.name || p?.displayName;
         if (name && !map[name]) {
           map[name] = t.label;
         }
@@ -95,14 +94,9 @@ export function NewsPage({
     return map;
   }, [teams, playerPhotosByName]);
 
-  const getPlayerPhoto = (name) =>
-    name ? mergedPhotoMap[name] || null : null;
+  const getPlayerPhoto = (name) => (name ? mergedPhotoMap[name] || null : null);
 
-  // For the little date label for "This match-day"
-  const todayLabel = useMemo(
-    () => formatMatchDayDate(new Date()),
-    []
-  );
+  const todayLabel = useMemo(() => formatMatchDayDate(new Date()), []);
 
   // ---------- RAW DATA SPLIT ----------
   const fullResultsRaw = results || [];
@@ -112,35 +106,23 @@ export function NewsPage({
 
   // ---------- CLEAN DATA (FULL TOURNAMENT) ----------
   const cleanTournamentResults = useMemo(
-    () =>
-      fullResultsRaw.filter(
-        (r) => r && !BAD_MATCH_NUMBERS.has(r.matchNo)
-      ),
+    () => fullResultsRaw.filter((r) => r && !BAD_MATCH_NUMBERS.has(r.matchNo)),
     [fullResultsRaw]
   );
 
   const cleanTournamentEvents = useMemo(
-    () =>
-      fullEventsRaw.filter(
-        (e) => e && !BAD_MATCH_NUMBERS.has(e.matchNo)
-      ),
+    () => fullEventsRaw.filter((e) => e && !BAD_MATCH_NUMBERS.has(e.matchNo)),
     [fullEventsRaw]
   );
 
   // ---------- CLEAN DATA (THIS MATCH-DAY) ----------
   const cleanWeekResults = useMemo(
-    () =>
-      weekResultsRaw.filter(
-        (r) => r && !BAD_MATCH_NUMBERS.has(r.matchNo)
-      ),
+    () => weekResultsRaw.filter((r) => r && !BAD_MATCH_NUMBERS.has(r.matchNo)),
     [weekResultsRaw]
   );
 
   const cleanWeekEvents = useMemo(
-    () =>
-      weekEventsRaw.filter(
-        (e) => e && !BAD_MATCH_NUMBERS.has(e.matchNo)
-      ),
+    () => weekEventsRaw.filter((e) => e && !BAD_MATCH_NUMBERS.has(e.matchNo)),
     [weekEventsRaw]
   );
 
@@ -218,12 +200,7 @@ export function NewsPage({
     const stats = {};
     const getOrCreate = (name) => {
       if (!stats[name]) {
-        stats[name] = {
-          name,
-          goals: 0,
-          assists: 0,
-          shibobos: 0,
-        };
+        stats[name] = { name, goals: 0, assists: 0, shibobos: 0 };
       }
       return stats[name];
     };
@@ -231,11 +208,8 @@ export function NewsPage({
     cleanTournamentEvents.forEach((e) => {
       if (e.scorer) {
         const s = getOrCreate(e.scorer);
-        if (e.type === "goal") {
-          s.goals += 1;
-        } else if (e.type === "shibobo") {
-          s.shibobos += 1;
-        }
+        if (e.type === "goal") s.goals += 1;
+        else if (e.type === "shibobo") s.shibobos += 1;
       }
       if (e.assist) {
         const a = getOrCreate(e.assist);
@@ -255,11 +229,7 @@ export function NewsPage({
     let best = null;
     playerStats.forEach((p) => {
       if (p.goals <= 0) return;
-      if (
-        !best ||
-        p.goals > best.goals ||
-        (p.goals === best.goals && p.name.localeCompare(best.name) < 0)
-      ) {
+      if (!best || p.goals > best.goals || (p.goals === best.goals && p.name.localeCompare(best.name) < 0)) {
         best = p;
       }
     });
@@ -270,19 +240,13 @@ export function NewsPage({
     let best = null;
     playerStats.forEach((p) => {
       if (p.assists <= 0) return;
-      if (
-        !best ||
-        p.assists > best.assists ||
-        (p.assists === best.assists &&
-          p.name.localeCompare(best.name) < 0)
-      ) {
+      if (!best || p.assists > best.assists || (p.assists === best.assists && p.name.localeCompare(best.name) < 0)) {
         best = p;
       }
     });
     return best;
   }, [playerStats]);
 
-  // Tournament MVP = goals + assists + shibobos (full tournament)
   const bestOverall = useMemo(() => {
     let best = null;
     playerStats.forEach((p) => {
@@ -291,9 +255,7 @@ export function NewsPage({
         !best ||
         p.total > best.total ||
         (p.total === best.total && p.goals > best.goals) ||
-        (p.total === best.total &&
-          p.goals === best.goals &&
-          p.name.localeCompare(best.name) < 0)
+        (p.total === best.total && p.goals === best.goals && p.name.localeCompare(best.name) < 0)
       ) {
         best = p;
       }
@@ -307,21 +269,14 @@ export function NewsPage({
   const streakStats = useMemo(() => {
     const byMatch = new Map();
     cleanTournamentResults.forEach((r) => {
-      byMatch.set(r.matchNo, {
-        scorers: new Set(),
-        assisters: new Set(),
-      });
+      byMatch.set(r.matchNo, { scorers: new Set(), assisters: new Set() });
     });
 
     cleanTournamentEvents.forEach((e) => {
       const rec = byMatch.get(e.matchNo);
       if (!rec) return;
-      if (e.scorer && e.type === "goal") {
-        rec.scorers.add(e.scorer);
-      }
-      if (e.assist) {
-        rec.assisters.add(e.assist);
-      }
+      if (e.scorer && e.type === "goal") rec.scorers.add(e.scorer);
+      if (e.assist) rec.assisters.add(e.assist);
     });
 
     const matchNos = Array.from(byMatch.keys()).sort((a, b) => a - b);
@@ -338,9 +293,7 @@ export function NewsPage({
         map.set(name, st);
       });
       map.forEach((st, name) => {
-        if (!set.has(name)) {
-          st.current = 0;
-        }
+        if (!set.has(name)) st.current = 0;
       });
     };
 
@@ -354,30 +307,22 @@ export function NewsPage({
     let bestGoal = null;
     goalStreaks.forEach((st, name) => {
       if (st.best <= 0) return;
-      if (!bestGoal || st.best > bestGoal.length) {
-        bestGoal = { name, length: st.best };
-      }
+      if (!bestGoal || st.best > bestGoal.length) bestGoal = { name, length: st.best };
     });
 
     let bestAssist = null;
     assistStreaks.forEach((st, name) => {
       if (st.best <= 0) return;
-      if (!bestAssist || st.best > bestAssist.length) {
-        bestAssist = { name, length: st.best };
-      }
+      if (!bestAssist || st.best > bestAssist.length) bestAssist = { name, length: st.best };
     });
 
-    if (bestGoal) {
-      bestGoal.teamName = playerTeamMap[bestGoal.name] || "—";
-    }
-    if (bestAssist) {
-      bestAssist.teamName = playerTeamMap[bestAssist.name] || "—";
-    }
+    if (bestGoal) bestGoal.teamName = playerTeamMap[bestGoal.name] || "—";
+    if (bestAssist) bestAssist.teamName = playerTeamMap[bestAssist.name] || "—";
 
     return { bestGoal, bestAssist };
   }, [cleanTournamentResults, cleanTournamentEvents, playerTeamMap]);
 
-  // ---------- GLOBAL NUMBERS (full tournament) ----------
+  // ---------- GLOBAL NUMBERS ----------
   const totalMatches = cleanTournamentResults.length;
   const totalGoals = cleanTournamentResults.reduce(
     (acc, r) => acc + (r.goalsA || 0) + (r.goalsB || 0),
@@ -391,12 +336,8 @@ export function NewsPage({
       const gB = r.goalsB || 0;
       const diff = Math.abs(gA - gB);
       const goals = gA + gB;
-      if (diff === 0) return; // ignore draws
-      if (
-        !best ||
-        diff > best.diff ||
-        (diff === best.diff && goals > best.goals)
-      ) {
+      if (diff === 0) return;
+      if (!best || diff > best.diff || (diff === best.diff && goals > best.goals)) {
         best = { ...r, diff, goals };
       }
     });
@@ -417,50 +358,36 @@ export function NewsPage({
       if (!map.has(e.matchNo)) map.set(e.matchNo, []);
       map.get(e.matchNo).push(e);
     });
-    map.forEach((list) =>
-      list.sort((a, b) => (a.timeSeconds || 0) - (b.timeSeconds || 0))
-    );
+    map.forEach((list) => list.sort((a, b) => (a.timeSeconds || 0) - (b.timeSeconds || 0)));
     return map;
   }, [cleanWeekEvents]);
 
-  // ---------- RESPONSIVE FLAG FOR YEAR-END CARD ----------
+  // ---------- RESPONSIVE FLAG ----------
   const [isNarrow, setIsNarrow] = useState(false);
-
   useEffect(() => {
     const handleResize = () => {
-      if (typeof window !== "undefined") {
-        setIsNarrow(window.innerWidth < 640);
-      }
+      if (typeof window !== "undefined") setIsNarrow(window.innerWidth < 640);
     };
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // RSVP modal state for year-end function
+  // RSVP modal state
   const [showRSVP, setShowRSVP] = useState(false);
-
-  const handleOpenRSVP = () => {
-    setShowRSVP(true);
-  };
+  const handleOpenRSVP = () => setShowRSVP(true);
 
   // Year-end program modal state
   const [showProgramModal, setShowProgramModal] = useState(false);
-
-  // Optional auto-open when linked via hash (#program)
   useEffect(() => {
-    if (initialProgramOpen) {
-      setShowProgramModal(true);
-    }
+    if (initialProgramOpen) setShowProgramModal(true);
   }, [initialProgramOpen]);
 
-  // ---------- STYLE OBJECTS FOR YEAR-END PREMIUM CARD ----------
+  // ---------- STYLE OBJECTS (UNCHANGED) ----------
   const yearEndCardStyle = {
     display: isNarrow ? "flex" : "grid",
     flexDirection: isNarrow ? "column" : undefined,
-    gridTemplateColumns: isNarrow
-      ? undefined
-      : "minmax(0, 3fr) minmax(0, 2fr)",
+    gridTemplateColumns: isNarrow ? undefined : "minmax(0, 3fr) minmax(0, 2fr)",
     gap: isNarrow ? "1rem" : "1.5rem",
     padding: isNarrow ? "1.2rem" : "1.8rem",
     borderRadius: "1.5rem",
@@ -468,8 +395,7 @@ export function NewsPage({
       "radial-gradient(circle at top left, rgba(248,250,252,0.22), transparent 55%)," +
       "radial-gradient(circle at bottom right, rgba(248,250,252,0.18), transparent 60%)," +
       "linear-gradient(135deg, #020617, #111827 45%, #0b1120 100%)",
-    boxShadow:
-      "0 18px 45px rgba(15,23,42,0.85), 0 0 0 1px rgba(148,163,184,0.18)",
+    boxShadow: "0 18px 45px rgba(15,23,42,0.85), 0 0 0 1px rgba(148,163,184,0.18)",
     color: "#e5e7eb",
     alignItems: "stretch",
     marginBottom: "1.75rem",
@@ -547,8 +473,7 @@ export function NewsPage({
     height: isNarrow ? "170px" : "210px",
     borderRadius: "999px",
     border: "1px solid rgba(248,250,252,0.2)",
-    boxShadow:
-      "0 0 60px rgba(251,191,36,0.22), 0 0 120px rgba(251,113,133,0.18)",
+    boxShadow: "0 0 60px rgba(251,191,36,0.22), 0 0 120px rgba(251,113,133,0.18)",
     opacity: 0.9,
   };
 
@@ -566,8 +491,7 @@ export function NewsPage({
     zIndex: 2,
     padding: isNarrow ? "0.7rem 0.9rem" : "0.9rem 1.15rem",
     borderRadius: "1rem",
-    background:
-      "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(15,23,42,0.75))",
+    background: "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(15,23,42,0.75))",
     border: "1px solid rgba(148,163,184,0.6)",
     backdropFilter: "blur(10px)",
     boxShadow: "0 14px 35px rgba(15,23,42,0.9)",
@@ -632,8 +556,7 @@ export function NewsPage({
     bottom: "14%",
     width: "140%",
     height: "40px",
-    background:
-      "linear-gradient(90deg, rgba(251,191,36,0.95), rgba(251,113,133,0.95))",
+    background: "linear-gradient(90deg, rgba(251,191,36,0.95), rgba(251,113,133,0.95))",
     transform: "rotate(-4deg)",
     opacity: 0.85,
   };
@@ -658,12 +581,9 @@ export function NewsPage({
     zIndex: 2,
   };
 
-  // ---------- INJURED PLAYER / TRIBUTE AVATAR ----------
   const injuredAvatarUrl =
-    (injuredPlayerName && mergedPhotoMap[injuredPlayerName]) ||
-    JaydTribute;
+    (injuredPlayerName && mergedPhotoMap[injuredPlayerName]) || JaydTribute;
 
-  // ---------- helper to render clickable venue pill ----------
   const renderVenueChip = () => (
     <a
       href={VENUE_MAP_URL}
@@ -686,6 +606,56 @@ export function NewsPage({
     </a>
   );
 
+  // ---------------- KIT POLL STATE ----------------
+  const [kitOrders, setKitOrders] = useState([]);
+  const [kitOrdersError, setKitOrdersError] = useState("");
+
+  const myKitOrderName = useMemo(() => {
+    if (!identity || identity.role === "spectator") return "";
+    return (identity.shortName || identity.fullName || "").trim();
+  }, [identity]);
+
+  const myKitOrderId = identity?.memberId || "";
+
+  const isInKitOrders = useMemo(() => {
+    if (!myKitOrderId) return false;
+    return kitOrders.some((o) => o && o.memberId === myKitOrderId);
+  }, [kitOrders, myKitOrderId]);
+
+  useEffect(() => {
+    try {
+      const unsub = subscribeToKitOrders((list) => {
+        setKitOrders(Array.isArray(list) ? list : []);
+        setKitOrdersError("");
+      });
+      return () => {
+        if (unsub) unsub();
+      };
+    } catch (err) {
+      console.error("[NewsPage] kit orders subscribe failed:", err);
+      setKitOrdersError("Could not load kit orders.");
+    }
+  }, []);
+
+  const handleToggleKitOrder = async () => {
+    if (!identity || identity.role === "spectator") {
+      onGoToSignIn?.();
+      return;
+    }
+    if (!myKitOrderId || !myKitOrderName) return;
+
+    try {
+      if (isInKitOrders) {
+        await removeKitOrder(myKitOrderId);
+      } else {
+        await upsertKitOrder({ memberId: myKitOrderId, name: myKitOrderName });
+      }
+    } catch (err) {
+      console.error("[NewsPage] kit order update failed:", err);
+      setKitOrdersError("Failed to update your vote. Try again.");
+    }
+  };
+
   // ---------- RENDER ----------
   return (
     <div className="page news-page">
@@ -701,163 +671,139 @@ export function NewsPage({
         </div>
       </header>
 
-      {/* YEAR-END FUNCTION – PREMIUM CARD (FIRST CARD) */}
-      <section className="card year-end-premium-card" style={yearEndCardStyle}>
-        {/* Left: text content */}
-        <div style={{ minWidth: 0 }}>
-          <div style={yearEndPillStyle}>
-            <span>✨ Special Event</span>
-            <span style={{ fontSize: "0.9rem" }}>• Year-End Function</span>
-          </div>
-
-          <h2 style={yearEndHeadingStyle}>TurfKings Year-End Function</h2>
-          <p style={yearEndSubStyle}>
-            We&apos;re closing off the season in proper TurfKings style – full
-            squad night out. 🏆
-          </p>
-
-          <div style={yearEndMetaRowStyle}>
-            <span style={metaChipStyle}>📅 Friday · 5 December</span>
-            <span style={metaChipStyle}>⏰ 18:00 arrival · 19:30 program</span>
-            {renderVenueChip()}
-          </div>
-
-          <ul style={bulletListStyle}>
-            <li>• Dress code: Smart / suit vibes – leave the bibs at home.</li>
-          </ul>
-
-          <p
-            style={{
-              marginTop: "0.7rem",
-              fontSize: "0.85rem",
-              opacity: 0.95,
-            }}
-          >
-            🧊 <strong>Coolerboxes &amp; bottles are encouraged</strong> – bring
-            your own drinks. There&apos;s a small fee for walking in with them,
-            but it works out cheaper and keeps the vibe relaxed for the whole
-            night. (<strong>R180</strong> per coolerbox) and (
-            <strong>R80</strong> per whisky/brandy/gin bottle).
-          </p>
-
-          <p
-            style={{
-              marginTop: "0.7rem",
-              fontSize: "0.85rem",
-              opacity: 0.95,
-            }}
-          >
-            💰 <strong>Cover charge:</strong> <strong>R100</strong> per player +{" "}
-            <strong>R75</strong> per friend (max 3) for food/bites. Use the RSVP
-            list to confirm your spot and who you&apos;re bringing. If you&apos;re
-            not drinking and you&apos;re coming solo, it&apos;s basically{" "}
-            <strong>R100</strong> for a full night out with the squad.
-          </p>
-
-          {/* RSVP + PROGRAM BUTTONS */}
-          <div
-            style={{
-              marginTop: "1rem",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "0.6rem",
-            }}
-          >
-            <button
-              type="button"
-              className="primary-btn"
-              onClick={handleOpenRSVP}
-              style={{ padding: "0.65rem 1.2rem", fontSize: "0.9rem" }}
-            >
-              🎟️ Manage RSVP 
-            </button>
-
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => setShowProgramModal(true)}
-              style={{ padding: "0.65rem 1.1rem", fontSize: "0.9rem" }}
-            >
-              📋 View Program
-            </button>
-          </div>
-
-          {!identity && (
-            <p
+      {/* ✅ JERSEY STORY (UNCHANGED) */}
+      <section className="card" style={{ overflow: "hidden" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isNarrow ? "1fr" : "1.1fr 0.9fr",
+            gap: "1rem",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
               style={{
-                fontSize: "0.8rem",
-                marginTop: "0.35rem",
-                opacity: 0.8,
+                display: "inline-flex",
+                gap: "0.5rem",
+                alignItems: "center",
+                padding: "0.25rem 0.6rem",
+                borderRadius: "999px",
+                background: "rgba(59,130,246,0.18)",
+                border: "1px solid rgba(59,130,246,0.35)",
+                marginBottom: "0.6rem",
               }}
             >
-              Please sign in on the main page to RSVP and see who&apos;s in.
+              <span>👕</span>
+              <span style={{ fontWeight: 700 }}>New kit drop</span>
+              <span style={{ opacity: 0.85 }}>(~R300 For the top)</span>
+            </div>
+
+            <h2 style={{ marginTop: 0 }}>TurfKings jersey orders</h2>
+            <p style={{ marginTop: "0.35rem" }}>
+              We&apos;re about to place an order for the new TurfKings team kit.
+              If you want one, vote below so we can count numbers. Price is
+              around <strong>R300</strong> for the Jersey, no short for now.
             </p>
-          )}
-        </div>
 
-        {/* Right: visual art (suit + wine glasses) */}
-        <div style={artContainerStyle} aria-hidden="true">
-          <div style={artGlassHaloStyle} />
-          <div style={artInnerOrbStyle} />
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.6rem",
+                marginTop: "0.8rem",
+                alignItems: "center",
+              }}
+            >
+              <button
+                type="button"
+                className={
+                  identity && identity.role !== "spectator"
+                    ? "primary-btn"
+                    : "secondary-btn"
+                }
+                onClick={handleToggleKitOrder}
+                style={{ padding: "0.6rem 1rem", fontSize: "0.9rem" }}
+              >
+                {identity && identity.role !== "spectator"
+                  ? isInKitOrders
+                    ? "✅ I'm in (remove me)"
+                    : "✅ I'm in for a jersey"
+                  : "Sign in to vote"}
+              </button>
 
-          <div style={suitCardStyle}>
-            <div style={suitTitleRowStyle}>
-              <span style={suitEmojiStyle}>🎩</span>
-              <div>
-                <div style={{ fontSize: "0.78rem", opacity: 0.8 }}>
-                  Dress Code
-                </div>
-                <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
-                  Suits &amp; Smart Fits
-                </div>
+              <span style={{ opacity: 0.9, fontSize: "0.9rem" }}>
+                Votes: <strong>{kitOrders?.length || 0}</strong>
+              </span>
+
+              {kitOrdersError && (
+                <span style={{ color: "#fca5a5", fontSize: "0.85rem" }}>
+                  {kitOrdersError}
+                </span>
+              )}
+            </div>
+
+            <div style={{ marginTop: "0.9rem" }}>
+              <div style={{ fontWeight: 700, marginBottom: "0.35rem" }}>
+                Who&apos;s buying? :
               </div>
-            </div>
 
-            <div style={glassesRowStyle}>
-              <span>🥂</span>
-              <span>🥂</span>
-              <div style={glassesLabelStyle}>TurfKings Toast</div>
-            </div>
-
-            <div style={sparkleRowStyle}>
-              <span>✦ Photos</span>
-              <span>✦ Stories</span>
-              <span>✦ Drinks</span>
+              {!kitOrders || kitOrders.length === 0 ? (
+                <div className="muted">No votes yet. Be the first 👑</div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
+                  {kitOrders
+                    .slice()
+                    .sort((a, b) =>
+                      String(a?.name || "").localeCompare(String(b?.name || ""))
+                    )
+                    .map((o) => (
+                      <span
+                        key={o.memberId}
+                        style={{
+                          padding: "0.22rem 0.55rem",
+                          borderRadius: "999px",
+                          background: "rgba(15, 23, 42, 0.6)",
+                          border: "1px solid rgba(148, 163, 184, 0.25)",
+                          fontSize: "0.88rem",
+                        }}
+                      >
+                        {o.name}
+                      </span>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
 
-          <div style={artCornerBadgeStyle}>Year-End 2025</div>
-
-          {/* Ribbon + bottom text only on wider screens to avoid overlap on mobile */}
-          {!isNarrow && (
-            <>
-              <div style={artBottomRibbonStyle}>
-                <div style={artBottomRibbonInnerStyle} />
-              </div>
-              <div style={artBottomTextStyle}>
-                5 DECEMBER · 18:00 · HAVEVA
-              </div>
-            </>
-          )}
+          <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
+            <img
+              src={JerseyImage}
+              alt="TurfKings jersey"
+              style={{
+                width: "100%",
+                maxWidth: 420,
+                borderRadius: "1rem",
+                border: "1px solid rgba(148,163,184,0.2)",
+              }}
+            />
+          </div>
         </div>
       </section>
 
-      {/* HERO SUMMARY (full tournament) */}
+      {/* HERO SUMMARY */}
       <section className="card news-hero-card">
         <div className="news-hero-main">
           <h2>Tournament recap</h2>
           <p className="news-hero-text">
-            So far we&apos;ve logged{" "}
-            <strong>{totalMatches || 0}</strong> matches and{" "}
-            <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side
-            league.
+            So far we&apos;ve logged <strong>{totalMatches || 0}</strong> matches and{" "}
+            <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side league.
           </p>
           {tableLeader && (
             <p className="news-hero-text">
               <strong>{tableLeader.name}</strong> currently lead the table with{" "}
-              <strong>{tableLeader.points}</strong> points and a goal difference
-              of <strong>{tableLeader.goalDiff}</strong> from{" "}
-              {tableLeader.played} games.
+              <strong>{tableLeader.points}</strong> points and a goal difference of{" "}
+              <strong>{tableLeader.goalDiff}</strong> from {tableLeader.played} games.
             </p>
           )}
         </div>
@@ -892,7 +838,7 @@ export function NewsPage({
         </div>
       </section>
 
-      {/* HEADLINES + BIGGEST WIN (full tournament) */}
+      {/* HEADLINES + BIGGEST WIN */}
       <section className="card news-grid">
         <div className="news-column">
           <h2>Headlines</h2>
@@ -902,8 +848,8 @@ export function NewsPage({
                 <span className="news-tag">Standings</span>
                 <span>
                   <strong>{tableLeader.name}</strong> sit on top with{" "}
-                  {tableLeader.points} points ({tableLeader.won}W{" "}
-                  {tableLeader.drawn}D {tableLeader.lost}L).
+                  {tableLeader.points} points ({tableLeader.won}W {tableLeader.drawn}D{" "}
+                  {tableLeader.lost}L).
                 </span>
               </li>
             )}
@@ -912,8 +858,8 @@ export function NewsPage({
               <li className="news-list-item">
                 <span className="news-tag">Goals</span>
                 <span>
-                  <strong>{topScorer.name}</strong> leads the golden-boot race
-                  with {topScorer.goals} goals so far.
+                  <strong>{topScorer.name}</strong> leads the golden-boot race with{" "}
+                  {topScorer.goals} goals so far.
                 </span>
               </li>
             )}
@@ -922,8 +868,8 @@ export function NewsPage({
               <li className="news-list-item">
                 <span className="news-tag">Assists</span>
                 <span>
-                  <strong>{topPlaymaker.name}</strong> has created{" "}
-                  {topPlaymaker.assists} goals, topping the playmaker chart.
+                  <strong>{topPlaymaker.name}</strong> has created {topPlaymaker.assists}{" "}
+                  goals, topping the playmaker chart.
                 </span>
               </li>
             )}
@@ -932,8 +878,7 @@ export function NewsPage({
               <li className="news-list-item">
                 <span className="news-tag">Info</span>
                 <span>
-                  No stats yet – start a live match to generate your first round
-                  of TurfKings news.
+                  No stats yet – start a live match to generate your first round of TurfKings news.
                 </span>
               </li>
             )}
@@ -944,9 +889,7 @@ export function NewsPage({
           <h2>Match of the Tournament</h2>
           {biggestWin ? (
             <div className="news-match-feature">
-              <p className="news-match-label">
-                Match #{biggestWin.matchNo}
-              </p>
+              <p className="news-match-label">Match #{biggestWin.matchNo}</p>
               <p className="news-match-scoreline">
                 <span>{getTeamName(biggestWin.teamAId)}</span>
                 <span className="score">
@@ -961,28 +904,21 @@ export function NewsPage({
             </div>
           ) : (
             <p className="muted">
-              We&apos;ll highlight the biggest win once a few games have been
-              played.
+              We&apos;ll highlight the biggest win once a few games have been played.
             </p>
           )}
         </div>
       </section>
 
-      {/* TOURNAMENT MVP CARD (full tournament) */}
+      {/* TOURNAMENT MVP CARD */}
       {bestOverall && (
         <section className="card news-mvp-card">
           <div className="mvp-hero">
             <div className="mvp-avatar">
               {mvpPhotoUrl ? (
-                <img
-                  src={mvpPhotoUrl}
-                  alt={bestOverall.name}
-                  className="mvp-photo"
-                />
+                <img src={mvpPhotoUrl} alt={bestOverall.name} className="mvp-photo" />
               ) : (
-                <span className="mvp-initials">
-                  {getInitials(bestOverall.name)}
-                </span>
+                <span className="mvp-initials">{getInitials(bestOverall.name)}</span>
               )}
             </div>
             <div>
@@ -1016,13 +952,13 @@ export function NewsPage({
         </section>
       )}
 
-      {/* STREAK WATCH (full tournament) */}
+      {/* STREAK WATCH */}
       <section className="card news-streak-card">
         <h2>Streak watch</h2>
         {!streakStats.bestGoal && !streakStats.bestAssist ? (
           <p className="muted">
-            No streaks yet – once players start scoring and assisting in
-            back-to-back games, their names will light up here.
+            No streaks yet – once players start scoring and assisting in back-to-back games,
+            their names will light up here.
           </p>
         ) : (
           <div className="streak-grid">
@@ -1035,8 +971,7 @@ export function NewsPage({
                   match{streakStats.bestGoal.length > 1 ? "es" : ""} in a row.
                 </p>
                 <p className="streak-sub">
-                  {streakStats.bestGoal.teamName &&
-                  streakStats.bestGoal.teamName !== "—"
+                  {streakStats.bestGoal.teamName && streakStats.bestGoal.teamName !== "—"
                     ? `Flying for ${streakStats.bestGoal.teamName}.`
                     : "Free roaming finisher energy."}
                 </p>
@@ -1047,16 +982,15 @@ export function NewsPage({
               <div className="streak-pill">
                 <span className="streak-tag">Assist streak</span>
                 <p className="streak-main">
-                  <strong>{streakStats.bestAssist.name}</strong> has dropped
-                  assists in{" "}
+                  <strong>{streakStats.bestAssist.name}</strong> has dropped assists in{" "}
                   <strong>{streakStats.bestAssist.length}</strong> straight game
                   {streakStats.bestAssist.length > 1 ? "s" : ""}.
                 </p>
                 <p className="streak-sub">
-                  {streakStats.bestAssist.teamName &&
-                  streakStats.bestAssist.teamName !== "—"
+                  {streakStats.bestAssist.teamName && streakStats.bestAssist.teamName !== "—"
                     ? `Playmaking for ${streakStats.bestAssist.teamName}.`
-                    : "Sharing the shine with everyone."}
+                    : "Sharing the shine with everyone."
+                  }
                 </p>
               </div>
             )}
@@ -1064,49 +998,167 @@ export function NewsPage({
         )}
       </section>
 
-      {/* INJURY TRIBUTE CARD */}
-      <section className="card injury-tribute-card">
-        <div className="injury-photo-wrapper">
-          <img
-            src={injuredAvatarUrl}
-            alt="Injury tribute"
-            className="injury-photo"
-          />
-        </div>
-        <div className="injury-text">
-          <h2>Looking forward to Jayd&apos;s recovery</h2>
-          <p>
-            In the middle of this shot – standing between{" "}
-            <strong>Enock</strong> and the brilliant <strong>Justin</strong> – is{" "}
-            <strong>{injuredPlayerName}</strong>, our teammate battling a
-            long-term injury.
-          </p>
-          <p>
-            <strong>Ebrahim</strong> is dropping a knee in front, but the whole
-            frame is really about the player in the centre: a reminder of the
-            energy, link-up and calm presence we can&apos;t wait to have back on
-            the pitch.
-          </p>
-          <p className="injury-cta">
-            From the whole TurfKings family: speedy recovery, bro – your spot is
-            waiting.
-          </p>
-        </div>
-      </section>
+      {/* ✅ OLD STORIES FOLDER (PLACED WHERE JAYD STORY USED TO BE) */}
+      <details className="card">
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+          🗂️ Old stories (tap to expand)
+        </summary>
 
-      {/* MATCH-BY-MATCH RECAP (this match-day only) */}
+        {/* Year-End story inside Old stories */}
+        <details style={{ marginTop: "0.8rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+            ✨ Year-End Function (tap to expand)
+          </summary>
+
+          {/* YEAR-END FUNCTION – PREMIUM CARD (UNCHANGED CONTENT + STYLES) */}
+          <section className="card year-end-premium-card" style={yearEndCardStyle}>
+            <div style={{ minWidth: 0 }}>
+              <div style={yearEndPillStyle}>
+                <span>✨ Special Event</span>
+                <span style={{ fontSize: "0.9rem" }}>• Year-End Function</span>
+              </div>
+
+              <h2 style={yearEndHeadingStyle}>TurfKings Year-End Function</h2>
+              <p style={yearEndSubStyle}>
+                We&apos;re closing off the season in proper TurfKings style – full
+                squad night out. 🏆
+              </p>
+
+              <div style={yearEndMetaRowStyle}>
+                <span style={metaChipStyle}>📅 Friday · 5 December</span>
+                <span style={metaChipStyle}>⏰ 18:00 arrival · 19:30 program</span>
+                {renderVenueChip()}
+              </div>
+
+              <ul style={bulletListStyle}>
+                <li>• Dress code: Smart / suit vibes – leave the bibs at home.</li>
+              </ul>
+
+              <p style={{ marginTop: "0.7rem", fontSize: "0.85rem", opacity: 0.95 }}>
+                🧊 <strong>Coolerboxes &amp; bottles are encouraged</strong> – bring
+                your own drinks. There&apos;s a small fee for walking in with them,
+                but it works out cheaper and keeps the vibe relaxed for the whole
+                night. (<strong>R180</strong> per coolerbox) and (
+                <strong>R80</strong> per whisky/brandy/gin bottle).
+              </p>
+
+              <p style={{ marginTop: "0.7rem", fontSize: "0.85rem", opacity: 0.95 }}>
+                💰 <strong>Cover charge:</strong> <strong>R100</strong> per player +{" "}
+                <strong>R75</strong> per friend (max 3) for food/bites. Use the RSVP
+                list to confirm your spot and who you&apos;re bringing. If you&apos;re
+                not drinking and you&apos;re coming solo, it&apos;s basically{" "}
+                <strong>R100</strong> for a full night out with the squad.
+              </p>
+
+              <div style={{ marginTop: "1rem", display: "flex", flexWrap: "wrap", gap: "0.6rem" }}>
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={handleOpenRSVP}
+                  style={{ padding: "0.65rem 1.2rem", fontSize: "0.9rem" }}
+                >
+                  🎟️ Manage RSVP
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => setShowProgramModal(true)}
+                  style={{ padding: "0.65rem 1.1rem", fontSize: "0.9rem" }}
+                >
+                  📋 View Program
+                </button>
+              </div>
+
+              {!identity && (
+                <p style={{ fontSize: "0.8rem", marginTop: "0.35rem", opacity: 0.8 }}>
+                  Please sign in on the main page to RSVP and see who&apos;s in.
+                </p>
+              )}
+            </div>
+
+            <div style={artContainerStyle} aria-hidden="true">
+              <div style={artGlassHaloStyle} />
+              <div style={artInnerOrbStyle} />
+
+              <div style={suitCardStyle}>
+                <div style={suitTitleRowStyle}>
+                  <span style={suitEmojiStyle}>🎩</span>
+                  <div>
+                    <div style={{ fontSize: "0.78rem", opacity: 0.8 }}>Dress Code</div>
+                    <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
+                      Suits &amp; Smart Fits
+                    </div>
+                  </div>
+                </div>
+
+                <div style={glassesRowStyle}>
+                  <span>🥂</span>
+                  <span>🥂</span>
+                  <div style={glassesLabelStyle}>TurfKings Toast</div>
+                </div>
+
+                <div style={sparkleRowStyle}>
+                  <span>✦ Photos</span>
+                  <span>✦ Stories</span>
+                  <span>✦ Drinks</span>
+                </div>
+              </div>
+
+              <div style={artCornerBadgeStyle}>Year-End 2025</div>
+
+              {!isNarrow && (
+                <>
+                  <div style={artBottomRibbonStyle}>
+                    <div style={artBottomRibbonInnerStyle} />
+                  </div>
+                  <div style={artBottomTextStyle}>5 DECEMBER · 18:00 · HAVEVA</div>
+                </>
+              )}
+            </div>
+          </section>
+        </details>
+
+        {/* Jayd story inside Old stories */}
+        <details style={{ marginTop: "0.8rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+            🩹 Jayd story (tap to expand)
+          </summary>
+
+          {/* INJURY TRIBUTE CARD (UNCHANGED CONTENT + CLASSES) */}
+          <section className="card injury-tribute-card">
+            <div className="injury-photo-wrapper">
+              <img src={injuredAvatarUrl} alt="Injury tribute" className="injury-photo" />
+            </div>
+            <div className="injury-text">
+              <h2>Looking forward to Jayd&apos;s recovery</h2>
+              <p>
+                In the middle of this shot – standing between <strong>Enock</strong> and the
+                brilliant <strong>Justin</strong> – is <strong>{injuredPlayerName}</strong>,
+                our teammate battling a long-term injury.
+              </p>
+              <p>
+                <strong>Ebrahim</strong> is dropping a knee in front, but the whole frame is
+                really about the player in the centre: a reminder of the energy, link-up and calm
+                presence we can&apos;t wait to have back on the pitch.
+              </p>
+              <p className="injury-cta">
+                From the whole TurfKings family: speedy recovery, bro – your spot is waiting.
+              </p>
+            </div>
+          </section>
+        </details>
+      </details>
+
+      {/* MATCH-BY-MATCH RECAP */}
       <section className="card">
         <div className="news-recap-header">
           <h2>Match-by-match recap</h2>
-          <span className="news-recap-subtitle">
-            Match-day {todayLabel}
-          </span>
+          <span className="news-recap-subtitle">Match-day {todayLabel}</span>
         </div>
 
         {recapResults.length === 0 ? (
-          <p className="muted">
-            No matches recorded for this match-day yet.
-          </p>
+          <p className="muted">No matches recorded for this match-day yet.</p>
         ) : (
           <ul className="news-match-list">
             {recapResults.map((r) => {
@@ -1125,17 +1177,14 @@ export function NewsPage({
                       <span>{getTeamName(r.teamBId)}</span>
                     </span>
                   </div>
+
                   {events.length === 0 ? (
-                    <p className="muted small">
-                      No event breakdown stored for this match.
-                    </p>
+                    <p className="muted small">No event breakdown stored for this match.</p>
                   ) : (
                     <ul className="news-event-list">
                       {events.map((e) => {
                         const abbr = getPlayerTeamAbbrev(e.scorer);
-                        const assistPart = e.assist
-                          ? ` (assist: ${e.assist})`
-                          : "";
+                        const assistPart = e.assist ? ` (assist: ${e.assist})` : "";
                         const teamSuffix = abbr ? `, ${abbr}` : "";
                         return (
                           <li key={e.id} className="news-event-item">
@@ -1143,10 +1192,8 @@ export function NewsPage({
                               {formatSecondsSafe(e.timeSeconds)}
                             </span>
                             <span className="news-event-text">
-                              <strong>
-                                {e.type === "shibobo" ? "Shibobo" : "Goal"}
-                              </strong>{" "}
-                              – {e.scorer}
+                              <strong>{e.type === "shibobo" ? "Shibobo" : "Goal"}</strong> –{" "}
+                              {e.scorer}
                               {assistPart}
                               {teamSuffix}
                             </span>
@@ -1162,31 +1209,17 @@ export function NewsPage({
         )}
       </section>
 
-      {/* RSVP MODAL FOR YEAR-END FUNCTION */}
-      {showRSVP && (
-        <RSVPModal
-          identity={identity}
-          onClose={() => setShowRSVP(false)}
-        />
-      )}
-
-      {/* YEAR-END PROGRAM MODAL */}
+      {showRSVP && <RSVPModal identity={identity} onClose={() => setShowRSVP(false)} />}
       {showProgramModal && (
-        <YearEndProgramModal
-          identity={identity}
-          onClose={() => setShowProgramModal(false)}
-        />
+        <YearEndProgramModal identity={identity} onClose={() => setShowProgramModal(false)} />
       )}
     </div>
   );
 }
 
 function formatSecondsSafe(s) {
-  const v =
-    typeof s === "number" && !Number.isNaN(s) && s >= 0 ? s : 0;
-  const m = Math.floor(v / 60)
-    .toString()
-    .padStart(2, "0");
+  const v = typeof s === "number" && !Number.isNaN(s) && s >= 0 ? s : 0;
+  const m = Math.floor(v / 60).toString().padStart(2, "0");
   const sec = (v % 60).toString().padStart(2, "0");
   return `${m}:${sec}`;
 }
@@ -1194,38 +1227,21 @@ function formatSecondsSafe(s) {
 function getInitials(name) {
   if (!name || typeof name !== "string") return "?";
   const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function formatMatchDayDate(input) {
   let d = null;
-  if (input instanceof Date) {
-    d = input;
-  } else if (typeof input === "string") {
+  if (input instanceof Date) d = input;
+  else if (typeof input === "string") {
     const tmp = new Date(input);
     if (!Number.isNaN(tmp.getTime())) d = tmp;
   }
-
   if (!d) return "";
 
   const day = d.getDate().toString().padStart(2, "0");
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const month = months[d.getMonth()];
   const year = d.getFullYear();
   return `${day} ${month} ${year}`;

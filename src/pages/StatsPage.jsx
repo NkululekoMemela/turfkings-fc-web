@@ -1,115 +1,277 @@
-// src/pages/StatsPage.js
+// src/pages/StatsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMemberNameMap } from "../core/nameMapping.js";
 
+// ✅ Only used to pull captain photos the same way PlayerCards does
+import { db } from "../firebaseConfig";
+import { collection, getDocs } from "firebase/firestore";
+
+// ---------------- HELPERS (mirrors PlayerCardPage style) ----------------
+function toTitleCase(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// For legacy photo doc ids (and your uploader)
+function slugFromName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function safeLower(s) {
+  return String(s || "").trim().toLowerCase();
+}
+
+function firstNameOf(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[0] : "";
+}
+
+function isoDateOnly(x) {
+  // Accept "2026-02-18" OR "2026-02-18T19:41:..." -> "2026-02-18"
+  const s = String(x || "").trim();
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : "";
+}
+
+// ---------------- PAGE ----------------
 export function StatsPage({
   teams = [],
   results = [],
   allEvents = [],
   cameFromLive = false,
-  currentMatchDay, // still accepted but no longer used – safe to keep
+  currentMatchDay,
   onBack,
   onGoToPlayerCards,
   onGoToPeerReview,
   archivedResults = [],
   archivedEvents = [],
   members = [],
+
+  // ✅ V2: season switching context
+  activeSeasonId = null,
+  seasons = [],
+
+  // ✅ photo map prop (already in your app state)
+  playerPhotosByName = {},
+
+  // ✅ NEW: pass full matchDayHistory from App.jsx (so we have dates!)
+  matchDayHistory = [],
 }) {
-  // ---------- Helpers ----------
-  const safeTeams = Array.isArray(teams) ? teams : [];
-  const safeResults = Array.isArray(results) ? results : [];
-  const safeEvents = Array.isArray(allEvents) ? allEvents : [];
-  const safeArchivedResults = Array.isArray(archivedResults) ? archivedResults : [];
-  const safeArchivedEvents = Array.isArray(archivedEvents) ? archivedEvents : [];
+  // ---------- Safety ----------
   const safeMembers = Array.isArray(members) ? members : [];
+  const safeSeasons = Array.isArray(seasons) ? seasons : [];
+  const safePlayerPhotosByName =
+    playerPhotosByName && typeof playerPhotosByName === "object" ? playerPhotosByName : {};
 
-  // ✅ DEBUG (runs once): what is StatsPage receiving?
-  useEffect(() => {
-    try {
-      console.log("[TK DEBUG] StatsPage props lengths:", {
-        teams: Array.isArray(teams) ? teams.length : "not-array",
-        results: Array.isArray(results) ? results.length : "not-array",
-        allEvents: Array.isArray(allEvents) ? allEvents.length : "not-array",
-        archivedResults: Array.isArray(archivedResults) ? archivedResults.length : "not-array",
-        archivedEvents: Array.isArray(archivedEvents) ? archivedEvents.length : "not-array",
-        members: Array.isArray(members) ? members.length : "not-array",
-      });
-    } catch (e) {
-      console.log("[TK DEBUG] StatsPage props lengths: error", e);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const safeTeamsProp = Array.isArray(teams) ? teams : [];
+  const safeResultsProp = Array.isArray(results) ? results : [];
+  const safeEventsProp = Array.isArray(allEvents) ? allEvents : [];
+  const safeArchivedResultsProp = Array.isArray(archivedResults) ? archivedResults : [];
+  const safeArchivedEventsProp = Array.isArray(archivedEvents) ? archivedEvents : [];
+  const safeMatchDayHistory = Array.isArray(matchDayHistory) ? matchDayHistory : [];
 
-  // Member-based name normalisation (safe even if members empty)
+  // Member-based name normalisation
   const { normalizeName } = useMemberNameMap(safeMembers);
 
-  const teamById = useMemo(() => {
-    const map = new Map();
-    safeTeams.forEach((t) => {
-      if (t?.id) map.set(t.id, t);
-    });
-    return map;
-  }, [safeTeams]);
+  // ---------- Helpers: Season label + date range ----------
+  const formatSeasonDisplayName = (season) => {
+    const sid = season?.seasonId || "";
+    const match = String(sid).match(/^(\d{4})-S(\d+)$/i);
+    if (match) return `${match[1]} Season-${match[2]}`;
+    const year = season?.year || (sid.match(/^(\d{4})/) ? sid.match(/^(\d{4})/)[1] : "");
+    const no = season?.seasonNo ? String(season.seasonNo) : sid;
+    return year ? `${year} Season-${no}` : String(sid || "Season");
+  };
 
-  const getTeamName = (id) => teamById.get(id)?.label || "Unknown";
+  const monthRangeLabel = (startISO, endISO) => {
+    const toDate = (x) => {
+      const d = x ? new Date(x) : null;
+      return d && !Number.isNaN(d.getTime()) ? d : null;
+    };
+    const s = toDate(startISO);
+    const e = toDate(endISO);
+    if (!s || !e) return "";
 
-  // Map canonical player -> team label (first team that contains the player)
-  const playerTeamMap = useMemo(() => {
-    const map = {};
-    safeTeams.forEach((t) => {
-      (t?.players || []).forEach((p) => {
-        const rawName = typeof p === "string" ? p : p?.name || p?.displayName;
-        const canon = normalizeName(rawName);
-        if (canon && !map[canon]) {
-          map[canon] = t.label;
-        }
-      });
-    });
-    return map;
-  }, [safeTeams, normalizeName]);
+    const sameYear = s.getFullYear() === e.getFullYear();
+    const fmtMonth = new Intl.DateTimeFormat(undefined, { month: "short" });
+    const fmtMonthYear = new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" });
 
-  // ---------- VIEW MODE: CURRENT WEEK vs FULL SEASON ----------
+    if (sameYear) {
+      const sm = fmtMonth.format(s);
+      const em = fmtMonth.format(e);
+      if (sm === em) return `${fmtMonthYear.format(s)}`;
+      return `${sm}–${em} ${s.getFullYear()}`;
+    }
+    return `${fmtMonthYear.format(s)} – ${fmtMonthYear.format(e)}`;
+  };
+
+  const getSeasonDateBounds = (season) => {
+    const mh = Array.isArray(season?.matchDayHistory) ? season.matchDayHistory : [];
+    const times = mh
+      .map((d) => d?.createdAt || d?.updatedAt || null)
+      .filter(Boolean)
+      .map((t) => new Date(t))
+      .filter((d) => !Number.isNaN(d.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    if (times.length >= 1) {
+      return { startISO: times[0].toISOString(), endISO: times[times.length - 1].toISOString() };
+    }
+
+    const startISO = season?.createdAt || season?.updatedAt || null;
+    const endISO = season?.updatedAt || season?.createdAt || null;
+    return { startISO, endISO };
+  };
+
+  // ---------- Season selector ----------
+  const CURRENT_SCOPE = "__CURRENT__";
+  const [seasonScope, setSeasonScope] = useState(CURRENT_SCOPE);
+
+  useEffect(() => {
+    setSeasonScope(CURRENT_SCOPE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSeasonId]);
+
+  const previousSeasonOptions = useMemo(() => {
+    const arr = safeSeasons
+      .filter((s) => s?.seasonId && s.seasonId !== activeSeasonId)
+      .slice();
+    arr.sort((a, b) => Number(b?.seasonNo || 0) - Number(a?.seasonNo || 0));
+    return arr;
+  }, [safeSeasons, activeSeasonId]);
+
+  const selectedPrevSeason = useMemo(() => {
+    if (seasonScope === CURRENT_SCOPE) return null;
+    return safeSeasons.find((s) => s?.seasonId === seasonScope) || null;
+  }, [safeSeasons, seasonScope]);
+
+  const isViewingPreviousSeason = seasonScope !== CURRENT_SCOPE;
+
+  // ---------- Pull the correct TEAMS based on selected scope ----------
+  const scopedTeams = useMemo(() => {
+    if (!isViewingPreviousSeason) return safeTeamsProp;
+    const t = selectedPrevSeason?.teams;
+    return Array.isArray(t) ? t : [];
+  }, [isViewingPreviousSeason, safeTeamsProp, selectedPrevSeason]);
+
+  // Helper: attach matchday metadata to results/events so we can filter by date cleanly
+  const attachMatchDayMeta = (items, matchDayId) => {
+    const id = matchDayId ? String(matchDayId) : "";
+    const dateLabel = isoDateOnly(id) || isoDateOnly(matchDayId) || "";
+    return (Array.isArray(items) ? items : []).map((x) => ({
+      ...x,
+      _tkMatchDayId: id || "UNKNOWN",
+      _tkMatchDayLabel: dateLabel || (id || "UNKNOWN"),
+    }));
+  };
+
+  // Determine current matchday id (best-effort)
+  const currentMatchDayId = useMemo(() => {
+    const cm = currentMatchDay || {};
+    return (
+      cm.id ||
+      cm.matchDayId ||
+      cm.date ||
+      cm.matchDay ||
+      cm.day ||
+      cm.currentMatchDayId ||
+      ""
+    );
+  }, [currentMatchDay]);
+
+  // ✅ IMPORTANT: build archived from real matchDayHistory (CURRENT season)
+  const scopedArchivedResults = useMemo(() => {
+    if (isViewingPreviousSeason) {
+      const mh = Array.isArray(selectedPrevSeason?.matchDayHistory)
+        ? selectedPrevSeason.matchDayHistory
+        : [];
+      return mh.flatMap((d) =>
+        attachMatchDayMeta(d?.results, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
+      );
+    }
+
+    // Current season:
+    if (safeMatchDayHistory.length > 0) {
+      return safeMatchDayHistory.flatMap((d) =>
+        attachMatchDayMeta(d?.results, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
+      );
+    }
+
+    // Fallback (older behavior): we have no dates, so label as UNKNOWN
+    return attachMatchDayMeta(safeArchivedResultsProp, "UNKNOWN");
+  }, [isViewingPreviousSeason, selectedPrevSeason, safeMatchDayHistory, safeArchivedResultsProp]);
+
+  const scopedArchivedEvents = useMemo(() => {
+    if (isViewingPreviousSeason) {
+      const mh = Array.isArray(selectedPrevSeason?.matchDayHistory)
+        ? selectedPrevSeason.matchDayHistory
+        : [];
+      return mh.flatMap((d) =>
+        attachMatchDayMeta(d?.allEvents, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
+      );
+    }
+
+    // Current season:
+    if (safeMatchDayHistory.length > 0) {
+      return safeMatchDayHistory.flatMap((d) =>
+        attachMatchDayMeta(d?.allEvents, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
+      );
+    }
+
+    return attachMatchDayMeta(safeArchivedEventsProp, "UNKNOWN");
+  }, [isViewingPreviousSeason, selectedPrevSeason, safeMatchDayHistory, safeArchivedEventsProp]);
+
+  const scopedCurrentResults = useMemo(() => {
+    if (!isViewingPreviousSeason) {
+      // current week results
+      return attachMatchDayMeta(safeResultsProp, currentMatchDayId || "CURRENT");
+    }
+    const r = selectedPrevSeason?.results;
+    return attachMatchDayMeta(Array.isArray(r) ? r : [], "UNKNOWN");
+  }, [isViewingPreviousSeason, safeResultsProp, selectedPrevSeason, currentMatchDayId]);
+
+  const scopedCurrentEvents = useMemo(() => {
+    if (!isViewingPreviousSeason) {
+      return attachMatchDayMeta(safeEventsProp, currentMatchDayId || "CURRENT");
+    }
+    const e = selectedPrevSeason?.allEvents;
+    return attachMatchDayMeta(Array.isArray(e) ? e : [], "UNKNOWN");
+  }, [isViewingPreviousSeason, safeEventsProp, selectedPrevSeason, currentMatchDayId]);
+
+  // ---------- VIEW MODE ----------
   const [viewMode, setViewMode] = useState("current"); // "current" | "season"
-
-  const currentResults = safeResults;
-  const currentEvents = safeEvents;
+  useEffect(() => {
+    if (isViewingPreviousSeason) setViewMode("season");
+  }, [isViewingPreviousSeason]);
 
   const seasonResults = useMemo(
-    () => [...safeArchivedResults, ...currentResults],
-    [safeArchivedResults, currentResults]
+    () => [...scopedArchivedResults, ...scopedCurrentResults],
+    [scopedArchivedResults, scopedCurrentResults]
   );
 
-  const seasonEvents = useMemo(
-    () => [...safeArchivedEvents, ...currentEvents],
-    [safeArchivedEvents, currentEvents]
+  const seasonEventsRaw = useMemo(
+    () => [...scopedArchivedEvents, ...scopedCurrentEvents],
+    [scopedArchivedEvents, scopedCurrentEvents]
   );
 
-  const visibleResults = viewMode === "season" ? seasonResults : currentResults;
-  const visibleEventsRaw = viewMode === "season" ? seasonEvents : currentEvents;
+  const visibleResultsRaw = useMemo(() => {
+    if (isViewingPreviousSeason) return seasonResults;
+    return viewMode === "season" ? seasonResults : scopedCurrentResults;
+  }, [isViewingPreviousSeason, viewMode, seasonResults, scopedCurrentResults]);
 
-  // ✅ DEBUG (updates when you toggle current/season): what is actually being used?
-  useEffect(() => {
-    try {
-      console.log("[TK DEBUG] ViewMode:", viewMode, {
-        currentResults: currentResults?.length ?? 0,
-        currentEvents: currentEvents?.length ?? 0,
-        seasonResults: seasonResults?.length ?? 0,
-        seasonEvents: seasonEvents?.length ?? 0,
-        visibleResults: visibleResults?.length ?? 0,
-        visibleEventsRaw: visibleEventsRaw?.length ?? 0,
-      });
-    } catch (e) {
-      console.log("[TK DEBUG] ViewMode debug error", e);
-    }
-  }, [
-    viewMode,
-    currentResults,
-    currentEvents,
-    seasonResults,
-    seasonEvents,
-    visibleResults,
-    visibleEventsRaw,
-  ]);
+  const visibleEventsRaw = useMemo(() => {
+    if (isViewingPreviousSeason) return seasonEventsRaw;
+    return viewMode === "season" ? seasonEventsRaw : scopedCurrentEvents;
+  }, [isViewingPreviousSeason, viewMode, seasonEventsRaw, scopedCurrentEvents]);
 
   // ---------- NORMALISED EVENTS ----------
   const visibleEvents = useMemo(() => {
@@ -120,10 +282,33 @@ export function StatsPage({
     }));
   }, [visibleEventsRaw, normalizeName]);
 
-  // ---------- TEAM TABLE ----------
+  // ---------- Team maps ----------
+  const teamById = useMemo(() => {
+    const map = new Map();
+    (scopedTeams || []).forEach((t) => {
+      if (t?.id) map.set(t.id, t);
+    });
+    return map;
+  }, [scopedTeams]);
+
+  const getTeamName = (id) => teamById.get(id)?.label || "Unknown";
+
+  const playerTeamMap = useMemo(() => {
+    const map = {};
+    (scopedTeams || []).forEach((t) => {
+      (t?.players || []).forEach((p) => {
+        const rawName = typeof p === "string" ? p : p?.name || p?.displayName;
+        const canon = normalizeName(rawName);
+        if (canon && !map[canon]) map[canon] = t.label;
+      });
+    });
+    return map;
+  }, [scopedTeams, normalizeName]);
+
+  // ---------- TEAM TABLE (Standings) ----------
   const teamStats = useMemo(() => {
     const base = {};
-    safeTeams.forEach((t) => {
+    (scopedTeams || []).forEach((t) => {
       if (!t?.id) return;
       base[t.id] = {
         teamId: t.id,
@@ -139,7 +324,7 @@ export function StatsPage({
       };
     });
 
-    (visibleResults || []).forEach((r) => {
+    (visibleResultsRaw || []).forEach((r) => {
       const a = base[r?.teamAId];
       const b = base[r?.teamBId];
       if (!a || !b) return;
@@ -171,9 +356,7 @@ export function StatsPage({
       }
     });
 
-    Object.values(base).forEach((t) => {
-      t.goalDiff = t.goalsFor - t.goalsAgainst;
-    });
+    Object.values(base).forEach((t) => (t.goalDiff = t.goalsFor - t.goalsAgainst));
 
     const arr = Object.values(base);
     arr.sort((x, y) => {
@@ -184,7 +367,142 @@ export function StatsPage({
     });
 
     return arr;
-  }, [safeTeams, visibleResults]);
+  }, [scopedTeams, visibleResultsRaw]);
+
+  // ---------------- PHOTO PULLING (MATCH PlayerCardPage LOGIC) ----------------
+  const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
+
+  useEffect(() => {
+    async function loadPhotos() {
+      try {
+        const snap = await getDocs(collection(db, "playerPhotos"));
+        const idx = {};
+
+        const add = (k, url) => {
+          const kk = safeLower(k);
+          if (!kk || !url) return;
+          if (!idx[kk]) idx[kk] = url;
+        };
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const docId = docSnap.id;
+          const name = toTitleCase(data.name || "");
+          const photoData = data.photoData || null;
+          if (!photoData) return;
+
+          if (name) {
+            add(name, photoData);
+            add(slugFromName(name), photoData);
+            const fn = safeLower(firstNameOf(name));
+            if (fn) add(fn, photoData);
+          }
+
+          if (docId) add(docId, photoData);
+        });
+
+        setCloudPhotosIndex(idx);
+      } catch (err) {
+        console.error("Failed to load playerPhotos for StatsPage:", err);
+      }
+    }
+    loadPhotos();
+  }, []);
+
+  const mergedPhotoIndex = useMemo(() => {
+    const idx = {};
+
+    const addPhotoKey = (key, url) => {
+      const k = safeLower(key);
+      if (!k || !url) return;
+      if (!idx[k]) idx[k] = url;
+    };
+
+    Object.entries(safePlayerPhotosByName || {}).forEach(([k, url]) => {
+      addPhotoKey(k, url);
+      addPhotoKey(slugFromName(k), url);
+      addPhotoKey(firstNameOf(k), url);
+    });
+
+    Object.entries(cloudPhotosIndex || {}).forEach(([k, url]) => {
+      addPhotoKey(k, url);
+    });
+
+    (scopedTeams || []).forEach((t) => {
+      if (t?.playerPhotos) {
+        Object.entries(t.playerPhotos).forEach(([k, url]) => {
+          addPhotoKey(k, url);
+          addPhotoKey(slugFromName(k), url);
+          addPhotoKey(firstNameOf(k), url);
+        });
+      }
+      (t?.players || []).forEach((p) => {
+        if (p && typeof p === "object") {
+          const nm = p.name || p.displayName || "";
+          if (nm && p.photoUrl) {
+            addPhotoKey(nm, p.photoUrl);
+            addPhotoKey(slugFromName(nm), p.photoUrl);
+            addPhotoKey(firstNameOf(nm), p.photoUrl);
+          }
+        }
+      });
+    });
+
+    return idx;
+  }, [safePlayerPhotosByName, cloudPhotosIndex, scopedTeams]);
+
+  const getPlayerPhotoLikeCards = (name) => {
+    const candidates = [];
+    const tc = toTitleCase(name || "");
+    if (tc) candidates.push(tc);
+
+    const fn = firstNameOf(tc);
+    if (fn) candidates.push(fn);
+
+    if (tc) candidates.push(slugFromName(tc));
+
+    for (const c of candidates) {
+      const k = safeLower(c);
+      if (k && mergedPhotoIndex[k]) return mergedPhotoIndex[k];
+    }
+    return null;
+  };
+
+  // ---------- Champion recap (previous seasons only) ----------
+  const champion = useMemo(() => {
+    if (!isViewingPreviousSeason) return null;
+    if (!Array.isArray(teamStats) || teamStats.length === 0) return null;
+
+    const winner = teamStats[0];
+    const teamObj = teamById.get(winner.teamId) || null;
+
+    const players = Array.isArray(teamObj?.players) ? teamObj.players : [];
+
+    const captainRaw =
+      teamObj?.captain ||
+      teamObj?.captainName ||
+      players.find((p) => p?.isCaptain)?.name ||
+      players.find((p) => p?.role === "captain")?.name ||
+      (typeof players[0] === "string" ? players[0] : players[0]?.name);
+
+    const captainName = normalizeName(captainRaw);
+    const captainPhoto = getPlayerPhotoLikeCards(captainName || captainRaw);
+
+    const squadNamesAll = players
+      .map((p) => (typeof p === "string" ? p : p?.name || p?.displayName))
+      .filter(Boolean)
+      .map((n) => normalizeName(n));
+
+    const squadNames = squadNamesAll.filter((n) => n && n !== captainName);
+
+    return {
+      teamId: winner.teamId,
+      teamName: winner.name,
+      captainName: captainName || "Captain",
+      captainPhoto,
+      squadNames,
+    };
+  }, [isViewingPreviousSeason, teamStats, teamById, normalizeName, getPlayerPhotoLikeCards]);
 
   // ---------- PLAYER STATS ----------
   const playerStats = useMemo(() => {
@@ -192,14 +510,8 @@ export function StatsPage({
 
     const getOrCreate = (playerName) => {
       if (!playerName) return null;
-      if (!stats[playerName]) {
-        stats[playerName] = {
-          name: playerName,
-          goals: 0,
-          assists: 0,
-          shibobos: 0,
-        };
-      }
+      if (!stats[playerName])
+        stats[playerName] = { name: playerName, goals: 0, assists: 0, shibobos: 0 };
       return stats[playerName];
     };
 
@@ -258,31 +570,81 @@ export function StatsPage({
     return arr;
   }, [playerStats]);
 
+  // ---------- Matchday filter buttons (All + date pills) ----------
+  const matchDayOptions = useMemo(() => {
+    const map = new Map();
+    (visibleResultsRaw || []).forEach((r) => {
+      const id = r?._tkMatchDayId || "UNKNOWN";
+      const label = isoDateOnly(r?._tkMatchDayLabel) || isoDateOnly(id) || r?._tkMatchDayLabel || id;
+      if (!map.has(id)) map.set(id, label);
+    });
+
+    const arr = Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+
+    const toSortable = (val) => {
+      const d = isoDateOnly(val);
+      if (!d) return 0;
+      const dt = new Date(d);
+      return Number.isNaN(dt.getTime()) ? 0 : dt.getTime();
+    };
+
+    // newest first
+    arr.sort((a, b) => toSortable(b.id) - toSortable(a.id));
+    return arr;
+  }, [visibleResultsRaw]);
+
+  const [matchDayFilter, setMatchDayFilter] = useState("ALL");
+
+  useEffect(() => {
+    setMatchDayFilter("ALL");
+  }, [seasonScope, viewMode]);
+
+  const filteredResults = useMemo(() => {
+    if (matchDayFilter === "ALL") return visibleResultsRaw || [];
+    return (visibleResultsRaw || []).filter(
+      (r) => (r?._tkMatchDayId || "UNKNOWN") === matchDayFilter
+    );
+  }, [visibleResultsRaw, matchDayFilter]);
+
+  const filteredEvents = useMemo(() => {
+    if (matchDayFilter === "ALL") return visibleEvents || [];
+    return (visibleEvents || []).filter(
+      (e) => (e?._tkMatchDayId || "UNKNOWN") === matchDayFilter
+    );
+  }, [visibleEvents, matchDayFilter]);
+
   // ---------- FULL MATCH LIST + EVENTS BREAKDOWN ----------
   const sortedResults = useMemo(() => {
-    const arr = (visibleResults || []).slice();
+    const arr = (filteredResults || []).slice();
     arr.sort((a, b) => Number(a?.matchNo || 0) - Number(b?.matchNo || 0));
     return arr;
-  }, [visibleResults]);
+  }, [filteredResults]);
 
-  const eventsByMatch = useMemo(() => {
+  const matchKeyOf = (r) => `${r?._tkMatchDayId || "UNKNOWN"}::${Number(r?.matchNo || 0)}`;
+
+  const eventsByMatchKey = useMemo(() => {
     const map = new Map();
-    (visibleEvents || []).forEach((e) => {
+    (filteredEvents || []).forEach((e) => {
       const m = e?.matchNo;
       if (m == null) return;
-      if (!map.has(m)) map.set(m, []);
-      map.get(m).push(e);
+      const key = `${e?._tkMatchDayId || "UNKNOWN"}::${Number(m)}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(e);
     });
     map.forEach((list) => {
       list.sort((a, b) => Number(a?.timeSeconds || 0) - Number(b?.timeSeconds || 0));
     });
     return map;
-  }, [visibleEvents]);
+  }, [filteredEvents]);
 
-  const [expandedMatchNo, setExpandedMatchNo] = useState(null);
+  const [expandedMatchKey, setExpandedMatchKey] = useState(null);
 
-  const toggleMatchDetails = (matchNo) => {
-    setExpandedMatchNo((prev) => (prev === matchNo ? null : matchNo));
+  useEffect(() => {
+    setExpandedMatchKey(null);
+  }, [matchDayFilter, seasonScope, viewMode]);
+
+  const toggleMatchDetails = (key) => {
+    setExpandedMatchKey((prev) => (prev === key ? null : key));
   };
 
   // ---------- AUTO-RETURN WHEN ACCESSED FROM LIVE ----------
@@ -318,7 +680,6 @@ export function StatsPage({
     const handleActivity = () => startTimer();
 
     startTimer();
-
     window.addEventListener("pointerdown", handleActivity);
     window.addEventListener("keydown", handleActivity);
     window.addEventListener("touchstart", handleActivity);
@@ -334,144 +695,309 @@ export function StatsPage({
   // ---------- TABS ----------
   const [activeTab, setActiveTab] = useState("teams");
 
+  // ---------- Headers / date ranges ----------
+  const currentSeasonRange = useMemo(() => {
+    const now = new Date();
+    const fmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" });
+    return fmt.format(now);
+  }, []);
+
+  const previousSeasonRange = useMemo(() => {
+    if (!selectedPrevSeason) return "";
+    const { startISO, endISO } = getSeasonDateBounds(selectedPrevSeason);
+    return monthRangeLabel(startISO, endISO);
+  }, [selectedPrevSeason]);
+
+  const seasonContextTitle = useMemo(() => {
+    if (!isViewingPreviousSeason) return "Current season";
+    return formatSeasonDisplayName(selectedPrevSeason);
+  }, [isViewingPreviousSeason, selectedPrevSeason]);
+
+  const viewContextTitle = useMemo(() => {
+    if (isViewingPreviousSeason) return "Full season";
+    return viewMode === "season" ? "Full season" : "Current week";
+  }, [isViewingPreviousSeason, viewMode]);
+
+  const headerRangeText = useMemo(() => {
+    if (isViewingPreviousSeason) return previousSeasonRange ? previousSeasonRange : "Season dates unknown";
+    return currentSeasonRange;
+  }, [isViewingPreviousSeason, previousSeasonRange, currentSeasonRange]);
+
   // ---------- RENDER ----------
   return (
     <div className="page stats-page">
       <header className="header">
-        <h1>Stats &amp; Leaderboards</h1>
+        <div>
+          <h1>Stats &amp; Leaderboards</h1>
+          <div className="muted" style={{ marginTop: "0.25rem" }}>
+            <strong>{seasonContextTitle}</strong> • <span>{viewContextTitle}</span> • <span>{headerRangeText}</span>
+          </div>
+        </div>
+
         <div className="stats-header-actions">
-          <button className="secondary-btn" onClick={onBack}>
-            Back
-          </button>
-          <button className="secondary-btn" onClick={onGoToPeerReview}>
-            Rate Player
-          </button>
-          <button className="secondary-btn" onClick={onGoToPlayerCards}>
-            Player cards
-          </button>
+          <button className="secondary-btn" onClick={onBack}>Back</button>
+          <button className="secondary-btn" onClick={onGoToPeerReview}>Rate Player</button>
+          <button className="secondary-btn" onClick={onGoToPlayerCards}>Player cards</button>
         </div>
       </header>
 
-      <section className="card">
-        <h2>View</h2>
+      {/* ---------- Local CSS for champion glow + matchday pills ---------- */}
+      <style>{`
+        .tk-champ-wrap {
+          position: relative;
+          overflow: hidden;
+          border: 1px solid rgba(255, 215, 0, 0.28);
+        }
+        .tk-champ-wrap::before {
+          content: "";
+          position: absolute;
+          inset: -2px;
+          background: radial-gradient(circle at 20% 20%, rgba(255,215,0,0.18), transparent 95%),
+                      radial-gradient(circle at 80% 30%, rgba(255,215,0,0.30), transparent 95%),
+                      radial-gradient(circle at 50% 90%, rgba(255,215,0,0.06), transparent 90%);
+          pointer-events: none;
+        }
+        .tk-champ-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          padding: 0.25rem 0.55rem;
+          border-radius: 999px;
+          font-weight: 900;
+          letter-spacing: 0.02em;
+          border: 1px solid rgba(255,215,0,0.35);
+          background: linear-gradient(90deg, rgba(255,215,0,0.18), rgba(255,215,0,0.06));
+        }
+        .tk-avatar-glow {
+          position: relative;
+          width: 64px;
+          height: 64px;
+          border-radius: 999px;
+          overflow: hidden;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,215,0,0.35);
+          box-shadow: 0 0 0 0 rgba(255,215,0,0.35);
+          animation: tkGlow 2.4s ease-in-out infinite;
+        }
+        @keyframes tkGlow {
+          0% { box-shadow: 0 0 0 0 rgba(255,215,0,0.18); }
+          50% { box-shadow: 0 0 18px 2px rgba(255,215,0,0.22); }
+          100% { box-shadow: 0 0 0 0 rgba(255,215,0,0.18); }
+        }
+        .tk-ribbon {
+          position: absolute;
+          top: -10px;
+          left: 50%;
+          transform: translateX(-50%);
+          padding: 0.18rem 0.5rem;
+          border-radius: 999px;
+          font-size: 0.72rem;
+          font-weight: 900;
+          border: 1px solid rgba(255,215,0,0.45);
+          background: linear-gradient(90deg, rgba(255,215,0,0.35), rgba(255,215,0,0.12));
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
+        }
+        .tk-squad-list {
+          margin: 0.35rem 0 0;
+          padding-left: 1.05rem;
+          font-size: 0.92rem;
+        }
+        .tk-squad-list li { margin: 0.12rem 0; opacity: 0.9; }
 
-        <div className="stats-controls">
-          <div className="stats-controls-left">
+        .tk-matchday-filter-row {
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.4rem;
+          flex-wrap: wrap;
+          margin: 0.15rem 0 0.35rem;
+        }
+        .tk-md-btn {
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(255,255,255,0.06);
+          padding: 0.28rem 0.55rem;
+          border-radius: 999px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .tk-md-btn.active {
+          border-color: rgba(34,211,238,0.55);
+          box-shadow: 0 0 0 2px rgba(34,211,238,0.12);
+        }
+        .tk-md-label {
+          opacity: 0.95;
+        }
+        .tk-md-muted {
+          opacity: 0.6;
+          font-weight: 700;
+          font-size: 0.82em;
+          margin-left: 0.4rem;
+        }
+      `}</style>
+
+      {/* ---------- Season Picker ---------- */}
+      <section className="card">
+        <h2>Season</h2>
+
+        <div className="stats-controls" style={{ alignItems: "center" }}>
+          <div className="stats-controls-left" style={{ minWidth: "320px" }}>
             <div className="segment-wrapper">
               <div className="segmented-toggle">
                 <button
                   type="button"
-                  className={
-                    viewMode === "current"
-                      ? "segmented-option active"
-                      : "segmented-option"
-                  }
-                  onClick={() => setViewMode("current")}
+                  className={seasonScope === CURRENT_SCOPE ? "segmented-option active" : "segmented-option"}
+                  onClick={() => setSeasonScope(CURRENT_SCOPE)}
                 >
-                  Current week
+                  Current
                 </button>
                 <button
                   type="button"
-                  className={
-                    viewMode === "season"
-                      ? "segmented-option active"
-                      : "segmented-option"
-                  }
-                  onClick={() => setViewMode("season")}
+                  className={seasonScope !== CURRENT_SCOPE ? "segmented-option active" : "segmented-option"}
+                  onClick={() => {
+                    if (previousSeasonOptions.length > 0) setSeasonScope(previousSeasonOptions[0].seasonId);
+                  }}
+                  disabled={previousSeasonOptions.length === 0}
+                  title={previousSeasonOptions.length === 0 ? "No previous seasons yet" : "Switch to a previous season"}
                 >
-                  Full season
+                  Previous
                 </button>
               </div>
             </div>
+
+            {seasonScope !== CURRENT_SCOPE && (
+              <div style={{ marginTop: "0.7rem" }}>
+                <label className="muted" style={{ display: "block", marginBottom: "0.25rem" }}>
+                  Choose a previous season
+                </label>
+                <select
+                  className="text-input"
+                  value={seasonScope}
+                  onChange={(e) => setSeasonScope(e.target.value)}
+                >
+                  {previousSeasonOptions.map((s) => (
+                    <option key={s.seasonId} value={s.seasonId}>
+                      {formatSeasonDisplayName(s)}
+                    </option>
+                  ))}
+                </select>
+                <div className="muted" style={{ marginTop: "0.35rem" }}>
+                  {previousSeasonRange ? `Season range: ${previousSeasonRange}` : "Season range: unknown"}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="actions-row stats-tabs">
-            <button
-              className={
-                activeTab === "teams" ? "secondary-btn active" : "secondary-btn"
-              }
-              onClick={() => setActiveTab("teams")}
-            >
-              Team Standings
-            </button>
-            <button
-              className={
-                activeTab === "matches" ? "secondary-btn active" : "secondary-btn"
-              }
-              onClick={() => setActiveTab("matches")}
-            >
-              Match Results
-            </button>
-            <button
-              className={
-                activeTab === "goals" ? "secondary-btn active" : "secondary-btn"
-              }
-              onClick={() => setActiveTab("goals")}
-            >
-              Top Scorers
-            </button>
-            <button
-              className={
-                activeTab === "assists" ? "secondary-btn active" : "secondary-btn"
-              }
-              onClick={() => setActiveTab("assists")}
-            >
-              Playmakers
-            </button>
-            <button
-              className={
-                activeTab === "combined"
-                  ? "secondary-btn active"
-                  : "secondary-btn"
-              }
-              onClick={() => setActiveTab("combined")}
-            >
-              Summary Player Stats
-            </button>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 900 }}>{seasonContextTitle}</div>
+            <div className="muted" style={{ marginTop: "0.2rem" }}>
+              {isViewingPreviousSeason
+                ? "Previous seasons are always shown as full-season stats."
+                : "Current season can be viewed as Current week or Full season."}
+            </div>
           </div>
         </div>
       </section>
 
+      {/* ---------- View toggle (Current season ONLY) ---------- */}
+      {!isViewingPreviousSeason && (
+        <section className="card">
+          <h2>View</h2>
+          <div className="stats-controls">
+            <div className="stats-controls-left">
+              <div className="segment-wrapper">
+                <div className="segmented-toggle">
+                  <button
+                    type="button"
+                    className={viewMode === "current" ? "segmented-option active" : "segmented-option"}
+                    onClick={() => setViewMode("current")}
+                  >
+                    Current week
+                  </button>
+                  <button
+                    type="button"
+                    className={viewMode === "season" ? "segmented-option active" : "segmented-option"}
+                    onClick={() => setViewMode("season")}
+                  >
+                    Full season
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="actions-row stats-tabs">
+              <button className={activeTab === "teams" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("teams")}>
+                Team Standings
+              </button>
+              <button className={activeTab === "matches" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("matches")}>
+                Match Results
+              </button>
+              <button className={activeTab === "goals" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("goals")}>
+                Top Scorers
+              </button>
+              <button className={activeTab === "assists" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("assists")}>
+                Playmakers
+              </button>
+              <button className={activeTab === "combined" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("combined")}>
+                Summary Player Stats
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ---------- Tabs row for Previous season ---------- */}
+      {isViewingPreviousSeason && (
+        <section className="card">
+          <h2>Previous season stats (Full season)</h2>
+          <div className="actions-row stats-tabs">
+            <button className={activeTab === "teams" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("teams")}>
+              Team Standings
+            </button>
+            <button className={activeTab === "matches" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("matches")}>
+              Match Results
+            </button>
+            <button className={activeTab === "goals" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("goals")}>
+              Top Scorers
+            </button>
+            <button className={activeTab === "assists" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("assists")}>
+              Playmakers
+            </button>
+            <button className={activeTab === "combined" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("combined")}>
+              Summary Player Stats
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* ---------- Team Standings ---------- */}
       {activeTab === "teams" && (
         <section className="card">
-          <h2>Team Standings</h2>
+          <h2>
+            {isViewingPreviousSeason
+              ? `Team Standings — ${formatSeasonDisplayName(selectedPrevSeason)}`
+              : viewMode === "season"
+              ? "Team Standings — Current Season"
+              : "Team Standings — Current Week"}
+          </h2>
+          <div className="muted" style={{ marginTop: "-0.25rem", marginBottom: "0.6rem" }}>{headerRangeText}</div>
+
           <div className="table-wrapper">
             <table className="stats-table">
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Team</th>
-                  <th>Pts</th>
-                  <th>P</th>
-                  <th>W</th>
-                  <th>D</th>
-                  <th>L</th>
-                  <th>GF</th>
-                  <th>GA</th>
-                  <th>GD</th>
+                  <th>#</th><th>Team</th><th>Pts</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th>
                 </tr>
               </thead>
               <tbody>
                 {teamStats.map((t, idx) => (
                   <tr key={t.teamId}>
-                    <td>{idx + 1}</td>
-                    <td>{t.name}</td>
-                    <td>{t.points}</td>
-                    <td>{t.played}</td>
-                    <td>{t.won}</td>
-                    <td>{t.drawn}</td>
-                    <td>{t.lost}</td>
-                    <td>{t.goalsFor}</td>
-                    <td>{t.goalsAgainst}</td>
-                    <td>{t.goalDiff}</td>
+                    <td>{idx + 1}</td><td>{t.name}</td><td>{t.points}</td><td>{t.played}</td><td>{t.won}</td><td>{t.drawn}</td>
+                    <td>{t.lost}</td><td>{t.goalsFor}</td><td>{t.goalsAgainst}</td><td>{t.goalDiff}</td>
                   </tr>
                 ))}
                 {teamStats.length === 0 && (
-                  <tr>
-                    <td colSpan={10} className="muted">
-                      No teams loaded yet.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={10} className="muted">No teams loaded yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -479,39 +1005,25 @@ export function StatsPage({
         </section>
       )}
 
+      {/* ---------- Player Rankings ---------- */}
       {activeTab === "combined" && (
         <section className="card">
-          <h2>Player Rankings (Total = Goals + Assists + Saves)</h2>
+          <h2>
+            {isViewingPreviousSeason ? "Player Rankings — Previous Season" : viewMode === "season" ? "Player Rankings — Current Season" : "Player Rankings — Current Week"}
+          </h2>
           <div className="table-wrapper">
             <table className="stats-table">
               <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Player</th>
-                  <th>Team</th>
-                  <th>Goals</th>
-                  <th>Assists</th>
-                  <th>Saves</th>
-                  <th>G-A-S</th>
-                </tr>
+                <tr><th>#</th><th>Player</th><th>Team</th><th>Goals</th><th>Assists</th><th>Saves</th><th>G-A-S</th></tr>
               </thead>
               <tbody>
                 {combinedLeaderboard.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="muted">
-                      No player stats recorded yet.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={7} className="muted">No player stats recorded yet.</td></tr>
                 )}
                 {combinedLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-combined"}>
-                    <td>{idx + 1}</td>
-                    <td>{p.name}</td>
-                    <td>{p.teamName || "—"}</td>
-                    <td>{p.goals}</td>
-                    <td>{p.assists}</td>
-                    <td>{p.shibobos}</td>
-                    <td>{p.total}</td>
+                    <td>{idx + 1}</td><td>{p.name}</td><td>{p.teamName || "—"}</td>
+                    <td>{p.goals}</td><td>{p.assists}</td><td>{p.shibobos}</td><td>{p.total}</td>
                   </tr>
                 ))}
               </tbody>
@@ -520,33 +1032,20 @@ export function StatsPage({
         </section>
       )}
 
+      {/* ---------- Top Scorers ---------- */}
       {activeTab === "goals" && (
         <section className="card">
-          <h2>Top Scorers</h2>
+          <h2>{isViewingPreviousSeason ? "Top Scorers — Previous Season" : viewMode === "season" ? "Top Scorers — Current Season" : "Top Scorers — Current Week"}</h2>
           <div className="table-wrapper">
             <table className="stats-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Player</th>
-                  <th>Team</th>
-                  <th>Goals</th>
-                </tr>
-              </thead>
+              <thead><tr><th>#</th><th>Player</th><th>Team</th><th>Goals</th></tr></thead>
               <tbody>
                 {goalLeaderboard.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="muted">
-                      No goals recorded yet.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={4} className="muted">No goals recorded yet.</td></tr>
                 )}
                 {goalLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-g"}>
-                    <td>{idx + 1}</td>
-                    <td>{p.name}</td>
-                    <td>{p.teamName || "—"}</td>
-                    <td>{p.goals}</td>
+                    <td>{idx + 1}</td><td>{p.name}</td><td>{p.teamName || "—"}</td><td>{p.goals}</td>
                   </tr>
                 ))}
               </tbody>
@@ -555,33 +1054,20 @@ export function StatsPage({
         </section>
       )}
 
+      {/* ---------- Playmakers ---------- */}
       {activeTab === "assists" && (
         <section className="card">
-          <h2>Top Playmakers (Assists)</h2>
+          <h2>{isViewingPreviousSeason ? "Top Playmakers — Previous Season" : viewMode === "season" ? "Top Playmakers — Current Season" : "Top Playmakers — Current Week"}</h2>
           <div className="table-wrapper">
             <table className="stats-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Player</th>
-                  <th>Team</th>
-                  <th>Assists</th>
-                </tr>
-              </thead>
+              <thead><tr><th>#</th><th>Player</th><th>Team</th><th>Assists</th></tr></thead>
               <tbody>
                 {assistLeaderboard.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="muted">
-                      No assists recorded yet.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={4} className="muted">No assists recorded yet.</td></tr>
                 )}
                 {assistLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-a"}>
-                    <td>{idx + 1}</td>
-                    <td>{p.name}</td>
-                    <td>{p.teamName || "—"}</td>
-                    <td>{p.assists}</td>
+                    <td>{idx + 1}</td><td>{p.name}</td><td>{p.teamName || "—"}</td><td>{p.assists}</td>
                   </tr>
                 ))}
               </tbody>
@@ -590,31 +1076,55 @@ export function StatsPage({
         </section>
       )}
 
+      {/* ---------- Match Results ---------- */}
       {activeTab === "matches" && (
         <section className="card">
-          <h2>All Match Results</h2>
-          <p className="muted">
-            Tap a match row to see goal scorers and assists for that game.
-          </p>
+          <h2>
+            {isViewingPreviousSeason ? "All Match Results — Previous Season" : viewMode === "season" ? "All Match Results — Current Season" : "All Match Results — Current Week"}
+          </h2>
+          <p className="muted">Tap a match row to see goal scorers and assists for that game.</p>
+
+          {/* ✅ Matchday pills: All + actual match-day dates (no more “ARCHIVED”) */}
+          {viewMode === "season" && (
+            <div className="tk-matchday-filter-row">
+              <button
+                className={matchDayFilter === "ALL" ? "tk-md-btn active" : "tk-md-btn"}
+                onClick={() => setMatchDayFilter("ALL")}
+                type="button"
+                title="Show all matchdays in this view"
+              >
+                <span className="tk-md-label">All</span>
+              </button>
+
+              {matchDayOptions.map((md) => {
+                const label = isoDateOnly(md.label) || isoDateOnly(md.id) || md.label;
+                return (
+                  <button
+                    key={md.id}
+                    className={matchDayFilter === md.id ? "tk-md-btn active" : "tk-md-btn"}
+                    onClick={() => setMatchDayFilter(md.id)}
+                    type="button"
+                    title={`Filter to match day: ${label}`}
+                  >
+                    <span className="tk-md-label">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="table-wrapper">
             <table className="stats-table">
               <thead>
                 <tr>
-                  <th>Match #</th>
-                  <th>Team A</th>
-                  <th>Score</th>
-                  <th>Team B</th>
-                  <th>Result</th>
+                  <th>Match #</th><th>Team A</th><th>Score</th><th>Team B</th><th>Result</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedResults.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="muted">
-                      No matches played yet.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={5} className="muted">No matches played yet.</td></tr>
                 )}
+
                 {sortedResults.map((r) => {
                   const teamAName = getTeamName(r.teamAId);
                   const teamBName = getTeamName(r.teamBId);
@@ -625,32 +1135,30 @@ export function StatsPage({
                     resultText = `Won by ${winnerName}`;
                   }
 
-                  const isExpanded = expandedMatchNo === r.matchNo;
-                  const events = eventsByMatch.get(r.matchNo) || [];
+                  const mk = matchKeyOf(r);
+                  const isExpanded = expandedMatchKey === mk;
+                  const events = eventsByMatchKey.get(mk) || [];
 
-                  const teamAEvents = events.filter(
-                    (e) => e.teamId === r.teamAId && e.scorer
-                  );
-                  const teamBEvents = events.filter(
-                    (e) => e.teamId === r.teamBId && e.scorer
-                  );
+                  const teamAEvents = events.filter((e) => e.teamId === r.teamAId && e.scorer);
+                  const teamBEvents = events.filter((e) => e.teamId === r.teamBId && e.scorer);
+
+                  const mdLabel = isoDateOnly(r?._tkMatchDayLabel) || isoDateOnly(r?._tkMatchDayId) || "";
 
                   return (
-                    <React.Fragment key={r.matchNo}>
+                    <React.Fragment key={mk}>
                       <tr
                         className={isExpanded ? "match-row expanded" : "match-row"}
-                        onClick={() => toggleMatchDetails(r.matchNo)}
+                        onClick={() => toggleMatchDetails(mk)}
                       >
                         <td>
-                          <span className="match-toggle-indicator">
-                            {isExpanded ? "▾" : "▸"}
-                          </span>{" "}
+                          <span className="match-toggle-indicator">{isExpanded ? "▾" : "▸"}</span>{" "}
                           {r.matchNo}
+                          {matchDayFilter === "ALL" && mdLabel ? (
+                            <span className="tk-md-muted">{mdLabel}</span>
+                          ) : null}
                         </td>
                         <td>{teamAName}</td>
-                        <td>
-                          {r.goalsA} – {r.goalsB}
-                        </td>
+                        <td>{r.goalsA} – {r.goalsB}</td>
                         <td>{teamBName}</td>
                         <td>{resultText}</td>
                       </tr>
@@ -664,13 +1172,11 @@ export function StatsPage({
                             ) : teamAEvents.length === 0 ? null : (
                               <div className="team-scorers">
                                 {teamAEvents.map((e, i) => {
-                                  const actionLabel =
-                                    e.type === "shibobo" ? "shibobo" : "goal";
+                                  const actionLabel = e.type === "shibobo" ? "shibobo" : "goal";
                                   return (
                                     <div key={(e.id || i) + "-a"} className="scorer-line">
                                       {e.scorer}
-                                      {e.assist ? ` (assist: ${e.assist})` : ""} –{" "}
-                                      {actionLabel}
+                                      {e.assist ? ` (assist: ${e.assist})` : ""} – {actionLabel}
                                     </div>
                                   );
                                 })}
@@ -684,13 +1190,11 @@ export function StatsPage({
                             ) : teamBEvents.length === 0 ? null : (
                               <div className="team-scorers">
                                 {teamBEvents.map((e, i) => {
-                                  const actionLabel =
-                                    e.type === "shibobo" ? "shibobo" : "goal";
+                                  const actionLabel = e.type === "shibobo" ? "shibobo" : "goal";
                                   return (
                                     <div key={(e.id || i) + "-b"} className="scorer-line">
                                       {e.scorer}
-                                      {e.assist ? ` (assist: ${e.assist})` : ""} –{" "}
-                                      {actionLabel}
+                                      {e.assist ? ` (assist: ${e.assist})` : ""} – {actionLabel}
                                     </div>
                                   );
                                 })}
