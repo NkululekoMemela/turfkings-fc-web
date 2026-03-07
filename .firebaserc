@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "turfkings-fc"
-  }
+  },
+  "targets": {
+    "turfkings-fc": {
+      "hosting": {
+        "production": [
+          "turfkings-fc"
+        ],
+        "staging": [
+          "turfkings-staging-app"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
