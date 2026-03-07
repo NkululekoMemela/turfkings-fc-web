@@ -37,13 +37,17 @@ const PAGE_SPECTATOR = "spectator";
 const PAGE_NEWS = "news";
 const PAGE_PLAYER_CARDS = "player-cards";
 const PAGE_PEER_REVIEW = "peer-review";
-const PAGE_MIGRATION = "migration"; // ✅ NEW
+const PAGE_MIGRATION = "migration";
 
 const MASTER_CODE = "3333";
 const MATCH_SECONDS = 5 * 60;
 
 // ✅ V2 switch
 const USE_V2 = true;
+
+// ✅ Show staging badge only when using staging mode
+const IS_STAGING =
+  String(import.meta.env.VITE_USE_STAGING || "").trim().toLowerCase() === "true";
 
 function ensureV2StateShape(s) {
   const fallback = createDefaultStateV2();
@@ -177,7 +181,6 @@ export default function App() {
     playerPhotosByName,
     yearEndAttendance;
 
-  // ✅ NEW: keep safeV2 so we can pass seasons to StatsPage
   let safeV2ForStats = null;
 
   if (USE_V2) {
@@ -233,6 +236,7 @@ export default function App() {
       archivedEventsFromHistory: archivedEventsFromHistory.length,
       currentResults: (results || []).length,
       currentEvents: (allEvents || []).length,
+      environment: IS_STAGING ? "staging" : "production",
     });
   }, [
     hasFirebaseHistory,
@@ -462,6 +466,26 @@ export default function App() {
       updateState((prev) => ({ ...prev, currentEvents: [] }));
     }
     setPage(PAGE_LANDING);
+  };
+
+  // ---------- CURRENT-WEEK SAVED MATCH DELETE ----------
+  const handleDeleteSavedMatch = (matchNoToDelete) => {
+    if (!USE_V2) return;
+
+    updateActiveSeason((prevSeason) => {
+      const safeResults = Array.isArray(prevSeason?.results) ? prevSeason.results : [];
+      const safeAllEvents = Array.isArray(prevSeason?.allEvents) ? prevSeason.allEvents : [];
+
+      return {
+        ...prevSeason,
+        results: safeResults.filter(
+          (r) => Number(r?.matchNo) !== Number(matchNoToDelete)
+        ),
+        allEvents: safeAllEvents.filter(
+          (e) => Number(e?.matchNo) !== Number(matchNoToDelete)
+        ),
+      };
+    });
   };
 
   // ---------- SQUADS ----------
@@ -707,6 +731,28 @@ export default function App() {
 
   return (
     <div className="app-root">
+      <style>{`
+        .tk-staging-badge {
+          position: fixed;
+          top: 14px;
+          right: 14px;
+          z-index: 9999;
+          padding: 0.55rem 0.9rem;
+          border-radius: 999px;
+          background: rgba(220, 38, 38, 0.95);
+          color: #ffffff;
+          font-size: 0.82rem;
+          font-weight: 900;
+          letter-spacing: 0.04em;
+          box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          pointer-events: none;
+          user-select: none;
+        }
+      `}</style>
+
+      {IS_STAGING && <div className="tk-staging-badge">Testing Version</div>}
+
       {page === PAGE_ENTRY && (
         <EntryPage
           identity={identity}
@@ -734,7 +780,7 @@ export default function App() {
           onGoToFormations={handleGoToFormations}
           onGoToNews={() => setPage(PAGE_NEWS)}
           onGoToEntryDev={() => setPage(PAGE_ENTRY)}
-          onGoToMigration={() => setPage(PAGE_MIGRATION)} // ✅ NEW (LandingPage can ignore it if unused)
+          onGoToMigration={() => setPage(PAGE_MIGRATION)}
           identity={identity}
         />
       )}
@@ -787,9 +833,9 @@ export default function App() {
           members={members}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           seasons={USE_V2 ? safeV2ForStats?.seasons || [] : []}
-
-          // ✅ KEY FIX: provide real matchDayHistory so StatsPage can show date buttons
+          playerPhotosByName={playerPhotosByName}
           matchDayHistory={matchDayHistory || []}
+          onDeleteSavedMatch={handleDeleteSavedMatch}
         />
       )}
 

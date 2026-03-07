@@ -5,12 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:staging": "VITE_USE_STAGING=true vite",
     "build": "vite build",
+    "build:staging": "VITE_USE_STAGING=true vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "firebase": "^12.6.0",
+    "firebase-admin": "^13.7.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

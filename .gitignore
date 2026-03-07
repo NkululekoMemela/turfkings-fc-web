@@ -25,3 +25,8 @@ dist-ssr
 .git_old_backup/
 
 .firebase/
+
+# Environment variables
+.env
+.env.*
+src/.env.*

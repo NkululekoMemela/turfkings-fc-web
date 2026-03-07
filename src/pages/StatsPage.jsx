@@ -36,7 +36,6 @@ function firstNameOf(name) {
 }
 
 function isoDateOnly(x) {
-  // Accept "2026-02-18" OR "2026-02-18T19:41:..." -> "2026-02-18"
   const s = String(x || "").trim();
   const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
   return m ? m[1] : "";
@@ -65,6 +64,13 @@ export function StatsPage({
 
   // ✅ NEW: pass full matchDayHistory from App.jsx (so we have dates!)
   matchDayHistory = [],
+
+  // ✅ Admin hooks
+  onDeleteSavedMatch = null,
+  onUpdateSavedMatchScore = null,
+  onUpdateSavedEvent = null,
+  onDeleteSavedEvent = null,
+  onAddSavedEvent = null,
 }) {
   // ---------- Safety ----------
   const safeMembers = Array.isArray(members) ? members : [];
@@ -138,7 +144,6 @@ export function StatsPage({
 
   useEffect(() => {
     setSeasonScope(CURRENT_SCOPE);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSeasonId]);
 
   const previousSeasonOptions = useMemo(() => {
@@ -199,14 +204,12 @@ export function StatsPage({
       );
     }
 
-    // Current season:
     if (safeMatchDayHistory.length > 0) {
       return safeMatchDayHistory.flatMap((d) =>
         attachMatchDayMeta(d?.results, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
       );
     }
 
-    // Fallback (older behavior): we have no dates, so label as UNKNOWN
     return attachMatchDayMeta(safeArchivedResultsProp, "UNKNOWN");
   }, [isViewingPreviousSeason, selectedPrevSeason, safeMatchDayHistory, safeArchivedResultsProp]);
 
@@ -220,7 +223,6 @@ export function StatsPage({
       );
     }
 
-    // Current season:
     if (safeMatchDayHistory.length > 0) {
       return safeMatchDayHistory.flatMap((d) =>
         attachMatchDayMeta(d?.allEvents, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
@@ -232,7 +234,6 @@ export function StatsPage({
 
   const scopedCurrentResults = useMemo(() => {
     if (!isViewingPreviousSeason) {
-      // current week results
       return attachMatchDayMeta(safeResultsProp, currentMatchDayId || "CURRENT");
     }
     const r = selectedPrevSeason?.results;
@@ -588,7 +589,6 @@ export function StatsPage({
       return Number.isNaN(dt.getTime()) ? 0 : dt.getTime();
     };
 
-    // newest first
     arr.sort((a, b) => toSortable(b.id) - toSortable(a.id));
     return arr;
   }, [visibleResultsRaw]);
@@ -645,6 +645,163 @@ export function StatsPage({
 
   const toggleMatchDetails = (key) => {
     setExpandedMatchKey((prev) => (prev === key ? null : key));
+  };
+
+  // ✅ current-week/current-season only admin guard
+  const canAdminEditThisView =
+    !isViewingPreviousSeason && viewMode === "current";
+
+  // ---------- SCORE EDIT ----------
+  const [editingMatchKey, setEditingMatchKey] = useState(null);
+  const [editScoreA, setEditScoreA] = useState("0");
+  const [editScoreB, setEditScoreB] = useState("0");
+
+  const startEditScore = (r) => {
+    setEditingMatchKey(matchKeyOf(r));
+    setEditScoreA(String(r?.goalsA ?? 0));
+    setEditScoreB(String(r?.goalsB ?? 0));
+  };
+
+  const cancelEditScore = () => {
+    setEditingMatchKey(null);
+    setEditScoreA("0");
+    setEditScoreB("0");
+  };
+
+  const saveEditScore = (r) => {
+    if (typeof onUpdateSavedMatchScore !== "function") return;
+
+    const nextA = Math.max(0, Number(editScoreA || 0));
+    const nextB = Math.max(0, Number(editScoreB || 0));
+
+    onUpdateSavedMatchScore(r?.matchNo, nextA, nextB);
+    cancelEditScore();
+  };
+
+  // ---------- EVENT EDIT ----------
+  const [editingEventId, setEditingEventId] = useState(null);
+  const [eventDraft, setEventDraft] = useState({
+    scorer: "",
+    assist: "",
+    type: "goal",
+    teamId: "",
+  });
+
+  const startEditEvent = (e) => {
+    setEditingEventId(String(e?.id || ""));
+    setEventDraft({
+      scorer: e?.scorer || "",
+      assist: e?.assist || "",
+      type: e?.type === "shibobo" ? "shibobo" : "goal",
+      teamId: e?.teamId || "",
+    });
+  };
+
+  const cancelEditEvent = () => {
+    setEditingEventId(null);
+    setEventDraft({
+      scorer: "",
+      assist: "",
+      type: "goal",
+      teamId: "",
+    });
+  };
+
+  const saveEditEvent = (e) => {
+    if (typeof onUpdateSavedEvent !== "function") return;
+
+    const scorer = String(eventDraft?.scorer || "").trim();
+    if (!scorer) {
+      window.alert("Scorer name is required.");
+      return;
+    }
+
+    onUpdateSavedEvent(e?.id, {
+      scorer,
+      assist: String(eventDraft?.assist || "").trim() || null,
+      type: eventDraft?.type === "shibobo" ? "shibobo" : "goal",
+      teamId: eventDraft?.teamId || e?.teamId || "",
+    });
+
+    cancelEditEvent();
+  };
+
+  // ---------- ADD EVENT ----------
+  const [addingForMatchKey, setAddingForMatchKey] = useState(null);
+  const [newEventDraft, setNewEventDraft] = useState({
+    scorer: "",
+    assist: "",
+    type: "goal",
+    teamId: "",
+  });
+
+  const startAddEvent = (r, defaultTeamId = "") => {
+    setAddingForMatchKey(matchKeyOf(r));
+    setNewEventDraft({
+      scorer: "",
+      assist: "",
+      type: "goal",
+      teamId: defaultTeamId || r?.teamAId || "",
+    });
+  };
+
+  const cancelAddEvent = () => {
+    setAddingForMatchKey(null);
+    setNewEventDraft({
+      scorer: "",
+      assist: "",
+      type: "goal",
+      teamId: "",
+    });
+  };
+
+  const saveAddEvent = (r) => {
+    if (typeof onAddSavedEvent !== "function") return;
+
+    const scorer = String(newEventDraft?.scorer || "").trim();
+    if (!scorer) {
+      window.alert("Scorer name is required.");
+      return;
+    }
+
+    onAddSavedEvent(r?.matchNo, {
+      scorer,
+      assist: String(newEventDraft?.assist || "").trim() || null,
+      type: newEventDraft?.type === "shibobo" ? "shibobo" : "goal",
+      teamId: newEventDraft?.teamId || r?.teamAId || "",
+    });
+
+    cancelAddEvent();
+  };
+
+  // ---------- DELETE ----------
+  const canDeleteFromThisView =
+    canAdminEditThisView && typeof onDeleteSavedMatch === "function";
+
+  const handleDeleteMatch = (matchNo) => {
+    if (!canDeleteFromThisView) return;
+
+    const ok = window.confirm(
+      `Delete saved match #${matchNo} from the current week?\n\nThis will remove the match result and all linked scorer/assist events for that match.`
+    );
+    if (!ok) return;
+
+    onDeleteSavedMatch(matchNo);
+    setExpandedMatchKey(null);
+    cancelEditScore();
+    cancelEditEvent();
+    cancelAddEvent();
+  };
+
+  const handleDeleteEvent = (e) => {
+    if (typeof onDeleteSavedEvent !== "function") return;
+
+    const ok = window.confirm(
+      `Delete this saved event for ${e?.scorer || "this player"}?\n\nIf it is a goal event, the match score and standings will also recalculate.`
+    );
+    if (!ok) return;
+
+    onDeleteSavedEvent(e?.id);
   };
 
   // ---------- AUTO-RETURN WHEN ACCESSED FROM LIVE ----------
@@ -741,71 +898,7 @@ export function StatsPage({
         </div>
       </header>
 
-      {/* ---------- Local CSS for champion glow + matchday pills ---------- */}
       <style>{`
-        .tk-champ-wrap {
-          position: relative;
-          overflow: hidden;
-          border: 1px solid rgba(255, 215, 0, 0.28);
-        }
-        .tk-champ-wrap::before {
-          content: "";
-          position: absolute;
-          inset: -2px;
-          background: radial-gradient(circle at 20% 20%, rgba(255,215,0,0.18), transparent 95%),
-                      radial-gradient(circle at 80% 30%, rgba(255,215,0,0.30), transparent 95%),
-                      radial-gradient(circle at 50% 90%, rgba(255,215,0,0.06), transparent 90%);
-          pointer-events: none;
-        }
-        .tk-champ-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          padding: 0.25rem 0.55rem;
-          border-radius: 999px;
-          font-weight: 900;
-          letter-spacing: 0.02em;
-          border: 1px solid rgba(255,215,0,0.35);
-          background: linear-gradient(90deg, rgba(255,215,0,0.18), rgba(255,215,0,0.06));
-        }
-        .tk-avatar-glow {
-          position: relative;
-          width: 64px;
-          height: 64px;
-          border-radius: 999px;
-          overflow: hidden;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,215,0,0.35);
-          box-shadow: 0 0 0 0 rgba(255,215,0,0.35);
-          animation: tkGlow 2.4s ease-in-out infinite;
-        }
-        @keyframes tkGlow {
-          0% { box-shadow: 0 0 0 0 rgba(255,215,0,0.18); }
-          50% { box-shadow: 0 0 18px 2px rgba(255,215,0,0.22); }
-          100% { box-shadow: 0 0 0 0 rgba(255,215,0,0.18); }
-        }
-        .tk-ribbon {
-          position: absolute;
-          top: -10px;
-          left: 50%;
-          transform: translateX(-50%);
-          padding: 0.18rem 0.5rem;
-          border-radius: 999px;
-          font-size: 0.72rem;
-          font-weight: 900;
-          border: 1px solid rgba(255,215,0,0.45);
-          background: linear-gradient(90deg, rgba(255,215,0,0.35), rgba(255,215,0,0.12));
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          white-space: nowrap;
-        }
-        .tk-squad-list {
-          margin: 0.35rem 0 0;
-          padding-left: 1.05rem;
-          font-size: 0.92rem;
-        }
-        .tk-squad-list li { margin: 0.12rem 0; opacity: 0.9; }
-
         .tk-matchday-filter-row {
           display: flex;
           justify-content: flex-end;
@@ -833,6 +926,108 @@ export function StatsPage({
           font-weight: 700;
           font-size: 0.82em;
           margin-left: 0.4rem;
+        }
+        .tk-match-admin-box {
+          margin-top: 0.9rem;
+          padding-top: 0.75rem;
+          border-top: 1px dashed rgba(255,255,255,0.16);
+        }
+        .tk-match-admin-title {
+          font-size: 0.78rem;
+          font-weight: 900;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          opacity: 0.8;
+          margin-bottom: 0.55rem;
+        }
+        .tk-match-admin-row {
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+          margin-top: 0.75rem;
+        }
+        .tk-danger-btn {
+          border: 1px solid rgba(239, 68, 68, 0.45);
+          background: rgba(239, 68, 68, 0.12);
+          color: #ffd6d6;
+          padding: 0.42rem 0.7rem;
+          border-radius: 999px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .tk-danger-btn:hover {
+          background: rgba(239, 68, 68, 0.18);
+        }
+        .tk-edit-btn {
+          border: 1px solid rgba(56, 189, 248, 0.45);
+          background: rgba(56, 189, 248, 0.12);
+          color: #d9f6ff;
+          padding: 0.42rem 0.7rem;
+          border-radius: 999px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .tk-edit-btn:hover {
+          background: rgba(56, 189, 248, 0.18);
+        }
+        .tk-admin-panel {
+          margin-top: 0.65rem;
+          padding: 0.8rem;
+          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 14px;
+          background: rgba(255,255,255,0.04);
+        }
+        .tk-admin-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+          gap: 0.5rem;
+          margin-top: 0.55rem;
+        }
+        .tk-small-label {
+          display: block;
+          font-size: 0.8rem;
+          font-weight: 800;
+          margin-bottom: 0.22rem;
+          opacity: 0.88;
+        }
+        .tk-small-input,
+        .tk-small-select {
+          width: 100%;
+          padding: 0.45rem 0.55rem;
+          border-radius: 10px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(255,255,255,0.06);
+          color: inherit;
+        }
+        .tk-inline-actions {
+          display: flex;
+          gap: 0.4rem;
+          flex-wrap: wrap;
+          margin-top: 0.65rem;
+        }
+        .tk-linkish-btn {
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.05);
+          color: inherit;
+          padding: 0.24rem 0.5rem;
+          border-radius: 999px;
+          font-weight: 800;
+          font-size: 0.78rem;
+          cursor: pointer;
+          margin-left: 0.45rem;
+        }
+        .tk-event-line {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+          padding: 0.1rem 0;
+          flex-wrap: wrap;
+        }
+        .tk-event-line-text {
+          flex: 1;
+          min-width: 220px;
         }
       `}</style>
 
@@ -1084,7 +1279,6 @@ export function StatsPage({
           </h2>
           <p className="muted">Tap a match row to see goal scorers and assists for that game.</p>
 
-          {/* ✅ Matchday pills: All + actual match-day dates (no more “ARCHIVED”) */}
           {viewMode === "season" && (
             <div className="tk-matchday-filter-row">
               <button
@@ -1137,6 +1331,9 @@ export function StatsPage({
 
                   const mk = matchKeyOf(r);
                   const isExpanded = expandedMatchKey === mk;
+                  const isEditingScore = editingMatchKey === mk;
+                  const isAddingEvent = addingForMatchKey === mk;
+
                   const events = eventsByMatchKey.get(mk) || [];
 
                   const teamAEvents = events.filter((e) => e.teamId === r.teamAId && e.scorer);
@@ -1173,10 +1370,126 @@ export function StatsPage({
                               <div className="team-scorers">
                                 {teamAEvents.map((e, i) => {
                                   const actionLabel = e.type === "shibobo" ? "shibobo" : "goal";
+                                  const isEditingThisEvent = editingEventId === String(e?.id || "");
+
                                   return (
                                     <div key={(e.id || i) + "-a"} className="scorer-line">
-                                      {e.scorer}
-                                      {e.assist ? ` (assist: ${e.assist})` : ""} – {actionLabel}
+                                      {!isEditingThisEvent ? (
+                                        <div className="tk-event-line">
+                                          <div className="tk-event-line-text">
+                                            {e.scorer}
+                                            {e.assist ? ` (assist: ${e.assist})` : ""} – {actionLabel}
+                                          </div>
+
+                                          {canAdminEditThisView && (
+                                            <div>
+                                              <button
+                                                type="button"
+                                                className="tk-linkish-btn"
+                                                onClick={(evt) => {
+                                                  evt.stopPropagation();
+                                                  startEditEvent(e);
+                                                }}
+                                              >
+                                                Edit
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="tk-linkish-btn"
+                                                onClick={(evt) => {
+                                                  evt.stopPropagation();
+                                                  handleDeleteEvent(e);
+                                                }}
+                                              >
+                                                Delete
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div
+                                          className="tk-admin-panel"
+                                          onClick={(evt) => evt.stopPropagation()}
+                                        >
+                                          <div className="tk-admin-grid">
+                                            <div>
+                                              <label className="tk-small-label">Scorer</label>
+                                              <input
+                                                className="tk-small-input"
+                                                value={eventDraft.scorer}
+                                                onChange={(evt) =>
+                                                  setEventDraft((prev) => ({
+                                                    ...prev,
+                                                    scorer: evt.target.value,
+                                                  }))
+                                                }
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="tk-small-label">Assist</label>
+                                              <input
+                                                className="tk-small-input"
+                                                value={eventDraft.assist}
+                                                onChange={(evt) =>
+                                                  setEventDraft((prev) => ({
+                                                    ...prev,
+                                                    assist: evt.target.value,
+                                                  }))
+                                                }
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="tk-small-label">Type</label>
+                                              <select
+                                                className="tk-small-select"
+                                                value={eventDraft.type}
+                                                onChange={(evt) =>
+                                                  setEventDraft((prev) => ({
+                                                    ...prev,
+                                                    type: evt.target.value,
+                                                  }))
+                                                }
+                                              >
+                                                <option value="goal">goal</option>
+                                                <option value="shibobo">shibobo</option>
+                                              </select>
+                                            </div>
+                                            <div>
+                                              <label className="tk-small-label">Team</label>
+                                              <select
+                                                className="tk-small-select"
+                                                value={eventDraft.teamId}
+                                                onChange={(evt) =>
+                                                  setEventDraft((prev) => ({
+                                                    ...prev,
+                                                    teamId: evt.target.value,
+                                                  }))
+                                                }
+                                              >
+                                                <option value={r.teamAId}>{teamAName}</option>
+                                                <option value={r.teamBId}>{teamBName}</option>
+                                              </select>
+                                            </div>
+                                          </div>
+
+                                          <div className="tk-inline-actions">
+                                            <button
+                                              type="button"
+                                              className="tk-edit-btn"
+                                              onClick={() => saveEditEvent(e)}
+                                            >
+                                              Save event
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="secondary-btn"
+                                              onClick={cancelEditEvent}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -1191,17 +1504,297 @@ export function StatsPage({
                               <div className="team-scorers">
                                 {teamBEvents.map((e, i) => {
                                   const actionLabel = e.type === "shibobo" ? "shibobo" : "goal";
+                                  const isEditingThisEvent = editingEventId === String(e?.id || "");
+
                                   return (
                                     <div key={(e.id || i) + "-b"} className="scorer-line">
-                                      {e.scorer}
-                                      {e.assist ? ` (assist: ${e.assist})` : ""} – {actionLabel}
+                                      {!isEditingThisEvent ? (
+                                        <div className="tk-event-line">
+                                          <div className="tk-event-line-text">
+                                            {e.scorer}
+                                            {e.assist ? ` (assist: ${e.assist})` : ""} – {actionLabel}
+                                          </div>
+
+                                          {canAdminEditThisView && (
+                                            <div>
+                                              <button
+                                                type="button"
+                                                className="tk-linkish-btn"
+                                                onClick={(evt) => {
+                                                  evt.stopPropagation();
+                                                  startEditEvent(e);
+                                                }}
+                                              >
+                                                Edit
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="tk-linkish-btn"
+                                                onClick={(evt) => {
+                                                  evt.stopPropagation();
+                                                  handleDeleteEvent(e);
+                                                }}
+                                              >
+                                                Delete
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div
+                                          className="tk-admin-panel"
+                                          onClick={(evt) => evt.stopPropagation()}
+                                        >
+                                          <div className="tk-admin-grid">
+                                            <div>
+                                              <label className="tk-small-label">Scorer</label>
+                                              <input
+                                                className="tk-small-input"
+                                                value={eventDraft.scorer}
+                                                onChange={(evt) =>
+                                                  setEventDraft((prev) => ({
+                                                    ...prev,
+                                                    scorer: evt.target.value,
+                                                  }))
+                                                }
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="tk-small-label">Assist</label>
+                                              <input
+                                                className="tk-small-input"
+                                                value={eventDraft.assist}
+                                                onChange={(evt) =>
+                                                  setEventDraft((prev) => ({
+                                                    ...prev,
+                                                    assist: evt.target.value,
+                                                  }))
+                                                }
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="tk-small-label">Type</label>
+                                              <select
+                                                className="tk-small-select"
+                                                value={eventDraft.type}
+                                                onChange={(evt) =>
+                                                  setEventDraft((prev) => ({
+                                                    ...prev,
+                                                    type: evt.target.value,
+                                                  }))
+                                                }
+                                              >
+                                                <option value="goal">goal</option>
+                                                <option value="shibobo">shibobo</option>
+                                              </select>
+                                            </div>
+                                            <div>
+                                              <label className="tk-small-label">Team</label>
+                                              <select
+                                                className="tk-small-select"
+                                                value={eventDraft.teamId}
+                                                onChange={(evt) =>
+                                                  setEventDraft((prev) => ({
+                                                    ...prev,
+                                                    teamId: evt.target.value,
+                                                  }))
+                                                }
+                                              >
+                                                <option value={r.teamAId}>{teamAName}</option>
+                                                <option value={r.teamBId}>{teamBName}</option>
+                                              </select>
+                                            </div>
+                                          </div>
+
+                                          <div className="tk-inline-actions">
+                                            <button
+                                              type="button"
+                                              className="tk-edit-btn"
+                                              onClick={() => saveEditEvent(e)}
+                                            >
+                                              Save event
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="secondary-btn"
+                                              onClick={cancelEditEvent}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
                               </div>
                             )}
                           </td>
-                          <td />
+                          <td>
+                            {canAdminEditThisView && (
+                              <div className="tk-match-admin-box" onClick={(evt) => evt.stopPropagation()}>
+                                <div className="tk-match-admin-title">Admin tools</div>
+
+                                {!isEditingScore ? (
+                                  <div className="tk-match-admin-row">
+                                    {typeof onUpdateSavedMatchScore === "function" && (
+                                      <button
+                                        type="button"
+                                        className="tk-edit-btn"
+                                        onClick={() => startEditScore(r)}
+                                      >
+                                        Edit score
+                                      </button>
+                                    )}
+
+                                    {typeof onAddSavedEvent === "function" && (
+                                      <button
+                                        type="button"
+                                        className="tk-edit-btn"
+                                        onClick={() => startAddEvent(r, r.teamAId)}
+                                      >
+                                        Add event
+                                      </button>
+                                    )}
+
+                                    {typeof onDeleteSavedMatch === "function" && (
+                                      <button
+                                        type="button"
+                                        className="tk-danger-btn"
+                                        onClick={() => handleDeleteMatch(r.matchNo)}
+                                      >
+                                        Delete match
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="tk-admin-panel">
+                                    <div className="tk-admin-grid">
+                                      <div>
+                                        <label className="tk-small-label">{teamAName} goals</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          className="tk-small-input"
+                                          value={editScoreA}
+                                          onChange={(evt) => setEditScoreA(evt.target.value)}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="tk-small-label">{teamBName} goals</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          className="tk-small-input"
+                                          value={editScoreB}
+                                          onChange={(evt) => setEditScoreB(evt.target.value)}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div className="tk-inline-actions">
+                                      <button
+                                        type="button"
+                                        className="tk-edit-btn"
+                                        onClick={() => saveEditScore(r)}
+                                      >
+                                        Save score
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="secondary-btn"
+                                        onClick={cancelEditScore}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {isAddingEvent && (
+                                  <div className="tk-admin-panel" style={{ marginTop: "0.75rem" }}>
+                                    <div className="tk-admin-grid">
+                                      <div>
+                                        <label className="tk-small-label">Scorer</label>
+                                        <input
+                                          className="tk-small-input"
+                                          value={newEventDraft.scorer}
+                                          onChange={(evt) =>
+                                            setNewEventDraft((prev) => ({
+                                              ...prev,
+                                              scorer: evt.target.value,
+                                            }))
+                                          }
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="tk-small-label">Assist</label>
+                                        <input
+                                          className="tk-small-input"
+                                          value={newEventDraft.assist}
+                                          onChange={(evt) =>
+                                            setNewEventDraft((prev) => ({
+                                              ...prev,
+                                              assist: evt.target.value,
+                                            }))
+                                          }
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="tk-small-label">Type</label>
+                                        <select
+                                          className="tk-small-select"
+                                          value={newEventDraft.type}
+                                          onChange={(evt) =>
+                                            setNewEventDraft((prev) => ({
+                                              ...prev,
+                                              type: evt.target.value,
+                                            }))
+                                          }
+                                        >
+                                          <option value="goal">goal</option>
+                                          <option value="shibobo">shibobo</option>
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="tk-small-label">Team</label>
+                                        <select
+                                          className="tk-small-select"
+                                          value={newEventDraft.teamId}
+                                          onChange={(evt) =>
+                                            setNewEventDraft((prev) => ({
+                                              ...prev,
+                                              teamId: evt.target.value,
+                                            }))
+                                          }
+                                        >
+                                          <option value={r.teamAId}>{teamAName}</option>
+                                          <option value={r.teamBId}>{teamBName}</option>
+                                        </select>
+                                      </div>
+                                    </div>
+
+                                    <div className="tk-inline-actions">
+                                      <button
+                                        type="button"
+                                        className="tk-edit-btn"
+                                        onClick={() => saveAddEvent(r)}
+                                      >
+                                        Save new event
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="secondary-btn"
+                                        onClick={cancelAddEvent}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       )}
                     </React.Fragment>
