@@ -67,23 +67,34 @@ export function StatsPage({
 
   // ✅ Admin hooks
   onDeleteSavedMatch = null,
-  onUpdateSavedMatchScore = null,
   onUpdateSavedEvent = null,
   onDeleteSavedEvent = null,
   onAddSavedEvent = null,
+  onDeleteCurrentEmptySeason = null,
+
+  // ✅ Admin preview mode
+  canPreviewPreviousSeasonUI = false,
 }) {
   // ---------- Safety ----------
   const safeMembers = Array.isArray(members) ? members : [];
   const safeSeasons = Array.isArray(seasons) ? seasons : [];
   const safePlayerPhotosByName =
-    playerPhotosByName && typeof playerPhotosByName === "object" ? playerPhotosByName : {};
+    playerPhotosByName && typeof playerPhotosByName === "object"
+      ? playerPhotosByName
+      : {};
 
   const safeTeamsProp = Array.isArray(teams) ? teams : [];
   const safeResultsProp = Array.isArray(results) ? results : [];
   const safeEventsProp = Array.isArray(allEvents) ? allEvents : [];
-  const safeArchivedResultsProp = Array.isArray(archivedResults) ? archivedResults : [];
-  const safeArchivedEventsProp = Array.isArray(archivedEvents) ? archivedEvents : [];
-  const safeMatchDayHistory = Array.isArray(matchDayHistory) ? matchDayHistory : [];
+  const safeArchivedResultsProp = Array.isArray(archivedResults)
+    ? archivedResults
+    : [];
+  const safeArchivedEventsProp = Array.isArray(archivedEvents)
+    ? archivedEvents
+    : [];
+  const safeMatchDayHistory = Array.isArray(matchDayHistory)
+    ? matchDayHistory
+    : [];
 
   // Member-based name normalisation
   const { normalizeName } = useMemberNameMap(safeMembers);
@@ -93,7 +104,8 @@ export function StatsPage({
     const sid = season?.seasonId || "";
     const match = String(sid).match(/^(\d{4})-S(\d+)$/i);
     if (match) return `${match[1]} Season-${match[2]}`;
-    const year = season?.year || (sid.match(/^(\d{4})/) ? sid.match(/^(\d{4})/)[1] : "");
+    const year =
+      season?.year || (sid.match(/^(\d{4})/) ? sid.match(/^(\d{4})/)[1] : "");
     const no = season?.seasonNo ? String(season.seasonNo) : sid;
     return year ? `${year} Season-${no}` : String(sid || "Season");
   };
@@ -109,7 +121,10 @@ export function StatsPage({
 
     const sameYear = s.getFullYear() === e.getFullYear();
     const fmtMonth = new Intl.DateTimeFormat(undefined, { month: "short" });
-    const fmtMonthYear = new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" });
+    const fmtMonthYear = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      year: "numeric",
+    });
 
     if (sameYear) {
       const sm = fmtMonth.format(s);
@@ -121,7 +136,9 @@ export function StatsPage({
   };
 
   const getSeasonDateBounds = (season) => {
-    const mh = Array.isArray(season?.matchDayHistory) ? season.matchDayHistory : [];
+    const mh = Array.isArray(season?.matchDayHistory)
+      ? season.matchDayHistory
+      : [];
     const times = mh
       .map((d) => d?.createdAt || d?.updatedAt || null)
       .filter(Boolean)
@@ -130,7 +147,10 @@ export function StatsPage({
       .sort((a, b) => a.getTime() - b.getTime());
 
     if (times.length >= 1) {
-      return { startISO: times[0].toISOString(), endISO: times[times.length - 1].toISOString() };
+      return {
+        startISO: times[0].toISOString(),
+        endISO: times[times.length - 1].toISOString(),
+      };
     }
 
     const startISO = season?.createdAt || season?.updatedAt || null;
@@ -140,6 +160,7 @@ export function StatsPage({
 
   // ---------- Season selector ----------
   const CURRENT_SCOPE = "__CURRENT__";
+  const PREVIEW_PREVIOUS_SCOPE = "__PREVIEW_PREVIOUS__";
   const [seasonScope, setSeasonScope] = useState(CURRENT_SCOPE);
 
   useEffect(() => {
@@ -154,10 +175,24 @@ export function StatsPage({
     return arr;
   }, [safeSeasons, activeSeasonId]);
 
-  const selectedPrevSeason = useMemo(() => {
-    if (seasonScope === CURRENT_SCOPE) return null;
+  const selectedRealPrevSeason = useMemo(() => {
+    if (
+      seasonScope === CURRENT_SCOPE ||
+      seasonScope === PREVIEW_PREVIOUS_SCOPE
+    )
+      return null;
     return safeSeasons.find((s) => s?.seasonId === seasonScope) || null;
   }, [safeSeasons, seasonScope]);
+
+  const selectedPreviewPrevSeason = useMemo(() => {
+    if (seasonScope !== PREVIEW_PREVIOUS_SCOPE) return null;
+    return safeSeasons.find((s) => s?.seasonId === activeSeasonId) || null;
+  }, [safeSeasons, seasonScope, activeSeasonId]);
+
+  const selectedPrevSeason = selectedPreviewPrevSeason || selectedRealPrevSeason;
+  const isPreviewingPreviousSeasonUI =
+    seasonScope === PREVIEW_PREVIOUS_SCOPE &&
+    Boolean(canPreviewPreviousSeasonUI);
 
   const isViewingPreviousSeason = seasonScope !== CURRENT_SCOPE;
 
@@ -175,7 +210,7 @@ export function StatsPage({
     return (Array.isArray(items) ? items : []).map((x) => ({
       ...x,
       _tkMatchDayId: id || "UNKNOWN",
-      _tkMatchDayLabel: dateLabel || (id || "UNKNOWN"),
+      _tkMatchDayLabel: dateLabel || id || "UNKNOWN",
     }));
   };
 
@@ -200,18 +235,29 @@ export function StatsPage({
         ? selectedPrevSeason.matchDayHistory
         : [];
       return mh.flatMap((d) =>
-        attachMatchDayMeta(d?.results, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
+        attachMatchDayMeta(
+          d?.results,
+          d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
+        )
       );
     }
 
     if (safeMatchDayHistory.length > 0) {
       return safeMatchDayHistory.flatMap((d) =>
-        attachMatchDayMeta(d?.results, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
+        attachMatchDayMeta(
+          d?.results,
+          d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
+        )
       );
     }
 
     return attachMatchDayMeta(safeArchivedResultsProp, "UNKNOWN");
-  }, [isViewingPreviousSeason, selectedPrevSeason, safeMatchDayHistory, safeArchivedResultsProp]);
+  }, [
+    isViewingPreviousSeason,
+    selectedPrevSeason,
+    safeMatchDayHistory,
+    safeArchivedResultsProp,
+  ]);
 
   const scopedArchivedEvents = useMemo(() => {
     if (isViewingPreviousSeason) {
@@ -219,18 +265,29 @@ export function StatsPage({
         ? selectedPrevSeason.matchDayHistory
         : [];
       return mh.flatMap((d) =>
-        attachMatchDayMeta(d?.allEvents, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
+        attachMatchDayMeta(
+          d?.allEvents,
+          d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
+        )
       );
     }
 
     if (safeMatchDayHistory.length > 0) {
       return safeMatchDayHistory.flatMap((d) =>
-        attachMatchDayMeta(d?.allEvents, d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN")
+        attachMatchDayMeta(
+          d?.allEvents,
+          d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
+        )
       );
     }
 
     return attachMatchDayMeta(safeArchivedEventsProp, "UNKNOWN");
-  }, [isViewingPreviousSeason, selectedPrevSeason, safeMatchDayHistory, safeArchivedEventsProp]);
+  }, [
+    isViewingPreviousSeason,
+    selectedPrevSeason,
+    safeMatchDayHistory,
+    safeArchivedEventsProp,
+  ]);
 
   const scopedCurrentResults = useMemo(() => {
     if (!isViewingPreviousSeason) {
@@ -238,7 +295,12 @@ export function StatsPage({
     }
     const r = selectedPrevSeason?.results;
     return attachMatchDayMeta(Array.isArray(r) ? r : [], "UNKNOWN");
-  }, [isViewingPreviousSeason, safeResultsProp, selectedPrevSeason, currentMatchDayId]);
+  }, [
+    isViewingPreviousSeason,
+    safeResultsProp,
+    selectedPrevSeason,
+    currentMatchDayId,
+  ]);
 
   const scopedCurrentEvents = useMemo(() => {
     if (!isViewingPreviousSeason) {
@@ -246,7 +308,12 @@ export function StatsPage({
     }
     const e = selectedPrevSeason?.allEvents;
     return attachMatchDayMeta(Array.isArray(e) ? e : [], "UNKNOWN");
-  }, [isViewingPreviousSeason, safeEventsProp, selectedPrevSeason, currentMatchDayId]);
+  }, [
+    isViewingPreviousSeason,
+    safeEventsProp,
+    selectedPrevSeason,
+    currentMatchDayId,
+  ]);
 
   // ---------- VIEW MODE ----------
   const [viewMode, setViewMode] = useState("current"); // "current" | "season"
@@ -267,12 +334,22 @@ export function StatsPage({
   const visibleResultsRaw = useMemo(() => {
     if (isViewingPreviousSeason) return seasonResults;
     return viewMode === "season" ? seasonResults : scopedCurrentResults;
-  }, [isViewingPreviousSeason, viewMode, seasonResults, scopedCurrentResults]);
+  }, [
+    isViewingPreviousSeason,
+    viewMode,
+    seasonResults,
+    scopedCurrentResults,
+  ]);
 
   const visibleEventsRaw = useMemo(() => {
     if (isViewingPreviousSeason) return seasonEventsRaw;
     return viewMode === "season" ? seasonEventsRaw : scopedCurrentEvents;
-  }, [isViewingPreviousSeason, viewMode, seasonEventsRaw, scopedCurrentEvents]);
+  }, [
+    isViewingPreviousSeason,
+    viewMode,
+    seasonEventsRaw,
+    scopedCurrentEvents,
+  ]);
 
   // ---------- NORMALISED EVENTS ----------
   const visibleEvents = useMemo(() => {
@@ -294,11 +371,34 @@ export function StatsPage({
 
   const getTeamName = (id) => teamById.get(id)?.label || "Unknown";
 
+  const teamPlayersById = useMemo(() => {
+    const out = {};
+    (scopedTeams || []).forEach((t) => {
+      const rawPlayers = Array.isArray(t?.players) ? t.players : [];
+      const normalizedPlayers = rawPlayers
+        .map((p) =>
+          typeof p === "string" ? p : p?.name || p?.displayName || ""
+        )
+        .map((name) => normalizeName(name))
+        .filter(Boolean);
+
+      out[t?.id] = normalizedPlayers;
+    });
+    return out;
+  }, [scopedTeams, normalizeName]);
+
+  const getPlayersForTeam = (teamId) => {
+    return Array.isArray(teamPlayersById?.[teamId])
+      ? teamPlayersById[teamId]
+      : [];
+  };
+
   const playerTeamMap = useMemo(() => {
     const map = {};
     (scopedTeams || []).forEach((t) => {
       (t?.players || []).forEach((p) => {
-        const rawName = typeof p === "string" ? p : p?.name || p?.displayName;
+        const rawName =
+          typeof p === "string" ? p : p?.name || p?.displayName;
         const canon = normalizeName(rawName);
         if (canon && !map[canon]) map[canon] = t.label;
       });
@@ -453,19 +553,36 @@ export function StatsPage({
   }, [safePlayerPhotosByName, cloudPhotosIndex, scopedTeams]);
 
   const getPlayerPhotoLikeCards = (name) => {
-    const candidates = [];
-    const tc = toTitleCase(name || "");
-    if (tc) candidates.push(tc);
+    const raw = String(name || "").trim();
+    if (!raw) return null;
 
-    const fn = firstNameOf(tc);
-    if (fn) candidates.push(fn);
+    const tc = toTitleCase(raw);
+    const normalized = normalizeName(raw);
+    const firstRaw = firstNameOf(raw);
+    const firstTc = firstNameOf(tc);
+    const firstNormalized = firstNameOf(normalized);
 
-    if (tc) candidates.push(slugFromName(tc));
+    const candidates = [
+      raw,
+      tc,
+      normalized,
+      slugFromName(raw),
+      slugFromName(tc),
+      slugFromName(normalized),
+      firstRaw,
+      firstTc,
+      firstNormalized,
+      slugFromName(firstRaw),
+      slugFromName(firstTc),
+      slugFromName(firstNormalized),
+    ]
+      .map((x) => safeLower(x))
+      .filter(Boolean);
 
-    for (const c of candidates) {
-      const k = safeLower(c);
-      if (k && mergedPhotoIndex[k]) return mergedPhotoIndex[k];
+    for (const k of candidates) {
+      if (mergedPhotoIndex[k]) return mergedPhotoIndex[k];
     }
+
     return null;
   };
 
@@ -476,34 +593,64 @@ export function StatsPage({
 
     const winner = teamStats[0];
     const teamObj = teamById.get(winner.teamId) || null;
-
     const players = Array.isArray(teamObj?.players) ? teamObj.players : [];
+
+    const playerNames = players
+      .map((p) => (typeof p === "string" ? p : p?.name || p?.displayName || ""))
+      .filter(Boolean);
 
     const captainRaw =
       teamObj?.captain ||
       teamObj?.captainName ||
       players.find((p) => p?.isCaptain)?.name ||
       players.find((p) => p?.role === "captain")?.name ||
-      (typeof players[0] === "string" ? players[0] : players[0]?.name);
+      playerNames[0] ||
+      "Captain";
 
     const captainName = normalizeName(captainRaw);
-    const captainPhoto = getPlayerPhotoLikeCards(captainName || captainRaw);
 
-    const squadNamesAll = players
-      .map((p) => (typeof p === "string" ? p : p?.name || p?.displayName))
-      .filter(Boolean)
-      .map((n) => normalizeName(n));
+    let captainPhoto =
+      getPlayerPhotoLikeCards(captainName) ||
+      getPlayerPhotoLikeCards(captainRaw);
 
-    const squadNames = squadNamesAll.filter((n) => n && n !== captainName);
+    if (!captainPhoto) {
+      const matchedPlayerObj = players.find((p) => {
+        const nm =
+          typeof p === "string" ? p : p?.name || p?.displayName || "";
+        return normalizeName(nm) === captainName;
+      });
+
+      if (matchedPlayerObj && typeof matchedPlayerObj === "object") {
+        captainPhoto =
+          matchedPlayerObj.photoUrl ||
+          matchedPlayerObj.photo ||
+          matchedPlayerObj.image ||
+          null;
+      }
+    }
+
+    const squadNamesAll = playerNames
+      .map((n) => normalizeName(n))
+      .filter(Boolean);
+
+    const squadNames = squadNamesAll.filter(
+      (n) => safeLower(n) !== safeLower(captainName)
+    );
 
     return {
       teamId: winner.teamId,
       teamName: winner.name,
       captainName: captainName || "Captain",
-      captainPhoto,
+      captainPhoto: captainPhoto || null,
       squadNames,
     };
-  }, [isViewingPreviousSeason, teamStats, teamById, normalizeName, getPlayerPhotoLikeCards]);
+  }, [
+    isViewingPreviousSeason,
+    teamStats,
+    teamById,
+    normalizeName,
+    getPlayerPhotoLikeCards,
+  ]);
 
   // ---------- PLAYER STATS ----------
   const playerStats = useMemo(() => {
@@ -511,8 +658,14 @@ export function StatsPage({
 
     const getOrCreate = (playerName) => {
       if (!playerName) return null;
-      if (!stats[playerName])
-        stats[playerName] = { name: playerName, goals: 0, assists: 0, shibobos: 0 };
+      if (!stats[playerName]) {
+        stats[playerName] = {
+          name: playerName,
+          goals: 0,
+          assists: 0,
+          shibobos: 0,
+        };
+      }
       return stats[playerName];
     };
 
@@ -576,7 +729,11 @@ export function StatsPage({
     const map = new Map();
     (visibleResultsRaw || []).forEach((r) => {
       const id = r?._tkMatchDayId || "UNKNOWN";
-      const label = isoDateOnly(r?._tkMatchDayLabel) || isoDateOnly(id) || r?._tkMatchDayLabel || id;
+      const label =
+        isoDateOnly(r?._tkMatchDayLabel) ||
+        isoDateOnly(id) ||
+        r?._tkMatchDayLabel ||
+        id;
       if (!map.has(id)) map.set(id, label);
     });
 
@@ -620,7 +777,8 @@ export function StatsPage({
     return arr;
   }, [filteredResults]);
 
-  const matchKeyOf = (r) => `${r?._tkMatchDayId || "UNKNOWN"}::${Number(r?.matchNo || 0)}`;
+  const matchKeyOf = (r) =>
+    `${r?._tkMatchDayId || "UNKNOWN"}::${Number(r?.matchNo || 0)}`;
 
   const eventsByMatchKey = useMemo(() => {
     const map = new Map();
@@ -648,35 +806,7 @@ export function StatsPage({
   };
 
   // ✅ current-week/current-season only admin guard
-  const canAdminEditThisView =
-    !isViewingPreviousSeason && viewMode === "current";
-
-  // ---------- SCORE EDIT ----------
-  const [editingMatchKey, setEditingMatchKey] = useState(null);
-  const [editScoreA, setEditScoreA] = useState("0");
-  const [editScoreB, setEditScoreB] = useState("0");
-
-  const startEditScore = (r) => {
-    setEditingMatchKey(matchKeyOf(r));
-    setEditScoreA(String(r?.goalsA ?? 0));
-    setEditScoreB(String(r?.goalsB ?? 0));
-  };
-
-  const cancelEditScore = () => {
-    setEditingMatchKey(null);
-    setEditScoreA("0");
-    setEditScoreB("0");
-  };
-
-  const saveEditScore = (r) => {
-    if (typeof onUpdateSavedMatchScore !== "function") return;
-
-    const nextA = Math.max(0, Number(editScoreA || 0));
-    const nextB = Math.max(0, Number(editScoreB || 0));
-
-    onUpdateSavedMatchScore(r?.matchNo, nextA, nextB);
-    cancelEditScore();
-  };
+  const canAdminEditThisView = !isViewingPreviousSeason && viewMode === "current";
 
   // ---------- EVENT EDIT ----------
   const [editingEventId, setEditingEventId] = useState(null);
@@ -708,9 +838,12 @@ export function StatsPage({
   };
 
   const saveEditEvent = (e) => {
+    if (!canAdminEditThisView) return;
     if (typeof onUpdateSavedEvent !== "function") return;
 
     const scorer = String(eventDraft?.scorer || "").trim();
+    const assistRaw = String(eventDraft?.assist || "").trim();
+
     if (!scorer) {
       window.alert("Scorer name is required.");
       return;
@@ -718,7 +851,7 @@ export function StatsPage({
 
     onUpdateSavedEvent(e?.id, {
       scorer,
-      assist: String(eventDraft?.assist || "").trim() || null,
+      assist: assistRaw && assistRaw !== scorer ? assistRaw : null,
       type: eventDraft?.type === "shibobo" ? "shibobo" : "goal",
       teamId: eventDraft?.teamId || e?.teamId || "",
     });
@@ -756,9 +889,12 @@ export function StatsPage({
   };
 
   const saveAddEvent = (r) => {
+    if (!canAdminEditThisView) return;
     if (typeof onAddSavedEvent !== "function") return;
 
     const scorer = String(newEventDraft?.scorer || "").trim();
+    const assistRaw = String(newEventDraft?.assist || "").trim();
+
     if (!scorer) {
       window.alert("Scorer name is required.");
       return;
@@ -766,13 +902,63 @@ export function StatsPage({
 
     onAddSavedEvent(r?.matchNo, {
       scorer,
-      assist: String(newEventDraft?.assist || "").trim() || null,
+      assist: assistRaw && assistRaw !== scorer ? assistRaw : null,
       type: newEventDraft?.type === "shibobo" ? "shibobo" : "goal",
       teamId: newEventDraft?.teamId || r?.teamAId || "",
     });
 
     cancelAddEvent();
   };
+
+  // ---------- KEEP ASSIST DIFFERENT FROM SCORER ----------
+  useEffect(() => {
+    if (!editingEventId) return;
+    if (eventDraft.assist && eventDraft.assist === eventDraft.scorer) {
+      setEventDraft((prev) => ({ ...prev, assist: "" }));
+    }
+  }, [editingEventId, eventDraft.scorer, eventDraft.assist]);
+
+  useEffect(() => {
+    if (!addingForMatchKey) return;
+    if (newEventDraft.assist && newEventDraft.assist === newEventDraft.scorer) {
+      setNewEventDraft((prev) => ({ ...prev, assist: "" }));
+    }
+  }, [addingForMatchKey, newEventDraft.scorer, newEventDraft.assist]);
+
+  // ---------- TEAM-PLAYER DRAFT SAFETY ----------
+  useEffect(() => {
+    if (!editingEventId) return;
+
+    const allowedPlayers = getPlayersForTeam(eventDraft.teamId);
+    if (!allowedPlayers.length) return;
+
+    setEventDraft((prev) => ({
+      ...prev,
+      scorer: allowedPlayers.includes(prev.scorer) ? prev.scorer : "",
+      assist:
+        !prev.assist ||
+        (allowedPlayers.includes(prev.assist) && prev.assist !== prev.scorer)
+          ? prev.assist
+          : "",
+    }));
+  }, [editingEventId, eventDraft.teamId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!addingForMatchKey) return;
+
+    const allowedPlayers = getPlayersForTeam(newEventDraft.teamId);
+    if (!allowedPlayers.length) return;
+
+    setNewEventDraft((prev) => ({
+      ...prev,
+      scorer: allowedPlayers.includes(prev.scorer) ? prev.scorer : "",
+      assist:
+        !prev.assist ||
+        (allowedPlayers.includes(prev.assist) && prev.assist !== prev.scorer)
+          ? prev.assist
+          : "",
+    }));
+  }, [addingForMatchKey, newEventDraft.teamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------- DELETE ----------
   const canDeleteFromThisView =
@@ -788,16 +974,16 @@ export function StatsPage({
 
     onDeleteSavedMatch(matchNo);
     setExpandedMatchKey(null);
-    cancelEditScore();
     cancelEditEvent();
     cancelAddEvent();
   };
 
   const handleDeleteEvent = (e) => {
+    if (!canAdminEditThisView) return;
     if (typeof onDeleteSavedEvent !== "function") return;
 
     const ok = window.confirm(
-      `Delete this saved event for ${e?.scorer || "this player"}?\n\nIf it is a goal event, the match score and standings will also recalculate.`
+      `Delete this saved event for ${e?.scorer || "this player"}?\n\nThe score and standings will now update automatically from the goal events.`
     );
     if (!ok) return;
 
@@ -855,7 +1041,10 @@ export function StatsPage({
   // ---------- Headers / date ranges ----------
   const currentSeasonRange = useMemo(() => {
     const now = new Date();
-    const fmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" });
+    const fmt = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      year: "numeric",
+    });
     return fmt.format(now);
   }, []);
 
@@ -867,8 +1056,13 @@ export function StatsPage({
 
   const seasonContextTitle = useMemo(() => {
     if (!isViewingPreviousSeason) return "Current season";
+    if (isPreviewingPreviousSeasonUI) return "Previous season preview (admin)";
     return formatSeasonDisplayName(selectedPrevSeason);
-  }, [isViewingPreviousSeason, selectedPrevSeason]);
+  }, [
+    isViewingPreviousSeason,
+    isPreviewingPreviousSeasonUI,
+    selectedPrevSeason,
+  ]);
 
   const viewContextTitle = useMemo(() => {
     if (isViewingPreviousSeason) return "Full season";
@@ -876,9 +1070,57 @@ export function StatsPage({
   }, [isViewingPreviousSeason, viewMode]);
 
   const headerRangeText = useMemo(() => {
-    if (isViewingPreviousSeason) return previousSeasonRange ? previousSeasonRange : "Season dates unknown";
+    if (isViewingPreviousSeason) {
+      return previousSeasonRange
+        ? previousSeasonRange
+        : "Season dates unknown";
+    }
     return currentSeasonRange;
   }, [isViewingPreviousSeason, previousSeasonRange, currentSeasonRange]);
+
+  // ---------- Champion season label ----------
+  const championSeasonLabel = useMemo(() => {
+    if (!selectedPrevSeason) return "";
+
+    const match = String(selectedPrevSeason?.seasonId || "").match(
+      /^(\d{4})-S(\d+)$/i
+    );
+
+    if (match) {
+      const seasonNo = match[2];
+      return `Season ${seasonNo} Champions`;
+    }
+
+    return "Season Champions";
+  }, [selectedPrevSeason]);
+
+  // ---------- Previous season arrow navigation ----------
+  const previousSeasonTabOrder = ["teams", "goals", "assists", "matches", "combined"];
+
+  const currentPrevTabIndex = previousSeasonTabOrder.indexOf(activeTab);
+
+  const goPrevSeasonTable = () => {
+    const safeIndex = currentPrevTabIndex >= 0 ? currentPrevTabIndex : 0;
+    const nextIndex =
+      safeIndex === 0 ? previousSeasonTabOrder.length - 1 : safeIndex - 1;
+    setActiveTab(previousSeasonTabOrder[nextIndex]);
+  };
+
+  const goNextSeasonTable = () => {
+    const safeIndex = currentPrevTabIndex >= 0 ? currentPrevTabIndex : 0;
+    const nextIndex =
+      safeIndex === previousSeasonTabOrder.length - 1 ? 0 : safeIndex + 1;
+    setActiveTab(previousSeasonTabOrder[nextIndex]);
+  };
+
+  const previousSeasonCurrentTableLabel = useMemo(() => {
+    if (activeTab === "teams") return "Team Standings";
+    if (activeTab === "goals") return "Top Scorers";
+    if (activeTab === "assists") return "Playmakers";
+    if (activeTab === "matches") return "Match Results";
+    if (activeTab === "combined") return "Summary Player Stats";
+    return "Team Standings";
+  }, [activeTab]);
 
   // ---------- RENDER ----------
   return (
@@ -887,14 +1129,27 @@ export function StatsPage({
         <div>
           <h1>Stats &amp; Leaderboards</h1>
           <div className="muted" style={{ marginTop: "0.25rem" }}>
-            <strong>{seasonContextTitle}</strong> • <span>{viewContextTitle}</span> • <span>{headerRangeText}</span>
+            <strong>{seasonContextTitle}</strong> • <span>{viewContextTitle}</span> •{" "}
+            <span>{headerRangeText}</span>
           </div>
+          {isPreviewingPreviousSeasonUI && (
+            <div className="muted" style={{ marginTop: "0.25rem" }}>
+              Admin-only preview: you are viewing the current season styled as a
+              previous season.
+            </div>
+          )}
         </div>
 
         <div className="stats-header-actions">
-          <button className="secondary-btn" onClick={onBack}>Back</button>
-          <button className="secondary-btn" onClick={onGoToPeerReview}>Rate Player</button>
-          <button className="secondary-btn" onClick={onGoToPlayerCards}>Player cards</button>
+          <button className="secondary-btn" onClick={onBack}>
+            Home
+          </button>
+          <button className="secondary-btn" onClick={onGoToPeerReview}>
+            Rate Player
+          </button>
+          <button className="secondary-btn" onClick={onGoToPlayerCards}>
+            Player cards
+          </button>
         </div>
       </header>
 
@@ -913,6 +1168,12 @@ export function StatsPage({
           border-radius: 999px;
           font-weight: 800;
           cursor: pointer;
+          color: #ffffff;
+        }
+
+        .tk-md-label {
+          opacity: 0.95;
+          color: #ffffff;
         }
         .tk-md-btn.active {
           border-color: rgba(34,211,238,0.55);
@@ -997,8 +1258,19 @@ export function StatsPage({
           padding: 0.45rem 0.55rem;
           border-radius: 10px;
           border: 1px solid rgba(255,255,255,0.14);
-          background: rgba(255,255,255,0.06);
           color: inherit;
+        }
+        .tk-small-input {
+          background: rgba(255,255,255,0.06);
+        }
+        .tk-small-select {
+          background: rgba(16, 185, 129, 0.28);
+          border-color: rgba(16, 185, 129, 0.5);
+          color: #ffffff;
+        }
+        .tk-small-select option {
+          background: #065f46;
+          color: #ffffff;
         }
         .tk-inline-actions {
           display: flex;
@@ -1041,19 +1313,40 @@ export function StatsPage({
               <div className="segmented-toggle">
                 <button
                   type="button"
-                  className={seasonScope === CURRENT_SCOPE ? "segmented-option active" : "segmented-option"}
+                  className={
+                    seasonScope === CURRENT_SCOPE
+                      ? "segmented-option active"
+                      : "segmented-option"
+                  }
                   onClick={() => setSeasonScope(CURRENT_SCOPE)}
                 >
                   Current
                 </button>
                 <button
                   type="button"
-                  className={seasonScope !== CURRENT_SCOPE ? "segmented-option active" : "segmented-option"}
+                  className={
+                    seasonScope !== CURRENT_SCOPE
+                      ? "segmented-option active"
+                      : "segmented-option"
+                  }
                   onClick={() => {
-                    if (previousSeasonOptions.length > 0) setSeasonScope(previousSeasonOptions[0].seasonId);
+                    if (previousSeasonOptions.length > 0) {
+                      setSeasonScope(previousSeasonOptions[0].seasonId);
+                    } else if (canPreviewPreviousSeasonUI) {
+                      setSeasonScope(PREVIEW_PREVIOUS_SCOPE);
+                    }
                   }}
-                  disabled={previousSeasonOptions.length === 0}
-                  title={previousSeasonOptions.length === 0 ? "No previous seasons yet" : "Switch to a previous season"}
+                  disabled={
+                    previousSeasonOptions.length === 0 &&
+                    !canPreviewPreviousSeasonUI
+                  }
+                  title={
+                    previousSeasonOptions.length > 0
+                      ? "Switch to a previous season"
+                      : canPreviewPreviousSeasonUI
+                      ? "Admin preview of previous-season layout"
+                      : "No previous seasons yet"
+                  }
                 >
                   Previous
                 </button>
@@ -1062,25 +1355,59 @@ export function StatsPage({
 
             {seasonScope !== CURRENT_SCOPE && (
               <div style={{ marginTop: "0.7rem" }}>
-                <label className="muted" style={{ display: "block", marginBottom: "0.25rem" }}>
+                <label
+                  className="muted"
+                  style={{ display: "block", marginBottom: "0.25rem" }}
+                >
                   Choose a previous season
                 </label>
-                <select
-                  className="text-input"
-                  value={seasonScope}
-                  onChange={(e) => setSeasonScope(e.target.value)}
-                >
-                  {previousSeasonOptions.map((s) => (
-                    <option key={s.seasonId} value={s.seasonId}>
-                      {formatSeasonDisplayName(s)}
-                    </option>
-                  ))}
-                </select>
-                <div className="muted" style={{ marginTop: "0.35rem" }}>
-                  {previousSeasonRange ? `Season range: ${previousSeasonRange}` : "Season range: unknown"}
-                </div>
+
+                {isPreviewingPreviousSeasonUI ? (
+                  <div className="muted">
+                    Admin preview is active. This simulates how previous season
+                    looks while you are still on season 1.
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      className="text-input"
+                      value={seasonScope}
+                      onChange={(e) => setSeasonScope(e.target.value)}
+                    >
+                      {previousSeasonOptions.map((s) => (
+                        <option key={s.seasonId} value={s.seasonId}>
+                          {formatSeasonDisplayName(s)}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="muted" style={{ marginTop: "0.35rem" }}>
+                      {previousSeasonRange
+                        ? `Season range: ${previousSeasonRange}`
+                        : "Season range: unknown"}
+                    </div>
+                  </>
+                )}
               </div>
             )}
+
+            {canPreviewPreviousSeasonUI &&
+              typeof onDeleteCurrentEmptySeason === "function" &&
+              !isViewingPreviousSeason && (
+                <div style={{ marginTop: "0.85rem" }}>
+                  <button
+                    type="button"
+                    className="tk-danger-btn"
+                    onClick={() => {
+                      const ok = window.confirm(
+                        "Delete the current empty test season and move back to the previous real season?"
+                      );
+                      if (ok) onDeleteCurrentEmptySeason();
+                    }}
+                  >
+                    Delete current empty test season
+                  </button>
+                </div>
+              )}
           </div>
 
           <div style={{ flex: 1 }}>
@@ -1104,14 +1431,22 @@ export function StatsPage({
                 <div className="segmented-toggle">
                   <button
                     type="button"
-                    className={viewMode === "current" ? "segmented-option active" : "segmented-option"}
+                    className={
+                      viewMode === "current"
+                        ? "segmented-option active"
+                        : "segmented-option"
+                    }
                     onClick={() => setViewMode("current")}
                   >
                     Current week
                   </button>
                   <button
                     type="button"
-                    className={viewMode === "season" ? "segmented-option active" : "segmented-option"}
+                    className={
+                      viewMode === "season"
+                        ? "segmented-option active"
+                        : "segmented-option"
+                    }
                     onClick={() => setViewMode("season")}
                   >
                     Full season
@@ -1121,19 +1456,46 @@ export function StatsPage({
             </div>
 
             <div className="actions-row stats-tabs">
-              <button className={activeTab === "teams" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("teams")}>
+              <button
+                className={
+                  activeTab === "teams" ? "secondary-btn active" : "secondary-btn"
+                }
+                onClick={() => setActiveTab("teams")}
+              >
                 Team Standings
               </button>
-              <button className={activeTab === "matches" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("matches")}>
+              <button
+                className={
+                  activeTab === "matches" ? "secondary-btn active" : "secondary-btn"
+                }
+                onClick={() => setActiveTab("matches")}
+              >
                 Match Results
               </button>
-              <button className={activeTab === "goals" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("goals")}>
+              <button
+                className={
+                  activeTab === "goals" ? "secondary-btn active" : "secondary-btn"
+                }
+                onClick={() => setActiveTab("goals")}
+              >
                 Top Scorers
               </button>
-              <button className={activeTab === "assists" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("assists")}>
+              <button
+                className={
+                  activeTab === "assists" ? "secondary-btn active" : "secondary-btn"
+                }
+                onClick={() => setActiveTab("assists")}
+              >
                 Playmakers
               </button>
-              <button className={activeTab === "combined" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("combined")}>
+              <button
+                className={
+                  activeTab === "combined"
+                    ? "secondary-btn active"
+                    : "secondary-btn"
+                }
+                onClick={() => setActiveTab("combined")}
+              >
                 Summary Player Stats
               </button>
             </div>
@@ -1141,25 +1503,256 @@ export function StatsPage({
         </section>
       )}
 
-      {/* ---------- Tabs row for Previous season ---------- */}
-      {isViewingPreviousSeason && (
+      {/* ---------- Champion Recap (Previous Seasons) ---------- */}
+      {isViewingPreviousSeason && champion && (
         <section className="card">
-          <h2>Previous season stats (Full season)</h2>
-          <div className="actions-row stats-tabs">
-            <button className={activeTab === "teams" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("teams")}>
-              Team Standings
+          <h2>
+            {isPreviewingPreviousSeasonUI
+              ? `${championSeasonLabel} (${headerRangeText}) (Preview)`
+              : `${championSeasonLabel} : ${headerRangeText}`}
+          </h2>
+
+          <div
+            style={{
+              marginTop: "10px",
+              padding: "24px 20px 22px",
+              borderRadius: "20px",
+              background: `
+                radial-gradient(circle at top, rgba(250,204,21,0.22), transparent 48%),
+                linear-gradient(145deg, rgba(6,95,70,0.95), rgba(2,44,34,0.95))
+              `,
+              border: "1px solid rgba(255,255,255,0.16)",
+              boxShadow:
+                "0 18px 40px rgba(0,0,0,0.38), 0 0 0 1px rgba(250,204,21,0.10)",
+              textAlign: "center",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                opacity: 0.16,
+                backgroundImage: `
+                  radial-gradient(circle, #facc15 2px, transparent 3px),
+                  radial-gradient(circle, #22c55e 2px, transparent 3px),
+                  radial-gradient(circle, #38bdf8 2px, transparent 3px)
+                `,
+                backgroundSize: "120px 120px",
+                backgroundPosition: "0 0, 40px 40px, 80px 20px",
+              }}
+            />
+
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "34px",
+                  marginBottom: "6px",
+                  textShadow:
+                    "0 0 12px rgba(250,204,21,0.75), 0 0 24px rgba(250,204,21,0.32)",
+                }}
+              >
+                🏆
+              </div>
+
+              <div
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 800,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: "#fde68a",
+                  marginBottom: "6px",
+                }}
+              >
+                {isPreviewingPreviousSeasonUI
+                  ? "Season Champions (Preview)"
+                  : "Season Champions"}
+              </div>
+
+              <div
+                style={{
+                  fontSize: "28px",
+                  fontWeight: 900,
+                  marginBottom: "16px",
+                  color: "#f8fafc",
+                }}
+              >
+                {champion.teamName}
+              </div>
+
+              {champion.captainPhoto ? (
+                <img
+                  src={champion.captainPhoto}
+                  alt={champion.captainName}
+                  style={{
+                    width: "124px",
+                    height: "124px",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: "4px solid rgba(250,204,21,0.85)",
+                    margin: "0 auto 12px",
+                    display: "block",
+                    boxShadow:
+                      "0 0 20px rgba(250,204,21,0.35), 0 10px 22px rgba(0,0,0,0.55)",
+                    background: "rgba(255,255,255,0.08)",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "124px",
+                    height: "124px",
+                    borderRadius: "50%",
+                    margin: "0 auto 12px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "4px solid rgba(250,204,21,0.55)",
+                    background:
+                      "radial-gradient(circle at 30% 20%, rgba(56,189,248,0.35), rgba(15,23,42,0.95))",
+                    fontSize: "36px",
+                    fontWeight: 900,
+                    color: "#f8fafc",
+                    boxShadow:
+                      "0 0 20px rgba(250,204,21,0.20), 0 10px 22px rgba(0,0,0,0.55)",
+                  }}
+                >
+                  {String(champion.captainName || "?").charAt(0).toUpperCase()}
+                </div>
+              )}
+
+              <div
+                style={{
+                  fontWeight: 800,
+                  fontSize: "18px",
+                  marginBottom: "14px",
+                  color: "#e5e7eb",
+                }}
+              >
+                Captain:{" "}
+                <span style={{ color: "#f8fafc" }}>{champion.captainName}</span>
+              </div>
+
+              {champion.squadNames && champion.squadNames.length > 0 && (
+                <>
+                  <div
+                    style={{
+                      fontWeight: 800,
+                      marginBottom: "10px",
+                      color: "#bbf7d0",
+                      fontSize: "15px",
+                      letterSpacing: "0.03em",
+                    }}
+                  >
+                    Winning Squad
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      justifyContent: "center",
+                      gap: "8px",
+                      position: "relative",
+                      zIndex: 1,
+                    }}
+                  >
+                    {champion.squadNames.map((p, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          padding: "7px 13px",
+                          borderRadius: "999px",
+                          background: "rgba(255,255,255,0.14)",
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          fontSize: "14px",
+                          fontWeight: 600,
+                          color: "#f8fafc",
+                          backdropFilter: "blur(4px)",
+                        }}
+                      >
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ---------- Previous Season Arrow Navigation ---------- */}
+      {isViewingPreviousSeason && (
+        <section className="card" style={{ paddingTop: "14px", paddingBottom: "14px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+            }}
+          >
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={goPrevSeasonTable}
+              title="Previous table"
+              style={{
+                minWidth: "46px",
+                width: "46px",
+                height: "46px",
+                padding: "0",
+                fontSize: "20px",
+                fontWeight: 900,
+                lineHeight: 1,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              ←
             </button>
-            <button className={activeTab === "matches" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("matches")}>
-              Match Results
-            </button>
-            <button className={activeTab === "goals" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("goals")}>
-              Top Scorers
-            </button>
-            <button className={activeTab === "assists" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("assists")}>
-              Playmakers
-            </button>
-            <button className={activeTab === "combined" ? "secondary-btn active" : "secondary-btn"} onClick={() => setActiveTab("combined")}>
-              Summary Player Stats
+
+            <div
+              style={{
+                flex: 1,
+                textAlign: "center",
+                fontWeight: 800,
+                fontSize: "15px",
+                color: "#e5e7eb",
+              }}
+            >
+              {previousSeasonCurrentTableLabel}
+            </div>
+
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={goNextSeasonTable}
+              title="Next table"
+              style={{
+                minWidth: "46px",
+                width: "46px",
+                height: "46px",
+                padding: "0",
+                fontSize: "20px",
+                fontWeight: 900,
+                lineHeight: 1,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              →
             </button>
           </div>
         </section>
@@ -1170,29 +1763,57 @@ export function StatsPage({
         <section className="card">
           <h2>
             {isViewingPreviousSeason
-              ? `Team Standings — ${formatSeasonDisplayName(selectedPrevSeason)}`
+              ? isPreviewingPreviousSeasonUI
+                ? "Team Standings — Previous Season Preview"
+                : `Team Standings — ${formatSeasonDisplayName(selectedPrevSeason)}`
               : viewMode === "season"
               ? "Team Standings — Current Season"
               : "Team Standings — Current Week"}
           </h2>
-          <div className="muted" style={{ marginTop: "-0.25rem", marginBottom: "0.6rem" }}>{headerRangeText}</div>
+          <div
+            className="muted"
+            style={{ marginTop: "-0.25rem", marginBottom: "0.6rem" }}
+          >
+            {headerRangeText}
+          </div>
 
           <div className="table-wrapper">
             <table className="stats-table">
               <thead>
                 <tr>
-                  <th>#</th><th>Team</th><th>Pts</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th>
+                  <th>#</th>
+                  <th>Team</th>
+                  <th>Pts</th>
+                  <th>P</th>
+                  <th>W</th>
+                  <th>D</th>
+                  <th>L</th>
+                  <th>GF</th>
+                  <th>GA</th>
+                  <th>GD</th>
                 </tr>
               </thead>
               <tbody>
                 {teamStats.map((t, idx) => (
                   <tr key={t.teamId}>
-                    <td>{idx + 1}</td><td>{t.name}</td><td>{t.points}</td><td>{t.played}</td><td>{t.won}</td><td>{t.drawn}</td>
-                    <td>{t.lost}</td><td>{t.goalsFor}</td><td>{t.goalsAgainst}</td><td>{t.goalDiff}</td>
+                    <td>{idx + 1}</td>
+                    <td>{t.name}</td>
+                    <td>{t.points}</td>
+                    <td>{t.played}</td>
+                    <td>{t.won}</td>
+                    <td>{t.drawn}</td>
+                    <td>{t.lost}</td>
+                    <td>{t.goalsFor}</td>
+                    <td>{t.goalsAgainst}</td>
+                    <td>{t.goalDiff}</td>
                   </tr>
                 ))}
                 {teamStats.length === 0 && (
-                  <tr><td colSpan={10} className="muted">No teams loaded yet.</td></tr>
+                  <tr>
+                    <td colSpan={10} className="muted">
+                      No teams loaded yet.
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -1204,21 +1825,44 @@ export function StatsPage({
       {activeTab === "combined" && (
         <section className="card">
           <h2>
-            {isViewingPreviousSeason ? "Player Rankings — Previous Season" : viewMode === "season" ? "Player Rankings — Current Season" : "Player Rankings — Current Week"}
+            {isViewingPreviousSeason
+              ? isPreviewingPreviousSeasonUI
+                ? "Player Rankings — Previous Season Preview"
+                : "Player Rankings — Previous Season"
+              : viewMode === "season"
+              ? "Player Rankings — Current Season"
+              : "Player Rankings — Current Week"}
           </h2>
           <div className="table-wrapper">
             <table className="stats-table">
               <thead>
-                <tr><th>#</th><th>Player</th><th>Team</th><th>Goals</th><th>Assists</th><th>Saves</th><th>G-A-S</th></tr>
+                <tr>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th>Team</th>
+                  <th>Goals</th>
+                  <th>Assists</th>
+                  <th>Saves</th>
+                  <th>G-A-S</th>
+                </tr>
               </thead>
               <tbody>
                 {combinedLeaderboard.length === 0 && (
-                  <tr><td colSpan={7} className="muted">No player stats recorded yet.</td></tr>
+                  <tr>
+                    <td colSpan={7} className="muted">
+                      No player stats recorded yet.
+                    </td>
+                  </tr>
                 )}
                 {combinedLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-combined"}>
-                    <td>{idx + 1}</td><td>{p.name}</td><td>{p.teamName || "—"}</td>
-                    <td>{p.goals}</td><td>{p.assists}</td><td>{p.shibobos}</td><td>{p.total}</td>
+                    <td>{idx + 1}</td>
+                    <td>{p.name}</td>
+                    <td>{p.teamName || "—"}</td>
+                    <td>{p.goals}</td>
+                    <td>{p.assists}</td>
+                    <td>{p.shibobos}</td>
+                    <td>{p.total}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1230,17 +1874,39 @@ export function StatsPage({
       {/* ---------- Top Scorers ---------- */}
       {activeTab === "goals" && (
         <section className="card">
-          <h2>{isViewingPreviousSeason ? "Top Scorers — Previous Season" : viewMode === "season" ? "Top Scorers — Current Season" : "Top Scorers — Current Week"}</h2>
+          <h2>
+            {isViewingPreviousSeason
+              ? isPreviewingPreviousSeasonUI
+                ? "Top Scorers — Previous Season Preview"
+                : "Top Scorers — Previous Season"
+              : viewMode === "season"
+              ? "Top Scorers — Current Season"
+              : "Top Scorers — Current Week"}
+          </h2>
           <div className="table-wrapper">
             <table className="stats-table">
-              <thead><tr><th>#</th><th>Player</th><th>Team</th><th>Goals</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th>Team</th>
+                  <th>Goals</th>
+                </tr>
+              </thead>
               <tbody>
                 {goalLeaderboard.length === 0 && (
-                  <tr><td colSpan={4} className="muted">No goals recorded yet.</td></tr>
+                  <tr>
+                    <td colSpan={4} className="muted">
+                      No goals recorded yet.
+                    </td>
+                  </tr>
                 )}
                 {goalLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-g"}>
-                    <td>{idx + 1}</td><td>{p.name}</td><td>{p.teamName || "—"}</td><td>{p.goals}</td>
+                    <td>{idx + 1}</td>
+                    <td>{p.name}</td>
+                    <td>{p.teamName || "—"}</td>
+                    <td>{p.goals}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1252,17 +1918,39 @@ export function StatsPage({
       {/* ---------- Playmakers ---------- */}
       {activeTab === "assists" && (
         <section className="card">
-          <h2>{isViewingPreviousSeason ? "Top Playmakers — Previous Season" : viewMode === "season" ? "Top Playmakers — Current Season" : "Top Playmakers — Current Week"}</h2>
+          <h2>
+            {isViewingPreviousSeason
+              ? isPreviewingPreviousSeasonUI
+                ? "Top Playmakers — Previous Season Preview"
+                : "Top Playmakers — Previous Season"
+              : viewMode === "season"
+              ? "Top Playmakers — Current Season"
+              : "Top Playmakers — Current Week"}
+          </h2>
           <div className="table-wrapper">
             <table className="stats-table">
-              <thead><tr><th>#</th><th>Player</th><th>Team</th><th>Assists</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th>Team</th>
+                  <th>Assists</th>
+                </tr>
+              </thead>
               <tbody>
                 {assistLeaderboard.length === 0 && (
-                  <tr><td colSpan={4} className="muted">No assists recorded yet.</td></tr>
+                  <tr>
+                    <td colSpan={4} className="muted">
+                      No assists recorded yet.
+                    </td>
+                  </tr>
                 )}
                 {assistLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-a"}>
-                    <td>{idx + 1}</td><td>{p.name}</td><td>{p.teamName || "—"}</td><td>{p.assists}</td>
+                    <td>{idx + 1}</td>
+                    <td>{p.name}</td>
+                    <td>{p.teamName || "—"}</td>
+                    <td>{p.assists}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1275,9 +1963,17 @@ export function StatsPage({
       {activeTab === "matches" && (
         <section className="card">
           <h2>
-            {isViewingPreviousSeason ? "All Match Results — Previous Season" : viewMode === "season" ? "All Match Results — Current Season" : "All Match Results — Current Week"}
+            {isViewingPreviousSeason
+              ? isPreviewingPreviousSeasonUI
+                ? "All Match Results — Previous Season Preview"
+                : "All Match Results — Previous Season"
+              : viewMode === "season"
+              ? "All Match Results — Current Season"
+              : "All Match Results — Current Week"}
           </h2>
-          <p className="muted">Tap a match row to see goal scorers and assists for that game.</p>
+          <p className="muted">
+            Tap a match row to see goal scorers and assists for that game.
+          </p>
 
           {viewMode === "season" && (
             <div className="tk-matchday-filter-row">
@@ -1311,12 +2007,20 @@ export function StatsPage({
             <table className="stats-table">
               <thead>
                 <tr>
-                  <th>Match #</th><th>Team A</th><th>Score</th><th>Team B</th><th>Result</th>
+                  <th>Match #</th>
+                  <th>Team A</th>
+                  <th>Score</th>
+                  <th>Team B</th>
+                  <th>Result</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedResults.length === 0 && (
-                  <tr><td colSpan={5} className="muted">No matches played yet.</td></tr>
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No matches played yet.
+                    </td>
+                  </tr>
                 )}
 
                 {sortedResults.map((r) => {
@@ -1331,15 +2035,30 @@ export function StatsPage({
 
                   const mk = matchKeyOf(r);
                   const isExpanded = expandedMatchKey === mk;
-                  const isEditingScore = editingMatchKey === mk;
                   const isAddingEvent = addingForMatchKey === mk;
 
                   const events = eventsByMatchKey.get(mk) || [];
 
-                  const teamAEvents = events.filter((e) => e.teamId === r.teamAId && e.scorer);
-                  const teamBEvents = events.filter((e) => e.teamId === r.teamBId && e.scorer);
+                  const teamAEvents = events.filter(
+                    (e) => e.teamId === r.teamAId && e.scorer
+                  );
+                  const teamBEvents = events.filter(
+                    (e) => e.teamId === r.teamBId && e.scorer
+                  );
 
-                  const mdLabel = isoDateOnly(r?._tkMatchDayLabel) || isoDateOnly(r?._tkMatchDayId) || "";
+                  const mdLabel =
+                    isoDateOnly(r?._tkMatchDayLabel) ||
+                    isoDateOnly(r?._tkMatchDayId) ||
+                    "";
+
+                  const editPlayers = getPlayersForTeam(eventDraft.teamId);
+                  const addPlayers = getPlayersForTeam(newEventDraft.teamId);
+                  const editAssistPlayers = editPlayers.filter(
+                    (name) => name !== eventDraft.scorer
+                  );
+                  const addAssistPlayers = addPlayers.filter(
+                    (name) => name !== newEventDraft.scorer
+                  );
 
                   return (
                     <React.Fragment key={mk}>
@@ -1348,14 +2067,18 @@ export function StatsPage({
                         onClick={() => toggleMatchDetails(mk)}
                       >
                         <td>
-                          <span className="match-toggle-indicator">{isExpanded ? "▾" : "▸"}</span>{" "}
+                          <span className="match-toggle-indicator">
+                            {isExpanded ? "▾" : "▸"}
+                          </span>{" "}
                           {r.matchNo}
                           {matchDayFilter === "ALL" && mdLabel ? (
                             <span className="tk-md-muted">{mdLabel}</span>
                           ) : null}
                         </td>
                         <td>{teamAName}</td>
-                        <td>{r.goalsA} – {r.goalsB}</td>
+                        <td>
+                          {r.goalsA} – {r.goalsB}
+                        </td>
                         <td>{teamBName}</td>
                         <td>{resultText}</td>
                       </tr>
@@ -1365,12 +2088,16 @@ export function StatsPage({
                           <td />
                           <td>
                             {events.length === 0 ? (
-                              <span className="muted">No event breakdown recorded.</span>
+                              <span className="muted">
+                                No event breakdown recorded.
+                              </span>
                             ) : teamAEvents.length === 0 ? null : (
                               <div className="team-scorers">
                                 {teamAEvents.map((e, i) => {
-                                  const actionLabel = e.type === "shibobo" ? "shibobo" : "goal";
-                                  const isEditingThisEvent = editingEventId === String(e?.id || "");
+                                  const actionLabel =
+                                    e.type === "shibobo" ? "shibobo" : "goal";
+                                  const isEditingThisEvent =
+                                    editingEventId === String(e?.id || "");
 
                                   return (
                                     <div key={(e.id || i) + "-a"} className="scorer-line">
@@ -1378,7 +2105,10 @@ export function StatsPage({
                                         <div className="tk-event-line">
                                           <div className="tk-event-line-text">
                                             {e.scorer}
-                                            {e.assist ? ` (assist: ${e.assist})` : ""} – {actionLabel}
+                                            {e.assist
+                                              ? ` (assist: ${e.assist})`
+                                              : ""}{" "}
+                                            – {actionLabel}
                                           </div>
 
                                           {canAdminEditThisView && (
@@ -1413,9 +2143,11 @@ export function StatsPage({
                                         >
                                           <div className="tk-admin-grid">
                                             <div>
-                                              <label className="tk-small-label">Scorer</label>
-                                              <input
-                                                className="tk-small-input"
+                                              <label className="tk-small-label">
+                                                Scorer
+                                              </label>
+                                              <select
+                                                className="tk-small-select"
                                                 value={eventDraft.scorer}
                                                 onChange={(evt) =>
                                                   setEventDraft((prev) => ({
@@ -1423,23 +2155,47 @@ export function StatsPage({
                                                     scorer: evt.target.value,
                                                   }))
                                                 }
-                                              />
+                                              >
+                                                <option value="">Select player</option>
+                                                {editPlayers.map((name) => (
+                                                  <option
+                                                    key={`edit-scorer-a-${name}`}
+                                                    value={name}
+                                                  >
+                                                    {name}
+                                                  </option>
+                                                ))}
+                                              </select>
                                             </div>
                                             <div>
-                                              <label className="tk-small-label">Assist</label>
-                                              <input
-                                                className="tk-small-input"
-                                                value={eventDraft.assist}
+                                              <label className="tk-small-label">
+                                                Assist
+                                              </label>
+                                              <select
+                                                className="tk-small-select"
+                                                value={eventDraft.assist || ""}
                                                 onChange={(evt) =>
                                                   setEventDraft((prev) => ({
                                                     ...prev,
                                                     assist: evt.target.value,
                                                   }))
                                                 }
-                                              />
+                                              >
+                                                <option value="">None</option>
+                                                {editAssistPlayers.map((name) => (
+                                                  <option
+                                                    key={`edit-assist-a-${name}`}
+                                                    value={name}
+                                                  >
+                                                    {name}
+                                                  </option>
+                                                ))}
+                                              </select>
                                             </div>
                                             <div>
-                                              <label className="tk-small-label">Type</label>
+                                              <label className="tk-small-label">
+                                                Type
+                                              </label>
                                               <select
                                                 className="tk-small-select"
                                                 value={eventDraft.type}
@@ -1455,7 +2211,9 @@ export function StatsPage({
                                               </select>
                                             </div>
                                             <div>
-                                              <label className="tk-small-label">Team</label>
+                                              <label className="tk-small-label">
+                                                Team
+                                              </label>
                                               <select
                                                 className="tk-small-select"
                                                 value={eventDraft.teamId}
@@ -1499,12 +2257,16 @@ export function StatsPage({
                           <td />
                           <td>
                             {events.length === 0 ? (
-                              <span className="muted">No event breakdown recorded.</span>
+                              <span className="muted">
+                                No event breakdown recorded.
+                              </span>
                             ) : teamBEvents.length === 0 ? null : (
                               <div className="team-scorers">
                                 {teamBEvents.map((e, i) => {
-                                  const actionLabel = e.type === "shibobo" ? "shibobo" : "goal";
-                                  const isEditingThisEvent = editingEventId === String(e?.id || "");
+                                  const actionLabel =
+                                    e.type === "shibobo" ? "shibobo" : "goal";
+                                  const isEditingThisEvent =
+                                    editingEventId === String(e?.id || "");
 
                                   return (
                                     <div key={(e.id || i) + "-b"} className="scorer-line">
@@ -1512,7 +2274,10 @@ export function StatsPage({
                                         <div className="tk-event-line">
                                           <div className="tk-event-line-text">
                                             {e.scorer}
-                                            {e.assist ? ` (assist: ${e.assist})` : ""} – {actionLabel}
+                                            {e.assist
+                                              ? ` (assist: ${e.assist})`
+                                              : ""}{" "}
+                                            – {actionLabel}
                                           </div>
 
                                           {canAdminEditThisView && (
@@ -1547,9 +2312,11 @@ export function StatsPage({
                                         >
                                           <div className="tk-admin-grid">
                                             <div>
-                                              <label className="tk-small-label">Scorer</label>
-                                              <input
-                                                className="tk-small-input"
+                                              <label className="tk-small-label">
+                                                Scorer
+                                              </label>
+                                              <select
+                                                className="tk-small-select"
                                                 value={eventDraft.scorer}
                                                 onChange={(evt) =>
                                                   setEventDraft((prev) => ({
@@ -1557,23 +2324,47 @@ export function StatsPage({
                                                     scorer: evt.target.value,
                                                   }))
                                                 }
-                                              />
+                                              >
+                                                <option value="">Select player</option>
+                                                {editPlayers.map((name) => (
+                                                  <option
+                                                    key={`edit-scorer-b-${name}`}
+                                                    value={name}
+                                                  >
+                                                    {name}
+                                                  </option>
+                                                ))}
+                                              </select>
                                             </div>
                                             <div>
-                                              <label className="tk-small-label">Assist</label>
-                                              <input
-                                                className="tk-small-input"
-                                                value={eventDraft.assist}
+                                              <label className="tk-small-label">
+                                                Assist
+                                              </label>
+                                              <select
+                                                className="tk-small-select"
+                                                value={eventDraft.assist || ""}
                                                 onChange={(evt) =>
                                                   setEventDraft((prev) => ({
                                                     ...prev,
                                                     assist: evt.target.value,
                                                   }))
                                                 }
-                                              />
+                                              >
+                                                <option value="">None</option>
+                                                {editAssistPlayers.map((name) => (
+                                                  <option
+                                                    key={`edit-assist-b-${name}`}
+                                                    value={name}
+                                                  >
+                                                    {name}
+                                                  </option>
+                                                ))}
+                                              </select>
                                             </div>
                                             <div>
-                                              <label className="tk-small-label">Type</label>
+                                              <label className="tk-small-label">
+                                                Type
+                                              </label>
                                               <select
                                                 className="tk-small-select"
                                                 value={eventDraft.type}
@@ -1589,7 +2380,9 @@ export function StatsPage({
                                               </select>
                                             </div>
                                             <div>
-                                              <label className="tk-small-label">Team</label>
+                                              <label className="tk-small-label">
+                                                Team
+                                              </label>
                                               <select
                                                 className="tk-small-select"
                                                 value={eventDraft.teamId}
@@ -1632,92 +2425,48 @@ export function StatsPage({
                           </td>
                           <td>
                             {canAdminEditThisView && (
-                              <div className="tk-match-admin-box" onClick={(evt) => evt.stopPropagation()}>
-                                <div className="tk-match-admin-title">Admin tools</div>
+                              <div
+                                className="tk-match-admin-box"
+                                onClick={(evt) => evt.stopPropagation()}
+                              >
+                                <div className="tk-match-admin-title">
+                                  Admin tools
+                                </div>
 
-                                {!isEditingScore ? (
-                                  <div className="tk-match-admin-row">
-                                    {typeof onUpdateSavedMatchScore === "function" && (
-                                      <button
-                                        type="button"
-                                        className="tk-edit-btn"
-                                        onClick={() => startEditScore(r)}
-                                      >
-                                        Edit score
-                                      </button>
-                                    )}
+                                <div className="tk-match-admin-row">
+                                  {typeof onAddSavedEvent === "function" && (
+                                    <button
+                                      type="button"
+                                      className="tk-edit-btn"
+                                      onClick={() => startAddEvent(r, r.teamAId)}
+                                    >
+                                      Add event
+                                    </button>
+                                  )}
 
-                                    {typeof onAddSavedEvent === "function" && (
-                                      <button
-                                        type="button"
-                                        className="tk-edit-btn"
-                                        onClick={() => startAddEvent(r, r.teamAId)}
-                                      >
-                                        Add event
-                                      </button>
-                                    )}
-
-                                    {typeof onDeleteSavedMatch === "function" && (
-                                      <button
-                                        type="button"
-                                        className="tk-danger-btn"
-                                        onClick={() => handleDeleteMatch(r.matchNo)}
-                                      >
-                                        Delete match
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="tk-admin-panel">
-                                    <div className="tk-admin-grid">
-                                      <div>
-                                        <label className="tk-small-label">{teamAName} goals</label>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          className="tk-small-input"
-                                          value={editScoreA}
-                                          onChange={(evt) => setEditScoreA(evt.target.value)}
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="tk-small-label">{teamBName} goals</label>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          className="tk-small-input"
-                                          value={editScoreB}
-                                          onChange={(evt) => setEditScoreB(evt.target.value)}
-                                        />
-                                      </div>
-                                    </div>
-
-                                    <div className="tk-inline-actions">
-                                      <button
-                                        type="button"
-                                        className="tk-edit-btn"
-                                        onClick={() => saveEditScore(r)}
-                                      >
-                                        Save score
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="secondary-btn"
-                                        onClick={cancelEditScore}
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
+                                  {typeof onDeleteSavedMatch === "function" && (
+                                    <button
+                                      type="button"
+                                      className="tk-danger-btn"
+                                      onClick={() => handleDeleteMatch(r.matchNo)}
+                                    >
+                                      Delete match
+                                    </button>
+                                  )}
+                                </div>
 
                                 {isAddingEvent && (
-                                  <div className="tk-admin-panel" style={{ marginTop: "0.75rem" }}>
+                                  <div
+                                    className="tk-admin-panel"
+                                    style={{ marginTop: "0.75rem" }}
+                                  >
                                     <div className="tk-admin-grid">
                                       <div>
-                                        <label className="tk-small-label">Scorer</label>
-                                        <input
-                                          className="tk-small-input"
+                                        <label className="tk-small-label">
+                                          Scorer
+                                        </label>
+                                        <select
+                                          className="tk-small-select"
                                           value={newEventDraft.scorer}
                                           onChange={(evt) =>
                                             setNewEventDraft((prev) => ({
@@ -1725,23 +2474,47 @@ export function StatsPage({
                                               scorer: evt.target.value,
                                             }))
                                           }
-                                        />
+                                        >
+                                          <option value="">Select player</option>
+                                          {addPlayers.map((name) => (
+                                            <option
+                                              key={`add-scorer-${name}`}
+                                              value={name}
+                                            >
+                                              {name}
+                                            </option>
+                                          ))}
+                                        </select>
                                       </div>
                                       <div>
-                                        <label className="tk-small-label">Assist</label>
-                                        <input
-                                          className="tk-small-input"
-                                          value={newEventDraft.assist}
+                                        <label className="tk-small-label">
+                                          Assist
+                                        </label>
+                                        <select
+                                          className="tk-small-select"
+                                          value={newEventDraft.assist || ""}
                                           onChange={(evt) =>
                                             setNewEventDraft((prev) => ({
                                               ...prev,
                                               assist: evt.target.value,
                                             }))
                                           }
-                                        />
+                                        >
+                                          <option value="">None</option>
+                                          {addAssistPlayers.map((name) => (
+                                            <option
+                                              key={`add-assist-${name}`}
+                                              value={name}
+                                            >
+                                              {name}
+                                            </option>
+                                          ))}
+                                        </select>
                                       </div>
                                       <div>
-                                        <label className="tk-small-label">Type</label>
+                                        <label className="tk-small-label">
+                                          Type
+                                        </label>
                                         <select
                                           className="tk-small-select"
                                           value={newEventDraft.type}
@@ -1757,7 +2530,9 @@ export function StatsPage({
                                         </select>
                                       </div>
                                       <div>
-                                        <label className="tk-small-label">Team</label>
+                                        <label className="tk-small-label">
+                                          Team
+                                        </label>
                                         <select
                                           className="tk-small-select"
                                           value={newEventDraft.teamId}

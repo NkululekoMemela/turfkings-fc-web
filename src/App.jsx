@@ -87,6 +87,46 @@ function nextSeasonIdFromExisting(seasons) {
   return { seasonId: `2026-S${newSeasonNo}`, seasonNo: newSeasonNo };
 }
 
+function buildUpdatedResultFromEvents(result, eventsForSeason) {
+  if (!result) return result;
+
+  const matchNo = Number(result?.matchNo);
+  const safeEvents = Array.isArray(eventsForSeason) ? eventsForSeason : [];
+
+  const goalsA = safeEvents.filter(
+    (e) =>
+      Number(e?.matchNo) === matchNo &&
+      e?.type === "goal" &&
+      e?.teamId === result?.teamAId
+  ).length;
+
+  const goalsB = safeEvents.filter(
+    (e) =>
+      Number(e?.matchNo) === matchNo &&
+      e?.type === "goal" &&
+      e?.teamId === result?.teamBId
+  ).length;
+
+  let winnerId = null;
+  let isDraw = false;
+
+  if (goalsA === goalsB) {
+    isDraw = true;
+  } else if (goalsA > goalsB) {
+    winnerId = result?.teamAId ?? null;
+  } else {
+    winnerId = result?.teamBId ?? null;
+  }
+
+  return {
+    ...result,
+    goalsA,
+    goalsB,
+    winnerId,
+    isDraw,
+  };
+}
+
 export default function App() {
   const [page, setPage] = useState(PAGE_ENTRY);
 
@@ -488,6 +528,159 @@ export default function App() {
     });
   };
 
+  // ---------- CURRENT-WEEK SAVED EVENT UPDATE ----------
+  const handleUpdateSavedEvent = (eventId, updatedFields) => {
+    if (!USE_V2) return;
+
+    updateActiveSeason((prevSeason) => {
+      const safeAllEvents = Array.isArray(prevSeason?.allEvents) ? prevSeason.allEvents : [];
+      const targetEvent = safeAllEvents.find((e) => String(e?.id) === String(eventId));
+      if (!targetEvent) return prevSeason;
+
+      const nextAllEvents = safeAllEvents.map((e) =>
+        String(e?.id) === String(eventId)
+          ? {
+              ...e,
+              ...updatedFields,
+            }
+          : e
+      );
+
+      const safeResults = Array.isArray(prevSeason?.results) ? prevSeason.results : [];
+      const nextResults = safeResults.map((r) =>
+        Number(r?.matchNo) === Number(targetEvent?.matchNo)
+          ? buildUpdatedResultFromEvents(r, nextAllEvents)
+          : r
+      );
+
+      return {
+        ...prevSeason,
+        allEvents: nextAllEvents,
+        results: nextResults,
+      };
+    });
+  };
+
+  // ---------- CURRENT-WEEK SAVED EVENT DELETE ----------
+  const handleDeleteSavedEvent = (eventId) => {
+    if (!USE_V2) return;
+
+    updateActiveSeason((prevSeason) => {
+      const safeAllEvents = Array.isArray(prevSeason?.allEvents) ? prevSeason.allEvents : [];
+      const targetEvent = safeAllEvents.find((e) => String(e?.id) === String(eventId));
+      if (!targetEvent) return prevSeason;
+
+      const nextAllEvents = safeAllEvents.filter((e) => String(e?.id) !== String(eventId));
+
+      const safeResults = Array.isArray(prevSeason?.results) ? prevSeason.results : [];
+      const nextResults = safeResults.map((r) =>
+        Number(r?.matchNo) === Number(targetEvent?.matchNo)
+          ? buildUpdatedResultFromEvents(r, nextAllEvents)
+          : r
+      );
+
+      return {
+        ...prevSeason,
+        allEvents: nextAllEvents,
+        results: nextResults,
+      };
+    });
+  };
+
+  // ---------- CURRENT-WEEK SAVED EVENT ADD ----------
+  const handleAddSavedEvent = (matchNo, eventData) => {
+    if (!USE_V2) return;
+
+    updateActiveSeason((prevSeason) => {
+      const safeAllEvents = Array.isArray(prevSeason?.allEvents) ? prevSeason.allEvents : [];
+
+      const newEvent = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        matchNo: Number(matchNo),
+        timeSeconds: Number(eventData?.timeSeconds ?? 0),
+        scorer: eventData?.scorer ?? "",
+        assist: eventData?.assist ?? null,
+        type: eventData?.type ?? "goal",
+        teamId: eventData?.teamId ?? null,
+      };
+
+      const nextAllEvents = [...safeAllEvents, newEvent];
+
+      const safeResults = Array.isArray(prevSeason?.results) ? prevSeason.results : [];
+      const nextResults = safeResults.map((r) =>
+        Number(r?.matchNo) === Number(matchNo)
+          ? buildUpdatedResultFromEvents(r, nextAllEvents)
+          : r
+      );
+
+      return {
+        ...prevSeason,
+        allEvents: nextAllEvents,
+        results: nextResults,
+      };
+    });
+  };
+
+  // ---------- DELETE CURRENT EMPTY TEST SEASON ----------
+  const handleDeleteCurrentEmptySeason = () => {
+    if (!USE_V2) return;
+
+    updateState((prev) => {
+      const safePrev = ensureV2StateShape(prev);
+      const { activeSeason } = getActiveSeasonFromV2State(safePrev);
+
+      if (!activeSeason) return safePrev;
+
+      const safeCurrentEvents = Array.isArray(activeSeason?.currentEvents)
+        ? activeSeason.currentEvents
+        : [];
+      const safeResults = Array.isArray(activeSeason?.results) ? activeSeason.results : [];
+      const safeAllEvents = Array.isArray(activeSeason?.allEvents) ? activeSeason.allEvents : [];
+      const safeHistory = Array.isArray(activeSeason?.matchDayHistory)
+        ? activeSeason.matchDayHistory
+        : [];
+
+      const isEmptySeason =
+        safeCurrentEvents.length === 0 &&
+        safeResults.length === 0 &&
+        safeAllEvents.length === 0 &&
+        safeHistory.length === 0;
+
+      if (!isEmptySeason) {
+        window.alert(
+          "Only an empty test season can be deleted. This active season already has data."
+        );
+        return safePrev;
+      }
+
+      if ((safePrev.seasons || []).length <= 1) {
+        window.alert("You cannot delete the only remaining season.");
+        return safePrev;
+      }
+
+      const remainingSeasons = safePrev.seasons.filter(
+        (s) => s?.seasonId !== safePrev.activeSeasonId
+      );
+
+      if (!remainingSeasons.length) {
+        window.alert("No other season is available to switch back to.");
+        return safePrev;
+      }
+
+      const sorted = [...remainingSeasons].sort(
+        (a, b) => Number(a?.seasonNo || 0) - Number(b?.seasonNo || 0)
+      );
+      const fallbackSeason = sorted[sorted.length - 1];
+
+      return {
+        ...safePrev,
+        activeSeasonId: fallbackSeason?.seasonId || safePrev.activeSeasonId,
+        seasons: remainingSeasons,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  };
+
   // ---------- SQUADS ----------
   const handleUpdateTeams = (updatedTeams) => {
     if (USE_V2) {
@@ -836,6 +1029,11 @@ export default function App() {
           playerPhotosByName={playerPhotosByName}
           matchDayHistory={matchDayHistory || []}
           onDeleteSavedMatch={handleDeleteSavedMatch}
+          onUpdateSavedEvent={handleUpdateSavedEvent}
+          onDeleteSavedEvent={handleDeleteSavedEvent}
+          onAddSavedEvent={handleAddSavedEvent}
+          onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
+          canPreviewPreviousSeasonUI={IS_STAGING}
         />
       )}
 

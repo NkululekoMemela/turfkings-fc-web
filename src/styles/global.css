@@ -2609,3 +2609,172 @@ th {
     }
   }
   
+
+/* =========================================
+   STATS PAGE – MATCH ADMIN + EVENT EDITING
+   ========================================= */
+
+   .tk-matchday-filter-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin: 0.15rem 0 0.35rem;
+  }
+  
+  .tk-md-btn {
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    padding: 0.28rem 0.55rem;
+    border-radius: 999px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  
+  .tk-md-btn.active {
+    border-color: rgba(34,211,238,0.55);
+    box-shadow: 0 0 0 2px rgba(34,211,238,0.12);
+  }
+  
+  .tk-md-label {
+    opacity: 0.95;
+  }
+  
+  .tk-md-muted {
+    opacity: 0.6;
+    font-weight: 700;
+    font-size: 0.82em;
+    margin-left: 0.4rem;
+  }
+  
+  .tk-match-admin-box {
+    margin-top: 0.9rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed rgba(255,255,255,0.16);
+  }
+  
+  .tk-match-admin-title {
+    font-size: 0.78rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.8;
+    margin-bottom: 0.55rem;
+  }
+  
+  .tk-match-admin-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+  }
+  
+  .tk-danger-btn {
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    background: rgba(239, 68, 68, 0.12);
+    color: #ffd6d6;
+    padding: 0.42rem 0.7rem;
+    border-radius: 999px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  
+  .tk-danger-btn:hover {
+    background: rgba(239, 68, 68, 0.18);
+  }
+  
+  .tk-edit-btn {
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    background: rgba(56, 189, 248, 0.12);
+    color: #d9f6ff;
+    padding: 0.42rem 0.7rem;
+    border-radius: 999px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  
+  .tk-edit-btn:hover {
+    background: rgba(56, 189, 248, 0.18);
+  }
+  
+  .tk-admin-panel {
+    margin-top: 0.65rem;
+    padding: 0.8rem;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+  }
+  
+  .tk-admin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.55rem;
+  }
+  
+  .tk-small-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 800;
+    margin-bottom: 0.22rem;
+    opacity: 0.88;
+  }
+  
+  .tk-small-input,
+  .tk-small-select {
+    width: 100%;
+    padding: 0.45rem 0.55rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.14);
+    color: inherit;
+  }
+  
+  .tk-small-input {
+    background: rgba(255,255,255,0.06);
+  }
+  
+  /* Green dropdown fix */
+  .tk-small-select {
+    background: rgba(16,185,129,0.28);
+    border-color: rgba(16,185,129,0.5);
+    color: #ffffff;
+  }
+  
+  .tk-small-select option {
+    background: #065f46;
+    color: #ffffff;
+  }
+  
+  .tk-inline-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-top: 0.65rem;
+  }
+  
+  .tk-linkish-btn {
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.05);
+    color: inherit;
+    padding: 0.24rem 0.5rem;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 0.78rem;
+    cursor: pointer;
+    margin-left: 0.45rem;
+  }
+  
+  .tk-event-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.1rem 0;
+    flex-wrap: wrap;
+  }
+  
+  .tk-event-line-text {
+    flex: 1;
+    min-width: 220px;
+  }
