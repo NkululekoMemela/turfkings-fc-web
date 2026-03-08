@@ -196,6 +196,15 @@ export function StatsPage({
 
   const isViewingPreviousSeason = seasonScope !== CURRENT_SCOPE;
 
+  // ✅ NEW: allow delete button whenever there is a real previous season to fall back to
+  const canShowDeleteCurrentEmptySeason = useMemo(() => {
+    return (
+      typeof onDeleteCurrentEmptySeason === "function" &&
+      !isViewingPreviousSeason &&
+      previousSeasonOptions.length > 0
+    );
+  }, [onDeleteCurrentEmptySeason, isViewingPreviousSeason, previousSeasonOptions]);
+
   // ---------- Pull the correct TEAMS based on selected scope ----------
   const scopedTeams = useMemo(() => {
     if (!isViewingPreviousSeason) return safeTeamsProp;
@@ -1390,24 +1399,22 @@ export function StatsPage({
               </div>
             )}
 
-            {canPreviewPreviousSeasonUI &&
-              typeof onDeleteCurrentEmptySeason === "function" &&
-              !isViewingPreviousSeason && (
-                <div style={{ marginTop: "0.85rem" }}>
-                  <button
-                    type="button"
-                    className="tk-danger-btn"
-                    onClick={() => {
-                      const ok = window.confirm(
-                        "Delete the current empty test season and move back to the previous real season?"
-                      );
-                      if (ok) onDeleteCurrentEmptySeason();
-                    }}
-                  >
-                    Delete current empty test season
-                  </button>
-                </div>
-              )}
+            {canShowDeleteCurrentEmptySeason && (
+              <div style={{ marginTop: "0.85rem" }}>
+                <button
+                  type="button"
+                  className="tk-danger-btn"
+                  onClick={() => {
+                    const ok = window.confirm(
+                      "Delete the current empty season and move back to the previous season?"
+                    );
+                    if (ok) onDeleteCurrentEmptySeason();
+                  }}
+                >
+                  Delete current empty season
+                </button>
+              </div>
+            )}
           </div>
 
           <div style={{ flex: 1 }}>
