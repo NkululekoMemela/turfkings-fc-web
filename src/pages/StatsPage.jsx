@@ -74,6 +74,9 @@ export function StatsPage({
 
   // ✅ Admin preview mode
   canPreviewPreviousSeasonUI = false,
+
+  // ✅ NEW: hard admin gate
+  isAdmin = false,
 }) {
   // ---------- Safety ----------
   const safeMembers = Array.isArray(members) ? members : [];
@@ -95,6 +98,8 @@ export function StatsPage({
   const safeMatchDayHistory = Array.isArray(matchDayHistory)
     ? matchDayHistory
     : [];
+
+  const isAdminUser = Boolean(isAdmin);
 
   // Member-based name normalisation
   const { normalizeName } = useMemberNameMap(safeMembers);
@@ -190,20 +195,28 @@ export function StatsPage({
   }, [safeSeasons, seasonScope, activeSeasonId]);
 
   const selectedPrevSeason = selectedPreviewPrevSeason || selectedRealPrevSeason;
+
   const isPreviewingPreviousSeasonUI =
+    isAdminUser &&
     seasonScope === PREVIEW_PREVIOUS_SCOPE &&
     Boolean(canPreviewPreviousSeasonUI);
 
   const isViewingPreviousSeason = seasonScope !== CURRENT_SCOPE;
 
-  // ✅ NEW: allow delete button whenever there is a real previous season to fall back to
+  // ✅ Only admin can ever see this
   const canShowDeleteCurrentEmptySeason = useMemo(() => {
     return (
+      isAdminUser &&
       typeof onDeleteCurrentEmptySeason === "function" &&
       !isViewingPreviousSeason &&
       previousSeasonOptions.length > 0
     );
-  }, [onDeleteCurrentEmptySeason, isViewingPreviousSeason, previousSeasonOptions]);
+  }, [
+    isAdminUser,
+    onDeleteCurrentEmptySeason,
+    isViewingPreviousSeason,
+    previousSeasonOptions,
+  ]);
 
   // ---------- Pull the correct TEAMS based on selected scope ----------
   const scopedTeams = useMemo(() => {
@@ -466,7 +479,9 @@ export function StatsPage({
       }
     });
 
-    Object.values(base).forEach((t) => (t.goalDiff = t.goalsFor - t.goalsAgainst));
+    Object.values(base).forEach((t) => {
+      t.goalDiff = t.goalsFor - t.goalsAgainst;
+    });
 
     const arr = Object.values(base);
     arr.sort((x, y) => {
@@ -815,7 +830,8 @@ export function StatsPage({
   };
 
   // ✅ current-week/current-season only admin guard
-  const canAdminEditThisView = !isViewingPreviousSeason && viewMode === "current";
+  const canAdminEditThisView =
+    isAdminUser && !isViewingPreviousSeason && viewMode === "current";
 
   // ---------- EVENT EDIT ----------
   const [editingEventId, setEditingEventId] = useState(null);
@@ -827,6 +843,8 @@ export function StatsPage({
   });
 
   const startEditEvent = (e) => {
+    if (!canAdminEditThisView) return;
+
     setEditingEventId(String(e?.id || ""));
     setEventDraft({
       scorer: e?.scorer || "",
@@ -878,6 +896,8 @@ export function StatsPage({
   });
 
   const startAddEvent = (r, defaultTeamId = "") => {
+    if (!canAdminEditThisView) return;
+
     setAddingForMatchKey(matchKeyOf(r));
     setNewEventDraft({
       scorer: "",
@@ -1104,7 +1124,13 @@ export function StatsPage({
   }, [selectedPrevSeason]);
 
   // ---------- Previous season arrow navigation ----------
-  const previousSeasonTabOrder = ["teams", "goals", "assists", "matches", "combined"];
+  const previousSeasonTabOrder = [
+    "teams",
+    "goals",
+    "assists",
+    "matches",
+    "combined",
+  ];
 
   const currentPrevTabIndex = previousSeasonTabOrder.indexOf(activeTab);
 
@@ -1341,18 +1367,18 @@ export function StatsPage({
                   onClick={() => {
                     if (previousSeasonOptions.length > 0) {
                       setSeasonScope(previousSeasonOptions[0].seasonId);
-                    } else if (canPreviewPreviousSeasonUI) {
+                    } else if (isAdminUser && canPreviewPreviousSeasonUI) {
                       setSeasonScope(PREVIEW_PREVIOUS_SCOPE);
                     }
                   }}
                   disabled={
                     previousSeasonOptions.length === 0 &&
-                    !canPreviewPreviousSeasonUI
+                    !(isAdminUser && canPreviewPreviousSeasonUI)
                   }
                   title={
                     previousSeasonOptions.length > 0
                       ? "Switch to a previous season"
-                      : canPreviewPreviousSeasonUI
+                      : isAdminUser && canPreviewPreviousSeasonUI
                       ? "Admin preview of previous-season layout"
                       : "No previous seasons yet"
                   }

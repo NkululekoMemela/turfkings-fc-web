@@ -49,6 +49,60 @@ const USE_V2 = true;
 const IS_STAGING =
   String(import.meta.env.VITE_USE_STAGING || "").trim().toLowerCase() === "true";
 
+// ✅ Admin identity gate
+const ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
+
+function isAdminIdentity(identity) {
+  if (!identity || typeof identity !== "object") return false;
+
+  const emailCandidates = [
+    identity.email,
+    identity.userEmail,
+    identity.gmail,
+    identity.googleEmail,
+  ]
+    .map((x) => String(x || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (emailCandidates.some((email) => ADMIN_EMAILS.includes(email))) {
+    return true;
+  }
+
+  const roleCandidates = [
+    identity.role,
+    identity.userRole,
+    identity.accountType,
+  ]
+    .map((x) => String(x || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (roleCandidates.includes("admin")) {
+    return true;
+  }
+
+  const nameCandidates = [
+    identity.name,
+    identity.displayName,
+    identity.fullName,
+    identity.playerName,
+  ]
+    .map((x) => String(x || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (
+    nameCandidates.some(
+      (name) =>
+        name === "nkululeko" ||
+        name === "nkululeko memela" ||
+        name === "nk"
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function ensureV2StateShape(s) {
   const fallback = createDefaultStateV2();
   if (!s || typeof s !== "object") return fallback;
@@ -149,6 +203,9 @@ export default function App() {
     }
     setPage(PAGE_LANDING);
   };
+
+  // ✅ derive admin once from identity
+  const isAdmin = isAdminIdentity(identity);
 
   // ---------- APP STATE ----------
   const [state, setState] = useState(() => (USE_V2 ? loadStateV2() : loadState()));
@@ -1033,7 +1090,8 @@ export default function App() {
           onDeleteSavedEvent={handleDeleteSavedEvent}
           onAddSavedEvent={handleAddSavedEvent}
           onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
-          canPreviewPreviousSeasonUI={IS_STAGING}
+          canPreviewPreviousSeasonUI={IS_STAGING && isAdmin}
+          isAdmin={isAdmin}
         />
       )}
 
