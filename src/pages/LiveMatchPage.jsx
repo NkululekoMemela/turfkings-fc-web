@@ -1648,8 +1648,7 @@ export function LiveMatchPage({
               className="muted"
               style={{ marginTop: "0.35rem", marginBottom: "0.9rem" }}
             >
-              Captain/admin saved lineups are loaded by default. Only change
-              them here if kickoff requires an override.
+              ______________________
             </p>
 
             <div

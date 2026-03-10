@@ -809,6 +809,10 @@ th {
   background-repeat: no-repeat;
 }
 
+.player-shirt.with-photo::before {
+  display: none;
+}
+
 /* Small spacing around the photo upload section */
 .photo-upload-block {
   margin-top: 1.25rem;
