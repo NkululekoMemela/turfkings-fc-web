@@ -11,7 +11,7 @@ import {
   removeKitOrder,
 } from "../storage/firebaseRepository.js";
 
-const BAD_MATCH_NUMBERS = new Set([14, 15, 16, 17]); // drop these from week-1 archive
+const BAD_MATCH_NUMBERS = new Set(); // drop these from week-1 archive
 const injuredPlayerName = "Jayd";
 
 const VENUE_MAP_URL =
