@@ -303,7 +303,12 @@ export default function App() {
   const [state, setState] = useState(() =>
     USE_V2 ? loadStateV2() : loadState()
   );
-  const peerRatingsFromHook = usePeerRatings();
+
+  const activeSeasonIdForPeerRatings = USE_V2
+    ? ensureV2StateShape(state)?.activeSeasonId || null
+    : null;
+
+  const peerRatingsFromHook = usePeerRatings(activeSeasonIdForPeerRatings);
   const peerRatingsByPlayer = peerRatingsFromHook || {};
 
   const [statsReturnPage, setStatsReturnPage] = useState(PAGE_LANDING);
@@ -1461,6 +1466,7 @@ export default function App() {
           teams={teams}
           playerPhotosByName={playerPhotosByName}
           identity={identity}
+          activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}

@@ -62,19 +62,13 @@ function getRecencyWeight(weekKey, currentWeekKey) {
   const diffWeeks = getWeekDistanceFromCurrent(weekKey, currentWeekKey);
 
   if (diffWeeks == null) return 0;
-  if (diffWeeks < 0) return 0; // future reviews ignored
+  if (diffWeeks < 0) return 0;
 
-  // Current week should dominate at 60%.
-  if (diffWeeks === 0) return 0.6;
+  if (diffWeeks === 0) return 0.6; // this week
+  if (diffWeeks === 1) return 0.2; // last week
+  if (diffWeeks === 2) return 0.1; // two weeks ago
 
-  // Older weeks decay quickly but still contribute inside the same season.
-  if (diffWeeks === 1) return 0.2;
-  if (diffWeeks === 2) return 0.1;
-  if (diffWeeks === 3) return 0.06;
-  if (diffWeeks === 4) return 0.04;
-
-  // Too old to matter much, but still non-zero within season.
-  return 0.02;
+  return 0; // anything older ignored
 }
 
 /**
@@ -116,12 +110,6 @@ export function usePeerRatings(activeSeasonId = null) {
           d?.targetNameNormalized ||
           "";
         if (!rawName || typeof rawName !== "string") return;
-
-        const reviewSeasonId = String(d?.seasonId || "").trim();
-
-        // Confine ratings to current season only.
-        if (activeSeasonKey && reviewSeasonId !== activeSeasonKey) return;
-        if (!activeSeasonKey && reviewSeasonId) return;
 
         const weekKey = String(d?.weekKey || "").trim();
         const weight = getRecencyWeight(weekKey, currentWeekKey);

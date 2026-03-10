@@ -12,10 +12,9 @@ const EMAIL_TO_PLAYER_NAME = {
   "mduduzi933@gmail.com": "Mdu",
 };
 
-// Week id = date (YYYY-MM-DD) of the Sunday for this week.
 function getCurrentWeekKey() {
   const now = new Date();
-  const day = now.getDay(); // 0 = Sunday
+  const day = now.getDay();
   const sunday = new Date(
     now.getFullYear(),
     now.getMonth(),
@@ -93,7 +92,7 @@ export function PeerReviewPage({
   const [ratedTargets, setRatedTargets] = useState([]);
 
   const [cloudPhotoIndex, setCloudPhotoIndex] = useState({});
-  const [memberAliasMap, setMemberAliasMap] = useState({});
+  const [, setMemberAliasMap] = useState({});
   const [memberCanonicalMap, setMemberCanonicalMap] = useState({});
 
   const normaliseName = (name) =>
@@ -104,7 +103,9 @@ export function PeerReviewPage({
     const parts = String(name).trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) return "";
     if (parts.length === 1) return (parts[0].slice(0, 2) || "").toUpperCase();
-    return ((parts[0][0] || "") + (parts[parts.length - 1][0] || "")).toUpperCase();
+    return (
+      ((parts[0][0] || "") + (parts[parts.length - 1][0] || "")).toUpperCase()
+    );
   };
 
   const resolveCanonicalName = (rawName) => {
@@ -401,7 +402,11 @@ export function PeerReviewPage({
             key={v}
             type="button"
             className={v <= value ? "star-btn star-filled" : "star-btn star-empty"}
-            onClick={() => handleStarClick(setter, v)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleStarClick(setter, v);
+            }}
           >
             ★
           </button>
@@ -465,9 +470,8 @@ export function PeerReviewPage({
       if (typeof window !== "undefined") {
         const already = window.localStorage.getItem(voteKey);
         if (already) {
-          setStatusMsg(
-            `You’ve already rated ${targetCanonical} for this week in this season. Thank you!`
-          );
+          setStatusMsg(`You’ve already rated ${targetCanonical} for this week.`);
+          setActiveTarget(null);
           return;
         }
       }
@@ -476,7 +480,6 @@ export function PeerReviewPage({
     }
 
     const now = new Date();
-    const nowIso = now.toISOString();
 
     const docData = {
       raterName: raterCanonical,
@@ -487,12 +490,9 @@ export function PeerReviewPage({
       defence: defence || null,
       gk: gk || null,
       comment: comment.trim() || null,
-      createdAt: nowIso,
       createdAtMs: now.getTime(),
       weekKey,
       seasonId,
-      reviewWeightHint: weekKey === getCurrentWeekKey() ? 0.6 : null,
-      isCurrentWeekReview: true,
       source: "peer-review-page",
     };
 
@@ -556,9 +556,7 @@ export function PeerReviewPage({
           each other. These ratings feed into the Player Cards.
         </p>
         <p className="subtitle">
-          Reviews are weekly and tied to the <strong>current season</strong>. This
-          week will be the strongest signal, while older weeks should count less when
-          you aggregate them.
+          Reviews are weekly and tied to the <strong>current season</strong>.
         </p>
         <div className="stats-header-actions">
           <button className="secondary-btn" onClick={onBack}>
@@ -596,12 +594,11 @@ export function PeerReviewPage({
               {isSpectator ? (
                 <p className="muted small">
                   You are signed in as a spectator. Only <strong>Turf Kings players</strong>{" "}
-                  can submit peer ratings. Use the player sign-in on the home screen.
+                  can submit peer ratings.
                 </p>
               ) : (
                 <p className="muted small">
-                  You are not signed in as a Turf Kings player. Peer voting is
-                  reserved for <strong>signed-in Turf Kings players</strong>.
+                  You are not signed in as a Turf Kings player.
                 </p>
               )}
             </>
@@ -610,8 +607,7 @@ export function PeerReviewPage({
           {isSignedInPlayer && !selectedRater && (
             <>
               <p className="muted small">
-                Tap your name from the Turf Kings squads. Only players in the squads
-                can submit ratings.
+                Tap your name from the Turf Kings squads.
               </p>
 
               <div
@@ -743,7 +739,11 @@ export function PeerReviewPage({
                       </button>
 
                       {isActive && (
-                        <div className="peer-player-rating-inline">
+                        <div
+                          className="peer-player-rating-inline"
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
                           {renderStarsRow("Attack", attack, setAttack)}
                           {renderStarsRow("Defence", defence, setDefence)}
                           {renderStarsRow("Goalkeeping", gk, setGk)}
@@ -756,6 +756,8 @@ export function PeerReviewPage({
                               placeholder="Short note – strengths, improvements, compliments..."
                               value={comment}
                               onChange={(e) => setComment(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
                             />
                           </div>
 
@@ -763,8 +765,15 @@ export function PeerReviewPage({
                             <button
                               type="button"
                               className="primary-btn"
-                              disabled={submitting}
-                              onClick={() => handleSubmitForTarget(p.name)}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleSubmitForTarget(p.name);
+                              }}
                             >
                               {submitting ? "Sending..." : `Save rating for ${p.name}`}
                             </button>

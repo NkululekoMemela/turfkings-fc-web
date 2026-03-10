@@ -17,20 +17,17 @@ import {
 // =======================
 // LEGACY (DO NOT CHANGE)
 // =======================
-
-// Single document for now: full TurfKings app state
 const STATE_COLLECTION = "appState";
 const STATE_DOC_ID = "main";
 
 // =======================
-// V2 (NEW MODEL) — NEVER TOUCH LEGACY WHEN USING THESE
+// V2 (NEW MODEL)
 // =======================
 const STATE_COLLECTION_V2 = "appState_v2";
 const STATE_DOC_ID_V2 = "main";
 
 /**
  * Save full app state to Firestore (LEGACY).
- * Called from saveState() in gameRepository.
  */
 export async function saveStateToFirebase(state) {
   try {
@@ -39,7 +36,7 @@ export async function saveStateToFirebase(state) {
       ref,
       {
         state,
-        updatedAt: new Date().toISOString(), // simple ISO timestamp
+        updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
@@ -50,7 +47,6 @@ export async function saveStateToFirebase(state) {
 
 /**
  * Load full app state from Firestore once (LEGACY).
- * Returns `null` if nothing stored yet or on error.
  */
 export async function loadStateFromFirebase() {
   try {
@@ -67,12 +63,7 @@ export async function loadStateFromFirebase() {
 }
 
 /**
- * Subscribe in realtime to the full app state document (LEGACY).
- * callback receives either:
- *   - `null` if no cloud state
- *   - the full state object if present
- *
- * Returns an unsubscribe function.
+ * Subscribe to full app state (LEGACY).
  */
 export function subscribeToState(callback) {
   const ref = doc(db, STATE_COLLECTION, STATE_DOC_ID);
@@ -94,14 +85,9 @@ export function subscribeToState(callback) {
 }
 
 /* =======================================================================
-   V2: FULL APP STATE (NEW MODEL) — appState_v2/main
-   IMPORTANT: These functions ONLY read/write appState_v2/main and NEVER touch legacy.
+   V2: FULL APP STATE
    ======================================================================= */
 
-/**
- * Save full app state to Firestore (V2).
- * This writes to: appState_v2/main
- */
 export async function saveStateToFirebaseV2(state) {
   try {
     const ref = doc(db, STATE_COLLECTION_V2, STATE_DOC_ID_V2);
@@ -118,10 +104,6 @@ export async function saveStateToFirebaseV2(state) {
   }
 }
 
-/**
- * Load full app state from Firestore once (V2).
- * Returns `null` if nothing stored yet or on error.
- */
 export async function loadStateFromFirebaseV2() {
   try {
     const ref = doc(db, STATE_COLLECTION_V2, STATE_DOC_ID_V2);
@@ -136,14 +118,6 @@ export async function loadStateFromFirebaseV2() {
   }
 }
 
-/**
- * Subscribe in realtime to the full app state document (V2).
- * callback receives either:
- *   - `null` if no cloud state
- *   - the full state object if present
- *
- * Returns an unsubscribe function.
- */
 export function subscribeToStateV2(callback) {
   const ref = doc(db, STATE_COLLECTION_V2, STATE_DOC_ID_V2);
   const unsubscribe = onSnapshot(
@@ -165,56 +139,64 @@ export function subscribeToStateV2(callback) {
 
 /**
  * Submit a single peer rating to Firestore.
- * Called from PeerReviewPage.
- *
- * The document is stored in the "peerRatings" collection.
+ * IMPORTANT:
+ * Accept the full payload and preserve the fields needed by usePeerRatings.
  */
-export async function submitPeerRating({
-  raterName,
-  targetName,
-  attack,
-  defence,
-  gk,
-  comment,
-}) {
-  const cleanRater = (raterName || "").trim();
-  const cleanTarget = (targetName || "").trim();
+export async function submitPeerRating(payload) {
+  const cleanRater = String(payload?.raterName || "").trim();
+  const cleanTarget = String(payload?.targetName || "").trim();
 
   if (!cleanRater || !cleanTarget) {
     throw new Error("Missing rater or target name");
   }
 
-  const payload = {
+  const toNumOrNull = (v) => {
+    if (typeof v === "number" && !Number.isNaN(v)) return v;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const docPayload = {
     raterName: cleanRater,
+    raterNameNormalized: String(
+      payload?.raterNameNormalized || cleanRater
+    ).trim().toLowerCase(),
+
     targetName: cleanTarget,
-    attack: typeof attack === "number" && !Number.isNaN(attack) ? attack : null,
-    defence:
-      typeof defence === "number" && !Number.isNaN(defence) ? defence : null,
-    gk: typeof gk === "number" && !Number.isNaN(gk) ? gk : null,
-    comment: (comment || "").trim() || null,
+    targetNameNormalized: String(
+      payload?.targetNameNormalized || cleanTarget
+    ).trim().toLowerCase(),
+
+    attack: toNumOrNull(payload?.attack),
+    defence: toNumOrNull(payload?.defence),
+    gk: toNumOrNull(payload?.gk),
+
+    comment: String(payload?.comment || "").trim() || null,
+
+    weekKey: String(payload?.weekKey || "").trim() || null,
+    seasonId: String(payload?.seasonId || "").trim() || null,
+
+    createdAtMs: Number.isFinite(Number(payload?.createdAtMs))
+      ? Number(payload.createdAtMs)
+      : Date.now(),
+
+    source: String(payload?.source || "peer-review-page").trim(),
+
     createdAt: serverTimestamp(),
   };
 
   const colRef = collection(db, "peerRatings");
-  await addDoc(colRef, payload);
+  await addDoc(colRef, docPayload);
 }
 
 /* =======================================================================
-   NEW: KIT ORDERS / POLL
-   Collection: kitOrders/{memberId}
-   Each doc stores: { memberId, name, nameLower, updatedAt }
+   KIT ORDERS / POLL
    ======================================================================= */
 
 const KIT_ORDERS_COLLECTION = "kitOrders";
 
-/**
- * Live subscription to kit orders.
- * callback(list) where list = [{ memberId, name, nameLower, updatedAt }, ...]
- */
 export function subscribeToKitOrders(callback) {
   const colRef = collection(db, KIT_ORDERS_COLLECTION);
-
-  // Order by nameLower if present (makes UI stable and queryable)
   const q = query(colRef, orderBy("nameLower", "asc"));
 
   const unsub = onSnapshot(
@@ -232,17 +214,13 @@ export function subscribeToKitOrders(callback) {
     },
     (err) => {
       console.error("Kit orders subscription error:", err);
-      callback([]); // fail soft
+      callback([]);
     }
   );
 
   return unsub;
 }
 
-/**
- * Add/update a kit order for a member.
- * Uses doc id = memberId to avoid duplicates.
- */
 export async function upsertKitOrder({ memberId, name }) {
   const cleanId = String(memberId || "").trim();
   const cleanName = String(name || "").trim();
@@ -264,9 +242,6 @@ export async function upsertKitOrder({ memberId, name }) {
   );
 }
 
-/**
- * Remove a kit order for a member.
- */
 export async function removeKitOrder(memberId) {
   const cleanId = String(memberId || "").trim();
   if (!cleanId) return;
