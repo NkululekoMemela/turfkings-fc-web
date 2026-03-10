@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { LiveMatchPage } from "./pages/LiveMatchPage.jsx";
@@ -22,9 +22,13 @@ import {
 } from "./storage/gameRepository.js";
 
 import { computeNextFromResult } from "./core/rotation.js";
-import { subscribeToState, subscribeToStateV2 } from "./storage/firebaseRepository.js";
+import {
+  subscribeToState,
+  subscribeToStateV2,
+} from "./storage/firebaseRepository.js";
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
 import { useMembers } from "./hooks/useMembers.js";
+import { buildCleanSheetEventsForMatch } from "./core/lineups.js";
 
 // Page constants
 const PAGE_ENTRY = "entry";
@@ -47,61 +51,139 @@ const USE_V2 = true;
 
 // ✅ Show staging badge only when using staging mode
 const IS_STAGING =
-  String(import.meta.env.VITE_USE_STAGING || "").trim().toLowerCase() === "true";
+  String(import.meta.env.VITE_USE_STAGING || "").trim().toLowerCase() ===
+  "true";
 
-// ✅ Admin identity gate
-const ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
+/* ---------------- Identity helpers ---------------- */
 
-function isAdminIdentity(identity) {
-  if (!identity || typeof identity !== "object") return false;
+function safeLower(value) {
+  return String(value || "").trim().toLowerCase();
+}
 
-  const emailCandidates = [
-    identity.email,
-    identity.userEmail,
-    identity.gmail,
-    identity.googleEmail,
-  ]
-    .map((x) => String(x || "").trim().toLowerCase())
-    .filter(Boolean);
+function toTitleCaseLoose(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
-  if (emailCandidates.some((email) => ADMIN_EMAILS.includes(email))) {
-    return true;
-  }
-
-  const roleCandidates = [
-    identity.role,
-    identity.userRole,
-    identity.accountType,
-  ]
-    .map((x) => String(x || "").trim().toLowerCase())
-    .filter(Boolean);
-
-  if (roleCandidates.includes("admin")) {
-    return true;
-  }
-
-  const nameCandidates = [
-    identity.name,
-    identity.displayName,
-    identity.fullName,
-    identity.playerName,
-  ]
-    .map((x) => String(x || "").trim().toLowerCase())
-    .filter(Boolean);
+function getStoredRole(identity) {
+  const role = String(
+    identity?.actingRole || identity?.role || "spectator"
+  )
+    .trim()
+    .toLowerCase();
 
   if (
-    nameCandidates.some(
-      (name) =>
-        name === "nkululeko" ||
-        name === "nkululeko memela" ||
-        name === "nk"
-    )
+    role === "admin" ||
+    role === "captain" ||
+    role === "player" ||
+    role === "spectator"
   ) {
-    return true;
+    return role;
   }
 
-  return false;
+  return "spectator";
 }
+
+function ensureIdentityShape(identity) {
+  if (!identity || typeof identity !== "object") return null;
+
+  const storedRole = getStoredRole(identity);
+
+  return {
+    ...identity,
+    role: identity.role || storedRole,
+    actingRole: identity.actingRole || storedRole,
+  };
+}
+
+function getIdentityCandidateStrings(identity) {
+  if (!identity || typeof identity !== "object") return [];
+
+  const values = [
+    identity.memberId,
+    identity.playerId,
+    identity.shortName,
+    identity.fullName,
+    identity.displayName,
+    identity.name,
+    identity.playerName,
+    identity.email,
+  ]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+
+  const expanded = [];
+
+  values.forEach((value) => {
+    expanded.push(value);
+    expanded.push(toTitleCaseLoose(value));
+
+    const first = String(value).trim().split(/\s+/)[0] || "";
+    if (first) expanded.push(first);
+  });
+
+  return Array.from(
+    new Set(expanded.map((v) => safeLower(v)).filter(Boolean))
+  );
+}
+
+function getTeamCaptainCandidateStrings(team = {}) {
+  const values = [
+    team?.captainId,
+    team?.captain,
+    team?.captainName,
+    team?.captainEmail,
+  ]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => {
+          const first = String(value).trim().split(/\s+/)[0] || "";
+          return [value, toTitleCaseLoose(value), first];
+        })
+        .map((v) => safeLower(v))
+        .filter(Boolean)
+    )
+  );
+}
+
+function isCaptainFromTeams(identity, teams = []) {
+  const identityKeys = getIdentityCandidateStrings(identity);
+  if (identityKeys.length === 0) return false;
+
+  return (teams || []).some((team) => {
+    const captainKeys = getTeamCaptainCandidateStrings(team);
+    if (captainKeys.length === 0) return false;
+
+    return captainKeys.some((key) => identityKeys.includes(key));
+  });
+}
+
+function deriveActiveRole(identity, teams = []) {
+  const storedRole = getStoredRole(identity);
+  const isDynamicCaptain = isCaptainFromTeams(identity, teams);
+
+  // spectator choice must stay spectator unless this person is actually a current captain/admin
+  if (storedRole === "spectator" && !isDynamicCaptain) return "spectator";
+
+  // admin preview/admin identity must stay admin
+  if (storedRole === "admin") return "admin";
+
+  // either dynamic captain from squads OR preview captain mode
+  if (isDynamicCaptain || storedRole === "captain") return "captain";
+
+  return "player";
+}
+
+/* ---------------- State helpers ---------------- */
 
 function ensureV2StateShape(s) {
   const fallback = createDefaultStateV2();
@@ -111,7 +193,9 @@ function ensureV2StateShape(s) {
     s.activeSeasonId || s.seasons?.[0]?.seasonId || fallback.activeSeasonId;
 
   const seasons =
-    Array.isArray(s.seasons) && s.seasons.length ? s.seasons : fallback.seasons;
+    Array.isArray(s.seasons) && s.seasons.length
+      ? s.seasons
+      : fallback.seasons;
 
   return {
     ...fallback,
@@ -126,7 +210,8 @@ function ensureV2StateShape(s) {
 function getActiveSeasonFromV2State(v2State) {
   const safe = ensureV2StateShape(v2State);
   const season =
-    safe.seasons.find((x) => x?.seasonId === safe.activeSeasonId) || safe.seasons[0];
+    safe.seasons.find((x) => x?.seasonId === safe.activeSeasonId) ||
+    safe.seasons[0];
   return { safeV2: safe, activeSeason: season };
 }
 
@@ -188,7 +273,7 @@ export default function App() {
     if (typeof window === "undefined") return null;
     try {
       const raw = window.localStorage.getItem("tk_identity_v1");
-      return raw ? JSON.parse(raw) : null;
+      return raw ? ensureIdentityShape(JSON.parse(raw)) : null;
     } catch {
       return null;
     }
@@ -197,18 +282,27 @@ export default function App() {
   const members = useMembers();
 
   const handleEntryComplete = (payload) => {
-    setIdentity(payload);
+    const safePayload = ensureIdentityShape(payload);
+    setIdentity(safePayload);
+
     if (typeof window !== "undefined") {
-      window.localStorage.setItem("tk_identity_v1", JSON.stringify(payload));
+      if (safePayload) {
+        window.localStorage.setItem(
+          "tk_identity_v1",
+          JSON.stringify(safePayload)
+        );
+      } else {
+        window.localStorage.removeItem("tk_identity_v1");
+      }
     }
+
     setPage(PAGE_LANDING);
   };
 
-  // ✅ derive admin once from identity
-  const isAdmin = isAdminIdentity(identity);
-
   // ---------- APP STATE ----------
-  const [state, setState] = useState(() => (USE_V2 ? loadStateV2() : loadState()));
+  const [state, setState] = useState(() =>
+    USE_V2 ? loadStateV2() : loadState()
+  );
   const peerRatingsFromHook = usePeerRatings();
   const peerRatingsByPlayer = peerRatingsFromHook || {};
 
@@ -218,6 +312,16 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [timeUp, setTimeUp] = useState(false);
   const [hasLiveMatch, setHasLiveMatch] = useState(false);
+
+  // ---------- PRE-MATCH LINEUP CONFIRMATION ----------
+  const [pendingMatchStartContext, setPendingMatchStartContext] = useState(
+    null
+  );
+  const [currentConfirmedLineupSnapshot, setCurrentConfirmedLineupSnapshot] =
+    useState(null);
+  const [confirmedLineupsByMatchNo, setConfirmedLineupsByMatchNo] = useState(
+    {}
+  );
 
   // ---------- END MATCH DAY MODAL ----------
   const [showBackupModal, setShowBackupModal] = useState(false);
@@ -256,13 +360,14 @@ export default function App() {
     });
   };
 
-  // ✅ Firestore subscription
   useEffect(() => {
-    const unsubscribe = (USE_V2 ? subscribeToStateV2 : subscribeToState)((cloudState) => {
-      if (!cloudState) return;
-      if (USE_V2) setState(ensureV2StateShape(cloudState));
-      else setState(cloudState);
-    });
+    const unsubscribe = (USE_V2 ? subscribeToStateV2 : subscribeToState)(
+      (cloudState) => {
+        if (!cloudState) return;
+        if (USE_V2) setState(ensureV2StateShape(cloudState));
+        else setState(cloudState);
+      }
+    );
     return () => unsubscribe && unsubscribe();
   }, []);
 
@@ -284,7 +389,8 @@ export default function App() {
     const { safeV2, activeSeason } = getActiveSeasonFromV2State(state);
     safeV2ForStats = safeV2;
 
-    const fallbackSeason = safeV2?.seasons?.[0] || createDefaultStateV2().seasons[0];
+    const fallbackSeason =
+      safeV2?.seasons?.[0] || createDefaultStateV2().seasons[0];
     const s = activeSeason || fallbackSeason;
 
     teams = s?.teams || [];
@@ -314,15 +420,49 @@ export default function App() {
     } = legacy || createDefaultState());
   }
 
-  const archivedResultsFromHistory = (matchDayHistory || []).flatMap((day) => day?.results || []);
-  const archivedEventsFromHistory = (matchDayHistory || []).flatMap((day) => day?.allEvents || []);
+  // ✅ role logic now respects BOTH dynamic captain assignment and preview actingRole
+  const activeRole = useMemo(
+    () => deriveActiveRole(identity, teams || []),
+    [identity, teams]
+  );
+
+  const isAdmin = activeRole === "admin";
+  const isCaptain = activeRole === "captain";
+  const isPlayer = activeRole === "player";
+  const isSpectator = activeRole === "spectator";
+
+  const canStartMatch = isAdmin || isCaptain;
+  const canManageSquads = isAdmin;
+  const canPreviewPreviousSeasonUI = IS_STAGING && isAdmin;
+
+  const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
+    (day) => day?.results || []
+  );
+  const archivedEventsFromHistory = (matchDayHistory || []).flatMap(
+    (day) => day?.allEvents || []
+  );
   const hasFirebaseHistory = (matchDayHistory || []).length > 0;
 
   const fullResults = [...archivedResultsFromHistory, ...(results || [])];
   const fullEvents = [...archivedEventsFromHistory, ...(allEvents || [])];
 
-  const fullSeasonResultsForStats = [...archivedResultsFromHistory, ...(results || [])];
-  const fullSeasonEventsForStats = [...archivedEventsFromHistory, ...(allEvents || [])];
+  const fullSeasonEventsForStats = [
+    ...archivedEventsFromHistory,
+    ...(allEvents || []),
+  ];
+
+  useEffect(() => {
+    console.log("[TK DEBUG] Role check", {
+      identity,
+      activeRole,
+      canStartMatch,
+      isAdmin,
+      isCaptain,
+      isPlayer,
+      isSpectator,
+      teams,
+    });
+  }, [identity, activeRole, canStartMatch, isAdmin, isCaptain, isPlayer, isSpectator, teams]);
 
   useEffect(() => {
     console.log("[TK DEBUG] Archive status (NO SEEDS)", {
@@ -334,6 +474,7 @@ export default function App() {
       currentResults: (results || []).length,
       currentEvents: (allEvents || []).length,
       environment: IS_STAGING ? "staging" : "production",
+      activeRole,
     });
   }, [
     hasFirebaseHistory,
@@ -342,6 +483,7 @@ export default function App() {
     archivedEventsFromHistory.length,
     results,
     allEvents,
+    activeRole,
   ]);
 
   // ---------- TIMER ----------
@@ -374,14 +516,36 @@ export default function App() {
 
   // ---------- LANDING ----------
   const handleUpdatePairing = (match) => {
+    if (!canStartMatch) {
+      window.alert("Only captains or admin can update the pairing.");
+      return;
+    }
+
     if (USE_V2) {
-      updateActiveSeason((prevSeason) => ({ ...prevSeason, currentMatch: match }));
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        currentMatch: match,
+      }));
       return;
     }
     updateState((prev) => ({ ...prev, currentMatch: match }));
   };
 
   const handleStartMatch = () => {
+    if (!canStartMatch) {
+      window.alert("Only captains or admin can start a match.");
+      return;
+    }
+
+    const startContext = {
+      matchNo: currentMatchNo,
+      createdAt: new Date().toISOString(),
+      currentMatch,
+      teams,
+      identity,
+    };
+
+    setPendingMatchStartContext(startContext);
     setSecondsLeft(MATCH_SECONDS);
     setTimeUp(false);
     setRunning(true);
@@ -389,8 +553,44 @@ export default function App() {
     setPage(PAGE_LIVE);
   };
 
-  const handleGoToLiveAsSpectator = () => setPage(PAGE_SPECTATOR);
-  const handleGoToSquads = () => setPage(PAGE_SQUADS);
+  const handleConfirmPreMatchLineups = (snapshot) => {
+    const safeSnapshot = snapshot || null;
+    setCurrentConfirmedLineupSnapshot(safeSnapshot);
+
+    if (safeSnapshot) {
+      setConfirmedLineupsByMatchNo((prev) => ({
+        ...prev,
+        [currentMatchNo]: safeSnapshot,
+      }));
+    }
+
+    setPendingMatchStartContext(null);
+  };
+
+  const handleCancelPreMatchLineups = () => {
+    setPendingMatchStartContext(null);
+    setRunning(false);
+    setTimeUp(false);
+    setSecondsLeft(MATCH_SECONDS);
+    setHasLiveMatch(false);
+    setPage(PAGE_LANDING);
+  };
+
+  const handleGoToLiveAsSpectator = () => {
+    if (canStartMatch) {
+      setPage(PAGE_LIVE);
+      return;
+    }
+    setPage(PAGE_SPECTATOR);
+  };
+
+  const handleGoToSquads = () => {
+    if (!canManageSquads) {
+      window.alert("Only admin can manage squads.");
+      return;
+    }
+    setPage(PAGE_SQUADS);
+  };
   const handleGoToFormations = () => setPage(PAGE_FORMATIONS);
 
   // ---------- LIVE MATCH ----------
@@ -451,6 +651,29 @@ export default function App() {
       updateActiveSeason((prevSeason) => {
         const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
 
+        const matchNo = prevSeason.currentMatchNo || 1;
+
+        const verifiedLineups =
+          currentConfirmedLineupSnapshot ||
+          confirmedLineupsByMatchNo[matchNo] ||
+          null;
+
+        const committedEvents = (prevSeason.currentEvents || []).map((e) => ({
+          ...e,
+          matchNo,
+        }));
+
+        const cleanSheetEvents = buildCleanSheetEventsForMatch({
+          matchNo,
+          teamAId,
+          teamBId,
+          goalsA,
+          goalsB,
+          verifiedLineups,
+        });
+
+        const allCommittedEvents = [...committedEvents, ...cleanSheetEvents];
+
         const rotationResult = computeNextFromResult(prevSeason.streaks, {
           teamAId,
           teamBId,
@@ -459,15 +682,10 @@ export default function App() {
           goalsB,
         });
 
-        const newMatchNo = (prevSeason.currentMatchNo || 1) + 1;
-
-        const committedEvents = (prevSeason.currentEvents || []).map((e) => ({
-          ...e,
-          matchNo: prevSeason.currentMatchNo || 1,
-        }));
+        const newMatchNo = matchNo + 1;
 
         const newResult = {
-          matchNo: prevSeason.currentMatchNo || 1,
+          matchNo,
           teamAId,
           teamBId,
           standbyId,
@@ -475,6 +693,7 @@ export default function App() {
           goalsB,
           winnerId: rotationResult.winnerId,
           isDraw: rotationResult.isDraw,
+          confirmedLineupSnapshot: verifiedLineups,
         };
 
         return {
@@ -487,7 +706,7 @@ export default function App() {
           },
           streaks: rotationResult.updatedStreaks,
           currentEvents: [],
-          allEvents: [...(prevSeason.allEvents || []), ...committedEvents],
+          allEvents: [...(prevSeason.allEvents || []), ...allCommittedEvents],
           results: [...(prevSeason.results || []), newResult],
         };
       });
@@ -496,12 +715,37 @@ export default function App() {
       setTimeUp(false);
       setSecondsLeft(MATCH_SECONDS);
       setHasLiveMatch(false);
+      setPendingMatchStartContext(null);
+      setCurrentConfirmedLineupSnapshot(null);
       setPage(PAGE_LANDING);
       return;
     }
 
     updateState((prev) => {
       const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
+
+      const matchNo = prev.currentMatchNo;
+
+      const verifiedLineups =
+        currentConfirmedLineupSnapshot ||
+        confirmedLineupsByMatchNo[matchNo] ||
+        null;
+
+      const committedEvents = prev.currentEvents.map((e) => ({
+        ...e,
+        matchNo,
+      }));
+
+      const cleanSheetEvents = buildCleanSheetEventsForMatch({
+        matchNo,
+        teamAId,
+        teamBId,
+        goalsA,
+        goalsB,
+        verifiedLineups,
+      });
+
+      const allCommittedEvents = [...committedEvents, ...cleanSheetEvents];
 
       const rotationResult = computeNextFromResult(prev.streaks, {
         teamAId,
@@ -513,13 +757,8 @@ export default function App() {
 
       const newMatchNo = prev.currentMatchNo + 1;
 
-      const committedEvents = prev.currentEvents.map((e) => ({
-        ...e,
-        matchNo: prev.currentMatchNo,
-      }));
-
       const newResult = {
-        matchNo: prev.currentMatchNo,
+        matchNo,
         teamAId,
         teamBId,
         standbyId,
@@ -527,6 +766,7 @@ export default function App() {
         goalsB,
         winnerId: rotationResult.winnerId,
         isDraw: rotationResult.isDraw,
+        confirmedLineupSnapshot: verifiedLineups,
       };
 
       return {
@@ -539,7 +779,7 @@ export default function App() {
         },
         streaks: rotationResult.updatedStreaks,
         currentEvents: [],
-        allEvents: [...prev.allEvents, ...committedEvents],
+        allEvents: [...prev.allEvents, ...allCommittedEvents],
         results: [...prev.results, newResult],
       };
     });
@@ -548,6 +788,8 @@ export default function App() {
     setTimeUp(false);
     setSecondsLeft(MATCH_SECONDS);
     setHasLiveMatch(false);
+    setPendingMatchStartContext(null);
+    setCurrentConfirmedLineupSnapshot(null);
     setPage(PAGE_LANDING);
   };
 
@@ -556,9 +798,14 @@ export default function App() {
     setTimeUp(false);
     setSecondsLeft(MATCH_SECONDS);
     setHasLiveMatch(false);
+    setPendingMatchStartContext(null);
+    setCurrentConfirmedLineupSnapshot(null);
 
     if (USE_V2) {
-      updateActiveSeason((prevSeason) => ({ ...prevSeason, currentEvents: [] }));
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        currentEvents: [],
+      }));
     } else {
       updateState((prev) => ({ ...prev, currentEvents: [] }));
     }
@@ -570,8 +817,12 @@ export default function App() {
     if (!USE_V2) return;
 
     updateActiveSeason((prevSeason) => {
-      const safeResults = Array.isArray(prevSeason?.results) ? prevSeason.results : [];
-      const safeAllEvents = Array.isArray(prevSeason?.allEvents) ? prevSeason.allEvents : [];
+      const safeResults = Array.isArray(prevSeason?.results)
+        ? prevSeason.results
+        : [];
+      const safeAllEvents = Array.isArray(prevSeason?.allEvents)
+        ? prevSeason.allEvents
+        : [];
 
       return {
         ...prevSeason,
@@ -590,8 +841,12 @@ export default function App() {
     if (!USE_V2) return;
 
     updateActiveSeason((prevSeason) => {
-      const safeAllEvents = Array.isArray(prevSeason?.allEvents) ? prevSeason.allEvents : [];
-      const targetEvent = safeAllEvents.find((e) => String(e?.id) === String(eventId));
+      const safeAllEvents = Array.isArray(prevSeason?.allEvents)
+        ? prevSeason.allEvents
+        : [];
+      const targetEvent = safeAllEvents.find(
+        (e) => String(e?.id) === String(eventId)
+      );
       if (!targetEvent) return prevSeason;
 
       const nextAllEvents = safeAllEvents.map((e) =>
@@ -603,7 +858,9 @@ export default function App() {
           : e
       );
 
-      const safeResults = Array.isArray(prevSeason?.results) ? prevSeason.results : [];
+      const safeResults = Array.isArray(prevSeason?.results)
+        ? prevSeason.results
+        : [];
       const nextResults = safeResults.map((r) =>
         Number(r?.matchNo) === Number(targetEvent?.matchNo)
           ? buildUpdatedResultFromEvents(r, nextAllEvents)
@@ -623,13 +880,21 @@ export default function App() {
     if (!USE_V2) return;
 
     updateActiveSeason((prevSeason) => {
-      const safeAllEvents = Array.isArray(prevSeason?.allEvents) ? prevSeason.allEvents : [];
-      const targetEvent = safeAllEvents.find((e) => String(e?.id) === String(eventId));
+      const safeAllEvents = Array.isArray(prevSeason?.allEvents)
+        ? prevSeason.allEvents
+        : [];
+      const targetEvent = safeAllEvents.find(
+        (e) => String(e?.id) === String(eventId)
+      );
       if (!targetEvent) return prevSeason;
 
-      const nextAllEvents = safeAllEvents.filter((e) => String(e?.id) !== String(eventId));
+      const nextAllEvents = safeAllEvents.filter(
+        (e) => String(e?.id) !== String(eventId)
+      );
 
-      const safeResults = Array.isArray(prevSeason?.results) ? prevSeason.results : [];
+      const safeResults = Array.isArray(prevSeason?.results)
+        ? prevSeason.results
+        : [];
       const nextResults = safeResults.map((r) =>
         Number(r?.matchNo) === Number(targetEvent?.matchNo)
           ? buildUpdatedResultFromEvents(r, nextAllEvents)
@@ -649,7 +914,9 @@ export default function App() {
     if (!USE_V2) return;
 
     updateActiveSeason((prevSeason) => {
-      const safeAllEvents = Array.isArray(prevSeason?.allEvents) ? prevSeason.allEvents : [];
+      const safeAllEvents = Array.isArray(prevSeason?.allEvents)
+        ? prevSeason.allEvents
+        : [];
 
       const newEvent = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -663,7 +930,9 @@ export default function App() {
 
       const nextAllEvents = [...safeAllEvents, newEvent];
 
-      const safeResults = Array.isArray(prevSeason?.results) ? prevSeason.results : [];
+      const safeResults = Array.isArray(prevSeason?.results)
+        ? prevSeason.results
+        : [];
       const nextResults = safeResults.map((r) =>
         Number(r?.matchNo) === Number(matchNo)
           ? buildUpdatedResultFromEvents(r, nextAllEvents)
@@ -691,8 +960,12 @@ export default function App() {
       const safeCurrentEvents = Array.isArray(activeSeason?.currentEvents)
         ? activeSeason.currentEvents
         : [];
-      const safeResults = Array.isArray(activeSeason?.results) ? activeSeason.results : [];
-      const safeAllEvents = Array.isArray(activeSeason?.allEvents) ? activeSeason.allEvents : [];
+      const safeResults = Array.isArray(activeSeason?.results)
+        ? activeSeason.results
+        : [];
+      const safeAllEvents = Array.isArray(activeSeason?.allEvents)
+        ? activeSeason.allEvents
+        : [];
       const safeHistory = Array.isArray(activeSeason?.matchDayHistory)
         ? activeSeason.matchDayHistory
         : [];
@@ -740,8 +1013,16 @@ export default function App() {
 
   // ---------- SQUADS ----------
   const handleUpdateTeams = (updatedTeams) => {
+    if (!canManageSquads) {
+      window.alert("Only admin can update squads.");
+      return;
+    }
+
     if (USE_V2) {
-      updateActiveSeason((prevSeason) => ({ ...prevSeason, teams: updatedTeams }));
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        teams: updatedTeams,
+      }));
       return;
     }
     updateState((prev) => ({ ...prev, teams: updatedTeams }));
@@ -749,6 +1030,11 @@ export default function App() {
 
   // ---------- BACKUP / CLEAR ----------
   const openBackupModal = () => {
+    if (!isAdmin) {
+      window.alert("Only admin can open save / clear tools.");
+      return;
+    }
+
     setBackupCode("");
     setBackupError("");
     setShowBackupModal(true);
@@ -781,7 +1067,9 @@ export default function App() {
           standbyId: prevSeason.teams?.[2]?.id ?? null,
         },
         streaks: prevSeason.streaks
-          ? Object.fromEntries(Object.keys(prevSeason.streaks).map((tid) => [tid, 0]))
+          ? Object.fromEntries(
+              Object.keys(prevSeason.streaks).map((tid) => [tid, 0])
+            )
           : {},
         currentEvents: [],
         allEvents: [],
@@ -845,7 +1133,9 @@ export default function App() {
             standbyId: prevSeason.teams?.[2]?.id ?? null,
           },
           streaks: prevSeason.streaks
-            ? Object.fromEntries(Object.keys(prevSeason.streaks).map((tid) => [tid, 0]))
+            ? Object.fromEntries(
+                Object.keys(prevSeason.streaks).map((tid) => [tid, 0])
+              )
             : {},
           currentEvents: [],
           allEvents: [],
@@ -877,7 +1167,9 @@ export default function App() {
           standbyId: prev.teams?.[2]?.id ?? null,
         },
         streaks: prev.streaks
-          ? Object.fromEntries(Object.keys(prev.streaks).map((tid) => [tid, 0]))
+          ? Object.fromEntries(
+              Object.keys(prev.streaks).map((tid) => [tid, 0])
+            )
           : {},
         currentEvents: [],
         allEvents: [],
@@ -890,6 +1182,11 @@ export default function App() {
 
   // ---------- END SEASON ----------
   const openEndSeasonModal = () => {
+    if (!isAdmin) {
+      window.alert("Only admin can end the season.");
+      return;
+    }
+
     setEndSeasonCode("");
     setEndSeasonError("");
     setShowEndSeasonModal(true);
@@ -901,9 +1198,12 @@ export default function App() {
     setEndSeasonError("");
   };
 
-  // Guard: block End Season if match-day isn’t ended
   const handleRequestEndSeason = () => {
     if (!USE_V2) return;
+    if (!isAdmin) {
+      window.alert("Only admin can end the season.");
+      return;
+    }
 
     const hasUnendedMatchDay =
       (Array.isArray(results) && results.length > 0) ||
@@ -942,6 +1242,8 @@ export default function App() {
       setTimeUp(false);
       setSecondsLeft(MATCH_SECONDS);
       setHasLiveMatch(false);
+      setPendingMatchStartContext(null);
+      setCurrentConfirmedLineupSnapshot(null);
 
       const { seasonId, seasonNo } = nextSeasonIdFromExisting(safePrev.seasons);
       const { activeSeason } = getActiveSeasonFromV2State(safePrev);
@@ -958,7 +1260,9 @@ export default function App() {
           standbyId: baseTeams?.[2]?.id ?? null,
         },
         streaks: activeSeason?.streaks
-          ? Object.fromEntries(Object.keys(activeSeason.streaks).map((tid) => [tid, 0]))
+          ? Object.fromEntries(
+              Object.keys(activeSeason.streaks).map((tid) => [tid, 0])
+            )
           : {},
         currentEvents: [],
         allEvents: [],
@@ -1032,10 +1336,19 @@ export default function App() {
           onGoToEntryDev={() => setPage(PAGE_ENTRY)}
           onGoToMigration={() => setPage(PAGE_MIGRATION)}
           identity={identity}
+          activeRole={activeRole}
+          isAdmin={isAdmin}
+          isCaptain={isCaptain}
+          isPlayer={isPlayer}
+          isSpectator={isSpectator}
+          canStartMatch={canStartMatch}
+          canManageSquads={canManageSquads}
         />
       )}
 
-      {page === PAGE_MIGRATION && <MigrationPage onBack={() => setPage(PAGE_LANDING)} />}
+      {page === PAGE_MIGRATION && (
+        <MigrationPage onBack={() => setPage(PAGE_LANDING)} />
+      )}
 
       {page === PAGE_LIVE && (
         <LiveMatchPage
@@ -1047,6 +1360,17 @@ export default function App() {
           currentMatchNo={currentMatchNo}
           currentMatch={currentMatch}
           currentEvents={currentEvents}
+          identity={identity}
+          activeRole={activeRole}
+          isAdmin={isAdmin}
+          isCaptain={isCaptain}
+          canControlMatch={canStartMatch}
+          pendingMatchStartContext={pendingMatchStartContext}
+          confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
+          confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
+          playerPhotosByName={playerPhotosByName}
+          onConfirmPreMatchLineups={handleConfirmPreMatchLineups}
+          onCancelPreMatchLineups={handleCancelPreMatchLineups}
           onAddEvent={handleAddEvent}
           onDeleteEvent={handleDeleteEvent}
           onUndoLastEvent={handleUndoLastEvent}
@@ -1076,7 +1400,9 @@ export default function App() {
           archivedEvents={archivedEventsFromHistory}
           cameFromLive={statsReturnPage === PAGE_LIVE}
           onBack={() =>
-            statsReturnPage === PAGE_LIVE ? handleBackToLive() : handleBackToLanding()
+            statsReturnPage === PAGE_LIVE
+              ? handleBackToLive()
+              : handleBackToLanding()
           }
           onGoToPlayerCards={() => setPage(PAGE_PLAYER_CARDS)}
           onGoToPeerReview={() => setPage(PAGE_PEER_REVIEW)}
@@ -1090,7 +1416,7 @@ export default function App() {
           onDeleteSavedEvent={handleDeleteSavedEvent}
           onAddSavedEvent={handleAddSavedEvent}
           onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
-          canPreviewPreviousSeasonUI={IS_STAGING && isAdmin}
+          canPreviewPreviousSeasonUI={canPreviewPreviousSeasonUI}
           isAdmin={isAdmin}
         />
       )}
@@ -1144,6 +1470,9 @@ export default function App() {
           teams={teams}
           onUpdateTeams={handleUpdateTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
+          identity={identity}
+          isAdmin={isAdmin}
+          activeRole={activeRole}
         />
       )}
 
@@ -1163,8 +1492,8 @@ export default function App() {
           <div className="modal">
             <h3>Save / Clear Turf Kings Data</h3>
             <p>
-              Save this match-day to Firebase (via state sync) and start a fresh week, or clear
-              the current week without saving.
+              Save this match-day to Firebase (via state sync) and start a fresh
+              week, or clear the current week without saving.
             </p>
             <div className="field-row">
               <label>Admin code (Nkululeko)</label>
@@ -1186,7 +1515,10 @@ export default function App() {
               <button className="secondary-btn" onClick={handleClearOnly}>
                 Clear only
               </button>
-              <button className="primary-btn" onClick={handleSaveAndClearMatchDay}>
+              <button
+                className="primary-btn"
+                onClick={handleSaveAndClearMatchDay}
+              >
                 Save to Firebase &amp; clear
               </button>
             </div>
@@ -1199,8 +1531,9 @@ export default function App() {
           <div className="modal">
             <h3>End Season</h3>
             <p>
-              This will create a <strong>new season</strong> and make it active. The current
-              season’s history remains saved in Firestore. (End Match Day is separate.)
+              This will create a <strong>new season</strong> and make it active.
+              The current season’s history remains saved in Firestore. (End
+              Match Day is separate.)
             </p>
             <div className="field-row">
               <label>Admin code (Nkululeko)</label>
@@ -1219,7 +1552,10 @@ export default function App() {
               <button className="secondary-btn" onClick={closeEndSeasonModal}>
                 Cancel
               </button>
-              <button className="primary-btn" onClick={handleEndSeasonAndCreateNew}>
+              <button
+                className="primary-btn"
+                onClick={handleEndSeasonAndCreateNew}
+              >
                 Create new season
               </button>
             </div>

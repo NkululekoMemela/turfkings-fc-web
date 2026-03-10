@@ -1,12 +1,10 @@
 // src/pages/StatsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMemberNameMap } from "../core/nameMapping.js";
-
-// ✅ Only used to pull captain photos the same way PlayerCards does
 import { db } from "../firebaseConfig";
 import { collection, getDocs } from "firebase/firestore";
 
-// ---------------- HELPERS (mirrors PlayerCardPage style) ----------------
+// ---------------- HELPERS ----------------
 function toTitleCase(name) {
   return String(name || "")
     .trim()
@@ -17,7 +15,6 @@ function toTitleCase(name) {
     .join(" ");
 }
 
-// For legacy photo doc ids (and your uploader)
 function slugFromName(name) {
   return String(name || "")
     .trim()
@@ -41,6 +38,15 @@ function isoDateOnly(x) {
   return m ? m[1] : "";
 }
 
+function formatEventTypeLabel(type, role = "") {
+  if (type === "clean_sheet") {
+    if (role === "gk") return "clean sheet (GK)";
+    if (role === "def") return "clean sheet (DEF)";
+    return "clean sheet";
+  }
+  return "goal";
+}
+
 // ---------------- PAGE ----------------
 export function StatsPage({
   teams = [],
@@ -54,31 +60,18 @@ export function StatsPage({
   archivedResults = [],
   archivedEvents = [],
   members = [],
-
-  // ✅ V2: season switching context
   activeSeasonId = null,
   seasons = [],
-
-  // ✅ photo map prop (already in your app state)
   playerPhotosByName = {},
-
-  // ✅ NEW: pass full matchDayHistory from App.jsx (so we have dates!)
   matchDayHistory = [],
-
-  // ✅ Admin hooks
   onDeleteSavedMatch = null,
   onUpdateSavedEvent = null,
   onDeleteSavedEvent = null,
   onAddSavedEvent = null,
   onDeleteCurrentEmptySeason = null,
-
-  // ✅ Admin preview mode
   canPreviewPreviousSeasonUI = false,
-
-  // ✅ NEW: hard admin gate
   isAdmin = false,
 }) {
-  // ---------- Safety ----------
   const safeMembers = Array.isArray(members) ? members : [];
   const safeSeasons = Array.isArray(seasons) ? seasons : [];
   const safePlayerPhotosByName =
@@ -100,11 +93,8 @@ export function StatsPage({
     : [];
 
   const isAdminUser = Boolean(isAdmin);
-
-  // Member-based name normalisation
   const { normalizeName } = useMemberNameMap(safeMembers);
 
-  // ---------- Helpers: Season label + date range ----------
   const formatSeasonDisplayName = (season) => {
     const sid = season?.seasonId || "";
     const match = String(sid).match(/^(\d{4})-S(\d+)$/i);
@@ -163,7 +153,6 @@ export function StatsPage({
     return { startISO, endISO };
   };
 
-  // ---------- Season selector ----------
   const CURRENT_SCOPE = "__CURRENT__";
   const PREVIEW_PREVIOUS_SCOPE = "__PREVIEW_PREVIOUS__";
   const [seasonScope, setSeasonScope] = useState(CURRENT_SCOPE);
@@ -184,8 +173,9 @@ export function StatsPage({
     if (
       seasonScope === CURRENT_SCOPE ||
       seasonScope === PREVIEW_PREVIOUS_SCOPE
-    )
+    ) {
       return null;
+    }
     return safeSeasons.find((s) => s?.seasonId === seasonScope) || null;
   }, [safeSeasons, seasonScope]);
 
@@ -194,7 +184,8 @@ export function StatsPage({
     return safeSeasons.find((s) => s?.seasonId === activeSeasonId) || null;
   }, [safeSeasons, seasonScope, activeSeasonId]);
 
-  const selectedPrevSeason = selectedPreviewPrevSeason || selectedRealPrevSeason;
+  const selectedPrevSeason =
+    selectedPreviewPrevSeason || selectedRealPrevSeason;
 
   const isPreviewingPreviousSeasonUI =
     isAdminUser &&
@@ -203,7 +194,6 @@ export function StatsPage({
 
   const isViewingPreviousSeason = seasonScope !== CURRENT_SCOPE;
 
-  // ✅ Only admin can ever see this
   const canShowDeleteCurrentEmptySeason = useMemo(() => {
     return (
       isAdminUser &&
@@ -218,14 +208,12 @@ export function StatsPage({
     previousSeasonOptions,
   ]);
 
-  // ---------- Pull the correct TEAMS based on selected scope ----------
   const scopedTeams = useMemo(() => {
     if (!isViewingPreviousSeason) return safeTeamsProp;
     const t = selectedPrevSeason?.teams;
     return Array.isArray(t) ? t : [];
   }, [isViewingPreviousSeason, safeTeamsProp, selectedPrevSeason]);
 
-  // Helper: attach matchday metadata to results/events so we can filter by date cleanly
   const attachMatchDayMeta = (items, matchDayId) => {
     const id = matchDayId ? String(matchDayId) : "";
     const dateLabel = isoDateOnly(id) || isoDateOnly(matchDayId) || "";
@@ -236,7 +224,6 @@ export function StatsPage({
     }));
   };
 
-  // Determine current matchday id (best-effort)
   const currentMatchDayId = useMemo(() => {
     const cm = currentMatchDay || {};
     return (
@@ -250,7 +237,6 @@ export function StatsPage({
     );
   }, [currentMatchDay]);
 
-  // ✅ IMPORTANT: build archived from real matchDayHistory (CURRENT season)
   const scopedArchivedResults = useMemo(() => {
     if (isViewingPreviousSeason) {
       const mh = Array.isArray(selectedPrevSeason?.matchDayHistory)
@@ -337,8 +323,7 @@ export function StatsPage({
     currentMatchDayId,
   ]);
 
-  // ---------- VIEW MODE ----------
-  const [viewMode, setViewMode] = useState("current"); // "current" | "season"
+  const [viewMode, setViewMode] = useState("current");
   useEffect(() => {
     if (isViewingPreviousSeason) setViewMode("season");
   }, [isViewingPreviousSeason]);
@@ -373,16 +358,17 @@ export function StatsPage({
     scopedCurrentEvents,
   ]);
 
-  // ---------- NORMALISED EVENTS ----------
   const visibleEvents = useMemo(() => {
-    return (visibleEventsRaw || []).map((e) => ({
-      ...e,
-      scorer: normalizeName(e?.scorer),
-      assist: normalizeName(e?.assist),
-    }));
+    return (visibleEventsRaw || [])
+      .filter((e) => e?.type !== "shibobo")
+      .map((e) => ({
+        ...e,
+        scorer: normalizeName(e?.scorer),
+        assist: normalizeName(e?.assist),
+        playerName: normalizeName(e?.playerName),
+      }));
   }, [visibleEventsRaw, normalizeName]);
 
-  // ---------- Team maps ----------
   const teamById = useMemo(() => {
     const map = new Map();
     (scopedTeams || []).forEach((t) => {
@@ -428,7 +414,6 @@ export function StatsPage({
     return map;
   }, [scopedTeams, normalizeName]);
 
-  // ---------- TEAM TABLE (Standings) ----------
   const teamStats = useMemo(() => {
     const base = {};
     (scopedTeams || []).forEach((t) => {
@@ -494,7 +479,6 @@ export function StatsPage({
     return arr;
   }, [scopedTeams, visibleResultsRaw]);
 
-  // ---------------- PHOTO PULLING (MATCH PlayerCardPage LOGIC) ----------------
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
 
   useEffect(() => {
@@ -610,7 +594,6 @@ export function StatsPage({
     return null;
   };
 
-  // ---------- Champion recap (previous seasons only) ----------
   const champion = useMemo(() => {
     if (!isViewingPreviousSeason) return null;
     if (!Array.isArray(teamStats) || teamStats.length === 0) return null;
@@ -676,7 +659,6 @@ export function StatsPage({
     getPlayerPhotoLikeCards,
   ]);
 
-  // ---------- PLAYER STATS ----------
   const playerStats = useMemo(() => {
     const stats = {};
 
@@ -687,7 +669,10 @@ export function StatsPage({
           name: playerName,
           goals: 0,
           assists: 0,
-          shibobos: 0,
+          cleanSheets: 0,
+          gkCleanSheets: 0,
+          defCleanSheets: 0,
+          total: 0,
         };
       }
       return stats[playerName];
@@ -696,11 +681,22 @@ export function StatsPage({
     (visibleEvents || []).forEach((e) => {
       if (!e) return;
 
+      if (e.type === "clean_sheet") {
+        const cleanSheetHolder = e.playerName || e.scorer || "";
+        const holder = normalizeName(cleanSheetHolder);
+        const p = getOrCreate(holder);
+        if (!p) return;
+
+        p.cleanSheets += 1;
+        if (e.role === "gk") p.gkCleanSheets += 1;
+        if (e.role === "def") p.defCleanSheets += 1;
+        return;
+      }
+
       if (e.scorer) {
         const s = getOrCreate(e.scorer);
         if (!s) return;
         if (e.type === "goal") s.goals += 1;
-        else if (e.type === "shibobo") s.shibobos += 1;
       }
 
       if (e.assist) {
@@ -712,11 +708,11 @@ export function StatsPage({
 
     Object.values(stats).forEach((p) => {
       p.teamName = playerTeamMap[p.name] || "—";
-      p.total = p.goals + p.assists + p.shibobos;
+      p.total = p.goals + p.assists + p.cleanSheets;
     });
 
     return Object.values(stats);
-  }, [visibleEvents, playerTeamMap]);
+  }, [visibleEvents, playerTeamMap, normalizeName]);
 
   const combinedLeaderboard = useMemo(() => {
     const arr = playerStats.filter((p) => (p.total || 0) > 0).slice();
@@ -724,7 +720,7 @@ export function StatsPage({
       if (y.total !== x.total) return y.total - x.total;
       if (y.goals !== x.goals) return y.goals - x.goals;
       if (y.assists !== x.assists) return y.assists - x.assists;
-      if (y.shibobos !== x.shibobos) return y.shibobos - x.shibobos;
+      if (y.cleanSheets !== x.cleanSheets) return y.cleanSheets - x.cleanSheets;
       return (x.name || "").localeCompare(y.name || "");
     });
     return arr;
@@ -748,7 +744,21 @@ export function StatsPage({
     return arr;
   }, [playerStats]);
 
-  // ---------- Matchday filter buttons (All + date pills) ----------
+  const cleanSheetLeaderboard = useMemo(() => {
+    const arr = playerStats.filter((p) => (p.cleanSheets || 0) > 0).slice();
+    arr.sort((x, y) => {
+      if (y.cleanSheets !== x.cleanSheets) return y.cleanSheets - x.cleanSheets;
+      if (y.gkCleanSheets !== x.gkCleanSheets) {
+        return y.gkCleanSheets - x.gkCleanSheets;
+      }
+      if (y.defCleanSheets !== x.defCleanSheets) {
+        return y.defCleanSheets - x.defCleanSheets;
+      }
+      return (x.name || "").localeCompare(y.name || "");
+    });
+    return arr;
+  }, [playerStats]);
+
   const matchDayOptions = useMemo(() => {
     const map = new Map();
     (visibleResultsRaw || []).forEach((r) => {
@@ -794,7 +804,6 @@ export function StatsPage({
     );
   }, [visibleEvents, matchDayFilter]);
 
-  // ---------- FULL MATCH LIST + EVENTS BREAKDOWN ----------
   const sortedResults = useMemo(() => {
     const arr = (filteredResults || []).slice();
     arr.sort((a, b) => Number(a?.matchNo || 0) - Number(b?.matchNo || 0));
@@ -829,11 +838,9 @@ export function StatsPage({
     setExpandedMatchKey((prev) => (prev === key ? null : key));
   };
 
-  // ✅ current-week/current-season only admin guard
   const canAdminEditThisView =
     isAdminUser && !isViewingPreviousSeason && viewMode === "current";
 
-  // ---------- EVENT EDIT ----------
   const [editingEventId, setEditingEventId] = useState(null);
   const [eventDraft, setEventDraft] = useState({
     scorer: "",
@@ -844,12 +851,18 @@ export function StatsPage({
 
   const startEditEvent = (e) => {
     if (!canAdminEditThisView) return;
+    if (e?.type === "clean_sheet") {
+      window.alert(
+        "Clean-sheet events are generated from verified lineups and match result. Edit the score/result instead of editing this event directly."
+      );
+      return;
+    }
 
     setEditingEventId(String(e?.id || ""));
     setEventDraft({
       scorer: e?.scorer || "",
       assist: e?.assist || "",
-      type: e?.type === "shibobo" ? "shibobo" : "goal",
+      type: "goal",
       teamId: e?.teamId || "",
     });
   };
@@ -879,14 +892,13 @@ export function StatsPage({
     onUpdateSavedEvent(e?.id, {
       scorer,
       assist: assistRaw && assistRaw !== scorer ? assistRaw : null,
-      type: eventDraft?.type === "shibobo" ? "shibobo" : "goal",
+      type: "goal",
       teamId: eventDraft?.teamId || e?.teamId || "",
     });
 
     cancelEditEvent();
   };
 
-  // ---------- ADD EVENT ----------
   const [addingForMatchKey, setAddingForMatchKey] = useState(null);
   const [newEventDraft, setNewEventDraft] = useState({
     scorer: "",
@@ -932,14 +944,13 @@ export function StatsPage({
     onAddSavedEvent(r?.matchNo, {
       scorer,
       assist: assistRaw && assistRaw !== scorer ? assistRaw : null,
-      type: newEventDraft?.type === "shibobo" ? "shibobo" : "goal",
+      type: "goal",
       teamId: newEventDraft?.teamId || r?.teamAId || "",
     });
 
     cancelAddEvent();
   };
 
-  // ---------- KEEP ASSIST DIFFERENT FROM SCORER ----------
   useEffect(() => {
     if (!editingEventId) return;
     if (eventDraft.assist && eventDraft.assist === eventDraft.scorer) {
@@ -954,7 +965,6 @@ export function StatsPage({
     }
   }, [addingForMatchKey, newEventDraft.scorer, newEventDraft.assist]);
 
-  // ---------- TEAM-PLAYER DRAFT SAFETY ----------
   useEffect(() => {
     if (!editingEventId) return;
 
@@ -989,7 +999,6 @@ export function StatsPage({
     }));
   }, [addingForMatchKey, newEventDraft.teamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---------- DELETE ----------
   const canDeleteFromThisView =
     canAdminEditThisView && typeof onDeleteSavedMatch === "function";
 
@@ -1011,15 +1020,19 @@ export function StatsPage({
     if (!canAdminEditThisView) return;
     if (typeof onDeleteSavedEvent !== "function") return;
 
+    const eventLabel =
+      e?.type === "clean_sheet"
+        ? `${e?.playerName || e?.scorer || "this player"} clean-sheet event`
+        : `${e?.scorer || "this player"} event`;
+
     const ok = window.confirm(
-      `Delete this saved event for ${e?.scorer || "this player"}?\n\nThe score and standings will now update automatically from the goal events.`
+      `Delete ${eventLabel}?\n\nThe score and standings will now update automatically from the remaining events.`
     );
     if (!ok) return;
 
     onDeleteSavedEvent(e?.id);
   };
 
-  // ---------- AUTO-RETURN WHEN ACCESSED FROM LIVE ----------
   const inactivityTimerRef = useRef(null);
 
   useEffect(() => {
@@ -1064,10 +1077,8 @@ export function StatsPage({
     };
   }, [cameFromLive, onBack]);
 
-  // ---------- TABS ----------
   const [activeTab, setActiveTab] = useState("teams");
 
-  // ---------- Headers / date ranges ----------
   const currentSeasonRange = useMemo(() => {
     const now = new Date();
     const fmt = new Intl.DateTimeFormat(undefined, {
@@ -1107,7 +1118,6 @@ export function StatsPage({
     return currentSeasonRange;
   }, [isViewingPreviousSeason, previousSeasonRange, currentSeasonRange]);
 
-  // ---------- Champion season label ----------
   const championSeasonLabel = useMemo(() => {
     if (!selectedPrevSeason) return "";
 
@@ -1123,11 +1133,11 @@ export function StatsPage({
     return "Season Champions";
   }, [selectedPrevSeason]);
 
-  // ---------- Previous season arrow navigation ----------
   const previousSeasonTabOrder = [
     "teams",
     "goals",
     "assists",
+    "cleansheets",
     "matches",
     "combined",
   ];
@@ -1152,12 +1162,12 @@ export function StatsPage({
     if (activeTab === "teams") return "Team Standings";
     if (activeTab === "goals") return "Top Scorers";
     if (activeTab === "assists") return "Playmakers";
+    if (activeTab === "cleansheets") return "Clean Sheets";
     if (activeTab === "matches") return "Match Results";
     if (activeTab === "combined") return "Summary Player Stats";
     return "Team Standings";
   }, [activeTab]);
 
-  // ---------- RENDER ----------
   return (
     <div className="page stats-page">
       <header className="header">
@@ -1205,7 +1215,6 @@ export function StatsPage({
           cursor: pointer;
           color: #ffffff;
         }
-
         .tk-md-label {
           opacity: 0.95;
           color: #ffffff;
@@ -1213,9 +1222,6 @@ export function StatsPage({
         .tk-md-btn.active {
           border-color: rgba(34,211,238,0.55);
           box-shadow: 0 0 0 2px rgba(34,211,238,0.12);
-        }
-        .tk-md-label {
-          opacity: 0.95;
         }
         .tk-md-muted {
           opacity: 0.6;
@@ -1287,21 +1293,14 @@ export function StatsPage({
           margin-bottom: 0.22rem;
           opacity: 0.88;
         }
-        .tk-small-input,
         .tk-small-select {
           width: 100%;
           padding: 0.45rem 0.55rem;
           border-radius: 10px;
           border: 1px solid rgba(255,255,255,0.14);
-          color: inherit;
-        }
-        .tk-small-input {
-          background: rgba(255,255,255,0.06);
-        }
-        .tk-small-select {
+          color: #ffffff;
           background: rgba(16, 185, 129, 0.28);
           border-color: rgba(16, 185, 129, 0.5);
-          color: #ffffff;
         }
         .tk-small-select option {
           background: #065f46;
@@ -1338,7 +1337,6 @@ export function StatsPage({
         }
       `}</style>
 
-      {/* ---------- Season Picker ---------- */}
       <section className="card">
         <h2>Season</h2>
 
@@ -1454,7 +1452,6 @@ export function StatsPage({
         </div>
       </section>
 
-      {/* ---------- View toggle (Current season ONLY) ---------- */}
       {!isViewingPreviousSeason && (
         <section className="card">
           <h2>View</h2>
@@ -1523,6 +1520,16 @@ export function StatsPage({
               </button>
               <button
                 className={
+                  activeTab === "cleansheets"
+                    ? "secondary-btn active"
+                    : "secondary-btn"
+                }
+                onClick={() => setActiveTab("cleansheets")}
+              >
+                Clean Sheets
+              </button>
+              <button
+                className={
                   activeTab === "combined"
                     ? "secondary-btn active"
                     : "secondary-btn"
@@ -1536,7 +1543,6 @@ export function StatsPage({
         </section>
       )}
 
-      {/* ---------- Champion Recap (Previous Seasons) ---------- */}
       {isViewingPreviousSeason && champion && (
         <section className="card">
           <h2>
@@ -1723,7 +1729,6 @@ export function StatsPage({
         </section>
       )}
 
-      {/* ---------- Previous Season Arrow Navigation ---------- */}
       {isViewingPreviousSeason && (
         <section className="card" style={{ paddingTop: "14px", paddingBottom: "14px" }}>
           <div
@@ -1791,7 +1796,6 @@ export function StatsPage({
         </section>
       )}
 
-      {/* ---------- Team Standings ---------- */}
       {activeTab === "teams" && (
         <section className="card">
           <h2>
@@ -1854,7 +1858,6 @@ export function StatsPage({
         </section>
       )}
 
-      {/* ---------- Player Rankings ---------- */}
       {activeTab === "combined" && (
         <section className="card">
           <h2>
@@ -1875,8 +1878,8 @@ export function StatsPage({
                   <th>Team</th>
                   <th>Goals</th>
                   <th>Assists</th>
-                  <th>Saves</th>
-                  <th>G-A-S</th>
+                  <th>CS</th>
+                  <th>G-A-CS</th>
                 </tr>
               </thead>
               <tbody>
@@ -1894,7 +1897,7 @@ export function StatsPage({
                     <td>{p.teamName || "—"}</td>
                     <td>{p.goals}</td>
                     <td>{p.assists}</td>
-                    <td>{p.shibobos}</td>
+                    <td>{p.cleanSheets}</td>
                     <td>{p.total}</td>
                   </tr>
                 ))}
@@ -1904,7 +1907,6 @@ export function StatsPage({
         </section>
       )}
 
-      {/* ---------- Top Scorers ---------- */}
       {activeTab === "goals" && (
         <section className="card">
           <h2>
@@ -1948,7 +1950,6 @@ export function StatsPage({
         </section>
       )}
 
-      {/* ---------- Playmakers ---------- */}
       {activeTab === "assists" && (
         <section className="card">
           <h2>
@@ -1992,7 +1993,53 @@ export function StatsPage({
         </section>
       )}
 
-      {/* ---------- Match Results ---------- */}
+      {activeTab === "cleansheets" && (
+        <section className="card">
+          <h2>
+            {isViewingPreviousSeason
+              ? isPreviewingPreviousSeasonUI
+                ? "Clean Sheets — Previous Season Preview"
+                : "Clean Sheets — Previous Season"
+              : viewMode === "season"
+              ? "Clean Sheets — Current Season"
+              : "Clean Sheets — Current Week"}
+          </h2>
+          <div className="table-wrapper">
+            <table className="stats-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th>Team</th>
+                  <th>Saves CS</th>
+                  <th>Defense CS</th>
+                  <th>Total CS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cleanSheetLeaderboard.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="muted">
+                      No clean sheets recorded yet.
+                    </td>
+                  </tr>
+                )}
+                {cleanSheetLeaderboard.map((p, idx) => (
+                  <tr key={p.name + "-cs"}>
+                    <td>{idx + 1}</td>
+                    <td>{p.name}</td>
+                    <td>{p.teamName || "—"}</td>
+                    <td>{p.gkCleanSheets}</td>
+                    <td>{p.defCleanSheets}</td>
+                    <td>{p.cleanSheets}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {activeTab === "matches" && (
         <section className="card">
           <h2>
@@ -2072,10 +2119,15 @@ export function StatsPage({
 
                   const events = eventsByMatchKey.get(mk) || [];
 
-                  const teamAEvents = events.filter(
+                  const scoringEventsOnly = events.filter(
+                    (e) => e?.type !== "clean_sheet"
+                  );
+
+                  const teamAEvents = scoringEventsOnly.filter(
                     (e) => e.teamId === r.teamAId && e.scorer
                   );
-                  const teamBEvents = events.filter(
+
+                  const teamBEvents = scoringEventsOnly.filter(
                     (e) => e.teamId === r.teamBId && e.scorer
                   );
 
@@ -2120,15 +2172,17 @@ export function StatsPage({
                         <tr className="match-details-row">
                           <td />
                           <td>
-                            {events.length === 0 ? (
+                            {scoringEventsOnly.length === 0 ? (
                               <span className="muted">
-                                No event breakdown recorded.
+                                No goal or assist breakdown recorded.
                               </span>
                             ) : teamAEvents.length === 0 ? null : (
                               <div className="team-scorers">
                                 {teamAEvents.map((e, i) => {
-                                  const actionLabel =
-                                    e.type === "shibobo" ? "shibobo" : "goal";
+                                  const actionLabel = formatEventTypeLabel(
+                                    e.type,
+                                    e.role
+                                  );
                                   const isEditingThisEvent =
                                     editingEventId === String(e?.id || "");
 
@@ -2240,7 +2294,6 @@ export function StatsPage({
                                                 }
                                               >
                                                 <option value="goal">goal</option>
-                                                <option value="shibobo">shibobo</option>
                                               </select>
                                             </div>
                                             <div>
@@ -2289,15 +2342,17 @@ export function StatsPage({
                           </td>
                           <td />
                           <td>
-                            {events.length === 0 ? (
+                            {scoringEventsOnly.length === 0 ? (
                               <span className="muted">
-                                No event breakdown recorded.
+                                No goal or assist breakdown recorded.
                               </span>
                             ) : teamBEvents.length === 0 ? null : (
                               <div className="team-scorers">
                                 {teamBEvents.map((e, i) => {
-                                  const actionLabel =
-                                    e.type === "shibobo" ? "shibobo" : "goal";
+                                  const actionLabel = formatEventTypeLabel(
+                                    e.type,
+                                    e.role
+                                  );
                                   const isEditingThisEvent =
                                     editingEventId === String(e?.id || "");
 
@@ -2409,7 +2464,6 @@ export function StatsPage({
                                                 }
                                               >
                                                 <option value="goal">goal</option>
-                                                <option value="shibobo">shibobo</option>
                                               </select>
                                             </div>
                                             <div>
@@ -2559,7 +2613,6 @@ export function StatsPage({
                                           }
                                         >
                                           <option value="goal">goal</option>
-                                          <option value="shibobo">shibobo</option>
                                         </select>
                                       </div>
                                       <div>

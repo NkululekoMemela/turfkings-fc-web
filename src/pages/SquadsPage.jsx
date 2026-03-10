@@ -18,6 +18,9 @@ const UNSEEDED_ID = "__unseeded__";
 // ✅ matches your Firestore screenshots
 const PLAYERS_COLLECTION = "players";
 
+// ✅ hard admin gate
+const ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
+
 /* ---------------- Helpers ---------------- */
 
 function toTitleCase(name) {
@@ -47,6 +50,58 @@ function normalizeAbbrev(v) {
 
 function isValidAbbrev(v) {
   return /^[A-Z]{3}$/.test(String(v || ""));
+}
+
+function isAdminIdentity(identity) {
+  if (!identity || typeof identity !== "object") return false;
+
+  const emailCandidates = [
+    identity.email,
+    identity.userEmail,
+    identity.gmail,
+    identity.googleEmail,
+  ]
+    .map((x) => String(x || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (emailCandidates.some((email) => ADMIN_EMAILS.includes(email))) {
+    return true;
+  }
+
+  const roleCandidates = [
+    identity.role,
+    identity.userRole,
+    identity.accountType,
+  ]
+    .map((x) => String(x || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (roleCandidates.includes("admin")) {
+    return true;
+  }
+
+  const nameCandidates = [
+    identity.name,
+    identity.displayName,
+    identity.fullName,
+    identity.playerName,
+    identity.shortName,
+  ]
+    .map((x) => String(x || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (
+    nameCandidates.some(
+      (name) =>
+        name === "nkululeko" ||
+        name === "nkululeko memela" ||
+        name === "nk"
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 // Pick a "best" full display name from a player doc.
@@ -112,11 +167,9 @@ function resolvePlayerIdFromString(allPlayers, raw) {
   const needle = toTitleCase(raw).toLowerCase();
   if (!needle) return null;
 
-  // exact id match
   const direct = allPlayers.find((p) => String(p.id).toLowerCase() === needle);
   if (direct) return direct.id;
 
-  // match against name/fullName/shortName/aliases
   for (const p of allPlayers) {
     const candidates = buildIdentityStrings(p);
     if (candidates.includes(needle)) return p.id;
@@ -130,12 +183,14 @@ function parseChoiceToPlayerId(value) {
   if (!v) return null;
   const parts = v.split("|").map((x) => x.trim());
   if (parts.length >= 2 && parts[0]) return parts[0];
-  return v; // allow plain id input
+  return v;
 }
 
 /* ---------------- Component ---------------- */
 
-export function SquadsPage({ teams, onUpdateTeams, onBack }) {
+export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
+  const isAdmin = isAdminIdentity(identity);
+
   // Local editable copy of teams (store playerIds internally where possible)
   const [localTeams, setLocalTeams] = useState(() =>
     (teams || []).map((t) => ({
@@ -143,9 +198,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
       label: t.label || "",
       abbrev: normalizeAbbrev(t.abbrev || ""),
       players: [...(t.players || [])],
-      // new canonical captain storage:
       captainId: t.captainId || null,
-      // keep legacy captain string if it exists:
       captain: t.captain || "",
     }))
   );
@@ -163,6 +216,21 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
+
+  /* ---------------- Sync local teams from prop ---------------- */
+
+  useEffect(() => {
+    setLocalTeams(
+      (teams || []).map((t) => ({
+        ...t,
+        label: t.label || "",
+        abbrev: normalizeAbbrev(t.abbrev || ""),
+        players: [...(t.players || [])],
+        captainId: t.captainId || null,
+        captain: t.captain || "",
+      }))
+    );
+  }, [teams]);
 
   /* ---------------- Firestore subscription ---------------- */
 
@@ -195,14 +263,12 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
 
   /* ---------------- Display helpers ---------------- */
 
-  // For lists (Manage squads), prefer FULL NAME (or best alias)
   const displayNameOf = (playerIdOrLegacy) => {
     const p = playersById.get(playerIdOrLegacy);
     if (!p) return toTitleCase(playerIdOrLegacy);
     return bestFullDisplayFromPlayer({ ...p, id: p.id });
   };
 
-  // For compact labels (captain tag), prefer SHORTNAME then name
   const displayShortOf = (playerIdOrLegacy) => {
     const p = playersById.get(playerIdOrLegacy);
     if (!p) return toTitleCase(playerIdOrLegacy);
@@ -220,14 +286,12 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
 
     setLocalTeams((prev) =>
       prev.map((t) => {
-        // Normalize players list entries -> ids if possible
         const nextPlayers = (t.players || []).map((entry) => {
           if (playersById.has(entry)) return entry;
           const resolved = resolvePlayerIdFromString(allPlayers, entry);
-          return resolved || entry; // keep unresolved legacy as-is
+          return resolved || entry;
         });
 
-        // Dedup
         const seen = new Set();
         const deduped = [];
         for (const x of nextPlayers) {
@@ -237,7 +301,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
           deduped.push(x);
         }
 
-        // Normalize captainId from legacy captain string if missing
         let captainId = t.captainId || null;
         if (!captainId && t.captain) {
           const resolvedCaptain = resolvePlayerIdFromString(allPlayers, t.captain);
@@ -289,29 +352,29 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
   /* ---------------- Input handlers ---------------- */
 
   const handlePendingChange = (id, value) => {
+    if (!isAdmin) return;
     setPendingNames((prev) => ({ ...prev, [id]: value }));
     setAddErrors((prev) => ({ ...prev, [id]: "" }));
   };
 
   const handleTeamLabelChange = (teamId, value) => {
+    if (!isAdmin) return;
     setLocalTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, label: value } : t))
     );
   };
 
   const handleTeamAbbrevChange = (teamId, value) => {
+    if (!isAdmin) return;
     const next = normalizeAbbrev(value);
     setLocalTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, abbrev: next } : t))
     );
   };
 
-  /**
-   * Captain selection:
-   * - captain should be a real playerId
-   * - if captain not in team players, we auto-add them to the team
-   */
   const handleCaptainChange = (teamId, captainId) => {
+    if (!isAdmin) return;
+
     setLocalTeams((prev) =>
       prev.map((t) => {
         if (t.id !== teamId) return t;
@@ -324,7 +387,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
         return {
           ...t,
           captainId: captainId || null,
-          // keep a human-readable legacy string too (nice for other pages)
           captain: captainId ? displayShortOf(captainId) : t.captain || "",
           players: nextPlayers,
         };
@@ -334,12 +396,10 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
 
   /* ---------------- DB helpers ---------------- */
 
-  // Ensure a player exists in DB with a stable id (no random addDoc ids)
   const ensurePlayerInDb = async (canonicalFullNameOrName) => {
     const fullName = toTitleCase(canonicalFullNameOrName);
     if (!fullName) return null;
 
-    // If it already exists by fullName/name/shortName/aliases, return its id
     const existing = allPlayers.find((p) => {
       const candidates = buildIdentityStrings({ ...p, id: p.id });
       return candidates.includes(fullName.toLowerCase());
@@ -365,13 +425,14 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
   };
 
   const handleAddPlayer = async (id) => {
+    if (!isAdmin) return;
+
     const raw = pendingNames[id] || "";
     const trimmed = raw.trim();
     if (!trimmed) return;
 
     let chosenId = parseChoiceToPlayerId(trimmed);
 
-    // If they typed a name, try resolve; otherwise create
     if (!playersById.has(chosenId)) {
       const resolved = resolvePlayerIdFromString(allPlayers, chosenId);
       if (resolved) {
@@ -383,14 +444,12 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
       }
     }
 
-    // locate where this player currently lives
     const teamIndex = localTeams.findIndex((t) =>
       (t.players || []).some((pid) => pid === chosenId)
     );
     const inAnyTeam = teamIndex >= 0;
 
     if (id === UNSEEDED_ID) {
-      // Move from team -> unseeded (remove from that team)
       if (!inAnyTeam) {
         setAddErrors((prev) => ({
           ...prev,
@@ -404,15 +463,12 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
           if (idx !== teamIndex) return t;
 
           const nextPlayers = (t.players || []).filter((pid) => pid !== chosenId);
-
-          // If we removed the captain, unset captainId
           const nextCaptainId = t.captainId === chosenId ? null : t.captainId;
 
           return { ...t, players: nextPlayers, captainId: nextCaptainId };
         })
       );
     } else {
-      // Add to a TEAM
       const targetIndex = localTeams.findIndex((t) => t.id === id);
       if (targetIndex === -1) {
         setAddErrors((prev) => ({ ...prev, [id]: "Unknown team." }));
@@ -451,13 +507,9 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
     setAddErrors((prev) => ({ ...prev, [id]: "" }));
   };
 
-  /**
-   * ✅ "remove" must UNSEED, not vanish.
-   * If entry is a legacy string and no Firestore player doc exists yet,
-   * we first ensure a doc exists, then remove from the team.
-   */
   const handleRemovePlayer = async (teamId, playerIdOrLegacy) => {
-    // Known id -> just remove from team
+    if (!isAdmin) return;
+
     if (playersById.has(playerIdOrLegacy)) {
       setLocalTeams((prev) =>
         prev.map((t) => {
@@ -472,7 +524,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
       return;
     }
 
-    // Legacy string — ensure exists in Firestore, then remove legacy from team
     const legacyLabel = toTitleCase(playerIdOrLegacy);
     const createdId = await ensurePlayerInDb(legacyLabel);
 
@@ -489,8 +540,8 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
     }
   };
 
-  // Remove player completely from DB (only affects unseeded players)
   const handleRemoveUnseeded = async (playerId) => {
+    if (!isAdmin) return;
     if (!playersById.has(playerId)) return;
 
     const name = displayNameOf(playerId);
@@ -512,6 +563,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
   /* ---------------- Save flow (Admin) ---------------- */
 
   const handleSaveClick = () => {
+    if (!isAdmin) return;
     setSaveCode("");
     setSaveError("");
     setShowSaveModal(true);
@@ -524,20 +576,20 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
   };
 
   const handleConfirmSave = async () => {
+    if (!isAdmin) return;
+
     const code = saveCode.trim();
     if (code !== MASTER_CODE) {
       setSaveError("Invalid admin code.");
       return;
     }
 
-    // 1) Clean teams: label + abbrev
     const cleanedTeams = localTeams.map((t) => {
       const label = String(t.label || "").trim();
       const abbrev = normalizeAbbrev(t.abbrev || "");
       return { ...t, label, abbrev };
     });
 
-    // 2) Validate abbrevs (if provided)
     const bad = cleanedTeams.find((t) => t.abbrev && !isValidAbbrev(t.abbrev));
     if (bad) {
       setSaveError(
@@ -546,7 +598,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
       return;
     }
 
-    // 3) Prevent duplicate abbrevs (if used)
     const abbrevs = cleanedTeams.map((t) => t.abbrev).filter(Boolean);
     const dup = abbrevs.find((a, i) => abbrevs.indexOf(a) !== i);
     if (dup) {
@@ -554,7 +605,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
       return;
     }
 
-    // 4) Captain roles update in Firestore (players.roles.captain)
     const newCaptainIds = new Set(
       cleanedTeams.map((t) => t.captainId).filter(Boolean)
     );
@@ -569,7 +619,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
     try {
       const batch = writeBatch(db);
 
-      // ✅ Promote new captains WITHOUT overwriting other roles
       for (const pid of toMakeCaptain) {
         batch.set(
           doc(db, PLAYERS_COLLECTION, pid),
@@ -582,7 +631,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
         );
       }
 
-      // ✅ Demote removed captains WITHOUT overwriting other roles
       for (const pid of toRemoveCaptain) {
         batch.set(
           doc(db, PLAYERS_COLLECTION, pid),
@@ -601,10 +649,9 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
       return;
     }
 
-    // 5) Persist teams (to your app’s store/state)
     const teamsForSave = cleanedTeams.map((t) => ({
       ...t,
-      captain: t.captainId ? displayShortOf(t.captainId) : (t.captain || ""),
+      captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
     }));
 
     onUpdateTeams(teamsForSave);
@@ -620,7 +667,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
     return toTitleCase(team.captain || "");
   };
 
-  // Captain dropdown options: prefer team players (ids that exist)
   const captainOptionsForTeam = (team) => {
     const ids = (team.players || []).filter((pid) => playersById.has(pid));
     const unique = Array.from(new Set(ids));
@@ -634,6 +680,13 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
         <h1>Manage Squads</h1>
         {playersLoading && <p className="muted small">Loading players from database…</p>}
         {playersError && <p className="error-text">{playersError}</p>}
+        {!playersLoading && (
+          <p className="muted small">
+            {isAdmin
+              ? "Admin mode: you can edit squads, captains, and player placement."
+              : "View mode: squads and captains are visible, but only the admin can make changes."}
+          </p>
+        )}
       </header>
 
       <section className="card">
@@ -641,7 +694,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
           {localTeams.map((team) => {
             const inputId = team.id;
             const listId = `players-db-${inputId}`;
-
             const capOptions = captainOptionsForTeam(team);
             const currentCapId =
               team.captainId && playersById.has(team.captainId) ? team.captainId : "";
@@ -653,7 +705,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
                   <span className="captain-tag">(c: {captainTagText(team) || "—"})</span>
                 </h2>
 
-                {/* ✅ Team configuration (VISIBLE like your previous version) */}
+                {/* Team configuration - visible to all, editable only to admin */}
                 <div className="team-config" style={{ marginBottom: 12 }}>
                   <div className="field-row" style={{ display: "flex", gap: 8 }}>
                     <input
@@ -661,6 +713,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
                       value={team.label || ""}
                       placeholder="Team name"
                       onChange={(e) => handleTeamLabelChange(team.id, e.target.value)}
+                      disabled={!isAdmin}
                     />
                     <input
                       className="text-input"
@@ -669,16 +722,16 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
                       title="3-letter abbreviation (A–Z)"
                       onChange={(e) => handleTeamAbbrevChange(team.id, e.target.value)}
                       style={{ maxWidth: 90, textAlign: "center", fontWeight: 700 }}
+                      disabled={!isAdmin}
                     />
                   </div>
 
-                  {team.abbrev && !isValidAbbrev(team.abbrev) && (
+                  {team.abbrev && !isValidAbbrev(team.abbrev) && isAdmin && (
                     <p className="muted small" style={{ marginTop: 6 }}>
                       Abbrev must be exactly 3 letters (A–Z), e.g. FCB / RMD / LIV
                     </p>
                   )}
 
-                  {/* ✅ Captain selector (VISIBLE) */}
                   <div className="field-row" style={{ marginTop: 8 }}>
                     <label className="muted small" style={{ display: "block", marginBottom: 6 }}>
                       Captain
@@ -687,7 +740,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
                       className="text-input"
                       value={currentCapId}
                       onChange={(e) => handleCaptainChange(team.id, e.target.value)}
-                      disabled={capOptions.length === 0}
+                      disabled={!isAdmin || capOptions.length === 0}
                     >
                       <option value="">
                         {capOptions.length === 0
@@ -701,8 +754,9 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
                       ))}
                     </select>
                     <p className="muted small" style={{ marginTop: 6 }}>
-                      Changing captain here will update the database on <b>Save Squads</b>
-                      
+                      {isAdmin
+                        ? "Changing captain here will update the database on Save Squads."
+                        : "Captain is visible here, but only the admin can change it."}
                     </p>
                   </div>
                 </div>
@@ -721,8 +775,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
                           {label} {isCaptain ? <span className="muted">(C)</span> : null}
                         </span>
 
-                        {/* Do not allow removing the current captain via remove (forces captain change first) */}
-                        {!isCaptain && (
+                        {isAdmin && !isCaptain && (
                           <button
                             className="link-btn"
                             onClick={() => handleRemovePlayer(team.id, pid)}
@@ -738,26 +791,32 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
                   )}
                 </ul>
 
-                <div className="add-player-row">
-                  <input
-                    className="text-input"
-                    placeholder="Add / select player..."
-                    list={listId}
-                    value={pendingNames[inputId] || ""}
-                    onChange={(e) => handlePendingChange(inputId, e.target.value)}
-                  />
-                  <datalist id={listId}>
-                    {availableForTeams.map((val) => (
-                      <option key={val} value={val} />
-                    ))}
-                  </datalist>
+                {isAdmin && (
+                  <>
+                    <div className="add-player-row">
+                      <input
+                        className="text-input"
+                        placeholder="Add / select player..."
+                        list={listId}
+                        value={pendingNames[inputId] || ""}
+                        onChange={(e) => handlePendingChange(inputId, e.target.value)}
+                      />
+                      <datalist id={listId}>
+                        {availableForTeams.map((val) => (
+                          <option key={val} value={val} />
+                        ))}
+                      </datalist>
 
-                  <button className="secondary-btn" onClick={() => handleAddPlayer(inputId)}>
-                    Add
-                  </button>
-                </div>
+                      <button className="secondary-btn" onClick={() => handleAddPlayer(inputId)}>
+                        Add
+                      </button>
+                    </div>
 
-                {addErrors[inputId] && <p className="error-text small">{addErrors[inputId]}</p>}
+                    {addErrors[inputId] && (
+                      <p className="error-text small">{addErrors[inputId]}</p>
+                    )}
+                  </>
+                )}
               </div>
             );
           })}
@@ -780,9 +839,11 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
                       {roles.coach ? <span className="muted"> (Coach)</span> : null}
                       {roles.admin ? <span className="muted"> (Admin)</span> : null}
                     </span>
-                    <button className="link-btn" onClick={() => handleRemoveUnseeded(p.id)}>
-                      ❌ delete?
-                    </button>
+                    {isAdmin && (
+                      <button className="link-btn" onClick={() => handleRemoveUnseeded(p.id)}>
+                        ❌ delete?
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -791,26 +852,32 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
               )}
             </ul>
 
-            <div className="add-player-row">
-              <input
-                className="text-input"
-                placeholder="Move from team / add manual player..."
-                list="players-db-unseeded"
-                value={pendingNames[UNSEEDED_ID] || ""}
-                onChange={(e) => handlePendingChange(UNSEEDED_ID, e.target.value)}
-              />
-              <datalist id="players-db-unseeded">
-                {availableForUnseeded.map((val) => (
-                  <option key={val} value={val} />
-                ))}
-              </datalist>
+            {isAdmin && (
+              <>
+                <div className="add-player-row">
+                  <input
+                    className="text-input"
+                    placeholder="Move from team / add manual player..."
+                    list="players-db-unseeded"
+                    value={pendingNames[UNSEEDED_ID] || ""}
+                    onChange={(e) => handlePendingChange(UNSEEDED_ID, e.target.value)}
+                  />
+                  <datalist id="players-db-unseeded">
+                    {availableForUnseeded.map((val) => (
+                      <option key={val} value={val} />
+                    ))}
+                  </datalist>
 
-              <button className="secondary-btn" onClick={() => handleAddPlayer(UNSEEDED_ID)}>
-                Add
-              </button>
-            </div>
+                  <button className="secondary-btn" onClick={() => handleAddPlayer(UNSEEDED_ID)}>
+                    Add
+                  </button>
+                </div>
 
-            {addErrors[UNSEEDED_ID] && <p className="error-text small">{addErrors[UNSEEDED_ID]}</p>}
+                {addErrors[UNSEEDED_ID] && (
+                  <p className="error-text small">{addErrors[UNSEEDED_ID]}</p>
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -818,13 +885,15 @@ export function SquadsPage({ teams, onUpdateTeams, onBack }) {
           <button className="secondary-btn" onClick={onBack}>
             Back
           </button>
-          <button className="primary-btn" onClick={handleSaveClick}>
-            Save Squads
-          </button>
+          {isAdmin && (
+            <button className="primary-btn" onClick={handleSaveClick}>
+              Save Squads
+            </button>
+          )}
         </div>
       </section>
 
-      {showSaveModal && (
+      {isAdmin && showSaveModal && (
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Squad Changes</h3>

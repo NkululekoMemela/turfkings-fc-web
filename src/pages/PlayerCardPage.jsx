@@ -1,3 +1,4 @@
+// src/pages/PlayerCardPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../firebaseConfig";
 import { collection, getDocs } from "firebase/firestore";
@@ -33,7 +34,6 @@ function firstNameOf(name) {
   return parts.length ? parts[0] : "";
 }
 
-// ----- Helpers -----
 function safeNumber(v) {
   if (typeof v === "number" && !Number.isNaN(v)) return v;
   return null;
@@ -77,20 +77,17 @@ function makeStyleLabel(attackAvg, defenceAvg, gkAvg) {
 export function PlayerCardPage({
   teams,
   allEvents,
-  archivedEvents = [], // full-season history
+  archivedEvents = [],
   peerRatingsByPlayer,
   playerPhotosByName,
   onBack,
 }) {
-  // ----- Auth: who is currently signed in? -----
   const { authUser } = useAuth() || {};
   const user = authUser || null;
 
-  // Normalize auth displayName/email for "You" tag
   const authIdentityKey = useMemo(() => {
     const dn = safeLower(user?.displayName || "");
     const em = safeLower(user?.email || "");
-    // displayName is usually best if it matches members.fullName
     return dn || em || "";
   }, [user]);
 
@@ -103,7 +100,6 @@ export function PlayerCardPage({
   const peerRatingsRaw = peerRatingsByPlayer || {};
 
   // ----- Load members: build canonical resolver -----
-  // Goal: collapse "Scott" and "Scott Eyono" to one canonical = members.fullName
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [nameToCanonical, setNameToCanonical] = useState({});
   const [canonicalToShort, setCanonicalToShort] = useState({});
@@ -126,22 +122,17 @@ export function PlayerCardPage({
 
           mapCanonToShort[safeLower(fullName)] = shortName;
 
-          // Keys we should recognize as THIS player:
           const keys = new Set();
 
-          // full + short
           keys.add(safeLower(fullName));
           keys.add(safeLower(shortName));
 
-          // slug doc id style
           keys.add(slugFromName(fullName));
           keys.add(slugFromName(shortName));
 
-          // first name fallback (only if unique later — but still helps)
           const fn = safeLower(firstNameOf(fullName));
           if (fn) keys.add(fn);
 
-          // optional aliases field if you ever add it later
           const aliases = Array.isArray(data.aliases) ? data.aliases : [];
           aliases.forEach((a) => {
             const aa = toTitleCase(a);
@@ -151,10 +142,8 @@ export function PlayerCardPage({
             }
           });
 
-          // map all keys -> canonical fullName
           keys.forEach((k) => {
             if (!k) return;
-            // Don't overwrite if already set — keeps first match stable
             if (!mapNameToCanon[k]) mapNameToCanon[k] = fullName;
           });
         });
@@ -179,15 +168,12 @@ export function PlayerCardPage({
     const direct = nameToCanonical[safeLower(tc)];
     if (direct) return direct;
 
-    // try by slug
     const bySlug = nameToCanonical[slugFromName(tc)];
     if (bySlug) return bySlug;
 
-    // try first name
     const fn = safeLower(firstNameOf(tc));
     if (fn && nameToCanonical[fn]) return nameToCanonical[fn];
 
-    // fallback: return title cased raw
     return tc;
   };
 
@@ -196,28 +182,22 @@ export function PlayerCardPage({
     return canonicalToShort[key] || canonicalFullName;
   };
 
-  // ----- Firestore player photos (same source as FormationsPage) -----
-  const [cloudPhotosRaw, setCloudPhotosRaw] = useState({}); // keep raw map
-  const [cloudPhotosIndex, setCloudPhotosIndex] = useState({}); // multi-key lookup
+  // ----- Firestore player photos -----
+  const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
 
   useEffect(() => {
     async function loadPhotos() {
       try {
         const snap = await getDocs(collection(db, "playerPhotos"));
-        const raw = {};
         const idx = {};
 
         snap.forEach((docSnap) => {
           const data = docSnap.data() || {};
-          const docId = docSnap.id; // often slugFromName(name)
+          const docId = docSnap.id;
           const name = toTitleCase(data.name || "");
 
           if (!data.photoData) return;
 
-          // store raw
-          if (name) raw[name] = data.photoData;
-
-          // index keys
           const keys = new Set();
 
           if (name) {
@@ -235,7 +215,6 @@ export function PlayerCardPage({
           });
         });
 
-        setCloudPhotosRaw(raw);
         setCloudPhotosIndex(idx);
       } catch (err) {
         console.error("Failed to load player photos for cards:", err);
@@ -244,7 +223,6 @@ export function PlayerCardPage({
     loadPhotos();
   }, []);
 
-  // ----- Merge photo sources: prop + Firestore + team metadata -----
   const mergedPhotoIndex = useMemo(() => {
     const idx = {};
 
@@ -254,19 +232,16 @@ export function PlayerCardPage({
       if (!idx[k]) idx[k] = url;
     };
 
-    // 1) props map (likely keyed by name)
     Object.entries(playerPhotosByName || {}).forEach(([k, url]) => {
       addPhotoKey(k, url);
       addPhotoKey(slugFromName(k), url);
       addPhotoKey(firstNameOf(k), url);
     });
 
-    // 2) Firestore indexed
     Object.entries(cloudPhotosIndex || {}).forEach(([k, url]) => {
       addPhotoKey(k, url);
     });
 
-    // 3) team metadata
     (teams || []).forEach((t) => {
       if (t?.playerPhotos) {
         Object.entries(t.playerPhotos).forEach(([k, url]) => {
@@ -300,17 +275,14 @@ export function PlayerCardPage({
     if (cn) candidates.push(cn);
     if (sn && sn !== cn) candidates.push(sn);
 
-    // also try first names
     const fn1 = firstNameOf(cn);
     const fn2 = firstNameOf(sn);
     if (fn1) candidates.push(fn1);
     if (fn2 && fn2 !== fn1) candidates.push(fn2);
 
-    // and slugs
     if (cn) candidates.push(slugFromName(cn));
     if (sn) candidates.push(slugFromName(sn));
 
-    // 1) exact-ish (case-insensitive via index)
     for (const c of candidates) {
       const k = safeLower(c);
       if (k && mergedPhotoIndex[k]) return mergedPhotoIndex[k];
@@ -319,7 +291,7 @@ export function PlayerCardPage({
     return null;
   };
 
-  // ---------- DEDUP EVENTS (so stats match leaderboard) ----------
+  // ---------- DEDUP EVENTS ----------
   const uniqueEvents = useMemo(() => {
     const seen = new Set();
     const out = [];
@@ -334,8 +306,9 @@ export function PlayerCardPage({
           e.timeSeconds ?? "t?",
           e.type ?? "type?",
           e.teamId ?? "team?",
-          e.scorer ?? "s?",
+          e.scorer ?? e.playerName ?? "p?",
           e.assist ?? "a?",
+          e.role ?? "role?",
         ].join("|");
 
       if (seen.has(key)) return;
@@ -353,29 +326,28 @@ export function PlayerCardPage({
       const canon = resolveCanonicalName(rawName);
       if (!canon) return;
 
-      // merge if duplicates exist
       if (!out[canon]) {
         out[canon] = val;
       } else {
-        // Prefer the one with more votes if you store that, else keep existing
         out[canon] = out[canon] || val;
       }
     });
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peerRatingsRaw, nameToCanonical, membersLoaded]);
 
-  // ----- Aggregate stats from FULL SEASON events (CANONICAL) -----
+  // ----- Aggregate stats from FULL SEASON events -----
   const statsByPlayer = useMemo(() => {
     const stats = {};
 
     const ensure = (canonName) => {
       if (!stats[canonName]) {
         stats[canonName] = {
-          name: canonName, // canonical
+          name: canonName,
           goals: 0,
           assists: 0,
-          shibobos: 0,
+          cleanSheets: 0,
+          gkCleanSheets: 0,
+          defCleanSheets: 0,
           rawStatsScore: 0,
         };
       }
@@ -385,12 +357,25 @@ export function PlayerCardPage({
     uniqueEvents.forEach((e) => {
       if (!e) return;
 
-      if (e.scorer) {
+      if (e.type === "clean_sheet") {
+        const holderName = e.playerName || e.scorer || "";
+        const canonHolder = resolveCanonicalName(holderName);
+        if (!canonHolder) return;
+
+        const s = ensure(canonHolder);
+        s.cleanSheets += 1;
+
+        if (e.role === "gk") s.gkCleanSheets += 1;
+        if (e.role === "def") s.defCleanSheets += 1;
+
+        return;
+      }
+
+      if (e.scorer && e.type === "goal") {
         const canonScorer = resolveCanonicalName(e.scorer);
         if (canonScorer) {
           const s = ensure(canonScorer);
-          if (e.type === "goal") s.goals += 1;
-          else if (e.type === "shibobo") s.shibobos += 1;
+          s.goals += 1;
         }
       }
 
@@ -403,13 +388,20 @@ export function PlayerCardPage({
       }
     });
 
-    // weights: goals=3, assists=2, shibobo=1
+    // weights
+    // goals = 3
+    // assists = 2
+    // defender clean sheet = 1
+    // goalkeeper clean sheet = 1.5
     Object.values(stats).forEach((p) => {
-      p.rawStatsScore = p.goals * 3 + p.assists * 2 + p.shibobos * 1;
+      p.rawStatsScore =
+        p.goals * 3 +
+        p.assists * 2 +
+        p.defCleanSheets * 1 +
+        p.gkCleanSheets * 1.5;
     });
 
     return stats;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uniqueEvents, nameToCanonical, membersLoaded]);
 
   // ----- Map canonical player -> team label -----
@@ -428,17 +420,15 @@ export function PlayerCardPage({
     });
 
     return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teams, nameToCanonical, membersLoaded]);
 
-  // ----- Normalise stats to /10 and combine with peer ratings (CANONICAL) -----
+  // ----- Normalise stats to /10 and combine with peer ratings -----
   const playersWithRatings = useMemo(() => {
     const allNames = new Set([
       ...Object.keys(statsByPlayer || {}),
       ...Object.keys(peerRatingsCanon || {}),
     ]);
 
-    // include everyone in squads so nobody disappears
     (teams || []).forEach((t) => {
       (t.players || []).forEach((p) => {
         const raw =
@@ -448,7 +438,6 @@ export function PlayerCardPage({
       });
     });
 
-    // max for normalisation
     let maxRaw = 0;
     Object.values(statsByPlayer || {}).forEach((p) => {
       if (p.rawStatsScore > maxRaw) maxRaw = p.rawStatsScore;
@@ -464,7 +453,9 @@ export function PlayerCardPage({
         name: canonName,
         goals: 0,
         assists: 0,
-        shibobos: 0,
+        cleanSheets: 0,
+        gkCleanSheets: 0,
+        defCleanSheets: 0,
         rawStatsScore: 0,
       };
 
@@ -489,37 +480,39 @@ export function PlayerCardPage({
         if (validVals.length > 0) {
           const avgAttr =
             validVals.reduce((a, b) => a + b, 0) / validVals.length;
-          // map 1–5 -> 2–10 scale
           peerScore10 = Math.min(10, Math.max(0, 2 * avgAttr));
         }
       }
 
       const overall =
-        peerScore10 != null ? 0.5 * statsScore10 + 0.5 * peerScore10 : statsScore10;
+        peerScore10 != null
+          ? 0.5 * statsScore10 + 0.5 * peerScore10
+          : statsScore10;
 
       const overallRounded = Math.round(overall * 10) / 10;
       const styleLabel = makeStyleLabel(attackAvg, defenceAvg, gkAvg);
 
-      const displayName = canonName; // full name on the card (uniform)
+      const displayName = canonName;
       const shortName = resolveShortDisplay(canonName);
 
       const photoUrl = getPlayerPhoto(canonName, shortName);
 
-      // "You" tag: compare canonicalized auth displayName against canonical
       const isYou =
         !!authIdentityKey &&
         safeLower(resolveCanonicalName(authIdentityKey)) === safeLower(canonName);
 
       out.push({
-        id: safeLower(canonName), // stable key
-        name: canonName, // canonical key
-        displayName, // show full name uniformly
-        shortName, // available if you want first-name UI later
+        id: safeLower(canonName),
+        name: canonName,
+        displayName,
+        shortName,
         teamName: playerTeamMap[canonName] || "—",
         photoUrl,
         goals: stats.goals,
         assists: stats.assists,
-        shibobos: stats.shibobos,
+        cleanSheets: stats.cleanSheets,
+        gkCleanSheets: stats.gkCleanSheets,
+        defCleanSheets: stats.defCleanSheets,
         statsScore10,
         peerScore10,
         attackAvg,
@@ -531,15 +524,15 @@ export function PlayerCardPage({
       });
     });
 
-    // sort: highest overall, then goals, then display name
     out.sort((a, b) => {
       if (b.overall !== a.overall) return b.overall - a.overall;
       if (b.goals !== a.goals) return b.goals - a.goals;
-      return String(a.displayName || "").localeCompare(String(b.displayName || ""));
+      return String(a.displayName || "").localeCompare(
+        String(b.displayName || "")
+      );
     });
 
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     statsByPlayer,
     peerRatingsCanon,
@@ -575,13 +568,13 @@ export function PlayerCardPage({
     return ["ALL", ...Array.from(set)];
   }, [teams]);
 
-  // ----- Render -----
   return (
     <div className="page player-cards-page">
       <header className="header">
         <h1>Player cards</h1>
         <p className="subtitle">
-          Ratings built from TurfKings stats and squad peer reviews.
+          Ratings built from TurfKings goals, assists, clean sheets, and squad peer
+          reviews.
         </p>
 
         {user ? (
@@ -603,7 +596,6 @@ export function PlayerCardPage({
         </div>
       </header>
 
-      {/* Filters */}
       <section className="card player-card-filters">
         <div className="player-card-filters-row">
           <div className="player-card-filter">
@@ -632,7 +624,6 @@ export function PlayerCardPage({
         </div>
       </section>
 
-      {/* Cards grid */}
       <section className="card player-card-grid-card">
         {filteredPlayers.length === 0 ? (
           <p className="muted">
@@ -752,18 +743,19 @@ export function PlayerCardPage({
                     </div>
 
                     <div className="fifa-attr-cell">
-                      <span className="fifa-attr-label">G+A+S</span>
+                      <span className="fifa-attr-label">TOTAL</span>
                       <span className="fifa-attr-value">
-                        {p.goals + p.assists + p.shibobos}
+                        {p.goals + p.assists + p.cleanSheets}
                       </span>
-                      <span className="fifa-attr-desc">TOTAL</span>
+                      <span className="fifa-attr-desc">EVENTS</span>
                     </div>
                   </div>
 
                   <div className="fifa-bottom-stats">
                     <span>⚽ {p.goals} Goals</span>
                     <span>🎯 {p.assists} Assists</span>
-                    <span>🌀 {p.shibobos} Shibobos</span>
+                    <span>🥅 {p.gkCleanSheets} Saves CS</span>
+                    <span>🌀 {p.defCleanSheets} Defence CS</span>
                   </div>
 
                   {p.styleLabel && (

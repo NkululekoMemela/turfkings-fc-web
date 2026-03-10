@@ -1,5 +1,4 @@
 // src/pages/FormationsPage.jsx
-
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../firebaseConfig";
 import {
@@ -13,7 +12,6 @@ import {
 
 // ---------------- HELPERS ----------------
 
-// Title Case helper
 function toTitleCase(name) {
   return String(name || "")
     .trim()
@@ -28,7 +26,6 @@ function normKey(x) {
   return String(x || "").trim().toLowerCase();
 }
 
-// Small helper for Firestore document ids (for photos)
 function slugFromName(name) {
   return String(name || "")
     .toLowerCase()
@@ -37,14 +34,14 @@ function slugFromName(name) {
 }
 
 // ---------------- GAME TYPES ----------------
-const GAME_TYPE_5 = "5";
-const GAME_TYPE_11 = "11";
+export const GAME_TYPE_5 = "5";
+export const GAME_TYPE_11 = "11";
 
 // Single source of truth for people
 const MEMBERS_COLLECTION = "members";
 
 // ------------- 5-A-SIDE FORMATIONS -------------
-const FORMATIONS_5 = {
+export const FORMATIONS_5 = {
   "2-0-2": {
     id: "2-0-2",
     label: "2-0-2",
@@ -91,10 +88,10 @@ const FORMATIONS_5 = {
   },
 };
 
-const DEFAULT_FORMATION_ID_5 = "2-0-2";
+export const DEFAULT_FORMATION_ID_5 = "2-0-2";
 
 // ------------- 11-A-SIDE FORMATIONS -------------
-const FORMATIONS_11 = {
+export const FORMATIONS_11 = {
   "4-3-3": {
     id: "4-3-3",
     label: "4-3-3",
@@ -199,12 +196,12 @@ const FORMATIONS_11 = {
   },
 };
 
-const DEFAULT_FORMATION_ID_11 = "4-3-3";
+export const DEFAULT_FORMATION_ID_11 = "4-3-3";
 
-const LOCAL_KEY = "turfkings_lineups_v1";
+export const LOCAL_KEY = "turfkings_lineups_v1";
 
 // -------- local storage helpers --------
-function loadSavedLineups() {
+export function loadSavedLineups() {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(LOCAL_KEY);
@@ -216,7 +213,7 @@ function loadSavedLineups() {
   }
 }
 
-function saveLineups(data) {
+export function saveLineups(data) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
@@ -226,7 +223,7 @@ function saveLineups(data) {
 }
 
 // build a default lineup from a player list
-function buildDefaultLineup(playerList, formationId, formationsMap) {
+export function buildDefaultLineup(playerList, formationId, formationsMap) {
   const formation =
     formationsMap[formationId] ||
     formationsMap[Object.keys(formationsMap)[0]];
@@ -235,11 +232,21 @@ function buildDefaultLineup(playerList, formationId, formationsMap) {
   formation.positions.forEach((pos, idx) => {
     positions[pos.id] = players[idx] || null;
   });
-  return { formationId: formation.id, positions };
+  return {
+    formationId: formation.id,
+    positions,
+    meta: {
+      savedByRole: "general",
+      savedByEmail: null,
+      savedByName: null,
+      savedAt: null,
+      teamCaptainPreferred: false,
+    },
+  };
 }
 
 // resolve which lineup to use for a given team + game type
-function resolveTeamLineup(
+export function resolveTeamLineup(
   team,
   gameType,
   lineupsByTeam,
@@ -251,6 +258,7 @@ function resolveTeamLineup(
   if (!team) {
     return buildDefaultLineup(players, defaultFormationId, formationsMap);
   }
+
   const existing = lineupsByTeam[team.id];
   if (!existing) {
     return buildDefaultLineup(players, defaultFormationId, formationsMap);
@@ -259,7 +267,18 @@ function resolveTeamLineup(
   // legacy: flat shape
   if (existing.formationId) {
     if (gameType === GAME_TYPE_5) {
-      if (formationsMap[existing.formationId]) return existing;
+      if (formationsMap[existing.formationId]) {
+        return {
+          ...existing,
+          meta: existing.meta || {
+            savedByRole: "general",
+            savedByEmail: null,
+            savedByName: null,
+            savedAt: null,
+            teamCaptainPreferred: false,
+          },
+        };
+      }
       return buildDefaultLineup(players, defaultFormationId, formationsMap);
     }
     return buildDefaultLineup(players, defaultFormationId, formationsMap);
@@ -268,32 +287,135 @@ function resolveTeamLineup(
   // new multi-mode shape
   const modeEntry = existing[gameType];
   if (modeEntry && formationsMap[modeEntry.formationId]) {
-    return modeEntry;
+    return {
+      ...modeEntry,
+      meta: modeEntry.meta || {
+        savedByRole: "general",
+        savedByEmail: null,
+        savedByName: null,
+        savedAt: null,
+        teamCaptainPreferred: false,
+      },
+    };
   }
+
   return buildDefaultLineup(players, defaultFormationId, formationsMap);
+}
+
+function getSaveRole(identity, authUser, selectedTeamCanonical) {
+  const email =
+    String(authUser?.email || identity?.email || "").trim().toLowerCase();
+
+  const memberId = String(
+    authUser?.memberId || identity?.memberId || ""
+  ).trim().toLowerCase();
+
+  const teamCaptainId = String(selectedTeamCanonical?.captainId || "")
+    .trim()
+    .toLowerCase();
+
+  const explicitRole = String(
+    authUser?.role || identity?.role || ""
+  ).trim().toLowerCase();
+
+  if (teamCaptainId && memberId && memberId === teamCaptainId) {
+    return {
+      savedByRole: "captain",
+      teamCaptainPreferred: true,
+      savedByEmail: email || null,
+      savedByName:
+        authUser?.fullName ||
+        identity?.fullName ||
+        identity?.displayName ||
+        identity?.shortName ||
+        identity?.name ||
+        null,
+    };
+  }
+
+  if (explicitRole === "admin") {
+    return {
+      savedByRole: "admin",
+      teamCaptainPreferred: false,
+      savedByEmail: email || null,
+      savedByName:
+        authUser?.fullName ||
+        identity?.fullName ||
+        identity?.displayName ||
+        identity?.shortName ||
+        identity?.name ||
+        null,
+    };
+  }
+
+  if (explicitRole === "captain") {
+    return {
+      savedByRole: "captain",
+      teamCaptainPreferred: false,
+      savedByEmail: email || null,
+      savedByName:
+        authUser?.fullName ||
+        identity?.fullName ||
+        identity?.displayName ||
+        identity?.shortName ||
+        identity?.name ||
+        null,
+    };
+  }
+
+  return {
+    savedByRole: "general",
+    teamCaptainPreferred: false,
+    savedByEmail: email || null,
+    savedByName:
+      authUser?.fullName ||
+      identity?.fullName ||
+      identity?.displayName ||
+      identity?.shortName ||
+      identity?.name ||
+      null,
+  };
+}
+
+function makeSavedLineup(updatedLineup, canonicalName, identity, authUser, selectedTeamCanonical) {
+  const canonPositions = {};
+  Object.keys(updatedLineup.positions || {}).forEach((posId) => {
+    const v = updatedLineup.positions[posId];
+    canonPositions[posId] = v ? canonicalName(v) : null;
+  });
+
+  const metaBits = getSaveRole(identity, authUser, selectedTeamCanonical);
+
+  return {
+    ...updatedLineup,
+    positions: canonPositions,
+    meta: {
+      savedByRole: metaBits.savedByRole,
+      savedByEmail: metaBits.savedByEmail,
+      savedByName: metaBits.savedByName,
+      savedAt: new Date().toISOString(),
+      teamCaptainPreferred: metaBits.teamCaptainPreferred,
+    },
+  };
 }
 
 export function FormationsPage({
   teams,
   currentMatch,
   playerPhotosByName = {},
-  identity = null, // from EntryPage
+  identity = null,
   authUser = null,
   onBack,
   onGoToSquads,
 }) {
-  // Everyone can edit lineups
   const canEditLineups = true;
 
-  // all saved lineups (per teamId, per game type)
   const [lineupsByTeam, setLineupsByTeam] = useState(() => loadSavedLineups());
 
-  // which team is being shown (prefer the team A from current match if provided)
   const initialTeamId =
     currentMatch?.teamAId || (teams[0] ? teams[0].id : null);
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId);
 
-  // game type: 5-a-side by default, with optional 11-a-side
   const [gameType, setGameType] = useState(GAME_TYPE_5);
 
   const selectedTeam =
@@ -338,8 +460,8 @@ export function FormationsPage({
 
   // Build resolver maps so we can snap ANY old label to one canonical display name
   const memberResolver = useMemo(() => {
-    const byAny = new Map(); // key -> member
-    const firstNameCounts = new Map(); // firstNameLower -> count
+    const byAny = new Map();
+    const firstNameCounts = new Map();
 
     members.forEach((m) => {
       const keys = new Set();
@@ -349,9 +471,10 @@ export function FormationsPage({
       if (m.shortName) keys.add(normKey(m.shortName));
       (m.aliases || []).forEach((a) => keys.add(normKey(a)));
 
-      // count first names for safe short matching
       const first = normKey((m.fullName || "").split(" ")[0]);
-      if (first) firstNameCounts.set(first, (firstNameCounts.get(first) || 0) + 1);
+      if (first) {
+        firstNameCounts.set(first, (firstNameCounts.get(first) || 0) + 1);
+      }
 
       keys.forEach((k) => {
         if (k) byAny.set(k, m);
@@ -363,33 +486,29 @@ export function FormationsPage({
       const k = normKey(raw);
       if (!k) return { display: "", member: null };
 
-      // 1) exact match
       const exact = byAny.get(k);
       if (exact) return { display: exact.fullName || raw, member: exact };
 
-      // 2) slug match
       const slug = normKey(slugFromName(raw));
       const bySlug = byAny.get(slug);
       if (bySlug) return { display: bySlug.fullName || raw, member: bySlug };
 
-      // 3) first-name match ONLY if unique
       const first = normKey(raw.split(" ")[0]);
       if (first && firstNameCounts.get(first) === 1) {
         const candidate = byAny.get(first);
-        if (candidate) return { display: candidate.fullName || raw, member: candidate };
+        if (candidate) {
+          return { display: candidate.fullName || raw, member: candidate };
+        }
       }
 
-      // 4) fallback
       return { display: raw, member: null };
     }
 
     return { resolve };
   }, [members]);
 
-  // Canonical display for any input name (FULL NAME for storage)
   const canonicalName = (raw) => memberResolver.resolve(raw).display;
 
-  // UI-only: compact label (first name / shortName), but DO NOT change stored names
   const displayCompactName = (raw) => {
     if (!raw) return "";
     const resolved = memberResolver.resolve(raw);
@@ -410,7 +529,7 @@ export function FormationsPage({
   const [playerPhotos, setPlayerPhotos] = useState(playerPhotosByName || {});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoMessage, setPhotoMessage] = useState("");
-  const [showPhotoPanel, setShowPhotoPanel] = useState(false); // collapsible
+  const [showPhotoPanel, setShowPhotoPanel] = useState(false);
 
   useEffect(() => {
     if (!playerPhotosByName) return;
@@ -420,7 +539,6 @@ export function FormationsPage({
     }));
   }, [playerPhotosByName]);
 
-  // Load ALL photos and re-key them to canonical member fullName where possible
   useEffect(() => {
     async function loadPhotos() {
       try {
@@ -473,20 +591,23 @@ export function FormationsPage({
 
   // ---------- VERIFIED PLAYER (for photo upload) ----------
   const verifiedPlayerName = useMemo(() => {
-    const role = identity?.role || null;
-    const isRealPlayer = role === "player" || role === "captain" || role === "admin";
+    const role = identity?.role || authUser?.role || null;
+    const isRealPlayer =
+      role === "player" || role === "captain" || role === "admin";
+
     if (!isRealPlayer) return null;
 
     const rawName =
-      identity.fullName ||
-      identity.shortName ||
-      identity.displayName ||
-      identity.name ||
+      authUser?.fullName ||
+      identity?.fullName ||
+      identity?.shortName ||
+      identity?.displayName ||
+      identity?.name ||
       null;
 
     if (!rawName) return null;
     return canonicalName(rawName);
-  }, [identity, memberResolver]);
+  }, [identity, authUser, memberResolver]);
 
   const isVerifiedPlayer = !!verifiedPlayerName;
   const photoPlayer = verifiedPlayerName;
@@ -519,7 +640,7 @@ export function FormationsPage({
       await setDoc(
         doc(db, "playerPhotos", docId),
         {
-          name: photoPlayer, // canonical full name
+          name: photoPlayer,
           teamId: selectedTeam ? selectedTeam.id : "turf_kings",
           photoData: dataUrl,
           updatedAt: serverTimestamp(),
@@ -543,7 +664,6 @@ export function FormationsPage({
   };
 
   // ---------------- player pools (canonicalised) ----------------
-
   const dbPlayerNames = useMemo(() => {
     return members.map((m) => m.fullName).filter(Boolean);
   }, [members]);
@@ -571,18 +691,24 @@ export function FormationsPage({
       ...t,
       players: (t.players || []).map((p) => canonicalName(p)).filter(Boolean),
       captain: canonicalName(t.captain || ""),
+      captainId: t.captainId || null,
     }));
   }, [teams, memberResolver]);
 
   const selectedTeamCanonical =
-    canonicalTeams.find((t) => t.id === selectedTeamId) || canonicalTeams[0] || null;
+    canonicalTeams.find((t) => t.id === selectedTeamId) ||
+    canonicalTeams[0] ||
+    null;
 
-  const formationsMap = gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
+  const formationsMap =
+    gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
   const defaultFormationId =
     gameType === GAME_TYPE_11 ? DEFAULT_FORMATION_ID_11 : DEFAULT_FORMATION_ID_5;
 
   const playerPool =
-    gameType === GAME_TYPE_11 ? turfKingsPlayers : selectedTeamCanonical?.players || [];
+    gameType === GAME_TYPE_11
+      ? turfKingsPlayers
+      : selectedTeamCanonical?.players || [];
 
   const [lineup, setLineup] = useState(() =>
     resolveTeamLineup(
@@ -594,6 +720,9 @@ export function FormationsPage({
       playerPool
     )
   );
+
+  // -------- selection state --------
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
 
   useEffect(() => {
     if (!selectedTeamCanonical) return;
@@ -613,23 +742,39 @@ export function FormationsPage({
       canonPositions[posId] = v ? canonicalName(v) : null;
     });
 
-    const canonicalised = { ...next, positions: canonPositions };
+    const canonicalised = {
+      ...next,
+      positions: canonPositions,
+      meta: next.meta || {
+        savedByRole: "general",
+        savedByEmail: null,
+        savedByName: null,
+        savedAt: null,
+        teamCaptainPreferred: false,
+      },
+    };
 
     setLineup(canonicalised);
     setSelectedPlayer(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeamId, gameType, lineupsByTeam, memberResolver, canonicalTeams, turfKingsPlayers]);
+  }, [
+    selectedTeamId,
+    gameType,
+    lineupsByTeam,
+    memberResolver,
+    canonicalTeams,
+    turfKingsPlayers,
+  ]);
 
   const formation =
     formationsMap[lineup.formationId] ||
     formationsMap[defaultFormationId] ||
     Object.values(formationsMap)[0];
 
-  // -------- selection state --------
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-
   const allPlayers =
-    gameType === GAME_TYPE_11 ? turfKingsPlayers : selectedTeamCanonical?.players || [];
+    gameType === GAME_TYPE_11
+      ? turfKingsPlayers
+      : selectedTeamCanonical?.players || [];
 
   const assignedNames = new Set(Object.values(lineup.positions).filter(Boolean));
   const benchPlayers = allPlayers.filter((p) => !assignedNames.has(p));
@@ -649,12 +794,13 @@ export function FormationsPage({
   const saveTeamLineup = (teamId, updatedLineup) => {
     if (!teamId) return;
 
-    const canonPositions = {};
-    Object.keys(updatedLineup.positions || {}).forEach((posId) => {
-      const v = updatedLineup.positions[posId];
-      canonPositions[posId] = v ? canonicalName(v) : null;
-    });
-    const canonLineup = { ...updatedLineup, positions: canonPositions };
+    const canonLineup = makeSavedLineup(
+      updatedLineup,
+      canonicalName,
+      identity,
+      authUser,
+      selectedTeamCanonical
+    );
 
     setLineupsByTeam((prev) => {
       const prevEntry = prev[teamId];
@@ -669,7 +815,10 @@ export function FormationsPage({
         if (gameType === GAME_TYPE_5) {
           nextEntry = { [GAME_TYPE_5]: canonLineup };
         } else {
-          nextEntry = { [GAME_TYPE_5]: prevEntry, [GAME_TYPE_11]: canonLineup };
+          nextEntry = {
+            [GAME_TYPE_5]: prevEntry,
+            [GAME_TYPE_11]: canonLineup,
+          };
         }
       } else {
         nextEntry = { ...prevEntry, [gameType]: canonLineup };
@@ -683,8 +832,10 @@ export function FormationsPage({
 
   const handleFormationChange = (e) => {
     if (!canEditLineups) return;
+
     const newFormationId = e.target.value;
-    const formationsForType = gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
+    const formationsForType =
+      gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
     const newFormation =
       formationsForType[newFormationId] ||
       formationsForType[Object.keys(formationsForType)[0]];
@@ -698,8 +849,15 @@ export function FormationsPage({
       newPositions[pos.id] = currentPlayersInOrder[idx] || null;
     });
 
-    const updated = { formationId: newFormation.id, positions: newPositions };
-    setLineup(updated);
+    const updated = {
+      formationId: newFormation.id,
+      positions: newPositions,
+    };
+    setLineup((prev) => ({
+      ...prev,
+      formationId: updated.formationId,
+      positions: updated.positions,
+    }));
 
     if (selectedTeamCanonical) {
       saveTeamLineup(selectedTeamCanonical.id, updated);
@@ -709,7 +867,11 @@ export function FormationsPage({
 
   const handleBenchClick = (playerName) => {
     if (!canEditLineups) return;
-    if (selectedPlayer && selectedPlayer.from === "bench" && selectedPlayer.name === playerName) {
+    if (
+      selectedPlayer &&
+      selectedPlayer.from === "bench" &&
+      selectedPlayer.name === playerName
+    ) {
       setSelectedPlayer(null);
       return;
     }
@@ -750,7 +912,10 @@ export function FormationsPage({
     setLineup(updated);
 
     if (selectedTeamCanonical) {
-      saveTeamLineup(selectedTeamCanonical.id, updated);
+      saveTeamLineup(selectedTeamCanonical.id, {
+        formationId: updated.formationId,
+        positions: updated.positions,
+      });
     }
 
     setSelectedPlayer(null);
@@ -761,11 +926,26 @@ export function FormationsPage({
     const newPositions = { ...lineup.positions, [posId]: null };
     const updated = { ...lineup, positions: newPositions };
     setLineup(updated);
+
     if (selectedTeamCanonical) {
-      saveTeamLineup(selectedTeamCanonical.id, updated);
+      saveTeamLineup(selectedTeamCanonical.id, {
+        formationId: updated.formationId,
+        positions: updated.positions,
+      });
     }
     setSelectedPlayer(null);
   };
+
+  const saveMeta = lineup?.meta || null;
+  const saveMetaText = useMemo(() => {
+    if (!saveMeta) return "";
+    const role = saveMeta.savedByRole || "general";
+    const who = saveMeta.savedByName || saveMeta.savedByEmail || "unknown";
+    const captainBit = saveMeta.teamCaptainPreferred
+      ? " • team captain preferred"
+      : "";
+    return `Saved by ${who} (${role})${captainBit}`;
+  }, [saveMeta]);
 
   if (!selectedTeamCanonical) {
     return (
@@ -775,7 +955,11 @@ export function FormationsPage({
             <button className="secondary-btn" type="button" onClick={onBack}>
               ← Back to Home
             </button>
-            <button className="primary-btn" type="button" onClick={onGoToSquads}>
+            <button
+              className="primary-btn"
+              type="button"
+              onClick={onGoToSquads}
+            >
               Manage Squads
             </button>
           </div>
@@ -802,9 +986,9 @@ export function FormationsPage({
 
         <h1>Lineups &amp; Formations</h1>
         <p className="subtitle">
-          Design <strong>5-a-side and 11-a-side lineups</strong> for your Turf Kings
-          teams. Everyone can move players around on this device to brainstorm
-          shapes and take screenshots.
+          Design <strong>5-a-side and 11-a-side lineups</strong> for your Turf
+          Kings teams. Everyone can move players around on this device to
+          brainstorm shapes and take screenshots.
         </p>
       </header>
 
@@ -815,14 +999,18 @@ export function FormationsPage({
             <div className="segmented-toggle">
               <button
                 type="button"
-                className={`segmented-option ${gameType === GAME_TYPE_5 ? "active" : ""}`}
+                className={`segmented-option ${
+                  gameType === GAME_TYPE_5 ? "active" : ""
+                }`}
                 onClick={() => handleGameTypeClick(GAME_TYPE_5)}
               >
                 5-a-side
               </button>
               <button
                 type="button"
-                className={`segmented-option ${gameType === GAME_TYPE_11 ? "active" : ""}`}
+                className={`segmented-option ${
+                  gameType === GAME_TYPE_11 ? "active" : ""
+                }`}
                 onClick={() => handleGameTypeClick(GAME_TYPE_11)}
               >
                 11-a-side
@@ -838,7 +1026,9 @@ export function FormationsPage({
                   <button
                     key={t.id}
                     type="button"
-                    className={`team-pill-btn ${t.id === selectedTeamCanonical.id ? "active" : ""}`}
+                    className={`team-pill-btn ${
+                      t.id === selectedTeamCanonical.id ? "active" : ""
+                    }`}
                     onClick={() => handleTeamClick(t.id)}
                   >
                     {t.label}
@@ -873,6 +1063,12 @@ export function FormationsPage({
           </div>
         </div>
 
+        {saveMetaText ? (
+          <p className="muted small" style={{ marginTop: "-0.35rem", marginBottom: "0.9rem" }}>
+            {saveMetaText}
+          </p>
+        ) : null}
+
         <div className="lineups-layout">
           {/* Pitch */}
           <div className="pitch-wrapper">
@@ -889,13 +1085,14 @@ export function FormationsPage({
                   selectedPlayer.from === "pitch" &&
                   selectedPlayer.posId === pos.id;
 
-                // photos keyed by canonical full name
                 const photoData = name ? playerPhotos[name] : null;
 
                 return (
                   <div
                     key={pos.id}
-                    className={`pitch-position ${name ? "has-player" : ""} ${isSelected ? "selected" : ""}`}
+                    className={`pitch-position ${name ? "has-player" : ""} ${
+                      isSelected ? "selected" : ""
+                    }`}
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                     onClick={() => handlePitchClick(pos.id)}
                     onDoubleClick={(e) => {
@@ -905,11 +1102,16 @@ export function FormationsPage({
                   >
                     <div className="player-token">
                       <div
-                        className={`player-shirt ${photoData ? "with-photo" : ""}`}
-                        style={photoData ? { backgroundImage: `url(${photoData})` } : {}}
+                        className={`player-shirt ${
+                          photoData ? "with-photo" : ""
+                        }`}
+                        style={
+                          photoData
+                            ? { backgroundImage: `url(${photoData})` }
+                            : {}
+                        }
                       />
                       <div className="player-label">
-                        {/* ✅ UI only: compact (first/short). Storage remains full name */}
                         <span className="player-name">
                           {name ? displayCompactName(name) : "Empty"}
                         </span>
@@ -942,11 +1144,12 @@ export function FormationsPage({
                     <li key={p}>
                       <button
                         type="button"
-                        className={`bench-player ${isSelected ? "selected" : ""}`}
+                        className={`bench-player ${
+                          isSelected ? "selected" : ""
+                        }`}
                         onClick={() => handleBenchClick(p)}
                         disabled={!canEditLineups}
                       >
-                        {/* ✅ UI only */}
                         {displayCompactName(p)}
                       </button>
                     </li>
@@ -962,7 +1165,6 @@ export function FormationsPage({
               </p>
             </div>
 
-            {/* Collapsible player photo section */}
             <div className="photo-toggle-row">
               <button
                 type="button"
@@ -989,7 +1191,8 @@ export function FormationsPage({
                   ) : (
                     <p className="error-text small">
                       We can&apos;t tell which player you are. Please verify your
-                      player identity on the home screen before uploading a photo.
+                      player identity on the home screen before uploading a
+                      photo.
                     </p>
                   )}
                 </div>
@@ -1004,7 +1207,9 @@ export function FormationsPage({
                   />
                 </div>
 
-                {uploadingPhoto && <p className="muted small">Uploading photo…</p>}
+                {uploadingPhoto && (
+                  <p className="muted small">Uploading photo…</p>
+                )}
                 {photoMessage && <p className="muted small">{photoMessage}</p>}
               </div>
             )}

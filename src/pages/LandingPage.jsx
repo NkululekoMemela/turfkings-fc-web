@@ -1,54 +1,83 @@
 // src/pages/LandingPage.jsx
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 
-// 🔥 Firebase auth (only need auth object here)
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
-import { isCaptainEmail } from "../core/captainAuth.js"; // captain email guard
 
-const CAPTAIN_CODES = ["11", "22", "3333"]; // any captain can approve pairing override
+const CAPTAIN_CODES = ["11", "22", "3333"];
 
-// 💡 Fancy “selected pill” style (kept from your chosen version, but with black text)
 const activePrimaryStyle = {
   background:
     "radial-gradient(circle at 0% 0%, rgba(56,189,248,0.25), transparent 55%), radial-gradient(circle at 100% 100%, rgba(59,130,246,0.35), transparent 55%), linear-gradient(90deg, #22d3ee, #38bdf8, #6366f1)",
-  color: "#000000", // ⬅️ black text
+  color: "#000000",
   boxShadow:
     "0 0 0 1px rgba(148, 255, 255, 0.35), 0 0 24px rgba(56,189,248,0.50)",
   border: "none",
 };
+
+function getIdentityRole(identity) {
+  const role = String(
+    identity?.actingRole || identity?.role || "spectator"
+  ).trim().toLowerCase();
+
+  if (
+    role === "admin" ||
+    role === "captain" ||
+    role === "player" ||
+    role === "spectator"
+  ) {
+    return role;
+  }
+
+  return "spectator";
+}
+
+function getIdentityDisplayName(identity, currentUser) {
+  return (
+    identity?.shortName ||
+    identity?.fullName ||
+    identity?.displayName ||
+    identity?.name ||
+    currentUser?.displayName ||
+    currentUser?.email ||
+    "Guest"
+  );
+}
 
 export function LandingPage({
   teams,
   currentMatchNo,
   currentMatch,
   results,
-  streaks, // currently unused but kept for future
+  streaks, // kept for future use
   hasLiveMatch,
   onUpdatePairing,
   onStartMatch,
   onGoToStats,
-  onGoToSquads,
   onOpenBackupModal,
-  onOpenEndSeasonModal, // ✅ provided by App.jsx (now guarded)
-  onGoToLiveAsSpectator, // for viewers
-  onGoToFormations, // formations page (now also where you manage squads)
-  onGoToNews, // News & Highlights
-  onGoToEntryDev, // goes to EntryPage (identity screen)
-  identity, // who this human said they are on EntryPage
+  onOpenEndSeasonModal,
+  onGoToLiveAsSpectator,
+  onGoToFormations,
+  onGoToNews,
+  onGoToEntryDev,
+  identity,
+  activeRole,
+  isAdmin = false,
+  isCaptain = false,
+  isPlayer = false,
+  isSpectator = false,
+  canStartMatch = false,
 }) {
-  const { teamAId, teamBId, standbyId } = currentMatch;
+  const { teamAId, teamBId, standbyId } = currentMatch || {};
 
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [pendingMatch, setPendingMatch] = useState(null);
   const [pairingCode, setPairingCode] = useState("");
   const [pairingError, setPairingError] = useState("");
 
-  // 🔍 detect mobile for shorter option labels
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth <= 480;
@@ -56,14 +85,11 @@ export function LandingPage({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onResize = () => {
-      setIsMobile(window.innerWidth <= 480);
-    };
+    const onResize = () => setIsMobile(window.innerWidth <= 480);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // 🔐 Firebase auth state (for header + captain permissions)
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -73,61 +99,65 @@ export function LandingPage({
     return () => unsub();
   }, []);
 
-  // Captain gating is still based on email:
-  const userEmail = currentUser?.email || "";
-  const isCaptain = currentUser && isCaptainEmail(userEmail);
-
-  // ---------- Entry identity label ----------
-  const entryRole = identity?.role || null;
-  let entryIdentityLabel = "";
-  if (entryRole === "admin") {
-    entryIdentityLabel = "admin";
-  } else if (entryRole === "captain") {
-    entryIdentityLabel = "captain";
-  } else if (entryRole === "player") {
-    entryIdentityLabel = "player";
-  } else if (entryRole === "spectator") {
-    entryIdentityLabel = "spectator";
-  }
-
-  // ---------- Role label for Firebase user ----------
-  let roleLabel = "";
-  if (isCaptain) {
-    roleLabel = "(captain)";
-  }
-
-  const handleChangeIdentityClick = () => {
-    if (onGoToEntryDev) {
-      onGoToEntryDev();
-    }
-  };
+  const resolvedRole = useMemo(() => {
+    if (activeRole === "admin") return "admin";
+    if (activeRole === "captain") return "captain";
+    if (activeRole === "player") return "player";
+    if (activeRole === "spectator") return "spectator";
+    return getIdentityRole(identity);
+  }, [activeRole, identity]);
 
   const teamA = getTeamById(teams, teamAId);
   const teamB = getTeamById(teams, teamBId);
   const standbyTeam = getTeamById(teams, standbyId);
 
-  const matchesPlayed = results.length;
+  const matchesPlayed = Array.isArray(results) ? results.length : 0;
   const lastResult = matchesPlayed > 0 ? results[matchesPlayed - 1] : null;
 
-  // ---------- Ribbon text ----------
-  let ribbonText = `Next: ${teamA.label} vs ${teamB.label}  \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0  Standby: ${standbyTeam.label}`;
+  const identityName = useMemo(
+    () => getIdentityDisplayName(identity, currentUser),
+    [identity, currentUser]
+  );
+
+  const profileButtonLabel = identity
+    ? resolvedRole === "spectator"
+      ? "Change viewer mode"
+      : "Change profile"
+    : "Sign in";
+
+  const roleLabel = useMemo(() => {
+    if (resolvedRole === "admin") return "admin";
+    if (resolvedRole === "captain") return "captain";
+    if (resolvedRole === "player") return "player";
+    return "spectator";
+  }, [resolvedRole]);
+
+  let ribbonText = "";
+  if (teamA && teamB && standbyTeam) {
+    ribbonText = `Next: ${teamA.label} vs ${teamB.label}  \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0  Standby: ${standbyTeam.label}`;
+  }
 
   if (lastResult) {
     const lastA = getTeamById(teams, lastResult.teamAId);
     const lastB = getTeamById(teams, lastResult.teamBId);
-    const status =
-      lastResult.isDraw && !lastResult.winnerId
-        ? "draw"
-        : `won by ${lastResult.winnerId === lastA.id ? lastA.label : lastB.label}`;
 
-    ribbonText += `  \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0 • Last: ${lastA.label} ${lastResult.goalsA}-${lastResult.goalsB} ${lastB.label} (${status})`;
-  } else {
+    if (lastA && lastB) {
+      const status =
+        lastResult.isDraw && !lastResult.winnerId
+          ? "draw"
+          : `won by ${
+              lastResult.winnerId === lastA.id ? lastA.label : lastB.label
+            }`;
+
+      ribbonText += `  \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0 • Last: ${lastA.label} ${lastResult.goalsA}-${lastResult.goalsB} ${lastB.label} (${status})`;
+    }
+  } else if (ribbonText) {
     ribbonText +=
-      "  \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0 •  No results yet – first game incoming!";
+      "  \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0 • No results yet – first game incoming!";
   }
 
-  // ---------- pairing override ----------
   const requestPairChange = (candidateMatch) => {
+    if (!canStartMatch) return;
     setPendingMatch(candidateMatch);
     setPairingCode("");
     setPairingError("");
@@ -135,13 +165,17 @@ export function LandingPage({
   };
 
   const handleTeamAChange = (e) => {
-    if (!isCaptain) return;
+    if (!canStartMatch) return;
+
     const newA = e.target.value;
     if (newA === teamAId) return;
 
     const allowedForB = teams.filter((t) => t.id !== newA);
-    const newB = allowedForB.some((t) => t.id === teamBId) ? teamBId : allowedForB[0].id;
-    const newStandby = teams.find((t) => t.id !== newA && t.id !== newB)?.id || standbyId;
+    const newB = allowedForB.some((t) => t.id === teamBId)
+      ? teamBId
+      : allowedForB[0]?.id;
+    const newStandby =
+      teams.find((t) => t.id !== newA && t.id !== newB)?.id || standbyId;
 
     requestPairChange({
       teamAId: newA,
@@ -151,13 +185,17 @@ export function LandingPage({
   };
 
   const handleTeamBChange = (e) => {
-    if (!isCaptain) return;
+    if (!canStartMatch) return;
+
     const newB = e.target.value;
     if (newB === teamBId) return;
 
     const allowedForA = teams.filter((t) => t.id !== newB);
-    const newA = allowedForA.some((t) => t.id === teamAId) ? teamAId : allowedForA[0].id;
-    const newStandby = teams.find((t) => t.id !== newA && t.id !== newB)?.id || standbyId;
+    const newA = allowedForA.some((t) => t.id === teamAId)
+      ? teamAId
+      : allowedForA[0]?.id;
+    const newStandby =
+      teams.find((t) => t.id !== newA && t.id !== newB)?.id || standbyId;
 
     requestPairChange({
       teamAId: newA,
@@ -175,24 +213,35 @@ export function LandingPage({
 
   const confirmPairingChange = () => {
     if (!pendingMatch) return;
+
     if (!CAPTAIN_CODES.includes(pairingCode.trim())) {
       setPairingError("Invalid captain code.");
       return;
     }
+
     onUpdatePairing(pendingMatch);
     cancelPairingChange();
   };
 
-  // dropdown options (no same team both sides)
   const optionsForTeamA = teams.filter((t) => t.id !== teamBId);
   const optionsForTeamB = teams.filter((t) => t.id !== teamAId);
 
-  const renderOptionLabel = (team) => (isMobile ? team.label : `${team.label} (c: ${team.captain})`);
+  const renderOptionLabel = (team) =>
+    isMobile ? team.label : `${team.label} (c: ${team.captain})`;
 
-  // spectator live button behaviour – always go to spectator page
   const handleSpectatorLiveClick = () => {
     onGoToLiveAsSpectator();
   };
+
+  const handleStartMatchClick = () => {
+    if (!canStartMatch) {
+      window.alert("Only captains or admin can start a match.");
+      return;
+    }
+    onStartMatch();
+  };
+
+  const canSeeCaptainStyleControls = isCaptain || isAdmin;
 
   return (
     <div className="page landing-page">
@@ -201,50 +250,51 @@ export function LandingPage({
           <img src={TurfKingsLogo} alt="Turf Kings logo" className="tk-logo" />
           <h1>Turf Kings 5-A-Side</h1>
         </div>
+
         <p className="subtitle">Grand Central (CT) – Wednesdays, 17:30–19:00</p>
 
-        {/* 🔐 Auth + identity block (no sign-in/out here) */}
         <div className="header-top-row">
           <div className="auth-status">
-            {currentUser ? (
-              <span className="auth-text">
-                Signed in as <strong>{currentUser.displayName || currentUser.email}</strong>{" "}
-                {roleLabel && <span>{roleLabel}</span>}
-                {entryIdentityLabel && (
-                  <>
-                    {"  "}
-                    <span className="muted small">
-                      Entry identity: <strong>{entryIdentityLabel}</strong>
-                    </span>
-                  </>
-                )}
+            <span className="auth-text">
+              Viewing as <strong>{identityName}</strong>
+              <span className="muted small">
+                {" "}
+                • Role: <strong>{roleLabel}</strong>
               </span>
-            ) : (
-              <>
-                <span className="auth-text">
-                  You&apos;re in <strong>spectator mode</strong>
-                </span>
-                {entryIdentityLabel && (
-                  <span className="muted small">
-                    Entry identity: <strong>{entryIdentityLabel}</strong>
-                  </span>
-                )}
-              </>
+            </span>
+
+            {currentUser && resolvedRole !== "spectator" && (
+              <div className="muted small" style={{ marginTop: "0.2rem" }}>
+                Google account:{" "}
+                <strong>{currentUser.displayName || currentUser.email}</strong>
+              </div>
             )}
           </div>
 
-          {/* Top-right buttons */}
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            {/* ✅ NEW LOCATION: End Season next to signin (captain only) */}
-            {isCaptain && typeof onOpenEndSeasonModal === "function" && (
-              <button className="secondary-btn" type="button" onClick={onOpenEndSeasonModal}>
+          <div
+            style={{
+              display: "flex",
+              gap: "0.5rem",
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            {isAdmin && typeof onOpenEndSeasonModal === "function" && (
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={onOpenEndSeasonModal}
+              >
                 🏆 End Season
               </button>
             )}
 
-            {/* This is the ONLY identity button – goes back to EntryPage */}
-            <button className="secondary-btn" type="button" onClick={handleChangeIdentityClick}>
-              signin
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={onGoToEntryDev}
+            >
+              {profileButtonLabel}
             </button>
           </div>
         </div>
@@ -256,7 +306,11 @@ export function LandingPage({
         <div className="match-setup-row">
           <div className="team-select">
             <label>On-field Team 1</label>
-            <select value={teamAId} onChange={handleTeamAChange} disabled={!isCaptain}>
+            <select
+              value={teamAId || ""}
+              onChange={handleTeamAChange}
+              disabled={!canSeeCaptainStyleControls}
+            >
               {optionsForTeamA.map((team) => (
                 <option key={team.id} value={team.id}>
                   {renderOptionLabel(team)}
@@ -269,7 +323,11 @@ export function LandingPage({
 
           <div className="team-select">
             <label>On-field Team 2</label>
-            <select value={teamBId} onChange={handleTeamBChange} disabled={!isCaptain}>
+            <select
+              value={teamBId || ""}
+              onChange={handleTeamBChange}
+              disabled={!canSeeCaptainStyleControls}
+            >
               {optionsForTeamB.map((team) => (
                 <option key={team.id} value={team.id}>
                   {renderOptionLabel(team)}
@@ -279,44 +337,68 @@ export function LandingPage({
           </div>
         </div>
 
-        <p className="standby-label">
-          Standby Team:{" "}
-          <strong>
-            {standbyTeam.label} (c: {standbyTeam.captain})
-          </strong>
-        </p>
+        {standbyTeam && (
+          <p className="standby-label">
+            Standby Team:{" "}
+            <strong>
+              {standbyTeam.label} (c: {standbyTeam.captain})
+            </strong>
+          </p>
+        )}
 
-        {/* 🔁 Buttons: captain vs everyone else */}
-        {isCaptain ? (
+        {canSeeCaptainStyleControls ? (
           <div className="actions-row landing-actions">
             <button
               className="primary-btn"
               style={activePrimaryStyle}
-              onClick={onStartMatch}
+              onClick={handleStartMatchClick}
               type="button"
             >
               ⚽ Start Match
             </button>
-            <button className="secondary-btn" onClick={() => onGoToStats()} type="button">
+
+            <button
+              className="secondary-btn"
+              onClick={() => onGoToStats()}
+              type="button"
+            >
               📊 View Stats
             </button>
-            <button type="button" className="secondary-btn" onClick={onGoToFormations}>
+
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={onGoToFormations}
+            >
               🧩 Lineups &amp; Formations
             </button>
-            <button className="secondary-btn" type="button" onClick={onGoToNews}>
+
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={onGoToNews}
+            >
               📝 News &amp; Highlights
             </button>
 
-            {/* End Match Day stays here */}
-            <button className="secondary-btn" onClick={onOpenBackupModal}>
-              🏁 End Match Day
-            </button>
-
-            {/* ❌ End Season removed from here (now in header) */}
+            {isAdmin && (
+              <button
+                className="secondary-btn"
+                onClick={onOpenBackupModal}
+                type="button"
+              >
+                🏁 End Match Day
+              </button>
+            )}
           </div>
         ) : (
           <>
-            <p className="muted">You can follow the live game</p>
+            <p className="muted">
+              {isPlayer
+                ? "Players can view the setup, lineups and stats, but only captains or admin can start a match."
+                : "You can follow the live game and view all public information."}
+            </p>
+
             <div className="actions-row landing-actions">
               <button
                 className="primary-btn"
@@ -324,15 +406,30 @@ export function LandingPage({
                 type="button"
                 onClick={handleSpectatorLiveClick}
               >
-                {hasLiveMatch ? "⚽ View Live Match" : "⚽ Live Match (waiting…)"}
+                {hasLiveMatch ? "⚽ View Live Match" : "⚽ Live Match"}
               </button>
-              <button className="secondary-btn" type="button" onClick={() => onGoToStats()}>
+
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={() => onGoToStats()}
+              >
                 📊 View Stats
               </button>
-              <button type="button" className="secondary-btn" onClick={onGoToFormations}>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={onGoToFormations}
+              >
                 🧩 Lineups &amp; Formations
               </button>
-              <button className="secondary-btn" type="button" onClick={onGoToNews}>
+
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={onGoToNews}
+              >
                 📝 News &amp; Highlights
               </button>
             </div>
@@ -340,19 +437,16 @@ export function LandingPage({
         )}
       </section>
 
-      {/* Ribbon stays here, above the team photo */}
       <section className="ticker">
         <div className="ticker-inner">
           <span>{ribbonText}</span>
         </div>
       </section>
 
-      {/* Team photo */}
       <section className="card team-photo-card">
         <img src={TeamPhoto} alt="Turf Kings team" className="team-photo" />
       </section>
 
-      {/* External links */}
       <section className="card website-card">
         <div className="website-links">
           <a
@@ -380,6 +474,7 @@ export function LandingPage({
           <div className="modal">
             <h3>Confirm Match Override</h3>
             <p>Changing the next pairing requires a captain code.</p>
+
             <div className="field-row">
               <label>Captain code</label>
               <input
@@ -393,6 +488,7 @@ export function LandingPage({
               />
               {pairingError && <p className="error-text">{pairingError}</p>}
             </div>
+
             <div className="actions-row">
               <button className="secondary-btn" onClick={cancelPairingChange}>
                 Cancel
@@ -402,22 +498,6 @@ export function LandingPage({
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Dev button back to EntryPage (keep for now) */}
-      {onGoToEntryDev && (
-        <div
-          style={{
-            position: "fixed",
-            right: "0.75rem",
-            bottom: "0.5rem",
-            zIndex: 40,
-          }}
-        >
-          <button type="button" className="secondary-btn" onClick={onGoToEntryDev}>
-            Dev: Entry
-          </button>
         </div>
       )}
     </div>
