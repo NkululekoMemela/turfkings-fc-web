@@ -18,7 +18,6 @@ import {
   loadSavedLineups,
   resolvePreferredTeamLineup,
   createVerifiedLineupSnapshot,
-  getVerifiedPlayersForEvents,
   isGuestPlayerInSnapshot,
   toTitleCaseLoose,
   uniqueNames,
@@ -113,6 +112,71 @@ function getPlayerPhoto(playerPhotosByName = {}, playerName = "") {
   }
 
   return null;
+}
+
+function getOnFieldPlayersFromSnapshot(snapshot, fallbackPlayers = []) {
+  const positionedPlayers = Object.values(snapshot?.positions || {})
+    .map((name) => formatPlayerLabel(name))
+    .filter(Boolean);
+
+  if (positionedPlayers.length > 0) {
+    return uniqueNames(positionedPlayers);
+  }
+
+  return uniqueNames((fallbackPlayers || []).map((p) => formatPlayerLabel(p)));
+}
+
+function lineupHasEmptyPositions(lineup) {
+  const formation =
+    FORMATIONS_5[lineup?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+
+  return formation.positions.some((pos) => {
+    const name = lineup?.positions?.[pos.id];
+    return !String(name || "").trim();
+  });
+}
+
+function getTeamAccent(label = "") {
+  const key = String(label || "").trim().toLowerCase();
+
+  if (
+    key.includes("man u") ||
+    key.includes("manu") ||
+    key.includes("man united") ||
+    key.includes("manchester united")
+  ) {
+    return {
+      dot: "#dc2626",
+      soft: "rgba(220, 38, 38, 0.18)",
+      border: "rgba(220, 38, 38, 0.45)",
+      text: "#fecaca",
+    };
+  }
+
+  if (key.includes("madrid") || key.includes("real madrid")) {
+    return {
+      dot: "#f8fafc",
+      soft: "rgba(248, 250, 252, 0.14)",
+      border: "rgba(248, 250, 252, 0.30)",
+      text: "#f8fafc",
+    };
+  }
+
+  if (key.includes("psg") || key.includes("paris")) {
+    return {
+      dot: "#1d4ed8",
+      soft: "rgba(29, 78, 216, 0.18)",
+      border: "rgba(29, 78, 216, 0.42)",
+      text: "#bfdbfe",
+    };
+  }
+
+  return {
+    dot: "#38bdf8",
+    soft: "rgba(56, 189, 248, 0.16)",
+    border: "rgba(56, 189, 248, 0.35)",
+    text: "#e5e7eb",
+  };
 }
 
 async function hardResetMatchDoc(summaryInfo, matchSeconds) {
@@ -430,19 +494,6 @@ function LineupBoard({
     setSelectedPlayer(null);
   };
 
-  const handleClearSpot = (posId) => {
-    if (disabled) return;
-
-    setLineup((prev) => ({
-      ...prev,
-      positions: {
-        ...(prev?.positions || {}),
-        [posId]: null,
-      },
-    }));
-    setSelectedPlayer(null);
-  };
-
   const handleGuestAdd = () => {
     if (disabled) return;
 
@@ -503,10 +554,6 @@ function LineupBoard({
                 }`}
                 style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                 onClick={() => handlePitchClick(pos.id)}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  handleClearSpot(pos.id);
-                }}
               >
                 <div className="player-token">
                   <div
@@ -721,10 +768,11 @@ export function LiveMatchPage({
     };
   }, []);
 
-  const [scoringTeamId, setScoringTeamId] = useState(teamAId);
+  const [scoringTeamId, setScoringTeamId] = useState("");
   const [scorerName, setScorerName] = useState("");
   const [assistName, setAssistName] = useState("");
   const [showGoalRecorder, setShowGoalRecorder] = useState(false);
+  const [goalStep, setGoalStep] = useState("team");
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmCountdown, setConfirmCountdown] = useState(15);
@@ -805,6 +853,8 @@ export function LiveMatchPage({
       setVerifyTeamBLineup(defaultTeamBLineup);
       setShowVerifyModal(true);
       setShowGoalRecorder(false);
+      setGoalStep("team");
+      setScoringTeamId("");
       setScorerName("");
       setAssistName("");
       return;
@@ -824,10 +874,11 @@ export function LiveMatchPage({
   ]);
 
   useEffect(() => {
-    setScoringTeamId(teamAId);
+    setScoringTeamId("");
     setScorerName("");
     setAssistName("");
     setShowGoalRecorder(false);
+    setGoalStep("team");
   }, [teamAId, teamBId, currentMatchNo]);
 
   useEffect(() => {
@@ -991,7 +1042,7 @@ export function LiveMatchPage({
       formatPlayerLabel(p)
     );
 
-    return getVerifiedPlayersForEvents(snapshot, fallbackPlayers);
+    return getOnFieldPlayersFromSnapshot(snapshot, fallbackPlayers);
   }, [
     scoringTeamId,
     verifiedLineupA,
@@ -1017,9 +1068,26 @@ export function LiveMatchPage({
     standbyLabel: standbyTeam?.label || "",
   };
 
+  const teamAAccent = getTeamAccent(teamA?.label);
+  const teamBAccent = getTeamAccent(teamB?.label);
+
   const handleConfirmLineups = () => {
     if (!canControlMatch) {
       window.alert("Only captains or admin can confirm match lineups.");
+      return;
+    }
+
+    if (lineupHasEmptyPositions(verifyTeamALineup)) {
+      window.alert(
+        `${teamA?.label || "Team A"} lineup is incomplete. Please fill all 5 positions before confirming.`
+      );
+      return;
+    }
+
+    if (lineupHasEmptyPositions(verifyTeamBLineup)) {
+      window.alert(
+        `${teamB?.label || "Team B"} lineup is incomplete. Please fill all 5 positions before confirming.`
+      );
       return;
     }
 
@@ -1071,12 +1139,23 @@ export function LiveMatchPage({
     }
 
     setShowGoalRecorder(true);
+    setGoalStep("team");
+    setScoringTeamId("");
     setScorerName("");
     setAssistName("");
   };
 
+  const handleChooseScoringTeam = (teamId) => {
+    setScoringTeamId(teamId);
+    setScorerName("");
+    setAssistName("");
+    setGoalStep("scorer");
+  };
+
   const handleCancelGoalRecord = () => {
     setShowGoalRecorder(false);
+    setGoalStep("team");
+    setScoringTeamId("");
     setScorerName("");
     setAssistName("");
   };
@@ -1089,6 +1168,11 @@ export function LiveMatchPage({
 
     if (!hasVerifiedLineups) {
       window.alert("Verify lineups before recording goals.");
+      return;
+    }
+
+    if (!scoringTeamId) {
+      window.alert("Select the team that scored first.");
       return;
     }
 
@@ -1118,9 +1202,11 @@ export function LiveMatchPage({
     };
 
     onAddEvent(event);
+    setScoringTeamId("");
     setScorerName("");
     setAssistName("");
     setShowGoalRecorder(false);
+    setGoalStep("team");
 
     appendEventToFirestore(event, basicSummary, displaySeconds, matchSeconds);
   };
@@ -1350,6 +1436,24 @@ export function LiveMatchPage({
           margin-top: 0.05rem;
         }
 
+        .tk-team-color-btn {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          min-width: 132px;
+          padding-left: 0.9rem;
+        }
+
+        .tk-team-color-btn .tk-team-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          flex-shrink: 0;
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.18);
+        }
+
         @media (max-width: 480px) {
           .live-page .player-shirt {
             width: 34px !important;
@@ -1363,6 +1467,10 @@ export function LiveMatchPage({
 
           .live-page .player-meta .position-tag {
             font-size: 0.46rem !important;
+          }
+
+          .tk-team-color-btn {
+            min-width: 112px;
           }
         }
       `}</style>
@@ -1440,94 +1548,153 @@ export function LiveMatchPage({
                   background: "rgba(255,255,255,0.04)",
                 }}
               >
-                <div className="field-row">
-                  <label>Which team scored?</label>
-                  <div className="team-toggle">
-                    <button
-                      className={
-                        scoringTeamId === teamAId
-                          ? "toggle-btn active"
-                          : "toggle-btn"
-                      }
-                      type="button"
-                      onClick={() => {
-                        setScoringTeamId(teamAId);
-                        setScorerName("");
-                        setAssistName("");
-                      }}
-                      disabled={!hasVerifiedLineups}
-                    >
-                      {teamA?.label}
-                    </button>
-                    <button
-                      className={
-                        scoringTeamId === teamBId
-                          ? "toggle-btn active"
-                          : "toggle-btn"
-                      }
-                      type="button"
-                      onClick={() => {
-                        setScoringTeamId(teamBId);
-                        setScorerName("");
-                        setAssistName("");
-                      }}
-                      disabled={!hasVerifiedLineups}
-                    >
-                      {teamB?.label}
-                    </button>
+                {goalStep === "team" && (
+                  <div className="field-row">
+                    <label>Step 1 — Which team scored?</label>
+                    <div className="team-toggle">
+                      <button
+                        className="toggle-btn tk-team-color-btn"
+                        type="button"
+                        onClick={() => handleChooseScoringTeam(teamAId)}
+                        disabled={!hasVerifiedLineups}
+                        style={{
+                          borderColor: teamAAccent.border,
+                          background: teamAAccent.soft,
+                          color: teamAAccent.text,
+                        }}
+                      >
+                        <span
+                          className="tk-team-dot"
+                          style={{ background: teamAAccent.dot }}
+                        />
+                        {teamA?.label}
+                      </button>
+                      <button
+                        className="toggle-btn tk-team-color-btn"
+                        type="button"
+                        onClick={() => handleChooseScoringTeam(teamBId)}
+                        disabled={!hasVerifiedLineups}
+                        style={{
+                          borderColor: teamBAccent.border,
+                          background: teamBAccent.soft,
+                          color: teamBAccent.text,
+                        }}
+                      >
+                        <span
+                          className="tk-team-dot"
+                          style={{ background: teamBAccent.dot }}
+                        />
+                        {teamB?.label}
+                      </button>
+                    </div>
                   </div>
-                </div>
-
-                <PlayerChoiceGrid
-                  title="Scorer"
-                  players={playersForSelectedTeam}
-                  selectedName={scorerName}
-                  onSelect={(name) => {
-                    setScorerName(name);
-                    if (name && name === assistName) {
-                      setAssistName("");
-                    }
-                  }}
-                  playerPhotosByName={mergedPlayerPhotos}
-                  guestSnapshotChecker={(name) =>
-                    isGuestPlayerInSnapshot(selectedSnapshot, name)
-                  }
-                  disabled={!hasVerifiedLineups}
-                />
-
-                {scorerName && (
-                  <PlayerChoiceGrid
-                    title="Assist (optional)"
-                    players={assistOptions}
-                    selectedName={assistName}
-                    onSelect={(name) => setAssistName(name)}
-                    playerPhotosByName={mergedPlayerPhotos}
-                    guestSnapshotChecker={(name) =>
-                      isGuestPlayerInSnapshot(selectedSnapshot, name)
-                    }
-                    disabled={!hasVerifiedLineups}
-                  />
                 )}
 
-                <div
-                  style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}
-                >
-                  <button
-                    className="primary-btn"
-                    type="button"
-                    onClick={handleAddEvent}
-                    disabled={!hasVerifiedLineups || !scorerName}
-                  >
-                    ✍🏻 Save Goal
-                  </button>
-                  <button
-                    className="secondary-btn"
-                    type="button"
-                    onClick={handleCancelGoalRecord}
-                  >
-                    Cancel
-                  </button>
-                </div>
+                {goalStep === "scorer" && (
+                  <>
+                    <div className="field-row">
+                      <label>
+                        Step 2 — Pick scorer from{" "}
+                        <strong>
+                          {scoringTeamId === teamAId ? teamA?.label : teamB?.label}
+                        </strong>
+                      </label>
+                    </div>
+
+                    <PlayerChoiceGrid
+                      title="Scorer"
+                      players={playersForSelectedTeam}
+                      selectedName={scorerName}
+                      onSelect={(name) => {
+                        setScorerName(name);
+                        setAssistName("");
+                        if (name) setGoalStep("assist");
+                      }}
+                      playerPhotosByName={mergedPlayerPhotos}
+                      guestSnapshotChecker={(name) =>
+                        isGuestPlayerInSnapshot(selectedSnapshot, name)
+                      }
+                      disabled={!hasVerifiedLineups}
+                    />
+
+                    <div
+                      style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}
+                    >
+                      <button
+                        className="secondary-btn"
+                        type="button"
+                        onClick={() => {
+                          setGoalStep("team");
+                          setScoringTeamId("");
+                          setScorerName("");
+                          setAssistName("");
+                        }}
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        className="secondary-btn"
+                        type="button"
+                        onClick={handleCancelGoalRecord}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {goalStep === "assist" && (
+                  <>
+                    <div className="field-row">
+                      <label>
+                        Step 3 — Assist for <strong>{formatPlayerLabel(scorerName)}</strong>{" "}
+                        (optional)
+                      </label>
+                    </div>
+
+                    <PlayerChoiceGrid
+                      title="Assist (optional)"
+                      players={assistOptions}
+                      selectedName={assistName}
+                      onSelect={(name) => setAssistName(name)}
+                      playerPhotosByName={mergedPlayerPhotos}
+                      guestSnapshotChecker={(name) =>
+                        isGuestPlayerInSnapshot(selectedSnapshot, name)
+                      }
+                      disabled={!hasVerifiedLineups}
+                    />
+
+                    <div
+                      style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}
+                    >
+                      <button
+                        className="secondary-btn"
+                        type="button"
+                        onClick={() => {
+                          setGoalStep("scorer");
+                          setAssistName("");
+                        }}
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        className="primary-btn"
+                        type="button"
+                        onClick={handleAddEvent}
+                        disabled={!hasVerifiedLineups || !scorerName}
+                      >
+                        ✍🏻 Save Goal
+                      </button>
+                      <button
+                        className="secondary-btn"
+                        type="button"
+                        onClick={handleCancelGoalRecord}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )
           ) : (
