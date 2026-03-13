@@ -1,4 +1,4 @@
-//src/scripts/backfillHistoricalParticipation.js
+// src/scripts/backfillHistoricalParticipation.js
 
 import admin from "firebase-admin";
 import fs from "fs";
@@ -46,14 +46,22 @@ const HISTORICAL_DAY_SQUADS = {
     PSG: ["Nkululeko Memela", "Barlo", "Taku", "Akhona", "Josh"],
     Madrid: ["Nkumbuzo", "Dr Babs", "Mdu", "Dayton", "Enoch", "Junaid"],
   },
-  "2026-03-07": {
+  "2026-03-06": {
     "Man U": ["Dayaan", "Chad", "Maanda", "Junaid", "Nabeel", "Jason"],
     PSG: ["Nkululeko Memela", "Barlo", "Taku", "Akhona", "Josh", "Likhanye"],
     Madrid: ["Zizou", "Dr Babs", "Mdu", "Dayton", "Enoch", "Scott"],
   },
-  "2026-03-11": {
-    "Man U": ["Dayaan", "Chad", "Maanda", "Junaid", "Nabeel", "Jason"],
-    PSG: ["Nkululeko Memela", "Barlo", "Taku", "Akhona", "Josh", "Likhanye"],
+  "2026-03-13": {
+    "Man U": [
+      "Dayaan",
+      "Chad",
+      "Avuyile",
+      "Junaid",
+      "Nabeel",
+      "Theo",
+      "Jason",
+    ],
+    PSG: ["Nkululeko Memela", "Barlo", "Taku", "Akhona", "Josh", "Joshua"],
     Madrid: ["Zizou", "Dr Babs", "Mdu", "Dayton", "Enoch", "Scott"],
   },
 };
@@ -65,10 +73,10 @@ const PARTICIPATION_OVERRIDES = {
   "2026-02-26": {
     lloyd: 3,
   },
-  "2026-03-07": {
+  "2026-03-06": {
     lloyd: 3,
   },
-  "2026-03-11": {
+  "2026-03-13": {
     chad: "__ONE_THIRD__",
     nabeel: "__TWO_THIRDS__",
   },
@@ -103,6 +111,8 @@ const NAME_ALIASES = {
   scott: "scott",
   jason: "jason",
   likhanye: "likhanye",
+  avuyile: "avuyile",
+  joshua: "joshua",
 };
 
 /* ------------------------------------------------------------------ */
@@ -215,7 +225,6 @@ function resolveMemberByAnyName(raw, memberMaps) {
   const pretty = toTitleCaseLoose(aliasApplied);
   const prettyLower = safeLower(pretty);
 
-  // Hard fix: NK / Nkululeko Memela must always resolve to docId "nkululeko"
   if (prettyLower === "nkululeko memela" || prettyLower === "nk") {
     const exact = byId.get("nkululeko");
     if (exact) return exact;
@@ -289,7 +298,10 @@ function normalizePlayerEntry(rawEntry, memberMaps) {
 
   const playerId = matched
     ? String(
-        matched.id || matched.memberId || matched.playerId || slugFromLooseName(rawName)
+        matched.id ||
+          matched.memberId ||
+          matched.playerId ||
+          slugFromLooseName(rawName)
       ).trim()
     : slugFromLooseName(rawName);
 
@@ -432,7 +444,9 @@ function applyOverridesToAppearances(dayId, appearances, memberMaps) {
       const candidateKeys = new Set([
         safeLower(rawKey),
         safeLower(NAME_ALIASES[safeLower(rawKey)] || ""),
-        matched ? safeLower(matched.id || matched.playerId || matched.memberId) : "",
+        matched
+          ? safeLower(matched.id || matched.playerId || matched.memberId)
+          : "",
         matched ? safeLower(matched.shortName) : "",
         matched ? safeLower(matched.fullName) : "",
         matched ? safeLower(matched.name) : "",
@@ -506,7 +520,10 @@ async function main() {
     : [];
 
   const playersSnap = await db.collection("players").get();
-  const members = playersSnap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+  const members = playersSnap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() || {}),
+  }));
   const memberMaps = buildMemberLookup(members);
 
   console.log("✅ Loaded season:", targetSeason.seasonId || "(unknown)");

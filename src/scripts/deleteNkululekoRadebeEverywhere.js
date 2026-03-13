@@ -59,13 +59,58 @@ function extractRawName(entry) {
   );
 }
 
-async function main() {
+async function deleteBadPlayerDocs() {
+  const playersSnap = await db.collection("players").get();
+
+  const docsToDelete = playersSnap.docs.filter((docSnap) => {
+    const data = docSnap.data() || {};
+
+    return (
+      isBadName(docSnap.id) ||
+      isBadName(data.fullName) ||
+      isBadName(data.shortName) ||
+      isBadName(data.displayName) ||
+      isBadName(data.name) ||
+      isBadName(data.playerName)
+    );
+  });
+
+  if (docsToDelete.length === 0) {
+    console.log("No bad player docs found in players collection.");
+    return 0;
+  }
+
+  console.log("The following player docs will be deleted:");
+  console.table(
+    docsToDelete.map((docSnap) => {
+      const data = docSnap.data() || {};
+      return {
+        docId: docSnap.id,
+        fullName: data.fullName || "",
+        shortName: data.shortName || "",
+        displayName: data.displayName || "",
+        name: data.name || "",
+        playerName: data.playerName || "",
+      };
+    })
+  );
+
+  const batch = db.batch();
+  docsToDelete.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+  });
+  await batch.commit();
+
+  return docsToDelete.length;
+}
+
+async function cleanupAppState() {
   const appRef = db.collection("appState_v2").doc("main");
   const snap = await appRef.get();
 
   if (!snap.exists) {
     console.log("❌ appState_v2/main does not exist");
-    return;
+    return null;
   }
 
   const data = snap.data() || {};
@@ -87,7 +132,6 @@ async function main() {
     const nextHistory = history.map((day) => {
       let changed = false;
 
-      // 1. remove from playerAppearances
       const oldAppearances = Array.isArray(day?.playerAppearances)
         ? day.playerAppearances
         : [];
@@ -106,7 +150,6 @@ async function main() {
         return true;
       });
 
-      // 2. remove from teams.players
       const oldTeams = Array.isArray(day?.teams) ? day.teams : [];
       const newTeams = oldTeams.map((team) => {
         const oldPlayers = Array.isArray(team?.players) ? team.players : [];
@@ -128,10 +171,9 @@ async function main() {
         };
       });
 
-      // 3. null/remove from allEvents
       const oldEvents = Array.isArray(day?.allEvents) ? day.allEvents : [];
       const newEvents = oldEvents.map((evt) => {
-        let nextEvt = { ...evt };
+        const nextEvt = { ...evt };
 
         if (isBadName(nextEvt?.scorer)) {
           nextEvt.scorer = null;
@@ -185,13 +227,31 @@ async function main() {
     { merge: true }
   );
 
+  return {
+    touchedDays,
+    removedAppearances,
+    removedTeamPlayers,
+    nulledScorers,
+    nulledAssists,
+    nulledPlayerNames,
+  };
+}
+
+async function main() {
+  const cleanupStats = await cleanupAppState();
+
+  if (!cleanupStats) return;
+
+  const deletedPlayerDocs = await deleteBadPlayerDocs();
+
   console.log("✅ Cleanup complete.");
-  console.log("Touched match days:", touchedDays);
-  console.log("Removed playerAppearances:", removedAppearances);
-  console.log("Removed team player entries:", removedTeamPlayers);
-  console.log("Nulled scorers:", nulledScorers);
-  console.log("Nulled assists:", nulledAssists);
-  console.log("Nulled playerNames:", nulledPlayerNames);
+  console.log("Touched match days:", cleanupStats.touchedDays);
+  console.log("Removed playerAppearances:", cleanupStats.removedAppearances);
+  console.log("Removed team player entries:", cleanupStats.removedTeamPlayers);
+  console.log("Nulled scorers:", cleanupStats.nulledScorers);
+  console.log("Nulled assists:", cleanupStats.nulledAssists);
+  console.log("Nulled playerNames:", cleanupStats.nulledPlayerNames);
+  console.log("Deleted player docs:", deletedPlayerDocs);
 }
 
 main().catch((err) => {

@@ -1,0 +1,3380 @@
+{
+  "schemaVersion": 3,
+  "updatedAt": "2026-03-13T15:32:31.579Z",
+  "state": {
+    "playerPhotosByName": {},
+    "yearEndAttendance": [],
+    "activeSeasonId": "2026-S1",
+    "seasons": [
+      {
+        "currentEvents": [],
+        "currentMatch": {
+          "teamAId": "2026-S1-team-1",
+          "teamBId": "2026-S1-team-2",
+          "standbyId": "2026-S1-team-3"
+        },
+        "streaks": {
+          "team-enoch": 0,
+          "team-nk": 0,
+          "2026-S1-team-1": 0,
+          "team-mdu": 0,
+          "2026-S1-team-3": 0,
+          "2026-S1-team-2": 0
+        },
+        "results": [],
+        "createdAt": null,
+        "seasonNo": 1,
+        "teams": [
+          {
+            "captain": "Dayaan",
+            "abbrev": "",
+            "slot": 1,
+            "captainId": "dayaan",
+            "label": "Man U",
+            "players": [
+              "dayaan",
+              "nabeel",
+              "junaid",
+              "avuyile",
+              "theo",
+              "jason",
+              "chad"
+            ],
+            "id": "2026-S1-team-1"
+          },
+          {
+            "captainId": "zizou",
+            "slot": 2,
+            "abbrev": "",
+            "captain": "Zizou",
+            "id": "2026-S1-team-2",
+            "players": [
+              "mdu",
+              "zizou",
+              "dr_babs",
+              "dayton",
+              "enoch",
+              "scott"
+            ],
+            "label": "Madrid"
+          },
+          {
+            "players": [
+              "nkululeko",
+              "barlo",
+              "josh",
+              "taku",
+              "akhona",
+              "joshua"
+            ],
+            "id": "2026-S1-team-3",
+            "label": "PSG",
+            "captainId": "nkululeko",
+            "slot": 3,
+            "captain": "Nkululeko",
+            "abbrev": ""
+          }
+        ],
+        "matchDayHistory": [
+          {
+            "id": "2026-02-24",
+            "allEvents": [
+              {
+                "id": "1771968114791",
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 43,
+                "assist": "dayton",
+                "type": "goal",
+                "scorer": "zizou",
+                "matchNo": 1
+              },
+              {
+                "matchNo": 1,
+                "scorer": "barlo",
+                "assist": "nkululeko",
+                "type": "goal",
+                "timeSeconds": 56,
+                "teamId": "2026-S1-team-3",
+                "id": "1771968127931"
+              },
+              {
+                "teamId": "2026-S1-team-2",
+                "id": "1771968180784",
+                "timeSeconds": 27,
+                "type": "goal",
+                "assist": null,
+                "scorer": "zizou",
+                "matchNo": 2
+              },
+              {
+                "assist": null,
+                "type": "goal",
+                "teamId": "2026-S1-team-1",
+                "id": "1771968192440",
+                "timeSeconds": 38,
+                "matchNo": 2,
+                "scorer": "chad"
+              },
+              {
+                "teamId": "2026-S1-team-1",
+                "id": "1771968267432",
+                "timeSeconds": 25,
+                "type": "goal",
+                "assist": "maanda",
+                "scorer": "chad",
+                "matchNo": 3
+              },
+              {
+                "scorer": "barlo",
+                "matchNo": 3,
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 40,
+                "id": "1771968282305",
+                "assist": "josh",
+                "type": "goal"
+              },
+              {
+                "type": "goal",
+                "assist": null,
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 47,
+                "id": "1771968344225",
+                "matchNo": 4,
+                "scorer": "dr_babs"
+              },
+              {
+                "timeSeconds": 58,
+                "id": "1771968355311",
+                "teamId": "2026-S1-team-3",
+                "assist": null,
+                "type": "goal",
+                "scorer": "barlo",
+                "matchNo": 4
+              },
+              {
+                "matchNo": 5,
+                "scorer": "dayton",
+                "type": "goal",
+                "assist": null,
+                "teamId": "2026-S1-team-2",
+                "id": "1771968503258",
+                "timeSeconds": 36
+              },
+              {
+                "matchNo": 5,
+                "scorer": "dayaan",
+                "assist": null,
+                "type": "goal",
+                "timeSeconds": 45,
+                "id": "1771968512124",
+                "teamId": "2026-S1-team-1"
+              },
+              {
+                "type": "goal",
+                "assist": null,
+                "id": "1771968521131",
+                "timeSeconds": 54,
+                "teamId": "2026-S1-team-1",
+                "matchNo": 5,
+                "scorer": "theo"
+              },
+              {
+                "timeSeconds": 26,
+                "teamId": "2026-S1-team-3",
+                "id": "1771968560576",
+                "assist": null,
+                "type": "goal",
+                "scorer": "josh",
+                "matchNo": 6
+              },
+              {
+                "id": "1771968570795",
+                "timeSeconds": 36,
+                "teamId": "2026-S1-team-3",
+                "assist": null,
+                "type": "goal",
+                "scorer": "taku",
+                "matchNo": 6
+              },
+              {
+                "matchNo": 6,
+                "scorer": "lloyd",
+                "type": "goal",
+                "assist": null,
+                "id": "1771968585675",
+                "timeSeconds": 51,
+                "teamId": "2026-S1-team-1"
+              },
+              {
+                "matchNo": 9,
+                "scorer": "taku",
+                "type": "goal",
+                "assist": "josh",
+                "timeSeconds": 15,
+                "teamId": "2026-S1-team-3",
+                "id": "1771968638596"
+              },
+              {
+                "type": "goal",
+                "assist": "josh",
+                "id": "1771968648038",
+                "timeSeconds": 25,
+                "teamId": "2026-S1-team-3",
+                "matchNo": 9,
+                "scorer": "nkululeko"
+              },
+              {
+                "scorer": "theo",
+                "matchNo": 9,
+                "teamId": "2026-S1-team-1",
+                "id": "1771968660093",
+                "timeSeconds": 37,
+                "type": "goal",
+                "assist": "dayaan"
+              },
+              {
+                "assist": null,
+                "type": "goal",
+                "id": "1771968687000",
+                "timeSeconds": 10,
+                "teamId": "2026-S1-team-3",
+                "matchNo": 10,
+                "scorer": "barlo"
+              },
+              {
+                "scorer": "chad",
+                "matchNo": 11,
+                "id": "1771968722560",
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 19,
+                "type": "goal",
+                "assist": null
+              },
+              {
+                "id": "1771968725358",
+                "timeSeconds": 22,
+                "teamId": "2026-S1-team-1",
+                "type": "goal",
+                "assist": null,
+                "scorer": "chad",
+                "matchNo": 11
+              },
+              {
+                "type": "goal",
+                "assist": null,
+                "timeSeconds": 31,
+                "teamId": "2026-S1-team-3",
+                "id": "1771968733857",
+                "matchNo": 11,
+                "scorer": "taku"
+              },
+              {
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 53,
+                "id": "1771968756886",
+                "assist": "nkululeko",
+                "type": "goal",
+                "scorer": "josh",
+                "matchNo": 11
+              },
+              {
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 26,
+                "id": "1771968816706",
+                "type": "goal",
+                "assist": "enoch",
+                "scorer": "dr_babs",
+                "matchNo": 12
+              },
+              {
+                "matchNo": 12,
+                "scorer": "dayton",
+                "assist": null,
+                "type": "goal",
+                "teamId": "2026-S1-team-2",
+                "id": "1771968840762",
+                "timeSeconds": 50
+              },
+              {
+                "id": "1771969016883",
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 48,
+                "type": "goal",
+                "assist": null,
+                "scorer": "josh",
+                "matchNo": 13
+              },
+              {
+                "scorer": "zizou",
+                "matchNo": 13,
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 62,
+                "id": "1771969031037",
+                "type": "goal",
+                "assist": null
+              }
+            ],
+            "createdAt": "2026-02-24T21:37:49.378Z",
+            "results": [
+              {
+                "winnerId": null,
+                "isDraw": true,
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-3",
+                "goalsB": 1,
+                "matchNo": 1,
+                "teamBId": "2026-S1-team-2",
+                "goalsA": 1
+              },
+              {
+                "goalsB": 1,
+                "matchNo": 2,
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 1,
+                "winnerId": null,
+                "isDraw": true,
+                "standbyId": "2026-S1-team-3",
+                "teamAId": "2026-S1-team-2"
+              },
+              {
+                "standbyId": "2026-S1-team-2",
+                "teamAId": "2026-S1-team-1",
+                "isDraw": true,
+                "winnerId": null,
+                "teamBId": "2026-S1-team-3",
+                "goalsA": 1,
+                "matchNo": 3,
+                "goalsB": 1
+              },
+              {
+                "teamAId": "2026-S1-team-3",
+                "standbyId": "2026-S1-team-1",
+                "isDraw": true,
+                "winnerId": null,
+                "matchNo": 4,
+                "goalsA": 1,
+                "teamBId": "2026-S1-team-2",
+                "goalsB": 1
+              },
+              {
+                "goalsB": 2,
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 1,
+                "matchNo": 5,
+                "standbyId": "2026-S1-team-3",
+                "teamAId": "2026-S1-team-2",
+                "winnerId": "2026-S1-team-1",
+                "isDraw": false
+              },
+              {
+                "standbyId": "2026-S1-team-2",
+                "teamAId": "2026-S1-team-1",
+                "isDraw": false,
+                "winnerId": "2026-S1-team-3",
+                "goalsA": 1,
+                "matchNo": 6,
+                "teamBId": "2026-S1-team-3",
+                "goalsB": 2
+              },
+              {
+                "isDraw": true,
+                "winnerId": null,
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-3",
+                "teamBId": "2026-S1-team-2",
+                "matchNo": 7,
+                "goalsA": 0,
+                "goalsB": 0
+              },
+              {
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-3",
+                "winnerId": null,
+                "isDraw": true,
+                "goalsB": 0,
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 0,
+                "matchNo": 8
+              },
+              {
+                "goalsA": 1,
+                "teamBId": "2026-S1-team-3",
+                "matchNo": 9,
+                "goalsB": 2,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-2",
+                "isDraw": false,
+                "winnerId": "2026-S1-team-3"
+              },
+              {
+                "isDraw": false,
+                "winnerId": "2026-S1-team-3",
+                "teamAId": "2026-S1-team-3",
+                "standbyId": "2026-S1-team-1",
+                "goalsA": 1,
+                "matchNo": 10,
+                "teamBId": "2026-S1-team-2",
+                "goalsB": 0
+              },
+              {
+                "isDraw": true,
+                "winnerId": null,
+                "teamAId": "2026-S1-team-3",
+                "standbyId": "2026-S1-team-2",
+                "matchNo": 11,
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 2,
+                "goalsB": 2
+              },
+              {
+                "goalsB": 2,
+                "teamBId": "2026-S1-team-2",
+                "matchNo": 12,
+                "goalsA": 0,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-3",
+                "winnerId": "2026-S1-team-2",
+                "isDraw": false
+              },
+              {
+                "teamBId": "2026-S1-team-3",
+                "matchNo": 13,
+                "goalsA": 1,
+                "goalsB": 1,
+                "isDraw": true,
+                "winnerId": null,
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-1"
+              }
+            ],
+            "teams": [
+              {
+                "id": "2026-S1-team-1",
+                "label": "Man U",
+                "players": [
+                  {
+                    "playerId": "dayaan",
+                    "playerName": "Dayaan Talip",
+                    "shortName": "Dayaan"
+                  },
+                  {
+                    "playerId": "chad",
+                    "playerName": "Chad El Mero",
+                    "shortName": "Chad"
+                  },
+                  {
+                    "playerId": "maanda",
+                    "playerName": "Maanda Maanda",
+                    "shortName": "Maanda"
+                  },
+                  {
+                    "playerId": "theo",
+                    "playerName": "Theo D",
+                    "shortName": "Theo"
+                  },
+                  {
+                    "playerId": "lloyd",
+                    "playerName": "Lloyd Lunga",
+                    "shortName": "Lloyd"
+                  }
+                ],
+                "captain": "Dayaan",
+                "captainId": "dayaan",
+                "slot": 1
+              },
+              {
+                "id": "2026-S1-team-3",
+                "label": "PSG",
+                "players": [
+                  {
+                    "playerId": "nkululeko",
+                    "playerName": "Nkululeko Memela",
+                    "shortName": "Nkululeko"
+                  },
+                  {
+                    "playerId": "barlo",
+                    "playerName": "Sibabalo Tyasi",
+                    "shortName": "Barlo"
+                  },
+                  {
+                    "playerId": "taku",
+                    "playerName": "Brian Taku",
+                    "shortName": "Taku"
+                  },
+                  {
+                    "playerId": "akhona",
+                    "playerName": "Akhona Ntshinka",
+                    "shortName": "Akhona"
+                  },
+                  {
+                    "playerId": "josh",
+                    "playerName": "Josh Buchalter",
+                    "shortName": "Josh"
+                  }
+                ],
+                "captain": "Nkululeko",
+                "captainId": "nkululeko",
+                "slot": 3
+              },
+              {
+                "id": "2026-S1-team-2",
+                "label": "Madrid",
+                "players": [
+                  {
+                    "playerId": "zizou",
+                    "playerName": "Kelello Mota",
+                    "shortName": "Zizou"
+                  },
+                  {
+                    "playerId": "dr_babs",
+                    "playerName": "Babatunde Ayinde",
+                    "shortName": "Dr Babs"
+                  },
+                  {
+                    "playerId": "mdu",
+                    "playerName": "Mduduzi Ndlovu",
+                    "shortName": "Mdu"
+                  },
+                  {
+                    "playerId": "dayton",
+                    "playerName": "Dayton Mitchell",
+                    "shortName": "Dayton"
+                  },
+                  {
+                    "playerId": "enoch",
+                    "playerName": "Enoch Mbulungeni",
+                    "shortName": "Enoch"
+                  }
+                ],
+                "captain": "Zizou",
+                "captainId": "zizou",
+                "slot": 2
+              }
+            ],
+            "playerAppearances": [
+              {
+                "playerId": "dayaan",
+                "playerName": "Dayaan Talip",
+                "shortName": "Dayaan",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 5,
+                "teamMatches": 8,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "chad",
+                "playerName": "Chad El Mero",
+                "shortName": "Chad",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 5,
+                "teamMatches": 8,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "maanda",
+                "playerName": "Maanda Maanda",
+                "shortName": "Maanda",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 5,
+                "teamMatches": 8,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "theo",
+                "playerName": "Theo D",
+                "shortName": "Theo",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 5,
+                "teamMatches": 8,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "lloyd",
+                "playerName": "Lloyd Lunga",
+                "shortName": "Lloyd",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 5,
+                "teamMatches": 8,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 3,
+                "source": "historical_manual_correction",
+                "updatedAtISO": "2026-03-13T16:10:27.417Z"
+              },
+              {
+                "playerId": "nkululeko",
+                "playerName": "Nkululeko Memela",
+                "shortName": "Nkululeko",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "barlo",
+                "playerName": "Sibabalo Tyasi",
+                "shortName": "Barlo",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "taku",
+                "playerName": "Brian Taku",
+                "shortName": "Taku",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "akhona",
+                "playerName": "Akhona Ntshinka",
+                "shortName": "Akhona",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "josh",
+                "playerName": "Josh Buchalter",
+                "shortName": "Josh",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "zizou",
+                "playerName": "Kelello Mota",
+                "shortName": "Zizou",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "dr_babs",
+                "playerName": "Babatunde Ayinde",
+                "shortName": "Dr Babs",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "mdu",
+                "playerName": "Mduduzi Ndlovu",
+                "shortName": "Mdu",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "dayton",
+                "playerName": "Dayton Mitchell",
+                "shortName": "Dayton",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "enoch",
+                "playerName": "Enoch Mbulungeni",
+                "shortName": "Enoch",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              }
+            ]
+          },
+          {
+            "createdAt": "2026-02-26T20:51:09.222Z",
+            "results": [
+              {
+                "goalsB": 4,
+                "matchNo": 1,
+                "teamBId": "2026-S1-team-2",
+                "goalsA": 2,
+                "teamAId": "2026-S1-team-3",
+                "standbyId": "2026-S1-team-1",
+                "winnerId": "2026-S1-team-2",
+                "isDraw": false
+              },
+              {
+                "matchNo": 2,
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 1,
+                "goalsB": 2,
+                "isDraw": false,
+                "winnerId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-3",
+                "teamAId": "2026-S1-team-2"
+              },
+              {
+                "goalsB": 0,
+                "goalsA": 1,
+                "teamBId": "2026-S1-team-3",
+                "matchNo": 3,
+                "winnerId": "2026-S1-team-1",
+                "isDraw": false,
+                "standbyId": "2026-S1-team-2",
+                "teamAId": "2026-S1-team-1"
+              },
+              {
+                "goalsA": 0,
+                "teamBId": "2026-S1-team-2",
+                "matchNo": 4,
+                "goalsB": 0,
+                "isDraw": true,
+                "winnerId": null,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-3"
+              },
+              {
+                "goalsB": 0,
+                "teamBId": "2026-S1-team-3",
+                "goalsA": 1,
+                "matchNo": 5,
+                "winnerId": "2026-S1-team-2",
+                "isDraw": false,
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-2"
+              },
+              {
+                "matchNo": 6,
+                "goalsA": 1,
+                "teamBId": "2026-S1-team-1",
+                "goalsB": 1,
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-3",
+                "isDraw": true,
+                "winnerId": null
+              },
+              {
+                "matchNo": 7,
+                "teamBId": "2026-S1-team-3",
+                "goalsA": 2,
+                "goalsB": 0,
+                "isDraw": false,
+                "winnerId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-2"
+              },
+              {
+                "matchNo": 8,
+                "teamBId": "2026-S1-team-2",
+                "goalsA": 0,
+                "goalsB": 2,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-3",
+                "isDraw": false,
+                "winnerId": "2026-S1-team-2"
+              },
+              {
+                "matchNo": 9,
+                "teamBId": "2026-S1-team-3",
+                "goalsA": 1,
+                "goalsB": 1,
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-1",
+                "isDraw": true,
+                "winnerId": null
+              },
+              {
+                "goalsB": 0,
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 2,
+                "matchNo": 10,
+                "standbyId": "2026-S1-team-2",
+                "teamAId": "2026-S1-team-3",
+                "winnerId": "2026-S1-team-3",
+                "isDraw": false
+              },
+              {
+                "winnerId": "2026-S1-team-2",
+                "isDraw": false,
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-3",
+                "goalsB": 2,
+                "goalsA": 1,
+                "teamBId": "2026-S1-team-2",
+                "matchNo": 11
+              },
+              {
+                "isDraw": true,
+                "winnerId": null,
+                "standbyId": "2026-S1-team-3",
+                "teamAId": "2026-S1-team-2",
+                "matchNo": 12,
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 1,
+                "goalsB": 1
+              },
+              {
+                "matchNo": 13,
+                "goalsA": 0,
+                "teamBId": "2026-S1-team-3",
+                "goalsB": 2,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-2",
+                "isDraw": false,
+                "winnerId": "2026-S1-team-3"
+              },
+              {
+                "goalsB": 2,
+                "matchNo": 14,
+                "teamBId": "2026-S1-team-2",
+                "goalsA": 2,
+                "winnerId": null,
+                "isDraw": true,
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-3"
+              }
+            ],
+            "id": "2026-02-26",
+            "allEvents": [
+              {
+                "assist": null,
+                "type": "goal",
+                "id": "1772034251209",
+                "timeSeconds": 54,
+                "teamId": "2026-S1-team-2",
+                "matchNo": 1,
+                "scorer": "dayton"
+              },
+              {
+                "scorer": "nkululeko",
+                "matchNo": 1,
+                "timeSeconds": 62,
+                "id": "1772034259613",
+                "teamId": "2026-S1-team-3",
+                "type": "goal",
+                "assist": "josh"
+              },
+              {
+                "matchNo": 1,
+                "scorer": "dayton",
+                "type": "goal",
+                "assist": "junaid",
+                "teamId": "2026-S1-team-2",
+                "id": "1772034337833",
+                "timeSeconds": 140
+              },
+              {
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 177,
+                "id": "1772034375056",
+                "assist": "junaid",
+                "type": "goal",
+                "scorer": "dayton",
+                "matchNo": 1
+              },
+              {
+                "timeSeconds": 199,
+                "teamId": "2026-S1-team-3",
+                "id": "1772034397145",
+                "type": "goal",
+                "assist": "barlo",
+                "scorer": "josh",
+                "matchNo": 1
+              },
+              {
+                "scorer": "mdu",
+                "matchNo": 1,
+                "timeSeconds": 237,
+                "teamId": "2026-S1-team-2",
+                "id": "1772034435133",
+                "assist": "dayton",
+                "type": "goal"
+              },
+              {
+                "scorer": "dayaan",
+                "matchNo": 2,
+                "timeSeconds": 45,
+                "id": "1772034581765",
+                "teamId": "2026-S1-team-1",
+                "assist": "theo",
+                "type": "goal"
+              },
+              {
+                "type": "goal",
+                "assist": "theo",
+                "id": "1772034719705",
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 182,
+                "matchNo": 2,
+                "scorer": "chad"
+              },
+              {
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 288,
+                "id": "1772034825646",
+                "assist": "dr_babs",
+                "type": "goal",
+                "scorer": "junaid",
+                "matchNo": 2
+              },
+              {
+                "scorer": "nabeel",
+                "matchNo": 3,
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 223,
+                "id": "1772035104860",
+                "assist": null,
+                "type": "goal"
+              },
+              {
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 58,
+                "id": "1772035671980",
+                "type": "goal",
+                "assist": "dayton",
+                "scorer": "enoch",
+                "matchNo": 5
+              },
+              {
+                "matchNo": 6,
+                "scorer": "dayton",
+                "type": "goal",
+                "assist": "dr_babs",
+                "id": "1772036069383",
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 119
+              },
+              {
+                "scorer": "nabeel",
+                "matchNo": 6,
+                "timeSeconds": 133,
+                "id": "1772036084061",
+                "teamId": "2026-S1-team-1",
+                "assist": "theo",
+                "type": "goal"
+              },
+              {
+                "scorer": "dayaan",
+                "matchNo": 7,
+                "id": "1772036396832",
+                "timeSeconds": 109,
+                "teamId": "2026-S1-team-1",
+                "type": "goal",
+                "assist": "chad"
+              },
+              {
+                "scorer": "nabeel",
+                "matchNo": 7,
+                "id": "1772036567378",
+                "timeSeconds": 267,
+                "teamId": "2026-S1-team-1",
+                "type": "goal",
+                "assist": "dayaan"
+              },
+              {
+                "scorer": "mdu",
+                "matchNo": 8,
+                "id": "1772036676646",
+                "timeSeconds": 41,
+                "teamId": "2026-S1-team-2",
+                "assist": null,
+                "type": "goal"
+              },
+              {
+                "assist": null,
+                "type": "goal",
+                "teamId": "2026-S1-team-2",
+                "id": "1772036824156",
+                "timeSeconds": 180,
+                "matchNo": 8,
+                "scorer": "mdu"
+              },
+              {
+                "scorer": "dayton",
+                "matchNo": 9,
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 173,
+                "id": "1772037168064",
+                "assist": null,
+                "type": "goal"
+              },
+              {
+                "matchNo": 9,
+                "scorer": "josh",
+                "type": "goal",
+                "assist": null,
+                "id": "1772037290604",
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 294
+              },
+              {
+                "scorer": "barlo",
+                "matchNo": 10,
+                "timeSeconds": 35,
+                "teamId": "2026-S1-team-3",
+                "id": "1772037372195",
+                "assist": null,
+                "type": "goal"
+              },
+              {
+                "assist": null,
+                "type": "goal",
+                "id": "1772037444735",
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 107,
+                "matchNo": 10,
+                "scorer": "josh"
+              },
+              {
+                "assist": "junaid",
+                "type": "goal",
+                "id": "1772037721136",
+                "timeSeconds": 44,
+                "teamId": "2026-S1-team-2",
+                "matchNo": 11,
+                "scorer": "dr_babs"
+              },
+              {
+                "timeSeconds": 167,
+                "teamId": "2026-S1-team-2",
+                "id": "1772037844624",
+                "type": "goal",
+                "assist": "junaid",
+                "scorer": "dr_babs",
+                "matchNo": 11
+              },
+              {
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 194,
+                "id": "1772037872187",
+                "type": "goal",
+                "assist": "taku",
+                "scorer": "barlo",
+                "matchNo": 11
+              },
+              {
+                "type": "goal",
+                "assist": "dayton",
+                "id": "1772038244611",
+                "timeSeconds": 222,
+                "teamId": "2026-S1-team-2",
+                "matchNo": 12,
+                "scorer": "mdu"
+              },
+              {
+                "matchNo": 12,
+                "scorer": "theo",
+                "type": "goal",
+                "assist": null,
+                "id": "1772038317235",
+                "timeSeconds": 294,
+                "teamId": "2026-S1-team-1"
+              },
+              {
+                "type": "goal",
+                "assist": "josh",
+                "teamId": "2026-S1-team-3",
+                "id": "1772038545526",
+                "timeSeconds": 194,
+                "matchNo": 13,
+                "scorer": "taku"
+              },
+              {
+                "matchNo": 13,
+                "scorer": "taku",
+                "assist": "barlo",
+                "type": "goal",
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 221,
+                "id": "1772038572686"
+              },
+              {
+                "assist": "taku",
+                "type": "goal",
+                "timeSeconds": 128,
+                "teamId": "2026-S1-team-3",
+                "id": "1772038821838",
+                "matchNo": 14,
+                "scorer": "nkululeko"
+              },
+              {
+                "assist": "dayton",
+                "type": "goal",
+                "timeSeconds": 189,
+                "teamId": "2026-S1-team-2",
+                "id": "1772038882675",
+                "matchNo": 14,
+                "scorer": "dr_babs"
+              },
+              {
+                "matchNo": 14,
+                "scorer": "dayton",
+                "type": "goal",
+                "assist": "junaid",
+                "id": "1772038902786",
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 209
+              },
+              {
+                "timeSeconds": 275,
+                "teamId": "2026-S1-team-3",
+                "id": "1772038969168",
+                "type": "goal",
+                "assist": "barlo",
+                "scorer": "josh",
+                "matchNo": 14
+              }
+            ],
+            "teams": [
+              {
+                "id": "2026-S1-team-1",
+                "label": "Man U",
+                "players": [
+                  {
+                    "playerId": "dayaan",
+                    "playerName": "Dayaan Talip",
+                    "shortName": "Dayaan"
+                  },
+                  {
+                    "playerId": "chad",
+                    "playerName": "Chad El Mero",
+                    "shortName": "Chad"
+                  },
+                  {
+                    "playerId": "maanda",
+                    "playerName": "Maanda Maanda",
+                    "shortName": "Maanda"
+                  },
+                  {
+                    "playerId": "theo",
+                    "playerName": "Theo D",
+                    "shortName": "Theo"
+                  },
+                  {
+                    "playerId": "lloyd",
+                    "playerName": "Lloyd Lunga",
+                    "shortName": "Lloyd"
+                  },
+                  {
+                    "playerId": "nabeel",
+                    "playerName": "Nabeel Parker",
+                    "shortName": "Nabeel"
+                  }
+                ],
+                "captain": "Dayaan",
+                "captainId": "dayaan",
+                "slot": 1
+              },
+              {
+                "id": "2026-S1-team-3",
+                "label": "PSG",
+                "players": [
+                  {
+                    "playerId": "nkululeko",
+                    "playerName": "Nkululeko Memela",
+                    "shortName": "Nkululeko"
+                  },
+                  {
+                    "playerId": "barlo",
+                    "playerName": "Sibabalo Tyasi",
+                    "shortName": "Barlo"
+                  },
+                  {
+                    "playerId": "taku",
+                    "playerName": "Brian Taku",
+                    "shortName": "Taku"
+                  },
+                  {
+                    "playerId": "akhona",
+                    "playerName": "Akhona Ntshinka",
+                    "shortName": "Akhona"
+                  },
+                  {
+                    "playerId": "josh",
+                    "playerName": "Josh Buchalter",
+                    "shortName": "Josh"
+                  }
+                ],
+                "captain": "Nkululeko",
+                "captainId": "nkululeko",
+                "slot": 3
+              },
+              {
+                "id": "2026-S1-team-2",
+                "label": "Madrid",
+                "players": [
+                  {
+                    "playerId": "nkumbuzo",
+                    "playerName": "Nkumbuzo Langa",
+                    "shortName": "Nkumbuzo"
+                  },
+                  {
+                    "playerId": "dr_babs",
+                    "playerName": "Babatunde Ayinde",
+                    "shortName": "Dr Babs"
+                  },
+                  {
+                    "playerId": "mdu",
+                    "playerName": "Mduduzi Ndlovu",
+                    "shortName": "Mdu"
+                  },
+                  {
+                    "playerId": "dayton",
+                    "playerName": "Dayton Mitchell",
+                    "shortName": "Dayton"
+                  },
+                  {
+                    "playerId": "enoch",
+                    "playerName": "Enoch Mbulungeni",
+                    "shortName": "Enoch"
+                  },
+                  {
+                    "playerId": "junaid",
+                    "playerName": "Junaid Dejager",
+                    "shortName": "Junaid"
+                  }
+                ],
+                "captain": "Zizou",
+                "captainId": "zizou",
+                "slot": 2
+              }
+            ],
+            "playerAppearances": [
+              {
+                "playerId": "dayaan",
+                "playerName": "Dayaan Talip",
+                "shortName": "Dayaan",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 6,
+                "teamMatches": 9,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "chad",
+                "playerName": "Chad El Mero",
+                "shortName": "Chad",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 6,
+                "teamMatches": 9,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "maanda",
+                "playerName": "Maanda Maanda",
+                "shortName": "Maanda",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 6,
+                "teamMatches": 9,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "theo",
+                "playerName": "Theo D",
+                "shortName": "Theo",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 6,
+                "teamMatches": 9,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "lloyd",
+                "playerName": "Lloyd Lunga",
+                "shortName": "Lloyd",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 6,
+                "teamMatches": 9,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 3,
+                "source": "historical_manual_correction",
+                "updatedAtISO": "2026-03-13T16:10:27.418Z"
+              },
+              {
+                "playerId": "nabeel",
+                "playerName": "Nabeel Parker",
+                "shortName": "Nabeel",
+                "teamId": "2026-S1-team-1",
+                "teamName": "Man U",
+                "squadSize": 6,
+                "teamMatches": 9,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "nkululeko",
+                "playerName": "Nkululeko Memela",
+                "shortName": "Nkululeko",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "barlo",
+                "playerName": "Sibabalo Tyasi",
+                "shortName": "Barlo",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "taku",
+                "playerName": "Brian Taku",
+                "shortName": "Taku",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "akhona",
+                "playerName": "Akhona Ntshinka",
+                "shortName": "Akhona",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "josh",
+                "playerName": "Josh Buchalter",
+                "shortName": "Josh",
+                "teamId": "2026-S1-team-3",
+                "teamName": "PSG",
+                "squadSize": 5,
+                "teamMatches": 9,
+                "expectedFullMatches": 9,
+                "matchesPlayed": 9,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "nkumbuzo",
+                "playerName": "Nkumbuzo Langa",
+                "shortName": "Nkumbuzo",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 6,
+                "teamMatches": 10,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "dr_babs",
+                "playerName": "Babatunde Ayinde",
+                "shortName": "Dr Babs",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 6,
+                "teamMatches": 10,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "mdu",
+                "playerName": "Mduduzi Ndlovu",
+                "shortName": "Mdu",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 6,
+                "teamMatches": 10,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "dayton",
+                "playerName": "Dayton Mitchell",
+                "shortName": "Dayton",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 6,
+                "teamMatches": 10,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "enoch",
+                "playerName": "Enoch Mbulungeni",
+                "shortName": "Enoch",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 6,
+                "teamMatches": 10,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              },
+              {
+                "playerId": "junaid",
+                "playerName": "Junaid Dejager",
+                "shortName": "Junaid",
+                "teamId": "2026-S1-team-2",
+                "teamName": "Madrid",
+                "squadSize": 6,
+                "teamMatches": 10,
+                "expectedFullMatches": 8,
+                "matchesPlayed": 8,
+                "source": "historical_rebuild_default"
+              }
+            ]
+          },
+          {
+            "createdAt": "2026-03-06T21:34:05.811Z",
+            "results": [
+              {
+                "teamAId": "2026-S1-team-3",
+                "standbyId": "2026-S1-team-2",
+                "winnerId": null,
+                "isDraw": true,
+                "goalsB": 1,
+                "goalsA": 1,
+                "teamBId": "2026-S1-team-1",
+                "matchNo": 1
+              },
+              {
+                "winnerId": "2026-S1-team-2",
+                "isDraw": false,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-3",
+                "goalsB": 2,
+                "goalsA": 1,
+                "teamBId": "2026-S1-team-2",
+                "matchNo": 2
+              },
+              {
+                "goalsB": 0,
+                "matchNo": 3,
+                "goalsA": 0,
+                "teamBId": "2026-S1-team-3",
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-1",
+                "winnerId": null,
+                "isDraw": true
+              },
+              {
+                "winnerId": "2026-S1-team-3",
+                "isDraw": false,
+                "teamAId": "2026-S1-team-3",
+                "standbyId": "2026-S1-team-2",
+                "goalsB": 1,
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 2,
+                "matchNo": 4
+              },
+              {
+                "goalsB": 0,
+                "matchNo": 5,
+                "teamBId": "2026-S1-team-2",
+                "goalsA": 1,
+                "winnerId": "2026-S1-team-3",
+                "isDraw": false,
+                "teamAId": "2026-S1-team-3",
+                "standbyId": "2026-S1-team-1"
+              },
+              {
+                "goalsB": 1,
+                "goalsA": 1,
+                "matchNo": 6,
+                "teamBId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-2",
+                "teamAId": "2026-S1-team-3",
+                "winnerId": null,
+                "isDraw": true
+              },
+              {
+                "matchNo": 7,
+                "goalsA": 0,
+                "teamBId": "2026-S1-team-2",
+                "goalsB": 1,
+                "standbyId": "2026-S1-team-3",
+                "teamAId": "2026-S1-team-1",
+                "isDraw": false,
+                "winnerId": "2026-S1-team-2"
+              },
+              {
+                "goalsB": 0,
+                "teamBId": "2026-S1-team-3",
+                "goalsA": 2,
+                "matchNo": 8,
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-2",
+                "winnerId": "2026-S1-team-2",
+                "isDraw": false
+              },
+              {
+                "isDraw": false,
+                "winnerId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-3",
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 0,
+                "matchNo": 9,
+                "goalsB": 2
+              },
+              {
+                "standbyId": "2026-S1-team-2",
+                "teamAId": "2026-S1-team-1",
+                "winnerId": "2026-S1-team-1",
+                "isDraw": false,
+                "goalsB": 1,
+                "matchNo": 10,
+                "teamBId": "2026-S1-team-3",
+                "goalsA": 2
+              },
+              {
+                "matchNo": 11,
+                "teamBId": "2026-S1-team-2",
+                "goalsA": 2,
+                "goalsB": 2,
+                "isDraw": true,
+                "winnerId": null,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-3"
+              },
+              {
+                "isDraw": false,
+                "winnerId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-2",
+                "matchNo": 12,
+                "goalsA": 3,
+                "teamBId": "2026-S1-team-3",
+                "goalsB": 1
+              },
+              {
+                "goalsB": 2,
+                "teamBId": "2026-S1-team-1",
+                "matchNo": 13,
+                "goalsA": 0,
+                "winnerId": "2026-S1-team-1",
+                "isDraw": false,
+                "standbyId": "2026-S1-team-3",
+                "teamAId": "2026-S1-team-2"
+              },
+              {
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-2",
+                "winnerId": "2026-S1-team-1",
+                "isDraw": false,
+                "goalsB": 0,
+                "matchNo": 14,
+                "goalsA": 4,
+                "teamBId": "2026-S1-team-3"
+              }
+            ],
+            "allEvents": [
+              {
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 130,
+                "id": "1772638647167",
+                "assist": null,
+                "type": "goal",
+                "scorer": "nabeel",
+                "matchNo": 1
+              },
+              {
+                "matchNo": 1,
+                "scorer": "likhanye",
+                "assist": null,
+                "type": "goal",
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 300,
+                "id": "1772638852379"
+              },
+              {
+                "assist": null,
+                "type": "goal",
+                "timeSeconds": 114,
+                "teamId": "2026-S1-team-2",
+                "id": "1772639009439",
+                "matchNo": 2,
+                "scorer": "mdu"
+              },
+              {
+                "type": "goal",
+                "assist": "enoch",
+                "id": "1772639070356",
+                "timeSeconds": 169,
+                "teamId": "2026-S1-team-2",
+                "matchNo": 2,
+                "scorer": "scott"
+              },
+              {
+                "assist": null,
+                "type": "goal",
+                "teamId": "2026-S1-team-1",
+                "id": "1772639090275",
+                "timeSeconds": 189,
+                "matchNo": 2,
+                "scorer": "nabeel"
+              },
+              {
+                "matchNo": 4,
+                "scorer": "barlo",
+                "type": "goal",
+                "assist": null,
+                "id": "1772639802727",
+                "timeSeconds": 120,
+                "teamId": "2026-S1-team-3"
+              },
+              {
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 191,
+                "id": "1772639874489",
+                "type": "goal",
+                "assist": null,
+                "scorer": "likhanye",
+                "matchNo": 4
+              },
+              {
+                "matchNo": 4,
+                "scorer": "chad",
+                "type": "goal",
+                "assist": "junaid",
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 234,
+                "id": "1772639924369"
+              },
+              {
+                "matchNo": 5,
+                "scorer": "josh",
+                "type": "goal",
+                "assist": "taku",
+                "timeSeconds": 153,
+                "id": "1772640189240",
+                "teamId": "2026-S1-team-3"
+              },
+              {
+                "scorer": "likhanye",
+                "matchNo": 6,
+                "timeSeconds": 71,
+                "teamId": "2026-S1-team-3",
+                "id": "1772640473353",
+                "type": "goal",
+                "assist": "taku"
+              },
+              {
+                "matchNo": 6,
+                "scorer": "chad",
+                "assist": "nabeel",
+                "type": "goal",
+                "id": "1772640682460",
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 280
+              },
+              {
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 179,
+                "id": "1772640908337",
+                "assist": null,
+                "type": "goal",
+                "scorer": "mdu",
+                "matchNo": 7
+              },
+              {
+                "timeSeconds": 137,
+                "teamId": "2026-S1-team-2",
+                "id": "1772641223587",
+                "assist": "dayton",
+                "type": "goal",
+                "scorer": "zizou",
+                "matchNo": 8
+              },
+              {
+                "type": "goal",
+                "assist": "zizou",
+                "id": "1772641387699",
+                "timeSeconds": 300,
+                "teamId": "2026-S1-team-2",
+                "matchNo": 8,
+                "scorer": "scott"
+              },
+              {
+                "scorer": "chad",
+                "matchNo": 9,
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 85,
+                "id": "1772641526115",
+                "assist": "nabeel",
+                "type": "goal"
+              },
+              {
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 231,
+                "id": "1772641671997",
+                "assist": null,
+                "type": "goal",
+                "scorer": "nabeel",
+                "matchNo": 9
+              },
+              {
+                "scorer": "josh",
+                "matchNo": 10,
+                "id": "1772641930718",
+                "teamId": "2026-S1-team-3",
+                "timeSeconds": 140,
+                "assist": "likhanye",
+                "type": "goal"
+              },
+              {
+                "matchNo": 10,
+                "scorer": "nabeel",
+                "assist": "junaid",
+                "type": "goal",
+                "id": "1772641992506",
+                "timeSeconds": 202,
+                "teamId": "2026-S1-team-1"
+              },
+              {
+                "timeSeconds": 289,
+                "id": "1772642079937",
+                "teamId": "2026-S1-team-1",
+                "type": "goal",
+                "assist": "jason",
+                "scorer": "nabeel",
+                "matchNo": 10
+              },
+              {
+                "id": "1772642249361",
+                "timeSeconds": 131,
+                "teamId": "2026-S1-team-1",
+                "type": "goal",
+                "assist": "chad",
+                "scorer": "nabeel",
+                "matchNo": 11
+              },
+              {
+                "matchNo": 11,
+                "scorer": "mdu",
+                "assist": "enoch",
+                "type": "goal",
+                "id": "1772642285397",
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 167
+              },
+              {
+                "scorer": "nabeel",
+                "matchNo": 11,
+                "id": "1772642601212",
+                "timeSeconds": 300,
+                "teamId": "2026-S1-team-1",
+                "type": "goal",
+                "assist": "chad"
+              },
+              {
+                "assist": null,
+                "type": "goal",
+                "id": "1772642671489",
+                "timeSeconds": 300,
+                "teamId": "2026-S1-team-2",
+                "matchNo": 11,
+                "scorer": "dayton"
+              },
+              {
+                "matchNo": 12,
+                "scorer": "scott",
+                "type": "goal",
+                "assist": "zizou",
+                "timeSeconds": 45,
+                "teamId": "2026-S1-team-2",
+                "id": "1772642720261"
+              },
+              {
+                "timeSeconds": 70,
+                "id": "1772642745442",
+                "teamId": "2026-S1-team-2",
+                "assist": "enoch",
+                "type": "goal",
+                "scorer": "dayton",
+                "matchNo": 12
+              },
+              {
+                "assist": "scott",
+                "type": "goal",
+                "teamId": "2026-S1-team-2",
+                "timeSeconds": 193,
+                "id": "1772642868510",
+                "matchNo": 12,
+                "scorer": "enoch"
+              },
+              {
+                "matchNo": 12,
+                "scorer": "likhanye",
+                "assist": "josh",
+                "type": "goal",
+                "id": "1772642894436",
+                "timeSeconds": 219,
+                "teamId": "2026-S1-team-3"
+              },
+              {
+                "type": "goal",
+                "assist": "nabeel",
+                "timeSeconds": 165,
+                "teamId": "2026-S1-team-1",
+                "id": "1772643209666",
+                "matchNo": 13,
+                "scorer": "chad"
+              },
+              {
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 268,
+                "id": "1772643312884",
+                "assist": "nabeel",
+                "type": "goal",
+                "scorer": "junaid",
+                "matchNo": 13
+              },
+              {
+                "scorer": "chad",
+                "matchNo": 14,
+                "timeSeconds": 121,
+                "teamId": "2026-S1-team-1",
+                "id": "1772643500806",
+                "assist": null,
+                "type": "goal"
+              },
+              {
+                "type": "goal",
+                "assist": null,
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 126,
+                "id": "1772643506103",
+                "matchNo": 14,
+                "scorer": "maanda"
+              },
+              {
+                "timeSeconds": 226,
+                "id": "1772643606713",
+                "teamId": "2026-S1-team-1",
+                "assist": null,
+                "type": "goal",
+                "scorer": "chad",
+                "matchNo": 14
+              },
+              {
+                "scorer": "nabeel",
+                "matchNo": 14,
+                "timeSeconds": 272,
+                "teamId": "2026-S1-team-1",
+                "id": "1772643652604",
+                "assist": "maanda",
+                "type": "goal"
+              }
+            ],
+            "id": "2026-03-06",
+            "teams": [],
+            "playerAppearances": []
+          },
+          {
+            "id": "2026-03-13",
+            "createdAt": "2026-03-13T15:20:04.405Z",
+            "results": [
+              {
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-2",
+                "isDraw": false,
+                "winnerId": "2026-S1-team-1",
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-1": {
+                    "teamId": "2026-S1-team-1",
+                    "confirmedAt": "2026-03-11T15:41:35.600Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p4": "Jason",
+                      "p3": "Dayaan",
+                      "p2": "Nabeel",
+                      "p1": "Junaid",
+                      "p5": "Avuyile"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "benchSnapshot": [
+                      "Theo"
+                    ]
+                  },
+                  "2026-S1-team-3": {
+                    "confirmedAt": "2026-03-11T15:41:35.600Z",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "teamId": "2026-S1-team-3",
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p1": "Josh",
+                      "p5": "Joshua",
+                      "p2": "Akhona",
+                      "p4": "Taku",
+                      "p3": "Nkululeko"
+                    },
+                    "benchSnapshot": [
+                      "Barlo"
+                    ]
+                  }
+                },
+                "teamBId": "2026-S1-team-3",
+                "matchNo": 1,
+                "goalsA": 1,
+                "goalsB": 0
+              },
+              {
+                "goalsB": 0,
+                "teamBId": "2026-S1-team-2",
+                "goalsA": 0,
+                "matchNo": 2,
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-1": {
+                    "benchSnapshot": [
+                      "Jason"
+                    ],
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2",
+                    "positions": {
+                      "p3": "Dayaan",
+                      "p4": "Avuyile",
+                      "p1": "Junaid",
+                      "p5": "Theo",
+                      "p2": "Nabeel"
+                    },
+                    "confirmedBy": "Dayaan",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedAt": "2026-03-11T15:43:33.952Z",
+                    "teamId": "2026-S1-team-1"
+                  },
+                  "2026-S1-team-2": {
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p4": "Zizou",
+                      "p3": "Mdu",
+                      "p1": "Enoch",
+                      "p2": "Dayton",
+                      "p5": "Dr Babs"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "teamId": "2026-S1-team-2",
+                    "confirmedAt": "2026-03-11T15:43:33.952Z",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "benchSnapshot": [
+                      "Scott"
+                    ]
+                  }
+                },
+                "winnerId": null,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-3",
+                "isDraw": true
+              },
+              {
+                "winnerId": "2026-S1-team-2",
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-2": {
+                    "benchSnapshot": [
+                      "Zizou"
+                    ],
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2",
+                    "positions": {
+                      "p3": "Scott",
+                      "p4": "Dr Babs",
+                      "p5": "Mdu",
+                      "p1": "Dayton",
+                      "p2": "Enoch"
+                    },
+                    "confirmedBy": "Dayaan",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "confirmedAt": "2026-03-11T15:48:26.441Z",
+                    "teamId": "2026-S1-team-2"
+                  },
+                  "2026-S1-team-3": {
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p4": "Akhona",
+                      "p3": "Joshua",
+                      "p1": "Nkululeko",
+                      "p2": "Barlo",
+                      "p5": "Taku"
+                    },
+                    "confirmedAt": "2026-03-11T15:48:26.441Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "teamId": "2026-S1-team-3",
+                    "benchSnapshot": [
+                      "Josh"
+                    ]
+                  }
+                },
+                "matchNo": 3,
+                "goalsA": 1,
+                "teamBId": "2026-S1-team-3",
+                "goalsB": 0,
+                "isDraw": false,
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-2"
+              },
+              {
+                "goalsB": 2,
+                "matchNo": 4,
+                "goalsA": 4,
+                "teamBId": "2026-S1-team-1",
+                "winnerId": "2026-S1-team-2",
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-2": {
+                    "benchSnapshot": [
+                      "Dr Babs"
+                    ],
+                    "positions": {
+                      "p4": "Dayton",
+                      "p3": "Scott",
+                      "p2": "Zizou",
+                      "p5": "Enoch",
+                      "p1": "Mdu"
+                    },
+                    "confirmedBy": "Dayaan",
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2",
+                    "teamId": "2026-S1-team-2",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedAt": "2026-03-11T15:58:09.465Z"
+                  },
+                  "2026-S1-team-1": {
+                    "benchSnapshot": [
+                      "Jason"
+                    ],
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "confirmedAt": "2026-03-11T15:58:09.465Z",
+                    "teamId": "2026-S1-team-1",
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2",
+                    "positions": {
+                      "p4": "Avuyile",
+                      "p3": "Junaid",
+                      "p1": "Dayaan",
+                      "p5": "Theo",
+                      "p2": "Nabeel"
+                    },
+                    "confirmedBy": "Dayaan"
+                  }
+                },
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-3",
+                "isDraw": false
+              },
+              {
+                "goalsB": 0,
+                "goalsA": 2,
+                "teamBId": "2026-S1-team-3",
+                "matchNo": 5,
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-2": {
+                    "benchSnapshot": [
+                      "Mdu"
+                    ],
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedAt": "2026-03-11T16:00:36.913Z",
+                    "teamId": "2026-S1-team-2",
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2",
+                    "positions": {
+                      "p3": "Dr Babs",
+                      "p4": "Zizou",
+                      "p2": "Enoch",
+                      "p5": "Scott",
+                      "p1": "Dayton"
+                    },
+                    "confirmedBy": "Dayaan"
+                  },
+                  "2026-S1-team-3": {
+                    "benchSnapshot": [
+                      "Barlo"
+                    ],
+                    "teamId": "2026-S1-team-3",
+                    "confirmedAt": "2026-03-11T16:00:36.913Z",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p3": "Joshua",
+                      "p4": "Taku",
+                      "p1": "Nkululeko",
+                      "p2": "Josh",
+                      "p5": "Akhona"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain"
+                  }
+                },
+                "winnerId": "2026-S1-team-2",
+                "isDraw": false,
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-1"
+              },
+              {
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-2": {
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p5": "Enoch",
+                      "p1": "Mdu",
+                      "p2": "Zizou",
+                      "p3": "Dr Babs",
+                      "p4": "Dayton"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "teamId": "2026-S1-team-2",
+                    "confirmedAt": "2026-03-11T16:09:01.629Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "benchSnapshot": [
+                      "Scott"
+                    ]
+                  },
+                  "2026-S1-team-1": {
+                    "benchSnapshot": [
+                      "Jason"
+                    ],
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2",
+                    "positions": {
+                      "p5": "Theo",
+                      "p2": "Nabeel",
+                      "p1": "Dayaan",
+                      "p3": "Junaid",
+                      "p4": "Avuyile"
+                    },
+                    "confirmedBy": "Dayaan",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "confirmedAt": "2026-03-11T16:09:01.629Z",
+                    "teamId": "2026-S1-team-1"
+                  }
+                },
+                "winnerId": "2026-S1-team-1",
+                "matchNo": 6,
+                "goalsA": 0,
+                "teamBId": "2026-S1-team-1",
+                "goalsB": 1,
+                "isDraw": false,
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-3"
+              },
+              {
+                "winnerId": "2026-S1-team-3",
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-1": {
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p3": "Theo",
+                      "p4": "Avuyile",
+                      "p1": "Dayaan",
+                      "p2": "Junaid",
+                      "p5": "Jason"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "teamId": "2026-S1-team-1",
+                    "confirmedAt": "2026-03-11T16:11:33.619Z",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "benchSnapshot": [
+                      "Nabeel"
+                    ]
+                  },
+                  "2026-S1-team-3": {
+                    "benchSnapshot": [
+                      "Taku"
+                    ],
+                    "positions": {
+                      "p4": "Akhona",
+                      "p3": "Josh",
+                      "p2": "Barlo",
+                      "p1": "Joshua",
+                      "p5": "Nkululeko"
+                    },
+                    "confirmedBy": "Dayaan",
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2",
+                    "teamId": "2026-S1-team-3",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedAt": "2026-03-11T16:11:33.619Z"
+                  }
+                },
+                "teamBId": "2026-S1-team-3",
+                "matchNo": 7,
+                "goalsA": 0,
+                "goalsB": 1,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-2",
+                "isDraw": false
+              },
+              {
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-3",
+                "isDraw": false,
+                "goalsB": 0,
+                "matchNo": 8,
+                "goalsA": 1,
+                "teamBId": "2026-S1-team-2",
+                "winnerId": "2026-S1-team-3",
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-3": {
+                    "teamId": "2026-S1-team-3",
+                    "confirmedAt": "2026-03-11T16:20:13.811Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p1": "Nkululeko",
+                      "p5": "Akhona",
+                      "p2": "Josh",
+                      "p4": "Taku",
+                      "p3": "Joshua"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "benchSnapshot": [
+                      "Barlo"
+                    ]
+                  },
+                  "2026-S1-team-2": {
+                    "teamId": "2026-S1-team-2",
+                    "confirmedAt": "2026-03-11T16:20:13.811Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p3": "Dr Babs",
+                      "p4": "Dayton",
+                      "p2": "Zizou",
+                      "p1": "Mdu",
+                      "p5": "Enoch"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "benchSnapshot": [
+                      "Scott"
+                    ]
+                  }
+                }
+              },
+              {
+                "winnerId": "2026-S1-team-3",
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-3": {
+                    "teamId": "2026-S1-team-3",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedAt": "2026-03-11T16:26:51.899Z",
+                    "positions": {
+                      "p5": "Akhona",
+                      "p1": "Nkululeko",
+                      "p2": "Joshua",
+                      "p3": "Josh",
+                      "p4": "Taku"
+                    },
+                    "confirmedBy": "Dayaan",
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2",
+                    "benchSnapshot": [
+                      "Barlo"
+                    ]
+                  },
+                  "2026-S1-team-1": {
+                    "benchSnapshot": [
+                      "Jason"
+                    ],
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p5": "Theo",
+                      "p2": "Nabeel",
+                      "p1": "Dayaan",
+                      "p4": "Avuyile",
+                      "p3": "Junaid"
+                    },
+                    "confirmedAt": "2026-03-11T16:26:51.899Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "teamId": "2026-S1-team-1"
+                  }
+                },
+                "teamBId": "2026-S1-team-1",
+                "goalsA": 2,
+                "matchNo": 9,
+                "goalsB": 0,
+                "isDraw": false,
+                "teamAId": "2026-S1-team-3",
+                "standbyId": "2026-S1-team-2"
+              },
+              {
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-3": {
+                    "benchSnapshot": [
+                      "Akhona"
+                    ],
+                    "teamId": "2026-S1-team-3",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedAt": "2026-03-11T16:36:21.101Z",
+                    "positions": {
+                      "p5": "Nkululeko",
+                      "p1": "Josh",
+                      "p2": "Barlo",
+                      "p3": "Taku",
+                      "p4": "Joshua"
+                    },
+                    "confirmedBy": "Dayaan",
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2"
+                  },
+                  "2026-S1-team-2": {
+                    "teamId": "2026-S1-team-2",
+                    "confirmedAt": "2026-03-11T16:36:21.101Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p5": "Dr Babs",
+                      "p2": "Zizou",
+                      "p1": "Enoch",
+                      "p4": "Dayton",
+                      "p3": "Scott"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "benchSnapshot": [
+                      "Mdu"
+                    ]
+                  }
+                },
+                "winnerId": "2026-S1-team-2",
+                "teamBId": "2026-S1-team-2",
+                "goalsA": 0,
+                "matchNo": 10,
+                "goalsB": 2,
+                "isDraw": false,
+                "teamAId": "2026-S1-team-3",
+                "standbyId": "2026-S1-team-1"
+              },
+              {
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-2": {
+                    "benchSnapshot": [
+                      "Scott"
+                    ],
+                    "teamId": "2026-S1-team-2",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "confirmedAt": "2026-03-11T16:40:13.691Z",
+                    "positions": {
+                      "p1": "Mdu",
+                      "p2": "Zizou",
+                      "p5": "Enoch",
+                      "p4": "Dayton",
+                      "p3": "Dr Babs"
+                    },
+                    "confirmedBy": "Dayaan",
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2"
+                  },
+                  "2026-S1-team-1": {
+                    "benchSnapshot": [
+                      "Dayaan",
+                      "Nabeel",
+                      "Chad"
+                    ],
+                    "teamId": "2026-S1-team-1",
+                    "confirmedAt": "2026-03-11T16:40:13.691Z",
+                    "guestPlayers": [
+                      "Chad"
+                    ],
+                    "formationLabel": "2-0-2",
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p3": "Junaid",
+                      "p4": "Avuyile",
+                      "p5": "Theo",
+                      "p2": "Chad",
+                      "p1": "Jason"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain"
+                  }
+                },
+                "winnerId": null,
+                "teamBId": "2026-S1-team-1",
+                "matchNo": 11,
+                "goalsA": 1,
+                "goalsB": 1,
+                "isDraw": true,
+                "teamAId": "2026-S1-team-2",
+                "standbyId": "2026-S1-team-3"
+              },
+              {
+                "isDraw": false,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-2",
+                "teamBId": "2026-S1-team-3",
+                "goalsA": 2,
+                "matchNo": 12,
+                "goalsB": 0,
+                "winnerId": "2026-S1-team-1",
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-1": {
+                    "teamId": "2026-S1-team-1",
+                    "confirmedAt": "2026-03-11T16:42:55.563Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [
+                      "Chad"
+                    ],
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p5": "Theo",
+                      "p1": "Dayaan",
+                      "p2": "Chad",
+                      "p3": "Junaid",
+                      "p4": "Avuyile"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "benchSnapshot": [
+                      "Nabeel",
+                      "Jason",
+                      "Chad"
+                    ]
+                  },
+                  "2026-S1-team-3": {
+                    "teamId": "2026-S1-team-3",
+                    "confirmedAt": "2026-03-11T16:42:55.564Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [],
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p5": "Akhona",
+                      "p2": "Barlo",
+                      "p1": "Nkululeko",
+                      "p4": "Taku",
+                      "p3": "Josh"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "benchSnapshot": [
+                      "Joshua"
+                    ]
+                  }
+                }
+              },
+              {
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-1": {
+                    "benchSnapshot": [
+                      "Nabeel",
+                      "Avuyile",
+                      "Chad"
+                    ],
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p4": "Jason",
+                      "p3": "Theo",
+                      "p1": "Junaid",
+                      "p5": "Dayaan",
+                      "p2": "Chad"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "teamId": "2026-S1-team-1",
+                    "confirmedAt": "2026-03-11T16:51:53.689Z",
+                    "formationLabel": "2-0-2",
+                    "guestPlayers": [
+                      "Chad"
+                    ]
+                  },
+                  "2026-S1-team-2": {
+                    "benchSnapshot": [
+                      "Enoch"
+                    ],
+                    "confirmedByRole": "captain",
+                    "formationId": "2-0-2",
+                    "positions": {
+                      "p5": "Dr Babs",
+                      "p2": "Scott",
+                      "p1": "Mdu",
+                      "p4": "Dayton",
+                      "p3": "Zizou"
+                    },
+                    "confirmedBy": "Dayaan",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "confirmedAt": "2026-03-11T16:51:53.689Z",
+                    "teamId": "2026-S1-team-2"
+                  }
+                },
+                "winnerId": "2026-S1-team-2",
+                "teamBId": "2026-S1-team-2",
+                "goalsA": 0,
+                "matchNo": 13,
+                "goalsB": 1,
+                "teamAId": "2026-S1-team-1",
+                "standbyId": "2026-S1-team-3",
+                "isDraw": false
+              },
+              {
+                "winnerId": "2026-S1-team-3",
+                "confirmedLineupSnapshot": {
+                  "2026-S1-team-2": {
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p5": "Dr Babs",
+                      "p2": "Scott",
+                      "p1": "Mdu",
+                      "p4": "Zizou",
+                      "p3": "Enoch"
+                    },
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "teamId": "2026-S1-team-2",
+                    "confirmedAt": "2026-03-11T17:00:31.041Z",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "benchSnapshot": [
+                      "Dayton"
+                    ]
+                  },
+                  "2026-S1-team-3": {
+                    "benchSnapshot": [
+                      "Akhona"
+                    ],
+                    "formationId": "2-0-2",
+                    "confirmedByRole": "captain",
+                    "confirmedBy": "Dayaan",
+                    "positions": {
+                      "p4": "Taku",
+                      "p3": "Joshua",
+                      "p1": "Josh",
+                      "p5": "Nkululeko",
+                      "p2": "Barlo"
+                    },
+                    "confirmedAt": "2026-03-11T17:00:31.041Z",
+                    "guestPlayers": [],
+                    "formationLabel": "2-0-2",
+                    "teamId": "2026-S1-team-3"
+                  }
+                },
+                "matchNo": 14,
+                "teamBId": "2026-S1-team-3",
+                "goalsA": 1,
+                "goalsB": 2,
+                "standbyId": "2026-S1-team-1",
+                "teamAId": "2026-S1-team-2",
+                "isDraw": false
+              }
+            ],
+            "allEvents": [
+              {
+                "assistType": null,
+                "scorerType": "registered",
+                "timeSeconds": 225,
+                "matchNo": 1,
+                "scorer": "Nabeel",
+                "assist": null,
+                "type": "goal",
+                "teamId": "2026-S1-team-1",
+                "id": "1773243567352"
+              },
+              {
+                "matchNo": 1,
+                "points": 1.5,
+                "scorer": "Avuyile",
+                "type": "clean_sheet",
+                "playerName": "Avuyile",
+                "assist": null,
+                "id": "cs-1-2026-S1-team-1-gk-avuyile-1773243701407-1terk",
+                "teamId": "2026-S1-team-1",
+                "timeSeconds": 0,
+                "role": "gk"
+              },
+              {
+                "role": "def",
+                "timeSeconds": 0,
+                "teamId": "2026-S1-team-1",
+                "id": "cs-1-2026-S1-team-1-def-dayaan-1773243701407-hu6id",
+                "type": "clean_sheet",
+                "playerName": "Dayaan",
+                "assist": null,
+                "scorer": "Dayaan",
+                "points": 1,
+                "matchNo": 1
+              },
+              {
+                "type": "clean_sheet",
+                "assist": null,
+                "playerName": "Jason",
+                "teamId": "2026-S1-team-1",
+                "id": "cs-1-2026-S1-team-1-def-jason-1773243701407-pirr6",
+                "matchNo": 1,
+                "points": 1,
+                "scorer": "Jason",
+                "role": "def",
+                "timeSeconds": 0
+              },
+              {
+                "role": "gk",
+                "timeSeconds": 0,
+                "scorer": "Theo",
+                "matchNo": 2,
+                "points": 1.5,
+                "id": "cs-2-2026-S1-team-1-gk-theo-1773244016680-han5a",
+                "teamId": "2026-S1-team-1",
+                "playerName": "Theo",
+                "type": "clean_sheet",
+                "assist": null
+              },
+              {
+                "type": "clean_sheet",
+                "playerName": "Dayaan",
+                "assist": null,
+                "teamId": "2026-S1-team-1",
+                "id": "cs-2-2026-S1-team-1-def-dayaan-1773244016680-1aeu9",
+                "matchNo": 2,
+                "points": 1,
+                "scorer": "Dayaan",
+                "role": "def",
+                "timeSeconds": 0
+              },
+              {
+                "timeSeconds": 0,
+                "role": "def",
+                "assist": null,
+                "playerName": "Avuyile",
+                "type": "clean_sheet",
+                "id": "cs-2-2026-S1-team-1-def-avuyile-1773244016680-slg6h",
+                "teamId": "2026-S1-team-1",
+                "matchNo": 2,
+                "points": 1,
+                "scorer": "Avuyile"
+              },
+              {
+                "assist": null,
+                "type": "clean_sheet",
+                "playerName": "Dr Babs",
+                "id": "cs-2-2026-S1-team-2-gk-dr_babs-1773244016680-4o6v2",
+                "teamId": "2026-S1-team-2",
+                "matchNo": 2,
+                "points": 1.5,
+                "scorer": "Dr Babs",
+                "timeSeconds": 0,
+                "role": "gk"
+              },
+              {
+                "role": "def",
+                "timeSeconds": 0,
+                "type": "clean_sheet",
+                "playerName": "Mdu",
+                "assist": null,
+                "id": "cs-2-2026-S1-team-2-def-mdu-1773244016682-tlq77",
+                "teamId": "2026-S1-team-2",
+                "points": 1,
+                "matchNo": 2,
+                "scorer": "Mdu"
+              },
+              {
+                "role": "def",
+                "timeSeconds": 0,
+                "type": "clean_sheet",
+                "playerName": "Zizou",
+                "assist": null,
+                "teamId": "2026-S1-team-2",
+                "id": "cs-2-2026-S1-team-2-def-zizou-1773244016682-wbd9b",
+                "points": 1,
+                "matchNo": 2,
+                "scorer": "Zizou"
+              },
+              {
+                "type": "goal",
+                "assist": "Scott",
+                "teamId": "2026-S1-team-2",
+                "id": "1773244305101",
+                "matchNo": 3,
+                "scorer": "Dayton",
+                "scorerType": "registered",
+                "assistType": "registered",
+                "timeSeconds": 244
+              },
+              {
+                "scorer": "Mdu",
+                "matchNo": 3,
+                "points": 1.5,
+                "teamId": "2026-S1-team-2",
+                "id": "cs-3-2026-S1-team-2-gk-mdu-1773244368369-tulfp",
+                "assist": null,
+                "type": "clean_sheet",
+                "playerName": "Mdu",
+                "role": "gk",
+                "timeSeconds": 0
+              },
+              {
+                "id": "cs-3-2026-S1-team-2-def-scott-1773244368369-nm3az",
+                "teamId": "2026-S1-team-2",
+                "assist": null,
+                "type": "clean_sheet",
+                "playerName": "Scott",
+                "scorer": "Scott",
+                "matchNo": 3,
+                "points": 1,
+                "role": "def",
+                "timeSeconds": 0
+              },
+              {
+                "role": "def",
+                "timeSeconds": 0,
+                "matchNo": 3,
+                "points": 1,
+                "scorer": "Dr Babs",
+                "assist": null,
+                "playerName": "Dr Babs",
+                "type": "clean_sheet",
+                "teamId": "2026-S1-team-2",
+                "id": "cs-3-2026-S1-team-2-def-dr_babs-1773244368369-1n3ea"
+              },
+              {
+                "id": "1773244493282",
+                "teamId": "2026-S1-team-2",
+                "type": "goal",
+                "assist": null,
+                "scorer": "Scott",
+                "matchNo": 4,
+                "timeSeconds": 82,
+                "assistType": null,
+                "scorerType": "registered"
+              },
+              {
+                "matchNo": 4,
+                "scorer": "Zizou",
+                "assist": "Dayton",
+                "type": "goal",
+                "id": "1773244577268",
+                "teamId": "2026-S1-team-2",
+                "assistType": "registered",
+                "scorerType": "registered",
+                "timeSeconds": 165
+              },
+              {
+                "assist": "Nabeel",
+                "type": "goal",
+                "id": "1773244666378",
+                "teamId": "2026-S1-team-1",
+                "matchNo": 4,
+                "scorer": "Junaid",
+                "assistType": "registered",
+                "scorerType": "registered",
+                "timeSeconds": 254
+              },
+              {
+                "assistType": null,
+                "scorerType": "registered",
+                "timeSeconds": 281,
+                "assist": null,
+                "type": "goal",
+                "id": "1773244693733",
+                "teamId": "2026-S1-team-2",
+                "matchNo": 4,
+                "scorer": "Scott"
+              },
+              {
+                "timeSeconds": 288,
+                "assistType": null,
+                "scorerType": "registered",
+                "id": "1773244700942",
+                "teamId": "2026-S1-team-2",
+                "assist": null,
+                "type": "goal",
+                "scorer": "Dayton",
+                "matchNo": 4
+              },
+              {
+                "matchNo": 4,
+                "scorer": "Nabeel",
+                "assist": "Dayaan",
+                "type": "goal",
+                "id": "1773244717302",
+                "teamId": "2026-S1-team-1",
+                "assistType": "registered",
+                "scorerType": "registered",
+                "timeSeconds": 300
+              },
+              {
+                "scorer": "Enoch",
+                "matchNo": 5,
+                "teamId": "2026-S1-team-2",
+                "id": "1773245007914",
+                "assist": "Scott",
+                "type": "goal",
+                "timeSeconds": 237,
+                "assistType": "registered",
+                "scorerType": "registered"
+              },
+              {
+                "timeSeconds": 295,
+                "scorerType": "registered",
+                "assistType": null,
+                "id": "1773245066159",
+                "teamId": "2026-S1-team-2",
+                "assist": null,
+                "type": "goal",
+                "scorer": "Enoch",
+                "matchNo": 5
+              },
+              {
+                "assist": null,
+                "playerName": "Scott",
+                "type": "clean_sheet",
+                "teamId": "2026-S1-team-2",
+                "id": "cs-5-2026-S1-team-2-gk-scott-1773245074697-sg9t3",
+                "points": 1.5,
+                "matchNo": 5,
+                "scorer": "Scott",
+                "timeSeconds": 0,
+                "role": "gk"
+              },
+              {
+                "assist": null,
+                "playerName": "Dr Babs",
+                "type": "clean_sheet",
+                "id": "cs-5-2026-S1-team-2-def-dr_babs-1773245074698-oxw5f",
+                "teamId": "2026-S1-team-2",
+                "points": 1,
+                "matchNo": 5,
+                "scorer": "Dr Babs",
+                "role": "def",
+                "timeSeconds": 0
+              },
+              {
+                "scorer": "Zizou",
+                "points": 1,
+                "matchNo": 5,
+                "id": "cs-5-2026-S1-team-2-def-zizou-1773245074698-f27sw",
+                "teamId": "2026-S1-team-2",
+                "type": "clean_sheet",
+                "assist": null,
+                "playerName": "Zizou",
+                "role": "def",
+                "timeSeconds": 0
+              },
+              {
+                "scorerType": "registered",
+                "assistType": "registered",
+                "timeSeconds": 188,
+                "assist": "Junaid",
+                "type": "goal",
+                "teamId": "2026-S1-team-1",
+                "id": "1773245288747",
+                "matchNo": 6,
+                "scorer": "Avuyile"
+              },
+              {
+                "type": "clean_sheet",
+                "assist": null,
+                "playerName": "Theo",
+                "id": "cs-6-2026-S1-team-1-gk-theo-1773245413255-ji5zh",
+                "teamId": "2026-S1-team-1",
+                "matchNo": 6,
+                "points": 1.5,
+                "scorer": "Theo",
+                "role": "gk",
+                "timeSeconds": 0
+              },
+              {
+                "assist": null,
+                "playerName": "Junaid",
+                "type": "clean_sheet",
+                "teamId": "2026-S1-team-1",
+                "id": "cs-6-2026-S1-team-1-def-junaid-1773245413256-vldid",
+                "matchNo": 6,
+                "points": 1,
+                "scorer": "Junaid",
+                "role": "def",
+                "timeSeconds": 0
+              },
+              {
+                "timeSeconds": 0,
+                "role": "def",
+                "scorer": "Avuyile",
+                "points": 1,
+                "matchNo": 6,
+                "id": "cs-6-2026-S1-team-1-def-avuyile-1773245413256-ypb8r",
+                "teamId": "2026-S1-team-1",
+                "playerName": "Avuyile",
+                "type": "clean_sheet",
+                "assist": null
+              },
+              {
+                "matchNo": 7,
+                "scorer": "Josh",
+                "type": "goal",
+                "assist": null,
+                "teamId": "2026-S1-team-3",
+                "id": "1773245502532",
+                "scorerType": "registered",
+                "assistType": null,
+                "timeSeconds": 49
+              },
+              {
+                "timeSeconds": 0,
+                "role": "gk",
+                "assist": null,
+                "playerName": "Nkululeko",
+                "type": "clean_sheet",
+                "id": "cs-7-2026-S1-team-3-gk-nkululeko-1773245882812-7tr1o",
+                "teamId": "2026-S1-team-3",
+                "matchNo": 7,
+                "points": 1.5,
+                "scorer": "Nkululeko"
+              },
+              {
+                "timeSeconds": 0,
+                "role": "def",
+                "teamId": "2026-S1-team-3",
+                "id": "cs-7-2026-S1-team-3-def-josh-1773245882812-1fodj",
+                "playerName": "Josh",
+                "assist": null,
+                "type": "clean_sheet",
+                "scorer": "Josh",
+                "points": 1,
+                "matchNo": 7
+              },
+              {
+                "timeSeconds": 0,
+                "role": "def",
+                "scorer": "Akhona",
+                "matchNo": 7,
+                "points": 1,
+                "teamId": "2026-S1-team-3",
+                "id": "cs-7-2026-S1-team-3-def-akhona-1773245882812-qcgge",
+                "playerName": "Akhona",
+                "type": "clean_sheet",
+                "assist": null
+              },
+              {
+                "timeSeconds": 88,
+                "assistType": null,
+                "scorerType": "registered",
+                "scorer": "Barlo",
+                "matchNo": 8,
+                "id": "1773245976176",
+                "teamId": "2026-S1-team-3",
+                "assist": null,
+                "type": "goal"
+              },
+              {
+                "timeSeconds": 0,
+                "role": "gk",
+                "type": "clean_sheet",
+                "playerName": "Akhona",
+                "assist": null,
+                "teamId": "2026-S1-team-3",
+                "id": "cs-8-2026-S1-team-3-gk-akhona-1773246196079-2ervg",
+                "matchNo": 8,
+                "points": 1.5,
+                "scorer": "Akhona"
+              },
+              {
+                "role": "def",
+                "timeSeconds": 0,
+                "points": 1,
+                "matchNo": 8,
+                "scorer": "Joshua",
+                "playerName": "Joshua",
+                "assist": null,
+                "type": "clean_sheet",
+                "teamId": "2026-S1-team-3",
+                "id": "cs-8-2026-S1-team-3-def-joshua-1773246196079-i95s7"
+              },
+              {
+                "role": "def",
+                "timeSeconds": 0,
+                "playerName": "Taku",
+                "type": "clean_sheet",
+                "assist": null,
+                "id": "cs-8-2026-S1-team-3-def-taku-1773246196079-acazl",
+                "teamId": "2026-S1-team-3",
+                "matchNo": 8,
+                "points": 1,
+                "scorer": "Taku"
+              },
+              {
+                "timeSeconds": 93,
+                "scorerType": "registered",
+                "assistType": "registered",
+                "id": "1773246352224",
+                "teamId": "2026-S1-team-3",
+                "assist": "Barlo",
+                "type": "goal",
+                "scorer": "Taku",
+                "matchNo": 9
+              },
+              {
+                "matchNo": 9,
+                "scorer": "Josh",
+                "assist": null,
+                "type": "goal",
+                "id": "1773246573620",
+                "teamId": "2026-S1-team-3",
+                "assistType": null,
+                "scorerType": "registered",
+                "timeSeconds": 300
+              },
+              {
+                "role": "gk",
+                "timeSeconds": 0,
+                "teamId": "2026-S1-team-3",
+                "id": "cs-9-2026-S1-team-3-gk-akhona-1773246612127-2uc9m",
+                "assist": null,
+                "type": "clean_sheet",
+                "playerName": "Akhona",
+                "scorer": "Akhona",
+                "matchNo": 9,
+                "points": 1.5
+              },
+              {
+                "timeSeconds": 0,
+                "role": "def",
+                "scorer": "Josh",
+                "points": 1,
+                "matchNo": 9,
+                "id": "cs-9-2026-S1-team-3-def-josh-1773246612128-su05d",
+                "teamId": "2026-S1-team-3",
+                "playerName": "Josh",
+                "type": "clean_sheet",
+                "assist": null
+              },
+              {
+                "assist": null,
+                "type": "clean_sheet",
+                "playerName": "Taku",
+                "id": "cs-9-2026-S1-team-3-def-taku-1773246612128-25bwl",
+                "teamId": "2026-S1-team-3",
+                "points": 1,
+                "matchNo": 9,
+                "scorer": "Taku",
+                "role": "def",
+                "timeSeconds": 0
+              },
+              {
+                "timeSeconds": 48,
+                "assistType": "registered",
+                "scorerType": "registered",
+                "scorer": "Scott",
+                "matchNo": 10,
+                "id": "1773246679831",
+                "teamId": "2026-S1-team-2",
+                "assist": "Enoch",
+                "type": "goal"
+              },
+              {
+                "scorer": "Zizou",
+                "matchNo": 10,
+                "teamId": "2026-S1-team-2",
+                "id": "1773246928521",
+                "assist": null,
+                "type": "goal",
+                "timeSeconds": 295,
+                "assistType": null,
+                "scorerType": "registered"
+              },
+              {
+                "role": "gk",
+                "timeSeconds": 0,
+                "assist": null,
+                "type": "clean_sheet",
+                "playerName": "Dr Babs",
+                "id": "cs-10-2026-S1-team-2-gk-dr_babs-1773246984150-x3vqx",
+                "teamId": "2026-S1-team-2",
+                "matchNo": 10,
+                "points": 1.5,
+                "scorer": "Dr Babs"
+              },
+              {
+                "points": 1,
+                "matchNo": 10,
+                "scorer": "Scott",
+                "type": "clean_sheet",
+                "playerName": "Scott",
+                "assist": null,
+                "id": "cs-10-2026-S1-team-2-def-scott-1773246984150-y262h",
+                "teamId": "2026-S1-team-2",
+                "role": "def",
+                "timeSeconds": 0
+              },
+              {
+                "role": "def",
+                "timeSeconds": 0,
+                "scorer": "Dayton",
+                "points": 1,
+                "matchNo": 10,
+                "teamId": "2026-S1-team-2",
+                "id": "cs-10-2026-S1-team-2-def-dayton-1773246984150-qaoly",
+                "playerName": "Dayton",
+                "assist": null,
+                "type": "clean_sheet"
+              },
+              {
+                "timeSeconds": 107,
+                "scorerType": "registered",
+                "assistType": "registered",
+                "scorer": "Mdu",
+                "matchNo": 11,
+                "id": "1773247094014",
+                "teamId": "2026-S1-team-2",
+                "assist": "Dayton",
+                "type": "goal"
+              },
+              {
+                "id": "1773247230205",
+                "teamId": "2026-S1-team-1",
+                "type": "goal",
+                "assist": null,
+                "scorer": "Chad",
+                "matchNo": 11,
+                "timeSeconds": 242,
+                "assistType": null,
+                "scorerType": "guest"
+              },
+              {
+                "timeSeconds": 178,
+                "scorerType": "guest",
+                "assistType": null,
+                "id": "1773247502884",
+                "teamId": "2026-S1-team-1",
+                "assist": null,
+                "type": "goal",
+                "scorer": "Chad",
+                "matchNo": 12
+              },
+              {
+                "scorer": "Chad",
+                "matchNo": 12,
+                "teamId": "2026-S1-team-1",
+                "id": "1773247579752",
+                "assist": "Theo",
+                "type": "goal",
+                "timeSeconds": 254,
+                "scorerType": "guest",
+                "assistType": "registered"
+              },
+              {
+                "role": "gk",
+                "timeSeconds": 0,
+                "matchNo": 12,
+                "points": 1.5,
+                "scorer": "Theo",
+                "assist": null,
+                "playerName": "Theo",
+                "type": "clean_sheet",
+                "teamId": "2026-S1-team-1",
+                "id": "cs-12-2026-S1-team-1-gk-theo-1773247749650-3j7s4"
+              },
+              {
+                "timeSeconds": 0,
+                "role": "def",
+                "scorer": "Junaid",
+                "matchNo": 12,
+                "points": 1,
+                "id": "cs-12-2026-S1-team-1-def-junaid-1773247749651-1bvh1",
+                "teamId": "2026-S1-team-1",
+                "assist": null,
+                "playerName": "Junaid",
+                "type": "clean_sheet"
+              },
+              {
+                "id": "cs-12-2026-S1-team-1-def-avuyile-1773247749651-qzig6",
+                "teamId": "2026-S1-team-1",
+                "playerName": "Avuyile",
+                "assist": null,
+                "type": "clean_sheet",
+                "scorer": "Avuyile",
+                "matchNo": 12,
+                "points": 1,
+                "timeSeconds": 0,
+                "role": "def"
+              },
+              {
+                "scorerType": "registered",
+                "assistType": "registered",
+                "timeSeconds": 289,
+                "matchNo": 13,
+                "scorer": "Scott",
+                "assist": "Dr Babs",
+                "type": "goal",
+                "id": "1773248048806",
+                "teamId": "2026-S1-team-2"
+              },
+              {
+                "timeSeconds": 0,
+                "role": "gk",
+                "assist": null,
+                "type": "clean_sheet",
+                "playerName": "Dr Babs",
+                "teamId": "2026-S1-team-2",
+                "id": "cs-13-2026-S1-team-2-gk-dr_babs-1773248069358-1dt5c",
+                "points": 1.5,
+                "matchNo": 13,
+                "scorer": "Dr Babs"
+              },
+              {
+                "points": 1,
+                "matchNo": 13,
+                "scorer": "Zizou",
+                "playerName": "Zizou",
+                "assist": null,
+                "type": "clean_sheet",
+                "teamId": "2026-S1-team-2",
+                "id": "cs-13-2026-S1-team-2-def-zizou-1773248069358-aivsd",
+                "timeSeconds": 0,
+                "role": "def"
+              },
+              {
+                "timeSeconds": 0,
+                "role": "def",
+                "matchNo": 13,
+                "points": 1,
+                "scorer": "Dayton",
+                "assist": null,
+                "playerName": "Dayton",
+                "type": "clean_sheet",
+                "teamId": "2026-S1-team-2",
+                "id": "cs-13-2026-S1-team-2-def-dayton-1773248069358-0x4pc"
+              },
+              {
+                "scorerType": "registered",
+                "assistType": "registered",
+                "timeSeconds": 181,
+                "matchNo": 14,
+                "scorer": "Josh",
+                "type": "goal",
+                "assist": "Barlo",
+                "teamId": "2026-S1-team-3",
+                "id": "1773248289941"
+              },
+              {
+                "teamId": "2026-S1-team-2",
+                "id": "1773248435845",
+                "type": "goal",
+                "assist": null,
+                "scorer": "Zizou",
+                "matchNo": 14,
+                "timeSeconds": 300,
+                "scorerType": "registered",
+                "assistType": null
+              },
+              {
+                "scorer": "Barlo",
+                "matchNo": 14,
+                "teamId": "2026-S1-team-3",
+                "id": "1773248466031",
+                "type": "goal",
+                "assist": "Josh",
+                "timeSeconds": 300,
+                "assistType": "registered",
+                "scorerType": "registered"
+              }
+            ],
+            "teams": [],
+            "playerAppearances": []
+          }
+        ],
+        "updatedAt": "2026-03-13T16:17:39.721Z",
+        "allEvents": [],
+        "currentMatchNo": 1,
+        "seasonId": "2026-S1"
+      }
+    ],
+    "updatedAt": "2026-03-13T16:17:39.721Z"
+  }
+}
