@@ -893,7 +893,7 @@ export function PlayerCardPage({
       <section className="card player-card-filters">
         <div className="player-card-filters-row">
           <div className="player-card-filter player-card-filter-view">
-            <label>View</label>
+            <label>Players in</label>
 
             <div
               className="segmented-toggle"
