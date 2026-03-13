@@ -880,27 +880,8 @@ export function PlayerCardPage({
     <div className="page player-cards-page">
       <header className="header">
         <h1>Player cards</h1>
-        <p className="subtitle">
-          Ratings built from TurfKings goals, assists, clean sheets, games
-          played, squad peer reviews, and admin baseline ratings.
-        </p>
 
-        <p className="subtitle">
-          Double-click a card to save it. On touch devices, long-press a card to
-          save it.
-        </p>
 
-        {user ? (
-          <p className="subtitle">
-            Signed in as <strong>{user.displayName || user.email}</strong>. Your
-            own card will be tagged as <strong>“You”</strong>.
-          </p>
-        ) : (
-          <p className="subtitle">
-            Not signed in – use Google sign-in on the landing page so your photo
-            changes can be tied to your identity.
-          </p>
-        )}
 
         <div className="news-header-actions">
           <button className="secondary-btn" onClick={onBack}>
@@ -1092,7 +1073,7 @@ export function PlayerCardPage({
                                   fontSize: "0.52rem",
                                   fontWeight: 800,
                                   letterSpacing: "0.08em",
-                                  opacity: 0.95,
+                                  opacity: 1.2,
                                   paddingLeft: "0.18rem",
                                 }}
                               >
