@@ -1,4 +1,3 @@
-// src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
@@ -29,6 +28,9 @@ import {
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
 import { useMembers } from "./hooks/useMembers.js";
 import { buildCleanSheetEventsForMatch } from "./core/lineups.js";
+
+import { db } from "./firebaseConfig.js";
+import { doc, writeBatch, serverTimestamp } from "firebase/firestore";
 
 // Page constants
 const PAGE_ENTRY = "entry";
@@ -68,6 +70,14 @@ function toTitleCaseLoose(value) {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function slugFromLooseName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
 }
 
 function getStoredRole(identity) {
@@ -171,13 +181,8 @@ function deriveActiveRole(identity, teams = []) {
   const storedRole = getStoredRole(identity);
   const isDynamicCaptain = isCaptainFromTeams(identity, teams);
 
-  // spectator choice must stay spectator unless this person is actually a current captain/admin
   if (storedRole === "spectator" && !isDynamicCaptain) return "spectator";
-
-  // admin preview/admin identity must stay admin
   if (storedRole === "admin") return "admin";
-
-  // either dynamic captain from squads OR preview captain mode
   if (isDynamicCaptain || storedRole === "captain") return "captain";
 
   return "player";
@@ -266,6 +271,309 @@ function buildUpdatedResultFromEvents(result, eventsForSeason) {
   };
 }
 
+/* ---------------- Participation helpers ---------------- */
+
+function getPlayerDisplayNameFromTeamEntry(entry) {
+  if (typeof entry === "string") return toTitleCaseLoose(entry);
+  if (!entry || typeof entry !== "object") return "";
+  return toTitleCaseLoose(
+    entry.fullName ||
+      entry.displayName ||
+      entry.shortName ||
+      entry.name ||
+      entry.playerName ||
+      ""
+  );
+}
+
+function getPlayerShortNameFromTeamEntry(entry) {
+  if (typeof entry === "string") {
+    const pretty = toTitleCaseLoose(entry);
+    return pretty.split(/\s+/)[0] || pretty;
+  }
+  if (!entry || typeof entry !== "object") return "";
+  return toTitleCaseLoose(
+    entry.shortName ||
+      entry.name ||
+      entry.displayName ||
+      entry.fullName ||
+      entry.playerName ||
+      ""
+  );
+}
+
+function getPlayerIdFromTeamEntry(entry) {
+  if (typeof entry === "string") {
+    const pretty = toTitleCaseLoose(entry);
+    return slugFromLooseName(pretty);
+  }
+
+  if (!entry || typeof entry !== "object") return "";
+
+  const direct = entry.playerId || entry.memberId || entry.id || entry.uid || "";
+  if (String(direct || "").trim()) return String(direct).trim();
+
+  const fallbackName = getPlayerDisplayNameFromTeamEntry(entry);
+  return fallbackName ? slugFromLooseName(fallbackName) : "";
+}
+
+function buildMemberLookup(members = []) {
+  const lookup = new Map();
+
+  const add = (key, member) => {
+    const k = safeLower(key);
+    if (!k) return;
+    if (!lookup.has(k)) lookup.set(k, member);
+  };
+
+  (Array.isArray(members) ? members : []).forEach((member) => {
+    const values = [
+      member?.id,
+      member?.memberId,
+      member?.playerId,
+      member?.fullName,
+      member?.shortName,
+      member?.displayName,
+      member?.name,
+      member?.playerName,
+      member?.email,
+    ]
+      .map((v) => String(v || "").trim())
+      .filter(Boolean);
+
+    values.forEach((v) => {
+      add(v, member);
+      add(toTitleCaseLoose(v), member);
+      add(slugFromLooseName(v), member);
+
+      const first = String(v).trim().split(/\s+/)[0] || "";
+      if (first) add(first, member);
+    });
+  });
+
+  return lookup;
+}
+
+function resolveMemberFromEntry(entry, memberLookup) {
+  if (!memberLookup || !(memberLookup instanceof Map)) return null;
+
+  const candidates = [];
+
+  if (typeof entry === "string") {
+    const pretty = toTitleCaseLoose(entry);
+    candidates.push(entry, pretty, slugFromLooseName(pretty));
+    const first = pretty.split(/\s+/)[0] || "";
+    if (first) candidates.push(first);
+  } else if (entry && typeof entry === "object") {
+    const values = [
+      entry.playerId,
+      entry.memberId,
+      entry.id,
+      entry.uid,
+      entry.fullName,
+      entry.shortName,
+      entry.displayName,
+      entry.name,
+      entry.playerName,
+    ]
+      .map((v) => String(v || "").trim())
+      .filter(Boolean);
+
+    values.forEach((v) => {
+      candidates.push(v, toTitleCaseLoose(v), slugFromLooseName(v));
+      const first = v.split(/\s+/)[0] || "";
+      if (first) candidates.push(first);
+    });
+  }
+
+  for (const candidate of candidates) {
+    const hit = memberLookup.get(safeLower(candidate));
+    if (hit) return hit;
+  }
+
+  return null;
+}
+
+function normalizeTeamPlayersForParticipation(team, memberLookup) {
+  const rawPlayers = Array.isArray(team?.players) ? team.players : [];
+  const seen = new Set();
+  const out = [];
+
+  rawPlayers.forEach((entry) => {
+    const matchedMember = resolveMemberFromEntry(entry, memberLookup);
+
+    const playerId = matchedMember
+      ? String(
+          matchedMember.id ||
+            matchedMember.memberId ||
+            matchedMember.playerId ||
+            getPlayerIdFromTeamEntry(entry)
+        ).trim()
+      : getPlayerIdFromTeamEntry(entry);
+
+    const playerName = matchedMember
+      ? toTitleCaseLoose(
+          matchedMember.fullName ||
+            matchedMember.displayName ||
+            matchedMember.shortName ||
+            matchedMember.name ||
+            matchedMember.playerName ||
+            ""
+        )
+      : getPlayerDisplayNameFromTeamEntry(entry);
+
+    const shortName = matchedMember
+      ? toTitleCaseLoose(
+          matchedMember.shortName ||
+            matchedMember.name ||
+            matchedMember.displayName ||
+            matchedMember.fullName ||
+            ""
+        )
+      : getPlayerShortNameFromTeamEntry(entry);
+
+    if (!playerId || !playerName) return;
+    if (seen.has(playerId)) return;
+    seen.add(playerId);
+
+    out.push({
+      playerId,
+      playerName,
+      shortName: shortName || playerName,
+    });
+  });
+
+  return out;
+}
+
+function countTeamMatches(results = []) {
+  const counts = {};
+
+  (Array.isArray(results) ? results : []).forEach((r) => {
+    if (r?.teamAId) counts[r.teamAId] = (counts[r.teamAId] || 0) + 1;
+    if (r?.teamBId) counts[r.teamBId] = (counts[r.teamBId] || 0) + 1;
+  });
+
+  return counts;
+}
+
+function computeExpectedFullMatches(teamMatches, squadSize) {
+  const matches = Number(teamMatches || 0);
+  const size = Number(squadSize || 0);
+
+  if (matches <= 0) return 0;
+  if (size <= 5) return matches;
+
+  return Math.round((matches * 5) / size);
+}
+
+function buildParticipationEntryKey(teamId, playerId) {
+  return `${String(teamId || "").trim()}__${String(playerId || "").trim()}`;
+}
+
+function buildDefaultParticipationEntries({
+  teams = [],
+  results = [],
+  members = [],
+}) {
+  const safeTeams = Array.isArray(teams) ? teams : [];
+  const safeResults = Array.isArray(results) ? results : [];
+  const memberLookup = buildMemberLookup(members);
+  const matchCounts = countTeamMatches(safeResults);
+
+  const out = [];
+
+  safeTeams.forEach((team) => {
+    const teamId = team?.id || "";
+    if (!teamId) return;
+
+    const teamName = team?.label || teamId;
+    const players = normalizeTeamPlayersForParticipation(team, memberLookup);
+    const squadSize = players.length;
+    const teamMatches = matchCounts[teamId] || 0;
+    const expectedFullMatches = computeExpectedFullMatches(teamMatches, squadSize);
+
+    players.forEach((player) => {
+      out.push({
+        key: buildParticipationEntryKey(teamId, player.playerId),
+        playerId: player.playerId,
+        playerName: player.playerName,
+        shortName: player.shortName || player.playerName,
+        teamId,
+        teamName,
+        squadSize,
+        teamMatches,
+        expectedFullMatches,
+        matchesPlayed: expectedFullMatches,
+      });
+    });
+  });
+
+  return out;
+}
+
+async function saveParticipationForMatchDay({
+  seasonId,
+  seasonNo,
+  matchDayId,
+  createdAtISO,
+  playerAppearances,
+}) {
+  const safeSeasonId = String(seasonId || "").trim();
+  const safeMatchDayId = String(matchDayId || "").trim();
+
+  if (!safeSeasonId || !safeMatchDayId) return;
+
+  const safeAppearances = Array.isArray(playerAppearances)
+    ? playerAppearances
+    : [];
+
+  const batch = writeBatch(db);
+
+  safeAppearances.forEach((entry) => {
+    const attendanceDocId = `${safeMatchDayId}__${entry.playerId}`;
+    const attendanceRef = doc(
+      db,
+      "seasons",
+      safeSeasonId,
+      "attendance",
+      attendanceDocId
+    );
+
+    const teamMatches = Number(entry.teamMatches || 0);
+    const expectedFullMatches = Number(entry.expectedFullMatches || 0);
+    const matchesPlayed = Number(entry.matchesPlayed || 0);
+
+    batch.set(
+      attendanceRef,
+      {
+        seasonId: safeSeasonId,
+        seasonNo: Number(seasonNo || 1),
+        matchDayId: safeMatchDayId,
+        playerId: entry.playerId,
+        playerName: entry.playerName,
+        shortName: entry.shortName || entry.playerName,
+        teamId: entry.teamId,
+        teamName: entry.teamName,
+        squadSize: Number(entry.squadSize || 0),
+        teamMatches,
+        expectedFullMatches,
+        matchesPlayed,
+        participationRate:
+          expectedFullMatches > 0 ? matchesPlayed / expectedFullMatches : 0,
+        source: "end_match_day_confirmed_participation",
+        createdAtISO,
+        updatedAtISO: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+
+  await batch.commit();
+}
+
 export default function App() {
   const [page, setPage] = useState(PAGE_ENTRY);
 
@@ -332,6 +640,9 @@ export default function App() {
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupCode, setBackupCode] = useState("");
   const [backupError, setBackupError] = useState("");
+  const [pendingParticipationEntries, setPendingParticipationEntries] = useState(
+    []
+  );
 
   // ---------- END SEASON MODAL ----------
   const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
@@ -389,6 +700,7 @@ export default function App() {
     yearEndAttendance;
 
   let safeV2ForStats = null;
+  let activeSeasonNo = 1;
 
   if (USE_V2) {
     const { safeV2, activeSeason } = getActiveSeasonFromV2State(state);
@@ -406,6 +718,7 @@ export default function App() {
     allEvents = s?.allEvents || [];
     streaks = s?.streaks || {};
     matchDayHistory = s?.matchDayHistory || [];
+    activeSeasonNo = Number(s?.seasonNo || 1);
 
     playerPhotosByName = safeV2.playerPhotosByName || {};
     yearEndAttendance = safeV2.yearEndAttendance || [];
@@ -425,7 +738,6 @@ export default function App() {
     } = legacy || createDefaultState());
   }
 
-  // ✅ role logic now respects BOTH dynamic captain assignment and preview actingRole
   const activeRole = useMemo(
     () => deriveActiveRole(identity, teams || []),
     [identity, teams]
@@ -467,7 +779,16 @@ export default function App() {
       isSpectator,
       teams,
     });
-  }, [identity, activeRole, canStartMatch, isAdmin, isCaptain, isPlayer, isSpectator, teams]);
+  }, [
+    identity,
+    activeRole,
+    canStartMatch,
+    isAdmin,
+    isCaptain,
+    isPlayer,
+    isSpectator,
+    teams,
+  ]);
 
   useEffect(() => {
     console.log("[TK DEBUG] Archive status (NO SEEDS)", {
@@ -1040,6 +1361,13 @@ export default function App() {
       return;
     }
 
+    const defaults = buildDefaultParticipationEntries({
+      teams,
+      results,
+      members,
+    });
+
+    setPendingParticipationEntries(defaults);
     setBackupCode("");
     setBackupError("");
     setShowBackupModal(true);
@@ -1049,6 +1377,7 @@ export default function App() {
     setShowBackupModal(false);
     setBackupCode("");
     setBackupError("");
+    setPendingParticipationEntries([]);
   };
 
   const requireAdminCode = () => {
@@ -1057,6 +1386,29 @@ export default function App() {
       return false;
     }
     return true;
+  };
+
+  const handleParticipationChange = (entryKey, rawValue) => {
+    const numeric = Number(rawValue);
+
+    setPendingParticipationEntries((prev) =>
+      prev.map((entry) => {
+        if (entry.key !== entryKey) return entry;
+
+        const capped = Math.max(
+          0,
+          Math.min(
+            Number(entry.teamMatches || 0),
+            Number.isFinite(numeric) ? numeric : 0
+          )
+        );
+
+        return {
+          ...entry,
+          matchesPlayed: capped,
+        };
+      })
+    );
   };
 
   const handleClearOnly = () => {
@@ -1106,7 +1458,7 @@ export default function App() {
     closeBackupModal();
   };
 
-  const handleSaveAndClearMatchDay = () => {
+  const handleSaveAndClearMatchDay = async () => {
     if (!requireAdminCode()) return;
 
     const now = new Date();
@@ -1117,29 +1469,83 @@ export default function App() {
       "-" +
       String(now.getDate()).padStart(2, "0");
 
-    if (USE_V2) {
-      updateActiveSeason((prevSeason) => {
+    try {
+      if (USE_V2) {
+        const activeSeasonId = safeV2ForStats?.activeSeasonId || "";
+        const safeParticipationEntries = Array.isArray(pendingParticipationEntries)
+          ? pendingParticipationEntries
+          : [];
+
+        if (activeSeasonId) {
+          await saveParticipationForMatchDay({
+            seasonId: activeSeasonId,
+            seasonNo: activeSeasonNo,
+            matchDayId: id,
+            createdAtISO: now.toISOString(),
+            playerAppearances: safeParticipationEntries,
+          });
+        }
+
+        updateActiveSeason((prevSeason) => {
+          const entry = {
+            id,
+            createdAt: now.toISOString(),
+            results: prevSeason.results || [],
+            allEvents: prevSeason.allEvents || [],
+            teams: prevSeason.teams || [],
+            playerAppearances: safeParticipationEntries,
+          };
+
+          const newHistory = [...(prevSeason.matchDayHistory || []), entry];
+
+          return {
+            ...prevSeason,
+            matchDayHistory: newHistory,
+            currentMatchNo: 1,
+            currentMatch: {
+              teamAId: prevSeason.teams?.[0]?.id ?? null,
+              teamBId: prevSeason.teams?.[1]?.id ?? null,
+              standbyId: prevSeason.teams?.[2]?.id ?? null,
+            },
+            streaks: prevSeason.streaks
+              ? Object.fromEntries(
+                  Object.keys(prevSeason.streaks).map((tid) => [tid, 0])
+                )
+              : {},
+            currentEvents: [],
+            allEvents: [],
+            results: [],
+          };
+        });
+
+        closeBackupModal();
+        return;
+      }
+
+      updateState((prev) => {
         const entry = {
           id,
           createdAt: now.toISOString(),
-          results: prevSeason.results || [],
-          allEvents: prevSeason.allEvents || [],
+          results: prev.results || [],
+          allEvents: prev.allEvents || [],
+          teams: prev.teams || [],
+          playerAppearances: pendingParticipationEntries || [],
         };
 
-        const newHistory = [...(prevSeason.matchDayHistory || []), entry];
+        const newHistory = [...(prev.matchDayHistory || []), entry];
 
         return {
-          ...prevSeason,
+          ...prev,
           matchDayHistory: newHistory,
           currentMatchNo: 1,
           currentMatch: {
-            teamAId: prevSeason.teams?.[0]?.id ?? null,
-            teamBId: prevSeason.teams?.[1]?.id ?? null,
-            standbyId: prevSeason.teams?.[2]?.id ?? null,
+            teamAId: prev.teams?.[0]?.id ?? null,
+            teamBId: prev.teams?.[1]?.id ?? null,
+            standbyId: prev.teams?.[2]?.id ?? null,
           },
-          streaks: prevSeason.streaks
+          streaks: prev.streaks
             ? Object.fromEntries(
-                Object.keys(prevSeason.streaks).map((tid) => [tid, 0])
+                Object.keys(prev.streaks).map((tid) => [tid, 0])
               )
             : {},
           currentEvents: [],
@@ -1149,40 +1555,12 @@ export default function App() {
       });
 
       closeBackupModal();
-      return;
+    } catch (err) {
+      console.error("[TK] Failed to save participation records:", err);
+      setBackupError(
+        "Failed to save participation records. Nothing was cleared."
+      );
     }
-
-    updateState((prev) => {
-      const entry = {
-        id,
-        createdAt: now.toISOString(),
-        results: prev.results || [],
-        allEvents: prev.allEvents || [],
-      };
-
-      const newHistory = [...(prev.matchDayHistory || []), entry];
-
-      return {
-        ...prev,
-        matchDayHistory: newHistory,
-        currentMatchNo: 1,
-        currentMatch: {
-          teamAId: prev.teams?.[0]?.id ?? null,
-          teamBId: prev.teams?.[1]?.id ?? null,
-          standbyId: prev.teams?.[2]?.id ?? null,
-        },
-        streaks: prev.streaks
-          ? Object.fromEntries(
-              Object.keys(prev.streaks).map((tid) => [tid, 0])
-            )
-          : {},
-        currentEvents: [],
-        allEvents: [],
-        results: [],
-      };
-    });
-
-    closeBackupModal();
   };
 
   // ---------- END SEASON ----------
@@ -1457,6 +1835,7 @@ export default function App() {
           allEvents={fullSeasonEventsForStats}
           peerRatingsByPlayer={peerRatingsByPlayer}
           playerPhotosByName={playerPhotosByName}
+          activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
@@ -1495,12 +1874,96 @@ export default function App() {
 
       {showBackupModal && (
         <div className="modal-backdrop">
-          <div className="modal">
-            <h3>Save / Clear Turf Kings Data</h3>
+          <div className="modal" style={{ maxWidth: "860px", width: "95%" }}>
+            <h3>End Match Day</h3>
             <p>
-              Save this match-day to Firebase (via state sync) and start a fresh
-              week, or clear the current week without saving.
+              Confirm participation before saving. Each player is currently assumed
+              to have played their expected full share based on team size and how
+              many matches their team played tonight.
             </p>
+
+            <div
+              style={{
+                maxHeight: "45vh",
+                overflowY: "auto",
+                marginTop: "1rem",
+                marginBottom: "1rem",
+                paddingRight: "0.25rem",
+              }}
+            >
+              {teams.map((team) => {
+                const rows = pendingParticipationEntries.filter(
+                  (entry) => entry.teamId === team.id
+                );
+
+                if (!rows.length) return null;
+
+                const teamMatches = rows[0]?.teamMatches ?? 0;
+                const squadSize = rows[0]?.squadSize ?? 0;
+                const expectedFullMatches = rows[0]?.expectedFullMatches ?? 0;
+
+                return (
+                  <div
+                    key={team.id}
+                    style={{
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      borderRadius: "12px",
+                      padding: "0.85rem",
+                      marginBottom: "0.9rem",
+                    }}
+                  >
+                    <h4 style={{ marginBottom: "0.4rem" }}>{team.label}</h4>
+                    <p className="muted small" style={{ marginBottom: "0.8rem" }}>
+                      Team matches: <strong>{teamMatches}</strong> • Squad size:{" "}
+                      <strong>{squadSize}</strong> • Expected full participation:{" "}
+                      <strong>
+                        {expectedFullMatches}/{teamMatches}
+                      </strong>
+                    </p>
+
+                    {rows.map((entry) => (
+                      <div
+                        key={entry.key}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "minmax(150px, 1fr) auto auto",
+                          gap: "0.75rem",
+                          alignItems: "center",
+                          marginBottom: "0.55rem",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{entry.playerName}</div>
+                          <div className="muted small">
+                            Default full: {entry.expectedFullMatches}/{entry.teamMatches}
+                          </div>
+                        </div>
+
+                        <label
+                          className="muted small"
+                          style={{ whiteSpace: "nowrap" }}
+                        >
+                          Matches played
+                        </label>
+
+                        <input
+                          type="number"
+                          min={0}
+                          max={entry.teamMatches}
+                          className="text-input"
+                          style={{ width: "90px" }}
+                          value={entry.matchesPlayed}
+                          onChange={(e) =>
+                            handleParticipationChange(entry.key, e.target.value)
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+
             <div className="field-row">
               <label>Admin code (Nkululeko)</label>
               <input
@@ -1514,6 +1977,7 @@ export default function App() {
               />
               {backupError && <p className="error-text">{backupError}</p>}
             </div>
+
             <div className="actions-row">
               <button className="secondary-btn" onClick={closeBackupModal}>
                 Cancel
@@ -1521,10 +1985,7 @@ export default function App() {
               <button className="secondary-btn" onClick={handleClearOnly}>
                 Clear only
               </button>
-              <button
-                className="primary-btn"
-                onClick={handleSaveAndClearMatchDay}
-              >
+              <button className="primary-btn" onClick={handleSaveAndClearMatchDay}>
                 Save to Firebase &amp; clear
               </button>
             </div>

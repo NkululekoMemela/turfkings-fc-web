@@ -30,3 +30,8 @@ dist-ssr
 .env
 .env.*
 src/.env.*
+
+serviceAccountKey.json
+.env
+.env.staging
+.env.production

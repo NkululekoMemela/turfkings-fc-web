@@ -1,8 +1,10 @@
 // src/pages/PlayerCardPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebaseConfig";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { toPng } from "html-to-image";
+import TurfKingsLogo from "../assets/TurfKings_logo_transparent.png";
 
 // ---------------- HELPERS ----------------
 
@@ -16,7 +18,6 @@ function toTitleCase(name) {
     .join(" ");
 }
 
-// For legacy photo doc ids (and your FormationsPage uploader)
 function slugFromName(name) {
   return String(name || "")
     .trim()
@@ -44,6 +45,43 @@ function getInitials(name) {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function clamp(min, val, max) {
+  return Math.max(min, Math.min(max, val));
+}
+
+function round1(v) {
+  return Math.round(Number(v || 0) * 10) / 10;
+}
+
+function hasPositiveNumber(v) {
+  return typeof v === "number" && !Number.isNaN(v) && v > 0;
+}
+
+function blendPeerValue(adminVal, squadVal) {
+  const admin = safeNumber(adminVal);
+  const squad = safeNumber(squadVal);
+
+  const hasAdmin = hasPositiveNumber(admin);
+  const hasSquad = squad != null;
+
+  if (hasAdmin && hasSquad) {
+    return round1(admin * 0.2 + squad * 0.8);
+  }
+  if (hasAdmin) return round1(admin);
+  if (hasSquad) return round1(squad);
+
+  return null;
+}
+
+/**
+ * Remap a 0–10 score into a baseline system where:
+ * - 1+ games -> score lives in 3–10
+ */
+function applyOverallBaseline(score10) {
+  const raw = clamp(0, Number(score10 || 0), 10);
+  return round1(3 + (raw / 10) * 7);
 }
 
 function makeStyleLabel(attackAvg, defenceAvg, gkAvg) {
@@ -80,6 +118,7 @@ export function PlayerCardPage({
   archivedEvents = [],
   peerRatingsByPlayer,
   playerPhotosByName,
+  activeSeasonId = null,
   onBack,
 }) {
   const { authUser } = useAuth() || {};
@@ -91,7 +130,6 @@ export function PlayerCardPage({
     return dn || em || "";
   }, [user]);
 
-  // --- FULL SEASON EVENTS (archived + current) ---
   const seasonEvents = useMemo(
     () => [...(archivedEvents || []), ...(allEvents || [])],
     [archivedEvents, allEvents]
@@ -99,10 +137,19 @@ export function PlayerCardPage({
 
   const peerRatingsRaw = peerRatingsByPlayer || {};
 
-  // ----- Load members: build canonical resolver -----
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [nameToCanonical, setNameToCanonical] = useState({});
   const [canonicalToShort, setCanonicalToShort] = useState({});
+  const [participationByPlayer, setParticipationByPlayer] = useState({});
+  const [participationLoaded, setParticipationLoaded] = useState(false);
+
+  const [baselineByPlayer, setBaselineByPlayer] = useState({});
+  const [baselineLoaded, setBaselineLoaded] = useState(false);
+
+  const [savingCardId, setSavingCardId] = useState("");
+  const cardRefs = useRef({});
+  const longPressTimers = useRef({});
+  const didHandlePhoneBackRef = useRef(false);
 
   useEffect(() => {
     async function loadMembers() {
@@ -126,7 +173,6 @@ export function PlayerCardPage({
 
           keys.add(safeLower(fullName));
           keys.add(safeLower(shortName));
-
           keys.add(slugFromName(fullName));
           keys.add(slugFromName(shortName));
 
@@ -139,6 +185,8 @@ export function PlayerCardPage({
             if (aa) {
               keys.add(safeLower(aa));
               keys.add(slugFromName(aa));
+              const af = safeLower(firstNameOf(aa));
+              if (af) keys.add(af);
             }
           });
 
@@ -182,7 +230,142 @@ export function PlayerCardPage({
     return canonicalToShort[key] || canonicalFullName;
   };
 
-  // ----- Firestore player photos -----
+  useEffect(() => {
+    async function loadParticipation() {
+      try {
+        const snap = await getDoc(doc(db, "appState_v2", "main"));
+
+        if (!snap.exists()) {
+          setParticipationByPlayer({});
+          setParticipationLoaded(true);
+          return;
+        }
+
+        const data = snap.data() || {};
+        const state = data.state || {};
+        const seasons = Array.isArray(state.seasons) ? state.seasons : [];
+        const targetSeason =
+          seasons.find((s) => s?.seasonId === activeSeasonId) || seasons[0] || null;
+
+        if (!targetSeason) {
+          setParticipationByPlayer({});
+          setParticipationLoaded(true);
+          return;
+        }
+
+        const history = Array.isArray(targetSeason.matchDayHistory)
+          ? targetSeason.matchDayHistory
+          : [];
+
+        const next = {};
+
+        const ensure = (canonName) => {
+          if (!next[canonName]) {
+            next[canonName] = {
+              gamesPlayed: 0,
+              matchDaysPresent: 0,
+            };
+          }
+          return next[canonName];
+        };
+
+        history.forEach((day) => {
+          const dayId = String(day?.id || "").trim();
+          const appearances = Array.isArray(day?.playerAppearances)
+            ? day.playerAppearances
+            : [];
+
+          const seenThisDay = new Set();
+
+          appearances.forEach((entry) => {
+            const raw =
+              entry?.playerName ||
+              entry?.shortName ||
+              entry?.playerId ||
+              "";
+            const canon = resolveCanonicalName(raw);
+            if (!canon) return;
+
+            const p = ensure(canon);
+            p.gamesPlayed += Number(entry?.matchesPlayed || 0);
+
+            const key = `${dayId}|${safeLower(canon)}`;
+            if (!seenThisDay.has(key)) {
+              seenThisDay.add(key);
+              p.matchDaysPresent += 1;
+            }
+          });
+        });
+
+        setParticipationByPlayer(next);
+        setParticipationLoaded(true);
+      } catch (err) {
+        console.error("Failed to load participation for PlayerCardPage:", err);
+        setParticipationByPlayer({});
+        setParticipationLoaded(true);
+      }
+    }
+
+    if (!membersLoaded) return;
+    loadParticipation();
+  }, [membersLoaded, activeSeasonId]);
+
+  useEffect(() => {
+    async function loadBaselines() {
+      try {
+        if (!membersLoaded) return;
+
+        const snap = await getDocs(collection(db, "peerRatingBaselines"));
+        const next = {};
+        const seasonMatches = {};
+        const fallbackUnknown = {};
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const seasonId = String(data.seasonId || "").trim();
+          const canonical = resolveCanonicalName(data.targetName || "");
+          if (!canonical) return;
+
+          const baseline = {
+            attack: hasPositiveNumber(Number(data.attack)) ? Number(data.attack) : null,
+            defence: hasPositiveNumber(Number(data.defence))
+              ? Number(data.defence)
+              : null,
+            gk: hasPositiveNumber(Number(data.gk)) ? Number(data.gk) : null,
+          };
+
+          if (seasonId && activeSeasonId && seasonId === String(activeSeasonId)) {
+            seasonMatches[canonical] = baseline;
+            return;
+          }
+
+          if (seasonId === "UNKNOWN_SEASON") {
+            fallbackUnknown[canonical] = baseline;
+          }
+        });
+
+        const allNames = new Set([
+          ...Object.keys(seasonMatches),
+          ...Object.keys(fallbackUnknown),
+        ]);
+
+        allNames.forEach((name) => {
+          next[name] = seasonMatches[name] || fallbackUnknown[name];
+        });
+
+        setBaselineByPlayer(next);
+        setBaselineLoaded(true);
+      } catch (err) {
+        console.error("Failed to load peer baselines for PlayerCardPage:", err);
+        setBaselineByPlayer({});
+        setBaselineLoaded(true);
+      }
+    }
+
+    setBaselineLoaded(false);
+    loadBaselines();
+  }, [membersLoaded, activeSeasonId, nameToCanonical]);
+
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
 
   useEffect(() => {
@@ -291,7 +474,6 @@ export function PlayerCardPage({
     return null;
   };
 
-  // ---------- DEDUP EVENTS ----------
   const uniqueEvents = useMemo(() => {
     const seen = new Set();
     const out = [];
@@ -319,23 +501,16 @@ export function PlayerCardPage({
     return out;
   }, [seasonEvents]);
 
-  // ----- Canonicalize peer ratings keys -----
   const peerRatingsCanon = useMemo(() => {
     const out = {};
     Object.entries(peerRatingsRaw || {}).forEach(([rawName, val]) => {
       const canon = resolveCanonicalName(rawName);
       if (!canon) return;
-
-      if (!out[canon]) {
-        out[canon] = val;
-      } else {
-        out[canon] = out[canon] || val;
-      }
+      if (!out[canon]) out[canon] = val;
     });
     return out;
   }, [peerRatingsRaw, nameToCanonical, membersLoaded]);
 
-  // ----- Aggregate stats from FULL SEASON events -----
   const statsByPlayer = useMemo(() => {
     const stats = {};
 
@@ -348,6 +523,7 @@ export function PlayerCardPage({
           cleanSheets: 0,
           gkCleanSheets: 0,
           defCleanSheets: 0,
+          points: 0,
           rawStatsScore: 0,
         };
       }
@@ -388,23 +564,14 @@ export function PlayerCardPage({
       }
     });
 
-    // weights
-    // goals = 3
-    // assists = 2
-    // defender clean sheet = 1
-    // goalkeeper clean sheet = 1.5
     Object.values(stats).forEach((p) => {
-      p.rawStatsScore =
-        p.goals * 3 +
-        p.assists * 2 +
-        p.defCleanSheets * 1 +
-        p.gkCleanSheets * 1.5;
+      p.points = p.goals + p.assists + p.defCleanSheets + p.gkCleanSheets;
+      p.rawStatsScore = p.points;
     });
 
     return stats;
   }, [uniqueEvents, nameToCanonical, membersLoaded]);
 
-  // ----- Map canonical player -> team label -----
   const playerTeamMap = useMemo(() => {
     const map = {};
 
@@ -422,11 +589,12 @@ export function PlayerCardPage({
     return map;
   }, [teams, nameToCanonical, membersLoaded]);
 
-  // ----- Normalise stats to /10 and combine with peer ratings -----
   const playersWithRatings = useMemo(() => {
     const allNames = new Set([
       ...Object.keys(statsByPlayer || {}),
       ...Object.keys(peerRatingsCanon || {}),
+      ...Object.keys(participationByPlayer || {}),
+      ...Object.keys(baselineByPlayer || {}),
     ]);
 
     (teams || []).forEach((t) => {
@@ -439,10 +607,18 @@ export function PlayerCardPage({
     });
 
     let maxRaw = 0;
-    Object.values(statsByPlayer || {}).forEach((p) => {
+    let maxPpg = 0;
+
+    Object.entries(statsByPlayer || {}).forEach(([canonName, p]) => {
       if (p.rawStatsScore > maxRaw) maxRaw = p.rawStatsScore;
+
+      const gp = Number(participationByPlayer?.[canonName]?.gamesPlayed || 0);
+      const ppg = gp > 0 ? p.points / gp : 0;
+      if (ppg > maxPpg) maxPpg = ppg;
     });
+
     if (maxRaw <= 0) maxRaw = 1;
+    if (maxPpg <= 0) maxPpg = 1;
 
     const out = [];
 
@@ -456,50 +632,75 @@ export function PlayerCardPage({
         cleanSheets: 0,
         gkCleanSheets: 0,
         defCleanSheets: 0,
+        points: 0,
         rawStatsScore: 0,
       };
 
       const peer = peerRatingsCanon[canonName] || null;
+      const baseline = baselineByPlayer[canonName] || null;
 
-      const statsScore10 = Math.min(10, (stats.rawStatsScore / maxRaw) * 10);
+      const participation = participationByPlayer[canonName] || {
+        gamesPlayed: 0,
+        matchDaysPresent: 0,
+      };
 
-      let attackAvg = null;
-      let defenceAvg = null;
-      let gkAvg = null;
+      const gamesPlayed = Number(participation.gamesPlayed || 0);
+      const matchDaysPresent = Number(participation.matchDaysPresent || 0);
+
+      const pointsPerGame = gamesPlayed > 0 ? stats.points / gamesPlayed : 0;
+      const statsScore10 = clamp(0, (stats.rawStatsScore / maxRaw) * 10, 10);
+
+      const squadAttackAvg = peer ? safeNumber(peer.attackAvg) : null;
+      const squadDefenceAvg = peer ? safeNumber(peer.defenceAvg) : null;
+      const squadGkAvg = peer ? safeNumber(peer.gkAvg) : null;
+
+      const adminAttack = baseline ? safeNumber(baseline.attack) : null;
+      const adminDefence = baseline ? safeNumber(baseline.defence) : null;
+      const adminGk = baseline ? safeNumber(baseline.gk) : null;
+
+      const attackAvg = blendPeerValue(adminAttack, squadAttackAvg);
+      const defenceAvg = blendPeerValue(adminDefence, squadDefenceAvg);
+      const gkAvg = blendPeerValue(adminGk, squadGkAvg);
+
       let peerScore10 = null;
+      const validVals = [attackAvg, defenceAvg, gkAvg].filter((v) => v != null);
 
-      if (peer) {
-        attackAvg = safeNumber(peer.attackAvg);
-        defenceAvg = safeNumber(peer.defenceAvg);
-        gkAvg = safeNumber(peer.gkAvg);
-
-        const validVals = [attackAvg, defenceAvg, gkAvg].filter(
-          (v) => v != null
-        );
-
-        if (validVals.length > 0) {
-          const avgAttr =
-            validVals.reduce((a, b) => a + b, 0) / validVals.length;
-          peerScore10 = Math.min(10, Math.max(0, 2 * avgAttr));
-        }
+      if (validVals.length > 0) {
+        const avgAttr = validVals.reduce((a, b) => a + b, 0) / validVals.length;
+        peerScore10 = clamp(0, 2 * avgAttr, 10);
       }
 
-      const overall =
-        peerScore10 != null
-          ? 0.5 * statsScore10 + 0.5 * peerScore10
-          : statsScore10;
+      const ppgScore10 = clamp(0, (pointsPerGame / maxPpg) * 10, 10);
 
-      const overallRounded = Math.round(overall * 10) / 10;
+      let formScore10 = null;
+      let overall = 0;
+
+      if (gamesPlayed > 0) {
+        formScore10 =
+          peerScore10 != null
+            ? round1(ppgScore10 * 0.7 + peerScore10 * 0.3)
+            : round1(ppgScore10);
+
+        const rawOverall =
+          peerScore10 != null
+            ? round1(statsScore10 * 0.4 + peerScore10 * 0.3 + formScore10 * 0.3)
+            : round1(statsScore10 * 0.65 + formScore10 * 0.35);
+
+        overall = applyOverallBaseline(rawOverall);
+      } else {
+        formScore10 = null;
+        overall = peerScore10 != null ? round1(peerScore10) : 0;
+      }
+
       const styleLabel = makeStyleLabel(attackAvg, defenceAvg, gkAvg);
-
       const displayName = canonName;
       const shortName = resolveShortDisplay(canonName);
-
       const photoUrl = getPlayerPhoto(canonName, shortName);
 
       const isYou =
         !!authIdentityKey &&
-        safeLower(resolveCanonicalName(authIdentityKey)) === safeLower(canonName);
+        safeLower(resolveCanonicalName(authIdentityKey)) ===
+          safeLower(canonName);
 
       out.push({
         id: safeLower(canonName),
@@ -508,17 +709,23 @@ export function PlayerCardPage({
         shortName,
         teamName: playerTeamMap[canonName] || "—",
         photoUrl,
+
         goals: stats.goals,
         assists: stats.assists,
-        cleanSheets: stats.cleanSheets,
         gkCleanSheets: stats.gkCleanSheets,
         defCleanSheets: stats.defCleanSheets,
-        statsScore10,
-        peerScore10,
+        points: stats.points,
+
+        gamesPlayed,
+        matchDaysPresent,
+
+        statsScore10: round1(statsScore10),
+        formScore10,
+        peerScore10: peerScore10 != null ? round1(peerScore10) : null,
         attackAvg,
         defenceAvg,
         gkAvg,
-        overall: overallRounded,
+        overall,
         styleLabel,
         isYou,
       });
@@ -526,7 +733,14 @@ export function PlayerCardPage({
 
     out.sort((a, b) => {
       if (b.overall !== a.overall) return b.overall - a.overall;
+
+      const aForm = a.formScore10 == null ? -1 : a.formScore10;
+      const bForm = b.formScore10 == null ? -1 : b.formScore10;
+      if (bForm !== aForm) return bForm - aForm;
+
+      if (b.points !== a.points) return b.points - a.points;
       if (b.goals !== a.goals) return b.goals - a.goals;
+
       return String(a.displayName || "").localeCompare(
         String(b.displayName || "")
       );
@@ -536,6 +750,8 @@ export function PlayerCardPage({
   }, [
     statsByPlayer,
     peerRatingsCanon,
+    baselineByPlayer,
+    participationByPlayer,
     playerTeamMap,
     teams,
     authIdentityKey,
@@ -545,22 +761,33 @@ export function PlayerCardPage({
     membersLoaded,
   ]);
 
-  // ----- Filters -----
   const [teamFilter, setTeamFilter] = useState("ALL");
+  const [playerViewFilter, setPlayerViewFilter] = useState("ACTIVE");
   const [search, setSearch] = useState("");
 
   const filteredPlayers = useMemo(() => {
     return playersWithRatings.filter((p) => {
+      if (playerViewFilter === "ACTIVE" && Number(p.gamesPlayed || 0) <= 0) {
+        return false;
+      }
+
+      if (playerViewFilter === "OFF_SEASON" && Number(p.gamesPlayed || 0) > 0) {
+        return false;
+      }
+
       if (teamFilter !== "ALL" && p.teamName && p.teamName !== teamFilter) {
         return false;
       }
+
       if (!search) return true;
+
       const q = search.toLowerCase();
       const dn = (p.displayName || "").toLowerCase();
       const tn = (p.teamName || "").toLowerCase();
+
       return dn.includes(q) || tn.includes(q);
     });
-  }, [playersWithRatings, teamFilter, search]);
+  }, [playersWithRatings, playerViewFilter, teamFilter, search]);
 
   const uniqueTeams = useMemo(() => {
     const set = new Set();
@@ -568,13 +795,99 @@ export function PlayerCardPage({
     return ["ALL", ...Array.from(set)];
   }, [teams]);
 
+  // ---------------- PHONE BACK BUTTON SUPPORT ----------------
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof onBack !== "function") return;
+
+    didHandlePhoneBackRef.current = false;
+
+    const stateMarker = {
+      tkPage: "player-cards",
+      tkTs: Date.now(),
+    };
+
+    window.history.pushState(stateMarker, "", window.location.href);
+
+    const handlePopState = () => {
+      if (didHandlePhoneBackRef.current) return;
+      didHandlePhoneBackRef.current = true;
+      onBack();
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [onBack]);
+
+  async function saveCardImage(player) {
+    try {
+      const node = cardRefs.current[player.id];
+      if (!node) return;
+
+      setSavingCardId(player.id);
+
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#0b1220",
+      });
+
+      const link = document.createElement("a");
+      link.download = `${slugFromName(
+        player.displayName || player.name
+      )}_card.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error("Failed to save card:", err);
+      window.alert("Could not save this card as an image.");
+    } finally {
+      setSavingCardId("");
+    }
+  }
+
+  function startLongPress(player) {
+    clearLongPress(player.id);
+    longPressTimers.current[player.id] = window.setTimeout(() => {
+      saveCardImage(player);
+    }, 650);
+  }
+
+  function clearLongPress(playerId) {
+    const t = longPressTimers.current[playerId];
+    if (t) {
+      window.clearTimeout(t);
+      delete longPressTimers.current[playerId];
+    }
+  }
+
+  function getFormArrow(player) {
+    if (player.formScore10 == null) {
+      return { symbol: "", color: "transparent" };
+    }
+    if (player.formScore10 > player.overall) {
+      return { symbol: "↑", color: "#22c55e" };
+    }
+    if (player.formScore10 < player.overall) {
+      return { symbol: "↓", color: "#ef4444" };
+    }
+    return { symbol: "", color: "transparent" };
+  }
+
   return (
     <div className="page player-cards-page">
       <header className="header">
         <h1>Player cards</h1>
         <p className="subtitle">
-          Ratings built from TurfKings goals, assists, clean sheets, and squad peer
-          reviews.
+          Ratings built from TurfKings goals, assists, clean sheets, games
+          played, squad peer reviews, and admin baseline ratings.
+        </p>
+
+        <p className="subtitle">
+          Double-click a card to save it. On touch devices, long-press a card to
+          save it.
         </p>
 
         {user ? (
@@ -598,6 +911,42 @@ export function PlayerCardPage({
 
       <section className="card player-card-filters">
         <div className="player-card-filters-row">
+          <div className="player-card-filter player-card-filter-view">
+            <label>View</label>
+
+            <div
+              className="segmented-toggle"
+              role="tablist"
+              aria-label="Player card view filter"
+            >
+              <button
+                type="button"
+                className={
+                  playerViewFilter === "ACTIVE"
+                    ? "segmented-option active"
+                    : "segmented-option"
+                }
+                onClick={() => setPlayerViewFilter("ACTIVE")}
+                aria-pressed={playerViewFilter === "ACTIVE"}
+              >
+                Active season
+              </button>
+
+              <button
+                type="button"
+                className={
+                  playerViewFilter === "OFF_SEASON"
+                    ? "segmented-option active"
+                    : "segmented-option"
+                }
+                onClick={() => setPlayerViewFilter("OFF_SEASON")}
+                aria-pressed={playerViewFilter === "OFF_SEASON"}
+              >
+                Off-season
+              </button>
+            </div>
+          </div>
+
           <div className="player-card-filter">
             <label>Team</label>
             <select
@@ -625,142 +974,260 @@ export function PlayerCardPage({
       </section>
 
       <section className="card player-card-grid-card">
-        {filteredPlayers.length === 0 ? (
+        {!membersLoaded || !participationLoaded || !baselineLoaded ? (
+          <p className="muted">Loading player cards…</p>
+        ) : filteredPlayers.length === 0 ? (
           <p className="muted">
-            No players to show yet – record some games or add peer ratings to
-            unlock player cards.
+            {playerViewFilter === "OFF_SEASON"
+              ? "No off-season players found for this filter."
+              : "No active season players found for this filter."}
           </p>
         ) : (
           <div className="player-card-grid">
             {filteredPlayers.map((p) => {
               const displayName = p.displayName || p.name || "";
+              const formArrow = getFormArrow(p);
+              const showForm = p.formScore10 != null;
+
               return (
                 <article
                   key={p.id}
+                  ref={(el) => {
+                    if (el) cardRefs.current[p.id] = el;
+                  }}
+                  onDoubleClick={() => saveCardImage(p)}
+                  onTouchStart={() => startLongPress(p)}
+                  onTouchEnd={() => clearLongPress(p.id)}
+                  onTouchMove={() => clearLongPress(p.id)}
+                  onTouchCancel={() => clearLongPress(p.id)}
                   className={
                     p.isYou
                       ? "player-card fifa-card player-card-you"
                       : "player-card fifa-card"
                   }
+                  style={{
+                    cursor: "pointer",
+                    position: "relative",
+                    opacity: savingCardId === p.id ? 0.88 : 1,
+                    overflow: "hidden",
+                  }}
+                  title="Double-click to save card. On mobile, long-press to save."
                 >
-                  <div className="fifa-card-top">
-                    <div className="fifa-rating-block">
-                      <span className="fifa-rating-score">
-                        {p.overall.toFixed(1)}
-                      </span>
-                      <span className="fifa-rating-pos">ALL</span>
-                    </div>
+                  <img
+                    src={TurfKingsLogo}
+                    alt=""
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      right: "0.8rem",
+                      bottom: "1rem",
+                      width: "110px",
+                      height: "110px",
+                      objectFit: "contain",
+                      opacity: 0.5,
+                      filter: "grayscale(0.1) brightness(1.1)",
+                      pointerEvents: "none",
+                      userSelect: "none",
+                      zIndex: 0,
+                    }}
+                  />
 
-                    <div className="fifa-photo-wrap">
-                      {p.photoUrl ? (
-                        <img
-                          src={p.photoUrl}
-                          alt={displayName}
-                          className="fifa-photo-img"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <span className="fifa-photo-placeholder">
-                          {getInitials(displayName)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="fifa-name-bar">
-                    <span className="fifa-name">
-                      {displayName}
-                      {p.isYou && <span className="you-pill"> • You</span>}
-                    </span>
-                    <span className="fifa-team">{p.teamName}</span>
-                  </div>
-
-                  <div className="fifa-mid-row">
-                    <div className="fifa-chip">
-                      <span className="chip-label">Stats</span>
-                      <span className="chip-value">
-                        {p.statsScore10.toFixed(1)}/10
-                      </span>
-                    </div>
-                    <div className="fifa-chip">
-                      <span className="chip-label">Peer</span>
-                      <span className="chip-value">
-                        {p.peerScore10 != null
-                          ? `${p.peerScore10.toFixed(1)}/10`
-                          : "Not rated yet"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="fifa-attr-grid">
-                    <div className="fifa-attr-cell">
-                      <span className="fifa-attr-label">ATT</span>
-                      {p.attackAvg != null ? (
-                        <>
-                          <span className="fifa-attr-value">
-                            {p.attackAvg.toFixed(1)}/5
+                  <div style={{ position: "relative", zIndex: 1 }}>
+                    <div className="fifa-card-top">
+                      <div className="fifa-rating-block">
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: "0.28rem",
+                          }}
+                        >
+                          <span className="fifa-rating-score">
+                            {p.overall.toFixed(1)}
                           </span>
-                          <span className="fifa-attr-desc">ATTACK</span>
-                        </>
-                      ) : (
-                        <span className="fifa-attr-desc fifa-attr-unrated">
-                          No votes yet
-                        </span>
-                      )}
-                    </div>
 
-                    <div className="fifa-attr-cell">
-                      <span className="fifa-attr-label">DEF</span>
-                      {p.defenceAvg != null ? (
-                        <>
-                          <span className="fifa-attr-value">
-                            {p.defenceAvg.toFixed(1)}/5
+                          {showForm ? (
+                            <sup
+                              title={`Form ${p.formScore10.toFixed(1)}/10`}
+                              style={{
+                                fontSize: "1rem",
+                                fontWeight: 900,
+                                lineHeight: 1,
+                                marginTop: "0.18rem",
+                                display: "inline-flex",
+                                flexDirection: "column",
+                                alignItems: "flex-start",
+                                gap: "0.08rem",
+                                minWidth: "2.5rem",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.14rem",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    minWidth: "0.18rem",
+                                  }}
+                                />
+                                <span>{p.formScore10.toFixed(1)}</span>
+                                {formArrow.symbol ? (
+                                  <span
+                                    style={{
+                                      color: formArrow.color,
+                                      fontWeight: 900,
+                                    }}
+                                  >
+                                    {formArrow.symbol}
+                                  </span>
+                                ) : null}
+                              </span>
+
+                              <span
+                                style={{
+                                  fontSize: "0.52rem",
+                                  fontWeight: 800,
+                                  letterSpacing: "0.08em",
+                                  opacity: 0.95,
+                                  paddingLeft: "0.18rem",
+                                }}
+                              >
+                                FORM
+                              </span>
+                            </sup>
+                          ) : null}
+                        </div>
+
+                        <span className="fifa-rating-pos">OVERALL</span>
+                      </div>
+
+                      <div className="fifa-photo-wrap">
+                        {p.photoUrl ? (
+                          <img
+                            src={p.photoUrl}
+                            alt={displayName}
+                            className="fifa-photo-img"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : (
+                          <span className="fifa-photo-placeholder">
+                            {getInitials(displayName)}
                           </span>
-                          <span className="fifa-attr-desc">DEFENCE</span>
-                        </>
-                      ) : (
-                        <span className="fifa-attr-desc fifa-attr-unrated">
-                          No votes yet
-                        </span>
-                      )}
+                        )}
+                      </div>
                     </div>
 
-                    <div className="fifa-attr-cell">
-                      <span className="fifa-attr-label">GK</span>
-                      {p.gkAvg != null ? (
-                        <>
-                          <span className="fifa-attr-value">
-                            {p.gkAvg.toFixed(1)}/5
-                          </span>
-                          <span className="fifa-attr-desc">GOALKEEPING</span>
-                        </>
-                      ) : (
-                        <span className="fifa-attr-desc fifa-attr-unrated">
-                          No votes yet
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="fifa-attr-cell">
-                      <span className="fifa-attr-label">TOTAL</span>
-                      <span className="fifa-attr-value">
-                        {p.goals + p.assists + p.cleanSheets}
+                    <div className="fifa-name-bar">
+                      <span className="fifa-name">
+                        {displayName}
+                        {p.isYou && <span className="you-pill"> • You</span>}
                       </span>
-                      <span className="fifa-attr-desc">EVENTS</span>
+                      <span className="fifa-team">{p.teamName}</span>
                     </div>
-                  </div>
 
-                  <div className="fifa-bottom-stats">
-                    <span>⚽ {p.goals} Goals</span>
-                    <span>🎯 {p.assists} Assists</span>
-                    <span>🥅 {p.gkCleanSheets} Saves CS</span>
-                    <span>🌀 {p.defCleanSheets} Defence CS</span>
-                  </div>
+                    <div className="fifa-mid-row">
+                      <div className="fifa-chip">
+                        <span className="chip-label">Stats</span>
+                        <span className="chip-value">
+                          {p.statsScore10.toFixed(1)}/10
+                        </span>
+                      </div>
+                      <div className="fifa-chip">
+                        <span className="chip-label">Peer</span>
+                        <span className="chip-value">
+                          {p.peerScore10 != null
+                            ? `${p.peerScore10.toFixed(1)}/10`
+                            : "Not rated yet"}
+                        </span>
+                      </div>
+                    </div>
 
-                  {p.styleLabel && (
-                    <p className="player-card-style">{p.styleLabel}</p>
-                  )}
+                    <div className="fifa-attr-grid">
+                      <div className="fifa-attr-cell">
+                        <span className="fifa-attr-label">ATT</span>
+                        {p.attackAvg != null ? (
+                          <>
+                            <span className="fifa-attr-value">
+                              {p.attackAvg.toFixed(1)}/5
+                            </span>
+                            <span className="fifa-attr-desc">ATTACK</span>
+                          </>
+                        ) : (
+                          <span className="fifa-attr-desc fifa-attr-unrated">
+                            No votes yet
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="fifa-attr-cell">
+                        <span className="fifa-attr-label">DEF</span>
+                        {p.defenceAvg != null ? (
+                          <>
+                            <span className="fifa-attr-value">
+                              {p.defenceAvg.toFixed(1)}/5
+                            </span>
+                            <span className="fifa-attr-desc">DEFENCE</span>
+                          </>
+                        ) : (
+                          <span className="fifa-attr-desc fifa-attr-unrated">
+                            No votes yet
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="fifa-attr-cell">
+                        <span className="fifa-attr-label">GK</span>
+                        {p.gkAvg != null ? (
+                          <>
+                            <span className="fifa-attr-value">
+                              {p.gkAvg.toFixed(1)}/5
+                            </span>
+                            <span className="fifa-attr-desc">GOALKEEPING</span>
+                          </>
+                        ) : (
+                          <span className="fifa-attr-desc fifa-attr-unrated">
+                            No votes yet
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="fifa-attr-cell">
+                        <span className="fifa-attr-label">TOTAL</span>
+                        <span className="fifa-attr-value">{p.points}</span>
+                        <span className="fifa-attr-desc">
+                          points in {p.gamesPlayed} matches
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="fifa-bottom-stats">
+                      <span>⚽ {p.goals} Goals</span>
+                      <span>🎯 {p.assists} Assists</span>
+                      <span>🥅 {p.gkCleanSheets} Saves CS</span>
+                      <span>🌀 {p.defCleanSheets} Defence CS</span>
+                    </div>
+
+                    {p.styleLabel && (
+                      <p
+                        className="player-card-style"
+                        style={{
+                          maxWidth: "65%",
+                          width: "65%",
+                          paddingRight: "0.35rem",
+                          boxSizing: "border-box",
+                          position: "relative",
+                          zIndex: 1,
+                        }}
+                      >
+                        {p.styleLabel}
+                      </p>
+                    )}
+                  </div>
                 </article>
               );
             })}

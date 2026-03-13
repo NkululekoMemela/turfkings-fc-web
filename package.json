@@ -9,11 +9,16 @@
     "build": "vite build",
     "build:staging": "VITE_USE_STAGING=true vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "debug:history": "node src/scripts/debugMatchDayHistory.js",
+    "inspect:appearances": "node src/scripts/inspectSeasonAppearances.js",
+    "backfill:participation": "node src/scripts/backfillHistoricalParticipation.js"
   },
   "dependencies": {
+    "dotenv": "^17.3.1",
     "firebase": "^12.6.0",
     "firebase-admin": "^13.7.0",
+    "html-to-image": "^1.11.13",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
@@ -26,6 +31,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
-    "vite": "^7.2.2"
+    "vite": "^7.2.2",
+    "vite-node": "^3.2.4"
   }
 }
