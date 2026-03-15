@@ -14,10 +14,7 @@ console.log(
 );
 
 if (!admin.apps.length) {
-  const serviceAccountPath = path.resolve(
-    process.cwd(),
-    "serviceAccountKey.json"
-  );
+  const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.resolve(process.env.HOME, ".config/turfkings/keys/turfkings-serviceAccountKey.json");
   const serviceAccount = JSON.parse(
     fs.readFileSync(serviceAccountPath, "utf8")
   );
