@@ -2,7 +2,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
-import TeamPhoto from "../assets/TurfKings.jpg";
+import TeamPhoto1 from "../assets/TurfKings.jpg";
+import TeamPhoto2 from "../assets/TurfKings2.jpeg";
+import TeamPhoto3 from "../assets/TurfKings3.jpeg";
 
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
@@ -82,6 +84,19 @@ export function LandingPage({
     if (typeof window === "undefined") return false;
     return window.innerWidth <= 480;
   });
+
+  const teamPhotos = [TeamPhoto1, TeamPhoto2, TeamPhoto3];
+  const [photoIndex, setPhotoIndex] = useState(0);
+
+  useEffect(() => {
+    if (teamPhotos.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setPhotoIndex((prev) => (prev + 1) % teamPhotos.length);
+    }, 3500); // changes every 3.5 seconds
+
+    return () => clearInterval(interval);
+  }, [teamPhotos.length]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -444,7 +459,11 @@ export function LandingPage({
       </section>
 
       <section className="card team-photo-card">
-        <img src={TeamPhoto} alt="Turf Kings team" className="team-photo" />
+        <img
+          src={teamPhotos[photoIndex]}
+          alt={`Turf Kings team ${photoIndex + 1}`}
+          className="team-photo"
+        />
       </section>
 
       <section className="card website-card">

@@ -1,5 +1,5 @@
 // src/pages/PlayerCardPage.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebaseConfig";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -110,6 +110,221 @@ function makeStyleLabel(attackAvg, defenceAvg, gkAvg) {
   return "";
 }
 
+function resolveCanonicalNameFromMap(rawName, map) {
+  if (!rawName || typeof rawName !== "string") return "";
+
+  const tc = toTitleCase(rawName);
+  if (!tc) return "";
+
+  const direct = map[safeLower(tc)];
+  if (direct) return direct;
+
+  const bySlug = map[slugFromName(tc)];
+  if (bySlug) return bySlug;
+
+  const fn = safeLower(firstNameOf(tc));
+  if (fn && map[fn]) return map[fn];
+
+  return tc;
+}
+
+function buildPlayersRegistry(playersSnap) {
+  const mapNameToCanon = {};
+  const mapCanonToShort = {};
+
+  playersSnap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+
+    const fullName = toTitleCase(
+      data.fullName ||
+        data.displayName ||
+        data.name ||
+        data.playerName ||
+        ""
+    );
+
+    const shortName = toTitleCase(
+      data.shortName ||
+        data.name ||
+        data.displayName ||
+        firstNameOf(fullName) ||
+        fullName
+    );
+
+    if (!fullName) return;
+
+    mapCanonToShort[safeLower(fullName)] = shortName || fullName;
+
+    const keys = new Set();
+
+    const addKey = (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return;
+
+      const pretty = toTitleCase(raw);
+
+      keys.add(safeLower(raw));
+      keys.add(safeLower(pretty));
+      keys.add(slugFromName(raw));
+      keys.add(slugFromName(pretty));
+
+      const first = safeLower(firstNameOf(pretty));
+      if (first) keys.add(first);
+    };
+
+    addKey(fullName);
+    addKey(shortName);
+    addKey(data.fullName);
+    addKey(data.shortName);
+    addKey(data.displayName);
+    addKey(data.name);
+    addKey(data.playerName);
+    addKey(docSnap.id);
+
+    const aliases = Array.isArray(data.aliases) ? data.aliases : [];
+    aliases.forEach((a) => addKey(a));
+
+    keys.forEach((k) => {
+      if (!k) return;
+      if (!mapNameToCanon[k]) mapNameToCanon[k] = fullName;
+    });
+  });
+
+  return { mapNameToCanon, mapCanonToShort };
+}
+
+function buildParticipationFromMainDoc(mainSnap, canonicalMap, activeSeasonId) {
+  if (!mainSnap.exists()) return {};
+
+  const data = mainSnap.data() || {};
+  const state = data.state || {};
+  const seasons = Array.isArray(state.seasons) ? state.seasons : [];
+
+  const targetSeason =
+    seasons.find((s) => s?.seasonId === activeSeasonId) ||
+    seasons[0] ||
+    null;
+
+  if (!targetSeason) return {};
+
+  const history = Array.isArray(targetSeason.matchDayHistory)
+    ? targetSeason.matchDayHistory
+    : [];
+
+  const next = {};
+
+  const ensure = (canonName) => {
+    if (!next[canonName]) {
+      next[canonName] = {
+        gamesPlayed: 0,
+        matchDaysPresent: 0,
+      };
+    }
+    return next[canonName];
+  };
+
+  history.forEach((day) => {
+    const dayId = String(day?.id || "").trim();
+    const appearances = Array.isArray(day?.playerAppearances)
+      ? day.playerAppearances
+      : [];
+
+    const seenThisDay = new Set();
+
+    appearances.forEach((entry) => {
+      const raw =
+        entry?.playerName ||
+        entry?.shortName ||
+        entry?.playerId ||
+        "";
+
+      const canon = resolveCanonicalNameFromMap(raw, canonicalMap);
+      if (!canon) return;
+
+      const p = ensure(canon);
+      p.gamesPlayed += Number(entry?.matchesPlayed || 0);
+
+      const key = `${dayId}|${safeLower(canon)}`;
+      if (!seenThisDay.has(key)) {
+        seenThisDay.add(key);
+        p.matchDaysPresent += 1;
+      }
+    });
+  });
+
+  return next;
+}
+
+function buildBaselinesFromSnap(baselinesSnap, canonicalMap, activeSeasonId) {
+  const next = {};
+  const seasonMatches = {};
+  const fallbackUnknown = {};
+
+  baselinesSnap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const seasonId = String(data.seasonId || "").trim();
+    const canonical = resolveCanonicalNameFromMap(data.targetName || "", canonicalMap);
+
+    if (!canonical) return;
+
+    const baseline = {
+      attack: hasPositiveNumber(Number(data.attack)) ? Number(data.attack) : null,
+      defence: hasPositiveNumber(Number(data.defence)) ? Number(data.defence) : null,
+      gk: hasPositiveNumber(Number(data.gk)) ? Number(data.gk) : null,
+    };
+
+    if (seasonId && activeSeasonId && seasonId === String(activeSeasonId)) {
+      seasonMatches[canonical] = baseline;
+      return;
+    }
+
+    if (seasonId === "UNKNOWN_SEASON") {
+      fallbackUnknown[canonical] = baseline;
+    }
+  });
+
+  const allNames = new Set([
+    ...Object.keys(seasonMatches),
+    ...Object.keys(fallbackUnknown),
+  ]);
+
+  allNames.forEach((name) => {
+    next[name] = seasonMatches[name] || fallbackUnknown[name];
+  });
+
+  return next;
+}
+
+function buildCloudPhotosIndex(photoSnap) {
+  const idx = {};
+
+  photoSnap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const docId = docSnap.id;
+    const name = toTitleCase(data.name || "");
+
+    if (!data.photoData) return;
+
+    const keys = new Set();
+
+    if (name) {
+      keys.add(safeLower(name));
+      keys.add(slugFromName(name));
+      const fn = safeLower(firstNameOf(name));
+      if (fn) keys.add(fn);
+    }
+
+    if (docId) keys.add(safeLower(docId));
+
+    keys.forEach((k) => {
+      if (!k) return;
+      if (!idx[k]) idx[k] = data.photoData;
+    });
+  });
+
+  return idx;
+}
+
 // ---------------- PAGE ----------------
 
 export function PlayerCardPage({
@@ -137,7 +352,7 @@ export function PlayerCardPage({
 
   const peerRatingsRaw = peerRatingsByPlayer || {};
 
-  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [playersLoaded, setPlayersLoaded] = useState(false);
   const [nameToCanonical, setNameToCanonical] = useState({});
   const [canonicalToShort, setCanonicalToShort] = useState({});
   const [participationByPlayer, setParticipationByPlayer] = useState({});
@@ -146,265 +361,104 @@ export function PlayerCardPage({
   const [baselineByPlayer, setBaselineByPlayer] = useState({});
   const [baselineLoaded, setBaselineLoaded] = useState(false);
 
+  const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
   const [savingCardId, setSavingCardId] = useState("");
+
   const cardRefs = useRef({});
   const longPressTimers = useRef({});
   const didHandlePhoneBackRef = useRef(false);
+  const canonicalNameCacheRef = useRef({});
 
+  // ---------------- LOAD ALL PAGE DATA (OPTIMIZED) ----------------
   useEffect(() => {
-    async function loadMembers() {
+    let isMounted = true;
+
+    async function loadPageData() {
       try {
-        const snap = await getDocs(collection(db, "members"));
+        setPlayersLoaded(false);
+        setParticipationLoaded(false);
+        setBaselineLoaded(false);
 
-        const mapNameToCanon = {};
-        const mapCanonToShort = {};
+        const [playersSnap, mainSnap, baselinesSnap, photosSnap] = await Promise.all([
+          getDocs(collection(db, "players")),
+          getDoc(doc(db, "appState_v2", "main")),
+          getDocs(collection(db, "peerRatingBaselines")),
+          getDocs(collection(db, "playerPhotos")),
+        ]);
 
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
+        if (!isMounted) return;
 
-          const fullName = toTitleCase(data.fullName || "");
-          const shortName = toTitleCase(data.shortName || "") || fullName;
+        const { mapNameToCanon, mapCanonToShort } = buildPlayersRegistry(playersSnap);
+        const participation = buildParticipationFromMainDoc(
+          mainSnap,
+          mapNameToCanon,
+          activeSeasonId
+        );
+        const baselines = buildBaselinesFromSnap(
+          baselinesSnap,
+          mapNameToCanon,
+          activeSeasonId
+        );
+        const cloudPhotos = buildCloudPhotosIndex(photosSnap);
 
-          if (!fullName) return;
-
-          mapCanonToShort[safeLower(fullName)] = shortName;
-
-          const keys = new Set();
-
-          keys.add(safeLower(fullName));
-          keys.add(safeLower(shortName));
-          keys.add(slugFromName(fullName));
-          keys.add(slugFromName(shortName));
-
-          const fn = safeLower(firstNameOf(fullName));
-          if (fn) keys.add(fn);
-
-          const aliases = Array.isArray(data.aliases) ? data.aliases : [];
-          aliases.forEach((a) => {
-            const aa = toTitleCase(a);
-            if (aa) {
-              keys.add(safeLower(aa));
-              keys.add(slugFromName(aa));
-              const af = safeLower(firstNameOf(aa));
-              if (af) keys.add(af);
-            }
-          });
-
-          keys.forEach((k) => {
-            if (!k) return;
-            if (!mapNameToCanon[k]) mapNameToCanon[k] = fullName;
-          });
-        });
+        canonicalNameCacheRef.current = {};
 
         setNameToCanonical(mapNameToCanon);
         setCanonicalToShort(mapCanonToShort);
-        setMembersLoaded(true);
-      } catch (err) {
-        console.error("Failed to load members for PlayerCardPage:", err);
-        setMembersLoaded(true);
-      }
-    }
+        setParticipationByPlayer(participation);
+        setBaselineByPlayer(baselines);
+        setCloudPhotosIndex(cloudPhotos);
 
-    loadMembers();
-  }, []);
-
-  const resolveCanonicalName = (rawName) => {
-    if (!rawName || typeof rawName !== "string") return "";
-    const tc = toTitleCase(rawName);
-    if (!tc) return "";
-
-    const direct = nameToCanonical[safeLower(tc)];
-    if (direct) return direct;
-
-    const bySlug = nameToCanonical[slugFromName(tc)];
-    if (bySlug) return bySlug;
-
-    const fn = safeLower(firstNameOf(tc));
-    if (fn && nameToCanonical[fn]) return nameToCanonical[fn];
-
-    return tc;
-  };
-
-  const resolveShortDisplay = (canonicalFullName) => {
-    const key = safeLower(canonicalFullName);
-    return canonicalToShort[key] || canonicalFullName;
-  };
-
-  useEffect(() => {
-    async function loadParticipation() {
-      try {
-        const snap = await getDoc(doc(db, "appState_v2", "main"));
-
-        if (!snap.exists()) {
-          setParticipationByPlayer({});
-          setParticipationLoaded(true);
-          return;
-        }
-
-        const data = snap.data() || {};
-        const state = data.state || {};
-        const seasons = Array.isArray(state.seasons) ? state.seasons : [];
-        const targetSeason =
-          seasons.find((s) => s?.seasonId === activeSeasonId) || seasons[0] || null;
-
-        if (!targetSeason) {
-          setParticipationByPlayer({});
-          setParticipationLoaded(true);
-          return;
-        }
-
-        const history = Array.isArray(targetSeason.matchDayHistory)
-          ? targetSeason.matchDayHistory
-          : [];
-
-        const next = {};
-
-        const ensure = (canonName) => {
-          if (!next[canonName]) {
-            next[canonName] = {
-              gamesPlayed: 0,
-              matchDaysPresent: 0,
-            };
-          }
-          return next[canonName];
-        };
-
-        history.forEach((day) => {
-          const dayId = String(day?.id || "").trim();
-          const appearances = Array.isArray(day?.playerAppearances)
-            ? day.playerAppearances
-            : [];
-
-          const seenThisDay = new Set();
-
-          appearances.forEach((entry) => {
-            const raw =
-              entry?.playerName ||
-              entry?.shortName ||
-              entry?.playerId ||
-              "";
-            const canon = resolveCanonicalName(raw);
-            if (!canon) return;
-
-            const p = ensure(canon);
-            p.gamesPlayed += Number(entry?.matchesPlayed || 0);
-
-            const key = `${dayId}|${safeLower(canon)}`;
-            if (!seenThisDay.has(key)) {
-              seenThisDay.add(key);
-              p.matchDaysPresent += 1;
-            }
-          });
-        });
-
-        setParticipationByPlayer(next);
+        setPlayersLoaded(true);
         setParticipationLoaded(true);
+        setBaselineLoaded(true);
       } catch (err) {
-        console.error("Failed to load participation for PlayerCardPage:", err);
+        console.error("Failed to load PlayerCardPage data:", err);
+
+        if (!isMounted) return;
+
+        canonicalNameCacheRef.current = {};
+        setNameToCanonical({});
+        setCanonicalToShort({});
         setParticipationByPlayer({});
-        setParticipationLoaded(true);
-      }
-    }
-
-    if (!membersLoaded) return;
-    loadParticipation();
-  }, [membersLoaded, activeSeasonId]);
-
-  useEffect(() => {
-    async function loadBaselines() {
-      try {
-        if (!membersLoaded) return;
-
-        const snap = await getDocs(collection(db, "peerRatingBaselines"));
-        const next = {};
-        const seasonMatches = {};
-        const fallbackUnknown = {};
-
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          const seasonId = String(data.seasonId || "").trim();
-          const canonical = resolveCanonicalName(data.targetName || "");
-          if (!canonical) return;
-
-          const baseline = {
-            attack: hasPositiveNumber(Number(data.attack)) ? Number(data.attack) : null,
-            defence: hasPositiveNumber(Number(data.defence))
-              ? Number(data.defence)
-              : null,
-            gk: hasPositiveNumber(Number(data.gk)) ? Number(data.gk) : null,
-          };
-
-          if (seasonId && activeSeasonId && seasonId === String(activeSeasonId)) {
-            seasonMatches[canonical] = baseline;
-            return;
-          }
-
-          if (seasonId === "UNKNOWN_SEASON") {
-            fallbackUnknown[canonical] = baseline;
-          }
-        });
-
-        const allNames = new Set([
-          ...Object.keys(seasonMatches),
-          ...Object.keys(fallbackUnknown),
-        ]);
-
-        allNames.forEach((name) => {
-          next[name] = seasonMatches[name] || fallbackUnknown[name];
-        });
-
-        setBaselineByPlayer(next);
-        setBaselineLoaded(true);
-      } catch (err) {
-        console.error("Failed to load peer baselines for PlayerCardPage:", err);
         setBaselineByPlayer({});
+        setCloudPhotosIndex({});
+
+        setPlayersLoaded(true);
+        setParticipationLoaded(true);
         setBaselineLoaded(true);
       }
     }
 
-    setBaselineLoaded(false);
-    loadBaselines();
-  }, [membersLoaded, activeSeasonId, nameToCanonical]);
+    loadPageData();
 
-  const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
+    return () => {
+      isMounted = false;
+    };
+  }, [activeSeasonId]);
 
-  useEffect(() => {
-    async function loadPhotos() {
-      try {
-        const snap = await getDocs(collection(db, "playerPhotos"));
-        const idx = {};
+  const resolveCanonicalName = useCallback(
+    (rawName) => {
+      const rawKey = String(rawName || "");
+      if (!rawKey) return "";
 
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          const docId = docSnap.id;
-          const name = toTitleCase(data.name || "");
+      const cached = canonicalNameCacheRef.current[rawKey];
+      if (cached) return cached;
 
-          if (!data.photoData) return;
+      const resolved = resolveCanonicalNameFromMap(rawName, nameToCanonical);
+      canonicalNameCacheRef.current[rawKey] = resolved;
+      return resolved;
+    },
+    [nameToCanonical]
+  );
 
-          const keys = new Set();
-
-          if (name) {
-            keys.add(safeLower(name));
-            keys.add(slugFromName(name));
-            const fn = safeLower(firstNameOf(name));
-            if (fn) keys.add(fn);
-          }
-
-          if (docId) keys.add(safeLower(docId));
-
-          keys.forEach((k) => {
-            if (!k) return;
-            if (!idx[k]) idx[k] = data.photoData;
-          });
-        });
-
-        setCloudPhotosIndex(idx);
-      } catch (err) {
-        console.error("Failed to load player photos for cards:", err);
-      }
-    }
-    loadPhotos();
-  }, []);
+  const resolveShortDisplay = useCallback(
+    (canonicalFullName) => {
+      const key = safeLower(canonicalFullName);
+      return canonicalToShort[key] || canonicalFullName;
+    },
+    [canonicalToShort]
+  );
 
   const mergedPhotoIndex = useMemo(() => {
     const idx = {};
@@ -449,31 +503,35 @@ export function PlayerCardPage({
     return idx;
   }, [playerPhotosByName, cloudPhotosIndex, teams]);
 
-  const getPlayerPhoto = (canonicalFullName, shortName = "") => {
-    const candidates = [];
+  const getPlayerPhoto = useCallback(
+    (canonicalFullName, shortName = "") => {
+      const candidates = [];
 
-    const cn = toTitleCase(canonicalFullName || "");
-    const sn = toTitleCase(shortName || "");
+      const cn = toTitleCase(canonicalFullName || "");
+      const sn = toTitleCase(shortName || "");
 
-    if (cn) candidates.push(cn);
-    if (sn && sn !== cn) candidates.push(sn);
+      if (cn) candidates.push(cn);
+      if (sn && sn !== cn) candidates.push(sn);
 
-    const fn1 = firstNameOf(cn);
-    const fn2 = firstNameOf(sn);
-    if (fn1) candidates.push(fn1);
-    if (fn2 && fn2 !== fn1) candidates.push(fn2);
+      const fn1 = firstNameOf(cn);
+      const fn2 = firstNameOf(sn);
+      if (fn1) candidates.push(fn1);
+      if (fn2 && fn2 !== fn1) candidates.push(fn2);
 
-    if (cn) candidates.push(slugFromName(cn));
-    if (sn) candidates.push(slugFromName(sn));
+      if (cn) candidates.push(slugFromName(cn));
+      if (sn) candidates.push(slugFromName(sn));
 
-    for (const c of candidates) {
-      const k = safeLower(c);
-      if (k && mergedPhotoIndex[k]) return mergedPhotoIndex[k];
-    }
+      for (const c of candidates) {
+        const k = safeLower(c);
+        if (k && mergedPhotoIndex[k]) return mergedPhotoIndex[k];
+      }
 
-    return null;
-  };
+      return null;
+    },
+    [mergedPhotoIndex]
+  );
 
+  // ---------------- EVENTS / STATS ----------------
   const uniqueEvents = useMemo(() => {
     const seen = new Set();
     const out = [];
@@ -509,7 +567,7 @@ export function PlayerCardPage({
       if (!out[canon]) out[canon] = val;
     });
     return out;
-  }, [peerRatingsRaw, nameToCanonical, membersLoaded]);
+  }, [peerRatingsRaw, resolveCanonicalName]);
 
   const statsByPlayer = useMemo(() => {
     const stats = {};
@@ -570,7 +628,7 @@ export function PlayerCardPage({
     });
 
     return stats;
-  }, [uniqueEvents, nameToCanonical, membersLoaded]);
+  }, [uniqueEvents, resolveCanonicalName]);
 
   const playerTeamMap = useMemo(() => {
     const map = {};
@@ -587,7 +645,7 @@ export function PlayerCardPage({
     });
 
     return map;
-  }, [teams, nameToCanonical, membersLoaded]);
+  }, [teams, resolveCanonicalName]);
 
   const playersWithRatings = useMemo(() => {
     const allNames = new Set([
@@ -663,7 +721,9 @@ export function PlayerCardPage({
       const gkAvg = blendPeerValue(adminGk, squadGkAvg);
 
       let peerScore10 = null;
-      const validVals = [attackAvg, defenceAvg, gkAvg].filter((v) => v != null);
+      const validVals = [attackAvg, defenceAvg, gkAvg].filter(
+        (v) => v != null
+      );
 
       if (validVals.length > 0) {
         const avgAttr = validVals.reduce((a, b) => a + b, 0) / validVals.length;
@@ -683,7 +743,9 @@ export function PlayerCardPage({
 
         const rawOverall =
           peerScore10 != null
-            ? round1(statsScore10 * 0.4 + peerScore10 * 0.3 + formScore10 * 0.3)
+            ? round1(
+                statsScore10 * 0.4 + peerScore10 * 0.3 + formScore10 * 0.3
+              )
             : round1(statsScore10 * 0.65 + formScore10 * 0.35);
 
         overall = applyOverallBaseline(rawOverall);
@@ -755,15 +817,16 @@ export function PlayerCardPage({
     playerTeamMap,
     teams,
     authIdentityKey,
-    nameToCanonical,
-    canonicalToShort,
-    mergedPhotoIndex,
-    membersLoaded,
+    getPlayerPhoto,
+    resolveCanonicalName,
+    resolveShortDisplay,
   ]);
 
   const [teamFilter, setTeamFilter] = useState("ALL");
   const [playerViewFilter, setPlayerViewFilter] = useState("ACTIVE");
   const [search, setSearch] = useState("");
+
+  const searchLower = useMemo(() => search.trim().toLowerCase(), [search]);
 
   const filteredPlayers = useMemo(() => {
     return playersWithRatings.filter((p) => {
@@ -779,15 +842,14 @@ export function PlayerCardPage({
         return false;
       }
 
-      if (!search) return true;
+      if (!searchLower) return true;
 
-      const q = search.toLowerCase();
       const dn = (p.displayName || "").toLowerCase();
       const tn = (p.teamName || "").toLowerCase();
 
-      return dn.includes(q) || tn.includes(q);
+      return dn.includes(searchLower) || tn.includes(searchLower);
     });
-  }, [playersWithRatings, playerViewFilter, teamFilter, search]);
+  }, [playersWithRatings, playerViewFilter, teamFilter, searchLower]);
 
   const uniqueTeams = useMemo(() => {
     const set = new Set();
@@ -830,7 +892,7 @@ export function PlayerCardPage({
 
       const dataUrl = await toPng(node, {
         cacheBust: true,
-        pixelRatio: 2,
+        pixelRatio: 4,
         backgroundColor: "#0b1220",
       });
 
@@ -880,8 +942,6 @@ export function PlayerCardPage({
     <div className="page player-cards-page">
       <header className="header">
         <h1>Player cards</h1>
-
-
 
         <div className="news-header-actions">
           <button className="secondary-btn" onClick={onBack}>
@@ -955,7 +1015,7 @@ export function PlayerCardPage({
       </section>
 
       <section className="card player-card-grid-card">
-        {!membersLoaded || !participationLoaded || !baselineLoaded ? (
+        {!playersLoaded || !participationLoaded || !baselineLoaded ? (
           <p className="muted">Loading player cards…</p>
         ) : filteredPlayers.length === 0 ? (
           <p className="muted">
@@ -1005,7 +1065,7 @@ export function PlayerCardPage({
                       width: "110px",
                       height: "110px",
                       objectFit: "contain",
-                      opacity: 0.5,
+                      opacity: 0.8,
                       filter: "grayscale(0.1) brightness(1.1)",
                       pointerEvents: "none",
                       userSelect: "none",

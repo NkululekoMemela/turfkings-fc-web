@@ -749,7 +749,7 @@ export default function App() {
   const isSpectator = activeRole === "spectator";
 
   const canStartMatch = isAdmin || isCaptain;
-  const canManageSquads = isAdmin;
+  const canManageSquads = true;
   const canPreviewPreviousSeasonUI = IS_STAGING && isAdmin;
 
   const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
@@ -911,10 +911,6 @@ export default function App() {
   };
 
   const handleGoToSquads = () => {
-    if (!canManageSquads) {
-      window.alert("Only admin can manage squads.");
-      return;
-    }
     setPage(PAGE_SQUADS);
   };
   const handleGoToFormations = () => setPage(PAGE_FORMATIONS);

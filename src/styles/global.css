@@ -2782,3 +2782,14 @@ th {
     flex: 1;
     min-width: 220px;
   }
+
+
+/* Black + Gold premium rim */
+.player-card.fifa-card {
+  border: 2px solid #d4af37; /* main gold */
+
+  box-shadow:
+    0 0 0 2px #000000,   /* black line after gold */
+    0 0 0 3px #f6e27a,   /* light gold */
+    0 0 0 4px #000000;   /* outer black rim */
+}

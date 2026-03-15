@@ -1,6 +1,7 @@
 // src/pages/SquadsPage.jsx
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { toPng } from "html-to-image";
 import {
   collection,
   onSnapshot,
@@ -14,12 +15,9 @@ import { db } from "../firebaseConfig";
 
 const MASTER_CODE = "3333"; // Nkululeko only
 const UNSEEDED_ID = "__unseeded__";
-
-// ✅ matches your Firestore screenshots
 const PLAYERS_COLLECTION = "players";
-
-// ✅ hard admin gate
 const ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
+const LONG_PRESS_MS = 650;
 
 /* ---------------- Helpers ---------------- */
 
@@ -33,7 +31,6 @@ function toTitleCase(name) {
     .join(" ");
 }
 
-// Slug -> stable playerId
 function slugFromName(name) {
   return toTitleCase(name)
     .toLowerCase()
@@ -50,6 +47,18 @@ function normalizeAbbrev(v) {
 
 function isValidAbbrev(v) {
   return /^[A-Z]{3}$/.test(String(v || ""));
+}
+
+function normalizeHexColor(v) {
+  const raw = String(v || "").trim().replace(/[^#a-fA-F0-9]/g, "");
+  if (!raw) return "";
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
+  if (/^[0-9a-fA-F]{6}$/.test(raw)) return `#${raw.toUpperCase()}`;
+  return raw.toUpperCase();
+}
+
+function isValidHexColor(v) {
+  return /^#[0-9A-F]{6}$/.test(String(v || "").trim().toUpperCase());
 }
 
 function isAdminIdentity(identity) {
@@ -90,27 +99,14 @@ function isAdminIdentity(identity) {
     .map((x) => String(x || "").trim().toLowerCase())
     .filter(Boolean);
 
-  if (
-    nameCandidates.some(
-      (name) =>
-        name === "nkululeko" ||
-        name === "nkululeko memela" ||
-        name === "nk"
-    )
-  ) {
-    return true;
-  }
-
-  return false;
+  return nameCandidates.some(
+    (name) =>
+      name === "nkululeko" ||
+      name === "nkululeko memela" ||
+      name === "nk"
+  );
 }
 
-// Pick a "best" full display name from a player doc.
-// Priority:
-// 1) fullName (if present)
-// 2) longest alias (often contains surname)
-// 3) shortName
-// 4) name
-// 5) id
 function bestFullDisplayFromPlayer(p) {
   if (!p) return "";
   const fullName = toTitleCase(p.fullName || "");
@@ -133,7 +129,6 @@ function bestFullDisplayFromPlayer(p) {
   return toTitleCase(p.id || "");
 }
 
-// For compact labels (captain tag), prefer SHORTNAME then name, then fullName.
 function bestShortDisplayFromPlayer(p) {
   if (!p) return "";
   const shortName = toTitleCase(p.shortName || "");
@@ -148,13 +143,11 @@ function bestShortDisplayFromPlayer(p) {
   return toTitleCase(p.id || "");
 }
 
-// Build candidate identity strings for matching older values to a player doc
 function buildIdentityStrings(playerDoc) {
   const id = String(playerDoc.id || "").trim();
   const name = toTitleCase(playerDoc.name || "");
   const fullName = toTitleCase(playerDoc.fullName || "");
   const shortName = toTitleCase(playerDoc.shortName || "");
-
   const aliasesArr = Array.isArray(playerDoc.aliases) ? playerDoc.aliases : [];
   const aliases = aliasesArr.map((a) => toTitleCase(a));
 
@@ -162,7 +155,6 @@ function buildIdentityStrings(playerDoc) {
   return Array.from(new Set(strings.map((s) => s.toLowerCase())));
 }
 
-// Resolve an incoming legacy string ("Mark", "Mark Mc Kechniee", "Dr Babs") to playerId
 function resolvePlayerIdFromString(allPlayers, raw) {
   const needle = toTitleCase(raw).toLowerCase();
   if (!needle) return null;
@@ -177,7 +169,6 @@ function resolvePlayerIdFromString(allPlayers, raw) {
   return null;
 }
 
-// Parse datalist value: "playerId | Full Name"
 function parseChoiceToPlayerId(value) {
   const v = String(value || "").trim();
   if (!v) return null;
@@ -186,38 +177,128 @@ function parseChoiceToPlayerId(value) {
   return v;
 }
 
+function hexToRgba(hex, alpha = 1) {
+  const clean = String(hex || "").replace("#", "");
+  if (!/^[0-9A-Fa-f]{6}$/.test(clean)) return `rgba(34, 197, 94, ${alpha})`;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getTeamTheme(team = {}) {
+  const explicitHex = normalizeHexColor(
+    team.teamColorHex || team.colorHex || team.teamColor || ""
+  );
+  const explicitName = toTitleCase(
+    team.teamColorName || team.colorName || ""
+  );
+
+  if (isValidHexColor(explicitHex)) {
+    return {
+      accent: explicitHex,
+      accentSoft: hexToRgba(explicitHex, 0.18),
+      glow: hexToRgba(explicitHex, 0.24),
+      text: "#E5E7EB",
+      colorName: explicitName || "Team Color",
+    };
+  }
+
+  const key = String(team.label || "").trim().toLowerCase();
+
+  if (
+    key.includes("man u") ||
+    key.includes("manu") ||
+    key.includes("man united") ||
+    key.includes("manchester united")
+  ) {
+    return {
+      accent: "#DC2626",
+      accentSoft: "rgba(220, 38, 38, 0.18)",
+      glow: "rgba(220, 38, 38, 0.24)",
+      text: "#FECACA",
+      colorName: "Red Shirt",
+    };
+  }
+
+  if (key.includes("madrid") || key.includes("real madrid")) {
+    return {
+      accent: "#F8FAFC",
+      accentSoft: "rgba(248, 250, 252, 0.16)",
+      glow: "rgba(248, 250, 252, 0.16)",
+      text: "#F8FAFC",
+      colorName: "White Shirt",
+    };
+  }
+
+  if (key.includes("psg") || key.includes("paris")) {
+    return {
+      accent: "#0F172A",
+      accentSoft: "rgba(15, 23, 42, 0.32)",
+      glow: "rgba(15, 23, 42, 0.34)",
+      text: "#CBD5E1",
+      colorName: "Black Shirt",
+    };
+  }
+
+  return {
+    accent: "#22C55E",
+    accentSoft: "rgba(34, 197, 94, 0.16)",
+    glow: "rgba(34, 197, 94, 0.18)",
+    text: "#BBF7D0",
+    colorName: "Green",
+  };
+}
+
 /* ---------------- Component ---------------- */
 
 export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   const isAdmin = isAdminIdentity(identity);
+  const canEdit = isAdmin;
 
-  // Local editable copy of teams (store playerIds internally where possible)
   const [localTeams, setLocalTeams] = useState(() =>
     (teams || []).map((t) => ({
       ...t,
       label: t.label || "",
       abbrev: normalizeAbbrev(t.abbrev || ""),
+      teamColorHex: normalizeHexColor(t.teamColorHex || t.colorHex || ""),
+      teamColorName: toTitleCase(t.teamColorName || t.colorName || ""),
       players: [...(t.players || [])],
       captainId: t.captainId || null,
       captain: t.captain || "",
     }))
   );
 
-  // 🔥 All players from Firestore `players`
   const [allPlayers, setAllPlayers] = useState([]);
   const [playersLoading, setPlayersLoading] = useState(true);
   const [playersError, setPlayersError] = useState("");
 
-  // Input state + errors for add fields
   const [pendingNames, setPendingNames] = useState({});
   const [addErrors, setAddErrors] = useState({});
 
-  // Admin save modal
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
 
-  /* ---------------- Sync local teams from prop ---------------- */
+  const [savingCardId, setSavingCardId] = useState("");
+  const cardRefs = useRef({});
+  const longPressTimersRef = useRef({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const stateMarker = { tkSquadsPage: true, ts: Date.now() };
+    window.history.pushState(stateMarker, "");
+
+    const handlePopState = () => {
+      onBack?.();
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [onBack]);
 
   useEffect(() => {
     setLocalTeams(
@@ -225,14 +306,14 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
         ...t,
         label: t.label || "",
         abbrev: normalizeAbbrev(t.abbrev || ""),
+        teamColorHex: normalizeHexColor(t.teamColorHex || t.colorHex || ""),
+        teamColorName: toTitleCase(t.teamColorName || t.colorName || ""),
         players: [...(t.players || [])],
         captainId: t.captainId || null,
         captain: t.captain || "",
       }))
     );
   }, [teams]);
-
-  /* ---------------- Firestore subscription ---------------- */
 
   useEffect(() => {
     setPlayersLoading(true);
@@ -252,6 +333,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
         setPlayersLoading(false);
       }
     );
+
     return () => unsub();
   }, []);
 
@@ -260,8 +342,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     allPlayers.forEach((p) => m.set(p.id, p));
     return m;
   }, [allPlayers]);
-
-  /* ---------------- Display helpers ---------------- */
 
   const displayNameOf = (playerIdOrLegacy) => {
     const p = playersById.get(playerIdOrLegacy);
@@ -278,8 +358,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   const activePlayers = useMemo(() => {
     return allPlayers.filter((p) => (p.status || "active") === "active");
   }, [allPlayers]);
-
-  /* ---------------- Normalize localTeams when players load ---------------- */
 
   useEffect(() => {
     if (!allPlayers.length) return;
@@ -303,17 +381,17 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
 
         let captainId = t.captainId || null;
         if (!captainId && t.captain) {
-          const resolvedCaptain = resolvePlayerIdFromString(allPlayers, t.captain);
+          const resolvedCaptain = resolvePlayerIdFromString(
+            allPlayers,
+            t.captain
+          );
           if (resolvedCaptain) captainId = resolvedCaptain;
         }
 
         return { ...t, players: deduped, captainId };
       })
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allPlayers]);
-
-  /* ---------------- Unseeded logic (based on DB players) ---------------- */
+  }, [allPlayers, playersById]);
 
   const assignedIds = useMemo(() => {
     const s = new Set();
@@ -349,38 +427,57 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     return Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
   }, [localTeams, playersById]);
 
-  /* ---------------- Input handlers ---------------- */
-
   const handlePendingChange = (id, value) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     setPendingNames((prev) => ({ ...prev, [id]: value }));
     setAddErrors((prev) => ({ ...prev, [id]: "" }));
   };
 
   const handleTeamLabelChange = (teamId, value) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     setLocalTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, label: value } : t))
     );
   };
 
   const handleTeamAbbrevChange = (teamId, value) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     const next = normalizeAbbrev(value);
     setLocalTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, abbrev: next } : t))
     );
   };
 
+  const handleTeamColorHexChange = (teamId, value) => {
+    if (!canEdit) return;
+    const next = normalizeHexColor(value);
+    setLocalTeams((prev) =>
+      prev.map((t) => (t.id === teamId ? { ...t, teamColorHex: next } : t))
+    );
+  };
+
+  const handleTeamColorNameChange = (teamId, value) => {
+    if (!canEdit) return;
+    setLocalTeams((prev) =>
+      prev.map((t) =>
+        t.id === teamId ? { ...t, teamColorName: value } : t
+      )
+    );
+  };
+
   const handleCaptainChange = (teamId, captainId) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
 
     setLocalTeams((prev) =>
       prev.map((t) => {
         if (t.id !== teamId) return t;
 
         const nextPlayers = [...(t.players || [])];
-        if (captainId && playersById.has(captainId) && !nextPlayers.includes(captainId)) {
+        if (
+          captainId &&
+          playersById.has(captainId) &&
+          !nextPlayers.includes(captainId)
+        ) {
           nextPlayers.push(captainId);
         }
 
@@ -393,8 +490,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
       })
     );
   };
-
-  /* ---------------- DB helpers ---------------- */
 
   const ensurePlayerInDb = async (canonicalFullNameOrName) => {
     const fullName = toTitleCase(canonicalFullNameOrName);
@@ -425,7 +520,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   };
 
   const handleAddPlayer = async (id) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
 
     const raw = pendingNames[id] || "";
     const trimmed = raw.trim();
@@ -462,8 +557,11 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
         prev.map((t, idx) => {
           if (idx !== teamIndex) return t;
 
-          const nextPlayers = (t.players || []).filter((pid) => pid !== chosenId);
-          const nextCaptainId = t.captainId === chosenId ? null : t.captainId;
+          const nextPlayers = (t.players || []).filter(
+            (pid) => pid !== chosenId
+          );
+          const nextCaptainId =
+            t.captainId === chosenId ? null : t.captainId;
 
           return { ...t, players: nextPlayers, captainId: nextCaptainId };
         })
@@ -508,15 +606,18 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   };
 
   const handleRemovePlayer = async (teamId, playerIdOrLegacy) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
 
     if (playersById.has(playerIdOrLegacy)) {
       setLocalTeams((prev) =>
         prev.map((t) => {
           if (t.id !== teamId) return t;
 
-          const nextPlayers = (t.players || []).filter((pid) => pid !== playerIdOrLegacy);
-          const nextCaptainId = t.captainId === playerIdOrLegacy ? null : t.captainId;
+          const nextPlayers = (t.players || []).filter(
+            (pid) => pid !== playerIdOrLegacy
+          );
+          const nextCaptainId =
+            t.captainId === playerIdOrLegacy ? null : t.captainId;
 
           return { ...t, players: nextPlayers, captainId: nextCaptainId };
         })
@@ -530,7 +631,9 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     setLocalTeams((prev) =>
       prev.map((t) => {
         if (t.id !== teamId) return t;
-        const nextPlayers = (t.players || []).filter((pid) => pid !== playerIdOrLegacy);
+        const nextPlayers = (t.players || []).filter(
+          (pid) => pid !== playerIdOrLegacy
+        );
         return { ...t, players: nextPlayers };
       })
     );
@@ -541,7 +644,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   };
 
   const handleRemoveUnseeded = async (playerId) => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     if (!playersById.has(playerId)) return;
 
     const name = displayNameOf(playerId);
@@ -560,10 +663,8 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     }
   };
 
-  /* ---------------- Save flow (Admin) ---------------- */
-
   const handleSaveClick = () => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
     setSaveCode("");
     setSaveError("");
     setShowSaveModal(true);
@@ -576,7 +677,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   };
 
   const handleConfirmSave = async () => {
-    if (!isAdmin) return;
+    if (!canEdit) return;
 
     const code = saveCode.trim();
     if (code !== MASTER_CODE) {
@@ -587,13 +688,27 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     const cleanedTeams = localTeams.map((t) => {
       const label = String(t.label || "").trim();
       const abbrev = normalizeAbbrev(t.abbrev || "");
-      return { ...t, label, abbrev };
+      const teamColorHex = normalizeHexColor(t.teamColorHex || "");
+      const teamColorName = toTitleCase(t.teamColorName || "");
+      return { ...t, label, abbrev, teamColorHex, teamColorName };
     });
 
-    const bad = cleanedTeams.find((t) => t.abbrev && !isValidAbbrev(t.abbrev));
-    if (bad) {
+    const badAbbrev = cleanedTeams.find(
+      (t) => t.abbrev && !isValidAbbrev(t.abbrev)
+    );
+    if (badAbbrev) {
       setSaveError(
-        `Invalid abbreviation for "${bad.label || bad.id}". Use exactly 3 letters (A–Z).`
+        `Invalid abbreviation for "${badAbbrev.label || badAbbrev.id}". Use exactly 3 letters (A–Z).`
+      );
+      return;
+    }
+
+    const badColor = cleanedTeams.find(
+      (t) => t.teamColorHex && !isValidHexColor(t.teamColorHex)
+    );
+    if (badColor) {
+      setSaveError(
+        `Invalid team color for "${badColor.label || badColor.id}". Use hex like #DC2626`
       );
       return;
     }
@@ -613,8 +728,12 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
       allPlayers.filter((p) => p.roles?.captain === true).map((p) => p.id)
     );
 
-    const toMakeCaptain = [...newCaptainIds].filter((id) => !currentCaptainIds.has(id));
-    const toRemoveCaptain = [...currentCaptainIds].filter((id) => !newCaptainIds.has(id));
+    const toMakeCaptain = [...newCaptainIds].filter(
+      (id) => !currentCaptainIds.has(id)
+    );
+    const toRemoveCaptain = [...currentCaptainIds].filter(
+      (id) => !newCaptainIds.has(id)
+    );
 
     try {
       const batch = writeBatch(db);
@@ -658,7 +777,55 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     handleCancelSave();
   };
 
-  /* ---------------- Render helpers ---------------- */
+  const handleSaveCardAsImage = async (cardId, label) => {
+    const node = cardRefs.current[cardId];
+    if (!node) return;
+
+    try {
+      setSavingCardId(cardId);
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 3,
+        backgroundColor: "#071226",
+      });
+
+      const link = document.createElement("a");
+      link.download = `${slugFromName(label || "squad_card")}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error("[Squads] Failed to save squad card image:", err);
+      if (typeof window !== "undefined") {
+        window.alert("Could not save this squad card as an image.");
+      }
+    } finally {
+      setSavingCardId("");
+    }
+  };
+
+  const startLongPressSave = (cardId, label) => {
+    clearLongPress(cardId);
+    longPressTimersRef.current[cardId] = window.setTimeout(() => {
+      handleSaveCardAsImage(cardId, label);
+    }, LONG_PRESS_MS);
+  };
+
+  const clearLongPress = (cardId) => {
+    const timer = longPressTimersRef.current[cardId];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete longPressTimersRef.current[cardId];
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.keys(longPressTimersRef.current).forEach((key) => {
+        window.clearTimeout(longPressTimersRef.current[key]);
+      });
+      longPressTimersRef.current = {};
+    };
+  }, []);
 
   const captainTagText = (team) => {
     if (team.captainId && playersById.has(team.captainId)) {
@@ -674,17 +841,299 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     return unique;
   };
 
+  const renderCardShell = (cardId, label, theme, children) => (
+    <div
+      className={`squad-surface ${savingCardId === cardId ? "saving" : ""}`}
+      style={{
+        "--team-accent": theme.accent,
+        "--team-accent-soft": theme.accentSoft,
+        "--team-glow": theme.glow,
+        "--team-text": theme.text,
+      }}
+    >
+      <div
+        ref={(el) => {
+          cardRefs.current[cardId] = el;
+        }}
+        className="squad-surface-inner squad-column"
+        onDoubleClick={() => handleSaveCardAsImage(cardId, label)}
+        onTouchStart={() => startLongPressSave(cardId, label)}
+        onTouchEnd={() => clearLongPress(cardId)}
+        onTouchMove={() => clearLongPress(cardId)}
+        onTouchCancel={() => clearLongPress(cardId)}
+        title="Double-click to save. On mobile, long-press to save."
+      >
+        {children}
+      </div>
+    </div>
+  );
+
   return (
     <div className="page squads-page">
+      <style>{`
+        .squads-page .squad-surface {
+          position: relative;
+          border-radius: 28px;
+          background:
+            radial-gradient(circle at top right, var(--team-accent-soft, rgba(34,197,94,0.16)), transparent 28%),
+            linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+          box-shadow:
+            0 18px 38px rgba(0,0,0,0.42),
+            0 0 0 1px rgba(255,255,255,0.04);
+          transition: transform 0.18s ease, box-shadow 0.18s ease;
+          overflow: hidden;
+        }
+
+        .squads-page .squad-surface:hover {
+          transform: translateY(-2px);
+          box-shadow:
+            0 22px 42px rgba(0,0,0,0.48),
+            0 0 0 1px rgba(255,255,255,0.05);
+        }
+
+        .squads-page .squad-surface.saving {
+          opacity: 0.82;
+          pointer-events: none;
+        }
+
+        .squads-page .squad-surface-inner {
+          position: relative;
+          border-radius: 28px;
+          padding: 1rem;
+          min-height: 100%;
+          background:
+            radial-gradient(circle at bottom left, rgba(34,197,94,0.08), transparent 30%),
+            linear-gradient(180deg, #071226 0%, #08111f 55%, #06101b 100%);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+          overflow: hidden;
+        }
+
+        .squads-page .squad-surface-inner::before {
+          content: "";
+          position: absolute;
+          inset: 0 0 auto 0;
+          height: 6px;
+          background: var(--team-accent, #22c55e);
+          box-shadow: 0 0 20px var(--team-glow, rgba(34,197,94,0.22));
+        }
+
+        .squads-page .squad-surface-inner::after {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 110px;
+          background:
+            linear-gradient(180deg,
+              color-mix(in srgb, var(--team-accent, #22c55e) 14%, transparent) 0%,
+              transparent 100%);
+          pointer-events: none;
+        }
+
+        .squads-page .squad-card-topbar {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.75rem;
+          margin-bottom: 1rem;
+          position: relative;
+          z-index: 1;
+        }
+
+        .squads-page .team-name-wrap {
+          display: flex;
+          align-items: center;
+          gap: 0.85rem;
+          min-width: 0;
+        }
+
+        .squads-page .team-color-pill {
+          width: 16px;
+          height: 58px;
+          border-radius: 999px;
+          background: var(--team-accent, #22c55e);
+          box-shadow:
+            0 0 0 1px rgba(255,255,255,0.08),
+            0 0 16px var(--team-glow, rgba(34,197,94,0.2));
+          flex-shrink: 0;
+        }
+
+        .squads-page .team-title-row {
+          display: flex;
+          align-items: center;
+          gap: 0.55rem;
+          flex-wrap: wrap;
+        }
+
+        .squads-page .team-title {
+          margin: 0;
+          font-size: 1.52rem;
+          line-height: 1.02;
+          letter-spacing: 0.01em;
+          color: #f8fafc;
+          font-weight: 900;
+        }
+
+        .squads-page .team-abbrev-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 40px;
+          height: 24px;
+          padding: 0 0.5rem;
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--team-accent, #22c55e) 18%, rgba(255,255,255,0.06));
+          color: #f8fafc;
+          border: 1px solid rgba(255,255,255,0.10);
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.06em;
+        }
+
+        .squads-page .team-subtitle {
+          margin-top: 0.22rem;
+          color: #e5e7eb;
+          font-size: 0.82rem;
+          font-weight: 700;
+        }
+
+        .squads-page .team-color-name {
+          margin-top: 0.24rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          color: var(--team-text, #bbf7d0);
+          font-size: 0.76rem;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .squads-page .team-color-dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 999px;
+          background: var(--team-accent, #22c55e);
+          box-shadow: 0 0 10px var(--team-glow, rgba(34,197,94,0.2));
+          flex-shrink: 0;
+        }
+
+        .squads-page .captain-tag {
+          color: #f6e27a;
+          font-weight: 700;
+        }
+
+        .squads-page .player-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 0.48rem;
+        }
+
+        .squads-page .player-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.65rem;
+          padding: 0.72rem 0.82rem;
+          border-radius: 16px;
+          background:
+            linear-gradient(90deg,
+              color-mix(in srgb, var(--team-accent, #22c55e) 10%, rgba(255,255,255,0.025)) 0%,
+              rgba(255,255,255,0.02) 40%,
+              rgba(255,255,255,0.03) 100%);
+          border: 1px solid rgba(255,255,255,0.07);
+          box-shadow: inset 0 0 0 1px rgba(0,0,0,0.32);
+        }
+
+        .squads-page .player-row-left {
+          display: flex;
+          align-items: center;
+          gap: 0.7rem;
+          min-width: 0;
+          flex: 1;
+        }
+
+        .squads-page .player-number {
+          width: 26px;
+          height: 26px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: color-mix(in srgb, var(--team-accent, #22c55e) 22%, rgba(255,255,255,0.06));
+          color: #f8fafc;
+          border: 1px solid rgba(255,255,255,0.12);
+          font-size: 0.74rem;
+          font-weight: 900;
+          box-shadow: 0 0 12px var(--team-glow, rgba(34,197,94,0.12));
+        }
+
+        .squads-page .player-name-text {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+
+        .squads-page .team-config {
+          border-radius: 18px;
+          padding: 0.9rem;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.08);
+          box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+          margin-bottom: 12px;
+        }
+
+        .squads-page .add-player-row {
+          display: flex;
+          gap: 0.55rem;
+          margin-top: 0.85rem;
+        }
+
+        .squads-page .add-player-row .text-input {
+          flex: 1;
+        }
+
+        .squads-page .squad-note {
+          margin-top: 0.75rem;
+          color: rgba(229,231,235,0.7);
+          font-size: 0.78rem;
+        }
+
+        @media (max-width: 720px) {
+          .squads-page .squad-card-topbar {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .squads-page .add-player-row {
+            flex-direction: column;
+          }
+
+          .squads-page .team-title {
+            font-size: 1.24rem;
+          }
+
+          .squads-page .team-color-pill {
+            height: 44px;
+          }
+        }
+      `}</style>
+
       <header className="header">
         <h1>Manage Squads</h1>
-        {playersLoading && <p className="muted small">Loading players from database…</p>}
+        {playersLoading && (
+          <p className="muted small">Loading players from database…</p>
+        )}
         {playersError && <p className="error-text">{playersError}</p>}
         {!playersLoading && (
           <p className="muted small">
             {isAdmin
-              ? "Admin mode: you can edit squads, captains, and player placement."
-              : "View mode: squads and captains are visible, but only the admin can make changes."}
+              ? "Admin mode: you can edit squads, captains, player placement, and team colors."
+              : "View mode: team cards and squads are visible to everyone."}
           </p>
         )}
       </header>
@@ -696,70 +1145,143 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
             const listId = `players-db-${inputId}`;
             const capOptions = captainOptionsForTeam(team);
             const currentCapId =
-              team.captainId && playersById.has(team.captainId) ? team.captainId : "";
+              team.captainId && playersById.has(team.captainId)
+                ? team.captainId
+                : "";
+            const cardId = `team-${team.id}`;
+            const theme = getTeamTheme(team);
 
-            return (
-              <div key={team.id} className="squad-column">
-                <h2>
-                  {team.label}{" "}
-                  <span className="captain-tag">(c: {captainTagText(team) || "—"})</span>
-                </h2>
-
-                {/* Team configuration - visible to all, editable only to admin */}
-                <div className="team-config" style={{ marginBottom: 12 }}>
-                  <div className="field-row" style={{ display: "flex", gap: 8 }}>
-                    <input
-                      className="text-input"
-                      value={team.label || ""}
-                      placeholder="Team name"
-                      onChange={(e) => handleTeamLabelChange(team.id, e.target.value)}
-                      disabled={!isAdmin}
-                    />
-                    <input
-                      className="text-input"
-                      value={team.abbrev || ""}
-                      placeholder="ABC"
-                      title="3-letter abbreviation (A–Z)"
-                      onChange={(e) => handleTeamAbbrevChange(team.id, e.target.value)}
-                      style={{ maxWidth: 90, textAlign: "center", fontWeight: 700 }}
-                      disabled={!isAdmin}
-                    />
-                  </div>
-
-                  {team.abbrev && !isValidAbbrev(team.abbrev) && isAdmin && (
-                    <p className="muted small" style={{ marginTop: 6 }}>
-                      Abbrev must be exactly 3 letters (A–Z), e.g. FCB / RMD / LIV
-                    </p>
-                  )}
-
-                  <div className="field-row" style={{ marginTop: 8 }}>
-                    <label className="muted small" style={{ display: "block", marginBottom: 6 }}>
-                      Captain
-                    </label>
-                    <select
-                      className="text-input"
-                      value={currentCapId}
-                      onChange={(e) => handleCaptainChange(team.id, e.target.value)}
-                      disabled={!isAdmin || capOptions.length === 0}
-                    >
-                      <option value="">
-                        {capOptions.length === 0
-                          ? "Add players to pick a captain"
-                          : "Select captain…"}
-                      </option>
-                      {capOptions.map((pid) => (
-                        <option key={pid} value={pid}>
-                          {displayNameOf(pid)}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="muted small" style={{ marginTop: 6 }}>
-                      {isAdmin
-                        ? "Changing captain here will update the database on Save Squads."
-                        : "Captain is visible here, but only the admin can change it."}
-                    </p>
+            return renderCardShell(
+              cardId,
+              team.label,
+              theme,
+              <>
+                <div className="squad-card-topbar">
+                  <div className="team-name-wrap">
+                    <span className="team-color-pill" />
+                    <div>
+                      <div className="team-title-row">
+                        <h2 className="team-title">{team.label}</h2>
+                        {team.abbrev ? (
+                          <span className="team-abbrev-badge">{team.abbrev}</span>
+                        ) : null}
+                      </div>
+                      <div className="team-subtitle">
+                        Captain: {captainTagText(team) || "—"}
+                      </div>
+                      <div className="team-color-name">
+                        <span className="team-color-dot" />
+                        {theme.colorName}
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                {isAdmin && (
+                  <div className="team-config">
+                    <div
+                      className="field-row"
+                      style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                    >
+                      <input
+                        className="text-input"
+                        value={team.label || ""}
+                        placeholder="Team name"
+                        onChange={(e) =>
+                          handleTeamLabelChange(team.id, e.target.value)
+                        }
+                        disabled={!canEdit}
+                      />
+                      <input
+                        className="text-input"
+                        value={team.abbrev || ""}
+                        placeholder="ABC"
+                        title="3-letter abbreviation (A–Z)"
+                        onChange={(e) =>
+                          handleTeamAbbrevChange(team.id, e.target.value)
+                        }
+                        style={{
+                          maxWidth: 90,
+                          textAlign: "center",
+                          fontWeight: 700,
+                        }}
+                        disabled={!canEdit}
+                      />
+                    </div>
+
+                    <div
+                      className="field-row"
+                      style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}
+                    >
+                      <input
+                        className="text-input"
+                        value={team.teamColorName || ""}
+                        placeholder="Team color name e.g. Red Shirt"
+                        onChange={(e) =>
+                          handleTeamColorNameChange(team.id, e.target.value)
+                        }
+                        disabled={!canEdit}
+                      />
+                      <input
+                        className="text-input"
+                        value={team.teamColorHex || ""}
+                        placeholder="#DC2626"
+                        title="Hex color e.g. #DC2626"
+                        onChange={(e) =>
+                          handleTeamColorHexChange(team.id, e.target.value)
+                        }
+                        style={{
+                          maxWidth: 120,
+                          textAlign: "center",
+                          fontWeight: 700,
+                        }}
+                        disabled={!canEdit}
+                      />
+                    </div>
+
+                    {team.abbrev && !isValidAbbrev(team.abbrev) && canEdit && (
+                      <p className="muted small" style={{ marginTop: 6 }}>
+                        Abbrev must be exactly 3 letters (A–Z), e.g. FCB / RMD / LIV
+                      </p>
+                    )}
+
+                    {team.teamColorHex &&
+                      !isValidHexColor(team.teamColorHex) &&
+                      canEdit && (
+                        <p className="muted small" style={{ marginTop: 6 }}>
+                          Team color must be a full hex like #DC2626
+                        </p>
+                      )}
+
+                    <div className="field-row" style={{ marginTop: 8 }}>
+                      <label
+                        className="muted small"
+                        style={{ display: "block", marginBottom: 6 }}
+                      >
+                        Captain
+                      </label>
+                      <select
+                        className="text-input"
+                        value={currentCapId}
+                        onChange={(e) =>
+                          handleCaptainChange(team.id, e.target.value)
+                        }
+                        disabled={!canEdit || capOptions.length === 0}
+                      >
+                        <option value="">
+                          {capOptions.length === 0
+                            ? "Add players to pick a captain"
+                            : "Select captain…"}
+                        </option>
+                        {capOptions.map((pid) => (
+                          <option key={pid} value={pid}>
+                            {displayNameOf(pid)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
 
                 <ul className="player-list">
                   {(team.players || []).map((pid, idx) => {
@@ -770,12 +1292,21 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                         : false;
 
                     return (
-                      <li key={`${team.id}-${pid}-${idx}`} className="player-row">
-                        <span>
-                          {label} {isCaptain ? <span className="muted">(C)</span> : null}
-                        </span>
+                      <li
+                        key={`${team.id}-${pid}-${idx}`}
+                        className="player-row"
+                      >
+                        <div className="player-row-left">
+                          <span className="player-number">{idx + 1}</span>
+                          <span className="player-name-text">
+                            {label}{" "}
+                            {isCaptain ? (
+                              <span className="muted">(C)</span>
+                            ) : null}
+                          </span>
+                        </div>
 
-                        {isAdmin && !isCaptain && (
+                        {isAdmin && (
                           <button
                             className="link-btn"
                             onClick={() => handleRemovePlayer(team.id, pid)}
@@ -786,8 +1317,16 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                       </li>
                     );
                   })}
+
                   {(team.players || []).length === 0 && (
-                    <li className="player-row muted small">No players yet in this squad.</li>
+                    <li className="player-row muted small">
+                      <div className="player-row-left">
+                        <span className="player-number">0</span>
+                        <span className="player-name-text">
+                          No players yet in this squad.
+                        </span>
+                      </div>
+                    </li>
                   )}
                 </ul>
 
@@ -799,7 +1338,9 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                         placeholder="Add / select player..."
                         list={listId}
                         value={pendingNames[inputId] || ""}
-                        onChange={(e) => handlePendingChange(inputId, e.target.value)}
+                        onChange={(e) =>
+                          handlePendingChange(inputId, e.target.value)
+                        }
                       />
                       <datalist id={listId}>
                         {availableForTeams.map((val) => (
@@ -807,7 +1348,10 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                         ))}
                       </datalist>
 
-                      <button className="secondary-btn" onClick={() => handleAddPlayer(inputId)}>
+                      <button
+                        className="secondary-btn"
+                        onClick={() => handleAddPlayer(inputId)}
+                      >
                         Add
                       </button>
                     </div>
@@ -817,68 +1361,121 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                     )}
                   </>
                 )}
-              </div>
+              </>
             );
           })}
 
-          {/* Unseeded */}
-          <div key={UNSEEDED_ID} className="squad-column">
-            <h2>Unseeded players</h2>
-            <p className="muted small">
-              Active players in the database that are not assigned to any team.
-            </p>
-
-            <ul className="player-list">
-              {unseededPlayers.map((p) => {
-                const name = displayNameOf(p.id);
-                const roles = p.roles || {};
-                return (
-                  <li key={p.id} className="player-row">
-                    <span>
-                      {name} {roles.captain ? <span className="muted">(C)</span> : null}
-                      {roles.coach ? <span className="muted"> (Coach)</span> : null}
-                      {roles.admin ? <span className="muted"> (Admin)</span> : null}
-                    </span>
-                    {isAdmin && (
-                      <button className="link-btn" onClick={() => handleRemoveUnseeded(p.id)}>
-                        ❌ delete?
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-              {unseededPlayers.length === 0 && (
-                <li className="player-row muted small">No unseeded players right now.</li>
-              )}
-            </ul>
-
-            {isAdmin && (
-              <>
-                <div className="add-player-row">
-                  <input
-                    className="text-input"
-                    placeholder="Move from team / add manual player..."
-                    list="players-db-unseeded"
-                    value={pendingNames[UNSEEDED_ID] || ""}
-                    onChange={(e) => handlePendingChange(UNSEEDED_ID, e.target.value)}
-                  />
-                  <datalist id="players-db-unseeded">
-                    {availableForUnseeded.map((val) => (
-                      <option key={val} value={val} />
-                    ))}
-                  </datalist>
-
-                  <button className="secondary-btn" onClick={() => handleAddPlayer(UNSEEDED_ID)}>
-                    Add
-                  </button>
+          {renderCardShell(
+            UNSEEDED_ID,
+            "unseeded_players",
+            {
+              accent: "#64748B",
+              accentSoft: "rgba(100,116,139,0.16)",
+              glow: "rgba(100,116,139,0.18)",
+              text: "#CBD5E1",
+              colorName: "Slate",
+            },
+            <>
+              <div className="squad-card-topbar">
+                <div className="team-name-wrap">
+                  <span className="team-color-pill" />
+                  <div>
+                    <div className="team-title-row">
+                      <h2 className="team-title">Unseeded Players</h2>
+                      <span className="team-abbrev-badge">POOL</span>
+                    </div>
+                    <div className="team-subtitle">
+                      Not currently assigned to a team
+                    </div>
+                    <div className="team-color-name">
+                      <span className="team-color-dot" />
+                      Slate
+                    </div>
+                  </div>
                 </div>
+              </div>
 
-                {addErrors[UNSEEDED_ID] && (
-                  <p className="error-text small">{addErrors[UNSEEDED_ID]}</p>
+              <ul className="player-list">
+                {unseededPlayers.map((p, idx) => {
+                  const name = displayNameOf(p.id);
+                  const roles = p.roles || {};
+                  return (
+                    <li key={p.id} className="player-row">
+                      <div className="player-row-left">
+                        <span className="player-number">{idx + 1}</span>
+                        <span className="player-name-text">
+                          {name}{" "}
+                          {roles.captain ? (
+                            <span className="muted">(C)</span>
+                          ) : null}
+                          {roles.coach ? (
+                            <span className="muted"> (Coach)</span>
+                          ) : null}
+                          {roles.admin ? (
+                            <span className="muted"> (Admin)</span>
+                          ) : null}
+                        </span>
+                      </div>
+
+                      {isAdmin && (
+                        <button
+                          className="link-btn"
+                          onClick={() => handleRemoveUnseeded(p.id)}
+                        >
+                          ❌ delete?
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+
+                {unseededPlayers.length === 0 && (
+                  <li className="player-row muted small">
+                    <div className="player-row-left">
+                      <span className="player-number">0</span>
+                      <span className="player-name-text">
+                        No unseeded players right now.
+                      </span>
+                    </div>
+                  </li>
                 )}
-              </>
-            )}
-          </div>
+              </ul>
+
+              {isAdmin && (
+                <>
+                  <div className="add-player-row">
+                    <input
+                      className="text-input"
+                      placeholder="Move from team / add manual player..."
+                      list="players-db-unseeded"
+                      value={pendingNames[UNSEEDED_ID] || ""}
+                      onChange={(e) =>
+                        handlePendingChange(UNSEEDED_ID, e.target.value)
+                      }
+                    />
+                    <datalist id="players-db-unseeded">
+                      {availableForUnseeded.map((val) => (
+                        <option key={val} value={val} />
+                      ))}
+                    </datalist>
+
+                    <button
+                      className="secondary-btn"
+                      onClick={() => handleAddPlayer(UNSEEDED_ID)}
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  {addErrors[UNSEEDED_ID] && (
+                    <p className="error-text small">
+                      {addErrors[UNSEEDED_ID]}
+                    </p>
+                  )}
+                </>
+              )}
+            </>
+          )}
         </div>
 
         <div className="actions-row">

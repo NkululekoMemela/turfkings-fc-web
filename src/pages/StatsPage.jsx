@@ -1441,14 +1441,6 @@ export function StatsPage({
             )}
           </div>
 
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 900 }}>{seasonContextTitle}</div>
-            <div className="muted" style={{ marginTop: "0.2rem" }}>
-              {isViewingPreviousSeason
-                ? "Previous seasons are always shown as full-season stats."
-                : "Current season can be viewed as Current week or Full season."}
-            </div>
-          </div>
         </div>
       </section>
 

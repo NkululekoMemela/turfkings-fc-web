@@ -26,6 +26,7 @@ import {
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
+const PLAYERS_COLLECTION = "players";
 
 const matchEndSound =
   typeof Audio !== "undefined" ? new Audio(SOUND_URL) : null;
@@ -34,6 +35,23 @@ if (matchEndSound) {
   matchEndSound.preload = "auto";
   matchEndSound.loop = false;
   matchEndSound.volume = 1;
+}
+
+function normKey(x) {
+  return String(x || "").trim().toLowerCase();
+}
+
+function slugFromLooseName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function firstNameOf(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[0] : "";
 }
 
 function stopAlarmLoop(alarmLoopRef) {
@@ -65,18 +83,6 @@ function getShortName(label) {
   return cleaned.slice(0, 3).toUpperCase();
 }
 
-function formatPlayerLabel(name) {
-  return toTitleCaseLoose(name || "");
-}
-
-function slugFromLooseName(name) {
-  return String(name || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
-}
-
 function getIdentityDisplayName(identity) {
   return (
     identity?.shortName ||
@@ -88,42 +94,177 @@ function getIdentityDisplayName(identity) {
   );
 }
 
-function getTeamCaptainNames(team) {
-  const rawCaptain = team?.captain;
-  if (!rawCaptain) return [];
-  return uniqueNames([formatPlayerLabel(rawCaptain)]);
-}
+function buildPlayerResolver(players = []) {
+  const byAny = new Map();
+  const firstNameCounts = new Map();
 
-function getPlayerPhoto(playerPhotosByName = {}, playerName = "") {
-  const raw = String(playerName || "").trim();
-  if (!raw) return null;
+  const addKey = (set, value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return;
 
-  const pretty = formatPlayerLabel(raw);
-  const slug = slugFromLooseName(raw);
-  const firstRaw = raw.split(/\s+/)[0] || "";
-  const firstPretty = pretty.split(/\s+/)[0] || "";
+    const pretty = toTitleCaseLoose(raw);
 
-  const candidates = [raw, pretty, slug, firstRaw, firstPretty]
-    .map((x) => String(x || "").trim())
-    .filter(Boolean);
+    set.add(normKey(raw));
+    set.add(normKey(pretty));
+    set.add(normKey(slugFromLooseName(raw)));
+    set.add(normKey(slugFromLooseName(pretty)));
 
-  for (const key of candidates) {
-    if (playerPhotosByName[key]) return playerPhotosByName[key];
+    const first = normKey(firstNameOf(pretty));
+    if (first) {
+      firstNameCounts.set(first, (firstNameCounts.get(first) || 0) + 1);
+      set.add(first);
+    }
+  };
+
+  players.forEach((p) => {
+    const keys = new Set();
+
+    addKey(keys, p.id);
+    addKey(keys, p.fullName);
+    addKey(keys, p.shortName);
+    (p.aliases || []).forEach((a) => addKey(keys, a));
+
+    keys.forEach((k) => {
+      if (k && !byAny.has(k)) {
+        byAny.set(k, p);
+      }
+    });
+  });
+
+  function resolve(rawLabel) {
+    const raw = toTitleCaseLoose(rawLabel || "");
+    const k = normKey(raw);
+    if (!k) {
+      return {
+        player: null,
+        canonical: "",
+        compact: "",
+      };
+    }
+
+    const exact = byAny.get(k);
+    if (exact) {
+      const canonical = exact.fullName || raw;
+      const compact =
+        String(exact.shortName || "").trim() ||
+        firstNameOf(canonical) ||
+        canonical;
+
+      return {
+        player: exact,
+        canonical,
+        compact,
+      };
+    }
+
+    const slug = normKey(slugFromLooseName(raw));
+    const bySlug = byAny.get(slug);
+    if (bySlug) {
+      const canonical = bySlug.fullName || raw;
+      const compact =
+        String(bySlug.shortName || "").trim() ||
+        firstNameOf(canonical) ||
+        canonical;
+
+      return {
+        player: bySlug,
+        canonical,
+        compact,
+      };
+    }
+
+    const first = normKey(firstNameOf(raw));
+    if (first && firstNameCounts.get(first) === 1) {
+      const candidate = byAny.get(first);
+      if (candidate) {
+        const canonical = candidate.fullName || raw;
+        const compact =
+          String(candidate.shortName || "").trim() ||
+          firstNameOf(canonical) ||
+          canonical;
+
+        return {
+          player: candidate,
+          canonical,
+          compact,
+        };
+      }
+    }
+
+    return {
+      player: null,
+      canonical: raw,
+      compact: firstNameOf(raw) || raw,
+    };
   }
 
-  return null;
+  return {
+    resolve,
+    canonicalName(raw) {
+      return resolve(raw).canonical;
+    },
+    compactName(raw) {
+      return resolve(raw).compact;
+    },
+    playerKey(raw) {
+      return slugFromLooseName(resolve(raw).canonical || "");
+    },
+  };
 }
 
-function getOnFieldPlayersFromSnapshot(snapshot, fallbackPlayers = []) {
+function uniquePlayersNormalized(list = [], canonicalName, playerKeyFor) {
+  const seen = new Set();
+  const out = [];
+
+  list.forEach((item) => {
+    const pretty = canonicalName(item);
+    const key = playerKeyFor(pretty);
+    if (!pretty || seen.has(key)) return;
+    seen.add(key);
+    out.push(pretty);
+  });
+
+  return out;
+}
+
+function removePlayerByKey(list = [], name = "", canonicalName, playerKeyFor) {
+  const targetKey = playerKeyFor(name);
+  return uniquePlayersNormalized(list, canonicalName, playerKeyFor).filter(
+    (item) => playerKeyFor(item) !== targetKey
+  );
+}
+
+function movePlayerToFront(list = [], name = "", canonicalName, playerKeyFor) {
+  const clean = canonicalName(name);
+  if (!clean) return uniquePlayersNormalized(list, canonicalName, playerKeyFor);
+
+  return uniquePlayersNormalized(
+    [clean, ...removePlayerByKey(list, clean, canonicalName, playerKeyFor)],
+    canonicalName,
+    playerKeyFor
+  );
+}
+
+function getTeamCaptainNames(team, canonicalName) {
+  const rawCaptain = team?.captain;
+  if (!rawCaptain) return [];
+  return uniqueNames([canonicalName(rawCaptain)]);
+}
+
+function getOnFieldPlayersFromSnapshot(
+  snapshot,
+  fallbackPlayers = [],
+  canonicalName
+) {
   const positionedPlayers = Object.values(snapshot?.positions || {})
-    .map((name) => formatPlayerLabel(name))
+    .map((name) => canonicalName(name))
     .filter(Boolean);
 
   if (positionedPlayers.length > 0) {
     return uniqueNames(positionedPlayers);
   }
 
-  return uniqueNames((fallbackPlayers || []).map((p) => formatPlayerLabel(p)));
+  return uniqueNames((fallbackPlayers || []).map((p) => canonicalName(p)));
 }
 
 function lineupHasEmptyPositions(lineup) {
@@ -363,7 +504,7 @@ function PlayerBenchChip({
       </span>
 
       <span>
-        {formatPlayerLabel(name)}
+        {name}
         {suffix}
       </span>
     </button>
@@ -375,7 +516,8 @@ function PlayerChoiceGrid({
   players,
   selectedName,
   onSelect,
-  playerPhotosByName = {},
+  displayCompactPlayerName,
+  getPlayerPhoto,
   guestSnapshotChecker = null,
   disabled = false,
 }) {
@@ -398,12 +540,12 @@ function PlayerChoiceGrid({
             const isGuest = guestSnapshotChecker
               ? guestSnapshotChecker(name)
               : false;
-            const photoData = getPlayerPhoto(playerPhotosByName, name);
+            const photoData = getPlayerPhoto(name);
 
             return (
               <PlayerBenchChip
                 key={name}
-                name={name}
+                name={displayCompactPlayerName(name)}
                 isSelected={isSelected}
                 onClick={() => onSelect(isSelected ? "" : name)}
                 photoData={photoData}
@@ -423,7 +565,10 @@ function LineupBoard({
   lineup,
   setLineup,
   registeredPlayers,
-  playerPhotos = {},
+  canonicalName,
+  displayCompactPlayerName,
+  playerKeyFor,
+  getPlayerPhoto,
   disabled = false,
 }) {
   const formation =
@@ -435,15 +580,47 @@ function LineupBoard({
     setSelectedPlayer(null);
   }, [lineup?.formationId]);
 
-  const allRegistered = uniqueNames(registeredPlayers || []);
-  const assignedNames = new Set(
-    Object.values(lineup?.positions || {}).filter(Boolean)
+  const allRegistered = uniquePlayersNormalized(
+    registeredPlayers || [],
+    canonicalName,
+    playerKeyFor
   );
-  const benchPlayers = allRegistered.filter((p) => !assignedNames.has(p));
-  const benchList = uniqueNames([
-    ...(lineup?.guestPlayers || []),
-    ...benchPlayers,
-  ]);
+
+  const assignedNames = Object.values(lineup?.positions || {})
+    .map((name) => canonicalName(name))
+    .filter(Boolean);
+
+  const assignedKeys = new Set(assignedNames.map((name) => playerKeyFor(name)));
+
+  const savedBenchSnapshot = uniquePlayersNormalized(
+    lineup?.benchSnapshot || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  const guestPlayers = uniquePlayersNormalized(
+    lineup?.guestPlayers || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  const sanitizedBenchRegistered = uniquePlayersNormalized(
+    [...savedBenchSnapshot, ...allRegistered],
+    canonicalName,
+    playerKeyFor
+  ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
+
+  const sanitizedGuestBench = uniquePlayersNormalized(
+    guestPlayers,
+    canonicalName,
+    playerKeyFor
+  ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
+
+  const benchList = uniquePlayersNormalized(
+    [...sanitizedGuestBench, ...sanitizedBenchRegistered],
+    canonicalName,
+    playerKeyFor
+  ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
 
   const handleBenchClick = (playerName) => {
     if (disabled) return;
@@ -472,38 +649,83 @@ function LineupBoard({
     }
 
     const newPositions = { ...(lineup?.positions || {}) };
+    let nextBenchSnapshot = [...sanitizedBenchRegistered];
 
     if (selectedPlayer.from === "bench") {
-      const name = selectedPlayer.name;
+      const incoming = canonicalName(selectedPlayer.name);
+      const outgoing = canonicalName(currentAtPos);
+
       Object.keys(newPositions).forEach((key) => {
-        if (newPositions[key] === name) newPositions[key] = null;
+        if (playerKeyFor(newPositions[key]) === playerKeyFor(incoming)) {
+          newPositions[key] = null;
+        }
       });
-      newPositions[posId] = name;
+
+      newPositions[posId] = incoming;
+      nextBenchSnapshot = removePlayerByKey(
+        nextBenchSnapshot,
+        incoming,
+        canonicalName,
+        playerKeyFor
+      );
+
+      if (outgoing) {
+        nextBenchSnapshot = movePlayerToFront(
+          nextBenchSnapshot,
+          outgoing,
+          canonicalName,
+          playerKeyFor
+        );
+      }
     } else {
       const fromPos = selectedPlayer.posId;
-      const fromName = selectedPlayer.name;
-      const toName = currentAtPos;
+      const fromName = canonicalName(selectedPlayer.name);
+      const toName = canonicalName(currentAtPos);
+
       newPositions[fromPos] = toName || null;
       newPositions[posId] = fromName;
     }
 
+    const nextAssignedKeys = new Set(
+      Object.values(newPositions)
+        .map((name) => canonicalName(name))
+        .filter(Boolean)
+        .map((name) => playerKeyFor(name))
+    );
+
     setLineup((prev) => ({
       ...prev,
       positions: newPositions,
+      benchSnapshot: uniquePlayersNormalized(
+        nextBenchSnapshot,
+        canonicalName,
+        playerKeyFor
+      ).filter((p) => !nextAssignedKeys.has(playerKeyFor(p))),
     }));
+
     setSelectedPlayer(null);
   };
 
   const handleGuestAdd = () => {
     if (disabled) return;
 
-    const clean = formatPlayerLabel(guestName);
+    const clean = canonicalName(guestName);
     if (!clean) return;
+
+    if (assignedKeys.has(playerKeyFor(clean))) {
+      setGuestName("");
+      return;
+    }
 
     setLineup((prev) => ({
       ...prev,
-      guestPlayers: uniqueNames([...(prev?.guestPlayers || []), clean]),
+      guestPlayers: uniquePlayersNormalized(
+        [...(prev?.guestPlayers || []), clean],
+        canonicalName,
+        playerKeyFor
+      ),
     }));
+
     setGuestName("");
   };
 
@@ -511,18 +733,32 @@ function LineupBoard({
     if (disabled) return;
 
     setLineup((prev) => {
-      const nextGuests = (prev?.guestPlayers || []).filter((g) => g !== name);
+      const nextGuests = (prev?.guestPlayers || []).filter(
+        (g) => playerKeyFor(g) !== playerKeyFor(name)
+      );
+
       const nextPositions = { ...(prev?.positions || {}) };
       Object.keys(nextPositions).forEach((k) => {
-        if (nextPositions[k] === name) nextPositions[k] = null;
+        if (playerKeyFor(nextPositions[k]) === playerKeyFor(name)) {
+          nextPositions[k] = null;
+        }
       });
+
+      const cleanedBenchSnapshot = removePlayerByKey(
+        prev?.benchSnapshot || [],
+        name,
+        canonicalName,
+        playerKeyFor
+      );
 
       return {
         ...prev,
         positions: nextPositions,
         guestPlayers: nextGuests,
+        benchSnapshot: cleanedBenchSnapshot,
       };
     });
+
     setSelectedPlayer(null);
   };
 
@@ -544,7 +780,7 @@ function LineupBoard({
               selectedPlayer.from === "pitch" &&
               selectedPlayer.posId === pos.id;
 
-            const photoData = getPlayerPhoto(playerPhotos, name);
+            const photoData = getPlayerPhoto(name);
 
             return (
               <div
@@ -564,7 +800,7 @@ function LineupBoard({
                   />
                   <div className="player-meta">
                     <span className="player-name">
-                      {name ? formatPlayerLabel(name) : "Empty"}
+                      {name ? displayCompactPlayerName(name) : "Empty"}
                     </span>
                     <span className="position-tag">{pos.label}</span>
                   </div>
@@ -595,8 +831,10 @@ function LineupBoard({
                 selectedPlayer &&
                 selectedPlayer.from === "bench" &&
                 selectedPlayer.name === p;
-              const isGuest = (lineup?.guestPlayers || []).includes(p);
-              const photoData = getPlayerPhoto(playerPhotos, p);
+              const isGuest = (lineup?.guestPlayers || []).some(
+                (g) => playerKeyFor(g) === playerKeyFor(p)
+              );
+              const photoData = getPlayerPhoto(p);
 
               return (
                 <li
@@ -608,7 +846,7 @@ function LineupBoard({
                   }}
                 >
                   <PlayerBenchChip
-                    name={p}
+                    name={displayCompactPlayerName(p)}
                     isSelected={isSelected}
                     onClick={() => handleBenchClick(p)}
                     photoData={photoData}
@@ -696,12 +934,12 @@ export function LiveMatchPage({
   onGoToStats,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
-  const teamA = getTeamById(teams, teamAId);
-  const teamB = getTeamById(teams, teamBId);
-  const standbyTeam = getTeamById(teams, standbyId);
-
   const role = String(activeRole || "spectator").trim().toLowerCase();
-  const isControllerSession = Boolean(pendingMatchStartContext) && canControlMatch;
+  const isControllerSession =
+    Boolean(pendingMatchStartContext) && canControlMatch;
+
+  const [players, setPlayers] = useState([]);
+  const [playersLoading, setPlayersLoading] = useState(true);
 
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -714,6 +952,107 @@ export function LiveMatchPage({
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPlayers() {
+      setPlayersLoading(true);
+
+      try {
+        const snap = await getDocs(collection(db, PLAYERS_COLLECTION));
+        if (cancelled) return;
+
+        const list = snap.docs.map((d) => {
+          const data = d.data() || {};
+
+          const fullName = toTitleCaseLoose(
+            data.fullName ||
+              data.displayName ||
+              data.name ||
+              data.playerName ||
+              ""
+          );
+
+          const shortName = toTitleCaseLoose(
+            data.shortName ||
+              data.name ||
+              data.displayName ||
+              firstNameOf(fullName) ||
+              fullName
+          );
+
+          const aliases = Array.isArray(data.aliases)
+            ? data.aliases.map((a) => toTitleCaseLoose(a)).filter(Boolean)
+            : [];
+
+          return {
+            id: d.id,
+            fullName,
+            shortName,
+            aliases,
+            status: data.status || "active",
+          };
+        });
+
+        const active = list.filter(
+          (p) => String(p.status || "active").toLowerCase() === "active"
+        );
+
+        active.sort((a, b) => a.fullName.localeCompare(b.fullName));
+        setPlayers(active);
+      } catch (err) {
+        console.error("Failed to load players in LiveMatchPage:", err);
+      } finally {
+        if (!cancelled) {
+          setPlayersLoading(false);
+        }
+      }
+    }
+
+    loadPlayers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const playersReady = !playersLoading;
+
+  const playerResolver = useMemo(() => buildPlayerResolver(players), [players]);
+
+  const canonicalName = useMemo(
+    () => (raw) => playerResolver.canonicalName(raw),
+    [playerResolver]
+  );
+
+  const displayCompactPlayerName = useMemo(
+    () => (raw) => playerResolver.compactName(raw),
+    [playerResolver]
+  );
+
+  const playerKeyFor = useMemo(
+    () => (raw) => playerResolver.playerKey(raw),
+    [playerResolver]
+  );
+
+  const canonicalTeams = useMemo(() => {
+    return (teams || []).map((t) => ({
+      ...t,
+      players: (t.players || [])
+        .map((p) => {
+          const raw =
+            typeof p === "string" ? p : p?.name || p?.displayName || "";
+          return canonicalName(raw);
+        })
+        .filter(Boolean),
+      captain: canonicalName(t.captain || ""),
+    }));
+  }, [teams, canonicalName]);
+
+  const teamA = getTeamById(canonicalTeams, teamAId);
+  const teamB = getTeamById(canonicalTeams, teamBId);
+  const standbyTeam = getTeamById(canonicalTeams, standbyId);
 
   const [mergedPlayerPhotos, setMergedPlayerPhotos] = useState(
     playerPhotosByName || {}
@@ -741,11 +1080,21 @@ export function LiveMatchPage({
           const rawName = data?.name || docSnap.id || "";
           if (!photoData) return;
 
-          const pretty = formatPlayerLabel(rawName);
-          const slug = slugFromLooseName(rawName);
-          const first = pretty.split(/\s+/)[0] || "";
+          const canonical = canonicalName(rawName);
+          const compact = displayCompactPlayerName(rawName);
+          const slug = slugFromLooseName(canonical || rawName);
+          const firstCanon = firstNameOf(canonical);
+          const firstCompact = firstNameOf(compact);
 
-          [rawName, pretty, slug, first]
+          [
+            rawName,
+            toTitleCaseLoose(rawName),
+            canonical,
+            compact,
+            slug,
+            firstCanon,
+            firstCompact,
+          ]
             .map((x) => String(x || "").trim())
             .filter(Boolean)
             .forEach((key) => {
@@ -766,7 +1115,44 @@ export function LiveMatchPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canonicalName, displayCompactPlayerName]);
+
+  const getPlayerPhoto = useMemo(() => {
+    return (playerName = "") => {
+      const raw = String(playerName || "").trim();
+      if (!raw) return null;
+
+      const canonical = canonicalName(raw);
+      const compact = displayCompactPlayerName(raw);
+      const slug = slugFromLooseName(canonical || raw);
+      const firstCanonical = firstNameOf(canonical);
+      const firstCompact = firstNameOf(compact);
+
+      const candidates = [
+        raw,
+        toTitleCaseLoose(raw),
+        canonical,
+        compact,
+        slug,
+        firstCanonical,
+        firstCompact,
+      ]
+        .map((x) => String(x || "").trim())
+        .filter(Boolean);
+
+      for (const key of candidates) {
+        if (mergedPlayerPhotos[key]) return mergedPlayerPhotos[key];
+        const matchedKey = Object.keys(mergedPlayerPhotos).find(
+          (k) => normKey(k) === normKey(key)
+        );
+        if (matchedKey && mergedPlayerPhotos[matchedKey]) {
+          return mergedPlayerPhotos[matchedKey];
+        }
+      }
+
+      return null;
+    };
+  }, [mergedPlayerPhotos, canonicalName, displayCompactPlayerName]);
 
   const [scoringTeamId, setScoringTeamId] = useState("");
   const [scorerName, setScorerName] = useState("");
@@ -803,7 +1189,7 @@ export function LiveMatchPage({
         savedLineups,
         FORMATIONS_5,
         DEFAULT_FORMATION_ID_5,
-        (teamA?.players || []).map((p) => formatPlayerLabel(p))
+        teamA?.players || []
       ),
     [teamA, savedLineups]
   );
@@ -816,7 +1202,7 @@ export function LiveMatchPage({
         savedLineups,
         FORMATIONS_5,
         DEFAULT_FORMATION_ID_5,
-        (teamB?.players || []).map((p) => formatPlayerLabel(p))
+        teamB?.players || []
       ),
     [teamB, savedLineups]
   );
@@ -849,6 +1235,8 @@ export function LiveMatchPage({
 
   useEffect(() => {
     if (mustVerifyBeforePlay && !hasVerifiedLineups) {
+      if (!playersReady) return;
+
       setVerifyTeamALineup(defaultTeamALineup);
       setVerifyTeamBLineup(defaultTeamBLineup);
       setShowVerifyModal(true);
@@ -871,6 +1259,7 @@ export function LiveMatchPage({
     teamBId,
     defaultTeamALineup,
     defaultTeamBLineup,
+    playersReady,
   ]);
 
   useEffect(() => {
@@ -1038,11 +1427,13 @@ export function LiveMatchPage({
         ? teamB
         : null;
 
-    const fallbackPlayers = (fallbackTeam?.players || []).map((p) =>
-      formatPlayerLabel(p)
-    );
+    const fallbackPlayers = fallbackTeam?.players || [];
 
-    return getOnFieldPlayersFromSnapshot(snapshot, fallbackPlayers);
+    return getOnFieldPlayersFromSnapshot(
+      snapshot,
+      fallbackPlayers,
+      canonicalName
+    );
   }, [
     scoringTeamId,
     verifiedLineupA,
@@ -1051,6 +1442,7 @@ export function LiveMatchPage({
     teamB,
     teamAId,
     teamBId,
+    canonicalName,
   ]);
 
   const assistOptions = playersForSelectedTeam.filter((p) => p !== scorerName);
@@ -1098,24 +1490,20 @@ export function LiveMatchPage({
       teamId: teamAId,
       lineup: verifyTeamALineup,
       formationMap: FORMATIONS_5,
-      registeredPlayers: (teamA?.players || []).map((p) =>
-        formatPlayerLabel(p)
-      ),
+      registeredPlayers: teamA?.players || [],
       confirmedBy: confirmedByName,
       confirmedByRole,
-      preferredCaptainNames: getTeamCaptainNames(teamA),
+      preferredCaptainNames: getTeamCaptainNames(teamA, canonicalName),
     });
 
     const snapshotB = createVerifiedLineupSnapshot({
       teamId: teamBId,
       lineup: verifyTeamBLineup,
       formationMap: FORMATIONS_5,
-      registeredPlayers: (teamB?.players || []).map((p) =>
-        formatPlayerLabel(p)
-      ),
+      registeredPlayers: teamB?.players || [],
       confirmedBy: confirmedByName,
       confirmedByRole,
-      preferredCaptainNames: getTeamCaptainNames(teamB),
+      preferredCaptainNames: getTeamCaptainNames(teamB, canonicalName),
     });
 
     const merged = {
@@ -1478,12 +1866,14 @@ export function LiveMatchPage({
       <header className="header">
         <h1>Match #{currentMatchNo}</h1>
         <p>
-          On-field: <strong>{teamA?.label}</strong> (c: {teamA?.captain}) vs{" "}
-          <strong>{teamB?.label}</strong> (c: {teamB?.captain})
+          On-field: <strong>{teamA?.label}</strong> (c:{" "}
+          {displayCompactPlayerName(teamA?.captain)}) vs{" "}
+          <strong>{teamB?.label}</strong> (c:{" "}
+          {displayCompactPlayerName(teamB?.captain)})
         </p>
         <p>
           Standby: <strong>{standbyTeam?.label}</strong> (c:{" "}
-          {standbyTeam?.captain})
+          {displayCompactPlayerName(standbyTeam?.captain)})
         </p>
         <p className="muted small">
           Signed in as <strong>{getIdentityDisplayName(identity)}</strong> •{" "}
@@ -1596,7 +1986,9 @@ export function LiveMatchPage({
                       <label>
                         Step 2 — Pick scorer from{" "}
                         <strong>
-                          {scoringTeamId === teamAId ? teamA?.label : teamB?.label}
+                          {scoringTeamId === teamAId
+                            ? teamA?.label
+                            : teamB?.label}
                         </strong>
                       </label>
                     </div>
@@ -1610,7 +2002,8 @@ export function LiveMatchPage({
                         setAssistName("");
                         if (name) setGoalStep("assist");
                       }}
-                      playerPhotosByName={mergedPlayerPhotos}
+                      displayCompactPlayerName={displayCompactPlayerName}
+                      getPlayerPhoto={getPlayerPhoto}
                       guestSnapshotChecker={(name) =>
                         isGuestPlayerInSnapshot(selectedSnapshot, name)
                       }
@@ -1618,7 +2011,11 @@ export function LiveMatchPage({
                     />
 
                     <div
-                      style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}
+                      style={{
+                        display: "flex",
+                        gap: "0.6rem",
+                        flexWrap: "wrap",
+                      }}
                     >
                       <button
                         className="secondary-btn"
@@ -1647,7 +2044,8 @@ export function LiveMatchPage({
                   <>
                     <div className="field-row">
                       <label>
-                        Step 3 — Assist for <strong>{formatPlayerLabel(scorerName)}</strong>{" "}
+                        Step 3 — Assist for{" "}
+                        <strong>{displayCompactPlayerName(scorerName)}</strong>{" "}
                         (optional)
                       </label>
                     </div>
@@ -1657,7 +2055,8 @@ export function LiveMatchPage({
                       players={assistOptions}
                       selectedName={assistName}
                       onSelect={(name) => setAssistName(name)}
-                      playerPhotosByName={mergedPlayerPhotos}
+                      displayCompactPlayerName={displayCompactPlayerName}
+                      getPlayerPhoto={getPlayerPhoto}
                       guestSnapshotChecker={(name) =>
                         isGuestPlayerInSnapshot(selectedSnapshot, name)
                       }
@@ -1665,7 +2064,11 @@ export function LiveMatchPage({
                     />
 
                     <div
-                      style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}
+                      style={{
+                        display: "flex",
+                        gap: "0.6rem",
+                        flexWrap: "wrap",
+                      }}
                     >
                       <button
                         className="secondary-btn"
@@ -1728,17 +2131,17 @@ export function LiveMatchPage({
                 e.teamId === teamAId
                   ? teamA
                   : e.teamId === teamBId
-                  ? teamB
-                  : null;
+                    ? teamB
+                    : null;
 
               return (
                 <li key={e.id} className="event-item">
                   <span>
                     [{formatSeconds(e.timeSeconds)}] {team?.label} –{" "}
-                    <strong>Goal:</strong> {formatPlayerLabel(e.scorer)}
+                    <strong>Goal:</strong> {displayCompactPlayerName(e.scorer)}
                     {e.scorerType === "guest" ? " (Guest)" : ""}
                     {e.assist
-                      ? ` (assist: ${formatPlayerLabel(e.assist)}${
+                      ? ` (assist: ${displayCompactPlayerName(e.assist)}${
                           e.assistType === "guest" ? " - Guest" : ""
                         })`
                       : ""}
@@ -1766,7 +2169,11 @@ export function LiveMatchPage({
             <button
               className="secondary-btn"
               type="button"
-              onClick={() => setShowVerifyModal(true)}
+              onClick={() => {
+                if (!playersReady) return;
+                setShowVerifyModal(true);
+              }}
+              disabled={!playersReady}
             >
               🧩 Verify Lineups
             </button>
@@ -1826,26 +2233,37 @@ export function LiveMatchPage({
                 alignItems: "flex-start",
               }}
             >
-              <LineupBoard
-                title={`${teamA?.label}`}
-                lineup={verifyTeamALineup}
-                setLineup={setVerifyTeamALineup}
-                registeredPlayers={(teamA?.players || []).map((p) =>
-                  formatPlayerLabel(p)
-                )}
-                playerPhotos={mergedPlayerPhotos}
-                disabled={!canControlMatch}
-              />
-              <LineupBoard
-                title={`${teamB?.label}`}
-                lineup={verifyTeamBLineup}
-                setLineup={setVerifyTeamBLineup}
-                registeredPlayers={(teamB?.players || []).map((p) =>
-                  formatPlayerLabel(p)
-                )}
-                playerPhotos={mergedPlayerPhotos}
-                disabled={!canControlMatch}
-              />
+              {!playersReady ? (
+                <div style={{ width: "100%" }}>
+                  <p className="muted">Loading verified lineups…</p>
+                </div>
+              ) : (
+                <>
+                  <LineupBoard
+                    title={`${teamA?.label}`}
+                    lineup={verifyTeamALineup}
+                    setLineup={setVerifyTeamALineup}
+                    registeredPlayers={teamA?.players || []}
+                    canonicalName={canonicalName}
+                    displayCompactPlayerName={displayCompactPlayerName}
+                    playerKeyFor={playerKeyFor}
+                    getPlayerPhoto={getPlayerPhoto}
+                    disabled={!canControlMatch}
+                  />
+
+                  <LineupBoard
+                    title={`${teamB?.label}`}
+                    lineup={verifyTeamBLineup}
+                    setLineup={setVerifyTeamBLineup}
+                    registeredPlayers={teamB?.players || []}
+                    canonicalName={canonicalName}
+                    displayCompactPlayerName={displayCompactPlayerName}
+                    playerKeyFor={playerKeyFor}
+                    getPlayerPhoto={getPlayerPhoto}
+                    disabled={!canControlMatch}
+                  />
+                </>
+              )}
             </div>
 
             <div className="actions-row" style={{ marginTop: "1rem" }}>
@@ -1870,6 +2288,7 @@ export function LiveMatchPage({
                   className="primary-btn"
                   type="button"
                   onClick={handleConfirmLineups}
+                  disabled={!playersReady}
                 >
                   Confirm lineups
                 </button>
