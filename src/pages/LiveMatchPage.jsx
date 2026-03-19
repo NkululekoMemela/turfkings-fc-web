@@ -267,6 +267,148 @@ function getOnFieldPlayersFromSnapshot(
   return uniqueNames((fallbackPlayers || []).map((p) => canonicalName(p)));
 }
 
+function getBenchPlayersFromSnapshot(
+  snapshot,
+  fallbackPlayers = [],
+  canonicalName,
+  playerKeyFor
+) {
+  const onField = getOnFieldPlayersFromSnapshot(
+    snapshot,
+    fallbackPlayers,
+    canonicalName
+  );
+
+  const onFieldKeys = new Set(onField.map((name) => playerKeyFor(name)));
+
+  const savedBench = uniquePlayersNormalized(
+    snapshot?.benchSnapshot || [],
+    canonicalName,
+    playerKeyFor
+  ).filter((name) => !onFieldKeys.has(playerKeyFor(name)));
+
+  const guestBench = uniquePlayersNormalized(
+    snapshot?.guestPlayers || [],
+    canonicalName,
+    playerKeyFor
+  ).filter((name) => !onFieldKeys.has(playerKeyFor(name)));
+
+  const registeredPool = uniquePlayersNormalized(
+    snapshot?.registeredPlayers || fallbackPlayers || [],
+    canonicalName,
+    playerKeyFor
+  ).filter((name) => !onFieldKeys.has(playerKeyFor(name)));
+
+  return uniquePlayersNormalized(
+    savedBench.length > 0
+      ? [...savedBench, ...guestBench]
+      : [...guestBench, ...registeredPool],
+    canonicalName,
+    playerKeyFor
+  ).filter((name) => !onFieldKeys.has(playerKeyFor(name)));
+}
+
+function roleTagFromPosition(positionIdOrLabel = "") {
+  const key = String(positionIdOrLabel || "").trim().toLowerCase();
+
+  if (!key) return "";
+
+  if (
+    key === "gk" ||
+    key.includes("goalkeeper") ||
+    key.includes("keeper") ||
+    key.includes("goalie")
+  ) {
+    return "GK";
+  }
+
+  if (
+    key === "def" ||
+    key.includes("def") ||
+    key.includes("back") ||
+    key.includes("centre back") ||
+    key.includes("center back") ||
+    key.includes("cb") ||
+    key.includes("rb") ||
+    key.includes("lb")
+  ) {
+    return "DEF";
+  }
+
+  return "";
+}
+
+function getPlayerRoleTagMapFromSnapshot(
+  snapshot,
+  canonicalName,
+  playerKeyFor
+) {
+  const out = {};
+
+  const formation =
+    FORMATIONS_5[snapshot?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+
+  const labelByPosId = new Map(
+    (formation?.positions || []).map((pos) => [pos.id, pos.label || pos.id])
+  );
+
+  Object.entries(snapshot?.positions || {}).forEach(([posId, rawName]) => {
+    const canonical = canonicalName(rawName);
+    const key = playerKeyFor(canonical);
+    if (!key) return;
+
+    const posLabel = labelByPosId.get(posId) || posId;
+    const roleTag = roleTagFromPosition(posLabel);
+
+    if (roleTag) {
+      out[key] = roleTag;
+    }
+  });
+
+  return out;
+}
+
+function buildGoalRecorderChoices({
+  snapshot,
+  fallbackPlayers = [],
+  canonicalName,
+  playerKeyFor,
+}) {
+  const onField = getOnFieldPlayersFromSnapshot(
+    snapshot,
+    fallbackPlayers,
+    canonicalName
+  );
+
+  const bench = getBenchPlayersFromSnapshot(
+    snapshot,
+    fallbackPlayers,
+    canonicalName,
+    playerKeyFor
+  );
+
+  const roleTagMap = getPlayerRoleTagMapFromSnapshot(
+    snapshot,
+    canonicalName,
+    playerKeyFor
+  );
+
+  return [
+    ...onField.map((name) => ({
+      name,
+      isSub: false,
+      disabled: false,
+      roleTag: roleTagMap[playerKeyFor(name)] || "",
+    })),
+    ...bench.map((name) => ({
+      name,
+      isSub: true,
+      disabled: true,
+      roleTag: roleTagMap[playerKeyFor(name)] || "",
+    })),
+  ];
+}
+
 function lineupHasEmptyPositions(lineup) {
   const formation =
     FORMATIONS_5[lineup?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
@@ -317,6 +459,29 @@ function getTeamAccent(label = "") {
     soft: "rgba(56, 189, 248, 0.16)",
     border: "rgba(56, 189, 248, 0.35)",
     text: "#e5e7eb",
+  };
+}
+
+function getRoleBadgeStyle(roleTag = "", isSub = false) {
+  const role = String(roleTag || "").trim().toLowerCase();
+
+  if (role === "gk") {
+    return {
+      background: "#38bdf8",
+      color: "#082f49",
+    };
+  }
+
+  if (role === "def") {
+    return {
+      background: "#ffffff",
+      color: "#111827",
+    };
+  }
+
+  return {
+    background: isSub ? "#f59e0b" : "#94a3b8",
+    color: "#111827",
   };
 }
 
@@ -449,20 +614,83 @@ function PlayerBenchChip({
   photoData,
   disabled = false,
   suffix = "",
+  isSub = false,
+  roleTag = "",
 }) {
+  const roleStyle = getRoleBadgeStyle(roleTag, isSub);
+
   return (
     <button
       type="button"
-      className={`bench-player ${isSelected ? "selected" : ""}`}
+      className={`bench-player ${isSelected ? "selected" : ""} ${
+        isSub ? "is-sub" : ""
+      }`}
       onClick={onClick}
       disabled={disabled}
       style={{
+        position: "relative",
         display: "inline-flex",
         alignItems: "center",
         gap: "0.45rem",
         padding: "0.38rem 0.7rem",
+        opacity: disabled && isSub ? 1 : undefined,
+        cursor: disabled && isSub ? "not-allowed" : undefined,
+        border: isSub ? "1px solid rgba(245, 158, 11, 0.8)" : undefined,
+        background: isSub
+          ? "linear-gradient(135deg, rgba(245,158,11,0.22), rgba(120,53,15,0.14))"
+          : undefined,
+        boxShadow: isSub
+          ? "0 0 0 1px rgba(245, 158, 11, 0.18) inset"
+          : undefined,
       }}
+      title={isSub ? "This player is currently a sub and cannot be selected." : ""}
     >
+      {isSub && (
+        <span
+          style={{
+            position: "absolute",
+            top: "-7px",
+            right: "-6px",
+            padding: "0.08rem 0.38rem",
+            borderRadius: "999px",
+            fontSize: "0.56rem",
+            fontWeight: 900,
+            letterSpacing: "0.02em",
+            textTransform: "uppercase",
+            color: "#111827",
+            background: "#f59e0b",
+            border: "1px solid rgba(255,255,255,0.22)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+            zIndex: 3,
+          }}
+        >
+          Sub
+        </span>
+      )}
+
+      {roleTag && (
+        <span
+          style={{
+            position: "absolute",
+            top: "-7px",
+            left: "-6px",
+            padding: "0.08rem 0.38rem",
+            borderRadius: "999px",
+            fontSize: "0.56rem",
+            fontWeight: 900,
+            letterSpacing: "0.02em",
+            textTransform: "uppercase",
+            background: roleStyle.background,
+            color: roleStyle.color,
+            border: "1px solid rgba(255,255,255,0.22)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+            zIndex: 3,
+          }}
+        >
+          {roleTag}
+        </span>
+      )}
+
       <span
         style={{
           width: "28px",
@@ -475,8 +703,13 @@ function PlayerBenchChip({
           justifyContent: "center",
           background: photoData
             ? "transparent"
+            : isSub
+            ? "radial-gradient(circle at 30% 20%, #f59e0b, #78350f)"
             : "radial-gradient(circle at 30% 20%, #38bdf8, #0f172a)",
-          border: "1px solid rgba(255,255,255,0.35)",
+          border: isSub
+            ? "1px solid rgba(245,158,11,0.9)"
+            : "1px solid rgba(255,255,255,0.35)",
+          filter: isSub ? "saturate(1.15)" : "none",
         }}
       >
         {photoData ? (
@@ -488,6 +721,7 @@ function PlayerBenchChip({
               height: "100%",
               objectFit: "cover",
               display: "block",
+              filter: isSub ? "grayscale(0.1) contrast(1.05)" : "none",
             }}
           />
         ) : (
@@ -503,7 +737,12 @@ function PlayerBenchChip({
         )}
       </span>
 
-      <span>
+      <span
+        style={{
+          fontWeight: isSub ? 800 : undefined,
+          color: isSub ? "#fde68a" : undefined,
+        }}
+      >
         {name}
         {suffix}
       </span>
@@ -521,6 +760,10 @@ function PlayerChoiceGrid({
   guestSnapshotChecker = null,
   disabled = false,
 }) {
+  const firstSubIndex = players.findIndex(
+    (entry) => typeof entry !== "string" && Boolean(entry?.isSub)
+  );
+
   return (
     <div className="field-row">
       <label>{title}</label>
@@ -532,26 +775,63 @@ function PlayerChoiceGrid({
             display: "flex",
             flexWrap: "wrap",
             gap: "0.55rem",
-            alignItems: "flex-start",
+            alignItems: "stretch",
           }}
         >
-          {players.map((name) => {
-            const isSelected = selectedName === name;
+          {players.map((entry, idx) => {
+            const rawName =
+              typeof entry === "string" ? entry : entry?.name || "";
+            const isSub =
+              typeof entry === "string" ? false : Boolean(entry?.isSub);
+            const isEntryDisabled =
+              disabled ||
+              (typeof entry === "string" ? false : Boolean(entry?.disabled));
+            const roleTag =
+              typeof entry === "string" ? "" : String(entry?.roleTag || "");
+            const isSelected = selectedName === rawName;
             const isGuest = guestSnapshotChecker
-              ? guestSnapshotChecker(name)
+              ? guestSnapshotChecker(rawName)
               : false;
-            const photoData = getPlayerPhoto(name);
+            const photoData = getPlayerPhoto(rawName);
+
+            const showDivider = firstSubIndex > 0 && idx === firstSubIndex;
 
             return (
-              <PlayerBenchChip
-                key={name}
-                name={displayCompactPlayerName(name)}
-                isSelected={isSelected}
-                onClick={() => onSelect(isSelected ? "" : name)}
-                photoData={photoData}
-                disabled={disabled}
-                suffix={isGuest ? " (Guest)" : ""}
-              />
+              <React.Fragment
+                key={`${rawName}-${isSub ? "sub" : "field"}-${
+                  roleTag || "norole"
+                }`}
+              >
+                {showDivider && (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      width: "1px",
+                      minWidth: "1px",
+                      alignSelf: "stretch",
+                      margin: "0 0.1rem",
+                      background:
+                        "linear-gradient(to bottom, rgba(255,255,255,0.08), rgba(255,255,255,0.5), rgba(245,158,11,0.7), rgba(255,255,255,0.08))",
+                      borderRadius: "999px",
+                    }}
+                    title="Divider between on-field players and subs"
+                  />
+                )}
+
+                <PlayerBenchChip
+                  name={displayCompactPlayerName(rawName)}
+                  isSelected={isSelected}
+                  onClick={() => {
+                    if (isEntryDisabled) return;
+                    onSelect(isSelected ? "" : rawName);
+                  }}
+                  photoData={photoData}
+                  disabled={isEntryDisabled}
+                  suffix={isGuest ? " (Guest)" : ""}
+                  isSub={isSub}
+                  roleTag={roleTag}
+                />
+              </React.Fragment>
             );
           })}
         </div>
@@ -1412,7 +1692,10 @@ export function LiveMatchPage({
   const verifiedLineupA = existingConfirmedFromApp?.[teamAId] || null;
   const verifiedLineupB = existingConfirmedFromApp?.[teamBId] || null;
 
-  const playersForSelectedTeam = useMemo(() => {
+  const selectedSnapshot =
+    scoringTeamId === teamAId ? verifiedLineupA : verifiedLineupB;
+
+  const goalRecorderChoices = useMemo(() => {
     const snapshot =
       scoringTeamId === teamAId
         ? verifiedLineupA
@@ -1427,13 +1710,12 @@ export function LiveMatchPage({
         ? teamB
         : null;
 
-    const fallbackPlayers = fallbackTeam?.players || [];
-
-    return getOnFieldPlayersFromSnapshot(
+    return buildGoalRecorderChoices({
       snapshot,
-      fallbackPlayers,
-      canonicalName
-    );
+      fallbackPlayers: fallbackTeam?.players || [],
+      canonicalName,
+      playerKeyFor,
+    });
   }, [
     scoringTeamId,
     verifiedLineupA,
@@ -1443,12 +1725,12 @@ export function LiveMatchPage({
     teamAId,
     teamBId,
     canonicalName,
+    playerKeyFor,
   ]);
 
-  const assistOptions = playersForSelectedTeam.filter((p) => p !== scorerName);
-
-  const selectedSnapshot =
-    scoringTeamId === teamAId ? verifiedLineupA : verifiedLineupB;
+  const assistOptions = useMemo(() => {
+    return goalRecorderChoices.filter((entry) => entry.name !== scorerName);
+  }, [goalRecorderChoices, scorerName]);
 
   const basicSummary = {
     matchNumber: currentMatchNo,
@@ -1995,7 +2277,7 @@ export function LiveMatchPage({
 
                     <PlayerChoiceGrid
                       title="Scorer"
-                      players={playersForSelectedTeam}
+                      players={goalRecorderChoices}
                       selectedName={scorerName}
                       onSelect={(name) => {
                         setScorerName(name);
@@ -2131,8 +2413,8 @@ export function LiveMatchPage({
                 e.teamId === teamAId
                   ? teamA
                   : e.teamId === teamBId
-                    ? teamB
-                    : null;
+                  ? teamB
+                  : null;
 
               return (
                 <li key={e.id} className="event-item">
