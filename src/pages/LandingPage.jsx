@@ -54,7 +54,7 @@ export function LandingPage({
   currentMatchNo,
   currentMatch,
   results,
-  streaks, // kept for future use
+  streaks,
   hasLiveMatch,
   onUpdatePairing,
   onStartMatch,
@@ -65,6 +65,7 @@ export function LandingPage({
   onGoToFormations,
   onGoToNews,
   onGoToEntryDev,
+  onGoToPayments,
   identity,
   activeRole,
   isAdmin = false,
@@ -93,7 +94,7 @@ export function LandingPage({
 
     const interval = setInterval(() => {
       setPhotoIndex((prev) => (prev + 1) % teamPhotos.length);
-    }, 3500); // changes every 3.5 seconds
+    }, 3500);
 
     return () => clearInterval(interval);
   }, [teamPhotos.length]);
@@ -468,14 +469,13 @@ export function LandingPage({
 
       <section className="card website-card">
         <div className="website-links">
-          <a
-            href="https://nkululeko-memela0205.github.io/packetcodeofficial.github.io/"
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
             className="website-btn"
+            onClick={onGoToPayments}
           >
-            🌍 Visit Our Website
-          </a>
+            💳 Pay for next month games
+          </button>
 
           <a
             href="https://www.messivsronaldo.app/#google_vignette"

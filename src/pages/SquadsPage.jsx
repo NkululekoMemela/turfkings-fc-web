@@ -870,259 +870,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
 
   return (
     <div className="page squads-page">
-      <style>{`
-        .squads-page .squad-surface {
-          position: relative;
-          border-radius: 28px;
-          background:
-            radial-gradient(circle at top right, var(--team-accent-soft, rgba(34,197,94,0.16)), transparent 28%),
-            linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
-          box-shadow:
-            0 18px 38px rgba(0,0,0,0.42),
-            0 0 0 1px rgba(255,255,255,0.04);
-          transition: transform 0.18s ease, box-shadow 0.18s ease;
-          overflow: hidden;
-        }
-
-        .squads-page .squad-surface:hover {
-          transform: translateY(-2px);
-          box-shadow:
-            0 22px 42px rgba(0,0,0,0.48),
-            0 0 0 1px rgba(255,255,255,0.05);
-        }
-
-        .squads-page .squad-surface.saving {
-          opacity: 0.82;
-          pointer-events: none;
-        }
-
-        .squads-page .squad-surface-inner {
-          position: relative;
-          border-radius: 28px;
-          padding: 1rem;
-          min-height: 100%;
-          background:
-            radial-gradient(circle at bottom left, rgba(34,197,94,0.08), transparent 30%),
-            linear-gradient(180deg, #071226 0%, #08111f 55%, #06101b 100%);
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
-          overflow: hidden;
-        }
-
-        .squads-page .squad-surface-inner::before {
-          content: "";
-          position: absolute;
-          inset: 0 0 auto 0;
-          height: 6px;
-          background: var(--team-accent, #22c55e);
-          box-shadow: 0 0 20px var(--team-glow, rgba(34,197,94,0.22));
-        }
-
-        .squads-page .squad-surface-inner::after {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 110px;
-          background:
-            linear-gradient(180deg,
-              color-mix(in srgb, var(--team-accent, #22c55e) 14%, transparent) 0%,
-              transparent 100%);
-          pointer-events: none;
-        }
-
-        .squads-page .squad-card-topbar {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 0.75rem;
-          margin-bottom: 1rem;
-          position: relative;
-          z-index: 1;
-        }
-
-        .squads-page .team-name-wrap {
-          display: flex;
-          align-items: center;
-          gap: 0.85rem;
-          min-width: 0;
-        }
-
-        .squads-page .team-color-pill {
-          width: 16px;
-          height: 58px;
-          border-radius: 999px;
-          background: var(--team-accent, #22c55e);
-          box-shadow:
-            0 0 0 1px rgba(255,255,255,0.08),
-            0 0 16px var(--team-glow, rgba(34,197,94,0.2));
-          flex-shrink: 0;
-        }
-
-        .squads-page .team-title-row {
-          display: flex;
-          align-items: center;
-          gap: 0.55rem;
-          flex-wrap: wrap;
-        }
-
-        .squads-page .team-title {
-          margin: 0;
-          font-size: 1.52rem;
-          line-height: 1.02;
-          letter-spacing: 0.01em;
-          color: #f8fafc;
-          font-weight: 900;
-        }
-
-        .squads-page .team-abbrev-badge {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 40px;
-          height: 24px;
-          padding: 0 0.5rem;
-          border-radius: 999px;
-          background: color-mix(in srgb, var(--team-accent, #22c55e) 18%, rgba(255,255,255,0.06));
-          color: #f8fafc;
-          border: 1px solid rgba(255,255,255,0.10);
-          font-size: 0.72rem;
-          font-weight: 900;
-          letter-spacing: 0.06em;
-        }
-
-        .squads-page .team-subtitle {
-          margin-top: 0.22rem;
-          color: #e5e7eb;
-          font-size: 0.82rem;
-          font-weight: 700;
-        }
-
-        .squads-page .team-color-name {
-          margin-top: 0.24rem;
-          display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          color: var(--team-text, #bbf7d0);
-          font-size: 0.76rem;
-          font-weight: 800;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-        }
-
-        .squads-page .team-color-dot {
-          width: 9px;
-          height: 9px;
-          border-radius: 999px;
-          background: var(--team-accent, #22c55e);
-          box-shadow: 0 0 10px var(--team-glow, rgba(34,197,94,0.2));
-          flex-shrink: 0;
-        }
-
-        .squads-page .captain-tag {
-          color: #f6e27a;
-          font-weight: 700;
-        }
-
-        .squads-page .player-list {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 0.48rem;
-        }
-
-        .squads-page .player-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 0.65rem;
-          padding: 0.72rem 0.82rem;
-          border-radius: 16px;
-          background:
-            linear-gradient(90deg,
-              color-mix(in srgb, var(--team-accent, #22c55e) 10%, rgba(255,255,255,0.025)) 0%,
-              rgba(255,255,255,0.02) 40%,
-              rgba(255,255,255,0.03) 100%);
-          border: 1px solid rgba(255,255,255,0.07);
-          box-shadow: inset 0 0 0 1px rgba(0,0,0,0.32);
-        }
-
-        .squads-page .player-row-left {
-          display: flex;
-          align-items: center;
-          gap: 0.7rem;
-          min-width: 0;
-          flex: 1;
-        }
-
-        .squads-page .player-number {
-          width: 26px;
-          height: 26px;
-          border-radius: 999px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          background: color-mix(in srgb, var(--team-accent, #22c55e) 22%, rgba(255,255,255,0.06));
-          color: #f8fafc;
-          border: 1px solid rgba(255,255,255,0.12);
-          font-size: 0.74rem;
-          font-weight: 900;
-          box-shadow: 0 0 12px var(--team-glow, rgba(34,197,94,0.12));
-        }
-
-        .squads-page .player-name-text {
-          min-width: 0;
-          overflow-wrap: anywhere;
-        }
-
-        .squads-page .team-config {
-          border-radius: 18px;
-          padding: 0.9rem;
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.08);
-          box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
-          margin-bottom: 12px;
-        }
-
-        .squads-page .add-player-row {
-          display: flex;
-          gap: 0.55rem;
-          margin-top: 0.85rem;
-        }
-
-        .squads-page .add-player-row .text-input {
-          flex: 1;
-        }
-
-        .squads-page .squad-note {
-          margin-top: 0.75rem;
-          color: rgba(229,231,235,0.7);
-          font-size: 0.78rem;
-        }
-
-        @media (max-width: 720px) {
-          .squads-page .squad-card-topbar {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .squads-page .add-player-row {
-            flex-direction: column;
-          }
-
-          .squads-page .team-title {
-            font-size: 1.24rem;
-          }
-
-          .squads-page .team-color-pill {
-            height: 44px;
-          }
-        }
-      `}</style>
-
       <header className="header">
         <h1>Manage Squads</h1>
         {playersLoading && (
@@ -1179,10 +926,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
 
                 {isAdmin && (
                   <div className="team-config">
-                    <div
-                      className="field-row"
-                      style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
-                    >
+                    <div className="field-row-inline">
                       <input
                         className="text-input"
                         value={team.label || ""}
@@ -1193,26 +937,18 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                         disabled={!canEdit}
                       />
                       <input
-                        className="text-input"
+                        className="text-input team-abbrev-input"
                         value={team.abbrev || ""}
                         placeholder="ABC"
                         title="3-letter abbreviation (A–Z)"
                         onChange={(e) =>
                           handleTeamAbbrevChange(team.id, e.target.value)
                         }
-                        style={{
-                          maxWidth: 90,
-                          textAlign: "center",
-                          fontWeight: 700,
-                        }}
                         disabled={!canEdit}
                       />
                     </div>
 
-                    <div
-                      className="field-row"
-                      style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}
-                    >
+                    <div className="field-row-top-spaced">
                       <input
                         className="text-input"
                         value={team.teamColorName || ""}
@@ -1223,24 +959,19 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                         disabled={!canEdit}
                       />
                       <input
-                        className="text-input"
+                        className="text-input team-color-input"
                         value={team.teamColorHex || ""}
                         placeholder="#DC2626"
                         title="Hex color e.g. #DC2626"
                         onChange={(e) =>
                           handleTeamColorHexChange(team.id, e.target.value)
                         }
-                        style={{
-                          maxWidth: 120,
-                          textAlign: "center",
-                          fontWeight: 700,
-                        }}
                         disabled={!canEdit}
                       />
                     </div>
 
                     {team.abbrev && !isValidAbbrev(team.abbrev) && canEdit && (
-                      <p className="muted small" style={{ marginTop: 6 }}>
+                      <p className="muted small squad-note">
                         Abbrev must be exactly 3 letters (A–Z), e.g. FCB / RMD / LIV
                       </p>
                     )}
@@ -1248,16 +979,13 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                     {team.teamColorHex &&
                       !isValidHexColor(team.teamColorHex) &&
                       canEdit && (
-                        <p className="muted small" style={{ marginTop: 6 }}>
+                        <p className="muted small squad-note">
                           Team color must be a full hex like #DC2626
                         </p>
                       )}
 
-                    <div className="field-row" style={{ marginTop: 8 }}>
-                      <label
-                        className="muted small"
-                        style={{ display: "block", marginBottom: 6 }}
-                      >
+                    <div className="field-row field-row-top-spaced">
+                      <label className="muted small field-label-tight">
                         Captain
                       </label>
                       <select

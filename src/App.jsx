@@ -10,6 +10,7 @@ import { NewsPage } from "./pages/NewsPage.jsx";
 import { PlayerCardPage } from "./pages/PlayerCardPage.jsx";
 import { PeerReviewPage } from "./pages/PeerReviewPage.jsx";
 import { MigrationPage } from "./pages/MigrationPage.jsx";
+import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 
 import {
   loadState,
@@ -44,6 +45,7 @@ const PAGE_NEWS = "news";
 const PAGE_PLAYER_CARDS = "player-cards";
 const PAGE_PEER_REVIEW = "peer-review";
 const PAGE_MIGRATION = "migration";
+const PAGE_MATCH_SIGNUP = "match-signup";
 
 const MASTER_CODE = "3333";
 const MATCH_SECONDS = 5 * 60;
@@ -839,6 +841,7 @@ export default function App() {
 
   const handleBackToLanding = () => setPage(PAGE_LANDING);
   const handleBackToLive = () => setPage(PAGE_LIVE);
+  const handleGoToMatchSignup = () => setPage(PAGE_MATCH_SIGNUP);
 
   // ---------- LANDING ----------
   const handleUpdatePairing = (match) => {
@@ -1662,6 +1665,15 @@ export default function App() {
     closeEndSeasonModal();
   };
 
+  const handleProceedToPayment = (payload) => {
+    console.log("[TK PAYMENTS] proceed to payment payload:", payload);
+    window.alert(
+      `Selected ${payload?.selectedWeeks?.length || 0} game(s) • Total: R${
+        payload?.totalAmount || 0
+      }\n\nNext step: build the actual payment page.`
+    );
+  };
+
   return (
     <div className="app-root">
       <style>{`
@@ -1714,6 +1726,7 @@ export default function App() {
           onGoToNews={() => setPage(PAGE_NEWS)}
           onGoToEntryDev={() => setPage(PAGE_ENTRY)}
           onGoToMigration={() => setPage(PAGE_MIGRATION)}
+          onGoToPayments={handleGoToMatchSignup}
           identity={identity}
           activeRole={activeRole}
           isAdmin={isAdmin}
@@ -1722,6 +1735,16 @@ export default function App() {
           isSpectator={isSpectator}
           canStartMatch={canStartMatch}
           canManageSquads={canManageSquads}
+        />
+      )}
+
+      {page === PAGE_MATCH_SIGNUP && (
+        <MatchSignupPage
+          identity={identity}
+          currentUser={null}
+          playerPhotosByName={playerPhotosByName}
+          onBack={() => setPage(PAGE_LANDING)}
+          onProceedToPayment={handleProceedToPayment}
         />
       )}
 

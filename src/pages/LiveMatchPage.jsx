@@ -622,69 +622,23 @@ function PlayerBenchChip({
   return (
     <button
       type="button"
-      className={`bench-player ${isSelected ? "selected" : ""} ${
+      className={`bench-player live-bench-chip ${isSelected ? "selected" : ""} ${
         isSub ? "is-sub" : ""
       }`}
       onClick={onClick}
       disabled={disabled}
-      style={{
-        position: "relative",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.45rem",
-        padding: "0.38rem 0.7rem",
-        opacity: disabled && isSub ? 1 : undefined,
-        cursor: disabled && isSub ? "not-allowed" : undefined,
-        border: isSub ? "1px solid rgba(245, 158, 11, 0.8)" : undefined,
-        background: isSub
-          ? "linear-gradient(135deg, rgba(245,158,11,0.22), rgba(120,53,15,0.14))"
-          : undefined,
-        boxShadow: isSub
-          ? "0 0 0 1px rgba(245, 158, 11, 0.18) inset"
-          : undefined,
-      }}
       title={isSub ? "This player is currently a sub and cannot be selected." : ""}
     >
       {isSub && (
-        <span
-          style={{
-            position: "absolute",
-            top: "-7px",
-            right: "-6px",
-            padding: "0.08rem 0.38rem",
-            borderRadius: "999px",
-            fontSize: "0.56rem",
-            fontWeight: 900,
-            letterSpacing: "0.02em",
-            textTransform: "uppercase",
-            color: "#111827",
-            background: "#f59e0b",
-            border: "1px solid rgba(255,255,255,0.22)",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
-            zIndex: 3,
-          }}
-        >
-          Sub
-        </span>
+        <span className="live-chip-corner-badge right sub">Sub</span>
       )}
 
       {roleTag && (
         <span
+          className="live-chip-corner-badge left"
           style={{
-            position: "absolute",
-            top: "-7px",
-            left: "-6px",
-            padding: "0.08rem 0.38rem",
-            borderRadius: "999px",
-            fontSize: "0.56rem",
-            fontWeight: 900,
-            letterSpacing: "0.02em",
-            textTransform: "uppercase",
             background: roleStyle.background,
             color: roleStyle.color,
-            border: "1px solid rgba(255,255,255,0.22)",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
-            zIndex: 3,
           }}
         >
           {roleTag}
@@ -692,57 +646,29 @@ function PlayerBenchChip({
       )}
 
       <span
+        className={`live-bench-avatar ${isSub ? "is-sub" : ""}`}
         style={{
-          width: "28px",
-          height: "28px",
-          borderRadius: "999px",
-          overflow: "hidden",
-          flexShrink: 0,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
           background: photoData
             ? "transparent"
             : isSub
             ? "radial-gradient(circle at 30% 20%, #f59e0b, #78350f)"
             : "radial-gradient(circle at 30% 20%, #38bdf8, #0f172a)",
-          border: isSub
-            ? "1px solid rgba(245,158,11,0.9)"
-            : "1px solid rgba(255,255,255,0.35)",
-          filter: isSub ? "saturate(1.15)" : "none",
         }}
       >
         {photoData ? (
           <img
             src={photoData}
             alt={name}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              display: "block",
-              filter: isSub ? "grayscale(0.1) contrast(1.05)" : "none",
-            }}
+            className={`live-bench-avatar-image ${isSub ? "is-sub" : ""}`}
           />
         ) : (
-          <span
-            style={{
-              fontSize: "0.72rem",
-              fontWeight: 800,
-              color: "#e5e7eb",
-            }}
-          >
+          <span className="live-bench-avatar-fallback">
             {String(name || "?").charAt(0).toUpperCase()}
           </span>
         )}
       </span>
 
-      <span
-        style={{
-          fontWeight: isSub ? 800 : undefined,
-          color: isSub ? "#fde68a" : undefined,
-        }}
-      >
+      <span className={isSub ? "live-bench-chip-text is-sub" : ""}>
         {name}
         {suffix}
       </span>
@@ -770,14 +696,7 @@ function PlayerChoiceGrid({
       {players.length === 0 ? (
         <p className="muted small">No players available.</p>
       ) : (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "0.55rem",
-            alignItems: "stretch",
-          }}
-        >
+        <div className="live-player-choice-grid">
           {players.map((entry, idx) => {
             const rawName =
               typeof entry === "string" ? entry : entry?.name || "";
@@ -805,15 +724,7 @@ function PlayerChoiceGrid({
                 {showDivider && (
                   <div
                     aria-hidden="true"
-                    style={{
-                      width: "1px",
-                      minWidth: "1px",
-                      alignSelf: "stretch",
-                      margin: "0 0.1rem",
-                      background:
-                        "linear-gradient(to bottom, rgba(255,255,255,0.08), rgba(255,255,255,0.5), rgba(245,158,11,0.7), rgba(255,255,255,0.08))",
-                      borderRadius: "999px",
-                    }}
+                    className="live-sub-divider"
                     title="Divider between on-field players and subs"
                   />
                 )}
@@ -1043,8 +954,8 @@ function LineupBoard({
   };
 
   return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <h3 style={{ marginTop: 0, marginBottom: "0.6rem" }}>{title}</h3>
+    <div className="live-lineup-column">
+      <h3 className="live-bench-title">{title}</h3>
 
       <div className="pitch-wrapper">
         <div className="pitch" style={{ maxWidth: "100%" }}>
@@ -1078,7 +989,7 @@ function LineupBoard({
                       photoData ? { backgroundImage: `url(${photoData})` } : {}
                     }
                   />
-                  <div className="player-meta">
+                  <div className="live-player-meta">
                     <span className="player-name">
                       {name ? displayCompactPlayerName(name) : "Empty"}
                     </span>
@@ -1091,21 +1002,13 @@ function LineupBoard({
         </div>
       </div>
 
-      <div className="bench-wrapper" style={{ marginTop: "0.9rem" }}>
-        <h4 style={{ marginBottom: "0.45rem" }}>Bench / Subs</h4>
+      <div className="bench-wrapper live-bench-wrapper">
+        <h4 className="live-bench-title">Bench / Subs</h4>
 
         {benchList.length === 0 ? (
           <p className="muted">No bench players available.</p>
         ) : (
-          <ul
-            className="bench-list"
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "0.55rem",
-              alignItems: "flex-start",
-            }}
-          >
+          <ul className="bench-list live-bench-list">
             {benchList.map((p) => {
               const isSelected =
                 selectedPlayer &&
@@ -1117,14 +1020,7 @@ function LineupBoard({
               const photoData = getPlayerPhoto(p);
 
               return (
-                <li
-                  key={p}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.35rem",
-                  }}
-                >
+                <li key={p} className="live-bench-item">
                   <PlayerBenchChip
                     name={displayCompactPlayerName(p)}
                     isSelected={isSelected}
@@ -1150,20 +1046,11 @@ function LineupBoard({
         )}
 
         {!disabled && (
-          <div style={{ marginTop: "0.85rem" }}>
-            <label
-              className="muted small"
-              style={{ display: "block", marginBottom: "0.35rem" }}
-            >
+          <div className="live-guest-add">
+            <label className="muted small live-guest-label">
               Add guest player
             </label>
-            <div
-              style={{
-                display: "flex",
-                gap: "0.45rem",
-                alignItems: "center",
-              }}
-            >
+            <div className="live-guest-row">
               <input
                 type="text"
                 className="text-input"
@@ -2078,73 +1965,6 @@ export function LiveMatchPage({
 
   return (
     <div className="page live-page">
-      <style>{`
-        .live-page .player-meta {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          margin-top: 0.12rem;
-          line-height: 1;
-        }
-
-        .live-page .player-meta .player-name {
-          display: block;
-          font-size: 0.66rem;
-          line-height: 1;
-          text-align: center;
-          max-width: 70px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .live-page .player-meta .position-tag {
-          display: block;
-          font-size: 0.56rem;
-          line-height: 1;
-          margin-top: 0.05rem;
-        }
-
-        .tk-team-color-btn {
-          position: relative;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-          min-width: 132px;
-          padding-left: 0.9rem;
-        }
-
-        .tk-team-color-btn .tk-team-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 999px;
-          flex-shrink: 0;
-          box-shadow: 0 0 0 1px rgba(255,255,255,0.18);
-        }
-
-        @media (max-width: 480px) {
-          .live-page .player-shirt {
-            width: 34px !important;
-            height: 34px !important;
-          }
-
-          .live-page .player-meta .player-name {
-            font-size: 0.52rem !important;
-            max-width: 48px !important;
-          }
-
-          .live-page .player-meta .position-tag {
-            font-size: 0.46rem !important;
-          }
-
-          .tk-team-color-btn {
-            min-width: 112px;
-          }
-        }
-      `}</style>
-
       <header className="header">
         <h1>Match #{currentMatchNo}</h1>
         <p>
@@ -2193,14 +2013,14 @@ export function LiveMatchPage({
           <h3>Goal Recorder</h3>
 
           {!hasVerifiedLineups && canControlMatch && (
-            <p className="muted" style={{ marginBottom: "0.6rem" }}>
+            <p className="muted stats-season-range">
               Verify lineups before recording goals.
             </p>
           )}
 
           {canControlMatch ? (
             !showGoalRecorder ? (
-              <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+              <div className="live-inline-actions">
                 <button
                   className="primary-btn"
                   type="button"
@@ -2211,15 +2031,7 @@ export function LiveMatchPage({
                 </button>
               </div>
             ) : (
-              <div
-                style={{
-                  marginTop: "0.6rem",
-                  padding: "0.9rem",
-                  borderRadius: "14px",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.04)",
-                }}
-              >
+              <div className="live-goal-recorder-panel">
                 {goalStep === "team" && (
                   <div className="field-row">
                     <label>Step 1 — Which team scored?</label>
@@ -2292,13 +2104,7 @@ export function LiveMatchPage({
                       disabled={!hasVerifiedLineups}
                     />
 
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.6rem",
-                        flexWrap: "wrap",
-                      }}
-                    >
+                    <div className="live-inline-actions">
                       <button
                         className="secondary-btn"
                         type="button"
@@ -2345,13 +2151,7 @@ export function LiveMatchPage({
                       disabled={!hasVerifiedLineups}
                     />
 
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.6rem",
-                        flexWrap: "wrap",
-                      }}
-                    >
+                    <div className="live-inline-actions">
                       <button
                         className="secondary-btn"
                         type="button"
@@ -2383,7 +2183,7 @@ export function LiveMatchPage({
               </div>
             )
           ) : (
-            <p className="muted" style={{ marginBottom: "0.6rem" }}>
+            <p className="muted stats-season-range">
               This is a live view only. Goal recording is controlled by
               captain/admin.
             </p>
@@ -2491,32 +2291,13 @@ export function LiveMatchPage({
 
       {showVerifyModal && (
         <div className="modal-backdrop">
-          <div
-            className="modal"
-            style={{
-              width: "min(1100px, 96vw)",
-              maxHeight: "92vh",
-              overflowY: "auto",
-            }}
-          >
+          <div className="modal live-verify-modal">
             <h3>Verify lineups before the match</h3>
-            <p
-              className="muted"
-              style={{ marginTop: "0.35rem", marginBottom: "0.9rem" }}
-            >
-              ______________________
-            </p>
+            <p className="muted live-verify-note">______________________</p>
 
-            <div
-              style={{
-                display: "flex",
-                gap: "1.25rem",
-                flexWrap: "wrap",
-                alignItems: "flex-start",
-              }}
-            >
+            <div className="live-lineup-columns">
               {!playersReady ? (
-                <div style={{ width: "100%" }}>
+                <div className="live-empty-full">
                   <p className="muted">Loading verified lineups…</p>
                 </div>
               ) : (
@@ -2548,7 +2329,7 @@ export function LiveMatchPage({
               )}
             </div>
 
-            <div className="actions-row" style={{ marginTop: "1rem" }}>
+            <div className="actions-row">
               <button
                 className="secondary-btn"
                 type="button"

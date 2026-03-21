@@ -1,4 +1,3 @@
-// src/pages/StatsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMemberNameMap } from "../core/nameMapping.js";
 import { db } from "../firebaseConfig";
@@ -1173,12 +1172,12 @@ export function StatsPage({
       <header className="header">
         <div>
           <h1>Stats &amp; Leaderboards</h1>
-          <div className="muted" style={{ marginTop: "0.25rem" }}>
+          <div className="muted stats-context-line">
             <strong>{seasonContextTitle}</strong> • <span>{viewContextTitle}</span> •{" "}
             <span>{headerRangeText}</span>
           </div>
           {isPreviewingPreviousSeasonUI && (
-            <div className="muted" style={{ marginTop: "0.25rem" }}>
+            <div className="muted stats-preview-note">
               Admin-only preview: you are viewing the current season styled as a
               previous season.
             </div>
@@ -1198,150 +1197,11 @@ export function StatsPage({
         </div>
       </header>
 
-      <style>{`
-        .tk-matchday-filter-row {
-          display: flex;
-          justify-content: flex-end;
-          gap: 0.4rem;
-          flex-wrap: wrap;
-          margin: 0.15rem 0 0.35rem;
-        }
-        .tk-md-btn {
-          border: 1px solid rgba(255,255,255,0.14);
-          background: rgba(255,255,255,0.06);
-          padding: 0.28rem 0.55rem;
-          border-radius: 999px;
-          font-weight: 800;
-          cursor: pointer;
-          color: #ffffff;
-        }
-        .tk-md-label {
-          opacity: 0.95;
-          color: #ffffff;
-        }
-        .tk-md-btn.active {
-          border-color: rgba(34,211,238,0.55);
-          box-shadow: 0 0 0 2px rgba(34,211,238,0.12);
-        }
-        .tk-md-muted {
-          opacity: 0.6;
-          font-weight: 700;
-          font-size: 0.82em;
-          margin-left: 0.4rem;
-        }
-        .tk-match-admin-box {
-          margin-top: 0.9rem;
-          padding-top: 0.75rem;
-          border-top: 1px dashed rgba(255,255,255,0.16);
-        }
-        .tk-match-admin-title {
-          font-size: 0.78rem;
-          font-weight: 900;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          opacity: 0.8;
-          margin-bottom: 0.55rem;
-        }
-        .tk-match-admin-row {
-          display: flex;
-          justify-content: flex-end;
-          gap: 0.5rem;
-          flex-wrap: wrap;
-          margin-top: 0.75rem;
-        }
-        .tk-danger-btn {
-          border: 1px solid rgba(239, 68, 68, 0.45);
-          background: rgba(239, 68, 68, 0.12);
-          color: #ffd6d6;
-          padding: 0.42rem 0.7rem;
-          border-radius: 999px;
-          font-weight: 800;
-          cursor: pointer;
-        }
-        .tk-danger-btn:hover {
-          background: rgba(239, 68, 68, 0.18);
-        }
-        .tk-edit-btn {
-          border: 1px solid rgba(56, 189, 248, 0.45);
-          background: rgba(56, 189, 248, 0.12);
-          color: #d9f6ff;
-          padding: 0.42rem 0.7rem;
-          border-radius: 999px;
-          font-weight: 800;
-          cursor: pointer;
-        }
-        .tk-edit-btn:hover {
-          background: rgba(56, 189, 248, 0.18);
-        }
-        .tk-admin-panel {
-          margin-top: 0.65rem;
-          padding: 0.8rem;
-          border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 14px;
-          background: rgba(255,255,255,0.04);
-        }
-        .tk-admin-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-          gap: 0.5rem;
-          margin-top: 0.55rem;
-        }
-        .tk-small-label {
-          display: block;
-          font-size: 0.8rem;
-          font-weight: 800;
-          margin-bottom: 0.22rem;
-          opacity: 0.88;
-        }
-        .tk-small-select {
-          width: 100%;
-          padding: 0.45rem 0.55rem;
-          border-radius: 10px;
-          border: 1px solid rgba(255,255,255,0.14);
-          color: #ffffff;
-          background: rgba(16, 185, 129, 0.28);
-          border-color: rgba(16, 185, 129, 0.5);
-        }
-        .tk-small-select option {
-          background: #065f46;
-          color: #ffffff;
-        }
-        .tk-inline-actions {
-          display: flex;
-          gap: 0.4rem;
-          flex-wrap: wrap;
-          margin-top: 0.65rem;
-        }
-        .tk-linkish-btn {
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.05);
-          color: inherit;
-          padding: 0.24rem 0.5rem;
-          border-radius: 999px;
-          font-weight: 800;
-          font-size: 0.78rem;
-          cursor: pointer;
-          margin-left: 0.45rem;
-        }
-        .tk-event-line {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 0.5rem;
-          padding: 0.1rem 0;
-          flex-wrap: wrap;
-        }
-        .tk-event-line-text {
-          flex: 1;
-          min-width: 220px;
-        }
-      `}</style>
-
       <section className="card">
         <h2>Season</h2>
 
-        <div className="stats-controls" style={{ alignItems: "center" }}>
-          <div className="stats-controls-left" style={{ minWidth: "320px" }}>
+        <div className="stats-controls stats-controls-align-center">
+          <div className="stats-controls-left stats-controls-left-wide">
             <div className="segment-wrapper">
               <div className="segmented-toggle">
                 <button
@@ -1377,8 +1237,8 @@ export function StatsPage({
                     previousSeasonOptions.length > 0
                       ? "Switch to a previous season"
                       : isAdminUser && canPreviewPreviousSeasonUI
-                      ? "Admin preview of previous-season layout"
-                      : "No previous seasons yet"
+                        ? "Admin preview of previous-season layout"
+                        : "No previous seasons yet"
                   }
                 >
                   Previous
@@ -1387,11 +1247,8 @@ export function StatsPage({
             </div>
 
             {seasonScope !== CURRENT_SCOPE && (
-              <div style={{ marginTop: "0.7rem" }}>
-                <label
-                  className="muted"
-                  style={{ display: "block", marginBottom: "0.25rem" }}
-                >
+              <div className="stats-season-select-block">
+                <label className="muted stats-inline-label">
                   Choose a previous season
                 </label>
 
@@ -1413,7 +1270,7 @@ export function StatsPage({
                         </option>
                       ))}
                     </select>
-                    <div className="muted" style={{ marginTop: "0.35rem" }}>
+                    <div className="muted stats-season-range">
                       {previousSeasonRange
                         ? `Season range: ${previousSeasonRange}`
                         : "Season range: unknown"}
@@ -1424,7 +1281,7 @@ export function StatsPage({
             )}
 
             {canShowDeleteCurrentEmptySeason && (
-              <div style={{ marginTop: "0.85rem" }}>
+              <div className="stats-danger-row">
                 <button
                   type="button"
                   className="tk-danger-btn"
@@ -1440,7 +1297,6 @@ export function StatsPage({
               </div>
             )}
           </div>
-
         </div>
       </section>
 
@@ -1543,173 +1399,41 @@ export function StatsPage({
               : `${championSeasonLabel} : ${headerRangeText}`}
           </h2>
 
-          <div
-            style={{
-              marginTop: "10px",
-              padding: "24px 20px 22px",
-              borderRadius: "20px",
-              background: `
-                radial-gradient(circle at top, rgba(250,204,21,0.22), transparent 48%),
-                linear-gradient(145deg, rgba(6,95,70,0.95), rgba(2,44,34,0.95))
-              `,
-              border: "1px solid rgba(255,255,255,0.16)",
-              boxShadow:
-                "0 18px 40px rgba(0,0,0,0.38), 0 0 0 1px rgba(250,204,21,0.10)",
-              textAlign: "center",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-                opacity: 0.16,
-                backgroundImage: `
-                  radial-gradient(circle, #facc15 2px, transparent 3px),
-                  radial-gradient(circle, #22c55e 2px, transparent 3px),
-                  radial-gradient(circle, #38bdf8 2px, transparent 3px)
-                `,
-                backgroundSize: "120px 120px",
-                backgroundPosition: "0 0, 40px 40px, 80px 20px",
-              }}
-            />
+          <div className="champion-card">
+            <div className="champion-card-content">
+              <div className="champion-crown">🏆</div>
 
-            <div
-              style={{
-                position: "relative",
-                zIndex: 1,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "34px",
-                  marginBottom: "6px",
-                  textShadow:
-                    "0 0 12px rgba(250,204,21,0.75), 0 0 24px rgba(250,204,21,0.32)",
-                }}
-              >
-                🏆
-              </div>
-
-              <div
-                style={{
-                  fontSize: "15px",
-                  fontWeight: 800,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  color: "#fde68a",
-                  marginBottom: "6px",
-                }}
-              >
+              <div className="champion-kicker">
                 {isPreviewingPreviousSeasonUI
                   ? "Season Champions (Preview)"
                   : "Season Champions"}
               </div>
 
-              <div
-                style={{
-                  fontSize: "28px",
-                  fontWeight: 900,
-                  marginBottom: "16px",
-                  color: "#f8fafc",
-                }}
-              >
-                {champion.teamName}
-              </div>
+              <div className="champion-team-name">{champion.teamName}</div>
 
               {champion.captainPhoto ? (
                 <img
                   src={champion.captainPhoto}
                   alt={champion.captainName}
-                  style={{
-                    width: "124px",
-                    height: "124px",
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                    border: "4px solid rgba(250,204,21,0.85)",
-                    margin: "0 auto 12px",
-                    display: "block",
-                    boxShadow:
-                      "0 0 20px rgba(250,204,21,0.35), 0 10px 22px rgba(0,0,0,0.55)",
-                    background: "rgba(255,255,255,0.08)",
-                  }}
+                  className="champion-captain-photo"
                 />
               ) : (
-                <div
-                  style={{
-                    width: "124px",
-                    height: "124px",
-                    borderRadius: "50%",
-                    margin: "0 auto 12px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "4px solid rgba(250,204,21,0.55)",
-                    background:
-                      "radial-gradient(circle at 30% 20%, rgba(56,189,248,0.35), rgba(15,23,42,0.95))",
-                    fontSize: "36px",
-                    fontWeight: 900,
-                    color: "#f8fafc",
-                    boxShadow:
-                      "0 0 20px rgba(250,204,21,0.20), 0 10px 22px rgba(0,0,0,0.55)",
-                  }}
-                >
+                <div className="champion-captain-fallback">
                   {String(champion.captainName || "?").charAt(0).toUpperCase()}
                 </div>
               )}
 
-              <div
-                style={{
-                  fontWeight: 800,
-                  fontSize: "18px",
-                  marginBottom: "14px",
-                  color: "#e5e7eb",
-                }}
-              >
-                Captain:{" "}
-                <span style={{ color: "#f8fafc" }}>{champion.captainName}</span>
+              <div className="champion-captain-line">
+                Captain: <span className="champion-captain-name">{champion.captainName}</span>
               </div>
 
               {champion.squadNames && champion.squadNames.length > 0 && (
                 <>
-                  <div
-                    style={{
-                      fontWeight: 800,
-                      marginBottom: "10px",
-                      color: "#bbf7d0",
-                      fontSize: "15px",
-                      letterSpacing: "0.03em",
-                    }}
-                  >
-                    Winning Squad
-                  </div>
+                  <div className="champion-squad-title">Winning Squad</div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      justifyContent: "center",
-                      gap: "8px",
-                      position: "relative",
-                      zIndex: 1,
-                    }}
-                  >
+                  <div className="champion-squad-chips">
                     {champion.squadNames.map((p, i) => (
-                      <span
-                        key={i}
-                        style={{
-                          padding: "7px 13px",
-                          borderRadius: "999px",
-                          background: "rgba(255,255,255,0.14)",
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          fontSize: "14px",
-                          fontWeight: 600,
-                          color: "#f8fafc",
-                          backdropFilter: "blur(4px)",
-                        }}
-                      >
+                      <span key={i} className="champion-squad-chip">
                         {p}
                       </span>
                     ))}
@@ -1722,65 +1446,26 @@ export function StatsPage({
       )}
 
       {isViewingPreviousSeason && (
-        <section className="card" style={{ paddingTop: "14px", paddingBottom: "14px" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-            }}
-          >
+        <section className="card prev-season-nav-card">
+          <div className="prev-season-nav">
             <button
               type="button"
-              className="secondary-btn"
+              className="secondary-btn prev-season-nav-btn"
               onClick={goPrevSeasonTable}
               title="Previous table"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: "0",
-                fontSize: "20px",
-                fontWeight: 900,
-                lineHeight: 1,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
             >
               ←
             </button>
 
-            <div
-              style={{
-                flex: 1,
-                textAlign: "center",
-                fontWeight: 800,
-                fontSize: "15px",
-                color: "#e5e7eb",
-              }}
-            >
+            <div className="prev-season-nav-title">
               {previousSeasonCurrentTableLabel}
             </div>
 
             <button
               type="button"
-              className="secondary-btn"
+              className="secondary-btn prev-season-nav-btn"
               onClick={goNextSeasonTable}
               title="Next table"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: "0",
-                fontSize: "20px",
-                fontWeight: 900,
-                lineHeight: 1,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
             >
               →
             </button>
@@ -1796,15 +1481,10 @@ export function StatsPage({
                 ? "Team Standings — Previous Season Preview"
                 : `Team Standings — ${formatSeasonDisplayName(selectedPrevSeason)}`
               : viewMode === "season"
-              ? "Team Standings — Current Season"
-              : "Team Standings — Current Week"}
+                ? "Team Standings — Current Season"
+                : "Team Standings — Current Week"}
           </h2>
-          <div
-            className="muted"
-            style={{ marginTop: "-0.25rem", marginBottom: "0.6rem" }}
-          >
-            {headerRangeText}
-          </div>
+          <div className="muted stats-subtitle-tight">{headerRangeText}</div>
 
           <div className="table-wrapper">
             <table className="stats-table">
@@ -1858,8 +1538,8 @@ export function StatsPage({
                 ? "Player Rankings — Previous Season Preview"
                 : "Player Rankings — Previous Season"
               : viewMode === "season"
-              ? "Player Rankings — Current Season"
-              : "Player Rankings — Current Week"}
+                ? "Player Rankings — Current Season"
+                : "Player Rankings — Current Week"}
           </h2>
           <div className="table-wrapper">
             <table className="stats-table">
@@ -1907,8 +1587,8 @@ export function StatsPage({
                 ? "Top Scorers — Previous Season Preview"
                 : "Top Scorers — Previous Season"
               : viewMode === "season"
-              ? "Top Scorers — Current Season"
-              : "Top Scorers — Current Week"}
+                ? "Top Scorers — Current Season"
+                : "Top Scorers — Current Week"}
           </h2>
           <div className="table-wrapper">
             <table className="stats-table">
@@ -1950,8 +1630,8 @@ export function StatsPage({
                 ? "Top Playmakers — Previous Season Preview"
                 : "Top Playmakers — Previous Season"
               : viewMode === "season"
-              ? "Top Playmakers — Current Season"
-              : "Top Playmakers — Current Week"}
+                ? "Top Playmakers — Current Season"
+                : "Top Playmakers — Current Week"}
           </h2>
           <div className="table-wrapper">
             <table className="stats-table">
@@ -1993,8 +1673,8 @@ export function StatsPage({
                 ? "Clean Sheets — Previous Season Preview"
                 : "Clean Sheets — Previous Season"
               : viewMode === "season"
-              ? "Clean Sheets — Current Season"
-              : "Clean Sheets — Current Week"}
+                ? "Clean Sheets — Current Season"
+                : "Clean Sheets — Current Week"}
           </h2>
           <div className="table-wrapper">
             <table className="stats-table">
@@ -2040,8 +1720,8 @@ export function StatsPage({
                 ? "All Match Results — Previous Season Preview"
                 : "All Match Results — Previous Season"
               : viewMode === "season"
-              ? "All Match Results — Current Season"
-              : "All Match Results — Current Week"}
+                ? "All Match Results — Current Season"
+                : "All Match Results — Current Week"}
           </h2>
           <p className="muted">
             Tap a match row to see goal scorers and assists for that game.
@@ -2535,10 +2215,7 @@ export function StatsPage({
                                 </div>
 
                                 {isAddingEvent && (
-                                  <div
-                                    className="tk-admin-panel"
-                                    style={{ marginTop: "0.75rem" }}
-                                  >
+                                  <div className="tk-admin-panel tk-admin-panel-spaced">
                                     <div className="tk-admin-grid">
                                       <div>
                                         <label className="tk-small-label">
