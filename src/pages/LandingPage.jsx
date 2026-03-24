@@ -56,8 +56,16 @@ export function LandingPage({
   results,
   streaks,
   hasLiveMatch,
+  matchMode = "round_robin",
+  scheduledTarget = null,
+  scheduledFixtures = [],
+  smartOffset = 5,
+  smartTarget = null,
   onUpdatePairing,
   onStartMatch,
+  onSetMatchMode,
+  onGenerateScheduledPlan,
+  onUpdateSmartOffset,
   onGoToStats,
   onOpenBackupModal,
   onOpenEndSeasonModal,
@@ -80,6 +88,10 @@ export function LandingPage({
   const [pendingMatch, setPendingMatch] = useState(null);
   const [pairingCode, setPairingCode] = useState("");
   const [pairingError, setPairingError] = useState("");
+
+  const [showFixturesModal, setShowFixturesModal] = useState(false);
+  const [fixtureAdminCode, setFixtureAdminCode] = useState("");
+  const [fixtureAdminError, setFixtureAdminError] = useState("");
 
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -150,7 +162,7 @@ export function LandingPage({
 
   let ribbonText = "";
   if (teamA && teamB && standbyTeam) {
-    ribbonText = `Next: ${teamA.label} vs ${teamB.label}  \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0  Standby: ${standbyTeam.label}`;
+    ribbonText = `Next: ${teamA.label} vs ${teamB.label}       Standby: ${standbyTeam.label}`;
   }
 
   if (lastResult) {
@@ -165,15 +177,22 @@ export function LandingPage({
               lastResult.winnerId === lastA.id ? lastA.label : lastB.label
             }`;
 
-      ribbonText += `  \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0 • Last: ${lastA.label} ${lastResult.goalsA}-${lastResult.goalsB} ${lastB.label} (${status})`;
+      ribbonText += `       • Last: ${lastA.label} ${lastResult.goalsA}-${lastResult.goalsB} ${lastB.label} (${status})`;
     }
   } else if (ribbonText) {
-    ribbonText +=
-      "  \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0 • No results yet – first game incoming!";
+    ribbonText += "       • No results yet – first game incoming!";
   }
 
   const requestPairChange = (candidateMatch) => {
     if (!canStartMatch) return;
+
+    if (matchMode === "scheduled_target") {
+      window.alert(
+        "Pairing override is locked while Fixtured mode is active."
+      );
+      return;
+    }
+
     setPendingMatch(candidateMatch);
     setPairingCode("");
     setPairingError("");
@@ -258,6 +277,19 @@ export function LandingPage({
   };
 
   const canSeeCaptainStyleControls = isCaptain || isAdmin;
+  const fixturedMode = matchMode === "scheduled_target";
+
+  const handleProtectedTargetChange = (target) => {
+    if (!isAdmin) return;
+
+    if (fixtureAdminCode.trim() !== "3333") {
+      setFixtureAdminError("Invalid admin code.");
+      return;
+    }
+
+    setFixtureAdminError("");
+    onGenerateScheduledPlan?.(target);
+  };
 
   return (
     <div className="page landing-page">
@@ -317,7 +349,98 @@ export function LandingPage({
       </header>
 
       <section className="card">
+        {canSeeCaptainStyleControls && (
+          <div style={{ marginBottom: "0.9rem" }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "4px",
+                borderRadius: "999px",
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                gap: "4px",
+              }}
+            >
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => onSetMatchMode?.("round_robin")}
+                style={{
+                  borderRadius: "999px",
+                  padding: "0.45rem 0.9rem",
+                  color: "#ffffff",
+                  border: fixturedMode
+                    ? "1px solid transparent"
+                    : "1px solid rgba(255, 90, 90, 0.55)",
+                  background: fixturedMode
+                    ? "transparent"
+                    : "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
+                  boxShadow: fixturedMode
+                    ? "none"
+                    : "0 0 18px rgba(255,60,60,0.35)",
+                }}
+              >
+                Round Robin
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => onSetMatchMode?.("scheduled_target")}
+                style={{
+                  borderRadius: "999px",
+                  padding: "0.45rem 0.9rem",
+                  color: "#ffffff",
+                  border: fixturedMode
+                    ? "1px solid rgba(255, 90, 90, 0.55)"
+                    : "1px solid transparent",
+                  background: fixturedMode
+                    ? "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))"
+                    : "transparent",
+                  boxShadow: fixturedMode
+                    ? "0 0 18px rgba(255,60,60,0.35)"
+                    : "none",
+                }}
+              >
+                Fixtured
+              </button>
+            </div>
+          </div>
+        )}
+
         <h2>Upcoming Match #{currentMatchNo}</h2>
+
+        {fixturedMode && canSeeCaptainStyleControls && (
+          <div style={{ marginBottom: "0.9rem" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "0.45rem",
+                flexWrap: "wrap",
+                alignItems: "center",
+                marginBottom: "0.55rem",
+              }}
+            >
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setShowFixturesModal(true)}
+                disabled={!scheduledFixtures || scheduledFixtures.length === 0}
+                style={{
+                  opacity:
+                    scheduledFixtures && scheduledFixtures.length > 0 ? 1 : 0.6,
+                }}
+              >
+                View fixtures
+              </button>
+            </div>
+
+            <div className="muted small">
+              Target: <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+            </div>
+          </div>
+        )}
 
         <div className="match-setup-row">
           <div className="team-select">
@@ -325,7 +448,7 @@ export function LandingPage({
             <select
               value={teamAId || ""}
               onChange={handleTeamAChange}
-              disabled={!canSeeCaptainStyleControls}
+              disabled={!canSeeCaptainStyleControls || fixturedMode}
             >
               {optionsForTeamA.map((team) => (
                 <option key={team.id} value={team.id}>
@@ -342,7 +465,7 @@ export function LandingPage({
             <select
               value={teamBId || ""}
               onChange={handleTeamBChange}
-              disabled={!canSeeCaptainStyleControls}
+              disabled={!canSeeCaptainStyleControls || fixturedMode}
             >
               {optionsForTeamB.map((team) => (
                 <option key={team.id} value={team.id}>
@@ -359,6 +482,12 @@ export function LandingPage({
             <strong>
               {standbyTeam.label} (c: {standbyTeam.captain})
             </strong>
+          </p>
+        )}
+
+        {fixturedMode && (
+          <p className="muted small" style={{ marginTop: "-0.1rem" }}>
+            Pairing override is locked while Fixtured mode is active.
           </p>
         )}
 
@@ -514,6 +643,168 @@ export function LandingPage({
               </button>
               <button className="primary-btn" onClick={confirmPairingChange}>
                 Confirm change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFixturesModal && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: "620px", width: "94%" }}>
+            <h3>Fixtured Match List</h3>
+            <p>
+              Target: <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+            </p>
+
+            {isAdmin && (
+              <div style={{ marginBottom: "1rem" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.45rem",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    marginBottom: "0.55rem",
+                  }}
+                >
+                  <input
+                    type="password"
+                    className="text-input"
+                    style={{ width: "120px" }}
+                    placeholder="Admin code"
+                    value={fixtureAdminCode}
+                    onChange={(e) => {
+                      setFixtureAdminCode(e.target.value);
+                      setFixtureAdminError("");
+                    }}
+                  />
+
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    className="text-input"
+                    style={{ width: "84px" }}
+                    value={smartOffset}
+                    onChange={(e) =>
+                      onUpdateSmartOffset?.(Number(e.target.value || 5))
+                    }
+                    title="Smart offset above current max P"
+                  />
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() =>
+                      smartTarget != null && handleProtectedTargetChange(smartTarget)
+                    }
+                    disabled={smartTarget == null}
+                    style={
+                      smartTarget != null &&
+                      Number(scheduledTarget) === Number(smartTarget)
+                        ? {
+                            border: "1px solid rgba(255, 90, 90, 0.55)",
+                            background:
+                              "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
+                            color: "#ffffff",
+                          }
+                        : undefined
+                    }
+                  >
+                    {smartTarget ?? "-"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleProtectedTargetChange(50)}
+                    style={
+                      Number(scheduledTarget) === 50
+                        ? {
+                            border: "1px solid rgba(255, 90, 90, 0.55)",
+                            background:
+                              "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
+                            color: "#ffffff",
+                          }
+                        : undefined
+                    }
+                  >
+                    50
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleProtectedTargetChange(52)}
+                    style={
+                      Number(scheduledTarget) === 52
+                        ? {
+                            border: "1px solid rgba(255, 90, 90, 0.55)",
+                            background:
+                              "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
+                            color: "#ffffff",
+                          }
+                        : undefined
+                    }
+                  >
+                    52
+                  </button>
+                </div>
+
+                <p className="muted small" style={{ marginTop: "-0.15rem" }}>
+                  Smart target = nearest reachable common target at or above max P + offset
+                </p>
+
+                {fixtureAdminError && (
+                  <p className="error-text" style={{ marginTop: "0.25rem" }}>
+                    {fixtureAdminError}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div
+              style={{
+                maxHeight: "50vh",
+                overflowY: "auto",
+                marginTop: "0.5rem",
+                paddingRight: "0.25rem",
+              }}
+            >
+              {(scheduledFixtures || []).map((fixture, index) => {
+                const done = !!fixture.completed;
+
+                const hasScore =
+                  done &&
+                  fixture.goalsA !== null &&
+                  fixture.goalsA !== undefined &&
+                  fixture.goalsB !== null &&
+                  fixture.goalsB !== undefined;
+
+                return (
+                  <div
+                    key={fixture.id || `${fixture.teamAId}-${fixture.teamBId}-${index}`}
+                    style={{
+                      padding: "0.45rem 0",
+                      fontWeight: done ? 400 : 700,
+                      opacity: done ? 0.6 : 1,
+                      borderBottom: "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    {index + 1}. {fixture.teamALabel} vs {fixture.teamBLabel}
+                    {hasScore ? ` (${fixture.goalsA}-${fixture.goalsB})` : ""}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="actions-row">
+              <button
+                className="secondary-btn"
+                onClick={() => setShowFixturesModal(false)}
+              >
+                Close
               </button>
             </div>
           </div>

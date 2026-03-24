@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
@@ -11,6 +12,7 @@ import { PlayerCardPage } from "./pages/PlayerCardPage.jsx";
 import { PeerReviewPage } from "./pages/PeerReviewPage.jsx";
 import { MigrationPage } from "./pages/MigrationPage.jsx";
 import MatchSignupPage from "./pages/MatchSignupPage.jsx";
+import PaymentPage from "./pages/PaymentPage.jsx";
 
 import {
   loadState,
@@ -30,6 +32,14 @@ import { usePeerRatings } from "./hooks/usePeerRatings.js";
 import { useMembers } from "./hooks/useMembers.js";
 import { buildCleanSheetEventsForMatch } from "./core/lineups.js";
 
+import {
+  buildCurrentMatchFromFixture,
+  computeScheduledPlan,
+  findNearestValidTarget,
+  getFirstPendingFixture,
+  markScheduledFixtureCompleted,
+} from "./core/scheduledFixtures.js";
+
 import { db } from "./firebaseConfig.js";
 import { doc, writeBatch, serverTimestamp } from "firebase/firestore";
 
@@ -46,14 +56,13 @@ const PAGE_PLAYER_CARDS = "player-cards";
 const PAGE_PEER_REVIEW = "peer-review";
 const PAGE_MIGRATION = "migration";
 const PAGE_MATCH_SIGNUP = "match-signup";
+const PAGE_PAYMENT = "payment";
 
 const MASTER_CODE = "3333";
 const MATCH_SECONDS = 5 * 60;
 
-// ✅ V2 switch
 const USE_V2 = true;
 
-// ✅ Show staging badge only when using staging mode
 const IS_STAGING =
   String(import.meta.env.VITE_USE_STAGING || "").trim().toLowerCase() ===
   "true";
@@ -83,9 +92,7 @@ function slugFromLooseName(value) {
 }
 
 function getStoredRole(identity) {
-  const role = String(
-    identity?.actingRole || identity?.role || "spectator"
-  )
+  const role = String(identity?.actingRole || identity?.role || "spectator")
     .trim()
     .toLowerCase();
 
@@ -139,9 +146,7 @@ function getIdentityCandidateStrings(identity) {
     if (first) expanded.push(first);
   });
 
-  return Array.from(
-    new Set(expanded.map((v) => safeLower(v)).filter(Boolean))
-  );
+  return Array.from(new Set(expanded.map((v) => safeLower(v)).filter(Boolean)));
 }
 
 function getTeamCaptainCandidateStrings(team = {}) {
@@ -192,6 +197,22 @@ function deriveActiveRole(identity, teams = []) {
 
 /* ---------------- State helpers ---------------- */
 
+function ensureSeasonSchedulingShape(season) {
+  if (!season || typeof season !== "object") return season;
+
+  return {
+    ...season,
+    matchMode: season?.matchMode || "round_robin",
+    scheduledTarget:
+      Number.isInteger(Number(season?.scheduledTarget))
+        ? Number(season.scheduledTarget)
+        : null,
+    scheduledFixtures: Array.isArray(season?.scheduledFixtures)
+      ? season.scheduledFixtures
+      : [],
+  };
+}
+
 function ensureV2StateShape(s) {
   const fallback = createDefaultStateV2();
   if (!s || typeof s !== "object") return fallback;
@@ -201,8 +222,8 @@ function ensureV2StateShape(s) {
 
   const seasons =
     Array.isArray(s.seasons) && s.seasons.length
-      ? s.seasons
-      : fallback.seasons;
+      ? s.seasons.map(ensureSeasonSchedulingShape)
+      : fallback.seasons.map(ensureSeasonSchedulingShape);
 
   return {
     ...fallback,
@@ -609,7 +630,6 @@ export default function App() {
     setPage(PAGE_LANDING);
   };
 
-  // ---------- APP STATE ----------
   const [state, setState] = useState(() =>
     USE_V2 ? loadStateV2() : loadState()
   );
@@ -622,13 +642,23 @@ export default function App() {
   const peerRatingsByPlayer = peerRatingsFromHook || {};
 
   const [statsReturnPage, setStatsReturnPage] = useState(PAGE_LANDING);
+  const [paymentContext, setPaymentContext] = useState(null);
+  const [smartOffset, setSmartOffset] = useState(() => {
+    if (typeof window === "undefined") return 5;
+    try {
+      const raw = window.localStorage.getItem("tk_smart_offset_v1");
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
+    } catch {
+      return 5;
+    }
+  });
 
   const [secondsLeft, setSecondsLeft] = useState(MATCH_SECONDS);
   const [running, setRunning] = useState(false);
   const [timeUp, setTimeUp] = useState(false);
   const [hasLiveMatch, setHasLiveMatch] = useState(false);
 
-  // ---------- PRE-MATCH LINEUP CONFIRMATION ----------
   const [pendingMatchStartContext, setPendingMatchStartContext] = useState(
     null
   );
@@ -638,7 +668,6 @@ export default function App() {
     {}
   );
 
-  // ---------- END MATCH DAY MODAL ----------
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupCode, setBackupCode] = useState("");
   const [backupError, setBackupError] = useState("");
@@ -646,10 +675,11 @@ export default function App() {
     []
   );
 
-  // ---------- END SEASON MODAL ----------
   const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
   const [endSeasonCode, setEndSeasonCode] = useState("");
   const [endSeasonError, setEndSeasonError] = useState("");
+  const [showSeasonCompleteModal, setShowSeasonCompleteModal] = useState(false);
+  const [seasonCompleteDismissedKey, setSeasonCompleteDismissedKey] = useState(null);
 
   const updateState = (updater) => {
     setState((prev) => {
@@ -689,7 +719,15 @@ export default function App() {
     return () => unsubscribe && unsubscribe();
   }, []);
 
-  // ---------- DERIVE ACTIVE SEASON FIELDS ----------
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem("tk_smart_offset_v1", String(smartOffset));
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [smartOffset]);
+
   let teams,
     currentMatchNo,
     currentMatch,
@@ -703,6 +741,10 @@ export default function App() {
 
   let safeV2ForStats = null;
   let activeSeasonNo = 1;
+  let activeSeasonId = null;
+  let matchMode = "round_robin";
+  let scheduledTarget = null;
+  let scheduledFixtures = [];
 
   if (USE_V2) {
     const { safeV2, activeSeason } = getActiveSeasonFromV2State(state);
@@ -710,7 +752,8 @@ export default function App() {
 
     const fallbackSeason =
       safeV2?.seasons?.[0] || createDefaultStateV2().seasons[0];
-    const s = activeSeason || fallbackSeason;
+    activeSeasonId = safeV2?.activeSeasonId || fallbackSeason?.seasonId || null;
+    const s = ensureSeasonSchedulingShape(activeSeason || fallbackSeason);
 
     teams = s?.teams || [];
     currentMatchNo = s?.currentMatchNo || 1;
@@ -721,11 +764,18 @@ export default function App() {
     streaks = s?.streaks || {};
     matchDayHistory = s?.matchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
+    matchMode = s?.matchMode || "round_robin";
+    scheduledTarget =
+      Number.isInteger(Number(s?.scheduledTarget)) ? Number(s.scheduledTarget) : null;
+    scheduledFixtures = Array.isArray(s?.scheduledFixtures)
+      ? s.scheduledFixtures
+      : [];
 
     playerPhotosByName = safeV2.playerPhotosByName || {};
     yearEndAttendance = safeV2.yearEndAttendance || [];
   } else {
     const legacy = state || createDefaultState();
+
     ({
       teams,
       currentMatchNo,
@@ -738,6 +788,15 @@ export default function App() {
       playerPhotosByName = {},
       yearEndAttendance = [],
     } = legacy || createDefaultState());
+
+    matchMode = legacy?.matchMode || "round_robin";
+    scheduledTarget =
+      Number.isInteger(Number(legacy?.scheduledTarget))
+        ? Number(legacy.scheduledTarget)
+        : null;
+    scheduledFixtures = Array.isArray(legacy?.scheduledFixtures)
+      ? legacy.scheduledFixtures
+      : [];
   }
 
   const activeRole = useMemo(
@@ -770,51 +829,102 @@ export default function App() {
     ...(allEvents || []),
   ];
 
-  useEffect(() => {
-    console.log("[TK DEBUG] Role check", {
-      identity,
-      activeRole,
-      canStartMatch,
-      isAdmin,
-      isCaptain,
-      isPlayer,
-      isSpectator,
+  const teamPlayedCounts = useMemo(() => {
+    const counts = Object.fromEntries((teams || []).map((team) => [team.id, 0]));
+
+    (fullResults || []).forEach((result) => {
+      if (result?.teamAId && counts[result.teamAId] != null) {
+        counts[result.teamAId] += 1;
+      }
+      if (result?.teamBId && counts[result.teamBId] != null) {
+        counts[result.teamBId] += 1;
+      }
+    });
+
+    return counts;
+  }, [teams, fullResults]);
+
+  const currentMaxP = useMemo(() => {
+    const values = Object.values(teamPlayedCounts || {});
+    return values.length ? Math.max(...values) : 0;
+  }, [teamPlayedCounts]);
+
+  const normalizedSmartOffset = useMemo(() => {
+    const n = Number(smartOffset);
+    return Number.isFinite(n) && n >= 0 ? n : 5;
+  }, [smartOffset]);
+
+  const smartStartTarget = useMemo(() => {
+    return currentMaxP + normalizedSmartOffset;
+  }, [currentMaxP, normalizedSmartOffset]);
+
+  const smartTargetResult = useMemo(() => {
+    if (!Array.isArray(teams) || teams.length !== 3) {
+      return { target: null, plan: null };
+    }
+
+    return findNearestValidTarget({
       teams,
+      results: fullResults,
+      minTarget: smartStartTarget,
+      maxLookAhead: 40,
     });
+  }, [teams, fullResults, smartStartTarget]);
+
+  const smartTarget = smartTargetResult?.target ?? null;
+
+  const hasPendingScheduledFixture = useMemo(() => {
+    return (scheduledFixtures || []).some((fixture) => !fixture?.completed);
+  }, [scheduledFixtures]);
+
+  const isSeasonTargetReached = useMemo(() => {
+    if (matchMode !== "scheduled_target") return false;
+    if (!Number.isFinite(Number(scheduledTarget))) return false;
+
+    const values = Object.values(teamPlayedCounts || {});
+    if (!values.length) return false;
+
+    return values.every((value) => Number(value) >= Number(scheduledTarget));
+  }, [matchMode, scheduledTarget, teamPlayedCounts]);
+
+  const seasonCompletionKey = useMemo(() => {
+    return `${activeSeasonId || "legacy"}::${scheduledTarget || "none"}`;
+  }, [activeSeasonId, scheduledTarget]);
+
+  const shouldLockFurtherFixtures =
+    isSeasonTargetReached && !hasPendingScheduledFixture;
+
+  useEffect(() => {
+    if (!shouldLockFurtherFixtures) return;
+    if (hasLiveMatch || running) return;
+    if (seasonCompleteDismissedKey === seasonCompletionKey) return;
+    setShowSeasonCompleteModal(true);
   }, [
-    identity,
-    activeRole,
-    canStartMatch,
-    isAdmin,
-    isCaptain,
-    isPlayer,
-    isSpectator,
-    teams,
+    shouldLockFurtherFixtures,
+    hasLiveMatch,
+    running,
+    seasonCompleteDismissedKey,
+    seasonCompletionKey,
   ]);
 
   useEffect(() => {
-    console.log("[TK DEBUG] Archive status (NO SEEDS)", {
-      mode: USE_V2 ? "V2(appState_v2/main)" : "LEGACY(appState/main)",
-      hasFirebaseHistory,
-      matchDayHistoryLength: (matchDayHistory || []).length,
-      archivedResultsFromHistory: archivedResultsFromHistory.length,
-      archivedEventsFromHistory: archivedEventsFromHistory.length,
-      currentResults: (results || []).length,
-      currentEvents: (allEvents || []).length,
-      environment: IS_STAGING ? "staging" : "production",
-      activeRole,
+    console.log("[TK DEBUG] Match mode state", {
+      matchMode,
+      scheduledTarget,
+      scheduledFixturesCount: scheduledFixtures.length,
+      currentResultsCount: (results || []).length,
+      archivedResultsCount: archivedResultsFromHistory.length,
+      fullResultsCount: fullResults.length,
     });
   }, [
-    hasFirebaseHistory,
-    matchDayHistory,
-    archivedResultsFromHistory.length,
-    archivedEventsFromHistory.length,
+    matchMode,
+    scheduledTarget,
+    scheduledFixtures.length,
     results,
-    allEvents,
-    activeRole,
+    archivedResultsFromHistory.length,
+    fullResults.length,
   ]);
 
-  // ---------- TIMER ----------
   useEffect(() => {
     if (!running) return;
     if (secondsLeft <= 0) return;
@@ -833,7 +943,6 @@ export default function App() {
     return () => clearInterval(id);
   }, [running, secondsLeft]);
 
-  // ---------- NAV ----------
   const handleGoToStats = (fromPage) => {
     setStatsReturnPage(fromPage);
     setPage(PAGE_STATS);
@@ -843,10 +952,16 @@ export default function App() {
   const handleBackToLive = () => setPage(PAGE_LIVE);
   const handleGoToMatchSignup = () => setPage(PAGE_MATCH_SIGNUP);
 
-  // ---------- LANDING ----------
   const handleUpdatePairing = (match) => {
     if (!canStartMatch) {
       window.alert("Only captains or admin can update the pairing.");
+      return;
+    }
+
+    if (matchMode === "scheduled_target") {
+      window.alert(
+        "Manual pairing changes are locked while Fixtured mode is active."
+      );
       return;
     }
 
@@ -857,12 +972,188 @@ export default function App() {
       }));
       return;
     }
+
     updateState((prev) => ({ ...prev, currentMatch: match }));
+  };
+
+  const handleUpdateSmartOffset = (nextValue) => {
+    const numeric = Number(nextValue);
+    if (!Number.isFinite(numeric)) {
+      setSmartOffset(5);
+      return;
+    }
+    setSmartOffset(Math.max(0, Math.round(numeric)));
+  };
+
+  const handleSetMatchMode = (nextMode) => {
+    if (!USE_V2) return;
+
+    if (running || hasLiveMatch) {
+      window.alert("Finish or discard the live match before changing mode.");
+      return;
+    }
+
+    const safeMode =
+      nextMode === "scheduled_target" ? "scheduled_target" : "round_robin";
+
+    updateActiveSeason((prevSeason) => {
+      if (safeMode === "round_robin") {
+        return {
+          ...prevSeason,
+          matchMode: "round_robin",
+          scheduledTarget: null,
+          scheduledFixtures: [],
+        };
+      }
+
+      const seasonResults = [
+        ...((prevSeason.matchDayHistory || []).flatMap((day) => day?.results || [])),
+        ...(prevSeason.results || []),
+      ];
+
+      const counts = Object.fromEntries(
+        (prevSeason.teams || []).map((team) => [team.id, 0])
+      );
+
+      seasonResults.forEach((r) => {
+        if (r?.teamAId && counts[r.teamAId] != null) counts[r.teamAId] += 1;
+        if (r?.teamBId && counts[r.teamBId] != null) counts[r.teamBId] += 1;
+      });
+
+      const maxP = Math.max(0, ...Object.values(counts));
+      const desiredStart = maxP + normalizedSmartOffset;
+
+      const nearest = findNearestValidTarget({
+        teams: prevSeason.teams || [],
+        results: seasonResults,
+        minTarget: desiredStart,
+        maxLookAhead: 40,
+      });
+
+      console.log("[FIXTURE DEBUG] handleSetMatchMode -> maxP =", maxP);
+      console.log(
+        "[FIXTURE DEBUG] handleSetMatchMode -> smart offset =",
+        normalizedSmartOffset
+      );
+      console.log(
+        "[FIXTURE DEBUG] handleSetMatchMode -> desired start target =",
+        desiredStart
+      );
+      console.log(
+        "[FIXTURE DEBUG] handleSetMatchMode -> nearest valid target =",
+        nearest?.target ?? null
+      );
+      console.log(
+        "[FIXTURE DEBUG] handleSetMatchMode -> team P counts =",
+        (prevSeason.teams || []).map((team) => ({
+          team: team.label,
+          played: seasonResults.filter(
+            (r) => r.teamAId === team.id || r.teamBId === team.id
+          ).length,
+        }))
+      );
+
+      if (!nearest?.plan?.ok || nearest?.target == null) {
+        window.alert(
+          "Could not find a reachable fixtured target from the current standings."
+        );
+        return {
+          ...prevSeason,
+          matchMode: "scheduled_target",
+          scheduledTarget: null,
+          scheduledFixtures: [],
+        };
+      }
+
+      const firstFixture = getFirstPendingFixture(nearest.plan.fixtures);
+      const nextCurrentMatch = buildCurrentMatchFromFixture(
+        firstFixture,
+        prevSeason.teams || []
+      );
+
+      return {
+        ...prevSeason,
+        matchMode: "scheduled_target",
+        scheduledTarget: Number(nearest.target),
+        scheduledFixtures: nearest.plan.fixtures,
+        currentMatch: nextCurrentMatch || prevSeason.currentMatch,
+      };
+    });
+  };
+
+  const handleGenerateScheduledPlan = (target) => {
+    if (!USE_V2) return;
+
+    if (running || hasLiveMatch) {
+      window.alert("Finish or discard the live match before generating fixtures.");
+      return;
+    }
+
+    const safeTarget = Number(target);
+
+    if (!Number.isFinite(safeTarget) || safeTarget <= 0) {
+      window.alert("Please enter a valid target.");
+      return;
+    }
+
+    const plan = computeScheduledPlan({
+      teams,
+      results: fullResults,
+      target: safeTarget,
+    });
+
+    console.log("[FIXTURE DEBUG] target =", safeTarget);
+    console.log("[FIXTURE DEBUG] fullResults length =", fullResults.length);
+    console.log(
+      "[FIXTURE DEBUG] team P counts from fullResults =",
+      teams.map((team) => ({
+        team: team.label,
+        played: fullResults.filter(
+          (r) => r.teamAId === team.id || r.teamBId === team.id
+        ).length,
+      }))
+    );
+    console.log("[FIXTURE DEBUG] pairCounts =", plan?.pairCounts || null);
+    console.log("[FIXTURE DEBUG] generated fixtures =", plan?.fixtures || []);
+    console.log(
+      "[FIXTURE DEBUG] generated fixtures length =",
+      plan?.fixtures?.length || 0
+    );
+    console.log(
+      "[FIXTURE DEBUG] generated fixture labels =",
+      (plan?.fixtures || []).map(
+        (f, i) => `${i + 1}. ${f.teamALabel} vs ${f.teamBLabel}`
+      )
+    );
+
+    if (!plan.ok) {
+      window.alert(plan.reason || "Could not generate fixtured schedule.");
+      return;
+    }
+
+    const firstFixture = getFirstPendingFixture(plan.fixtures);
+    const nextCurrentMatch = buildCurrentMatchFromFixture(firstFixture, teams);
+
+    updateActiveSeason((prevSeason) => ({
+      ...prevSeason,
+      matchMode: "scheduled_target",
+      scheduledTarget: Number(safeTarget),
+      scheduledFixtures: plan.fixtures,
+      currentMatch: nextCurrentMatch || prevSeason.currentMatch,
+    }));
   };
 
   const handleStartMatch = () => {
     if (!canStartMatch) {
       window.alert("Only captains or admin can start a match.");
+      return;
+    }
+
+    if (shouldLockFurtherFixtures) {
+      setShowSeasonCompleteModal(true);
+      window.alert(
+        "This fixtured season has reached its target. Please end the season before recording more matches."
+      );
       return;
     }
 
@@ -872,6 +1163,8 @@ export default function App() {
       currentMatch,
       teams,
       identity,
+      matchMode,
+      scheduledTarget,
     };
 
     setPendingMatchStartContext(startContext);
@@ -916,9 +1209,9 @@ export default function App() {
   const handleGoToSquads = () => {
     setPage(PAGE_SQUADS);
   };
+
   const handleGoToFormations = () => setPage(PAGE_FORMATIONS);
 
-  // ---------- LIVE MATCH ----------
   const handleAddEvent = (event) => {
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({
@@ -977,6 +1270,7 @@ export default function App() {
         const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
 
         const matchNo = prevSeason.currentMatchNo || 1;
+        const isFixturedMode = prevSeason.matchMode === "scheduled_target";
 
         const verifiedLineups =
           currentConfirmedLineupSnapshot ||
@@ -1021,18 +1315,53 @@ export default function App() {
           confirmedLineupSnapshot: verifiedLineups,
         };
 
+        let nextScheduledFixtures = Array.isArray(prevSeason.scheduledFixtures)
+          ? prevSeason.scheduledFixtures
+          : [];
+
+        let nextCurrentMatch = {
+          teamAId: rotationResult.nextTeamAId,
+          teamBId: rotationResult.nextTeamBId,
+          standbyId: rotationResult.nextStandbyId,
+        };
+
+        if (isFixturedMode) {
+          nextScheduledFixtures = markScheduledFixtureCompleted({
+            fixtures: nextScheduledFixtures,
+            teamAId,
+            teamBId,
+            matchNo,
+            goalsA,
+            goalsB,
+          });
+
+          console.log("[FIXTURE DEBUG] completed fixture", {
+            matchNo,
+            teamAId,
+            teamBId,
+            goalsA,
+            goalsB,
+          });
+          console.log(
+            "[FIXTURE DEBUG] nextScheduledFixtures after completion =",
+            nextScheduledFixtures
+          );
+
+          const nextFixture = getFirstPendingFixture(nextScheduledFixtures);
+          nextCurrentMatch =
+            buildCurrentMatchFromFixture(nextFixture, prevSeason.teams) ||
+            nextCurrentMatch;
+        }
+
         return {
           ...prevSeason,
           currentMatchNo: newMatchNo,
-          currentMatch: {
-            teamAId: rotationResult.nextTeamAId,
-            teamBId: rotationResult.nextTeamBId,
-            standbyId: rotationResult.nextStandbyId,
-          },
+          currentMatch: nextCurrentMatch,
           streaks: rotationResult.updatedStreaks,
           currentEvents: [],
           allEvents: [...(prevSeason.allEvents || []), ...allCommittedEvents],
           results: [...(prevSeason.results || []), newResult],
+          scheduledFixtures: nextScheduledFixtures,
         };
       });
 
@@ -1137,7 +1466,6 @@ export default function App() {
     setPage(PAGE_LANDING);
   };
 
-  // ---------- CURRENT-WEEK SAVED MATCH DELETE ----------
   const handleDeleteSavedMatch = (matchNoToDelete) => {
     if (!USE_V2) return;
 
@@ -1161,7 +1489,6 @@ export default function App() {
     });
   };
 
-  // ---------- CURRENT-WEEK SAVED EVENT UPDATE ----------
   const handleUpdateSavedEvent = (eventId, updatedFields) => {
     if (!USE_V2) return;
 
@@ -1200,7 +1527,6 @@ export default function App() {
     });
   };
 
-  // ---------- CURRENT-WEEK SAVED EVENT DELETE ----------
   const handleDeleteSavedEvent = (eventId) => {
     if (!USE_V2) return;
 
@@ -1234,7 +1560,6 @@ export default function App() {
     });
   };
 
-  // ---------- CURRENT-WEEK SAVED EVENT ADD ----------
   const handleAddSavedEvent = (matchNo, eventData) => {
     if (!USE_V2) return;
 
@@ -1272,7 +1597,6 @@ export default function App() {
     });
   };
 
-  // ---------- DELETE CURRENT EMPTY TEST SEASON ----------
   const handleDeleteCurrentEmptySeason = () => {
     if (!USE_V2) return;
 
@@ -1336,7 +1660,6 @@ export default function App() {
     });
   };
 
-  // ---------- SQUADS ----------
   const handleUpdateTeams = (updatedTeams) => {
     if (!canManageSquads) {
       window.alert("Only admin can update squads.");
@@ -1350,10 +1673,10 @@ export default function App() {
       }));
       return;
     }
+
     updateState((prev) => ({ ...prev, teams: updatedTeams }));
   };
 
-  // ---------- BACKUP / CLEAR ----------
   const openBackupModal = () => {
     if (!isAdmin) {
       window.alert("Only admin can open save / clear tools.");
@@ -1431,6 +1754,9 @@ export default function App() {
         allEvents: [],
         results: [],
         matchDayHistory: prevSeason.matchDayHistory || [],
+        matchMode: "round_robin",
+        scheduledTarget: null,
+        scheduledFixtures: [],
       }));
 
       closeBackupModal();
@@ -1452,6 +1778,9 @@ export default function App() {
       allEvents: [],
       results: [],
       matchDayHistory: prev.matchDayHistory || [],
+      matchMode: "round_robin",
+      scheduledTarget: null,
+      scheduledFixtures: [],
     }));
 
     closeBackupModal();
@@ -1514,6 +1843,9 @@ export default function App() {
             currentEvents: [],
             allEvents: [],
             results: [],
+            matchMode: "round_robin",
+            scheduledTarget: null,
+            scheduledFixtures: [],
           };
         });
 
@@ -1550,6 +1882,9 @@ export default function App() {
           currentEvents: [],
           allEvents: [],
           results: [],
+          matchMode: "round_robin",
+          scheduledTarget: null,
+          scheduledFixtures: [],
         };
       });
 
@@ -1562,7 +1897,6 @@ export default function App() {
     }
   };
 
-  // ---------- END SEASON ----------
   const openEndSeasonModal = () => {
     if (!isAdmin) {
       window.alert("Only admin can end the season.");
@@ -1578,6 +1912,16 @@ export default function App() {
     setShowEndSeasonModal(false);
     setEndSeasonCode("");
     setEndSeasonError("");
+  };
+
+  const closeSeasonCompleteModal = () => {
+    setShowSeasonCompleteModal(false);
+    setSeasonCompleteDismissedKey(seasonCompletionKey);
+  };
+
+  const handleOpenEndSeasonFromCongrats = () => {
+    setShowSeasonCompleteModal(false);
+    handleRequestEndSeason();
   };
 
   const handleRequestEndSeason = () => {
@@ -1650,6 +1994,9 @@ export default function App() {
         allEvents: [],
         results: [],
         matchDayHistory: [],
+        matchMode: "round_robin",
+        scheduledTarget: null,
+        scheduledFixtures: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -1663,16 +2010,18 @@ export default function App() {
     });
 
     closeEndSeasonModal();
+    setShowSeasonCompleteModal(false);
+    setSeasonCompleteDismissedKey(null);
   };
 
   const handleProceedToPayment = (payload) => {
-    console.log("[TK PAYMENTS] proceed to payment payload:", payload);
-    window.alert(
-      `Selected ${payload?.selectedWeeks?.length || 0} game(s) • Total: R${
-        payload?.totalAmount || 0
-      }\n\nNext step: build the actual payment page.`
-    );
+    const safePayload = payload || {};
+    console.log("[TK PAYMENTS] proceed to payment payload:", safePayload);
+    setPaymentContext(safePayload);
+    setPage(PAGE_PAYMENT);
   };
+
+  const handleBackFromPayment = () => setPage(PAGE_MATCH_SIGNUP);
 
   return (
     <div className="app-root">
@@ -1712,20 +2061,26 @@ export default function App() {
           teams={teams}
           currentMatchNo={currentMatchNo}
           currentMatch={currentMatch}
-          results={results}
+          results={fullResults}
           streaks={streaks}
           hasLiveMatch={hasLiveMatch}
+          matchMode={matchMode}
+          scheduledTarget={scheduledTarget}
+          scheduledFixtures={scheduledFixtures}
+          smartOffset={smartOffset}
+          smartTarget={smartTarget}
           onUpdatePairing={handleUpdatePairing}
           onStartMatch={handleStartMatch}
+          onSetMatchMode={handleSetMatchMode}
+          onGenerateScheduledPlan={handleGenerateScheduledPlan}
+          onUpdateSmartOffset={handleUpdateSmartOffset}
           onGoToStats={() => handleGoToStats(PAGE_LANDING)}
-          onGoToSquads={handleGoToSquads}
           onOpenBackupModal={openBackupModal}
           onOpenEndSeasonModal={handleRequestEndSeason}
           onGoToLiveAsSpectator={handleGoToLiveAsSpectator}
           onGoToFormations={handleGoToFormations}
           onGoToNews={() => setPage(PAGE_NEWS)}
           onGoToEntryDev={() => setPage(PAGE_ENTRY)}
-          onGoToMigration={() => setPage(PAGE_MIGRATION)}
           onGoToPayments={handleGoToMatchSignup}
           identity={identity}
           activeRole={activeRole}
@@ -1734,7 +2089,6 @@ export default function App() {
           isPlayer={isPlayer}
           isSpectator={isSpectator}
           canStartMatch={canStartMatch}
-          canManageSquads={canManageSquads}
         />
       )}
 
@@ -1742,9 +2096,24 @@ export default function App() {
         <MatchSignupPage
           identity={identity}
           currentUser={null}
+          teams={teams}
+          activeSeasonId={activeSeasonId}
           playerPhotosByName={playerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
+        />
+      )}
+
+      {page === PAGE_PAYMENT && (
+        <PaymentPage
+          identity={identity}
+          activeRole={activeRole}
+          activeSeasonId={activeSeasonId}
+          paymentContext={paymentContext}
+          isAdmin={isAdmin}
+          isCaptain={isCaptain}
+          onBack={handleBackFromPayment}
+          onDone={() => setPage(PAGE_LANDING)}
         />
       )}
 
@@ -2006,6 +2375,80 @@ export default function App() {
               </button>
               <button className="primary-btn" onClick={handleSaveAndClearMatchDay}>
                 Save to Firebase &amp; clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {USE_V2 && showSeasonCompleteModal && (
+        <div className="modal-backdrop">
+          <div
+            className="modal"
+            style={{
+              maxWidth: "760px",
+              width: "94%",
+              textAlign: "center",
+              padding: "2rem 1.5rem",
+              background:
+                "radial-gradient(circle at top, rgba(250,204,21,0.18), rgba(10,18,36,0.96) 58%)",
+              border: "1px solid rgba(250, 204, 21, 0.32)",
+              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.45)",
+            }}
+          >
+            <div style={{ fontSize: "3.2rem", marginBottom: "0.4rem" }}>🏆</div>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "1.9rem",
+                lineHeight: 1.15,
+                color: "#facc15",
+              }}
+            >
+              Congratulations! Season target reached
+            </h2>
+            <p
+              style={{
+                margin: "0.9rem auto 0.35rem",
+                maxWidth: "560px",
+                fontSize: "1.05rem",
+              }}
+            >
+              All teams have now reached the fixtured season limit of{" "}
+              <strong>{scheduledTarget ?? "-"}</strong> games played.
+            </p>
+            <p
+              style={{
+                margin: "0 auto 1rem",
+                maxWidth: "620px",
+                color: "rgba(255,255,255,0.82)",
+              }}
+            >
+              No more matches should be recorded for this fixtured season. You can now end the season and create a fresh one.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: "0.75rem",
+                flexWrap: "wrap",
+                marginTop: "1.1rem",
+              }}
+            >
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={closeSeasonCompleteModal}
+              >
+                Close
+              </button>
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={handleOpenEndSeasonFromCongrats}
+              >
+                🏆 End Season
               </button>
             </div>
           </div>

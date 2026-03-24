@@ -1,12 +1,21 @@
 // src/pages/MatchSignupPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
 const MIN_PLAYERS = 10;
 const MAX_PLAYERS = 18;
 const DEFAULT_VISIBLE_SLOTS = 10;
 const COST_PER_GAME = 65;
+const FALLBACK_SEASON_ID = "local_manual_season";
+const DEFAULT_SIGNUP_TYPE = "general";
 
 function toTitleCaseLoose(value) {
   return String(value || "")
@@ -32,6 +41,28 @@ function slugFromLooseName(value) {
 
 function normKey(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function buildPendingSignupId({
+  signupType = DEFAULT_SIGNUP_TYPE,
+  displayName,
+  monthLabel,
+}) {
+  return [
+    slugFromLooseName(signupType),
+    slugFromLooseName(displayName || "player"),
+    slugFromLooseName(monthLabel || "month"),
+  ].join("__");
+}
+
+function getPhoneFromIdentity(identity, currentUser) {
+  return (
+    identity?.phoneNumber ||
+    identity?.phone ||
+    identity?.whatsAppNumber ||
+    currentUser?.phoneNumber ||
+    ""
+  );
 }
 
 function getNextMonthWednesdays() {
@@ -70,6 +101,47 @@ function getNextMonthWednesdays() {
     }),
     date,
   }));
+}
+
+function getCalendarMonthData(weeks = []) {
+  const firstWeekDate =
+    Array.isArray(weeks) && weeks.length > 0 ? weeks[0].date : null;
+
+  const baseDate = firstWeekDate instanceof Date ? firstWeekDate : new Date();
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+
+  const firstDay = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startWeekday = firstDay.getDay();
+
+  const cells = [];
+
+  for (let i = 0; i < startWeekday; i += 1) {
+    cells.push(null);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = new Date(year, month, day);
+    const id = `${year}-${String(month + 1).padStart(2, "0")}-${String(
+      day
+    ).padStart(2, "0")}`;
+
+    cells.push({
+      id,
+      day,
+      weekday: date.getDay(),
+      date,
+    });
+  }
+
+  return {
+    monthLabel: firstDay.toLocaleDateString("en-ZA", {
+      month: "long",
+      year: "numeric",
+    }),
+    cells,
+  };
 }
 
 function getStatus(count) {
@@ -170,10 +242,183 @@ function findCurrentPlayersTeam(teams = [], identity, displayName, shortName) {
   return null;
 }
 
+function extractMatchDayHistoryFromMainDoc(mainData, activeSeasonId) {
+  const state = mainData?.state || {};
+  const seasons = Array.isArray(state?.seasons) ? state.seasons : [];
+  const activeSeason =
+    seasons.find(
+      (s) =>
+        String(s?.seasonId || "").trim() === String(activeSeasonId || "").trim()
+    ) || null;
+
+  return Array.isArray(activeSeason?.matchDayHistory)
+    ? activeSeason.matchDayHistory
+    : [];
+}
+
+function buildAttendanceFromMatchDayHistory({
+  matchDayHistory = [],
+  identity,
+  displayName,
+  shortName,
+}) {
+  const identityKeys = getIdentityKeys(identity, displayName, shortName);
+  const allMatchDays = new Set();
+  const attendedMatchDays = new Set();
+  let gamesPlayed = 0;
+
+  (Array.isArray(matchDayHistory) ? matchDayHistory : []).forEach((day) => {
+    const matchDayId = String(day?.id || day?.matchDayId || "").trim();
+    if (!matchDayId) return;
+
+    allMatchDays.add(matchDayId);
+
+    const playerAppearances = Array.isArray(day?.playerAppearances)
+      ? day.playerAppearances
+      : [];
+
+    const matchingEntry = playerAppearances.find((entry) => {
+      const rowKeys = [
+        entry?.playerId,
+        entry?.playerName,
+        entry?.shortName,
+        entry?.displayName,
+        firstNameOf(
+          entry?.playerName || entry?.shortName || entry?.displayName || ""
+        ),
+        slugFromLooseName(
+          entry?.playerName || entry?.shortName || entry?.displayName || ""
+        ),
+      ]
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+        .map(normKey);
+
+      return rowKeys.some((k) => identityKeys.includes(k));
+    });
+
+    if (!matchingEntry) return;
+
+    attendedMatchDays.add(matchDayId);
+
+    const directMatchesPlayed = Number(
+      matchingEntry?.matchesPlayed ?? matchingEntry?.gamesPlayed
+    );
+
+    if (Number.isFinite(directMatchesPlayed) && directMatchesPlayed > 0) {
+      gamesPlayed += directMatchesPlayed;
+    } else {
+      const playedFlag = String(
+        matchingEntry?.played ??
+          matchingEntry?.didPlay ??
+          matchingEntry?.wasInGame ??
+          ""
+      ).toLowerCase();
+
+      if (
+        playedFlag === "true" ||
+        playedFlag === "1" ||
+        playedFlag === "yes"
+      ) {
+        gamesPlayed += 1;
+      }
+    }
+  });
+
+  const attended = attendedMatchDays.size;
+  const total = allMatchDays.size;
+  const percent = total > 0 ? Math.round((attended / total) * 100) : null;
+
+  return {
+    loading: false,
+    percent,
+    attended,
+    total,
+    gamesPlayed,
+  };
+}
+
+function buildAttendanceFromAttendanceCollection({
+  rows = [],
+  identity,
+  displayName,
+  shortName,
+}) {
+  const identityKeys = getIdentityKeys(identity, displayName, shortName);
+
+  const playerRows = rows.filter((row) => {
+    const rowKeys = [
+      row.playerId,
+      row.playerName,
+      row.shortName,
+      row.displayName,
+      firstNameOf(row.playerName || row.shortName || row.displayName || ""),
+      slugFromLooseName(
+        row.playerName || row.shortName || row.displayName || ""
+      ),
+    ]
+      .map((x) => String(x || "").trim())
+      .filter(Boolean)
+      .map(normKey);
+
+    return rowKeys.some((k) => identityKeys.includes(k));
+  });
+
+  const allMatchDays = new Set(
+    rows.map((row) => String(row.matchDayId || "").trim()).filter(Boolean)
+  );
+
+  const attendedMatchDays = new Set(
+    playerRows
+      .filter((row) => {
+        const value = String(
+          row.attended ?? row.isPresent ?? row.present ?? "true"
+        ).toLowerCase();
+        return value !== "false" && value !== "0" && value !== "no";
+      })
+      .map((row) => String(row.matchDayId || "").trim())
+      .filter(Boolean)
+  );
+
+  const attended = attendedMatchDays.size;
+  const total = allMatchDays.size;
+  const percent = total > 0 ? Math.round((attended / total) * 100) : null;
+
+  const gamesPlayed = playerRows.reduce((sum, row) => {
+    const directValue = Number(row.gamesPlayed ?? row.matchesPlayed);
+    if (Number.isFinite(directValue) && directValue > 0) {
+      return sum + directValue;
+    }
+
+    const playedFlag = String(
+      row.played ?? row.didPlay ?? row.wasInGame ?? ""
+    ).toLowerCase();
+
+    if (
+      playedFlag === "true" ||
+      playedFlag === "1" ||
+      playedFlag === "yes"
+    ) {
+      return sum + 1;
+    }
+
+    return sum;
+  }, 0);
+
+  return {
+    loading: false,
+    percent,
+    attended,
+    total,
+    gamesPlayed,
+  };
+}
+
 export default function MatchSignupPage({
   identity,
   currentUser,
   teams = [],
+  activeSeasonId,
   onBack,
   onProceedToPayment,
 }) {
@@ -181,14 +426,30 @@ export default function MatchSignupPage({
     if (typeof window === "undefined") return 390;
     return window.innerWidth;
   });
-
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth <= 480;
   });
+  const [showCalendarPopup, setShowCalendarPopup] = useState(false);
+  const [showLeavePrompt, setShowLeavePrompt] = useState(false);
+  const [pendingSelectionsSaved, setPendingSelectionsSaved] = useState(false);
+  const [reminderPreference, setReminderPreference] = useState("17:00");
+  const hasPromptedBackRef = useRef(false);
+  const matrixScrollRef = useRef(null);
+  const currentPlayerCellRef = useRef(null);
+
+  const [selectedWeeks, setSelectedWeeks] = useState([]);
+  const [playerPhotos, setPlayerPhotos] = useState({});
+  const [attendanceBadge, setAttendanceBadge] = useState({
+    loading: true,
+    percent: null,
+    attended: 0,
+    total: 0,
+    gamesPlayed: 0,
+  });
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return undefined;
     const onResize = () => {
       setViewportWidth(window.innerWidth);
       setIsMobile(window.innerWidth <= 480);
@@ -196,6 +457,19 @@ export default function MatchSignupPage({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (!showCalendarPopup) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setShowCalendarPopup(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showCalendarPopup]);
 
   const displayName =
     identity?.shortName ||
@@ -208,9 +482,39 @@ export default function MatchSignupPage({
   const shortName =
     identity?.shortName || firstNameOf(displayName) || "Player";
 
+  const userId =
+    identity?.playerId ||
+    identity?.memberId ||
+    currentUser?.uid ||
+    slugFromLooseName(displayName);
+
   const weeks = useMemo(() => getNextMonthWednesdays(), []);
-  const [selectedWeeks, setSelectedWeeks] = useState([]);
-  const [playerPhotos, setPlayerPhotos] = useState({});
+  const calendarMonthData = useMemo(() => getCalendarMonthData(weeks), [weeks]);
+
+  const calendarMonthKey = useMemo(
+    () =>
+      weeks[0]?.date?.toLocaleDateString("en-ZA", {
+        year: "numeric",
+        month: "2-digit",
+      }) || "",
+    [weeks]
+  );
+
+  const phoneNumber = getPhoneFromIdentity(identity, currentUser);
+  const resolvedSeasonId = activeSeasonId || FALLBACK_SEASON_ID;
+  const signupType = DEFAULT_SIGNUP_TYPE;
+  const signupScopeId = calendarMonthKey || resolvedSeasonId;
+  const signupScopeLabel = calendarMonthData?.monthLabel || "Monthly signup";
+
+  console.log("[PayLater DEBUG] render", {
+    activeSeasonId,
+    resolvedSeasonId,
+    displayName,
+    userId,
+    phoneNumber,
+    selectedWeeks,
+    reminderPreference,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -250,6 +554,192 @@ export default function MatchSignupPage({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAttendanceBadge() {
+      if (!resolvedSeasonId) {
+        if (!cancelled) {
+          setAttendanceBadge({
+            loading: false,
+            percent: null,
+            attended: 0,
+            total: 0,
+            gamesPlayed: 0,
+          });
+        }
+        return;
+      }
+
+      try {
+        const mainRef = doc(db, "appState_v2", "main");
+        const mainSnap = await getDoc(mainRef);
+
+        if (cancelled) return;
+
+        const matchDayHistory = mainSnap.exists()
+          ? extractMatchDayHistoryFromMainDoc(
+              mainSnap.data() || {},
+              resolvedSeasonId
+            )
+          : [];
+
+        if (Array.isArray(matchDayHistory) && matchDayHistory.length > 0) {
+          const badgeFromHistory = buildAttendanceFromMatchDayHistory({
+            matchDayHistory,
+            identity,
+            displayName,
+            shortName,
+          });
+
+          if (!cancelled) {
+            setAttendanceBadge(badgeFromHistory);
+          }
+          return;
+        }
+
+        const snap = await getDocs(
+          collection(db, "seasons", resolvedSeasonId, "attendance")
+        );
+
+        if (cancelled) return;
+
+        const rows = snap.docs.map((docSnap) => docSnap.data() || {});
+        const badgeFromAttendance = buildAttendanceFromAttendanceCollection({
+          rows,
+          identity,
+          displayName,
+          shortName,
+        });
+
+        setAttendanceBadge(badgeFromAttendance);
+      } catch (err) {
+        console.error("Failed to load attendance badge:", err);
+        if (!cancelled) {
+          setAttendanceBadge({
+            loading: false,
+            percent: null,
+            attended: 0,
+            total: 0,
+            gamesPlayed: 0,
+          });
+        }
+      }
+    }
+
+    loadAttendanceBadge();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedSeasonId, identity, displayName, shortName]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function persistPendingSelection() {
+      if (!calendarMonthData?.monthLabel) return;
+
+      try {
+        const pendingId = buildPendingSignupId({
+          signupType,
+          displayName,
+          monthLabel: calendarMonthData.monthLabel,
+        });
+
+        const basePayload = {
+          activeSeasonId: resolvedSeasonId,
+          signupType,
+          signupScopeId,
+          signupScopeLabel,
+          userId,
+          playerId:
+            identity?.playerId ||
+            identity?.memberId ||
+            currentUser?.uid ||
+            slugFromLooseName(displayName),
+          playerName: displayName,
+          shortName,
+          whatsappNumber: phoneNumber,
+          phoneNumber,
+          monthLabel: calendarMonthData.monthLabel,
+          monthKey: calendarMonthKey,
+          costPerGame: COST_PER_GAME,
+          reminderPreference,
+          reminderTimezone: "Africa/Johannesburg",
+          lastReminderSentAt: null,
+          nextReminderAt: null,
+          updatedAt: serverTimestamp(),
+        };
+
+        const payload =
+          selectedWeeks.length > 0
+            ? {
+                ...basePayload,
+                selectedWeeks,
+                totalAmount: selectedWeeks.length * COST_PER_GAME,
+                paymentStatus: "pending",
+                remindersPaused: false,
+                createdAt: serverTimestamp(),
+              }
+            : {
+                ...basePayload,
+                selectedWeeks: [],
+                totalAmount: 0,
+                paymentStatus: "not_selected",
+                remindersPaused: true,
+                createdAt: serverTimestamp(),
+              };
+
+        await setDoc(doc(db, "pendingSignups", pendingId), payload, {
+          merge: true,
+        });
+
+        if (!cancelled) {
+          setPendingSelectionsSaved(selectedWeeks.length > 0);
+        }
+      } catch (err) {
+        console.error("Failed to persist pending signup selection:", err);
+      }
+    }
+
+    persistPendingSelection();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    resolvedSeasonId,
+    signupType,
+    signupScopeId,
+    signupScopeLabel,
+    calendarMonthData?.monthLabel,
+    calendarMonthKey,
+    currentUser?.uid,
+    displayName,
+    identity,
+    phoneNumber,
+    reminderPreference,
+    selectedWeeks,
+    shortName,
+    userId,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const hasUnpaidSelections = selectedWeeks.length > 0;
+
+    const handleBeforeUnload = (event) => {
+      if (!hasUnpaidSelections) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [selectedWeeks]);
 
   const getPlayerPhoto = useMemo(() => {
     return (playerName = "") => {
@@ -318,7 +808,7 @@ export default function MatchSignupPage({
     const alreadyHasCurrent = mapped.some((p) => p.isCurrent);
 
     if (!alreadyHasCurrent) {
-      mapped.unshift({
+      mapped.push({
         id:
           identity?.playerId ||
           identity?.memberId ||
@@ -330,12 +820,6 @@ export default function MatchSignupPage({
         isEmpty: false,
       });
     }
-
-    mapped.sort((a, b) => {
-      if (a.isCurrent) return -1;
-      if (b.isCurrent) return 1;
-      return a.shortName.localeCompare(b.shortName);
-    });
 
     while (mapped.length < MAX_PLAYERS) {
       mapped.push({
@@ -406,9 +890,10 @@ export default function MatchSignupPage({
     );
   }, [allRows, weeks, weekSelectionsAll]);
 
-  const displayRows = useMemo(() => {
-    return allRows.slice(0, visibleRowCount);
-  }, [allRows, visibleRowCount]);
+  const displayRows = useMemo(
+    () => allRows.slice(0, visibleRowCount),
+    [allRows, visibleRowCount]
+  );
 
   const weekSelections = useMemo(() => {
     const out = {};
@@ -425,16 +910,33 @@ export default function MatchSignupPage({
     return out;
   }, [weeks, weekSelectionsAll, displayRows]);
 
-  const weekMeta = useMemo(() => {
-    return weeks.map((week) => {
-      const fullCount = weekSelectionsAll[week.id]?.size || 0;
-      return {
-        ...week,
-        count: fullCount,
-        status: getStatus(fullCount),
-      };
+  const weekMeta = useMemo(
+    () =>
+      weeks.map((week) => {
+        const fullCount = weekSelectionsAll[week.id]?.size || 0;
+        return {
+          ...week,
+          count: fullCount,
+          status: getStatus(fullCount),
+        };
+      }),
+    [weeks, weekSelectionsAll]
+  );
+
+  useEffect(() => {
+    const scrollEl = matrixScrollRef.current;
+    const currentCellEl = currentPlayerCellRef.current;
+
+    if (!scrollEl || !currentCellEl) return;
+
+    const rowTop = currentCellEl.offsetTop;
+    const targetTop = Math.max(0, rowTop - 70);
+
+    scrollEl.scrollTo({
+      top: targetTop,
+      behavior: "smooth",
     });
-  }, [weeks, weekSelectionsAll]);
+  }, [displayRows, selectedWeeks]);
 
   const toggleWeek = (week) => {
     const meta = weekMeta.find((w) => w.id === week.id);
@@ -454,6 +956,20 @@ export default function MatchSignupPage({
       ? `${selectedCount} week${selectedCount > 1 ? "s" : ""} selected`
       : "tick a box";
 
+  const attendanceBadgeText = attendanceBadge.loading
+    ? "Attendance loading..."
+    : attendanceBadge.percent == null
+    ? "Attendance not available"
+    : `${attendanceBadge.percent}% attendance`;
+
+  const attendanceSubtext = attendanceBadge.loading
+    ? ""
+    : attendanceBadge.percent == null
+    ? ""
+    : `${attendanceBadge.attended}/${attendanceBadge.total} match days · ${attendanceBadge.gamesPlayed} game${
+        attendanceBadge.gamesPlayed === 1 ? "" : "s"
+      } played`;
+
   const firstColWidth = isMobile ? 108 : 220;
 
   const weekColWidth = useMemo(() => {
@@ -472,7 +988,6 @@ export default function MatchSignupPage({
       borderAllowance;
 
     const fitted = Math.floor(availableForWeeks / safeWeeks);
-
     const minWidth = safeWeeks >= 5 ? 44 : 52;
     const maxWidth = 62;
 
@@ -480,6 +995,99 @@ export default function MatchSignupPage({
   }, [isMobile, weeks.length, viewportWidth, firstColWidth]);
 
   const denseMobileWeeks = isMobile && weeks.length >= 5;
+
+  const handleAttemptBack = () => {
+    if (selectedWeeks.length === 0) {
+      onBack?.();
+      return;
+    }
+    if (!hasPromptedBackRef.current) {
+      hasPromptedBackRef.current = true;
+    }
+    setShowLeavePrompt(true);
+  };
+
+  const handlePayNow = () => {
+    setShowLeavePrompt(false);
+    onProceedToPayment?.({
+      selectedWeeks,
+      totalAmount,
+      costPerGame: COST_PER_GAME,
+    });
+  };
+
+  const handlePayLater = async () => {
+    console.log("[PayLater DEBUG] clicked");
+
+    try {
+      if (selectedWeeks.length === 0) {
+        console.warn("[PayLater DEBUG] aborted: no selected weeks");
+        setShowLeavePrompt(false);
+        return;
+      }
+
+      const pendingId = buildPendingSignupId({
+        signupType,
+        displayName,
+        monthLabel: calendarMonthData.monthLabel,
+      });
+
+      const payload = {
+        activeSeasonId: resolvedSeasonId,
+        signupType,
+        signupScopeId,
+        signupScopeLabel,
+        userId,
+        playerId:
+          identity?.playerId ||
+          identity?.memberId ||
+          currentUser?.uid ||
+          slugFromLooseName(displayName),
+        playerName: displayName,
+        shortName,
+        whatsappNumber: phoneNumber,
+        phoneNumber,
+        monthLabel: calendarMonthData.monthLabel,
+        monthKey: calendarMonthKey,
+        selectedWeeks,
+        totalAmount: selectedWeeks.length * COST_PER_GAME,
+        costPerGame: COST_PER_GAME,
+        paymentStatus: "payment_deferred",
+        remindersPaused: false,
+        reminderPreference,
+        reminderTimezone: "Africa/Johannesburg",
+        lastReminderSentAt: null,
+        nextReminderAt: null,
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      };
+
+      console.log("[PayLater DEBUG] pendingId", pendingId);
+      console.log("[PayLater DEBUG] payload", payload);
+
+      await setDoc(doc(db, "pendingSignups", pendingId), payload, {
+        merge: true,
+      });
+
+      console.log("[PayLater DEBUG] save success");
+
+      setPendingSelectionsSaved(true);
+      setShowLeavePrompt(false);
+    } catch (error) {
+      console.error("[PayLater DEBUG] save failed", error);
+    }
+  };
+
+  const handleClearSelections = () => {
+    setSelectedWeeks([]);
+    setShowLeavePrompt(false);
+  };
+
+  const isCalendarSelectable = (cellId) =>
+    weeks.some((week) => week.id === cellId);
+
+  const getWeekByCalendarCellId = (cellId) =>
+    weeks.find((week) => week.id === cellId) || null;
 
   return (
     <div className="page match-signup-page">
@@ -503,7 +1111,6 @@ export default function MatchSignupPage({
             <div className="signup-hero-copy">
               <div className="signup-hero-title-row">
                 <h2>Pay for next month games</h2>
-
               </div>
 
               <p className="muted signup-hero-subtext">
@@ -511,13 +1118,57 @@ export default function MatchSignupPage({
               </p>
 
               <div className="signup-top-meta">
+                <div className="signup-attendance-badge">
+                  <span className="signup-attendance-badge-label">
+                    Attendance
+                  </span>
+                  <strong>{attendanceBadgeText}</strong>
+                  {attendanceSubtext ? <small>{attendanceSubtext}</small> : null}
+                </div>
 
-                {currentTeam?.label ? (
-                  <div className="signup-team-pill">
-                    <span className="muted">Team</span>
-                    <strong>{currentTeam.label}</strong>
-                  </div>
-                ) : null}
+                <button
+                  type="button"
+                  className="secondary-btn signup-calendar-btn"
+                  onClick={() => setShowCalendarPopup(true)}
+                  aria-label="Open next month calendar"
+                  title="Open next month calendar"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M8 2V5"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M16 2V5"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M3.5 9H20.5"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                    <rect
+                      x="3"
+                      y="4.5"
+                      width="18"
+                      height="16.5"
+                      rx="3"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
@@ -525,31 +1176,227 @@ export default function MatchSignupPage({
           <button
             type="button"
             className="secondary-btn signup-back-btn"
-            onClick={onBack}
+            onClick={handleAttemptBack}
           >
             ← Back
           </button>
         </div>
       </section>
 
-      <section className="card signup-grid-card">
-      <div className="signup-grid-title-row">
-        <h3>Choose your Wednesdays</h3>
+      {showCalendarPopup && (
         <div
-          className={`signup-top-status ${
-            selectedCount > 0 ? "is-active" : "is-idle"
-          }`}
+          className="modal-backdrop"
+          onClick={() => setShowCalendarPopup(false)}
         >
-          {signupStatusText}
+          <div
+            className="modal signup-calendar-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="signup-calendar-modal-header">
+              <h3>{calendarMonthData.monthLabel}</h3>
+              <button
+                type="button"
+                className="secondary-btn signup-calendar-close-btn"
+                onClick={() => setShowCalendarPopup(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="muted small signup-calendar-note">
+              Wednesdays are highlighted. Tap a Wednesday to select or unselect
+              it.
+            </p>
+
+            <div className="signup-calendar-weekdays">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+                <div key={label} className="signup-calendar-weekday">
+                  {label}
+                </div>
+              ))}
+            </div>
+
+            <div className="signup-calendar-grid">
+              {calendarMonthData.cells.map((cell, index) => {
+                if (!cell) {
+                  return (
+                    <div
+                      key={`empty-${index}`}
+                      className="signup-calendar-day is-empty"
+                    />
+                  );
+                }
+
+                const isWednesday = cell.weekday === 3;
+                const isSelectableWednesday = isCalendarSelectable(cell.id);
+                const isSelected = selectedWeeks.includes(cell.id);
+                const linkedWeek = getWeekByCalendarCellId(cell.id);
+
+                if (isWednesday && isSelectableWednesday && linkedWeek) {
+                  const linkedMeta = weekMeta.find((w) => w.id === linkedWeek.id);
+                  const isFull = linkedMeta?.status?.key === "full";
+
+                  return (
+                    <button
+                      key={cell.id}
+                      type="button"
+                      className={[
+                        "signup-calendar-day",
+                        "is-button",
+                        "is-wednesday",
+                        isSelected ? "is-selected" : "",
+                        isFull ? "is-disabled" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      title={cell.date.toLocaleDateString("en-ZA", {
+                        weekday: "long",
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                      onClick={() => {
+                        if (!isFull) toggleWeek(linkedWeek);
+                      }}
+                      disabled={isFull}
+                    >
+                      <span className="signup-calendar-day-number">
+                        {cell.day}
+                      </span>
+                      <span className="signup-calendar-day-check">
+                        {isSelected ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                }
+
+                return (
+                  <div
+                    key={cell.id}
+                    className={[
+                      "signup-calendar-day",
+                      isWednesday ? "is-wednesday" : "",
+                      isSelected ? "is-selected" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    title={cell.date.toLocaleDateString("en-ZA", {
+                      weekday: "long",
+                      day: "2-digit",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  >
+                    {cell.day}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
-      </div>
-        <div className="signup-matrix-wrap">
+      )}
+
+      {showLeavePrompt && (
+        <div className="modal-backdrop" onClick={() => setShowLeavePrompt(false)}>
+          <div
+            className="modal signup-leave-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="signup-calendar-modal-header">
+              <h3>Complete payment?</h3>
+              <button
+                type="button"
+                className="secondary-btn signup-calendar-close-btn"
+                onClick={() => setShowLeavePrompt(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="muted small signup-calendar-note">
+              You selected {selectedWeeks.length} week
+              {selectedWeeks.length === 1 ? "" : "s"}. Please continue to
+              payment to secure your place.
+            </p>
+
+            <div className="signup-reminder-choice">
+              <label htmlFor="reminderPreference">WhatsApp reminder time</label>
+              <select
+                id="reminderPreference"
+                value={reminderPreference}
+                onChange={(e) => setReminderPreference(e.target.value)}
+              >
+                <option value="12:00">12:00 midday</option>
+                <option value="17:00">17:00 afternoon</option>
+              </select>
+              <p className="muted small">
+                If you choose “I’ll pay later”, you’ll get a WhatsApp reminder at
+                this time each day until you pay or uncheck your weeks.
+              </p>
+            </div>
+
+            <div className="signup-leave-actions">
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handlePayNow}
+              >
+                💳 Go to payment
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handlePayLater}
+              >
+                I’ll pay later
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn danger-btn"
+                onClick={handleClearSelections}
+              >
+                Clear my selected weeks
+              </button>
+            </div>
+
+            {pendingSelectionsSaved ? (
+              <p className="muted small signup-leave-footnote">
+                Your selected weeks have been saved as pending.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      <section className="card signup-grid-card">
+        <div className="signup-grid-title-row">
+          <h3>Choose your Wednesdays</h3>
+          <div
+            className={`signup-top-status ${
+              selectedCount > 0 ? "is-active" : "is-idle"
+            }`}
+          >
+            {signupStatusText}
+          </div>
+        </div>
+
+        <div
+          ref={matrixScrollRef}
+          className="signup-matrix-wrap"
+          style={{
+            maxHeight: isMobile ? "470px" : "560px",
+            overflowY: "auto",
+            overflowX: "auto",
+          }}
+        >
           <div
             className={`signup-matrix ${isMobile ? "is-mobile-matrix" : ""} ${
               denseMobileWeeks ? "is-dense-weeks" : ""
             }`}
             style={{
-              gridTemplateColumns: `${firstColWidth}px repeat(${weekMeta.length}, minmax(${weekColWidth}px, 1fr))`,
+              gridTemplateColumns: `${firstColWidth}px repeat(${weekMeta.length}, ${weekColWidth}px)`,
             }}
           >
             <div className="matrix-corner-cell">Players</div>
@@ -576,12 +1423,22 @@ export default function MatchSignupPage({
                 (getPlayerPhoto(player.fullName) ||
                   getPlayerPhoto(player.shortName));
 
+              const playerHasAnySignedWeek =
+                !player.isEmpty &&
+                weeks.some((week) => weekSelections[week.id]?.has(player.id));
+
+              const isSignedRow = playerHasAnySignedWeek && !player.isCurrent;
+              const isEmptyRow = player.isEmpty;
+
               return (
                 <React.Fragment key={player.id}>
                   <div
+                    ref={player.isCurrent ? currentPlayerCellRef : null}
                     className={`matrix-player-cell ${
                       player.isCurrent ? "is-current-player" : ""
-                    } ${player.isEmpty ? "is-empty-player" : ""}`}
+                    } ${isSignedRow ? "is-signed-row" : ""} ${
+                      isEmptyRow ? "is-empty-row is-empty-player" : ""
+                    }`}
                   >
                     {player.isEmpty ? (
                       <div className="matrix-player-empty">
@@ -616,14 +1473,13 @@ export default function MatchSignupPage({
 
                   {weekMeta.map((week) => {
                     const signed = weekSelections[week.id]?.has(player.id);
-                    const isCurrentCell = player.isCurrent;
                     const status = week.status;
 
                     if (player.isEmpty) {
                       return (
                         <div
                           key={`${player.id}-${week.id}`}
-                          className={`matrix-view-cell matrix-empty-slot ${
+                          className={`matrix-view-cell matrix-empty-slot is-empty-row ${
                             signed ? "is-signed" : ""
                           }`}
                         >
@@ -640,13 +1496,15 @@ export default function MatchSignupPage({
                       );
                     }
 
-                    if (isCurrentCell) {
+                    if (player.isCurrent) {
                       return (
                         <button
                           key={`${player.id}-${week.id}`}
                           type="button"
                           className={[
                             "matrix-pick-cell",
+                            "current-player-cell",
+                            "is-current-row",
                             `status-${status.key}`,
                             signed ? "is-selected" : "",
                           ]
@@ -669,7 +1527,7 @@ export default function MatchSignupPage({
                         key={`${player.id}-${week.id}`}
                         className={`matrix-view-cell ${
                           signed ? "is-signed" : ""
-                        }`}
+                        } ${isSignedRow ? "is-signed-row" : ""}`}
                       >
                         <div className="matrix-view-inner">
                           <span className="matrix-pick-mark">

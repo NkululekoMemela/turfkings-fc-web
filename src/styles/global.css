@@ -637,13 +637,6 @@
   align-items: flex-start;
 }
 
-.live-lineup-columns {
-  display: flex;
-  gap: 1.25rem;
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
-
 .live-lineup-column {
   flex: 1 1 460px;
   min-width: 320px;
@@ -3270,371 +3263,7 @@
   }
 
 
-
-
-  .match-signup-page {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  
-  .signup-hero-card,
-  .signup-grid-card,
-  .signup-summary-card {
-    border-radius: 18px;
-  }
-  
-  .signup-hero-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-  
-  .signup-player-pill {
-    margin-top: 0.8rem;
-    display: inline-flex;
-    gap: 0.5rem;
-    align-items: center;
-    padding: 0.6rem 0.9rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-  
-  .signup-rules {
-    margin-top: 1rem;
-    display: flex;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
-  
-  .rule-chip {
-    padding: 0.5rem 0.8rem;
-    border-radius: 999px;
-    font-size: 0.88rem;
-    font-weight: 700;
-  }
-  
-  .rule-chip.low {
-    background: rgba(245, 158, 11, 0.18);
-    color: #fbbf24;
-  }
-  
-  .rule-chip.viable {
-    background: rgba(34, 197, 94, 0.18);
-    color: #4ade80;
-  }
-  
-  .rule-chip.full {
-    background: rgba(239, 68, 68, 0.18);
-    color: #f87171;
-  }
-  
-  .signup-grid {
-    margin-top: 1rem;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    gap: 1rem;
-  }
-  
-  .signup-week-tile {
-    text-align: left;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
-    padding: 1rem;
-    background:
-      radial-gradient(circle at top left, rgba(255, 215, 0, 0.08), transparent 40%),
-      linear-gradient(160deg, #111827, #0f172a 55%, #111827);
-    color: #ffffff;
-    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-    min-height: 190px;
-    cursor: pointer;
-  }
-  
-  .signup-week-tile:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.22);
-  }
-  
-  .signup-week-tile.is-selected {
-    border-color: #facc15;
-    box-shadow:
-      0 0 0 1px rgba(250, 204, 21, 0.6),
-      0 0 24px rgba(250, 204, 21, 0.22);
-    background:
-      radial-gradient(circle at top left, rgba(250, 204, 21, 0.18), transparent 40%),
-      linear-gradient(160deg, #172033, #0f172a 55%, #151d2d);
-  }
-  
-  .signup-week-tile.status-full {
-    opacity: 0.72;
-    cursor: not-allowed;
-  }
-  
-  .signup-week-tile.status-low {
-    border-color: rgba(245, 158, 11, 0.35);
-  }
-  
-  .signup-week-tile.status-viable {
-    border-color: rgba(34, 197, 94, 0.35);
-  }
-  
-  .signup-week-tile.status-full {
-    border-color: rgba(239, 68, 68, 0.35);
-  }
-  
-  .week-top-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.6rem;
-    align-items: flex-start;
-  }
-  
-  .week-date {
-    font-weight: 800;
-    font-size: 0.98rem;
-    line-height: 1.35;
-  }
-  
-  .week-status-badge {
-    border-radius: 999px;
-    padding: 0.35rem 0.65rem;
-    font-size: 0.76rem;
-    font-weight: 800;
-    white-space: nowrap;
-  }
-  
-  .week-status-badge.low {
-    background: rgba(245, 158, 11, 0.18);
-    color: #fbbf24;
-  }
-  
-  .week-status-badge.viable {
-    background: rgba(34, 197, 94, 0.18);
-    color: #4ade80;
-  }
-  
-  .week-status-badge.full {
-    background: rgba(239, 68, 68, 0.18);
-    color: #f87171;
-  }
-  
-  .week-count-block {
-    margin-top: 1.2rem;
-  }
-  
-  .week-count-number {
-    font-size: 2rem;
-    font-weight: 900;
-    line-height: 1;
-  }
-  
-  .week-count-label {
-    margin-top: 0.25rem;
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 0.9rem;
-  }
-  
-  .week-capacity-bar {
-    margin-top: 1rem;
-    height: 10px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
-    overflow: hidden;
-  }
-  
-  .week-capacity-fill {
-    height: 100%;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #22d3ee, #facc15, #fb7185);
-  }
-  
-  .week-footer-note {
-    margin-top: 0.9rem;
-    font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.76);
-  }
-  
-  .signup-summary-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
-    margin-top: 0.7rem;
-  }
-  
-  .summary-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    align-items: center;
-    padding-bottom: 0.55rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  }
-  
-  .summary-row.total {
-    font-size: 1.08rem;
-    border-bottom: none;
-    padding-top: 0.2rem;
-  }
-  
-  .signup-pay-btn {
-    width: 100%;
-    margin-top: 1rem;
-  }
-  
-  @media (max-width: 640px) {
-    .signup-grid {
-      grid-template-columns: 1fr;
-    }
-  
-    .week-top-row {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-  
-    .signup-hero-top {
-      flex-direction: column;
-    }
-  }
-
-  .signup-identity-block {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-  
-  .signup-player-avatar,
-  .signup-summary-avatar {
-    width: 68px;
-    height: 68px;
-    border-radius: 999px;
-    overflow: hidden;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(circle at 30% 20%, #38bdf8, #0f172a);
-    border: 2px solid rgba(255, 255, 255, 0.28);
-    box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.18);
-  }
-  
-  .signup-player-avatar-img,
-  .signup-summary-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  
-  .signup-player-avatar-fallback,
-  .signup-summary-avatar span {
-    color: #ffffff;
-    font-size: 1.2rem;
-    font-weight: 900;
-  }
-  
-  .signup-week-tile {
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .signup-week-watermark {
-    position: absolute;
-    right: -8px;
-    bottom: -8px;
-    width: 82px;
-    height: 82px;
-    border-radius: 999px;
-    overflow: hidden;
-    opacity: 0.12;
-    pointer-events: none;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-  }
-  
-  .signup-week-watermark img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  
-  .signup-summary-header {
-    margin-bottom: 0.8rem;
-  }
-  
-  .signup-summary-player {
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-  }
-
-  .week-signed-players {
-    margin-top: 0.9rem;
-    text-align: left;
-  }
-  
-  .week-signed-title {
-    font-size: 0.78rem;
-    font-weight: 800;
-    margin-bottom: 0.45rem;
-    color: rgba(255, 255, 255, 0.86);
-  }
-  
-  .week-signed-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-  
-  .week-signed-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.24rem 0.42rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
-    max-width: 100%;
-  }
-  
-  .week-signed-chip-self {
-    background: rgba(250, 204, 21, 0.14);
-    box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.25);
-  }
-  
-  .week-signed-chip-avatar {
-    width: 22px;
-    height: 22px;
-    border-radius: 999px;
-    overflow: hidden;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #38bdf8, #0f172a);
-    font-size: 0.72rem;
-    font-weight: 900;
-    flex-shrink: 0;
-  }
-  
-  .week-signed-chip-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  
-  .week-signed-chip-name {
-    font-size: 0.76rem;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-  
-  .week-signed-empty {
-    margin-top: 0.75rem;
-  }
-
-/* =========================================
+  /* =========================================
    MATCH SIGNUP PAGE
    ========================================= */
 
@@ -3646,35 +3275,24 @@
   
   .signup-hero-card,
   .signup-grid-card,
-  .signup-summary-card {
+  .signup-summary-card,
+  .payment-card {
     border-radius: 18px;
   }
   
-  .signup-hero-top {
+  .signup-hero-compact {
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
-    gap: 0.9rem;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 14px;
   }
   
-  .signup-identity-block {
+  .signup-hero-left {
     display: flex;
-    align-items: center;
-    gap: 0.85rem;
-    flex-wrap: wrap;
-  }
-  
-  .signup-player-pill {
-    margin-top: 0.65rem;
-    display: inline-flex;
-    gap: 0.45rem;
-    align-items: center;
-    padding: 0.45rem 0.75rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 0.86rem;
+    align-items: flex-start;
+    gap: 14px;
+    min-width: 0;
+    flex: 1;
   }
   
   .signup-player-avatar,
@@ -3689,7 +3307,12 @@
     justify-content: center;
     background: radial-gradient(circle at 30% 20%, #38bdf8, #0f172a);
     border: 2px solid rgba(255, 255, 255, 0.24);
-    box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.16);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.16);
+  }
+  
+  .signup-player-avatar-hero {
+    width: 56px;
+    height: 56px;
   }
   
   .signup-player-avatar-img,
@@ -3707,46 +3330,173 @@
     font-weight: 900;
   }
   
-  .signup-rules {
-    margin-top: 0.85rem;
+  .signup-hero-copy {
     display: flex;
-    gap: 0.45rem;
+    flex-direction: column;
+    justify-content: flex-start;
+    min-width: 0;
+    flex: 1;
+  }
+  
+  .signup-hero-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
     flex-wrap: wrap;
   }
   
-  .rule-chip {
-    padding: 0.38rem 0.65rem;
-    border-radius: 999px;
-    font-size: 0.76rem;
+  .signup-hero-title-row h2,
+  .signup-hero-copy h2 {
+    margin: 0;
+  }
+  
+  .signup-hero-subtext {
+    margin: 0 0 10px;
+  }
+  
+  .signup-back-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 0;
+  }
+  
+  .signup-top-meta {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: nowrap;
+    margin-top: 0.6rem;
+    width: 100%;
+  }
+  
+  .signup-attendance-badge {
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 14px;
+    border-radius: 16px;
+    background:
+      radial-gradient(circle at top left, rgba(110, 231, 183, 0.22), transparent 42%),
+      linear-gradient(180deg, rgba(16, 185, 129, 0.22), rgba(15, 23, 42, 0.88));
+    border: 1px solid rgba(110, 231, 183, 0.34);
+    box-shadow:
+      0 10px 24px rgba(0, 0, 0, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 0 0 1px rgba(16, 185, 129, 0.08);
+    overflow: hidden;
+    width: fit-content;
+    align-self: flex-start;
+    margin-left: 0;
+    margin-right: auto;
+  }
+  
+  .signup-attendance-badge::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.10),
+      transparent 35%,
+      transparent 65%,
+      rgba(110, 231, 183, 0.06)
+    );
+    pointer-events: none;
+  }
+  
+  .signup-attendance-badge-label {
+    position: relative;
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #ffd75a;
+    font-weight: 900;
+  }
+  
+  .signup-attendance-badge strong {
+    position: relative;
+    font-size: 14px;
+    color: #ecfdf5;
+    font-weight: 900;
+    letter-spacing: 0.01em;
+  }
+  
+  .signup-attendance-badge small {
+    position: relative;
+    font-size: 11px;
+    color: rgba(220, 252, 231, 0.82);
     font-weight: 700;
   }
   
-  .rule-chip.low {
-    background: rgba(245, 158, 11, 0.18);
-    color: #fbbf24;
+  .signup-save-indicator {
+    font-size: 0.82rem;
   }
   
-  .rule-chip.viable {
-    background: rgba(34, 197, 94, 0.18);
+  .signup-grid-card {
+    overflow: hidden;
+  }
+  
+  .signup-grid-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.55rem;
+  }
+  
+  .signup-grid-title-row h3 {
+    margin: 0;
+  }
+  
+  .signup-top-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.28rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  
+  .signup-top-status.is-active {
+    background: rgba(34, 197, 94, 0.16);
     color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.24);
   }
   
-  .rule-chip.full {
-    background: rgba(239, 68, 68, 0.18);
-    color: #f87171;
+  .signup-top-status.is-idle {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 215, 84, 0.20),
+      rgba(255, 215, 84, 0.08)
+    );
+    color: #ffe9a6;
+    border: 1px solid rgba(255, 215, 84, 0.42);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 245, 200, 0.10),
+      0 0 0 1px rgba(255, 215, 84, 0.06);
   }
   
-  /* Matrix */
   .signup-matrix-wrap {
     width: 100%;
+    max-width: 100%;
+    max-height: 470px;
     overflow-x: auto;
+    overflow-y: auto;
     padding-bottom: 0.2rem;
     -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable both-edges;
     scrollbar-width: thin;
-    scrollbar-color: rgba(250, 204, 21, 0.55) rgba(255, 255, 255, 0.08);
+    scrollbar-color: rgba(255, 255, 255, 0.55) rgba(255, 255, 255, 0.08);
+    position: relative;
   }
   
   .signup-matrix-wrap::-webkit-scrollbar {
+    width: 8px;
     height: 8px;
   }
   
@@ -3756,17 +3506,23 @@
   }
   
   .signup-matrix-wrap::-webkit-scrollbar-thumb {
-    background: linear-gradient(90deg, rgba(250, 204, 21, 0.85), rgba(56, 189, 248, 0.75));
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.88),
+      rgba(56, 189, 248, 0.75)
+    );
     border-radius: 999px;
   }
-
+  
   .signup-matrix {
     display: grid;
+    width: max-content;
+    min-width: 100%;
     border-radius: 16px;
-    overflow: hidden;
+    overflow: visible;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background:
-      radial-gradient(circle at top left, rgba(250, 204, 21, 0.05), transparent 30%),
+      radial-gradient(circle at top left, rgba(255, 255, 255, 0.04), transparent 30%),
       linear-gradient(180deg, #0f172a, #0f172a);
   }
   
@@ -3779,23 +3535,32 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.22);
   }
   
+  .matrix-corner-cell,
+  .matrix-week-head {
+    position: sticky;
+    top: 0;
+  }
+  
   .matrix-corner-cell {
+    left: 0;
+    z-index: 30;
     min-height: 72px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 900;
-    color: #facc15;
-    background: rgba(255, 255, 255, 0.03);
+    color: #ffffff;
+    background: #1a2340;
     font-size: 0.95rem;
     padding: 0.35rem;
   }
   
   .matrix-week-head {
+    z-index: 20;
     min-height: 72px;
     padding: 0.4rem 0.25rem;
     text-align: center;
-    background: rgba(255, 255, 255, 0.03);
+    background: #1a2340;
   }
   
   .matrix-week-date {
@@ -3814,8 +3579,8 @@
   }
   
   .matrix-week-status.low {
-    background: rgba(245, 158, 11, 0.18);
-    color: #fbbf24;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
   }
   
   .matrix-week-status.viable {
@@ -3836,13 +3601,55 @@
   }
   
   .matrix-player-cell {
+    position: sticky;
+    left: 0;
+    z-index: 10;
     min-height: 52px;
     padding: 0.35rem 0.45rem;
     background: #081a3a;
   }
   
-  .matrix-player-cell.is-current-player {
-    background: rgba(250, 204, 21, 0.10);
+  .matrix-player-cell.is-current-player,
+  .matrix-pick-cell.is-current-row,
+  .matrix-view-cell.is-current-row {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 215, 84, 0.16),
+      rgba(255, 215, 84, 0.05)
+    );
+    border-color: rgba(255, 215, 84, 0.2);
+    box-shadow: inset 3px 0 0 rgba(255, 215, 84, 0.95);
+  }
+  
+  .matrix-player-cell.is-current-player .matrix-player-name {
+    color: #ffd75a;
+  }
+  
+  .matrix-player-cell.is-current-player .matrix-player-tag {
+    color: #ffe9a6;
+  }
+  
+  .matrix-player-cell.is-signed-row,
+  .matrix-pick-cell.is-signed-row,
+  .matrix-view-cell.is-signed-row {
+    background:
+      radial-gradient(circle at top left, rgba(255, 255, 255, 0.03), transparent 35%),
+      linear-gradient(180deg, #081a3a, #102347);
+  }
+  
+  .matrix-player-cell.is-empty-row,
+  .matrix-pick-cell.is-empty-row,
+  .matrix-view-cell.is-empty-row {
+    background: linear-gradient(
+      180deg,
+      rgba(12, 20, 38, 0.96),
+      rgba(15, 23, 42, 0.92)
+    );
+  }
+  
+  .matrix-player-cell.is-empty-row .matrix-player-empty {
+    color: rgba(255, 255, 255, 0.78);
+    font-style: italic;
   }
   
   .matrix-player-cell.is-empty-player {
@@ -3880,12 +3687,13 @@
     font-weight: 800;
     line-height: 1;
     font-size: 0.82rem;
+    color: #ffffff;
   }
   
   .matrix-player-tag {
     margin-top: 0.05rem;
     font-size: 0.58rem;
-    color: #facc15;
+    color: #ffffff;
     font-weight: 800;
     line-height: 1;
   }
@@ -3904,7 +3712,7 @@
   .matrix-view-cell {
     min-height: 52px;
     padding: 0;
-    background: rgba(255, 255, 255, 0.02);
+    background: #081a3a;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3932,29 +3740,17 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 2px dashed rgba(255, 255, 255, 0.16);
+    border: 2px dashed rgba(255, 215, 84, 0.35);
     background:
       repeating-linear-gradient(
         -45deg,
-        rgba(255,255,255,0.02),
-        rgba(255,255,255,0.02) 6px,
-        rgba(255,255,255,0.008) 6px,
-        rgba(255,255,255,0.008) 12px
+        rgba(255, 215, 84, 0.04),
+        rgba(255, 215, 84, 0.04) 6px,
+        rgba(255, 215, 84, 0.015) 6px,
+        rgba(255, 215, 84, 0.015) 12px
       );
   }
   
-  .signup-grid-title-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between; /* KEY LINE */
-    gap: 0.5rem;
-    margin-bottom: 0.55rem;
-  }
-  
-  .signup-grid-title-row h3 {
-    margin: 0;
-  }
-
   .matrix-pick-mark {
     font-size: 0.82rem;
     line-height: 1;
@@ -3964,12 +3760,24 @@
   .matrix-view-cell.is-signed .matrix-view-inner,
   .matrix-pick-cell.is-selected .matrix-pick-inner {
     border-style: solid;
-    border-color: rgba(250, 204, 21, 0.55);
-    background:
-      radial-gradient(circle at center, rgba(250, 204, 21, 0.16), transparent 65%),
-      linear-gradient(145deg, rgba(250, 204, 21, 0.08), rgba(255,255,255,0.02));
-    color: #facc15;
-    box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.2);
+    border-color: rgba(255, 255, 255, 0.42);
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+    box-shadow: none;
+  }
+  
+  .matrix-pick-cell.current-player-cell.is-selected .matrix-pick-inner,
+  .matrix-view-cell.is-current-row.is-signed .matrix-view-inner {
+    border-color: rgba(255, 215, 84, 0.72);
+    background: linear-gradient(
+      180deg,
+      rgba(255, 215, 84, 0.22),
+      rgba(255, 215, 84, 0.08)
+    );
+    color: #ffd75a;
+    box-shadow:
+      0 0 0 1px rgba(255, 215, 84, 0.14),
+      inset 0 0 0 1px rgba(255, 245, 200, 0.10);
   }
   
   .matrix-view-cell:not(.is-signed) .matrix-view-inner {
@@ -3981,7 +3789,7 @@
   }
   
   .matrix-pick-cell.status-low .matrix-pick-inner {
-    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.15);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
   }
   
   .matrix-pick-cell.status-viable .matrix-pick-inner {
@@ -3990,6 +3798,29 @@
   
   .matrix-pick-cell.status-full .matrix-pick-inner {
     box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.15);
+  }
+  
+  .matrix-scroll-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    margin: 0.2rem auto 0.55rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.1);
+    border: 1px solid rgba(56, 189, 248, 0.22);
+    color: #cfefff;
+    font-size: 0.72rem;
+    font-weight: 800;
+    width: fit-content;
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.08);
+  }
+  
+  .matrix-scroll-arrow {
+    color: #ffffff;
+    font-size: 0.82rem;
+    font-weight: 900;
   }
   
   .signup-summary-header {
@@ -4029,12 +3860,204 @@
     margin-top: 0.85rem;
   }
   
-  /* Mobile ultra-compact */
-  @media (max-width: 480px) {
-    .signup-hero-top {
+  .signup-calendar-btn {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  
+  .signup-calendar-modal {
+    width: min(420px, 94vw);
+  }
+  
+  .signup-calendar-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.35rem;
+  }
+  
+  .signup-calendar-modal-header h3 {
+    margin: 0;
+  }
+  
+  .signup-calendar-close-btn {
+    min-width: 40px;
+    padding: 8px 0;
+  }
+  
+  .signup-calendar-note {
+    margin-bottom: 0.85rem;
+  }
+  
+  .signup-calendar-weekdays,
+  .signup-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+  
+  .signup-calendar-weekdays {
+    margin-bottom: 0.45rem;
+  }
+  
+  .signup-calendar-weekday {
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #9ca3af;
+  }
+  
+  .signup-calendar-day {
+    height: 42px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #e5e7eb;
+  }
+  
+  .signup-calendar-day.is-empty {
+    background: transparent;
+    border-color: transparent;
+  }
+  
+  .signup-calendar-day.is-button {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    border-radius: 12px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .signup-calendar-day.is-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  
+  .signup-calendar-day-number {
+    position: relative;
+    z-index: 1;
+  }
+  
+  .signup-calendar-day-check {
+    position: absolute;
+    right: 7px;
+    top: 5px;
+    font-size: 0.72rem;
+    font-weight: 900;
+    line-height: 1;
+  }
+  
+  .signup-calendar-day.is-selected .signup-calendar-day-check {
+    color: #fff7cf;
+  }
+  
+  .signup-calendar-day.is-wednesday {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 215, 84, 0.18),
+      rgba(255, 215, 84, 0.06)
+    );
+    border-color: rgba(255, 215, 84, 0.4);
+    color: #ffe9a6;
+    box-shadow:
+      inset 2px 0 0 rgba(255, 215, 84, 0.95),
+      0 0 0 1px rgba(255, 215, 84, 0.08);
+  }
+  
+  .signup-calendar-day.is-selected {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 215, 84, 0.26),
+      rgba(255, 215, 84, 0.1)
+    );
+    border-color: rgba(255, 215, 84, 0.72);
+    color: #ffd75a;
+    box-shadow:
+      inset 3px 0 0 rgba(255, 215, 84, 1),
+      0 0 0 1px rgba(255, 215, 84, 0.16),
+      0 6px 14px rgba(255, 215, 84, 0.1);
+  }
+  
+  .signup-leave-modal {
+    width: min(430px, 94vw);
+  }
+  
+  .signup-leave-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+  
+  .signup-leave-actions .primary-btn,
+  .signup-leave-actions .secondary-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .signup-leave-actions .danger-btn {
+    grid-column: 1 / -1;
+  }
+  
+  .signup-leave-footnote {
+    margin-top: 0.85rem;
+  }
+  
+  .danger-btn {
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #fca5a5;
+  }
+  
+  @media (max-width: 640px) {
+    .signup-hero-compact,
+    .payment-hero-row {
       flex-direction: column;
+      align-items: stretch;
     }
   
+    .signup-hero-left {
+      align-items: flex-start;
+    }
+  
+    .signup-back-btn {
+      align-self: flex-start;
+      margin-left: 0;
+    }
+  
+    .signup-top-meta {
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: nowrap;
+      width: 100%;
+    }
+  
+    .signup-attendance-badge {
+      align-self: flex-start;
+      margin-left: 0;
+      margin-right: auto;
+    }
+  
+    .signup-calendar-btn {
+      margin-left: auto;
+    }
+  }
+  
+  @media (max-width: 480px) {
     .signup-grid-card {
       padding: 10px 6px;
     }
@@ -4050,18 +4073,59 @@
       height: 46px;
     }
   
-    .signup-player-pill {
-      padding: 0.38rem 0.62rem;
-      font-size: 0.78rem;
+    .signup-player-avatar-hero {
+      width: 48px;
+      height: 48px;
     }
   
-    .signup-rules {
-      gap: 0.32rem;
+    .signup-hero-title-row h2 {
+      font-size: 1rem;
     }
   
-    .rule-chip {
-      padding: 0.28rem 0.48rem;
+    .signup-hero-subtext {
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+  
+    .signup-top-status {
       font-size: 0.64rem;
+      padding: 0.2rem 0.45rem;
+    }
+  
+    .signup-top-meta {
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: nowrap;
+      width: 100%;
+    }
+  
+    .signup-attendance-badge {
+      align-self: flex-start;
+      margin-left: 0;
+      margin-right: auto;
+    }
+  
+    .signup-calendar-btn {
+      margin-left: auto;
+    }
+  
+    .signup-leave-actions {
+      grid-template-columns: 1fr;
+    }
+  
+    .signup-leave-actions .danger-btn {
+      grid-column: auto;
+    }
+  
+    .signup-matrix-wrap {
+      max-height: 460px;
+      overflow-x: auto;
+      overflow-y: auto;
+    }
+  
+    .signup-matrix {
+      width: max-content;
+      min-width: 100%;
     }
   
     .signup-matrix.is-mobile-matrix .matrix-corner-cell,
@@ -4114,7 +4178,7 @@
       width: 24px;
       height: 24px;
       font-size: 0.56rem;
-    }  
+    }
   
     .signup-matrix.is-mobile-matrix .matrix-player-name {
       font-size: 0.62rem;
@@ -4140,62 +4204,7 @@
     .signup-matrix.is-mobile-matrix .matrix-pick-mark {
       font-size: 0.66rem;
     }
-  }
-
-  .matrix-scroll-hint {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.45rem;
-    margin: 0.2rem 0 0.55rem;
-    padding: 0.35rem 0.6rem;
-    border-radius: 999px;
-    background: rgba(56, 189, 248, 0.1);
-    border: 1px solid rgba(56, 189, 248, 0.22);
-    color: #cfefff;
-    font-size: 0.72rem;
-    font-weight: 800;
-    width: fit-content;
-    margin-left: auto;
-    margin-right: auto;
-    box-shadow: 0 0 18px rgba(56, 189, 248, 0.08);
-  }
   
-  .matrix-scroll-arrow {
-    color: #facc15;
-    font-size: 0.82rem;
-    font-weight: 900;
-  }
-
-
-  @media (max-width: 480px) {
-    .signup-matrix.is-mobile-matrix .matrix-corner-cell,
-    .signup-matrix.is-mobile-matrix .matrix-week-head {
-      min-height: 56px;
-    }
-  
-    .signup-matrix.is-mobile-matrix .matrix-week-head {
-      padding: 0.2rem 0.08rem;
-    }
-  
-    .signup-matrix.is-mobile-matrix .matrix-week-date {
-      font-size: 0.62rem;
-      line-height: 1;
-    }
-  
-    .signup-matrix.is-mobile-matrix .matrix-week-status {
-      margin-top: 0.12rem;
-      padding: 0.08rem 0.24rem;
-      font-size: 0.5rem;
-    }
-  
-    .signup-matrix.is-mobile-matrix .matrix-week-count {
-      margin-top: 0.1rem;
-      font-size: 0.46rem;
-    }
-  }
-
-  @media (max-width: 480px) {
     .signup-matrix.is-mobile-matrix.is-dense-weeks .matrix-week-head {
       padding: 0.16rem 0.04rem;
     }
@@ -4225,130 +4234,5 @@
   
     .signup-matrix.is-mobile-matrix.is-dense-weeks .matrix-pick-mark {
       font-size: 0.58rem;
-    }
-  }
-
-  .signup-hero-compact {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.9rem;
-  }
-  
-  .signup-hero-left {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.85rem;
-    min-width: 0;
-    flex: 1;
-  }
-  
-  .signup-player-avatar-hero {
-    width: 56px;
-    height: 56px;
-  }
-  
-  .signup-hero-copy {
-    min-width: 0;
-    flex: 1;
-  }
-  
-  .signup-hero-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.55rem;
-    flex-wrap: wrap;
-  }
-  
-  .signup-hero-title-row h2 {
-    margin: 0;
-  }
-  
-  .signup-hero-subtext {
-    margin: 0.45rem 0 0;
-  }
-  
-  .signup-top-status {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.28rem 0.55rem;
-    border-radius: 999px;
-    font-size: 0.72rem;
-    font-weight: 800;
-    white-space: nowrap;
-  }
-  
-  .signup-top-status.is-active {
-    background: rgba(34, 197, 94, 0.16);
-    color: #4ade80;
-    border: 1px solid rgba(34, 197, 94, 0.24);
-  }
-  
-  .signup-top-status.is-idle {
-    background: rgba(245, 158, 11, 0.16);
-    color: #fbbf24;
-    border: 1px solid rgba(245, 158, 11, 0.24);
-  }
-  
-  .signup-top-meta {
-    display: flex;
-    gap: 0.45rem;
-    flex-wrap: wrap;
-    margin-top: 0.6rem;
-  }
-  
-  .signup-player-pill-compact,
-  .signup-team-pill {
-    display: inline-flex;
-    gap: 0.4rem;
-    align-items: center;
-    padding: 0.38rem 0.65rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 0.78rem;
-  }
-  
-  .signup-back-btn {
-    flex-shrink: 0;
-  }
-  
-  @media (max-width: 480px) {
-    .signup-hero-compact {
-      align-items: flex-start;
-      gap: 0.7rem;
-    }
-  
-    .signup-hero-left {
-      gap: 0.7rem;
-    }
-  
-    .signup-player-avatar-hero {
-      width: 48px;
-      height: 48px;
-    }
-  
-    .signup-hero-title-row h2 {
-      font-size: 1rem;
-    }
-  
-    .signup-hero-subtext {
-      font-size: 0.82rem;
-      line-height: 1.35;
-    }
-  
-    .signup-top-status {
-      font-size: 0.64rem;
-      padding: 0.2rem 0.45rem;
-    }
-  
-    .signup-player-pill-compact,
-    .signup-team-pill {
-      font-size: 0.7rem;
-      padding: 0.3rem 0.5rem;
-    }
-  
-    .signup-back-btn {
-      padding: 0.45rem 0.8rem;
     }
   }
