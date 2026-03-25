@@ -92,6 +92,7 @@ export function LandingPage({
   const [showFixturesModal, setShowFixturesModal] = useState(false);
   const [fixtureAdminCode, setFixtureAdminCode] = useState("");
   const [fixtureAdminError, setFixtureAdminError] = useState("");
+  const [headerScrolled, setHeaderScrolled] = useState(false);
 
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -116,6 +117,16 @@ export function LandingPage({
     const onResize = () => setIsMobile(window.innerWidth <= 480);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 6);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -293,62 +304,70 @@ export function LandingPage({
 
   return (
     <div className="page landing-page">
-      <header className="header">
-        <div className="header-title">
-          <img src={TurfKingsLogo} alt="Turf Kings logo" className="tk-logo" />
-          <h1>Turf Kings 5-A-Side</h1>
-        </div>
-
-        <p className="subtitle">Grand Central (CT) – Wednesdays, 17:30–19:00</p>
-
-        <div className="header-top-row">
-          <div className="auth-status">
-            <span className="auth-text">
-              Viewing as <strong>{identityName}</strong>
-              <span className="muted small">
-                {" "}
-                • Role: <strong>{roleLabel}</strong>
-              </span>
-            </span>
-
-            {currentUser && resolvedRole !== "spectator" && (
-              <div className="muted small" style={{ marginTop: "0.2rem" }}>
-                Google account:{" "}
-                <strong>{currentUser.displayName || currentUser.email}</strong>
-              </div>
-            )}
+      <div
+        className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}
+      >
+        <header className="header">
+          <div className="header-title">
+            <img src={TurfKingsLogo} alt="Turf Kings logo" className="tk-logo" />
+            <h1>Turf Kings 5-A-Side</h1>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            {isAdmin && typeof onOpenEndSeasonModal === "function" && (
+          <p className="subtitle">
+            Grand Central (CT) – Wednesdays, 17:30–19:00
+          </p>
+
+          <div className="header-top-row">
+            <div className="auth-status">
+              <span className="auth-text">
+                Viewing as <strong>{identityName}</strong>
+                <span className="muted small">
+                  {" "}
+                  • Role: <strong>{roleLabel}</strong>
+                </span>
+              </span>
+
+              {currentUser && resolvedRole !== "spectator" && (
+                <div className="muted small" style={{ marginTop: "0.2rem" }}>
+                  Google account:{" "}
+                  <strong>{currentUser.displayName || currentUser.email}</strong>
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              {isAdmin && typeof onOpenEndSeasonModal === "function" && (
+                <button
+                  className="secondary-btn"
+                  type="button"
+                  onClick={onOpenEndSeasonModal}
+                >
+                  🏆 End Season
+                </button>
+              )}
+
               <button
                 className="secondary-btn"
                 type="button"
-                onClick={onOpenEndSeasonModal}
+                onClick={onGoToEntryDev}
               >
-                🏆 End Season
+                {profileButtonLabel}
               </button>
-            )}
-
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={onGoToEntryDev}
-            >
-              {profileButtonLabel}
-            </button>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <section className="card">
+        <div className="landing-header-divider" />
+      </div>
+
+      <section className="card landing-first-card">
         {canSeeCaptainStyleControls && (
           <div style={{ marginBottom: "0.9rem" }}>
             <div
@@ -437,7 +456,7 @@ export function LandingPage({
             </div>
 
             <div className="muted small">
-              Target: <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+              Common target: <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
             </div>
           </div>
         )}
@@ -654,110 +673,109 @@ export function LandingPage({
           <div className="modal" style={{ maxWidth: "620px", width: "94%" }}>
             <h3>Fixtured Match List</h3>
             <p>
-              Target: <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+              Common target: <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
             </p>
 
             {isAdmin && (
               <div style={{ marginBottom: "1rem" }}>
                 <div
                   style={{
-                    display: "flex",
-                    gap: "0.45rem",
-                    flexWrap: "wrap",
-                    alignItems: "center",
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 0.9fr auto",
+                    gap: "0.75rem",
+                    alignItems: "end",
                     marginBottom: "0.55rem",
                   }}
                 >
-                  <input
-                    type="password"
-                    className="text-input"
-                    style={{ width: "120px" }}
-                    placeholder="Admin code"
-                    value={fixtureAdminCode}
-                    onChange={(e) => {
-                      setFixtureAdminCode(e.target.value);
-                      setFixtureAdminError("");
-                    }}
-                  />
+                  <div>
+                    <label
+                      className="muted small"
+                      style={{ display: "block", marginBottom: "0.35rem" }}
+                    >
+                      Admin code
+                    </label>
+                    <input
+                      type="password"
+                      className="text-input"
+                      placeholder="Enter admin code"
+                      value={fixtureAdminCode}
+                      onChange={(e) => {
+                        setFixtureAdminCode(e.target.value);
+                        setFixtureAdminError("");
+                      }}
+                    />
+                  </div>
 
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    className="text-input"
-                    style={{ width: "84px" }}
-                    value={smartOffset}
-                    onChange={(e) =>
-                      onUpdateSmartOffset?.(Number(e.target.value || 5))
-                    }
-                    title="Smart offset above current max P"
-                  />
+                  <div>
+                    <label
+                      className="muted small"
+                      style={{ display: "block", marginBottom: "0.35rem" }}
+                    >
+                      Remaining games
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      className="text-input"
+                      value={smartOffset}
+                      onChange={(e) =>
+                        onUpdateSmartOffset?.(Number(e.target.value || 0))
+                      }
+                      placeholder="5"
+                      title="Remaining games"
+                    />
+                  </div>
 
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() =>
-                      smartTarget != null && handleProtectedTargetChange(smartTarget)
-                    }
-                    disabled={smartTarget == null}
-                    style={
-                      smartTarget != null &&
-                      Number(scheduledTarget) === Number(smartTarget)
-                        ? {
-                            border: "1px solid rgba(255, 90, 90, 0.55)",
-                            background:
-                              "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
-                            color: "#ffffff",
-                          }
-                        : undefined
-                    }
-                  >
-                    {smartTarget ?? "-"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => handleProtectedTargetChange(50)}
-                    style={
-                      Number(scheduledTarget) === 50
-                        ? {
-                            border: "1px solid rgba(255, 90, 90, 0.55)",
-                            background:
-                              "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
-                            color: "#ffffff",
-                          }
-                        : undefined
-                    }
-                  >
-                    50
-                  </button>
-
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => handleProtectedTargetChange(52)}
-                    style={
-                      Number(scheduledTarget) === 52
-                        ? {
-                            border: "1px solid rgba(255, 90, 90, 0.55)",
-                            background:
-                              "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
-                            color: "#ffffff",
-                          }
-                        : undefined
-                    }
-                  >
-                    52
-                  </button>
+                  <div>
+                    <label
+                      className="muted small"
+                      style={{
+                        display: "block",
+                        marginBottom: "0.35rem",
+                        opacity: 0.85,
+                      }}
+                    >
+                      Target
+                    </label>
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={() =>
+                        smartTarget != null &&
+                        handleProtectedTargetChange(smartTarget)
+                      }
+                      disabled={smartTarget == null}
+                      style={
+                        smartTarget != null &&
+                        Number(scheduledTarget) === Number(smartTarget)
+                          ? {
+                              border: "1px solid rgba(255, 90, 90, 0.55)",
+                              background:
+                                "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
+                              color: "#ffffff",
+                              minWidth: "88px",
+                            }
+                          : { minWidth: "88px" }
+                      }
+                    >
+                      {smartTarget ?? "-"}
+                    </button>
+                  </div>
                 </div>
 
-                <p className="muted small" style={{ marginTop: "-0.15rem" }}>
-                  Smart target = nearest reachable common target at or above max P + offset
+                <p
+                  className="muted small"
+                  style={{ marginTop: "0.15rem", lineHeight: 1.5 }}
+                >
+                  <strong>Remaining games</strong> sets how many more games above
+                  the current highest <strong>P</strong> you want to aim for. The
+                  system then finds the nearest reachable common target for all 3
+                  teams.
                 </p>
 
                 {fixtureAdminError && (
-                  <p className="error-text" style={{ marginTop: "0.25rem" }}>
+                  <p className="error-text" style={{ marginTop: "0.35rem" }}>
                     {fixtureAdminError}
                   </p>
                 )}
@@ -784,7 +802,7 @@ export function LandingPage({
 
                 return (
                   <div
-                    key={fixture.id || `${fixture.teamAId}-${fixture.teamBId}-${index}`}
+                    key={`${fixture.id || `${fixture.teamAId}-${fixture.teamBId}`}-${index}`}
                     style={{
                       padding: "0.45rem 0",
                       fontWeight: done ? 400 : 700,

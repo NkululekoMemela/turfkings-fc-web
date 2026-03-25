@@ -98,6 +98,114 @@ function safeNum(value) {
     };
   }
   
+  function buildTeamIds(teams = []) {
+    return (teams || []).map((t) => t.id).filter(Boolean);
+  }
+  
+  function buildPairToTeamsMap(remaining = {}) {
+    const out = {};
+    Object.keys(remaining).forEach((key) => {
+      const [a, b] = key.split("__");
+      out[key] = [a, b];
+    });
+    return out;
+  }
+  
+  function computeRemainingAppearances(remaining = {}, teamIds = []) {
+    const counts = Object.fromEntries((teamIds || []).map((id) => [id, 0]));
+  
+    Object.entries(remaining).forEach(([key, value]) => {
+      const n = safeNum(value);
+      if (n <= 0) return;
+      const [a, b] = key.split("__");
+      if (counts[a] != null) counts[a] += n;
+      if (counts[b] != null) counts[b] += n;
+    });
+  
+    return counts;
+  }
+  
+  function nextAppearanceStreaks(currentStreaks = {}, teamIds = [], teamAId, teamBId) {
+    const next = {};
+  
+    (teamIds || []).forEach((id) => {
+      const current = safeNum(currentStreaks[id]);
+      if (id === teamAId || id === teamBId) {
+        next[id] = current + 1;
+      } else {
+        next[id] = 0;
+      }
+    });
+  
+    return next;
+  }
+  
+  function maxStreak(streaks = {}) {
+    return Math.max(0, ...Object.values(streaks).map((v) => safeNum(v)));
+  }
+  
+  function sumSelectedRemainingAppearances(remainingAppearances = {}, a, b) {
+    return safeNum(remainingAppearances[a]) + safeNum(remainingAppearances[b]);
+  }
+  
+  function pickBestCandidate(candidates = [], lastPairKey, currentStreaks, remaining, teamIds) {
+    if (!candidates.length) return null;
+  
+    const remainingAppearances = computeRemainingAppearances(remaining, teamIds);
+  
+    const withMeta = candidates.map((key) => {
+      const [a, b] = key.split("__");
+      const nextStreaks = nextAppearanceStreaks(currentStreaks, teamIds, a, b);
+      const nextMaxStreak = maxStreak(nextStreaks);
+  
+      return {
+        key,
+        a,
+        b,
+        sameAsLast: key === lastPairKey,
+        pairRemaining: safeNum(remaining[key]),
+        selectedRemainingAppearances: sumSelectedRemainingAppearances(
+          remainingAppearances,
+          a,
+          b
+        ),
+        nextStreaks,
+        nextMaxStreak,
+        currentAStreak: safeNum(currentStreaks[a]),
+        currentBStreak: safeNum(currentStreaks[b]),
+      };
+    });
+  
+    const nonRepeat = withMeta.filter((x) => !x.sameAsLast);
+    const noRepeatPool = nonRepeat.length ? nonRepeat : withMeta;
+  
+    const max2Pool = noRepeatPool.filter((x) => x.nextMaxStreak <= 2);
+    const max3Pool = noRepeatPool.filter((x) => x.nextMaxStreak <= 3);
+  
+    const finalPool =
+      max2Pool.length > 0 ? max2Pool : max3Pool.length > 0 ? max3Pool : noRepeatPool;
+  
+    finalPool.sort((x, y) => {
+      if (y.pairRemaining !== x.pairRemaining) {
+        return y.pairRemaining - x.pairRemaining;
+      }
+  
+      if (y.selectedRemainingAppearances !== x.selectedRemainingAppearances) {
+        return y.selectedRemainingAppearances - x.selectedRemainingAppearances;
+      }
+  
+      const xCurrentStreakSum = x.currentAStreak + x.currentBStreak;
+      const yCurrentStreakSum = y.currentAStreak + y.currentBStreak;
+      if (xCurrentStreakSum !== yCurrentStreakSum) {
+        return xCurrentStreakSum - yCurrentStreakSum;
+      }
+  
+      return x.key.localeCompare(y.key);
+    });
+  
+    return finalPool[0] || null;
+  }
+  
   export function buildScheduledFixtures(teams = [], pairCounts = {}) {
     const safeTeams = Array.isArray(teams) ? teams.slice(0, 3) : [];
     const teamById = Object.fromEntries(safeTeams.map((t) => [t.id, t]));
@@ -105,34 +213,33 @@ function safeNum(value) {
       Object.entries(pairCounts || {}).map(([k, v]) => [k, safeNum(v)])
     );
   
+    const teamIds = buildTeamIds(safeTeams);
     const fixtures = [];
     let lastPairKey = null;
-    const allPairs = Object.keys(remaining);
+    let appearanceStreaks = Object.fromEntries(teamIds.map((id) => [id, 0]));
   
     while (true) {
-      const candidates = allPairs
-        .filter((key) => remaining[key] > 0)
-        .sort((a, b) => {
-          const diff = remaining[b] - remaining[a];
-          if (diff !== 0) return diff;
-          if (a === lastPairKey) return 1;
-          if (b === lastPairKey) return -1;
-          return a.localeCompare(b);
-        });
-  
+      const candidates = Object.keys(remaining).filter((key) => remaining[key] > 0);
       if (!candidates.length) break;
   
-      const chosenKey =
-        candidates.find((key) => key !== lastPairKey) || candidates[0];
+      const picked = pickBestCandidate(
+        candidates,
+        lastPairKey,
+        appearanceStreaks,
+        remaining,
+        teamIds
+      );
   
-      const [idA, idB] = chosenKey.split("__");
-      const teamA = teamById[idA];
-      const teamB = teamById[idB];
+      if (!picked) break;
+  
+      const teamA = teamById[picked.a];
+      const teamB = teamById[picked.b];
       if (!teamA || !teamB) break;
   
       fixtures.push(buildFixtureObject(fixtures.length, teamA, teamB));
-      remaining[chosenKey] -= 1;
-      lastPairKey = chosenKey;
+      remaining[picked.key] -= 1;
+      lastPairKey = picked.key;
+      appearanceStreaks = picked.nextStreaks;
     }
   
     return fixtures.map((fixture, idx) => ({
