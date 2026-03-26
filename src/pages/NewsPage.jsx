@@ -1,7 +1,7 @@
 // src/pages/NewsPage.jsx
 import React, { useMemo, useState, useEffect } from "react";
-import JaydTribute from "../assets/Jayd_Tribute.jpeg"; // <- tribute photo
-import JerseyImage from "../assets/Jersey.jpeg"; // <- new kit advert image
+import JaydTribute from "../assets/Jayd_Tribute.jpeg";
+import JerseyImage from "../assets/Jersey.jpeg";
 import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
 
@@ -11,7 +11,7 @@ import {
   removeKitOrder,
 } from "../storage/firebaseRepository.js";
 
-const BAD_MATCH_NUMBERS = new Set(); // drop these from week-1 archive
+const BAD_MATCH_NUMBERS = new Set();
 const injuredPlayerName = "Jayd";
 
 const VENUE_MAP_URL =
@@ -32,6 +32,18 @@ export function NewsPage({
   members,
   initialProgramOpen,
 }) {
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 6);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   // ---------- Helpers ----------
   const teamById = useMemo(() => {
     const map = new Map();
@@ -229,7 +241,11 @@ export function NewsPage({
     let best = null;
     playerStats.forEach((p) => {
       if (p.goals <= 0) return;
-      if (!best || p.goals > best.goals || (p.goals === best.goals && p.name.localeCompare(best.name) < 0)) {
+      if (
+        !best ||
+        p.goals > best.goals ||
+        (p.goals === best.goals && p.name.localeCompare(best.name) < 0)
+      ) {
         best = p;
       }
     });
@@ -240,7 +256,11 @@ export function NewsPage({
     let best = null;
     playerStats.forEach((p) => {
       if (p.assists <= 0) return;
-      if (!best || p.assists > best.assists || (p.assists === best.assists && p.name.localeCompare(best.name) < 0)) {
+      if (
+        !best ||
+        p.assists > best.assists ||
+        (p.assists === best.assists && p.name.localeCompare(best.name) < 0)
+      ) {
         best = p;
       }
     });
@@ -255,7 +275,9 @@ export function NewsPage({
         !best ||
         p.total > best.total ||
         (p.total === best.total && p.goals > best.goals) ||
-        (p.total === best.total && p.goals === best.goals && p.name.localeCompare(best.name) < 0)
+        (p.total === best.total &&
+          p.goals === best.goals &&
+          p.name.localeCompare(best.name) < 0)
       ) {
         best = p;
       }
@@ -307,13 +329,17 @@ export function NewsPage({
     let bestGoal = null;
     goalStreaks.forEach((st, name) => {
       if (st.best <= 0) return;
-      if (!bestGoal || st.best > bestGoal.length) bestGoal = { name, length: st.best };
+      if (!bestGoal || st.best > bestGoal.length) {
+        bestGoal = { name, length: st.best };
+      }
     });
 
     let bestAssist = null;
     assistStreaks.forEach((st, name) => {
       if (st.best <= 0) return;
-      if (!bestAssist || st.best > bestAssist.length) bestAssist = { name, length: st.best };
+      if (!bestAssist || st.best > bestAssist.length) {
+        bestAssist = { name, length: st.best };
+      }
     });
 
     if (bestGoal) bestGoal.teamName = playerTeamMap[bestGoal.name] || "—";
@@ -358,7 +384,9 @@ export function NewsPage({
       if (!map.has(e.matchNo)) map.set(e.matchNo, []);
       map.get(e.matchNo).push(e);
     });
-    map.forEach((list) => list.sort((a, b) => (a.timeSeconds || 0) - (b.timeSeconds || 0)));
+    map.forEach((list) =>
+      list.sort((a, b) => (a.timeSeconds || 0) - (b.timeSeconds || 0))
+    );
     return map;
   }, [cleanWeekEvents]);
 
@@ -383,7 +411,7 @@ export function NewsPage({
     if (initialProgramOpen) setShowProgramModal(true);
   }, [initialProgramOpen]);
 
-  // ---------- STYLE OBJECTS (UNCHANGED) ----------
+  // ---------- STYLE OBJECTS ----------
   const yearEndCardStyle = {
     display: isNarrow ? "flex" : "grid",
     flexDirection: isNarrow ? "column" : undefined,
@@ -395,7 +423,8 @@ export function NewsPage({
       "radial-gradient(circle at top left, rgba(248,250,252,0.22), transparent 55%)," +
       "radial-gradient(circle at bottom right, rgba(248,250,252,0.18), transparent 60%)," +
       "linear-gradient(135deg, #020617, #111827 45%, #0b1120 100%)",
-    boxShadow: "0 18px 45px rgba(15,23,42,0.85), 0 0 0 1px rgba(148,163,184,0.18)",
+    boxShadow:
+      "0 18px 45px rgba(15,23,42,0.85), 0 0 0 1px rgba(148,163,184,0.18)",
     color: "#e5e7eb",
     alignItems: "stretch",
     marginBottom: "1.75rem",
@@ -491,7 +520,8 @@ export function NewsPage({
     zIndex: 2,
     padding: isNarrow ? "0.7rem 0.9rem" : "0.9rem 1.15rem",
     borderRadius: "1rem",
-    background: "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(15,23,42,0.75))",
+    background:
+      "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(15,23,42,0.75))",
     border: "1px solid rgba(148,163,184,0.6)",
     backdropFilter: "blur(10px)",
     boxShadow: "0 14px 35px rgba(15,23,42,0.9)",
@@ -556,7 +586,8 @@ export function NewsPage({
     bottom: "14%",
     width: "140%",
     height: "40px",
-    background: "linear-gradient(90deg, rgba(251,191,36,0.95), rgba(251,113,133,0.95))",
+    background:
+      "linear-gradient(90deg, rgba(251,191,36,0.95), rgba(251,113,133,0.95))",
     transform: "rotate(-4deg)",
     opacity: 0.85,
   };
@@ -659,19 +690,55 @@ export function NewsPage({
   // ---------- RENDER ----------
   return (
     <div className="page news-page">
+      <div
+        className={`landing-header-sticky ${
+          headerScrolled ? "is-scrolled" : ""
+        }`}
+      >
+        <header className="header">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              width: "100%",
+            }}
+          >
+            <div className="header-title" style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0 }}>News &amp; highlights</h1>
+            </div>
+
+            <button
+              className="secondary-btn"
+              onClick={onBack}
+              aria-label="Home"
+              title="Home"
+              style={{
+                minWidth: "46px",
+                width: "46px",
+                height: "46px",
+                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.05rem",
+                flexShrink: 0,
+              }}
+            >
+              🏠
+            </button>
+          </div>
+        </header>
+      </div>
+
       <header className="header">
-        <h1>News &amp; highlights</h1>
         <p className="subtitle">
           Automatic recap built from your full TurfKings match history.
         </p>
-        <div className="news-header-actions">
-          <button className="secondary-btn" onClick={onBack}>
-            Back to main page
-          </button>
-        </div>
       </header>
 
-      {/* ✅ JERSEY STORY (UNCHANGED) */}
+      {/* ✅ JERSEY STORY */}
       <section className="card" style={{ overflow: "hidden" }}>
         <div
           style={{
@@ -989,8 +1056,7 @@ export function NewsPage({
                 <p className="streak-sub">
                   {streakStats.bestAssist.teamName && streakStats.bestAssist.teamName !== "—"
                     ? `Playmaking for ${streakStats.bestAssist.teamName}.`
-                    : "Sharing the shine with everyone."
-                  }
+                    : "Sharing the shine with everyone."}
                 </p>
               </div>
             )}
@@ -998,7 +1064,7 @@ export function NewsPage({
         )}
       </section>
 
-      {/* ✅ OLD STORIES FOLDER (PLACED WHERE JAYD STORY USED TO BE) */}
+      {/* OLD STORIES FOLDER */}
       <details className="card">
         <summary style={{ cursor: "pointer", fontWeight: 800 }}>
           🗂️ Old stories (tap to expand)
@@ -1010,7 +1076,6 @@ export function NewsPage({
             ✨ Year-End Function (tap to expand)
           </summary>
 
-          {/* YEAR-END FUNCTION – PREMIUM CARD (UNCHANGED CONTENT + STYLES) */}
           <section className="card year-end-premium-card" style={yearEndCardStyle}>
             <div style={{ minWidth: 0 }}>
               <div style={yearEndPillStyle}>
@@ -1050,7 +1115,14 @@ export function NewsPage({
                 <strong>R100</strong> for a full night out with the squad.
               </p>
 
-              <div style={{ marginTop: "1rem", display: "flex", flexWrap: "wrap", gap: "0.6rem" }}>
+              <div
+                style={{
+                  marginTop: "1rem",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.6rem",
+                }}
+              >
                 <button
                   type="button"
                   className="primary-btn"
@@ -1125,7 +1197,6 @@ export function NewsPage({
             🩹 Jayd story (tap to expand)
           </summary>
 
-          {/* INJURY TRIBUTE CARD (UNCHANGED CONTENT + CLASSES) */}
           <section className="card injury-tribute-card">
             <div className="injury-photo-wrapper">
               <img src={injuredAvatarUrl} alt="Injury tribute" className="injury-photo" />
@@ -1209,9 +1280,18 @@ export function NewsPage({
         )}
       </section>
 
-      {showRSVP && <RSVPModal identity={identity} onClose={() => setShowRSVP(false)} />}
+      {showRSVP && (
+        <RSVPModal
+          identity={identity}
+          onClose={() => setShowRSVP(false)}
+        />
+      )}
+
       {showProgramModal && (
-        <YearEndProgramModal identity={identity} onClose={() => setShowProgramModal(false)} />
+        <YearEndProgramModal
+          identity={identity}
+          onClose={() => setShowProgramModal(false)}
+        />
       )}
     </div>
   );
@@ -1219,8 +1299,12 @@ export function NewsPage({
 
 function formatSecondsSafe(s) {
   const v = typeof s === "number" && !Number.isNaN(s) && s >= 0 ? s : 0;
-  const m = Math.floor(v / 60).toString().padStart(2, "0");
-  const sec = (v % 60).toString().padStart(2, "0");
+  const m = Math.floor(v / 60)
+    .toString()
+    .padStart(2, "0");
+  const sec = (v % 60)
+    .toString()
+    .padStart(2, "0");
   return `${m}:${sec}`;
 }
 
@@ -1241,7 +1325,20 @@ function formatMatchDayDate(input) {
   if (!d) return "";
 
   const day = d.getDate().toString().padStart(2, "0");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const month = months[d.getMonth()];
   const year = d.getFullYear();
   return `${day} ${month} ${year}`;

@@ -76,10 +76,10 @@ function blendPeerValue(adminVal, squadVal) {
 }
 
 /**
- * Remap a 0–10 score into a baseline system where:
- * - 1+ games -> score lives in 3–10
+ * Remap a 0–10 score into a visible 3–10 floor.
+ * Used for both OVERALL and FORM.
  */
-function applyOverallBaseline(score10) {
+function applyScoreFloor(score10) {
   const raw = clamp(0, Number(score10 || 0), 10);
   return round1(3 + (raw / 10) * 7);
 }
@@ -193,22 +193,11 @@ function buildPlayersRegistry(playersSnap) {
   return { mapNameToCanon, mapCanonToShort };
 }
 
-function buildParticipationFromMainDoc(mainSnap, canonicalMap, activeSeasonId) {
-  if (!mainSnap.exists()) return {};
+function buildParticipationForSeason(season, canonicalMap) {
+  if (!season) return {};
 
-  const data = mainSnap.data() || {};
-  const state = data.state || {};
-  const seasons = Array.isArray(state.seasons) ? state.seasons : [];
-
-  const targetSeason =
-    seasons.find((s) => s?.seasonId === activeSeasonId) ||
-    seasons[0] ||
-    null;
-
-  if (!targetSeason) return {};
-
-  const history = Array.isArray(targetSeason.matchDayHistory)
-    ? targetSeason.matchDayHistory
+  const history = Array.isArray(season.matchDayHistory)
+    ? season.matchDayHistory
     : [];
 
   const next = {};
@@ -224,7 +213,7 @@ function buildParticipationFromMainDoc(mainSnap, canonicalMap, activeSeasonId) {
   };
 
   history.forEach((day) => {
-    const dayId = String(day?.id || "").trim();
+    const dayId = String(day?.id || day?.matchDayId || day?.date || "").trim();
     const appearances = Array.isArray(day?.playerAppearances)
       ? day.playerAppearances
       : [];
@@ -255,33 +244,48 @@ function buildParticipationFromMainDoc(mainSnap, canonicalMap, activeSeasonId) {
   return next;
 }
 
-function buildBaselinesFromSnap(baselinesSnap, canonicalMap, activeSeasonId) {
-  const next = {};
-  const seasonMatches = {};
-  const fallbackUnknown = {};
+function buildParticipationFromMainDoc(mainSnap, canonicalMap, activeSeasonId) {
+  if (!mainSnap.exists()) return {};
+
+  const data = mainSnap.data() || {};
+  const state = data.state || {};
+  const seasons = Array.isArray(state.seasons) ? state.seasons : [];
+
+  const targetSeason =
+    seasons.find((s) => s?.seasonId === activeSeasonId) ||
+    seasons[0] ||
+    null;
+
+  return buildParticipationForSeason(targetSeason, canonicalMap);
+}
+
+function buildBaselinesBySeasonFromSnap(baselinesSnap, canonicalMap) {
+  const out = {};
 
   baselinesSnap.forEach((docSnap) => {
     const data = docSnap.data() || {};
-    const seasonId = String(data.seasonId || "").trim();
+    const seasonId = String(data.seasonId || "UNKNOWN_SEASON").trim();
     const canonical = resolveCanonicalNameFromMap(data.targetName || "", canonicalMap);
 
     if (!canonical) return;
 
-    const baseline = {
+    if (!out[seasonId]) out[seasonId] = {};
+
+    out[seasonId][canonical] = {
       attack: hasPositiveNumber(Number(data.attack)) ? Number(data.attack) : null,
       defence: hasPositiveNumber(Number(data.defence)) ? Number(data.defence) : null,
       gk: hasPositiveNumber(Number(data.gk)) ? Number(data.gk) : null,
     };
-
-    if (seasonId && activeSeasonId && seasonId === String(activeSeasonId)) {
-      seasonMatches[canonical] = baseline;
-      return;
-    }
-
-    if (seasonId === "UNKNOWN_SEASON") {
-      fallbackUnknown[canonical] = baseline;
-    }
   });
+
+  return out;
+}
+
+function buildBaselinesFromSnap(baselinesSnap, canonicalMap, activeSeasonId) {
+  const allBySeason = buildBaselinesBySeasonFromSnap(baselinesSnap, canonicalMap);
+  const seasonMatches = allBySeason[String(activeSeasonId || "")] || {};
+  const fallbackUnknown = allBySeason.UNKNOWN_SEASON || {};
+  const next = {};
 
   const allNames = new Set([
     ...Object.keys(seasonMatches),
@@ -325,6 +329,409 @@ function buildCloudPhotosIndex(photoSnap) {
   return idx;
 }
 
+function collectSeasonEvents(season) {
+  const history = Array.isArray(season?.matchDayHistory)
+    ? season.matchDayHistory
+    : [];
+  return history.flatMap((day) =>
+    Array.isArray(day?.allEvents) ? day.allEvents : []
+  );
+}
+
+function dedupeEvents(events = []) {
+  const seen = new Set();
+  const out = [];
+
+  (events || []).forEach((e) => {
+    if (!e) return;
+
+    const key =
+      e.id ??
+      [
+        e.matchNo ?? "m?",
+        e.timeSeconds ?? "t?",
+        e.type ?? "type?",
+        e.teamId ?? "team?",
+        e.scorer ?? e.playerName ?? "p?",
+        e.assist ?? "a?",
+        e.role ?? "role?",
+      ].join("|");
+
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(e);
+  });
+
+  return out;
+}
+
+function buildSeasonStatsByPlayer(events, canonicalMap) {
+  const stats = {};
+
+  const ensure = (canonName) => {
+    if (!stats[canonName]) {
+      stats[canonName] = {
+        goals: 0,
+        assists: 0,
+        cleanSheets: 0,
+        gkCleanSheets: 0,
+        defCleanSheets: 0,
+        points: 0,
+        rawStatsScore: 0,
+      };
+    }
+    return stats[canonName];
+  };
+
+  dedupeEvents(events).forEach((e) => {
+    if (!e) return;
+
+    if (e.type === "clean_sheet") {
+      const holderName = e.playerName || e.scorer || "";
+      const canonHolder = resolveCanonicalNameFromMap(holderName, canonicalMap);
+      if (!canonHolder) return;
+
+      const s = ensure(canonHolder);
+      s.cleanSheets += 1;
+      if (e.role === "gk") s.gkCleanSheets += 1;
+      if (e.role === "def") s.defCleanSheets += 1;
+      return;
+    }
+
+    if (e.scorer && e.type === "goal") {
+      const canonScorer = resolveCanonicalNameFromMap(e.scorer, canonicalMap);
+      if (canonScorer) {
+        const s = ensure(canonScorer);
+        s.goals += 1;
+      }
+    }
+
+    if (e.assist) {
+      const canonAssist = resolveCanonicalNameFromMap(e.assist, canonicalMap);
+      if (canonAssist) {
+        const a = ensure(canonAssist);
+        a.assists += 1;
+      }
+    }
+  });
+
+  Object.values(stats).forEach((p) => {
+    p.points = p.goals + p.assists + p.defCleanSheets + p.gkCleanSheets;
+    p.rawStatsScore = p.points;
+  });
+
+  return stats;
+}
+
+function buildPeerScore10FromBaseline(baseline) {
+  if (!baseline) return null;
+
+  const vals = [
+    safeNumber(baseline.attack),
+    safeNumber(baseline.defence),
+    safeNumber(baseline.gk),
+  ].filter((v) => v != null);
+
+  if (!vals.length) return null;
+
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  return clamp(0, 2 * avg, 10);
+}
+
+function buildCarrySnapshotsForPreviousSeason(previousSeason, canonicalMap, baselinesBySeason) {
+  if (!previousSeason) return {};
+
+  const seasonId = String(previousSeason?.seasonId || "").trim();
+  const events = collectSeasonEvents(previousSeason);
+  const statsByPlayer = buildSeasonStatsByPlayer(events, canonicalMap);
+  const participationByPlayer = buildParticipationForSeason(previousSeason, canonicalMap);
+  const baselinesForSeason =
+    baselinesBySeason[seasonId] || baselinesBySeason.UNKNOWN_SEASON || {};
+
+  const allNames = new Set([
+    ...Object.keys(statsByPlayer || {}),
+    ...Object.keys(participationByPlayer || {}),
+    ...Object.keys(baselinesForSeason || {}),
+  ]);
+
+  let maxRaw = 0;
+  let maxPpg = 0;
+
+  Object.entries(statsByPlayer || {}).forEach(([canonName, p]) => {
+    if (p.rawStatsScore > maxRaw) maxRaw = p.rawStatsScore;
+    const gp = Number(participationByPlayer?.[canonName]?.gamesPlayed || 0);
+    const ppg = gp > 0 ? p.points / gp : 0;
+    if (ppg > maxPpg) maxPpg = ppg;
+  });
+
+  if (maxRaw <= 0) maxRaw = 1;
+  if (maxPpg <= 0) maxPpg = 1;
+
+  const out = {};
+
+  allNames.forEach((canonName) => {
+    if (!canonName) return;
+
+    const stats = statsByPlayer[canonName] || {
+      goals: 0,
+      assists: 0,
+      cleanSheets: 0,
+      gkCleanSheets: 0,
+      defCleanSheets: 0,
+      points: 0,
+      rawStatsScore: 0,
+    };
+
+    const participation = participationByPlayer[canonName] || {
+      gamesPlayed: 0,
+      matchDaysPresent: 0,
+    };
+
+    const gamesPlayed = Number(participation.gamesPlayed || 0);
+    const pointsPerGame = gamesPlayed > 0 ? stats.points / gamesPlayed : 0;
+    const statsScore10 = clamp(0, (stats.rawStatsScore / maxRaw) * 10, 10);
+    const peerScore10 = buildPeerScore10FromBaseline(baselinesForSeason[canonName]);
+
+    let visibleForm = null;
+    let visibleOverall = 0;
+
+    if (gamesPlayed > 0) {
+      const rawForm =
+        peerScore10 != null
+          ? round1(pointsPerGame / maxPpg * 10 * 0.7 + peerScore10 * 0.3)
+          : round1((pointsPerGame / maxPpg) * 10);
+
+      const rawOverall =
+        peerScore10 != null
+          ? round1(statsScore10 * 0.4 + peerScore10 * 0.3 + rawForm * 0.3)
+          : round1(statsScore10 * 0.65 + rawForm * 0.35);
+
+      visibleForm = applyScoreFloor(rawForm);
+      visibleOverall = applyScoreFloor(rawOverall);
+    } else {
+      visibleForm = peerScore10 != null ? applyScoreFloor(peerScore10) : null;
+      visibleOverall = peerScore10 != null ? applyScoreFloor(peerScore10) : 0;
+    }
+
+    out[canonName] = {
+      overall: round1(visibleOverall),
+      form: visibleForm != null ? round1(visibleForm) : null,
+    };
+  });
+
+  return out;
+}
+
+function buildTeamStandingsFromResults(results = [], teamsSnapshot = []) {
+  const standings = {};
+
+  (teamsSnapshot || []).forEach((t) => {
+    if (!t?.id) return;
+    standings[t.id] = {
+      teamId: t.id,
+      name: t.label || "",
+      points: 0,
+      goalDiff: 0,
+      goalsFor: 0,
+      played: 0,
+    };
+  });
+
+  (results || []).forEach((r) => {
+    const a = standings[r?.teamAId];
+    const b = standings[r?.teamBId];
+    if (!a || !b) return;
+
+    const gA = Number(r?.goalsA || 0);
+    const gB = Number(r?.goalsB || 0);
+
+    a.played += 1;
+    b.played += 1;
+
+    a.goalsFor += gA;
+    b.goalsFor += gB;
+
+    a.goalDiff += gA - gB;
+    b.goalDiff += gB - gA;
+
+    if (r?.isDraw) {
+      a.points += 1;
+      b.points += 1;
+    } else if (r?.winnerId === r?.teamAId) {
+      a.points += 3;
+    } else if (r?.winnerId === r?.teamBId) {
+      b.points += 3;
+    }
+  });
+
+  return Object.values(standings).sort((x, y) => {
+    if (y.points !== x.points) return y.points - x.points;
+    if (y.goalDiff !== x.goalDiff) return y.goalDiff - x.goalDiff;
+    if (y.goalsFor !== x.goalsFor) return y.goalsFor - x.goalsFor;
+    return String(x.name || "").localeCompare(String(y.name || ""));
+  });
+}
+
+function collectResultsFromMatchDayHistory(history = []) {
+  return (history || []).flatMap((day) =>
+    Array.isArray(day?.results) ? day.results : []
+  );
+}
+
+function collectCurrentLiveResults(mainData = {}, activeSeason = null) {
+  const state = mainData?.state || {};
+
+  const candidates = [
+    state.results,
+    state.currentResults,
+    state.matchResults,
+    mainData.results,
+    mainData.currentResults,
+    mainData.matchResults,
+    activeSeason?.results,
+    activeSeason?.currentResults,
+    state.currentMatchDay?.results,
+    mainData.currentMatchDay?.results,
+  ];
+
+  for (const arr of candidates) {
+    if (Array.isArray(arr) && arr.length > 0) {
+      return arr;
+    }
+  }
+
+  return [];
+}
+
+function getCurrentTeamsSnapshot(mainData = {}, activeSeason = null) {
+  const state = mainData?.state || {};
+
+  const candidates = [
+    activeSeason?.teamsSnapshot,
+    activeSeason?.teams,
+    state.teams,
+    state.currentTeams,
+    mainData.teams,
+    mainData.currentTeams,
+  ];
+
+  for (const arr of candidates) {
+    if (Array.isArray(arr) && arr.length > 0) {
+      return arr;
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Prefer previous archived season when it exists.
+ * If not, fall back to current live season (archived matchDayHistory + live current results).
+ */
+function buildChampionshipStarsByPlayer(mainSnap, canonicalMap, activeSeasonId) {
+  if (!mainSnap.exists()) return {};
+
+  const mainData = mainSnap.data() || {};
+  const state = mainData.state || {};
+  const seasons = Array.isArray(state.seasons) ? state.seasons : [];
+
+  const activeIndex = seasons.findIndex(
+    (s) => String(s?.seasonId || "") === String(activeSeasonId || "")
+  );
+
+  const activeSeason =
+    activeIndex >= 0
+      ? seasons[activeIndex]
+      : seasons.find((s) => s?.seasonId === activeSeasonId) || seasons[0] || null;
+
+  const previousSeason =
+    activeIndex > 0
+      ? seasons[activeIndex - 1]
+      : seasons.length > 1
+        ? seasons[seasons.length - 2]
+        : null;
+
+  let championTeam = null;
+
+  if (previousSeason) {
+    const prevTeams =
+      Array.isArray(previousSeason?.teamsSnapshot) && previousSeason.teamsSnapshot.length > 0
+        ? previousSeason.teamsSnapshot
+        : Array.isArray(previousSeason?.teams)
+          ? previousSeason.teams
+          : [];
+
+    const prevResults = collectResultsFromMatchDayHistory(
+      Array.isArray(previousSeason?.matchDayHistory)
+        ? previousSeason.matchDayHistory
+        : []
+    );
+
+    const prevStandings = buildTeamStandingsFromResults(prevResults, prevTeams);
+    const winner = prevStandings[0] || null;
+
+    if (winner) {
+      championTeam = prevTeams.find((t) => t?.id === winner.teamId) || null;
+    }
+  } else {
+    const currentTeams = getCurrentTeamsSnapshot(mainData, activeSeason);
+    const archivedCurrentSeasonResults = collectResultsFromMatchDayHistory(
+      Array.isArray(activeSeason?.matchDayHistory)
+        ? activeSeason.matchDayHistory
+        : []
+    );
+    const liveCurrentResults = collectCurrentLiveResults(mainData, activeSeason);
+
+    const seen = new Set();
+    const combinedResults = [...archivedCurrentSeasonResults, ...liveCurrentResults].filter((r) => {
+      if (!r) return false;
+      const key =
+        r?.id ??
+        [
+          r?.matchNo ?? "m?",
+          r?.teamAId ?? "a?",
+          r?.teamBId ?? "b?",
+          r?.goalsA ?? "ga?",
+          r?.goalsB ?? "gb?",
+          r?.winnerId ?? "w?",
+          r?.isDraw ? "d1" : "d0",
+        ].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const currentStandings = buildTeamStandingsFromResults(combinedResults, currentTeams);
+    const winner = currentStandings[0] || null;
+
+    if (winner) {
+      championTeam = currentTeams.find((t) => t?.id === winner.teamId) || null;
+    }
+  }
+
+  const stars = {};
+  const players = Array.isArray(championTeam?.players) ? championTeam.players : [];
+
+  players.forEach((p) => {
+    const raw =
+      typeof p === "string" ? p : p?.name || p?.displayName || "";
+    const canon = resolveCanonicalNameFromMap(raw, canonicalMap);
+    if (!canon) return;
+    stars[canon] = Number(stars[canon] || 0) + 1;
+  });
+
+  return stars;
+}
+
+function getCarryWeights(matchDaysPresent) {
+  const md = Number(matchDaysPresent || 0);
+
+  if (md <= 0) return { prev: 1, current: 0 };
+  if (md === 1) return { prev: 0.7, current: 0.3 };
+  if (md === 2) return { prev: 0.35, current: 0.65 };
+  return { prev: 0, current: 1 };
+}
+
 // ---------------- PAGE ----------------
 
 export function PlayerCardPage({
@@ -363,13 +770,26 @@ export function PlayerCardPage({
 
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
   const [savingCardId, setSavingCardId] = useState("");
+  const [carrySnapshotByPlayer, setCarrySnapshotByPlayer] = useState({});
+  const [championshipStarsByPlayer, setChampionshipStarsByPlayer] = useState({});
+  const [headerScrolled, setHeaderScrolled] = useState(false);
 
   const cardRefs = useRef({});
   const longPressTimers = useRef({});
   const didHandlePhoneBackRef = useRef(false);
   const canonicalNameCacheRef = useRef({});
 
-  // ---------------- LOAD ALL PAGE DATA (OPTIMIZED) ----------------
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 6);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // ---------------- LOAD ALL PAGE DATA ----------------
   useEffect(() => {
     let isMounted = true;
 
@@ -399,7 +819,37 @@ export function PlayerCardPage({
           mapNameToCanon,
           activeSeasonId
         );
+        const baselinesBySeason = buildBaselinesBySeasonFromSnap(
+          baselinesSnap,
+          mapNameToCanon
+        );
         const cloudPhotos = buildCloudPhotosIndex(photosSnap);
+
+        const mainData = mainSnap.exists() ? mainSnap.data() || {} : {};
+        const seasons = Array.isArray(mainData?.state?.seasons)
+          ? mainData.state.seasons
+          : [];
+
+        const activeIndex = seasons.findIndex(
+          (s) => String(s?.seasonId || "") === String(activeSeasonId || "")
+        );
+
+        const previousSeason =
+          activeIndex > 0
+            ? seasons[activeIndex - 1]
+            : null;
+
+        const carrySnapshots = buildCarrySnapshotsForPreviousSeason(
+          previousSeason,
+          mapNameToCanon,
+          baselinesBySeason
+        );
+
+        const starsByPlayer = buildChampionshipStarsByPlayer(
+          mainSnap,
+          mapNameToCanon,
+          activeSeasonId
+        );
 
         canonicalNameCacheRef.current = {};
 
@@ -408,6 +858,8 @@ export function PlayerCardPage({
         setParticipationByPlayer(participation);
         setBaselineByPlayer(baselines);
         setCloudPhotosIndex(cloudPhotos);
+        setCarrySnapshotByPlayer(carrySnapshots);
+        setChampionshipStarsByPlayer(starsByPlayer);
 
         setPlayersLoaded(true);
         setParticipationLoaded(true);
@@ -423,6 +875,8 @@ export function PlayerCardPage({
         setParticipationByPlayer({});
         setBaselineByPlayer({});
         setCloudPhotosIndex({});
+        setCarrySnapshotByPlayer({});
+        setChampionshipStarsByPlayer({});
 
         setPlayersLoaded(true);
         setParticipationLoaded(true);
@@ -533,30 +987,7 @@ export function PlayerCardPage({
 
   // ---------------- EVENTS / STATS ----------------
   const uniqueEvents = useMemo(() => {
-    const seen = new Set();
-    const out = [];
-
-    (seasonEvents || []).forEach((e) => {
-      if (!e) return;
-
-      const key =
-        e.id ??
-        [
-          e.matchNo ?? "m?",
-          e.timeSeconds ?? "t?",
-          e.type ?? "type?",
-          e.teamId ?? "team?",
-          e.scorer ?? e.playerName ?? "p?",
-          e.assist ?? "a?",
-          e.role ?? "role?",
-        ].join("|");
-
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push(e);
-    });
-
-    return out;
+    return dedupeEvents(seasonEvents);
   }, [seasonEvents]);
 
   const peerRatingsCanon = useMemo(() => {
@@ -570,65 +1001,8 @@ export function PlayerCardPage({
   }, [peerRatingsRaw, resolveCanonicalName]);
 
   const statsByPlayer = useMemo(() => {
-    const stats = {};
-
-    const ensure = (canonName) => {
-      if (!stats[canonName]) {
-        stats[canonName] = {
-          name: canonName,
-          goals: 0,
-          assists: 0,
-          cleanSheets: 0,
-          gkCleanSheets: 0,
-          defCleanSheets: 0,
-          points: 0,
-          rawStatsScore: 0,
-        };
-      }
-      return stats[canonName];
-    };
-
-    uniqueEvents.forEach((e) => {
-      if (!e) return;
-
-      if (e.type === "clean_sheet") {
-        const holderName = e.playerName || e.scorer || "";
-        const canonHolder = resolveCanonicalName(holderName);
-        if (!canonHolder) return;
-
-        const s = ensure(canonHolder);
-        s.cleanSheets += 1;
-
-        if (e.role === "gk") s.gkCleanSheets += 1;
-        if (e.role === "def") s.defCleanSheets += 1;
-
-        return;
-      }
-
-      if (e.scorer && e.type === "goal") {
-        const canonScorer = resolveCanonicalName(e.scorer);
-        if (canonScorer) {
-          const s = ensure(canonScorer);
-          s.goals += 1;
-        }
-      }
-
-      if (e.assist) {
-        const canonAssist = resolveCanonicalName(e.assist);
-        if (canonAssist) {
-          const a = ensure(canonAssist);
-          a.assists += 1;
-        }
-      }
-    });
-
-    Object.values(stats).forEach((p) => {
-      p.points = p.goals + p.assists + p.defCleanSheets + p.gkCleanSheets;
-      p.rawStatsScore = p.points;
-    });
-
-    return stats;
-  }, [uniqueEvents, resolveCanonicalName]);
+    return buildSeasonStatsByPlayer(uniqueEvents, nameToCanonical);
+  }, [uniqueEvents, nameToCanonical]);
 
   const playerTeamMap = useMemo(() => {
     const map = {};
@@ -653,6 +1027,8 @@ export function PlayerCardPage({
       ...Object.keys(peerRatingsCanon || {}),
       ...Object.keys(participationByPlayer || {}),
       ...Object.keys(baselineByPlayer || {}),
+      ...Object.keys(carrySnapshotByPlayer || {}),
+      ...Object.keys(championshipStarsByPlayer || {}),
     ]);
 
     (teams || []).forEach((t) => {
@@ -696,6 +1072,7 @@ export function PlayerCardPage({
 
       const peer = peerRatingsCanon[canonName] || null;
       const baseline = baselineByPlayer[canonName] || null;
+      const carry = carrySnapshotByPlayer[canonName] || null;
 
       const participation = participationByPlayer[canonName] || {
         gamesPlayed: 0,
@@ -721,9 +1098,7 @@ export function PlayerCardPage({
       const gkAvg = blendPeerValue(adminGk, squadGkAvg);
 
       let peerScore10 = null;
-      const validVals = [attackAvg, defenceAvg, gkAvg].filter(
-        (v) => v != null
-      );
+      const validVals = [attackAvg, defenceAvg, gkAvg].filter((v) => v != null);
 
       if (validVals.length > 0) {
         const avgAttr = validVals.reduce((a, b) => a + b, 0) / validVals.length;
@@ -732,11 +1107,11 @@ export function PlayerCardPage({
 
       const ppgScore10 = clamp(0, (pointsPerGame / maxPpg) * 10, 10);
 
-      let formScore10 = null;
-      let overall = 0;
+      let currentVisibleForm = null;
+      let currentVisibleOverall = 0;
 
       if (gamesPlayed > 0) {
-        formScore10 =
+        const rawForm =
           peerScore10 != null
             ? round1(ppgScore10 * 0.7 + peerScore10 * 0.3)
             : round1(ppgScore10);
@@ -744,14 +1119,37 @@ export function PlayerCardPage({
         const rawOverall =
           peerScore10 != null
             ? round1(
-                statsScore10 * 0.4 + peerScore10 * 0.3 + formScore10 * 0.3
+                statsScore10 * 0.4 + peerScore10 * 0.3 + rawForm * 0.3
               )
-            : round1(statsScore10 * 0.65 + formScore10 * 0.35);
+            : round1(statsScore10 * 0.65 + rawForm * 0.35);
 
-        overall = applyOverallBaseline(rawOverall);
+        currentVisibleForm = applyScoreFloor(rawForm);
+        currentVisibleOverall = applyScoreFloor(rawOverall);
       } else {
-        formScore10 = null;
-        overall = peerScore10 != null ? round1(peerScore10) : 0;
+        currentVisibleForm = null;
+        currentVisibleOverall = peerScore10 != null ? applyScoreFloor(peerScore10) : 0;
+      }
+
+      const weights = getCarryWeights(matchDaysPresent);
+
+      let visibleForm = currentVisibleForm;
+      if (carry?.form != null) {
+        if (currentVisibleForm != null) {
+          visibleForm = round1(carry.form * weights.prev + currentVisibleForm * weights.current);
+        } else {
+          visibleForm = round1(carry.form);
+        }
+      }
+
+      let visibleOverall = currentVisibleOverall;
+      if (carry?.overall != null) {
+        if (currentVisibleOverall > 0 || matchDaysPresent > 0) {
+          visibleOverall = round1(
+            carry.overall * weights.prev + currentVisibleOverall * weights.current
+          );
+        } else {
+          visibleOverall = round1(carry.overall);
+        }
       }
 
       const styleLabel = makeStyleLabel(attackAvg, defenceAvg, gkAvg);
@@ -782,14 +1180,15 @@ export function PlayerCardPage({
         matchDaysPresent,
 
         statsScore10: round1(statsScore10),
-        formScore10,
+        formScore10: visibleForm != null ? round1(visibleForm) : null,
         peerScore10: peerScore10 != null ? round1(peerScore10) : null,
         attackAvg,
         defenceAvg,
         gkAvg,
-        overall,
+        overall: round1(visibleOverall),
         styleLabel,
         isYou,
+        championshipStars: Number(championshipStarsByPlayer[canonName] || 0),
       });
     });
 
@@ -820,6 +1219,8 @@ export function PlayerCardPage({
     getPlayerPhoto,
     resolveCanonicalName,
     resolveShortDisplay,
+    carrySnapshotByPlayer,
+    championshipStarsByPlayer,
   ]);
 
   const [teamFilter, setTeamFilter] = useState("ALL");
@@ -940,15 +1341,47 @@ export function PlayerCardPage({
 
   return (
     <div className="page player-cards-page">
-      <header className="header">
-        <h1>Player cards</h1>
+      <div
+        className={`landing-header-sticky ${
+          headerScrolled ? "is-scrolled" : ""
+        }`}
+      >
+        <header className="header">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              width: "100%",
+            }}
+          >
+            <div className="header-title" style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0 }}>Player cards</h1>
+            </div>
 
-        <div className="news-header-actions">
-          <button className="secondary-btn" onClick={onBack}>
-            Back to stats
-          </button>
-        </div>
-      </header>
+            <button
+              className="secondary-btn"
+              onClick={onBack}
+              aria-label="Home"
+              title="Home"
+              style={{
+                minWidth: "46px",
+                width: "46px",
+                height: "46px",
+                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.05rem",
+                flexShrink: 0,
+              }}
+            >
+              🏠
+            </button>
+          </div>
+        </header>
+      </div>
 
       <section className="card player-card-filters">
         <div className="player-card-filters-row">
@@ -1029,6 +1462,7 @@ export function PlayerCardPage({
               const displayName = p.displayName || p.name || "";
               const formArrow = getFormArrow(p);
               const showForm = p.formScore10 != null;
+              const starCount = Number(p.championshipStars || 0);
 
               return (
                 <article
@@ -1076,6 +1510,36 @@ export function PlayerCardPage({
                   <div style={{ position: "relative", zIndex: 1 }}>
                     <div className="fifa-card-top">
                       <div className="fifa-rating-block">
+                        {starCount > 0 ? (
+                          <div
+                            title={`${starCount} championship title${starCount > 1 ? "s" : ""}`}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.12rem",
+                              marginBottom: "0.18rem",
+                              minHeight: "0.95rem",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            {Array.from({ length: starCount }).map((_, idx) => (
+                              <span
+                                key={`${p.id}-star-${idx}`}
+                                style={{
+                                  color: "#facc15",
+                                  fontSize: "0.82rem",
+                                  lineHeight: 1,
+                                  textShadow: "0 0 8px rgba(250,204,21,0.45)",
+                                }}
+                              >
+                                ★
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ minHeight: "0.95rem" }} />
+                        )}
+
                         <div
                           style={{
                             display: "flex",

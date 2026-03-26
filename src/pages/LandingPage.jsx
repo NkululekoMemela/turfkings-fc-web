@@ -1,5 +1,5 @@
 // src/pages/LandingPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto1 from "../assets/TurfKings.jpg";
@@ -20,10 +20,34 @@ const activePrimaryStyle = {
   border: "none",
 };
 
+const headerMenuPanelStyle = {
+  marginTop: "0.4rem",
+  padding: "0.15rem 0 0.2rem",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: "0.22rem",
+};
+
+const headerMenuTextStyle = {
+  background: "transparent",
+  border: "none",
+  padding: "0.1rem 0",
+  margin: 0,
+  color: "rgba(255,255,255,0.9)",
+  fontSize: "0.84rem",
+  fontWeight: 500,
+  lineHeight: 1.2,
+  textAlign: "left",
+  cursor: "pointer",
+};
+
 function getIdentityRole(identity) {
   const role = String(
     identity?.actingRole || identity?.role || "spectator"
-  ).trim().toLowerCase();
+  )
+    .trim()
+    .toLowerCase();
 
   if (
     role === "admin" ||
@@ -94,6 +118,9 @@ export function LandingPage({
   const [fixtureAdminError, setFixtureAdminError] = useState("");
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const menuRef = useRef(null);
+
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth <= 480;
@@ -129,6 +156,18 @@ export function LandingPage({
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!menuRef.current) return;
+      if (!menuRef.current.contains(event.target)) {
+        setShowHeaderMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -157,12 +196,6 @@ export function LandingPage({
     () => getIdentityDisplayName(identity, currentUser),
     [identity, currentUser]
   );
-
-  const profileButtonLabel = identity
-    ? resolvedRole === "spectator"
-      ? "Change viewer mode"
-      : "Change profile"
-    : "Sign in";
 
   const roleLabel = useMemo(() => {
     if (resolvedRole === "admin") return "admin";
@@ -302,70 +335,126 @@ export function LandingPage({
     onGenerateScheduledPlan?.(target);
   };
 
+  const closeHeaderMenu = () => setShowHeaderMenu(false);
+
+  const menuItems = [
+    {
+      label: "Change Profile",
+      onClick: () => onGoToEntryDev?.(),
+      show: true,
+    },
+    {
+      label: "End Season",
+      onClick: () => onOpenEndSeasonModal?.(),
+      show: isAdmin && typeof onOpenEndSeasonModal === "function",
+    },
+    {
+      label: "End Match Day",
+      onClick: () => onOpenBackupModal?.(),
+      show: isAdmin,
+    },
+  ].filter((item) => item.show);
+
   return (
     <div className="page landing-page">
       <div
-        className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}
+        className={`landing-header-sticky ${
+          headerScrolled ? "is-scrolled" : ""
+        }`}
       >
         <header className="header">
           <div className="header-title">
-            <img src={TurfKingsLogo} alt="Turf Kings logo" className="tk-logo" />
-            <h1>Turf Kings 5-A-Side</h1>
-          </div>
-
-          <p className="subtitle">
-            Grand Central (CT) – Wednesdays, 17:30–19:00
-          </p>
-
-          <div className="header-top-row">
-            <div className="auth-status">
-              <span className="auth-text">
-                Viewing as <strong>{identityName}</strong>
-                <span className="muted small">
-                  {" "}
-                  • Role: <strong>{roleLabel}</strong>
-                </span>
-              </span>
-
-              {currentUser && resolvedRole !== "spectator" && (
-                <div className="muted small" style={{ marginTop: "0.2rem" }}>
-                  Google account:{" "}
-                  <strong>{currentUser.displayName || currentUser.email}</strong>
-                </div>
-              )}
-            </div>
-
             <div
+              ref={menuRef}
               style={{
                 display: "flex",
-                gap: "0.5rem",
-                alignItems: "center",
-                flexWrap: "wrap",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                width: "100%",
               }}
             >
-              {isAdmin && typeof onOpenEndSeasonModal === "function" && (
-                <button
-                  className="secondary-btn"
-                  type="button"
-                  onClick={onOpenEndSeasonModal}
-                >
-                  🏆 End Season
-                </button>
-              )}
-
-              <button
-                className="secondary-btn"
-                type="button"
-                onClick={onGoToEntryDev}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "12px",
+                  minWidth: 0,
+                  flex: 1,
+                }}
               >
-                {profileButtonLabel}
-              </button>
+                <img
+                  src={TurfKingsLogo}
+                  alt="Turf Kings logo"
+                  className="tk-logo"
+                />
+                <div style={{ minWidth: 0 }}>
+                  <h1 style={{ margin: 0 }}>Turf Kings 5-A-Side</h1>
+
+                  {showHeaderMenu && menuItems.length > 0 && (
+                    <div style={headerMenuPanelStyle}>
+                      {menuItems.map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            item.onClick?.();
+                            closeHeaderMenu();
+                          }}
+                          style={headerMenuTextStyle}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ flexShrink: 0, alignSelf: "flex-start" }}>
+                <button
+                  type="button"
+                  className="menu-btn"
+                  aria-label="Open navigation menu"
+                  onClick={() => setShowHeaderMenu((prev) => !prev)}
+                >
+                  ☰
+                </button>
+              </div>
             </div>
           </div>
-        </header>
 
-        <div className="landing-header-divider" />
+          <div
+            className="landing-header-divider"
+            style={{ marginTop: showHeaderMenu ? "0.45rem" : undefined }}
+          />
+        </header>
       </div>
+
+      <header className="header" style={{ marginTop: "0.75rem" }}>
+        <p className="subtitle">
+          Grand Central (CT) – Wednesdays, 17:30–19:00
+        </p>
+
+        <div className="header-top-row">
+          <div className="auth-status">
+            <span className="auth-text">
+              Viewing as <strong>{identityName}</strong>
+              <span className="muted small">
+                {" "}
+                • Role: <strong>{roleLabel}</strong>
+              </span>
+            </span>
+
+            {currentUser && resolvedRole !== "spectator" && (
+              <div className="muted small" style={{ marginTop: "0.2rem" }}>
+                Google account:{" "}
+                <strong>{currentUser.displayName || currentUser.email}</strong>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
 
       <section className="card landing-first-card">
         {canSeeCaptainStyleControls && (
@@ -390,8 +479,8 @@ export function LandingPage({
                   padding: "0.45rem 0.9rem",
                   color: "#ffffff",
                   border: fixturedMode
-                    ? "1px solid transparent"
-                    : "1px solid rgba(255, 90, 90, 0.55)",
+                    ? "1px solid rgba(255, 90, 90, 0.55)"
+                    : "1px solid transparent",
                   background: fixturedMode
                     ? "transparent"
                     : "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
@@ -456,7 +545,8 @@ export function LandingPage({
             </div>
 
             <div className="muted small">
-              Common target: <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+              Common target:{" "}
+              <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
             </div>
           </div>
         )}
@@ -673,7 +763,8 @@ export function LandingPage({
           <div className="modal" style={{ maxWidth: "620px", width: "94%" }}>
             <h3>Fixtured Match List</h3>
             <p>
-              Common target: <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+              Common target:{" "}
+              <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
             </p>
 
             {isAdmin && (
@@ -768,10 +859,10 @@ export function LandingPage({
                   className="muted small"
                   style={{ marginTop: "0.15rem", lineHeight: 1.5 }}
                 >
-                  <strong>Remaining games</strong> sets how many more games above
-                  the current highest <strong>P</strong> you want to aim for. The
-                  system then finds the nearest reachable common target for all 3
-                  teams.
+                  <strong>Remaining games</strong> sets how many more games
+                  above the current highest <strong>P</strong> you want to aim
+                  for. The system then finds the nearest reachable common target
+                  for all 3 teams.
                 </p>
 
                 {fixtureAdminError && (
@@ -802,7 +893,9 @@ export function LandingPage({
 
                 return (
                   <div
-                    key={`${fixture.id || `${fixture.teamAId}-${fixture.teamBId}`}-${index}`}
+                    key={`${
+                      fixture.id || `${fixture.teamAId}-${fixture.teamBId}`
+                    }-${index}`}
                     style={{
                       padding: "0.45rem 0",
                       fontWeight: done ? 400 : 700,

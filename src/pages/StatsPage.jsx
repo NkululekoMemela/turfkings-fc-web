@@ -94,6 +94,30 @@ export function StatsPage({
   const isAdminUser = Boolean(isAdmin);
   const { normalizeName } = useMemberNameMap(safeMembers);
 
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth <= 768;
+  });
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 6);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const formatSeasonDisplayName = (season) => {
     const sid = season?.seasonId || "";
     const match = String(sid).match(/^(\d{4})-S(\d+)$/i);
@@ -1167,27 +1191,83 @@ export function StatsPage({
     return "Team Standings";
   }, [activeTab]);
 
+  const topActionRowStyle = isMobile
+    ? {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "0.75rem",
+        margin: "0.85rem 0 1rem",
+        flexWrap: "nowrap",
+      }
+    : {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: "0.75rem",
+        margin: "0.85rem 0 1rem",
+      };
+
+  const rightButtonsStyle = isMobile
+    ? {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        width: "100%",
+        gap: "0.75rem",
+      }
+    : {
+        display: "flex",
+        alignItems: "center",
+        gap: "0.6rem",
+      };
+
   return (
     <div className="page stats-page">
-      <header className="header">
-        <div>
-          <h1>Stats &amp; Leaderboards</h1>
-          <div className="muted stats-context-line">
-            <strong>{seasonContextTitle}</strong> • <span>{viewContextTitle}</span> •{" "}
-            <span>{headerRangeText}</span>
-          </div>
-          {isPreviewingPreviousSeasonUI && (
-            <div className="muted stats-preview-note">
-              Admin-only preview: you are viewing the current season styled as a
-              previous season.
+      <div
+        className={`landing-header-sticky ${
+          headerScrolled ? "is-scrolled" : ""
+        }`}
+      >
+        <header className="header">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              width: "100%",
+            }}
+          >
+            <div className="header-title" style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0 }}>Stats &amp; Leaderboards</h1>
             </div>
-          )}
-        </div>
 
-        <div className="stats-header-actions">
-          <button className="secondary-btn" onClick={onBack}>
-            Home
-          </button>
+            <button
+              className="secondary-btn"
+              onClick={onBack}
+              aria-label="Home"
+              title="Home"
+              style={{
+                minWidth: "46px",
+                width: "46px",
+                height: "46px",
+                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.05rem",
+                flexShrink: 0,
+              }}
+            >
+              🏠
+            </button>
+          </div>
+        </header>
+      </div>
+
+      <div style={topActionRowStyle}>
+        <div style={rightButtonsStyle}>
           <button className="secondary-btn" onClick={onGoToPeerReview}>
             Rate Player
           </button>
@@ -1195,10 +1275,22 @@ export function StatsPage({
             Player cards
           </button>
         </div>
-      </header>
+      </div>
 
       <section className="card">
         <h2>Season</h2>
+
+        <div className="muted stats-context-line" style={{ marginBottom: "0.75rem" }}>
+          <strong>{seasonContextTitle}</strong> • <span>{viewContextTitle}</span> •{" "}
+          <span>{headerRangeText}</span>
+        </div>
+
+        {isPreviewingPreviousSeasonUI && (
+          <div className="muted stats-preview-note" style={{ marginBottom: "0.85rem" }}>
+            Admin-only preview: you are viewing the current season styled as a
+            previous season.
+          </div>
+        )}
 
         <div className="stats-controls stats-controls-align-center">
           <div className="stats-controls-left stats-controls-left-wide">

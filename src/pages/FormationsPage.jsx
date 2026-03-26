@@ -515,9 +515,20 @@ export function FormationsPage({
   const exportRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const [savingFormationImage, setSavingFormationImage] = useState(false);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
 
   // ---------- PLAYERS FROM FIRESTORE ----------
   const [players, setPlayers] = useState([]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 6);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     const colRef = collection(db, PLAYERS_COLLECTION);
@@ -1345,11 +1356,51 @@ export function FormationsPage({
   if (!selectedTeamCanonical) {
     return (
       <div className="page lineups-page">
+        <div
+          className={`landing-header-sticky ${
+            headerScrolled ? "is-scrolled" : ""
+          }`}
+        >
+          <header className="header">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                width: "100%",
+              }}
+            >
+              <div className="header-title" style={{ minWidth: 0 }}>
+                <h1 style={{ margin: 0 }}>Lineups &amp; Formations</h1>
+              </div>
+
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={onBack}
+                aria-label="Home"
+                title="Home"
+                style={{
+                  minWidth: "46px",
+                  width: "46px",
+                  height: "46px",
+                  padding: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "1.05rem",
+                  flexShrink: 0,
+                }}
+              >
+                🏠
+              </button>
+            </div>
+          </header>
+        </div>
+
         <header className="header">
           <div className="header-top-row">
-            <button className="secondary-btn" type="button" onClick={onBack}>
-              ← Back to Home
-            </button>
             <button
               className="primary-btn"
               type="button"
@@ -1358,7 +1409,6 @@ export function FormationsPage({
               Manage Squads
             </button>
           </div>
-          <h1>Lineups &amp; Formations</h1>
         </header>
 
         <section className="card">
@@ -1370,18 +1420,55 @@ export function FormationsPage({
 
   return (
     <div className="page lineups-page">
+      <div
+        className={`landing-header-sticky ${
+          headerScrolled ? "is-scrolled" : ""
+        }`}
+      >
+        <header className="header">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              width: "100%",
+            }}
+          >
+            <div className="header-title" style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0 }}>Lineups &amp; Formations</h1>
+            </div>
+
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={onBack}
+              aria-label="Home"
+              title="Home"
+              style={{
+                minWidth: "46px",
+                width: "46px",
+                height: "46px",
+                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.05rem",
+                flexShrink: 0,
+              }}
+            >
+              🏠
+            </button>
+          </div>
+        </header>
+      </div>
+
       <header className="header">
         <div className="header-top-row">
-          <button className="secondary-btn" type="button" onClick={onBack}>
-            ← Back to Home
-          </button>
           <button className="primary-btn" type="button" onClick={onGoToSquads}>
             Manage Squads
           </button>
         </div>
-
-        <h1>Lineups &amp; Formations</h1>
-
       </header>
 
       <section
@@ -1572,8 +1659,6 @@ export function FormationsPage({
               </ul>
             )}
 
-
-
             <h3 style={{ marginTop: "1rem" }}>Reserves</h3>
             {reservePlayers.length === 0 ? (
               <p className="muted">No reserves available.</p>
@@ -1602,8 +1687,6 @@ export function FormationsPage({
                 })}
               </ul>
             )}
-
-
 
             <div className="photo-toggle-row">
               <button
