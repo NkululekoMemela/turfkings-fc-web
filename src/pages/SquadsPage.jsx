@@ -256,6 +256,8 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   const isAdmin = isAdminIdentity(identity);
   const canEdit = isAdmin;
 
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+
   const [localTeams, setLocalTeams] = useState(() =>
     (teams || []).map((t) => ({
       ...t,
@@ -283,6 +285,16 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   const [savingCardId, setSavingCardId] = useState("");
   const cardRefs = useRef({});
   const longPressTimersRef = useRef({});
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 6);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -870,8 +882,49 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
 
   return (
     <div className="page squads-page">
+      <div
+        className={`landing-header-sticky ${
+          headerScrolled ? "is-scrolled" : ""
+        }`}
+      >
+        <header className="header">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              width: "100%",
+            }}
+          >
+            <div className="header-title" style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0 }}>Manage Squads</h1>
+            </div>
+
+            <button
+              className="secondary-btn"
+              onClick={onBack}
+              aria-label="Home"
+              title="Home"
+              style={{
+                minWidth: "46px",
+                width: "46px",
+                height: "46px",
+                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.05rem",
+                flexShrink: 0,
+              }}
+            >
+              🏠
+            </button>
+          </div>
+        </header>
+      </div>
+
       <header className="header">
-        <h1>Manage Squads</h1>
         {playersLoading && (
           <p className="muted small">Loading players from database…</p>
         )}

@@ -95,6 +95,7 @@ export function PeerReviewPage({
   const [, setMemberAliasMap] = useState({});
   const [memberCanonicalMap, setMemberCanonicalMap] = useState({});
   const [memberPlayers, setMemberPlayers] = useState([]);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
 
   // ---------------- ADMIN BASELINE STATE ----------------
   const [baselineMap, setBaselineMap] = useState({});
@@ -106,6 +107,16 @@ export function PeerReviewPage({
   const [baselineStatusMsg, setBaselineStatusMsg] = useState("");
   const [savingBaseline, setSavingBaseline] = useState(false);
   const [baselineFilterTeam, setBaselineFilterTeam] = useState("ALL");
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 6);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const normaliseName = (name) =>
     String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -878,8 +889,49 @@ export function PeerReviewPage({
 
   return (
     <div className="page peer-review-page">
+      <div
+        className={`landing-header-sticky ${
+          headerScrolled ? "is-scrolled" : ""
+        }`}
+      >
+        <header className="header">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              width: "100%",
+            }}
+          >
+            <div className="header-title" style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0 }}>Peer Ratings</h1>
+            </div>
+
+            <button
+              className="secondary-btn"
+              onClick={onBack}
+              aria-label="Home"
+              title="Home"
+              style={{
+                minWidth: "46px",
+                width: "46px",
+                height: "46px",
+                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.05rem",
+                flexShrink: 0,
+              }}
+            >
+              🏠
+            </button>
+          </div>
+        </header>
+      </div>
+
       <header className="header">
-        <h1>Peer Ratings</h1>
         <p className="subtitle">
           Quiet, anonymous scorecard for <strong>Turf Kings players</strong> to rate
           each other. These ratings feed into the Player Cards.
@@ -887,11 +939,6 @@ export function PeerReviewPage({
         <p className="subtitle">
           Reviews are weekly and tied to the <strong>current season</strong>.
         </p>
-        <div className="stats-header-actions">
-          <button className="secondary-btn" onClick={onBack}>
-            Back to stats
-          </button>
-        </div>
       </header>
 
       <section className="card peer-card">
