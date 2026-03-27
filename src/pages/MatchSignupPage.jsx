@@ -17,6 +17,13 @@ const MAX_PLAYERS = 18;
 const DEFAULT_VISIBLE_SLOTS = 6;
 const MAX_VISIBLE_ROWS_BEFORE_SCROLL = 5;
 const COST_PER_GAME = 65;
+const COMBINED_PAYMENT_LINKS = {
+  6: "https://pay.yoco.com/r/2pJdrw",
+  7: "https://pay.yoco.com/r/7lbkrB",
+  8: "https://pay.yoco.com/r/2V5xBk",
+  9: "https://pay.yoco.com/r/78PaD9",
+  10: "https://pay.yoco.com/r/mRgEen",
+};
 const FALLBACK_SEASON_ID = "local_manual_season";
 const DEFAULT_SIGNUP_TYPE = "general";
 const DEFAULT_ADMIN_NAME = "Nkululeko";
@@ -57,7 +64,44 @@ function normalizeWhatsAppNumber(value) {
   return "";
 }
 
-function buildProfileDocCandidates({ identity, currentUser, displayName, userId }) {
+function toTitleCaseLoose(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function firstNameOf(value) {
+  return String(value || "").trim().split(/\s+/).filter(Boolean)[0] || "";
+}
+
+function slugFromLooseName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function normKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function uniqueStrings(values = []) {
+  return Array.from(
+    new Set(values.map((x) => String(x || "").trim()).filter(Boolean))
+  );
+}
+
+function buildProfileDocCandidates({
+  identity,
+  currentUser,
+  displayName,
+  userId,
+}) {
   const rawIds = [
     identity?.memberId,
     identity?.playerId,
@@ -85,7 +129,12 @@ function buildProfileDocCandidates({ identity, currentUser, displayName, userId 
   return out;
 }
 
-async function resolveProfileDocTarget({ identity, currentUser, displayName, userId }) {
+async function resolveProfileDocTarget({
+  identity,
+  currentUser,
+  displayName,
+  userId,
+}) {
   const candidates = buildProfileDocCandidates({
     identity,
     currentUser,
@@ -124,46 +173,6 @@ function getWhatsappProfileMessage(status) {
     default:
       return "Add your WhatsApp number for football reminders like reschedules, payment confirmations, and match updates.";
   }
-}
-
-function toTitleCaseLoose(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-function firstNameOf(value) {
-  return String(value || "").trim().split(/\s+/).filter(Boolean)[0] || "";
-}
-
-function slugFromLooseName(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
-}
-
-function normKey(value) {
-  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function buildPendingSignupId({
-  signupType = DEFAULT_SIGNUP_TYPE,
-  resolvedSeasonId,
-  userId,
-  monthKey,
-}) {
-  return [
-    slugFromLooseName(signupType || DEFAULT_SIGNUP_TYPE),
-    slugFromLooseName(resolvedSeasonId || FALLBACK_SEASON_ID),
-    slugFromLooseName(userId || "player"),
-    slugFromLooseName(monthKey || "month"),
-  ].join("__");
 }
 
 function getPhoneFromIdentity(identity, currentUser) {
@@ -228,9 +237,7 @@ function getCalendarMonthData(weeks = []) {
 
   const cells = [];
 
-  for (let i = 0; i < startWeekday; i += 1) {
-    cells.push(null);
-  }
+  for (let i = 0; i < startWeekday; i += 1) cells.push(null);
 
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = new Date(year, month, day);
@@ -266,7 +273,7 @@ function getStatus(count) {
 }
 
 function getIdentityKeys(identity, displayName, shortName) {
-  return [
+  return uniqueStrings([
     identity?.memberId,
     identity?.playerId,
     identity?.shortName,
@@ -280,14 +287,11 @@ function getIdentityKeys(identity, displayName, shortName) {
     firstNameOf(displayName),
     slugFromLooseName(displayName),
     slugFromLooseName(shortName),
-  ]
-    .map((x) => String(x || "").trim())
-    .filter(Boolean)
-    .map(normKey);
+  ]).map(normKey);
 }
 
 function getPlayerLookupKeys(player) {
-  return [
+  return uniqueStrings([
     player?.id,
     player?.uid,
     player?.playerId,
@@ -296,10 +300,7 @@ function getPlayerLookupKeys(player) {
     player?.shortName,
     firstNameOf(player?.fullName || player?.shortName || ""),
     slugFromLooseName(player?.fullName || player?.shortName || ""),
-  ]
-    .map((x) => String(x || "").trim())
-    .filter(Boolean)
-    .map(normKey);
+  ]).map(normKey);
 }
 
 function findCurrentPlayersTeam(teams = [], identity, displayName, shortName) {
@@ -338,9 +339,7 @@ function findCurrentPlayersTeam(teams = [], identity, displayName, shortName) {
               ),
             ];
 
-      return candidates
-        .map((x) => String(x || "").trim())
-        .filter(Boolean)
+      return uniqueStrings(candidates)
         .map(normKey)
         .some((k) => identityKeys.includes(k));
     });
@@ -351,18 +350,24 @@ function findCurrentPlayersTeam(teams = [], identity, displayName, shortName) {
   return null;
 }
 
-function extractMatchDayHistoryFromMainDoc(mainData, activeSeasonId) {
+function extractAllSeasonsMatchDayHistory(mainData) {
   const state = mainData?.state || {};
   const seasons = Array.isArray(state?.seasons) ? state.seasons : [];
-  const activeSeason =
-    seasons.find(
-      (s) =>
-        String(s?.seasonId || "").trim() === String(activeSeasonId || "").trim()
-    ) || null;
+  const all = [];
 
-  return Array.isArray(activeSeason?.matchDayHistory)
-    ? activeSeason.matchDayHistory
-    : [];
+  seasons.forEach((season) => {
+    const history = Array.isArray(season?.matchDayHistory)
+      ? season.matchDayHistory
+      : [];
+    history.forEach((day) => {
+      all.push({
+        ...day,
+        seasonId: season?.seasonId || "",
+      });
+    });
+  });
+
+  return all;
 }
 
 function buildAttendanceFromMatchDayHistory({
@@ -377,17 +382,19 @@ function buildAttendanceFromMatchDayHistory({
   let gamesPlayed = 0;
 
   (Array.isArray(matchDayHistory) ? matchDayHistory : []).forEach((day) => {
-    const matchDayId = String(day?.id || day?.matchDayId || "").trim();
-    if (!matchDayId) return;
+    const seasonId = String(day?.seasonId || "").trim();
+    const localDayId = String(day?.id || day?.matchDayId || "").trim();
+    if (!localDayId) return;
 
-    allMatchDays.add(matchDayId);
+    const compositeDayId = seasonId ? `${seasonId}__${localDayId}` : localDayId;
+    allMatchDays.add(compositeDayId);
 
     const playerAppearances = Array.isArray(day?.playerAppearances)
       ? day.playerAppearances
       : [];
 
     const matchingEntry = playerAppearances.find((entry) => {
-      const rowKeys = [
+      const rowKeys = uniqueStrings([
         entry?.playerId,
         entry?.playerName,
         entry?.shortName,
@@ -398,17 +405,14 @@ function buildAttendanceFromMatchDayHistory({
         slugFromLooseName(
           entry?.playerName || entry?.shortName || entry?.displayName || ""
         ),
-      ]
-        .map((x) => String(x || "").trim())
-        .filter(Boolean)
-        .map(normKey);
+      ]).map(normKey);
 
       return rowKeys.some((k) => identityKeys.includes(k));
     });
 
     if (!matchingEntry) return;
 
-    attendedMatchDays.add(matchDayId);
+    attendedMatchDays.add(compositeDayId);
 
     const directMatchesPlayed = Number(
       matchingEntry?.matchesPlayed ?? matchingEntry?.gamesPlayed
@@ -456,7 +460,7 @@ function buildAttendanceFromAttendanceCollection({
   const identityKeys = getIdentityKeys(identity, displayName, shortName);
 
   const playerRows = rows.filter((row) => {
-    const rowKeys = [
+    const rowKeys = uniqueStrings([
       row.playerId,
       row.playerName,
       row.shortName,
@@ -465,16 +469,19 @@ function buildAttendanceFromAttendanceCollection({
       slugFromLooseName(
         row.playerName || row.shortName || row.displayName || ""
       ),
-    ]
-      .map((x) => String(x || "").trim())
-      .filter(Boolean)
-      .map(normKey);
+    ]).map(normKey);
 
     return rowKeys.some((k) => identityKeys.includes(k));
   });
 
   const allMatchDays = new Set(
-    rows.map((row) => String(row.matchDayId || "").trim()).filter(Boolean)
+    rows
+      .map((row) =>
+        `${String(row.seasonId || "").trim()}__${String(
+          row.matchDayId || ""
+        ).trim()}`
+      )
+      .filter((x) => x !== "__")
   );
 
   const attendedMatchDays = new Set(
@@ -485,8 +492,13 @@ function buildAttendanceFromAttendanceCollection({
         ).toLowerCase();
         return value !== "false" && value !== "0" && value !== "no";
       })
-      .map((row) => String(row.matchDayId || "").trim())
-      .filter(Boolean)
+      .map(
+        (row) =>
+          `${String(row.seasonId || "").trim()}__${String(
+            row.matchDayId || ""
+          ).trim()}`
+      )
+      .filter((x) => x !== "__")
   );
 
   const attended = attendedMatchDays.size;
@@ -495,9 +507,7 @@ function buildAttendanceFromAttendanceCollection({
 
   const gamesPlayed = playerRows.reduce((sum, row) => {
     const directValue = Number(row.gamesPlayed ?? row.matchesPlayed);
-    if (Number.isFinite(directValue) && directValue > 0) {
-      return sum + directValue;
-    }
+    if (Number.isFinite(directValue) && directValue > 0) return sum + directValue;
 
     const playedFlag = String(
       row.played ?? row.didPlay ?? row.wasInGame ?? ""
@@ -523,6 +533,41 @@ function buildAttendanceFromAttendanceCollection({
   };
 }
 
+function buildBeneficiaryStableKey(mode, targetId, targetName) {
+  if (mode === "self" || mode === "existing_player") {
+    return `uid:${normKey(targetId || targetName)}`;
+  }
+  return `guest:${normKey(targetName)}`;
+}
+
+function buildBeneficiaryPlayerId(mode, targetId, targetName) {
+  if (mode === "self" || mode === "existing_player") {
+    return String(targetId || slugFromLooseName(targetName)).trim();
+  }
+  return `guest__${slugFromLooseName(targetName)}`;
+}
+
+function buildPendingSignupId({
+  signupType = DEFAULT_SIGNUP_TYPE,
+  beneficiaryPlayerId,
+  monthKey,
+}) {
+  return [
+    slugFromLooseName(signupType || DEFAULT_SIGNUP_TYPE),
+    slugFromLooseName(beneficiaryPlayerId || "player"),
+    slugFromLooseName(monthKey || "month"),
+  ].join("__");
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function looksLikeEmail(value) {
+  const email = normalizeEmail(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export default function MatchSignupPage({
   identity,
   currentUser,
@@ -539,6 +584,7 @@ export default function MatchSignupPage({
     if (typeof window === "undefined") return false;
     return window.innerWidth <= 480;
   });
+
   const [showCalendarPopup, setShowCalendarPopup] = useState(false);
   const [showLeavePrompt, setShowLeavePrompt] = useState(false);
   const [pendingSelectionsSaved, setPendingSelectionsSaved] = useState(false);
@@ -560,7 +606,21 @@ export default function MatchSignupPage({
   const [skipWhatsAppPromptThisSession, setSkipWhatsAppPromptThisSession] =
     useState(false);
 
+  const [signupForMode, setSignupForMode] = useState("self");
+  const [existingPlayerTargetId, setExistingPlayerTargetId] = useState("");
+  const [guestPlayerName, setGuestPlayerName] = useState("");
+  const [guestPlayerEmail, setGuestPlayerEmail] = useState("");
+
+  const [secondExistingPlayerTargetId, setSecondExistingPlayerTargetId] = useState("");
+  const [secondGuestPlayerName, setSecondGuestPlayerName] = useState("");
+  const [secondGuestPlayerEmail, setSecondGuestPlayerEmail] = useState("");
+  const [secondSelectedWeeks, setSecondSelectedWeeks] = useState([]);
+  const [secondPaidWeeks, setSecondPaidWeeks] = useState([]);
+  const [secondSelectionHydrated, setSecondSelectionHydrated] = useState(false);
+  const [secondMatchSignupStateLoaded, setSecondMatchSignupStateLoaded] = useState(false);
+
   const [selectedWeeks, setSelectedWeeks] = useState([]);
+  const [paidWeeks, setPaidWeeks] = useState([]);
   const [playerPhotos, setPlayerPhotos] = useState({});
   const [attendanceBadge, setAttendanceBadge] = useState({
     loading: true,
@@ -571,10 +631,10 @@ export default function MatchSignupPage({
   });
   const [liveWeekKeys, setLiveWeekKeys] = useState({});
   const [livePlayerWeeks, setLivePlayerWeeks] = useState({});
-  const [liveSelectionsLoaded, setLiveSelectionsLoaded] = useState(false);
   const [liveCommittedUsers, setLiveCommittedUsers] = useState([]);
   const [saveState, setSaveState] = useState("idle");
   const [selectionHydrated, setSelectionHydrated] = useState(false);
+  const [matchSignupStateLoaded, setMatchSignupStateLoaded] = useState(false);
 
   const matrixScrollRef = useRef(null);
   const currentPlayerCellRef = useRef(null);
@@ -592,13 +652,9 @@ export default function MatchSignupPage({
 
   useEffect(() => {
     if (!showCalendarPopup) return undefined;
-
     const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        setShowCalendarPopup(false);
-      }
+      if (event.key === "Escape") setShowCalendarPopup(false);
     };
-
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [showCalendarPopup]);
@@ -614,7 +670,7 @@ export default function MatchSignupPage({
   const shortName =
     identity?.shortName || firstNameOf(displayName) || "Player";
 
-  const userId =
+  const payerUserId =
     identity?.playerId ||
     identity?.memberId ||
     currentUser?.uid ||
@@ -640,22 +696,15 @@ export default function MatchSignupPage({
   const signupType = DEFAULT_SIGNUP_TYPE;
   const signupScopeId = calendarMonthKey || resolvedSeasonId;
   const signupScopeLabel = calendarMonthData?.monthLabel || "Monthly signup";
-
-  const pendingId = useMemo(
-    () =>
-      buildPendingSignupId({
-        signupType,
-        resolvedSeasonId,
-        userId,
-        monthKey: calendarMonthKey,
-      }),
-    [signupType, resolvedSeasonId, userId, calendarMonthKey]
-  );
-
-  const currentUserDocKey = useMemo(
-    () => `uid:${normKey(userId)}`,
-    [userId]
-  );
+  const isCombinedMode =
+    signupForMode === "self_and_existing_player" ||
+    signupForMode === "self_and_guest";
+  const secondSignupMode =
+    signupForMode === "self_and_existing_player"
+      ? "existing_player"
+      : signupForMode === "self_and_guest"
+      ? "guest"
+      : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -665,7 +714,7 @@ export default function MatchSignupPage({
         identity,
         currentUser,
         displayName,
-        userId,
+        userId: payerUserId,
       });
 
       if (cancelled) return;
@@ -702,7 +751,7 @@ export default function MatchSignupPage({
     identity,
     currentUser,
     displayName,
-    userId,
+    payerUserId,
     phoneNumber,
     skipWhatsAppPromptThisSession,
   ]);
@@ -731,7 +780,7 @@ export default function MatchSignupPage({
       await setDoc(
         doc(db, profileTarget.collection, profileTarget.id),
         {
-          userId,
+          userId: payerUserId,
           playerName: displayName,
           shortName,
           whatsappNumber: normalized,
@@ -798,11 +847,229 @@ export default function MatchSignupPage({
     };
   }, []);
 
+  const existingPlayerOptions = useMemo(() => {
+    const byKey = new Map();
+
+    const addOption = (candidate) => {
+      const id = String(
+        candidate?.playerId ||
+          candidate?.memberId ||
+          candidate?.uid ||
+          candidate?.id ||
+          ""
+      ).trim();
+      const fullName = toTitleCaseLoose(
+        candidate?.fullName ||
+          candidate?.playerName ||
+          candidate?.displayName ||
+          candidate?.name ||
+          candidate?.shortName ||
+          ""
+      );
+      const short = firstNameOf(fullName || candidate?.shortName || "");
+      if (!id || !fullName) return;
+
+      byKey.set(id, {
+        id,
+        fullName,
+        shortName: short || fullName,
+      });
+    };
+
+    liveCommittedUsers.forEach((user) =>
+      addOption({
+        playerId: user.userId,
+        fullName: user.fullName,
+        shortName: user.shortName,
+      })
+    );
+
+    teams.forEach((team) => {
+      const players = Array.isArray(team?.players) ? team.players : [];
+      players.forEach((entry) => {
+        if (typeof entry === "string") {
+          addOption({
+            playerId: slugFromLooseName(entry),
+            fullName: entry,
+            shortName: firstNameOf(entry),
+          });
+          return;
+        }
+        addOption(entry || {});
+      });
+    });
+
+    addOption({
+      playerId: payerUserId,
+      fullName: displayName,
+      shortName,
+    });
+
+    return Array.from(byKey.values()).sort((a, b) =>
+      a.fullName.localeCompare(b.fullName)
+    );
+  }, [liveCommittedUsers, teams, payerUserId, displayName, shortName]);
+
+  useEffect(() => {
+    if (signupForMode !== "existing_player") return;
+    if (existingPlayerTargetId) return;
+
+    const selfOption = existingPlayerOptions.find(
+      (item) => normKey(item.id) === normKey(payerUserId)
+    );
+    if (selfOption) setExistingPlayerTargetId(selfOption.id);
+  }, [signupForMode, existingPlayerTargetId, existingPlayerOptions, payerUserId]);
+
+  const beneficiary = useMemo(() => {
+    if (isCombinedMode) {
+      return {
+        mode: "self",
+        fullName: displayName,
+        shortName,
+        playerId: payerUserId,
+        stableKey: buildBeneficiaryStableKey("self", payerUserId, displayName),
+        isGuest: false,
+      };
+    }
+
+    if (signupForMode === "existing_player") {
+      const found = existingPlayerOptions.find(
+        (item) => String(item.id) === String(existingPlayerTargetId)
+      );
+
+      const fullName = found?.fullName || displayName;
+      const short = found?.shortName || firstNameOf(fullName) || "Player";
+      const playerId = found?.id || existingPlayerTargetId || payerUserId;
+
+      return {
+        mode: "existing_player",
+        fullName,
+        shortName: short,
+        playerId,
+        stableKey: buildBeneficiaryStableKey(
+          "existing_player",
+          playerId,
+          fullName
+        ),
+        isGuest: false,
+      };
+    }
+
+    if (signupForMode === "guest") {
+      const cleanGuestName = toTitleCaseLoose(guestPlayerName || "");
+      const fullName = cleanGuestName || "Guest Player";
+      return {
+        mode: "guest",
+        fullName,
+        shortName: firstNameOf(fullName) || "Guest",
+        playerId: buildBeneficiaryPlayerId("guest", "", fullName),
+        stableKey: buildBeneficiaryStableKey("guest", "", fullName),
+        isGuest: true,
+      };
+    }
+
+    return {
+      mode: "self",
+      fullName: displayName,
+      shortName,
+      playerId: payerUserId,
+      stableKey: buildBeneficiaryStableKey("self", payerUserId, displayName),
+      isGuest: false,
+    };
+  }, [
+    signupForMode,
+    isCombinedMode,
+    existingPlayerOptions,
+    existingPlayerTargetId,
+    guestPlayerName,
+    displayName,
+    shortName,
+    payerUserId,
+  ]);
+
+  const pendingId = useMemo(
+    () =>
+      buildPendingSignupId({
+        signupType,
+        beneficiaryPlayerId: beneficiary.playerId,
+        monthKey: calendarMonthKey,
+      }),
+    [signupType, beneficiary.playerId, calendarMonthKey]
+  );
+
+  const currentUserDocKey = useMemo(
+    () => beneficiary.stableKey,
+    [beneficiary.stableKey]
+  );
+
+  const secondBeneficiary = useMemo(() => {
+    if (!isCombinedMode) return null;
+
+    if (secondSignupMode === "existing_player") {
+      const found = existingPlayerOptions.find(
+        (item) => String(item.id) === String(secondExistingPlayerTargetId)
+      );
+
+      const fullName = found?.fullName || "";
+      const short = found?.shortName || firstNameOf(fullName) || "Player";
+      const playerId = found?.id || secondExistingPlayerTargetId || "";
+
+      return {
+        mode: "existing_player",
+        fullName,
+        shortName: short,
+        playerId,
+        stableKey: buildBeneficiaryStableKey(
+          "existing_player",
+          playerId,
+          fullName
+        ),
+        isGuest: false,
+        email: "",
+      };
+    }
+
+    if (secondSignupMode === "guest") {
+      const cleanGuestName = toTitleCaseLoose(secondGuestPlayerName || "");
+      const fullName = cleanGuestName || "";
+      return {
+        mode: "guest",
+        fullName,
+        shortName: firstNameOf(fullName) || "Guest",
+        playerId: fullName ? buildBeneficiaryPlayerId("guest", "", fullName) : "",
+        stableKey: fullName ? buildBeneficiaryStableKey("guest", "", fullName) : "",
+        isGuest: true,
+        email: normalizeEmail(secondGuestPlayerEmail),
+      };
+    }
+
+    return null;
+  }, [
+    isCombinedMode,
+    secondSignupMode,
+    existingPlayerOptions,
+    secondExistingPlayerTargetId,
+    secondGuestPlayerName,
+    secondGuestPlayerEmail,
+  ]);
+
+  const secondPendingId = useMemo(
+    () =>
+      secondBeneficiary?.playerId
+        ? buildPendingSignupId({
+            signupType,
+            beneficiaryPlayerId: secondBeneficiary.playerId,
+            monthKey: calendarMonthKey,
+          })
+        : "",
+    [signupType, secondBeneficiary?.playerId, calendarMonthKey]
+  );
+
   useEffect(() => {
     let cancelled = false;
 
     async function loadAttendanceBadge() {
-      if (!resolvedSeasonId) {
+      if (beneficiary.isGuest) {
         if (!cancelled) {
           setAttendanceBadge({
             loading: false,
@@ -821,39 +1088,56 @@ export default function MatchSignupPage({
 
         if (cancelled) return;
 
-        const matchDayHistory = mainSnap.exists()
-          ? extractMatchDayHistoryFromMainDoc(
-              mainSnap.data() || {},
-              resolvedSeasonId
-            )
+        const targetIdentity = {
+          playerId: beneficiary.playerId,
+          shortName: beneficiary.shortName,
+          fullName: beneficiary.fullName,
+          displayName: beneficiary.fullName,
+        };
+
+        const allHistory = mainSnap.exists()
+          ? extractAllSeasonsMatchDayHistory(mainSnap.data() || {})
           : [];
 
-        if (Array.isArray(matchDayHistory) && matchDayHistory.length > 0) {
+        if (Array.isArray(allHistory) && allHistory.length > 0) {
           const badgeFromHistory = buildAttendanceFromMatchDayHistory({
-            matchDayHistory,
-            identity,
-            displayName,
-            shortName,
+            matchDayHistory: allHistory,
+            identity: targetIdentity,
+            displayName: beneficiary.fullName,
+            shortName: beneficiary.shortName,
           });
 
-          if (!cancelled) {
-            setAttendanceBadge(badgeFromHistory);
-          }
+          if (!cancelled) setAttendanceBadge(badgeFromHistory);
           return;
         }
 
-        const snap = await getDocs(
-          collection(db, "seasons", resolvedSeasonId, "attendance")
-        );
+        const seasonSnaps = await getDocs(collection(db, "seasons"));
+        if (cancelled) return;
+
+        const rows = [];
+        for (const seasonDoc of seasonSnaps.docs) {
+          try {
+            const attendanceSnap = await getDocs(
+              collection(db, "seasons", seasonDoc.id, "attendance")
+            );
+            attendanceSnap.forEach((docSnap) =>
+              rows.push({
+                seasonId: seasonDoc.id,
+                ...(docSnap.data() || {}),
+              })
+            );
+          } catch (error) {
+            console.warn("Attendance fallback skipped for season:", seasonDoc.id, error);
+          }
+        }
 
         if (cancelled) return;
 
-        const rows = snap.docs.map((docSnap) => docSnap.data() || {});
         const badgeFromAttendance = buildAttendanceFromAttendanceCollection({
           rows,
-          identity,
-          displayName,
-          shortName,
+          identity: targetIdentity,
+          displayName: beneficiary.fullName,
+          shortName: beneficiary.shortName,
         });
 
         setAttendanceBadge(badgeFromAttendance);
@@ -876,43 +1160,162 @@ export default function MatchSignupPage({
     return () => {
       cancelled = true;
     };
-  }, [resolvedSeasonId, identity, displayName, shortName]);
+  }, [beneficiary]);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function hydrateOwnSelection() {
+    async function hydrateBeneficiarySelection() {
       try {
-        const snap = await getDoc(doc(db, "pendingSignups", pendingId));
+        setSelectionHydrated(false);
+        setMatchSignupStateLoaded(false);
+
+        const pendingSnap = await getDoc(doc(db, "pendingSignups", pendingId));
         if (cancelled) return;
 
-        const data = snap.exists() ? snap.data() || {} : {};
-        const savedWeeks = Array.isArray(data.selectedWeeks)
-          ? data.selectedWeeks.filter((weekId) =>
+        const pendingData = pendingSnap.exists() ? pendingSnap.data() || {} : {};
+        const pendingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
+          ? pendingData.selectedWeeks.filter((weekId) =>
               weeks.some((week) => week.id === weekId)
             )
           : [];
 
-        setSelectedWeeks(savedWeeks);
-        if (data.reminderPreference) {
-          setReminderPreference(String(data.reminderPreference));
+        const pendingPaidWeeks = Array.isArray(pendingData.paidWeeks)
+          ? pendingData.paidWeeks.filter((weekId) =>
+              weeks.some((week) => week.id === weekId)
+            )
+          : [];
+
+        setSelectedWeeks(pendingSelectedWeeks);
+        setPaidWeeks(pendingPaidWeeks);
+
+        if (pendingData.reminderPreference) {
+          setReminderPreference(String(pendingData.reminderPreference));
         }
-        setPendingSelectionsSaved(savedWeeks.length > 0);
+
+        setPendingSelectionsSaved(pendingSelectedWeeks.length > 0);
+
+        const matchSignupSnap = await getDoc(doc(db, "matchSignups", pendingId));
+        if (cancelled) return;
+
+        const matchSignupData = matchSignupSnap.exists()
+          ? matchSignupSnap.data() || {}
+          : {};
+
+        const paidFromMatchSignup = Array.isArray(matchSignupData.paidWeeks)
+          ? matchSignupData.paidWeeks.filter((weekId) =>
+              weeks.some((week) => week.id === weekId)
+            )
+          : [];
+
+        if (paidFromMatchSignup.length > 0) {
+          setPaidWeeks(paidFromMatchSignup);
+        }
+
+        const matchSelectedWeeks = Array.isArray(matchSignupData.selectedWeeks)
+          ? matchSignupData.selectedWeeks.filter((weekId) =>
+              weeks.some((week) => week.id === weekId)
+            )
+          : [];
+
+        if (pendingSelectedWeeks.length === 0 && matchSelectedWeeks.length > 0) {
+          setSelectedWeeks(matchSelectedWeeks);
+          setPendingSelectionsSaved(true);
+        }
       } catch (error) {
-        console.error("Failed to hydrate own signup:", error);
+        console.error("Failed to hydrate beneficiary signup:", error);
       } finally {
         if (!cancelled) {
           setSelectionHydrated(true);
+          setMatchSignupStateLoaded(true);
         }
       }
     }
 
-    hydrateOwnSelection();
+    hydrateBeneficiarySelection();
 
     return () => {
       cancelled = true;
     };
   }, [pendingId, weeks]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateSecondBeneficiarySelection() {
+      if (!isCombinedMode || !secondBeneficiary?.playerId || !secondPendingId) {
+        setSecondSelectedWeeks([]);
+        setSecondPaidWeeks([]);
+        setSecondSelectionHydrated(!isCombinedMode);
+        setSecondMatchSignupStateLoaded(!isCombinedMode);
+        return;
+      }
+
+      try {
+        setSecondSelectionHydrated(false);
+        setSecondMatchSignupStateLoaded(false);
+
+        const pendingSnap = await getDoc(doc(db, "pendingSignups", secondPendingId));
+        if (cancelled) return;
+
+        const pendingData = pendingSnap.exists() ? pendingSnap.data() || {} : {};
+        const pendingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
+          ? pendingData.selectedWeeks.filter((weekId) =>
+              weeks.some((week) => week.id === weekId)
+            )
+          : [];
+
+        const pendingPaidWeeks = Array.isArray(pendingData.paidWeeks)
+          ? pendingData.paidWeeks.filter((weekId) =>
+              weeks.some((week) => week.id === weekId)
+            )
+          : [];
+
+        setSecondSelectedWeeks(pendingSelectedWeeks);
+        setSecondPaidWeeks(pendingPaidWeeks);
+
+        const matchSignupSnap = await getDoc(doc(db, "matchSignups", secondPendingId));
+        if (cancelled) return;
+
+        const matchSignupData = matchSignupSnap.exists()
+          ? matchSignupSnap.data() || {}
+          : {};
+
+        const paidFromMatchSignup = Array.isArray(matchSignupData.paidWeeks)
+          ? matchSignupData.paidWeeks.filter((weekId) =>
+              weeks.some((week) => week.id === weekId)
+            )
+          : [];
+
+        if (paidFromMatchSignup.length > 0) {
+          setSecondPaidWeeks(paidFromMatchSignup);
+        }
+
+        const matchSelectedWeeks = Array.isArray(matchSignupData.selectedWeeks)
+          ? matchSignupData.selectedWeeks.filter((weekId) =>
+              weeks.some((week) => week.id === weekId)
+            )
+          : [];
+
+        if (pendingSelectedWeeks.length === 0 && matchSelectedWeeks.length > 0) {
+          setSecondSelectedWeeks(matchSelectedWeeks);
+        }
+      } catch (error) {
+        console.error("Failed to hydrate second beneficiary signup:", error);
+      } finally {
+        if (!cancelled) {
+          setSecondSelectionHydrated(true);
+          setSecondMatchSignupStateLoaded(true);
+        }
+      }
+    }
+
+    hydrateSecondBeneficiarySelection();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isCombinedMode, secondBeneficiary?.playerId, secondPendingId, weeks]);
 
   useEffect(() => {
     const q = query(collection(db, "pendingSignups"));
@@ -928,9 +1331,8 @@ export default function MatchSignupPage({
           const data = docSnap.data() || {};
 
           const sameScope =
-            String(data.signupScopeId || "") === String(signupScopeId || "") &&
-            String(data.activeSeasonId || resolvedSeasonId) ===
-              String(resolvedSeasonId || "");
+            String(data.monthKey || data.signupScopeId || "") ===
+            String(calendarMonthKey || signupScopeId);
 
           if (!sameScope) return;
 
@@ -940,47 +1342,74 @@ export default function MatchSignupPage({
               )
             : [];
 
-          const docIdentityKeys = [
-            data.userId,
-            data.playerId,
-            data.playerName,
-            data.shortName,
-            firstNameOf(data.playerName || data.shortName || ""),
-            slugFromLooseName(data.playerName || data.shortName || ""),
-          ]
-            .map((x) => String(x || "").trim())
-            .filter(Boolean)
-            .map(normKey);
+          const paidWeeksForDoc = Array.isArray(data.paidWeeks)
+            ? data.paidWeeks.filter((weekId) =>
+                weeks.some((week) => week.id === weekId)
+              )
+            : [];
 
-          const docStableKey =
-            data.userId || data.playerId
-              ? `uid:${normKey(data.userId || data.playerId)}`
-              : `name:${normKey(data.playerName || data.shortName || docSnap.id)}`;
+          const beneficiaryId = String(
+            data.beneficiaryPlayerId || data.playerId || data.userId || ""
+          ).trim();
+
+          const beneficiaryName = toTitleCaseLoose(
+            data.beneficiaryName || data.playerName || data.shortName || "Player"
+          );
+
+          const beneficiaryShortName =
+            firstNameOf(data.beneficiaryShortName || beneficiaryName) || "Player";
+
+          const beneficiaryStableKey = String(
+            data.beneficiaryStableKey ||
+              (data.beneficiaryType === "guest"
+                ? `guest:${normKey(beneficiaryName)}`
+                : `uid:${normKey(beneficiaryId || beneficiaryName)}`)
+          ).trim();
 
           weeksForDoc.forEach((weekId) => {
             if (!nextWeekKeys[weekId]) nextWeekKeys[weekId] = [];
-            if (!nextWeekKeys[weekId].includes(docStableKey)) {
-              nextWeekKeys[weekId].push(docStableKey);
+            if (!nextWeekKeys[weekId].includes(beneficiaryStableKey)) {
+              nextWeekKeys[weekId].push(beneficiaryStableKey);
             }
           });
 
-          docIdentityKeys.forEach((key) => {
-            if (!nextPlayerWeeks[key]) nextPlayerWeeks[key] = [];
-            weeksForDoc.forEach((weekId) => {
-              if (!nextPlayerWeeks[key].includes(weekId)) {
-                nextPlayerWeeks[key].push(weekId);
-              }
+          uniqueStrings([
+            beneficiaryId,
+            beneficiaryName,
+            beneficiaryShortName,
+            firstNameOf(beneficiaryName),
+            slugFromLooseName(beneficiaryName),
+          ])
+            .map(normKey)
+            .forEach((key) => {
+              if (!nextPlayerWeeks[key]) nextPlayerWeeks[key] = [];
+              weeksForDoc.forEach((weekId) => {
+                if (!nextPlayerWeeks[key].includes(weekId)) {
+                  nextPlayerWeeks[key].push(weekId);
+                }
+              });
             });
-          });
 
           if (weeksForDoc.length > 0) {
+            const unpaidWeeks = weeksForDoc.filter(
+              (weekId) => !paidWeeksForDoc.includes(weekId)
+            );
+
             nextCommittedUsers.push({
-              stableKey: docStableKey,
-              userId: String(data.userId || data.playerId || "").trim(),
-              fullName: toTitleCaseLoose(data.playerName || data.shortName || "Player"),
-              shortName: firstNameOf(
-                toTitleCaseLoose(data.shortName || data.playerName || "Player")
-              ),
+              stableKey: beneficiaryStableKey,
+              userId: beneficiaryId,
+              fullName: beneficiaryName,
+              shortName: beneficiaryShortName,
+              beneficiaryType: data.beneficiaryType || "self",
+              paymentStatus:
+                data.paymentStatus ||
+                (unpaidWeeks.length === 0 ? "paid" : "unpaid"),
+              unpaidWeeks,
+              paidWeeks: paidWeeksForDoc,
+              selectedWeeks: weeksForDoc,
+              amountDueNow:
+                Number(data.totalAmount || 0) ||
+                unpaidWeeks.length * COST_PER_GAME,
             });
           }
         });
@@ -988,44 +1417,72 @@ export default function MatchSignupPage({
         setLiveWeekKeys(nextWeekKeys);
         setLivePlayerWeeks(nextPlayerWeeks);
         setLiveCommittedUsers(nextCommittedUsers);
-        setLiveSelectionsLoaded(true);
       },
       (error) => {
         console.error("Failed to subscribe to pending signups:", error);
-        setLiveSelectionsLoaded(true);
       }
     );
 
     return () => unsubscribe();
-  }, [signupScopeId, resolvedSeasonId, weeks]);
+  }, [calendarMonthKey, signupScopeId, weeks]);
 
   useEffect(() => {
-    if (!selectionHydrated) return;
+    if (!selectionHydrated || !matchSignupStateLoaded) return;
 
     const persistPendingSelection = async () => {
       try {
         setSaveState("saving");
 
+        const weeksToPayNow = selectedWeeks.filter(
+          (weekId) => !paidWeeks.includes(weekId)
+        );
+
+        const paymentStatus =
+          selectedWeeks.length === 0
+            ? "not_selected"
+            : weeksToPayNow.length === 0
+            ? "paid"
+            : paidWeeks.length > 0
+            ? "part_paid"
+            : "pending";
+
         const payload = {
           activeSeasonId: resolvedSeasonId,
+          seasonAtSignupTime: resolvedSeasonId,
           signupType,
           signupScopeId,
           signupScopeLabel,
-          userId,
-          playerId:
-            identity?.playerId ||
-            identity?.memberId ||
-            currentUser?.uid ||
-            slugFromLooseName(displayName),
-          playerName: displayName,
-          shortName,
+          monthLabel: calendarMonthData?.monthLabel || "",
+          monthKey: calendarMonthKey,
+          payerUserId,
+          payerName: displayName,
+          payerShortName: shortName,
+          userId: payerUserId,
+          playerId: beneficiary.playerId,
+          playerName: beneficiary.fullName,
+          shortName: beneficiary.shortName,
+          beneficiaryType: beneficiary.mode,
+          beneficiaryPlayerId: beneficiary.playerId,
+          beneficiaryName: beneficiary.fullName,
+          beneficiaryShortName: beneficiary.shortName,
+          beneficiaryStableKey: beneficiary.stableKey,
           whatsappNumber: profileWhatsappNumber || phoneNumber || "",
           effectiveWhatsappNumber: effectiveWhatsappNumber || "",
           whatsappVerificationStatus:
             whatsAppVerificationStatus || "manual_admin_verified",
-          monthLabel: calendarMonthData?.monthLabel || "",
-          monthKey: calendarMonthKey,
+          selectedWeeks,
+          paidWeeks,
+          unpaidWeeks: weeksToPayNow,
+          weeksToPayNow,
+          totalAmount: weeksToPayNow.length * COST_PER_GAME,
+          amountDueNow: weeksToPayNow.length * COST_PER_GAME,
+          amountPaidTotal: paidWeeks.length * COST_PER_GAME,
           costPerGame: COST_PER_GAME,
+          paymentStatus,
+          isUnpaid: selectedWeeks.length > 0 && weeksToPayNow.length > 0,
+          remindersEnabled: Boolean(effectiveWhatsappNumber) && selectedWeeks.length > 0,
+          remindersPaused:
+            !Boolean(effectiveWhatsappNumber) || selectedWeeks.length === 0,
           reminderPreference,
           reminderTimezone: "Africa/Johannesburg",
           lastReminderSentAt: null,
@@ -1034,26 +1491,7 @@ export default function MatchSignupPage({
           createdAt: serverTimestamp(),
         };
 
-        const finalPayload =
-          selectedWeeks.length > 0
-            ? {
-                ...payload,
-                selectedWeeks,
-                totalAmount: selectedWeeks.length * COST_PER_GAME,
-                paymentStatus: "pending",
-                remindersEnabled: Boolean(effectiveWhatsappNumber),
-                remindersPaused: !Boolean(effectiveWhatsappNumber),
-              }
-            : {
-                ...payload,
-                selectedWeeks: [],
-                totalAmount: 0,
-                paymentStatus: "not_selected",
-                remindersEnabled: false,
-                remindersPaused: true,
-              };
-
-        await setDoc(doc(db, "pendingSignups", pendingId), finalPayload, {
+        await setDoc(doc(db, "pendingSignups", pendingId), payload, {
           merge: true,
         });
 
@@ -1068,22 +1506,122 @@ export default function MatchSignupPage({
     persistPendingSelection();
   }, [
     selectionHydrated,
+    matchSignupStateLoaded,
     selectedWeeks,
+    paidWeeks,
     resolvedSeasonId,
     signupType,
     signupScopeId,
     signupScopeLabel,
-    currentUser?.uid,
+    payerUserId,
     displayName,
-    identity,
+    shortName,
+    beneficiary,
     profileWhatsappNumber,
     phoneNumber,
     effectiveWhatsappNumber,
     reminderPreference,
     whatsAppVerificationStatus,
-    shortName,
-    userId,
     pendingId,
+    calendarMonthData?.monthLabel,
+    calendarMonthKey,
+  ]);
+
+  useEffect(() => {
+    if (!isCombinedMode) return;
+    if (!secondBeneficiary?.playerId) return;
+    if (!secondSelectionHydrated || !secondMatchSignupStateLoaded) return;
+
+    const persistSecondPendingSelection = async () => {
+      try {
+        const secondWeeksToPayNow = secondSelectedWeeks.filter(
+          (weekId) => !secondPaidWeeks.includes(weekId)
+        );
+
+        const paymentStatus =
+          secondSelectedWeeks.length === 0
+            ? "not_selected"
+            : secondWeeksToPayNow.length === 0
+            ? "paid"
+            : secondPaidWeeks.length > 0
+            ? "part_paid"
+            : "pending";
+
+        const payload = {
+          activeSeasonId: resolvedSeasonId,
+          seasonAtSignupTime: resolvedSeasonId,
+          signupType,
+          signupScopeId,
+          signupScopeLabel,
+          monthLabel: calendarMonthData?.monthLabel || "",
+          monthKey: calendarMonthKey,
+          payerUserId,
+          payerName: displayName,
+          payerShortName: shortName,
+          userId: payerUserId,
+          playerId: secondBeneficiary.playerId,
+          playerName: secondBeneficiary.fullName,
+          shortName: secondBeneficiary.shortName,
+          beneficiaryType: secondBeneficiary.mode,
+          beneficiaryPlayerId: secondBeneficiary.playerId,
+          beneficiaryName: secondBeneficiary.fullName,
+          beneficiaryShortName: secondBeneficiary.shortName,
+          beneficiaryStableKey: secondBeneficiary.stableKey,
+          beneficiaryEmail: secondBeneficiary.email || "",
+          whatsappNumber: profileWhatsappNumber || phoneNumber || "",
+          effectiveWhatsappNumber: effectiveWhatsappNumber || "",
+          whatsappVerificationStatus:
+            whatsAppVerificationStatus || "manual_admin_verified",
+          selectedWeeks: secondSelectedWeeks,
+          paidWeeks: secondPaidWeeks,
+          unpaidWeeks: secondWeeksToPayNow,
+          weeksToPayNow: secondWeeksToPayNow,
+          totalAmount: secondWeeksToPayNow.length * COST_PER_GAME,
+          amountDueNow: secondWeeksToPayNow.length * COST_PER_GAME,
+          amountPaidTotal: secondPaidWeeks.length * COST_PER_GAME,
+          costPerGame: COST_PER_GAME,
+          paymentStatus,
+          isUnpaid:
+            secondSelectedWeeks.length > 0 && secondWeeksToPayNow.length > 0,
+          remindersEnabled: Boolean(effectiveWhatsappNumber) && secondSelectedWeeks.length > 0,
+          remindersPaused:
+            !Boolean(effectiveWhatsappNumber) || secondSelectedWeeks.length === 0,
+          reminderPreference,
+          reminderTimezone: "Africa/Johannesburg",
+          lastReminderSentAt: null,
+          nextReminderAt: null,
+          updatedAt: serverTimestamp(),
+        };
+
+        await setDoc(doc(db, "pendingSignups", secondPendingId), payload, {
+          merge: true,
+        });
+      } catch (err) {
+        console.error("Failed to persist second pending signup selection:", err);
+      }
+    };
+
+    persistSecondPendingSelection();
+  }, [
+    isCombinedMode,
+    secondSelectionHydrated,
+    secondMatchSignupStateLoaded,
+    secondSelectedWeeks,
+    secondPaidWeeks,
+    resolvedSeasonId,
+    signupType,
+    signupScopeId,
+    signupScopeLabel,
+    payerUserId,
+    displayName,
+    shortName,
+    secondBeneficiary,
+    profileWhatsappNumber,
+    phoneNumber,
+    effectiveWhatsappNumber,
+    reminderPreference,
+    whatsAppVerificationStatus,
+    secondPendingId,
     calendarMonthData?.monthLabel,
     calendarMonthKey,
   ]);
@@ -1107,20 +1645,31 @@ export default function MatchSignupPage({
         const matchedKey = Object.keys(playerPhotos).find(
           (k) => normKey(k) === normKey(key)
         );
-        if (matchedKey && playerPhotos[matchedKey]) {
-          return playerPhotos[matchedKey];
-        }
+        if (matchedKey && playerPhotos[matchedKey]) return playerPhotos[matchedKey];
       }
 
       return null;
     };
   }, [playerPhotos]);
 
-  const photoData = getPlayerPhoto(displayName) || getPlayerPhoto(shortName);
+  const photoData =
+    getPlayerPhoto(beneficiary.fullName) || getPlayerPhoto(beneficiary.shortName);
 
   const currentTeam = useMemo(
-    () => findCurrentPlayersTeam(teams, identity, displayName, shortName),
-    [teams, identity, displayName, shortName]
+    () =>
+      beneficiary.isGuest
+        ? null
+        : findCurrentPlayersTeam(
+            teams,
+            {
+              playerId: beneficiary.playerId,
+              shortName: beneficiary.shortName,
+              fullName: beneficiary.fullName,
+            },
+            beneficiary.fullName,
+            beneficiary.shortName
+          ),
+    [teams, beneficiary]
   );
 
   const allRows = useMemo(() => {
@@ -1132,10 +1681,10 @@ export default function MatchSignupPage({
       fullName: user.fullName,
       shortName: user.shortName || firstNameOf(user.fullName),
       stableKey: user.stableKey,
-      isCurrent:
-        normKey(user.userId || "") === normKey(userId) ||
-        normKey(user.fullName) === normKey(displayName) ||
-        normKey(user.shortName) === normKey(shortName),
+      isCurrent: normKey(user.stableKey) === normKey(beneficiary.stableKey),
+      isSecondaryEditable:
+        Boolean(isCombinedMode && secondBeneficiary?.stableKey) &&
+        normKey(user.stableKey) === normKey(secondBeneficiary.stableKey),
       isEmpty: false,
     }));
 
@@ -1146,59 +1695,78 @@ export default function MatchSignupPage({
 
     const committedRows = Array.from(uniqueMap.values());
 
-    const alreadyHasCurrent = committedRows.some((p) => p.isCurrent);
+    const alreadyHasCurrent = committedRows.some(
+      (p) => normKey(p.stableKey) === normKey(beneficiary.stableKey)
+    );
 
     if (!alreadyHasCurrent) {
       committedRows.push({
-        id:
-          identity?.playerId ||
-          identity?.memberId ||
-          slugFromLooseName(displayName) ||
-          "current_player",
-        uid:
-          identity?.playerId ||
-          identity?.memberId ||
-          currentUser?.uid ||
-          "",
-        playerId:
-          identity?.playerId ||
-          identity?.memberId ||
-          currentUser?.uid ||
-          "",
-        memberId:
-          identity?.memberId ||
-          identity?.playerId ||
-          currentUser?.uid ||
-          "",
-        fullName: displayName,
-        shortName,
-        stableKey: currentUserDocKey,
+        id: beneficiary.playerId || slugFromLooseName(beneficiary.fullName),
+        uid: beneficiary.playerId || "",
+        playerId: beneficiary.playerId || "",
+        memberId: beneficiary.playerId || "",
+        fullName: beneficiary.fullName,
+        shortName: beneficiary.shortName,
+        stableKey: beneficiary.stableKey,
         isCurrent: true,
+        isSecondaryEditable: false,
         isEmpty: false,
       });
     }
 
-    while (committedRows.length < MAX_PLAYERS) {
-      committedRows.push({
-        id: `empty_slot_${committedRows.length + 1}`,
+    if (isCombinedMode && secondBeneficiary?.playerId && secondBeneficiary?.fullName) {
+      const alreadyHasSecond = committedRows.some(
+        (p) => normKey(p.stableKey) === normKey(secondBeneficiary.stableKey)
+      );
+
+      if (!alreadyHasSecond) {
+        committedRows.push({
+          id:
+            secondBeneficiary.playerId ||
+            slugFromLooseName(secondBeneficiary.fullName),
+          uid: secondBeneficiary.playerId || "",
+          playerId: secondBeneficiary.playerId || "",
+          memberId: secondBeneficiary.playerId || "",
+          fullName: secondBeneficiary.fullName,
+          shortName: secondBeneficiary.shortName,
+          stableKey: secondBeneficiary.stableKey,
+          isCurrent: false,
+          isSecondaryEditable: true,
+          isEmpty: false,
+        });
+      }
+    }
+
+    const boostedRows = committedRows.map((row) => ({
+      ...row,
+      isSecondaryEditable:
+        Boolean(row.isSecondaryEditable) ||
+        (Boolean(isCombinedMode && secondBeneficiary?.stableKey) &&
+          normKey(row.stableKey) === normKey(secondBeneficiary.stableKey)),
+    }));
+
+    boostedRows.sort((a, b) => {
+      const rank = (row) => {
+        if (row.isCurrent) return 0;
+        if (row.isSecondaryEditable) return 1;
+        return 2;
+      };
+      return rank(a) - rank(b);
+    });
+
+    while (boostedRows.length < MAX_PLAYERS) {
+      boostedRows.push({
+        id: `empty_slot_${boostedRows.length + 1}`,
         fullName: "",
-        shortName: `Slot ${committedRows.length + 1}`,
+        shortName: `Slot ${boostedRows.length + 1}`,
         isCurrent: false,
+        isSecondaryEditable: false,
         isEmpty: true,
       });
     }
 
-    return committedRows.slice(0, MAX_PLAYERS);
-  }, [
-    liveCommittedUsers,
-    currentTeam,
-    identity,
-    currentUser?.uid,
-    displayName,
-    shortName,
-    currentUserDocKey,
-    userId,
-  ]);
+    return boostedRows.slice(0, MAX_PLAYERS);
+  }, [liveCommittedUsers, currentTeam, beneficiary, isCombinedMode, secondBeneficiary]);
 
   const weekSelectionsAll = useMemo(() => {
     const out = {};
@@ -1212,11 +1780,27 @@ export default function MatchSignupPage({
         signedKeys.delete(currentUserDocKey);
       }
 
+      if (isCombinedMode && secondBeneficiary?.stableKey) {
+        if (secondSelectedWeeks.includes(week.id)) {
+          signedKeys.add(secondBeneficiary.stableKey);
+        } else {
+          signedKeys.delete(secondBeneficiary.stableKey);
+        }
+      }
+
       out[week.id] = signedKeys;
     });
 
     return out;
-  }, [weeks, liveWeekKeys, selectedWeeks, currentUserDocKey]);
+  }, [
+    weeks,
+    liveWeekKeys,
+    selectedWeeks,
+    currentUserDocKey,
+    isCombinedMode,
+    secondBeneficiary,
+    secondSelectedWeeks,
+  ]);
 
   const actualPlayersCount = useMemo(
     () => allRows.filter((row) => !row.isEmpty).length,
@@ -1248,27 +1832,36 @@ export default function MatchSignupPage({
         if (player.isEmpty) return;
 
         if (player.isCurrent) {
-          if (selectedWeeks.includes(week.id)) {
-            signedIds.add(player.id);
-          }
+          if (selectedWeeks.includes(week.id)) signedIds.add(player.id);
+          return;
+        }
+
+        if (player.isSecondaryEditable) {
+          if (secondSelectedWeeks.includes(week.id)) signedIds.add(player.id);
           return;
         }
 
         const lookupKeys = getPlayerLookupKeys(player);
         const isSelectedForThatPlayer =
-          (player.stableKey && (liveWeekKeys[week.id] || []).includes(player.stableKey)) ||
+          (player.stableKey &&
+            (liveWeekKeys[week.id] || []).includes(player.stableKey)) ||
           lookupKeys.some((key) => (livePlayerWeeks[key] || []).includes(week.id));
 
-        if (isSelectedForThatPlayer) {
-          signedIds.add(player.id);
-        }
+        if (isSelectedForThatPlayer) signedIds.add(player.id);
       });
 
       out[week.id] = signedIds;
     });
 
     return out;
-  }, [weeks, displayRows, livePlayerWeeks, liveWeekKeys, selectedWeeks]);
+  }, [
+    weeks,
+    displayRows,
+    livePlayerWeeks,
+    liveWeekKeys,
+    selectedWeeks,
+    secondSelectedWeeks,
+  ]);
 
   const weekMeta = useMemo(
     () =>
@@ -1284,11 +1877,14 @@ export default function MatchSignupPage({
   );
 
   useEffect(() => {
+    hasInitialScrollRef.current = false;
+  }, [beneficiary.stableKey]);
+
+  useEffect(() => {
     if (hasInitialScrollRef.current) return;
 
     const scrollEl = matrixScrollRef.current;
     const currentCellEl = currentPlayerCellRef.current;
-
     if (!scrollEl || !currentCellEl) return;
 
     const rowTop = currentCellEl.offsetTop;
@@ -1299,6 +1895,8 @@ export default function MatchSignupPage({
   }, [displayRows]);
 
   const toggleWeek = (week) => {
+    if (paidWeeks.includes(week.id)) return;
+
     const meta = weekMeta.find((w) => w.id === week.id);
     const isSelected = selectedWeeks.includes(week.id);
 
@@ -1308,12 +1906,43 @@ export default function MatchSignupPage({
     }
 
     if ((meta?.count || 0) >= MAX_PLAYERS) return;
-
     setSelectedWeeks((prev) => [...prev, week.id]);
   };
 
-  const totalAmount = selectedWeeks.length * COST_PER_GAME;
-  const selectedCount = selectedWeeks.length;
+  const toggleSecondWeek = (weekId) => {
+    if (secondPaidWeeks.includes(weekId)) return;
+    setSecondSelectedWeeks((prev) =>
+      prev.includes(weekId)
+        ? prev.filter((id) => id !== weekId)
+        : [...prev, weekId]
+    );
+  };
+
+  const paidWeekSet = useMemo(() => new Set(paidWeeks), [paidWeeks]);
+
+  const weeksToPayNow = useMemo(
+    () => selectedWeeks.filter((weekId) => !paidWeekSet.has(weekId)),
+    [selectedWeeks, paidWeekSet]
+  );
+
+  const secondPaidWeekSet = useMemo(
+    () => new Set(secondPaidWeeks),
+    [secondPaidWeeks]
+  );
+
+  const secondWeeksToPayNow = useMemo(
+    () => secondSelectedWeeks.filter((weekId) => !secondPaidWeekSet.has(weekId)),
+    [secondSelectedWeeks, secondPaidWeekSet]
+  );
+
+  const combinedSelectedCount = selectedWeeks.length + secondSelectedWeeks.length;
+  const combinedWeeksToPayCount =
+    weeksToPayNow.length + secondWeeksToPayNow.length;
+
+  const totalAmount =
+    (isCombinedMode ? combinedWeeksToPayCount : weeksToPayNow.length) *
+    COST_PER_GAME;
+  const selectedCount = isCombinedMode ? combinedSelectedCount : selectedWeeks.length;
   const signupStatusText =
     selectedCount > 0
       ? `${selectedCount} week${selectedCount > 1 ? "s" : ""} selected`
@@ -1322,16 +1951,28 @@ export default function MatchSignupPage({
   const attendanceBadgeText = attendanceBadge.loading
     ? "Attendance loading..."
     : attendanceBadge.percent == null
-    ? "Attendance not available"
+    ? beneficiary.isGuest
+      ? "New guest player"
+      : "Attendance not available"
     : `${attendanceBadge.percent}% attendance`;
 
   const attendanceSubtext = attendanceBadge.loading
     ? ""
     : attendanceBadge.percent == null
-    ? ""
+    ? beneficiary.isGuest
+      ? "Guest player has no previous attendance record"
+      : ""
     : `${attendanceBadge.attended}/${attendanceBadge.total} match days · ${attendanceBadge.gamesPlayed} game${
         attendanceBadge.gamesPlayed === 1 ? "" : "s"
       } played`;
+
+  const unpaidPlayersCount = useMemo(
+    () =>
+      liveCommittedUsers.filter(
+        (user) => Array.isArray(user.unpaidWeeks) && user.unpaidWeeks.length > 0
+      ).length,
+    [liveCommittedUsers]
+  );
 
   const firstColWidth = isMobile ? 108 : 220;
 
@@ -1369,70 +2010,258 @@ export default function MatchSignupPage({
     headerHeight + visibleRowsInViewport * rowHeight + 10;
 
   const handleAttemptBack = () => {
-    if (selectedWeeks.length === 0) {
+    if (selectedWeeks.length === 0 && secondSelectedWeeks.length === 0) {
       onBack?.();
       return;
     }
     setShowLeavePrompt(true);
   };
 
-  const handlePayNow = () => {
-    setShowLeavePrompt(false);
-    onProceedToPayment?.({
-      selectedWeeks,
-      totalAmount,
-      costPerGame: COST_PER_GAME,
-    });
+  const handlePayNow = async () => {
+    if (beneficiaryNeedsSelection) return;
+
+    if (signupForMode === "guest" && !looksLikeEmail(guestPlayerEmail)) {
+      window.alert("Please add a valid email address for the new player.");
+      return;
+    }
+
+    if (signupForMode === "self_and_guest" && !looksLikeEmail(secondGuestPlayerEmail)) {
+      window.alert("Please add a valid email address for the additional new player.");
+      return;
+    }
+
+    try {
+      if (signupForMode === "guest" && beneficiary.fullName) {
+        await setDoc(
+          doc(db, "players", beneficiary.playerId),
+          {
+            playerId: beneficiary.playerId,
+            fullName: beneficiary.fullName,
+            shortName: beneficiary.shortName,
+            email: normalizeEmail(guestPlayerEmail),
+            createdByUserId: payerUserId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      if (secondBeneficiary?.isGuest && secondBeneficiary.fullName) {
+        await setDoc(
+          doc(db, "players", secondBeneficiary.playerId),
+          {
+            playerId: secondBeneficiary.playerId,
+            fullName: secondBeneficiary.fullName,
+            shortName: secondBeneficiary.shortName,
+            email: normalizeEmail(secondGuestPlayerEmail),
+            createdByUserId: payerUserId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      const totalWeeksForPayment = isCombinedMode
+        ? combinedWeeksToPayCount
+        : weeksToPayNow.length;
+
+      const combinedPaymentLink = isCombinedMode
+        ? COMBINED_PAYMENT_LINKS[totalWeeksForPayment] || ""
+        : "";
+
+      setShowLeavePrompt(false);
+      onProceedToPayment?.({
+        signupDocId: pendingId,
+        secondSignupDocId: secondPendingId || "",
+        selectedWeeks,
+        paidWeeks,
+        weeksToPayNow,
+        secondSelectedWeeks,
+        secondPaidWeeks,
+        secondWeeksToPayNow,
+        totalAmount,
+        amountDue: totalAmount,
+        costPerGame: COST_PER_GAME,
+        totalWeeksForPayment,
+        displayName: beneficiary.fullName,
+        shortName: beneficiary.shortName,
+        payerName: displayName,
+        payerUserId,
+        beneficiaryName: beneficiary.fullName,
+        beneficiaryShortName: beneficiary.shortName,
+        beneficiaryPlayerId: beneficiary.playerId,
+        beneficiaryType: beneficiary.mode,
+        beneficiaryStableKey: beneficiary.stableKey,
+        secondBeneficiaryName: secondBeneficiary?.fullName || "",
+        secondBeneficiaryShortName: secondBeneficiary?.shortName || "",
+        secondBeneficiaryPlayerId: secondBeneficiary?.playerId || "",
+        secondBeneficiaryType: secondBeneficiary?.mode || "",
+        secondBeneficiaryStableKey: secondBeneficiary?.stableKey || "",
+        combinedPaymentLink,
+        paymentReference: `5s-${firstNameOf(beneficiary.fullName)}`,
+      });
+    } catch (error) {
+      console.error("Failed to prepare payment:", error);
+      window.alert("Could not prepare payment. Please try again.");
+    }
   };
 
-  const handlePayLater = async () => {
+
+  const persistExitStateForBeneficiary = async ({
+    docId,
+    targetBeneficiary,
+    targetSelectedWeeks,
+    targetPaidWeeks,
+    targetWeeksToPayNow,
+    paymentStatus,
+    remindersEnabled,
+    remindersPaused,
+  }) => {
+    if (!docId || !targetBeneficiary?.playerId) return;
+
+    await setDoc(
+      doc(db, "pendingSignups", docId),
+      {
+        activeSeasonId: resolvedSeasonId,
+        seasonAtSignupTime: resolvedSeasonId,
+        signupType,
+        signupScopeId,
+        signupScopeLabel,
+        monthLabel: calendarMonthData?.monthLabel || "",
+        monthKey: calendarMonthKey,
+        payerUserId,
+        payerName: displayName,
+        payerShortName: shortName,
+        userId: payerUserId,
+        playerId: targetBeneficiary.playerId,
+        playerName: targetBeneficiary.fullName,
+        shortName: targetBeneficiary.shortName,
+        beneficiaryType: targetBeneficiary.mode,
+        beneficiaryPlayerId: targetBeneficiary.playerId,
+        beneficiaryName: targetBeneficiary.fullName,
+        beneficiaryShortName: targetBeneficiary.shortName,
+        beneficiaryStableKey: targetBeneficiary.stableKey,
+        beneficiaryEmail: targetBeneficiary.email || "",
+        whatsappNumber: profileWhatsappNumber || phoneNumber || "",
+        effectiveWhatsappNumber: effectiveWhatsappNumber || "",
+        whatsappVerificationStatus:
+          whatsAppVerificationStatus || "manual_admin_verified",
+        selectedWeeks: targetSelectedWeeks,
+        paidWeeks: targetPaidWeeks,
+        unpaidWeeks: targetWeeksToPayNow,
+        weeksToPayNow: targetWeeksToPayNow,
+        totalAmount: targetWeeksToPayNow.length * COST_PER_GAME,
+        amountDueNow: targetWeeksToPayNow.length * COST_PER_GAME,
+        amountPaidTotal: targetPaidWeeks.length * COST_PER_GAME,
+        costPerGame: COST_PER_GAME,
+        paymentStatus,
+        isUnpaid: targetWeeksToPayNow.length > 0,
+        remindersEnabled,
+        remindersPaused,
+        reminderPreference,
+        reminderTimezone: "Africa/Johannesburg",
+        submittedAt:
+          paymentStatus === "submitted_awaiting_confirmation"
+            ? serverTimestamp()
+            : null,
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  };
+
+  const handlePaidSubmitted = async () => {
     try {
-      if (selectedWeeks.length === 0) {
+      if (selectedWeeks.length === 0 && secondSelectedWeeks.length === 0) {
         setShowLeavePrompt(false);
         onBack?.();
         return;
       }
 
-      const payload = {
-        activeSeasonId: resolvedSeasonId,
-        signupType,
-        signupScopeId,
-        signupScopeLabel,
-        userId,
-        playerId:
-          identity?.playerId ||
-          identity?.memberId ||
-          currentUser?.uid ||
-          slugFromLooseName(displayName),
-        playerName: displayName,
-        shortName,
-        whatsappNumber: profileWhatsappNumber || phoneNumber || "",
-        effectiveWhatsappNumber: effectiveWhatsappNumber || "",
-        whatsappVerificationStatus:
-          whatsAppVerificationStatus || "manual_admin_verified",
-        monthLabel: calendarMonthData?.monthLabel || "",
-        monthKey: calendarMonthKey,
-        selectedWeeks,
-        totalAmount: selectedWeeks.length * COST_PER_GAME,
-        costPerGame: COST_PER_GAME,
-        paymentStatus: "payment_deferred",
-        remindersEnabled: Boolean(effectiveWhatsappNumber),
-        remindersPaused: !Boolean(effectiveWhatsappNumber),
-        reminderPreference,
-        reminderTimezone: "Africa/Johannesburg",
-        lastReminderSentAt: null,
-        nextReminderAt: null,
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-      };
-
-      await setDoc(doc(db, "pendingSignups", pendingId), payload, {
-        merge: true,
+      await persistExitStateForBeneficiary({
+        docId: pendingId,
+        targetBeneficiary: beneficiary,
+        targetSelectedWeeks: selectedWeeks,
+        targetPaidWeeks: paidWeeks,
+        targetWeeksToPayNow: weeksToPayNow,
+        paymentStatus:
+          weeksToPayNow.length === 0 ? "paid" : "submitted_awaiting_confirmation",
+        remindersEnabled: false,
+        remindersPaused: true,
       });
 
-      if (!effectiveWhatsappNumber) {
-        setShowWhatsAppPrompt(true);
+      if (isCombinedMode && secondBeneficiary?.playerId && secondPendingId) {
+        await persistExitStateForBeneficiary({
+          docId: secondPendingId,
+          targetBeneficiary: secondBeneficiary,
+          targetSelectedWeeks: secondSelectedWeeks,
+          targetPaidWeeks: secondPaidWeeks,
+          targetWeeksToPayNow: secondWeeksToPayNow,
+          paymentStatus:
+            secondWeeksToPayNow.length === 0
+              ? "paid"
+              : "submitted_awaiting_confirmation",
+          remindersEnabled: false,
+          remindersPaused: true,
+        });
       }
+
+      setPendingSelectionsSaved(true);
+      setShowLeavePrompt(false);
+      onBack?.();
+    } catch (error) {
+      console.error("Paid submission save failed", error);
+      setShowLeavePrompt(false);
+      onBack?.();
+    }
+  };
+
+  const handlePayLater = async () => {
+    try {
+      if (selectedWeeks.length === 0 && secondSelectedWeeks.length === 0) {
+        setShowLeavePrompt(false);
+        onBack?.();
+        return;
+      }
+
+      await persistExitStateForBeneficiary({
+        docId: pendingId,
+        targetBeneficiary: beneficiary,
+        targetSelectedWeeks: selectedWeeks,
+        targetPaidWeeks: paidWeeks,
+        targetWeeksToPayNow: weeksToPayNow,
+        paymentStatus:
+          weeksToPayNow.length === 0
+            ? "paid"
+            : paidWeeks.length > 0
+            ? "part_paid"
+            : "payment_deferred",
+        remindersEnabled: Boolean(effectiveWhatsappNumber),
+        remindersPaused: !Boolean(effectiveWhatsappNumber),
+      });
+
+      if (isCombinedMode && secondBeneficiary?.playerId && secondPendingId) {
+        await persistExitStateForBeneficiary({
+          docId: secondPendingId,
+          targetBeneficiary: secondBeneficiary,
+          targetSelectedWeeks: secondSelectedWeeks,
+          targetPaidWeeks: secondPaidWeeks,
+          targetWeeksToPayNow: secondWeeksToPayNow,
+          paymentStatus:
+            secondWeeksToPayNow.length === 0
+              ? "paid"
+              : secondPaidWeeks.length > 0
+              ? "part_paid"
+              : "payment_deferred",
+          remindersEnabled: Boolean(effectiveWhatsappNumber),
+          remindersPaused: !Boolean(effectiveWhatsappNumber),
+        });
+      }
+
+      if (!effectiveWhatsappNumber) setShowWhatsAppPrompt(true);
 
       setPendingSelectionsSaved(true);
       setShowLeavePrompt(false);
@@ -1456,21 +2285,34 @@ export default function MatchSignupPage({
         doc(db, "pendingSignups", pendingId),
         {
           activeSeasonId: resolvedSeasonId,
+          seasonAtSignupTime: resolvedSeasonId,
           signupType,
           signupScopeId,
           signupScopeLabel,
-          userId,
-          playerId:
-            identity?.playerId ||
-            identity?.memberId ||
-            currentUser?.uid ||
-            slugFromLooseName(displayName),
-          playerName: displayName,
-          shortName,
+          monthLabel: calendarMonthData?.monthLabel || "",
+          monthKey: calendarMonthKey,
+          payerUserId,
+          payerName: displayName,
+          payerShortName: shortName,
+          userId: payerUserId,
+          playerId: beneficiary.playerId,
+          playerName: beneficiary.fullName,
+          shortName: beneficiary.shortName,
+          beneficiaryType: beneficiary.mode,
+          beneficiaryPlayerId: beneficiary.playerId,
+          beneficiaryName: beneficiary.fullName,
+          beneficiaryShortName: beneficiary.shortName,
+          beneficiaryStableKey: beneficiary.stableKey,
           selectedWeeks: [],
+          paidWeeks,
+          unpaidWeeks: [],
+          weeksToPayNow: [],
           totalAmount: 0,
+          amountDueNow: 0,
+          amountPaidTotal: paidWeeks.length * COST_PER_GAME,
           costPerGame: COST_PER_GAME,
-          paymentStatus: "not_selected",
+          paymentStatus: paidWeeks.length > 0 ? "paid" : "not_selected",
+          isUnpaid: false,
           remindersEnabled: false,
           remindersPaused: true,
           whatsappNumber: profileWhatsappNumber || phoneNumber || "",
@@ -1494,14 +2336,18 @@ export default function MatchSignupPage({
   const getWeekByCalendarCellId = (cellId) =>
     weeks.find((week) => week.id === cellId) || null;
 
-  const saveStateText =
-    saveState === "saving"
-      ? "Saving..."
-      : saveState === "saved"
-      ? "Saved"
-      : saveState === "error"
-      ? "Save failed"
-      : "";
+  const saveStateText = "";
+
+  const beneficiaryNeedsSelection =
+    signupForMode === "existing_player"
+      ? !existingPlayerTargetId
+      : signupForMode === "guest"
+      ? !guestPlayerName.trim() || !looksLikeEmail(guestPlayerEmail)
+      : signupForMode === "self_and_existing_player"
+      ? !secondExistingPlayerTargetId
+      : signupForMode === "self_and_guest"
+      ? !secondGuestPlayerName.trim() || !looksLikeEmail(secondGuestPlayerEmail)
+      : false;
 
   return (
     <div className="page match-signup-page">
@@ -1512,12 +2358,14 @@ export default function MatchSignupPage({
               {photoData ? (
                 <img
                   src={photoData}
-                  alt={displayName}
+                  alt={beneficiary.fullName}
                   className="signup-player-avatar-img"
                 />
               ) : (
                 <span className="signup-player-avatar-fallback">
-                  {String(shortName || "P").charAt(0).toUpperCase()}
+                  {String(beneficiary.shortName || "P")
+                    .charAt(0)
+                    .toUpperCase()}
                 </span>
               )}
             </div>
@@ -1528,7 +2376,7 @@ export default function MatchSignupPage({
               </div>
 
               <p className="muted signup-hero-subtext">
-                Select every Wednesday you are available for next month.
+                Select every Wednesday available for the player you are signing up.
               </p>
 
               <div className="signup-top-meta">
@@ -1597,6 +2445,139 @@ export default function MatchSignupPage({
         </div>
       </section>
 
+      <section className="card signup-summary-card">
+        <div className="signup-reminder-choice">
+          <label htmlFor="signupForMode">Who are you paying for?</label>
+          <select
+            id="signupForMode"
+            value={signupForMode}
+            onChange={(e) => {
+              setSignupForMode(e.target.value);
+              setExistingPlayerTargetId("");
+              setGuestPlayerName("");
+              setGuestPlayerEmail("");
+              setSecondExistingPlayerTargetId("");
+              setSecondGuestPlayerName("");
+              setSecondGuestPlayerEmail("");
+              setSelectedWeeks([]);
+              setPaidWeeks([]);
+              setSecondSelectedWeeks([]);
+              setSecondPaidWeeks([]);
+              setSelectionHydrated(false);
+              setSecondSelectionHydrated(false);
+            }}
+          >
+            <option value="self">Myself</option>
+            <option value="existing_player">Another existing player</option>
+            <option value="guest">A new player</option>
+            <option value="self_and_existing_player">Myself and another existing player</option>
+            <option value="self_and_guest">Myself and a new player</option>
+          </select>
+        </div>
+
+        {signupForMode === "existing_player" ? (
+          <div className="signup-reminder-choice">
+            <select
+              id="existingPlayerTargetId"
+              value={existingPlayerTargetId}
+              onChange={(e) => {
+                setExistingPlayerTargetId(e.target.value);
+                setSelectedWeeks([]);
+                setPaidWeeks([]);
+                setSelectionHydrated(false);
+              }}
+            >
+              <option value="">Select player</option>
+              {existingPlayerOptions.map((player) => (
+                <option key={player.id} value={player.id}>
+                  {player.fullName}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
+        {signupForMode === "guest" ? (
+          <>
+            <div className="signup-reminder-choice">
+              <input
+                id="guestPlayerName"
+                type="text"
+                placeholder="Enter new player's name"
+                value={guestPlayerName}
+                onChange={(e) => {
+                  setGuestPlayerName(e.target.value);
+                  setSelectedWeeks([]);
+                  setPaidWeeks([]);
+                  setSelectionHydrated(false);
+                }}
+              />
+            </div>
+            <div className="signup-reminder-choice">
+              <input
+                id="guestPlayerEmail"
+                type="email"
+                placeholder="Enter new player's email"
+                value={guestPlayerEmail}
+                onChange={(e) => setGuestPlayerEmail(e.target.value)}
+              />
+            </div>
+          </>
+        ) : null}
+
+        {signupForMode === "self_and_existing_player" ? (
+          <div className="signup-reminder-choice">
+            <select
+              id="secondExistingPlayerTargetId"
+              value={secondExistingPlayerTargetId}
+              onChange={(e) => {
+                setSecondExistingPlayerTargetId(e.target.value);
+                setSecondSelectedWeeks([]);
+                setSecondPaidWeeks([]);
+                setSecondSelectionHydrated(false);
+              }}
+            >
+              <option value="">Select additional player</option>
+              {existingPlayerOptions
+                .filter((player) => String(player.id) !== String(payerUserId))
+                .map((player) => (
+                <option key={player.id} value={player.id}>
+                  {player.fullName}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
+        {signupForMode === "self_and_guest" ? (
+          <>
+            <div className="signup-reminder-choice">
+              <input
+                id="secondGuestPlayerName"
+                type="text"
+                placeholder="Enter additional player's name"
+                value={secondGuestPlayerName}
+                onChange={(e) => {
+                  setSecondGuestPlayerName(e.target.value);
+                  setSecondSelectedWeeks([]);
+                  setSecondPaidWeeks([]);
+                  setSecondSelectionHydrated(false);
+                }}
+              />
+            </div>
+            <div className="signup-reminder-choice">
+              <input
+                id="secondGuestPlayerEmail"
+                type="email"
+                placeholder="Enter additional player's email"
+                value={secondGuestPlayerEmail}
+                onChange={(e) => setSecondGuestPlayerEmail(e.target.value)}
+              />
+            </div>
+          </>
+        ) : null}
+      </section>
+
       {showCalendarPopup && (
         <div
           className="modal-backdrop"
@@ -1618,18 +2599,15 @@ export default function MatchSignupPage({
             </div>
 
             <p className="muted small signup-calendar-note">
-              Wednesdays are highlighted. Tap a Wednesday to select or unselect
-              it.
+              Wednesdays are highlighted. Tap a Wednesday to select or unselect it.
             </p>
 
             <div className="signup-calendar-weekdays">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                (label) => (
-                  <div key={label} className="signup-calendar-weekday">
-                    {label}
-                  </div>
-                )
-              )}
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+                <div key={label} className="signup-calendar-weekday">
+                  {label}
+                </div>
+              ))}
             </div>
 
             <div className="signup-calendar-grid">
@@ -1646,6 +2624,7 @@ export default function MatchSignupPage({
                 const isWednesday = cell.weekday === 3;
                 const isSelectableWednesday = isCalendarSelectable(cell.id);
                 const isSelected = selectedWeeks.includes(cell.id);
+                const isPaid = paidWeeks.includes(cell.id);
                 const linkedWeek = getWeekByCalendarCellId(cell.id);
 
                 if (isWednesday && isSelectableWednesday && linkedWeek) {
@@ -1661,6 +2640,7 @@ export default function MatchSignupPage({
                         "is-button",
                         "is-wednesday",
                         isSelected ? "is-selected is-signed" : "",
+                        isPaid ? "is-paid" : "",
                         isFull ? "is-disabled" : "",
                       ]
                         .filter(Boolean)
@@ -1672,16 +2652,18 @@ export default function MatchSignupPage({
                         year: "numeric",
                       })}
                       onClick={() => {
-                        if (!isFull || isSelected) toggleWeek(linkedWeek);
+                        if (!beneficiaryNeedsSelection && (!isFull || isSelected)) {
+                          toggleWeek(linkedWeek);
+                        }
                       }}
-                      disabled={isFull && !isSelected}
+                      disabled={beneficiaryNeedsSelection || (isFull && !isSelected)}
                       style={{ transition: "none" }}
                     >
                       <span className="signup-calendar-day-number">
                         {cell.day}
                       </span>
                       <span className="signup-calendar-day-check">
-                        {isSelected ? "✓" : ""}
+                        {isPaid ? "✓" : isSelected ? "✓" : ""}
                       </span>
                     </button>
                   );
@@ -1697,12 +2679,6 @@ export default function MatchSignupPage({
                     ]
                       .filter(Boolean)
                       .join(" ")}
-                    title={cell.date.toLocaleDateString("en-ZA", {
-                      weekday: "long",
-                      day: "2-digit",
-                      month: "long",
-                      year: "numeric",
-                    })}
                   >
                     {cell.day}
                   </div>
@@ -1735,8 +2711,8 @@ export default function MatchSignupPage({
 
             <p className="muted small signup-calendar-note">
               Add your WhatsApp number so TurfKings can send football-related
-              reminders like weather reschedules, payment confirmations, and
-              match updates.
+              reminders like weather reschedules, payment confirmations, and match
+              updates.
             </p>
 
             <div className="signup-reminder-choice">
@@ -1788,7 +2764,7 @@ export default function MatchSignupPage({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="signup-calendar-modal-header">
-              <h3>Complete payment?</h3>
+              <h3>Leave signup?</h3>
               <button
                 type="button"
                 className="secondary-btn signup-calendar-close-btn"
@@ -1799,9 +2775,15 @@ export default function MatchSignupPage({
             </div>
 
             <p className="muted small signup-calendar-note">
-              You selected {selectedWeeks.length} week
-              {selectedWeeks.length === 1 ? "" : "s"}. Please continue to
-              payment to secure your place.
+              {isCombinedMode
+                ? `${beneficiary.fullName} and ${
+                    secondBeneficiary?.fullName || "the additional player"
+                  } still have ${combinedWeeksToPayCount} unpaid week${
+                    combinedWeeksToPayCount === 1 ? "" : "s"
+                  } selected.`
+                : `${beneficiary.fullName} still has ${weeksToPayNow.length} unpaid week${
+                    weeksToPayNow.length === 1 ? "" : "s"
+                  } selected.`}
             </p>
 
             <div className="signup-reminder-choice">
@@ -1816,7 +2798,7 @@ export default function MatchSignupPage({
               </select>
               <p className="muted small">
                 If you choose “I’ll pay later”, you’ll get a WhatsApp reminder at
-                this time each day until you pay or uncheck your weeks.
+                this time each day until payment is completed or weeks are removed.
               </p>
             </div>
 
@@ -1825,6 +2807,12 @@ export default function MatchSignupPage({
                 type="button"
                 className="primary-btn"
                 onClick={handlePayNow}
+                disabled={
+                  beneficiaryNeedsSelection ||
+                  (isCombinedMode
+                    ? combinedWeeksToPayCount === 0
+                    : weeksToPayNow.length === 0)
+                }
               >
                 💳 Go to payment
               </button>
@@ -1832,32 +2820,42 @@ export default function MatchSignupPage({
               <button
                 type="button"
                 className="secondary-btn"
-                onClick={handlePayLater}
+                onClick={handlePaidSubmitted}
+                disabled={
+                  beneficiaryNeedsSelection ||
+                  (isCombinedMode
+                    ? combinedSelectedCount === 0
+                    : selectedWeeks.length === 0)
+                }
               >
-                I’ll pay later
+                I’ve paid
               </button>
 
               <button
                 type="button"
-                className="secondary-btn danger-btn"
-                onClick={handleClearSelections}
+                className="secondary-btn"
+                onClick={handlePayLater}
+                disabled={beneficiaryNeedsSelection}
               >
-                Clear my selected weeks
+                Pay later
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setShowLeavePrompt(false)}
+              >
+                Keep editing
               </button>
             </div>
 
             {!effectiveWhatsappNumber ? (
               <p className="muted small signup-leave-footnote">
-                No WhatsApp number was found on your profile yet, so reminders
-                will stay off until your number is available.
+                No WhatsApp number was found on your profile yet, so reminders will
+                stay off until your number is available.
               </p>
             ) : null}
 
-            {pendingSelectionsSaved ? (
-              <p className="muted small signup-leave-footnote">
-                Your selected weeks have been saved.
-              </p>
-            ) : null}
           </div>
         </div>
       )}
@@ -1872,9 +2870,7 @@ export default function MatchSignupPage({
           >
             {signupStatusText}
             {saveStateText ? (
-              <span style={{ marginLeft: 8, opacity: 0.8 }}>
-                {saveStateText}
-              </span>
+              <span style={{ marginLeft: 8, opacity: 0.8 }}>{saveStateText}</span>
             ) : null}
           </div>
         </div>
@@ -1968,8 +2964,16 @@ export default function MatchSignupPage({
                           <div className="matrix-player-name">
                             {player.shortName}
                           </div>
-                          {player.isCurrent && (
-                            <div className="matrix-player-tag">You</div>
+                          {(player.isCurrent || player.isSecondaryEditable) && (
+                            <div className="matrix-player-tag">
+                              {player.isCurrent
+                                ? signupForMode === "self"
+                                  ? "You"
+                                  : signupForMode === "guest"
+                                  ? "Guest"
+                                  : "You"
+                                : "Additional player"}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1978,6 +2982,10 @@ export default function MatchSignupPage({
 
                   {weekMeta.map((week) => {
                     const signed = weekSelections[week.id]?.has(player.id);
+                    const isEditableRow = player.isCurrent || player.isSecondaryEditable;
+                    const isPaid = player.isSecondaryEditable
+                      ? secondPaidWeeks.includes(week.id)
+                      : paidWeeks.includes(week.id);
                     const status = week.status;
 
                     if (player.isEmpty) {
@@ -1996,7 +3004,12 @@ export default function MatchSignupPage({
                       );
                     }
 
-                    if (player.isCurrent) {
+                    if (isEditableRow) {
+                      const canToggle =
+                        !beneficiaryNeedsSelection &&
+                        !isPaid &&
+                        !(status.key === "full" && !signed);
+
                       return (
                         <button
                           key={`${player.id}-${week.id}`}
@@ -2005,18 +3018,27 @@ export default function MatchSignupPage({
                             "matrix-pick-cell",
                             "current-player-cell",
                             "is-current-row",
+                            player.isSecondaryEditable ? "is-secondary-edit-row" : "",
                             `status-${status.key}`,
                             signed ? "is-selected is-signed" : "",
+                            isPaid ? "is-paid" : "",
                           ]
                             .filter(Boolean)
                             .join(" ")}
-                          onClick={() => toggleWeek(week)}
-                          disabled={status.key === "full" && !signed}
+                          onClick={() => {
+                            if (!canToggle) return;
+                            if (player.isSecondaryEditable) {
+                              toggleSecondWeek(week.id);
+                              return;
+                            }
+                            toggleWeek(week);
+                          }}
+                          disabled={!canToggle}
                           style={{ transition: "none" }}
                         >
                           <div className="matrix-pick-inner">
                             <span className="matrix-pick-mark">
-                              {signed ? "✓" : ""}
+                              {isPaid ? "✓" : signed ? "✓" : ""}
                             </span>
                           </div>
                         </button>
@@ -2051,14 +3073,18 @@ export default function MatchSignupPage({
           <div className="signup-summary-player">
             <div className="signup-summary-avatar">
               {photoData ? (
-                <img src={photoData} alt={displayName} />
+                <img src={photoData} alt={beneficiary.fullName} />
               ) : (
-                <span>{String(shortName || "P").charAt(0).toUpperCase()}</span>
+                <span>
+                  {String(beneficiary.shortName || "P")
+                    .charAt(0)
+                    .toUpperCase()}
+                </span>
               )}
             </div>
             <div>
               <h3>Selection summary</h3>
-              <p className="muted small">{shortName}</p>
+              <p className="muted small">{beneficiary.fullName}</p>
             </div>
           </div>
         </div>
@@ -2066,7 +3092,7 @@ export default function MatchSignupPage({
         <div className="signup-summary-rows">
           <div className="summary-row">
             <span>Selected match days</span>
-            <strong>{selectedWeeks.length}</strong>
+            <strong>{isCombinedMode ? combinedSelectedCount : selectedWeeks.length}</strong>
           </div>
 
           <div className="summary-row">
@@ -2074,12 +3100,25 @@ export default function MatchSignupPage({
             <strong>R{COST_PER_GAME}</strong>
           </div>
 
+          {isCombinedMode ? (
+            <>
+              <div className="summary-row">
+                <span>{beneficiary.shortName}</span>
+                <strong>{weeksToPayNow.length} to pay</strong>
+              </div>
+              <div className="summary-row">
+                <span>{secondBeneficiary?.shortName || "Additional player"}</span>
+                <strong>{secondWeeksToPayNow.length} to pay</strong>
+              </div>
+            </>
+          ) : null}
+
           <div className="summary-row total">
-            <span>Total due</span>
+            <span>Total due now</span>
             <div style={{ textAlign: "right" }}>
               <strong>R{totalAmount}</strong>
               <div className="muted small">
-                ({selectedWeeks.length} × R{COST_PER_GAME})
+                ({isCombinedMode ? combinedWeeksToPayCount : weeksToPayNow.length} × R{COST_PER_GAME})
               </div>
             </div>
           </div>
@@ -2088,17 +3127,25 @@ export default function MatchSignupPage({
         <button
           type="button"
           className="primary-btn signup-pay-btn"
-          disabled={selectedWeeks.length === 0}
-          onClick={() =>
-            onProceedToPayment?.({
-              selectedWeeks,
-              totalAmount,
-              costPerGame: COST_PER_GAME,
-            })
+          disabled={
+            beneficiaryNeedsSelection ||
+            (isCombinedMode
+              ? combinedWeeksToPayCount === 0
+              : weeksToPayNow.length === 0)
           }
+          onClick={handlePayNow}
         >
           💳 Continue to payment
         </button>
+
+        {((!isCombinedMode && weeksToPayNow.length === 0 && selectedWeeks.length > 0) ||
+          (isCombinedMode &&
+            combinedWeeksToPayCount === 0 &&
+            combinedSelectedCount > 0)) ? (
+          <p className="muted small" style={{ marginTop: 10 }}>
+            All selected weeks are already paid.
+          </p>
+        ) : null}
       </section>
     </div>
   );

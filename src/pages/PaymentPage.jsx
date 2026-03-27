@@ -9,6 +9,7 @@ import {
 import { db } from "../firebaseConfig";
 
 const PAYMENT_METHOD_LABEL = "Yoco";
+const COST_PER_GAME_DEFAULT = 65;
 
 const YOCO_PAYMENT_LINKS = {
   65: "https://pay.yoco.com/r/4kwJvy",
@@ -16,6 +17,11 @@ const YOCO_PAYMENT_LINKS = {
   195: "https://pay.yoco.com/r/25lxOg",
   260: "https://pay.yoco.com/r/2AB0Lw",
   325: "https://pay.yoco.com/r/mRgEZQ",
+  390: "https://pay.yoco.com/r/2pJdrw",
+  455: "https://pay.yoco.com/r/7lbkrB",
+  520: "https://pay.yoco.com/r/2V5xBk",
+  585: "https://pay.yoco.com/r/78PaD9",
+  650: "https://pay.yoco.com/r/mRgEen",
 };
 
 function formatCurrency(value) {
@@ -44,15 +50,33 @@ function slugFromLooseName(value) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
-function buildSignupDocId({ activeSeasonId, displayName, selectedWeeks }) {
+function ensureArray(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function uniqueWeeks(value) {
+  return Array.from(new Set(ensureArray(value)));
+}
+
+function buildSignupDocId({
+  activeSeasonId,
+  displayName,
+  selectedWeeks,
+  paymentForMode,
+  secondDisplayName,
+  secondSelectedWeeks,
+}) {
   const season = String(activeSeasonId || "season").trim();
   const player = slugFromLooseName(displayName || "player");
-  const weeksKey = (Array.isArray(selectedWeeks) ? selectedWeeks : [])
+  const weeksKey = uniqueWeeks(selectedWeeks).slice().sort().join("_");
+  const mode = String(paymentForMode || "self").trim();
+  const secondPlayer = slugFromLooseName(secondDisplayName || "none");
+  const secondWeeksKey = uniqueWeeks(secondSelectedWeeks)
     .slice()
     .sort()
     .join("_");
 
-  return `${season}__${player}__${weeksKey || "none"}`;
+  return `${season}__${player}__${mode}__${secondPlayer}__${weeksKey || "none"}__${secondWeeksKey || "none"}`;
 }
 
 function getOutstandingAmount(signup) {
@@ -71,8 +95,12 @@ function derivePaymentStatus(amountDue, amountPaid, fallbackStatus = "unpaid") {
   return String(fallbackStatus || "unpaid");
 }
 
-function getYocoPaymentUrl(amount) {
-  return YOCO_PAYMENT_LINKS[Number(amount || 0)] || "";
+function getYocoPaymentUrl(amount, explicitUrl = "") {
+  const mapped = YOCO_PAYMENT_LINKS[Number(amount || 0)] || "";
+  if (mapped) return mapped;
+
+  const direct = String(explicitUrl || "").trim();
+  return direct;
 }
 
 export default function PaymentPage({
@@ -92,20 +120,62 @@ export default function PaymentPage({
     identity?.email ||
     "Player";
 
-  const displayName = paymentContext?.displayName || baseDisplayName;
+  const primaryDisplayName = paymentContext?.displayName || baseDisplayName;
+  const primaryPlayerId =
+    paymentContext?.playerId ||
+    identity?.playerId ||
+    identity?.memberId ||
+    slugFromLooseName(primaryDisplayName);
 
-  const selectedWeeks = Array.isArray(paymentContext?.selectedWeeks)
-    ? paymentContext.selectedWeeks
-    : [];
+  const paymentForMode =
+    paymentContext?.paymentForMode ||
+    paymentContext?.mode ||
+    (ensureArray(paymentContext?.secondSelectedWeeks).length > 0 ? "both" : "self");
 
-  const amountDue = Number(
-    paymentContext?.totalAmount || paymentContext?.amountDue || 0
+  const primarySelectedWeeks = uniqueWeeks(paymentContext?.selectedWeeks);
+  const secondSelectedWeeks = uniqueWeeks(
+    paymentContext?.secondSelectedWeeks ||
+      paymentContext?.additionalSelectedWeeks ||
+      paymentContext?.beneficiarySelectedWeeks
   );
 
-  const costPerGame = Number(paymentContext?.costPerGame || 65);
+  const secondDisplayName =
+    paymentContext?.secondDisplayName ||
+    paymentContext?.additionalPlayerName ||
+    paymentContext?.beneficiaryDisplayName ||
+    paymentContext?.beneficiaryName ||
+    "";
+
+  const secondPlayerId =
+    paymentContext?.secondPlayerId ||
+    paymentContext?.additionalPlayerId ||
+    paymentContext?.beneficiaryPlayerId ||
+    slugFromLooseName(secondDisplayName || "");
+
+  const secondEmail =
+    paymentContext?.secondEmail ||
+    paymentContext?.beneficiaryEmail ||
+    paymentContext?.additionalPlayerEmail ||
+    "";
+
+  const costPerGame = Number(paymentContext?.costPerGame || COST_PER_GAME_DEFAULT);
+
+  const contextGamesSelected =
+    primarySelectedWeeks.length + secondSelectedWeeks.length;
+
+  const fallbackAmountDue = contextGamesSelected * costPerGame;
+  const contextAmountDue = Number(
+    paymentContext?.totalAmount || paymentContext?.amountDue || fallbackAmountDue || 0
+  );
 
   const initialReference =
-    paymentContext?.paymentReference || buildReferenceLabel(displayName);
+    paymentContext?.paymentReference || buildReferenceLabel(primaryDisplayName);
+
+  const explicitPaymentLink =
+    paymentContext?.combinedPaymentLink ||
+    paymentContext?.paymentLinkUrl ||
+    paymentContext?.yocoPaymentUrl ||
+    "";
 
   const signupDocId = useMemo(() => {
     const provided = String(paymentContext?.signupDocId || "").trim();
@@ -113,10 +183,21 @@ export default function PaymentPage({
 
     return buildSignupDocId({
       activeSeasonId,
-      displayName,
-      selectedWeeks,
+      displayName: primaryDisplayName,
+      selectedWeeks: primarySelectedWeeks,
+      paymentForMode,
+      secondDisplayName,
+      secondSelectedWeeks,
     });
-  }, [paymentContext, activeSeasonId, displayName, selectedWeeks]);
+  }, [
+    paymentContext,
+    activeSeasonId,
+    primaryDisplayName,
+    primarySelectedWeeks,
+    paymentForMode,
+    secondDisplayName,
+    secondSelectedWeeks,
+  ]);
 
   const [signup, setSignup] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -153,22 +234,25 @@ export default function PaymentPage({
           const starterData = {
             signupDocId,
             activeSeasonId: String(activeSeasonId || "").trim(),
-            displayName,
-            shortName: firstNameOf(displayName),
-            playerId:
-              identity?.playerId ||
-              identity?.memberId ||
-              slugFromLooseName(displayName),
-            selectedWeeks,
-            amountDue,
+            displayName: primaryDisplayName,
+            shortName: firstNameOf(primaryDisplayName),
+            playerId: primaryPlayerId,
+            selectedWeeks: primarySelectedWeeks,
+            secondDisplayName: secondDisplayName || "",
+            secondPlayerId: secondPlayerId || "",
+            secondEmail: secondEmail || "",
+            secondSelectedWeeks,
+            totalGamesSelected: contextGamesSelected,
+            paymentForMode,
+            amountDue: contextAmountDue,
             amountPaid: 0,
             paymentIntentAmount: 0,
             costPerGame,
             paymentMethod: PAYMENT_METHOD_LABEL,
             paymentReference: initialReference,
             adminNote: "",
-            paymentStatus: amountDue > 0 ? "unpaid" : "not_selected",
-            paymentLinkUrl: getYocoPaymentUrl(amountDue),
+            paymentStatus: contextAmountDue > 0 ? "unpaid" : "not_selected",
+            paymentLinkUrl: getYocoPaymentUrl(contextAmountDue, explicitPaymentLink),
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           };
@@ -198,12 +282,19 @@ export default function PaymentPage({
   }, [
     signupDocId,
     activeSeasonId,
-    displayName,
-    identity,
-    selectedWeeks,
-    amountDue,
+    primaryDisplayName,
+    primaryPlayerId,
+    primarySelectedWeeks,
+    secondDisplayName,
+    secondPlayerId,
+    secondEmail,
+    secondSelectedWeeks,
+    contextGamesSelected,
+    paymentForMode,
+    contextAmountDue,
     costPerGame,
     initialReference,
+    explicitPaymentLink,
   ]);
 
   useEffect(() => {
@@ -220,11 +311,25 @@ export default function PaymentPage({
     setAdminNote(String(signup.adminNote || ""));
   }, [signup]);
 
-  const effectiveSelectedWeeks = Array.isArray(signup?.selectedWeeks)
-    ? signup.selectedWeeks
-    : selectedWeeks;
+  const effectivePrimaryWeeks = uniqueWeeks(signup?.selectedWeeks || primarySelectedWeeks);
+  const effectiveSecondWeeks = uniqueWeeks(
+    signup?.secondSelectedWeeks || secondSelectedWeeks
+  );
 
-  const effectiveAmountDue = Number(signup?.amountDue ?? amountDue ?? 0);
+  const recomputedGamesSelected =
+    effectivePrimaryWeeks.length + effectiveSecondWeeks.length;
+
+  const effectiveTotalGamesSelected =
+    recomputedGamesSelected > 0
+      ? recomputedGamesSelected
+      : Number(signup?.totalGamesSelected || 0) || contextGamesSelected;
+
+  const recomputedAmountDue = effectiveTotalGamesSelected * costPerGame;
+  const effectiveAmountDue =
+    effectiveTotalGamesSelected > 0
+      ? recomputedAmountDue
+      : Number(signup?.amountDue ?? contextAmountDue ?? 0);
+
   const amountPaid = Number(signup?.amountPaid || 0);
   const outstandingAmount = getOutstandingAmount({
     amountDue: effectiveAmountDue,
@@ -232,7 +337,22 @@ export default function PaymentPage({
   });
 
   const amountToPayNow = outstandingAmount || effectiveAmountDue;
-  const yocoPaymentUrl = getYocoPaymentUrl(amountToPayNow);
+  const effectiveMode =
+    signup?.paymentForMode ||
+    (effectiveSecondWeeks.length > 0 ? "both" : paymentForMode || "self");
+
+  const effectiveSecondDisplayName =
+    signup?.secondDisplayName || secondDisplayName || "";
+
+  const recalculatedPaymentLink = getYocoPaymentUrl(
+    amountToPayNow,
+    explicitPaymentLink
+  );
+
+  const effectivePaymentLink =
+    recalculatedPaymentLink ||
+    String(signup?.paymentLinkUrl || "").trim() ||
+    String(explicitPaymentLink || "").trim();
 
   const paymentStatus = derivePaymentStatus(
     effectiveAmountDue,
@@ -251,7 +371,7 @@ export default function PaymentPage({
   async function handlePayNow() {
     if (!signupDocId || amountToPayNow <= 0) return;
 
-    if (!yocoPaymentUrl) {
+    if (!effectivePaymentLink) {
       setError(
         `No Yoco payment link has been set up for ${formatCurrency(amountToPayNow)} yet.`
       );
@@ -269,27 +389,30 @@ export default function PaymentPage({
         {
           signupDocId,
           activeSeasonId: String(activeSeasonId || "").trim(),
-          displayName,
-          shortName: firstNameOf(displayName),
-          playerId:
-            identity?.playerId ||
-            identity?.memberId ||
-            slugFromLooseName(displayName),
-          selectedWeeks: effectiveSelectedWeeks,
+          displayName: primaryDisplayName,
+          shortName: firstNameOf(primaryDisplayName),
+          playerId: primaryPlayerId,
+          selectedWeeks: effectivePrimaryWeeks,
+          secondDisplayName: effectiveSecondDisplayName,
+          secondPlayerId: secondPlayerId || "",
+          secondEmail: secondEmail || "",
+          secondSelectedWeeks: effectiveSecondWeeks,
+          totalGamesSelected: effectiveTotalGamesSelected,
+          paymentForMode: effectiveMode,
           amountDue: effectiveAmountDue,
           costPerGame,
           paymentMethod: PAYMENT_METHOD_LABEL,
-          paymentReference: buildReferenceLabel(displayName),
+          paymentReference: buildReferenceLabel(primaryDisplayName),
           paymentIntentAmount: amountToPayNow,
           paymentStatus: effectiveAmountDue > 0 ? "pending" : "not_selected",
           paymentSubmittedAt: serverTimestamp(),
-          paymentLinkUrl: yocoPaymentUrl,
+          paymentLinkUrl: effectivePaymentLink,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      window.open(yocoPaymentUrl, "_blank", "noopener,noreferrer");
+      window.open(effectivePaymentLink, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Failed to start payment:", err);
       setError("Could not open payment.");
@@ -371,8 +494,16 @@ export default function PaymentPage({
             <div className="payment-panel payment-main-panel">
               <div className="payment-main-top">
                 <div>
-                  <h3>{displayName}</h3>
-                  <p className="muted small">Reference: {buildReferenceLabel(displayName)}</p>
+                  <h3>
+                    {effectiveMode === "both"
+                      ? `${primaryDisplayName} + ${effectiveSecondDisplayName || "Additional player"}`
+                      : effectiveMode === "other"
+                        ? effectiveSecondDisplayName || "Additional player"
+                        : primaryDisplayName}
+                  </h3>
+                  <p className="muted small">
+                    Reference: {buildReferenceLabel(primaryDisplayName)}
+                  </p>
                 </div>
 
                 <div className={`payment-status-pill is-${paymentStatus}`}>
@@ -381,7 +512,7 @@ export default function PaymentPage({
               </div>
 
               <div className="payment-total-block">
-                <span className="payment-total-label">Amount due</span>
+                <span className="payment-total-label">Total due</span>
                 <strong className="payment-total-value">
                   {formatCurrency(amountToPayNow)}
                 </strong>
@@ -390,38 +521,26 @@ export default function PaymentPage({
               <div className="payment-summary-simple">
                 <div className="summary-row">
                   <span>Games selected</span>
-                  <strong>{effectiveSelectedWeeks.length}</strong>
+                  <strong>{effectiveTotalGamesSelected}</strong>
                 </div>
                 <div className="summary-row">
-                  <span>Per game</span>
+                  <span>Cost per game</span>
                   <strong>{formatCurrency(costPerGame)}</strong>
                 </div>
                 <div className="summary-row">
                   <span>Paid so far</span>
                   <strong>{formatCurrency(amountPaid)}</strong>
                 </div>
-                <div className="summary-row">
+                <div className="summary-row total-row">
                   <span>Balance</span>
                   <strong>{formatCurrency(outstandingAmount)}</strong>
                 </div>
               </div>
 
-              {effectiveSelectedWeeks.length > 0 ? (
-                <div className="payment-week-list">
-                  {effectiveSelectedWeeks.map((weekId) => (
-                    <div key={weekId} className="payment-week-chip">
-                      {weekId}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="muted small">No game dates selected yet.</p>
-              )}
-
               <button
                 type="button"
                 className="primary-btn payment-action-btn"
-                disabled={saving || amountToPayNow <= 0 || !yocoPaymentUrl}
+                disabled={saving || amountToPayNow <= 0 || !effectivePaymentLink}
                 onClick={handlePayNow}
               >
                 {saving ? "Opening..." : `Pay ${formatCurrency(amountToPayNow)}`}
