@@ -8,9 +8,15 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
-const BANK_NAME = "FNB";
-const ACCOUNT_NUMBER = "630 885 137 18";
-const ACCOUNT_LABEL = "Monthly Subscription";
+const PAYMENT_METHOD_LABEL = "Yoco";
+
+const YOCO_PAYMENT_LINKS = {
+  65: "https://pay.yoco.com/r/4kwJvy",
+  130: "https://pay.yoco.com/r/2JkJn8",
+  195: "https://pay.yoco.com/r/25lxOg",
+  260: "https://pay.yoco.com/r/2AB0Lw",
+  325: "https://pay.yoco.com/r/mRgEZQ",
+};
 
 function formatCurrency(value) {
   const amount = Number(value || 0);
@@ -65,6 +71,10 @@ function derivePaymentStatus(amountDue, amountPaid, fallbackStatus = "unpaid") {
   return String(fallbackStatus || "unpaid");
 }
 
+function getYocoPaymentUrl(amount) {
+  return YOCO_PAYMENT_LINKS[Number(amount || 0)] || "";
+}
+
 export default function PaymentPage({
   paymentContext,
   identity,
@@ -112,11 +122,6 @@ export default function PaymentPage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [copyState, setCopyState] = useState("");
-
-  const [payerAmount, setPayerAmount] = useState("");
-  const [payerReference, setPayerReference] = useState(initialReference);
-  const [payerNote, setPayerNote] = useState("");
 
   const [adminAmountPaid, setAdminAmountPaid] = useState("");
   const [adminStatus, setAdminStatus] = useState("pending");
@@ -159,11 +164,11 @@ export default function PaymentPage({
             amountPaid: 0,
             paymentIntentAmount: 0,
             costPerGame,
-            paymentMethod: "EFT",
+            paymentMethod: PAYMENT_METHOD_LABEL,
             paymentReference: initialReference,
-            paymentNote: "",
             adminNote: "",
             paymentStatus: amountDue > 0 ? "unpaid" : "not_selected",
+            paymentLinkUrl: getYocoPaymentUrl(amountDue),
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           };
@@ -204,17 +209,6 @@ export default function PaymentPage({
   useEffect(() => {
     if (!signup) return;
 
-    const reference = signup.paymentReference || initialReference;
-    const outstanding = getOutstandingAmount(signup);
-
-    setPayerReference(reference);
-    setPayerAmount(
-      outstanding > 0
-        ? String(outstanding)
-        : String(Number(signup.amountDue || 0))
-    );
-    setPayerNote(String(signup.paymentNote || ""));
-
     setAdminAmountPaid(String(Number(signup.amountPaid || 0)));
     setAdminStatus(
       derivePaymentStatus(
@@ -224,7 +218,7 @@ export default function PaymentPage({
       )
     );
     setAdminNote(String(signup.adminNote || ""));
-  }, [signup, initialReference]);
+  }, [signup]);
 
   const effectiveSelectedWeeks = Array.isArray(signup?.selectedWeeks)
     ? signup.selectedWeeks
@@ -236,6 +230,9 @@ export default function PaymentPage({
     amountDue: effectiveAmountDue,
     amountPaid,
   });
+
+  const amountToPayNow = outstandingAmount || effectiveAmountDue;
+  const yocoPaymentUrl = getYocoPaymentUrl(amountToPayNow);
 
   const paymentStatus = derivePaymentStatus(
     effectiveAmountDue,
@@ -251,24 +248,15 @@ export default function PaymentPage({
     return "Unpaid";
   }, [paymentStatus]);
 
-  async function copyText(value, label) {
-    try {
-      await navigator.clipboard.writeText(String(value || ""));
-      setCopyState(`${label} copied`);
-      window.setTimeout(() => setCopyState(""), 1800);
-    } catch (err) {
-      console.error(`Failed to copy ${label}:`, err);
-      setCopyState(`Could not copy ${label.toLowerCase()}`);
-      window.setTimeout(() => setCopyState(""), 1800);
+  async function handlePayNow() {
+    if (!signupDocId || amountToPayNow <= 0) return;
+
+    if (!yocoPaymentUrl) {
+      setError(
+        `No Yoco payment link has been set up for ${formatCurrency(amountToPayNow)} yet.`
+      );
+      return;
     }
-  }
-
-  async function markPaymentPending() {
-    if (!signupDocId) return;
-
-    const enteredAmount = Math.max(0, Number(payerAmount || 0));
-    const nextReference = String(payerReference || "").trim();
-    const nextNote = String(payerNote || "").trim();
 
     setSaving(true);
     setError("");
@@ -290,21 +278,21 @@ export default function PaymentPage({
           selectedWeeks: effectiveSelectedWeeks,
           amountDue: effectiveAmountDue,
           costPerGame,
-          paymentMethod: "EFT",
-          paymentReference: nextReference,
-          paymentNote: nextNote,
-          paymentIntentAmount: enteredAmount,
+          paymentMethod: PAYMENT_METHOD_LABEL,
+          paymentReference: buildReferenceLabel(displayName),
+          paymentIntentAmount: amountToPayNow,
           paymentStatus: effectiveAmountDue > 0 ? "pending" : "not_selected",
           paymentSubmittedAt: serverTimestamp(),
+          paymentLinkUrl: yocoPaymentUrl,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      if (typeof onDone === "function") onDone();
+      window.open(yocoPaymentUrl, "_blank", "noopener,noreferrer");
     } catch (err) {
-      console.error("Failed to mark payment pending:", err);
-      setError("Could not save payment.");
+      console.error("Failed to start payment:", err);
+      setError("Could not open payment.");
     } finally {
       setSaving(false);
     }
@@ -360,7 +348,7 @@ export default function PaymentPage({
         <div className="payment-hero-top">
           <div>
             <h2>Payment</h2>
-            <p className="muted">Simple EFT payment summary.</p>
+            <p className="muted">Pay securely with Yoco.</p>
           </div>
 
           <button type="button" className="secondary-btn" onClick={onBack}>
@@ -380,149 +368,69 @@ export default function PaymentPage({
       ) : (
         <>
           <section className="card payment-grid-card">
-            <div className="payment-two-col">
-              <div className="payment-panel">
-                <div className="payment-bank-header">
+            <div className="payment-panel payment-main-panel">
+              <div className="payment-main-top">
+                <div>
                   <h3>{displayName}</h3>
-                  <div className={`payment-status-pill is-${paymentStatus}`}>
-                    {paymentStatusLabel}
-                  </div>
+                  <p className="muted small">Reference: {buildReferenceLabel(displayName)}</p>
                 </div>
 
-                <div className="payment-summary-rows">
-                  <div className="summary-row">
-                    <span>Games</span>
-                    <strong>{effectiveSelectedWeeks.length}</strong>
-                  </div>
-
-                  <div className="summary-row">
-                    <span>Per game</span>
-                    <strong>{formatCurrency(costPerGame)}</strong>
-                  </div>
-
-                  <div className="summary-row">
-                    <span>Due</span>
-                    <strong>{formatCurrency(effectiveAmountDue)}</strong>
-                  </div>
-
-                  <div className="summary-row">
-                    <span>Paid</span>
-                    <strong>{formatCurrency(amountPaid)}</strong>
-                  </div>
-
-                  <div className="summary-row total">
-                    <span>Balance</span>
-                    <strong>{formatCurrency(outstandingAmount)}</strong>
-                  </div>
+                <div className={`payment-status-pill is-${paymentStatus}`}>
+                  {paymentStatusLabel}
                 </div>
+              </div>
 
+              <div className="payment-total-block">
+                <span className="payment-total-label">Amount due</span>
+                <strong className="payment-total-value">
+                  {formatCurrency(amountToPayNow)}
+                </strong>
+              </div>
+
+              <div className="payment-summary-simple">
+                <div className="summary-row">
+                  <span>Games selected</span>
+                  <strong>{effectiveSelectedWeeks.length}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Per game</span>
+                  <strong>{formatCurrency(costPerGame)}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Paid so far</span>
+                  <strong>{formatCurrency(amountPaid)}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Balance</span>
+                  <strong>{formatCurrency(outstandingAmount)}</strong>
+                </div>
+              </div>
+
+              {effectiveSelectedWeeks.length > 0 ? (
                 <div className="payment-week-list">
-                  {effectiveSelectedWeeks.length === 0 ? (
-                    <p className="muted small">No dates selected.</p>
-                  ) : (
-                    effectiveSelectedWeeks.map((weekId) => (
-                      <div key={weekId} className="payment-week-chip">
-                        {weekId}
-                      </div>
-                    ))
-                  )}
+                  {effectiveSelectedWeeks.map((weekId) => (
+                    <div key={weekId} className="payment-week-chip">
+                      {weekId}
+                    </div>
+                  ))}
                 </div>
-              </div>
+              ) : (
+                <p className="muted small">No game dates selected yet.</p>
+              )}
 
-              <div className="payment-panel">
-                <div className="payment-bank-header">
-                  <h3>Bank details</h3>
-                  {copyState ? (
-                    <span className="payment-copy-feedback">{copyState}</span>
-                  ) : null}
-                </div>
+              <button
+                type="button"
+                className="primary-btn payment-action-btn"
+                disabled={saving || amountToPayNow <= 0 || !yocoPaymentUrl}
+                onClick={handlePayNow}
+              >
+                {saving ? "Opening..." : `Pay ${formatCurrency(amountToPayNow)}`}
+              </button>
 
-                <div className="payment-bank-list">
-                  <div className="summary-row">
-                    <span>Account</span>
-                    <strong>{ACCOUNT_LABEL}</strong>
-                  </div>
-
-                  <div className="summary-row">
-                    <span>Bank</span>
-                    <strong>{BANK_NAME}</strong>
-                  </div>
-
-                  <div className="summary-row">
-                    <span>Reference</span>
-                    <strong>{buildReferenceLabel(displayName)}</strong>
-                  </div>
-
-                  <div className="summary-row total">
-                    <span>Acc No</span>
-                    <strong>{ACCOUNT_NUMBER}</strong>
-                  </div>
-                </div>
-
-                <div className="payment-copy-actions">
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => copyText(ACCOUNT_NUMBER, "Account number")}
-                  >
-                    Copy account
-                  </button>
-
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() =>
-                      copyText(buildReferenceLabel(displayName), "Reference")
-                    }
-                  >
-                    Copy reference
-                  </button>
-                </div>
-
-                <div className="payment-form-stack">
-                  <label className="payment-label">
-                    Amount sent
-                    <input
-                      className="text-input"
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={payerAmount}
-                      onChange={(e) => setPayerAmount(e.target.value)}
-                    />
-                  </label>
-
-                  <label className="payment-label">
-                    Reference used
-                    <input
-                      className="text-input"
-                      type="text"
-                      value={payerReference}
-                      onChange={(e) => setPayerReference(e.target.value)}
-                    />
-                  </label>
-
-                  <label className="payment-label">
-                    Note
-                    <textarea
-                      className="text-input payment-textarea"
-                      rows="3"
-                      value={payerNote}
-                      onChange={(e) => setPayerNote(e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </label>
-                </div>
-
-                <button
-                  type="button"
-                  className="primary-btn payment-action-btn"
-                  disabled={saving || effectiveAmountDue <= 0}
-                  onClick={markPaymentPending}
-                >
-                  {saving ? "Saving..." : "I have paid"}
-                </button>
-              </div>
+              <p className="muted small payment-help-text">
+                You will pay on Yoco’s secure page. Once payment is seen in Yoco,
+                your status here can be updated to paid.
+              </p>
             </div>
           </section>
 
