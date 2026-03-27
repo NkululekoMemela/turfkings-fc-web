@@ -8,7 +8,8 @@ import {
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../firebaseConfig";
+import { app, db } from "../firebaseConfig";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 const MIN_PLAYERS = 10;
 const MAX_PLAYERS = 18;
@@ -16,6 +17,128 @@ const DEFAULT_VISIBLE_SLOTS = 10;
 const COST_PER_GAME = 65;
 const FALLBACK_SEASON_ID = "local_manual_season";
 const DEFAULT_SIGNUP_TYPE = "general";
+
+const functionsClient = getFunctions(app, "us-central1");
+const verifyWhatsAppNumberCallable = httpsCallable(
+  functionsClient,
+  "verifyWhatsAppNumber"
+);
+const VERIFIED_STATUSES = new Set([
+  "verified",
+  "manual_admin_verified",
+  "manual_admin_required",
+  "failed_once",
+  "failed_twice",
+]);
+const DEFAULT_ADMIN_NAME = "Nkululeko";
+
+function normalizeWhatsAppNumber(value) {
+  let raw = String(value || "").trim();
+  if (!raw) return "";
+
+  raw = raw.replace(/\s+/g, "").replace(/[()-]/g, "");
+
+  if (raw.startsWith("whatsapp:")) raw = raw.slice(9);
+  if (raw.startsWith("+")) {
+    const digits = `+${raw.slice(1).replace(/\D/g, "")}`;
+    return /^\+\d{9,15}$/.test(digits) ? digits : "";
+  }
+
+  const digitsOnly = raw.replace(/\D/g, "");
+  if (!digitsOnly) return "";
+
+  if (digitsOnly.startsWith("27") && digitsOnly.length === 11) {
+    return `+${digitsOnly}`;
+  }
+
+  if (digitsOnly.startsWith("0") && digitsOnly.length === 10) {
+    return `+27${digitsOnly.slice(1)}`;
+  }
+
+  if (digitsOnly.length >= 9 && digitsOnly.length <= 15) {
+    return `+${digitsOnly}`;
+  }
+
+  return "";
+}
+
+function buildProfileDocCandidates({ identity, currentUser, displayName, userId }) {
+  const rawIds = [
+    identity?.memberId,
+    identity?.playerId,
+    currentUser?.uid,
+    currentUser?.email,
+    identity?.email,
+    slugFromLooseName(displayName),
+    userId,
+  ]
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+
+  const seen = new Set();
+  const out = [];
+
+  ["members", "humanMembers", "players"].forEach((collectionName) => {
+    rawIds.forEach((id) => {
+      const key = `${collectionName}__${id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ collection: collectionName, id });
+    });
+  });
+
+  return out;
+}
+
+async function resolveProfileDocTarget({ identity, currentUser, displayName, userId }) {
+  const candidates = buildProfileDocCandidates({
+    identity,
+    currentUser,
+    displayName,
+    userId,
+  });
+
+  for (const candidate of candidates) {
+    try {
+      const snap = await getDoc(doc(db, candidate.collection, candidate.id));
+      if (snap.exists()) {
+        return {
+          ...candidate,
+          exists: true,
+          data: snap.data() || {},
+        };
+      }
+    } catch (error) {
+      console.warn("Profile target lookup skipped:", candidate, error);
+    }
+  }
+
+  return {
+    collection: "members",
+    id: userId,
+    exists: false,
+    data: {},
+  };
+}
+
+function getWhatsappProfileMessage(status, adminName) {
+  switch (String(status || "")) {
+    case "verified":
+    case "manual_admin_verified":
+      return "Your WhatsApp number has been verified and saved for football reminders.";
+    case "failed_once":
+      return "That number appears incorrect or unreachable. Please check it carefully and try once more.";
+    case "failed_twice":
+    case "manual_admin_required":
+      return `We still could not verify that number after two tries. Please contact admin ${adminName} for cellphone verification.`;
+    case "pending":
+    case "queued":
+      return "We sent a short WhatsApp check. Please wait a few seconds while we confirm delivery.";
+    default:
+      return "Add your WhatsApp number for football reminders like reschedules, payment confirmations, and match updates.";
+  }
+}
+
 
 function toTitleCaseLoose(value) {
   return String(value || "")
@@ -434,6 +557,22 @@ export default function MatchSignupPage({
   const [showLeavePrompt, setShowLeavePrompt] = useState(false);
   const [pendingSelectionsSaved, setPendingSelectionsSaved] = useState(false);
   const [reminderPreference, setReminderPreference] = useState("17:00");
+  const [profileTarget, setProfileTarget] = useState(null);
+  const [profileWhatsappNumber, setProfileWhatsappNumber] = useState(
+    getPhoneFromIdentity(identity, currentUser)
+  );
+  const [showWhatsAppPrompt, setShowWhatsAppPrompt] = useState(false);
+  const [whatsAppInput, setWhatsAppInput] = useState(
+    getPhoneFromIdentity(identity, currentUser)
+  );
+  const [whatsAppInputError, setWhatsAppInputError] = useState("");
+  const [whatsAppSubmitting, setWhatsAppSubmitting] = useState(false);
+  const [whatsAppVerificationStatus, setWhatsAppVerificationStatus] =
+    useState("");
+  const [whatsAppVerificationMessage, setWhatsAppVerificationMessage] =
+    useState("");
+  const [skipWhatsAppPromptThisSession, setSkipWhatsAppPromptThisSession] =
+    useState(false);
   const hasPromptedBackRef = useRef(false);
   const matrixScrollRef = useRef(null);
   const currentPlayerCellRef = useRef(null);
@@ -501,6 +640,9 @@ export default function MatchSignupPage({
   );
 
   const phoneNumber = getPhoneFromIdentity(identity, currentUser);
+  const effectiveWhatsappNumber = normalizeWhatsAppNumber(
+    profileWhatsappNumber || phoneNumber
+  );
   const resolvedSeasonId = activeSeasonId || FALLBACK_SEASON_ID;
   const signupType = DEFAULT_SIGNUP_TYPE;
   const signupScopeId = calendarMonthKey || resolvedSeasonId;
@@ -511,10 +653,158 @@ export default function MatchSignupPage({
     resolvedSeasonId,
     displayName,
     userId,
-    phoneNumber,
+    effectiveWhatsappNumber,
     selectedWeeks,
     reminderPreference,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfileTarget() {
+      const resolved = await resolveProfileDocTarget({
+        identity,
+        currentUser,
+        displayName,
+        userId,
+      });
+
+      if (cancelled) return;
+
+      setProfileTarget(resolved);
+
+      const savedNumber = normalizeWhatsAppNumber(
+        resolved?.data?.whatsappNumber ||
+          resolved?.data?.whatsAppNumber ||
+          resolved?.data?.phoneNumber ||
+          phoneNumber
+      );
+
+      setProfileWhatsappNumber(savedNumber);
+      setWhatsAppInput(savedNumber || phoneNumber || "");
+      setWhatsAppVerificationStatus(
+        String(resolved?.data?.whatsappVerificationStatus || "")
+      );
+      setWhatsAppVerificationMessage(
+        getWhatsappProfileMessage(
+          resolved?.data?.whatsappVerificationStatus || "",
+          DEFAULT_ADMIN_NAME
+        )
+      );
+
+      if (!savedNumber && !skipWhatsAppPromptThisSession) {
+        setShowWhatsAppPrompt(true);
+      }
+    }
+
+    loadProfileTarget();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [identity, currentUser, displayName, userId, phoneNumber, skipWhatsAppPromptThisSession]);
+
+  async function pollWhatsAppVerification(target) {
+    if (!target?.collection || !target?.id) return;
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      const snap = await getDoc(doc(db, target.collection, target.id));
+      if (!snap.exists()) continue;
+
+      const data = snap.data() || {};
+      const status = String(data.whatsappVerificationStatus || "");
+
+      if (VERIFIED_STATUSES.has(status)) {
+        const savedNumber = normalizeWhatsAppNumber(
+          data.whatsappNumber || data.whatsAppNumber || data.phoneNumber || ""
+        );
+        setProfileWhatsappNumber(savedNumber);
+        setWhatsAppInput(savedNumber);
+        setWhatsAppVerificationStatus(status);
+        setWhatsAppVerificationMessage(
+          getWhatsappProfileMessage(status, DEFAULT_ADMIN_NAME)
+        );
+        setShowWhatsAppPrompt(true);
+        return;
+      }
+    }
+  }
+
+  async function handleSaveWhatsAppNumber() {
+    const normalized = normalizeWhatsAppNumber(whatsAppInput);
+
+    if (!normalized) {
+      setWhatsAppInputError(
+        "Please enter a valid WhatsApp number, for example +27768304880."
+      );
+      return;
+    }
+
+    if (!profileTarget?.collection || !profileTarget?.id) {
+      setWhatsAppInputError("We could not find your profile yet. Please try again.");
+      return;
+    }
+
+    setWhatsAppSubmitting(true);
+    setWhatsAppInputError("");
+    setWhatsAppVerificationStatus("pending");
+    setWhatsAppVerificationMessage(
+      "We are sending a short WhatsApp check to confirm this number."
+    );
+
+    try {
+      await setDoc(
+        doc(db, profileTarget.collection, profileTarget.id),
+        {
+          userId,
+          playerName: displayName,
+          shortName,
+          whatsappNumber: normalized,
+          phoneNumber: normalized,
+          whatsappNumberUpdatedAt: serverTimestamp(),
+          whatsappVerificationStatus: "pending",
+          whatsappVerificationAdminName: DEFAULT_ADMIN_NAME,
+          whatsappVerificationLastPromptAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setProfileWhatsappNumber(normalized);
+
+      const response = await verifyWhatsAppNumberCallable({
+        userId,
+        playerName: displayName,
+        whatsappNumber: normalized,
+        profileCollection: profileTarget.collection,
+        profileDocId: profileTarget.id,
+        adminName: DEFAULT_ADMIN_NAME,
+      });
+
+      const payload = response?.data || {};
+      if (!payload.ok) {
+        throw new Error(payload.error || "Verification request failed.");
+      }
+
+      setWhatsAppVerificationStatus(String(payload.status || "pending"));
+      setWhatsAppVerificationMessage(
+        getWhatsappProfileMessage(payload.status || "pending", DEFAULT_ADMIN_NAME)
+      );
+
+      await pollWhatsAppVerification(profileTarget);
+    } catch (error) {
+      console.error("Failed to save or verify WhatsApp number:", error);
+      setWhatsAppVerificationStatus("failed_once");
+      setWhatsAppVerificationMessage(
+        error?.message ||
+          "We could not start number verification. Please try again."
+      );
+      setShowWhatsAppPrompt(true);
+    } finally {
+      setWhatsAppSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -662,7 +952,7 @@ export default function MatchSignupPage({
           playerName: displayName,
           shortName,
           whatsappNumber: phoneNumber,
-          phoneNumber,
+          effectiveWhatsappNumber,
           monthLabel: calendarMonthData.monthLabel,
           monthKey: calendarMonthKey,
           costPerGame: COST_PER_GAME,
@@ -680,7 +970,7 @@ export default function MatchSignupPage({
                 selectedWeeks,
                 totalAmount: selectedWeeks.length * COST_PER_GAME,
                 paymentStatus: "pending",
-                remindersPaused: false,
+                remindersPaused: !Boolean(effectiveWhatsappNumber),
                 createdAt: serverTimestamp(),
               }
             : {
@@ -719,9 +1009,10 @@ export default function MatchSignupPage({
     currentUser?.uid,
     displayName,
     identity,
-    phoneNumber,
+    effectiveWhatsappNumber,
     reminderPreference,
     selectedWeeks,
+    whatsAppVerificationStatus,
     shortName,
     userId,
   ]);
@@ -1026,6 +1317,12 @@ export default function MatchSignupPage({
         return;
       }
 
+      if (!effectiveWhatsappNumber) {
+        setShowLeavePrompt(false);
+        setShowWhatsAppPrompt(true);
+        return;
+      }
+
       const pendingId = buildPendingSignupId({
         signupType,
         displayName,
@@ -1046,14 +1343,16 @@ export default function MatchSignupPage({
         playerName: displayName,
         shortName,
         whatsappNumber: phoneNumber,
-        phoneNumber,
+        effectiveWhatsappNumber,
         monthLabel: calendarMonthData.monthLabel,
         monthKey: calendarMonthKey,
         selectedWeeks,
         totalAmount: selectedWeeks.length * COST_PER_GAME,
         costPerGame: COST_PER_GAME,
         paymentStatus: "payment_deferred",
-        remindersPaused: false,
+        remindersEnabled: Boolean(effectiveWhatsappNumber),
+        remindersPaused: !Boolean(effectiveWhatsappNumber),
+        whatsAppVerificationStatus,
         reminderPreference,
         reminderTimezone: "Africa/Johannesburg",
         lastReminderSentAt: null,
@@ -1296,6 +1595,85 @@ export default function MatchSignupPage({
         </div>
       )}
 
+      {showWhatsAppPrompt && (
+        <div className="modal-backdrop" onClick={() => setShowWhatsAppPrompt(false)}>
+          <div
+            className="modal signup-leave-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="signup-calendar-modal-header">
+              <h3>Stay updated on your games</h3>
+              <button
+                type="button"
+                className="secondary-btn signup-calendar-close-btn"
+                onClick={() => setShowWhatsAppPrompt(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="muted small signup-calendar-note">
+              Add your WhatsApp number so TurfKings can send football-related
+              reminders like weather reschedules, payment confirmations, and
+              match updates.
+            </p>
+
+            <div className="signup-reminder-choice">
+              <label htmlFor="whatsAppInput">WhatsApp number</label>
+              <input
+                id="whatsAppInput"
+                type="tel"
+                placeholder="e.g. +27768304880"
+                value={whatsAppInput}
+                onChange={(e) => setWhatsAppInput(e.target.value)}
+              />
+              {whatsAppInputError ? (
+                <p className="muted small" style={{ color: "#ff9b9b" }}>
+                  {whatsAppInputError}
+                </p>
+              ) : null}
+              <p className="muted small">{whatsAppVerificationMessage}</p>
+            </div>
+
+            <div className="signup-leave-actions">
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handleSaveWhatsAppNumber}
+                disabled={whatsAppSubmitting}
+              >
+                {whatsAppSubmitting ? "Checking number..." : "Save my number"}
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setSkipWhatsAppPromptThisSession(true);
+                  setShowWhatsAppPrompt(false);
+                }}
+              >
+                Skip for now
+              </button>
+            </div>
+
+            {whatsAppVerificationStatus === "failed_once" ? (
+              <p className="muted small signup-leave-footnote">
+                Please check the number and try again once more.
+              </p>
+            ) : null}
+
+            {(whatsAppVerificationStatus === "failed_twice" ||
+              whatsAppVerificationStatus === "manual_admin_required") ? (
+              <p className="muted small signup-leave-footnote">
+                Please contact admin {DEFAULT_ADMIN_NAME} for cellphone
+                verification.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      )}
+
       {showLeavePrompt && (
         <div className="modal-backdrop" onClick={() => setShowLeavePrompt(false)}>
           <div
@@ -1360,6 +1738,13 @@ export default function MatchSignupPage({
                 Clear my selected weeks
               </button>
             </div>
+
+            {!effectiveWhatsappNumber ? (
+              <p className="muted small signup-leave-footnote">
+                No WhatsApp number was found on your profile yet, so reminders
+                will stay off until your number is available.
+              </p>
+            ) : null}
 
             {pendingSelectionsSaved ? (
               <p className="muted small signup-leave-footnote">
