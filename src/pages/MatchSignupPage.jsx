@@ -265,24 +265,6 @@ function getStatus(count) {
   return { key: "low", label: "needs players", shortLabel: "not filled" };
 }
 
-function getEntryName(entry) {
-  if (typeof entry === "string") return toTitleCaseLoose(entry);
-  if (!entry || typeof entry !== "object") return "";
-  return toTitleCaseLoose(
-    entry.shortName ||
-      entry.fullName ||
-      entry.displayName ||
-      entry.name ||
-      entry.playerName ||
-      ""
-  );
-}
-
-function getEntryShortName(entry) {
-  const full = getEntryName(entry);
-  return firstNameOf(full) || full;
-}
-
 function getIdentityKeys(identity, displayName, shortName) {
   return [
     identity?.memberId,
@@ -590,6 +572,7 @@ export default function MatchSignupPage({
   const [liveWeekKeys, setLiveWeekKeys] = useState({});
   const [livePlayerWeeks, setLivePlayerWeeks] = useState({});
   const [liveSelectionsLoaded, setLiveSelectionsLoaded] = useState(false);
+  const [liveCommittedUsers, setLiveCommittedUsers] = useState([]);
   const [saveState, setSaveState] = useState("idle");
   const [selectionHydrated, setSelectionHydrated] = useState(false);
 
@@ -939,6 +922,7 @@ export default function MatchSignupPage({
       (snapshot) => {
         const nextWeekKeys = {};
         const nextPlayerWeeks = {};
+        const nextCommittedUsers = [];
 
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() || {};
@@ -988,10 +972,22 @@ export default function MatchSignupPage({
               }
             });
           });
+
+          if (weeksForDoc.length > 0) {
+            nextCommittedUsers.push({
+              stableKey: docStableKey,
+              userId: String(data.userId || data.playerId || "").trim(),
+              fullName: toTitleCaseLoose(data.playerName || data.shortName || "Player"),
+              shortName: firstNameOf(
+                toTitleCaseLoose(data.shortName || data.playerName || "Player")
+              ),
+            });
+          }
         });
 
         setLiveWeekKeys(nextWeekKeys);
         setLivePlayerWeeks(nextPlayerWeeks);
+        setLiveCommittedUsers(nextCommittedUsers);
         setLiveSelectionsLoaded(true);
       },
       (error) => {
@@ -1128,59 +1124,32 @@ export default function MatchSignupPage({
   );
 
   const allRows = useMemo(() => {
-    const players = Array.isArray(currentTeam?.players)
-      ? currentTeam.players
-      : [];
+    const rowsFromCommittedUsers = liveCommittedUsers.map((user, index) => ({
+      id: user.userId || `${slugFromLooseName(user.fullName)}_${index}`,
+      uid: user.userId || "",
+      playerId: user.userId || "",
+      memberId: user.userId || "",
+      fullName: user.fullName,
+      shortName: user.shortName || firstNameOf(user.fullName),
+      stableKey: user.stableKey,
+      isCurrent:
+        normKey(user.userId || "") === normKey(userId) ||
+        normKey(user.fullName) === normKey(displayName) ||
+        normKey(user.shortName) === normKey(shortName),
+      isEmpty: false,
+    }));
 
-    const committedPlayers = players
-      .map((entry, index) => {
-        const fullName = getEntryName(entry);
-        const short = getEntryShortName(entry);
+    const uniqueMap = new Map();
+    rowsFromCommittedUsers.forEach((row) => {
+      uniqueMap.set(row.stableKey || row.id, row);
+    });
 
-        return {
-          id:
-            (typeof entry === "object" &&
-              (entry?.playerId ||
-                entry?.memberId ||
-                entry?.id ||
-                entry?.uid)) ||
-            `${slugFromLooseName(fullName)}_${index}`,
-          uid:
-            (typeof entry === "object" &&
-              (entry?.playerId ||
-                entry?.memberId ||
-                entry?.id ||
-                entry?.uid)) ||
-            "",
-          playerId:
-            typeof entry === "object"
-              ? entry?.playerId || entry?.memberId || entry?.id || entry?.uid || ""
-              : "",
-          memberId:
-            typeof entry === "object"
-              ? entry?.memberId || entry?.playerId || entry?.id || entry?.uid || ""
-              : "",
-          fullName,
-          shortName: short,
-          isCurrent:
-            normKey(fullName) === normKey(displayName) ||
-            normKey(fullName) === normKey(shortName) ||
-            normKey(short) === normKey(shortName),
-          isEmpty: false,
-        };
-      })
-      .filter((p) => p.fullName)
-      .filter((player) => {
-        if (player.isCurrent) return true;
+    const committedRows = Array.from(uniqueMap.values());
 
-        const lookupKeys = getPlayerLookupKeys(player);
-        return lookupKeys.some((key) => (livePlayerWeeks[key] || []).length > 0);
-      });
-
-    const alreadyHasCurrent = committedPlayers.some((p) => p.isCurrent);
+    const alreadyHasCurrent = committedRows.some((p) => p.isCurrent);
 
     if (!alreadyHasCurrent) {
-      committedPlayers.push({
+      committedRows.push({
         id:
           identity?.playerId ||
           identity?.memberId ||
@@ -1203,29 +1172,32 @@ export default function MatchSignupPage({
           "",
         fullName: displayName,
         shortName,
+        stableKey: currentUserDocKey,
         isCurrent: true,
         isEmpty: false,
       });
     }
 
-    while (committedPlayers.length < MAX_PLAYERS) {
-      committedPlayers.push({
-        id: `empty_slot_${committedPlayers.length + 1}`,
+    while (committedRows.length < MAX_PLAYERS) {
+      committedRows.push({
+        id: `empty_slot_${committedRows.length + 1}`,
         fullName: "",
-        shortName: `Slot ${committedPlayers.length + 1}`,
+        shortName: `Slot ${committedRows.length + 1}`,
         isCurrent: false,
         isEmpty: true,
       });
     }
 
-    return committedPlayers.slice(0, MAX_PLAYERS);
+    return committedRows.slice(0, MAX_PLAYERS);
   }, [
+    liveCommittedUsers,
     currentTeam,
     identity,
     currentUser?.uid,
     displayName,
     shortName,
-    livePlayerWeeks,
+    currentUserDocKey,
+    userId,
   ]);
 
   const weekSelectionsAll = useMemo(() => {
@@ -1252,9 +1224,10 @@ export default function MatchSignupPage({
   );
 
   const visibleRowCount = useMemo(() => {
+    const expandableCount = Math.min(MAX_PLAYERS, actualPlayersCount + 1);
     return Math.min(
       MAX_PLAYERS,
-      Math.max(DEFAULT_VISIBLE_SLOTS, actualPlayersCount)
+      Math.max(DEFAULT_VISIBLE_SLOTS, expandableCount)
     );
   }, [actualPlayersCount]);
 
@@ -1262,6 +1235,8 @@ export default function MatchSignupPage({
     () => allRows.slice(0, visibleRowCount),
     [allRows, visibleRowCount]
   );
+
+  const lastVisibleRowIndex = displayRows.length - 1;
 
   const weekSelections = useMemo(() => {
     const out = {};
@@ -1280,9 +1255,9 @@ export default function MatchSignupPage({
         }
 
         const lookupKeys = getPlayerLookupKeys(player);
-        const isSelectedForThatPlayer = lookupKeys.some((key) =>
-          (livePlayerWeeks[key] || []).includes(week.id)
-        );
+        const isSelectedForThatPlayer =
+          (player.stableKey && (liveWeekKeys[week.id] || []).includes(player.stableKey)) ||
+          lookupKeys.some((key) => (livePlayerWeeks[key] || []).includes(week.id));
 
         if (isSelectedForThatPlayer) {
           signedIds.add(player.id);
@@ -1293,7 +1268,7 @@ export default function MatchSignupPage({
     });
 
     return out;
-  }, [weeks, displayRows, livePlayerWeeks, selectedWeeks]);
+  }, [weeks, displayRows, livePlayerWeeks, liveWeekKeys, selectedWeeks]);
 
   const weekMeta = useMemo(
     () =>
@@ -1889,7 +1864,7 @@ export default function MatchSignupPage({
 
       <section className="card signup-grid-card">
         <div className="signup-grid-title-row">
-          <h3>Choose your Wednesdays</h3>
+          <h3>Pick your Wednesdays</h3>
           <div
             className={`signup-top-status ${
               selectedCount > 0 ? "is-active" : "is-idle"
@@ -1957,6 +1932,8 @@ export default function MatchSignupPage({
 
               const isSignedRow = playerHasAnySignedWeek && !player.isCurrent;
               const isEmptyRow = player.isEmpty;
+              const isLastVisibleExpandableEmptyRow =
+                player.isEmpty && rowIndex === lastVisibleRowIndex;
 
               return (
                 <React.Fragment key={player.id}>
@@ -2011,7 +1988,9 @@ export default function MatchSignupPage({
                           style={{ transition: "none" }}
                         >
                           <div className="matrix-view-inner">
-                            <span className="matrix-pick-mark" />
+                            <span className="matrix-pick-mark">
+                              {isLastVisibleExpandableEmptyRow ? "+" : ""}
+                            </span>
                           </div>
                         </div>
                       );
