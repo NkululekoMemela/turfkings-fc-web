@@ -15,6 +15,7 @@ import { db } from "../firebaseConfig";
 
 const MIN_PLAYERS = 10;
 const MAX_PLAYERS = 18;
+const LEAGUE_PLAYERS = 15;
 const DEFAULT_VISIBLE_SLOTS = 6;
 const MAX_VISIBLE_ROWS_BEFORE_SCROLL = 5;
 const COST_PER_GAME = 65;
@@ -303,8 +304,11 @@ function getStatus(count) {
   if (count >= MAX_PLAYERS) {
     return { key: "full", label: "Full", shortLabel: "Full" };
   }
+  if (count >= LEAGUE_PLAYERS) {
+    return { key: "league", label: "League", shortLabel: "League" };
+  }
   if (count >= MIN_PLAYERS) {
-    return { key: "viable", label: "Game on", shortLabel: "On" };
+    return { key: "viable", label: "Game on", shortLabel: "Game on" };
   }
   return { key: "low", label: "needs players", shortLabel: "not filled" };
 }
