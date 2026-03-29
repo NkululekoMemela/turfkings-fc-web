@@ -264,8 +264,10 @@ export default function PaymentPage({
 
   const [signup, setSignup] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [creatingCheckout, setCreatingCheckout] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [error, setError] = useState("");
+  const [slowPaymentMessage, setSlowPaymentMessage] = useState("");
 
   const [adminAmountPaid, setAdminAmountPaid] = useState("");
   const [adminStatus, setAdminStatus] = useState("pending");
@@ -292,61 +294,10 @@ export default function PaymentPage({
 
     const unsub = onSnapshot(
       ref,
-      async (snap) => {
+      (snap) => {
         if (!snap.exists()) {
-          const starterPrimaryPaidWeeks = contextPrimaryPaidWeeks;
-          const starterSecondPaidWeeks = contextSecondPaidWeeks;
-
-          const starterUnpaidPrimaryWeeks = primarySelectedWeeks.filter(
-            (w) => !starterPrimaryPaidWeeks.includes(w)
-          );
-          const starterUnpaidSecondWeeks = secondSelectedWeeks.filter(
-            (w) => !starterSecondPaidWeeks.includes(w)
-          );
-          const starterUnpaidGames =
-            starterUnpaidPrimaryWeeks.length + starterUnpaidSecondWeeks.length;
-          const starterAmountDue = starterUnpaidGames * costPerGame;
-
-          const starterData = {
-            signupDocId,
-            activeSeasonId: String(activeSeasonId || "").trim(),
-            displayName: primaryDisplayName,
-            shortName: firstNameOf(primaryDisplayName),
-            playerId: primaryPlayerId,
-            userId: currentUserId || "",
-            selectedWeeks: primarySelectedWeeks,
-            primaryPaidWeeks: starterPrimaryPaidWeeks,
-            paidWeeks: starterPrimaryPaidWeeks,
-            secondDisplayName: secondDisplayName || "",
-            secondPlayerId: secondPlayerId || "",
-            secondEmail: secondEmail || "",
-            secondSelectedWeeks,
-            secondPaidWeeks: starterSecondPaidWeeks,
-            totalGamesSelected: contextGamesSelected,
-            paymentForMode,
-            amountDue: starterAmountDue,
-            amountPaid:
-              (starterPrimaryPaidWeeks.length + starterSecondPaidWeeks.length) * costPerGame,
-            paymentIntentAmount: 0,
-            costPerGame,
-            paymentMethod: PAYMENT_METHOD_LABEL,
-            paymentReference: initialReference,
-            adminNote: "",
-            paymentStatus: starterAmountDue > 0 ? "unpaid" : "paid",
-            paymentLinkUrl: "",
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          };
-
-          try {
-            await setDoc(ref, starterData, { merge: true });
-            setSignup({ id: signupDocId, ...starterData });
-            setLoading(false);
-          } catch (err) {
-            console.error("Failed to create starter signup doc:", err);
-            setError("Could not create payment record.");
-            setLoading(false);
-          }
+          setSignup(null);
+          setLoading(false);
           return;
         }
 
@@ -362,24 +313,7 @@ export default function PaymentPage({
     );
 
     return () => unsub();
-  }, [
-    signupDocId,
-    activeSeasonId,
-    primaryDisplayName,
-    primaryPlayerId,
-    currentUserId,
-    primarySelectedWeeksKey,
-    secondDisplayName,
-    secondPlayerId,
-    secondEmail,
-    secondSelectedWeeksKey,
-    contextGamesSelected,
-    paymentForMode,
-    costPerGame,
-    initialReference,
-    primaryPaidWeeksKey,
-    secondPaidWeeksKey,
-  ]);
+  }, [signupDocId]);
 
   useEffect(() => {
     if (!signup) return;
@@ -407,9 +341,7 @@ export default function PaymentPage({
   );
 
   const effectivePrimaryPaidWeeks = uniqueWeeks(
-    signup?.primaryPaidWeeks ||
-      signup?.paidWeeks ||
-      contextPrimaryPaidWeeks
+    signup?.primaryPaidWeeks || signup?.paidWeeks || contextPrimaryPaidWeeks
   );
 
   const effectiveSecondPaidWeeks = uniqueWeeks(
@@ -424,14 +356,12 @@ export default function PaymentPage({
     (w) => !effectiveSecondPaidWeeks.includes(w)
   );
 
-  const unpaidTotalGames =
-    unpaidPrimaryWeeks.length + unpaidSecondWeeks.length;
+  const unpaidTotalGames = unpaidPrimaryWeeks.length + unpaidSecondWeeks.length;
 
   const effectiveTotalGamesSelected =
     effectivePrimaryWeeks.length + effectiveSecondWeeks.length;
 
-  const recomputedFullAmount =
-    effectiveTotalGamesSelected * costPerGame;
+  const recomputedFullAmount = effectiveTotalGamesSelected * costPerGame;
 
   const paidAmountFromWeeks =
     (effectivePrimaryPaidWeeks.length + effectiveSecondPaidWeeks.length) * costPerGame;
@@ -471,7 +401,7 @@ export default function PaymentPage({
   }, [paymentStatus]);
 
   async function handlePayNow() {
-    if (!signupDocId || amountToPayNow <= 0) return;
+    if (!signupDocId || amountToPayNow <= 0 || creatingCheckout) return;
 
     const functionsBaseUrl = getFunctionsBaseUrl();
     if (!functionsBaseUrl) {
@@ -481,45 +411,16 @@ export default function PaymentPage({
       return;
     }
 
-    setSaving(true);
+    setCreatingCheckout(true);
     setError("");
+    setSlowPaymentMessage("");
+
+    let slowTimer = null;
 
     try {
-      const ref = doc(db, "matchSignups", signupDocId);
-
-      await setDoc(
-        ref,
-        {
-          signupDocId,
-          activeSeasonId: String(activeSeasonId || "").trim(),
-          displayName: primaryDisplayName,
-          shortName: firstNameOf(primaryDisplayName),
-          playerId: primaryPlayerId,
-          userId: currentUserId || "",
-          selectedWeeks: effectivePrimaryWeeks,
-          primaryPaidWeeks: effectivePrimaryPaidWeeks,
-          paidWeeks: effectivePrimaryPaidWeeks,
-          secondDisplayName: effectiveSecondDisplayName,
-          secondPlayerId: secondPlayerId || "",
-          secondEmail: secondEmail || "",
-          secondSelectedWeeks: effectiveSecondWeeks,
-          secondPaidWeeks: effectiveSecondPaidWeeks,
-          totalGamesSelected: effectiveTotalGamesSelected,
-          paymentForMode: effectiveMode,
-          amountDue: effectiveAmountDue,
-          amountPaid,
-          costPerGame,
-          paymentMethod: PAYMENT_METHOD_LABEL,
-          paymentReference: buildReferenceLabel(primaryDisplayName),
-          paymentIntentAmount: amountToPayNow,
-          paymentStatus: amountToPayNow > 0 ? "pending" : "paid",
-          paymentSubmittedAt: serverTimestamp(),
-          unpaidPrimaryWeeks,
-          unpaidSecondWeeks,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      slowTimer = window.setTimeout(() => {
+        setSlowPaymentMessage("Still opening payment. Please wait...");
+      }, 8000);
 
       const returnUrl =
         typeof window !== "undefined"
@@ -564,7 +465,8 @@ export default function PaymentPage({
       }
 
       if (data?.alreadyPaid) {
-        setSaving(false);
+        setCreatingCheckout(false);
+        setSlowPaymentMessage("");
         return;
       }
 
@@ -573,16 +475,56 @@ export default function PaymentPage({
         throw new Error("Yoco checkout did not return a redirect URL.");
       }
 
+      const ref = doc(db, "matchSignups", signupDocId);
+      setDoc(
+        ref,
+        {
+          signupDocId,
+          activeSeasonId: String(activeSeasonId || "").trim(),
+          displayName: primaryDisplayName,
+          shortName: firstNameOf(primaryDisplayName),
+          playerId: primaryPlayerId,
+          userId: currentUserId || "",
+          selectedWeeks: effectivePrimaryWeeks,
+          primaryPaidWeeks: effectivePrimaryPaidWeeks,
+          paidWeeks: effectivePrimaryPaidWeeks,
+          secondDisplayName: effectiveSecondDisplayName,
+          secondPlayerId: secondPlayerId || "",
+          secondEmail: secondEmail || "",
+          secondSelectedWeeks: effectiveSecondWeeks,
+          secondPaidWeeks: effectiveSecondPaidWeeks,
+          totalGamesSelected: effectiveTotalGamesSelected,
+          paymentForMode: effectiveMode,
+          amountDue: effectiveAmountDue,
+          amountPaid,
+          costPerGame,
+          paymentMethod: PAYMENT_METHOD_LABEL,
+          paymentReference: buildReferenceLabel(primaryDisplayName),
+          paymentIntentAmount: amountToPayNow,
+          paymentStatus: amountToPayNow > 0 ? "pending" : "paid",
+          paymentSubmittedAt: serverTimestamp(),
+          unpaidPrimaryWeeks,
+          unpaidSecondWeeks,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch((writeErr) => {
+        console.warn("Non-blocking payment metadata write failed:", writeErr);
+      });
+
       window.location.assign(redirectUrl);
     } catch (err) {
       console.error("Failed to start payment:", err);
       setError(err?.message || "Could not open payment.");
-      setSaving(false);
+      setCreatingCheckout(false);
+      setSlowPaymentMessage("");
+    } finally {
+      if (slowTimer) window.clearTimeout(slowTimer);
     }
   }
 
   async function verifyPayment() {
-    if (!signupDocId) return;
+    if (!signupDocId || verifyingPayment) return;
 
     const verifiedAmount = Math.max(0, Number(adminAmountPaid || 0));
     const nextStatus = derivePaymentStatus(
@@ -597,7 +539,7 @@ export default function PaymentPage({
       identity?.shortName ||
       "captain";
 
-    setSaving(true);
+    setVerifyingPayment(true);
     setError("");
 
     try {
@@ -621,7 +563,7 @@ export default function PaymentPage({
       console.error("Failed to verify payment:", err);
       setError("Could not update payment.");
     } finally {
-      setSaving(false);
+      setVerifyingPayment(false);
     }
   }
 
@@ -673,7 +615,7 @@ export default function PaymentPage({
 
               <div className="payment-total-block">
                 <span className="payment-total-label">
-                  {isFullyPaid ? "Already paid" : "Total due"}
+                  {isFullyPaid ? "Already paid" : "Total due "}
                 </span>
                 <strong className="payment-total-value">
                   {isFullyPaid ? "✅" : formatCurrency(amountToPayNow)}
@@ -703,10 +645,12 @@ export default function PaymentPage({
                 <button
                   type="button"
                   className="primary-btn payment-action-btn"
-                  disabled={saving || amountToPayNow <= 0}
+                  disabled={creatingCheckout || amountToPayNow <= 0}
                   onClick={handlePayNow}
                 >
-                  {saving ? "Opening..." : `Pay ${formatCurrency(amountToPayNow)}`}
+                  {creatingCheckout
+                    ? "Opening..."
+                    : `Pay ${formatCurrency(amountToPayNow)}`}
                 </button>
               ) : (
                 <div className="payment-paid-banner muted small">
@@ -719,6 +663,10 @@ export default function PaymentPage({
                   ? "No further payment is needed for the currently selected weeks."
                   : "You will be redirected to Yoco’s secure payment page in the same tab."}
               </p>
+
+              {slowPaymentMessage ? (
+                <p className="muted small payment-help-text">{slowPaymentMessage}</p>
+              ) : null}
             </div>
           </section>
 
@@ -769,10 +717,10 @@ export default function PaymentPage({
                 <button
                   type="button"
                   className="primary-btn"
-                  disabled={saving}
+                  disabled={verifyingPayment}
                   onClick={verifyPayment}
                 >
-                  {saving ? "Saving..." : "Save"}
+                  {verifyingPayment ? "Saving..." : "Save"}
                 </button>
 
                 <button type="button" className="secondary-btn" onClick={onDone}>

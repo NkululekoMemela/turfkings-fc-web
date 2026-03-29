@@ -635,22 +635,36 @@ async function updateVerificationSuccess(memberRef) {
   }, {merge: true});
 }
 
-async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const text = await response.text();
-  let data = {};
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch (error) {
-    data = {raw: text};
-  }
+// -----------------------------------------------------------------------------
+// UPDATED: fetchJson with timeout support
+// -----------------------------------------------------------------------------
+async function fetchJson(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  return {
-    ok: response.ok,
-    status: response.status,
-    data,
-    text,
-  };
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+
+    const text = await response.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (error) {
+      data = {raw: text};
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      data,
+      text,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function buildYocoCheckoutPayload({
@@ -861,7 +875,7 @@ async function markPaymentFailed({
 }
 
 // -----------------------------------------------------------------------------
-// NEW: create checkout session with Yoco
+// UPDATED: create checkout session with Yoco (faster response path)
 // -----------------------------------------------------------------------------
 exports.createYocoCheckout = onRequest(
   {
@@ -886,18 +900,12 @@ exports.createYocoCheckout = onRequest(
       });
     }
 
-    try {
-      console.log("🔥 FUNCTION STARTED createYocoCheckout");
-      console.log("ENV CHECK:");
-      console.log("YOCO_SECRET_KEY:", process.env.YOCO_SECRET_KEY ? "SET" : "MISSING");
-      console.log("YOCO_SECRET_KEY PREFIX:", YOCO_SECRET_KEY ? YOCO_SECRET_KEY.slice(0, 8) : "missing");
-      console.log("YOCO_SECRET_KEY IS LIVE:", safeString(YOCO_SECRET_KEY).startsWith("sk_live_"));
-      console.log("APP_BASE_URL:", process.env.APP_BASE_URL || APP_BASE_URL || "missing");
-      console.log("YOCO_BASE_URL:", process.env.YOCO_BASE_URL || YOCO_BASE_URL || "missing");
-      console.log("📦 Incoming request:", JSON.stringify(req.body || {}));
+    const t0 = Date.now();
 
+    try {
       const body = req.body && typeof req.body === "object" ? req.body : {};
       const signupDocId = deriveSignupDocIdFromBody(body);
+
       if (!signupDocId) {
         return res.status(400).json({
           ok: false,
@@ -906,8 +914,11 @@ exports.createYocoCheckout = onRequest(
       }
 
       const signupRef = db.collection("matchSignups").doc(signupDocId);
+
+      const tSignupRead0 = Date.now();
       const signupSnap = await signupRef.get();
       const signupData = signupSnap.exists ? (signupSnap.data() || {}) : {};
+      console.log("[createYocoCheckout] signup read ms:", Date.now() - tSignupRead0);
 
       const paymentState = computeSignupPaymentState({
         signup: signupData,
@@ -959,11 +970,117 @@ exports.createYocoCheckout = onRequest(
       const paymentsRef = db.collection("payments").doc();
       const resolvedUrls = resolveCheckoutUrlSet(body, paymentsRef.id);
 
-      const amountInBaseUnits = Math.round(paymentState.outstandingAmount * YOCO_AMOUNT_MULTIPLIER);
+      const amountInBaseUnits = Math.round(
+        paymentState.outstandingAmount * YOCO_AMOUNT_MULTIPLIER
+      );
+
+      const metadata = {
+        paymentRecordId: paymentsRef.id,
+        signupDocId,
+        activeSeasonId,
+        displayName,
+        secondDisplayName,
+        paymentForMode,
+        outstandingGames: paymentState.unpaidTotalGames,
+        referenceLabel,
+      };
+
+      const yocoPayload = buildYocoCheckoutPayload({
+        paymentRecordId: paymentsRef.id,
+        amountInBaseUnits,
+        referenceLabel,
+        successUrl: resolvedUrls.successUrl,
+        cancelUrl: resolvedUrls.cancelUrl,
+        failureUrl: resolvedUrls.failureUrl,
+        metadata,
+      });
+
+      const tYoco0 = Date.now();
+      const yocoResponse = await fetchJson(
+        `${YOCO_BASE_URL.replace(/\/$/, "")}/api/checkouts`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${YOCO_SECRET_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(yocoPayload),
+        },
+        15000
+      );
+      console.log("[createYocoCheckout] yoco call ms:", Date.now() - tYoco0);
+
+      if (!yocoResponse.ok) {
+        console.error("[YOCO] checkout create failed status:", yocoResponse.status);
+        console.error("[YOCO] checkout create failed data:", JSON.stringify(yocoResponse.data || {}));
+
+        await paymentsRef.set({
+          provider: "yoco",
+          status: "create_failed",
+          signupDocId,
+          activeSeasonId,
+          displayName,
+          secondDisplayName,
+          playerId: safeString(signupData.playerId || body.playerId || ""),
+          secondPlayerId: safeString(signupData.secondPlayerId || body.secondPlayerId || ""),
+          secondEmail: safeString(signupData.secondEmail || body.secondEmail || ""),
+          userId: safeString(body.userId || body.identityUserId || signupData.userId || ""),
+          paymentForMode,
+          selectedWeeks: paymentState.primarySelectedWeeks,
+          secondSelectedWeeks: paymentState.secondSelectedWeeks,
+          primaryPaidWeeks: paymentState.primaryPaidWeeks,
+          secondPaidWeeks: paymentState.secondPaidWeeks,
+          unpaidPrimaryWeeks: paymentState.unpaidPrimaryWeeks,
+          unpaidSecondWeeks: paymentState.unpaidSecondWeeks,
+          totalGamesSelected: paymentState.totalGamesSelected,
+          outstandingGames: paymentState.unpaidTotalGames,
+          costPerGame: paymentState.costPerGame,
+          amountRequested: paymentState.outstandingAmount,
+          amountRequestedBaseUnits: amountInBaseUnits,
+          currency: YOCO_CURRENCY,
+          paymentReference: referenceLabel,
+          source: "turfkings_checkout_api",
+          requestedSuccessUrl: resolvedUrls.successUrl,
+          requestedCancelUrl: resolvedUrls.cancelUrl,
+          requestedFailureUrl: resolvedUrls.failureUrl,
+          yocoError: yocoResponse.data,
+          yocoErrorText: yocoResponse.text || "",
+          yocoStatusCode: yocoResponse.status,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+
+        return res.status(502).json({
+          ok: false,
+          error: "Yoco checkout creation failed.",
+          details: yocoResponse.data || yocoResponse.text || "Unknown Yoco error",
+          statusCode: yocoResponse.status,
+        });
+      }
+
+      const yocoData = yocoResponse.data || {};
+      const redirectUrl = safeString(
+        yocoData.redirectUrl ||
+        yocoData.redirectURL ||
+        yocoData.url
+      );
+
+      const yocoCheckoutId = safeString(
+        yocoData.id ||
+        yocoData.checkoutId ||
+        ""
+      );
+
+      if (!redirectUrl) {
+        return res.status(502).json({
+          ok: false,
+          error: "Yoco checkout did not return a redirect URL.",
+        });
+      }
 
       const paymentRecord = {
         provider: "yoco",
-        status: "created",
+        status: "checkout_created",
         signupDocId,
         activeSeasonId,
         displayName,
@@ -990,120 +1107,31 @@ exports.createYocoCheckout = onRequest(
         requestedSuccessUrl: resolvedUrls.successUrl,
         requestedCancelUrl: resolvedUrls.cancelUrl,
         requestedFailureUrl: resolvedUrls.failureUrl,
+        yocoCheckoutId,
+        yocoResponse: yocoData,
+        redirectUrl,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       };
 
-      await paymentsRef.set(paymentRecord, {merge: true});
-
-      const metadata = {
-        paymentRecordId: paymentsRef.id,
-        signupDocId,
-        activeSeasonId,
-        displayName,
-        secondDisplayName,
-        paymentForMode,
-        outstandingGames: paymentState.unpaidTotalGames,
-        referenceLabel,
-      };
-
-      const yocoPayload = buildYocoCheckoutPayload({
-        paymentRecordId: paymentsRef.id,
-        amountInBaseUnits,
-        referenceLabel,
-        successUrl: resolvedUrls.successUrl,
-        cancelUrl: resolvedUrls.cancelUrl,
-        failureUrl: resolvedUrls.failureUrl,
-        metadata,
-      });
-
-      console.log("[YOCO] create payload:", JSON.stringify({
-        amount: yocoPayload.amount,
-        currency: yocoPayload.currency,
-        externalId: yocoPayload.externalId,
-        clientReferenceId: yocoPayload.clientReferenceId,
-        successUrl: yocoPayload.successUrl || "",
-        cancelUrl: yocoPayload.cancelUrl || "",
-        failureUrl: yocoPayload.failureUrl || "",
-        metadata: yocoPayload.metadata,
-      }));
-
-      const yocoResponse = await fetchJson(
-        `${YOCO_BASE_URL.replace(/\/$/, "")}/api/checkouts`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${YOCO_SECRET_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(yocoPayload),
-        }
-      );
-
-      if (!yocoResponse.ok) {
-        console.error("[YOCO] checkout create failed status:", yocoResponse.status);
-        console.error("[YOCO] checkout create failed data:", JSON.stringify(yocoResponse.data || {}));
-        console.error("[YOCO] checkout create failed text:", yocoResponse.text || "");
-
-        await paymentsRef.set({
-          status: "create_failed",
-          yocoError: yocoResponse.data,
-          yocoErrorText: yocoResponse.text || "",
-          yocoStatusCode: yocoResponse.status,
+      const tWrites0 = Date.now();
+      await Promise.all([
+        paymentsRef.set(paymentRecord, {merge: true}),
+        signupRef.set({
+          paymentRecordId: paymentsRef.id,
+          paymentLinkUrl: redirectUrl,
+          paymentStatus: "pending",
+          paymentSubmittedAt: FieldValue.serverTimestamp(),
+          unpaidPrimaryWeeks: paymentState.unpaidPrimaryWeeks,
+          unpaidSecondWeeks: paymentState.unpaidSecondWeeks,
           updatedAt: FieldValue.serverTimestamp(),
-        }, {merge: true});
+        }, {merge: true}),
+      ]);
+      console.log("[createYocoCheckout] final writes ms:", Date.now() - tWrites0);
 
-        return res.status(502).json({
-          ok: false,
-          error: "Yoco checkout creation failed.",
-          details: yocoResponse.data || yocoResponse.text || "Unknown Yoco error",
-          statusCode: yocoResponse.status,
-        });
-      }
+      console.log("[createYocoCheckout] total ms before response:", Date.now() - t0);
 
-      const yocoData = yocoResponse.data || {};
-      const redirectUrl = safeString(
-        yocoData.redirectUrl ||
-        yocoData.redirectURL ||
-        yocoData.url
-      );
-
-      const yocoCheckoutId = safeString(
-        yocoData.id ||
-        yocoData.checkoutId ||
-        ""
-      );
-
-      await paymentsRef.set({
-        status: "checkout_created",
-        yocoCheckoutId,
-        yocoResponse: yocoData,
-        redirectUrl,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, {merge: true});
-
-      await signupRef.set({
-        paymentRecordId: paymentsRef.id,
-        paymentLinkUrl: redirectUrl,
-        paymentStatus: "pending",
-        paymentSubmittedAt: FieldValue.serverTimestamp(),
-        unpaidPrimaryWeeks: paymentState.unpaidPrimaryWeeks,
-        unpaidSecondWeeks: paymentState.unpaidSecondWeeks,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, {merge: true});
-
-      await notifyAdminOnWhatsApp(
-        `🧾 TurfKings payment started.
-` +
-        `${displayName}` +
-        (secondDisplayName ? ` + ${secondDisplayName}` : "") +
-        `
-Amount: ${formatCurrency(paymentState.outstandingAmount)}` +
-        `
-Signup: ${signupDocId}`
-      );
-
-      return res.status(200).json({
+      res.status(200).json({
         ok: true,
         paymentRecordId: paymentsRef.id,
         signupDocId,
@@ -1113,20 +1141,40 @@ Signup: ${signupDocId}`
         yocoCheckoutId,
         processingMode: safeString(yocoData.processingMode || ""),
       });
-    } catch (error) {
-      console.error("❌ FULL ERROR:", error);
-      console.error("❌ STACK:", error && error.stack ? error.stack : "No stack available");
 
-      return res.status(500).json({
+      Promise.resolve().then(async () => {
+        try {
+          await notifyAdminOnWhatsApp(
+            `🧾 TurfKings payment started.\n` +
+            `${displayName}` +
+            (secondDisplayName ? ` + ${secondDisplayName}` : "") +
+            `\nAmount: ${formatCurrency(paymentState.outstandingAmount)}` +
+            `\nSignup: ${signupDocId}`
+          );
+        } catch (notifyError) {
+          console.error("Admin WhatsApp notify failed:", notifyError);
+        }
+      });
+    } catch (error) {
+      const isAbort =
+        error &&
+        (error.name === "AbortError" ||
+          String(error.message || "").toLowerCase().includes("aborted"));
+
+      console.error("createYocoCheckout failed:", error);
+
+      return res.status(isAbort ? 504 : 500).json({
         ok: false,
-        error: error.message || "Unknown server error",
+        error: isAbort ?
+          "Yoco request timed out. Please try again." :
+          (error.message || "Unknown server error"),
       });
     }
   }
 );
 
 // -----------------------------------------------------------------------------
-// NEW: handle Yoco webhook
+// handle Yoco webhook
 // -----------------------------------------------------------------------------
 exports.handleYocoWebhook = onRequest(
   {
