@@ -666,6 +666,7 @@ export default function MatchSignupPage({
   const [adminVerifyWeeks, setAdminVerifyWeeks] = useState([]);
   const [adminRemovePaidWeeks, setAdminRemovePaidWeeks] = useState([]);
   const [adminVerifyBusy, setAdminVerifyBusy] = useState(false);
+  const [showAdminCleanupPanel, setShowAdminCleanupPanel] = useState(false);
   const [selectionHydrated, setSelectionHydrated] = useState(false);
   const [matchSignupStateLoaded, setMatchSignupStateLoaded] = useState(false);
 
@@ -2067,6 +2068,143 @@ export default function MatchSignupPage({
     if (!adminTargetUnpaidWeeks.length) return;
     await handleAdminVerifyWeeks(adminTargetUnpaidWeeks);
   };
+
+  const handleAdminClearUnpaidWeeks = async () => {
+    if (!canManageSignupsAsAdmin || !adminCleanupTargetId) return;
+
+    const target = adminCleanupCandidates.find(
+      (item) => item.docId === adminCleanupTargetId
+    );
+    if (!target) return;
+
+    const confirmed = window.confirm(
+      `Clear all unpaid weeks for ${target.fullName}? Paid weeks, if any, will remain.`
+    );
+    if (!confirmed) return;
+
+    setAdminCleanupBusy(true);
+    setAdminCleanupMessage("");
+    setAdminCleanupError("");
+
+    try {
+      const pendingRef = doc(db, "pendingSignups", target.docId);
+      const pendingSnap = await getDoc(pendingRef);
+      if (!pendingSnap.exists()) {
+        throw new Error("Pending signup record not found.");
+      }
+
+      const data = pendingSnap.data() || {};
+      const paidWeeksOnly = Array.isArray(data.paidWeeks)
+        ? data.paidWeeks.filter((weekId) => weeks.some((week) => week.id === weekId))
+        : [];
+      const nextStatus = paidWeeksOnly.length > 0 ? "paid" : "not_selected";
+
+      await setDoc(
+        pendingRef,
+        {
+          selectedWeeks: paidWeeksOnly,
+          unpaidWeeks: [],
+          weeksToPayNow: [],
+          totalAmount: 0,
+          amountDueNow: 0,
+          amountPaidTotal: paidWeeksOnly.length * COST_PER_GAME,
+          paymentStatus: nextStatus,
+          isUnpaid: false,
+          remindersEnabled: false,
+          remindersPaused: true,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await setDoc(
+        doc(db, "matchSignups", target.docId),
+        {
+          selectedWeeks: paidWeeksOnly,
+          paidWeeks: paidWeeksOnly,
+          primaryPaidWeeks: paidWeeksOnly,
+          unpaidWeeks: [],
+          weeksToPayNow: [],
+          amountDue: 0,
+          amountPaid: paidWeeksOnly.length * COST_PER_GAME,
+          paymentIntentAmount: 0,
+          paymentStatus: nextStatus,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setAdminCleanupMessage(`Unpaid weeks cleared for ${target.fullName}.`);
+    } catch (error) {
+      console.error("Failed to clear unpaid weeks:", error);
+      setAdminCleanupError("Could not clear unpaid weeks. Please try again.");
+    } finally {
+      setAdminCleanupBusy(false);
+    }
+  };
+
+  const handleAdminRemoveTarget = async () => {
+    if (!canManageSignupsAsAdmin || !adminCleanupTargetId) return;
+
+    const target = adminCleanupCandidates.find(
+      (item) => item.docId === adminCleanupTargetId
+    );
+    if (!target) return;
+
+    const targetRecords = adminTargetRelatedRecords.length
+      ? adminTargetRelatedRecords
+      : [target];
+
+    const targetDocIds = uniqueStrings(targetRecords.map((item) => item.docId));
+    const totalPaidWeeks = targetRecords.reduce(
+      (sum, item) => sum + (Array.isArray(item?.paidWeeks) ? item.paidWeeks.length : 0),
+      0
+    );
+
+    const confirmed = window.confirm(
+      totalPaidWeeks > 0
+        ? `Remove ${target.fullName} from this month completely? This will remove all monthly records found for this player, including ${totalPaidWeeks} week${
+            totalPaidWeeks === 1 ? "" : "s"
+          } already marked as paid. Use this only for mistakes, tests, or records you intentionally want gone.`
+        : `Remove ${target.fullName} from this month completely? This will remove all monthly records found for this player.`
+    );
+    if (!confirmed) return;
+
+    setAdminCleanupBusy(true);
+    setAdminCleanupMessage("");
+    setAdminCleanupError("");
+
+    try {
+      await Promise.all(
+        targetDocIds.map(async (docId) => {
+          await deleteDoc(doc(db, "pendingSignups", docId));
+          try {
+            await deleteDoc(doc(db, "matchSignups", docId));
+          } catch (error) {
+            console.warn("Match signup delete skipped:", error);
+          }
+        })
+      );
+
+      removeSignupCacheEntries(targetDocIds);
+      resetLocalStateForRemovedTarget(targetDocIds);
+
+      setAdminCleanupTargetId("");
+      setAdminVerifyWeeks([]);
+      setAdminRemovePaidWeeks([]);
+      setAdminCleanupMessage(
+        `${target.fullName} was removed from this month${
+          targetDocIds.length > 1 ? ` across ${targetDocIds.length} records` : ""
+        }.`
+      );
+    } catch (error) {
+      console.error("Failed to remove signup target:", error);
+      setAdminCleanupError("Could not remove that record. Please try again.");
+    } finally {
+      setAdminCleanupBusy(false);
+    }
+  };
+
   const handleAdminRemovePaidWeeks = async (weeksToRemove = []) => {
     if (!canManageSignupsAsAdmin || !adminCleanupTargetId) return;
 
@@ -2436,6 +2574,21 @@ export default function MatchSignupPage({
       </section>
 
       {canManageSignupsAsAdmin ? (
+        <section className="card signup-summary-card" style={{ paddingTop: 14, paddingBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => setShowAdminCleanupPanel((prev) => !prev)}
+              style={{ touchAction: "manipulation" }}
+            >
+              {showAdminCleanupPanel ? "Hide admin cleanup" : "Show admin cleanup"}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {canManageSignupsAsAdmin && showAdminCleanupPanel ? (
         <section className="card signup-summary-card">
           <div className="signup-reminder-choice">
             <label htmlFor="adminCleanupTargetId">Admin cleanup</label>
@@ -2478,6 +2631,16 @@ export default function MatchSignupPage({
                   style={{ touchAction: "manipulation" }}
                 >
                   {adminVerifyBusy ? "Working..." : "Verify all unpaid weeks"}
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  disabled={adminCleanupBusy || !adminCleanupTargetId}
+                  onClick={handleAdminClearUnpaidWeeks}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  {adminCleanupBusy ? "Working..." : "Clear unpaid weeks"}
                 </button>
               </div>
 
@@ -2530,7 +2693,9 @@ export default function MatchSignupPage({
                   style={{
                     display: "grid",
                     gap: 10,
-                    gridTemplateColumns: "1fr",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
                   }}
                 >
                   <button
@@ -2541,6 +2706,16 @@ export default function MatchSignupPage({
                     style={{ touchAction: "manipulation" }}
                   >
                     {adminVerifyBusy ? "Working..." : "Verify selected weeks paid"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={adminCleanupBusy || !adminCleanupTargetId}
+                    onClick={handleAdminRemoveTarget}
+                    style={{ touchAction: "manipulation" }}
+                  >
+                    Remove player from month
                   </button>
                 </div>
 
