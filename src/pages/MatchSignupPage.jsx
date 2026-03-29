@@ -90,6 +90,49 @@ function uniqueStrings(values = []) {
   );
 }
 
+function uniqueWeekIds(values = []) {
+  return Array.from(
+    new Set(values.map((x) => String(x || "").trim()).filter(Boolean))
+  ).sort();
+}
+
+function readSignupCache(key) {
+  if (typeof window === "undefined" || !key) return null;
+  try {
+    const raw = window.sessionStorage.getItem(`signup_cache__${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return {
+      selectedWeeks: Array.isArray(parsed?.selectedWeeks)
+        ? parsed.selectedWeeks.filter(Boolean)
+        : [],
+      paidWeeks: Array.isArray(parsed?.paidWeeks)
+        ? parsed.paidWeeks.filter(Boolean)
+        : [],
+      reminderPreference: String(parsed?.reminderPreference || "17:00"),
+    };
+  } catch (error) {
+    console.warn("Signup cache read skipped:", error);
+    return null;
+  }
+}
+
+function writeSignupCache(key, payload) {
+  if (typeof window === "undefined" || !key) return;
+  try {
+    window.sessionStorage.setItem(
+      `signup_cache__${key}`,
+      JSON.stringify({
+        selectedWeeks: uniqueWeekIds(payload?.selectedWeeks || []),
+        paidWeeks: uniqueWeekIds(payload?.paidWeeks || []),
+        reminderPreference: String(payload?.reminderPreference || "17:00"),
+      })
+    );
+  } catch (error) {
+    console.warn("Signup cache write skipped:", error);
+  }
+}
+
 function buildProfileDocCandidates({
   identity,
   currentUser,
@@ -563,12 +606,21 @@ function buildPaymentSignupDocId({
 }) {
   const season = String(activeSeasonId || FALLBACK_SEASON_ID).trim();
   const player = slugFromLooseName(displayName || "player");
-  const weeksKey = Array.from(new Set((selectedWeeks || []).map((x) => String(x || "").trim()).filter(Boolean))).sort().join("_") || "none";
+  const weeksKey = uniqueWeekIds(selectedWeeks).join("_") || "none";
   const mode = String(paymentForMode || "self").trim();
   const secondPlayer = slugFromLooseName(secondDisplayName || "none");
-  const secondWeeksKey = Array.from(new Set((secondSelectedWeeks || []).map((x) => String(x || "").trim()).filter(Boolean))).sort().join("_") || "none";
+  const secondWeeksKey =
+    uniqueWeekIds(secondSelectedWeeks).join("_") || "none";
 
   return `${season}__${player}__${mode}__${secondPlayer}__${weeksKey}__${secondWeeksKey}`;
+}
+
+function statusFromWeekState(selectedWeeks, paidWeeks) {
+  const selected = uniqueWeekIds(selectedWeeks);
+  const paid = uniqueWeekIds(paidWeeks);
+  if (selected.length === 0) return "not_selected";
+  const unpaid = selected.filter((weekId) => !paid.includes(weekId));
+  return unpaid.length === 0 ? "paid" : "pending";
 }
 
 export default function MatchSignupPage({
@@ -630,7 +682,8 @@ export default function MatchSignupPage({
   const [adminCleanupBusy, setAdminCleanupBusy] = useState(false);
   const [adminCleanupMessage, setAdminCleanupMessage] = useState("");
   const [adminCleanupError, setAdminCleanupError] = useState("");
-  const [saveState, setSaveState] = useState("idle");
+  const [adminVerifyWeeks, setAdminVerifyWeeks] = useState([]);
+  const [adminVerifyBusy, setAdminVerifyBusy] = useState(false);
   const [selectionHydrated, setSelectionHydrated] = useState(false);
   const [matchSignupStateLoaded, setMatchSignupStateLoaded] = useState(false);
 
@@ -1029,21 +1082,27 @@ export default function MatchSignupPage({
         if (cancelled) return;
 
         const rows = [];
-        for (const seasonDoc of seasonSnaps.docs) {
-          try {
-            const attendanceSnap = await getDocs(
-              collection(db, "seasons", seasonDoc.id, "attendance")
-            );
-            attendanceSnap.forEach((docSnap) =>
-              rows.push({
-                seasonId: seasonDoc.id,
-                ...(docSnap.data() || {}),
-              })
-            );
-          } catch (error) {
-            console.warn("Attendance fallback skipped for season:", seasonDoc.id, error);
-          }
-        }
+        await Promise.all(
+          seasonSnaps.docs.map(async (seasonDoc) => {
+            try {
+              const attendanceSnap = await getDocs(
+                collection(db, "seasons", seasonDoc.id, "attendance")
+              );
+              attendanceSnap.forEach((docSnap) =>
+                rows.push({
+                  seasonId: seasonDoc.id,
+                  ...(docSnap.data() || {}),
+                })
+              );
+            } catch (error) {
+              console.warn(
+                "Attendance fallback skipped for season:",
+                seasonDoc.id,
+                error
+              );
+            }
+          })
+        );
 
         if (cancelled) return;
 
@@ -1077,6 +1136,22 @@ export default function MatchSignupPage({
   }, [beneficiary]);
 
   useEffect(() => {
+    const cached = readSignupCache(pendingId);
+    if (cached) {
+      setSelectedWeeks(
+        cached.selectedWeeks.filter((weekId) => weeks.some((w) => w.id === weekId))
+      );
+      setPaidWeeks(
+        cached.paidWeeks.filter((weekId) => weeks.some((w) => w.id === weekId))
+      );
+      if (cached.reminderPreference) {
+        setReminderPreference(cached.reminderPreference);
+      }
+      setPendingSelectionsSaved(cached.selectedWeeks.length > 0);
+    }
+  }, [pendingId, weeks]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function hydrateBeneficiarySelection() {
@@ -1084,10 +1159,18 @@ export default function MatchSignupPage({
         setSelectionHydrated(false);
         setMatchSignupStateLoaded(false);
 
-        const pendingSnap = await getDoc(doc(db, "pendingSignups", pendingId));
+        const [pendingSnap, matchSignupSnap] = await Promise.all([
+          getDoc(doc(db, "pendingSignups", pendingId)),
+          getDoc(doc(db, "matchSignups", pendingId)),
+        ]);
+
         if (cancelled) return;
 
         const pendingData = pendingSnap.exists() ? pendingSnap.data() || {} : {};
+        const matchSignupData = matchSignupSnap.exists()
+          ? matchSignupSnap.data() || {}
+          : {};
+
         const pendingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
           ? pendingData.selectedWeeks.filter((weekId) =>
               weeks.some((week) => week.id === weekId)
@@ -1100,42 +1183,44 @@ export default function MatchSignupPage({
             )
           : [];
 
-        setSelectedWeeks(pendingSelectedWeeks);
-        setPaidWeeks(pendingPaidWeeks);
-
-        if (pendingData.reminderPreference) {
-          setReminderPreference(String(pendingData.reminderPreference));
-        }
-
-        setPendingSelectionsSaved(pendingSelectedWeeks.length > 0);
-
-        const matchSignupSnap = await getDoc(doc(db, "matchSignups", pendingId));
-        if (cancelled) return;
-
-        const matchSignupData = matchSignupSnap.exists()
-          ? matchSignupSnap.data() || {}
-          : {};
-
-        const paidFromMatchSignup = Array.isArray(matchSignupData.paidWeeks)
-          ? matchSignupData.paidWeeks.filter((weekId) =>
-              weeks.some((week) => week.id === weekId)
-            )
-          : [];
-
-        if (paidFromMatchSignup.length > 0) {
-          setPaidWeeks(paidFromMatchSignup);
-        }
-
         const matchSelectedWeeks = Array.isArray(matchSignupData.selectedWeeks)
           ? matchSignupData.selectedWeeks.filter((weekId) =>
               weeks.some((week) => week.id === weekId)
             )
           : [];
 
-        if (pendingSelectedWeeks.length === 0 && matchSelectedWeeks.length > 0) {
-          setSelectedWeeks(matchSelectedWeeks);
-          setPendingSelectionsSaved(true);
+        const matchPaidWeeks = Array.isArray(
+          matchSignupData.paidWeeks || matchSignupData.primaryPaidWeeks
+        )
+          ? (matchSignupData.paidWeeks || matchSignupData.primaryPaidWeeks).filter(
+              (weekId) => weeks.some((week) => week.id === weekId)
+            )
+          : [];
+
+        const nextSelectedWeeks = uniqueWeekIds([
+          ...pendingSelectedWeeks,
+          ...matchSelectedWeeks,
+        ]);
+
+        const nextPaidWeeks = uniqueWeekIds([
+          ...pendingPaidWeeks,
+          ...matchPaidWeeks,
+        ]);
+
+        setSelectedWeeks(nextSelectedWeeks);
+        setPaidWeeks(nextPaidWeeks);
+
+        if (pendingData.reminderPreference) {
+          setReminderPreference(String(pendingData.reminderPreference));
         }
+
+        setPendingSelectionsSaved(nextSelectedWeeks.length > 0);
+        writeSignupCache(pendingId, {
+          selectedWeeks: nextSelectedWeeks,
+          paidWeeks: nextPaidWeeks,
+          reminderPreference:
+            pendingData.reminderPreference || reminderPreference,
+        });
       } catch (error) {
         console.error("Failed to hydrate beneficiary signup:", error);
       } finally {
@@ -1151,7 +1236,15 @@ export default function MatchSignupPage({
     return () => {
       cancelled = true;
     };
-  }, [pendingId, weeks]);
+  }, [pendingId, weeks, reminderPreference]);
+
+  useEffect(() => {
+    writeSignupCache(pendingId, {
+      selectedWeeks,
+      paidWeeks,
+      reminderPreference,
+    });
+  }, [pendingId, selectedWeeks, paidWeeks, reminderPreference]);
 
   useEffect(() => {
     const q = query(collection(db, "pendingSignups"));
@@ -1240,7 +1333,7 @@ export default function MatchSignupPage({
               beneficiaryType: data.beneficiaryType || "self",
               paymentStatus:
                 data.paymentStatus ||
-                (unpaidWeeks.length === 0 ? "paid" : "unpaid"),
+                (unpaidWeeks.length === 0 ? "paid" : "pending"),
               unpaidWeeks,
               paidWeeks: paidWeeksForDoc,
               selectedWeeks: weeksForDoc,
@@ -1263,25 +1356,27 @@ export default function MatchSignupPage({
     return () => unsubscribe();
   }, [calendarMonthKey, signupScopeId, weeks]);
 
+  const paidWeekSet = useMemo(() => new Set(paidWeeks), [paidWeeks]);
+
+  const weeksToPayNow = useMemo(
+    () => selectedWeeks.filter((weekId) => !paidWeekSet.has(weekId)),
+    [selectedWeeks, paidWeekSet]
+  );
+
+  const isFullyPaidSelection =
+    selectedWeeks.length > 0 && weeksToPayNow.length === 0;
+
   useEffect(() => {
     if (!selectionHydrated || !matchSignupStateLoaded) return;
 
     const persistPendingSelection = async () => {
       try {
-        setSaveState("saving");
-
-        const weeksToPayNow = selectedWeeks.filter(
-          (weekId) => !paidWeeks.includes(weekId)
+        const selected = uniqueWeekIds(selectedWeeks);
+        const paid = uniqueWeekIds(paidWeeks);
+        const nextWeeksToPayNow = selected.filter(
+          (weekId) => !paid.includes(weekId)
         );
-
-        const paymentStatus =
-          selectedWeeks.length === 0
-            ? "not_selected"
-            : weeksToPayNow.length === 0
-            ? "paid"
-            : paidWeeks.length > 0
-            ? "part_paid"
-            : "pending";
+        const paymentStatus = statusFromWeekState(selected, paid);
 
         const payload = {
           activeSeasonId: resolvedSeasonId,
@@ -1307,19 +1402,20 @@ export default function MatchSignupPage({
           effectiveWhatsappNumber: effectiveWhatsappNumber || "",
           whatsappVerificationStatus:
             whatsAppVerificationStatus || "manual_admin_verified",
-          selectedWeeks,
-          paidWeeks,
-          unpaidWeeks: weeksToPayNow,
-          weeksToPayNow,
-          totalAmount: weeksToPayNow.length * COST_PER_GAME,
-          amountDueNow: weeksToPayNow.length * COST_PER_GAME,
-          amountPaidTotal: paidWeeks.length * COST_PER_GAME,
+          selectedWeeks: selected,
+          paidWeeks: paid,
+          unpaidWeeks: nextWeeksToPayNow,
+          weeksToPayNow: nextWeeksToPayNow,
+          totalAmount: nextWeeksToPayNow.length * COST_PER_GAME,
+          amountDueNow: nextWeeksToPayNow.length * COST_PER_GAME,
+          amountPaidTotal: paid.length * COST_PER_GAME,
           costPerGame: COST_PER_GAME,
           paymentStatus,
-          isUnpaid: selectedWeeks.length > 0 && weeksToPayNow.length > 0,
-          remindersEnabled: Boolean(effectiveWhatsappNumber) && selectedWeeks.length > 0,
+          isUnpaid: selected.length > 0 && nextWeeksToPayNow.length > 0,
+          remindersEnabled:
+            Boolean(effectiveWhatsappNumber) && selected.length > 0,
           remindersPaused:
-            !Boolean(effectiveWhatsappNumber) || selectedWeeks.length === 0,
+            !Boolean(effectiveWhatsappNumber) || selected.length === 0,
           reminderPreference,
           reminderTimezone: "Africa/Johannesburg",
           lastReminderSentAt: null,
@@ -1332,11 +1428,9 @@ export default function MatchSignupPage({
           merge: true,
         });
 
-        setPendingSelectionsSaved(selectedWeeks.length > 0);
-        setSaveState("saved");
+        setPendingSelectionsSaved(selected.length > 0);
       } catch (err) {
         console.error("Failed to persist pending signup selection:", err);
-        setSaveState("error");
       }
     };
 
@@ -1459,7 +1553,7 @@ export default function MatchSignupPage({
     }
 
     return committedRows.slice(0, MAX_PLAYERS);
-  }, [liveCommittedUsers, currentTeam, beneficiary]);
+  }, [liveCommittedUsers, beneficiary]);
 
   const weekSelectionsAll = useMemo(() => {
     const out = {};
@@ -1560,6 +1654,9 @@ export default function MatchSignupPage({
   }, [displayRows]);
 
   const toggleWeek = (week) => {
+    if (isFullyPaidSelection) return;
+    if (paidWeeks.includes(week.id)) return;
+
     const meta = weekMeta.find((w) => w.id === week.id);
     const isSelected = selectedWeeks.includes(week.id);
 
@@ -1569,22 +1666,17 @@ export default function MatchSignupPage({
     }
 
     if ((meta?.count || 0) >= MAX_PLAYERS) return;
-    setSelectedWeeks((prev) => [...prev, week.id]);
+    setSelectedWeeks((prev) => uniqueWeekIds([...prev, week.id]));
   };
-
-  const paidWeekSet = useMemo(() => new Set(paidWeeks), [paidWeeks]);
-
-  const weeksToPayNow = useMemo(
-    () => selectedWeeks.filter((weekId) => !paidWeekSet.has(weekId)),
-    [selectedWeeks, paidWeekSet]
-  );
 
   const totalAmount = weeksToPayNow.length * COST_PER_GAME;
   const selectedCount = selectedWeeks.length;
-  const signupStatusText =
-    selectedCount > 0
-      ? `${selectedCount} week${selectedCount > 1 ? "s" : ""} selected`
-      : "tick a box";
+
+  const signupStatusText = isFullyPaidSelection
+    ? `${paidWeeks.length} week${paidWeeks.length === 1 ? "" : "s"} paid`
+    : selectedCount > 0
+    ? `${selectedCount} week${selectedCount > 1 ? "s" : ""} selected`
+    : "tick a box";
 
   const attendanceBadgeText = attendanceBadge.loading
     ? "Attendance loading..."
@@ -1614,10 +1706,7 @@ export default function MatchSignupPage({
 
   const canManageSignupsAsAdmin = useMemo(() => {
     const role = String(
-      identity?.role ||
-        currentUser?.role ||
-        identity?.status ||
-        ""
+      identity?.role || currentUser?.role || identity?.status || ""
     )
       .trim()
       .toLowerCase();
@@ -1632,16 +1721,62 @@ export default function MatchSignupPage({
   const adminCleanupCandidates = useMemo(() => {
     if (!canManageSignupsAsAdmin) return [];
 
-    return [...liveCommittedUsers]
+    const bestByPlayer = new Map();
+
+    liveCommittedUsers
       .filter((user) => String(user?.docId || "").trim())
-      .sort((a, b) => {
-        const unpaidDiff =
-          (Array.isArray(b?.unpaidWeeks) ? b.unpaidWeeks.length : 0) -
-          (Array.isArray(a?.unpaidWeeks) ? a.unpaidWeeks.length : 0);
-        if (unpaidDiff !== 0) return unpaidDiff;
-        return String(a?.fullName || "").localeCompare(String(b?.fullName || ""));
+      .forEach((user) => {
+        const playerKey = normKey(
+          user?.userId || user?.stableKey || user?.fullName || user?.shortName || ""
+        );
+        if (!playerKey) return;
+
+        const currentScore =
+          (Array.isArray(user?.selectedWeeks) ? user.selectedWeeks.length : 0) *
+            100 +
+          (Array.isArray(user?.paidWeeks) ? user.paidWeeks.length : 0) * 10 +
+          (Array.isArray(user?.unpaidWeeks) ? user.unpaidWeeks.length : 0);
+
+        const existing = bestByPlayer.get(playerKey);
+        const existingScore = existing
+          ? (Array.isArray(existing?.selectedWeeks)
+              ? existing.selectedWeeks.length
+              : 0) *
+              100 +
+            (Array.isArray(existing?.paidWeeks) ? existing.paidWeeks.length : 0) *
+              10 +
+            (Array.isArray(existing?.unpaidWeeks)
+              ? existing.unpaidWeeks.length
+              : 0)
+          : -1;
+
+        if (!existing || currentScore > existingScore) {
+          bestByPlayer.set(playerKey, user);
+        }
       });
+
+    return Array.from(bestByPlayer.values()).sort((a, b) => {
+      const unpaidDiff =
+        (Array.isArray(b?.unpaidWeeks) ? b.unpaidWeeks.length : 0) -
+        (Array.isArray(a?.unpaidWeeks) ? a.unpaidWeeks.length : 0);
+      if (unpaidDiff !== 0) return unpaidDiff;
+      return String(a?.fullName || "").localeCompare(String(b?.fullName || ""));
+    });
   }, [canManageSignupsAsAdmin, liveCommittedUsers]);
+
+  const adminSelectedTarget = useMemo(
+    () =>
+      adminCleanupCandidates.find((item) => item.docId === adminCleanupTargetId) ||
+      null,
+    [adminCleanupCandidates, adminCleanupTargetId]
+  );
+
+  const adminTargetUnpaidWeeks = useMemo(() => {
+    if (!adminSelectedTarget) return [];
+    return Array.isArray(adminSelectedTarget.unpaidWeeks)
+      ? uniqueWeekIds(adminSelectedTarget.unpaidWeeks)
+      : [];
+  }, [adminSelectedTarget]);
 
   useEffect(() => {
     if (!canManageSignupsAsAdmin) return;
@@ -1654,10 +1789,14 @@ export default function MatchSignupPage({
     setAdminCleanupTargetId(adminCleanupCandidates[0]?.docId || "");
   }, [canManageSignupsAsAdmin, adminCleanupCandidates, adminCleanupTargetId]);
 
-  const firstColWidth = isMobile ? 108 : 220;
+  useEffect(() => {
+    setAdminVerifyWeeks([]);
+  }, [adminCleanupTargetId]);
+
+  const firstColWidth = isMobile ? 108 : 190;
 
   const weekColWidth = useMemo(() => {
-    if (!isMobile) return 135;
+    if (!isMobile) return 112;
 
     const safeWeeks = Math.max(weeks.length, 1);
     const appSidePadding = 20;
@@ -1690,7 +1829,7 @@ export default function MatchSignupPage({
     headerHeight + visibleRowsInViewport * rowHeight + 10;
 
   const handleAttemptBack = () => {
-    if (selectedWeeks.length === 0) {
+    if (selectedWeeks.length === 0 || isFullyPaidSelection) {
       onBack?.();
       return;
     }
@@ -1762,12 +1901,7 @@ export default function MatchSignupPage({
         return;
       }
 
-      const paymentStatus =
-        weeksToPayNow.length === 0
-          ? "paid"
-          : paidWeeks.length > 0
-          ? "part_paid"
-          : "payment_deferred";
+      const paymentStatus = statusFromWeekState(selectedWeeks, paidWeeks);
 
       const payload = {
         activeSeasonId: resolvedSeasonId,
@@ -1827,6 +1961,117 @@ export default function MatchSignupPage({
       setShowLeavePrompt(false);
       onBack?.();
     }
+  };
+
+  const handleAdminVerifyWeeks = async (weeksToVerify = []) => {
+    if (!canManageSignupsAsAdmin || !adminCleanupTargetId) return;
+    const verifyWeeks = uniqueWeekIds(weeksToVerify);
+    if (!verifyWeeks.length) return;
+
+    const target = adminCleanupCandidates.find(
+      (item) => item.docId === adminCleanupTargetId
+    );
+    if (!target) return;
+
+    setAdminVerifyBusy(true);
+    setAdminCleanupMessage("");
+    setAdminCleanupError("");
+
+    try {
+      const pendingRef = doc(db, "pendingSignups", target.docId);
+      const pendingSnap = await getDoc(pendingRef);
+      if (!pendingSnap.exists()) {
+        throw new Error("Pending signup record not found.");
+      }
+
+      const pendingData = pendingSnap.data() || {};
+      const existingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
+        ? uniqueWeekIds(pendingData.selectedWeeks)
+        : [];
+      const existingPaidWeeks = Array.isArray(pendingData.paidWeeks)
+        ? uniqueWeekIds(pendingData.paidWeeks)
+        : [];
+
+      const nextPaidWeeks = uniqueWeekIds([...existingPaidWeeks, ...verifyWeeks]);
+      const nextSelectedWeeks = uniqueWeekIds([
+        ...existingSelectedWeeks,
+        ...verifyWeeks,
+      ]);
+      const nextUnpaidWeeks = nextSelectedWeeks.filter(
+        (weekId) => !nextPaidWeeks.includes(weekId)
+      );
+      const nextStatus = statusFromWeekState(nextSelectedWeeks, nextPaidWeeks);
+
+      const verifier =
+        identity?.email ||
+        identity?.displayName ||
+        identity?.shortName ||
+        DEFAULT_ADMIN_NAME;
+
+      await setDoc(
+        pendingRef,
+        {
+          selectedWeeks: nextSelectedWeeks,
+          paidWeeks: nextPaidWeeks,
+          unpaidWeeks: nextUnpaidWeeks,
+          weeksToPayNow: nextUnpaidWeeks,
+          totalAmount: nextUnpaidWeeks.length * COST_PER_GAME,
+          amountDueNow: nextUnpaidWeeks.length * COST_PER_GAME,
+          amountPaidTotal: nextPaidWeeks.length * COST_PER_GAME,
+          paymentStatus: nextStatus,
+          isUnpaid: nextUnpaidWeeks.length > 0,
+          remindersEnabled:
+            Boolean(pendingData.effectiveWhatsappNumber) &&
+            nextUnpaidWeeks.length > 0,
+          remindersPaused:
+            !Boolean(pendingData.effectiveWhatsappNumber) ||
+            nextUnpaidWeeks.length === 0,
+          verifiedBy: verifier,
+          verifiedAt: serverTimestamp(),
+          paymentMethod: "manual_admin_verify",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await setDoc(
+        doc(db, "matchSignups", target.docId),
+        {
+          selectedWeeks: nextSelectedWeeks,
+          paidWeeks: nextPaidWeeks,
+          primaryPaidWeeks: nextPaidWeeks,
+          unpaidWeeks: nextUnpaidWeeks,
+          weeksToPayNow: nextUnpaidWeeks,
+          amountDue: nextUnpaidWeeks.length * COST_PER_GAME,
+          amountPaid: nextPaidWeeks.length * COST_PER_GAME,
+          paymentIntentAmount: 0,
+          paymentStatus: nextStatus,
+          verifiedBy: verifier,
+          verifiedAt: serverTimestamp(),
+          paymentVerifiedAt: serverTimestamp(),
+          paymentMethod: "manual_admin_verify",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setAdminVerifyWeeks([]);
+      setAdminCleanupMessage(
+        `${target.fullName} marked paid for ${verifyWeeks.length} week${
+          verifyWeeks.length === 1 ? "" : "s"
+        }.`
+      );
+    } catch (error) {
+      console.error("Failed to verify selected weeks:", error);
+      setAdminCleanupError("Could not verify the selected weeks. Please try again.");
+    } finally {
+      setAdminVerifyBusy(false);
+    }
+  };
+
+  const handleAdminVerifyAllUnpaidWeeks = async () => {
+    if (!adminTargetUnpaidWeeks.length) return;
+    await handleAdminVerifyWeeks(adminTargetUnpaidWeeks);
   };
 
   const handleAdminClearUnpaidWeeks = async () => {
@@ -2007,15 +2252,6 @@ export default function MatchSignupPage({
   const getWeekByCalendarCellId = (cellId) =>
     weeks.find((week) => week.id === cellId) || null;
 
-  const saveStateText =
-    saveState === "saving"
-      ? "Saving..."
-      : saveState === "saved"
-      ? "Saved"
-      : saveState === "error"
-      ? "Save failed"
-      : "";
-
   const beneficiaryNeedsSelection =
     signupForMode === "existing_player"
       ? !existingPlayerTargetId
@@ -2023,8 +2259,16 @@ export default function MatchSignupPage({
       ? !guestPlayerName.trim()
       : false;
 
+  const contentMaxWidth = isMobile ? "100%" : "1180px";
+
+  const historicalViewMode =
+    selectedWeeks.length === 0 || isFullyPaidSelection;
+
   return (
-    <div className="page match-signup-page">
+    <div
+      className="page match-signup-page"
+      style={{ maxWidth: contentMaxWidth, margin: "0 auto" }}
+    >
       <section className="card signup-hero-card">
         <div className="signup-hero-compact">
           <div className="signup-hero-left">
@@ -2034,6 +2278,7 @@ export default function MatchSignupPage({
                   src={photoData}
                   alt={beneficiary.fullName}
                   className="signup-player-avatar-img"
+                  loading="eager"
                 />
               ) : (
                 <span className="signup-player-avatar-fallback">
@@ -2068,6 +2313,7 @@ export default function MatchSignupPage({
                   onClick={() => setShowCalendarPopup(true)}
                   aria-label="Open next month calendar"
                   title="Open next month calendar"
+                  style={{ touchAction: "manipulation" }}
                 >
                   <svg
                     width="18"
@@ -2113,6 +2359,7 @@ export default function MatchSignupPage({
             type="button"
             className="secondary-btn signup-back-btn"
             onClick={handleAttemptBack}
+            style={{ touchAction: "manipulation" }}
           >
             ← Back
           </button>
@@ -2131,6 +2378,7 @@ export default function MatchSignupPage({
               setPaidWeeks([]);
               setSelectionHydrated(false);
             }}
+            disabled={isFullyPaidSelection}
           >
             <option value="self">Myself</option>
             <option value="existing_player">Another Turf Kings player</option>
@@ -2149,6 +2397,7 @@ export default function MatchSignupPage({
                 setPaidWeeks([]);
                 setSelectionHydrated(false);
               }}
+              disabled={isFullyPaidSelection}
             >
               <option value="">Select player</option>
               {existingPlayerOptions.map((player) => (
@@ -2173,6 +2422,7 @@ export default function MatchSignupPage({
                 setPaidWeeks([]);
                 setSelectionHydrated(false);
               }}
+              disabled={isFullyPaidSelection}
             />
           </div>
         ) : null}
@@ -2190,34 +2440,127 @@ export default function MatchSignupPage({
               <option value="">Select a player record</option>
               {adminCleanupCandidates.map((user) => (
                 <option key={user.docId} value={user.docId}>
-                  {user.fullName} · {Array.isArray(user.unpaidWeeks) ? user.unpaidWeeks.length : 0} unpaid · {Array.isArray(user.paidWeeks) ? user.paidWeeks.length : 0} paid
+                  {user.fullName} ·{" "}
+                  {Array.isArray(user.unpaidWeeks) ? user.unpaidWeeks.length : 0} unpaid
+                  {" · "}
+                  {Array.isArray(user.paidWeeks) ? user.paidWeeks.length : 0} paid
                 </option>
               ))}
             </select>
             <p className="muted small">
-              Use this to remove fake test signups or clear very old unpaid records so real players can use the slots.
+              Use this to remove fake test signups, verify paid weeks quickly, or clear very old unpaid records so real players can use the slots.
             </p>
           </div>
 
-          <div className="signup-leave-actions">
-            <button
-              type="button"
-              className="secondary-btn"
-              disabled={adminCleanupBusy || !adminCleanupTargetId}
-              onClick={handleAdminClearUnpaidWeeks}
-            >
-              {adminCleanupBusy ? "Working..." : "Clear unpaid weeks"}
-            </button>
+          {adminSelectedTarget ? (
+            <div style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 10,
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(2, minmax(0, 1fr))",
+                }}
+              >
+                <button
+                  type="button"
+                  className="primary-btn"
+                  disabled={adminVerifyBusy || !adminTargetUnpaidWeeks.length}
+                  onClick={handleAdminVerifyAllUnpaidWeeks}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  {adminVerifyBusy ? "Working..." : "Verify all unpaid weeks"}
+                </button>
 
-            <button
-              type="button"
-              className="secondary-btn"
-              disabled={adminCleanupBusy || !adminCleanupTargetId}
-              onClick={handleAdminRemoveTarget}
-            >
-              Remove player from month
-            </button>
-          </div>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  disabled={adminCleanupBusy || !adminCleanupTargetId}
+                  onClick={handleAdminClearUnpaidWeeks}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  {adminCleanupBusy ? "Working..." : "Clear unpaid weeks"}
+                </button>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <p className="muted small" style={{ marginBottom: 8 }}>
+                  Need finer control? Pick only the weeks the player paid for.
+                </p>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    marginBottom: 10,
+                  }}
+                >
+                  {adminTargetUnpaidWeeks.length > 0 ? (
+                    adminTargetUnpaidWeeks.map((weekId) => {
+                      const weekObj = weeks.find((w) => w.id === weekId);
+                      const picked = adminVerifyWeeks.includes(weekId);
+                      return (
+                        <button
+                          key={weekId}
+                          type="button"
+                          className={picked ? "primary-btn" : "secondary-btn"}
+                          onClick={() =>
+                            setAdminVerifyWeeks((prev) =>
+                              prev.includes(weekId)
+                                ? prev.filter((id) => id !== weekId)
+                                : uniqueWeekIds([...prev, weekId])
+                            )
+                          }
+                          style={{
+                            minWidth: 0,
+                            width: "auto",
+                            padding: "10px 14px",
+                            touchAction: "manipulation",
+                          }}
+                        >
+                          {weekObj?.shortLabel || weekId}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="muted small">No unpaid weeks to verify.</p>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 10,
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={adminVerifyBusy || !adminVerifyWeeks.length}
+                    onClick={() => handleAdminVerifyWeeks(adminVerifyWeeks)}
+                    style={{ touchAction: "manipulation" }}
+                  >
+                    {adminVerifyBusy ? "Working..." : "Verify selected weeks paid"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={adminCleanupBusy || !adminCleanupTargetId}
+                    onClick={handleAdminRemoveTarget}
+                    style={{ touchAction: "manipulation" }}
+                  >
+                    Remove player from month
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {adminCleanupMessage ? (
             <p className="muted small" style={{ marginTop: 10, color: "#9ef0b2" }}>
@@ -2248,6 +2591,7 @@ export default function MatchSignupPage({
                 type="button"
                 className="secondary-btn signup-calendar-close-btn"
                 onClick={() => setShowCalendarPopup(false)}
+                style={{ touchAction: "manipulation" }}
               >
                 ✕
               </button>
@@ -2285,6 +2629,11 @@ export default function MatchSignupPage({
                 if (isWednesday && isSelectableWednesday && linkedWeek) {
                   const linkedMeta = weekMeta.find((w) => w.id === linkedWeek.id);
                   const isFull = linkedMeta?.status?.key === "full";
+                  const disableCalendarClick =
+                    beneficiaryNeedsSelection ||
+                    isPaid ||
+                    isFullyPaidSelection ||
+                    (isFull && !isSelected);
 
                   return (
                     <button
@@ -2307,12 +2656,12 @@ export default function MatchSignupPage({
                         year: "numeric",
                       })}
                       onClick={() => {
-                        if (!beneficiaryNeedsSelection && (!isFull || isSelected)) {
+                        if (!disableCalendarClick) {
                           toggleWeek(linkedWeek);
                         }
                       }}
-                      disabled={beneficiaryNeedsSelection || (isFull && !isSelected)}
-                      style={{ transition: "none" }}
+                      disabled={disableCalendarClick}
+                      style={{ transition: "none", touchAction: "manipulation" }}
                     >
                       <span className="signup-calendar-day-number">
                         {cell.day}
@@ -2359,6 +2708,7 @@ export default function MatchSignupPage({
                 type="button"
                 className="secondary-btn signup-calendar-close-btn"
                 onClick={() => setShowWhatsAppPrompt(false)}
+                style={{ touchAction: "manipulation" }}
               >
                 ✕
               </button>
@@ -2393,6 +2743,7 @@ export default function MatchSignupPage({
                 className="primary-btn"
                 onClick={handleSaveWhatsAppNumber}
                 disabled={whatsAppSubmitting}
+                style={{ touchAction: "manipulation" }}
               >
                 {whatsAppSubmitting ? "Saving..." : "Save my number"}
               </button>
@@ -2404,6 +2755,7 @@ export default function MatchSignupPage({
                   setSkipWhatsAppPromptThisSession(true);
                   setShowWhatsAppPrompt(false);
                 }}
+                style={{ touchAction: "manipulation" }}
               >
                 Skip for now
               </button>
@@ -2412,7 +2764,7 @@ export default function MatchSignupPage({
         </div>
       )}
 
-      {showLeavePrompt && (
+      {showLeavePrompt && !isFullyPaidSelection ? (
         <div className="modal-backdrop" onClick={() => setShowLeavePrompt(false)}>
           <div
             className="modal signup-leave-modal"
@@ -2424,6 +2776,7 @@ export default function MatchSignupPage({
                 type="button"
                 className="secondary-btn signup-calendar-close-btn"
                 onClick={() => setShowLeavePrompt(false)}
+                style={{ touchAction: "manipulation" }}
               >
                 ✕
               </button>
@@ -2451,12 +2804,22 @@ export default function MatchSignupPage({
               </p>
             </div>
 
-            <div className="signup-leave-actions">
+            <div
+              className="signup-leave-actions"
+              style={{
+                display: "grid",
+                gap: 10,
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(3, minmax(0, 1fr))",
+              }}
+            >
               <button
                 type="button"
                 className="primary-btn"
                 onClick={handlePayNow}
                 disabled={beneficiaryNeedsSelection || weeksToPayNow.length === 0}
+                style={{ touchAction: "manipulation" }}
               >
                 💳 Go to payment
               </button>
@@ -2466,6 +2829,7 @@ export default function MatchSignupPage({
                 className="secondary-btn"
                 onClick={handlePayLater}
                 disabled={beneficiaryNeedsSelection}
+                style={{ touchAction: "manipulation" }}
               >
                 I’ll pay later
               </button>
@@ -2474,6 +2838,7 @@ export default function MatchSignupPage({
                 type="button"
                 className="secondary-btn danger-btn"
                 onClick={handleClearSelections}
+                style={{ touchAction: "manipulation" }}
               >
                 Clear selected weeks
               </button>
@@ -2493,7 +2858,7 @@ export default function MatchSignupPage({
             ) : null}
           </div>
         </div>
-      )}
+      ) : null}
 
       <section className="card signup-grid-card">
         <div className="signup-grid-title-row">
@@ -2504,9 +2869,6 @@ export default function MatchSignupPage({
             }`}
           >
             {signupStatusText}
-            {saveStateText ? (
-              <span style={{ marginLeft: 8, opacity: 0.8 }}>{saveStateText}</span>
-            ) : null}
           </div>
         </div>
 
@@ -2635,6 +2997,34 @@ export default function MatchSignupPage({
                     }
 
                     if (player.isCurrent) {
+                      const fullyLocked = isFullyPaidSelection;
+
+                      if (fullyLocked || isPaid) {
+                        return (
+                          <div
+                            key={`${player.id}-${week.id}`}
+                            className={[
+                              "matrix-view-cell",
+                              "current-player-cell",
+                              "is-current-row",
+                              `status-${status.key}`,
+                              isPaid ? "is-paid" : "",
+                              signed ? "is-signed" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            style={{ transition: "none" }}
+                            title={isPaid ? "Paid" : "Locked"}
+                          >
+                            <div className="matrix-view-inner">
+                              <span className="matrix-pick-mark">
+                                {isPaid ? "✓" : signed ? "✓" : ""}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       return (
                         <button
                           key={`${player.id}-${week.id}`}
@@ -2645,19 +3035,24 @@ export default function MatchSignupPage({
                             "is-current-row",
                             `status-${status.key}`,
                             signed ? "is-selected is-signed" : "",
-                            isPaid ? "is-paid" : "",
                           ]
                             .filter(Boolean)
                             .join(" ")}
                           onClick={() => toggleWeek(week)}
                           disabled={
-                            beneficiaryNeedsSelection || (status.key === "full" && !signed)
+                            beneficiaryNeedsSelection ||
+                            isPaid ||
+                            isFullyPaidSelection ||
+                            (status.key === "full" && !signed)
                           }
-                          style={{ transition: "none" }}
+                          style={{
+                            transition: "none",
+                            touchAction: "manipulation",
+                          }}
                         >
                           <div className="matrix-pick-inner">
                             <span className="matrix-pick-mark">
-                              {isPaid ? "✓" : signed ? "✓" : ""}
+                              {signed ? "✓" : ""}
                             </span>
                           </div>
                         </button>
@@ -2688,77 +3083,162 @@ export default function MatchSignupPage({
       </section>
 
       <section className="card signup-summary-card">
-        <div className="signup-summary-header">
-          <div className="signup-summary-player">
-            <div className="signup-summary-avatar">
-              {photoData ? (
-                <img src={photoData} alt={beneficiary.fullName} />
-              ) : (
-                <span>
-                  {String(beneficiary.shortName || "P")
-                    .charAt(0)
-                    .toUpperCase()}
-                </span>
-              )}
-            </div>
-            <div>
-              <h3>Selection summary</h3>
-              <p className="muted small">{beneficiary.fullName}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="signup-summary-rows">
-          <div className="summary-row">
-            <span>Selected match days</span>
-            <strong>{selectedWeeks.length}</strong>
-          </div>
-
-          <div className="summary-row">
-            <span>Already paid</span>
-            <strong>{paidWeeks.length}</strong>
-          </div>
-
-          <div className="summary-row">
-            <span>New to charge</span>
-            <strong>{weeksToPayNow.length}</strong>
-          </div>
-
-          <div className="summary-row">
-            <span>Cost per game</span>
-            <strong>R{COST_PER_GAME}</strong>
-          </div>
-
-          <div className="summary-row">
-            <span>Unpaid players this month</span>
-            <strong>{unpaidPlayersCount}</strong>
-          </div>
-
-          <div className="summary-row total">
-            <span>Total due now</span>
-            <div style={{ textAlign: "right" }}>
-              <strong>R{totalAmount}</strong>
-              <div className="muted small">
-                ({weeksToPayNow.length} × R{COST_PER_GAME})
+        {historicalViewMode ? (
+          <>
+            <div className="signup-summary-header">
+              <div className="signup-summary-player">
+                <div className="signup-summary-avatar">
+                  {photoData ? (
+                    <img src={photoData} alt={beneficiary.fullName} />
+                  ) : (
+                    <span>
+                      {String(beneficiary.shortName || "P")
+                        .charAt(0)
+                        .toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <h3>What makes {beneficiary.shortName} stand out</h3>
+                  <p className="muted small">
+                    Based on previous match-day record
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <button
-          type="button"
-          className="primary-btn signup-pay-btn"
-          disabled={beneficiaryNeedsSelection || weeksToPayNow.length === 0}
-          onClick={handlePayNow}
-        >
-          💳 Continue to payment
-        </button>
+            <div className="signup-summary-rows">
+              <div className="summary-row">
+                <span>Attendance</span>
+                <strong>
+                  {attendanceBadge.percent == null
+                    ? "—"
+                    : `${attendanceBadge.percent}%`}
+                </strong>
+              </div>
 
-        {weeksToPayNow.length === 0 && selectedWeeks.length > 0 ? (
-          <p className="muted small" style={{ marginTop: 10 }}>
-            All selected weeks are already paid.
-          </p>
-        ) : null}
+              <div className="summary-row">
+                <span>Match days attended</span>
+                <strong>{attendanceBadge.attended}</strong>
+              </div>
+
+              <div className="summary-row">
+                <span>Games played</span>
+                <strong>{attendanceBadge.gamesPlayed}</strong>
+              </div>
+
+              <div className="summary-row">
+                <span>Current team</span>
+                <strong>{currentTeam?.name || "TurfKings"}</strong>
+              </div>
+
+              {isFullyPaidSelection ? (
+                <div className="summary-row">
+                  <span>Paid this month</span>
+                  <strong>
+                    {paidWeeks.length} week{paidWeeks.length === 1 ? "" : "s"}
+                  </strong>
+                </div>
+              ) : null}
+
+              <div className="summary-row total">
+                <span>Profile</span>
+                <div style={{ textAlign: "right" }}>
+                  <strong>
+                    {beneficiary.isGuest ? "Guest player" : "Squad player"}
+                  </strong>
+                  <div className="muted small">
+                    {beneficiary.isGuest
+                      ? "No old stats yet"
+                      : attendanceBadge.percent == null
+                      ? "History loading"
+                      : isFullyPaidSelection
+                      ? "Fully paid and confirmed"
+                      : "Ready for next month"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="signup-summary-header">
+              <div className="signup-summary-player">
+                <div className="signup-summary-avatar">
+                  {photoData ? (
+                    <img src={photoData} alt={beneficiary.fullName} />
+                  ) : (
+                    <span>
+                      {String(beneficiary.shortName || "P")
+                        .charAt(0)
+                        .toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <h3>Selection summary</h3>
+                  <p className="muted small">{beneficiary.fullName}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="signup-summary-rows">
+              <div className="summary-row">
+                <span>Selected match days</span>
+                <strong>{selectedWeeks.length}</strong>
+              </div>
+
+              <div className="summary-row">
+                <span>Already paid</span>
+                <strong>{paidWeeks.length}</strong>
+              </div>
+
+              <div className="summary-row">
+                <span>New to charge</span>
+                <strong>{weeksToPayNow.length}</strong>
+              </div>
+
+              <div className="summary-row">
+                <span>Cost per game</span>
+                <strong>R{COST_PER_GAME}</strong>
+              </div>
+
+              <div className="summary-row">
+                <span>Unpaid players this month</span>
+                <strong>{unpaidPlayersCount}</strong>
+              </div>
+
+              <div className="summary-row total">
+                <span>Total due now</span>
+                <div style={{ textAlign: "right" }}>
+                  <strong>R{totalAmount}</strong>
+                  <div className="muted small">
+                    ({weeksToPayNow.length} × R{COST_PER_GAME})
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="primary-btn signup-pay-btn"
+              disabled={beneficiaryNeedsSelection || weeksToPayNow.length === 0}
+              onClick={handlePayNow}
+              style={{
+                touchAction: "manipulation",
+                width: isMobile ? "100%" : "min(360px, 100%)",
+              }}
+            >
+              💳 Continue to payment
+            </button>
+
+            {weeksToPayNow.length === 0 && selectedWeeks.length > 0 ? (
+              <p className="muted small" style={{ marginTop: 10 }}>
+                All selected weeks are already paid.
+              </p>
+            ) : null}
+          </>
+        )}
       </section>
     </div>
   );
