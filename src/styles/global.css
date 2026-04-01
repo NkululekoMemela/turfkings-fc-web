@@ -2740,7 +2740,8 @@
     background:
       radial-gradient(circle at top, rgba(250, 204, 21, 0.22), transparent 48%),
       linear-gradient(145deg, rgba(6, 95, 70, 0.95), rgba(2, 44, 34, 0.95));
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    
+      border: 1px solid rgba(255, 255, 255, 0.16);
     box-shadow:
       0 18px 40px rgba(0, 0, 0, 0.38),
       0 0 0 1px rgba(250, 204, 21, 0.10);
@@ -2749,19 +2750,22 @@
     overflow: hidden;
   }
   
-  .champion-card::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.16;
-    background-image:
-      radial-gradient(circle, #facc15 2px, transparent 3px),
-      radial-gradient(circle, #22c55e 2px, transparent 3px),
-      radial-gradient(circle, #38bdf8 2px, transparent 3px);
-    background-size: 120px 120px;
-    background-position: 0 0, 40px 40px, 80px 20px;
-  }
+.champion-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.24;
+  background-image:
+    radial-gradient(circle, #ffd700 2.6px, transparent 3.8px),
+    radial-gradient(circle, #facc15 2.2px, transparent 3.4px),
+    radial-gradient(circle, #22c55e 2px, transparent 3.2px),
+    radial-gradient(circle, #38bdf8 2px, transparent 3.2px);
+  background-size: 110px 110px;
+  background-position: 0 0, 32px 44px, 76px 18px, 54px 82px;
+}
+
+
   
   .champion-card-content {
     position: relative;

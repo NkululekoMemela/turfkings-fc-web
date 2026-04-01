@@ -225,20 +225,32 @@ function getPhoneFromIdentity(identity, currentUser) {
 
 function getNextMonthWednesdays() {
   const now = new Date();
-  const year =
-    now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
-  const month = (now.getMonth() + 1) % 12;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const shouldShiftToNextMonth = today.getDate() >= 25;
+
+  const targetYear = shouldShiftToNextMonth
+    ? now.getMonth() === 11
+      ? now.getFullYear() + 1
+      : now.getFullYear()
+    : now.getFullYear();
+
+  const targetMonth = shouldShiftToNextMonth
+    ? (now.getMonth() + 1) % 12
+    : now.getMonth();
 
   const dates = [];
-  const d = new Date(year, month, 1);
+  const d = new Date(targetYear, targetMonth, 1);
 
-  while (d.getMonth() === month) {
-    if (d.getDay() === 3) dates.push(new Date(d));
+  while (d.getMonth() === targetMonth) {
+    const candidate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    if (candidate.getDay() === 3 && candidate >= today) {
+      dates.push(candidate);
+    }
     d.setDate(d.getDate() + 1);
   }
 
   return dates.map((date) => ({
-    id: `${year}-${String(month + 1).padStart(2, "0")}-${String(
+    id: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
       date.getDate()
     ).padStart(2, "0")}`,
     label: date.toLocaleDateString("en-ZA", {
@@ -652,6 +664,7 @@ export default function MatchSignupPage({
 
   const [selectedWeeks, setSelectedWeeks] = useState([]);
   const [paidWeeks, setPaidWeeks] = useState([]);
+  const [directoryPlayers, setDirectoryPlayers] = useState([]);
   const [playerPhotos, setPlayerPhotos] = useState({});
   const [attendanceBadge, setAttendanceBadge] = useState({
     loading: true,
@@ -876,17 +889,67 @@ export default function MatchSignupPage({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPlayersDirectory() {
+      try {
+        const snap = await getDocs(collection(db, "players"));
+        if (cancelled) return;
+
+        const nextPlayers = [];
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const fullName = toTitleCaseLoose(
+            data?.fullName ||
+              data?.displayName ||
+              data?.name ||
+              data?.playerName ||
+              data?.shortName ||
+              ""
+          );
+
+          const playerId = String(
+            data?.playerId ||
+              data?.memberId ||
+              data?.uid ||
+              data?.id ||
+              docSnap.id ||
+              ""
+          ).trim();
+
+          if (!fullName || !playerId) return;
+
+          nextPlayers.push({
+            id: playerId,
+            fullName,
+            shortName: toTitleCaseLoose(
+              data?.shortName || firstNameOf(fullName) || fullName
+            ),
+          });
+        });
+
+        setDirectoryPlayers(nextPlayers);
+      } catch (error) {
+        console.error("Failed to load players directory in MatchSignupPage:", error);
+        if (!cancelled) setDirectoryPlayers([]);
+      }
+    }
+
+    loadPlayersDirectory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const existingPlayerOptions = useMemo(() => {
     const byKey = new Map();
+    const byName = new Set();
 
     const addOption = (candidate) => {
-      const id = String(
-        candidate?.playerId ||
-          candidate?.memberId ||
-          candidate?.uid ||
-          candidate?.id ||
-          ""
-      ).trim();
+      const id = String(candidate?.id || candidate?.playerId || candidate?.memberId || candidate?.uid || "").trim();
       const fullName = toTitleCaseLoose(
         candidate?.fullName ||
           candidate?.playerName ||
@@ -895,41 +958,24 @@ export default function MatchSignupPage({
           candidate?.shortName ||
           ""
       );
-      const short = firstNameOf(fullName || candidate?.shortName || "");
+      const short = toTitleCaseLoose(candidate?.shortName || firstNameOf(fullName) || fullName);
       if (!id || !fullName) return;
+
+      const normalizedName = normKey(fullName);
+      if (byKey.has(id) || byName.has(normalizedName)) return;
 
       byKey.set(id, {
         id,
         fullName,
         shortName: short || fullName,
       });
+      byName.add(normalizedName);
     };
 
-    liveCommittedUsers.forEach((user) =>
-      addOption({
-        playerId: user.userId,
-        fullName: user.fullName,
-        shortName: user.shortName,
-      })
-    );
-
-    teams.forEach((team) => {
-      const players = Array.isArray(team?.players) ? team.players : [];
-      players.forEach((entry) => {
-        if (typeof entry === "string") {
-          addOption({
-            playerId: slugFromLooseName(entry),
-            fullName: entry,
-            shortName: firstNameOf(entry),
-          });
-          return;
-        }
-        addOption(entry || {});
-      });
-    });
+    directoryPlayers.forEach(addOption);
 
     addOption({
-      playerId: payerUserId,
+      id: payerUserId,
       fullName: displayName,
       shortName,
     });
@@ -937,7 +983,7 @@ export default function MatchSignupPage({
     return Array.from(byKey.values()).sort((a, b) =>
       a.fullName.localeCompare(b.fullName)
     );
-  }, [liveCommittedUsers, teams, payerUserId, displayName, shortName]);
+  }, [directoryPlayers, payerUserId, displayName, shortName]);
 
   useEffect(() => {
     if (signupForMode !== "existing_player") return;
@@ -2549,9 +2595,9 @@ export default function MatchSignupPage({
               
             >
               <option value="">Select player</option>
-              {existingPlayerOptions.map((player) => (
+              {existingPlayerOptions.map((player, index) => (
                 <option key={player.id} value={player.id}>
-                  {player.fullName}
+                  {`${index + 1}. ${player.fullName}`}
                 </option>
               ))}
             </select>
