@@ -14,7 +14,7 @@ import {
 import { db } from "../firebaseConfig";
 
 const MIN_PLAYERS = 10;
-const MAX_PLAYERS = 18;
+const MAX_PLAYERS = 25;
 const LEAGUE_PLAYERS = 15;
 const DEFAULT_VISIBLE_SLOTS = 6;
 const MAX_VISIBLE_ROWS_BEFORE_SCROLL = 5;
