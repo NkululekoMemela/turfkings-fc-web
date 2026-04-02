@@ -4622,3 +4622,128 @@
   font-weight: 600;
   text-align: center;
 }
+
+.signup-reminder-inline {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.signup-reminder-inline label {
+  margin: 0;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.signup-reminder-inline select {
+  flex: 1;
+  min-width: 180px;
+}
+
+@media (max-width: 768px) {
+  .signup-reminder-inline {
+    display: block;
+  }
+
+  .signup-reminder-inline label {
+    display: block;
+    margin-bottom: 10px;
+    white-space: normal;
+  }
+
+  .signup-reminder-inline select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.signup-calendar-btn {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  margin-left: 0;
+  flex-shrink: 0;
+}
+
+.matrix-week-status {
+  display: inline-block;
+  margin-top: 0.22rem;
+  padding: 0.14rem 0.38rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.matrix-week-status.low {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.matrix-week-status.viable {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+}
+
+.matrix-week-status.league {
+  background: rgba(212, 175, 55, 0.18);  /* lighter gold like green style */
+  color: #d4af37;                        /* strong gold text */
+  font-weight: 700;                      /* bold for visibility */
+  border: 1px solid rgba(212, 175, 55, 0.35);
+}
+
+.matrix-week-status.full {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+.signup-hero-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.signup-hero-compact {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.live-lineup-columns {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.live-lineup-columns > * {
+  flex: 1;
+  min-width: 0;
+}
+
+
+.manage-squads-btn {
+  background: linear-gradient(
+    180deg,
+    rgba(56, 189, 248, 0.25),
+    rgba(14, 165, 233, 0.35)
+  );
+  color: #e0f2fe;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-weight: 600;
+}
+
+.manage-squads-btn:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(56, 189, 248, 0.4),
+    rgba(14, 165, 233, 0.5)
+  );
+}

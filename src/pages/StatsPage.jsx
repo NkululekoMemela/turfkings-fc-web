@@ -217,19 +217,83 @@ export function StatsPage({
 
   const isViewingPreviousSeason = seasonScope !== CURRENT_SCOPE;
 
+  const hasCurrentSeasonMatchHistory = useMemo(() => {
+    return safeMatchDayHistory.some((day) => {
+      const resultsCount = Array.isArray(day?.results) ? day.results.length : 0;
+      const eventsCount = Array.isArray(day?.allEvents) ? day.allEvents.length : 0;
+      const appearancesCount = Array.isArray(day?.playerAppearances)
+        ? day.playerAppearances.length
+        : 0;
+      const teamsCount = Array.isArray(day?.teamsSnapshot)
+        ? day.teamsSnapshot.length
+        : Array.isArray(day?.teams)
+          ? day.teams.length
+          : 0;
+
+      return (
+        resultsCount > 0 ||
+        eventsCount > 0 ||
+        appearancesCount > 0 ||
+        teamsCount > 0
+      );
+    });
+  }, [safeMatchDayHistory]);
+
+  const isCurrentSeasonEmpty = useMemo(() => {
+    const hasCurrentResults = safeResultsProp.length > 0;
+    const hasCurrentEvents = safeEventsProp.length > 0;
+    const hasArchivedResults = safeArchivedResultsProp.length > 0;
+    const hasArchivedEvents = safeArchivedEventsProp.length > 0;
+
+    return !(
+      hasCurrentResults ||
+      hasCurrentEvents ||
+      hasArchivedResults ||
+      hasArchivedEvents ||
+      hasCurrentSeasonMatchHistory
+    );
+  }, [
+    safeResultsProp,
+    safeEventsProp,
+    safeArchivedResultsProp,
+    safeArchivedEventsProp,
+    hasCurrentSeasonMatchHistory,
+  ]);
+
   const canShowDeleteCurrentEmptySeason = useMemo(() => {
     return (
       isAdminUser &&
       typeof onDeleteCurrentEmptySeason === "function" &&
       !isViewingPreviousSeason &&
-      previousSeasonOptions.length > 0
+      previousSeasonOptions.length > 0 &&
+      isCurrentSeasonEmpty
     );
   }, [
     isAdminUser,
     onDeleteCurrentEmptySeason,
     isViewingPreviousSeason,
     previousSeasonOptions,
+    isCurrentSeasonEmpty,
   ]);
+
+  const handleDeleteCurrentEmptySeason = () => {
+    if (typeof onDeleteCurrentEmptySeason !== "function") return;
+
+    if (!isCurrentSeasonEmpty) {
+      window.alert(
+        "Delete blocked: the current season already has records, so it cannot be deleted."
+      );
+      return;
+    }
+
+    const ok = window.confirm(
+      "Delete the current empty season and move back to the previous season?\n\nThis is only allowed while the current season is completely empty."
+    );
+
+    if (!ok) return;
+
+    onDeleteCurrentEmptySeason();
+  };
 
   const scopedTeams = useMemo(() => {
     if (!isViewingPreviousSeason) return safeTeamsProp;
@@ -1377,12 +1441,7 @@ export function StatsPage({
                 <button
                   type="button"
                   className="tk-danger-btn"
-                  onClick={() => {
-                    const ok = window.confirm(
-                      "Delete the current empty season and move back to the previous season?"
-                    );
-                    if (ok) onDeleteCurrentEmptySeason();
-                  }}
+                  onClick={handleDeleteCurrentEmptySeason}
                 >
                   Delete current empty season
                 </button>

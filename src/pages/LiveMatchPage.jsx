@@ -1,3 +1,6 @@
+// FULL LiveMatchPage.jsx (UPDATED SAFE VERSION)
+// Source based on your provided file with ONLY critical fixes applied
+
 // src/pages/LiveMatchPage.jsx
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -245,6 +248,102 @@ function movePlayerToFront(list = [], name = "", canonicalName, playerKeyFor) {
   );
 }
 
+function sanitizeLiveLineupToRegisteredPlayers(
+  lineup,
+  registeredPlayers = [],
+  canonicalName,
+  playerKeyFor
+) {
+  const formation =
+    FORMATIONS_5[lineup?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+
+  const validRegistered = uniquePlayersNormalized(
+    registeredPlayers || [],
+    canonicalName,
+    playerKeyFor
+  );
+  const validKeys = new Set(validRegistered.map((name) => playerKeyFor(name)));
+
+  const cleanPositions = {};
+  const usedKeys = new Set();
+
+  (formation.positions || []).forEach((pos) => {
+    const rawName = lineup?.positions?.[pos.id] || "";
+    const canonical = canonicalName(rawName);
+    const key = playerKeyFor(canonical);
+
+    if (canonical && validKeys.has(key) && !usedKeys.has(key)) {
+      cleanPositions[pos.id] = canonical;
+      usedKeys.add(key);
+    } else {
+      cleanPositions[pos.id] = null;
+    }
+  });
+
+  const remainingRegistered = validRegistered.filter(
+    (name) => !usedKeys.has(playerKeyFor(name))
+  );
+
+  (formation.positions || []).forEach((pos) => {
+    if (!cleanPositions[pos.id] && remainingRegistered.length > 0) {
+      const next = remainingRegistered.shift();
+      cleanPositions[pos.id] = next;
+      usedKeys.add(playerKeyFor(next));
+    }
+  });
+
+  const cleanGuests = uniquePlayersNormalized(
+    lineup?.guestPlayers || [],
+    canonicalName,
+    playerKeyFor
+  ).filter((name) => !usedKeys.has(playerKeyFor(name)));
+
+  return {
+    ...lineup,
+    formationId: formation.id,
+    positions: cleanPositions,
+    guestPlayers: cleanGuests,
+    benchSnapshot: remainingRegistered,
+    registeredPlayers: validRegistered,
+  };
+}
+
+function liveLineupStateEquals(a, b, canonicalName, playerKeyFor) {
+  const formationA =
+    FORMATIONS_5[a?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+  const formationB =
+    FORMATIONS_5[b?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+
+  if (formationA.id !== formationB.id) return false;
+
+  const posIds = new Set([
+    ...(formationA.positions || []).map((p) => p.id),
+    ...(formationB.positions || []).map((p) => p.id),
+  ]);
+
+  for (const posId of posIds) {
+    if (playerKeyFor(a?.positions?.[posId] || "") !== playerKeyFor(b?.positions?.[posId] || "")) {
+      return false;
+    }
+  }
+
+  const aGuests = uniquePlayersNormalized(a?.guestPlayers || [], canonicalName, playerKeyFor);
+  const bGuests = uniquePlayersNormalized(b?.guestPlayers || [], canonicalName, playerKeyFor);
+  if (aGuests.length != bGuests.length) return false;
+  for (let i = 0; i < aGuests.length; i += 1) {
+    if (playerKeyFor(aGuests[i]) != playerKeyFor(bGuests[i])) return false;
+  }
+
+  const aBench = uniquePlayersNormalized(a?.benchSnapshot || [], canonicalName, playerKeyFor);
+  const bBench = uniquePlayersNormalized(b?.benchSnapshot || [], canonicalName, playerKeyFor);
+  if (aBench.length != bBench.length) return false;
+  for (let i = 0; i < aBench.length; i += 1) {
+    if (playerKeyFor(aBench[i]) != playerKeyFor(bBench[i])) return false;
+  }
+
+  return true;
+}
+
 function getTeamCaptainNames(team, canonicalName) {
   const rawCaptain = team?.captain;
   if (!rawCaptain) return [];
@@ -254,17 +353,21 @@ function getTeamCaptainNames(team, canonicalName) {
 function getOnFieldPlayersFromSnapshot(
   snapshot,
   fallbackPlayers = [],
-  canonicalName
+  canonicalName,
+  playerKeyFor
 ) {
-  const positionedPlayers = Object.values(snapshot?.positions || {})
-    .map((name) => canonicalName(name))
-    .filter(Boolean);
+  const sanitized = sanitizeLiveLineupToRegisteredPlayers(
+    snapshot,
+    fallbackPlayers,
+    canonicalName,
+    playerKeyFor
+  );
 
-  if (positionedPlayers.length > 0) {
-    return uniqueNames(positionedPlayers);
-  }
-
-  return uniqueNames((fallbackPlayers || []).map((p) => canonicalName(p)));
+  return uniqueNames(
+    Object.values(sanitized?.positions || {})
+      .map((name) => canonicalName(name))
+      .filter(Boolean)
+  );
 }
 
 function getBenchPlayersFromSnapshot(
@@ -273,39 +376,37 @@ function getBenchPlayersFromSnapshot(
   canonicalName,
   playerKeyFor
 ) {
-  const onField = getOnFieldPlayersFromSnapshot(
+  const sanitized = sanitizeLiveLineupToRegisteredPlayers(
     snapshot,
     fallbackPlayers,
-    canonicalName
+    canonicalName,
+    playerKeyFor
   );
 
-  const onFieldKeys = new Set(onField.map((name) => playerKeyFor(name)));
-
-  const savedBench = uniquePlayersNormalized(
-    snapshot?.benchSnapshot || [],
-    canonicalName,
-    playerKeyFor
-  ).filter((name) => !onFieldKeys.has(playerKeyFor(name)));
+  const assignedKeys = new Set(
+    Object.values(sanitized?.positions || {})
+      .map((name) => canonicalName(name))
+      .filter(Boolean)
+      .map((name) => playerKeyFor(name))
+  );
 
   const guestBench = uniquePlayersNormalized(
-    snapshot?.guestPlayers || [],
+    sanitized?.guestPlayers || [],
     canonicalName,
     playerKeyFor
-  ).filter((name) => !onFieldKeys.has(playerKeyFor(name)));
+  ).filter((name) => !assignedKeys.has(playerKeyFor(name)));
 
-  const registeredPool = uniquePlayersNormalized(
-    snapshot?.registeredPlayers || fallbackPlayers || [],
+  const registeredBench = uniquePlayersNormalized(
+    sanitized?.benchSnapshot || [],
     canonicalName,
     playerKeyFor
-  ).filter((name) => !onFieldKeys.has(playerKeyFor(name)));
+  ).filter((name) => !assignedKeys.has(playerKeyFor(name)));
 
   return uniquePlayersNormalized(
-    savedBench.length > 0
-      ? [...savedBench, ...guestBench]
-      : [...guestBench, ...registeredPool],
+    [...guestBench, ...registeredBench],
     canonicalName,
     playerKeyFor
-  ).filter((name) => !onFieldKeys.has(playerKeyFor(name)));
+  ).filter((name) => !assignedKeys.has(playerKeyFor(name)));
 }
 
 function roleTagFromPosition(positionIdOrLabel = "") {
@@ -377,7 +478,8 @@ function buildGoalRecorderChoices({
   const onField = getOnFieldPlayersFromSnapshot(
     snapshot,
     fallbackPlayers,
-    canonicalName
+    canonicalName,
+    playerKeyFor
   );
 
   const bench = getBenchPlayersFromSnapshot(
@@ -777,26 +879,40 @@ function LineupBoard({
     playerKeyFor
   );
 
-  const assignedNames = Object.values(lineup?.positions || {})
+  const sanitizedLineup = useMemo(
+    () =>
+      sanitizeLiveLineupToRegisteredPlayers(
+        lineup,
+        allRegistered,
+        canonicalName,
+        playerKeyFor
+      ),
+    [lineup, allRegistered, canonicalName, playerKeyFor]
+  );
+
+  useEffect(() => {
+    if (!liveLineupStateEquals(lineup, sanitizedLineup, canonicalName, playerKeyFor)) {
+      setLineup((prev) => ({
+        ...prev,
+        ...sanitizedLineup,
+      }));
+    }
+  }, [lineup, sanitizedLineup, setLineup, canonicalName, playerKeyFor]);
+
+  const assignedNames = Object.values(sanitizedLineup?.positions || {})
     .map((name) => canonicalName(name))
     .filter(Boolean);
 
   const assignedKeys = new Set(assignedNames.map((name) => playerKeyFor(name)));
 
-  const savedBenchSnapshot = uniquePlayersNormalized(
-    lineup?.benchSnapshot || [],
-    canonicalName,
-    playerKeyFor
-  );
-
   const guestPlayers = uniquePlayersNormalized(
-    lineup?.guestPlayers || [],
+    sanitizedLineup?.guestPlayers || [],
     canonicalName,
     playerKeyFor
   );
 
   const sanitizedBenchRegistered = uniquePlayersNormalized(
-    [...savedBenchSnapshot, ...allRegistered],
+    sanitizedLineup?.benchSnapshot || [],
     canonicalName,
     playerKeyFor
   ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
@@ -831,7 +947,7 @@ function LineupBoard({
   const handlePitchClick = (posId) => {
     if (disabled) return;
 
-    const currentAtPos = lineup?.positions?.[posId] || null;
+    const currentAtPos = sanitizedLineup?.positions?.[posId] || null;
 
     if (!selectedPlayer) {
       if (!currentAtPos) return;
@@ -839,7 +955,7 @@ function LineupBoard({
       return;
     }
 
-    const newPositions = { ...(lineup?.positions || {}) };
+    const newPositions = { ...(sanitizedLineup?.positions || {}) };
     let nextBenchSnapshot = [...sanitizedBenchRegistered];
 
     if (selectedPlayer.from === "bench") {
@@ -965,7 +1081,7 @@ function LineupBoard({
           <div className="pitch-box pitch-box-bottom" />
 
           {formation.positions.map((pos) => {
-            const name = lineup?.positions?.[pos.id] || "";
+            const name = sanitizedLineup?.positions?.[pos.id] || "";
             const isSelected =
               selectedPlayer &&
               selectedPlayer.from === "pitch" &&
@@ -1206,6 +1322,9 @@ export function LiveMatchPage({
   const canonicalTeams = useMemo(() => {
     return (teams || []).map((t) => ({
       ...t,
+      playerIds: (t.players || [])
+        .map((p) => (typeof p === "string" ? p : p?.id || ""))
+        .filter(Boolean),
       players: (t.players || [])
         .map((p) => {
           const raw =
@@ -1214,6 +1333,7 @@ export function LiveMatchPage({
         })
         .filter(Boolean),
       captain: canonicalName(t.captain || ""),
+      captainId: t.captainId || null,
     }));
   }, [teams, canonicalName]);
 
@@ -1350,28 +1470,38 @@ export function LiveMatchPage({
 
   const defaultTeamALineup = useMemo(
     () =>
-      resolvePreferredTeamLineup(
-        teamA,
-        "5",
-        savedLineups,
-        FORMATIONS_5,
-        DEFAULT_FORMATION_ID_5,
-        teamA?.players || []
+      sanitizeLiveLineupToRegisteredPlayers(
+        resolvePreferredTeamLineup(
+          teamA,
+          "5",
+          savedLineups,
+          FORMATIONS_5,
+          DEFAULT_FORMATION_ID_5,
+          teamA?.players || []
+        ),
+        teamA?.players || [],
+        canonicalName,
+        playerKeyFor
       ),
-    [teamA, savedLineups]
+    [teamA, savedLineups, canonicalName, playerKeyFor]
   );
 
   const defaultTeamBLineup = useMemo(
     () =>
-      resolvePreferredTeamLineup(
-        teamB,
-        "5",
-        savedLineups,
-        FORMATIONS_5,
-        DEFAULT_FORMATION_ID_5,
-        teamB?.players || []
+      sanitizeLiveLineupToRegisteredPlayers(
+        resolvePreferredTeamLineup(
+          teamB,
+          "5",
+          savedLineups,
+          FORMATIONS_5,
+          DEFAULT_FORMATION_ID_5,
+          teamB?.players || []
+        ),
+        teamB?.players || [],
+        canonicalName,
+        playerKeyFor
       ),
-    [teamB, savedLineups]
+    [teamB, savedLineups, canonicalName, playerKeyFor]
   );
 
   const [verifyTeamALineup, setVerifyTeamALineup] =
@@ -1394,8 +1524,44 @@ export function LiveMatchPage({
     confirmedLineupsByMatchNo?.[currentMatchNo] ||
     null;
 
+  const sanitizedConfirmedSnapshots = useMemo(() => {
+    if (!existingConfirmedFromApp) return null;
+
+    return {
+      ...(existingConfirmedFromApp || {}),
+      ...(teamAId
+        ? {
+            [teamAId]: sanitizeLiveLineupToRegisteredPlayers(
+              existingConfirmedFromApp?.[teamAId] || {},
+              teamA?.players || [],
+              canonicalName,
+              playerKeyFor
+            ),
+          }
+        : {}),
+      ...(teamBId
+        ? {
+            [teamBId]: sanitizeLiveLineupToRegisteredPlayers(
+              existingConfirmedFromApp?.[teamBId] || {},
+              teamB?.players || [],
+              canonicalName,
+              playerKeyFor
+            ),
+          }
+        : {}),
+    };
+  }, [
+    existingConfirmedFromApp,
+    teamAId,
+    teamBId,
+    teamA,
+    teamB,
+    canonicalName,
+    playerKeyFor,
+  ]);
+
   const hasVerifiedLineups = Boolean(
-    existingConfirmedFromApp?.[teamAId] && existingConfirmedFromApp?.[teamBId]
+    sanitizedConfirmedSnapshots?.[teamAId] && sanitizedConfirmedSnapshots?.[teamBId]
   );
 
   const mustVerifyBeforePlay = isControllerSession;
@@ -1576,8 +1742,8 @@ export function LiveMatchPage({
     (e) => e.teamId === teamBId && e.type === "goal"
   ).length;
 
-  const verifiedLineupA = existingConfirmedFromApp?.[teamAId] || null;
-  const verifiedLineupB = existingConfirmedFromApp?.[teamBId] || null;
+  const verifiedLineupA = sanitizedConfirmedSnapshots?.[teamAId] || null;
+  const verifiedLineupB = sanitizedConfirmedSnapshots?.[teamBId] || null;
 
   const selectedSnapshot =
     scoringTeamId === teamAId ? verifiedLineupA : verifiedLineupB;
@@ -1821,7 +1987,7 @@ export function LiveMatchPage({
       ...basicSummary,
       goalsA,
       goalsB,
-      verifiedLineups: existingConfirmedFromApp || null,
+      verifiedLineups: sanitizedConfirmedSnapshots || null,
     };
 
     writeFinalSummaryToFirestore(

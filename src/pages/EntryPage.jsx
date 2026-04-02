@@ -511,8 +511,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
           <div className="field-column" style={{ marginTop: "1rem" }}>
             <label>Select your name (Turf Kings player list)</label>
             <p className="muted small" style={{ marginTop: "0.25rem" }}>
-              There are {activeMembers.length} players on the list – scroll or
-              look for your number.
+              There are {activeMembers.length} players on the list – scroll down.
             </p>
 
             <select
@@ -679,8 +678,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
         <section className="card">
           <h2>Spectator access</h2>
           <p className="muted">
-            You&apos;ll be able to view live games, stats and player cards but
-            you won&apos;t be able to change match settings or vote on peers.
+
           </p>
 
           <button

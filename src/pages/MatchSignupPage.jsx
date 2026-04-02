@@ -223,7 +223,7 @@ function getPhoneFromIdentity(identity, currentUser) {
   );
 }
 
-function getNextMonthWednesdays() {
+function getMonthWednesdays({ visibleOnly = true } = {}) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const shouldShiftToNextMonth = today.getDate() >= 25;
@@ -243,9 +243,15 @@ function getNextMonthWednesdays() {
 
   while (d.getMonth() === targetMonth) {
     const candidate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    if (candidate.getDay() === 3 && candidate >= today) {
+    const isWednesday = candidate.getDay() === 3;
+    const shouldInclude = visibleOnly
+      ? isWednesday && candidate >= today
+      : isWednesday;
+
+    if (shouldInclude) {
       dates.push(candidate);
     }
+
     d.setDate(d.getDate() + 1);
   }
 
@@ -625,6 +631,8 @@ export default function MatchSignupPage({
   currentUser,
   teams = [],
   activeSeasonId,
+  selectedTeamName = "",
+  currentTeamName = "",
   onBack,
   onProceedToPayment,
 }) {
@@ -727,16 +735,27 @@ export default function MatchSignupPage({
     currentUser?.uid ||
     slugFromLooseName(displayName);
 
-  const weeks = useMemo(() => getNextMonthWednesdays(), []);
-  const calendarMonthData = useMemo(() => getCalendarMonthData(weeks), [weeks]);
+  const allMonthWeeks = useMemo(
+    () => getMonthWednesdays({ visibleOnly: false }),
+    []
+  );
+  const weeks = useMemo(() => getMonthWednesdays({ visibleOnly: true }), []);
+  const allMonthWeekIds = useMemo(
+    () => new Set(allMonthWeeks.map((week) => week.id)),
+    [allMonthWeeks]
+  );
+  const calendarMonthData = useMemo(
+    () => getCalendarMonthData(allMonthWeeks),
+    [allMonthWeeks]
+  );
 
   const calendarMonthKey = useMemo(
     () =>
-      weeks[0]?.date?.toLocaleDateString("en-ZA", {
+      (allMonthWeeks[0] || weeks[0])?.date?.toLocaleDateString("en-ZA", {
         year: "numeric",
         month: "2-digit",
       }) || "",
-    [weeks]
+    [allMonthWeeks, weeks]
   );
 
   const phoneNumber = getPhoneFromIdentity(identity, currentUser);
@@ -1172,17 +1191,17 @@ export default function MatchSignupPage({
     const cached = readSignupCache(pendingId);
     if (cached) {
       setSelectedWeeks(
-        cached.selectedWeeks.filter((weekId) => weeks.some((w) => w.id === weekId))
+        cached.selectedWeeks.filter((weekId) => allMonthWeekIds.has(weekId))
       );
       setPaidWeeks(
-        cached.paidWeeks.filter((weekId) => weeks.some((w) => w.id === weekId))
+        cached.paidWeeks.filter((weekId) => allMonthWeekIds.has(weekId))
       );
       if (cached.reminderPreference) {
         setReminderPreference(cached.reminderPreference);
       }
       setPendingSelectionsSaved(cached.selectedWeeks.length > 0);
     }
-  }, [pendingId, weeks]);
+  }, [pendingId, allMonthWeekIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1206,19 +1225,19 @@ export default function MatchSignupPage({
 
         const pendingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
           ? pendingData.selectedWeeks.filter((weekId) =>
-              weeks.some((week) => week.id === weekId)
+              allMonthWeekIds.has(weekId)
             )
           : [];
 
         const pendingPaidWeeks = Array.isArray(pendingData.paidWeeks)
           ? pendingData.paidWeeks.filter((weekId) =>
-              weeks.some((week) => week.id === weekId)
+              allMonthWeekIds.has(weekId)
             )
           : [];
 
         const matchSelectedWeeks = Array.isArray(matchSignupData.selectedWeeks)
           ? matchSignupData.selectedWeeks.filter((weekId) =>
-              weeks.some((week) => week.id === weekId)
+              allMonthWeekIds.has(weekId)
             )
           : [];
 
@@ -1226,7 +1245,7 @@ export default function MatchSignupPage({
           matchSignupData.paidWeeks || matchSignupData.primaryPaidWeeks
         )
           ? (matchSignupData.paidWeeks || matchSignupData.primaryPaidWeeks).filter(
-              (weekId) => weeks.some((week) => week.id === weekId)
+              (weekId) => allMonthWeekIds.has(weekId)
             )
           : [];
 
@@ -1272,7 +1291,7 @@ export default function MatchSignupPage({
     return () => {
       cancelled = true;
     };
-  }, [pendingId, weeks]);
+  }, [pendingId, allMonthWeekIds, reminderPreference]);
 
   useEffect(() => {
     writeSignupCache(pendingId, {
@@ -1303,13 +1322,13 @@ export default function MatchSignupPage({
 
           const weeksForDoc = Array.isArray(data.selectedWeeks)
             ? data.selectedWeeks.filter((weekId) =>
-                weeks.some((week) => week.id === weekId)
+                allMonthWeekIds.has(weekId)
               )
             : [];
 
           const paidWeeksForDoc = Array.isArray(data.paidWeeks)
             ? data.paidWeeks.filter((weekId) =>
-                weeks.some((week) => week.id === weekId)
+                allMonthWeekIds.has(weekId)
               )
             : [];
 
@@ -1390,7 +1409,7 @@ export default function MatchSignupPage({
     );
 
     return () => unsubscribe();
-  }, [calendarMonthKey, signupScopeId, weeks]);
+  }, [calendarMonthKey, signupScopeId, weeks, allMonthWeekIds]);
 
   const paidWeekSet = useMemo(() => new Set(paidWeeks), [paidWeeks]);
 
@@ -1447,6 +1466,24 @@ export default function MatchSignupPage({
           ),
     [teams, beneficiary]
   );
+
+  const resolvedCurrentTeamName = useMemo(() => {
+    const identityTeamName = String(
+      identity?.selectedTeamName ||
+        identity?.currentTeamName ||
+        identity?.teamName ||
+        identity?.team ||
+        ""
+    ).trim();
+
+    return (
+      String(selectedTeamName || "").trim() ||
+      String(currentTeamName || "").trim() ||
+      identityTeamName ||
+      String(currentTeam?.name || currentTeam?.teamName || currentTeam?.label || "").trim() ||
+      "—"
+    );
+  }, [selectedTeamName, currentTeamName, identity, currentTeam]);
 
   const allRows = useMemo(() => {
     const rowsFromCommittedUsers = liveCommittedUsers.map((user, index) => ({
@@ -2145,7 +2182,7 @@ export default function MatchSignupPage({
 
       const data = pendingSnap.data() || {};
       const paidWeeksOnly = Array.isArray(data.paidWeeks)
-        ? data.paidWeeks.filter((weekId) => weeks.some((week) => week.id === weekId))
+        ? data.paidWeeks.filter((weekId) => allMonthWeekIds.has(weekId))
         : [];
       const nextStatus = paidWeeksOnly.length > 0 ? "paid" : "not_selected";
 
@@ -2293,12 +2330,12 @@ export default function MatchSignupPage({
         const pendingData = pendingSnap.data() || {};
         const existingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
           ? uniqueWeekIds(pendingData.selectedWeeks).filter((weekId) =>
-              weeks.some((week) => week.id === weekId)
+              allMonthWeekIds.has(weekId)
             )
           : [];
         const existingPaidWeeks = Array.isArray(pendingData.paidWeeks)
           ? uniqueWeekIds(pendingData.paidWeeks).filter((weekId) =>
-              weeks.some((week) => week.id === weekId)
+              allMonthWeekIds.has(weekId)
             )
           : [];
 
@@ -2501,68 +2538,70 @@ export default function MatchSignupPage({
                   <strong>{attendanceBadgeText}</strong>
                   {attendanceSubtext ? <small>{attendanceSubtext}</small> : null}
                 </div>
-
-                <button
-                  type="button"
-                  className="secondary-btn signup-calendar-btn"
-                  onClick={() => setShowCalendarPopup(true)}
-                  aria-label="Open next month calendar"
-                  title="Open next month calendar"
-                  style={{ touchAction: "manipulation" }}
-                >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M8 2V5"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M16 2V5"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M3.5 9H20.5"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                    />
-                    <rect
-                      x="3"
-                      y="4.5"
-                      width="18"
-                      height="16.5"
-                      rx="3"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    />
-                  </svg>
-                </button>
               </div>
             </div>
           </div>
 
-          <button
-            type="button"
-            className="secondary-btn signup-back-btn"
-            onClick={handleAttemptBack}
-            style={{ touchAction: "manipulation" }}
-          >
-            ← Back
-          </button>
+          <div className="signup-hero-actions">
+            <button
+              type="button"
+              className="secondary-btn signup-calendar-btn"
+              onClick={() => setShowCalendarPopup(true)}
+              aria-label="Open next month calendar"
+              title="Open next month calendar"
+              style={{ touchAction: "manipulation" }}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8 2V5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M16 2V5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M3.5 9H20.5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <rect
+                  x="3"
+                  y="4.5"
+                  width="18"
+                  height="16.5"
+                  rx="3"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              className="secondary-btn signup-back-btn"
+              onClick={handleAttemptBack}
+              style={{ touchAction: "manipulation" }}
+            >
+              ← Back
+            </button>
+          </div>
         </div>
       </section>
 
       <section className="card signup-summary-card">
-        <div className="signup-reminder-choice">
+        <div className="signup-reminder-choice signup-reminder-inline">
           <label htmlFor="signupForMode">Who are you paying for?</label>
           <select
             id="signupForMode"
@@ -2573,7 +2612,6 @@ export default function MatchSignupPage({
               setPaidWeeks([]);
               setSelectionHydrated(false);
             }}
-            
           >
             <option value="self">Myself</option>
             <option value="existing_player">Another Turf Kings player</option>
@@ -2582,7 +2620,7 @@ export default function MatchSignupPage({
         </div>
 
         {signupForMode === "existing_player" ? (
-          <div className="signup-reminder-choice">
+          <div className="signup-reminder-choice signup-reminder-inline">
             <select
               id="existingPlayerTargetId"
               value={existingPlayerTargetId}
@@ -2605,7 +2643,7 @@ export default function MatchSignupPage({
         ) : null}
 
         {signupForMode === "guest" ? (
-          <div className="signup-reminder-choice">
+          <div className="signup-reminder-choice signup-reminder-inline">
             <input
               id="guestPlayerName"
               type="text"
@@ -3155,8 +3193,12 @@ export default function MatchSignupPage({
             className={`signup-matrix ${isMobile ? "is-mobile-matrix" : ""} ${
               denseMobileWeeks ? "is-dense-weeks" : ""
             }`}
+
             style={{
-              gridTemplateColumns: `${firstColWidth}px repeat(${weekMeta.length}, ${weekColWidth}px)`,
+              gridTemplateColumns: isMobile
+                ? `${firstColWidth}px repeat(${weekMeta.length}, ${weekColWidth}px)`
+                : `${firstColWidth}px repeat(${weekMeta.length}, minmax(140px, 1fr))`,
+              width: "100%",
               borderCollapse: "collapse",
             }}
           >
@@ -3388,7 +3430,7 @@ export default function MatchSignupPage({
 
               <div className="summary-row">
                 <span>Current team</span>
-                <strong>{currentTeam?.name || "TurfKings"}</strong>
+                <strong>{resolvedCurrentTeamName}</strong>
               </div>
 
               {isFullyPaidSelection ? (

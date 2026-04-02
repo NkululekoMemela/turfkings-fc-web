@@ -95,18 +95,8 @@ function swapNamesInList(list = [], a = "", b = "") {
   return uniqueByLower(swapped);
 }
 
-function buildOrderedBenchPool(unassignedPlayers = [], benchSnapshot = []) {
-  const pool = uniqueByLower(unassignedPlayers);
-  const poolKeys = new Set(pool.map((p) => normKey(p)));
-
-  const orderedFromSnapshot = uniqueByLower(benchSnapshot).filter((name) =>
-    poolKeys.has(normKey(name))
-  );
-
-  const already = new Set(orderedFromSnapshot.map((p) => normKey(p)));
-  const remaining = pool.filter((name) => !already.has(normKey(name)));
-
-  return [...orderedFromSnapshot, ...remaining];
+function buildOrderedBenchPool(unassignedPlayers = []) {
+  return uniqueByLower(unassignedPlayers);
 }
 
 function buildDefaultLineupLocal(playerList, formationId, formationsMap) {
@@ -155,18 +145,42 @@ function sanitizeLineupShapeLocal(
     formationsMap[formationId] ||
     formationsMap[Object.keys(formationsMap)[0]];
 
+  const validPlayers = uniqueByLower(
+    (playerPool || []).map((p) => toTitleCase(p))
+  );
+  const validSet = new Set(validPlayers.map(normKey));
+
   const cleanPositions = {};
+  const used = new Set();
+
   formation.positions.forEach((pos) => {
-    cleanPositions[pos.id] = lineup?.positions?.[pos.id]
-      ? toTitleCase(lineup.positions[pos.id])
-      : null;
+    const raw = lineup?.positions?.[pos.id];
+    const name = raw ? toTitleCase(raw) : null;
+    const key = normKey(name);
+
+    if (name && validSet.has(key) && !used.has(key)) {
+      cleanPositions[pos.id] = name;
+      used.add(key);
+    } else {
+      cleanPositions[pos.id] = null;
+    }
+  });
+
+  const remaining = validPlayers.filter((p) => !used.has(normKey(p)));
+
+  formation.positions.forEach((pos) => {
+    if (!cleanPositions[pos.id] && remaining.length > 0) {
+      const next = remaining.shift();
+      cleanPositions[pos.id] = next;
+      used.add(normKey(next));
+    }
   });
 
   return {
     formationId: formation.id,
     positions: cleanPositions,
     guestPlayers: uniqueByLower(lineup.guestPlayers || []),
-    benchSnapshot: uniqueByLower(lineup.benchSnapshot || []),
+    benchSnapshot: remaining,
     meta: {
       savedByRole:
         lineup?.meta?.savedByRole || LINEUP_SAVE_ROLE_GENERAL,
@@ -851,13 +865,8 @@ export function FormationsPage({
       });
     });
 
-    dbPlayerNames.forEach((name) => {
-      const canon = canonicalName(name);
-      if (canon) set.add(canon);
-    });
-
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [teams, dbPlayerNames, playerResolver]);
+  }, [teams, playerResolver]);
 
   const canonicalTeams = useMemo(() => {
     return (teams || []).map((t) => ({
@@ -987,14 +996,7 @@ export function FormationsPage({
     setLineup(buildResolvedLineup(selectedTeamId, gameType));
     setSelectedPlayer(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    selectedTeamId,
-    gameType,
-    lineupsByTeam,
-    playerResolver,
-    canonicalTeams,
-    turfKingsPlayers,
-  ]);
+  }, [selectedTeamId, gameType, lineupsByTeam]);
 
   const formation =
     formationsMap[lineup.formationId] ||
@@ -1010,8 +1012,8 @@ export function FormationsPage({
   const rawUnassignedPlayers = allPlayers.filter((p) => !assignedNames.has(p));
 
   const orderedBenchPool = useMemo(
-    () => buildOrderedBenchPool(rawUnassignedPlayers, lineup.benchSnapshot || []),
-    [rawUnassignedPlayers, lineup.benchSnapshot]
+    () => buildOrderedBenchPool(rawUnassignedPlayers),
+    [rawUnassignedPlayers]
   );
 
   const subsPlayers = orderedBenchPool.slice(0, MAX_SUBS);
