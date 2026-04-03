@@ -521,8 +521,68 @@ function lineupHasEmptyPositions(lineup) {
   });
 }
 
-function getTeamAccent(label = "") {
-  const key = String(label || "").trim().toLowerCase();
+function normalizeHexColor(v) {
+  const raw = String(v || "").trim().replace(/[^#a-fA-F0-9]/g, "");
+  if (!raw) return "";
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
+  if (/^[0-9a-fA-F]{6}$/.test(raw)) return `#${raw.toUpperCase()}`;
+  return "";
+}
+
+function hexToRgba(hex, alpha = 1) {
+  const clean = String(hex || "").replace("#", "");
+  if (!/^[0-9A-Fa-f]{6}$/.test(clean)) return `rgba(56, 189, 248, ${alpha})`;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function colorNameToHex(name = "") {
+  const key = String(name || "").trim().toLowerCase();
+
+  if (!key) return "";
+  if (key.includes("white")) return "#F8FAFC";
+  if (key.includes("black")) return "#0F172A";
+  if (key.includes("gold")) return "#D4A017";
+  if (key.includes("yellow")) return "#EAB308";
+  if (key.includes("orange")) return "#F97316";
+  if (key.includes("pink")) return "#EC4899";
+  if (key.includes("purple")) return "#A855F7";
+  if (key.includes("navy")) return "#1E3A8A";
+  if (key.includes("sky")) return "#38BDF8";
+  if (key.includes("blue")) return "#2563EB";
+  if (key.includes("red")) return "#DC2626";
+  if (key.includes("green")) return "#22C55E";
+  if (key.includes("slate") || key.includes("grey") || key.includes("gray"))
+    return "#64748B";
+
+  return "";
+}
+
+function getTeamAccent(team = {}) {
+  const explicitHex = normalizeHexColor(
+    team.teamColorHex || team.colorHex || team.teamColor || ""
+  );
+  const colorNameHex = colorNameToHex(
+    team.teamColorName || team.colorName || ""
+  );
+
+  // IMPORTANT:
+  // teamColorName must win over stale older hex values.
+  // This lets captain/admin-selected color names control the UI.
+  const accent = colorNameHex || explicitHex;
+
+  if (accent) {
+    return {
+      dot: accent,
+      soft: hexToRgba(accent, 0.18),
+      border: hexToRgba(accent, 0.42),
+      text: "#E5E7EB",
+    };
+  }
+
+  const key = String(team?.label || "").trim().toLowerCase();
 
   if (
     key.includes("man u") ||
@@ -562,6 +622,45 @@ function getTeamAccent(label = "") {
     border: "rgba(56, 189, 248, 0.35)",
     text: "#e5e7eb",
   };
+}
+
+function TeamColorBadge({ team, short = false }) {
+  const accent = getTeamAccent(team);
+  const label = short ? getShortName(team?.label) : team?.label;
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.42rem",
+        padding: "0.16rem 0.5rem",
+        borderRadius: "999px",
+        background: accent.soft,
+        border: `1px solid ${accent.border}`,
+        color: accent.text,
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        style={{ flexShrink: 0 }}
+      >
+        <path
+          d="M9 4 12 6 15 4l4 2 2 5-3 2v7a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-7l-3-2 2-5 4-2Z"
+          fill={accent.dot}
+          stroke="rgba(255,255,255,0.7)"
+          strokeWidth="1.4"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span>{label}</span>
+    </span>
+  );
 }
 
 function getRoleBadgeStyle(roleTag = "", isSub = false) {
@@ -855,6 +954,7 @@ function PlayerChoiceGrid({
 
 function LineupBoard({
   title,
+  team = null,
   lineup,
   setLineup,
   registeredPlayers,
@@ -1071,7 +1171,9 @@ function LineupBoard({
 
   return (
     <div className="live-lineup-column">
-      <h3 className="live-bench-title">{title}</h3>
+      <h3 className="live-bench-title">
+        <TeamColorBadge team={team || { label: title }} />
+      </h3>
 
       <div className="pitch-wrapper">
         <div className="pitch" style={{ maxWidth: "100%" }}>
@@ -1795,8 +1897,8 @@ export function LiveMatchPage({
     standbyLabel: standbyTeam?.label || "",
   };
 
-  const teamAAccent = getTeamAccent(teamA?.label);
-  const teamBAccent = getTeamAccent(teamB?.label);
+  const teamAAccent = getTeamAccent(teamA || {});
+  const teamBAccent = getTeamAccent(teamB || {});
 
   const handleConfirmLineups = () => {
     if (!canControlMatch) {
@@ -2134,13 +2236,13 @@ export function LiveMatchPage({
       <header className="header">
         <h1>Match #{currentMatchNo}</h1>
         <p>
-          On-field: <strong>{teamA?.label}</strong> (c:{" "}
+          On-field: <TeamColorBadge team={teamA} /> (c:{" "}
           {displayCompactPlayerName(teamA?.captain)}) vs{" "}
-          <strong>{teamB?.label}</strong> (c:{" "}
+          <TeamColorBadge team={teamB} /> (c:{" "}
           {displayCompactPlayerName(teamB?.captain)})
         </p>
         <p>
-          Standby: <strong>{standbyTeam?.label}</strong> (c:{" "}
+          Standby: <TeamColorBadge team={standbyTeam} /> (c:{" "}
           {displayCompactPlayerName(standbyTeam?.captain)})
         </p>
         <p className="muted small">
@@ -2165,12 +2267,12 @@ export function LiveMatchPage({
 
         <div className="score-row">
           <div className="score-team">
-            <strong className="score-team-name">{displayNameA}</strong>
+            <strong className="score-team-name"><TeamColorBadge team={teamA} short={isMobile} /></strong>
             <div className="score-number">{goalsA}</div>
           </div>
           <div className="score-dash">–</div>
           <div className="score-team">
-            <strong className="score-team-name">{displayNameB}</strong>
+            <strong className="score-team-name"><TeamColorBadge team={teamB} short={isMobile} /></strong>
             <div className="score-number">{goalsB}</div>
           </div>
         </div>
@@ -2217,7 +2319,7 @@ export function LiveMatchPage({
                           className="tk-team-dot"
                           style={{ background: teamAAccent.dot }}
                         />
-                        {teamA?.label}
+                        <TeamColorBadge team={teamA} />
                       </button>
                       <button
                         className="toggle-btn tk-team-color-btn"
@@ -2234,7 +2336,7 @@ export function LiveMatchPage({
                           className="tk-team-dot"
                           style={{ background: teamBAccent.dot }}
                         />
-                        {teamB?.label}
+                        <TeamColorBadge team={teamB} />
                       </button>
                     </div>
                   </div>
@@ -2246,9 +2348,7 @@ export function LiveMatchPage({
                       <label>
                         Step 2 — Pick scorer from{" "}
                         <strong>
-                          {scoringTeamId === teamAId
-                            ? teamA?.label
-                            : teamB?.label}
+                          {scoringTeamId === teamAId ? teamA?.label : teamB?.label}
                         </strong>
                       </label>
                     </div>
@@ -2385,7 +2485,7 @@ export function LiveMatchPage({
               return (
                 <li key={e.id} className="event-item">
                   <span>
-                    [{formatSeconds(e.timeSeconds)}] {team?.label} –{" "}
+                    [{formatSeconds(e.timeSeconds)}] <TeamColorBadge team={team} /> –{" "}
                     <strong>Goal:</strong> {displayCompactPlayerName(e.scorer)}
                     {e.scorerType === "guest" ? " (Guest)" : ""}
                     {e.assist
@@ -2469,7 +2569,8 @@ export function LiveMatchPage({
               ) : (
                 <>
                   <LineupBoard
-                    title={`${teamA?.label}`}
+                    title={teamA?.label}
+                    team={teamA}
                     lineup={verifyTeamALineup}
                     setLineup={setVerifyTeamALineup}
                     registeredPlayers={teamA?.players || []}
@@ -2481,7 +2582,8 @@ export function LiveMatchPage({
                   />
 
                   <LineupBoard
-                    title={`${teamB?.label}`}
+                    title={teamB?.label}
+                    team={teamB}
                     lineup={verifyTeamBLineup}
                     setLineup={setVerifyTeamBLineup}
                     registeredPlayers={teamB?.players || []}
@@ -2532,8 +2634,8 @@ export function LiveMatchPage({
           <div className="modal">
             <h3>Confirm End of Match</h3>
             <p>
-              <strong>{teamA?.label}</strong> {goalsA} – {goalsB}{" "}
-              <strong>{teamB?.label}</strong>
+              <TeamColorBadge team={teamA} /> {goalsA} – {goalsB}{" "}
+              <TeamColorBadge team={teamB} />
             </p>
             <p>
               Are you sure everything is correct? You have{" "}

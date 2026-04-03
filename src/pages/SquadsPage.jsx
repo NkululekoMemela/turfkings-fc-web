@@ -186,6 +186,72 @@ function hexToRgba(hex, alpha = 1) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function themeFromAccent(accent, colorName, text = "#E5E7EB") {
+  return {
+    accent,
+    accentSoft: hexToRgba(accent, 0.18),
+    glow: hexToRgba(accent, 0.24),
+    text,
+    colorName,
+  };
+}
+
+function getThemeFromColorName(rawColorName = "") {
+  const key = String(rawColorName || "").trim().toLowerCase();
+  if (!key) return null;
+
+  if (
+    key.includes("red") ||
+    key.includes("maroon") ||
+    key.includes("crimson") ||
+    key.includes("burgundy")
+  ) {
+    return themeFromAccent("#DC2626", "Red");
+  }
+
+  if (key.includes("white") || key.includes("cream") || key.includes("ivory")) {
+    return themeFromAccent("#F8FAFC", "White", "#F8FAFC");
+  }
+
+  if (key.includes("black") || key.includes("dark") || key.includes("charcoal")) {
+    return themeFromAccent("#0F172A", "Black", "#CBD5E1");
+  }
+
+  if (key.includes("blue") || key.includes("navy")) {
+    return themeFromAccent("#2563EB", "Blue");
+  }
+
+  if (key.includes("sky") || key.includes("cyan") || key.includes("teal")) {
+    return themeFromAccent("#06B6D4", "Sky Blue");
+  }
+
+  if (key.includes("green") || key.includes("lime")) {
+    return themeFromAccent("#22C55E", "Green", "#BBF7D0");
+  }
+
+  if (key.includes("yellow") || key.includes("gold") || key.includes("amber")) {
+    return themeFromAccent("#D97706", "Gold", "#FDE68A");
+  }
+
+  if (key.includes("orange")) {
+    return themeFromAccent("#EA580C", "Orange", "#FED7AA");
+  }
+
+  if (key.includes("purple") || key.includes("violet")) {
+    return themeFromAccent("#7C3AED", "Purple", "#DDD6FE");
+  }
+
+  if (key.includes("pink") || key.includes("magenta")) {
+    return themeFromAccent("#DB2777", "Pink", "#FBCFE8");
+  }
+
+  if (key.includes("slate") || key.includes("grey") || key.includes("gray") || key.includes("silver")) {
+    return themeFromAccent("#64748B", "Slate", "#CBD5E1");
+  }
+
+  return null;
+}
+
 function getTeamTheme(team = {}) {
   const explicitHex = normalizeHexColor(
     team.teamColorHex || team.colorHex || team.teamColor || ""
@@ -193,6 +259,14 @@ function getTeamTheme(team = {}) {
   const explicitName = toTitleCase(
     team.teamColorName || team.colorName || ""
   );
+
+  const nameTheme = getThemeFromColorName(explicitName);
+  if (nameTheme) {
+    return {
+      ...nameTheme,
+      colorName: explicitName || nameTheme.colorName,
+    };
+  }
 
   if (isValidHexColor(explicitHex)) {
     return {
@@ -212,42 +286,18 @@ function getTeamTheme(team = {}) {
     key.includes("man united") ||
     key.includes("manchester united")
   ) {
-    return {
-      accent: "#DC2626",
-      accentSoft: "rgba(220, 38, 38, 0.18)",
-      glow: "rgba(220, 38, 38, 0.24)",
-      text: "#FECACA",
-      colorName: "Red Shirt",
-    };
+    return themeFromAccent("#DC2626", "Red Shirt", "#FECACA");
   }
 
   if (key.includes("madrid") || key.includes("real madrid")) {
-    return {
-      accent: "#F8FAFC",
-      accentSoft: "rgba(248, 250, 252, 0.16)",
-      glow: "rgba(248, 250, 252, 0.16)",
-      text: "#F8FAFC",
-      colorName: "White Shirt",
-    };
+    return themeFromAccent("#F8FAFC", "White Shirt", "#F8FAFC");
   }
 
   if (key.includes("psg") || key.includes("paris")) {
-    return {
-      accent: "#0F172A",
-      accentSoft: "rgba(15, 23, 42, 0.32)",
-      glow: "rgba(15, 23, 42, 0.34)",
-      text: "#CBD5E1",
-      colorName: "Black Shirt",
-    };
+    return themeFromAccent("#0F172A", "Black Shirt", "#CBD5E1");
   }
 
-  return {
-    accent: "#22C55E",
-    accentSoft: "rgba(34, 197, 94, 0.16)",
-    glow: "rgba(34, 197, 94, 0.18)",
-    text: "#BBF7D0",
-    colorName: "Green",
-  };
+  return themeFromAccent("#22C55E", "Green", "#BBF7D0");
 }
 
 /* ---------------- Component ---------------- */
@@ -460,13 +510,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     );
   };
 
-  const handleTeamColorHexChange = (teamId, value) => {
-    if (!canEdit) return;
-    const next = normalizeHexColor(value);
-    setLocalTeams((prev) =>
-      prev.map((t) => (t.id === teamId ? { ...t, teamColorHex: next } : t))
-    );
-  };
 
   const handleTeamColorNameChange = (teamId, value) => {
     if (!canEdit) return;
@@ -700,8 +743,12 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     const cleanedTeams = localTeams.map((t) => {
       const label = String(t.label || "").trim();
       const abbrev = normalizeAbbrev(t.abbrev || "");
-      const teamColorHex = normalizeHexColor(t.teamColorHex || "");
       const teamColorName = toTitleCase(t.teamColorName || "");
+      const typedHex = normalizeHexColor(t.teamColorHex || "");
+      const derivedTheme = getThemeFromColorName(teamColorName);
+      const teamColorHex = isValidHexColor(typedHex)
+        ? typedHex
+        : derivedTheme?.accent || "";
       return { ...t, label, abbrev, teamColorHex, teamColorName };
     });
 
@@ -1005,19 +1052,9 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                       <input
                         className="text-input"
                         value={team.teamColorName || ""}
-                        placeholder="Team color name e.g. Red Shirt"
+                        placeholder="Team color name e.g. Red, White, Black, Blue"
                         onChange={(e) =>
                           handleTeamColorNameChange(team.id, e.target.value)
-                        }
-                        disabled={!canEdit}
-                      />
-                      <input
-                        className="text-input team-color-input"
-                        value={team.teamColorHex || ""}
-                        placeholder="#DC2626"
-                        title="Hex color e.g. #DC2626"
-                        onChange={(e) =>
-                          handleTeamColorHexChange(team.id, e.target.value)
                         }
                         disabled={!canEdit}
                       />
@@ -1029,13 +1066,11 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                       </p>
                     )}
 
-                    {team.teamColorHex &&
-                      !isValidHexColor(team.teamColorHex) &&
-                      canEdit && (
-                        <p className="muted small squad-note">
-                          Team color must be a full hex like #DC2626
-                        </p>
-                      )}
+                    {team.teamColorName && canEdit && (
+                      <p className="muted small squad-note">
+                        Enter a simple color name like Red, White, Black, Blue, Gold, Green, Purple or Pink.
+                      </p>
+                    )}
 
                     <div className="field-row field-row-top-spaced">
                       <label className="muted small field-label-tight">
