@@ -128,16 +128,17 @@ export function LandingPage({
 
   const teamPhotos = [TeamPhoto1, TeamPhoto2, TeamPhoto3];
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [photosPaused, setPhotosPaused] = useState(false);
 
   useEffect(() => {
-    if (teamPhotos.length <= 1) return;
+    if (teamPhotos.length <= 1 || photosPaused) return;
 
     const interval = setInterval(() => {
       setPhotoIndex((prev) => (prev + 1) % teamPhotos.length);
     }, 3500);
 
     return () => clearInterval(interval);
-  }, [teamPhotos.length]);
+  }, [teamPhotos.length, photosPaused]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -697,12 +698,134 @@ export function LandingPage({
         </div>
       </section>
 
-      <section className="card team-photo-card">
+      <section
+        className="card team-photo-card"
+        style={{
+          width: "100%",
+          borderRadius: "1.25rem",
+          overflow: "hidden",
+          aspectRatio: isMobile ? "4 / 3" : "3 / 2",
+          minHeight: isMobile ? "260px" : "420px",
+          position: "relative",
+          border: "1px solid rgba(255,255,255,0.08)",
+          background:
+            "radial-gradient(circle at top right, rgba(34,197,94,0.10), transparent 35%), linear-gradient(145deg, rgba(15,23,42,0.92), rgba(2,6,23,0.90))",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+          boxSizing: "border-box",
+        }}
+      >
         <img
           src={teamPhotos[photoIndex]}
           alt={`Turf Kings team ${photoIndex + 1}`}
           className="team-photo"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center center",
+            display: "block",
+            opacity: 0.96,
+          }}
         />
+
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(180deg, rgba(2,6,23,0.02), rgba(2,6,23,0.12))",
+            pointerEvents: "none",
+          }}
+        />
+
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            padding: isMobile ? "1rem" : "1.1rem",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.45rem",
+              padding: "0.32rem 0.72rem",
+              borderRadius: "999px",
+              background: "rgba(2,6,23,0.58)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              width: "fit-content",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <span>👑</span>
+            <span style={{ fontWeight: 700 }}>TurfKings Wednesdays</span>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "0.5rem",
+              alignItems: "center",
+              pointerEvents: "auto",
+            }}
+          >
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => setPhotosPaused((prev) => !prev)}
+              style={{
+                minWidth: "42px",
+                width: "42px",
+                height: "42px",
+                padding: 0,
+                borderRadius: "999px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(2,6,23,0.62)",
+                backdropFilter: "blur(8px)",
+              }}
+              aria-label={photosPaused ? "Resume photo rotation" : "Pause photo rotation"}
+              title={photosPaused ? "Resume photo rotation" : "Pause photo rotation"}
+            >
+              {photosPaused ? "▶" : "⏸"}
+            </button>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "0.38rem",
+                alignItems: "center",
+                padding: "0.45rem 0.6rem",
+                borderRadius: "999px",
+                background: "rgba(2,6,23,0.58)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              {teamPhotos.map((_, idx) => (
+                <span
+                  key={idx}
+                  style={{
+                    width: idx === photoIndex ? 22 : 8,
+                    height: 8,
+                    borderRadius: "999px",
+                    background:
+                      idx === photoIndex
+                        ? "linear-gradient(90deg, #22d3ee, #22c55e)"
+                        : "rgba(255,255,255,0.35)",
+                    transition: "all 0.2s ease",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="card website-card">
