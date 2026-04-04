@@ -20,6 +20,8 @@ const VENUE_MAP_URL =
   "https://www.google.com/maps/search/?api=1&query=Haveva%20Lower%20Main%20Road%20Observatory";
 
 const CUSTOM_NEWS_STORIES_STORAGE_KEY = "turfkings_custom_news_stories_v1";
+const CUSTOM_NEWS_STORIES_BACKUP_STORAGE_KEY = "turfkings_custom_news_stories_backup_v1";
+const CUSTOM_NEWS_STORIES_TRASH_STORAGE_KEY = "turfkings_custom_news_stories_trash_v1";
 const CUSTOM_STORY_LIMIT = 5;
 
 const CUSTOM_STORY_SLOT_OPTIONS = [
@@ -399,6 +401,8 @@ export function NewsPage({
   });
 
   const [customStories, setCustomStories] = useState([]);
+  const [backupStories, setBackupStories] = useState([]);
+  const [deletedCustomStories, setDeletedCustomStories] = useState([]);
   const [showCreateStoryForm, setShowCreateStoryForm] = useState(false);
   const [storyDraft, setStoryDraft] = useState(createEmptyStoryDraft);
   const [storyFormError, setStoryFormError] = useState("");
@@ -408,10 +412,32 @@ export function NewsPage({
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(CUSTOM_NEWS_STORIES_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      setCustomStories(parsed.filter(Boolean));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setCustomStories(parsed.filter(Boolean));
+        }
+      }
+
+      const backupRaw = window.localStorage.getItem(
+        CUSTOM_NEWS_STORIES_BACKUP_STORAGE_KEY
+      );
+      if (backupRaw) {
+        const parsedBackup = JSON.parse(backupRaw);
+        if (Array.isArray(parsedBackup)) {
+          setBackupStories(parsedBackup.filter(Boolean));
+        }
+      }
+
+      const trashRaw = window.localStorage.getItem(
+        CUSTOM_NEWS_STORIES_TRASH_STORAGE_KEY
+      );
+      if (trashRaw) {
+        const parsedTrash = JSON.parse(trashRaw);
+        if (Array.isArray(parsedTrash)) {
+          setDeletedCustomStories(parsedTrash.filter(Boolean));
+        }
+      }
     } catch (error) {
       console.error("[NewsPage] failed to load custom stories:", error);
     }
@@ -424,10 +450,27 @@ export function NewsPage({
         CUSTOM_NEWS_STORIES_STORAGE_KEY,
         JSON.stringify(customStories)
       );
+      window.localStorage.setItem(
+        CUSTOM_NEWS_STORIES_BACKUP_STORAGE_KEY,
+        JSON.stringify(customStories)
+      );
+      setBackupStories(customStories);
     } catch (error) {
       console.error("[NewsPage] failed to persist custom stories:", error);
     }
   }, [customStories]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        CUSTOM_NEWS_STORIES_TRASH_STORAGE_KEY,
+        JSON.stringify(deletedCustomStories)
+      );
+    } catch (error) {
+      console.error("[NewsPage] failed to persist deleted custom stories:", error);
+    }
+  }, [deletedCustomStories]);
 
   const activeCustomStories = useMemo(
     () => customStories.filter((story) => story && !story.archived),
@@ -441,6 +484,12 @@ export function NewsPage({
 
   const activeCustomStoryCount = activeCustomStories.length;
   const hasReachedCustomStoryLimit = activeCustomStoryCount >= CUSTOM_STORY_LIMIT;
+  const hasRecoverableBackupStories =
+    activeCustomStories.length === 0 &&
+    Array.isArray(backupStories) &&
+    backupStories.length > 0;
+  const hasDeletedStories =
+    Array.isArray(deletedCustomStories) && deletedCustomStories.length > 0;
 
   const getSlotLabel = (slotKey) =>
     CUSTOM_STORY_SLOT_OPTIONS.find((option) => option.value === slotKey)?.label ||
@@ -554,13 +603,83 @@ export function NewsPage({
 
   const handleDeleteCustomStory = (storyId) => {
     if (!canManageCustomStories || !storyId) return;
+
+    const storyToDelete = customStories.find((story) => story?.id === storyId);
+    if (!storyToDelete) return;
+
+    if (typeof window !== "undefined") {
+      const warningMessage =
+        `You are about to permanently delete this story:\n\n` +
+        `${storyToDelete.title || "Untitled story"}\n\n` +
+        `This removes it from the page. If you only want to hide it, use Archive instead.\n\n` +
+        `To confirm deletion, type the story title exactly as shown.`;
+
+      const typed = window.prompt(warningMessage, "");
+      if (typed == null) return;
+
+      const expected = String(storyToDelete.title || "").trim();
+      if (String(typed || "").trim() !== expected) {
+        setStoryFormError("Delete cancelled. The typed title did not match.");
+        return;
+      }
+    }
+
+    setDeletedCustomStories((current) => [
+      {
+        ...storyToDelete,
+        deletedAt: Date.now(),
+      },
+      ...current,
+    ]);
+    setCustomStories((current) => current.filter((story) => story?.id !== storyId));
+    setStoryFormError("");
+    setStoryFormNotice(`Deleted "${storyToDelete.title}". You can still restore it from Recently deleted.`);
+  };
+
+  const handleRestoreDeletedCustomStory = (storyId) => {
+    if (!canManageCustomStories || !storyId) return;
+
+    const storyToRestore = deletedCustomStories.find((story) => story?.id === storyId);
+    if (!storyToRestore) return;
+
+    if (activeCustomStories.length >= CUSTOM_STORY_LIMIT) {
+      setStoryFormError(
+        "You already have 5 active custom stories. Archive or delete one before restoring another."
+      );
+      return;
+    }
+
+    setCustomStories((current) => [
+      ...current,
+      {
+        ...storyToRestore,
+        archived: Boolean(storyToRestore.archived),
+      },
+    ]);
+    setDeletedCustomStories((current) =>
+      current.filter((story) => story?.id !== storyId)
+    );
+    setStoryFormError("");
+    setStoryFormNotice(`Restored "${storyToRestore.title}".`);
+  };
+
+  const handleRestoreStoriesFromBackup = () => {
+    if (!canManageCustomStories) return;
+    if (!Array.isArray(backupStories) || backupStories.length === 0) {
+      setStoryFormError("No backup stories were found on this browser.");
+      return;
+    }
+
     if (typeof window !== "undefined") {
       const confirmed = window.confirm(
-        "Delete this custom story permanently?"
+        `Restore ${backupStories.length} saved story/stories from browser backup?`
       );
       if (!confirmed) return;
     }
-    setCustomStories((current) => current.filter((story) => story?.id !== storyId));
+
+    setCustomStories(backupStories);
+    setStoryFormError("");
+    setStoryFormNotice(`Restored ${backupStories.length} story/stories from backup.`);
   };
 
 
@@ -1439,6 +1558,63 @@ export function NewsPage({
             </div>
           </div>
 
+          {hasRecoverableBackupStories && (
+            <div
+              style={{
+                marginTop: "0.9rem",
+                padding: "0.85rem 1rem",
+                borderRadius: "1rem",
+                background: "rgba(34, 197, 94, 0.12)",
+                border: "1px solid rgba(34, 197, 94, 0.28)",
+                color: "#bbf7d0",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <span>
+                Your active stories look empty on this browser view, but a local backup was found.
+              </span>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleRestoreStoriesFromBackup}
+              >
+                Restore backup stories
+              </button>
+            </div>
+          )}
+
+          {hasDeletedStories && (
+            <div
+              style={{
+                marginTop: "0.9rem",
+                padding: "0.85rem 1rem",
+                borderRadius: "1rem",
+                background: "rgba(59,130,246,0.12)",
+                border: "1px solid rgba(59,130,246,0.25)",
+                color: "#bfdbfe",
+              }}
+            >
+              Recently deleted stories saved here: <strong>{deletedCustomStories.length}</strong>.
+              You can restore them below before they are lost from browser storage.
+            </div>
+          )}
+
+          {storyFormError && (
+            <div style={{ marginTop: "0.85rem", color: "#fca5a5", fontWeight: 600 }}>
+              {storyFormError}
+            </div>
+          )}
+
+          {storyFormNotice && !storyFormError && (
+            <div style={{ marginTop: "0.85rem", color: "#86efac", fontWeight: 600 }}>
+              {storyFormNotice}
+            </div>
+          )}
+
           {hasReachedCustomStoryLimit && (
             <div
               style={{
@@ -1560,18 +1736,6 @@ export function NewsPage({
                 </label>
               </div>
 
-              {storyFormError && (
-                <div style={{ marginTop: "0.85rem", color: "#fca5a5", fontWeight: 600 }}>
-                  {storyFormError}
-                </div>
-              )}
-
-              {storyFormNotice && !storyFormError && (
-                <div style={{ marginTop: "0.85rem", color: "#86efac", fontWeight: 600 }}>
-                  {storyFormNotice}
-                </div>
-              )}
-
               <div style={{ display: "flex", gap: "0.65rem", flexWrap: "wrap", marginTop: "1rem" }}>
                 <button type="button" className="primary-btn" onClick={handleCreateCustomStory}>
                   Save story
@@ -1579,6 +1743,58 @@ export function NewsPage({
                 <button type="button" className="secondary-btn" onClick={resetStoryDraft}>
                   Reset
                 </button>
+              </div>
+            </div>
+          )}
+
+          {hasDeletedStories && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                borderRadius: "1rem",
+                background: "rgba(2,6,23,0.35)",
+                border: "1px solid rgba(148,163,184,0.18)",
+              }}
+            >
+              <h3 style={{ marginTop: 0, marginBottom: "0.65rem" }}>Recently deleted</h3>
+              <div style={{ display: "grid", gap: "0.65rem" }}>
+                {deletedCustomStories
+                  .slice()
+                  .sort((a, b) => Number(b?.deletedAt || 0) - Number(a?.deletedAt || 0))
+                  .map((story) => (
+                    <div
+                      key={story.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "0.75rem",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        padding: "0.8rem 0.9rem",
+                        borderRadius: "0.9rem",
+                        background: "rgba(15,23,42,0.55)",
+                        border: "1px solid rgba(148,163,184,0.16)",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 700 }}>
+                          {story.title || "Untitled story"}
+                        </div>
+                        <div className="muted" style={{ fontSize: "0.85rem" }}>
+                          Deleted story kept in browser recovery bin.
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="secondary-btn"
+                        onClick={() => handleRestoreDeletedCustomStory(story.id)}
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
