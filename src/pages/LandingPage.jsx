@@ -73,6 +73,62 @@ function getIdentityDisplayName(identity, currentUser) {
   );
 }
 
+function tileButtonStyle(isMobile, extra = {}) {
+  return {
+    borderRadius: "1rem",
+    aspectRatio: isMobile ? "1 / 1" : "auto",
+    minHeight: isMobile ? "138px" : "64px",
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    fontWeight: 700,
+    whiteSpace: "normal",
+    lineHeight: 1.15,
+    padding: isMobile ? "0.85rem" : "0.85rem 1rem",
+    boxSizing: "border-box",
+    overflow: "hidden",
+    ...extra,
+  };
+}
+
+function renderTileContent({ isMobile, icon, desktopLines, mobileLines }) {
+  const lines = isMobile ? mobileLines : desktopLines;
+
+  return (
+    <span
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        gap: isMobile ? "0.38rem" : "0.12rem",
+        lineHeight: 1.1,
+        fontWeight: 700,
+        width: "100%",
+        minWidth: 0,
+      }}
+    >
+      <span style={{ fontSize: isMobile ? "1.2rem" : "1rem" }}>{icon}</span>
+      {lines.map((line) => (
+        <span
+          key={line}
+          style={{
+            display: "block",
+            width: "100%",
+            fontSize: isMobile ? "0.94rem" : "0.98rem",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {line}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function LandingPage({
   teams,
   currentMatchNo,
@@ -601,38 +657,71 @@ export function LandingPage({
         )}
 
         {canSeeCaptainStyleControls ? (
-          <div className="actions-row landing-actions">
+          <div
+            className="actions-row landing-actions"
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(0, 1fr))"
+                : "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "0.8rem",
+              alignItems: "stretch",
+            }}
+          >
             <button
               className="primary-btn"
-              style={activePrimaryStyle}
+              style={tileButtonStyle(isMobile, activePrimaryStyle)}
               onClick={handleStartMatchClick}
               type="button"
             >
-              ⚽ Start Match
+              {renderTileContent({
+                isMobile,
+                icon: "⚽",
+                desktopLines: ["Start Match"],
+                mobileLines: ["Start", "Match"],
+              })}
             </button>
 
             <button
               className="secondary-btn"
               onClick={() => onGoToStats()}
               type="button"
+              style={tileButtonStyle(isMobile)}
             >
-              📊 View Stats
+              {renderTileContent({
+                isMobile,
+                icon: "📊",
+                desktopLines: ["View Stats"],
+                mobileLines: ["View", "Stats"],
+              })}
             </button>
 
             <button
               type="button"
               className="secondary-btn"
               onClick={onGoToFormations}
+              style={tileButtonStyle(isMobile)}
             >
-              🧩 Lineups &amp; Formations
+              {renderTileContent({
+                isMobile,
+                icon: "🧩",
+                desktopLines: ["Lineups &", "Formations"],
+                mobileLines: ["Lineups &", "Formations"],
+              })}
             </button>
 
             <button
               className="secondary-btn"
               type="button"
               onClick={onGoToNews}
+              style={tileButtonStyle(isMobile)}
             >
-              📝 News &amp; Highlights
+              {renderTileContent({
+                isMobile,
+                icon: "📝",
+                desktopLines: ["News &", "Highlights"],
+                mobileLines: ["News &", "Highlights"],
+              })}
             </button>
 
             {isAdmin && (
@@ -640,8 +729,14 @@ export function LandingPage({
                 className="secondary-btn"
                 onClick={onOpenBackupModal}
                 type="button"
+                style={tileButtonStyle(isMobile)}
               >
-                🏁 End Match Day
+                {renderTileContent({
+                  isMobile,
+                  icon: "🏁",
+                  desktopLines: ["End Match Day"],
+                  mobileLines: ["End Match", "Day"],
+                })}
               </button>
             )}
           </div>
@@ -653,38 +748,71 @@ export function LandingPage({
                 : "You can follow the live game and view all public information."}
             </p>
 
-            <div className="actions-row landing-actions">
+            <div
+              className="actions-row landing-actions"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: "0.8rem",
+                alignItems: "stretch",
+              }}
+            >
               <button
                 className="primary-btn"
-                style={activePrimaryStyle}
+                style={tileButtonStyle(isMobile, activePrimaryStyle)}
                 type="button"
                 onClick={handleSpectatorLiveClick}
               >
-                {hasLiveMatch ? "⚽ View Live Match" : "⚽ Live Match"}
+                {renderTileContent({
+                  isMobile,
+                  icon: "⚽",
+                  desktopLines: [hasLiveMatch ? "View Live Match" : "Live Match"],
+                  mobileLines: ["Live", "Match"],
+                })}
               </button>
 
               <button
                 className="secondary-btn"
                 type="button"
                 onClick={() => onGoToStats()}
+                style={tileButtonStyle(isMobile)}
               >
-                📊 View Stats
+                {renderTileContent({
+                  isMobile,
+                  icon: "📊",
+                  desktopLines: ["View Stats"],
+                  mobileLines: ["View", "Stats"],
+                })}
               </button>
 
               <button
                 type="button"
                 className="secondary-btn"
                 onClick={onGoToFormations}
+                style={tileButtonStyle(isMobile)}
               >
-                🧩 Lineups &amp; Formations
+                {renderTileContent({
+                  isMobile,
+                  icon: "🧩",
+                  desktopLines: ["Lineups &", "Formations"],
+                  mobileLines: ["Lineups &", "Formations"],
+                })}
               </button>
 
               <button
                 className="secondary-btn"
                 type="button"
                 onClick={onGoToNews}
+                style={tileButtonStyle(isMobile)}
               >
-                📝 News &amp; Highlights
+                {renderTileContent({
+                  isMobile,
+                  icon: "📝",
+                  desktopLines: ["News &", "Highlights"],
+                  mobileLines: ["News &", "Highlights"],
+                })}
               </button>
             </div>
           </>
@@ -762,7 +890,7 @@ export function LandingPage({
           >
             {teamPhotos.map((_, idx) => (
               <span
-                key={idx}
+                key={`photo-dot-${idx}`}
                 style={{
                   width: idx === photoIndex ? 20 : 6,
                   height: 6,
