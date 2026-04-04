@@ -1,9 +1,11 @@
 // src/pages/NewsPage.jsx
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import JaydTribute from "../assets/Jayd_Tribute.jpeg";
 import JerseyImage from "../assets/Jersey.jpeg";
 import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
+import { db } from "../firebaseConfig.js";
+import { collection, getDocs } from "firebase/firestore";
 
 import {
   subscribeToKitOrders,
@@ -16,6 +18,144 @@ const injuredPlayerName = "Jayd";
 
 const VENUE_MAP_URL =
   "https://www.google.com/maps/search/?api=1&query=Haveva%20Lower%20Main%20Road%20Observatory";
+
+const CUSTOM_NEWS_STORIES_STORAGE_KEY = "turfkings_custom_news_stories_v1";
+const CUSTOM_STORY_LIMIT = 5;
+
+const CUSTOM_STORY_SLOT_OPTIONS = [
+  { value: "after-jersey", label: "Below jersey story" },
+  { value: "after-hero", label: "Below tournament recap" },
+  { value: "after-headlines", label: "Below headlines / match feature" },
+  { value: "after-mvp", label: "Below MVP story" },
+  { value: "after-streak", label: "Below streak watch" },
+  { value: "before-old-stories", label: "Above old stories" },
+  { value: "before-recap", label: "Above match-by-match recap" },
+
+];
+
+function toTitleCase(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function slugFromName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function safeLower(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function firstNameOf(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[0] : "";
+}
+
+function buildPlayersRegistry(playersSnap) {
+  const mapNameToCanon = {};
+
+  const addKey = (keys, value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return;
+
+    const pretty = toTitleCase(raw);
+    keys.add(safeLower(raw));
+    keys.add(safeLower(pretty));
+    keys.add(slugFromName(raw));
+    keys.add(slugFromName(pretty));
+
+    const first = safeLower(firstNameOf(pretty));
+    if (first) keys.add(first);
+  };
+
+  playersSnap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+
+    const fullName = toTitleCase(
+      data.fullName ||
+        data.displayName ||
+        data.name ||
+        data.playerName ||
+        ""
+    );
+
+    if (!fullName) return;
+
+    const keys = new Set();
+    addKey(keys, fullName);
+    addKey(keys, data.shortName);
+    addKey(keys, data.displayName);
+    addKey(keys, data.name);
+    addKey(keys, data.playerName);
+    addKey(keys, docSnap.id);
+
+    const aliases = Array.isArray(data.aliases) ? data.aliases : [];
+    aliases.forEach((alias) => addKey(keys, alias));
+
+    keys.forEach((key) => {
+      if (!key) return;
+      if (!mapNameToCanon[key]) mapNameToCanon[key] = fullName;
+    });
+  });
+
+  return mapNameToCanon;
+}
+
+function resolveCanonicalNameFromMap(rawName, map) {
+  if (!rawName || typeof rawName !== "string") return "";
+
+  const tc = toTitleCase(rawName);
+  if (!tc) return "";
+
+  const direct = map[safeLower(tc)];
+  if (direct) return direct;
+
+  const bySlug = map[slugFromName(tc)];
+  if (bySlug) return bySlug;
+
+  const fn = safeLower(firstNameOf(tc));
+  if (fn && map[fn]) return map[fn];
+
+  return tc;
+}
+
+function buildCloudPhotosIndex(photoSnap) {
+  const idx = {};
+
+  photoSnap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const docId = docSnap.id;
+    const name = toTitleCase(data.name || "");
+
+    if (!data.photoData) return;
+
+    const addKey = (key) => {
+      const normalized = safeLower(key);
+      if (!normalized) return;
+      if (!idx[normalized]) idx[normalized] = data.photoData;
+    };
+
+    if (name) {
+      addKey(name);
+      addKey(slugFromName(name));
+      const fn = firstNameOf(name);
+      if (fn) addKey(fn);
+    }
+
+    if (docId) addKey(docId);
+  });
+
+  return idx;
+}
 
 export function NewsPage({
   teams,
@@ -33,6 +173,37 @@ export function NewsPage({
   initialProgramOpen,
 }) {
   const [headerScrolled, setHeaderScrolled] = useState(false);
+  const [playerCanonicalMap, setPlayerCanonicalMap] = useState({});
+  const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPlayerPhotoData() {
+      try {
+        const [playersSnap, photosSnap] = await Promise.all([
+          getDocs(collection(db, "players")),
+          getDocs(collection(db, "playerPhotos")),
+        ]);
+
+        if (!isMounted) return;
+
+        setPlayerCanonicalMap(buildPlayersRegistry(playersSnap));
+        setCloudPhotosIndex(buildCloudPhotosIndex(photosSnap));
+      } catch (error) {
+        console.error("[NewsPage] failed to load player photo helpers:", error);
+        if (!isMounted) return;
+        setPlayerCanonicalMap({});
+        setCloudPhotosIndex({});
+      }
+    }
+
+    loadPlayerPhotoData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -80,35 +251,318 @@ export function NewsPage({
     return getTeamAbbrev(teamName);
   };
 
-  // Map player -> photo URL (Firebase + team metadata)
+  // Map player -> photo URL (Firebase + team metadata + Firestore photo collection)
   const mergedPhotoMap = useMemo(() => {
-    const map = { ...(playerPhotosByName || {}) };
+    const map = {};
+
+    const addPhotoKey = (key, url) => {
+      const normalizedKey = safeLower(key);
+      if (!normalizedKey || !url) return;
+      if (!map[normalizedKey]) map[normalizedKey] = url;
+    };
+
+    Object.entries(playerPhotosByName || {}).forEach(([name, url]) => {
+      if (!name || !url) return;
+      const pretty = toTitleCase(name);
+      addPhotoKey(name, url);
+      addPhotoKey(pretty, url);
+      addPhotoKey(slugFromName(name), url);
+      addPhotoKey(slugFromName(pretty), url);
+      addPhotoKey(firstNameOf(name), url);
+      addPhotoKey(firstNameOf(pretty), url);
+    });
+
+    Object.entries(cloudPhotosIndex || {}).forEach(([key, url]) => {
+      addPhotoKey(key, url);
+    });
 
     (teams || []).forEach((t) => {
       if (t.playerPhotos) {
         Object.entries(t.playerPhotos).forEach(([name, url]) => {
-          if (name && url && !map[name]) {
-            map[name] = url;
-          }
+          if (!name || !url) return;
+          const pretty = toTitleCase(name);
+          addPhotoKey(name, url);
+          addPhotoKey(pretty, url);
+          addPhotoKey(slugFromName(name), url);
+          addPhotoKey(slugFromName(pretty), url);
+          addPhotoKey(firstNameOf(name), url);
+          addPhotoKey(firstNameOf(pretty), url);
         });
       }
 
       (t.players || []).forEach((p) => {
-        if (p && typeof p === "object") {
-          const name = p.name || p.displayName;
-          if (name && p.photoUrl && !map[name]) {
-            map[name] = p.photoUrl;
-          }
-        }
+        if (!p || typeof p !== "object") return;
+        const name = p.name || p.displayName || p.shortName || "";
+        if (!name || !p.photoUrl) return;
+        const pretty = toTitleCase(name);
+        addPhotoKey(name, p.photoUrl);
+        addPhotoKey(pretty, p.photoUrl);
+        addPhotoKey(slugFromName(name), p.photoUrl);
+        addPhotoKey(slugFromName(pretty), p.photoUrl);
+        addPhotoKey(firstNameOf(name), p.photoUrl);
+        addPhotoKey(firstNameOf(pretty), p.photoUrl);
       });
     });
 
     return map;
-  }, [teams, playerPhotosByName]);
+  }, [teams, playerPhotosByName, cloudPhotosIndex]);
 
-  const getPlayerPhoto = (name) => (name ? mergedPhotoMap[name] || null : null);
+  const resolveCanonicalPlayerName = useCallback(
+    (name) => resolveCanonicalNameFromMap(name, playerCanonicalMap),
+    [playerCanonicalMap]
+  );
+
+  const getPlayerPhoto = useCallback((name) => {
+    if (!name) return null;
+
+    const raw = String(name || "").trim();
+    const canonical = resolveCanonicalPlayerName(raw);
+    const pretty = toTitleCase(raw);
+    const firstRaw = firstNameOf(raw);
+    const firstPretty = firstNameOf(pretty);
+    const firstCanonical = firstNameOf(canonical);
+
+    const candidates = [
+      raw,
+      pretty,
+      canonical,
+      firstRaw,
+      firstPretty,
+      firstCanonical,
+      slugFromName(raw),
+      slugFromName(pretty),
+      slugFromName(canonical),
+    ];
+
+    for (const candidate of candidates) {
+      const key = safeLower(candidate);
+      if (key && mergedPhotoMap[key]) return mergedPhotoMap[key];
+    }
+
+    return null;
+  }, [mergedPhotoMap, resolveCanonicalPlayerName]);
 
   const todayLabel = useMemo(() => formatMatchDayDate(new Date()), []);
+
+  const canManageCustomStories = Boolean(
+    identity && ["admin", "captain"].includes(String(identity.role || "").toLowerCase())
+  );
+
+  const allKnownPlayers = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+
+    const pushName = (raw) => {
+      const name = String(raw || "").trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push(name);
+    };
+
+    (members || []).forEach((member) => {
+      if (typeof member === "string") {
+        pushName(member);
+        return;
+      }
+      pushName(
+        member?.shortName ||
+          member?.fullName ||
+          member?.name ||
+          member?.displayName ||
+          member?.nickname
+      );
+    });
+
+    (teams || []).forEach((team) => {
+      (team?.players || []).forEach((player) => {
+        if (typeof player === "string") {
+          pushName(player);
+          return;
+        }
+        pushName(player?.name || player?.displayName || player?.shortName);
+      });
+    });
+
+    return list.sort((a, b) => a.localeCompare(b));
+  }, [members, teams]);
+
+  const createEmptyStoryDraft = () => ({
+    title: "",
+    tag: "Story",
+    body: "",
+    slotKey: "after-hero",
+    order: 1,
+    playerName: "",
+    imageUrl: "",
+  });
+
+  const [customStories, setCustomStories] = useState([]);
+  const [showCreateStoryForm, setShowCreateStoryForm] = useState(false);
+  const [storyDraft, setStoryDraft] = useState(createEmptyStoryDraft);
+  const [storyFormError, setStoryFormError] = useState("");
+  const [storyFormNotice, setStoryFormNotice] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(CUSTOM_NEWS_STORIES_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      setCustomStories(parsed.filter(Boolean));
+    } catch (error) {
+      console.error("[NewsPage] failed to load custom stories:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        CUSTOM_NEWS_STORIES_STORAGE_KEY,
+        JSON.stringify(customStories)
+      );
+    } catch (error) {
+      console.error("[NewsPage] failed to persist custom stories:", error);
+    }
+  }, [customStories]);
+
+  const activeCustomStories = useMemo(
+    () => customStories.filter((story) => story && !story.archived),
+    [customStories]
+  );
+
+  const archivedCustomStories = useMemo(
+    () => customStories.filter((story) => story && story.archived),
+    [customStories]
+  );
+
+  const activeCustomStoryCount = activeCustomStories.length;
+  const hasReachedCustomStoryLimit = activeCustomStoryCount >= CUSTOM_STORY_LIMIT;
+
+  const getSlotLabel = (slotKey) =>
+    CUSTOM_STORY_SLOT_OPTIONS.find((option) => option.value === slotKey)?.label ||
+    "Custom slot";
+
+  const sortedActiveCustomStories = useMemo(() => {
+    return activeCustomStories
+      .slice()
+      .sort((a, b) => {
+        const slotCompare = String(a?.slotKey || "").localeCompare(
+          String(b?.slotKey || "")
+        );
+        if (slotCompare !== 0) return slotCompare;
+        const orderA = Number.isFinite(Number(a?.order)) ? Number(a.order) : 999;
+        const orderB = Number.isFinite(Number(b?.order)) ? Number(b.order) : 999;
+        if (orderA !== orderB) return orderA - orderB;
+        return Number(a?.createdAt || 0) - Number(b?.createdAt || 0);
+      });
+  }, [activeCustomStories]);
+
+  const handleStoryDraftChange = (field, value) => {
+    setStoryDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setStoryFormError("");
+    setStoryFormNotice("");
+  };
+
+  const resetStoryDraft = () => {
+    setStoryDraft(createEmptyStoryDraft());
+    setStoryFormError("");
+    setStoryFormNotice("");
+  };
+
+  const handleCreateCustomStory = () => {
+    if (!canManageCustomStories) return;
+
+    const title = String(storyDraft.title || "").trim();
+    const body = String(storyDraft.body || "").trim();
+    const tag = String(storyDraft.tag || "").trim() || "Story";
+    const playerName = String(storyDraft.playerName || "").trim();
+    const imageUrl = String(storyDraft.imageUrl || "").trim();
+    const slotKey = String(storyDraft.slotKey || "after-hero");
+    const orderValue = Number(storyDraft.order);
+
+    if (!title) {
+      setStoryFormError("Please add a story title.");
+      return;
+    }
+
+    if (!body) {
+      setStoryFormError("Please add the story text.");
+      return;
+    }
+
+    if (hasReachedCustomStoryLimit) {
+      setStoryFormError(
+        "You already have 5 active custom stories. Archive or delete one before adding another."
+      );
+      return;
+    }
+
+    const story = {
+      id: `custom-story-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title,
+      body,
+      tag,
+      slotKey,
+      order: Number.isFinite(orderValue) ? Math.max(1, Math.round(orderValue)) : 1,
+      playerName,
+      imageUrl,
+      archived: false,
+      createdAt: Date.now(),
+      createdBy:
+        identity?.shortName || identity?.fullName || identity?.name || "Admin",
+    };
+
+    setCustomStories((current) => [...current, story]);
+    setStoryDraft(createEmptyStoryDraft());
+    setStoryFormError("");
+    setStoryFormNotice("Story created.");
+    setShowCreateStoryForm(false);
+  };
+
+  const handleArchiveToggleCustomStory = (storyId) => {
+    if (!canManageCustomStories || !storyId) return;
+
+    setCustomStories((current) => {
+      const next = current.map((story) => {
+        if (story?.id !== storyId) return story;
+        if (story.archived) {
+          if (
+            current.filter((item) => item && !item.archived).length >= CUSTOM_STORY_LIMIT
+          ) {
+            setStoryFormError(
+              "You already have 5 active custom stories. Delete or archive one before restoring another."
+            );
+            return story;
+          }
+        }
+        return {
+          ...story,
+          archived: !story.archived,
+          archivedAt: !story.archived ? Date.now() : null,
+        };
+      });
+      return next;
+    });
+  };
+
+  const handleDeleteCustomStory = (storyId) => {
+    if (!canManageCustomStories || !storyId) return;
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        "Delete this custom story permanently?"
+      );
+      if (!confirmed) return;
+    }
+    setCustomStories((current) => current.filter((story) => story?.id !== storyId));
+  };
+
 
   // ---------- RAW DATA SPLIT ----------
   const fullResultsRaw = results || [];
@@ -612,6 +1066,16 @@ export function NewsPage({
     zIndex: 2,
   };
 
+  const newsInputStyle = {
+    width: "100%",
+    borderRadius: "0.9rem",
+    border: "1px solid rgba(148,163,184,0.22)",
+    background: "rgba(2,6,23,0.68)",
+    color: "#f8fafc",
+    padding: "0.78rem 0.9rem",
+    outline: "none",
+  };
+
   const injuredAvatarUrl =
     (injuredPlayerName && mergedPhotoMap[injuredPlayerName]) || JaydTribute;
 
@@ -687,6 +1151,204 @@ export function NewsPage({
     }
   };
 
+
+  const renderCustomStoryCard = (story, { archivedView = false } = {}) => {
+    if (!story) return null;
+
+    const playerName = String(story.playerName || "").trim();
+    const playerPhotoUrl = playerName ? getPlayerPhoto(playerName) : null;
+    const displayImageUrl = playerPhotoUrl || String(story.imageUrl || "").trim() || null;
+
+    return (
+      <section key={story.id} className="card" style={{ overflow: "hidden" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              displayImageUrl || playerName ? (isNarrow ? "1fr" : "0.95fr 1.05fr") : "1fr",
+            gap: "1rem",
+            alignItems: "stretch",
+          }}
+        >
+          {(displayImageUrl || playerName) && (
+            <div
+              style={{
+                minHeight: isNarrow ? 220 : 260,
+                borderRadius: "1rem",
+                overflow: "hidden",
+                position: "relative",
+                background:
+                  "radial-gradient(circle at top left, rgba(59,130,246,0.22), transparent 55%), linear-gradient(135deg, #020617, #111827 55%, #0f172a 100%)",
+                border: "1px solid rgba(148,163,184,0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {displayImageUrl ? (
+                <img
+                  src={displayImageUrl}
+                  alt={playerName || story.title}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: playerPhotoUrl ? "cover" : "contain",
+                    display: "block",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 140,
+                    height: 140,
+                    borderRadius: "999px",
+                    background:
+                      "linear-gradient(135deg, rgba(250,204,21,0.95), rgba(245,158,11,0.86))",
+                    color: "#0f172a",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "2rem",
+                    fontWeight: 900,
+                    boxShadow:
+                      "0 18px 45px rgba(15,23,42,0.6), 0 0 0 5px rgba(255,255,255,0.12)",
+                  }}
+                >
+                  {getInitials(playerName || story.title)}
+                </div>
+              )}
+
+              {playerName && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "0.8rem",
+                    bottom: "0.8rem",
+                    padding: "0.4rem 0.7rem",
+                    borderRadius: "999px",
+                    background: "rgba(2,6,23,0.8)",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  {playerName}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ minWidth: 0, position: "relative" }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.5rem",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "0.7rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.45rem",
+                  padding: "0.25rem 0.65rem",
+                  borderRadius: "999px",
+                  background: "rgba(59,130,246,0.16)",
+                  border: "1px solid rgba(59,130,246,0.28)",
+                  fontWeight: 700,
+                  maxWidth: "100%",
+                }}
+              >
+                <span>📰</span>
+                <span>{story.tag || "Story"}</span>
+              </div>
+
+              {!archivedView && canManageCustomStories && (
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleArchiveToggleCustomStory(story.id)}
+                    style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}
+                  >
+                    Archive
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleDeleteCustomStory(story.id)}
+                    style={{
+                      padding: "0.48rem 0.8rem",
+                      fontSize: "0.82rem",
+                      borderColor: "rgba(248,113,113,0.4)",
+                      color: "#fecaca",
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+
+              {archivedView && canManageCustomStories && (
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleArchiveToggleCustomStory(story.id)}
+                    style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}
+                  >
+                    Restore
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleDeleteCustomStory(story.id)}
+                    style={{
+                      padding: "0.48rem 0.8rem",
+                      fontSize: "0.82rem",
+                      borderColor: "rgba(248,113,113,0.4)",
+                      color: "#fecaca",
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <h2 style={{ marginTop: 0 }}>{story.title}</h2>
+            <p style={{ marginTop: "0.35rem", whiteSpace: "pre-wrap" }}>{story.body}</p>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.55rem",
+                marginTop: "0.9rem",
+                fontSize: "0.82rem",
+                opacity: 0.92,
+              }}
+            >
+              <span style={metaChipStyle}>📍 {getSlotLabel(story.slotKey)}</span>
+              <span style={metaChipStyle}>↕️ Position {story.order || 1}</span>
+              {story.createdBy ? <span style={metaChipStyle}>✍️ {story.createdBy}</span> : null}
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  const renderCustomStoriesAt = (slotKey) => {
+    const stories = sortedActiveCustomStories.filter((story) => story?.slotKey === slotKey);
+    if (!stories.length) return null;
+    return stories.map((story) => renderCustomStoryCard(story));
+  };
+
   // ---------- RENDER ----------
   return (
     <div className="page news-page">
@@ -737,6 +1399,191 @@ export function NewsPage({
           Automatic recap built from your full TurfKings match history.
         </p>
       </header>
+
+      {canManageCustomStories && (
+        <section className="card" style={{ overflow: "hidden" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+              gap: "1rem",
+              alignItems: "center",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ marginTop: 0, marginBottom: "0.35rem" }}>Custom story studio</h2>
+              <p className="muted" style={{ margin: 0 }}>
+                Create a story without coding, choose exactly where it sits on the page,
+                and manage only the stories created here.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.55rem" }}>
+              <span style={metaChipStyle}>
+                Active custom stories: <strong>{activeCustomStoryCount}</strong> / {CUSTOM_STORY_LIMIT}
+              </span>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setShowCreateStoryForm((current) => !current);
+                  setStoryFormError("");
+                  setStoryFormNotice("");
+                }}
+                disabled={hasReachedCustomStoryLimit && !showCreateStoryForm}
+                style={{ opacity: hasReachedCustomStoryLimit && !showCreateStoryForm ? 0.65 : 1 }}
+              >
+                {showCreateStoryForm ? "Close story form" : "Create story"}
+              </button>
+            </div>
+          </div>
+
+          {hasReachedCustomStoryLimit && (
+            <div
+              style={{
+                marginTop: "0.9rem",
+                padding: "0.85rem 1rem",
+                borderRadius: "1rem",
+                background: "rgba(245, 158, 11, 0.12)",
+                border: "1px solid rgba(245, 158, 11, 0.25)",
+                color: "#fde68a",
+              }}
+            >
+              You have reached the limit of 5 active custom stories. Archive or delete one of
+              your older custom stories first.
+            </div>
+          )}
+
+          {showCreateStoryForm && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                borderRadius: "1rem",
+                background: "rgba(15,23,42,0.4)",
+                border: "1px solid rgba(148,163,184,0.18)",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isNarrow ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                  gap: "0.85rem",
+                }}
+              >
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Story title</span>
+                  <input
+                    type="text"
+                    value={storyDraft.title}
+                    onChange={(e) => handleStoryDraftChange("title", e.target.value)}
+                    placeholder="Headline"
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Story tag</span>
+                  <input
+                    type="text"
+                    value={storyDraft.tag}
+                    onChange={(e) => handleStoryDraftChange("tag", e.target.value)}
+                    placeholder="Story / Transfer / Spotlight"
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Panel location</span>
+                  <select
+                    value={storyDraft.slotKey}
+                    onChange={(e) => handleStoryDraftChange("slotKey", e.target.value)}
+                    style={newsInputStyle}
+                  >
+                    {CUSTOM_STORY_SLOT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Position inside that location</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={storyDraft.order}
+                    onChange={(e) => handleStoryDraftChange("order", e.target.value)}
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Player in the group (optional)</span>
+                  <select
+                    value={storyDraft.playerName}
+                    onChange={(e) => handleStoryDraftChange("playerName", e.target.value)}
+                    style={newsInputStyle}
+                  >
+                    <option value="">No player selected</option>
+                    {allKnownPlayers.map((playerName) => (
+                      <option key={playerName} value={playerName}>
+                        {playerName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Custom image URL (optional)</span>
+                  <input
+                    type="text"
+                    value={storyDraft.imageUrl}
+                    onChange={(e) => handleStoryDraftChange("imageUrl", e.target.value)}
+                    placeholder="https://..."
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem", gridColumn: "1 / -1" }}>
+                  <span style={{ fontWeight: 700 }}>Story body</span>
+                  <textarea
+                    value={storyDraft.body}
+                    onChange={(e) => handleStoryDraftChange("body", e.target.value)}
+                    rows={5}
+                    placeholder="Write the story..."
+                    style={{ ...newsInputStyle, resize: "vertical", minHeight: 140 }}
+                  />
+                </label>
+              </div>
+
+              {storyFormError && (
+                <div style={{ marginTop: "0.85rem", color: "#fca5a5", fontWeight: 600 }}>
+                  {storyFormError}
+                </div>
+              )}
+
+              {storyFormNotice && !storyFormError && (
+                <div style={{ marginTop: "0.85rem", color: "#86efac", fontWeight: 600 }}>
+                  {storyFormNotice}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "0.65rem", flexWrap: "wrap", marginTop: "1rem" }}>
+                <button type="button" className="primary-btn" onClick={handleCreateCustomStory}>
+                  Save story
+                </button>
+                <button type="button" className="secondary-btn" onClick={resetStoryDraft}>
+                  Reset
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ✅ JERSEY STORY */}
       <section className="card" style={{ overflow: "hidden" }}>
@@ -858,6 +1705,8 @@ export function NewsPage({
         </div>
       </section>
 
+      {renderCustomStoriesAt("after-jersey")}
+
       {/* HERO SUMMARY */}
       <section className="card news-hero-card">
         <div className="news-hero-main">
@@ -904,6 +1753,8 @@ export function NewsPage({
           </div>
         </div>
       </section>
+
+      {renderCustomStoriesAt("after-hero")}
 
       {/* HEADLINES + BIGGEST WIN */}
       <section className="card news-grid">
@@ -977,6 +1828,8 @@ export function NewsPage({
         </div>
       </section>
 
+      {renderCustomStoriesAt("after-headlines")}
+
       {/* TOURNAMENT MVP CARD */}
       {bestOverall && (
         <section className="card news-mvp-card">
@@ -1018,6 +1871,8 @@ export function NewsPage({
           </div>
         </section>
       )}
+
+      {renderCustomStoriesAt("after-mvp")}
 
       {/* STREAK WATCH */}
       <section className="card news-streak-card">
@@ -1064,11 +1919,39 @@ export function NewsPage({
         )}
       </section>
 
+      {renderCustomStoriesAt("after-streak")}
+
+      {renderCustomStoriesAt("before-old-stories")}
+
       {/* OLD STORIES FOLDER */}
       <details className="card">
         <summary style={{ cursor: "pointer", fontWeight: 800 }}>
           🗂️ Old stories (tap to expand)
         </summary>
+
+        {archivedCustomStories.length > 0 && (
+          <details style={{ marginTop: "0.8rem" }}>
+            <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+              📰 Archived custom stories ({archivedCustomStories.length})
+            </summary>
+
+            <div style={{ marginTop: "0.8rem", display: "grid", gap: "0.8rem" }}>
+              {archivedCustomStories
+                .slice()
+                .sort((a, b) => Number(b?.archivedAt || 0) - Number(a?.archivedAt || 0))
+                .map((story) => (
+                  <details key={story.id}>
+                    <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+                      📰 {story.title || "Untitled story"}
+                    </summary>
+                    <div style={{ marginTop: "0.8rem" }}>
+                      {renderCustomStoryCard(story, { archivedView: true })}
+                    </div>
+                  </details>
+                ))}
+            </div>
+          </details>
+        )}
 
         {/* Year-End story inside Old stories */}
         <details style={{ marginTop: "0.8rem" }}>
@@ -1220,6 +2103,8 @@ export function NewsPage({
           </section>
         </details>
       </details>
+
+      {renderCustomStoriesAt("before-recap")}
 
       {/* MATCH-BY-MATCH RECAP */}
       <section className="card">
