@@ -4,8 +4,17 @@ import JaydTribute from "../assets/Jayd_Tribute.jpeg";
 import JerseyImage from "../assets/Jersey.jpeg";
 import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
+import { useMemberNameMap } from "../core/nameMapping.js";
 import { db } from "../firebaseConfig.js";
-import { collection, getDocs } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
 
 import {
   subscribeToKitOrders,
@@ -19,9 +28,7 @@ const injuredPlayerName = "Jayd";
 const VENUE_MAP_URL =
   "https://www.google.com/maps/search/?api=1&query=Haveva%20Lower%20Main%20Road%20Observatory";
 
-const CUSTOM_NEWS_STORIES_STORAGE_KEY = "turfkings_custom_news_stories_v1";
-const CUSTOM_NEWS_STORIES_BACKUP_STORAGE_KEY = "turfkings_custom_news_stories_backup_v1";
-const CUSTOM_NEWS_STORIES_TRASH_STORAGE_KEY = "turfkings_custom_news_stories_trash_v1";
+const CUSTOM_NEWS_STORIES_COLLECTION = "newsStories";
 const CUSTOM_STORY_LIMIT = 5;
 
 const CUSTOM_STORY_SLOT_OPTIONS = [
@@ -60,6 +67,28 @@ function safeLower(value) {
 function firstNameOf(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   return parts.length ? parts[0] : "";
+}
+
+function levenshteinDistance(a, b) {
+  const s = String(a || "");
+  const t = String(b || "");
+  const dp = Array.from({ length: s.length + 1 }, () => []);
+
+  for (let i = 0; i <= s.length; i += 1) dp[i][0] = i;
+  for (let j = 0; j <= t.length; j += 1) dp[0][j] = j;
+
+  for (let i = 1; i <= s.length; i += 1) {
+    for (let j = 1; j <= t.length; j += 1) {
+      const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return dp[s.length][t.length];
 }
 
 function buildPlayersRegistry(playersSnap) {
@@ -173,10 +202,63 @@ export function NewsPage({
   onGoToSignIn,
   members,
   initialProgramOpen,
+  matchDayHistory,
 }) {
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [playerCanonicalMap, setPlayerCanonicalMap] = useState({});
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
+  const { normalizeName } = useMemberNameMap(Array.isArray(members) ? members : []);
+
+  const shortDisplayByNormalized = useMemo(() => {
+    const out = {};
+
+    const add = (rawName, shortName = "") => {
+      const canonical = normalizeName(rawName);
+      if (!canonical) return;
+
+      const shortPretty = toTitleCase(shortName || "").trim();
+      const canonicalPretty = toTitleCase(canonical).trim();
+      const chosen = shortPretty || canonicalPretty;
+
+      if (!out[safeLower(canonical)]) out[safeLower(canonical)] = chosen;
+    };
+
+    (Array.isArray(members) ? members : []).forEach((member) => {
+      if (!member) return;
+      if (typeof member === "string") {
+        add(member, member);
+        return;
+      }
+
+      add(
+        member.fullName || member.displayName || member.name || member.playerName || member.shortName || "",
+        member.shortName || member.displayName || member.name || ""
+      );
+    });
+
+    (teams || []).forEach((team) => {
+      (team?.players || []).forEach((player) => {
+        if (!player) return;
+        if (typeof player === "string") {
+          add(player, player);
+          return;
+        }
+
+        add(
+          player.fullName || player.name || player.displayName || player.playerName || player.shortName || "",
+          player.shortName || player.name || player.displayName || ""
+        );
+      });
+    });
+
+    return out;
+  }, [members, teams, normalizeName]);
+
+  const resolveShortDisplay = useCallback((rawName) => {
+    const canonical = normalizeName(rawName);
+    if (!canonical) return "";
+    return shortDisplayByNormalized[safeLower(canonical)] || canonical;
+  }, [normalizeName, shortDisplayByNormalized]);
 
   useEffect(() => {
     let isMounted = true;
@@ -238,17 +320,18 @@ export function NewsPage({
     const map = {};
     (teams || []).forEach((t) => {
       (t.players || []).forEach((p) => {
-        const name = typeof p === "string" ? p : p?.name || p?.displayName;
+        const rawName = typeof p === "string" ? p : p?.name || p?.displayName || p?.shortName;
+        const name = normalizeName(rawName);
         if (name && !map[name]) {
           map[name] = t.label;
         }
       });
     });
     return map;
-  }, [teams]);
+  }, [teams, normalizeName]);
 
   const getPlayerTeamAbbrev = (playerName) => {
-    const teamName = playerTeamMap[playerName];
+    const teamName = playerTeamMap[normalizeName(playerName)];
     if (!teamName) return "";
     return getTeamAbbrev(teamName);
   };
@@ -294,15 +377,20 @@ export function NewsPage({
 
       (t.players || []).forEach((p) => {
         if (!p || typeof p !== "object") return;
-        const name = p.name || p.displayName || p.shortName || "";
-        if (!name || !p.photoUrl) return;
-        const pretty = toTitleCase(name);
-        addPhotoKey(name, p.photoUrl);
-        addPhotoKey(pretty, p.photoUrl);
-        addPhotoKey(slugFromName(name), p.photoUrl);
-        addPhotoKey(slugFromName(pretty), p.photoUrl);
-        addPhotoKey(firstNameOf(name), p.photoUrl);
-        addPhotoKey(firstNameOf(pretty), p.photoUrl);
+        const photoUrl = p.photoUrl || p.photo || p.image || "";
+        if (!photoUrl) return;
+
+        [p.fullName, p.name, p.displayName, p.playerName, p.shortName]
+          .filter(Boolean)
+          .forEach((candidateName) => {
+            const pretty = toTitleCase(candidateName);
+            addPhotoKey(candidateName, photoUrl);
+            addPhotoKey(pretty, photoUrl);
+            addPhotoKey(slugFromName(candidateName), photoUrl);
+            addPhotoKey(slugFromName(pretty), photoUrl);
+            addPhotoKey(firstNameOf(candidateName), photoUrl);
+            addPhotoKey(firstNameOf(pretty), photoUrl);
+          });
       });
     });
 
@@ -314,37 +402,49 @@ export function NewsPage({
     [playerCanonicalMap]
   );
 
-  const getPlayerPhoto = useCallback((name) => {
-    if (!name) return null;
-
+  const getPlayerPhoto = useCallback((name, shortName = "") => {
     const raw = String(name || "").trim();
-    const canonical = resolveCanonicalPlayerName(raw);
-    const pretty = toTitleCase(raw);
-    const firstRaw = firstNameOf(raw);
-    const firstPretty = firstNameOf(pretty);
-    const firstCanonical = firstNameOf(canonical);
+    const shortRaw = String(shortName || "").trim();
+    if (!raw && !shortRaw) return null;
 
-    const candidates = [
-      raw,
-      pretty,
-      canonical,
-      firstRaw,
-      firstPretty,
-      firstCanonical,
-      slugFromName(raw),
-      slugFromName(pretty),
-      slugFromName(canonical),
-    ];
+    const canonical = normalizeName(raw || shortRaw);
+    const resolvedCanonical = resolveCanonicalPlayerName(canonical || raw || shortRaw);
+    const resolvedShort = resolveShortDisplay(resolvedCanonical || raw || shortRaw);
 
+    const candidates = [];
+
+    const cn = toTitleCase(resolvedCanonical || raw || shortRaw);
+    const sn = toTitleCase(shortRaw || resolvedShort || "");
+
+    if (cn) candidates.push(cn);
+    if (sn && sn !== cn) candidates.push(sn);
+
+    const fn1 = firstNameOf(cn);
+    const fn2 = firstNameOf(sn);
+    if (fn1) candidates.push(fn1);
+    if (fn2 && fn2 !== fn1) candidates.push(fn2);
+
+    if (cn) candidates.push(slugFromName(cn));
+    if (sn) candidates.push(slugFromName(sn));
+
+    const rawPretty = toTitleCase(raw);
+    const shortPretty = toTitleCase(shortRaw);
+    [raw, rawPretty, shortRaw, shortPretty, canonical, resolvedCanonical, resolvedShort,
+     firstNameOf(raw), firstNameOf(rawPretty), firstNameOf(shortRaw), firstNameOf(shortPretty),
+     slugFromName(raw), slugFromName(rawPretty), slugFromName(shortRaw), slugFromName(shortPretty)]
+      .filter(Boolean)
+      .forEach((value) => candidates.push(value));
+
+    const seen = new Set();
     for (const candidate of candidates) {
       const key = safeLower(candidate);
-      if (key && mergedPhotoMap[key]) return mergedPhotoMap[key];
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      if (mergedPhotoMap[key]) return mergedPhotoMap[key];
     }
 
     return null;
-  }, [mergedPhotoMap, resolveCanonicalPlayerName]);
-
-  const todayLabel = useMemo(() => formatMatchDayDate(new Date()), []);
+  }, [mergedPhotoMap, normalizeName, resolveCanonicalPlayerName, resolveShortDisplay]);
 
   const canManageCustomStories = Boolean(
     identity && ["admin", "captain"].includes(String(identity.role || "").toLowerCase())
@@ -395,82 +495,45 @@ export function NewsPage({
     tag: "Story",
     body: "",
     slotKey: "after-hero",
-    order: 1,
     playerName: "",
     imageUrl: "",
   });
 
   const [customStories, setCustomStories] = useState([]);
-  const [backupStories, setBackupStories] = useState([]);
-  const [deletedCustomStories, setDeletedCustomStories] = useState([]);
   const [showCreateStoryForm, setShowCreateStoryForm] = useState(false);
   const [storyDraft, setStoryDraft] = useState(createEmptyStoryDraft);
   const [storyFormError, setStoryFormError] = useState("");
   const [storyFormNotice, setStoryFormNotice] = useState("");
+  const [editingStoryId, setEditingStoryId] = useState("");
+  const [loadingStories, setLoadingStories] = useState(true);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(CUSTOM_NEWS_STORIES_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          setCustomStories(parsed.filter(Boolean));
-        }
-      }
+    const storiesRef = collection(db, CUSTOM_NEWS_STORIES_COLLECTION);
+    const unsubscribe = onSnapshot(
+      storiesRef,
+      (snapshot) => {
+        const nextStories = snapshot.docs
+          .map((docSnap) => {
+            const data = docSnap.data() || {};
+            return {
+              id: docSnap.id,
+              ...data,
+            };
+          })
+          .filter(Boolean);
 
-      const backupRaw = window.localStorage.getItem(
-        CUSTOM_NEWS_STORIES_BACKUP_STORAGE_KEY
-      );
-      if (backupRaw) {
-        const parsedBackup = JSON.parse(backupRaw);
-        if (Array.isArray(parsedBackup)) {
-          setBackupStories(parsedBackup.filter(Boolean));
-        }
+        setCustomStories(nextStories);
+        setLoadingStories(false);
+      },
+      (error) => {
+        console.error("[NewsPage] failed to subscribe to news stories:", error);
+        setStoryFormError("Could not load shared custom stories.");
+        setLoadingStories(false);
       }
+    );
 
-      const trashRaw = window.localStorage.getItem(
-        CUSTOM_NEWS_STORIES_TRASH_STORAGE_KEY
-      );
-      if (trashRaw) {
-        const parsedTrash = JSON.parse(trashRaw);
-        if (Array.isArray(parsedTrash)) {
-          setDeletedCustomStories(parsedTrash.filter(Boolean));
-        }
-      }
-    } catch (error) {
-      console.error("[NewsPage] failed to load custom stories:", error);
-    }
+    return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(
-        CUSTOM_NEWS_STORIES_STORAGE_KEY,
-        JSON.stringify(customStories)
-      );
-      window.localStorage.setItem(
-        CUSTOM_NEWS_STORIES_BACKUP_STORAGE_KEY,
-        JSON.stringify(customStories)
-      );
-      setBackupStories(customStories);
-    } catch (error) {
-      console.error("[NewsPage] failed to persist custom stories:", error);
-    }
-  }, [customStories]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(
-        CUSTOM_NEWS_STORIES_TRASH_STORAGE_KEY,
-        JSON.stringify(deletedCustomStories)
-      );
-    } catch (error) {
-      console.error("[NewsPage] failed to persist deleted custom stories:", error);
-    }
-  }, [deletedCustomStories]);
 
   const activeCustomStories = useMemo(
     () => customStories.filter((story) => story && !story.archived),
@@ -484,30 +547,19 @@ export function NewsPage({
 
   const activeCustomStoryCount = activeCustomStories.length;
   const hasReachedCustomStoryLimit = activeCustomStoryCount >= CUSTOM_STORY_LIMIT;
-  const hasRecoverableBackupStories =
-    activeCustomStories.length === 0 &&
-    Array.isArray(backupStories) &&
-    backupStories.length > 0;
-  const hasDeletedStories =
-    Array.isArray(deletedCustomStories) && deletedCustomStories.length > 0;
 
   const getSlotLabel = (slotKey) =>
     CUSTOM_STORY_SLOT_OPTIONS.find((option) => option.value === slotKey)?.label ||
     "Custom slot";
 
   const sortedActiveCustomStories = useMemo(() => {
-    return activeCustomStories
-      .slice()
-      .sort((a, b) => {
-        const slotCompare = String(a?.slotKey || "").localeCompare(
-          String(b?.slotKey || "")
-        );
-        if (slotCompare !== 0) return slotCompare;
-        const orderA = Number.isFinite(Number(a?.order)) ? Number(a.order) : 999;
-        const orderB = Number.isFinite(Number(b?.order)) ? Number(b.order) : 999;
-        if (orderA !== orderB) return orderA - orderB;
-        return Number(a?.createdAt || 0) - Number(b?.createdAt || 0);
-      });
+    return activeCustomStories.slice().sort((a, b) => {
+      const slotCompare = String(a?.slotKey || "").localeCompare(
+        String(b?.slotKey || "")
+      );
+      if (slotCompare !== 0) return slotCompare;
+      return Number(a?.createdAtMs || 0) - Number(b?.createdAtMs || 0);
+    });
   }, [activeCustomStories]);
 
   const handleStoryDraftChange = (field, value) => {
@@ -521,11 +573,28 @@ export function NewsPage({
 
   const resetStoryDraft = () => {
     setStoryDraft(createEmptyStoryDraft());
+    setEditingStoryId("");
     setStoryFormError("");
     setStoryFormNotice("");
   };
 
-  const handleCreateCustomStory = () => {
+  const handleEditCustomStory = (story) => {
+    if (!canManageCustomStories || !story) return;
+    setEditingStoryId(story.id || "");
+    setStoryDraft({
+      title: String(story.title || ""),
+      tag: String(story.tag || "Story"),
+      body: String(story.body || ""),
+      slotKey: String(story.slotKey || "after-hero"),
+      playerName: String(story.playerName || ""),
+      imageUrl: String(story.imageUrl || ""),
+    });
+    setShowCreateStoryForm(true);
+    setStoryFormError("");
+    setStoryFormNotice(`Editing "${story.title || "story"}".`);
+  };
+
+  const handleSaveCustomStory = async () => {
     if (!canManageCustomStories) return;
 
     const title = String(storyDraft.title || "").trim();
@@ -534,7 +603,6 @@ export function NewsPage({
     const playerName = String(storyDraft.playerName || "").trim();
     const imageUrl = String(storyDraft.imageUrl || "").trim();
     const slotKey = String(storyDraft.slotKey || "after-hero");
-    const orderValue = Number(storyDraft.order);
 
     if (!title) {
       setStoryFormError("Please add a story title.");
@@ -546,148 +614,151 @@ export function NewsPage({
       return;
     }
 
-    if (hasReachedCustomStoryLimit) {
+    if (!editingStoryId && hasReachedCustomStoryLimit) {
       setStoryFormError(
         "You already have 5 active custom stories. Archive or delete one before adding another."
       );
       return;
     }
 
-    const story = {
-      id: `custom-story-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title,
-      body,
-      tag,
-      slotKey,
-      order: Number.isFinite(orderValue) ? Math.max(1, Math.round(orderValue)) : 1,
-      playerName,
-      imageUrl,
-      archived: false,
-      createdAt: Date.now(),
-      createdBy:
-        identity?.shortName || identity?.fullName || identity?.name || "Admin",
-    };
+    try {
+      const storyId = editingStoryId || `story-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const storyRef = doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId);
+      const createdAtMs = editingStoryId
+        ? Number(
+            customStories.find((story) => story?.id === editingStoryId)?.createdAtMs ||
+              Date.now()
+          )
+        : Date.now();
 
-    setCustomStories((current) => [...current, story]);
-    setStoryDraft(createEmptyStoryDraft());
-    setStoryFormError("");
-    setStoryFormNotice("Story created.");
-    setShowCreateStoryForm(false);
+      await setDoc(
+        storyRef,
+        {
+          title,
+          body,
+          tag,
+          slotKey,
+          playerName,
+          imageUrl,
+          archived: false,
+          createdAtMs,
+          updatedAtMs: Date.now(),
+          createdBy:
+            identity?.shortName || identity?.fullName || identity?.name || "Admin",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setStoryFormNotice(editingStoryId ? "Story updated." : "Story created and published.");
+      setStoryDraft(createEmptyStoryDraft());
+      setEditingStoryId("");
+      setShowCreateStoryForm(false);
+      setStoryFormError("");
+    } catch (error) {
+      console.error("[NewsPage] failed to save custom story:", error);
+      setStoryFormError("Could not publish the story. Please try again.");
+    }
   };
 
-  const handleArchiveToggleCustomStory = (storyId) => {
+  const handleArchiveToggleCustomStory = async (storyId) => {
     if (!canManageCustomStories || !storyId) return;
 
-    setCustomStories((current) => {
-      const next = current.map((story) => {
-        if (story?.id !== storyId) return story;
-        if (story.archived) {
-          if (
-            current.filter((item) => item && !item.archived).length >= CUSTOM_STORY_LIMIT
-          ) {
-            setStoryFormError(
-              "You already have 5 active custom stories. Delete or archive one before restoring another."
-            );
-            return story;
-          }
-        }
-        return {
-          ...story,
-          archived: !story.archived,
-          archivedAt: !story.archived ? Date.now() : null,
-        };
-      });
-      return next;
-    });
+    const targetStory = customStories.find((story) => story?.id === storyId);
+    if (!targetStory) return;
+
+    if (targetStory.archived && activeCustomStories.length >= CUSTOM_STORY_LIMIT) {
+      setStoryFormError(
+        "You already have 5 active custom stories. Delete or archive one before restoring another."
+      );
+      return;
+    }
+
+    try {
+      await setDoc(
+        doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId),
+        {
+          archived: !targetStory.archived,
+          archivedAtMs: !targetStory.archived ? Date.now() : null,
+          updatedAtMs: Date.now(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setStoryFormError("");
+      setStoryFormNotice(targetStory.archived ? "Story restored." : "Story archived.");
+    } catch (error) {
+      console.error("[NewsPage] failed to archive story:", error);
+      setStoryFormError("Could not update archive status.");
+    }
   };
 
-  const handleDeleteCustomStory = (storyId) => {
+  const handleDeleteCustomStory = async (storyId) => {
     if (!canManageCustomStories || !storyId) return;
 
     const storyToDelete = customStories.find((story) => story?.id === storyId);
     if (!storyToDelete) return;
 
     if (typeof window !== "undefined") {
-      const warningMessage =
-        `You are about to permanently delete this story:\n\n` +
-        `${storyToDelete.title || "Untitled story"}\n\n` +
-        `This removes it from the page. If you only want to hide it, use Archive instead.\n\n` +
-        `To confirm deletion, type the story title exactly as shown.`;
-
-      const typed = window.prompt(warningMessage, "");
-      if (typed == null) return;
-
-      const expected = String(storyToDelete.title || "").trim();
-      if (String(typed || "").trim() !== expected) {
-        setStoryFormError("Delete cancelled. The typed title did not match.");
-        return;
-      }
-    }
-
-    setDeletedCustomStories((current) => [
-      {
-        ...storyToDelete,
-        deletedAt: Date.now(),
-      },
-      ...current,
-    ]);
-    setCustomStories((current) => current.filter((story) => story?.id !== storyId));
-    setStoryFormError("");
-    setStoryFormNotice(`Deleted "${storyToDelete.title}". You can still restore it from Recently deleted.`);
-  };
-
-  const handleRestoreDeletedCustomStory = (storyId) => {
-    if (!canManageCustomStories || !storyId) return;
-
-    const storyToRestore = deletedCustomStories.find((story) => story?.id === storyId);
-    if (!storyToRestore) return;
-
-    if (activeCustomStories.length >= CUSTOM_STORY_LIMIT) {
-      setStoryFormError(
-        "You already have 5 active custom stories. Archive or delete one before restoring another."
-      );
-      return;
-    }
-
-    setCustomStories((current) => [
-      ...current,
-      {
-        ...storyToRestore,
-        archived: Boolean(storyToRestore.archived),
-      },
-    ]);
-    setDeletedCustomStories((current) =>
-      current.filter((story) => story?.id !== storyId)
-    );
-    setStoryFormError("");
-    setStoryFormNotice(`Restored "${storyToRestore.title}".`);
-  };
-
-  const handleRestoreStoriesFromBackup = () => {
-    if (!canManageCustomStories) return;
-    if (!Array.isArray(backupStories) || backupStories.length === 0) {
-      setStoryFormError("No backup stories were found on this browser.");
-      return;
-    }
-
-    if (typeof window !== "undefined") {
       const confirmed = window.confirm(
-        `Restore ${backupStories.length} saved story/stories from browser backup?`
+        `Delete "${storyToDelete.title || "this story"}" permanently?
+
+This will remove it from live news and archives for everyone.`
       );
       if (!confirmed) return;
     }
 
-    setCustomStories(backupStories);
-    setStoryFormError("");
-    setStoryFormNotice(`Restored ${backupStories.length} story/stories from backup.`);
+    try {
+      await deleteDoc(doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId));
+      if (editingStoryId === storyId) resetStoryDraft();
+      setStoryFormError("");
+      setStoryFormNotice(`Deleted "${storyToDelete.title}" permanently.`);
+    } catch (error) {
+      console.error("[NewsPage] failed to delete story:", error);
+      setStoryFormError("Could not delete this story. Please try again.");
+    }
   };
+
 
 
   // ---------- RAW DATA SPLIT ----------
   const fullResultsRaw = results || [];
   const fullEventsRaw = allEvents || [];
-  const weekResultsRaw = currentResults || [];
-  const weekEventsRaw = currentEvents || [];
+
+  const latestSavedMatchDay = useMemo(() => {
+    const days = Array.isArray(matchDayHistory) ? matchDayHistory.filter(Boolean) : [];
+    if (!days.length) return null;
+
+    const withData = days.filter((day) => {
+      const resultsCount = Array.isArray(day?.results) ? day.results.length : 0;
+      const eventsCount = Array.isArray(day?.allEvents) ? day.allEvents.length : 0;
+      return resultsCount > 0 || eventsCount > 0;
+    });
+
+    const source = withData.length ? withData : days;
+
+    return source.slice().sort((a, b) => {
+      const aStamp = a?.createdAt || a?.updatedAt || a?.id || 0;
+      const bStamp = b?.createdAt || b?.updatedAt || b?.id || 0;
+      const aTime = new Date(aStamp).getTime() || 0;
+      const bTime = new Date(bStamp).getTime() || 0;
+      return bTime - aTime;
+    })[0];
+  }, [matchDayHistory]);
+
+  const weekResultsRaw = Array.isArray(latestSavedMatchDay?.results) && latestSavedMatchDay.results.length
+    ? latestSavedMatchDay.results
+    : (currentResults || []);
+  const weekEventsRaw = Array.isArray(latestSavedMatchDay?.allEvents)
+    ? latestSavedMatchDay.allEvents
+    : (currentEvents || []);
+
+  const latestMatchDayLabel = useMemo(() => {
+    if (latestSavedMatchDay?.createdAt) return formatMatchDayDate(latestSavedMatchDay.createdAt);
+    if (latestSavedMatchDay?.id) return formatMatchDayDate(latestSavedMatchDay.id);
+    return formatMatchDayDate(new Date());
+  }, [latestSavedMatchDay]);
 
   // ---------- CLEAN DATA (FULL TOURNAMENT) ----------
   const cleanTournamentResults = useMemo(
@@ -783,7 +854,9 @@ export function NewsPage({
   // ---------- PLAYER STATS (full tournament) ----------
   const playerStats = useMemo(() => {
     const stats = {};
-    const getOrCreate = (name) => {
+    const getOrCreate = (rawName) => {
+      const name = normalizeName(rawName);
+      if (!name) return null;
       if (!stats[name]) {
         stats[name] = { name, goals: 0, assists: 0, shibobos: 0 };
       }
@@ -793,12 +866,14 @@ export function NewsPage({
     cleanTournamentEvents.forEach((e) => {
       if (e.scorer) {
         const s = getOrCreate(e.scorer);
-        if (e.type === "goal") s.goals += 1;
-        else if (e.type === "shibobo") s.shibobos += 1;
+        if (s) {
+          if (e.type === "goal") s.goals += 1;
+          else if (e.type === "shibobo") s.shibobos += 1;
+        }
       }
       if (e.assist) {
         const a = getOrCreate(e.assist);
-        a.assists += 1;
+        if (a) a.assists += 1;
       }
     });
 
@@ -808,7 +883,7 @@ export function NewsPage({
       p.total = p.goals + p.assists + p.shibobos;
     });
     return arr;
-  }, [cleanTournamentEvents, playerTeamMap]);
+  }, [cleanTournamentEvents, playerTeamMap, normalizeName]);
 
   const topScorer = useMemo(() => {
     let best = null;
@@ -858,7 +933,8 @@ export function NewsPage({
     return best;
   }, [playerStats]);
 
-  const mvpPhotoUrl = bestOverall ? getPlayerPhoto(bestOverall.name) : null;
+  const mvpShortName = bestOverall ? resolveShortDisplay(bestOverall.name) : "";
+  const mvpPhotoUrl = bestOverall ? getPlayerPhoto(bestOverall.name, mvpShortName) : null;
 
   // ---------- STREAK STATS (full tournament) ----------
   const streakStats = useMemo(() => {
@@ -943,7 +1019,7 @@ export function NewsPage({
     return best;
   }, [cleanTournamentResults]);
 
-  // ---------- RECAP (THIS MATCH-DAY ONLY) ----------
+  // ---------- RECAP (LATEST SAVED MATCH-DAY ONLY) ----------
   const recapResults = useMemo(() => {
     const arr = cleanWeekResults.slice();
     arr.sort((a, b) => a.matchNo - b.matchNo);
@@ -953,15 +1029,38 @@ export function NewsPage({
   const recapEventsByMatch = useMemo(() => {
     const map = new Map();
     cleanWeekEvents.forEach((e) => {
-      if (e.matchNo == null) return;
-      if (!map.has(e.matchNo)) map.set(e.matchNo, []);
-      map.get(e.matchNo).push(e);
+      if (e?.matchNo == null) return;
+      const key = String(e.matchNo);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push({
+        ...e,
+        scorer: normalizeName(e?.scorer),
+        assist: normalizeName(e?.assist),
+        playerName: normalizeName(e?.playerName),
+      });
     });
     map.forEach((list) =>
-      list.sort((a, b) => (a.timeSeconds || 0) - (b.timeSeconds || 0))
+      list.sort((a, b) => Number(a?.timeSeconds || 0) - Number(b?.timeSeconds || 0))
     );
     return map;
-  }, [cleanWeekEvents]);
+  }, [cleanWeekEvents, normalizeName]);
+
+  const getDisplayEventsForRecapMatch = useCallback((result) => {
+    const rawEvents = recapEventsByMatch.get(String(result?.matchNo)) || [];
+    const scoringEvents = rawEvents.filter((e) => e?.type === "goal" || e?.type === "shibobo" || !e?.type);
+
+    const teamAEvents = scoringEvents
+      .filter((e) => e?.teamId === result?.teamAId)
+      .slice(0, Number(result?.goalsA || 0));
+
+    const teamBEvents = scoringEvents
+      .filter((e) => e?.teamId === result?.teamBId)
+      .slice(0, Number(result?.goalsB || 0));
+
+    return [...teamAEvents, ...teamBEvents].sort(
+      (a, b) => Number(a?.timeSeconds || 0) - Number(b?.timeSeconds || 0)
+    );
+  }, [recapEventsByMatch]);
 
   // ---------- RESPONSIVE FLAG ----------
   const [isNarrow, setIsNarrow] = useState(false);
@@ -1391,6 +1490,14 @@ export function NewsPage({
                   <button
                     type="button"
                     className="secondary-btn"
+                    onClick={() => handleEditCustomStory(story)}
+                    style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
                     onClick={() => handleArchiveToggleCustomStory(story.id)}
                     style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}
                   >
@@ -1442,20 +1549,21 @@ export function NewsPage({
             <h2 style={{ marginTop: 0 }}>{story.title}</h2>
             <p style={{ marginTop: "0.35rem", whiteSpace: "pre-wrap" }}>{story.body}</p>
 
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.55rem",
-                marginTop: "0.9rem",
-                fontSize: "0.82rem",
-                opacity: 0.92,
-              }}
-            >
-              <span style={metaChipStyle}>📍 {getSlotLabel(story.slotKey)}</span>
-              <span style={metaChipStyle}>↕️ Position {story.order || 1}</span>
-              {story.createdBy ? <span style={metaChipStyle}>✍️ {story.createdBy}</span> : null}
-            </div>
+            {canManageCustomStories && (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.55rem",
+                  marginTop: "0.9rem",
+                  fontSize: "0.82rem",
+                  opacity: 0.92,
+                }}
+              >
+                <span style={metaChipStyle}>📍 {getSlotLabel(story.slotKey)}</span>
+                {story.createdBy ? <span style={metaChipStyle}>✍️ {story.createdBy}</span> : null}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -1533,7 +1641,7 @@ export function NewsPage({
             <div style={{ minWidth: 0 }}>
               <h2 style={{ marginTop: 0, marginBottom: "0.35rem" }}>Custom story studio</h2>
               <p className="muted" style={{ margin: 0 }}>
-                Create a story without coding, choose exactly where it sits on the page,
+                Create a story without coding, publish it to everyone,
                 and manage only the stories created here.
               </p>
             </div>
@@ -1542,6 +1650,7 @@ export function NewsPage({
               <span style={metaChipStyle}>
                 Active custom stories: <strong>{activeCustomStoryCount}</strong> / {CUSTOM_STORY_LIMIT}
               </span>
+              {loadingStories && <span style={metaChipStyle}>Loading shared stories…</span>}
               <button
                 type="button"
                 className="primary-btn"
@@ -1557,63 +1666,6 @@ export function NewsPage({
               </button>
             </div>
           </div>
-
-          {hasRecoverableBackupStories && (
-            <div
-              style={{
-                marginTop: "0.9rem",
-                padding: "0.85rem 1rem",
-                borderRadius: "1rem",
-                background: "rgba(34, 197, 94, 0.12)",
-                border: "1px solid rgba(34, 197, 94, 0.28)",
-                color: "#bbf7d0",
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "0.75rem",
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <span>
-                Your active stories look empty on this browser view, but a local backup was found.
-              </span>
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={handleRestoreStoriesFromBackup}
-              >
-                Restore backup stories
-              </button>
-            </div>
-          )}
-
-          {hasDeletedStories && (
-            <div
-              style={{
-                marginTop: "0.9rem",
-                padding: "0.85rem 1rem",
-                borderRadius: "1rem",
-                background: "rgba(59,130,246,0.12)",
-                border: "1px solid rgba(59,130,246,0.25)",
-                color: "#bfdbfe",
-              }}
-            >
-              Recently deleted stories saved here: <strong>{deletedCustomStories.length}</strong>.
-              You can restore them below before they are lost from browser storage.
-            </div>
-          )}
-
-          {storyFormError && (
-            <div style={{ marginTop: "0.85rem", color: "#fca5a5", fontWeight: 600 }}>
-              {storyFormError}
-            </div>
-          )}
-
-          {storyFormNotice && !storyFormError && (
-            <div style={{ marginTop: "0.85rem", color: "#86efac", fontWeight: 600 }}>
-              {storyFormNotice}
-            </div>
-          )}
 
           {hasReachedCustomStoryLimit && (
             <div
@@ -1671,7 +1723,7 @@ export function NewsPage({
                 </label>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Panel location</span>
+                  <span style={{ fontWeight: 700 }}>Where should this story appear?</span>
                   <select
                     value={storyDraft.slotKey}
                     onChange={(e) => handleStoryDraftChange("slotKey", e.target.value)}
@@ -1683,18 +1735,6 @@ export function NewsPage({
                       </option>
                     ))}
                   </select>
-                </label>
-
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Position inside that location</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={storyDraft.order}
-                    onChange={(e) => handleStoryDraftChange("order", e.target.value)}
-                    style={newsInputStyle}
-                  />
                 </label>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
@@ -1736,65 +1776,25 @@ export function NewsPage({
                 </label>
               </div>
 
+              {storyFormError && (
+                <div style={{ marginTop: "0.85rem", color: "#fca5a5", fontWeight: 600 }}>
+                  {storyFormError}
+                </div>
+              )}
+
+              {storyFormNotice && !storyFormError && (
+                <div style={{ marginTop: "0.85rem", color: "#86efac", fontWeight: 600 }}>
+                  {storyFormNotice}
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: "0.65rem", flexWrap: "wrap", marginTop: "1rem" }}>
-                <button type="button" className="primary-btn" onClick={handleCreateCustomStory}>
-                  Save story
+                <button type="button" className="primary-btn" onClick={handleSaveCustomStory}>
+                  {editingStoryId ? "Update story" : "Save story"}
                 </button>
                 <button type="button" className="secondary-btn" onClick={resetStoryDraft}>
                   Reset
                 </button>
-              </div>
-            </div>
-          )}
-
-          {hasDeletedStories && (
-            <div
-              style={{
-                marginTop: "1rem",
-                padding: "1rem",
-                borderRadius: "1rem",
-                background: "rgba(2,6,23,0.35)",
-                border: "1px solid rgba(148,163,184,0.18)",
-              }}
-            >
-              <h3 style={{ marginTop: 0, marginBottom: "0.65rem" }}>Recently deleted</h3>
-              <div style={{ display: "grid", gap: "0.65rem" }}>
-                {deletedCustomStories
-                  .slice()
-                  .sort((a, b) => Number(b?.deletedAt || 0) - Number(a?.deletedAt || 0))
-                  .map((story) => (
-                    <div
-                      key={story.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "0.75rem",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        padding: "0.8rem 0.9rem",
-                        borderRadius: "0.9rem",
-                        background: "rgba(15,23,42,0.55)",
-                        border: "1px solid rgba(148,163,184,0.16)",
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 700 }}>
-                          {story.title || "Untitled story"}
-                        </div>
-                        <div className="muted" style={{ fontSize: "0.85rem" }}>
-                          Deleted story kept in browser recovery bin.
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="secondary-btn"
-                        onClick={() => handleRestoreDeletedCustomStory(story.id)}
-                      >
-                        Restore
-                      </button>
-                    </div>
-                  ))}
               </div>
             </div>
           )}
@@ -2050,9 +2050,29 @@ export function NewsPage({
       {bestOverall && (
         <section className="card news-mvp-card">
           <div className="mvp-hero">
-            <div className="mvp-avatar">
+            <div
+              className="mvp-avatar"
+              style={{
+                width: 92,
+                height: 92,
+                minWidth: 92,
+                borderRadius: "999px",
+                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "1px solid rgba(255,255,255,0.22)",
+                boxShadow: "0 0 0 4px rgba(59,130,246,0.12)",
+                background: "linear-gradient(135deg, #0f172a, #1e3a8a)",
+              }}
+            >
               {mvpPhotoUrl ? (
-                <img src={mvpPhotoUrl} alt={bestOverall.name} className="mvp-photo" />
+                <img
+                  src={mvpPhotoUrl}
+                  alt={bestOverall.name}
+                  className="mvp-photo"
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
               ) : (
                 <span className="mvp-initials">{getInitials(bestOverall.name)}</span>
               )}
@@ -2326,20 +2346,20 @@ export function NewsPage({
       <section className="card">
         <div className="news-recap-header">
           <h2>Match-by-match recap</h2>
-          <span className="news-recap-subtitle">Match-day {todayLabel}</span>
+          <span className="news-recap-subtitle">Match-day {latestMatchDayLabel}</span>
         </div>
 
         {recapResults.length === 0 ? (
-          <p className="muted">No matches recorded for this match-day yet.</p>
+          <p className="muted">No matches recorded for the latest saved match-day yet.</p>
         ) : (
           <ul className="news-match-list">
             {recapResults.map((r) => {
-              const events = recapEventsByMatch.get(r.matchNo) || [];
+              const events = getDisplayEventsForRecapMatch(r);
               return (
                 <li key={r.matchNo} className="news-match-item">
                   <div className="news-match-header">
                     <span className="news-match-number">
-                      Match #{r.matchNo} – {todayLabel}
+                      Match #{r.matchNo} – {latestMatchDayLabel}
                     </span>
                     <span className="news-match-scoreline">
                       <span>{getTeamName(r.teamAId)}</span>
@@ -2356,7 +2376,7 @@ export function NewsPage({
                     <ul className="news-event-list">
                       {events.map((e) => {
                         const abbr = getPlayerTeamAbbrev(e.scorer);
-                        const assistPart = e.assist ? ` (assist: ${e.assist})` : "";
+                        const assistPart = e.assist ? ` (assist: ${normalizeName(e.assist)})` : "";
                         const teamSuffix = abbr ? `, ${abbr}` : "";
                         return (
                           <li key={e.id} className="news-event-item">
@@ -2365,7 +2385,7 @@ export function NewsPage({
                             </span>
                             <span className="news-event-text">
                               <strong>{e.type === "shibobo" ? "Shibobo" : "Goal"}</strong> –{" "}
-                              {e.scorer}
+                              {normalizeName(e.scorer)}
                               {assistPart}
                               {teamSuffix}
                             </span>

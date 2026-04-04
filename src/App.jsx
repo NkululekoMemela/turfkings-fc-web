@@ -91,6 +91,206 @@ function slugFromLooseName(value) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
+
+function normalizeHexColor(v) {
+  const raw = String(v || "").trim().replace(/[^#a-fA-F0-9]/g, "");
+  if (!raw) return "";
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
+  if (/^[0-9a-fA-F]{6}$/.test(raw)) return `#${raw.toUpperCase()}`;
+  return raw.toUpperCase();
+}
+
+function isValidHexColor(v) {
+  return /^#[0-9A-F]{6}$/.test(String(v || "").trim().toUpperCase());
+}
+
+function hexToRgba(hex, alpha = 1) {
+  const clean = String(hex || "").replace("#", "");
+  if (!/^[0-9A-Fa-f]{6}$/.test(clean)) return `rgba(34, 197, 94, ${alpha})`;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function themeFromAccent(accent, colorName, text = "#E5E7EB") {
+  return {
+    accent,
+    accentSoft: hexToRgba(accent, 0.18),
+    glow: hexToRgba(accent, 0.24),
+    text,
+    colorName,
+  };
+}
+
+function getThemeFromColorName(rawColorName = "") {
+  const key = String(rawColorName || "").trim().toLowerCase();
+  if (!key) return null;
+
+  if (
+    key.includes("red") ||
+    key.includes("maroon") ||
+    key.includes("crimson") ||
+    key.includes("burgundy")
+  ) {
+    return themeFromAccent("#DC2626", "Red");
+  }
+
+  if (key.includes("white") || key.includes("cream") || key.includes("ivory")) {
+    return themeFromAccent("#F8FAFC", "White", "#F8FAFC");
+  }
+
+  if (key.includes("black") || key.includes("dark") || key.includes("charcoal")) {
+    return themeFromAccent("#0F172A", "Black", "#CBD5E1");
+  }
+
+  if (key.includes("blue") || key.includes("navy")) {
+    return themeFromAccent("#2563EB", "Blue");
+  }
+
+  if (key.includes("sky") || key.includes("cyan") || key.includes("teal")) {
+    return themeFromAccent("#06B6D4", "Sky Blue");
+  }
+
+  if (key.includes("green") || key.includes("lime")) {
+    return themeFromAccent("#22C55E", "Green", "#BBF7D0");
+  }
+
+  if (key.includes("yellow") || key.includes("gold") || key.includes("amber")) {
+    return themeFromAccent("#D97706", "Gold", "#FDE68A");
+  }
+
+  if (key.includes("orange")) {
+    return themeFromAccent("#EA580C", "Orange", "#FED7AA");
+  }
+
+  if (key.includes("purple") || key.includes("violet")) {
+    return themeFromAccent("#7C3AED", "Purple", "#DDD6FE");
+  }
+
+  if (key.includes("pink") || key.includes("magenta")) {
+    return themeFromAccent("#DB2777", "Pink", "#FBCFE8");
+  }
+
+  if (
+    key.includes("slate") ||
+    key.includes("grey") ||
+    key.includes("gray") ||
+    key.includes("silver")
+  ) {
+    return themeFromAccent("#64748B", "Slate", "#CBD5E1");
+  }
+
+  return null;
+}
+
+function getTeamTheme(team = {}) {
+  const explicitHex = normalizeHexColor(
+    team.teamColorHex || team.colorHex || team.teamColor || ""
+  );
+  const explicitName = toTitleCaseLoose(
+    team.teamColorName || team.colorName || ""
+  );
+
+  const nameTheme = getThemeFromColorName(explicitName);
+  if (nameTheme) {
+    return {
+      ...nameTheme,
+      colorName: explicitName || nameTheme.colorName,
+    };
+  }
+
+  if (isValidHexColor(explicitHex)) {
+    return {
+      accent: explicitHex,
+      accentSoft: hexToRgba(explicitHex, 0.18),
+      glow: hexToRgba(explicitHex, 0.24),
+      text: "#E5E7EB",
+      colorName: explicitName || "Team Color",
+    };
+  }
+
+  const key = String(team.label || "").trim().toLowerCase();
+
+  if (
+    key.includes("man u") ||
+    key.includes("manu") ||
+    key.includes("man united") ||
+    key.includes("manchester united")
+  ) {
+    return themeFromAccent("#DC2626", "Red Shirt", "#FECACA");
+  }
+
+  if (key.includes("madrid") || key.includes("real madrid")) {
+    return themeFromAccent("#F8FAFC", "White Shirt", "#F8FAFC");
+  }
+
+  if (key.includes("psg") || key.includes("paris")) {
+    return themeFromAccent("#0F172A", "Black Shirt", "#CBD5E1");
+  }
+
+  return themeFromAccent("#22C55E", "Green", "#BBF7D0");
+}
+
+function getParticipationTeamTheme(team, teamIndex) {
+  const baseTheme = getTeamTheme(team);
+  if (baseTheme) {
+    const normalizedAccent = normalizeHexColor(baseTheme.accent || "");
+    const isBlack =
+      safeLower(baseTheme.colorName || "").includes("black") ||
+      normalizedAccent === "#0F172A" ||
+      normalizedAccent === "#000000";
+
+    return {
+      accent: baseTheme.accent,
+      border: hexToRgba(baseTheme.accent, 0.34),
+      background: `linear-gradient(180deg, ${hexToRgba(baseTheme.accent, 0.10)}, rgba(15,23,42,0.86))`,
+      soft: hexToRgba(baseTheme.accent, 0.14),
+      glow: baseTheme.glow,
+      text: baseTheme.text,
+      colorName: baseTheme.colorName || "",
+      isBlack,
+    };
+  }
+
+  const fallbackThemes = [
+    {
+      accent: "#38bdf8",
+      border: "rgba(56,189,248,0.34)",
+      background:
+        "linear-gradient(180deg, rgba(56,189,248,0.10), rgba(15,23,42,0.86))",
+      soft: "rgba(56,189,248,0.14)",
+      glow: "rgba(56,189,248,0.24)",
+      text: "#E5E7EB",
+    },
+    {
+      accent: "#22c55e",
+      border: "rgba(34,197,94,0.34)",
+      background:
+        "linear-gradient(180deg, rgba(34,197,94,0.10), rgba(15,23,42,0.86))",
+      soft: "rgba(34,197,94,0.14)",
+      glow: "rgba(34,197,94,0.24)",
+      text: "#BBF7D0",
+    },
+    {
+      accent: "#facc15",
+      border: "rgba(250,204,21,0.34)",
+      background:
+        "linear-gradient(180deg, rgba(250,204,21,0.10), rgba(15,23,42,0.86))",
+      soft: "rgba(250,204,21,0.14)",
+      glow: "rgba(250,204,21,0.24)",
+      text: "#FDE68A",
+    },
+  ];
+
+  return {
+    ...fallbackThemes[teamIndex % fallbackThemes.length],
+    colorName: "",
+    isBlack: false,
+  };
+}
+
+
 function getStoredRole(identity) {
   const role = String(identity?.actingRole || identity?.role || "spectator")
     .trim()
@@ -674,6 +874,10 @@ export default function App() {
   const [pendingParticipationEntries, setPendingParticipationEntries] = useState(
     []
   );
+  const [isBackupModalMobile, setIsBackupModalMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth <= 520;
+  });
 
   const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
   const [endSeasonCode, setEndSeasonCode] = useState("");
@@ -727,6 +931,18 @@ export default function App() {
       // ignore localStorage failures
     }
   }, [smartOffset]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleResize = () => {
+      setIsBackupModalMobile(window.innerWidth <= 520);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   let teams,
     currentMatchNo,
@@ -1733,6 +1949,23 @@ export default function App() {
     );
   };
 
+  const handleParticipationStep = (entryKey, delta) => {
+    setPendingParticipationEntries((prev) =>
+      prev.map((entry) => {
+        if (entry.key !== entryKey) return entry;
+        const nextValue = Number(entry.matchesPlayed || 0) + Number(delta || 0);
+        const capped = Math.max(
+          0,
+          Math.min(Number(entry.teamMatches || 0), nextValue)
+        );
+        return {
+          ...entry,
+          matchesPlayed: capped,
+        };
+      })
+    );
+  };
+
   const handleClearOnly = () => {
     if (!requireAdminCode()) return;
 
@@ -2023,6 +2256,7 @@ export default function App() {
 
   const handleBackFromPayment = () => setPage(PAGE_MATCH_SIGNUP);
 
+
   return (
     <div className="app-root">
       <style>{`
@@ -2198,7 +2432,8 @@ export default function App() {
           results={fullResults}
           allEvents={fullEvents}
           currentResults={results}
-          currentEvents={allEvents}
+          currentEvents={currentEvents}
+          matchDayHistory={matchDayHistory}
           playerPhotosByName={playerPhotosByName}
           identity={identity}
           yearEndAttendance={yearEndAttendance}
@@ -2262,24 +2497,40 @@ export default function App() {
 
       {showBackupModal && (
         <div className="modal-backdrop">
-          <div className="modal" style={{ maxWidth: "860px", width: "95%" }}>
-            <h3>End Match Day</h3>
-            <p>
-              Confirm participation before saving. Each player is currently assumed
-              to have played their expected full share based on team size and how
-              many matches their team played tonight.
+          <div
+            className="modal"
+            style={{
+              maxWidth: "780px",
+              width: isBackupModalMobile ? "94%" : "95%",
+              padding: isBackupModalMobile ? "1.15rem" : "1.4rem",
+              boxSizing: "border-box",
+            }}
+          >
+            <h3 style={{ marginBottom: "0.45rem" }}>End Match Day</h3>
+            <p
+              style={{
+                marginTop: 0,
+                marginBottom: "0.9rem",
+                maxWidth: "560px",
+                lineHeight: 1.45,
+              }}
+            >
+              Confirm player participation, then save the match day to Firebase and clear the live board.
             </p>
 
             <div
               style={{
-                maxHeight: "45vh",
+                display: "flex",
+                flexDirection: "column",
+                gap: isBackupModalMobile ? "0.7rem" : "0.85rem",
+                maxHeight: isBackupModalMobile ? "45vh" : "48vh",
                 overflowY: "auto",
-                marginTop: "1rem",
+                marginTop: "0.2rem",
                 marginBottom: "1rem",
-                paddingRight: "0.25rem",
+                paddingRight: "0.2rem",
               }}
             >
-              {teams.map((team) => {
+              {teams.map((team, teamIndex) => {
                 const rows = pendingParticipationEntries.filter(
                   (entry) => entry.teamId === team.id
                 );
@@ -2289,74 +2540,226 @@ export default function App() {
                 const teamMatches = rows[0]?.teamMatches ?? 0;
                 const squadSize = rows[0]?.squadSize ?? 0;
                 const expectedFullMatches = rows[0]?.expectedFullMatches ?? 0;
+                const theme = getParticipationTeamTheme(team, teamIndex);
+                const isBlackTeamTheme = Boolean(theme.isBlack);
 
                 return (
                   <div
                     key={team.id}
                     style={{
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      borderRadius: "12px",
-                      padding: "0.85rem",
-                      marginBottom: "0.9rem",
+                      border: `1px solid ${theme.border}`,
+                      borderLeft: `4px solid ${theme.accent}`,
+                      borderRadius: "14px",
+                      padding: isBackupModalMobile ? "0.8rem" : "0.9rem",
+                      background: theme.background,
+                      boxSizing: "border-box",
                     }}
                   >
-                    <h4 style={{ marginBottom: "0.4rem" }}>{team.label}</h4>
-                    <p className="muted small" style={{ marginBottom: "0.8rem" }}>
-                      Team matches: <strong>{teamMatches}</strong> • Squad size:{" "}
-                      <strong>{squadSize}</strong> • Expected full participation:{" "}
-                      <strong>
-                        {expectedFullMatches}/{teamMatches}
-                      </strong>
-                    </p>
-
-                    {rows.map((entry) => (
-                      <div
-                        key={entry.key}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: isBackupModalMobile ? "flex-start" : "center",
+                        gap: "0.75rem",
+                        flexWrap: "wrap",
+                        marginBottom: "0.75rem",
+                      }}
+                    >
+                      <h4
                         style={{
-                          display: "grid",
-                          gridTemplateColumns: "minmax(150px, 1fr) auto auto",
-                          gap: "0.75rem",
-                          alignItems: "center",
-                          marginBottom: "0.55rem",
+                          margin: 0,
+                          color: isBlackTeamTheme ? "#000000" : theme.accent,
+                          padding: isBlackTeamTheme ? "0.22rem 0.65rem" : 0,
+                          background: isBlackTeamTheme
+                            ? "rgba(255,255,255,0.95)"
+                            : "transparent",
+                          borderRadius: isBlackTeamTheme ? "9px" : 0,
+                          display: "inline-block",
                         }}
                       >
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{entry.playerName}</div>
-                          <div className="muted small">
-                            Default full: {entry.expectedFullMatches}/{entry.teamMatches}
-                          </div>
-                        </div>
-
-                        <label
-                          className="muted small"
-                          style={{ whiteSpace: "nowrap" }}
-                        >
-                          Matches played
-                        </label>
-
-                        <input
-                          type="number"
-                          min={0}
-                          max={entry.teamMatches}
-                          className="text-input"
-                          style={{ width: "90px" }}
-                          value={entry.matchesPlayed}
-                          onChange={(e) =>
-                            handleParticipationChange(entry.key, e.target.value)
-                          }
-                        />
+                        {team.label}
+                      </h4>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "0.45rem",
+                          fontSize: "0.8rem",
+                        }}
+                      >
+                        {[
+                          `Matches ${teamMatches}`,
+                          `Squad ${squadSize}`,
+                          `Expected ${expectedFullMatches}`,
+                        ].map((label, idx) => (
+                          <span
+                            key={label}
+                            style={{
+                              padding: "0.26rem 0.6rem",
+                              borderRadius: "999px",
+                              background:
+                                idx === 2
+                                  ? isBlackTeamTheme
+                                    ? "rgba(255,255,255,0.95)"
+                                    : theme.soft
+                                  : "rgba(255,255,255,0.06)",
+                              border: `1px solid ${
+                                idx === 2
+                                  ? isBlackTeamTheme
+                                    ? "rgba(148,163,184,0.34)"
+                                    : theme.border
+                                  : "rgba(255,255,255,0.1)"
+                              }`,
+                              color:
+                                idx === 2
+                                  ? isBlackTeamTheme
+                                    ? "#000000"
+                                    : theme.accent
+                                  : "#e5e7eb",
+                              opacity:
+                                idx === 2 && isBlackTeamTheme ? 1 : undefined,
+                              fontWeight:
+                                idx === 2 && isBlackTeamTheme ? 700 : undefined,
+                            }}
+                          >
+                            {label}
+                          </span>
+                        ))}
                       </div>
-                    ))}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: isBackupModalMobile ? "0.6rem" : "0.55rem",
+                      }}
+                    >
+                      {rows.map((entry) => {
+                        const expectedLabel = Number(entry.expectedFullMatches || 0);
+                        const playedValue = Number(entry.matchesPlayed || 0);
+                        const maxValue = Number(entry.teamMatches || 0);
+
+                        return (
+                          <div
+                            key={entry.key}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: isBackupModalMobile
+                                ? "1fr"
+                                : "minmax(0,1fr) auto",
+                              gap: isBackupModalMobile ? "0.55rem" : "0.7rem",
+                              alignItems: "center",
+                              padding: isBackupModalMobile ? "0.65rem 0.7rem" : "0.6rem 0.7rem",
+                              borderRadius: "12px",
+                              background: "rgba(255,255,255,0.03)",
+                              border: "1px solid rgba(255,255,255,0.08)",
+                              boxSizing: "border-box",
+                            }}
+                          >
+                            <div style={{ minWidth: 0, paddingRight: isBackupModalMobile ? 0 : "0.25rem" }}>
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  lineHeight: 1.25,
+                                  wordBreak: "break-word",
+                                  overflowWrap: "anywhere",
+                                }}
+                              >
+                                {entry.playerName}
+                              </div>
+                              <div
+                                className="muted small"
+                                style={{
+                                  padding: isBlackTeamTheme ? "0.16rem 0.46rem" : 0,
+                                  background: isBlackTeamTheme
+                                    ? "rgba(148,163,184,0.14)"
+                                    : "transparent",
+                                  borderRadius: isBlackTeamTheme ? "7px" : 0,
+                                  display: "inline-block",
+                                  width: "fit-content",
+                                  marginTop: "0.16rem",
+                                }}
+                              >
+                                Expected: {expectedLabel}
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: isBackupModalMobile ? "0.38rem" : "0.45rem",
+                                justifySelf: isBackupModalMobile ? "stretch" : "end",
+                                width: isBackupModalMobile ? "100%" : "auto",
+                                justifyContent: isBackupModalMobile ? "space-between" : "flex-end",
+                              }}
+                            >
+                              <button
+                                type="button"
+                                className="secondary-btn"
+                                style={{
+                                  minWidth: isBackupModalMobile ? "34px" : "38px",
+                                  width: isBackupModalMobile ? "34px" : "38px",
+                                  height: isBackupModalMobile ? "34px" : "38px",
+                                  padding: 0,
+                                  borderColor: theme.border,
+                                }}
+                                onClick={() => handleParticipationStep(entry.key, -1)}
+                              >
+                                −
+                              </button>
+
+                              <input
+                                type="number"
+                                min={0}
+                                max={maxValue}
+                                className="text-input"
+                                style={{
+                                  width: isBackupModalMobile ? "64px" : "68px",
+                                  minWidth: 0,
+                                  textAlign: "center",
+                                  paddingLeft: "0.35rem",
+                                  paddingRight: "0.35rem",
+                                  boxSizing: "border-box",
+                                  borderColor: theme.border,
+                                  flexShrink: 0,
+                                }}
+                                value={playedValue}
+                                onChange={(e) =>
+                                  handleParticipationChange(entry.key, e.target.value)
+                                }
+                              />
+
+                              <button
+                                type="button"
+                                className="secondary-btn"
+                                style={{
+                                  minWidth: isBackupModalMobile ? "34px" : "38px",
+                                  width: isBackupModalMobile ? "34px" : "38px",
+                                  height: isBackupModalMobile ? "34px" : "38px",
+                                  padding: 0,
+                                  borderColor: theme.border,
+                                }}
+                                onClick={() => handleParticipationStep(entry.key, 1)}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
             </div>
 
-            <div className="field-row">
-              <label>Admin code (Nkululeko)</label>
+            <div style={{ display: "grid", gap: "0.45rem", marginBottom: "0.9rem" }}>
+              <label style={{ fontWeight: 600 }}>Admin code (Nkululeko)</label>
               <input
                 type="password"
                 className="text-input"
+                style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
                 value={backupCode}
                 onChange={(e) => {
                   setBackupCode(e.target.value);
@@ -2366,7 +2769,17 @@ export default function App() {
               {backupError && <p className="error-text">{backupError}</p>}
             </div>
 
-            <div className="actions-row">
+            <div
+              className="actions-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isBackupModalMobile
+                  ? "1fr"
+                  : "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: "0.75rem",
+                alignItems: "stretch",
+              }}
+            >
               <button className="secondary-btn" onClick={closeBackupModal}>
                 Cancel
               </button>
@@ -2381,7 +2794,7 @@ export default function App() {
         </div>
       )}
 
-      {USE_V2 && showSeasonCompleteModal && (
+{USE_V2 && showSeasonCompleteModal && (
         <div className="modal-backdrop">
           <div
             className="modal"
