@@ -402,6 +402,7 @@ function ensureSeasonSchedulingShape(season) {
 
   return {
     ...season,
+    gameFormat: season?.gameFormat || "5_V_5",
     matchMode: season?.matchMode || "round_robin",
     scheduledTarget:
       Number.isInteger(Number(season?.scheduledTarget))
@@ -958,6 +959,7 @@ export default function App() {
   let safeV2ForStats = null;
   let activeSeasonNo = 1;
   let activeSeasonId = null;
+  let gameFormat = "5_V_5";
   let matchMode = "round_robin";
   let scheduledTarget = null;
   let scheduledFixtures = [];
@@ -980,6 +982,7 @@ export default function App() {
     streaks = s?.streaks || {};
     matchDayHistory = s?.matchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
+    gameFormat = s?.gameFormat || "5_V_5";
     matchMode = s?.matchMode || "round_robin";
     scheduledTarget =
       Number.isInteger(Number(s?.scheduledTarget)) ? Number(s.scheduledTarget) : null;
@@ -1005,6 +1008,7 @@ export default function App() {
       yearEndAttendance = [],
     } = legacy || createDefaultState());
 
+    gameFormat = legacy?.gameFormat || "5_V_5";
     matchMode = legacy?.matchMode || "round_robin";
     scheduledTarget =
       Number.isInteger(Number(legacy?.scheduledTarget))
@@ -1092,6 +1096,16 @@ export default function App() {
   const hasPendingScheduledFixture = useMemo(() => {
     return (scheduledFixtures || []).some((fixture) => !fixture?.completed);
   }, [scheduledFixtures]);
+
+  const hasRecordedMatchDayState = useMemo(() => {
+    return (
+      hasLiveMatch ||
+      running ||
+      (Array.isArray(currentEvents) && currentEvents.length > 0) ||
+      (Array.isArray(results) && results.length > 0) ||
+      (Array.isArray(allEvents) && allEvents.length > 0)
+    );
+  }, [hasLiveMatch, running, currentEvents, results, allEvents]);
 
   const isSeasonTargetReached = useMemo(() => {
     if (matchMode !== "scheduled_target") return false;
@@ -1201,8 +1215,53 @@ export default function App() {
     setSmartOffset(Math.max(0, Math.round(numeric)));
   };
 
+  const handleSetGameFormat = (nextFormat) => {
+    const safeFormat =
+      nextFormat === "3_TEAM_LEAGUE" ? "3_TEAM_LEAGUE" : "5_V_5";
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => {
+        const nextSeason = {
+          ...prevSeason,
+          gameFormat: safeFormat,
+        };
+
+        if (safeFormat === "5_V_5") {
+          return {
+            ...nextSeason,
+            matchMode: "round_robin",
+            scheduledTarget: null,
+            scheduledFixtures: [],
+          };
+        }
+
+        return nextSeason;
+      });
+      return;
+    }
+
+    updateState((prev) => {
+      const nextState = {
+        ...prev,
+        gameFormat: safeFormat,
+      };
+
+      if (safeFormat === "5_V_5") {
+        return {
+          ...nextState,
+          matchMode: "round_robin",
+          scheduledTarget: null,
+          scheduledFixtures: [],
+        };
+      }
+
+      return nextState;
+    });
+  };
+
   const handleSetMatchMode = (nextMode) => {
     if (!USE_V2) return;
+    if (gameFormat !== "3_TEAM_LEAGUE") return;
 
     if (running || hasLiveMatch) {
       window.alert("Finish or discard the live match before changing mode.");
@@ -1379,6 +1438,7 @@ export default function App() {
       currentMatch,
       teams,
       identity,
+      gameFormat,
       matchMode,
       scheduledTarget,
     };
@@ -1972,6 +2032,7 @@ export default function App() {
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
+        gameFormat: "5_V_5",
         currentMatchNo: 1,
         currentMatch: {
           teamAId: prevSeason.teams?.[0]?.id ?? null,
@@ -1998,6 +2059,7 @@ export default function App() {
 
     updateState((prev) => ({
       ...prev,
+      gameFormat: "5_V_5",
       currentMatchNo: 1,
       currentMatch: {
         teamAId: prev.teams?.[0]?.id ?? null,
@@ -2062,6 +2124,7 @@ export default function App() {
           return {
             ...prevSeason,
             matchDayHistory: newHistory,
+            gameFormat: "5_V_5",
             currentMatchNo: 1,
             currentMatch: {
               teamAId: prevSeason.teams?.[0]?.id ?? null,
@@ -2101,6 +2164,7 @@ export default function App() {
         return {
           ...prev,
           matchDayHistory: newHistory,
+          gameFormat: "5_V_5",
           currentMatchNo: 1,
           currentMatch: {
             teamAId: prev.teams?.[0]?.id ?? null,
@@ -2211,6 +2275,7 @@ export default function App() {
       const newSeason = {
         seasonId,
         seasonNo,
+        gameFormat: "5_V_5",
         teams: baseTeams,
         currentMatchNo: 1,
         currentMatch: {
@@ -2298,6 +2363,7 @@ export default function App() {
           results={fullResults}
           streaks={streaks}
           hasLiveMatch={hasLiveMatch}
+          gameFormat={gameFormat}
           matchMode={matchMode}
           scheduledTarget={scheduledTarget}
           scheduledFixtures={scheduledFixtures}
@@ -2305,6 +2371,7 @@ export default function App() {
           smartTarget={smartTarget}
           onUpdatePairing={handleUpdatePairing}
           onStartMatch={handleStartMatch}
+          onSetGameFormat={handleSetGameFormat}
           onSetMatchMode={handleSetMatchMode}
           onGenerateScheduledPlan={handleGenerateScheduledPlan}
           onUpdateSmartOffset={handleUpdateSmartOffset}
@@ -2323,6 +2390,7 @@ export default function App() {
           isPlayer={isPlayer}
           isSpectator={isSpectator}
           canStartMatch={canStartMatch}
+          hasRecordedMatchDayState={hasRecordedMatchDayState}
         />
       )}
 
@@ -2371,6 +2439,7 @@ export default function App() {
           isCaptain={isCaptain}
           canControlMatch={canStartMatch}
           pendingMatchStartContext={pendingMatchStartContext}
+          gameFormat={gameFormat}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={playerPhotosByName}
@@ -2481,6 +2550,7 @@ export default function App() {
           identity={identity}
           isAdmin={isAdmin}
           activeRole={activeRole}
+          gameFormat={gameFormat}
         />
       )}
 
@@ -2492,6 +2562,7 @@ export default function App() {
           identity={identity}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
+          gameFormat={gameFormat}
         />
       )}
 
