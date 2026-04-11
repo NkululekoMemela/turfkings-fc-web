@@ -1,5 +1,3 @@
-// src/pages/SquadsPage.jsx
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import {
@@ -81,6 +79,7 @@ function isAdminIdentity(identity) {
     identity.role,
     identity.userRole,
     identity.accountType,
+    identity.actingRole,
   ]
     .map((x) => String(x || "").trim().toLowerCase())
     .filter(Boolean);
@@ -245,7 +244,12 @@ function getThemeFromColorName(rawColorName = "") {
     return themeFromAccent("#DB2777", "Pink", "#FBCFE8");
   }
 
-  if (key.includes("slate") || key.includes("grey") || key.includes("gray") || key.includes("silver")) {
+  if (
+    key.includes("slate") ||
+    key.includes("grey") ||
+    key.includes("gray") ||
+    key.includes("silver")
+  ) {
     return themeFromAccent("#64748B", "Slate", "#CBD5E1");
   }
 
@@ -256,9 +260,7 @@ function getTeamTheme(team = {}) {
   const explicitHex = normalizeHexColor(
     team.teamColorHex || team.colorHex || team.teamColor || ""
   );
-  const explicitName = toTitleCase(
-    team.teamColorName || team.colorName || ""
-  );
+  const explicitName = toTitleCase(team.teamColorName || team.colorName || "");
 
   const nameTheme = getThemeFromColorName(explicitName);
   if (nameTheme) {
@@ -280,67 +282,93 @@ function getTeamTheme(team = {}) {
 
   const key = String(team.label || "").trim().toLowerCase();
 
-  if (
-    key.includes("man u") ||
-    key.includes("manu") ||
-    key.includes("man united") ||
-    key.includes("manchester united")
-  ) {
-    return themeFromAccent("#DC2626", "Red Shirt", "#FECACA");
+  if (key === "dark") {
+    return themeFromAccent("#0F172A", "Black", "#CBD5E1");
   }
 
-  if (key.includes("madrid") || key.includes("real madrid")) {
-    return themeFromAccent("#F8FAFC", "White Shirt", "#F8FAFC");
-  }
-
-  if (key.includes("psg") || key.includes("paris")) {
-    return themeFromAccent("#0F172A", "Black Shirt", "#CBD5E1");
+  if (key === "light") {
+    return themeFromAccent("#F8FAFC", "White", "#F8FAFC");
   }
 
   return themeFromAccent("#22C55E", "Green", "#BBF7D0");
 }
 
+function normalizeIncomingTeams(teams = []) {
+  return (teams || []).map((t) => ({
+    ...t,
+    label: t.label || "",
+    abbrev: normalizeAbbrev(t.abbrev || ""),
+    teamColorHex: normalizeHexColor(t.teamColorHex || t.colorHex || ""),
+    teamColorName: toTitleCase(t.teamColorName || t.colorName || ""),
+    players: [...(t.players || [])],
+    captainId: t.captainId || null,
+    captain: t.captain || "",
+  }));
+}
+
+function buildDefaultFiveVFiveTeams() {
+  return normalizeIncomingTeams([
+    {
+      id: "dark",
+      label: "Dark",
+      abbrev: "DRK",
+      teamColorName: "Black",
+      teamColorHex: "#0F172A",
+      players: [],
+      captainId: null,
+      captain: "",
+    },
+    {
+      id: "light",
+      label: "Light",
+      abbrev: "LGT",
+      teamColorName: "White",
+      teamColorHex: "#F8FAFC",
+      players: [],
+      captainId: null,
+      captain: "",
+    },
+  ]);
+}
+
 /* ---------------- Component ---------------- */
 
-export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
+export function SquadsPage({
+  teams = [],
+  fiveVFiveTeams = [],
+  onUpdateTeams,
+  onUpdateFiveVFiveTeams,
+  onBack,
+  identity = null,
+  gameFormat = "5_V_5",
+}) {
   const isAdmin = isAdminIdentity(identity);
   const canEdit = isAdmin;
+  const isFiveVFive = gameFormat === "5_V_5";
 
   const [headerScrolled, setHeaderScrolled] = useState(false);
-
-  const [localTeams, setLocalTeams] = useState(() =>
-    (teams || []).map((t) => ({
-      ...t,
-      label: t.label || "",
-      abbrev: normalizeAbbrev(t.abbrev || ""),
-      teamColorHex: normalizeHexColor(t.teamColorHex || t.colorHex || ""),
-      teamColorName: toTitleCase(t.teamColorName || t.colorName || ""),
-      players: [...(t.players || [])],
-      captainId: t.captainId || null,
-      captain: t.captain || "",
-    }))
+  const [localLeagueTeams, setLocalLeagueTeams] = useState(() =>
+    normalizeIncomingTeams(teams)
   );
+  const [localFiveVFiveTeams, setLocalFiveVFiveTeams] = useState(() => {
+    const normalized = normalizeIncomingTeams(fiveVFiveTeams);
+    return normalized.length === 2 ? normalized : buildDefaultFiveVFiveTeams();
+  });
 
   const [allPlayers, setAllPlayers] = useState([]);
   const [playersLoading, setPlayersLoading] = useState(true);
   const [playersError, setPlayersError] = useState("");
-
   const [pendingNames, setPendingNames] = useState({});
   const [addErrors, setAddErrors] = useState({});
-
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
-
   const [savingCardId, setSavingCardId] = useState("");
   const cardRefs = useRef({});
   const longPressTimersRef = useRef({});
 
   useEffect(() => {
-    const handleScroll = () => {
-      setHeaderScrolled(window.scrollY > 6);
-    };
-
+    const handleScroll = () => setHeaderScrolled(window.scrollY > 6);
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
@@ -348,39 +376,27 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const stateMarker = { tkSquadsPage: true, ts: Date.now() };
     window.history.pushState(stateMarker, "");
-
-    const handlePopState = () => {
-      onBack?.();
-    };
-
+    const handlePopState = () => onBack?.();
     window.addEventListener("popstate", handlePopState);
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
+    return () => window.removeEventListener("popstate", handlePopState);
   }, [onBack]);
 
   useEffect(() => {
-    setLocalTeams(
-      (teams || []).map((t) => ({
-        ...t,
-        label: t.label || "",
-        abbrev: normalizeAbbrev(t.abbrev || ""),
-        teamColorHex: normalizeHexColor(t.teamColorHex || t.colorHex || ""),
-        teamColorName: toTitleCase(t.teamColorName || t.colorName || ""),
-        players: [...(t.players || [])],
-        captainId: t.captainId || null,
-        captain: t.captain || "",
-      }))
-    );
+    setLocalLeagueTeams(normalizeIncomingTeams(teams));
   }, [teams]);
+
+  useEffect(() => {
+    const normalized = normalizeIncomingTeams(fiveVFiveTeams);
+    setLocalFiveVFiveTeams(
+      normalized.length === 2 ? normalized : buildDefaultFiveVFiveTeams()
+    );
+  }, [fiveVFiveTeams]);
 
   useEffect(() => {
     setPlayersLoading(true);
     setPlayersError("");
-
     const colRef = collection(db, PLAYERS_COLLECTION);
     const unsub = onSnapshot(
       colRef,
@@ -395,7 +411,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
         setPlayersLoading(false);
       }
     );
-
     return () => unsub();
   }, []);
 
@@ -417,15 +432,16 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     return bestShortDisplayFromPlayer({ ...p, id: p.id });
   };
 
-  const activePlayers = useMemo(() => {
-    return allPlayers.filter((p) => (p.status || "active") === "active");
-  }, [allPlayers]);
+  const activePlayers = useMemo(
+    () => allPlayers.filter((p) => (p.status || "active") === "active"),
+    [allPlayers]
+  );
 
   useEffect(() => {
     if (!allPlayers.length) return;
 
-    setLocalTeams((prev) =>
-      prev.map((t) => {
+    const normalizeTeamsAgainstPlayers = (prevTeams) =>
+      prevTeams.map((t) => {
         const nextPlayers = (t.players || []).map((entry) => {
           if (playersById.has(entry)) return entry;
           const resolved = resolvePlayerIdFromString(allPlayers, entry);
@@ -443,51 +459,53 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
 
         let captainId = t.captainId || null;
         if (!captainId && t.captain) {
-          const resolvedCaptain = resolvePlayerIdFromString(
-            allPlayers,
-            t.captain
-          );
+          const resolvedCaptain = resolvePlayerIdFromString(allPlayers, t.captain);
           if (resolvedCaptain) captainId = resolvedCaptain;
         }
 
         return { ...t, players: deduped, captainId };
-      })
-    );
+      });
+
+    setLocalLeagueTeams((prev) => normalizeTeamsAgainstPlayers(prev));
+    setLocalFiveVFiveTeams((prev) => normalizeTeamsAgainstPlayers(prev));
   }, [allPlayers, playersById]);
+
+  const sourceTeams = isFiveVFive ? localFiveVFiveTeams : localLeagueTeams;
+  const setSourceTeams = isFiveVFive ? setLocalFiveVFiveTeams : setLocalLeagueTeams;
 
   const assignedIds = useMemo(() => {
     const s = new Set();
-    localTeams.forEach((t) => {
+    sourceTeams.forEach((t) => {
       (t.players || []).forEach((pid) => {
         if (playersById.has(pid)) s.add(pid);
       });
     });
     return s;
-  }, [localTeams, playersById]);
+  }, [sourceTeams, playersById]);
 
-  const unseededPlayers = useMemo(() => {
-    return activePlayers.filter((p) => !assignedIds.has(p.id));
-  }, [activePlayers, assignedIds]);
+  const unseededPlayers = useMemo(
+    () => activePlayers.filter((p) => !assignedIds.has(p.id)),
+    [activePlayers, assignedIds]
+  );
 
-  const availableForTeams = useMemo(() => {
-    return unseededPlayers
-      .map((p) => {
-        const full = bestFullDisplayFromPlayer({ ...p, id: p.id });
-        return `${p.id} | ${full}`;
-      })
-      .sort((a, b) => a.localeCompare(b));
-  }, [unseededPlayers]);
+  const availableForTeams = useMemo(
+    () =>
+      unseededPlayers
+        .map((p) => `${p.id} | ${bestFullDisplayFromPlayer({ ...p, id: p.id })}`)
+        .sort((a, b) => a.localeCompare(b)),
+    [unseededPlayers]
+  );
 
   const availableForUnseeded = useMemo(() => {
     const list = [];
-    localTeams.forEach((t) => {
+    sourceTeams.forEach((t) => {
       (t.players || []).forEach((pid) => {
         if (!playersById.has(pid)) return;
         list.push(`${pid} | ${displayNameOf(pid)}`);
       });
     });
     return Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
-  }, [localTeams, playersById]);
+  }, [sourceTeams, playersById]);
 
   const handlePendingChange = (id, value) => {
     if (!canEdit) return;
@@ -497,7 +515,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
 
   const handleTeamLabelChange = (teamId, value) => {
     if (!canEdit) return;
-    setLocalTeams((prev) =>
+    setSourceTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, label: value } : t))
     );
   };
@@ -505,37 +523,27 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   const handleTeamAbbrevChange = (teamId, value) => {
     if (!canEdit) return;
     const next = normalizeAbbrev(value);
-    setLocalTeams((prev) =>
+    setSourceTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, abbrev: next } : t))
     );
   };
 
-
   const handleTeamColorNameChange = (teamId, value) => {
     if (!canEdit) return;
-    setLocalTeams((prev) =>
-      prev.map((t) =>
-        t.id === teamId ? { ...t, teamColorName: value } : t
-      )
+    setSourceTeams((prev) =>
+      prev.map((t) => (t.id === teamId ? { ...t, teamColorName: value } : t))
     );
   };
 
   const handleCaptainChange = (teamId, captainId) => {
     if (!canEdit) return;
-
-    setLocalTeams((prev) =>
+    setSourceTeams((prev) =>
       prev.map((t) => {
         if (t.id !== teamId) return t;
-
         const nextPlayers = [...(t.players || [])];
-        if (
-          captainId &&
-          playersById.has(captainId) &&
-          !nextPlayers.includes(captainId)
-        ) {
+        if (captainId && playersById.has(captainId) && !nextPlayers.includes(captainId)) {
           nextPlayers.push(captainId);
         }
-
         return {
           ...t,
           captainId: captainId || null,
@@ -576,13 +584,11 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
 
   const handleAddPlayer = async (id) => {
     if (!canEdit) return;
-
     const raw = pendingNames[id] || "";
     const trimmed = raw.trim();
     if (!trimmed) return;
 
     let chosenId = parseChoiceToPlayerId(trimmed);
-
     if (!playersById.has(chosenId)) {
       const resolved = resolvePlayerIdFromString(allPlayers, chosenId);
       if (resolved) {
@@ -594,7 +600,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
       }
     }
 
-    const teamIndex = localTeams.findIndex((t) =>
+    const teamIndex = sourceTeams.findIndex((t) =>
       (t.players || []).some((pid) => pid === chosenId)
     );
     const inAnyTeam = teamIndex >= 0;
@@ -608,29 +614,23 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
         return;
       }
 
-      setLocalTeams((prev) =>
+      setSourceTeams((prev) =>
         prev.map((t, idx) => {
           if (idx !== teamIndex) return t;
-
-          const nextPlayers = (t.players || []).filter(
-            (pid) => pid !== chosenId
-          );
-          const nextCaptainId =
-            t.captainId === chosenId ? null : t.captainId;
-
+          const nextPlayers = (t.players || []).filter((pid) => pid !== chosenId);
+          const nextCaptainId = t.captainId === chosenId ? null : t.captainId;
           return { ...t, players: nextPlayers, captainId: nextCaptainId };
         })
       );
     } else {
-      const targetIndex = localTeams.findIndex((t) => t.id === id);
+      const targetIndex = sourceTeams.findIndex((t) => t.id === id);
       if (targetIndex === -1) {
         setAddErrors((prev) => ({ ...prev, [id]: "Unknown team." }));
         return;
       }
 
-      const targetTeam = localTeams[targetIndex];
-      const alreadyInTarget = (targetTeam.players || []).includes(chosenId);
-      if (alreadyInTarget) {
+      const targetTeam = sourceTeams[targetIndex];
+      if ((targetTeam.players || []).includes(chosenId)) {
         setAddErrors((prev) => ({
           ...prev,
           [id]: `${displayNameOf(chosenId)} is already in this team.`,
@@ -639,7 +639,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
       }
 
       if (inAnyTeam && teamIndex !== targetIndex) {
-        const existingTeam = localTeams[teamIndex];
+        const existingTeam = sourceTeams[teamIndex];
         setAddErrors((prev) => ({
           ...prev,
           [id]: `${displayNameOf(chosenId)} is already in ${existingTeam.label}. Move them to Unseeded first, then assign to this team.`,
@@ -647,11 +647,9 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
         return;
       }
 
-      setLocalTeams((prev) =>
+      setSourceTeams((prev) =>
         prev.map((t, idx) =>
-          idx === targetIndex
-            ? { ...t, players: [...(t.players || []), chosenId] }
-            : t
+          idx === targetIndex ? { ...t, players: [...(t.players || []), chosenId] } : t
         )
       );
     }
@@ -664,16 +662,11 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     if (!canEdit) return;
 
     if (playersById.has(playerIdOrLegacy)) {
-      setLocalTeams((prev) =>
+      setSourceTeams((prev) =>
         prev.map((t) => {
           if (t.id !== teamId) return t;
-
-          const nextPlayers = (t.players || []).filter(
-            (pid) => pid !== playerIdOrLegacy
-          );
-          const nextCaptainId =
-            t.captainId === playerIdOrLegacy ? null : t.captainId;
-
+          const nextPlayers = (t.players || []).filter((pid) => pid !== playerIdOrLegacy);
+          const nextCaptainId = t.captainId === playerIdOrLegacy ? null : t.captainId;
           return { ...t, players: nextPlayers, captainId: nextCaptainId };
         })
       );
@@ -683,12 +676,10 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     const legacyLabel = toTitleCase(playerIdOrLegacy);
     const createdId = await ensurePlayerInDb(legacyLabel);
 
-    setLocalTeams((prev) =>
+    setSourceTeams((prev) =>
       prev.map((t) => {
         if (t.id !== teamId) return t;
-        const nextPlayers = (t.players || []).filter(
-          (pid) => pid !== playerIdOrLegacy
-        );
+        const nextPlayers = (t.players || []).filter((pid) => pid !== playerIdOrLegacy);
         return { ...t, players: nextPlayers };
       })
     );
@@ -701,7 +692,6 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
   const handleRemoveUnseeded = async (playerId) => {
     if (!canEdit) return;
     if (!playersById.has(playerId)) return;
-
     const name = displayNameOf(playerId);
     const ok =
       typeof window !== "undefined"
@@ -731,72 +721,68 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
     setSaveError("");
   };
 
+  const validateTeams = (candidateTeams) => {
+    const badAbbrev = candidateTeams.find((t) => t.abbrev && !isValidAbbrev(t.abbrev));
+    if (badAbbrev) {
+      return `Invalid abbreviation for "${badAbbrev.label || badAbbrev.id}". Use exactly 3 letters (A–Z).`;
+    }
+
+    const badColor = candidateTeams.find((t) => t.teamColorHex && !isValidHexColor(t.teamColorHex));
+    if (badColor) {
+      return `Invalid team color for "${badColor.label || badColor.id}". Use hex like #DC2626`;
+    }
+
+    const abbrevs = candidateTeams.map((t) => t.abbrev).filter(Boolean);
+    const dup = abbrevs.find((a, i) => abbrevs.indexOf(a) !== i);
+    if (dup) return `Duplicate team abbreviation: ${dup}`;
+    return "";
+  };
+
   const handleConfirmSave = async () => {
     if (!canEdit) return;
-
-    const code = saveCode.trim();
-    if (code !== MASTER_CODE) {
+    if (saveCode.trim() !== MASTER_CODE) {
       setSaveError("Invalid admin code.");
       return;
     }
 
-    const cleanedTeams = localTeams.map((t) => {
-      const label = String(t.label || "").trim();
-      const abbrev = normalizeAbbrev(t.abbrev || "");
-      const teamColorName = toTitleCase(t.teamColorName || "");
-      const typedHex = normalizeHexColor(t.teamColorHex || "");
-      const derivedTheme = getThemeFromColorName(teamColorName);
-      const teamColorHex = isValidHexColor(typedHex)
-        ? typedHex
-        : derivedTheme?.accent || "";
-      return { ...t, label, abbrev, teamColorHex, teamColorName };
-    });
+    const cleanOne = (list) =>
+      list.map((t) => {
+        const label = String(t.label || "").trim();
+        const abbrev = normalizeAbbrev(t.abbrev || "");
+        const teamColorName = toTitleCase(t.teamColorName || "");
+        const typedHex = normalizeHexColor(t.teamColorHex || "");
+        const derivedTheme = getThemeFromColorName(teamColorName);
+        const teamColorHex = isValidHexColor(typedHex)
+          ? typedHex
+          : derivedTheme?.accent || "";
+        return { ...t, label, abbrev, teamColorHex, teamColorName };
+      });
 
-    const badAbbrev = cleanedTeams.find(
-      (t) => t.abbrev && !isValidAbbrev(t.abbrev)
-    );
-    if (badAbbrev) {
-      setSaveError(
-        `Invalid abbreviation for "${badAbbrev.label || badAbbrev.id}". Use exactly 3 letters (A–Z).`
-      );
-      return;
-    }
+    const cleanedLeagueTeams = cleanOne(localLeagueTeams);
+    const cleanedFiveVFiveTeams = cleanOne(localFiveVFiveTeams);
 
-    const badColor = cleanedTeams.find(
-      (t) => t.teamColorHex && !isValidHexColor(t.teamColorHex)
-    );
-    if (badColor) {
-      setSaveError(
-        `Invalid team color for "${badColor.label || badColor.id}". Use hex like #DC2626`
-      );
-      return;
-    }
-
-    const abbrevs = cleanedTeams.map((t) => t.abbrev).filter(Boolean);
-    const dup = abbrevs.find((a, i) => abbrevs.indexOf(a) !== i);
-    if (dup) {
-      setSaveError(`Duplicate team abbreviation: ${dup}`);
+    const validationError =
+      validateTeams(cleanedLeagueTeams) || validateTeams(cleanedFiveVFiveTeams);
+    if (validationError) {
+      setSaveError(validationError);
       return;
     }
 
     const newCaptainIds = new Set(
-      cleanedTeams.map((t) => t.captainId).filter(Boolean)
+      [...cleanedLeagueTeams, ...cleanedFiveVFiveTeams]
+        .map((t) => t.captainId)
+        .filter(Boolean)
     );
 
     const currentCaptainIds = new Set(
       allPlayers.filter((p) => p.roles?.captain === true).map((p) => p.id)
     );
 
-    const toMakeCaptain = [...newCaptainIds].filter(
-      (id) => !currentCaptainIds.has(id)
-    );
-    const toRemoveCaptain = [...currentCaptainIds].filter(
-      (id) => !newCaptainIds.has(id)
-    );
+    const toMakeCaptain = [...newCaptainIds].filter((id) => !currentCaptainIds.has(id));
+    const toRemoveCaptain = [...currentCaptainIds].filter((id) => !newCaptainIds.has(id));
 
     try {
       const batch = writeBatch(db);
-
       for (const pid of toMakeCaptain) {
         batch.set(
           doc(db, PLAYERS_COLLECTION, pid),
@@ -827,12 +813,20 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
       return;
     }
 
-    const teamsForSave = cleanedTeams.map((t) => ({
-      ...t,
-      captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
-    }));
+    onUpdateTeams?.(
+      cleanedLeagueTeams.map((t) => ({
+        ...t,
+        captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
+      }))
+    );
 
-    onUpdateTeams(teamsForSave);
+    onUpdateFiveVFiveTeams?.(
+      cleanedFiveVFiveTeams.map((t) => ({
+        ...t,
+        captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
+      }))
+    );
+
     handleCancelSave();
   };
 
@@ -977,212 +971,243 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
         )}
         {playersError && <p className="error-text">{playersError}</p>}
         {!playersLoading && (
-          <p className="muted small">
-            {isAdmin
-              ? "Admin mode: you can edit squads, captains, player placement, and team colors."
-              : "View mode: team cards and squads are visible to everyone."}
-          </p>
+          <>
+            <p className="muted small" style={{ marginBottom: "0.55rem" }}>
+              Match day format: <strong>{isFiveVFive ? "Normal 5 v 5" : "3 Team League"}</strong>
+            </p>
+            <p className="muted small">
+              {isAdmin
+                ? isFiveVFive
+                  ? "Admin mode: you can edit the separate 5 v 5 teams Dark and Light, their captains, colors, and player placement."
+                  : "Admin mode: you can edit the 3 Team League squads, captains, player placement, and team colors."
+                : "View mode: team cards and squads are visible to everyone."}
+            </p>
+          </>
         )}
       </header>
 
       <section className="card">
+        {isFiveVFive && (
+          <div
+            style={{
+              marginBottom: "1rem",
+              padding: "0.95rem",
+              borderRadius: "16px",
+              border: "1px solid rgba(255,255,255,0.08)",
+              background:
+                "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.88))",
+              display: "grid",
+              gap: "0.35rem",
+            }}
+          >
+            <div className="muted small" style={{ fontWeight: 700 }}>
+              Separate Normal 5 v 5 squads
+            </div>
+            <div className="muted small">
+              Dark and Light are stored separately from the 3 Team League squads, so you can switch formats between different weeks without disturbing league continuity.
+            </div>
+          </div>
+        )}
+
         <div className="squads-grid">
-          {localTeams.map((team) => {
+          {sourceTeams.map((team) => {
             const inputId = team.id;
-            const listId = `players-db-${inputId}`;
+            const listId = `players-db-${gameFormat}-${inputId}`;
             const capOptions = captainOptionsForTeam(team);
             const currentCapId =
               team.captainId && playersById.has(team.captainId)
                 ? team.captainId
                 : "";
-            const cardId = `team-${team.id}`;
+            const cardId = `team-${gameFormat}-${team.id}`;
             const theme = getTeamTheme(team);
 
-            return renderCardShell(
-              cardId,
-              team.label,
-              theme,
-              <>
-                <div className="squad-card-topbar">
-                  <div className="team-name-wrap">
-                    <span className="team-color-pill" />
-                    <div>
-                      <div className="team-title-row">
-                        <h2 className="team-title">{team.label}</h2>
-                        {team.abbrev ? (
-                          <span className="team-abbrev-badge">{team.abbrev}</span>
-                        ) : null}
-                      </div>
-                      <div className="team-subtitle">
-                        Captain: {captainTagText(team) || "—"}
-                      </div>
-                      <div className="team-color-name">
-                        <span className="team-color-dot" />
-                        {theme.colorName}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {isAdmin && (
-                  <div className="team-config">
-                    <div className="field-row-inline">
-                      <input
-                        className="text-input"
-                        value={team.label || ""}
-                        placeholder="Team name"
-                        onChange={(e) =>
-                          handleTeamLabelChange(team.id, e.target.value)
-                        }
-                        disabled={!canEdit}
-                      />
-                      <input
-                        className="text-input team-abbrev-input"
-                        value={team.abbrev || ""}
-                        placeholder="ABC"
-                        title="3-letter abbreviation (A–Z)"
-                        onChange={(e) =>
-                          handleTeamAbbrevChange(team.id, e.target.value)
-                        }
-                        disabled={!canEdit}
-                      />
-                    </div>
-
-                    <div className="field-row-top-spaced">
-                      <input
-                        className="text-input"
-                        value={team.teamColorName || ""}
-                        placeholder="Team color name e.g. Red, White, Black, Blue"
-                        onChange={(e) =>
-                          handleTeamColorNameChange(team.id, e.target.value)
-                        }
-                        disabled={!canEdit}
-                      />
-                    </div>
-
-                    {team.abbrev && !isValidAbbrev(team.abbrev) && canEdit && (
-                      <p className="muted small squad-note">
-                        Abbrev must be exactly 3 letters (A–Z), e.g. FCB / RMD / LIV
-                      </p>
-                    )}
-
-                    {team.teamColorName && canEdit && (
-                      <p className="muted small squad-note">
-                        Enter a simple color name like Red, White, Black, Blue, Gold, Green, Purple or Pink.
-                      </p>
-                    )}
-
-                    <div className="field-row field-row-top-spaced">
-                      <label className="muted small field-label-tight">
-                        Captain
-                      </label>
-                      <select
-                        className="text-input"
-                        value={currentCapId}
-                        onChange={(e) =>
-                          handleCaptainChange(team.id, e.target.value)
-                        }
-                        disabled={!canEdit || capOptions.length === 0}
-                      >
-                        <option value="">
-                          {capOptions.length === 0
-                            ? "Add players to pick a captain"
-                            : "Select captain…"}
-                        </option>
-                        {capOptions.map((pid) => (
-                          <option key={pid} value={pid}>
-                            {displayNameOf(pid)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                <ul className="player-list">
-                  {(team.players || []).map((pid, idx) => {
-                    const label = displayNameOf(pid);
-                    const isCaptain =
-                      team.captainId && playersById.has(team.captainId)
-                        ? team.captainId === pid
-                        : false;
-
-                    return (
-                      <li
-                        key={`${team.id}-${pid}-${idx}`}
-                        className="player-row"
-                      >
-                        <div className="player-row-left">
-                          <span className="player-number">{idx + 1}</span>
-                          <span className="player-name-text">
-                            {label}{" "}
-                            {isCaptain ? (
-                              <span className="muted">(C)</span>
+            return (
+              <React.Fragment key={`team-fragment-${gameFormat}-${team.id}`}>
+                {renderCardShell(
+                  cardId,
+                  team.label,
+                  theme,
+                  <>
+                    <div className="squad-card-topbar">
+                      <div className="team-name-wrap">
+                        <span className="team-color-pill" />
+                        <div>
+                          <div className="team-title-row">
+                            <h2 className="team-title">{team.label}</h2>
+                            {team.abbrev ? (
+                              <span className="team-abbrev-badge">{team.abbrev}</span>
                             ) : null}
-                          </span>
+                          </div>
+                          <div className="team-subtitle">
+                            Captain: {captainTagText(team) || "—"}
+                          </div>
+                          <div className="team-color-name">
+                            <span className="team-color-dot" />
+                            {theme.colorName}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {isAdmin && (
+                      <div className="team-config">
+                        <div className="field-row-inline">
+                          <input
+                            className="text-input"
+                            value={team.label || ""}
+                            placeholder="Team name"
+                            onChange={(e) =>
+                              handleTeamLabelChange(team.id, e.target.value)
+                            }
+                            disabled={!canEdit}
+                          />
+                          <input
+                            className="text-input team-abbrev-input"
+                            value={team.abbrev || ""}
+                            placeholder="ABC"
+                            title="3-letter abbreviation (A–Z)"
+                            onChange={(e) =>
+                              handleTeamAbbrevChange(team.id, e.target.value)
+                            }
+                            disabled={!canEdit}
+                          />
                         </div>
 
-                        {isAdmin && (
-                          <button
-                            className="link-btn"
-                            onClick={() => handleRemovePlayer(team.id, pid)}
-                          >
-                            remove
-                          </button>
+                        <div className="field-row-top-spaced">
+                          <input
+                            className="text-input"
+                            value={team.teamColorName || ""}
+                            placeholder="Team color name e.g. Black or White"
+                            onChange={(e) =>
+                              handleTeamColorNameChange(team.id, e.target.value)
+                            }
+                            disabled={!canEdit}
+                          />
+                        </div>
+
+                        {team.abbrev && !isValidAbbrev(team.abbrev) && canEdit && (
+                          <p className="muted small squad-note">
+                            Abbrev must be exactly 3 letters (A–Z), e.g. DRK / LGT / LIV
+                          </p>
                         )}
-                      </li>
-                    );
-                  })}
 
-                  {(team.players || []).length === 0 && (
-                    <li className="player-row muted small">
-                      <div className="player-row-left">
-                        <span className="player-number">0</span>
-                        <span className="player-name-text">
-                          No players yet in this squad.
-                        </span>
+                        {team.teamColorName && canEdit && (
+                          <p className="muted small squad-note">
+                            Enter a simple color name like Black, White, Red, Blue, Gold, Green, Purple or Pink.
+                          </p>
+                        )}
+
+                        <div className="field-row field-row-top-spaced">
+                          <label className="muted small field-label-tight">
+                            Captain
+                          </label>
+                          <select
+                            className="text-input"
+                            value={currentCapId}
+                            onChange={(e) =>
+                              handleCaptainChange(team.id, e.target.value)
+                            }
+                            disabled={!canEdit || capOptions.length === 0}
+                          >
+                            <option value="">
+                              {capOptions.length === 0
+                                ? "Add players to pick a captain"
+                                : "Select captain…"}
+                            </option>
+                            {capOptions.map((pid) => (
+                              <option key={`${team.id}-captain-${pid}`} value={pid}>
+                                {displayNameOf(pid)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                    </li>
-                  )}
-                </ul>
+                    )}
 
-                {isAdmin && (
-                  <>
-                    <div className="add-player-row">
-                      <input
-                        className="text-input"
-                        placeholder="Add / select player..."
-                        list={listId}
-                        value={pendingNames[inputId] || ""}
-                        onChange={(e) =>
-                          handlePendingChange(inputId, e.target.value)
-                        }
-                      />
-                      <datalist id={listId}>
-                        {availableForTeams.map((val) => (
-                          <option key={val} value={val} />
-                        ))}
-                      </datalist>
+                    <ul className="player-list">
+                      {(team.players || []).map((pid, idx) => {
+                        const label = displayNameOf(pid);
+                        const isCaptain =
+                          team.captainId && playersById.has(team.captainId)
+                            ? team.captainId === pid
+                            : false;
 
-                      <button
-                        className="secondary-btn"
-                        onClick={() => handleAddPlayer(inputId)}
-                      >
-                        Add
-                      </button>
-                    </div>
+                        return (
+                          <li
+                            key={`${gameFormat}-${team.id}-${pid}-${idx}`}
+                            className="player-row"
+                          >
+                            <div className="player-row-left">
+                              <span className="player-number">{idx + 1}</span>
+                              <span className="player-name-text">
+                                {label}{" "}
+                                {isCaptain ? <span className="muted">(C)</span> : null}
+                              </span>
+                            </div>
 
-                    {addErrors[inputId] && (
-                      <p className="error-text small">{addErrors[inputId]}</p>
+                            {isAdmin && (
+                              <button
+                                className="link-btn"
+                                onClick={() => handleRemovePlayer(team.id, pid)}
+                              >
+                                remove
+                              </button>
+                            )}
+                          </li>
+                        );
+                      })}
+
+                      {(team.players || []).length === 0 && (
+                        <li className="player-row muted small">
+                          <div className="player-row-left">
+                            <span className="player-number">0</span>
+                            <span className="player-name-text">
+                              No players yet in this squad.
+                            </span>
+                          </div>
+                        </li>
+                      )}
+                    </ul>
+
+                    {isAdmin && (
+                      <>
+                        <div className="add-player-row">
+                          <input
+                            className="text-input"
+                            placeholder="Add / select player..."
+                            list={listId}
+                            value={pendingNames[inputId] || ""}
+                            onChange={(e) =>
+                              handlePendingChange(inputId, e.target.value)
+                            }
+                          />
+                          <datalist id={listId}>
+                            {availableForTeams.map((val) => (
+                              <option key={`${team.id}-available-${val}`} value={val} />
+                            ))}
+                          </datalist>
+
+                          <button
+                            className="secondary-btn"
+                            onClick={() => handleAddPlayer(inputId)}
+                          >
+                            Add
+                          </button>
+                        </div>
+
+                        {addErrors[inputId] && (
+                          <p className="error-text small">{addErrors[inputId]}</p>
+                        )}
+                      </>
                     )}
                   </>
                 )}
-              </>
+              </React.Fragment>
             );
           })}
 
           {renderCardShell(
-            UNSEEDED_ID,
+            `${gameFormat}-${UNSEEDED_ID}`,
             "unseeded_players",
             {
               accent: "#64748B",
@@ -1216,20 +1241,14 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                   const name = displayNameOf(p.id);
                   const roles = p.roles || {};
                   return (
-                    <li key={p.id} className="player-row">
+                    <li key={`${gameFormat}-unseeded-${p.id}`} className="player-row">
                       <div className="player-row-left">
                         <span className="player-number">{idx + 1}</span>
                         <span className="player-name-text">
                           {name}{" "}
-                          {roles.captain ? (
-                            <span className="muted">(C)</span>
-                          ) : null}
-                          {roles.coach ? (
-                            <span className="muted"> (Coach)</span>
-                          ) : null}
-                          {roles.admin ? (
-                            <span className="muted"> (Admin)</span>
-                          ) : null}
+                          {roles.captain ? <span className="muted">(C)</span> : null}
+                          {roles.coach ? <span className="muted"> (Coach)</span> : null}
+                          {roles.admin ? <span className="muted"> (Admin)</span> : null}
                         </span>
                       </div>
 
@@ -1263,15 +1282,15 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                     <input
                       className="text-input"
                       placeholder="Move from team / add manual player..."
-                      list="players-db-unseeded"
+                      list={`players-db-unseeded-${gameFormat}`}
                       value={pendingNames[UNSEEDED_ID] || ""}
                       onChange={(e) =>
                         handlePendingChange(UNSEEDED_ID, e.target.value)
                       }
                     />
-                    <datalist id="players-db-unseeded">
+                    <datalist id={`players-db-unseeded-${gameFormat}`}>
                       {availableForUnseeded.map((val) => (
-                        <option key={val} value={val} />
+                        <option key={`unseeded-available-${gameFormat}-${val}`} value={val} />
                       ))}
                     </datalist>
 
@@ -1284,9 +1303,7 @@ export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
                   </div>
 
                   {addErrors[UNSEEDED_ID] && (
-                    <p className="error-text small">
-                      {addErrors[UNSEEDED_ID]}
-                    </p>
+                    <p className="error-text small">{addErrors[UNSEEDED_ID]}</p>
                   )}
                 </>
               )}
