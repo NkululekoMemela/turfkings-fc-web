@@ -91,7 +91,6 @@ function slugFromLooseName(value) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
-
 function normalizeHexColor(v) {
   const raw = String(v || "").trim().replace(/[^#a-fA-F0-9]/g, "");
   if (!raw) return "";
@@ -290,7 +289,6 @@ function getParticipationTeamTheme(team, teamIndex) {
   };
 }
 
-
 function getStoredRole(identity) {
   const role = String(identity?.actingRole || identity?.role || "spectator")
     .trim()
@@ -394,8 +392,6 @@ function deriveActiveRole(identity, teams = []) {
 
   return "player";
 }
-
-
 
 function buildDefaultFiveVFiveTeams() {
   return [
@@ -914,6 +910,18 @@ export default function App() {
 
   const members = useMembers();
 
+  const cameraLaunchPlayers = useMemo(() => {
+    return (members || []).map((member) => ({
+      id: member.id,
+      name:
+        member.shortName ||
+        member.fullName ||
+        member.displayName ||
+        member.email ||
+        member.id,
+    }));
+  }, [members]);
+
   const handleEntryComplete = (payload) => {
     const safePayload = ensureIdentityShape(payload);
     setIdentity(safePayload);
@@ -1159,7 +1167,6 @@ export default function App() {
     return chosen.length >= 2 ? chosen : teamIds.slice(0, 2);
   }, [teams, activeTeamIds]);
 
-
   const effectiveLiveMatch = useMemo(() => {
     if (gameFormat === "5_V_5") {
       const safeFiveVFiveTeams = ensureFiveVFiveTeamsShape(fiveVFiveTeams);
@@ -1177,7 +1184,6 @@ export default function App() {
       matchMode,
     };
   }, [gameFormat, fiveVFiveTeams, currentMatch, matchMode]);
-
 
   const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
     (day) => day?.results || []
@@ -2575,6 +2581,31 @@ export default function App() {
 
   const handleBackFromPayment = () => setPage(PAGE_MATCH_SIGNUP);
 
+  const handleOpenHighlightsCamera = () => {
+    if (typeof window === "undefined") return;
+
+    const isAndroid = /Android/i.test(window.navigator.userAgent || "");
+    if (!isAndroid) {
+      window.alert(
+        "Highlights Camera currently opens from Android devices with the 5 Asides Near Me Camera app installed."
+      );
+      return;
+    }
+
+    const payload = {
+      sourceApp: "TurfKings",
+      teamName: "Turf Kings FC",
+      matchId: `tk-${currentMatchNo || "landing"}-${Date.now()}`,
+      players: cameraLaunchPlayers,
+      defaultTag: "goal",
+    };
+
+    const launchUrl = `fiveasidesnearmecamera://open?payload=${encodeURIComponent(
+      JSON.stringify(payload)
+    )}`;
+
+    window.location.href = launchUrl;
+  };
 
   return (
     <div className="app-root">
@@ -2638,6 +2669,7 @@ export default function App() {
           onGoToLiveAsSpectator={handleGoToLiveAsSpectator}
           onGoToFormations={handleGoToFormations}
           onGoToNews={() => setPage(PAGE_NEWS)}
+          onOpenHighlightsCamera={handleOpenHighlightsCamera}
           onGoToEntryDev={() => setPage(PAGE_ENTRY)}
           onGoToPayments={handleGoToMatchSignup}
           identity={identity}
@@ -3129,7 +3161,7 @@ export default function App() {
         </div>
       )}
 
-{USE_V2 && showSeasonCompleteModal && (
+      {USE_V2 && showSeasonCompleteModal && (
         <div className="modal-backdrop">
           <div
             className="modal"

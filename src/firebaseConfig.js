@@ -32,13 +32,20 @@ const stagingConfig = {
   appId: "1:44422849668:web:03ef479658982972016ed1",
 };
 
-const useStaging = import.meta.env.VITE_USE_STAGING === "true";
+// Production must be explicit.
+// Anything else defaults safely to staging.
+const firebaseEnv =
+  import.meta.env.VITE_FIREBASE_ENV === "production"
+    ? "production"
+    : "staging";
+
 const useFirestoreEmulator =
   import.meta.env.VITE_USE_FIRESTORE_EMULATOR === "true";
 
-const firebaseConfig = useStaging ? stagingConfig : productionConfig;
+const firebaseConfig =
+  firebaseEnv === "production" ? productionConfig : stagingConfig;
 
-console.log("🔥 Firebase mode:", useStaging ? "staging" : "production");
+console.log("🔥 Firebase environment:", firebaseEnv);
 console.log("🔥 Firebase project:", firebaseConfig.projectId);
 console.log(
   "🧪 Firestore emulator:",
@@ -51,7 +58,12 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export { serverTimestamp };
 
-if (useFirestoreEmulator && typeof window !== "undefined") {
+// Only allow emulator outside production
+if (
+  firebaseEnv !== "production" &&
+  useFirestoreEmulator &&
+  typeof window !== "undefined"
+) {
   try {
     connectFirestoreEmulator(db, "127.0.0.1", 8080);
     console.log("🧪 Connected Firestore to emulator at 127.0.0.1:8080");
@@ -77,3 +89,7 @@ export function logOut() {
 
 // Storage
 export const storage = getStorage(app);
+
+export const isProductionFirebase = firebaseEnv === "production";
+export const isStagingFirebase = firebaseEnv === "staging";
+export const activeFirebaseProjectId = firebaseConfig.projectId;
