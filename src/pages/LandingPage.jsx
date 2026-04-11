@@ -136,6 +136,7 @@ export function LandingPage({
   results,
   streaks,
   hasLiveMatch,
+  gameFormat = "5_V_5",
   matchMode = "round_robin",
   scheduledTarget = null,
   scheduledFixtures = [],
@@ -143,6 +144,9 @@ export function LandingPage({
   smartTarget = null,
   onUpdatePairing,
   onStartMatch,
+  onSetGameFormat,
+  onForceSetGameFormat,
+  formatSwitchLocked = false,
   onSetMatchMode,
   onGenerateScheduledPlan,
   onUpdateSmartOffset,
@@ -161,6 +165,7 @@ export function LandingPage({
   isPlayer = false,
   isSpectator = false,
   canStartMatch = false,
+  hasRecordedMatchDayState = false,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
 
@@ -168,6 +173,11 @@ export function LandingPage({
   const [pendingMatch, setPendingMatch] = useState(null);
   const [pairingCode, setPairingCode] = useState("");
   const [pairingError, setPairingError] = useState("");
+
+  const [showFormatModal, setShowFormatModal] = useState(false);
+  const [pendingGameFormat, setPendingGameFormat] = useState(null);
+  const [formatCode, setFormatCode] = useState("");
+  const [formatError, setFormatError] = useState("");
 
   const [showFixturesModal, setShowFixturesModal] = useState(false);
   const [fixtureAdminCode, setFixtureAdminCode] = useState("");
@@ -260,9 +270,15 @@ export function LandingPage({
     return "spectator";
   }, [resolvedRole]);
 
+  const isThreeTeamLeague = gameFormat === "3_TEAM_LEAGUE";
+  const isFiveVFive = gameFormat !== "3_TEAM_LEAGUE";
+  const fixturedMode = isThreeTeamLeague && matchMode === "scheduled_target";
+
   let ribbonText = "";
-  if (teamA && teamB && standbyTeam) {
+  if (isThreeTeamLeague && teamA && teamB && standbyTeam) {
     ribbonText = `Next: ${teamA.label} vs ${teamB.label}       Standby: ${standbyTeam.label}`;
+  } else if (isFiveVFive) {
+    ribbonText = "Normal 5 v 5 mode is active";
   }
 
   if (lastResult) {
@@ -286,7 +302,7 @@ export function LandingPage({
   const requestPairChange = (candidateMatch) => {
     if (!canStartMatch) return;
 
-    if (matchMode === "scheduled_target") {
+    if (isThreeTeamLeague && matchMode === "scheduled_target") {
       window.alert(
         "Pairing override is locked while Fixtured mode is active."
       );
@@ -377,7 +393,46 @@ export function LandingPage({
   };
 
   const canSeeCaptainStyleControls = isCaptain || isAdmin;
-  const fixturedMode = matchMode === "scheduled_target";
+  const formatHasLiveRisk = Boolean(hasLiveMatch || hasRecordedMatchDayState);
+  const isFormatLocked = formatSwitchLocked || formatHasLiveRisk;
+
+  const formatOptions = [
+    { value: "5_V_5", label: "Normal 5 v 5" },
+    { value: "3_TEAM_LEAGUE", label: "3 Team League" },
+  ];
+
+  const requestGameFormatChange = (nextFormat) => {
+    if (!canSeeCaptainStyleControls) return;
+    if (!nextFormat || nextFormat === gameFormat) return;
+
+    setPendingGameFormat(nextFormat);
+    setFormatCode("");
+    setFormatError("");
+    setShowFormatModal(true);
+  };
+
+  const cancelGameFormatChange = () => {
+    setShowFormatModal(false);
+    setPendingGameFormat(null);
+    setFormatCode("");
+    setFormatError("");
+  };
+
+  const confirmGameFormatChange = () => {
+    if (!pendingGameFormat) return;
+
+    if (!CAPTAIN_CODES.includes(formatCode.trim())) {
+      setFormatError("Invalid captain code.");
+      return;
+    }
+
+    if (isFormatLocked) {
+      onForceSetGameFormat?.(pendingGameFormat);
+    } else {
+      onSetGameFormat?.(pendingGameFormat);
+    }
+    cancelGameFormatChange();
+  };
 
   const handleProtectedTargetChange = (target) => {
     if (!isAdmin) return;
@@ -514,68 +569,165 @@ export function LandingPage({
 
       <section className="card landing-first-card">
         {canSeeCaptainStyleControls && (
-          <div style={{ marginBottom: "0.9rem" }}>
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "4px",
-                borderRadius: "999px",
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.10)",
-                gap: "4px",
-              }}
-            >
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => onSetMatchMode?.("round_robin")}
+          <div style={{ marginBottom: "0.9rem", display: "grid", gap: "0.75rem" }}>
+            <div>
+              <div
+                className="muted small"
+                style={{ marginBottom: "0.35rem", fontWeight: 700 }}
+              >
+                Game format
+              </div>
+              <div
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "4px",
                   borderRadius: "999px",
-                  padding: "0.45rem 0.9rem",
-                  color: "#ffffff",
-                  border: fixturedMode
-                    ? "1px solid rgba(255, 90, 90, 0.55)"
-                    : "1px solid transparent",
-                  background: fixturedMode
-                    ? "transparent"
-                    : "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
-                  boxShadow: fixturedMode
-                    ? "none"
-                    : "0 0 18px rgba(255,60,60,0.35)",
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  gap: "4px",
+                  flexWrap: "wrap",
                 }}
               >
-                Round Robin
-              </button>
+                {formatOptions.map((option) => {
+                  const active = gameFormat === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className="secondary-btn"
+                      onClick={() => {
+                        if (isFormatLocked) return;
+                        requestGameFormatChange(option.value);
+                      }}
+                      disabled={isFormatLocked}
+                      style={{
+                        borderRadius: "999px",
+                        padding: "0.45rem 0.9rem",
+                        color: "#ffffff",
+                        border: active
+                          ? "1px solid rgba(34, 211, 238, 0.55)"
+                          : "1px solid transparent",
+                        background: active
+                          ? "linear-gradient(180deg, rgba(8,145,178,0.98), rgba(37,99,235,0.96))"
+                          : "transparent",
+                        boxShadow: active
+                          ? "0 0 18px rgba(34,211,238,0.28)"
+                          : "none",
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
 
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => onSetMatchMode?.("scheduled_target")}
-                style={{
-                  borderRadius: "999px",
-                  padding: "0.45rem 0.9rem",
-                  color: "#ffffff",
-                  border: fixturedMode
-                    ? "1px solid rgba(255, 90, 90, 0.55)"
-                    : "1px solid transparent",
-                  background: fixturedMode
-                    ? "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))"
-                    : "transparent",
-                  boxShadow: fixturedMode
-                    ? "0 0 18px rgba(255,60,60,0.35)"
-                    : "none",
-                }}
-              >
-                Fixtured
-              </button>
+              <p className="muted small" style={{ marginTop: "0.45rem" }}>
+                {isFormatLocked && (
+                  <span style={{ color: "#f87171", fontWeight: 600 }}>
+                    🔒 Format locked for this match day.
+                  </span>
+                )}
+                {isFormatLocked ? <br /> : null}
+                Protected setting. Captain code is required for any format switch.
+                {formatHasLiveRisk
+                  ? " Match day data already exists, so switching format should only be done deliberately."
+                  : " Once play starts, switching becomes a sensitive action."}
+              </p>
+
+              {isFormatLocked && canSeeCaptainStyleControls && (
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  style={{ marginTop: "0.5rem" }}
+                  onClick={() =>
+                    requestGameFormatChange(
+                      gameFormat === "5_V_5" ? "3_TEAM_LEAGUE" : "5_V_5"
+                    )
+                  }
+                >
+                  🔑 Override Format Lock
+                </button>
+              )}
             </div>
+
+            {isThreeTeamLeague && (
+              <div>
+                <div
+                  className="muted small"
+                  style={{ marginBottom: "0.35rem", fontWeight: 700 }}
+                >
+                  League mode
+                </div>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "4px",
+                    borderRadius: "999px",
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    gap: "4px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => onSetMatchMode?.("round_robin")}
+                    style={{
+                      borderRadius: "999px",
+                      padding: "0.45rem 0.9rem",
+                      color: "#ffffff",
+                      border: fixturedMode
+                        ? "1px solid rgba(255, 90, 90, 0.55)"
+                        : "1px solid transparent",
+                      background: fixturedMode
+                        ? "transparent"
+                        : "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
+                      boxShadow: fixturedMode
+                        ? "none"
+                        : "0 0 18px rgba(255,60,60,0.35)",
+                    }}
+                  >
+                    Round Robin
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => onSetMatchMode?.("scheduled_target")}
+                    style={{
+                      borderRadius: "999px",
+                      padding: "0.45rem 0.9rem",
+                      color: "#ffffff",
+                      border: fixturedMode
+                        ? "1px solid rgba(255, 90, 90, 0.55)"
+                        : "1px solid transparent",
+                      background: fixturedMode
+                        ? "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))"
+                        : "transparent",
+                      boxShadow: fixturedMode
+                        ? "0 0 18px rgba(255,60,60,0.35)"
+                        : "none",
+                    }}
+                  >
+                    Fixtured
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        <h2>Upcoming Match #{currentMatchNo}</h2>
+        <h2>{isThreeTeamLeague ? `Upcoming Match #${currentMatchNo}` : "Upcoming 5 v 5 Match"}</h2>
 
-        {fixturedMode && canSeeCaptainStyleControls && (
+        {isFiveVFive && (
+          <p className="muted small" style={{ marginTop: "-0.25rem", marginBottom: "0.9rem" }}>
+            Normal 5 v 5 is active. Squads and live match flow should follow the 5 v 5 format.
+          </p>
+        )}
+
+        {isThreeTeamLeague && fixturedMode && canSeeCaptainStyleControls && (
           <div style={{ marginBottom: "0.9rem" }}>
             <div
               style={{
@@ -607,6 +759,7 @@ export function LandingPage({
           </div>
         )}
 
+        {isThreeTeamLeague && (
         <div className="match-setup-row">
           <div className="team-select">
             <label>On-field Team 1</label>
@@ -640,8 +793,9 @@ export function LandingPage({
             </select>
           </div>
         </div>
+        )}
 
-        {standbyTeam && (
+        {isThreeTeamLeague && standbyTeam && (
           <p className="standby-label">
             Standby Team:{" "}
             <strong>
@@ -650,7 +804,7 @@ export function LandingPage({
           </p>
         )}
 
-        {fixturedMode && (
+        {isThreeTeamLeague && fixturedMode && (
           <p className="muted small" style={{ marginTop: "-0.1rem" }}>
             Pairing override is locked while Fixtured mode is active.
           </p>
@@ -927,6 +1081,57 @@ export function LandingPage({
           </a>
         </div>
       </section>
+
+      {showFormatModal && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Confirm Format Change</h3>
+            <p>
+              Switch to{" "}
+              <strong>
+                {pendingGameFormat === "3_TEAM_LEAGUE"
+                  ? "3 Team League"
+                  : "Normal 5 v 5"}
+              </strong>
+              ?
+            </p>
+            <p className="muted small" style={{ marginTop: "-0.1rem" }}>
+              {formatHasLiveRisk
+                ? "This match day already has live or recorded data. Only continue if you are certain."
+                : "This is a protected captain setting."}
+            </p>
+
+            <div className="field-row">
+              <label>Captain code</label>
+              <input
+                type="password"
+                className="text-input"
+                value={formatCode}
+                onChange={(e) => {
+                  setFormatCode(e.target.value);
+                  setFormatError("");
+                }}
+              />
+              {formatError && <p className="error-text">{formatError}</p>}
+            </div>
+
+            <div className="actions-row">
+              <button
+                className="secondary-btn"
+                onClick={cancelGameFormatChange}
+              >
+                Cancel
+              </button>
+              <button
+                className="primary-btn"
+                onClick={confirmGameFormatChange}
+              >
+                Confirm change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPairingModal && (
         <div className="modal-backdrop">

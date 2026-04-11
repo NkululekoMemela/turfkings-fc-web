@@ -1,4 +1,3 @@
-// src/pages/FormationsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { db } from "../firebaseConfig";
@@ -510,40 +509,49 @@ function PlayerBenchChip({
   );
 }
 
-// Single source of truth for people across this page
 const PLAYERS_COLLECTION = "players";
-const MAX_SUBS = 6;
 const LONG_PRESS_MS = 650;
 
 export function FormationsPage({
-  teams,
+  teams = [],
+  fiveVFiveTeams = [],
   currentMatch,
   playerPhotosByName = {},
   identity = null,
   authUser = null,
   onBack,
   onGoToSquads,
+  gameFormat = "5_V_5",
 }) {
   const canEditLineups = true;
+  const isFiveVFive = gameFormat === "5_V_5";
 
   const [lineupsByTeam, setLineupsByTeam] = useState(() => loadSavedLineups());
 
+  const sourceTeams = useMemo(() => {
+    if (!isFiveVFive) return teams || [];
+    return Array.isArray(fiveVFiveTeams) && fiveVFiveTeams.length
+      ? fiveVFiveTeams
+      : [];
+  }, [isFiveVFive, teams, fiveVFiveTeams]);
+
   const initialTeamId =
-    currentMatch?.teamAId || (teams[0] ? teams[0].id : null);
+    currentMatch?.teamAId || (sourceTeams[0] ? sourceTeams[0].id : null);
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId);
 
   const [gameType, setGameType] = useState(GAME_TYPE_5);
 
-  const selectedTeam =
-    teams.find((t) => t.id === selectedTeamId) || teams[0] || null;
+  const [savingFormationImage, setSavingFormationImage] = useState(false);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+  const [players, setPlayers] = useState([]);
+  const [playerPhotos, setPlayerPhotos] = useState(playerPhotosByName || {});
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoMessage, setPhotoMessage] = useState("");
+  const [showPhotoPanel, setShowPhotoPanel] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
 
   const exportRef = useRef(null);
   const longPressTimerRef = useRef(null);
-  const [savingFormationImage, setSavingFormationImage] = useState(false);
-  const [headerScrolled, setHeaderScrolled] = useState(false);
-
-  // ---------- PLAYERS FROM FIRESTORE ----------
-  const [players, setPlayers] = useState([]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -554,6 +562,13 @@ export function FormationsPage({
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    const safeTeamIds = new Set((sourceTeams || []).map((t) => t.id));
+    if (!selectedTeamId || !safeTeamIds.has(selectedTeamId)) {
+      setSelectedTeamId(sourceTeams[0]?.id || null);
+    }
+  }, [sourceTeams, selectedTeamId]);
 
   useEffect(() => {
     const colRef = collection(db, PLAYERS_COLLECTION);
@@ -689,12 +704,6 @@ export function FormationsPage({
     return String(full).split(/\s+/)[0] || full;
   };
 
-  // ---------------- photos ----------------
-  const [playerPhotos, setPlayerPhotos] = useState(playerPhotosByName || {});
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [photoMessage, setPhotoMessage] = useState("");
-  const [showPhotoPanel, setShowPhotoPanel] = useState(false);
-
   useEffect(() => {
     if (!playerPhotosByName) return;
     setPlayerPhotos((prev) => ({
@@ -784,7 +793,6 @@ export function FormationsPage({
     return null;
   };
 
-  // ---------- VERIFIED PLAYER ----------
   const verifiedPlayerName = useMemo(() => {
     const role = identity?.role || authUser?.role || null;
     const isRealPlayer =
@@ -836,7 +844,7 @@ export function FormationsPage({
         doc(db, "playerPhotos", docId),
         {
           name: photoPlayer,
-          teamId: selectedTeam ? selectedTeam.id : "turf_kings",
+          teamId: selectedTeamCanonical ? selectedTeamCanonical.id : "turf_kings",
           photoData: dataUrl,
           updatedAt: serverTimestamp(),
           uploadedByEmail: authUser?.email || identity?.email || null,
@@ -859,7 +867,6 @@ export function FormationsPage({
     }
   };
 
-  // ---------------- player pools ----------------
   const activeDbPlayers = useMemo(() => {
     return players
       .filter((p) => String(p.status || "active").toLowerCase() === "active")
@@ -873,7 +880,7 @@ export function FormationsPage({
   }, [activeDbPlayers]);
 
   const canonicalTeams = useMemo(() => {
-    return (teams || []).map((t) => ({
+    return (sourceTeams || []).map((t) => ({
       ...t,
       players: (t.players || [])
         .map((p) => {
@@ -885,14 +892,13 @@ export function FormationsPage({
       captain: canonicalName(t.captain || ""),
       captainId: t.captainId || null,
     }));
-  }, [teams, playerResolver]);
+  }, [sourceTeams, playerResolver]);
 
   const selectedTeamCanonical =
     canonicalTeams.find((t) => t.id === selectedTeamId) ||
     canonicalTeams[0] ||
     null;
 
-  // IMPORTANT: this must come AFTER selectedTeamCanonical exists
   const loggedInCanonicalName = useMemo(() => {
     const rawName =
       authUser?.fullName ||
@@ -993,8 +999,6 @@ export function FormationsPage({
     buildResolvedLineup(selectedTeamId, gameType)
   );
 
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-
   useEffect(() => {
     if (!selectedTeamCanonical) return;
     setLineup(buildResolvedLineup(selectedTeamId, gameType));
@@ -1033,9 +1037,9 @@ export function FormationsPage({
     [rawUnassignedPlayers, lineup.benchSnapshot]
   );
 
-  const subsPlayers = orderedBenchPool.slice(0, MAX_SUBS);
+  const subsPlayers = orderedBenchPool.slice(0, 6);
   const reservePlayers =
-    gameType === GAME_TYPE_11 ? orderedBenchPool.slice(MAX_SUBS) : [];
+    gameType === GAME_TYPE_11 ? orderedBenchPool.slice(6) : [];
 
   const handleTeamClick = (teamId) => {
     const nextLineup = buildResolvedLineup(teamId, gameType);
@@ -1509,6 +1513,9 @@ export function FormationsPage({
             Manage Squads
           </button>
         </div>
+        <p className="muted small" style={{ marginTop: "0.65rem" }}>
+          Match day format: <strong>{isFiveVFive ? "Normal 5 v 5" : "3 Team League"}</strong>
+        </p>
       </header>
 
       <section
@@ -1552,11 +1559,13 @@ export function FormationsPage({
 
           {gameType === GAME_TYPE_5 ? (
             <div className="field-row inline-field">
-              <label>Team (5-a-side)</label>
+              <label>
+                Team (5-a-side{isFiveVFive ? "" : ""})
+              </label>
               <div className="team-pill-row">
                 {canonicalTeams.map((t) => (
                   <button
-                    key={t.id}
+                    key={`team-pill-${gameFormat}-${t.id}`}
                     type="button"
                     className={`team-pill-btn ${
                       t.id === selectedTeamCanonical.id ? "active" : ""
@@ -1712,7 +1721,7 @@ export function FormationsPage({
                   const photoData = getPlayerPhoto(p);
 
                   return (
-                    <li key={p}>
+                    <li key={`${gameFormat}-sub-${p}`}>
                       <PlayerBenchChip
                         name={withCaptainTag(p)}
                         isSelected={isSelected}
@@ -1740,7 +1749,7 @@ export function FormationsPage({
                         selectedPlayer.name === p;
 
                       return (
-                        <li key={p}>
+                        <li key={`${gameFormat}-reserve-${p}`}>
                           <button
                             type="button"
                             className={`bench-player ${

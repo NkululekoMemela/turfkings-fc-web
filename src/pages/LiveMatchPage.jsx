@@ -6,7 +6,7 @@ export function LiveMatchPage(props) {
   const matchMode =
     props.currentMatch?.matchMode ||
     props.pendingMatchStartContext?.matchMode ||
-    "3_TEAM_LEAGUE";
+    "5_V_5";
 
   if (matchMode === "5_V_5") {
     return <FiveVFiveLiveMatchPage {...props} />;

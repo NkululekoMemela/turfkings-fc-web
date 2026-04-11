@@ -395,14 +395,115 @@ function deriveActiveRole(identity, teams = []) {
   return "player";
 }
 
+
+
+function buildDefaultFiveVFiveTeams() {
+  return [
+    {
+      id: "dark",
+      label: "Dark",
+      abbrev: "DRK",
+      teamColorName: "Black",
+      teamColorHex: "#0F172A",
+      players: [],
+      captainId: null,
+      captain: "",
+    },
+    {
+      id: "light",
+      label: "Light",
+      abbrev: "LGT",
+      teamColorName: "White",
+      teamColorHex: "#F8FAFC",
+      players: [],
+      captainId: null,
+      captain: "",
+    },
+  ];
+}
+
+function normalizeFiveVFiveTeams(teams = []) {
+  return (Array.isArray(teams) ? teams : []).map((team) => ({
+    ...team,
+    id: String(team?.id || "").trim(),
+    label: String(team?.label || "").trim(),
+    abbrev: String(team?.abbrev || "").trim(),
+    teamColorName: String(team?.teamColorName || team?.colorName || "").trim(),
+    teamColorHex: String(team?.teamColorHex || team?.colorHex || "").trim(),
+    players: Array.isArray(team?.players) ? [...team.players] : [],
+    captainId: team?.captainId || null,
+    captain: String(team?.captain || "").trim(),
+  }));
+}
+
+function ensureFiveVFiveTeamsShape(rawTeams) {
+  const defaults = buildDefaultFiveVFiveTeams();
+  const incoming = normalizeFiveVFiveTeams(rawTeams);
+  const byId = new Map(
+    incoming.filter((team) => team.id).map((team) => [team.id, team])
+  );
+
+  return defaults.map((baseTeam) => {
+    const incomingTeam = byId.get(baseTeam.id);
+    if (!incomingTeam) return { ...baseTeam };
+
+    return {
+      ...baseTeam,
+      ...incomingTeam,
+      id: baseTeam.id,
+      label: String(incomingTeam.label || baseTeam.label).trim() || baseTeam.label,
+      abbrev:
+        String(incomingTeam.abbrev || baseTeam.abbrev).trim() || baseTeam.abbrev,
+      teamColorName:
+        String(
+          incomingTeam.teamColorName ||
+            incomingTeam.colorName ||
+            baseTeam.teamColorName
+        ).trim() || baseTeam.teamColorName,
+      teamColorHex:
+        String(
+          incomingTeam.teamColorHex ||
+            incomingTeam.colorHex ||
+            baseTeam.teamColorHex
+        ).trim() || baseTeam.teamColorHex,
+      players: Array.isArray(incomingTeam.players)
+        ? [...incomingTeam.players]
+        : [],
+      captainId: incomingTeam.captainId || null,
+      captain: String(incomingTeam.captain || "").trim(),
+    };
+  });
+}
+
 /* ---------------- State helpers ---------------- */
 
 function ensureSeasonSchedulingShape(season) {
   if (!season || typeof season !== "object") return season;
 
+  const teamIds = Array.isArray(season?.teams)
+    ? season.teams.map((team) => team?.id).filter(Boolean)
+    : [];
+
+  const rawActiveTeamIds = Array.isArray(season?.activeTeamIds)
+    ? season.activeTeamIds.filter(Boolean)
+    : [];
+
+  const normalizedActiveTeamIds = Array.from(
+    new Set(
+      (rawActiveTeamIds.length ? rawActiveTeamIds : teamIds.slice(0, 2)).filter(
+        (teamId) => teamIds.includes(teamId)
+      )
+    )
+  ).slice(0, 2);
+
   return {
     ...season,
     gameFormat: season?.gameFormat || "5_V_5",
+    activeTeamIds:
+      normalizedActiveTeamIds.length >= 2
+        ? normalizedActiveTeamIds
+        : teamIds.slice(0, 2),
+    fiveVFiveTeams: ensureFiveVFiveTeamsShape(season?.fiveVFiveTeams),
     matchMode: season?.matchMode || "round_robin",
     scheduledTarget:
       Number.isInteger(Number(season?.scheduledTarget))
@@ -960,6 +1061,8 @@ export default function App() {
   let activeSeasonNo = 1;
   let activeSeasonId = null;
   let gameFormat = "5_V_5";
+  let activeTeamIds = [];
+  let fiveVFiveTeams = buildDefaultFiveVFiveTeams();
   let matchMode = "round_robin";
   let scheduledTarget = null;
   let scheduledFixtures = [];
@@ -983,6 +1086,8 @@ export default function App() {
     matchDayHistory = s?.matchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
     gameFormat = s?.gameFormat || "5_V_5";
+    activeTeamIds = Array.isArray(s?.activeTeamIds) ? s.activeTeamIds : [];
+    fiveVFiveTeams = ensureFiveVFiveTeamsShape(s?.fiveVFiveTeams);
     matchMode = s?.matchMode || "round_robin";
     scheduledTarget =
       Number.isInteger(Number(s?.scheduledTarget)) ? Number(s.scheduledTarget) : null;
@@ -998,7 +1103,7 @@ export default function App() {
     ({
       teams,
       currentMatchNo,
-      currentMatch,
+      currentMatch: effectiveLiveMatch,
       currentEvents,
       results,
       allEvents,
@@ -1009,6 +1114,10 @@ export default function App() {
     } = legacy || createDefaultState());
 
     gameFormat = legacy?.gameFormat || "5_V_5";
+    activeTeamIds = Array.isArray(legacy?.activeTeamIds)
+      ? legacy.activeTeamIds
+      : [];
+    fiveVFiveTeams = ensureFiveVFiveTeamsShape(legacy?.fiveVFiveTeams);
     matchMode = legacy?.matchMode || "round_robin";
     scheduledTarget =
       Number.isInteger(Number(legacy?.scheduledTarget))
@@ -1019,9 +1128,14 @@ export default function App() {
       : [];
   }
 
+  const captainRoleTeams = useMemo(
+    () => (gameFormat === "5_V_5" ? fiveVFiveTeams : teams || []),
+    [gameFormat, fiveVFiveTeams, teams]
+  );
+
   const activeRole = useMemo(
-    () => deriveActiveRole(identity, teams || []),
-    [identity, teams]
+    () => deriveActiveRole(identity, captainRoleTeams || []),
+    [identity, captainRoleTeams]
   );
 
   const isAdmin = activeRole === "admin";
@@ -1032,6 +1146,38 @@ export default function App() {
   const canStartMatch = isAdmin || isCaptain;
   const canManageSquads = true;
   const canPreviewPreviousSeasonUI = IS_STAGING && isAdmin;
+  const normalizedActiveTeamIds = useMemo(() => {
+    const teamIds = (teams || []).map((team) => team?.id).filter(Boolean);
+    const chosen = Array.from(
+      new Set(
+        (Array.isArray(activeTeamIds) ? activeTeamIds : []).filter((teamId) =>
+          teamIds.includes(teamId)
+        )
+      )
+    ).slice(0, 2);
+
+    return chosen.length >= 2 ? chosen : teamIds.slice(0, 2);
+  }, [teams, activeTeamIds]);
+
+
+  const effectiveLiveMatch = useMemo(() => {
+    if (gameFormat === "5_V_5") {
+      const safeFiveVFiveTeams = ensureFiveVFiveTeamsShape(fiveVFiveTeams);
+      return {
+        ...(currentMatch || {}),
+        matchMode: "5_V_5",
+        teamAId: safeFiveVFiveTeams[0]?.id || "dark",
+        teamBId: safeFiveVFiveTeams[1]?.id || "light",
+        standbyId: null,
+      };
+    }
+
+    return {
+      ...(currentMatch || {}),
+      matchMode,
+    };
+  }, [gameFormat, fiveVFiveTeams, currentMatch, matchMode]);
+
 
   const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
     (day) => day?.results || []
@@ -1215,15 +1361,21 @@ export default function App() {
     setSmartOffset(Math.max(0, Math.round(numeric)));
   };
 
-  const handleSetGameFormat = (nextFormat) => {
-    const safeFormat =
-      nextFormat === "3_TEAM_LEAGUE" ? "3_TEAM_LEAGUE" : "5_V_5";
-
+  const applyGameFormatChange = (safeFormat) => {
     if (USE_V2) {
       updateActiveSeason((prevSeason) => {
         const nextSeason = {
           ...prevSeason,
           gameFormat: safeFormat,
+          activeTeamIds:
+            Array.isArray(prevSeason?.activeTeamIds) &&
+            prevSeason.activeTeamIds.length >= 2
+              ? prevSeason.activeTeamIds
+              : (prevSeason.teams || [])
+                  .map((team) => team?.id)
+                  .filter(Boolean)
+                  .slice(0, 2),
+          fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
         };
 
         if (safeFormat === "5_V_5") {
@@ -1244,6 +1396,14 @@ export default function App() {
       const nextState = {
         ...prev,
         gameFormat: safeFormat,
+        activeTeamIds:
+          Array.isArray(prev?.activeTeamIds) && prev.activeTeamIds.length >= 2
+            ? prev.activeTeamIds
+            : (prev.teams || [])
+                .map((team) => team?.id)
+                .filter(Boolean)
+                .slice(0, 2),
+        fiveVFiveTeams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
       };
 
       if (safeFormat === "5_V_5") {
@@ -1257,6 +1417,26 @@ export default function App() {
 
       return nextState;
     });
+  };
+
+  const handleSetGameFormat = (nextFormat) => {
+    const safeFormat =
+      nextFormat === "3_TEAM_LEAGUE" ? "3_TEAM_LEAGUE" : "5_V_5";
+
+    if (hasRecordedMatchDayState) {
+      window.alert(
+        "Format switching is locked once a match has started or match-day records exist. Use the override option if you really need to force the switch."
+      );
+      return;
+    }
+
+    applyGameFormatChange(safeFormat);
+  };
+
+  const handleForceSetGameFormat = (nextFormat) => {
+    const safeFormat =
+      nextFormat === "3_TEAM_LEAGUE" ? "3_TEAM_LEAGUE" : "5_V_5";
+    applyGameFormatChange(safeFormat);
   };
 
   const handleSetMatchMode = (nextMode) => {
@@ -1437,8 +1617,10 @@ export default function App() {
       createdAt: new Date().toISOString(),
       currentMatch,
       teams,
+      fiveVFiveTeams,
       identity,
       gameFormat,
+      activeTeamIds: normalizedActiveTeamIds,
       matchMode,
       scheduledTarget,
     };
@@ -1942,15 +2124,77 @@ export default function App() {
       return;
     }
 
+    const safeUpdatedTeams = Array.isArray(updatedTeams) ? updatedTeams : [];
+    const nextTeamIds = safeUpdatedTeams.map((team) => team?.id).filter(Boolean);
+    const nextActiveTeamIds = Array.from(
+      new Set(normalizedActiveTeamIds.filter((teamId) => nextTeamIds.includes(teamId)))
+    ).slice(0, 2);
+
+    const resolvedActiveTeamIds =
+      nextActiveTeamIds.length >= 2 ? nextActiveTeamIds : nextTeamIds.slice(0, 2);
+
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
-        teams: updatedTeams,
+        teams: safeUpdatedTeams,
+        activeTeamIds: resolvedActiveTeamIds,
       }));
       return;
     }
 
-    updateState((prev) => ({ ...prev, teams: updatedTeams }));
+    updateState((prev) => ({
+      ...prev,
+      teams: safeUpdatedTeams,
+      activeTeamIds: resolvedActiveTeamIds,
+    }));
+  };
+
+  const handleUpdateActiveTeamIds = (nextActiveTeamIds) => {
+    const teamIds = (teams || []).map((team) => team?.id).filter(Boolean);
+    const safeNext = Array.from(
+      new Set(
+        (Array.isArray(nextActiveTeamIds) ? nextActiveTeamIds : []).filter((teamId) =>
+          teamIds.includes(teamId)
+        )
+      )
+    ).slice(0, 2);
+
+    const resolved = safeNext.length >= 2 ? safeNext : teamIds.slice(0, 2);
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        activeTeamIds: resolved,
+      }));
+      return;
+    }
+
+    updateState((prev) => ({
+      ...prev,
+      activeTeamIds: resolved,
+    }));
+  };
+
+  const handleUpdateFiveVFiveTeams = (updatedTeams) => {
+    if (!canManageSquads) {
+      window.alert("Only admin can update 5 v 5 squads.");
+      return;
+    }
+
+    const safeTeams = ensureFiveVFiveTeamsShape(updatedTeams);
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        fiveVFiveTeams: safeTeams,
+      }));
+      return;
+    }
+
+    updateState((prev) => ({
+      ...prev,
+      fiveVFiveTeams: safeTeams,
+    }));
   };
 
   const openBackupModal = () => {
@@ -2033,6 +2277,8 @@ export default function App() {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
         gameFormat: "5_V_5",
+        activeTeamIds: (prevSeason.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
+        fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
         currentMatchNo: 1,
         currentMatch: {
           teamAId: prevSeason.teams?.[0]?.id ?? null,
@@ -2060,6 +2306,8 @@ export default function App() {
     updateState((prev) => ({
       ...prev,
       gameFormat: "5_V_5",
+      activeTeamIds: (prev.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
+      fiveVFiveTeams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
       currentMatchNo: 1,
       currentMatch: {
         teamAId: prev.teams?.[0]?.id ?? null,
@@ -2125,6 +2373,8 @@ export default function App() {
             ...prevSeason,
             matchDayHistory: newHistory,
             gameFormat: "5_V_5",
+            activeTeamIds: (prevSeason.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
+            fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
             currentMatchNo: 1,
             currentMatch: {
               teamAId: prevSeason.teams?.[0]?.id ?? null,
@@ -2165,6 +2415,8 @@ export default function App() {
           ...prev,
           matchDayHistory: newHistory,
           gameFormat: "5_V_5",
+          activeTeamIds: (prev.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
+          fiveVFiveTeams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
           currentMatchNo: 1,
           currentMatch: {
             teamAId: prev.teams?.[0]?.id ?? null,
@@ -2276,7 +2528,9 @@ export default function App() {
         seasonId,
         seasonNo,
         gameFormat: "5_V_5",
+        activeTeamIds: (baseTeams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
         teams: baseTeams,
+        fiveVFiveTeams: buildDefaultFiveVFiveTeams(),
         currentMatchNo: 1,
         currentMatch: {
           teamAId: baseTeams?.[0]?.id ?? null,
@@ -2359,11 +2613,12 @@ export default function App() {
         <LandingPage
           teams={teams}
           currentMatchNo={currentMatchNo}
-          currentMatch={currentMatch}
+          currentMatch={effectiveLiveMatch}
           results={fullResults}
           streaks={streaks}
           hasLiveMatch={hasLiveMatch}
           gameFormat={gameFormat}
+          activeTeamIds={normalizedActiveTeamIds}
           matchMode={matchMode}
           scheduledTarget={scheduledTarget}
           scheduledFixtures={scheduledFixtures}
@@ -2372,6 +2627,8 @@ export default function App() {
           onUpdatePairing={handleUpdatePairing}
           onStartMatch={handleStartMatch}
           onSetGameFormat={handleSetGameFormat}
+          onForceSetGameFormat={handleForceSetGameFormat}
+          formatSwitchLocked={hasRecordedMatchDayState}
           onSetMatchMode={handleSetMatchMode}
           onGenerateScheduledPlan={handleGenerateScheduledPlan}
           onUpdateSmartOffset={handleUpdateSmartOffset}
@@ -2430,8 +2687,9 @@ export default function App() {
           timeUp={timeUp}
           running={running}
           teams={teams}
+          fiveVFiveTeams={fiveVFiveTeams}
           currentMatchNo={currentMatchNo}
-          currentMatch={currentMatch}
+          currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
           identity={identity}
           activeRole={activeRole}
@@ -2458,7 +2716,7 @@ export default function App() {
         <SpectatorPage
           teams={teams}
           currentMatchNo={currentMatchNo}
-          currentMatch={currentMatch}
+          currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
           results={results}
           onBackToLanding={handleBackToLanding}
@@ -2545,24 +2803,30 @@ export default function App() {
       {page === PAGE_SQUADS && (
         <SquadsPage
           teams={teams}
+          fiveVFiveTeams={fiveVFiveTeams}
           onUpdateTeams={handleUpdateTeams}
+          onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
           identity={identity}
           isAdmin={isAdmin}
           activeRole={activeRole}
           gameFormat={gameFormat}
+          activeTeamIds={normalizedActiveTeamIds}
+          onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
         />
       )}
 
       {page === PAGE_FORMATIONS && (
         <FormationsPage
           teams={teams}
-          currentMatch={currentMatch}
+          fiveVFiveTeams={fiveVFiveTeams}
+          currentMatch={effectiveLiveMatch}
           playerPhotosByName={playerPhotosByName}
           identity={identity}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
           gameFormat={gameFormat}
+          activeTeamIds={normalizedActiveTeamIds}
         />
       )}
 

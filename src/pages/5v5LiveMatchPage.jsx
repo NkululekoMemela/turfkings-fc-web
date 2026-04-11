@@ -582,7 +582,7 @@ function getTeamAccent(team = {}) {
   };
 }
 
-function getShortLabel(team = {}, fallback = "OTHER TEAM") {
+function getShortLabel(team = {}, fallback = "LIGHT") {
   const explicit = String(team?.teamColorName || team?.colorName || "").trim();
   const label = String(team?.label || "").trim();
 
@@ -592,7 +592,7 @@ function getShortLabel(team = {}, fallback = "OTHER TEAM") {
   return fallback;
 }
 
-function TeamColorBadge({ team, fallback = "OTHER TEAM" }) {
+function TeamColorBadge({ team, fallback = "LIGHT" }) {
   const accent = getTeamAccent(team);
   const label = getShortLabel(team, fallback);
 
@@ -1299,6 +1299,7 @@ export function FiveVFiveLiveMatchPage({
   timeUp,
   running,
   teams,
+  fiveVFiveTeams = [],
   currentMatchNo,
   currentMatch,
   currentEvents,
@@ -1444,7 +1445,13 @@ export function FiveVFiveLiveMatchPage({
   );
 
   const canonicalTeams = useMemo(() => {
-    return (teams || []).map((t) => ({
+    const safeTeams = (
+      Array.isArray(fiveVFiveTeams) && fiveVFiveTeams.length
+        ? fiveVFiveTeams
+        : teams || []
+    ).slice(0, 2);
+
+    return safeTeams.map((t) => ({
       ...t,
       playerIds: (t.players || [])
         .map((p) => (typeof p === "string" ? p : p?.id || ""))
@@ -1459,7 +1466,7 @@ export function FiveVFiveLiveMatchPage({
       captain: canonicalName(t.captain || ""),
       captainId: t.captainId || null,
     }));
-  }, [teams, canonicalName]);
+  }, [teams, fiveVFiveTeams, canonicalName]);
 
   const teamA = getTeamById(canonicalTeams, teamAId);
   const teamB = getTeamById(canonicalTeams, teamBId);
@@ -1774,6 +1781,22 @@ export function FiveVFiveLiveMatchPage({
     pushTimer();
   }, [secondsLeft, running, matchSeconds, canControlMatch]);
 
+
+  useEffect(() => {
+    if (!running) return;
+
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [running]);
+
   useEffect(() => {
     if (!isControllerSession) return;
     if (!teamA || !teamB) return;
@@ -1783,8 +1806,8 @@ export function FiveVFiveLiveMatchPage({
         matchNumber: currentMatchNo,
         teamAId,
         teamBId,
-        teamALabel: getShortLabel(teamA, "TEAM A"),
-        teamBLabel: getShortLabel(teamB, "TEAM B"),
+        teamALabel: getShortLabel(teamA, "DARK"),
+        teamBLabel: getShortLabel(teamB, "LIGHT"),
       },
       matchSeconds
     );
@@ -1909,8 +1932,8 @@ export function FiveVFiveLiveMatchPage({
     matchNumber: currentMatchNo,
     teamAId,
     teamBId,
-    teamALabel: getShortLabel(teamA, "TEAM A"),
-    teamBLabel: getShortLabel(teamB, "TEAM B"),
+    teamALabel: getShortLabel(teamA, "DARK"),
+    teamBLabel: getShortLabel(teamB, "LIGHT"),
   };
 
   const rotationInfo = getRotationDue(matchSeconds || 0, displaySeconds || 0);
@@ -2326,10 +2349,10 @@ export function FiveVFiveLiveMatchPage({
   return (
     <div className="page live-page">
       <header className="header">
-        <h1>5 v 5 Match Night</h1>
+        <h1>Normal 5 v 5</h1>
         <p>
-          <TeamColorBadge team={teamA} fallback="TEAM A" /> vs{" "}
-          <TeamColorBadge team={teamB} fallback="OTHER TEAM" />
+          <TeamColorBadge team={teamA} fallback="DARK" /> vs{" "}
+          <TeamColorBadge team={teamB} fallback="LIGHT" />
         </p>
         <p className="muted small">
           Signed in as <strong>{getIdentityDisplayName(identity)}</strong> •{" "}
@@ -2357,7 +2380,7 @@ export function FiveVFiveLiveMatchPage({
         >
           <div className="score-team">
             <strong className="score-team-name">
-              <TeamColorBadge team={teamA} fallback="TEAM A" />
+              <TeamColorBadge team={teamA} fallback="DARK" />
             </strong>
             <div className="score-number">{goalsA}</div>
           </div>
@@ -2366,7 +2389,7 @@ export function FiveVFiveLiveMatchPage({
 
           <div className="score-team">
             <strong className="score-team-name">
-              <TeamColorBadge team={teamB} fallback="OTHER TEAM" />
+              <TeamColorBadge team={teamB} fallback="LIGHT" />
             </strong>
             <div className="score-number">{goalsB}</div>
           </div>
@@ -2692,14 +2715,14 @@ export function FiveVFiveLiveMatchPage({
                       type="button"
                       onClick={() => handleChooseScoringTeam(teamAId)}
                     >
-                      <TeamColorBadge team={teamA} fallback="TEAM A" />
+                      <TeamColorBadge team={teamA} fallback="DARK" />
                     </button>
                     <button
                       className="toggle-btn tk-team-color-btn"
                       type="button"
                       onClick={() => handleChooseScoringTeam(teamBId)}
                     >
-                      <TeamColorBadge team={teamB} fallback="OTHER TEAM" />
+                      <TeamColorBadge team={teamB} fallback="LIGHT" />
                     </button>
                   </div>
                 </div>
@@ -2822,14 +2845,14 @@ export function FiveVFiveLiveMatchPage({
                       type="button"
                       onClick={() => setShiboboTeamId(teamAId)}
                     >
-                      <TeamColorBadge team={teamA} fallback="TEAM A" />
+                      <TeamColorBadge team={teamA} fallback="DARK" />
                     </button>
                     <button
                       className="toggle-btn tk-team-color-btn"
                       type="button"
                       onClick={() => setShiboboTeamId(teamBId)}
                     >
-                      <TeamColorBadge team={teamB} fallback="OTHER TEAM" />
+                      <TeamColorBadge team={teamB} fallback="LIGHT" />
                     </button>
                   </div>
                 </div>
@@ -2909,8 +2932,8 @@ export function FiveVFiveLiveMatchPage({
           <div className="modal">
             <h3>Confirm End of 5 v 5 Match</h3>
             <p>
-              <TeamColorBadge team={teamA} fallback="TEAM A" /> {goalsA} – {goalsB}{" "}
-              <TeamColorBadge team={teamB} fallback="OTHER TEAM" />
+              <TeamColorBadge team={teamA} fallback="DARK" /> {goalsA} – {goalsB}{" "}
+              <TeamColorBadge team={teamB} fallback="LIGHT" />
             </p>
             <p>
               Are you sure everything is correct? You have{" "}
@@ -2980,8 +3003,9 @@ export function FiveVFiveLiveMatchPage({
           <div className="modal">
             <h3>Discard match &amp; go back?</h3>
             <p>
-              This will <strong>lose all current events</strong> for this match
-              and return to the main screen.
+              This will <strong>permanently lose the current match</strong>,
+              including goals and recorded events, and return to the main screen.
+              Only leave if you intend to discard this game.
             </p>
             <div className="field-row">
               <label>Captain password</label>
