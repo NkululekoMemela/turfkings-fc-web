@@ -1328,6 +1328,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   onConfirmEndMatch,
   onBackToLanding,
   onGoToStats,
+  onOpenHighlightsCamera,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
   const role = String(activeRole || "spectator").trim().toLowerCase();
@@ -2556,6 +2557,14 @@ export function ThreeTeamLeagueLiveMatchPage({
             onClick={onGoToStats}
           >
             📊 View Stats
+          </button>
+
+          <button
+            className="secondary-btn"
+            type="button"
+            onClick={() => onOpenHighlightsCamera?.()}
+          >
+            📷 Camera
           </button>
 
           {canControlMatch && (

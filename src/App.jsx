@@ -1318,6 +1318,51 @@ function resolveCameraLaunchTeams({
   };
 }
 
+function buildCameraLiveContext({
+  activeSeasonId,
+  gameFormat,
+  currentMatchNo,
+  launchTeams,
+}) {
+  if (!launchTeams?.teamAId || !launchTeams?.teamBId) return null;
+  if (!launchTeams.teamAPlayers?.length || !launchTeams.teamBPlayers?.length) {
+    return null;
+  }
+
+  return {
+    matchIsLive: true,
+    seasonId: activeSeasonId || null,
+    gameFormat: gameFormat || "3_TEAM_LEAGUE",
+    matchId: `tk-${activeSeasonId || "season"}-${currentMatchNo || 1}`,
+    matchNo: Number(currentMatchNo || 1),
+    teamAId: launchTeams.teamAId,
+    teamBId: launchTeams.teamBId,
+    teamAName: launchTeams.teamAName || "Team A",
+    teamBName: launchTeams.teamBName || "Team B",
+    teamAPlayers: Array.isArray(launchTeams.teamAPlayers)
+      ? launchTeams.teamAPlayers
+      : [],
+    teamBPlayers: Array.isArray(launchTeams.teamBPlayers)
+      ? launchTeams.teamBPlayers
+      : [],
+    updatedAtISO: new Date().toISOString(),
+  };
+}
+
+async function writeCameraLiveContextToFirebase(cameraLiveContext) {
+  const appStateRef = doc(db, "appState_v2", "main");
+
+  await setDoc(
+    appStateRef,
+    {
+      cameraLiveContext: cameraLiveContext || null,
+      updatedAt: serverTimestamp(),
+      updatedAtISO: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState(PAGE_ENTRY);
 
@@ -1632,7 +1677,64 @@ export default function App() {
     };
   }, [gameFormat, fiveVFiveTeams, currentMatch, matchMode]);
 
+  const currentCameraLaunchTeams = useMemo(() => {
+    return resolveCameraLaunchTeams({
+      teams,
+      currentMatch: effectiveLiveMatch,
+      currentConfirmedLineupSnapshot,
+      confirmedLineupsByMatchNo,
+      currentMatchNo,
+    });
+  }, [
+    teams,
+    effectiveLiveMatch,
+    currentConfirmedLineupSnapshot,
+    confirmedLineupsByMatchNo,
+    currentMatchNo,
+  ]);
 
+  const currentCameraLiveContext = useMemo(() => {
+    if (!(hasLiveMatch || running)) return null;
+    if (gameFormat !== "3_TEAM_LEAGUE") return null;
+
+    return buildCameraLiveContext({
+      activeSeasonId,
+      gameFormat,
+      currentMatchNo,
+      launchTeams: currentCameraLaunchTeams,
+    });
+  }, [
+    hasLiveMatch,
+    running,
+    gameFormat,
+    activeSeasonId,
+    currentMatchNo,
+    currentCameraLaunchTeams,
+  ]);
+
+    useEffect(() => {
+    if (!USE_V2) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await writeCameraLiveContextToFirebase(currentCameraLiveContext);
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "[TK CAMERA] Failed to write cameraLiveContext to appState_v2/main:",
+            error
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCameraLiveContext]);
+  
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
 
@@ -2174,12 +2276,20 @@ export default function App() {
     setPendingMatchStartContext(null);
   };
 
-  const handleCancelPreMatchLineups = () => {
+  const handleCancelPreMatchLineups = async () => {
     setPendingMatchStartContext(null);
     setRunning(false);
     setTimeUp(false);
     setSecondsLeft(MATCH_SECONDS);
     setHasLiveMatch(false);
+    setCurrentConfirmedLineupSnapshot(null);
+
+    if (USE_V2) {
+      writeCameraLiveContextToFirebase(null).catch((error) => {
+        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+      });
+    }
+
     setPage(PAGE_LANDING);
   };
 
@@ -2249,7 +2359,7 @@ export default function App() {
     });
   };
 
-  const handleConfirmEndMatch = (summary) => {
+  const handleConfirmEndMatch = async (summary) => {
     if (USE_V2) {
       updateActiveSeason((prevSeason) => {
         const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
@@ -2356,6 +2466,9 @@ export default function App() {
       setHasLiveMatch(false);
       setPendingMatchStartContext(null);
       setCurrentConfirmedLineupSnapshot(null);
+      writeCameraLiveContextToFirebase(null).catch((error) => {
+        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+      });
       setPage(PAGE_LANDING);
       return;
     }
@@ -2429,15 +2542,24 @@ export default function App() {
     setHasLiveMatch(false);
     setPendingMatchStartContext(null);
     setCurrentConfirmedLineupSnapshot(null);
+    try {
+      await writeCameraLiveContextToFirebase(null);
+    } catch (error) {
+      console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+    }
+
     setPage(PAGE_LANDING);
   };
 
-  const handleDiscardMatchAndBack = () => {
+  const handleDiscardMatchAndBack = async () => {
     setRunning(false);
     setTimeUp(false);
     setSecondsLeft(MATCH_SECONDS);
     setHasLiveMatch(false);
     setPendingMatchStartContext(null);
+    writeCameraLiveContextToFirebase(null).catch((error) => {
+      console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+    });
     setCurrentConfirmedLineupSnapshot(null);
 
     if (USE_V2) {
@@ -2445,9 +2567,14 @@ export default function App() {
         ...prevSeason,
         currentEvents: [],
       }));
+
+      writeCameraLiveContextToFirebase(null).catch((error) => {
+        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+      });
     } else {
       updateState((prev) => ({ ...prev, currentEvents: [] }));
     }
+
     setPage(PAGE_LANDING);
   };
 
@@ -3175,17 +3302,16 @@ export default function App() {
       currentMatchNo,
     });
 
-    const liveReady =
+    const isOfficialMatchLive =
       gameFormat === "3_TEAM_LEAGUE" &&
-      Boolean(hasLiveMatch || running) &&
-      Boolean(launchTeams.teamAId && launchTeams.teamBId) &&
-      launchTeams.teamAPlayers.length > 0 &&
-      launchTeams.teamBPlayers.length > 0;
+      Boolean(hasLiveMatch) &&
+      Boolean(launchTeams.teamAId && launchTeams.teamBId);
 
     const payload = {
       sourceApp: "TurfKings",
       teamName: "Turf Kings FC",
-      matchIsLive: liveReady,
+      matchIsLive: isOfficialMatchLive,
+      canUseOutsideOfficialMatch: true,
       matchId: `tk-${activeSeasonId || "season"}-${currentMatchNo || 1}`,
       matchNo: Number(currentMatchNo || 1),
       seasonId: activeSeasonId || null,
@@ -3341,6 +3467,7 @@ export default function App() {
           onConfirmEndMatch={handleConfirmEndMatch}
           onBackToLanding={handleDiscardMatchAndBack}
           onGoToStats={() => handleGoToStats(PAGE_LIVE)}
+          onOpenHighlightsCamera={handleOpenHighlightsCamera}
         />
       )}
 
