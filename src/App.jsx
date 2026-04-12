@@ -13,6 +13,7 @@ import { PeerReviewPage } from "./pages/PeerReviewPage.jsx";
 import { MigrationPage } from "./pages/MigrationPage.jsx";
 import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
+import ViewHighlightsPage from "./pages/ViewHighlightsPage.jsx";
 
 import {
   loadState,
@@ -41,7 +42,7 @@ import {
 } from "./core/scheduledFixtures.js";
 
 import { db } from "./firebaseConfig.js";
-import { doc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 
 // Page constants
 const PAGE_ENTRY = "entry";
@@ -57,6 +58,7 @@ const PAGE_PEER_REVIEW = "peer-review";
 const PAGE_MIGRATION = "migration";
 const PAGE_MATCH_SIGNUP = "match-signup";
 const PAGE_PAYMENT = "payment";
+const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 
 const MASTER_CODE = "3333";
 const MATCH_SECONDS = 5 * 60;
@@ -895,6 +897,427 @@ async function saveParticipationForMatchDay({
   await batch.commit();
 }
 
+
+function safeJsonParse(value, fallback = null) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeReturnedHighlight(raw, fallbackMatchNo = null, fallbackGameFormat = "5_V_5") {
+  if (!raw || typeof raw !== "object") return null;
+
+  const clipId =
+    String(raw.clipId || raw.id || raw.highlightId || "").trim() ||
+    `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const tag = String(raw.tag || raw.type || raw.category || "goal").trim() || "goal";
+  const normalizedTag = safeLower(tag).includes("save")
+    ? "save"
+    : safeLower(tag).includes("skill")
+    ? "skill"
+    : "goal";
+
+  const scorerLike =
+    raw.goalScorerName ||
+    raw.goalScorer ||
+    raw.scorer ||
+    raw.playerName ||
+    raw.keeperName ||
+    raw.skillPlayer ||
+    "";
+
+  const teamName =
+    raw.teamName ||
+    raw.teamLabel ||
+    raw.team ||
+    "";
+
+  const mediaUrl =
+    raw.videoUrl ||
+    raw.downloadUrl ||
+    raw.mediaUrl ||
+    raw.fileUrl ||
+    raw.uri ||
+    raw.videoUri ||
+    "";
+
+  return {
+    clipId,
+    id: clipId,
+    highlightId: clipId,
+    tag: normalizedTag,
+    type: normalizedTag,
+    title: raw.title || "",
+    playerName: toTitleCaseLoose(scorerLike || "Unknown"),
+    goalScorerName: normalizedTag === "goal" ? toTitleCaseLoose(scorerLike || "Unknown") : "",
+    scorer: normalizedTag === "goal" ? toTitleCaseLoose(scorerLike || "Unknown") : "",
+    keeperName: normalizedTag === "save" ? toTitleCaseLoose(scorerLike || "Unknown") : "",
+    skillPlayer: normalizedTag === "skill" ? toTitleCaseLoose(scorerLike || "Unknown") : "",
+    teamId: raw.teamId || null,
+    teamName: teamName ? toTitleCaseLoose(teamName) : "",
+    matchId: raw.matchId || null,
+    matchNo:
+      Number.isFinite(Number(raw.matchNo)) && Number(raw.matchNo) > 0
+        ? Number(raw.matchNo)
+        : fallbackMatchNo,
+    seasonId: raw.seasonId || null,
+    gameFormat: raw.gameFormat || fallbackGameFormat,
+    videoUrl: mediaUrl,
+    downloadUrl: mediaUrl,
+    mediaUrl,
+    fileUrl: mediaUrl,
+    uri: mediaUrl,
+    createdAt: raw.createdAt || raw.timestamp || new Date().toISOString(),
+    thumbnailUrl: raw.thumbnailUrl || raw.thumbnail || "",
+    votes: 0,
+  };
+}
+
+function parseHighlightsReturnPayloadFromUrl(urlLike) {
+  if (!urlLike || typeof urlLike !== "string") return [];
+  const url = String(urlLike);
+  const payloadMatch = url.match(/[?&]payload=([^&]+)/);
+  if (!payloadMatch) return [];
+  const decoded = decodeURIComponent(payloadMatch[1] || "");
+  const parsed = safeJsonParse(decoded, null);
+  if (!parsed) return [];
+
+  if (Array.isArray(parsed)) return parsed;
+  if (Array.isArray(parsed.highlights)) return parsed.highlights;
+  if (Array.isArray(parsed.clips)) return parsed.clips;
+  if (parsed.highlight || parsed.clip) return [parsed.highlight || parsed.clip];
+  return [parsed];
+}
+
+function buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (String(gameFormat || "").trim() === "3_TEAM_LEAGUE") {
+    return `${String(activeSeasonId || "season").trim() || "season"}__${today}`;
+  }
+  return `5v5__${today}`;
+}
+
+function buildRawHighlightFirebaseDoc(highlight, options = {}) {
+  const {
+    matchDayId,
+    currentMatchNo = 1,
+    activeSeasonId = null,
+    gameFormat = "5_V_5",
+    identity = null,
+  } = options;
+
+  const safeClipId = String(
+    highlight?.clipId || highlight?.id || highlight?.highlightId || ""
+  ).trim();
+
+  if (!safeClipId) return null;
+
+  const safeTag = String(highlight?.tag || highlight?.type || "goal").trim() || "goal";
+  const createdBy =
+    identity?.memberId ||
+    identity?.playerId ||
+    identity?.email ||
+    identity?.shortName ||
+    identity?.fullName ||
+    identity?.displayName ||
+    null;
+
+  return {
+    clipId: safeClipId,
+    matchDayId: String(matchDayId || "").trim() || null,
+    matchId: highlight?.matchId || null,
+    matchNo:
+      Number.isFinite(Number(highlight?.matchNo)) && Number(highlight?.matchNo) > 0
+        ? Number(highlight.matchNo)
+        : Number(currentMatchNo || 1),
+    seasonId: gameFormat === "5_V_5" ? null : activeSeasonId || highlight?.seasonId || null,
+    gameFormat: gameFormat || highlight?.gameFormat || "5_V_5",
+    tag: safeTag,
+    type: safeTag,
+    playerName: highlight?.playerName || null,
+    goalScorerName:
+      safeLower(safeTag).includes("goal")
+        ? highlight?.goalScorerName || highlight?.scorer || highlight?.playerName || null
+        : null,
+    scorer:
+      safeLower(safeTag).includes("goal")
+        ? highlight?.scorer || highlight?.goalScorerName || highlight?.playerName || null
+        : null,
+    keeperName:
+      safeLower(safeTag).includes("save")
+        ? highlight?.keeperName || highlight?.playerName || null
+        : null,
+    skillPlayer:
+      safeLower(safeTag).includes("skill")
+        ? highlight?.skillPlayer || highlight?.playerName || null
+        : null,
+    teamId: highlight?.teamId || null,
+    teamName: highlight?.teamName || null,
+    title: highlight?.title || null,
+    videoUrl:
+      highlight?.videoUrl ||
+      highlight?.downloadUrl ||
+      highlight?.mediaUrl ||
+      highlight?.fileUrl ||
+      highlight?.uri ||
+      null,
+    thumbnailUrl: highlight?.thumbnailUrl || highlight?.thumbnail || null,
+    status: "raw",
+    createdBy,
+    createdAtISO: highlight?.createdAt || new Date().toISOString(),
+    updatedAtISO: new Date().toISOString(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
+
+async function saveHighlightVotesToFirebase({
+  matchDayId,
+  userId,
+  userName,
+  votesByUser,
+}) {
+  const safeMatchDayId = String(matchDayId || "").trim();
+  const safeUserId = String(userId || "").trim();
+  if (!safeMatchDayId || !safeUserId) return;
+
+  const userVotes = votesByUser?.[safeUserId] || {};
+  const voteRef = doc(db, "matchdays", safeMatchDayId, "highlight_votes", safeUserId);
+
+  await setDoc(
+    voteRef,
+    {
+      userId: safeUserId,
+      userName: String(userName || "").trim() || "Unknown",
+      goal: userVotes.goal || null,
+      skill: userVotes.skill || null,
+      save: userVotes.save || null,
+      updatedAtISO: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function loadHighlightVotesFromFirebase(matchDayId) {
+  const safeMatchDayId = String(matchDayId || "").trim();
+  if (!safeMatchDayId) return {};
+
+  const votesRef = collection(db, "matchdays", safeMatchDayId, "highlight_votes");
+  const snapshot = await getDocs(votesRef);
+
+  const votes = {};
+  snapshot.forEach((docSnap) => {
+    const raw = docSnap.data?.() || {};
+    const userId = String(raw.userId || docSnap.id || "").trim();
+    if (!userId) return;
+    votes[userId] = {
+      goal: raw.goal || null,
+      skill: raw.skill || null,
+      save: raw.save || null,
+    };
+  });
+
+  return votes;
+}
+
+
+async function archiveWinningHighlightsToFirebase({
+  matchDayId,
+  archiveSelection,
+  activeSeasonId,
+  gameFormat,
+  currentMatchNo,
+}) {
+  const safeMatchDayId = String(matchDayId || "").trim();
+  if (!safeMatchDayId) return;
+
+  const selection = archiveSelection || {};
+  const topGoals = Array.isArray(selection.topGoals) ? selection.topGoals : [];
+  const bestSkill = selection.bestSkill || null;
+  const bestSave = selection.bestSave || null;
+
+  const winners = [
+    ...topGoals.map((item, index) => ({
+      ...item,
+      archiveCategory: "goal",
+      archiveRank: index + 1,
+      goalScorerName: toTitleCaseLoose(
+        item?.goalScorerName || item?.scorer || item?.playerName || "Unknown"
+      ),
+    })),
+    ...(bestSkill
+      ? [
+          {
+            ...bestSkill,
+            archiveCategory: "skill",
+            archiveRank: 1,
+          },
+        ]
+      : []),
+    ...(bestSave
+      ? [
+          {
+            ...bestSave,
+            archiveCategory: "save",
+            archiveRank: 1,
+          },
+        ]
+      : []),
+  ];
+
+  const batch = writeBatch(db);
+
+  winners.forEach((winner, index) => {
+    const clipId = String(winner?.clipId || winner?.id || `winner-${index}`).trim();
+    if (!clipId) return;
+
+    const archiveRef = doc(db, "matchdays", safeMatchDayId, "archived_highlights", clipId);
+
+    batch.set(
+      archiveRef,
+      {
+        ...winner,
+        clipId,
+        id: clipId,
+        seasonId: gameFormat === "5_V_5" ? null : activeSeasonId || null,
+        gameFormat: gameFormat || "5_V_5",
+        matchNo: Number(currentMatchNo || winner?.matchNo || 1),
+        archivedAtISO: new Date().toISOString(),
+        archivedAt: serverTimestamp(),
+        status: "archived",
+      },
+      { merge: true }
+    );
+  });
+
+  await batch.commit();
+}
+
+async function clearRawHighlightsFromFirebase(matchDayId) {
+  const safeMatchDayId = String(matchDayId || "").trim();
+  if (!safeMatchDayId) return;
+
+  const rawRef = collection(db, "matchdays", safeMatchDayId, "raw_highlights");
+  const snapshot = await getDocs(rawRef);
+
+  const deletions = snapshot.docs.map((docSnap) =>
+    deleteDoc(doc(db, "matchdays", safeMatchDayId, "raw_highlights", docSnap.id))
+  );
+  await Promise.all(deletions);
+}
+
+function buildCameraPlayersFromLineupSnapshot(snapshot, teamId) {
+  if (!snapshot || typeof snapshot !== "object") return [];
+
+  const seen = new Set();
+  const out = [];
+
+  const pushPlayer = (rawName) => {
+    const name = toTitleCaseLoose(rawName || "");
+    if (!name) return;
+
+    const id = slugFromLooseName(name);
+    if (!id || seen.has(id)) return;
+
+    seen.add(id);
+    out.push({
+      id,
+      name,
+      teamId: teamId || null,
+    });
+  };
+
+  Object.values(snapshot.positions || {}).forEach(pushPlayer);
+  (snapshot.benchSnapshot || []).forEach(pushPlayer);
+  (snapshot.guestPlayers || []).forEach(pushPlayer);
+
+  return out;
+}
+
+function buildCameraPlayersFromTeam(team = {}, teamId) {
+  const seen = new Set();
+  const out = [];
+
+  (team?.players || []).forEach((entry) => {
+    const rawName =
+      typeof entry === "string"
+        ? entry
+        : entry?.name ||
+          entry?.displayName ||
+          entry?.fullName ||
+          entry?.shortName ||
+          "";
+
+    const name = toTitleCaseLoose(rawName || "");
+    if (!name) return;
+
+    const id =
+      String(
+        (typeof entry === "object" &&
+          (entry?.id || entry?.playerId || entry?.memberId)) ||
+          slugFromLooseName(name)
+      ).trim() || slugFromLooseName(name);
+
+    if (!id || seen.has(id)) return;
+
+    seen.add(id);
+    out.push({
+      id,
+      name,
+      teamId: teamId || null,
+    });
+  });
+
+  return out;
+}
+
+function resolveCameraLaunchTeams({
+  teams = [],
+  currentMatch = null,
+  currentConfirmedLineupSnapshot = null,
+  confirmedLineupsByMatchNo = {},
+  currentMatchNo = 1,
+}) {
+  const teamAId = currentMatch?.teamAId || null;
+  const teamBId = currentMatch?.teamBId || null;
+
+  const teamA = (teams || []).find((team) => team?.id === teamAId) || null;
+  const teamB = (teams || []).find((team) => team?.id === teamBId) || null;
+
+  const snapshotBundle =
+    currentConfirmedLineupSnapshot ||
+    confirmedLineupsByMatchNo?.[currentMatchNo] ||
+    null;
+
+  const snapshotA = teamAId ? snapshotBundle?.[teamAId] || null : null;
+  const snapshotB = teamBId ? snapshotBundle?.[teamBId] || null : null;
+
+  const teamAPlayers =
+    buildCameraPlayersFromLineupSnapshot(snapshotA, teamAId).length > 0
+      ? buildCameraPlayersFromLineupSnapshot(snapshotA, teamAId)
+      : buildCameraPlayersFromTeam(teamA, teamAId);
+
+  const teamBPlayers =
+    buildCameraPlayersFromLineupSnapshot(snapshotB, teamBId).length > 0
+      ? buildCameraPlayersFromLineupSnapshot(snapshotB, teamBId)
+      : buildCameraPlayersFromTeam(teamB, teamBId);
+
+  return {
+    teamAId,
+    teamBId,
+    teamAName: teamA?.label || "Team A",
+    teamBName: teamB?.label || "Team B",
+    teamAPlayers,
+    teamBPlayers,
+    hasVerifiedSnapshots: Boolean(snapshotA && snapshotB),
+  };
+}
+
 export default function App() {
   const [page, setPage] = useState(PAGE_ENTRY);
 
@@ -909,18 +1332,6 @@ export default function App() {
   });
 
   const members = useMembers();
-
-  const cameraLaunchPlayers = useMemo(() => {
-    return (members || []).map((member) => ({
-      id: member.id,
-      name:
-        member.shortName ||
-        member.fullName ||
-        member.displayName ||
-        member.email ||
-        member.id,
-    }));
-  }, [members]);
 
   const handleEntryComplete = (payload) => {
     const safePayload = ensureIdentityShape(payload);
@@ -994,6 +1405,42 @@ export default function App() {
   const [endSeasonError, setEndSeasonError] = useState("");
   const [showSeasonCompleteModal, setShowSeasonCompleteModal] = useState(false);
   const [seasonCompleteDismissedKey, setSeasonCompleteDismissedKey] = useState(null);
+
+  const [currentMatchDayHighlights, setCurrentMatchDayHighlights] = useState([]);
+  const [highlightVotesByUser, setHighlightVotesByUser] = useState({});
+  const [highlightArchiveSelection, setHighlightArchiveSelection] = useState(null);
+
+
+  const persistReturnedHighlightsToFirebase = async (items) => {
+    const safeItems = Array.isArray(items) ? items : [];
+    if (!safeItems.length) return;
+
+    const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo);
+
+    await Promise.all(
+      safeItems.map(async (item) => {
+        const docPayload = buildRawHighlightFirebaseDoc(item, {
+          matchDayId,
+          currentMatchNo,
+          activeSeasonId,
+          gameFormat,
+          identity,
+        });
+
+        if (!docPayload?.clipId) return;
+
+        const highlightRef = doc(
+          db,
+          "matchdays",
+          matchDayId,
+          "raw_highlights",
+          docPayload.clipId
+        );
+
+        await setDoc(highlightRef, docPayload, { merge: true });
+      })
+    );
+  };
 
   const updateState = (updater) => {
     setState((prev) => {
@@ -1185,6 +1632,79 @@ export default function App() {
     };
   }, [gameFormat, fiveVFiveTeams, currentMatch, matchMode]);
 
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const applyReturnedHighlights = async (items) => {
+      const normalized = (Array.isArray(items) ? items : [])
+        .map((item) =>
+          normalizeReturnedHighlight(item, currentMatchNo || 1, gameFormat || "5_V_5")
+        )
+        .filter(Boolean);
+
+      if (!normalized.length) return;
+
+      await persistReturnedHighlightsToFirebase(normalized);
+
+      setCurrentMatchDayHighlights((prev) => {
+        const existing = Array.isArray(prev) ? prev : [];
+        const seen = new Set(
+          existing.map((item) => String(item.clipId || item.id || "").trim())
+        );
+        const next = [...existing];
+
+        normalized.forEach((item) => {
+          const key = String(item.clipId || item.id || "").trim();
+          if (!key || seen.has(key)) return;
+          seen.add(key);
+          next.push(item);
+        });
+
+        return next;
+      });
+
+      setPage(PAGE_VIEW_HIGHLIGHTS);
+    };
+
+    const handleIncomingUrl = (urlLike) => {
+      const incoming = String(urlLike || "");
+      if (!incoming.toLowerCase().startsWith("turfkings://camera-return")) return;
+      const returned = parseHighlightsReturnPayloadFromUrl(incoming);
+      void applyReturnedHighlights(returned);
+    };
+
+    handleIncomingUrl(window.location.href);
+
+    const onHashChange = () => handleIncomingUrl(window.location.href);
+    window.addEventListener("hashchange", onHashChange);
+
+    const onMessage = (event) => {
+      const data = event?.data;
+      if (!data) return;
+
+      if (typeof data === "string") {
+        handleIncomingUrl(data);
+        return;
+      }
+
+      if (data?.type === "TURFKINGS_CAMERA_RETURN") {
+        void applyReturnedHighlights(
+          Array.isArray(data.highlights)
+            ? data.highlights
+            : [data.highlight || data.clip || data]
+        );
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener("message", onMessage);
+    };
+  }, [currentMatchNo, gameFormat]);
+
+
   const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
     (day) => day?.results || []
   );
@@ -1333,6 +1853,7 @@ export default function App() {
   const handleBackToLanding = () => setPage(PAGE_LANDING);
   const handleBackToLive = () => setPage(PAGE_LIVE);
   const handleGoToMatchSignup = () => setPage(PAGE_MATCH_SIGNUP);
+  const handleGoToViewHighlights = () => setPage(PAGE_VIEW_HIGHLIGHTS);
 
   const handleUpdatePairing = (match) => {
     if (!canStartMatch) {
@@ -2305,6 +2826,9 @@ export default function App() {
         scheduledFixtures: [],
       }));
 
+      setCurrentMatchDayHighlights([]);
+      setHighlightVotesByUser({});
+      setHighlightArchiveSelection(null);
       closeBackupModal();
       return;
     }
@@ -2332,6 +2856,9 @@ export default function App() {
       scheduledFixtures: [],
     }));
 
+    setCurrentMatchDayHighlights([]);
+    setHighlightVotesByUser({});
+    setHighlightArchiveSelection(null);
     closeBackupModal();
   };
 
@@ -2347,6 +2874,20 @@ export default function App() {
       String(now.getDate()).padStart(2, "0");
 
     try {
+      const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo);
+      const highlightsArchivePayload = buildHighlightsArchivePayload();
+      console.log("[TK HIGHLIGHTS] archive winners on End Match Day:", highlightsArchivePayload);
+
+      if (matchDayId && highlightArchiveSelection) {
+        await archiveWinningHighlightsToFirebase({
+          matchDayId,
+          archiveSelection: highlightArchiveSelection,
+          activeSeasonId,
+          gameFormat,
+          currentMatchNo,
+        });
+        await clearRawHighlightsFromFirebase(matchDayId);
+      }
       if (USE_V2) {
         const activeSeasonId = safeV2ForStats?.activeSeasonId || "";
         const safeParticipationEntries = Array.isArray(pendingParticipationEntries)
@@ -2401,6 +2942,9 @@ export default function App() {
           };
         });
 
+        setCurrentMatchDayHighlights([]);
+        setHighlightVotesByUser({});
+        setHighlightArchiveSelection(null);
         closeBackupModal();
         return;
       }
@@ -2443,6 +2987,9 @@ export default function App() {
         };
       });
 
+      setCurrentMatchDayHighlights([]);
+      setHighlightVotesByUser({});
+      setHighlightArchiveSelection(null);
       closeBackupModal();
     } catch (err) {
       console.error("[TK] Failed to save participation records:", err);
@@ -2581,6 +3128,34 @@ export default function App() {
 
   const handleBackFromPayment = () => setPage(PAGE_MATCH_SIGNUP);
 
+
+  const buildHighlightsArchivePayload = () => {
+    const selection = highlightArchiveSelection || {};
+    const topGoals = Array.isArray(selection.topGoals) ? selection.topGoals : [];
+    const bestSkill = selection.bestSkill || null;
+    const bestSave = selection.bestSave || null;
+
+    const goalsByScorer = topGoals.reduce((acc, item) => {
+      const scorerName = toTitleCaseLoose(
+        item?.goalScorerName || item?.scorer || item?.playerName || "Unknown"
+      );
+      if (!acc[scorerName]) acc[scorerName] = [];
+      acc[scorerName].push(item);
+      return acc;
+    }, {});
+
+    return {
+      matchDayId: new Date().toISOString().slice(0, 10),
+      matchNo: currentMatchNo || 1,
+      seasonId: gameFormat === "5_V_5" ? null : activeSeasonId || null,
+      gameFormat: gameFormat || "5_V_5",
+      topGoals,
+      bestSkill,
+      bestSave,
+      goalsByScorer,
+    };
+  };
+
   const handleOpenHighlightsCamera = () => {
     if (typeof window === "undefined") return;
 
@@ -2592,11 +3167,35 @@ export default function App() {
       return;
     }
 
+    const launchTeams = resolveCameraLaunchTeams({
+      teams,
+      currentMatch: effectiveLiveMatch,
+      currentConfirmedLineupSnapshot,
+      confirmedLineupsByMatchNo,
+      currentMatchNo,
+    });
+
+    const liveReady =
+      gameFormat === "3_TEAM_LEAGUE" &&
+      Boolean(hasLiveMatch || running) &&
+      Boolean(launchTeams.teamAId && launchTeams.teamBId) &&
+      launchTeams.teamAPlayers.length > 0 &&
+      launchTeams.teamBPlayers.length > 0;
+
     const payload = {
       sourceApp: "TurfKings",
       teamName: "Turf Kings FC",
-      matchId: `tk-${currentMatchNo || "landing"}-${Date.now()}`,
-      players: cameraLaunchPlayers,
+      matchIsLive: liveReady,
+      matchId: `tk-${activeSeasonId || "season"}-${currentMatchNo || 1}`,
+      matchNo: Number(currentMatchNo || 1),
+      seasonId: activeSeasonId || null,
+      gameFormat: gameFormat || "3_TEAM_LEAGUE",
+      teamAId: launchTeams.teamAId,
+      teamBId: launchTeams.teamBId,
+      teamAName: launchTeams.teamAName,
+      teamBName: launchTeams.teamBName,
+      teamAPlayers: launchTeams.teamAPlayers,
+      teamBPlayers: launchTeams.teamBPlayers,
       defaultTag: "goal",
     };
 
@@ -2669,6 +3268,7 @@ export default function App() {
           onGoToLiveAsSpectator={handleGoToLiveAsSpectator}
           onGoToFormations={handleGoToFormations}
           onGoToNews={() => setPage(PAGE_NEWS)}
+          onGoToHighlights={handleGoToViewHighlights}
           onOpenHighlightsCamera={handleOpenHighlightsCamera}
           onGoToEntryDev={() => setPage(PAGE_ENTRY)}
           onGoToPayments={handleGoToMatchSignup}
@@ -2782,6 +3382,56 @@ export default function App() {
           onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
           canPreviewPreviousSeasonUI={canPreviewPreviousSeasonUI}
           isAdmin={isAdmin}
+        />
+      )}
+
+      {page === PAGE_VIEW_HIGHLIGHTS && (
+        <ViewHighlightsPage
+          identity={identity}
+          activeRole={activeRole}
+          currentMatchDayHighlights={currentMatchDayHighlights}
+          votesByUser={highlightVotesByUser}
+          onVotesChange={async (nextVotes) => {
+            setHighlightVotesByUser(nextVotes);
+
+            const userId =
+              String(
+                identity?.memberId ||
+                  identity?.playerId ||
+                  identity?.email ||
+                  identity?.shortName ||
+                  identity?.fullName ||
+                  identity?.displayName ||
+                  ""
+              )
+                .trim()
+                .toLowerCase();
+
+            const userName =
+              identity?.shortName ||
+              identity?.fullName ||
+              identity?.displayName ||
+              identity?.name ||
+              identity?.email ||
+              "Unknown";
+
+            const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo);
+
+            if (userId && matchDayId) {
+              try {
+                await saveHighlightVotesToFirebase({
+                  matchDayId,
+                  userId,
+                  userName,
+                  votesByUser: nextVotes,
+                });
+              } catch (error) {
+                console.error("[TK HIGHLIGHTS] Failed to save highlight votes:", error);
+              }
+            }
+          }}
+          onHighlightsSelectionChange={setHighlightArchiveSelection}
+          onBack={handleBackToLanding}
         />
       )}
 

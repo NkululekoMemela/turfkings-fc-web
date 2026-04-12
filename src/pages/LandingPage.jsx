@@ -156,6 +156,7 @@ export function LandingPage({
   onGoToFormations,
   onGoToNews,
   onOpenHighlightsCamera,
+  onGoToHighlights,
   onGoToEntryDev,
   onGoToPayments,
   identity,
@@ -552,8 +553,7 @@ export function LandingPage({
             <span className="auth-text">
               Viewing as <strong>{identityName}</strong>
               <span className="muted small">
-                {" "}
-                • Role: <strong>{roleLabel}</strong>
+                {" "}• Role: <strong>{roleLabel}</strong>
               </span>
             </span>
 
@@ -976,6 +976,20 @@ export function LandingPage({
               </span>
             </button>
 
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => onGoToHighlights?.()}
+              style={tileButtonStyle(isMobile)}
+            >
+              {renderTileContent({
+                isMobile,
+                icon: "📷📲",
+                desktopLines: ["View", "Highlights"],
+                mobileLines: ["View", "Highlights"],
+              })}
+            </button>
+
             {isAdmin && (
               <button
                 className="secondary-btn"
@@ -1068,16 +1082,115 @@ export function LandingPage({
               </button>
 
               <button
-                className="secondary-btn"
                 type="button"
                 onClick={() => onOpenHighlightsCamera?.()}
+                style={{
+                  ...tileButtonStyle(isMobile, {
+                    background:
+                      "radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08), transparent 60%), linear-gradient(145deg, rgba(8,15,35,0.98), rgba(3,8,23,0.98))",
+                    border: "1px solid rgba(148,163,184,0.22)",
+                    boxShadow:
+                      "inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(255,255,255,0.03), 0 0 20px rgba(59,130,246,0.12)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }),
+                }}
+              >
+                <span
+                  style={{
+                    position: "relative",
+                    width: isMobile ? "84px" : "68px",
+                    height: isMobile ? "84px" : "68px",
+                    borderRadius: "50%",
+                    background:
+                      "radial-gradient(circle at 50% 50%, #C9D6E8 0%, #AAB8CE 38%, #8E9CB7 68%, #C5D0E2 100%)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow:
+                      "0 0 0 2px rgba(255,255,255,0.05), inset 0 1px 2px rgba(255,255,255,0.35), 0 8px 22px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      width: "88%",
+                      height: "88%",
+                      borderRadius: "50%",
+                      background:
+                        "radial-gradient(circle at 50% 50%, #6F86C7 0%, #5371BA 32%, #2B467D 58%, #9FC1DD 100%)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      boxShadow:
+                        "inset 0 0 8px rgba(255,255,255,0.22), 0 0 12px rgba(59,130,246,0.18)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        width: "64%",
+                        height: "64%",
+                        borderRadius: "50%",
+                        background:
+                          "radial-gradient(circle at 35% 35%, #2B3654 0%, #1B2238 38%, #0E1321 70%, #05070D 100%)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow:
+                          "inset 0 0 10px rgba(255,255,255,0.08), inset 0 -4px 10px rgba(0,0,0,0.35)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          width: "18%",
+                          height: "18%",
+                          borderRadius: "50%",
+                          background: "rgba(255,255,255,0.82)",
+                          top: "26%",
+                          left: "28%",
+                          boxShadow: "0 0 6px rgba(255,255,255,0.28)",
+                        }}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          width: "10%",
+                          height: "10%",
+                          borderRadius: "50%",
+                          background: "rgba(255,255,255,0.45)",
+                          top: "42%",
+                          left: "46%",
+                        }}
+                      />
+                      <span
+                        style={{
+                          width: "18%",
+                          height: "18%",
+                          borderRadius: "50%",
+                          background:
+                            "radial-gradient(circle at 40% 40%, #64748B 0%, #3B425A 60%, #1C2233 100%)",
+                          opacity: 0.95,
+                        }}
+                      />
+                    </span>
+                  </span>
+                </span>
+              </button>
+
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={() => onGoToHighlights?.()}
                 style={tileButtonStyle(isMobile)}
               >
                 {renderTileContent({
                   isMobile,
-                  icon: "🎥",
-                  desktopLines: ["Highlights", "Camera"],
-                  mobileLines: ["Highlights", "Camera"],
+                  icon: "🎞️",
+                  desktopLines: ["View", "Highlights"],
+                  mobileLines: ["View", "Highlights"],
                 })}
               </button>
             </div>
