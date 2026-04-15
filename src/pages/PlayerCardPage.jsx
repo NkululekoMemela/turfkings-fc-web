@@ -30,6 +30,39 @@ function safeLower(s) {
   return String(s || "").trim().toLowerCase();
 }
 
+
+function getForcedCanonicalName(rawName) {
+  const raw = String(rawName || "").trim();
+  if (!raw) return "";
+
+  const lowered = safeLower(raw);
+  const compact = lowered.replace(/[^a-z0-9]/g, "");
+
+  if (
+    lowered === "joshua daniel" ||
+    lowered === "roshi* joshua daniel" ||
+    lowered === "roshi joshua daniel" ||
+    compact === "joshuadaniel" ||
+    compact === "roshijoshuadaniel"
+  ) {
+    return "Joshua Daniel";
+  }
+
+  if (
+    lowered === "humbu mlaudzii" ||
+    lowered === "humbu mlaudzi" ||
+    lowered === "humbulani mulaudzi" ||
+    compact === "humbumlaudzii" ||
+    compact === "humbumlaudzi" ||
+    compact === "humbulanimulaudzi"
+  ) {
+    return "Humbulani Mulaudzi";
+  }
+
+  return "";
+}
+
+
 function firstNameOf(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   return parts.length ? parts[0] : "";
@@ -112,6 +145,9 @@ function makeStyleLabel(attackAvg, defenceAvg, gkAvg) {
 
 function resolveCanonicalNameFromMap(rawName, map) {
   if (!rawName || typeof rawName !== "string") return "";
+
+  const forced = getForcedCanonicalName(rawName);
+  if (forced) return forced;
 
   const tc = toTitleCase(rawName);
   if (!tc) return "";
