@@ -125,7 +125,7 @@ function buildPlayersRegistry(playersSnap) {
     );
     const shortName =
       getForcedCanonicalName(rawShortName) ||
-      (fullName === "Joshua Daniel" ? "Joshua Daniel" : rawShortName);
+      (fullName === "Joshua Daniel" ? "Joshua" : rawShortName);
 
     if (!fullName) return;
 
@@ -221,11 +221,10 @@ function dedupeEvents(events = []) {
 function getPreferredStatsDisplayName(canonicalFullName, shortDisplayName = "") {
   const canon = toTitleCase(canonicalFullName || "");
   const shorty = toTitleCase(shortDisplayName || "");
-  const forced = getForcedCanonicalName(canon) || getForcedCanonicalName(shorty);
 
-  if (forced === "Joshua Daniel") return "Joshua Daniel";
-  if (forced === "Humbulani Mulaudzi") return "Humbulani Mulaudzi";
-
+  // Keep display policy consistent across the whole stats page:
+  // prefer short names for everyone, and only fall back to full name
+  // when no short name exists in the registry.
   return shorty || canon;
 }
 
