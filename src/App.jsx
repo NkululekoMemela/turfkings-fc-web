@@ -2485,14 +2485,17 @@ export default function App() {
       )}
 
       {page === PAGE_FORMATIONS && (
-        <FormationsPage
-          teams={teams}
-          currentMatch={currentMatch}
-          playerPhotosByName={playerPhotosByName}
-          identity={identity}
-          onBack={handleBackToLanding}
-          onGoToSquads={handleGoToSquads}
-        />
+      <FormationsPage
+        teams={teams}
+        currentMatch={currentMatch}
+        currentEvents={currentEvents}
+        allEvents={allEvents}
+        results={results}
+        playerPhotosByName={playerPhotosByName}
+        identity={identity}
+        onBack={handleBackToLanding}
+        onGoToSquads={handleGoToSquads}
+      />
       )}
 
       {showBackupModal && (

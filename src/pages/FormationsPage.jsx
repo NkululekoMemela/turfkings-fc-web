@@ -24,6 +24,7 @@ import {
   LINEUP_SAVE_ROLE_ADMIN,
   LINEUP_SAVE_ROLE_GENERAL,
 } from "../core/lineups.js";
+import { buildFormationDecorations } from "../core/matchDayFormationRatings.js";
 
 // ---------------- HELPERS ----------------
 
@@ -510,14 +511,57 @@ function PlayerBenchChip({
   );
 }
 
-// Single source of truth for people across this page
 const PLAYERS_COLLECTION = "players";
 const MAX_SUBS = 6;
 const LONG_PRESS_MS = 650;
 
+function StatCornerBadge({ icon, count }) {
+  if (!count || count <= 0) return null;
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        gap: "1px",
+        color: "#ffffff",
+        fontWeight: 900,
+        fontSize: "0.68rem",
+        lineHeight: 1,
+        textShadow:
+          "0 1px 2px rgba(2,6,23,0.95), 0 0 4px rgba(2,6,23,0.85)",
+        pointerEvents: "none",
+        minHeight: "10px",
+      }}
+      title={`${count} ${icon === "⚽" ? "goal" : "assist"}${count > 1 ? "s" : ""}`}
+    >
+      <span style={{ lineHeight: 1 }}>{icon}</span>
+      {count > 1 ? (
+        <sup
+          style={{
+            fontSize: "0.5rem",
+            lineHeight: 1,
+            fontWeight: 900,
+            color: "#ffffff",
+            marginTop: "-5px",
+            textShadow:
+              "0 1px 2px rgba(2,6,23,1), 0 0 4px rgba(2,6,23,0.95)",
+          }}
+        >
+          {count}
+        </sup>
+      ) : null}
+    </div>
+  );
+}
+
 export function FormationsPage({
   teams,
   currentMatch,
+  currentEvents = [],
+  allEvents = [],
+  results = [],
   playerPhotosByName = {},
   identity = null,
   authUser = null,
@@ -542,7 +586,6 @@ export function FormationsPage({
   const [savingFormationImage, setSavingFormationImage] = useState(false);
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
-  // ---------- PLAYERS FROM FIRESTORE ----------
   const [players, setPlayers] = useState([]);
 
   useEffect(() => {
@@ -689,7 +732,6 @@ export function FormationsPage({
     return String(full).split(/\s+/)[0] || full;
   };
 
-  // ---------------- photos ----------------
   const [playerPhotos, setPlayerPhotos] = useState(playerPhotosByName || {});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoMessage, setPhotoMessage] = useState("");
@@ -784,7 +826,6 @@ export function FormationsPage({
     return null;
   };
 
-  // ---------- VERIFIED PLAYER ----------
   const verifiedPlayerName = useMemo(() => {
     const role = identity?.role || authUser?.role || null;
     const isRealPlayer =
@@ -859,7 +900,6 @@ export function FormationsPage({
     }
   };
 
-  // ---------------- player pools ----------------
   const activeDbPlayers = useMemo(() => {
     return players
       .filter((p) => String(p.status || "active").toLowerCase() === "active")
@@ -892,7 +932,6 @@ export function FormationsPage({
     canonicalTeams[0] ||
     null;
 
-  // IMPORTANT: this must come AFTER selectedTeamCanonical exists
   const loggedInCanonicalName = useMemo(() => {
     const rawName =
       authUser?.fullName ||
@@ -936,11 +975,6 @@ export function FormationsPage({
     gameType === GAME_TYPE_11
       ? DEFAULT_FORMATION_ID_11
       : DEFAULT_FORMATION_ID_5;
-
-  const playerPool =
-    gameType === GAME_TYPE_11
-      ? turfKingsPlayers
-      : selectedTeamCanonical?.players || [];
 
   const buildResolvedLineup = (teamId, targetGameType) => {
     const targetTeam =
@@ -1012,6 +1046,53 @@ export function FormationsPage({
     formationsMap[lineup.formationId] ||
     formationsMap[defaultFormationId] ||
     Object.values(formationsMap)[0];
+
+  const currentMatchDayEvents = useMemo(() => {
+    const combined = [...(allEvents || []), ...(currentEvents || [])];
+
+    const seen = new Set();
+    return combined.filter((e) => {
+      if (!e) return false;
+
+      const key =
+        e.id ??
+        [
+          e.matchNo ?? "m?",
+          e.timeSeconds ?? "t?",
+          e.type ?? "type?",
+          e.teamId ?? "team?",
+          e.scorer ?? e.playerName ?? "p?",
+          e.assist ?? "a?",
+          e.role ?? "role?",
+        ].join("|");
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [allEvents, currentEvents]);
+
+  const matchDayDecorations = useMemo(() => {
+    if (gameType !== GAME_TYPE_5) return {};
+    if (!selectedTeamCanonical?.id) return {};
+
+    const teamPlayers = Object.values(lineup.positions || {}).filter(Boolean);
+
+    return buildFormationDecorations({
+      teamId: selectedTeamCanonical.id,
+      players: teamPlayers,
+      events: currentMatchDayEvents,
+      results,
+      resolveCanonicalName: canonicalName,
+    });
+  }, [
+    gameType,
+    selectedTeamCanonical,
+    lineup,
+    currentMatchDayEvents,
+    results,
+    canonicalName,
+  ]);
 
   const benchPoolPlayers =
     gameType === GAME_TYPE_11
@@ -1639,12 +1720,15 @@ export function FormationsPage({
 
               {formation.positions.map((pos) => {
                 const name = lineup.positions[pos.id] || "";
+                const decor = matchDayDecorations[name] || null;
                 const isSelected =
                   selectedPlayer &&
                   selectedPlayer.from === "pitch" &&
                   selectedPlayer.posId === pos.id;
 
                 const photoData = name ? getPlayerPhoto(name) : null;
+                const goalsCount = Number(decor?.icons?.goals || 0);
+                const assistsCount = Number(decor?.icons?.assists || 0);
 
                 return (
                   <div
@@ -1659,17 +1743,81 @@ export function FormationsPage({
                       handleClearSpot(pos.id);
                     }}
                   >
-                    <div className="player-token">
+                    <div
+                      className="player-token"
+                      style={{ position: "relative", overflow: "visible" }}
+                    >
+                      {decor?.rating != null && gameType === GAME_TYPE_5 ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "-10px",
+                            right: "-10px",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "2px",
+                            zIndex: 7,
+                            pointerEvents: "none",
+                          }}
+                        >
+                          <div
+                            style={{
+                              background:
+                                "linear-gradient(180deg, #22c55e, #16a34a)",
+                              color: "#ffffff",
+                              fontSize: "0.68rem",
+                              fontWeight: 900,
+                              padding: "2px 6px",
+                              borderRadius: "999px",
+                              boxShadow: "0 4px 10px rgba(0,0,0,0.42)",
+                              border: "1px solid rgba(255,255,255,0.28)",
+                              lineHeight: 1,
+                            }}
+                          >
+                            {Number(decor.rating || 0).toFixed(1)}
+                          </div>
+
+                          {(goalsCount > 0 || assistsCount > 0) ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "flex-start",
+                                justifyContent: "center",
+                                gap: "1px",
+                                minHeight: "18px",
+                                marginTop: "1px",
+                              }}
+                            >
+                              <StatCornerBadge icon="⚽" count={goalsCount} />
+                              <StatCornerBadge icon="👟" count={assistsCount} />
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
                       <div
-                        className={`player-shirt ${
-                          photoData ? "with-photo" : ""
-                        }`}
-                        style={
-                          photoData
-                            ? { backgroundImage: `url(${photoData})` }
-                            : {}
-                        }
-                      />
+                        style={{
+                          position: "relative",
+                          width: "54px",
+                          height: "54px",
+                          margin: "0 auto",
+                          overflow: "visible",
+                        }}
+                      >
+                        <div
+                          className={`player-shirt ${
+                            photoData ? "with-photo" : ""
+                          }`}
+                          style={
+                            photoData
+                              ? { backgroundImage: `url(${photoData})` }
+                              : {}
+                          }
+                        />
+                      </div>
+
                       <div className="player-label">
                         <span className="player-name">
                           {name ? withCaptainTag(name) : "Empty"}
