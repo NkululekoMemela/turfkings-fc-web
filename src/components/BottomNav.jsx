@@ -4,7 +4,7 @@
 // and centres the ribbon neatly on wide desktop screens.
 // Uses public/strategy.png for the Lineups icon.
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 const items = [
   { key: "landing", emoji: "🏡", label: "Home" },
@@ -23,6 +23,43 @@ export default function BottomNav({
   onNavigate,
   canAccessPayments = true,
 }) {
+  const [isHidden, setIsHidden] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    let hideTimer = null;
+
+    const showThenScheduleHide = () => {
+      setIsHidden(false);
+      if (hideTimer) window.clearTimeout(hideTimer);
+
+      hideTimer = window.setTimeout(() => {
+        setIsHidden(true);
+      }, 5000);
+    };
+
+    showThenScheduleHide();
+
+    const events = ["touchstart", "mousedown", "keydown", "scroll"];
+
+    events.forEach((eventName) => {
+      window.addEventListener(eventName, showThenScheduleHide, {
+        passive: true,
+        capture: true,
+      });
+    });
+
+    return () => {
+      if (hideTimer) window.clearTimeout(hideTimer);
+      events.forEach((eventName) => {
+        window.removeEventListener(eventName, showThenScheduleHide, {
+          capture: true,
+        });
+      });
+    };
+  }, [currentPage]);
+
   const visible = items.filter((item) => {
     if (item.key === "match-signup" && !canAccessPayments) return false;
     return true;
@@ -30,7 +67,7 @@ export default function BottomNav({
 
   return (
     <>
-      <nav className="tk-bottom-nav-flat" aria-label="Turf Kings navigation">
+      <nav className={`tk-bottom-nav-flat ${isHidden ? "is-hidden" : ""}`} aria-label="Turf Kings navigation">
         <div className="tk-bottom-nav-inner">
           <div className="tk-bottom-nav-scroll">
             {visible.map((item) => {
@@ -41,6 +78,7 @@ export default function BottomNav({
                   key={item.key}
                   type="button"
                   onClick={() => {
+                    setIsHidden(false);
                     if (!isCurrent) onNavigate?.(item.key);
                   }}
                   className={`nav-pill ${isCurrent ? "is-current" : ""}`}
@@ -95,6 +133,27 @@ export default function BottomNav({
             8px
             calc(8px + env(safe-area-inset-bottom,0px))
             8px;
+          transform: translateY(0);
+          transition: transform .28s ease, opacity .28s ease;
+          will-change: transform;
+        }
+
+        .tk-bottom-nav-flat.is-hidden {
+          transform: translateY(calc(100% - 14px));
+          opacity: .82;
+        }
+
+        .tk-bottom-nav-flat.is-hidden::before {
+          content: "";
+          position: absolute;
+          top: -12px;
+          left: 50%;
+          width: 58px;
+          height: 5px;
+          border-radius: 999px;
+          transform: translateX(-50%);
+          background: rgba(255,255,255,.42);
+          box-shadow: 0 0 10px rgba(0,0,0,.22);
         }
 
         .tk-bottom-nav-inner {

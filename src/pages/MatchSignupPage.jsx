@@ -804,6 +804,7 @@ export default function MatchSignupPage({
   });
 
   const [showCalendarPopup, setShowCalendarPopup] = useState(false);
+  const [calendarMonthPage, setCalendarMonthPage] = useState(0);
   const [showLeavePrompt, setShowLeavePrompt] = useState(false);
   const [pendingSelectionsSaved, setPendingSelectionsSaved] = useState(false);
   const [reminderPreference, setReminderPreference] = useState("17:00");
@@ -848,6 +849,7 @@ export default function MatchSignupPage({
   const [adminCleanupError, setAdminCleanupError] = useState("");
   const [adminVerifyWeeks, setAdminVerifyWeeks] = useState([]);
   const [adminRemovePaidWeeks, setAdminRemovePaidWeeks] = useState([]);
+  const [adminAddPaidWeeks, setAdminAddPaidWeeks] = useState([]);
   const [adminVerifyBusy, setAdminVerifyBusy] = useState(false);
   const [showAdminCleanupPanel, setShowAdminCleanupPanel] = useState(false);
   const [showAdminSettingsModal, setShowAdminSettingsModal] = useState(false);
@@ -953,6 +955,17 @@ export default function MatchSignupPage({
     () => getCalendarMonthsData(allMonthWeeks),
     [allMonthWeeks]
   );
+
+  const activeCalendarMonthData =
+    calendarMonthsData[Math.min(calendarMonthPage, Math.max(calendarMonthsData.length - 1, 0))] ||
+    calendarMonthsData[0] ||
+    calendarMonthData;
+
+  useEffect(() => {
+    setCalendarMonthPage((prev) =>
+      Math.min(prev, Math.max(calendarMonthsData.length - 1, 0))
+    );
+  }, [calendarMonthsData.length]);
 
   const calendarMonthKey = useMemo(() => getPrimarySignupScopeMonth(), [weeks]);
 
@@ -1211,6 +1224,16 @@ export default function MatchSignupPage({
     );
     if (selfOption) setExistingPlayerTargetId(selfOption.id);
   }, [signupForMode, existingPlayerTargetId, existingPlayerOptions, payerUserId]);
+
+  useEffect(() => {
+    if (signupForMode === "guest") {
+      setSignupForMode("self");
+      setGuestPlayerName("");
+      setSelectedWeeks([]);
+      setPaidWeeks([]);
+      setSelectionHydrated(false);
+    }
+  }, [signupForMode]);
 
   const beneficiary = useMemo(() => {
     if (signupForMode === "existing_player") {
@@ -2039,6 +2062,53 @@ export default function MatchSignupPage({
     return out;
   }, [weeks, displayRows, livePlayerWeeks, liveWeekKeys, effectiveSelectedWeeks]);
 
+  const weekPaidSelections = useMemo(() => {
+    const out = {};
+
+    weeks.forEach((week) => {
+      const paidIds = new Set();
+
+      displayRows.forEach((player) => {
+        if (player.isEmpty) return;
+
+        if (player.isCurrent) {
+          if (effectivePaidWeekSet.has(week.id)) paidIds.add(player.id);
+          return;
+        }
+
+        const lookupKeys = getPlayerLookupKeys(player);
+        const paidForThatPlayer = liveCommittedUsers.some((user) => {
+          const paidWeeksForUser = Array.isArray(user?.paidWeeks)
+            ? user.paidWeeks
+            : [];
+
+          if (!paidWeeksForUser.includes(week.id)) return false;
+
+          const userKeys = uniqueStrings([
+            user?.stableKey,
+            user?.userId,
+            user?.fullName,
+            user?.shortName,
+            firstNameOf(user?.fullName || user?.shortName || ""),
+            slugFromLooseName(user?.fullName || user?.shortName || ""),
+          ]).map(normKey);
+
+          if (player.stableKey && userKeys.includes(normKey(player.stableKey))) {
+            return true;
+          }
+
+          return lookupKeys.some((key) => userKeys.includes(key));
+        });
+
+        if (paidForThatPlayer) paidIds.add(player.id);
+      });
+
+      out[week.id] = paidIds;
+    });
+
+    return out;
+  }, [weeks, displayRows, liveCommittedUsers, effectivePaidWeekSet]);
+
   const weekMeta = useMemo(
     () =>
       weeks.map((week) => {
@@ -2137,35 +2207,120 @@ export default function MatchSignupPage({
   const adminCleanupCandidates = useMemo(() => {
     if (!canManageSignupsAsAdmin) return [];
 
-    const bestByPlayer = new Map();
+    const groupedByPlayer = new Map();
 
-    const scoreRecord = (user) =>
-      (Array.isArray(user?.selectedWeeks) ? user.selectedWeeks.length : 0) *
-        100 +
-      (Array.isArray(user?.paidWeeks) ? user.paidWeeks.length : 0) * 10 +
-      (Array.isArray(user?.unpaidWeeks) ? user.unpaidWeeks.length : 0);
-
-    const upsertCandidate = (user) => {
-      const playerKey = normKey(
+    const getPlayerKey = (user) =>
+      normKey(
         user?.userId || user?.stableKey || user?.fullName || user?.shortName || ""
       );
+
+    const mergeIntoGroup = (user) => {
+      const playerKey = getPlayerKey(user);
       if (!playerKey) return;
 
-      const existing = bestByPlayer.get(playerKey);
-      if (!existing || scoreRecord(user) > scoreRecord(existing)) {
-        bestByPlayer.set(playerKey, user);
-      }
+      const previous = groupedByPlayer.get(playerKey);
+
+      const previousSelected = Array.isArray(previous?.selectedWeeks)
+        ? previous.selectedWeeks
+        : [];
+      const previousPaid = Array.isArray(previous?.paidWeeks)
+        ? previous.paidWeeks
+        : [];
+      const previousSourceCollections = Array.isArray(previous?.sourceCollections)
+        ? previous.sourceCollections
+        : [];
+      const previousDocIds = Array.isArray(previous?.relatedDocIds)
+        ? previous.relatedDocIds
+        : [];
+
+      const incomingSelected = Array.isArray(user?.selectedWeeks)
+        ? user.selectedWeeks
+        : [];
+      const incomingPaid = Array.isArray(user?.paidWeeks) ? user.paidWeeks : [];
+
+      const mergedSelectedWeeks = uniqueWeekIds([
+        ...previousSelected,
+        ...incomingSelected,
+      ]).filter((weekId) => visibleWeekIds.has(weekId));
+
+      const mergedPaidWeeks = uniqueWeekIds([
+        ...previousPaid,
+        ...incomingPaid,
+      ]).filter((weekId) => visibleWeekIds.has(weekId));
+
+      const mergedUnpaidWeeks = mergedSelectedWeeks.filter(
+        (weekId) => !mergedPaidWeeks.includes(weekId)
+      );
+
+      const relatedDocIds = uniqueStrings([
+        ...previousDocIds,
+        user?.docId,
+      ]);
+
+      /*
+        Prefer an existing pendingSignups doc as the primary admin target when
+        possible, because reminders and manual verification naturally live there.
+        If none exists, fall back to whatever record we have and create/merge the
+        missing pendingSignups doc when verifying.
+      */
+      const previousSources = previousSourceCollections.map((x) =>
+        String(x || "").trim()
+      );
+      const incomingSources = Array.isArray(user?.sourceCollections)
+        ? user.sourceCollections.map((x) => String(x || "").trim())
+        : [];
+
+      const previousHasPending = previousSources.includes("pendingSignups");
+      const incomingHasPending = incomingSources.includes("pendingSignups");
+
+      const primary =
+        !previous || (!previousHasPending && incomingHasPending) ? user : previous;
+
+      groupedByPlayer.set(playerKey, {
+        ...(primary || user),
+        docId: primary?.docId || user?.docId || previous?.docId || "",
+        stableKey: primary?.stableKey || user?.stableKey || previous?.stableKey || "",
+        userId: primary?.userId || user?.userId || previous?.userId || "",
+        fullName: primary?.fullName || user?.fullName || previous?.fullName || "",
+        shortName: primary?.shortName || user?.shortName || previous?.shortName || "",
+        beneficiaryType:
+          primary?.beneficiaryType ||
+          user?.beneficiaryType ||
+          previous?.beneficiaryType ||
+          "self",
+        selectedWeeks: mergedSelectedWeeks,
+        paidWeeks: mergedPaidWeeks,
+        unpaidWeeks: mergedUnpaidWeeks,
+        amountDueNow: sumWeekCosts(mergedUnpaidWeeks),
+        paymentStatus:
+          mergedSelectedWeeks.length === 0
+            ? "not_selected"
+            : mergedUnpaidWeeks.length === 0
+            ? "paid"
+            : "pending",
+        sourceCollections: uniqueStrings([
+          ...previousSourceCollections,
+          ...incomingSources,
+        ]),
+        relatedDocIds,
+        rawData: {
+          ...(previous?.rawData || {}),
+          ...(user?.rawData || {}),
+          selectedWeeks: mergedSelectedWeeks,
+          paidWeeks: mergedPaidWeeks,
+          unpaidWeeks: mergedUnpaidWeeks,
+        },
+      });
     };
 
     liveCommittedUsers
       .filter((user) => String(user?.docId || "").trim())
-      .forEach(upsertCandidate);
+      .forEach(mergeIntoGroup);
 
     /*
       If the current admin/player has ticked visible boxes that are not yet
       written to Firestore, include that local draft in the admin verifier.
-      This makes the yellow selected fixtures immediately verifiable instead
-      of incorrectly showing only old April paid weeks.
+      This keeps the admin panel aligned with the yellow ticks in the matrix.
     */
     const currentDraftSelectedWeeks = uniqueWeekIds(effectiveSelectedWeeks).filter(
       (weekId) => visibleWeekIds.has(weekId)
@@ -2178,7 +2333,7 @@ export default function MatchSignupPage({
     );
 
     if (currentDraftSelectedWeeks.length > 0) {
-      upsertCandidate({
+      mergeIntoGroup({
         docId: pendingId,
         stableKey: beneficiary.stableKey,
         userId: beneficiary.playerId,
@@ -2192,6 +2347,7 @@ export default function MatchSignupPage({
         selectedWeeks: currentDraftSelectedWeeks,
         amountDueNow: sumWeekCosts(currentDraftUnpaidWeeks),
         sourceCollections: ["localDraft", "pendingSignups"],
+        relatedDocIds: [pendingId],
         rawData: {
           selectedWeeks: currentDraftSelectedWeeks,
           paidWeeks: currentDraftPaidWeeks,
@@ -2214,11 +2370,17 @@ export default function MatchSignupPage({
       });
     }
 
-    return Array.from(bestByPlayer.values()).sort((a, b) => {
+    return Array.from(groupedByPlayer.values()).sort((a, b) => {
       const unpaidDiff =
         (Array.isArray(b?.unpaidWeeks) ? b.unpaidWeeks.length : 0) -
         (Array.isArray(a?.unpaidWeeks) ? a.unpaidWeeks.length : 0);
       if (unpaidDiff !== 0) return unpaidDiff;
+
+      const selectedDiff =
+        (Array.isArray(b?.selectedWeeks) ? b.selectedWeeks.length : 0) -
+        (Array.isArray(a?.selectedWeeks) ? a.selectedWeeks.length : 0);
+      if (selectedDiff !== 0) return selectedDiff;
+
       return String(a?.fullName || "").localeCompare(String(b?.fullName || ""));
     });
   }, [
@@ -2257,6 +2419,25 @@ export default function MatchSignupPage({
       : [];
   }, [adminSelectedTarget]);
 
+  const adminTargetSelectedWeeks = useMemo(() => {
+    if (!adminSelectedTarget) return [];
+    return Array.isArray(adminSelectedTarget.selectedWeeks)
+      ? uniqueWeekIds(adminSelectedTarget.selectedWeeks)
+      : [];
+  }, [adminSelectedTarget]);
+
+  const adminTargetAvailableWeeksToAdd = useMemo(() => {
+    if (!adminSelectedTarget) return [];
+
+    return weeks
+      .filter(
+        (week) =>
+          !adminTargetSelectedWeeks.includes(week.id) &&
+          !adminTargetPaidWeeks.includes(week.id)
+      )
+      .map((week) => week.id);
+  }, [adminSelectedTarget, weeks, adminTargetSelectedWeeks, adminTargetPaidWeeks]);
+
   const adminTargetRelatedRecords = useMemo(() => {
     if (!adminSelectedTarget) return [];
 
@@ -2265,16 +2446,27 @@ export default function MatchSignupPage({
     const targetName = normKey(
       adminSelectedTarget.fullName || adminSelectedTarget.shortName || ""
     );
+    const relatedDocIds = Array.isArray(adminSelectedTarget.relatedDocIds)
+      ? adminSelectedTarget.relatedDocIds
+      : [];
 
-    return liveCommittedUsers.filter((user) => {
+    const related = liveCommittedUsers.filter((user) => {
       const stableKey = String(user?.stableKey || "").trim();
       const userId = normKey(user?.userId || "");
       const fullName = normKey(user?.fullName || user?.shortName || "");
+      const docId = String(user?.docId || "").trim();
 
+      if (docId && relatedDocIds.includes(docId)) return true;
       if (targetStableKey && stableKey && targetStableKey === stableKey) return true;
       if (targetUserId && userId && targetUserId === userId) return true;
       return Boolean(targetName) && Boolean(fullName) && targetName === fullName;
     });
+
+    if (!related.length && adminSelectedTarget?.docId) {
+      return [adminSelectedTarget];
+    }
+
+    return related;
   }, [adminSelectedTarget, liveCommittedUsers]);
 
   useEffect(() => {
@@ -2291,6 +2483,7 @@ export default function MatchSignupPage({
   useEffect(() => {
     setAdminVerifyWeeks([]);
     setAdminRemovePaidWeeks([]);
+    setAdminAddPaidWeeks([]);
   }, [adminCleanupTargetId]);
 
   const firstColWidth = isMobile ? 108 : 190;
@@ -2585,6 +2778,54 @@ export default function MatchSignupPage({
     }
   };
 
+  const buildAdminSignupIdentityPayload = (target, existingData = {}) => {
+    const targetName =
+      target?.fullName ||
+      existingData?.beneficiaryName ||
+      existingData?.playerName ||
+      "Player";
+
+    const targetShortName =
+      target?.shortName ||
+      existingData?.beneficiaryShortName ||
+      existingData?.shortName ||
+      firstNameOf(targetName) ||
+      "Player";
+
+    const targetUserId =
+      target?.userId ||
+      existingData?.beneficiaryPlayerId ||
+      existingData?.playerId ||
+      existingData?.userId ||
+      slugFromLooseName(targetName);
+
+    return {
+      activeSeasonId: resolvedSeasonId,
+      seasonAtSignupTime: resolvedSeasonId,
+      signupType,
+      signupScopeId,
+      signupScopeLabel,
+      monthLabel: calendarMonthData?.monthLabel || "",
+      monthKey: calendarMonthKey,
+      payerUserId: existingData?.payerUserId || payerUserId,
+      payerName: existingData?.payerName || displayName,
+      payerShortName: existingData?.payerShortName || shortName,
+      userId: targetUserId,
+      playerId: targetUserId,
+      playerName: targetName,
+      shortName: targetShortName,
+      displayName: targetName,
+      beneficiaryType: target?.beneficiaryType || existingData?.beneficiaryType || "self",
+      beneficiaryPlayerId: targetUserId,
+      beneficiaryName: targetName,
+      beneficiaryShortName: targetShortName,
+      beneficiaryStableKey:
+        target?.stableKey ||
+        existingData?.beneficiaryStableKey ||
+        buildBeneficiaryStableKey("self", targetUserId, targetName),
+    };
+  };
+
   const handleAdminVerifyWeeks = async (weeksToVerify = []) => {
     if (!canManageSignupsAsAdmin || !adminCleanupTargetId) return;
     const verifyWeeks = uniqueWeekIds(weeksToVerify);
@@ -2718,6 +2959,134 @@ export default function MatchSignupPage({
   const handleAdminVerifyAllUnpaidWeeks = async () => {
     if (!adminTargetUnpaidWeeks.length) return;
     await handleAdminVerifyWeeks(adminTargetUnpaidWeeks);
+  };
+
+  const handleAdminAddMissingPaidWeeks = async (weeksToAdd = []) => {
+    if (!canManageSignupsAsAdmin || !adminCleanupTargetId) return;
+
+    const addWeeks = uniqueWeekIds(weeksToAdd).filter((weekId) =>
+      weeks.some((week) => week.id === weekId)
+    );
+    if (!addWeeks.length) return;
+
+    const target = adminCleanupCandidates.find(
+      (item) => item.docId === adminCleanupTargetId
+    );
+    if (!target) return;
+
+    const confirmed = window.confirm(
+      `Add ${addWeeks.length} missing paid fixture${
+        addWeeks.length === 1 ? "" : "s"
+      } for ${target.fullName}? Use this only after you have received the payment.`
+    );
+    if (!confirmed) return;
+
+    setAdminVerifyBusy(true);
+    setAdminCleanupMessage("");
+    setAdminCleanupError("");
+
+    try {
+      const pendingRef = doc(db, "pendingSignups", target.docId);
+      const pendingSnap = await getDoc(pendingRef);
+      const pendingData = pendingSnap.exists()
+        ? pendingSnap.data() || {}
+        : target.rawData || {};
+
+      const existingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
+        ? uniqueWeekIds(pendingData.selectedWeeks)
+        : Array.isArray(target.selectedWeeks)
+        ? uniqueWeekIds(target.selectedWeeks)
+        : [];
+
+      const existingPaidWeeks = Array.isArray(
+        pendingData.paidWeeks || pendingData.primaryPaidWeeks
+      )
+        ? uniqueWeekIds(pendingData.paidWeeks || pendingData.primaryPaidWeeks)
+        : Array.isArray(target.paidWeeks)
+        ? uniqueWeekIds(target.paidWeeks)
+        : [];
+
+      const nextSelectedWeeks = uniqueWeekIds([
+        ...existingSelectedWeeks,
+        ...addWeeks,
+      ]);
+      const nextPaidWeeks = uniqueWeekIds([...existingPaidWeeks, ...addWeeks]);
+      const nextUnpaidWeeks = nextSelectedWeeks.filter(
+        (weekId) => !nextPaidWeeks.includes(weekId)
+      );
+      const nextStatus = statusFromWeekState(nextSelectedWeeks, nextPaidWeeks);
+
+      const verifier =
+        identity?.email ||
+        identity?.displayName ||
+        identity?.shortName ||
+        DEFAULT_ADMIN_NAME;
+
+      const identityPayload = buildAdminSignupIdentityPayload(target, pendingData);
+
+      await setDoc(
+        pendingRef,
+        {
+          ...identityPayload,
+          selectedWeeks: nextSelectedWeeks,
+          paidWeeks: nextPaidWeeks,
+          unpaidWeeks: nextUnpaidWeeks,
+          weeksToPayNow: nextUnpaidWeeks,
+          totalAmount: sumWeekCosts(nextUnpaidWeeks),
+          amountDueNow: sumWeekCosts(nextUnpaidWeeks),
+          amountPaidTotal: sumWeekCosts(nextPaidWeeks),
+          paymentStatus: nextStatus,
+          isUnpaid: nextUnpaidWeeks.length > 0,
+          remindersEnabled:
+            Boolean(pendingData.effectiveWhatsappNumber) &&
+            nextUnpaidWeeks.length > 0,
+          remindersPaused:
+            !Boolean(pendingData.effectiveWhatsappNumber) ||
+            nextUnpaidWeeks.length === 0,
+          verifiedBy: verifier,
+          verifiedAt: serverTimestamp(),
+          paymentMethod: "manual_admin_add_paid_week",
+          updatedAt: serverTimestamp(),
+          createdAt: pendingData.createdAt || serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await setDoc(
+        doc(db, "matchSignups", target.docId),
+        {
+          ...identityPayload,
+          selectedWeeks: nextSelectedWeeks,
+          paidWeeks: nextPaidWeeks,
+          primaryPaidWeeks: nextPaidWeeks,
+          unpaidWeeks: nextUnpaidWeeks,
+          weeksToPayNow: nextUnpaidWeeks,
+          amountDue: sumWeekCosts(nextUnpaidWeeks),
+          amountPaid: sumWeekCosts(nextPaidWeeks),
+          paymentIntentAmount: 0,
+          paymentStatus: nextStatus,
+          verifiedBy: verifier,
+          verifiedAt: serverTimestamp(),
+          paymentVerifiedAt: serverTimestamp(),
+          paymentMethod: "manual_admin_add_paid_week",
+          updatedAt: serverTimestamp(),
+          createdAt: pendingData.createdAt || serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setAdminAddPaidWeeks([]);
+      setAdminCleanupMessage(
+        `${target.fullName} added as paid for ${addWeeks.length} missing fixture${
+          addWeeks.length === 1 ? "" : "s"
+        }.`
+      );
+    } catch (error) {
+      console.error("Failed to add missing paid weeks:", error);
+      setAdminCleanupError("Could not add the selected paid fixtures. Please try again.");
+    } finally {
+      setAdminVerifyBusy(false);
+    }
   };
 
   const handleAdminClearUnpaidWeeks = async () => {
@@ -3052,11 +3421,7 @@ export default function MatchSignupPage({
     weeks.find((week) => week.id === cellId) || null;
 
   const beneficiaryNeedsSelection =
-    signupForMode === "existing_player"
-      ? !existingPlayerTargetId
-      : signupForMode === "guest"
-      ? !guestPlayerName.trim()
-      : false;
+    signupForMode === "existing_player" ? !existingPlayerTargetId : false;
 
   const contentMaxWidth = isMobile ? "100%" : "1180px";
 
@@ -3154,7 +3519,10 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             <button
               type="button"
               className="secondary-btn signup-calendar-btn"
-              onClick={() => setShowCalendarPopup(true)}
+              onClick={() => {
+                setCalendarMonthPage(0);
+                setShowCalendarPopup(true);
+              }}
               aria-label="Open next month calendar"
               title="Open next month calendar"
               style={{ touchAction: "manipulation" }}
@@ -3223,7 +3591,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
           >
             <option value="self">Myself</option>
             <option value="existing_player">Another Turf Kings player</option>
-            <option value="guest">A guest player</option>
           </select>
         </div>
 
@@ -3247,24 +3614,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                 </option>
               ))}
             </select>
-          </div>
-        ) : null}
-
-        {signupForMode === "guest" ? (
-          <div className="signup-reminder-choice signup-reminder-inline">
-            <input
-              id="guestPlayerName"
-              type="text"
-              placeholder="Enter new player's name"
-              value={guestPlayerName}
-              onChange={(e) => {
-                setGuestPlayerName(e.target.value);
-                setSelectedWeeks([]);
-                setPaidWeeks([]);
-                setSelectionHydrated(false);
-              }}
-              
-            />
           </div>
         ) : null}
       </section>
@@ -3383,6 +3732,64 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                   ) : (
                     <p className="muted small">No unpaid weeks to verify.</p>
                   )}
+                </div>
+
+                <div style={{ marginTop: 14 }}>
+                  <p className="muted small" style={{ marginBottom: 8 }}>
+                    Player paid but did not tick the fixture? Add the missing paid fixture below.
+                  </p>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                      marginBottom: 10,
+                    }}
+                  >
+                    {adminTargetAvailableWeeksToAdd.length > 0 ? (
+                      adminTargetAvailableWeeksToAdd.map((weekId) => {
+                        const weekObj = weeks.find((w) => w.id === weekId);
+                        const picked = adminAddPaidWeeks.includes(weekId);
+                        return (
+                          <button
+                            key={`add-paid-${weekId}`}
+                            type="button"
+                            className={picked ? "primary-btn" : "secondary-btn"}
+                            onClick={() =>
+                              setAdminAddPaidWeeks((prev) =>
+                                prev.includes(weekId)
+                                  ? prev.filter((id) => id !== weekId)
+                                  : uniqueWeekIds([...prev, weekId])
+                              )
+                            }
+                            style={{
+                              minWidth: 0,
+                              width: "auto",
+                              padding: "10px 14px",
+                              touchAction: "manipulation",
+                            }}
+                          >
+                            {weekObj?.shortLabel || weekId}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="muted small">
+                        No missing visible fixtures are available to add.
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={adminVerifyBusy || !adminAddPaidWeeks.length}
+                    onClick={() => handleAdminAddMissingPaidWeeks(adminAddPaidWeeks)}
+                    style={{ touchAction: "manipulation", marginBottom: 12 }}
+                  >
+                    {adminVerifyBusy ? "Working..." : "Add selected fixture as paid"}
+                  </button>
                 </div>
 
                 <div
@@ -3801,115 +4208,154 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             <div
               style={{
                 display: "flex",
-                gap: 18,
-                overflowX: "auto",
-                overflowY: "hidden",
-                padding: "4px 2px 10px",
-                scrollSnapType: "x proximity",
-                WebkitOverflowScrolling: "touch",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                margin: "12px 0 10px",
               }}
             >
-              {calendarMonthsData.map((monthData) => (
-                <div
-                  key={monthData.monthLabel}
-                  style={{
-                    flex: "0 0 min(320px, 88vw)",
-                    scrollSnapAlign: "start",
-                  }}
-                >
-                  <h4 style={{ margin: "0 0 8px" }}>{monthData.monthLabel}</h4>
+              <button
+                type="button"
+                className="secondary-btn signup-calendar-close-btn"
+                onClick={() => setCalendarMonthPage((prev) => Math.max(0, prev - 1))}
+                disabled={calendarMonthPage <= 0}
+                aria-label="Previous month"
+                style={{
+                  touchAction: "manipulation",
+                  opacity: calendarMonthPage <= 0 ? 0.42 : 1,
+                }}
+              >
+                ‹
+              </button>
 
-                  <div className="signup-calendar-weekdays">
-                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
-                      <div key={`${monthData.monthLabel}-${label}`} className="signup-calendar-weekday">
-                        {label}
-                      </div>
-                    ))}
-                  </div>
+              <h4 style={{ margin: 0, textAlign: "center" }}>
+                {activeCalendarMonthData.monthLabel}
+              </h4>
 
-                  <div className="signup-calendar-grid">
-                    {monthData.cells.map((cell, index) => {
-                      if (!cell) {
-                        return (
-                          <div
-                            key={`${monthData.monthLabel}-empty-${index}`}
-                            className="signup-calendar-day is-empty"
-                          />
-                        );
-                      }
-
-                      const isTargetWeekday =
-                        cell.weekday === Number(matchSignupSettings.weeklyDay);
-                      const isSelectableDay = isCalendarSelectable(cell.id);
-                      const isSelected = effectiveSelectedWeeks.includes(cell.id);
-                      const isPaid = effectivePaidWeekSet.has(cell.id);
-                      const linkedWeek = getWeekByCalendarCellId(cell.id);
-
-                      if (isTargetWeekday && isSelectableDay && linkedWeek) {
-                        const linkedMeta = weekMeta.find((w) => w.id === linkedWeek.id);
-                        const isFull = linkedMeta?.status?.key === "full";
-                        const disableCalendarClick =
-                          beneficiaryNeedsSelection ||
-                          isPaid ||
-                          (isFull && !isSelected);
-
-                        return (
-                          <button
-                            key={cell.id}
-                            type="button"
-                            className={[
-                              "signup-calendar-day",
-                              "is-button",
-                              "is-wednesday",
-                              isSelected ? "is-selected is-signed" : "",
-                              isPaid ? "is-paid" : "",
-                              isFull ? "is-disabled" : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                            title={cell.date.toLocaleDateString("en-ZA", {
-                              weekday: "long",
-                              day: "2-digit",
-                              month: "long",
-                              year: "numeric",
-                            })}
-                            onClick={() => {
-                              if (!disableCalendarClick) {
-                                toggleWeek(linkedWeek);
-                              }
-                            }}
-                            disabled={disableCalendarClick}
-                            style={{ transition: "none", touchAction: "manipulation" }}
-                          >
-                            <span className="signup-calendar-day-number">
-                              {cell.day}
-                            </span>
-                            <span className="signup-calendar-day-check">
-                              {isPaid ? "✓" : isSelected ? "✓" : ""}
-                            </span>
-                          </button>
-                        );
-                      }
-
-                      return (
-                        <div
-                          key={cell.id}
-                          className={[
-                            "signup-calendar-day",
-                            isTargetWeekday ? "is-wednesday" : "",
-                            isSelected ? "is-selected is-signed" : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
-                        >
-                          {cell.day}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+              <button
+                type="button"
+                className="secondary-btn signup-calendar-close-btn"
+                onClick={() =>
+                  setCalendarMonthPage((prev) =>
+                    Math.min(calendarMonthsData.length - 1, prev + 1)
+                  )
+                }
+                disabled={calendarMonthPage >= calendarMonthsData.length - 1}
+                aria-label="Next month"
+                style={{
+                  touchAction: "manipulation",
+                  opacity:
+                    calendarMonthPage >= calendarMonthsData.length - 1 ? 0.42 : 1,
+                }}
+              >
+                ›
+              </button>
             </div>
+
+            <div style={{ minHeight: 360 }}>
+              <div className="signup-calendar-weekdays">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+                  <div key={`${activeCalendarMonthData.monthLabel}-${label}`} className="signup-calendar-weekday">
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              <div className="signup-calendar-grid">
+                {activeCalendarMonthData.cells.map((cell, index) => {
+                  if (!cell) {
+                    return (
+                      <div
+                        key={`${activeCalendarMonthData.monthLabel}-empty-${index}`}
+                        className="signup-calendar-day is-empty"
+                      />
+                    );
+                  }
+
+                  const linkedWeek = getWeekByCalendarCellId(cell.id);
+                  const isSelectableDay = Boolean(linkedWeek);
+                  const isTargetWeekday =
+                    cell.weekday === Number(matchSignupSettings.weeklyDay);
+                  const isSpecialFixture = Boolean(linkedWeek?.isChallenge);
+                  const isSelected = effectiveSelectedWeeks.includes(cell.id);
+                  const isPaid = effectivePaidWeekSet.has(cell.id);
+
+                  if (isSelectableDay && linkedWeek) {
+                    const linkedMeta = weekMeta.find((w) => w.id === linkedWeek.id);
+                    const isFull = linkedMeta?.status?.key === "full";
+                    const disableCalendarClick =
+                      beneficiaryNeedsSelection ||
+                      isPaid ||
+                      (isFull && !isSelected);
+
+                    return (
+                      <button
+                        key={cell.id}
+                        type="button"
+                        className={[
+                          "signup-calendar-day",
+                          "is-button",
+                          isTargetWeekday ? "is-wednesday" : "",
+                          isSpecialFixture ? "is-challenge-week" : "",
+                          isSelected ? "is-selected is-signed" : "",
+                          isPaid ? "is-paid" : "",
+                          isFull ? "is-disabled" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        title={cell.date.toLocaleDateString("en-ZA", {
+                          weekday: "long",
+                          day: "2-digit",
+                          month: "long",
+                          year: "numeric",
+                        })}
+                        onClick={() => {
+                          if (!disableCalendarClick) {
+                            toggleWeek(linkedWeek);
+                          }
+                        }}
+                        disabled={disableCalendarClick}
+                        style={{
+                          transition: "none",
+                          touchAction: "manipulation",
+                          borderColor: isSpecialFixture
+                            ? "rgba(248, 113, 113, 0.86)"
+                            : undefined,
+                        }}
+                      >
+                        <span className="signup-calendar-day-number">
+                          {cell.day}
+                        </span>
+                        <span className="signup-calendar-day-check">
+                          {isPaid ? "✓" : isSelected ? "✓" : ""}
+                        </span>
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={cell.id}
+                      className={[
+                        "signup-calendar-day",
+                        isTargetWeekday ? "is-wednesday" : "",
+                        isSelected ? "is-selected is-signed" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      {cell.day}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {calendarMonthsData.length > 1 ? (
+              <p className="muted small" style={{ marginTop: 8, textAlign: "center" }}>
+                Month {calendarMonthPage + 1} of {calendarMonthsData.length}
+              </p>
+            ) : null}
           </div>
         </div>
       )}
@@ -4227,7 +4673,9 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
 
                   {weekMeta.map((week) => {
                     const signed = weekSelections[week.id]?.has(player.id);
-                    const isPaid = effectivePaidWeekSet.has(week.id);
+                    const isPaid = player.isCurrent
+                      ? effectivePaidWeekSet.has(week.id)
+                      : Boolean(canManageSignupsAsAdmin && weekPaidSelections[week.id]?.has(player.id));
                     const status = week.status;
 
                     if (player.isEmpty) {
@@ -4313,14 +4761,26 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                     return (
                       <div
                         key={`${player.id}-${week.id}`}
-                        className={`matrix-view-cell ${
-                          signed ? "is-signed" : ""
-                        } ${isSignedRow ? "is-signed-row" : ""}`}
+                        className={[
+                          "matrix-view-cell",
+                          signed ? "is-signed" : "",
+                          isPaid ? "is-paid" : "",
+                          isSignedRow ? "is-signed-row" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
                         style={getSpecialColumnStyle(
                           week,
                           { transition: "none" },
                           rowIndex === lastVisibleRowIndex ? "bottom" : "middle"
                         )}
+                        title={
+                          isPaid
+                            ? "Paid"
+                            : signed
+                            ? "Selected, awaiting verification"
+                            : ""
+                        }
                       >
                         <div className="matrix-view-inner">
                           <span className="matrix-pick-mark">
