@@ -19,6 +19,28 @@ const LEAGUE_PLAYERS = 15;
 const DEFAULT_VISIBLE_SLOTS = 6;
 const MAX_VISIBLE_ROWS_BEFORE_SCROLL = 5;
 const COST_PER_GAME = 65;
+const ADMIN_SETTINGS_CODE = "3333";
+const WEEKDAY_OPTIONS = [
+  { value: 0, label: "Sunday" },
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
+];
+const CHALLENGE_PLAYER_LIMIT_OPTIONS = [5, 6, 10, 12, 15];
+const DEFAULT_MATCH_SIGNUP_SETTINGS = {
+  weeklyDay: 3,
+  weeklyPrice: COST_PER_GAME,
+  challenge: {
+    enabled: true,
+    title: "Challenge",
+    date: "2026-04-28",
+    maxPlayers: 10,
+    price: COST_PER_GAME,
+  },
+};
 const FALLBACK_SEASON_ID = "local_manual_season";
 const DEFAULT_SIGNUP_TYPE = "general";
 const DEFAULT_ADMIN_NAME = "Nkululeko";
@@ -223,42 +245,60 @@ function getPhoneFromIdentity(identity, currentUser) {
   );
 }
 
-function getMonthWednesdays({ visibleOnly = true } = {}) {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const shouldShiftToNextMonth = today.getDate() >= 25;
+function mergeMatchSignupSettings(raw = {}) {
+  const defaultChallenge = DEFAULT_MATCH_SIGNUP_SETTINGS.challenge;
+  const rawChallenge = raw?.challenge || {};
 
-  const targetYear = shouldShiftToNextMonth
-    ? now.getMonth() === 11
-      ? now.getFullYear() + 1
-      : now.getFullYear()
-    : now.getFullYear();
+  const weeklyDay = Number(raw?.weeklyDay);
+  const weeklyPrice = Number(raw?.weeklyPrice);
+  const challengeMaxPlayers = Number(rawChallenge?.maxPlayers);
+  const challengePrice = Number(rawChallenge?.price);
 
-  const targetMonth = shouldShiftToNextMonth
-    ? (now.getMonth() + 1) % 12
-    : now.getMonth();
+  return {
+    weeklyDay: Number.isInteger(weeklyDay) && weeklyDay >= 0 && weeklyDay <= 6
+      ? weeklyDay
+      : DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyDay,
+    weeklyPrice: Number.isFinite(weeklyPrice) && weeklyPrice > 0
+      ? weeklyPrice
+      : DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyPrice,
+    challenge: {
+      enabled: typeof rawChallenge?.enabled === "boolean"
+        ? rawChallenge.enabled
+        : defaultChallenge.enabled,
+      title: String(rawChallenge?.title || defaultChallenge.title || "Challenge").trim() || "Challenge",
+      date: String(rawChallenge?.date || defaultChallenge.date || "").trim(),
+      maxPlayers: CHALLENGE_PLAYER_LIMIT_OPTIONS.includes(challengeMaxPlayers)
+        ? challengeMaxPlayers
+        : defaultChallenge.maxPlayers,
+      price: Number.isFinite(challengePrice) && challengePrice > 0
+        ? challengePrice
+        : defaultChallenge.price,
+    },
+  };
+}
 
-  const dates = [];
-  const d = new Date(targetYear, targetMonth, 1);
+function buildDateId(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
 
-  while (d.getMonth() === targetMonth) {
-    const candidate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const isWednesday = candidate.getDay() === 3;
-    const shouldInclude = visibleOnly
-      ? isWednesday && candidate >= today
-      : isWednesday;
+function getWeekdayName(dayNumber) {
+  return WEEKDAY_OPTIONS.find((item) => Number(item.value) === Number(dayNumber))?.label || "Wednesday";
+}
 
-    if (shouldInclude) {
-      dates.push(candidate);
-    }
+function buildMatchDayFromDate(date, overrides = {}) {
+  const id = overrides.id || buildDateId(date);
+  const isChallenge = Boolean(overrides.isChallenge);
+  const title = String(overrides.title || (isChallenge ? "Challenge" : "Match day")).trim();
 
-    d.setDate(d.getDate() + 1);
-  }
-
-  return dates.map((date) => ({
-    id: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-      date.getDate()
-    ).padStart(2, "0")}`,
+  return {
+    id,
+    type: isChallenge ? "challenge" : "weekly",
+    title,
+    isChallenge,
+    maxPlayers: Number(overrides.maxPlayers || MAX_PLAYERS),
+    costPerGame: Number(overrides.costPerGame || COST_PER_GAME),
     label: date.toLocaleDateString("en-ZA", {
       weekday: "short",
       day: "2-digit",
@@ -276,7 +316,96 @@ function getMonthWednesdays({ visibleOnly = true } = {}) {
       year: "numeric",
     }),
     date,
-  }));
+  };
+}
+
+function getPrimarySignupScopeMonth() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const shouldShiftToNextMonth = today.getDate() >= 25;
+  const targetYear = shouldShiftToNextMonth
+    ? now.getMonth() === 11
+      ? now.getFullYear() + 1
+      : now.getFullYear()
+    : now.getFullYear();
+  const targetMonth = shouldShiftToNextMonth
+    ? (now.getMonth() + 1) % 12
+    : now.getMonth();
+
+  return new Date(targetYear, targetMonth, 1).toLocaleDateString("en-ZA", {
+    year: "numeric",
+    month: "2-digit",
+  });
+}
+
+function getMonthWednesdays({ visibleOnly = true, settings = DEFAULT_MATCH_SIGNUP_SETTINGS } = {}) {
+  const mergedSettings = mergeMatchSignupSettings(settings);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const shouldShiftToNextMonth = today.getDate() >= 25;
+
+  const monthTargets = [];
+
+  monthTargets.push({
+    year: now.getFullYear(),
+    month: now.getMonth(),
+    includeOnlyFuture: visibleOnly,
+  });
+
+  if (shouldShiftToNextMonth) {
+    monthTargets.push({
+      year: now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear(),
+      month: (now.getMonth() + 1) % 12,
+      includeOnlyFuture: false,
+    });
+  }
+
+  const byId = new Map();
+
+  monthTargets.forEach(({ year, month, includeOnlyFuture }) => {
+    const d = new Date(year, month, 1);
+
+    while (d.getMonth() === month) {
+      const candidate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const isTargetWeekday = candidate.getDay() === Number(mergedSettings.weeklyDay);
+      const shouldInclude = includeOnlyFuture ? candidate >= today : true;
+
+      if (isTargetWeekday && shouldInclude) {
+        const matchDay = buildMatchDayFromDate(candidate, {
+          type: "weekly",
+          title: getWeekdayName(mergedSettings.weeklyDay),
+          maxPlayers: MAX_PLAYERS,
+          costPerGame: mergedSettings.weeklyPrice,
+        });
+        byId.set(matchDay.id, matchDay);
+      }
+
+      d.setDate(d.getDate() + 1);
+    }
+  });
+
+  const challenge = mergedSettings.challenge || {};
+  if (challenge.enabled && challenge.date) {
+    const challengeDate = new Date(`${challenge.date}T12:00:00`);
+    if (!Number.isNaN(challengeDate.getTime())) {
+      const shouldIncludeChallenge = visibleOnly
+        ? challengeDate >= today
+        : true;
+
+      if (shouldIncludeChallenge) {
+        const challengeMatchDay = buildMatchDayFromDate(challengeDate, {
+          id: challenge.date,
+          isChallenge: true,
+          title: challenge.title || "Challenge",
+          maxPlayers: challenge.maxPlayers,
+          costPerGame: challenge.price,
+        });
+        byId.set(challengeMatchDay.id, challengeMatchDay);
+      }
+    }
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.date - b.date);
 }
 
 function getCalendarMonthData(weeks = []) {
@@ -318,9 +447,13 @@ function getCalendarMonthData(weeks = []) {
   };
 }
 
-function getStatus(count) {
-  if (count >= MAX_PLAYERS) {
+function getStatus(count, maxPlayers = MAX_PLAYERS, isChallenge = false) {
+  const cap = Number(maxPlayers || MAX_PLAYERS);
+  if (count >= cap) {
     return { key: "full", label: "Full", shortLabel: "Full" };
+  }
+  if (isChallenge) {
+    return { key: "challenge", label: "Challenge", shortLabel: "Challenge" };
   }
   if (count >= LEAGUE_PLAYERS) {
     return { key: "league", label: "League", shortLabel: "League" };
@@ -692,6 +825,13 @@ export default function MatchSignupPage({
   const [adminRemovePaidWeeks, setAdminRemovePaidWeeks] = useState([]);
   const [adminVerifyBusy, setAdminVerifyBusy] = useState(false);
   const [showAdminCleanupPanel, setShowAdminCleanupPanel] = useState(false);
+  const [showAdminSettingsModal, setShowAdminSettingsModal] = useState(false);
+  const [adminSettingsUnlocked, setAdminSettingsUnlocked] = useState(false);
+  const [adminSettingsCodeInput, setAdminSettingsCodeInput] = useState("");
+  const [adminSettingsError, setAdminSettingsError] = useState("");
+  const [adminSettingsMessage, setAdminSettingsMessage] = useState("");
+  const [adminSettingsSaving, setAdminSettingsSaving] = useState(false);
+  const [matchSignupSettings, setMatchSignupSettings] = useState(DEFAULT_MATCH_SIGNUP_SETTINGS);
   const [selectionHydrated, setSelectionHydrated] = useState(false);
   const [matchSignupStateLoaded, setMatchSignupStateLoaded] = useState(false);
 
@@ -718,6 +858,26 @@ export default function MatchSignupPage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [showCalendarPopup]);
 
+  useEffect(() => {
+    const ref = doc(db, "appState_v2", "matchSignupSettings");
+    const unsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) {
+          setMatchSignupSettings(DEFAULT_MATCH_SIGNUP_SETTINGS);
+          return;
+        }
+        setMatchSignupSettings(mergeMatchSignupSettings(snap.data() || {}));
+      },
+      (error) => {
+        console.error("Failed to subscribe to match signup settings:", error);
+        setMatchSignupSettings(DEFAULT_MATCH_SIGNUP_SETTINGS);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
   const displayName =
     identity?.shortName ||
     identity?.fullName ||
@@ -736,10 +896,13 @@ export default function MatchSignupPage({
     slugFromLooseName(displayName);
 
   const allMonthWeeks = useMemo(
-    () => getMonthWednesdays({ visibleOnly: false }),
-    []
+    () => getMonthWednesdays({ visibleOnly: false, settings: matchSignupSettings }),
+    [matchSignupSettings]
   );
-  const weeks = useMemo(() => getMonthWednesdays({ visibleOnly: true }), []);
+  const weeks = useMemo(
+    () => getMonthWednesdays({ visibleOnly: true, settings: matchSignupSettings }),
+    [matchSignupSettings]
+  );
   const allMonthWeekIds = useMemo(
     () => new Set(allMonthWeeks.map((week) => week.id)),
     [allMonthWeeks]
@@ -749,14 +912,7 @@ export default function MatchSignupPage({
     [allMonthWeeks]
   );
 
-  const calendarMonthKey = useMemo(
-    () =>
-      (allMonthWeeks[0] || weeks[0])?.date?.toLocaleDateString("en-ZA", {
-        year: "numeric",
-        month: "2-digit",
-      }) || "",
-    [allMonthWeeks, weeks]
-  );
+  const calendarMonthKey = useMemo(() => getPrimarySignupScopeMonth(), [weeks]);
 
   const phoneNumber = getPhoneFromIdentity(identity, currentUser);
   const effectiveWhatsappNumber = normalizeWhatsAppNumber(
@@ -1314,12 +1470,6 @@ export default function MatchSignupPage({
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() || {};
 
-          const sameScope =
-            String(data.monthKey || data.signupScopeId || "") ===
-            String(calendarMonthKey || signupScopeId);
-
-          if (!sameScope) return;
-
           const weeksForDoc = Array.isArray(data.selectedWeeks)
             ? data.selectedWeeks.filter((weekId) =>
                 allMonthWeekIds.has(weekId)
@@ -1331,6 +1481,17 @@ export default function MatchSignupPage({
                 allMonthWeekIds.has(weekId)
               )
             : [];
+
+          const sameScope =
+            String(data.monthKey || data.signupScopeId || "") ===
+            String(calendarMonthKey || signupScopeId);
+
+          // When the screen shows remaining current-month games plus next-month games,
+          // older records can still belong to the visible table even if their monthKey
+          // is the previous month. Keep any record that has a selected/paid visible day.
+          if (!sameScope && weeksForDoc.length === 0 && paidWeeksForDoc.length === 0) {
+            return;
+          }
 
           const beneficiaryId = String(
             data.beneficiaryPlayerId || data.playerId || data.userId || ""
@@ -1394,7 +1555,7 @@ export default function MatchSignupPage({
               selectedWeeks: weeksForDoc,
               amountDueNow:
                 Number(data.totalAmount || 0) ||
-                unpaidWeeks.length * COST_PER_GAME,
+                sumWeekCosts(unpaidWeeks),
             });
           }
         });
@@ -1413,13 +1574,100 @@ export default function MatchSignupPage({
 
   const paidWeekSet = useMemo(() => new Set(paidWeeks), [paidWeeks]);
 
+  const currentBeneficiaryLiveRecords = useMemo(() => {
+    const targetStableKey = normKey(beneficiary.stableKey);
+    const targetPlayerId = normKey(beneficiary.playerId);
+    const targetName = normKey(beneficiary.fullName || beneficiary.shortName);
+
+    return liveCommittedUsers.filter((user) => {
+      const userStableKey = normKey(user?.stableKey);
+      const userId = normKey(user?.userId);
+      const userName = normKey(user?.fullName || user?.shortName);
+
+      if (targetStableKey && userStableKey && targetStableKey === userStableKey) return true;
+      if (targetPlayerId && userId && targetPlayerId === userId) return true;
+      return Boolean(targetName) && Boolean(userName) && targetName === userName;
+    });
+  }, [liveCommittedUsers, beneficiary.stableKey, beneficiary.playerId, beneficiary.fullName, beneficiary.shortName]);
+
+  const liveSelectedWeeksForCurrent = useMemo(
+    () =>
+      uniqueWeekIds(
+        currentBeneficiaryLiveRecords.flatMap((user) =>
+          Array.isArray(user?.selectedWeeks) ? user.selectedWeeks : []
+        )
+      ),
+    [currentBeneficiaryLiveRecords]
+  );
+
+  const livePaidWeeksForCurrent = useMemo(
+    () =>
+      uniqueWeekIds(
+        currentBeneficiaryLiveRecords.flatMap((user) =>
+          Array.isArray(user?.paidWeeks) ? user.paidWeeks : []
+        )
+      ),
+    [currentBeneficiaryLiveRecords]
+  );
+
+  const effectiveSelectedWeeks = useMemo(
+    () => uniqueWeekIds([...selectedWeeks, ...liveSelectedWeeksForCurrent]),
+    [selectedWeeks, liveSelectedWeeksForCurrent]
+  );
+
+  const effectivePaidWeeks = useMemo(
+    () => uniqueWeekIds([...paidWeeks, ...livePaidWeeksForCurrent]),
+    [paidWeeks, livePaidWeeksForCurrent]
+  );
+
+  const effectivePaidWeekSet = useMemo(
+    () => new Set(effectivePaidWeeks),
+    [effectivePaidWeeks]
+  );
+
+  const weekById = useMemo(() => {
+    const map = new Map();
+    allMonthWeeks.forEach((week) => map.set(week.id, week));
+    weeks.forEach((week) => map.set(week.id, week));
+    return map;
+  }, [allMonthWeeks, weeks]);
+
+  const getCostForWeekId = (weekId) => Number(weekById.get(weekId)?.costPerGame || matchSignupSettings.weeklyPrice || COST_PER_GAME);
+
+  const sumWeekCosts = (weekIds = []) =>
+    uniqueWeekIds(weekIds).reduce((sum, weekId) => sum + getCostForWeekId(weekId), 0);
+
+  const selectedEventDetails = useMemo(
+    () =>
+      selectedWeeks.map((weekId) => {
+        const week = weekById.get(weekId);
+        return {
+          id: weekId,
+          title: week?.title || "Match day",
+          type: week?.type || "weekly",
+          isChallenge: Boolean(week?.isChallenge),
+          dateLabel: week?.label || weekId,
+          costPerGame: getCostForWeekId(weekId),
+        };
+      }),
+    [selectedWeeks, weekById, matchSignupSettings]
+  );
+
+  const eventPrices = useMemo(() => {
+    const out = {};
+    selectedWeeks.forEach((weekId) => {
+      out[weekId] = getCostForWeekId(weekId);
+    });
+    return out;
+  }, [selectedWeeks, weekById, matchSignupSettings]);
+
   const weeksToPayNow = useMemo(
-    () => selectedWeeks.filter((weekId) => !paidWeekSet.has(weekId)),
-    [selectedWeeks, paidWeekSet]
+    () => selectedWeeks.filter((weekId) => !effectivePaidWeekSet.has(weekId)),
+    [selectedWeeks, effectivePaidWeekSet]
   );
 
   const isFullyPaidSelection =
-    selectedWeeks.length > 0 && weeksToPayNow.length === 0;
+    effectiveSelectedWeeks.length > 0 && weeksToPayNow.length === 0;
 
   const getPlayerPhoto = useMemo(() => {
     return (playerName = "") => {
@@ -1542,17 +1790,15 @@ export default function MatchSignupPage({
     weeks.forEach((week) => {
       const signedKeys = new Set(liveWeekKeys[week.id] || []);
 
-      if (selectedWeeks.includes(week.id)) {
+      if (effectiveSelectedWeeks.includes(week.id)) {
         signedKeys.add(currentUserDocKey);
-      } else {
-        signedKeys.delete(currentUserDocKey);
       }
 
       out[week.id] = signedKeys;
     });
 
     return out;
-  }, [weeks, liveWeekKeys, selectedWeeks, currentUserDocKey]);
+  }, [weeks, liveWeekKeys, effectiveSelectedWeeks, currentUserDocKey]);
 
   const actualPlayersCount = useMemo(
     () => allRows.filter((row) => !row.isEmpty).length,
@@ -1584,7 +1830,7 @@ export default function MatchSignupPage({
         if (player.isEmpty) return;
 
         if (player.isCurrent) {
-          if (selectedWeeks.includes(week.id)) signedIds.add(player.id);
+          if (effectiveSelectedWeeks.includes(week.id)) signedIds.add(player.id);
           return;
         }
 
@@ -1601,7 +1847,7 @@ export default function MatchSignupPage({
     });
 
     return out;
-  }, [weeks, displayRows, livePlayerWeeks, liveWeekKeys, selectedWeeks]);
+  }, [weeks, displayRows, livePlayerWeeks, liveWeekKeys, effectiveSelectedWeeks]);
 
   const weekMeta = useMemo(
     () =>
@@ -1610,7 +1856,7 @@ export default function MatchSignupPage({
         return {
           ...week,
           count: fullCount,
-          status: getStatus(fullCount),
+          status: getStatus(fullCount, week.maxPlayers, week.isChallenge),
         };
       }),
     [weeks, weekSelectionsAll]
@@ -1635,7 +1881,7 @@ export default function MatchSignupPage({
   }, [displayRows]);
 
   const toggleWeek = (week) => {
-    if (paidWeeks.includes(week.id)) return;
+    if (effectivePaidWeekSet.has(week.id)) return;
 
     const meta = weekMeta.find((w) => w.id === week.id);
     const isSelected = selectedWeeks.includes(week.id);
@@ -1645,11 +1891,11 @@ export default function MatchSignupPage({
       return;
     }
 
-    if ((meta?.count || 0) >= MAX_PLAYERS) return;
+    if ((meta?.count || 0) >= Number(meta?.maxPlayers || MAX_PLAYERS)) return;
     setSelectedWeeks((prev) => uniqueWeekIds([...prev, week.id]));
   };
 
-  const totalAmount = weeksToPayNow.length * COST_PER_GAME;
+  const totalAmount = sumWeekCosts(weeksToPayNow);
   const selectedCount = selectedWeeks.length;
 
   const signupStatusText = isFullyPaidSelection
@@ -1836,6 +2082,48 @@ export default function MatchSignupPage({
   const matrixViewportHeight =
     headerHeight + visibleRowsInViewport * rowHeight + 10;
 
+  const handleAdminSettingsUnlock = () => {
+    if (String(adminSettingsCodeInput || "").trim() !== ADMIN_SETTINGS_CODE) {
+      setAdminSettingsError("Incorrect admin code.");
+      return;
+    }
+    setAdminSettingsUnlocked(true);
+    setAdminSettingsError("");
+  };
+
+  const handleSaveAdminSettings = async () => {
+    if (!canManageSignupsAsAdmin || !adminSettingsUnlocked) return;
+
+    const cleaned = mergeMatchSignupSettings(matchSignupSettings);
+    setAdminSettingsSaving(true);
+    setAdminSettingsError("");
+    setAdminSettingsMessage("");
+
+    try {
+      await setDoc(
+        doc(db, "appState_v2", "matchSignupSettings"),
+        {
+          ...cleaned,
+          updatedAt: serverTimestamp(),
+          updatedBy:
+            identity?.email ||
+            currentUser?.email ||
+            identity?.displayName ||
+            identity?.shortName ||
+            DEFAULT_ADMIN_NAME,
+        },
+        { merge: true }
+      );
+      setMatchSignupSettings(cleaned);
+      setAdminSettingsMessage("Match signup settings saved.");
+    } catch (error) {
+      console.error("Failed to save match signup settings:", error);
+      setAdminSettingsError("Could not save settings. Please try again.");
+    } finally {
+      setAdminSettingsSaving(false);
+    }
+  };
+
   const handleAttemptBack = () => {
     if (selectedWeeks.length === 0 || isFullyPaidSelection) {
       onBack?.();
@@ -1883,12 +2171,14 @@ export default function MatchSignupPage({
           weeksToPayNow,
           totalGamesSelected: selectedWeeks.length,
           amountDue: totalAmount,
-          amountPaid: paidWeeks.length * COST_PER_GAME,
+          amountPaid: sumWeekCosts(paidWeeks),
           paymentIntentAmount: totalAmount,
           totalAmount,
           amountDueNow: totalAmount,
-          amountPaidTotal: paidWeeks.length * COST_PER_GAME,
-          costPerGame: COST_PER_GAME,
+          amountPaidTotal: sumWeekCosts(paidWeeks),
+          costPerGame: matchSignupSettings.weeklyPrice || COST_PER_GAME,
+          eventPrices,
+          selectedEventDetails,
           paymentStatus,
           paymentForMode:
             signupForMode === "self"
@@ -1920,7 +2210,9 @@ export default function MatchSignupPage({
         secondWeeksToPayNow: [],
         totalAmount,
         amountDue: totalAmount,
-        costPerGame: COST_PER_GAME,
+        costPerGame: matchSignupSettings.weeklyPrice || COST_PER_GAME,
+          eventPrices,
+          selectedEventDetails,
         paymentForMode:
           signupForMode === "self"
             ? "self"
@@ -1992,8 +2284,10 @@ export default function MatchSignupPage({
         weeksToPayNow,
         totalAmount,
         amountDueNow: totalAmount,
-        amountPaidTotal: paidWeeks.length * COST_PER_GAME,
-        costPerGame: COST_PER_GAME,
+        amountPaidTotal: sumWeekCosts(paidWeeks),
+        costPerGame: matchSignupSettings.weeklyPrice || COST_PER_GAME,
+          eventPrices,
+          selectedEventDetails,
         paymentStatus,
         isUnpaid: weeksToPayNow.length > 0,
         remindersEnabled: Boolean(effectiveWhatsappNumber),
@@ -2097,9 +2391,9 @@ export default function MatchSignupPage({
           paidWeeks: nextPaidWeeks,
           unpaidWeeks: nextUnpaidWeeks,
           weeksToPayNow: nextUnpaidWeeks,
-          totalAmount: nextUnpaidWeeks.length * COST_PER_GAME,
-          amountDueNow: nextUnpaidWeeks.length * COST_PER_GAME,
-          amountPaidTotal: nextPaidWeeks.length * COST_PER_GAME,
+          totalAmount: sumWeekCosts(nextUnpaidWeeks),
+          amountDueNow: sumWeekCosts(nextUnpaidWeeks),
+          amountPaidTotal: sumWeekCosts(nextPaidWeeks),
           paymentStatus: nextStatus,
           isUnpaid: nextUnpaidWeeks.length > 0,
           remindersEnabled:
@@ -2124,8 +2418,8 @@ export default function MatchSignupPage({
           primaryPaidWeeks: nextPaidWeeks,
           unpaidWeeks: nextUnpaidWeeks,
           weeksToPayNow: nextUnpaidWeeks,
-          amountDue: nextUnpaidWeeks.length * COST_PER_GAME,
-          amountPaid: nextPaidWeeks.length * COST_PER_GAME,
+          amountDue: sumWeekCosts(nextUnpaidWeeks),
+          amountPaid: sumWeekCosts(nextPaidWeeks),
           paymentIntentAmount: 0,
           paymentStatus: nextStatus,
           verifiedBy: verifier,
@@ -2369,9 +2663,9 @@ export default function MatchSignupPage({
             paidWeeks: nextPaidWeeks,
             unpaidWeeks: nextUnpaidWeeks,
             weeksToPayNow: nextUnpaidWeeks,
-            totalAmount: nextUnpaidWeeks.length * COST_PER_GAME,
-            amountDueNow: nextUnpaidWeeks.length * COST_PER_GAME,
-            amountPaidTotal: nextPaidWeeks.length * COST_PER_GAME,
+            totalAmount: sumWeekCosts(nextUnpaidWeeks),
+            amountDueNow: sumWeekCosts(nextUnpaidWeeks),
+            amountPaidTotal: sumWeekCosts(nextPaidWeeks),
             paymentStatus: nextStatus,
             isUnpaid: nextUnpaidWeeks.length > 0,
             remindersEnabled:
@@ -2393,8 +2687,8 @@ export default function MatchSignupPage({
             primaryPaidWeeks: nextPaidWeeks,
             unpaidWeeks: nextUnpaidWeeks,
             weeksToPayNow: nextUnpaidWeeks,
-            amountDue: nextUnpaidWeeks.length * COST_PER_GAME,
-            amountPaid: nextPaidWeeks.length * COST_PER_GAME,
+            amountDue: sumWeekCosts(nextUnpaidWeeks),
+            amountPaid: sumWeekCosts(nextPaidWeeks),
             paymentIntentAmount: 0,
             paymentStatus: nextStatus,
             updatedAt: serverTimestamp(),
@@ -2458,8 +2752,10 @@ export default function MatchSignupPage({
           weeksToPayNow: [],
           totalAmount: 0,
           amountDueNow: 0,
-          amountPaidTotal: paidWeeks.length * COST_PER_GAME,
-          costPerGame: COST_PER_GAME,
+          amountPaidTotal: sumWeekCosts(paidWeeks),
+          costPerGame: matchSignupSettings.weeklyPrice || COST_PER_GAME,
+          eventPrices,
+          selectedEventDetails,
           paymentStatus: paidWeeks.length > 0 ? "paid" : "not_selected",
           isUnpaid: false,
           remindersEnabled: false,
@@ -2496,6 +2792,28 @@ export default function MatchSignupPage({
 
   const historicalViewMode = weeksToPayNow.length === 0;
 
+const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
+  if (!week?.isChallenge) return base;
+
+  const radiusTop =
+    edge === "top" ? { borderTopLeftRadius: 10, borderTopRightRadius: 10 } : {};
+  const radiusBottom =
+    edge === "bottom" ? { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 } : {};
+
+  return {
+    ...base,
+    position: "relative",
+    zIndex: 3,
+    transform: "translateY(-1px)",
+    background: base.background || undefined,
+    borderLeft: "2px solid rgba(248, 113, 113, 0.9)",
+    borderRight: "2px solid rgba(248, 113, 113, 0.9)",
+    boxShadow: "inset 0 0 0 1px rgba(248, 113, 113, 0.12)",
+    ...radiusTop,
+    ...radiusBottom,
+  };
+};
+
   return (
     <div
       className="page match-signup-page"
@@ -2523,11 +2841,11 @@ export default function MatchSignupPage({
 
             <div className="signup-hero-copy">
               <div className="signup-hero-title-row">
-                <h2>Pay for next month games</h2>
+                <h2>Pay for upcoming games</h2>
               </div>
 
               <p className="muted signup-hero-subtext">
-                Select every Wednesday available for the player you are signing up.
+                Select the remaining current games, next month games, and any special Challenge fixture.
               </p>
 
               <div className="signup-top-meta">
@@ -2542,7 +2860,30 @@ export default function MatchSignupPage({
             </div>
           </div>
 
-          <div className="signup-hero-actions">
+          <div
+            className="signup-hero-actions"
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: isMobile ? "flex-start" : "flex-end",
+              gap: isMobile ? 8 : 10,
+              flexWrap: "wrap",
+            }}
+          >
+            {canManageSignupsAsAdmin ? (
+              <button
+                type="button"
+                className="secondary-btn signup-calendar-btn"
+                onClick={() => setShowAdminSettingsModal(true)}
+                aria-label="Open match signup settings"
+                title="Match signup settings"
+                style={{ touchAction: "manipulation" }}
+              >
+                ⚙
+              </button>
+            ) : null}
+
             <button
               type="button"
               className="secondary-btn signup-calendar-btn"
@@ -2880,6 +3221,291 @@ export default function MatchSignupPage({
         </section>
       ) : null}
 
+      {showAdminSettingsModal && canManageSignupsAsAdmin ? (
+        <div
+          className="modal-backdrop"
+          onClick={() => setShowAdminSettingsModal(false)}
+        >
+          <div
+            className="modal signup-leave-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="signup-calendar-modal-header">
+              <h3>Match signup settings</h3>
+              <button
+                type="button"
+                className="secondary-btn signup-calendar-close-btn"
+                onClick={() => setShowAdminSettingsModal(false)}
+                style={{ touchAction: "manipulation" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {!adminSettingsUnlocked ? (
+              <>
+                <p className="muted small signup-calendar-note">
+                  Enter the admin code to edit weekly match settings and the Challenge fixture.
+                </p>
+                <div className="signup-reminder-choice">
+                  <label htmlFor="adminSettingsCodeInput">Admin code</label>
+                  <input
+                    id="adminSettingsCodeInput"
+                    type="password"
+                    value={adminSettingsCodeInput}
+                    onChange={(e) => setAdminSettingsCodeInput(e.target.value)}
+                    placeholder="Enter admin code"
+                  />
+                </div>
+                {adminSettingsError ? (
+                  <p className="muted small" style={{ color: "#ff9b9b" }}>
+                    {adminSettingsError}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={handleAdminSettingsUnlock}
+                  style={{ touchAction: "manipulation", marginTop: 10 }}
+                >
+                  Unlock settings
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="muted small signup-calendar-note">
+                  Normal weekly games stay active, and the special Challenge appears as a highlighted one-off fixture unless you disable it.
+                </p>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 12,
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <div className="signup-reminder-choice">
+                    <label htmlFor="weeklyDay">Weekly match day</label>
+                    <select
+                      id="weeklyDay"
+                      value={matchSignupSettings.weeklyDay}
+                      onChange={(e) =>
+                        setMatchSignupSettings((prev) =>
+                          mergeMatchSignupSettings({
+                            ...prev,
+                            weeklyDay: Number(e.target.value),
+                          })
+                        )
+                      }
+                    >
+                      {WEEKDAY_OPTIONS.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="signup-reminder-choice">
+                    <label htmlFor="weeklyPrice">Weekly game price</label>
+                    <input
+                      id="weeklyPrice"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={matchSignupSettings.weeklyPrice}
+                      onChange={(e) =>
+                        setMatchSignupSettings((prev) =>
+                          mergeMatchSignupSettings({
+                            ...prev,
+                            weeklyPrice: Number(e.target.value),
+                          })
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 14,
+                    padding: 12,
+                    border: "1px solid rgba(251, 191, 36, 0.35)",
+                    borderRadius: 16,
+                    background: "rgba(245, 158, 11, 0.08)",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      marginBottom: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(matchSignupSettings.challenge.enabled)}
+                      onChange={(e) =>
+                        setMatchSignupSettings((prev) =>
+                          mergeMatchSignupSettings({
+                            ...prev,
+                            challenge: {
+                              ...prev.challenge,
+                              enabled: e.target.checked,
+                            },
+                          })
+                        )
+                      }
+                    />
+                    Show Challenge fixture
+                  </label>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 12,
+                      gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                    }}
+                  >
+                    <div className="signup-reminder-choice">
+                      <label htmlFor="challengeDate">Challenge date</label>
+                      <input
+                        id="challengeDate"
+                        type="date"
+                        value={matchSignupSettings.challenge.date}
+                        onChange={(e) =>
+                          setMatchSignupSettings((prev) =>
+                            mergeMatchSignupSettings({
+                              ...prev,
+                              challenge: {
+                                ...prev.challenge,
+                                date: e.target.value,
+                              },
+                            })
+                          )
+                        }
+                      />
+                    </div>
+
+                    <div className="signup-reminder-choice">
+                      <label htmlFor="challengePrice">Challenge price</label>
+                      <input
+                        id="challengePrice"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={matchSignupSettings.challenge.price}
+                        onChange={(e) =>
+                          setMatchSignupSettings((prev) =>
+                            mergeMatchSignupSettings({
+                              ...prev,
+                              challenge: {
+                                ...prev.challenge,
+                                price: Number(e.target.value),
+                              },
+                            })
+                          )
+                        }
+                      />
+                    </div>
+
+                    <div className="signup-reminder-choice">
+                      <label htmlFor="challengeMaxPlayers">Challenge player limit</label>
+                      <select
+                        id="challengeMaxPlayers"
+                        value={matchSignupSettings.challenge.maxPlayers}
+                        onChange={(e) =>
+                          setMatchSignupSettings((prev) =>
+                            mergeMatchSignupSettings({
+                              ...prev,
+                              challenge: {
+                                ...prev.challenge,
+                                maxPlayers: Number(e.target.value),
+                              },
+                            })
+                          )
+                        }
+                      >
+                        {CHALLENGE_PLAYER_LIMIT_OPTIONS.map((limit) => (
+                          <option key={limit} value={limit}>
+                            {limit} players
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="signup-reminder-choice">
+                      <label htmlFor="challengeTitle">Fixture name</label>
+                      <input
+                        id="challengeTitle"
+                        type="text"
+                        value={matchSignupSettings.challenge.title}
+                        onChange={(e) =>
+                          setMatchSignupSettings((prev) =>
+                            mergeMatchSignupSettings({
+                              ...prev,
+                              challenge: {
+                                ...prev.challenge,
+                                title: e.target.value || "Challenge",
+                              },
+                            })
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {adminSettingsError ? (
+                  <p className="muted small" style={{ color: "#ff9b9b", marginTop: 10 }}>
+                    {adminSettingsError}
+                  </p>
+                ) : null}
+
+                {adminSettingsMessage ? (
+                  <p className="muted small" style={{ color: "#9ef0b2", marginTop: 10 }}>
+                    {adminSettingsMessage}
+                  </p>
+                ) : null}
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 10,
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                    marginTop: 14,
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    disabled={adminSettingsSaving}
+                    onClick={handleSaveAdminSettings}
+                    style={{ touchAction: "manipulation" }}
+                  >
+                    {adminSettingsSaving ? "Saving..." : "Save settings"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => {
+                      setMatchSignupSettings(DEFAULT_MATCH_SIGNUP_SETTINGS);
+                      setAdminSettingsMessage("Defaults restored. Press Save settings to publish them.");
+                    }}
+                    style={{ touchAction: "manipulation" }}
+                  >
+                    Restore defaults
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {showCalendarPopup && (
         <div
           className="modal-backdrop"
@@ -2902,7 +3528,7 @@ export default function MatchSignupPage({
             </div>
 
             <p className="muted small signup-calendar-note">
-              Wednesdays are highlighted. Tap a Wednesday to select or unselect it.
+              Weekly match days are highlighted. The Challenge fixture appears in the main table as a gold special event.
             </p>
 
             <div className="signup-calendar-weekdays">
@@ -2926,8 +3552,8 @@ export default function MatchSignupPage({
 
                 const isWednesday = cell.weekday === 3;
                 const isSelectableWednesday = isCalendarSelectable(cell.id);
-                const isSelected = selectedWeeks.includes(cell.id);
-                const isPaid = paidWeeks.includes(cell.id);
+                const isSelected = effectiveSelectedWeeks.includes(cell.id);
+                const isPaid = effectivePaidWeekSet.has(cell.id);
                 const linkedWeek = getWeekByCalendarCellId(cell.id);
 
                 if (isWednesday && isSelectableWednesday && linkedWeek) {
@@ -3165,7 +3791,7 @@ export default function MatchSignupPage({
 
       <section className="card signup-grid-card">
         <div className="signup-grid-title-row">
-          <h3>Pick your Wednesdays</h3>
+          <h3>Pick your match days</h3>
           <div
             className={`signup-top-status ${
               selectedCount > 0 ? "is-active" : "is-idle"
@@ -3207,14 +3833,39 @@ export default function MatchSignupPage({
             {weekMeta.map((week) => (
               <div
                 key={`head-${week.id}`}
-                className={`matrix-week-head status-${week.status.key}`}
+                className={`matrix-week-head status-${week.status.key} ${week.isChallenge ? "is-challenge-week" : ""}`}
                 title={week.fullLabel}
+                style={getSpecialColumnStyle(week, {}, "top")}
               >
+{week.isChallenge ? (
+  <div
+    aria-hidden="true"
+    style={{
+      position: "absolute",
+      inset: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 0,
+      color: "rgba(248, 113, 113, 0.22)",
+      fontWeight: 950,
+      fontSize: isMobile ? 13 : 18,
+      letterSpacing: "0.22em",
+      textTransform: "uppercase",
+      transform: "rotate(-18deg)",
+      pointerEvents: "none",
+      userSelect: "none",
+    }}
+  >
+    Canal Walk
+  </div>
+) : null}
+
                 <div className="matrix-week-date">
                   {isMobile ? week.shortLabel : week.label}
                 </div>
                 <div className={`matrix-week-status ${week.status.key}`}>
-                  {isMobile ? week.status.shortLabel : week.status.label}
+                  {week.isChallenge ? "Canal Walk" : isMobile ? week.status.shortLabel : week.status.label}
                 </div>
                 <div className="matrix-week-count">{week.count} signed</div>
               </div>
@@ -3284,7 +3935,7 @@ export default function MatchSignupPage({
 
                   {weekMeta.map((week) => {
                     const signed = weekSelections[week.id]?.has(player.id);
-                    const isPaid = paidWeeks.includes(week.id);
+                    const isPaid = effectivePaidWeekSet.has(week.id);
                     const status = week.status;
 
                     if (player.isEmpty) {
@@ -3292,7 +3943,11 @@ export default function MatchSignupPage({
                         <div
                           key={`${player.id}-${week.id}`}
                           className="matrix-view-cell matrix-empty-slot is-empty-row"
-                          style={{ transition: "none" }}
+                          style={getSpecialColumnStyle(
+                            week,
+                            { transition: "none" },
+                            rowIndex === lastVisibleRowIndex ? "bottom" : "middle"
+                          )}
                         >
                           <div className="matrix-view-inner">
                             <span className="matrix-pick-mark">
@@ -3318,7 +3973,7 @@ export default function MatchSignupPage({
                             ]
                               .filter(Boolean)
                               .join(" ")}
-                            style={{ transition: "none" }}
+                            style={getSpecialColumnStyle(week, { transition: "none" })}
                             title={isPaid ? "Paid" : "Locked"}
                           >
                             <div className="matrix-view-inner">
@@ -3349,10 +4004,10 @@ export default function MatchSignupPage({
                             isPaid ||
                             (status.key === "full" && !signed)
                           }
-                          style={{
+                          style={getSpecialColumnStyle(week, {
                             transition: "none",
                             touchAction: "manipulation",
-                          }}
+                          })}
                         >
                           <div className="matrix-pick-inner">
                             <span className="matrix-pick-mark">
@@ -3369,7 +4024,11 @@ export default function MatchSignupPage({
                         className={`matrix-view-cell ${
                           signed ? "is-signed" : ""
                         } ${isSignedRow ? "is-signed-row" : ""}`}
-                        style={{ transition: "none" }}
+                        style={getSpecialColumnStyle(
+                          week,
+                          { transition: "none" },
+                          rowIndex === lastVisibleRowIndex ? "bottom" : "middle"
+                        )}
                       >
                         <div className="matrix-view-inner">
                           <span className="matrix-pick-mark">
@@ -3437,7 +4096,7 @@ export default function MatchSignupPage({
                 <div className="summary-row">
                   <span>Paid this month</span>
                   <strong>
-                    {paidWeeks.length} week{paidWeeks.length === 1 ? "" : "s"}
+                    {effectivePaidWeeks.length} week{effectivePaidWeeks.length === 1 ? "" : "s"}
                   </strong>
                 </div>
               ) : null}
@@ -3500,7 +4159,7 @@ export default function MatchSignupPage({
 
               <div className="summary-row">
                 <span>Cost per game</span>
-                <strong>R{COST_PER_GAME}</strong>
+                <strong>From R{matchSignupSettings.weeklyPrice || COST_PER_GAME}</strong>
               </div>
 
               <div className="summary-row">
@@ -3513,7 +4172,7 @@ export default function MatchSignupPage({
                 <div style={{ textAlign: "right" }}>
                   <strong>R{totalAmount}</strong>
                   <div className="muted small">
-                    ({weeksToPayNow.length} × R{COST_PER_GAME})
+                    ({weeksToPayNow.length} selected unpaid match day{weeksToPayNow.length === 1 ? "" : "s"})
                   </div>
                 </div>
               </div>

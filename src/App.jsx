@@ -13,6 +13,7 @@ import { PeerReviewPage } from "./pages/PeerReviewPage.jsx";
 import { MigrationPage } from "./pages/MigrationPage.jsx";
 import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
+import BottomNav from "./components/BottomNav.jsx";
 
 import {
   loadState,
@@ -2257,8 +2258,75 @@ export default function App() {
   const handleBackFromPayment = () => setPage(PAGE_MATCH_SIGNUP);
 
 
+  const pagesWithBottomNav = new Set([
+    PAGE_LANDING,
+    PAGE_MATCH_SIGNUP,
+    PAGE_PAYMENT,
+    PAGE_LIVE,
+    PAGE_SPECTATOR,
+    PAGE_STATS,
+    PAGE_NEWS,
+    PAGE_PLAYER_CARDS,
+    PAGE_SQUADS,
+    PAGE_FORMATIONS,
+    PAGE_PEER_REVIEW,
+  ]);
+
+  const showBottomNav = pagesWithBottomNav.has(page);
+
+  const handleBottomNavNavigate = (targetPage) => {
+    if (!targetPage || targetPage === page) return;
+
+    if (targetPage === PAGE_STATS) {
+      handleGoToStats(page);
+      return;
+    }
+
+    if (targetPage === PAGE_LIVE) {
+      handleGoToLiveAsSpectator();
+      return;
+    }
+
+    if (targetPage === PAGE_LANDING) {
+      handleBackToLanding();
+      return;
+    }
+
+    if (targetPage === PAGE_MATCH_SIGNUP) {
+      handleGoToMatchSignup();
+      return;
+    }
+
+    if (targetPage === PAGE_PLAYER_CARDS) {
+      setPage(PAGE_PLAYER_CARDS);
+      return;
+    }
+
+    if (targetPage === PAGE_NEWS) {
+      setPage(PAGE_NEWS);
+      return;
+    }
+
+    if (targetPage === PAGE_SQUADS) {
+      handleGoToSquads();
+      return;
+    }
+
+    if (targetPage === PAGE_FORMATIONS) {
+      handleGoToFormations();
+      return;
+    }
+
+    if (targetPage === PAGE_PEER_REVIEW) {
+      setPage(PAGE_PEER_REVIEW);
+      return;
+    }
+
+    setPage(targetPage);
+  };
+
   return (
-    <div className="app-root">
+    <div className={`app-root ${showBottomNav ? "has-bottom-nav" : ""}`}>
       <style>{`
         .tk-staging-badge {
           position: fixed;
@@ -2276,6 +2344,131 @@ export default function App() {
           border: 1px solid rgba(255, 255, 255, 0.18);
           pointer-events: none;
           user-select: none;
+        }
+
+        .app-root.has-bottom-nav {
+          padding-bottom: 96px;
+        }
+
+        .tk-bottom-nav {
+          position: fixed;
+          left: 12px;
+          right: 12px;
+          bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+          z-index: 9500;
+          border-radius: 26px;
+          padding: 8px;
+          background:
+            linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.96));
+          border: 1px solid rgba(148, 163, 184, 0.28);
+          box-shadow:
+            0 18px 44px rgba(0, 0, 0, 0.42),
+            inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+        }
+
+        .tk-bottom-nav-scroll {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          overflow-x: auto;
+          overscroll-behavior-x: contain;
+          scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
+          scroll-snap-type: x proximity;
+          padding: 2px;
+        }
+
+        .tk-bottom-nav-scroll::-webkit-scrollbar {
+          display: none;
+        }
+
+        .tk-bottom-nav-item {
+          appearance: none;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(15, 23, 42, 0.72);
+          color: rgba(226, 232, 240, 0.92);
+          min-width: 72px;
+          height: 58px;
+          border-radius: 19px;
+          padding: 7px 10px 6px;
+          display: inline-flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          cursor: pointer;
+          flex: 0 0 auto;
+          scroll-snap-align: center;
+          touch-action: manipulation;
+          transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+        }
+
+        .tk-bottom-nav-item:active {
+          transform: translateY(1px) scale(0.98);
+        }
+
+        .tk-bottom-nav-item:hover {
+          border-color: rgba(34, 197, 94, 0.38);
+          background: rgba(15, 23, 42, 0.92);
+        }
+
+        .tk-bottom-nav-item.is-primary {
+          min-width: 82px;
+          border-color: rgba(34, 197, 94, 0.42);
+          background:
+            radial-gradient(circle at top, rgba(34, 197, 94, 0.18), rgba(15, 23, 42, 0.88));
+          box-shadow: 0 0 18px rgba(34, 197, 94, 0.12);
+        }
+
+        .tk-bottom-nav-icon-wrap {
+          width: 24px;
+          height: 24px;
+          display: grid;
+          place-items: center;
+        }
+
+        .tk-bottom-nav-icon {
+          display: block;
+        }
+
+        .tk-bottom-nav-label {
+          font-size: 0.72rem;
+          line-height: 1;
+          font-weight: 800;
+          letter-spacing: 0.01em;
+          white-space: nowrap;
+        }
+
+        @media (max-width: 420px) {
+          .app-root.has-bottom-nav {
+            padding-bottom: 92px;
+          }
+
+          .tk-bottom-nav {
+            left: 8px;
+            right: 8px;
+            bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+            border-radius: 22px;
+            padding: 7px;
+          }
+
+          .tk-bottom-nav-item {
+            min-width: 64px;
+            height: 54px;
+            border-radius: 16px;
+            padding-left: 8px;
+            padding-right: 8px;
+          }
+
+          .tk-bottom-nav-item.is-primary {
+            min-width: 74px;
+          }
+
+          .tk-bottom-nav-label {
+            font-size: 0.68rem;
+          }
         }
       `}</style>
 
@@ -2907,6 +3100,17 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {showBottomNav ? (
+        <BottomNav
+          currentPage={page}
+          onNavigate={handleBottomNavNavigate}
+          hasLiveMatch={hasLiveMatch || running}
+          canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
+          canManageSquads={canManageSquads}
+        />
+      ) : null}
+
     </div>
   );
 }
