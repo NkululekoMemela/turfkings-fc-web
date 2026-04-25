@@ -447,6 +447,31 @@ function getCalendarMonthData(weeks = []) {
   };
 }
 
+function getCalendarMonthsData(weeks = []) {
+  const safeWeeks = Array.isArray(weeks) ? weeks : [];
+  const monthKeys = [];
+
+  safeWeeks.forEach((week) => {
+    if (!(week?.date instanceof Date)) return;
+    const key = `${week.date.getFullYear()}-${String(week.date.getMonth() + 1).padStart(2, "0")}`;
+    if (!monthKeys.includes(key)) monthKeys.push(key);
+  });
+
+  if (!monthKeys.length) return [getCalendarMonthData([])];
+
+  return monthKeys.map((key) => {
+    const [yearRaw, monthRaw] = key.split("-");
+    const year = Number(yearRaw);
+    const month = Number(monthRaw) - 1;
+
+    return getCalendarMonthData([
+      {
+        date: new Date(year, month, 1),
+      },
+    ]);
+  });
+}
+
 function getStatus(count, maxPlayers = MAX_PLAYERS, isChallenge = false) {
   const cap = Number(maxPlayers || MAX_PLAYERS);
   if (count >= cap) {
@@ -903,12 +928,29 @@ export default function MatchSignupPage({
     () => getMonthWednesdays({ visibleOnly: true, settings: matchSignupSettings }),
     [matchSignupSettings]
   );
-  const allMonthWeekIds = useMemo(
-    () => new Set(allMonthWeeks.map((week) => week.id)),
-    [allMonthWeeks]
+
+  /*
+    Visible/payable cycle:
+    - remaining current-month fixtures
+    - the Challenge fixture, if active and upcoming
+    - next-month fixtures once we are in advance-payment mode
+
+    Older weeks remain in Firestore history, but they are intentionally excluded
+    from the live payment grid, admin verification buttons, and "weeks paid"
+    counters so the admin panel does not become crowded over time.
+  */
+  const visibleWeekIds = useMemo(
+    () => new Set(weeks.map((week) => week.id)),
+    [weeks]
   );
+
   const calendarMonthData = useMemo(
     () => getCalendarMonthData(allMonthWeeks),
+    [allMonthWeeks]
+  );
+
+  const calendarMonthsData = useMemo(
+    () => getCalendarMonthsData(allMonthWeeks),
     [allMonthWeeks]
   );
 
@@ -1347,17 +1389,17 @@ export default function MatchSignupPage({
     const cached = readSignupCache(pendingId);
     if (cached) {
       setSelectedWeeks(
-        cached.selectedWeeks.filter((weekId) => allMonthWeekIds.has(weekId))
+        cached.selectedWeeks.filter((weekId) => visibleWeekIds.has(weekId))
       );
       setPaidWeeks(
-        cached.paidWeeks.filter((weekId) => allMonthWeekIds.has(weekId))
+        cached.paidWeeks.filter((weekId) => visibleWeekIds.has(weekId))
       );
       if (cached.reminderPreference) {
         setReminderPreference(cached.reminderPreference);
       }
       setPendingSelectionsSaved(cached.selectedWeeks.length > 0);
     }
-  }, [pendingId, allMonthWeekIds]);
+  }, [pendingId, visibleWeekIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1381,19 +1423,19 @@ export default function MatchSignupPage({
 
         const pendingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
           ? pendingData.selectedWeeks.filter((weekId) =>
-              allMonthWeekIds.has(weekId)
+              visibleWeekIds.has(weekId)
             )
           : [];
 
         const pendingPaidWeeks = Array.isArray(pendingData.paidWeeks)
           ? pendingData.paidWeeks.filter((weekId) =>
-              allMonthWeekIds.has(weekId)
+              visibleWeekIds.has(weekId)
             )
           : [];
 
         const matchSelectedWeeks = Array.isArray(matchSignupData.selectedWeeks)
           ? matchSignupData.selectedWeeks.filter((weekId) =>
-              allMonthWeekIds.has(weekId)
+              visibleWeekIds.has(weekId)
             )
           : [];
 
@@ -1401,7 +1443,7 @@ export default function MatchSignupPage({
           matchSignupData.paidWeeks || matchSignupData.primaryPaidWeeks
         )
           ? (matchSignupData.paidWeeks || matchSignupData.primaryPaidWeeks).filter(
-              (weekId) => allMonthWeekIds.has(weekId)
+              (weekId) => visibleWeekIds.has(weekId)
             )
           : [];
 
@@ -1447,7 +1489,7 @@ export default function MatchSignupPage({
     return () => {
       cancelled = true;
     };
-  }, [pendingId, allMonthWeekIds, reminderPreference]);
+  }, [pendingId, visibleWeekIds, reminderPreference]);
 
   useEffect(() => {
     writeSignupCache(pendingId, {
@@ -1458,119 +1500,188 @@ export default function MatchSignupPage({
   }, [pendingId, selectedWeeks, paidWeeks, reminderPreference]);
 
   useEffect(() => {
-    const q = query(collection(db, "pendingSignups"));
+    let latestPendingDocs = [];
+    let latestMatchSignupDocs = [];
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const nextWeekKeys = {};
-        const nextPlayerWeeks = {};
-        const nextCommittedUsers = [];
+    const rebuildLiveSignupState = () => {
+      const combinedByDocId = new Map();
 
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data() || {};
+      const addRecord = ({ docId, data, source }) => {
+        if (!docId) return;
 
-          const weeksForDoc = Array.isArray(data.selectedWeeks)
-            ? data.selectedWeeks.filter((weekId) =>
-                allMonthWeekIds.has(weekId)
-              )
-            : [];
+        const previous = combinedByDocId.get(docId) || {};
+        combinedByDocId.set(docId, {
+          ...previous,
+          ...(data || {}),
+          docId,
+          sourceCollections: uniqueStrings([
+            ...(previous.sourceCollections || []),
+            source,
+          ]),
+        });
+      };
 
-          const paidWeeksForDoc = Array.isArray(data.paidWeeks)
-            ? data.paidWeeks.filter((weekId) =>
-                allMonthWeekIds.has(weekId)
-              )
-            : [];
+      latestPendingDocs.forEach((item) =>
+        addRecord({
+          docId: item.docId,
+          data: item.data,
+          source: "pendingSignups",
+        })
+      );
 
-          const sameScope =
-            String(data.monthKey || data.signupScopeId || "") ===
-            String(calendarMonthKey || signupScopeId);
+      latestMatchSignupDocs.forEach((item) =>
+        addRecord({
+          docId: item.docId,
+          data: item.data,
+          source: "matchSignups",
+        })
+      );
 
-          // When the screen shows remaining current-month games plus next-month games,
-          // older records can still belong to the visible table even if their monthKey
-          // is the previous month. Keep any record that has a selected/paid visible day.
-          if (!sameScope && weeksForDoc.length === 0 && paidWeeksForDoc.length === 0) {
-            return;
-          }
+      const nextWeekKeys = {};
+      const nextPlayerWeeks = {};
+      const nextCommittedUsers = [];
 
-          const beneficiaryId = String(
-            data.beneficiaryPlayerId || data.playerId || data.userId || ""
-          ).trim();
+      Array.from(combinedByDocId.values()).forEach((data) => {
+        const selectedFromRecord = Array.isArray(data.selectedWeeks)
+          ? data.selectedWeeks
+          : [];
 
-          const beneficiaryName = toTitleCaseLoose(
-            data.beneficiaryName || data.playerName || data.shortName || "Player"
-          );
+        const paidFromRecord = Array.isArray(data.paidWeeks || data.primaryPaidWeeks)
+          ? data.paidWeeks || data.primaryPaidWeeks
+          : [];
 
-          const beneficiaryShortName =
-            firstNameOf(data.beneficiaryShortName || beneficiaryName) || "Player";
+        const weeksForDoc = selectedFromRecord.filter((weekId) =>
+          visibleWeekIds.has(weekId)
+        );
 
-          const beneficiaryStableKey = String(
-            data.beneficiaryStableKey ||
-              (data.beneficiaryType === "guest"
-                ? `guest:${normKey(beneficiaryName)}`
-                : `uid:${normKey(beneficiaryId || beneficiaryName)}`)
-          ).trim();
+        const paidWeeksForDoc = paidFromRecord.filter((weekId) =>
+          visibleWeekIds.has(weekId)
+        );
 
-          weeksForDoc.forEach((weekId) => {
-            if (!nextWeekKeys[weekId]) nextWeekKeys[weekId] = [];
-            if (!nextWeekKeys[weekId].includes(beneficiaryStableKey)) {
-              nextWeekKeys[weekId].push(beneficiaryStableKey);
-            }
-          });
+        const sameScope =
+          String(data.monthKey || data.signupScopeId || "") ===
+          String(calendarMonthKey || signupScopeId);
 
-          uniqueStrings([
-            beneficiaryId,
-            beneficiaryName,
-            beneficiaryShortName,
-            firstNameOf(beneficiaryName),
-            slugFromLooseName(beneficiaryName),
-          ])
-            .map(normKey)
-            .forEach((key) => {
-              if (!nextPlayerWeeks[key]) nextPlayerWeeks[key] = [];
-              weeksForDoc.forEach((weekId) => {
-                if (!nextPlayerWeeks[key].includes(weekId)) {
-                  nextPlayerWeeks[key].push(weekId);
-                }
-              });
-            });
+        /*
+          Keep both:
+          1) normal pendingSignups records,
+          2) matchSignups records created when a player reached payment flow.
+          This makes May/Yoco-failed payments visible for manual verification.
+        */
+        if (!sameScope && weeksForDoc.length === 0 && paidWeeksForDoc.length === 0) {
+          return;
+        }
 
-          if (weeksForDoc.length > 0) {
-            const unpaidWeeks = weeksForDoc.filter(
-              (weekId) => !paidWeeksForDoc.includes(weekId)
-            );
+        const beneficiaryId = String(
+          data.beneficiaryPlayerId || data.playerId || data.userId || ""
+        ).trim();
 
-            nextCommittedUsers.push({
-              docId: docSnap.id,
-              stableKey: beneficiaryStableKey,
-              userId: beneficiaryId,
-              fullName: beneficiaryName,
-              shortName: beneficiaryShortName,
-              beneficiaryType: data.beneficiaryType || "self",
-              paymentStatus:
-                data.paymentStatus ||
-                (unpaidWeeks.length === 0 ? "paid" : "pending"),
-              unpaidWeeks,
-              paidWeeks: paidWeeksForDoc,
-              selectedWeeks: weeksForDoc,
-              amountDueNow:
-                Number(data.totalAmount || 0) ||
-                sumWeekCosts(unpaidWeeks),
-            });
+        const beneficiaryName = toTitleCaseLoose(
+          data.beneficiaryName || data.playerName || data.shortName || "Player"
+        );
+
+        const beneficiaryShortName =
+          firstNameOf(data.beneficiaryShortName || beneficiaryName) || "Player";
+
+        const beneficiaryStableKey = String(
+          data.beneficiaryStableKey ||
+            (data.beneficiaryType === "guest"
+              ? `guest:${normKey(beneficiaryName)}`
+              : `uid:${normKey(beneficiaryId || beneficiaryName)}`)
+        ).trim();
+
+        weeksForDoc.forEach((weekId) => {
+          if (!nextWeekKeys[weekId]) nextWeekKeys[weekId] = [];
+          if (!nextWeekKeys[weekId].includes(beneficiaryStableKey)) {
+            nextWeekKeys[weekId].push(beneficiaryStableKey);
           }
         });
 
-        setLiveWeekKeys(nextWeekKeys);
-        setLivePlayerWeeks(nextPlayerWeeks);
-        setLiveCommittedUsers(nextCommittedUsers);
+        uniqueStrings([
+          beneficiaryId,
+          beneficiaryName,
+          beneficiaryShortName,
+          firstNameOf(beneficiaryName),
+          slugFromLooseName(beneficiaryName),
+        ])
+          .map(normKey)
+          .forEach((key) => {
+            if (!nextPlayerWeeks[key]) nextPlayerWeeks[key] = [];
+            weeksForDoc.forEach((weekId) => {
+              if (!nextPlayerWeeks[key].includes(weekId)) {
+                nextPlayerWeeks[key].push(weekId);
+              }
+            });
+          });
+
+        if (weeksForDoc.length > 0 || paidWeeksForDoc.length > 0) {
+          const unpaidWeeks = weeksForDoc.filter(
+            (weekId) => !paidWeeksForDoc.includes(weekId)
+          );
+
+          nextCommittedUsers.push({
+            docId: data.docId,
+            stableKey: beneficiaryStableKey,
+            userId: beneficiaryId,
+            fullName: beneficiaryName,
+            shortName: beneficiaryShortName,
+            beneficiaryType: data.beneficiaryType || "self",
+            paymentStatus:
+              data.paymentStatus ||
+              (unpaidWeeks.length === 0 ? "paid" : "pending"),
+            unpaidWeeks,
+            paidWeeks: paidWeeksForDoc,
+            selectedWeeks: weeksForDoc,
+            amountDueNow:
+              Number(data.totalAmount || data.amountDueNow || data.amountDue || 0) ||
+              sumWeekCosts(unpaidWeeks),
+            sourceCollections: data.sourceCollections || [],
+            rawData: data,
+          });
+        }
+      });
+
+      setLiveWeekKeys(nextWeekKeys);
+      setLivePlayerWeeks(nextPlayerWeeks);
+      setLiveCommittedUsers(nextCommittedUsers);
+    };
+
+    const pendingQuery = query(collection(db, "pendingSignups"));
+    const matchSignupQuery = query(collection(db, "matchSignups"));
+
+    const unsubscribePending = onSnapshot(
+      pendingQuery,
+      (snapshot) => {
+        latestPendingDocs = snapshot.docs.map((docSnap) => ({
+          docId: docSnap.id,
+          data: docSnap.data() || {},
+        }));
+        rebuildLiveSignupState();
       },
       (error) => {
         console.error("Failed to subscribe to pending signups:", error);
       }
     );
 
-    return () => unsubscribe();
-  }, [calendarMonthKey, signupScopeId, weeks, allMonthWeekIds]);
+    const unsubscribeMatchSignups = onSnapshot(
+      matchSignupQuery,
+      (snapshot) => {
+        latestMatchSignupDocs = snapshot.docs.map((docSnap) => ({
+          docId: docSnap.id,
+          data: docSnap.data() || {},
+        }));
+        rebuildLiveSignupState();
+      },
+      (error) => {
+        console.error("Failed to subscribe to match signups:", error);
+      }
+    );
+
+    return () => {
+      unsubscribePending();
+      unsubscribeMatchSignups();
+    };
+  }, [calendarMonthKey, signupScopeId, weeks, visibleWeekIds]);
 
   const paidWeekSet = useMemo(() => new Set(paidWeeks), [paidWeeks]);
 
@@ -1624,6 +1735,85 @@ export default function MatchSignupPage({
     () => new Set(effectivePaidWeeks),
     [effectivePaidWeeks]
   );
+
+  const paidWeeksFromAllKnownRecords = useMemo(
+    () =>
+      uniqueWeekIds([
+        ...effectivePaidWeeks,
+        ...currentBeneficiaryLiveRecords.flatMap((user) => {
+          const rawPaidWeeks = user?.rawData?.paidWeeks || user?.rawData?.primaryPaidWeeks;
+          if (Array.isArray(rawPaidWeeks)) return rawPaidWeeks;
+          if (Array.isArray(user?.paidWeeks)) return user.paidWeeks;
+          return [];
+        }),
+      ]),
+    [effectivePaidWeeks, currentBeneficiaryLiveRecords]
+  );
+
+  const visiblePaidWeeks = useMemo(
+    () => effectivePaidWeeks.filter((weekId) => visibleWeekIds.has(weekId)),
+    [effectivePaidWeeks, visibleWeekIds]
+  );
+
+  const upcomingMonthPaymentSummary = useMemo(() => {
+    const regularWeeks = allMonthWeeks.filter((week) => !week?.isChallenge);
+    if (!regularWeeks.length) {
+      return {
+        label: "Upcoming month",
+        paidCount: 0,
+        totalCount: 0,
+      };
+    }
+
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const monthMap = new Map();
+    regularWeeks.forEach((week) => {
+      if (!(week?.date instanceof Date)) return;
+      const key = `${week.date.getFullYear()}-${String(week.date.getMonth() + 1).padStart(2, "0")}`;
+      if (!monthMap.has(key)) {
+        monthMap.set(key, {
+          key,
+          date: new Date(week.date.getFullYear(), week.date.getMonth(), 1),
+          weeks: [],
+        });
+      }
+      monthMap.get(key).weeks.push(week);
+    });
+
+    const orderedMonths = Array.from(monthMap.values()).sort(
+      (a, b) => a.date - b.date
+    );
+
+    const futureMonth =
+      orderedMonths.find((item) => item.key > currentMonthKey) ||
+      orderedMonths[orderedMonths.length - 1];
+
+    const paidSet = new Set(paidWeeksFromAllKnownRecords);
+    const paidCount = futureMonth.weeks.filter((week) => paidSet.has(week.id)).length;
+
+    return {
+      label: futureMonth.date.toLocaleDateString("en-ZA", {
+        month: "long",
+        year: "numeric",
+      }),
+      paidCount,
+      totalCount: futureMonth.weeks.length,
+    };
+  }, [allMonthWeeks, paidWeeksFromAllKnownRecords]);
+
+  const specialEventPaymentSummary = useMemo(() => {
+    const challengeWeeks = allMonthWeeks.filter((week) => week?.isChallenge);
+    const paidSet = new Set(paidWeeksFromAllKnownRecords);
+    const paidCount = challengeWeeks.filter((week) => paidSet.has(week.id)).length;
+
+    return {
+      totalCount: challengeWeeks.length,
+      paidCount,
+      hasPaid: paidCount > 0,
+    };
+  }, [allMonthWeeks, paidWeeksFromAllKnownRecords]);
 
   const weekById = useMemo(() => {
     const map = new Map();
@@ -1949,37 +2139,80 @@ export default function MatchSignupPage({
 
     const bestByPlayer = new Map();
 
+    const scoreRecord = (user) =>
+      (Array.isArray(user?.selectedWeeks) ? user.selectedWeeks.length : 0) *
+        100 +
+      (Array.isArray(user?.paidWeeks) ? user.paidWeeks.length : 0) * 10 +
+      (Array.isArray(user?.unpaidWeeks) ? user.unpaidWeeks.length : 0);
+
+    const upsertCandidate = (user) => {
+      const playerKey = normKey(
+        user?.userId || user?.stableKey || user?.fullName || user?.shortName || ""
+      );
+      if (!playerKey) return;
+
+      const existing = bestByPlayer.get(playerKey);
+      if (!existing || scoreRecord(user) > scoreRecord(existing)) {
+        bestByPlayer.set(playerKey, user);
+      }
+    };
+
     liveCommittedUsers
       .filter((user) => String(user?.docId || "").trim())
-      .forEach((user) => {
-        const playerKey = normKey(
-          user?.userId || user?.stableKey || user?.fullName || user?.shortName || ""
-        );
-        if (!playerKey) return;
+      .forEach(upsertCandidate);
 
-        const currentScore =
-          (Array.isArray(user?.selectedWeeks) ? user.selectedWeeks.length : 0) *
-            100 +
-          (Array.isArray(user?.paidWeeks) ? user.paidWeeks.length : 0) * 10 +
-          (Array.isArray(user?.unpaidWeeks) ? user.unpaidWeeks.length : 0);
+    /*
+      If the current admin/player has ticked visible boxes that are not yet
+      written to Firestore, include that local draft in the admin verifier.
+      This makes the yellow selected fixtures immediately verifiable instead
+      of incorrectly showing only old April paid weeks.
+    */
+    const currentDraftSelectedWeeks = uniqueWeekIds(effectiveSelectedWeeks).filter(
+      (weekId) => visibleWeekIds.has(weekId)
+    );
+    const currentDraftPaidWeeks = uniqueWeekIds(effectivePaidWeeks).filter(
+      (weekId) => visibleWeekIds.has(weekId)
+    );
+    const currentDraftUnpaidWeeks = currentDraftSelectedWeeks.filter(
+      (weekId) => !currentDraftPaidWeeks.includes(weekId)
+    );
 
-        const existing = bestByPlayer.get(playerKey);
-        const existingScore = existing
-          ? (Array.isArray(existing?.selectedWeeks)
-              ? existing.selectedWeeks.length
-              : 0) *
-              100 +
-            (Array.isArray(existing?.paidWeeks) ? existing.paidWeeks.length : 0) *
-              10 +
-            (Array.isArray(existing?.unpaidWeeks)
-              ? existing.unpaidWeeks.length
-              : 0)
-          : -1;
-
-        if (!existing || currentScore > existingScore) {
-          bestByPlayer.set(playerKey, user);
-        }
+    if (currentDraftSelectedWeeks.length > 0) {
+      upsertCandidate({
+        docId: pendingId,
+        stableKey: beneficiary.stableKey,
+        userId: beneficiary.playerId,
+        fullName: beneficiary.fullName,
+        shortName: beneficiary.shortName,
+        beneficiaryType: beneficiary.mode,
+        paymentStatus:
+          currentDraftUnpaidWeeks.length === 0 ? "paid" : "pending",
+        unpaidWeeks: currentDraftUnpaidWeeks,
+        paidWeeks: currentDraftPaidWeeks,
+        selectedWeeks: currentDraftSelectedWeeks,
+        amountDueNow: sumWeekCosts(currentDraftUnpaidWeeks),
+        sourceCollections: ["localDraft", "pendingSignups"],
+        rawData: {
+          selectedWeeks: currentDraftSelectedWeeks,
+          paidWeeks: currentDraftPaidWeeks,
+          unpaidWeeks: currentDraftUnpaidWeeks,
+          monthKey: calendarMonthKey,
+          signupScopeId,
+          payerUserId,
+          payerName: displayName,
+          payerShortName: shortName,
+          userId: payerUserId,
+          playerId: beneficiary.playerId,
+          playerName: beneficiary.fullName,
+          shortName: beneficiary.shortName,
+          beneficiaryType: beneficiary.mode,
+          beneficiaryPlayerId: beneficiary.playerId,
+          beneficiaryName: beneficiary.fullName,
+          beneficiaryShortName: beneficiary.shortName,
+          beneficiaryStableKey: beneficiary.stableKey,
+        },
       });
+    }
 
     return Array.from(bestByPlayer.values()).sort((a, b) => {
       const unpaidDiff =
@@ -1988,7 +2221,20 @@ export default function MatchSignupPage({
       if (unpaidDiff !== 0) return unpaidDiff;
       return String(a?.fullName || "").localeCompare(String(b?.fullName || ""));
     });
-  }, [canManageSignupsAsAdmin, liveCommittedUsers]);
+  }, [
+    canManageSignupsAsAdmin,
+    liveCommittedUsers,
+    effectiveSelectedWeeks,
+    effectivePaidWeeks,
+    visibleWeekIds,
+    pendingId,
+    beneficiary,
+    calendarMonthKey,
+    signupScopeId,
+    payerUserId,
+    displayName,
+    shortName,
+  ]);
 
   const adminSelectedTarget = useMemo(
     () =>
@@ -2356,16 +2602,18 @@ export default function MatchSignupPage({
     try {
       const pendingRef = doc(db, "pendingSignups", target.docId);
       const pendingSnap = await getDoc(pendingRef);
-      if (!pendingSnap.exists()) {
-        throw new Error("Pending signup record not found.");
-      }
 
-      const pendingData = pendingSnap.data() || {};
+      const pendingData = pendingSnap.exists()
+        ? pendingSnap.data() || {}
+        : target.rawData || {};
+
       const existingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
         ? uniqueWeekIds(pendingData.selectedWeeks)
         : [];
-      const existingPaidWeeks = Array.isArray(pendingData.paidWeeks)
-        ? uniqueWeekIds(pendingData.paidWeeks)
+      const existingPaidWeeks = Array.isArray(
+        pendingData.paidWeeks || pendingData.primaryPaidWeeks
+      )
+        ? uniqueWeekIds(pendingData.paidWeeks || pendingData.primaryPaidWeeks)
         : [];
 
       const nextPaidWeeks = uniqueWeekIds([...existingPaidWeeks, ...verifyWeeks]);
@@ -2387,6 +2635,28 @@ export default function MatchSignupPage({
       await setDoc(
         pendingRef,
         {
+          activeSeasonId: resolvedSeasonId,
+          seasonAtSignupTime: resolvedSeasonId,
+          signupType,
+          signupScopeId,
+          signupScopeLabel,
+          monthLabel: calendarMonthData?.monthLabel || "",
+          monthKey: calendarMonthKey,
+          payerUserId,
+          payerName: displayName,
+          payerShortName: shortName,
+          userId: target.userId || pendingData.userId || payerUserId,
+          playerId: target.userId || pendingData.playerId || pendingData.beneficiaryPlayerId || "",
+          playerName: target.fullName || pendingData.playerName || pendingData.beneficiaryName || "",
+          shortName: target.shortName || pendingData.shortName || pendingData.beneficiaryShortName || "",
+          beneficiaryType: target.beneficiaryType || pendingData.beneficiaryType || "self",
+          beneficiaryPlayerId:
+            pendingData.beneficiaryPlayerId || target.userId || pendingData.playerId || "",
+          beneficiaryName: target.fullName || pendingData.beneficiaryName || pendingData.playerName || "",
+          beneficiaryShortName:
+            target.shortName || pendingData.beneficiaryShortName || pendingData.shortName || "",
+          beneficiaryStableKey:
+            target.stableKey || pendingData.beneficiaryStableKey || "",
           selectedWeeks: nextSelectedWeeks,
           paidWeeks: nextPaidWeeks,
           unpaidWeeks: nextUnpaidWeeks,
@@ -2476,7 +2746,7 @@ export default function MatchSignupPage({
 
       const data = pendingSnap.data() || {};
       const paidWeeksOnly = Array.isArray(data.paidWeeks)
-        ? data.paidWeeks.filter((weekId) => allMonthWeekIds.has(weekId))
+        ? data.paidWeeks.filter((weekId) => visibleWeekIds.has(weekId))
         : [];
       const nextStatus = paidWeeksOnly.length > 0 ? "paid" : "not_selected";
 
@@ -2624,12 +2894,12 @@ export default function MatchSignupPage({
         const pendingData = pendingSnap.data() || {};
         const existingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
           ? uniqueWeekIds(pendingData.selectedWeeks).filter((weekId) =>
-              allMonthWeekIds.has(weekId)
+              visibleWeekIds.has(weekId)
             )
           : [];
         const existingPaidWeeks = Array.isArray(pendingData.paidWeeks)
           ? uniqueWeekIds(pendingData.paidWeeks).filter((weekId) =>
-              allMonthWeekIds.has(weekId)
+              visibleWeekIds.has(weekId)
             )
           : [];
 
@@ -2796,19 +3066,16 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
   if (!week?.isChallenge) return base;
 
   const radiusTop =
-    edge === "top" ? { borderTopLeftRadius: 10, borderTopRightRadius: 10 } : {};
+    edge === "top" ? { borderTopLeftRadius: 8, borderTopRightRadius: 8 } : {};
   const radiusBottom =
-    edge === "bottom" ? { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 } : {};
+    edge === "bottom" ? { borderBottomLeftRadius: 8, borderBottomRightRadius: 8 } : {};
 
   return {
     ...base,
-    position: "relative",
-    zIndex: 3,
-    transform: "translateY(-1px)",
     background: base.background || undefined,
-    borderLeft: "2px solid rgba(248, 113, 113, 0.9)",
-    borderRight: "2px solid rgba(248, 113, 113, 0.9)",
-    boxShadow: "inset 0 0 0 1px rgba(248, 113, 113, 0.12)",
+    borderLeft: "1.5px solid rgba(248, 113, 113, 0.82)",
+    borderRight: "1.5px solid rgba(248, 113, 113, 0.82)",
+    boxShadow: "inset 0 0 0 1px rgba(248, 113, 113, 0.08)",
     ...radiusTop,
     ...radiusBottom,
   };
@@ -3516,7 +3783,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="signup-calendar-modal-header">
-              <h3>{calendarMonthData.monthLabel}</h3>
+              <h3>Upcoming game months</h3>
               <button
                 type="button"
                 className="secondary-btn signup-calendar-close-btn"
@@ -3528,95 +3795,120 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             </div>
 
             <p className="muted small signup-calendar-note">
-              Weekly match days are highlighted. The Challenge fixture appears in the main table as a gold special event.
+              Weekly match days are highlighted. The Challenge fixture appears in the main table as a special event.
             </p>
 
-            <div className="signup-calendar-weekdays">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
-                <div key={label} className="signup-calendar-weekday">
-                  {label}
+            <div
+              style={{
+                display: "flex",
+                gap: 18,
+                overflowX: "auto",
+                overflowY: "hidden",
+                padding: "4px 2px 10px",
+                scrollSnapType: "x proximity",
+                WebkitOverflowScrolling: "touch",
+              }}
+            >
+              {calendarMonthsData.map((monthData) => (
+                <div
+                  key={monthData.monthLabel}
+                  style={{
+                    flex: "0 0 min(320px, 88vw)",
+                    scrollSnapAlign: "start",
+                  }}
+                >
+                  <h4 style={{ margin: "0 0 8px" }}>{monthData.monthLabel}</h4>
+
+                  <div className="signup-calendar-weekdays">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+                      <div key={`${monthData.monthLabel}-${label}`} className="signup-calendar-weekday">
+                        {label}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="signup-calendar-grid">
+                    {monthData.cells.map((cell, index) => {
+                      if (!cell) {
+                        return (
+                          <div
+                            key={`${monthData.monthLabel}-empty-${index}`}
+                            className="signup-calendar-day is-empty"
+                          />
+                        );
+                      }
+
+                      const isTargetWeekday =
+                        cell.weekday === Number(matchSignupSettings.weeklyDay);
+                      const isSelectableDay = isCalendarSelectable(cell.id);
+                      const isSelected = effectiveSelectedWeeks.includes(cell.id);
+                      const isPaid = effectivePaidWeekSet.has(cell.id);
+                      const linkedWeek = getWeekByCalendarCellId(cell.id);
+
+                      if (isTargetWeekday && isSelectableDay && linkedWeek) {
+                        const linkedMeta = weekMeta.find((w) => w.id === linkedWeek.id);
+                        const isFull = linkedMeta?.status?.key === "full";
+                        const disableCalendarClick =
+                          beneficiaryNeedsSelection ||
+                          isPaid ||
+                          (isFull && !isSelected);
+
+                        return (
+                          <button
+                            key={cell.id}
+                            type="button"
+                            className={[
+                              "signup-calendar-day",
+                              "is-button",
+                              "is-wednesday",
+                              isSelected ? "is-selected is-signed" : "",
+                              isPaid ? "is-paid" : "",
+                              isFull ? "is-disabled" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            title={cell.date.toLocaleDateString("en-ZA", {
+                              weekday: "long",
+                              day: "2-digit",
+                              month: "long",
+                              year: "numeric",
+                            })}
+                            onClick={() => {
+                              if (!disableCalendarClick) {
+                                toggleWeek(linkedWeek);
+                              }
+                            }}
+                            disabled={disableCalendarClick}
+                            style={{ transition: "none", touchAction: "manipulation" }}
+                          >
+                            <span className="signup-calendar-day-number">
+                              {cell.day}
+                            </span>
+                            <span className="signup-calendar-day-check">
+                              {isPaid ? "✓" : isSelected ? "✓" : ""}
+                            </span>
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={cell.id}
+                          className={[
+                            "signup-calendar-day",
+                            isTargetWeekday ? "is-wednesday" : "",
+                            isSelected ? "is-selected is-signed" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                        >
+                          {cell.day}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
-            </div>
-
-            <div className="signup-calendar-grid">
-              {calendarMonthData.cells.map((cell, index) => {
-                if (!cell) {
-                  return (
-                    <div
-                      key={`empty-${index}`}
-                      className="signup-calendar-day is-empty"
-                    />
-                  );
-                }
-
-                const isWednesday = cell.weekday === 3;
-                const isSelectableWednesday = isCalendarSelectable(cell.id);
-                const isSelected = effectiveSelectedWeeks.includes(cell.id);
-                const isPaid = effectivePaidWeekSet.has(cell.id);
-                const linkedWeek = getWeekByCalendarCellId(cell.id);
-
-                if (isWednesday && isSelectableWednesday && linkedWeek) {
-                  const linkedMeta = weekMeta.find((w) => w.id === linkedWeek.id);
-                  const isFull = linkedMeta?.status?.key === "full";
-                  const disableCalendarClick =
-                    beneficiaryNeedsSelection ||
-                    isPaid ||
-                    (isFull && !isSelected);
-
-                  return (
-                    <button
-                      key={cell.id}
-                      type="button"
-                      className={[
-                        "signup-calendar-day",
-                        "is-button",
-                        "is-wednesday",
-                        isSelected ? "is-selected is-signed" : "",
-                        isPaid ? "is-paid" : "",
-                        isFull ? "is-disabled" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      title={cell.date.toLocaleDateString("en-ZA", {
-                        weekday: "long",
-                        day: "2-digit",
-                        month: "long",
-                        year: "numeric",
-                      })}
-                      onClick={() => {
-                        if (!disableCalendarClick) {
-                          toggleWeek(linkedWeek);
-                        }
-                      }}
-                      disabled={disableCalendarClick}
-                      style={{ transition: "none", touchAction: "manipulation" }}
-                    >
-                      <span className="signup-calendar-day-number">
-                        {cell.day}
-                      </span>
-                      <span className="signup-calendar-day-check">
-                        {isPaid ? "✓" : isSelected ? "✓" : ""}
-                      </span>
-                    </button>
-                  );
-                }
-
-                return (
-                  <div
-                    key={cell.id}
-                    className={[
-                      "signup-calendar-day",
-                      isWednesday ? "is-wednesday" : "",
-                      isSelected ? "is-selected is-signed" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  >
-                    {cell.day}
-                  </div>
-                );
-              })}
             </div>
           </div>
         </div>
@@ -3835,7 +4127,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                 key={`head-${week.id}`}
                 className={`matrix-week-head status-${week.status.key} ${week.isChallenge ? "is-challenge-week" : ""}`}
                 title={week.fullLabel}
-                style={getSpecialColumnStyle(week, {}, "top")}
+                style={getSpecialColumnStyle(week, week.isChallenge ? { position: "relative", overflow: "hidden" } : {}, "top")}
               >
 {week.isChallenge ? (
   <div
@@ -4093,12 +4385,34 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               </div>
 
               {isFullyPaidSelection ? (
-                <div className="summary-row">
-                  <span>Paid this month</span>
-                  <strong>
-                    {effectivePaidWeeks.length} week{effectivePaidWeeks.length === 1 ? "" : "s"}
-                  </strong>
-                </div>
+                <>
+                  <div className="summary-row">
+                    <span>Upcoming fixtures paid</span>
+                    <strong>
+                      {visiblePaidWeeks.length} week{visiblePaidWeeks.length === 1 ? "" : "s"}
+                    </strong>
+                  </div>
+
+                  <div className="summary-row">
+                    <span>{upcomingMonthPaymentSummary.label} paid</span>
+                    <strong>
+                      {upcomingMonthPaymentSummary.paidCount} week{upcomingMonthPaymentSummary.paidCount === 1 ? "" : "s"}
+                    </strong>
+                  </div>
+
+                  {specialEventPaymentSummary.totalCount > 0 ? (
+                    <div className="summary-row">
+                      <span>Special event</span>
+                      <strong>
+                        {specialEventPaymentSummary.hasPaid
+                          ? `Paid · ${specialEventPaymentSummary.paidCount} fixture${
+                              specialEventPaymentSummary.paidCount === 1 ? "" : "s"
+                            }`
+                          : "Not paid"}
+                      </strong>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
 
               <div className="summary-row total">

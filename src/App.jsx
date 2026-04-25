@@ -1167,7 +1167,19 @@ export default function App() {
 
   const handleBackToLanding = () => setPage(PAGE_LANDING);
   const handleBackToLive = () => setPage(PAGE_LIVE);
-  const handleGoToMatchSignup = () => setPage(PAGE_MATCH_SIGNUP);
+  const canAccessMatchSignup = isAdmin || isCaptain || isPlayer;
+
+  const handleGoToMatchSignup = () => {
+    if (!canAccessMatchSignup) {
+      window.alert(
+        "Please sign in as a Turf Kings player before using payments. This prevents untracked payments."
+      );
+      setPage(PAGE_ENTRY);
+      return;
+    }
+
+    setPage(PAGE_MATCH_SIGNUP);
+  };
 
   const handleUpdatePairing = (match) => {
     if (!canStartMatch) {
@@ -2519,7 +2531,7 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_MATCH_SIGNUP && (
+      {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (
         <MatchSignupPage
           identity={identity}
           currentUser={null}
@@ -2528,6 +2540,15 @@ export default function App() {
           playerPhotosByName={playerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
+        />
+      )}
+
+      {page === PAGE_MATCH_SIGNUP && !canAccessMatchSignup && (
+        <EntryPage
+          identity={identity}
+          members={members}
+          onComplete={handleEntryComplete}
+          onDevSkipToLanding={() => setPage(PAGE_LANDING)}
         />
       )}
 
@@ -3108,6 +3129,7 @@ export default function App() {
           hasLiveMatch={hasLiveMatch || running}
           canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
           canManageSquads={canManageSquads}
+          canAccessPayments={canAccessMatchSignup}
         />
       ) : null}
 

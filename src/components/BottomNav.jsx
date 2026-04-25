@@ -1,5 +1,7 @@
 // src/components/BottomNav.jsx
-// Flat integrated footer version with NO rounded outer edges
+// Flat integrated footer version with NO rounded outer edges.
+// Keeps every navigation item visible, highlights the current page in green,
+// and centres the ribbon neatly on wide desktop screens.
 // Uses public/strategy.png for the Lineups icon.
 
 import React from "react";
@@ -16,38 +18,54 @@ const items = [
   { key: "match-signup", emoji: "💳", label: "Pay" },
 ];
 
-export default function BottomNav({ currentPage, onNavigate }) {
-  const visible = items.filter((item) => item.key !== currentPage);
+export default function BottomNav({
+  currentPage,
+  onNavigate,
+  canAccessPayments = true,
+}) {
+  const visible = items.filter((item) => {
+    if (item.key === "match-signup" && !canAccessPayments) return false;
+    return true;
+  });
 
   return (
     <>
       <nav className="tk-bottom-nav-flat" aria-label="Turf Kings navigation">
-        <div className="tk-bottom-nav-scroll">
-          {visible.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => onNavigate?.(item.key)}
-              className={`nav-pill ${item.key === "live" ? "featured" : ""}`}
-            >
-              <span className="nav-icon-wrap">
-                {item.image ? (
-                  <img
-                    src={item.image}
-                    alt=""
-                    className="nav-custom-icon"
-                    draggable="false"
-                  />
-                ) : (
-                  <span className="nav-emoji">{item.emoji}</span>
-                )}
-              </span>
+        <div className="tk-bottom-nav-inner">
+          <div className="tk-bottom-nav-scroll">
+            {visible.map((item) => {
+              const isCurrent = item.key === currentPage;
 
-              <span className="nav-label">{item.label}</span>
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    if (!isCurrent) onNavigate?.(item.key);
+                  }}
+                  className={`nav-pill ${isCurrent ? "is-current" : ""}`}
+                  aria-current={isCurrent ? "page" : undefined}
+                >
+                  <span className="nav-icon-wrap">
+                    {item.image ? (
+                      <img
+                        src={item.image}
+                        alt=""
+                        className="nav-custom-icon"
+                        draggable="false"
+                      />
+                    ) : (
+                      <span className="nav-emoji">{item.emoji}</span>
+                    )}
+                  </span>
 
-              {item.key === "live" && <span className="live-indicator" />}
-            </button>
-          ))}
+                  <span className="nav-label">{item.label}</span>
+
+                  {isCurrent && <span className="current-indicator" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </nav>
 
@@ -79,8 +97,15 @@ export default function BottomNav({ currentPage, onNavigate }) {
             8px;
         }
 
+        .tk-bottom-nav-inner {
+          width: 100%;
+          max-width: 920px;
+          margin: 0 auto;
+        }
+
         .tk-bottom-nav-scroll {
           display: flex;
+          justify-content: center;
           gap: 8px;
           overflow-x: auto;
           scrollbar-width: none;
@@ -123,15 +148,20 @@ export default function BottomNav({ currentPage, onNavigate }) {
           transform: translateY(1px);
         }
 
-        .nav-pill.featured {
+        .nav-pill.is-current {
           background:
+            radial-gradient(circle at 50% 0%, rgba(34,197,94,.34), transparent 58%),
             linear-gradient(
               180deg,
               #123929,
               #143627
             );
 
-          border-color: rgba(34,197,94,.48);
+          border-color: rgba(34,197,94,.55);
+          box-shadow:
+            0 0 18px rgba(34,197,94,.16),
+            inset 0 1px 0 rgba(255,255,255,.08);
+          cursor: default;
         }
 
         .nav-icon-wrap {
@@ -166,7 +196,11 @@ export default function BottomNav({ currentPage, onNavigate }) {
           white-space: nowrap;
         }
 
-        .live-indicator {
+        .nav-pill.is-current .nav-label {
+          color: #86efac;
+        }
+
+        .current-indicator {
           position: absolute;
           bottom: 0;
           left: 18%;
@@ -174,6 +208,16 @@ export default function BottomNav({ currentPage, onNavigate }) {
           height: 3px;
           border-radius: 4px;
           background: #22c55e;
+        }
+
+        @media (max-width: 760px) {
+          .tk-bottom-nav-inner {
+            max-width: none;
+          }
+
+          .tk-bottom-nav-scroll {
+            justify-content: flex-start;
+          }
         }
 
         @media (max-width: 380px) {
