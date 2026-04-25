@@ -194,8 +194,7 @@ function sanitizeLineupShapeLocal(
     guestPlayers: uniqueByLower(lineup.guestPlayers || []),
     benchSnapshot: buildOrderedBenchPool(remaining, lineup?.benchSnapshot || []),
     meta: {
-      savedByRole:
-        lineup?.meta?.savedByRole || LINEUP_SAVE_ROLE_GENERAL,
+      savedByRole: lineup?.meta?.savedByRole || LINEUP_SAVE_ROLE_GENERAL,
       savedByEmail: lineup?.meta?.savedByEmail || null,
       savedByName: lineup?.meta?.savedByName || null,
       savedAt: lineup?.meta?.savedAt || null,
@@ -351,9 +350,9 @@ function getSaveRole(
     .trim()
     .toLowerCase();
 
-  const explicitRole = String(
-    authUser?.role || identity?.role || ""
-  ).trim().toLowerCase();
+  const explicitRole = String(authUser?.role || identity?.role || "")
+    .trim()
+    .toLowerCase();
 
   const displayName =
     authUser?.fullName ||
@@ -369,8 +368,7 @@ function getSaveRole(
     return {
       savedByRole: LINEUP_SAVE_ROLE_CAPTAIN,
       teamCaptainPreferred: true,
-      savedByEmail:
-        String(authUser?.email || identity?.email || "").trim() || null,
+      savedByEmail: String(authUser?.email || identity?.email || "").trim() || null,
       savedByName: canonicalDisplayName || displayName || null,
     };
   }
@@ -384,8 +382,7 @@ function getSaveRole(
     return {
       savedByRole: LINEUP_SAVE_ROLE_CAPTAIN,
       teamCaptainPreferred: true,
-      savedByEmail:
-        String(authUser?.email || identity?.email || "").trim() || null,
+      savedByEmail: String(authUser?.email || identity?.email || "").trim() || null,
       savedByName: canonicalDisplayName || displayName || null,
     };
   }
@@ -394,8 +391,7 @@ function getSaveRole(
     return {
       savedByRole: LINEUP_SAVE_ROLE_ADMIN,
       teamCaptainPreferred: false,
-      savedByEmail:
-        String(authUser?.email || identity?.email || "").trim() || null,
+      savedByEmail: String(authUser?.email || identity?.email || "").trim() || null,
       savedByName: canonicalDisplayName || displayName || null,
     };
   }
@@ -403,8 +399,7 @@ function getSaveRole(
   return {
     savedByRole: LINEUP_SAVE_ROLE_GENERAL,
     teamCaptainPreferred: false,
-    savedByEmail:
-      String(authUser?.email || identity?.email || "").trim() || null,
+    savedByEmail: String(authUser?.email || identity?.email || "").trim() || null,
     savedByName: canonicalDisplayName || displayName || null,
   };
 }
@@ -446,13 +441,59 @@ function makeSavedLineup(
   };
 }
 
+function StatCornerBadge({ icon, count }) {
+  if (!count || count <= 0) return null;
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        gap: "1px",
+        color: "#ffffff",
+        fontWeight: 900,
+        fontSize: "0.68rem",
+        lineHeight: 1,
+        textShadow:
+          "0 1px 2px rgba(2,6,23,0.95), 0 0 4px rgba(2,6,23,0.85)",
+        pointerEvents: "none",
+        minHeight: "10px",
+      }}
+      title={`${count} ${icon === "⚽" ? "goal" : "assist"}${count > 1 ? "s" : ""}`}
+    >
+      <span style={{ lineHeight: 1 }}>{icon}</span>
+      {count > 1 ? (
+        <sup
+          style={{
+            fontSize: "0.5rem",
+            lineHeight: 1,
+            fontWeight: 900,
+            color: "#ffffff",
+            marginTop: "-5px",
+            textShadow:
+              "0 1px 2px rgba(2,6,23,1), 0 0 4px rgba(2,6,23,0.95)",
+          }}
+        >
+          {count}
+        </sup>
+      ) : null}
+    </div>
+  );
+}
+
 function PlayerBenchChip({
   name,
   isSelected,
   onClick,
   photoData,
   disabled = false,
+  decor = null,
 }) {
+  const rating = decor?.rating != null ? Number(decor.rating || 0) : null;
+  const goals = Number(decor?.icons?.goals || 0);
+  const assists = Number(decor?.icons?.assists || 0);
+
   return (
     <button
       type="button"
@@ -462,8 +503,8 @@ function PlayerBenchChip({
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: "0.45rem",
-        padding: "0.38rem 0.7rem",
+        gap: "0.42rem",
+        padding: "0.34rem 0.62rem",
       }}
     >
       <span
@@ -507,6 +548,41 @@ function PlayerBenchChip({
       </span>
 
       <span>{name}</span>
+
+      {rating != null ? (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minWidth: "28px",
+            padding: "0.12rem 0.34rem",
+            borderRadius: "999px",
+            background: "rgba(34,197,94,0.16)",
+            border: "1px solid rgba(34,197,94,0.32)",
+            color: "#86efac",
+            fontWeight: 900,
+            fontSize: "0.76rem",
+            lineHeight: 1,
+          }}
+        >
+          {rating.toFixed(1)}
+        </span>
+      ) : null}
+
+      {(goals > 0 || assists > 0) ? (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.18rem",
+            marginLeft: "-0.1rem",
+          }}
+        >
+          <StatCornerBadge icon="⚽" count={goals} />
+          <StatCornerBadge icon="👟" count={assists} />
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -514,47 +590,6 @@ function PlayerBenchChip({
 const PLAYERS_COLLECTION = "players";
 const MAX_SUBS = 6;
 const LONG_PRESS_MS = 650;
-
-function StatCornerBadge({ icon, count }) {
-  if (!count || count <= 0) return null;
-
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "flex-start",
-        gap: "1px",
-        color: "#ffffff",
-        fontWeight: 900,
-        fontSize: "0.68rem",
-        lineHeight: 1,
-        textShadow:
-          "0 1px 2px rgba(2,6,23,0.95), 0 0 4px rgba(2,6,23,0.85)",
-        pointerEvents: "none",
-        minHeight: "10px",
-      }}
-      title={`${count} ${icon === "⚽" ? "goal" : "assist"}${count > 1 ? "s" : ""}`}
-    >
-      <span style={{ lineHeight: 1 }}>{icon}</span>
-      {count > 1 ? (
-        <sup
-          style={{
-            fontSize: "0.5rem",
-            lineHeight: 1,
-            fontWeight: 900,
-            color: "#ffffff",
-            marginTop: "-5px",
-            textShadow:
-              "0 1px 2px rgba(2,6,23,1), 0 0 4px rgba(2,6,23,0.95)",
-          }}
-        >
-          {count}
-        </sup>
-      ) : null}
-    </div>
-  );
-}
 
 export function FormationsPage({
   teams,
@@ -572,14 +607,12 @@ export function FormationsPage({
 
   const [lineupsByTeam, setLineupsByTeam] = useState(() => loadSavedLineups());
 
-  const initialTeamId =
-    currentMatch?.teamAId || (teams[0] ? teams[0].id : null);
+  const initialTeamId = currentMatch?.teamAId || (teams[0] ? teams[0].id : null);
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId);
 
   const [gameType, setGameType] = useState(GAME_TYPE_5);
 
-  const selectedTeam =
-    teams.find((t) => t.id === selectedTeamId) || teams[0] || null;
+  const selectedTeam = teams.find((t) => t.id === selectedTeamId) || teams[0] || null;
 
   const exportRef = useRef(null);
   const longPressTimerRef = useRef(null);
@@ -608,11 +641,7 @@ export function FormationsPage({
           const data = d.data() || {};
 
           const fullName = toTitleCase(
-            data.fullName ||
-              data.displayName ||
-              data.name ||
-              data.playerName ||
-              ""
+            data.fullName || data.displayName || data.name || data.playerName || ""
           );
 
           const shortName = toTitleCase(
@@ -828,8 +857,7 @@ export function FormationsPage({
 
   const verifiedPlayerName = useMemo(() => {
     const role = identity?.role || authUser?.role || null;
-    const isRealPlayer =
-      role === "player" || role === "captain" || role === "admin";
+    const isRealPlayer = role === "player" || role === "captain" || role === "admin";
 
     if (!isRealPlayer) return null;
 
@@ -917,8 +945,7 @@ export function FormationsPage({
       ...t,
       players: (t.players || [])
         .map((p) => {
-          const raw =
-            typeof p === "string" ? p : p?.name || p?.displayName || "";
+          const raw = typeof p === "string" ? p : p?.name || p?.displayName || "";
           return canonicalName(raw);
         })
         .filter(Boolean),
@@ -928,9 +955,7 @@ export function FormationsPage({
   }, [teams, playerResolver]);
 
   const selectedTeamCanonical =
-    canonicalTeams.find((t) => t.id === selectedTeamId) ||
-    canonicalTeams[0] ||
-    null;
+    canonicalTeams.find((t) => t.id === selectedTeamId) || canonicalTeams[0] || null;
 
   const loggedInCanonicalName = useMemo(() => {
     const rawName =
@@ -944,9 +969,9 @@ export function FormationsPage({
   }, [authUser, identity, canonicalName]);
 
   const effectiveCaptainName = useMemo(() => {
-    const explicitRole = String(
-      authUser?.role || identity?.role || ""
-    ).trim().toLowerCase();
+    const explicitRole = String(authUser?.role || identity?.role || "")
+      .trim()
+      .toLowerCase();
 
     if (gameType === GAME_TYPE_11 && explicitRole === "admin") {
       return loggedInCanonicalName || "";
@@ -968,13 +993,10 @@ export function FormationsPage({
     return isCaptainPlayer(name) ? `${label} (C)` : label;
   };
 
-  const formationsMap =
-    gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
+  const formationsMap = gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
 
   const defaultFormationId =
-    gameType === GAME_TYPE_11
-      ? DEFAULT_FORMATION_ID_11
-      : DEFAULT_FORMATION_ID_5;
+    gameType === GAME_TYPE_11 ? DEFAULT_FORMATION_ID_11 : DEFAULT_FORMATION_ID_5;
 
   const buildResolvedLineup = (teamId, targetGameType) => {
     const targetTeam =
@@ -984,14 +1006,10 @@ export function FormationsPage({
       targetGameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
 
     const targetDefaultFormationId =
-      targetGameType === GAME_TYPE_11
-        ? DEFAULT_FORMATION_ID_11
-        : DEFAULT_FORMATION_ID_5;
+      targetGameType === GAME_TYPE_11 ? DEFAULT_FORMATION_ID_11 : DEFAULT_FORMATION_ID_5;
 
     const targetPlayerPool =
-      targetGameType === GAME_TYPE_11
-        ? turfKingsPlayers
-        : targetTeam?.players || [];
+      targetGameType === GAME_TYPE_11 ? turfKingsPlayers : targetTeam?.players || [];
 
     const next = resolveLatestPreferredTeamLineup(
       targetTeam,
@@ -1076,7 +1094,9 @@ export function FormationsPage({
     if (gameType !== GAME_TYPE_5) return {};
     if (!selectedTeamCanonical?.id) return {};
 
-    const teamPlayers = Object.values(lineup.positions || {}).filter(Boolean);
+    // Use the whole selected team, not only the 5 players on the pitch,
+    // so substitutes also show rating / goals / assists after the match day.
+    const teamPlayers = selectedTeamCanonical?.players || [];
 
     return buildFormationDecorations({
       teamId: selectedTeamCanonical.id,
@@ -1088,16 +1108,13 @@ export function FormationsPage({
   }, [
     gameType,
     selectedTeamCanonical,
-    lineup,
     currentMatchDayEvents,
     results,
     canonicalName,
   ]);
 
   const benchPoolPlayers =
-    gameType === GAME_TYPE_11
-      ? turfKingsPlayers
-      : selectedTeamCanonical?.players || [];
+    gameType === GAME_TYPE_11 ? turfKingsPlayers : selectedTeamCanonical?.players || [];
 
   const assignedKeys = new Set(
     Object.values(lineup.positions)
@@ -1115,8 +1132,7 @@ export function FormationsPage({
   );
 
   const subsPlayers = orderedBenchPool.slice(0, MAX_SUBS);
-  const reservePlayers =
-    gameType === GAME_TYPE_11 ? orderedBenchPool.slice(MAX_SUBS) : [];
+  const reservePlayers = gameType === GAME_TYPE_11 ? orderedBenchPool.slice(MAX_SUBS) : [];
 
   const handleTeamClick = (teamId) => {
     const nextLineup = buildResolvedLineup(teamId, gameType);
@@ -1154,8 +1170,7 @@ export function FormationsPage({
       gameType
     );
 
-    const saveRole =
-      previewLineup?.meta?.savedByRole || LINEUP_SAVE_ROLE_GENERAL;
+    const saveRole = previewLineup?.meta?.savedByRole || LINEUP_SAVE_ROLE_GENERAL;
 
     const currentDefaultInfo = getCurrentDefaultVariantInfoLocal(
       lineupsByTeam,
@@ -1164,10 +1179,8 @@ export function FormationsPage({
     );
 
     const currentDefaultRole = currentDefaultInfo?.role || "";
-    const currentDefaultName =
-      currentDefaultInfo?.lineup?.meta?.savedByName || "captain";
-    const currentDefaultTime =
-      currentDefaultInfo?.lineup?.meta?.savedAt || "";
+    const currentDefaultName = currentDefaultInfo?.lineup?.meta?.savedByName || "captain";
+    const currentDefaultTime = currentDefaultInfo?.lineup?.meta?.savedAt || "";
 
     const isAdminTryingToOverrideCaptain =
       saveRole === LINEUP_SAVE_ROLE_ADMIN &&
@@ -1176,9 +1189,7 @@ export function FormationsPage({
     if (isAdminTryingToOverrideCaptain) {
       const ok = window.confirm(
         `The current default squad was last set by ${currentDefaultName}${
-          currentDefaultTime
-            ? ` on ${new Date(currentDefaultTime).toLocaleString()}`
-            : ""
+          currentDefaultTime ? ` on ${new Date(currentDefaultTime).toLocaleString()}` : ""
         }.\n\nHave you agreed with the captain to change his default squad?`
       );
 
@@ -1202,11 +1213,9 @@ export function FormationsPage({
     if (!canEditLineups) return;
 
     const newFormationId = e.target.value;
-    const formationsForType =
-      gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
+    const formationsForType = gameType === GAME_TYPE_11 ? FORMATIONS_11 : FORMATIONS_5;
     const newFormation =
-      formationsForType[newFormationId] ||
-      formationsForType[Object.keys(formationsForType)[0]];
+      formationsForType[newFormationId] || formationsForType[Object.keys(formationsForType)[0]];
 
     const currentPlayersInOrder = formation.positions
       .map((pos) => lineup.positions[pos.id])
@@ -1235,25 +1244,13 @@ export function FormationsPage({
   const handleSubClick = (playerName) => {
     if (!canEditLineups) return;
 
-    if (
-      selectedPlayer &&
-      selectedPlayer.from === "sub" &&
-      selectedPlayer.name === playerName
-    ) {
+    if (selectedPlayer && selectedPlayer.from === "sub" && selectedPlayer.name === playerName) {
       setSelectedPlayer(null);
       return;
     }
 
-    if (
-      selectedPlayer &&
-      selectedPlayer.from === "reserve" &&
-      selectedPlayer.name
-    ) {
-      const swappedBench = swapNamesInList(
-        orderedBenchPool,
-        playerName,
-        selectedPlayer.name
-      );
+    if (selectedPlayer && selectedPlayer.from === "reserve" && selectedPlayer.name) {
+      const swappedBench = swapNamesInList(orderedBenchPool, playerName, selectedPlayer.name);
 
       const updated = {
         ...lineup,
@@ -1276,25 +1273,13 @@ export function FormationsPage({
   const handleReserveClick = (playerName) => {
     if (!canEditLineups) return;
 
-    if (
-      selectedPlayer &&
-      selectedPlayer.from === "reserve" &&
-      selectedPlayer.name === playerName
-    ) {
+    if (selectedPlayer && selectedPlayer.from === "reserve" && selectedPlayer.name === playerName) {
       setSelectedPlayer(null);
       return;
     }
 
-    if (
-      selectedPlayer &&
-      selectedPlayer.from === "sub" &&
-      selectedPlayer.name
-    ) {
-      const swappedBench = swapNamesInList(
-        orderedBenchPool,
-        selectedPlayer.name,
-        playerName
-      );
+    if (selectedPlayer && selectedPlayer.from === "sub" && selectedPlayer.name) {
+      const swappedBench = swapNamesInList(orderedBenchPool, selectedPlayer.name, playerName);
 
       const updated = {
         ...lineup,
@@ -1326,9 +1311,7 @@ export function FormationsPage({
     }
 
     if (selectedPlayer.from === "reserve") {
-      window.alert(
-        "A reserve must first swap with a sub before entering the lineup."
-      );
+      window.alert("A reserve must first swap with a sub before entering the lineup.");
       return;
     }
 
@@ -1415,11 +1398,9 @@ export function FormationsPage({
         backgroundColor: "#0f172a",
       });
 
-      const filename = `${slugFromName(
-        selectedTeamCanonical?.label || "team"
-      )}_${gameType === GAME_TYPE_5 ? "5aside" : "11aside"}_${
-        formation?.id || "formation"
-      }.png`;
+      const filename = `${slugFromName(selectedTeamCanonical?.label || "team")}_${
+        gameType === GAME_TYPE_5 ? "5aside" : "11aside"
+      }_${formation?.id || "formation"}.png`;
 
       const link = document.createElement("a");
       link.download = filename;
@@ -1450,91 +1431,13 @@ export function FormationsPage({
     if (!saveMeta) return "";
     const role = saveMeta.savedByRole || "general";
     const who = saveMeta.savedByName || saveMeta.savedByEmail || "unknown";
-    const captainBit = saveMeta.teamCaptainPreferred
-      ? " • team captain preferred"
-      : "";
+    const captainBit = saveMeta.teamCaptainPreferred ? " • team captain preferred" : "";
     return `Saved by ${who} (${role})${captainBit}`;
   }, [saveMeta]);
 
-  if (!selectedTeamCanonical) {
-    return (
-      <div className="page lineups-page">
-        <div
-          className={`landing-header-sticky ${
-            headerScrolled ? "is-scrolled" : ""
-          }`}
-        >
-          <header className="header">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "0.75rem",
-                width: "100%",
-              }}
-            >
-              <div className="header-title" style={{ minWidth: 0 }}>
-                <h1 style={{ margin: 0 }}>Lineups &amp; Formations</h1>
-              </div>
-
-              <button
-                className="secondary-btn"
-                type="button"
-                onClick={onBack}
-                aria-label="Home"
-                title="Home"
-                style={{
-                  minWidth: "46px",
-                  width: "46px",
-                  height: "46px",
-                  padding: 0,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "1.05rem",
-                  flexShrink: 0,
-                }}
-              >
-                🏠
-              </button>
-            </div>
-          </header>
-        </div>
-
-        <header className="header">
-          <div className="header-top-row">
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={onGoToSquads}
-              style={{
-                background:
-                  "linear-gradient(180deg, rgba(20, 35, 63, 0.98), rgba(11, 23, 48, 0.98))",
-                color: "#f8fafc",
-                border: "1px solid rgba(148, 163, 184, 0.28)",
-                boxShadow: "0 10px 24px rgba(2, 6, 23, 0.35)",
-              }}
-            >
-              Manage Squads
-            </button>
-          </div>
-        </header>
-
-        <section className="card">
-          <p>No teams found yet.</p>
-        </section>
-      </div>
-    );
-  }
-
-  return (
-    <div className="page lineups-page">
-      <div
-        className={`landing-header-sticky ${
-          headerScrolled ? "is-scrolled" : ""
-        }`}
-      >
+  const renderTopHeader = (isEmpty = false) => (
+    <>
+      <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
         <header className="header">
           <div
             style={{
@@ -1573,7 +1476,7 @@ export function FormationsPage({
         </header>
       </div>
 
-      <header className="header">
+      <header className="header" style={{ marginBottom: isEmpty ? undefined : "0.35rem" }}>
         <div className="header-top-row">
           <button
             className="secondary-btn"
@@ -1591,6 +1494,23 @@ export function FormationsPage({
           </button>
         </div>
       </header>
+    </>
+  );
+
+  if (!selectedTeamCanonical) {
+    return (
+      <div className="page lineups-page">
+        {renderTopHeader(true)}
+        <section className="card">
+          <p>No teams found yet.</p>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page lineups-page">
+      {renderTopHeader()}
 
       <section
         ref={exportRef}
@@ -1603,6 +1523,7 @@ export function FormationsPage({
         style={{
           position: "relative",
           opacity: savingFormationImage ? 0.92 : 1,
+          paddingBottom: "0.8rem",
         }}
         title="Double-click to save. On mobile, long-press to save."
       >
@@ -1612,18 +1533,14 @@ export function FormationsPage({
             <div className="segmented-toggle">
               <button
                 type="button"
-                className={`segmented-option ${
-                  gameType === GAME_TYPE_5 ? "active" : ""
-                }`}
+                className={`segmented-option ${gameType === GAME_TYPE_5 ? "active" : ""}`}
                 onClick={() => handleGameTypeClick(GAME_TYPE_5)}
               >
                 5-a-side
               </button>
               <button
                 type="button"
-                className={`segmented-option ${
-                  gameType === GAME_TYPE_11 ? "active" : ""
-                }`}
+                className={`segmented-option ${gameType === GAME_TYPE_11 ? "active" : ""}`}
                 onClick={() => handleGameTypeClick(GAME_TYPE_11)}
               >
                 11-a-side
@@ -1639,9 +1556,7 @@ export function FormationsPage({
                   <button
                     key={t.id}
                     type="button"
-                    className={`team-pill-btn ${
-                      t.id === selectedTeamCanonical.id ? "active" : ""
-                    }`}
+                    className={`team-pill-btn ${t.id === selectedTeamCanonical.id ? "active" : ""}`}
                     onClick={() => handleTeamClick(t.id)}
                   >
                     {t.label}
@@ -1653,8 +1568,7 @@ export function FormationsPage({
             <div className="field-row inline-field">
               <label>11-a-side squad</label>
               <p className="muted small">
-                Using full Turf Kings player pool{" "}
-                <strong>({turfKingsPlayers.length} players)</strong>.
+                Using full Turf Kings player pool <strong>({turfKingsPlayers.length} players)</strong>.
               </p>
             </div>
           )}
@@ -1677,16 +1591,13 @@ export function FormationsPage({
         </div>
 
         {saveMetaText ? (
-          <p
-            className="muted small"
-            style={{ marginTop: "-0.35rem", marginBottom: "0.9rem" }}
-          >
+          <p className="muted small" style={{ marginTop: "-0.35rem", marginBottom: "0.55rem" }}>
             {saveMetaText}
           </p>
         ) : null}
 
-        <div className="lineups-layout">
-          <div className="pitch-wrapper">
+        <div className="lineups-layout" style={{ gap: "0.55rem" }}>
+          <div className="pitch-wrapper" style={{ marginBottom: 0 }}>
             <div className="pitch">
               <div className="pitch-centre-circle" />
               <div className="pitch-half-line" />
@@ -1713,18 +1624,14 @@ export function FormationsPage({
                   boxShadow: "0 6px 14px rgba(2, 6, 23, 0.18)",
                 }}
               >
-                {gameType === GAME_TYPE_5
-                  ? selectedTeamCanonical?.label || "5-a-side"
-                  : "TurfKings FC"}
+                {gameType === GAME_TYPE_5 ? selectedTeamCanonical?.label || "5-a-side" : "TurfKings FC"}
               </div>
 
               {formation.positions.map((pos) => {
                 const name = lineup.positions[pos.id] || "";
-                const decor = matchDayDecorations[name] || null;
+                const decor = matchDayDecorations[name] || matchDayDecorations[canonicalName(name)] || null;
                 const isSelected =
-                  selectedPlayer &&
-                  selectedPlayer.from === "pitch" &&
-                  selectedPlayer.posId === pos.id;
+                  selectedPlayer && selectedPlayer.from === "pitch" && selectedPlayer.posId === pos.id;
 
                 const photoData = name ? getPlayerPhoto(name) : null;
                 const goalsCount = Number(decor?.icons?.goals || 0);
@@ -1733,9 +1640,7 @@ export function FormationsPage({
                 return (
                   <div
                     key={pos.id}
-                    className={`pitch-position ${name ? "has-player" : ""} ${
-                      isSelected ? "selected" : ""
-                    }`}
+                    className={`pitch-position ${name ? "has-player" : ""} ${isSelected ? "selected" : ""}`}
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                     onClick={() => handlePitchClick(pos.id)}
                     onDoubleClick={(e) => {
@@ -1743,10 +1648,7 @@ export function FormationsPage({
                       handleClearSpot(pos.id);
                     }}
                   >
-                    <div
-                      className="player-token"
-                      style={{ position: "relative", overflow: "visible" }}
-                    >
+                    <div className="player-token" style={{ position: "relative", overflow: "visible" }}>
                       {decor?.rating != null && gameType === GAME_TYPE_5 ? (
                         <div
                           style={{
@@ -1763,8 +1665,7 @@ export function FormationsPage({
                         >
                           <div
                             style={{
-                              background:
-                                "linear-gradient(180deg, #22c55e, #16a34a)",
+                              background: "linear-gradient(180deg, #22c55e, #16a34a)",
                               color: "#ffffff",
                               fontSize: "0.68rem",
                               fontWeight: 900,
@@ -1778,7 +1679,7 @@ export function FormationsPage({
                             {Number(decor.rating || 0).toFixed(1)}
                           </div>
 
-                          {(goalsCount > 0 || assistsCount > 0) ? (
+                          {goalsCount > 0 || assistsCount > 0 ? (
                             <div
                               style={{
                                 display: "flex",
@@ -1807,21 +1708,13 @@ export function FormationsPage({
                         }}
                       >
                         <div
-                          className={`player-shirt ${
-                            photoData ? "with-photo" : ""
-                          }`}
-                          style={
-                            photoData
-                              ? { backgroundImage: `url(${photoData})` }
-                              : {}
-                          }
+                          className={`player-shirt ${photoData ? "with-photo" : ""}`}
+                          style={photoData ? { backgroundImage: `url(${photoData})` } : {}}
                         />
                       </div>
 
                       <div className="player-label">
-                        <span className="player-name">
-                          {name ? withCaptainTag(name) : "Empty"}
-                        </span>
+                        <span className="player-name">{name ? withCaptainTag(name) : "Empty"}</span>
                         <span className="position-tag">{pos.label}</span>
                       </div>
                     </div>
@@ -1830,15 +1723,15 @@ export function FormationsPage({
               })}
             </div>
 
-            <p className="muted helper-text">
+            <p className="muted helper-text" style={{ margin: "0.35rem 0 0.35rem" }}>
               {gameType === GAME_TYPE_11
                 ? "Tap a sub, then tap a reserve to swap them."
                 : "Tap a sub, then tap a player on the pitch to swap them."}
             </p>
           </div>
 
-          <div className="bench-wrapper">
-            <h3>Subs</h3>
+          <div className="bench-wrapper" style={{ marginTop: 0, paddingTop: 0 }}>
+            <h3 style={{ marginTop: "0.2rem", marginBottom: "0.5rem" }}>Subs</h3>
             {subsPlayers.length === 0 ? (
               <p className="muted">No substitutes available.</p>
             ) : (
@@ -1847,17 +1740,17 @@ export function FormationsPage({
                 style={{
                   display: "flex",
                   flexWrap: "wrap",
-                  gap: "0.55rem",
+                  gap: "0.45rem",
                   alignItems: "flex-start",
+                  marginTop: 0,
+                  marginBottom: "0.7rem",
+                  paddingTop: 0,
                 }}
               >
                 {subsPlayers.map((p) => {
-                  const isSelected =
-                    selectedPlayer &&
-                    selectedPlayer.from === "sub" &&
-                    selectedPlayer.name === p;
-
+                  const isSelected = selectedPlayer && selectedPlayer.from === "sub" && selectedPlayer.name === p;
                   const photoData = getPlayerPhoto(p);
+                  const decor = matchDayDecorations[p] || matchDayDecorations[canonicalName(p)] || null;
 
                   return (
                     <li key={p}>
@@ -1867,6 +1760,7 @@ export function FormationsPage({
                         onClick={() => handleSubClick(p)}
                         photoData={photoData}
                         disabled={!canEditLineups}
+                        decor={decor}
                       />
                     </li>
                   );
@@ -1876,24 +1770,20 @@ export function FormationsPage({
 
             {gameType === GAME_TYPE_11 ? (
               <>
-                <h3 style={{ marginTop: "1rem" }}>Reserves</h3>
+                <h3 style={{ marginTop: "0.8rem" }}>Reserves</h3>
                 {reservePlayers.length === 0 ? (
                   <p className="muted">No reserves available.</p>
                 ) : (
                   <ul className="bench-list">
                     {reservePlayers.map((p) => {
                       const isSelected =
-                        selectedPlayer &&
-                        selectedPlayer.from === "reserve" &&
-                        selectedPlayer.name === p;
+                        selectedPlayer && selectedPlayer.from === "reserve" && selectedPlayer.name === p;
 
                       return (
                         <li key={p}>
                           <button
                             type="button"
-                            className={`bench-player ${
-                              isSelected ? "selected" : ""
-                            }`}
+                            className={`bench-player ${isSelected ? "selected" : ""}`}
                             onClick={() => handleReserveClick(p)}
                             disabled={!canEditLineups}
                           >
@@ -1907,7 +1797,7 @@ export function FormationsPage({
               </>
             ) : null}
 
-            <div className="photo-toggle-row">
+            <div className="photo-toggle-row" style={{ marginTop: "0.25rem" }}>
               <button
                 type="button"
                 className="secondary-btn"
@@ -1921,8 +1811,7 @@ export function FormationsPage({
               <div className="photo-upload-block">
                 <h4>Player photo</h4>
                 <p className="muted small">
-                  Upload a profile picture for your card. Photos are stored in
-                  the TurfKings database for future awards and player cards.
+                  Upload a profile picture for your card. Photos are stored in the TurfKings database for future awards and player cards.
                 </p>
 
                 <div className="field-row">
@@ -1932,9 +1821,7 @@ export function FormationsPage({
                     </p>
                   ) : (
                     <p className="error-text small">
-                      We can&apos;t tell which player you are. Please verify your
-                      player identity on the home screen before uploading a
-                      photo.
+                      We can&apos;t tell which player you are. Please verify your player identity on the home screen before uploading a photo.
                     </p>
                   )}
                 </div>
@@ -1949,9 +1836,7 @@ export function FormationsPage({
                   />
                 </div>
 
-                {uploadingPhoto && (
-                  <p className="muted small">Uploading photo…</p>
-                )}
+                {uploadingPhoto && <p className="muted small">Uploading photo…</p>}
                 {photoMessage && <p className="muted small">{photoMessage}</p>}
               </div>
             )}

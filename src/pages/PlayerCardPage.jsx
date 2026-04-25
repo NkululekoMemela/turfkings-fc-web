@@ -117,10 +117,11 @@ function applyScoreFloor(score10) {
   return round1(3 + (raw / 10) * 7);
 }
 
-function makeStyleLabel(attackAvg, defenceAvg, gkAvg) {
+function makeStyleLabel(attackAvg, defenceAvg, playmakingAvg, gkAvg) {
   const vals = [
     { key: "attack", val: attackAvg ?? -1 },
     { key: "defence", val: defenceAvg ?? -1 },
+    { key: "playmaking", val: playmakingAvg ?? -1 },
     { key: "gk", val: gkAvg ?? -1 },
   ];
 
@@ -136,6 +137,9 @@ function makeStyleLabel(attackAvg, defenceAvg, gkAvg) {
   }
   if (best.key === "defence") {
     return "Profile: defensive anchor, breaks up play and protects the back.";
+  }
+  if (best.key === "playmaking") {
+    return "Profile: playmaker, links the team and creates chances.";
   }
   if (best.key === "gk") {
     return "Profile: safe hands in goal, big presence between the posts.";
@@ -310,6 +314,7 @@ function buildBaselinesBySeasonFromSnap(baselinesSnap, canonicalMap) {
     out[seasonId][canonical] = {
       attack: hasPositiveNumber(Number(data.attack)) ? Number(data.attack) : null,
       defence: hasPositiveNumber(Number(data.defence)) ? Number(data.defence) : null,
+      playmaking: hasPositiveNumber(Number(data.playmaking)) ? Number(data.playmaking) : null,
       gk: hasPositiveNumber(Number(data.gk)) ? Number(data.gk) : null,
     };
   });
@@ -465,6 +470,7 @@ function buildPeerScore10FromBaseline(baseline) {
   const vals = [
     safeNumber(baseline.attack),
     safeNumber(baseline.defence),
+    safeNumber(baseline.playmaking),
     safeNumber(baseline.gk),
   ].filter((v) => v != null);
 
@@ -1123,18 +1129,23 @@ export function PlayerCardPage({
 
       const squadAttackAvg = peer ? safeNumber(peer.attackAvg) : null;
       const squadDefenceAvg = peer ? safeNumber(peer.defenceAvg) : null;
+      const squadPlaymakingAvg = peer
+        ? safeNumber(peer.playmakingAvg ?? peer.playmakerAvg ?? peer.passingAvg)
+        : null;
       const squadGkAvg = peer ? safeNumber(peer.gkAvg) : null;
 
       const adminAttack = baseline ? safeNumber(baseline.attack) : null;
       const adminDefence = baseline ? safeNumber(baseline.defence) : null;
+      const adminPlaymaking = baseline ? safeNumber(baseline.playmaking) : null;
       const adminGk = baseline ? safeNumber(baseline.gk) : null;
 
       const attackAvg = blendPeerValue(adminAttack, squadAttackAvg);
       const defenceAvg = blendPeerValue(adminDefence, squadDefenceAvg);
+      const playmakingAvg = blendPeerValue(adminPlaymaking, squadPlaymakingAvg);
       const gkAvg = blendPeerValue(adminGk, squadGkAvg);
 
       let peerScore10 = null;
-      const validVals = [attackAvg, defenceAvg, gkAvg].filter((v) => v != null);
+      const validVals = [attackAvg, defenceAvg, playmakingAvg, gkAvg].filter((v) => v != null);
 
       if (validVals.length > 0) {
         const avgAttr = validVals.reduce((a, b) => a + b, 0) / validVals.length;
@@ -1188,7 +1199,7 @@ export function PlayerCardPage({
         }
       }
 
-      const styleLabel = makeStyleLabel(attackAvg, defenceAvg, gkAvg);
+      const styleLabel = makeStyleLabel(attackAvg, defenceAvg, playmakingAvg, gkAvg);
       const displayName = canonName;
       const shortName = resolveShortDisplay(canonName);
       const photoUrl = getPlayerPhoto(canonName, shortName);
@@ -1220,6 +1231,7 @@ export function PlayerCardPage({
         peerScore10: peerScore10 != null ? round1(peerScore10) : null,
         attackAvg,
         defenceAvg,
+        playmakingAvg,
         gkAvg,
         overall: round1(visibleOverall),
         styleLabel,
@@ -1722,13 +1734,13 @@ export function PlayerCardPage({
                       </div>
 
                       <div className="fifa-attr-cell">
-                        <span className="fifa-attr-label">GK</span>
-                        {p.gkAvg != null ? (
+                        <span className="fifa-attr-label">PLY</span>
+                        {p.playmakingAvg != null ? (
                           <>
                             <span className="fifa-attr-value">
-                              {p.gkAvg.toFixed(1)}/5
+                              {p.playmakingAvg.toFixed(1)}/5
                             </span>
-                            <span className="fifa-attr-desc">GOALKEEPING</span>
+                            <span className="fifa-attr-desc">PLAYMAKING</span>
                           </>
                         ) : (
                           <span className="fifa-attr-desc fifa-attr-unrated">

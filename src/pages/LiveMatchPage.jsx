@@ -2559,7 +2559,7 @@ export function LiveMatchPage({
         <div className="modal-backdrop">
           <div className="modal live-verify-modal">
             <h3>Verify lineups before the match</h3>
-            <p className="muted live-verify-note">______________________</p>
+            <p className="muted live-verify-note"></p>
 
             <div className="live-lineup-columns">
               {!playersReady ? (

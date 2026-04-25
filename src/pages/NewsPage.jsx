@@ -858,7 +858,7 @@ This will remove it from live news and archives for everyone.`
       const name = normalizeName(rawName);
       if (!name) return null;
       if (!stats[name]) {
-        stats[name] = { name, goals: 0, assists: 0, shibobos: 0 };
+        stats[name] = { name, goals: 0, assists: 0, cleanSheets: 0 };
       }
       return stats[name];
     };
@@ -868,7 +868,7 @@ This will remove it from live news and archives for everyone.`
         const s = getOrCreate(e.scorer);
         if (s) {
           if (e.type === "goal") s.goals += 1;
-          else if (e.type === "shibobo") s.shibobos += 1;
+          else if (["cleanSheet", "clean_sheet", "cleansheet"].includes(e.type)) s.cleanSheets += 1;
         }
       }
       if (e.assist) {
@@ -880,7 +880,7 @@ This will remove it from live news and archives for everyone.`
     const arr = Object.values(stats);
     arr.forEach((p) => {
       p.teamName = playerTeamMap[p.name] || "—";
-      p.total = p.goals + p.assists + p.shibobos;
+      p.total = p.goals + p.assists + p.cleanSheets;
     });
     return arr;
   }, [cleanTournamentEvents, playerTeamMap, normalizeName]);
@@ -1047,7 +1047,7 @@ This will remove it from live news and archives for everyone.`
 
   const getDisplayEventsForRecapMatch = useCallback((result) => {
     const rawEvents = recapEventsByMatch.get(String(result?.matchNo)) || [];
-    const scoringEvents = rawEvents.filter((e) => e?.type === "goal" || e?.type === "shibobo" || !e?.type);
+    const scoringEvents = rawEvents.filter((e) => e?.type === "goal" || !e?.type);
 
     const teamAEvents = scoringEvents
       .filter((e) => e?.teamId === result?.teamAId)
@@ -2089,7 +2089,7 @@ This will remove it from live news and archives for everyone.`
           </div>
           <div className="mvp-stats">
             <div className="mvp-stat-pill">
-              <span>Total G+A+S</span>
+              <span>Total G+A+CS</span>
               <strong>{bestOverall.total}</strong>
             </div>
             <div className="mvp-stat-pill">
@@ -2101,8 +2101,8 @@ This will remove it from live news and archives for everyone.`
               <strong>{bestOverall.assists}</strong>
             </div>
             <div className="mvp-stat-pill">
-              <span>Shibobos</span>
-              <strong>{bestOverall.shibobos}</strong>
+              <span>Clean sheets</span>
+              <strong>{bestOverall.cleanSheets}</strong>
             </div>
           </div>
         </section>
@@ -2384,7 +2384,7 @@ This will remove it from live news and archives for everyone.`
                               {formatSecondsSafe(e.timeSeconds)}
                             </span>
                             <span className="news-event-text">
-                              <strong>{e.type === "shibobo" ? "Shibobo" : "Goal"}</strong> –{" "}
+                              <strong>Goal</strong> –{" "}
                               {normalizeName(e.scorer)}
                               {assistPart}
                               {teamSuffix}

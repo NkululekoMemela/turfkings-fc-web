@@ -872,6 +872,12 @@ export default function App() {
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupCode, setBackupCode] = useState("");
   const [backupError, setBackupError] = useState("");
+  const [showClearOnlyConfirmModal, setShowClearOnlyConfirmModal] = useState(false);
+  const [clearOnlyConfirmCode, setClearOnlyConfirmCode] = useState("");
+  const [clearOnlyConfirmError, setClearOnlyConfirmError] = useState("");
+  const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
+  const [saveConfirmCode, setSaveConfirmCode] = useState("");
+  const [saveConfirmError, setSaveConfirmError] = useState("");
   const [pendingParticipationEntries, setPendingParticipationEntries] = useState(
     []
   );
@@ -1928,6 +1934,9 @@ export default function App() {
     setShowBackupModal(false);
     setBackupCode("");
     setBackupError("");
+    setShowClearOnlyConfirmModal(false);
+    setClearOnlyConfirmCode("");
+    setClearOnlyConfirmError("");
     setPendingParticipationEntries([]);
   };
 
@@ -1980,7 +1989,22 @@ export default function App() {
   };
 
   const handleClearOnly = () => {
-    if (!requireAdminCode()) return;
+    setClearOnlyConfirmCode("");
+    setClearOnlyConfirmError("");
+    setShowClearOnlyConfirmModal(true);
+  };
+
+  const closeClearOnlyConfirmModal = () => {
+    setShowClearOnlyConfirmModal(false);
+    setClearOnlyConfirmCode("");
+    setClearOnlyConfirmError("");
+  };
+
+  const handleConfirmClearOnly = () => {
+    if (clearOnlyConfirmCode.trim() !== MASTER_CODE) {
+      setClearOnlyConfirmError("Invalid admin code. Nothing has been cleared.");
+      return;
+    }
 
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({
@@ -2032,8 +2056,23 @@ export default function App() {
     closeBackupModal();
   };
 
+  const handleRequestSaveAndClearMatchDay = () => {
+    setSaveConfirmCode("");
+    setSaveConfirmError("");
+    setShowSaveConfirmModal(true);
+  };
+
+  const closeSaveConfirmModal = () => {
+    setShowSaveConfirmModal(false);
+    setSaveConfirmCode("");
+    setSaveConfirmError("");
+  };
+
   const handleSaveAndClearMatchDay = async () => {
-    if (!requireAdminCode()) return;
+    if (saveConfirmCode.trim() !== MASTER_CODE) {
+      setSaveConfirmError("Invalid admin code. Nothing has been saved or cleared.");
+      return;
+    }
 
     const now = new Date();
     const id =
@@ -2137,7 +2176,7 @@ export default function App() {
       closeBackupModal();
     } catch (err) {
       console.error("[TK] Failed to save participation records:", err);
-      setBackupError(
+      setSaveConfirmError(
         "Failed to save participation records. Nothing was cleared."
       );
     }
@@ -2718,33 +2757,43 @@ export default function App() {
             className="modal"
             style={{
               maxWidth: "780px",
-              width: isBackupModalMobile ? "94%" : "95%",
-              padding: isBackupModalMobile ? "1.15rem" : "1.4rem",
+              width: isBackupModalMobile ? "94vw" : "95vw",
+              maxHeight: "92vh",
+              padding: 0,
               boxSizing: "border-box",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            <h3 style={{ marginBottom: "0.45rem" }}>End Match Day</h3>
-            <p
+            <div
               style={{
-                marginTop: 0,
-                marginBottom: "0.9rem",
-                maxWidth: "560px",
-                lineHeight: 1.45,
+                padding: isBackupModalMobile ? "1rem 1rem 0.75rem" : "1.25rem 1.35rem 0.85rem",
+                flexShrink: 0,
               }}
             >
-              Confirm player participation, then save the match day to Firebase and clear the live board.
-            </p>
+              <h3 style={{ marginBottom: "0.45rem" }}>End Match Day</h3>
+              <p
+                style={{
+                  marginTop: 0,
+                  marginBottom: 0,
+                  maxWidth: "560px",
+                  lineHeight: 1.45,
+                }}
+              >
+                Confirm player participation, then save the match day to Firebase and clear the live board.
+              </p>
+            </div>
 
             <div
               style={{
                 display: "flex",
                 flexDirection: "column",
                 gap: isBackupModalMobile ? "0.7rem" : "0.85rem",
-                maxHeight: isBackupModalMobile ? "45vh" : "48vh",
+                flex: "1 1 auto",
+                minHeight: 0,
                 overflowY: "auto",
-                marginTop: "0.2rem",
-                marginBottom: "1rem",
-                paddingRight: "0.2rem",
+                padding: isBackupModalMobile ? "0 1rem 0.75rem" : "0 1.35rem 0.85rem",
               }}
             >
               {teams.map((team, teamIndex) => {
@@ -2971,30 +3020,20 @@ export default function App() {
               })}
             </div>
 
-            <div style={{ display: "grid", gap: "0.45rem", marginBottom: "0.9rem" }}>
-              <label style={{ fontWeight: 600 }}>Admin code (Nkululeko)</label>
-              <input
-                type="password"
-                className="text-input"
-                style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
-                value={backupCode}
-                onChange={(e) => {
-                  setBackupCode(e.target.value);
-                  setBackupError("");
-                }}
-              />
-              {backupError && <p className="error-text">{backupError}</p>}
-            </div>
-
             <div
               className="actions-row"
               style={{
                 display: "grid",
                 gridTemplateColumns: isBackupModalMobile
                   ? "1fr"
-                  : "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: "0.75rem",
+                  : "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "0.65rem",
                 alignItems: "stretch",
+                padding: isBackupModalMobile ? "0.85rem 1rem 1rem" : "0.9rem 1.35rem 1.2rem",
+                background: "rgba(2,6,23,0.94)",
+                borderTop: "1px solid rgba(148,163,184,0.16)",
+                boxShadow: "0 -14px 30px rgba(0,0,0,0.22)",
+                flexShrink: 0,
               }}
             >
               <button className="secondary-btn" onClick={closeBackupModal}>
@@ -3003,8 +3042,194 @@ export default function App() {
               <button className="secondary-btn" onClick={handleClearOnly}>
                 Clear only
               </button>
-              <button className="primary-btn" onClick={handleSaveAndClearMatchDay}>
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={handleRequestSaveAndClearMatchDay}
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(22,163,74,0.98), rgba(34,197,94,0.92))",
+                  border: "1px solid rgba(134,239,172,0.42)",
+                  boxShadow: "0 0 22px rgba(34,197,94,0.22)",
+                  color: "#ffffff",
+                  fontWeight: 900,
+                }}
+              >
                 Save to Firebase &amp; clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveConfirmModal && (
+        <div className="modal-backdrop" style={{ zIndex: 10050 }}>
+          <div
+            className="modal"
+            style={{
+              maxWidth: "540px",
+              width: "92vw",
+              padding: isBackupModalMobile ? "1.05rem" : "1.35rem",
+              border: "1px solid rgba(34,197,94,0.44)",
+              background:
+                "radial-gradient(circle at top, rgba(34,197,94,0.18), rgba(2,6,23,0.98) 58%)",
+              boxShadow: "0 22px 60px rgba(0,0,0,0.55), 0 0 34px rgba(34,197,94,0.16)",
+            }}
+          >
+            <div style={{ textAlign: "center", marginBottom: "0.9rem" }}>
+              <div
+                style={{
+                  width: "82px",
+                  height: "82px",
+                  borderRadius: "999px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "3rem",
+                  background: "rgba(34,197,94,0.16)",
+                  border: "1px solid rgba(134,239,172,0.35)",
+                  boxShadow: "0 0 24px rgba(34,197,94,0.22)",
+                }}
+              >
+                😄
+              </div>
+              <h3 style={{ margin: "0.65rem 0 0.25rem", color: "#86efac" }}>
+                Well done!
+              </h3>
+              <p style={{ margin: 0, fontWeight: 800 }}>Great official match day.</p>
+            </div>
+
+            <div
+              style={{
+                padding: "0.9rem",
+                borderRadius: "1rem",
+                border: "1px solid rgba(34,197,94,0.28)",
+                background: "rgba(15,23,42,0.58)",
+                marginBottom: "1rem",
+                lineHeight: 1.5,
+              }}
+            >
+              <p style={{ marginTop: 0, fontWeight: 900 }}>
+                You are about to save an official match day.
+              </p>
+              <p style={{ margin: "0.45rem 0" }}>
+                ✅ Save all participation and stats to Firebase.
+              </p>
+              <p style={{ margin: "0.45rem 0" }}>
+                ✅ Clear the live board for the next match day.
+              </p>
+              <p style={{ margin: "0.65rem 0 0", color: "#bbf7d0" }}>
+                If this was a practice run or dummy data, cancel and use <strong>Clear only</strong> instead.
+              </p>
+            </div>
+
+            <div className="field-row">
+              <label>Enter admin code (Nkululeko)</label>
+              <input
+                type="password"
+                className="text-input"
+                value={saveConfirmCode}
+                onChange={(e) => {
+                  setSaveConfirmCode(e.target.value);
+                  setSaveConfirmError("");
+                }}
+                autoFocus
+              />
+              {saveConfirmError && <p className="error-text">{saveConfirmError}</p>}
+            </div>
+
+            <div
+              className="actions-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isBackupModalMobile ? "1fr" : "1fr 1fr",
+                gap: "0.65rem",
+                marginTop: "1rem",
+              }}
+            >
+              <button className="secondary-btn" type="button" onClick={closeSaveConfirmModal}>
+                Cancel
+              </button>
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={handleSaveAndClearMatchDay}
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(22,163,74,0.98), rgba(34,197,94,0.92))",
+                  border: "1px solid rgba(134,239,172,0.42)",
+                  color: "#ffffff",
+                  fontWeight: 900,
+                }}
+              >
+                Confirm &amp; Save to Firebase
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showClearOnlyConfirmModal && (
+        <div className="modal-backdrop" style={{ zIndex: 10050 }}>
+          <div
+            className="modal"
+            style={{
+              maxWidth: "520px",
+              width: "92vw",
+              padding: isBackupModalMobile ? "1.05rem" : "1.25rem",
+              border: "1px solid rgba(248,113,113,0.36)",
+              background:
+                "radial-gradient(circle at top, rgba(239,68,68,0.18), rgba(2,6,23,0.98) 58%)",
+              boxShadow: "0 22px 60px rgba(0,0,0,0.55)",
+            }}
+          >
+            <h3 style={{ marginTop: 0, color: "#fecaca" }}>⚠️ Clear only warning</h3>
+            <p style={{ lineHeight: 1.5, marginBottom: "0.75rem" }}>
+              <strong>Clear only will throw away this match-day data without saving it to Firebase.</strong>
+            </p>
+            <p style={{ lineHeight: 1.5, marginTop: 0, color: "rgba(255,255,255,0.86)" }}>
+              Only continue if this was a practice run or dummy data. If this was a real match day,
+              go back and use <strong>Save to Firebase &amp; clear</strong> instead.
+            </p>
+            <p style={{ lineHeight: 1.5, color: "#fde68a", fontWeight: 800 }}>
+              Do not enter the PIN unless you are intentionally discarding test data.
+            </p>
+
+            <div className="field-row">
+              <label>Re-enter admin code to confirm discard</label>
+              <input
+                type="password"
+                className="text-input"
+                value={clearOnlyConfirmCode}
+                onChange={(e) => {
+                  setClearOnlyConfirmCode(e.target.value);
+                  setClearOnlyConfirmError("");
+                }}
+              />
+              {clearOnlyConfirmError && (
+                <p className="error-text">{clearOnlyConfirmError}</p>
+              )}
+            </div>
+
+            <div
+              className="actions-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isBackupModalMobile ? "1fr" : "1fr 1fr",
+                gap: "0.65rem",
+                marginTop: "1rem",
+              }}
+            >
+              <button className="primary-btn" type="button" onClick={closeClearOnlyConfirmModal}>
+                Go back — save real data
+              </button>
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={handleConfirmClearOnly}
+                style={{ borderColor: "rgba(248,113,113,0.5)", color: "#fecaca" }}
+              >
+                Discard test data
               </button>
             </div>
           </div>

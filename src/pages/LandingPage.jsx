@@ -172,6 +172,9 @@ export function LandingPage({
   const [showFixturesModal, setShowFixturesModal] = useState(false);
   const [fixtureAdminCode, setFixtureAdminCode] = useState("");
   const [fixtureAdminError, setFixtureAdminError] = useState("");
+  const [fixtureTargetDraft, setFixtureTargetDraft] = useState(
+    scheduledTarget ?? smartTarget ?? ""
+  );
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
@@ -232,6 +235,11 @@ export function LandingPage({
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (!showFixturesModal) return;
+    setFixtureTargetDraft(scheduledTarget ?? smartTarget ?? "");
+  }, [showFixturesModal, scheduledTarget, smartTarget]);
 
   const resolvedRole = useMemo(() => {
     if (activeRole === "admin") return "admin";
@@ -387,8 +395,15 @@ export function LandingPage({
       return;
     }
 
+    const numericTarget = Number(target);
+
+    if (!Number.isFinite(numericTarget) || numericTarget <= 0) {
+      setFixtureAdminError("Please choose a valid target.");
+      return;
+    }
+
     setFixtureAdminError("");
-    onGenerateScheduledPlan?.(target);
+    onGenerateScheduledPlan?.(Math.round(numericTarget));
   };
 
   const closeHeaderMenu = () => setShowHeaderMenu(false);
@@ -962,22 +977,74 @@ export function LandingPage({
 
       {showFixturesModal && (
         <div className="modal-backdrop">
-          <div className="modal" style={{ maxWidth: "620px", width: "94%" }}>
-            <h3>Fixtured Match List</h3>
-            <p>
-              Common target:{" "}
-              <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
-            </p>
+          <div
+            className="modal"
+            style={{
+              width: "min(96vw, 760px)",
+              maxWidth: "760px",
+              maxHeight: "88vh",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              padding: isMobile ? "1rem" : "1.25rem",
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: "1rem",
+                marginBottom: "0.8rem",
+              }}
+            >
+              <div>
+                <h3 style={{ marginTop: 0, marginBottom: "0.35rem" }}>
+                  Fixtured Match List
+                </h3>
+                <p className="muted small" style={{ margin: 0 }}>
+                  Common target:{" "}
+                  <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setShowFixturesModal(false)}
+                aria-label="Close fixtures"
+                style={{
+                  width: "42px",
+                  minWidth: "42px",
+                  height: "42px",
+                  borderRadius: "999px",
+                  padding: 0,
+                  touchAction: "manipulation",
+                }}
+              >
+                ✕
+              </button>
+            </div>
 
             {isAdmin && (
-              <div style={{ marginBottom: "1rem" }}>
+              <div
+                style={{
+                  marginBottom: "1rem",
+                  padding: isMobile ? "0.85rem" : "1rem",
+                  borderRadius: "1rem",
+                  border: "1px solid rgba(148,163,184,0.18)",
+                  background: "rgba(15,23,42,0.42)",
+                }}
+              >
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.2fr 0.9fr auto",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "minmax(180px, 1fr) minmax(150px, 0.8fr) auto",
                     gap: "0.75rem",
                     alignItems: "end",
-                    marginBottom: "0.55rem",
                   }}
                 >
                   <div>
@@ -996,6 +1063,7 @@ export function LandingPage({
                         setFixtureAdminCode(e.target.value);
                         setFixtureAdminError("");
                       }}
+                      style={{ width: "100%", boxSizing: "border-box" }}
                     />
                   </div>
 
@@ -1004,71 +1072,52 @@ export function LandingPage({
                       className="muted small"
                       style={{ display: "block", marginBottom: "0.35rem" }}
                     >
-                      Remaining games
+                      Target
                     </label>
                     <input
                       type="number"
-                      min="0"
+                      min={Math.max(1, matchesPlayed)}
                       step="1"
                       className="text-input"
-                      value={smartOffset}
-                      onChange={(e) =>
-                        onUpdateSmartOffset?.(Number(e.target.value || 0))
-                      }
-                      placeholder="5"
-                      title="Remaining games"
+                      value={fixtureTargetDraft}
+                      onChange={(e) => {
+                        setFixtureTargetDraft(e.target.value);
+                        setFixtureAdminError("");
+                      }}
+                      placeholder={String(smartTarget ?? scheduledTarget ?? 50)}
+                      style={{ width: "100%", boxSizing: "border-box" }}
                     />
                   </div>
 
-                  <div>
-                    <label
-                      className="muted small"
-                      style={{
-                        display: "block",
-                        marginBottom: "0.35rem",
-                        opacity: 0.85,
-                      }}
-                    >
-                      Target
-                    </label>
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() =>
-                        smartTarget != null &&
-                        handleProtectedTargetChange(smartTarget)
-                      }
-                      disabled={smartTarget == null}
-                      style={
-                        smartTarget != null &&
-                        Number(scheduledTarget) === Number(smartTarget)
-                          ? {
-                              border: "1px solid rgba(255, 90, 90, 0.55)",
-                              background:
-                                "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
-                              color: "#ffffff",
-                              minWidth: "88px",
-                            }
-                          : { minWidth: "88px" }
-                      }
-                    >
-                      {smartTarget ?? "-"}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={() => handleProtectedTargetChange(fixtureTargetDraft)}
+                    disabled={fixtureTargetDraft === ""}
+                    style={{
+                      minHeight: "44px",
+                      whiteSpace: "nowrap",
+                      touchAction: "manipulation",
+                    }}
+                  >
+                    Update fixtures
+                  </button>
                 </div>
 
                 <p
                   className="muted small"
-                  style={{ marginTop: "0.15rem", lineHeight: 1.5 }}
+                  style={{
+                    margin: "0.65rem 0 0",
+                    lineHeight: 1.5,
+                  }}
                 >
-                  <strong>Remaining games</strong> sets how many more games
-                  above the current highest <strong>P</strong> you want to aim
-                  for. The system then finds the nearest reachable common target
-                  for all 3 teams.
+                  Select the common target you want all 3 teams to move towards.
+                  If the number cannot be reached perfectly, choose the nearest
+                  sensible target just above or below it.
                 </p>
 
                 {fixtureAdminError && (
-                  <p className="error-text" style={{ marginTop: "0.35rem" }}>
+                  <p className="error-text" style={{ marginTop: "0.45rem" }}>
                     {fixtureAdminError}
                   </p>
                 )}
@@ -1077,10 +1126,10 @@ export function LandingPage({
 
             <div
               style={{
-                maxHeight: "50vh",
+                flex: "1 1 auto",
                 overflowY: "auto",
-                marginTop: "0.5rem",
-                paddingRight: "0.25rem",
+                paddingRight: isMobile ? "0.15rem" : "0.35rem",
+                minHeight: 0,
               }}
             >
               {(scheduledFixtures || []).map((fixture, index) => {
@@ -1099,10 +1148,11 @@ export function LandingPage({
                       fixture.id || `${fixture.teamAId}-${fixture.teamBId}`
                     }-${index}`}
                     style={{
-                      padding: "0.45rem 0",
-                      fontWeight: done ? 400 : 700,
-                      opacity: done ? 0.6 : 1,
-                      borderBottom: "1px solid rgba(255,255,255,0.06)",
+                      padding: isMobile ? "0.58rem 0" : "0.65rem 0",
+                      fontWeight: done ? 500 : 800,
+                      opacity: done ? 0.58 : 1,
+                      borderBottom: "1px solid rgba(255,255,255,0.07)",
+                      lineHeight: 1.35,
                     }}
                   >
                     {index + 1}. {fixture.teamALabel} vs {fixture.teamBLabel}
@@ -1112,10 +1162,22 @@ export function LandingPage({
               })}
             </div>
 
-            <div className="actions-row">
+            <div
+              className="actions-row"
+              style={{
+                marginTop: "1rem",
+                flexShrink: 0,
+                display: "flex",
+                justifyContent: "center",
+              }}
+            >
               <button
                 className="secondary-btn"
                 onClick={() => setShowFixturesModal(false)}
+                style={{
+                  width: isMobile ? "100%" : "min(320px, 100%)",
+                  touchAction: "manipulation",
+                }}
               >
                 Close
               </button>
