@@ -8,6 +8,15 @@ import TeamPhoto3 from "../assets/TurfKings3.jpeg";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
 
+import {
+  GAME_FORMAT,
+  GAME_FORMAT_OPTIONS,
+  MATCH_MODE,
+  MATCH_MODE_OPTIONS,
+  normalizeGameFormat,
+  normalizeMatchMode,
+} from "../core/matchConfig.js";
+
 const CAPTAIN_CODES = ["11", "22", "3333"];
 
 const activePrimaryStyle = {
@@ -136,7 +145,9 @@ export function LandingPage({
   results,
   streaks,
   hasLiveMatch,
+  matchType = null,
   gameFormat = "5_V_5",
+  leagueMode = null,
   matchMode = "round_robin",
   scheduledTarget = null,
   scheduledFixtures = [],
@@ -144,9 +155,11 @@ export function LandingPage({
   smartTarget = null,
   onUpdatePairing,
   onStartMatch,
+  onSetMatchType,
   onSetGameFormat,
   onForceSetGameFormat,
   formatSwitchLocked = false,
+  onSetLeagueMode,
   onSetMatchMode,
   onGenerateScheduledPlan,
   onUpdateSmartOffset,
@@ -280,15 +293,27 @@ export function LandingPage({
     return "spectator";
   }, [resolvedRole]);
 
-  const isThreeTeamLeague = gameFormat === "3_TEAM_LEAGUE";
-  const isFiveVFive = gameFormat !== "3_TEAM_LEAGUE";
-  const fixturedMode = isThreeTeamLeague && matchMode === "scheduled_target";
+  const resolvedMatchType = normalizeMatchMode(
+    matchType || (gameFormat === "3_TEAM_LEAGUE" ? MATCH_MODE.LEAGUE : MATCH_MODE.FRIENDLY)
+  );
+  const resolvedGameFormat = normalizeGameFormat(gameFormat);
+  const resolvedLeagueMode = leagueMode || matchMode || "round_robin";
+
+  const isThreeTeamLeague = resolvedMatchType === MATCH_MODE.LEAGUE;
+  const isFriendlyMatch = resolvedMatchType === MATCH_MODE.FRIENDLY;
+  const isFiveVFive = resolvedGameFormat === GAME_FORMAT.FIVE_V_FIVE;
+  const activeGameFormatOption =
+    GAME_FORMAT_OPTIONS.find((option) => option.value === resolvedGameFormat) ||
+    GAME_FORMAT_OPTIONS[0];
+  const activeGameFormatLabel = activeGameFormatOption?.label || "5 v 5";
+  const fixturedMode =
+    isThreeTeamLeague && resolvedLeagueMode === "scheduled_target";
 
   let ribbonText = "";
   if (isThreeTeamLeague && teamA && teamB && standbyTeam) {
-    ribbonText = `Next: ${teamA.label} vs ${teamB.label}       Standby: ${standbyTeam.label}`;
-  } else if (isFiveVFive) {
-    ribbonText = "Normal 5 v 5 mode is active";
+    ribbonText = `League ${activeGameFormatLabel} • Next: ${teamA.label} vs ${teamB.label}       Standby: ${standbyTeam.label}`;
+  } else if (isFriendlyMatch) {
+    ribbonText = `Friendly ${activeGameFormatLabel} mode is active`;
   }
 
   if (lastResult) {
@@ -312,7 +337,7 @@ export function LandingPage({
   const requestPairChange = (candidateMatch) => {
     if (!canStartMatch) return;
 
-    if (isThreeTeamLeague && matchMode === "scheduled_target") {
+    if (isThreeTeamLeague && resolvedLeagueMode === "scheduled_target") {
       window.alert(
         "Pairing override is locked while Fixtured mode is active."
       );
@@ -406,19 +431,44 @@ export function LandingPage({
   const formatHasLiveRisk = Boolean(hasLiveMatch || hasRecordedMatchDayState);
   const isFormatLocked = formatSwitchLocked || formatHasLiveRisk;
 
-  const formatOptions = [
-    { value: "5_V_5", label: "Normal 5 v 5" },
-    { value: "3_TEAM_LEAGUE", label: "3 Team League" },
-  ];
-
-  const requestGameFormatChange = (nextFormat) => {
+  const requestProtectedFormatChange = (change) => {
     if (!canSeeCaptainStyleControls) return;
-    if (!nextFormat || nextFormat === gameFormat) return;
+    if (!change?.kind || !change?.value) return;
 
-    setPendingGameFormat(nextFormat);
+    const currentValue =
+      change.kind === "matchType"
+        ? resolvedMatchType
+        : change.kind === "gameFormat"
+          ? resolvedGameFormat
+          : resolvedLeagueMode;
+
+    if (change.value === currentValue) return;
+
+    setPendingGameFormat(change);
     setFormatCode("");
     setFormatError("");
     setShowFormatModal(true);
+  };
+
+  const requestMatchTypeChange = (nextMatchType) => {
+    requestProtectedFormatChange({
+      kind: "matchType",
+      value: normalizeMatchMode(nextMatchType),
+    });
+  };
+
+  const requestGameFormatChange = (nextFormat) => {
+    requestProtectedFormatChange({
+      kind: "gameFormat",
+      value: normalizeGameFormat(nextFormat),
+    });
+  };
+
+  const requestLeagueModeChange = (nextLeagueMode) => {
+    requestProtectedFormatChange({
+      kind: "leagueMode",
+      value: nextLeagueMode === "scheduled_target" ? "scheduled_target" : "round_robin",
+    });
   };
 
   const cancelGameFormatChange = () => {
@@ -426,6 +476,43 @@ export function LandingPage({
     setPendingGameFormat(null);
     setFormatCode("");
     setFormatError("");
+  };
+
+  const applyPendingProtectedChange = (change) => {
+    if (!change?.kind || !change?.value) return;
+
+    if (change.kind === "matchType") {
+      if (typeof onSetMatchType === "function") {
+        onSetMatchType(change.value);
+        return;
+      }
+
+      // Legacy fallback while App.jsx is still being migrated:
+      // Friendly is represented by the selected game format; League by 3_TEAM_LEAGUE.
+      if (change.value === MATCH_MODE.LEAGUE) {
+        onSetGameFormat?.("3_TEAM_LEAGUE");
+      } else {
+        onSetGameFormat?.(resolvedGameFormat || GAME_FORMAT.FIVE_V_FIVE);
+      }
+      return;
+    }
+
+    if (change.kind === "gameFormat") {
+      if (isFormatLocked && typeof onForceSetGameFormat === "function") {
+        onForceSetGameFormat(change.value);
+      } else {
+        onSetGameFormat?.(change.value);
+      }
+      return;
+    }
+
+    if (change.kind === "leagueMode") {
+      if (typeof onSetLeagueMode === "function") {
+        onSetLeagueMode(change.value);
+      } else {
+        onSetMatchMode?.(change.value);
+      }
+    }
   };
 
   const confirmGameFormatChange = () => {
@@ -436,11 +523,7 @@ export function LandingPage({
       return;
     }
 
-    if (isFormatLocked) {
-      onForceSetGameFormat?.(pendingGameFormat);
-    } else {
-      onSetGameFormat?.(pendingGameFormat);
-    }
+    applyPendingProtectedChange(pendingGameFormat);
     cancelGameFormatChange();
   };
 
@@ -585,13 +668,19 @@ export function LandingPage({
 
       <section className="card landing-first-card">
         {canSeeCaptainStyleControls && (
-          <div style={{ marginBottom: "0.9rem", display: "grid", gap: "0.75rem" }}>
+          <div
+            style={{
+              marginBottom: "0.9rem",
+              display: "grid",
+              gap: "0.85rem",
+            }}
+          >
             <div>
               <div
                 className="muted small"
                 style={{ marginBottom: "0.35rem", fontWeight: 700 }}
               >
-                Game format
+                Match Type
               </div>
               <div
                 style={{
@@ -605,8 +694,8 @@ export function LandingPage({
                   flexWrap: "wrap",
                 }}
               >
-                {formatOptions.map((option) => {
-                  const active = gameFormat === option.value;
+                {MATCH_MODE_OPTIONS.map((option) => {
+                  const active = resolvedMatchType === option.value;
                   return (
                     <button
                       key={option.value}
@@ -614,7 +703,7 @@ export function LandingPage({
                       className="secondary-btn"
                       onClick={() => {
                         if (isFormatLocked) return;
-                        requestGameFormatChange(option.value);
+                        requestMatchTypeChange(option.value);
                       }}
                       disabled={isFormatLocked}
                       style={{
@@ -646,7 +735,7 @@ export function LandingPage({
                 )}
                 {isFormatLocked ? <br /> : null}
                 {formatHasLiveRisk
-                  ? " Match day data already exists, so switching format should only be done deliberately."
+                  ? " Match day data already exists, so switching match type or format should only be done deliberately."
                   : " "}
               </p>
 
@@ -656,8 +745,10 @@ export function LandingPage({
                   className="secondary-btn"
                   style={{ marginTop: "0.5rem" }}
                   onClick={() =>
-                    requestGameFormatChange(
-                      gameFormat === "5_V_5" ? "3_TEAM_LEAGUE" : "5_V_5"
+                    requestMatchTypeChange(
+                      resolvedMatchType === MATCH_MODE.LEAGUE
+                        ? MATCH_MODE.FRIENDLY
+                        : MATCH_MODE.LEAGUE
                     )
                   }
                 >
@@ -672,7 +763,7 @@ export function LandingPage({
                   className="muted small"
                   style={{ marginBottom: "0.35rem", fontWeight: 700 }}
                 >
-                  League mode
+                  League Mode
                 </div>
                 <div
                   style={{
@@ -688,20 +779,20 @@ export function LandingPage({
                   <button
                     type="button"
                     className="secondary-btn"
-                    onClick={() => onSetMatchMode?.("round_robin")}
+                    onClick={() => requestLeagueModeChange("round_robin")}
                     style={{
                       borderRadius: "999px",
                       padding: "0.45rem 0.9rem",
                       color: "#ffffff",
-                      border: fixturedMode
+                      border: !fixturedMode
                         ? "1px solid rgba(255, 90, 90, 0.55)"
                         : "1px solid transparent",
-                      background: fixturedMode
-                        ? "transparent"
-                        : "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))",
-                      boxShadow: fixturedMode
-                        ? "none"
-                        : "0 0 18px rgba(255,60,60,0.35)",
+                      background: !fixturedMode
+                        ? "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))"
+                        : "transparent",
+                      boxShadow: !fixturedMode
+                        ? "0 0 18px rgba(255,60,60,0.35)"
+                        : "none",
                     }}
                   >
                     Round Robin
@@ -710,7 +801,7 @@ export function LandingPage({
                   <button
                     type="button"
                     className="secondary-btn"
-                    onClick={() => onSetMatchMode?.("scheduled_target")}
+                    onClick={() => requestLeagueModeChange("scheduled_target")}
                     style={{
                       borderRadius: "999px",
                       padding: "0.45rem 0.9rem",
@@ -731,15 +822,75 @@ export function LandingPage({
                 </div>
               </div>
             )}
+
+            <div>
+              <div
+                className="muted small"
+                style={{ marginBottom: "0.35rem", fontWeight: 700 }}
+              >
+                Game Format
+              </div>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "4px",
+                  borderRadius: "999px",
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  gap: "4px",
+                  flexWrap: "wrap",
+                }}
+              >
+                {GAME_FORMAT_OPTIONS.map((option) => {
+                  const active = resolvedGameFormat === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className="secondary-btn"
+                      onClick={() => {
+                        if (isFormatLocked) return;
+                        requestGameFormatChange(option.value);
+                      }}
+                      disabled={isFormatLocked}
+                      style={{
+                        borderRadius: "999px",
+                        padding: "0.45rem 0.9rem",
+                        color: "#ffffff",
+                        border: active
+                          ? "1px solid rgba(34, 197, 94, 0.55)"
+                          : "1px solid transparent",
+                        background: active
+                          ? "linear-gradient(180deg, rgba(22,163,74,0.96), rgba(21,128,61,0.94))"
+                          : "transparent",
+                        boxShadow: active
+                          ? "0 0 18px rgba(34,197,94,0.24)"
+                          : "none",
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
-        <h2>{isThreeTeamLeague ? `Upcoming Match #${currentMatchNo}` : "Upcoming 5 v 5 Match"}</h2>
+        <h2>
+          {isThreeTeamLeague
+            ? `Upcoming League ${activeGameFormatLabel} Match #${currentMatchNo}`
+            : `Upcoming Friendly ${activeGameFormatLabel} Match`}
+        </h2>
 
 
-        {isFiveVFive && (
-          <p className="muted small" style={{ marginTop: "-0.25rem", marginBottom: "0.9rem" }}>
-            Normal 5 v 5 is active. Squads and live match flow should follow the 5 v 5 format.
+        {isFriendlyMatch && (
+          <p
+            className="muted small"
+            style={{ marginTop: "-0.25rem", marginBottom: "0.9rem" }}
+          >
+            Friendly {activeGameFormatLabel} is active. Squads and live match flow should follow the {activeGameFormatLabel} format.
           </p>
         )}
 
@@ -1343,13 +1494,27 @@ export function LandingPage({
       {showFormatModal && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>Confirm Format Change</h3>
+            <h3>Confirm Protected Change</h3>
             <p>
-              Switch to{" "}
+              Update{" "}
               <strong>
-                {pendingGameFormat === "3_TEAM_LEAGUE"
-                  ? "3 Team League"
-                  : "Normal 5 v 5"}
+                {pendingGameFormat?.kind === "matchType"
+                  ? "Match Type"
+                  : pendingGameFormat?.kind === "leagueMode"
+                    ? "League Mode"
+                    : "Game Format"}
+              </strong>{" "}
+              to{" "}
+              <strong>
+                {pendingGameFormat?.kind === "matchType"
+                  ? pendingGameFormat?.value === MATCH_MODE.LEAGUE
+                    ? "League"
+                    : "Friendly"
+                  : pendingGameFormat?.kind === "leagueMode"
+                    ? pendingGameFormat?.value === "scheduled_target"
+                      ? "Fixtured"
+                      : "Round Robin"
+                    : GAME_FORMAT_OPTIONS.find((item) => item.value === pendingGameFormat?.value)?.label || pendingGameFormat?.value}
               </strong>
               ?
             </p>

@@ -15,6 +15,12 @@ import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import ViewHighlightsPage from "./pages/ViewHighlightsPage.jsx";
 import BottomNav from "./components/BottomNav.jsx";
+import {
+  MATCH_MODE as MATCH_TYPE,
+  GAME_FORMAT,
+  normalizeMatchMode,
+  normalizeGameFormat,
+} from "./core/matchConfig.js";
 
 
 import {
@@ -496,9 +502,20 @@ function ensureSeasonSchedulingShape(season) {
     )
   ).slice(0, 2);
 
+  const legacyGameFormat = season?.gameFormat || GAME_FORMAT.FIVE_V_FIVE;
+  const resolvedMatchType = normalizeMatchMode(
+    season?.matchType || legacyGameFormat,
+    MATCH_TYPE.FRIENDLY
+  );
+  const resolvedGameFormat = normalizeGameFormat(
+    legacyGameFormat,
+    GAME_FORMAT.FIVE_V_FIVE
+  );
+
   return {
     ...season,
-    gameFormat: season?.gameFormat || "5_V_5",
+    matchType: resolvedMatchType,
+    gameFormat: resolvedGameFormat,
     activeTeamIds:
       normalizedActiveTeamIds.length >= 2
         ? normalizedActiveTeamIds
@@ -994,12 +1011,19 @@ function parseHighlightsReturnPayloadFromUrl(urlLike) {
   return [parsed];
 }
 
-function buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo) {
+function buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo, matchType = null) {
   const today = new Date().toISOString().slice(0, 10);
-  if (String(gameFormat || "").trim() === "3_TEAM_LEAGUE") {
+  const resolvedType = normalizeMatchMode(matchType || gameFormat, MATCH_TYPE.FRIENDLY);
+
+  if (resolvedType === MATCH_TYPE.LEAGUE) {
     return `${String(activeSeasonId || "season").trim() || "season"}__${today}`;
   }
-  return `5v5__${today}`;
+
+  const safeFormat = normalizeGameFormat(gameFormat, GAME_FORMAT.FIVE_V_FIVE)
+    .toLowerCase()
+    .replace(/_/g, "");
+
+  return `${safeFormat}__${today}`;
 }
 
 function buildRawHighlightFirebaseDoc(highlight, options = {}) {
@@ -1468,7 +1492,7 @@ export default function App() {
     const safeItems = Array.isArray(items) ? items : [];
     if (!safeItems.length) return;
 
-    const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo);
+    const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo, matchType);
 
     await Promise.all(
       safeItems.map(async (item) => {
@@ -1477,6 +1501,7 @@ export default function App() {
           currentMatchNo,
           activeSeasonId,
           gameFormat,
+          matchType,
           identity,
         });
 
@@ -1568,7 +1593,8 @@ export default function App() {
   let safeV2ForStats = null;
   let activeSeasonNo = 1;
   let activeSeasonId = null;
-  let gameFormat = "5_V_5";
+  let matchType = MATCH_TYPE.FRIENDLY;
+  let gameFormat = GAME_FORMAT.FIVE_V_FIVE;
   let activeTeamIds = [];
   let fiveVFiveTeams = buildDefaultFiveVFiveTeams();
   let matchMode = "round_robin";
@@ -1593,7 +1619,8 @@ export default function App() {
     streaks = s?.streaks || {};
     matchDayHistory = s?.matchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
-    gameFormat = s?.gameFormat || "5_V_5";
+    matchType = normalizeMatchMode(s?.matchType || s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    gameFormat = normalizeGameFormat(s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
     activeTeamIds = Array.isArray(s?.activeTeamIds) ? s.activeTeamIds : [];
     fiveVFiveTeams = ensureFiveVFiveTeamsShape(s?.fiveVFiveTeams);
     matchMode = s?.matchMode || "round_robin";
@@ -1621,7 +1648,8 @@ export default function App() {
       yearEndAttendance = [],
     } = legacy || createDefaultState());
 
-    gameFormat = legacy?.gameFormat || "5_V_5";
+    matchType = normalizeMatchMode(legacy?.matchType || legacy?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    gameFormat = normalizeGameFormat(legacy?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
     activeTeamIds = Array.isArray(legacy?.activeTeamIds)
       ? legacy.activeTeamIds
       : [];
@@ -1637,8 +1665,8 @@ export default function App() {
   }
 
   const captainRoleTeams = useMemo(
-    () => (gameFormat === "5_V_5" ? fiveVFiveTeams : teams || []),
-    [gameFormat, fiveVFiveTeams, teams]
+    () => (matchType === MATCH_TYPE.FRIENDLY ? fiveVFiveTeams : teams || []),
+    [matchType, fiveVFiveTeams, teams]
   );
 
   const activeRole = useMemo(
@@ -1668,11 +1696,13 @@ export default function App() {
   }, [teams, activeTeamIds]);
 
   const effectiveLiveMatch = useMemo(() => {
-    if (gameFormat === "5_V_5") {
+    if (matchType === MATCH_TYPE.FRIENDLY) {
       const safeFiveVFiveTeams = ensureFiveVFiveTeamsShape(fiveVFiveTeams);
       return {
         ...(currentMatch || {}),
-        matchMode: "5_V_5",
+        matchType: MATCH_TYPE.FRIENDLY,
+        matchMode: MATCH_TYPE.FRIENDLY,
+        gameFormat,
         teamAId: safeFiveVFiveTeams[0]?.id || "dark",
         teamBId: safeFiveVFiveTeams[1]?.id || "light",
         standbyId: null,
@@ -1681,9 +1711,11 @@ export default function App() {
 
     return {
       ...(currentMatch || {}),
+      matchType: MATCH_TYPE.LEAGUE,
       matchMode,
+      gameFormat,
     };
-  }, [gameFormat, fiveVFiveTeams, currentMatch, matchMode]);
+  }, [matchType, gameFormat, fiveVFiveTeams, currentMatch, matchMode]);
 
   const currentCameraLaunchTeams = useMemo(() => {
     return resolveCameraLaunchTeams({
@@ -1703,7 +1735,7 @@ export default function App() {
 
   const currentCameraLiveContext = useMemo(() => {
     if (!(hasLiveMatch || running)) return null;
-    if (gameFormat !== "3_TEAM_LEAGUE") return null;
+    if (matchType !== MATCH_TYPE.LEAGUE) return null;
 
     return buildCameraLiveContext({
       activeSeasonId,
@@ -1812,7 +1844,7 @@ export default function App() {
       window.removeEventListener("hashchange", onHashChange);
       window.removeEventListener("message", onMessage);
     };
-  }, [currentMatchNo, gameFormat]);
+  }, [currentMatchNo, gameFormat, matchType]);
 
 
   const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
@@ -2011,12 +2043,20 @@ export default function App() {
     setSmartOffset(Math.max(0, Math.round(numeric)));
   };
 
-  const applyGameFormatChange = (safeFormat) => {
+  const applyMatchTypeChange = (nextMatchType) => {
+    const safeMatchType =
+      normalizeMatchMode(nextMatchType, MATCH_TYPE.FRIENDLY) === MATCH_TYPE.LEAGUE
+        ? MATCH_TYPE.LEAGUE
+        : MATCH_TYPE.FRIENDLY;
+
     if (USE_V2) {
       updateActiveSeason((prevSeason) => {
         const nextSeason = {
           ...prevSeason,
-          gameFormat: safeFormat,
+          matchType: safeMatchType,
+          gameFormat: normalizeGameFormat(
+            prevSeason?.gameFormat || gameFormat || GAME_FORMAT.FIVE_V_FIVE
+          ),
           activeTeamIds:
             Array.isArray(prevSeason?.activeTeamIds) &&
             prevSeason.activeTeamIds.length >= 2
@@ -2028,7 +2068,7 @@ export default function App() {
           fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
         };
 
-        if (safeFormat === "5_V_5") {
+        if (safeMatchType === MATCH_TYPE.FRIENDLY) {
           return {
             ...nextSeason,
             matchMode: "round_robin",
@@ -2045,7 +2085,10 @@ export default function App() {
     updateState((prev) => {
       const nextState = {
         ...prev,
-        gameFormat: safeFormat,
+        matchType: safeMatchType,
+        gameFormat: normalizeGameFormat(
+          prev?.gameFormat || gameFormat || GAME_FORMAT.FIVE_V_FIVE
+        ),
         activeTeamIds:
           Array.isArray(prev?.activeTeamIds) && prev.activeTeamIds.length >= 2
             ? prev.activeTeamIds
@@ -2056,7 +2099,7 @@ export default function App() {
         fiveVFiveTeams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
       };
 
-      if (safeFormat === "5_V_5") {
+      if (safeMatchType === MATCH_TYPE.FRIENDLY) {
         return {
           ...nextState,
           matchMode: "round_robin",
@@ -2069,13 +2112,73 @@ export default function App() {
     });
   };
 
-  const handleSetGameFormat = (nextFormat) => {
-    const safeFormat =
-      nextFormat === "3_TEAM_LEAGUE" ? "3_TEAM_LEAGUE" : "5_V_5";
+  const applyGameFormatChange = (nextFormat) => {
+    const safeFormat = normalizeGameFormat(nextFormat, GAME_FORMAT.FIVE_V_FIVE);
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        gameFormat: safeFormat,
+        matchType: normalizeMatchMode(prevSeason?.matchType || matchType),
+        activeTeamIds:
+          Array.isArray(prevSeason?.activeTeamIds) &&
+          prevSeason.activeTeamIds.length >= 2
+            ? prevSeason.activeTeamIds
+            : (prevSeason.teams || [])
+                .map((team) => team?.id)
+                .filter(Boolean)
+                .slice(0, 2),
+        fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
+      }));
+      return;
+    }
+
+    updateState((prev) => ({
+      ...prev,
+      gameFormat: safeFormat,
+      matchType: normalizeMatchMode(prev?.matchType || matchType),
+      activeTeamIds:
+        Array.isArray(prev?.activeTeamIds) && prev.activeTeamIds.length >= 2
+          ? prev.activeTeamIds
+          : (prev.teams || [])
+              .map((team) => team?.id)
+              .filter(Boolean)
+              .slice(0, 2),
+      fiveVFiveTeams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
+    }));
+  };
+
+  const handleSetMatchType = (nextMatchType) => {
+    const safeMatchType =
+      normalizeMatchMode(nextMatchType, MATCH_TYPE.FRIENDLY) === MATCH_TYPE.LEAGUE
+        ? MATCH_TYPE.LEAGUE
+        : MATCH_TYPE.FRIENDLY;
 
     if (hasRecordedMatchDayState) {
       window.alert(
-        "Format switching is locked once a match has started or match-day records exist. Use the override option if you really need to force the switch."
+        "Match type switching is locked once a match has started or match-day records exist. Use the override option if you really need to force the switch."
+      );
+      return;
+    }
+
+    applyMatchTypeChange(safeMatchType);
+  };
+
+  const handleForceSetMatchType = (nextMatchType) => {
+    const safeMatchType =
+      normalizeMatchMode(nextMatchType, MATCH_TYPE.FRIENDLY) === MATCH_TYPE.LEAGUE
+        ? MATCH_TYPE.LEAGUE
+        : MATCH_TYPE.FRIENDLY;
+
+    applyMatchTypeChange(safeMatchType);
+  };
+
+  const handleSetGameFormat = (nextFormat) => {
+    const safeFormat = normalizeGameFormat(nextFormat, GAME_FORMAT.FIVE_V_FIVE);
+
+    if (hasRecordedMatchDayState) {
+      window.alert(
+        "Game format switching is locked once a match has started or match-day records exist. Use the override option if you really need to force the switch."
       );
       return;
     }
@@ -2084,14 +2187,13 @@ export default function App() {
   };
 
   const handleForceSetGameFormat = (nextFormat) => {
-    const safeFormat =
-      nextFormat === "3_TEAM_LEAGUE" ? "3_TEAM_LEAGUE" : "5_V_5";
+    const safeFormat = normalizeGameFormat(nextFormat, GAME_FORMAT.FIVE_V_FIVE);
     applyGameFormatChange(safeFormat);
   };
 
   const handleSetMatchMode = (nextMode) => {
     if (!USE_V2) return;
-    if (gameFormat !== "3_TEAM_LEAGUE") return;
+    if (matchType !== MATCH_TYPE.LEAGUE) return;
 
     if (running || hasLiveMatch) {
       window.alert("Finish or discard the live match before changing mode.");
@@ -2269,6 +2371,7 @@ export default function App() {
       teams,
       fiveVFiveTeams,
       identity,
+      matchType,
       gameFormat,
       activeTeamIds: normalizedActiveTeamIds,
       matchMode,
@@ -2969,7 +3072,8 @@ export default function App() {
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
-        gameFormat: "5_V_5",
+        matchType: MATCH_TYPE.FRIENDLY,
+        gameFormat: GAME_FORMAT.FIVE_V_FIVE,
         activeTeamIds: (prevSeason.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
         fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
         currentMatchNo: 1,
@@ -3001,7 +3105,8 @@ export default function App() {
 
     updateState((prev) => ({
       ...prev,
-      gameFormat: "5_V_5",
+      matchType: MATCH_TYPE.FRIENDLY,
+        gameFormat: GAME_FORMAT.FIVE_V_FIVE,
       activeTeamIds: (prev.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
       fiveVFiveTeams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
       currentMatchNo: 1,
@@ -3055,7 +3160,7 @@ export default function App() {
       String(now.getDate()).padStart(2, "0");
 
     try {
-      const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo);
+      const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo, matchType);
       const highlightsArchivePayload = buildHighlightsArchivePayload();
       console.log("[TK HIGHLIGHTS] archive winners on End Match Day:", highlightsArchivePayload);
 
@@ -3065,6 +3170,7 @@ export default function App() {
           archiveSelection: highlightArchiveSelection,
           activeSeasonId,
           gameFormat,
+          matchType,
           currentMatchNo,
         });
         await clearRawHighlightsFromFirebase(matchDayId);
@@ -3100,7 +3206,8 @@ export default function App() {
           return {
             ...prevSeason,
             matchDayHistory: newHistory,
-            gameFormat: "5_V_5",
+            matchType: MATCH_TYPE.FRIENDLY,
+        gameFormat: GAME_FORMAT.FIVE_V_FIVE,
             activeTeamIds: (prevSeason.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
             fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
             currentMatchNo: 1,
@@ -3145,7 +3252,8 @@ export default function App() {
         return {
           ...prev,
           matchDayHistory: newHistory,
-          gameFormat: "5_V_5",
+          matchType: MATCH_TYPE.FRIENDLY,
+        gameFormat: GAME_FORMAT.FIVE_V_FIVE,
           activeTeamIds: (prev.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
           fiveVFiveTeams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
           currentMatchNo: 1,
@@ -3261,7 +3369,8 @@ export default function App() {
       const newSeason = {
         seasonId,
         seasonNo,
-        gameFormat: "5_V_5",
+        matchType: MATCH_TYPE.FRIENDLY,
+        gameFormat: GAME_FORMAT.FIVE_V_FIVE,
         activeTeamIds: (baseTeams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
         teams: baseTeams,
         fiveVFiveTeams: buildDefaultFiveVFiveTeams(),
@@ -3329,8 +3438,9 @@ export default function App() {
     return {
       matchDayId: new Date().toISOString().slice(0, 10),
       matchNo: currentMatchNo || 1,
-      seasonId: gameFormat === "5_V_5" ? null : activeSeasonId || null,
-      gameFormat: gameFormat || "5_V_5",
+      seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || null,
+      matchType,
+      gameFormat: normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE),
       topGoals,
       bestSkill,
       bestSave,
@@ -3358,7 +3468,7 @@ export default function App() {
     });
 
     const isOfficialMatchLive =
-      gameFormat === "3_TEAM_LEAGUE" &&
+      matchType === MATCH_TYPE.LEAGUE &&
       Boolean(hasLiveMatch) &&
       Boolean(launchTeams.teamAId && launchTeams.teamBId);
 
@@ -3370,7 +3480,8 @@ export default function App() {
       matchId: `tk-${activeSeasonId || "season"}-${currentMatchNo || 1}`,
       matchNo: Number(currentMatchNo || 1),
       seasonId: activeSeasonId || null,
-      gameFormat: gameFormat || "3_TEAM_LEAGUE",
+      matchType: matchType || MATCH_TYPE.FRIENDLY,
+      gameFormat: normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE),
       teamAId: launchTeams.teamAId,
       teamBId: launchTeams.teamBId,
       teamAName: launchTeams.teamAName,
@@ -3621,6 +3732,7 @@ export default function App() {
           results={fullResults}
           streaks={streaks}
           hasLiveMatch={hasLiveMatch}
+          matchType={matchType}
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
           matchMode={matchMode}
@@ -3630,6 +3742,8 @@ export default function App() {
           smartTarget={smartTarget}
           onUpdatePairing={handleUpdatePairing}
           onStartMatch={handleStartMatch}
+          onSetMatchType={handleSetMatchType}
+          onForceSetMatchType={handleForceSetMatchType}
           onSetGameFormat={handleSetGameFormat}
           onForceSetGameFormat={handleForceSetGameFormat}
           formatSwitchLocked={hasRecordedMatchDayState}
@@ -3712,6 +3826,7 @@ export default function App() {
           isCaptain={isCaptain}
           canControlMatch={canStartMatch}
           pendingMatchStartContext={pendingMatchStartContext}
+          matchType={matchType}
           gameFormat={gameFormat}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
@@ -3799,7 +3914,7 @@ export default function App() {
               identity?.email ||
               "Unknown";
 
-            const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo);
+            const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo, matchType);
 
             if (userId && matchDayId) {
               try {
@@ -3876,6 +3991,7 @@ export default function App() {
           identity={identity}
           isAdmin={isAdmin}
           activeRole={activeRole}
+          matchType={matchType}
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
           onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
@@ -3891,6 +4007,7 @@ export default function App() {
           identity={identity}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
+          matchType={matchType}
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
         />
