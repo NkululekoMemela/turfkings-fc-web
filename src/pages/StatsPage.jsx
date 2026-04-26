@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useMemberNameMap } from "../core/nameMapping.js";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebaseConfig";
 import { collection, getDocs } from "firebase/firestore";
 
@@ -44,6 +43,189 @@ function formatEventTypeLabel(type, role = "") {
     return "clean sheet";
   }
   return "goal";
+}
+
+
+function getForcedCanonicalName(rawName) {
+  const raw = String(rawName || "").trim();
+  if (!raw) return "";
+
+  const lowered = safeLower(raw);
+  const compact = lowered.replace(/[^a-z0-9]/g, "");
+
+  // Hard merge for known renamed / typo histories that must never split in stats.
+  if (
+    lowered === "joshua daniel" ||
+    lowered === "roshi* joshua daniel" ||
+    lowered === "roshi joshua daniel" ||
+    compact === "joshuadaniel" ||
+    compact === "roshijoshuadaniel"
+  ) {
+    return "Joshua Daniel";
+  }
+
+  if (
+    lowered === "humbu mlaudzii" ||
+    lowered === "humbu mlaudzi" ||
+    lowered === "humbulani mulaudzi" ||
+    compact === "humbumlaudzii" ||
+    compact === "humbumlaudzi" ||
+    compact === "humbulanimulaudzi"
+  ) {
+    return "Humbulani Mulaudzi";
+  }
+
+  return "";
+}
+
+
+function resolveCanonicalNameFromMap(rawName, map) {
+  if (!rawName || typeof rawName !== "string") return "";
+
+  const forced = getForcedCanonicalName(rawName);
+  if (forced) return forced;
+
+  const tc = toTitleCase(rawName);
+  if (!tc) return "";
+
+  const direct = map[safeLower(tc)];
+  if (direct) return getForcedCanonicalName(direct) || direct;
+
+  const bySlug = map[slugFromName(tc)];
+  if (bySlug) return getForcedCanonicalName(bySlug) || bySlug;
+
+  const fn = safeLower(firstNameOf(tc));
+  if (fn && map[fn]) return getForcedCanonicalName(map[fn]) || map[fn];
+
+  return getForcedCanonicalName(tc) || tc;
+}
+
+function buildPlayersRegistry(playersSnap) {
+  const mapNameToCanon = {};
+  const mapCanonToShort = {};
+
+  playersSnap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+
+    const rawFullName = toTitleCase(
+      data.fullName ||
+        data.displayName ||
+        data.name ||
+        data.playerName ||
+        ""
+    );
+    const fullName = getForcedCanonicalName(rawFullName) || rawFullName;
+
+    const rawShortName = toTitleCase(
+      data.shortName ||
+        data.name ||
+        data.displayName ||
+        firstNameOf(fullName) ||
+        fullName
+    );
+    const shortName =
+      getForcedCanonicalName(rawShortName) ||
+      (fullName === "Joshua Daniel" ? "Joshua" : rawShortName);
+
+    if (!fullName) return;
+
+    mapCanonToShort[safeLower(fullName)] = shortName || fullName;
+
+    const keys = new Set();
+
+    const addKey = (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return;
+
+      const pretty = toTitleCase(raw);
+
+      keys.add(safeLower(raw));
+      keys.add(safeLower(pretty));
+      keys.add(slugFromName(raw));
+      keys.add(slugFromName(pretty));
+
+      const first = safeLower(firstNameOf(pretty));
+      if (first) keys.add(first);
+    };
+
+    addKey(fullName);
+    addKey(shortName);
+    addKey(data.fullName);
+    addKey(data.shortName);
+    addKey(data.displayName);
+    addKey(data.name);
+    addKey(data.playerName);
+    addKey(docSnap.id);
+
+    const aliases = Array.isArray(data.aliases) ? data.aliases : [];
+    aliases.forEach((a) => addKey(a));
+
+    keys.forEach((k) => {
+      if (!k) return;
+      if (!mapNameToCanon[k]) mapNameToCanon[k] = fullName;
+    });
+  });
+
+  return { mapNameToCanon, mapCanonToShort };
+}
+
+
+const NAME_CANONICAL_OVERRIDES = {
+  "humbu mlauzdii": "Humbulani Mulaudzi",
+  "humbu mlaudzii": "Humbulani Mulaudzi",
+  "joshua daniel": "Roshi* Joshua Daniel",
+};
+
+function applyCanonicalNameOverrides(rawName, resolvedName = "") {
+  const rawKey = safeLower(rawName);
+  const resolvedKey = safeLower(resolvedName);
+
+  if (rawKey && NAME_CANONICAL_OVERRIDES[rawKey]) {
+    return NAME_CANONICAL_OVERRIDES[rawKey];
+  }
+
+  if (resolvedKey && NAME_CANONICAL_OVERRIDES[resolvedKey]) {
+    return NAME_CANONICAL_OVERRIDES[resolvedKey];
+  }
+
+  return resolvedName || toTitleCase(rawName || "");
+}
+
+function dedupeEvents(events = []) {
+  const seen = new Set();
+  const out = [];
+
+  (events || []).forEach((e) => {
+    if (!e) return;
+
+    const key =
+      e.id ??
+      [
+        e.matchNo ?? "m?",
+        e.timeSeconds ?? "t?",
+        e.type ?? "type?",
+        e.teamId ?? "team?",
+        e.scorer ?? e.playerName ?? "p?",
+        e.assist ?? "a?",
+        e.role ?? "role?",
+      ].join("|");
+
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(e);
+  });
+
+  return out;
+}
+
+function getPreferredStatsDisplayName(canonicalFullName, shortDisplayName = "") {
+  const canon = toTitleCase(canonicalFullName || "");
+  const shorty = toTitleCase(shortDisplayName || "");
+
+  // Keep display policy consistent across the whole stats page:
+  // prefer short names for everyone, and only fall back to full name
+  // when no short name exists in the registry.
+  return shorty || canon;
 }
 
 // ---------------- PAGE ----------------
@@ -92,7 +274,61 @@ export function StatsPage({
     : [];
 
   const isAdminUser = Boolean(isAdmin);
-  const { normalizeName } = useMemberNameMap(safeMembers);
+
+  const [nameToCanonical, setNameToCanonical] = useState({});
+  const [canonicalToShort, setCanonicalToShort] = useState({});
+  const canonicalNameCacheRef = useRef({});
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPlayersRegistry() {
+      try {
+        const playersSnap = await getDocs(collection(db, "players"));
+        if (!isMounted) return;
+
+        const { mapNameToCanon, mapCanonToShort } = buildPlayersRegistry(playersSnap);
+        canonicalNameCacheRef.current = {};
+        setNameToCanonical(mapNameToCanon);
+        setCanonicalToShort(mapCanonToShort);
+      } catch (err) {
+        console.error("Failed to load players registry for StatsPage:", err);
+        if (!isMounted) return;
+        canonicalNameCacheRef.current = {};
+        setNameToCanonical({});
+        setCanonicalToShort({});
+      }
+    }
+
+    loadPlayersRegistry();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const resolveCanonicalName = useCallback(
+    (rawName) => {
+      const rawKey = String(rawName || "");
+      if (!rawKey) return "";
+
+      const cached = canonicalNameCacheRef.current[rawKey];
+      if (cached) return cached;
+
+      const resolved = resolveCanonicalNameFromMap(rawName, nameToCanonical);
+      canonicalNameCacheRef.current[rawKey] = resolved;
+      return resolved;
+    },
+    [nameToCanonical]
+  );
+
+  const resolveShortDisplay = useCallback(
+    (canonicalFullName) => {
+      const key = safeLower(canonicalFullName);
+      return canonicalToShort[key] || canonicalFullName;
+    },
+    [canonicalToShort]
+  );
 
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [isMobile, setIsMobile] = useState(() => {
@@ -446,15 +682,17 @@ export function StatsPage({
   ]);
 
   const visibleEvents = useMemo(() => {
-    return (visibleEventsRaw || [])
-      .filter((e) => e?.type !== "shibobo")
-      .map((e) => ({
-        ...e,
-        scorer: normalizeName(e?.scorer),
-        assist: normalizeName(e?.assist),
-        playerName: normalizeName(e?.playerName),
-      }));
-  }, [visibleEventsRaw, normalizeName]);
+    return dedupeEvents(
+      (visibleEventsRaw || [])
+        .filter((e) => e?.type !== "shibobo")
+        .map((e) => ({
+          ...e,
+          scorer: resolveCanonicalName(e?.scorer),
+          assist: resolveCanonicalName(e?.assist),
+          playerName: resolveCanonicalName(e?.playerName),
+        }))
+    );
+  }, [visibleEventsRaw, resolveCanonicalName]);
 
   const teamById = useMemo(() => {
     const map = new Map();
@@ -470,17 +708,17 @@ export function StatsPage({
     const out = {};
     (scopedTeams || []).forEach((t) => {
       const rawPlayers = Array.isArray(t?.players) ? t.players : [];
-      const normalizedPlayers = rawPlayers
+      const canonicalPlayers = rawPlayers
         .map((p) =>
           typeof p === "string" ? p : p?.name || p?.displayName || ""
         )
-        .map((name) => normalizeName(name))
+        .map((name) => resolveCanonicalName(name))
         .filter(Boolean);
 
-      out[t?.id] = normalizedPlayers;
+      out[t?.id] = canonicalPlayers;
     });
     return out;
-  }, [scopedTeams, normalizeName]);
+  }, [scopedTeams, resolveCanonicalName]);
 
   const getPlayersForTeam = (teamId) => {
     return Array.isArray(teamPlayersById?.[teamId])
@@ -493,13 +731,13 @@ export function StatsPage({
     (scopedTeams || []).forEach((t) => {
       (t?.players || []).forEach((p) => {
         const rawName =
-          typeof p === "string" ? p : p?.name || p?.displayName;
-        const canon = normalizeName(rawName);
+          typeof p === "string" ? p : p?.name || p?.displayName || "";
+        const canon = resolveCanonicalName(rawName);
         if (canon && !map[canon]) map[canon] = t.label;
       });
     });
     return map;
-  }, [scopedTeams, normalizeName]);
+  }, [scopedTeams, resolveCanonicalName]);
 
   const teamStats = useMemo(() => {
     const base = {};
@@ -652,24 +890,26 @@ export function StatsPage({
     if (!raw) return null;
 
     const tc = toTitleCase(raw);
-    const normalized = normalizeName(raw);
-    const firstRaw = firstNameOf(raw);
-    const firstTc = firstNameOf(tc);
-    const firstNormalized = firstNameOf(normalized);
+    const canonical = resolveCanonicalName(raw);
+    const shortDisplay = resolveShortDisplay(canonical);
 
     const candidates = [
       raw,
       tc,
-      normalized,
+      canonical,
+      shortDisplay,
       slugFromName(raw),
       slugFromName(tc),
-      slugFromName(normalized),
-      firstRaw,
-      firstTc,
-      firstNormalized,
-      slugFromName(firstRaw),
-      slugFromName(firstTc),
-      slugFromName(firstNormalized),
+      slugFromName(canonical),
+      slugFromName(shortDisplay),
+      firstNameOf(raw),
+      firstNameOf(tc),
+      firstNameOf(canonical),
+      firstNameOf(shortDisplay),
+      slugFromName(firstNameOf(raw)),
+      slugFromName(firstNameOf(tc)),
+      slugFromName(firstNameOf(canonical)),
+      slugFromName(firstNameOf(shortDisplay)),
     ]
       .map((x) => safeLower(x))
       .filter(Boolean);
@@ -701,7 +941,7 @@ export function StatsPage({
       playerNames[0] ||
       "Captain";
 
-    const captainName = normalizeName(captainRaw);
+    const captainName = resolveCanonicalName(captainRaw);
 
     let captainPhoto =
       getPlayerPhotoLikeCards(captainName) ||
@@ -711,7 +951,7 @@ export function StatsPage({
       const matchedPlayerObj = players.find((p) => {
         const nm =
           typeof p === "string" ? p : p?.name || p?.displayName || "";
-        return normalizeName(nm) === captainName;
+        return resolveCanonicalName(nm) === captainName;
       });
 
       if (matchedPlayerObj && typeof matchedPlayerObj === "object") {
@@ -724,7 +964,7 @@ export function StatsPage({
     }
 
     const squadNamesAll = playerNames
-      .map((n) => normalizeName(n))
+      .map((n) => resolveCanonicalName(n))
       .filter(Boolean);
 
     const squadNames = squadNamesAll.filter(
@@ -742,7 +982,7 @@ export function StatsPage({
     isViewingPreviousSeason,
     teamStats,
     teamById,
-    normalizeName,
+    resolveCanonicalName,
     getPlayerPhotoLikeCards,
   ]);
 
@@ -754,6 +994,7 @@ export function StatsPage({
       if (!stats[playerName]) {
         stats[playerName] = {
           name: playerName,
+          displayName: getPreferredStatsDisplayName(playerName, resolveShortDisplay(playerName)),
           goals: 0,
           assists: 0,
           cleanSheets: 0,
@@ -765,13 +1006,14 @@ export function StatsPage({
       return stats[playerName];
     };
 
-    (visibleEvents || []).forEach((e) => {
+    dedupeEvents(visibleEvents || []).forEach((e) => {
       if (!e) return;
 
       if (e.type === "clean_sheet") {
-        const cleanSheetHolder = e.playerName || e.scorer || "";
-        const holder = normalizeName(cleanSheetHolder);
-        const p = getOrCreate(holder);
+        const cleanSheetHolder = resolveCanonicalName(
+          e.playerName || e.scorer || ""
+        );
+        const p = getOrCreate(cleanSheetHolder);
         if (!p) return;
 
         p.cleanSheets += 1;
@@ -780,16 +1022,16 @@ export function StatsPage({
         return;
       }
 
-      if (e.scorer) {
-        const s = getOrCreate(e.scorer);
-        if (!s) return;
-        if (e.type === "goal") s.goals += 1;
+      if (e.type === "goal" && e.scorer) {
+        const scorer = resolveCanonicalName(e.scorer);
+        const s = getOrCreate(scorer);
+        if (s) s.goals += 1;
       }
 
       if (e.assist) {
-        const a = getOrCreate(e.assist);
-        if (!a) return;
-        a.assists += 1;
+        const assister = resolveCanonicalName(e.assist);
+        const a = getOrCreate(assister);
+        if (a) a.assists += 1;
       }
     });
 
@@ -799,7 +1041,7 @@ export function StatsPage({
     });
 
     return Object.values(stats);
-  }, [visibleEvents, playerTeamMap, normalizeName]);
+  }, [visibleEvents, playerTeamMap, resolveCanonicalName, resolveShortDisplay]);
 
   const combinedLeaderboard = useMemo(() => {
     const arr = playerStats.filter((p) => (p.total || 0) > 0).slice();
@@ -1716,7 +1958,7 @@ export function StatsPage({
                 {combinedLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-combined"}>
                     <td>{idx + 1}</td>
-                    <td>{p.name}</td>
+                    <td>{p.displayName || p.name}</td>
                     <td>{p.teamName || "—"}</td>
                     <td>{p.goals}</td>
                     <td>{p.assists}</td>
@@ -1762,7 +2004,7 @@ export function StatsPage({
                 {goalLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-g"}>
                     <td>{idx + 1}</td>
-                    <td>{p.name}</td>
+                    <td>{p.displayName || p.name}</td>
                     <td>{p.teamName || "—"}</td>
                     <td>{p.goals}</td>
                   </tr>
@@ -1805,7 +2047,7 @@ export function StatsPage({
                 {assistLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-a"}>
                     <td>{idx + 1}</td>
-                    <td>{p.name}</td>
+                    <td>{p.displayName || p.name}</td>
                     <td>{p.teamName || "—"}</td>
                     <td>{p.assists}</td>
                   </tr>
@@ -1850,7 +2092,7 @@ export function StatsPage({
                 {cleanSheetLeaderboard.map((p, idx) => (
                   <tr key={p.name + "-cs"}>
                     <td>{idx + 1}</td>
-                    <td>{p.name}</td>
+                    <td>{p.displayName || p.name}</td>
                     <td>{p.teamName || "—"}</td>
                     <td>{p.gkCleanSheets}</td>
                     <td>{p.defCleanSheets}</td>

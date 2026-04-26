@@ -363,6 +363,11 @@ export function SquadsPage({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [showUnseededPlayers, setShowUnseededPlayers] = useState(false);
+  const [pendingDeletePlayerId, setPendingDeletePlayerId] = useState("");
+  const [deletePlayerError, setDeletePlayerError] = useState("");
+
+
   const [savingCardId, setSavingCardId] = useState("");
   const cardRefs = useRef({});
   const longPressTimersRef = useRef({});
@@ -689,9 +694,10 @@ export function SquadsPage({
     }
   };
 
-  const handleRemoveUnseeded = async (playerId) => {
+  const handleRequestRemoveUnseeded = (playerId) => {
     if (!canEdit) return;
     if (!playersById.has(playerId)) return;
+
     const name = displayNameOf(playerId);
     const ok =
       typeof window !== "undefined"
@@ -701,10 +707,30 @@ export function SquadsPage({
         : true;
     if (!ok) return;
 
+
+    setPendingDeletePlayerId(playerId);
+    setDeletePlayerError("");
+  };
+
+  const handleCancelDeletePlayer = () => {
+    setPendingDeletePlayerId("");
+    setDeletePlayerError("");
+  };
+
+  const handleConfirmDeletePlayer = async () => {
+    if (!canEdit) return;
+    if (!pendingDeletePlayerId) return;
+    if (!playersById.has(pendingDeletePlayerId)) return;
+
+
     try {
-      await deleteDoc(doc(db, PLAYERS_COLLECTION, playerId));
+      await deleteDoc(doc(db, PLAYERS_COLLECTION, pendingDeletePlayerId));
+      handleCancelDeletePlayer();
     } catch (err) {
       console.error("[Squads] Error deleting player from DB:", err);
+      setDeletePlayerError(
+        "Could not delete this player from the database. Please try again."
+      );
     }
   };
 
@@ -1226,7 +1252,7 @@ export function SquadsPage({
                       <span className="team-abbrev-badge">POOL</span>
                     </div>
                     <div className="team-subtitle">
-                      Not currently assigned to a team
+                      {unseededPlayers.length} not currently assigned
                     </div>
                     <div className="team-color-name">
                       <span className="team-color-dot" />
@@ -1236,6 +1262,32 @@ export function SquadsPage({
                 </div>
               </div>
 
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  marginTop: "0.75rem",
+                  marginBottom: showUnseededPlayers ? "0.75rem" : 0,
+                }}
+              >
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => setShowUnseededPlayers((current) => !current)}
+                  style={{
+                    width: "100%",
+                    maxWidth: "260px",
+                    borderRadius: "999px",
+                  }}
+                >
+                  {showUnseededPlayers
+                    ? `Hide unseeded players (${unseededPlayers.length})`
+                    : `Show unseeded players (${unseededPlayers.length})`}
+                </button>
+              </div>
+
+              {showUnseededPlayers && (
+                <>
               <ul className="player-list">
                 {unseededPlayers.map((p, idx) => {
                   const name = displayNameOf(p.id);
@@ -1255,7 +1307,7 @@ export function SquadsPage({
                       {isAdmin && (
                         <button
                           className="link-btn"
-                          onClick={() => handleRemoveUnseeded(p.id)}
+                          onClick={() => handleRequestRemoveUnseeded(p.id)}
                         >
                           ❌ delete?
                         </button>
@@ -1307,6 +1359,8 @@ export function SquadsPage({
                   )}
                 </>
               )}
+                </>
+              )}
             </>
           )}
         </div>
@@ -1322,6 +1376,43 @@ export function SquadsPage({
           )}
         </div>
       </section>
+
+      {isAdmin && pendingDeletePlayerId && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Delete player from database?</h3>
+            <p>
+              You are about to permanently remove
+              <strong> {displayNameOf(pendingDeletePlayerId)} </strong>
+              from the Turf Kings player database.
+            </p>
+            <p className="error-text">
+              Warning: this is not the same as moving a player to Unseeded.
+              Only delete if this player was added by mistake or should no longer
+              exist in the database.
+            </p>
+
+            {deletePlayerError && <p className="error-text">{deletePlayerError}</p>}
+
+            <div className="actions-row">
+              <button className="secondary-btn" onClick={handleCancelDeletePlayer}>
+                Cancel
+              </button>
+              <button
+                className="primary-btn"
+                onClick={handleConfirmDeletePlayer}
+                style={{
+                  background:
+                    "linear-gradient(180deg, rgba(220,38,38,0.96), rgba(127,29,29,0.98))",
+                  borderColor: "rgba(248,113,113,0.65)",
+                }}
+              >
+                Yes, delete player
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isAdmin && showSaveModal && (
         <div className="modal-backdrop">

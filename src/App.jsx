@@ -14,6 +14,8 @@ import { MigrationPage } from "./pages/MigrationPage.jsx";
 import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import ViewHighlightsPage from "./pages/ViewHighlightsPage.jsx";
+import BottomNav from "./components/BottomNav.jsx";
+
 
 import {
   loadState,
@@ -1437,6 +1439,12 @@ export default function App() {
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupCode, setBackupCode] = useState("");
   const [backupError, setBackupError] = useState("");
+  const [showClearOnlyConfirmModal, setShowClearOnlyConfirmModal] = useState(false);
+  const [clearOnlyConfirmCode, setClearOnlyConfirmCode] = useState("");
+  const [clearOnlyConfirmError, setClearOnlyConfirmError] = useState("");
+  const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
+  const [saveConfirmCode, setSaveConfirmCode] = useState("");
+  const [saveConfirmError, setSaveConfirmError] = useState("");
   const [pendingParticipationEntries, setPendingParticipationEntries] = useState(
     []
   );
@@ -1954,8 +1962,21 @@ export default function App() {
 
   const handleBackToLanding = () => setPage(PAGE_LANDING);
   const handleBackToLive = () => setPage(PAGE_LIVE);
-  const handleGoToMatchSignup = () => setPage(PAGE_MATCH_SIGNUP);
   const handleGoToViewHighlights = () => setPage(PAGE_VIEW_HIGHLIGHTS);
+
+  const canAccessMatchSignup = isAdmin || isCaptain || isPlayer;
+
+  const handleGoToMatchSignup = () => {
+    if (!canAccessMatchSignup) {
+      window.alert(
+        "Please sign in as a Turf Kings player before using payments. This prevents untracked payments."
+      );
+      setPage(PAGE_ENTRY);
+      return;
+    }
+
+    setPage(PAGE_MATCH_SIGNUP);
+  };
 
   const handleUpdatePairing = (match) => {
     if (!canStartMatch) {
@@ -2873,6 +2894,9 @@ export default function App() {
     setShowBackupModal(false);
     setBackupCode("");
     setBackupError("");
+    setShowClearOnlyConfirmModal(false);
+    setClearOnlyConfirmCode("");
+    setClearOnlyConfirmError("");
     setPendingParticipationEntries([]);
   };
 
@@ -2925,7 +2949,22 @@ export default function App() {
   };
 
   const handleClearOnly = () => {
-    if (!requireAdminCode()) return;
+    setClearOnlyConfirmCode("");
+    setClearOnlyConfirmError("");
+    setShowClearOnlyConfirmModal(true);
+  };
+
+  const closeClearOnlyConfirmModal = () => {
+    setShowClearOnlyConfirmModal(false);
+    setClearOnlyConfirmCode("");
+    setClearOnlyConfirmError("");
+  };
+
+  const handleConfirmClearOnly = () => {
+    if (clearOnlyConfirmCode.trim() !== MASTER_CODE) {
+      setClearOnlyConfirmError("Invalid admin code. Nothing has been cleared.");
+      return;
+    }
 
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({
@@ -2989,8 +3028,23 @@ export default function App() {
     closeBackupModal();
   };
 
+  const handleRequestSaveAndClearMatchDay = () => {
+    setSaveConfirmCode("");
+    setSaveConfirmError("");
+    setShowSaveConfirmModal(true);
+  };
+
+  const closeSaveConfirmModal = () => {
+    setShowSaveConfirmModal(false);
+    setSaveConfirmCode("");
+    setSaveConfirmError("");
+  };
+
   const handleSaveAndClearMatchDay = async () => {
-    if (!requireAdminCode()) return;
+    if (saveConfirmCode.trim() !== MASTER_CODE) {
+      setSaveConfirmError("Invalid admin code. Nothing has been saved or cleared.");
+      return;
+    }
 
     const now = new Date();
     const id =
@@ -3120,7 +3174,7 @@ export default function App() {
       closeBackupModal();
     } catch (err) {
       console.error("[TK] Failed to save participation records:", err);
-      setBackupError(
+      setSaveConfirmError(
         "Failed to save participation records. Nothing was cleared."
       );
     }
@@ -3256,6 +3310,7 @@ export default function App() {
   const handleBackFromPayment = () => setPage(PAGE_MATCH_SIGNUP);
 
 
+
   const buildHighlightsArchivePayload = () => {
     const selection = highlightArchiveSelection || {};
     const topGoals = Array.isArray(selection.topGoals) ? selection.topGoals : [];
@@ -3330,10 +3385,78 @@ export default function App() {
     )}`;
 
     window.location.href = launchUrl;
+    };
+
+  const pagesWithBottomNav = new Set([
+    PAGE_LANDING,
+    PAGE_MATCH_SIGNUP,
+    PAGE_PAYMENT,
+    PAGE_LIVE,
+    PAGE_SPECTATOR,
+    PAGE_STATS,
+    PAGE_NEWS,
+    PAGE_PLAYER_CARDS,
+    PAGE_SQUADS,
+    PAGE_FORMATIONS,
+    PAGE_PEER_REVIEW,
+  ]);
+
+  const showBottomNav = pagesWithBottomNav.has(page);
+
+  const handleBottomNavNavigate = (targetPage) => {
+    if (!targetPage || targetPage === page) return;
+
+    if (targetPage === PAGE_STATS) {
+      handleGoToStats(page);
+      return;
+    }
+
+    if (targetPage === PAGE_LIVE) {
+      handleGoToLiveAsSpectator();
+      return;
+    }
+
+    if (targetPage === PAGE_LANDING) {
+      handleBackToLanding();
+      return;
+    }
+
+    if (targetPage === PAGE_MATCH_SIGNUP) {
+      handleGoToMatchSignup();
+      return;
+    }
+
+    if (targetPage === PAGE_PLAYER_CARDS) {
+      setPage(PAGE_PLAYER_CARDS);
+      return;
+    }
+
+    if (targetPage === PAGE_NEWS) {
+      setPage(PAGE_NEWS);
+      return;
+    }
+
+    if (targetPage === PAGE_SQUADS) {
+      handleGoToSquads();
+      return;
+    }
+
+    if (targetPage === PAGE_FORMATIONS) {
+      handleGoToFormations();
+      return;
+    }
+
+    if (targetPage === PAGE_PEER_REVIEW) {
+      setPage(PAGE_PEER_REVIEW);
+      return;
+    }
+
+    setPage(targetPage);
+
   };
 
   return (
-    <div className="app-root">
+    <div className={`app-root ${showBottomNav ? "has-bottom-nav" : ""}`}>
       <style>{`
         .tk-staging-badge {
           position: fixed;
@@ -3351,6 +3474,131 @@ export default function App() {
           border: 1px solid rgba(255, 255, 255, 0.18);
           pointer-events: none;
           user-select: none;
+        }
+
+        .app-root.has-bottom-nav {
+          padding-bottom: 96px;
+        }
+
+        .tk-bottom-nav {
+          position: fixed;
+          left: 12px;
+          right: 12px;
+          bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+          z-index: 9500;
+          border-radius: 26px;
+          padding: 8px;
+          background:
+            linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.96));
+          border: 1px solid rgba(148, 163, 184, 0.28);
+          box-shadow:
+            0 18px 44px rgba(0, 0, 0, 0.42),
+            inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+        }
+
+        .tk-bottom-nav-scroll {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          overflow-x: auto;
+          overscroll-behavior-x: contain;
+          scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
+          scroll-snap-type: x proximity;
+          padding: 2px;
+        }
+
+        .tk-bottom-nav-scroll::-webkit-scrollbar {
+          display: none;
+        }
+
+        .tk-bottom-nav-item {
+          appearance: none;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(15, 23, 42, 0.72);
+          color: rgba(226, 232, 240, 0.92);
+          min-width: 72px;
+          height: 58px;
+          border-radius: 19px;
+          padding: 7px 10px 6px;
+          display: inline-flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          cursor: pointer;
+          flex: 0 0 auto;
+          scroll-snap-align: center;
+          touch-action: manipulation;
+          transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+        }
+
+        .tk-bottom-nav-item:active {
+          transform: translateY(1px) scale(0.98);
+        }
+
+        .tk-bottom-nav-item:hover {
+          border-color: rgba(34, 197, 94, 0.38);
+          background: rgba(15, 23, 42, 0.92);
+        }
+
+        .tk-bottom-nav-item.is-primary {
+          min-width: 82px;
+          border-color: rgba(34, 197, 94, 0.42);
+          background:
+            radial-gradient(circle at top, rgba(34, 197, 94, 0.18), rgba(15, 23, 42, 0.88));
+          box-shadow: 0 0 18px rgba(34, 197, 94, 0.12);
+        }
+
+        .tk-bottom-nav-icon-wrap {
+          width: 24px;
+          height: 24px;
+          display: grid;
+          place-items: center;
+        }
+
+        .tk-bottom-nav-icon {
+          display: block;
+        }
+
+        .tk-bottom-nav-label {
+          font-size: 0.72rem;
+          line-height: 1;
+          font-weight: 800;
+          letter-spacing: 0.01em;
+          white-space: nowrap;
+        }
+
+        @media (max-width: 420px) {
+          .app-root.has-bottom-nav {
+            padding-bottom: 92px;
+          }
+
+          .tk-bottom-nav {
+            left: 8px;
+            right: 8px;
+            bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+            border-radius: 22px;
+            padding: 7px;
+          }
+
+          .tk-bottom-nav-item {
+            min-width: 64px;
+            height: 54px;
+            border-radius: 16px;
+            padding-left: 8px;
+            padding-right: 8px;
+          }
+
+          .tk-bottom-nav-item.is-primary {
+            min-width: 74px;
+          }
+
+          .tk-bottom-nav-label {
+            font-size: 0.68rem;
+          }
         }
       `}</style>
 
@@ -3409,7 +3657,7 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_MATCH_SIGNUP && (
+      {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (
         <MatchSignupPage
           identity={identity}
           currentUser={null}
@@ -3418,6 +3666,15 @@ export default function App() {
           playerPhotosByName={playerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
+        />
+      )}
+
+      {page === PAGE_MATCH_SIGNUP && !canAccessMatchSignup && (
+        <EntryPage
+          identity={identity}
+          members={members}
+          onComplete={handleEntryComplete}
+          onDevSkipToLanding={() => setPage(PAGE_LANDING)}
         />
       )}
 
@@ -3645,33 +3902,43 @@ export default function App() {
             className="modal"
             style={{
               maxWidth: "780px",
-              width: isBackupModalMobile ? "94%" : "95%",
-              padding: isBackupModalMobile ? "1.15rem" : "1.4rem",
+              width: isBackupModalMobile ? "94vw" : "95vw",
+              maxHeight: "92vh",
+              padding: 0,
               boxSizing: "border-box",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            <h3 style={{ marginBottom: "0.45rem" }}>End Match Day</h3>
-            <p
+            <div
               style={{
-                marginTop: 0,
-                marginBottom: "0.9rem",
-                maxWidth: "560px",
-                lineHeight: 1.45,
+                padding: isBackupModalMobile ? "1rem 1rem 0.75rem" : "1.25rem 1.35rem 0.85rem",
+                flexShrink: 0,
               }}
             >
-              Confirm player participation, then save the match day to Firebase and clear the live board.
-            </p>
+              <h3 style={{ marginBottom: "0.45rem" }}>End Match Day</h3>
+              <p
+                style={{
+                  marginTop: 0,
+                  marginBottom: 0,
+                  maxWidth: "560px",
+                  lineHeight: 1.45,
+                }}
+              >
+                Confirm player participation, then save the match day to Firebase and clear the live board.
+              </p>
+            </div>
 
             <div
               style={{
                 display: "flex",
                 flexDirection: "column",
                 gap: isBackupModalMobile ? "0.7rem" : "0.85rem",
-                maxHeight: isBackupModalMobile ? "45vh" : "48vh",
+                flex: "1 1 auto",
+                minHeight: 0,
                 overflowY: "auto",
-                marginTop: "0.2rem",
-                marginBottom: "1rem",
-                paddingRight: "0.2rem",
+                padding: isBackupModalMobile ? "0 1rem 0.75rem" : "0 1.35rem 0.85rem",
               }}
             >
               {teams.map((team, teamIndex) => {
@@ -3898,30 +4165,20 @@ export default function App() {
               })}
             </div>
 
-            <div style={{ display: "grid", gap: "0.45rem", marginBottom: "0.9rem" }}>
-              <label style={{ fontWeight: 600 }}>Admin code (Nkululeko)</label>
-              <input
-                type="password"
-                className="text-input"
-                style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
-                value={backupCode}
-                onChange={(e) => {
-                  setBackupCode(e.target.value);
-                  setBackupError("");
-                }}
-              />
-              {backupError && <p className="error-text">{backupError}</p>}
-            </div>
-
             <div
               className="actions-row"
               style={{
                 display: "grid",
                 gridTemplateColumns: isBackupModalMobile
                   ? "1fr"
-                  : "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: "0.75rem",
+                  : "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "0.65rem",
                 alignItems: "stretch",
+                padding: isBackupModalMobile ? "0.85rem 1rem 1rem" : "0.9rem 1.35rem 1.2rem",
+                background: "rgba(2,6,23,0.94)",
+                borderTop: "1px solid rgba(148,163,184,0.16)",
+                boxShadow: "0 -14px 30px rgba(0,0,0,0.22)",
+                flexShrink: 0,
               }}
             >
               <button className="secondary-btn" onClick={closeBackupModal}>
@@ -3930,7 +4187,19 @@ export default function App() {
               <button className="secondary-btn" onClick={handleClearOnly}>
                 Clear only
               </button>
-              <button className="primary-btn" onClick={handleSaveAndClearMatchDay}>
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={handleRequestSaveAndClearMatchDay}
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(22,163,74,0.98), rgba(34,197,94,0.92))",
+                  border: "1px solid rgba(134,239,172,0.42)",
+                  boxShadow: "0 0 22px rgba(34,197,94,0.22)",
+                  color: "#ffffff",
+                  fontWeight: 900,
+                }}
+              >
                 Save to Firebase &amp; clear
               </button>
             </div>
@@ -3938,7 +4207,183 @@ export default function App() {
         </div>
       )}
 
-      {USE_V2 && showSeasonCompleteModal && (
+
+      {showSaveConfirmModal && (
+        <div className="modal-backdrop" style={{ zIndex: 10050 }}>
+          <div
+            className="modal"
+            style={{
+              maxWidth: "540px",
+              width: "92vw",
+              padding: isBackupModalMobile ? "1.05rem" : "1.35rem",
+              border: "1px solid rgba(34,197,94,0.44)",
+              background:
+                "radial-gradient(circle at top, rgba(34,197,94,0.18), rgba(2,6,23,0.98) 58%)",
+              boxShadow: "0 22px 60px rgba(0,0,0,0.55), 0 0 34px rgba(34,197,94,0.16)",
+            }}
+          >
+            <div style={{ textAlign: "center", marginBottom: "0.9rem" }}>
+              <div
+                style={{
+                  width: "82px",
+                  height: "82px",
+                  borderRadius: "999px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "3rem",
+                  background: "rgba(34,197,94,0.16)",
+                  border: "1px solid rgba(134,239,172,0.35)",
+                  boxShadow: "0 0 24px rgba(34,197,94,0.22)",
+                }}
+              >
+                😄
+              </div>
+              <h3 style={{ margin: "0.65rem 0 0.25rem", color: "#86efac" }}>
+                Well done!
+              </h3>
+              <p style={{ margin: 0, fontWeight: 800 }}>Great official match day.</p>
+            </div>
+
+            <div
+              style={{
+                padding: "0.9rem",
+                borderRadius: "1rem",
+                border: "1px solid rgba(34,197,94,0.28)",
+                background: "rgba(15,23,42,0.58)",
+                marginBottom: "1rem",
+                lineHeight: 1.5,
+              }}
+            >
+              <p style={{ marginTop: 0, fontWeight: 900 }}>
+                You are about to save an official match day.
+              </p>
+              <p style={{ margin: "0.45rem 0" }}>
+                ✅ Save all participation and stats to Firebase.
+              </p>
+              <p style={{ margin: "0.45rem 0" }}>
+                ✅ Clear the live board for the next match day.
+              </p>
+              <p style={{ margin: "0.65rem 0 0", color: "#bbf7d0" }}>
+                If this was a practice run or dummy data, cancel and use <strong>Clear only</strong> instead.
+              </p>
+            </div>
+
+            <div className="field-row">
+              <label>Enter admin code (Nkululeko)</label>
+              <input
+                type="password"
+                className="text-input"
+                value={saveConfirmCode}
+                onChange={(e) => {
+                  setSaveConfirmCode(e.target.value);
+                  setSaveConfirmError("");
+                }}
+                autoFocus
+              />
+              {saveConfirmError && <p className="error-text">{saveConfirmError}</p>}
+            </div>
+
+            <div
+              className="actions-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isBackupModalMobile ? "1fr" : "1fr 1fr",
+                gap: "0.65rem",
+                marginTop: "1rem",
+              }}
+            >
+              <button className="secondary-btn" type="button" onClick={closeSaveConfirmModal}>
+                Cancel
+              </button>
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={handleSaveAndClearMatchDay}
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(22,163,74,0.98), rgba(34,197,94,0.92))",
+                  border: "1px solid rgba(134,239,172,0.42)",
+                  color: "#ffffff",
+                  fontWeight: 900,
+                }}
+              >
+                Confirm &amp; Save to Firebase
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showClearOnlyConfirmModal && (
+        <div className="modal-backdrop" style={{ zIndex: 10050 }}>
+          <div
+            className="modal"
+            style={{
+              maxWidth: "520px",
+              width: "92vw",
+              padding: isBackupModalMobile ? "1.05rem" : "1.25rem",
+              border: "1px solid rgba(248,113,113,0.36)",
+              background:
+                "radial-gradient(circle at top, rgba(239,68,68,0.18), rgba(2,6,23,0.98) 58%)",
+              boxShadow: "0 22px 60px rgba(0,0,0,0.55)",
+            }}
+          >
+            <h3 style={{ marginTop: 0, color: "#fecaca" }}>⚠️ Clear only warning</h3>
+            <p style={{ lineHeight: 1.5, marginBottom: "0.75rem" }}>
+              <strong>Clear only will throw away this match-day data without saving it to Firebase.</strong>
+            </p>
+            <p style={{ lineHeight: 1.5, marginTop: 0, color: "rgba(255,255,255,0.86)" }}>
+              Only continue if this was a practice run or dummy data. If this was a real match day,
+              go back and use <strong>Save to Firebase &amp; clear</strong> instead.
+            </p>
+            <p style={{ lineHeight: 1.5, color: "#fde68a", fontWeight: 800 }}>
+              Do not enter the PIN unless you are intentionally discarding test data.
+            </p>
+
+            <div className="field-row">
+              <label>Re-enter admin code to confirm discard</label>
+              <input
+                type="password"
+                className="text-input"
+                value={clearOnlyConfirmCode}
+                onChange={(e) => {
+                  setClearOnlyConfirmCode(e.target.value);
+                  setClearOnlyConfirmError("");
+                }}
+              />
+              {clearOnlyConfirmError && (
+                <p className="error-text">{clearOnlyConfirmError}</p>
+              )}
+            </div>
+
+            <div
+              className="actions-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isBackupModalMobile ? "1fr" : "1fr 1fr",
+                gap: "0.65rem",
+                marginTop: "1rem",
+              }}
+            >
+              <button className="primary-btn" type="button" onClick={closeClearOnlyConfirmModal}>
+                Go back — save real data
+              </button>
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={handleConfirmClearOnly}
+                style={{ borderColor: "rgba(248,113,113,0.5)", color: "#fecaca" }}
+              >
+                Discard test data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+{USE_V2 && showSeasonCompleteModal && (
+
         <div className="modal-backdrop">
           <div
             className="modal"
@@ -4048,6 +4493,18 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {showBottomNav ? (
+        <BottomNav
+          currentPage={page}
+          onNavigate={handleBottomNavNavigate}
+          hasLiveMatch={hasLiveMatch || running}
+          canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
+          canManageSquads={canManageSquads}
+          canAccessPayments={canAccessMatchSignup}
+        />
+      ) : null}
+
     </div>
   );
 }

@@ -1,5 +1,5 @@
 // src/pages/NewsPage.jsx
-import React, { useMemo, useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import JaydTribute from "../assets/Jayd_Tribute.jpeg";
 import JerseyImage from "../assets/Jersey.jpeg";
 import { RSVPModal } from "../components/RSVPModal.jsx";
@@ -30,6 +30,24 @@ const VENUE_MAP_URL =
 
 const CUSTOM_NEWS_STORIES_COLLECTION = "newsStories";
 const CUSTOM_STORY_LIMIT = 5;
+const CUSTOM_POLLS_COLLECTION = "newsPolls";
+const CUSTOM_POLL_VOTES_COLLECTION = "newsPollVotes";
+const CUSTOM_POLL_LIMIT = 2;
+
+const STORY_IMAGE_SIZE_OPTIONS = [
+  { value: "100", label: "Full", scale: 1, mode: "image" },
+  { value: "90", label: "Large", scale: 0.9, mode: "image" },
+  { value: "80", label: "Standard", scale: 0.8, mode: "image" },
+  { value: "70", label: "Compact", scale: 0.7, mode: "image" },
+  { value: "50", label: "Medium Avatar", scale: 0.5, mode: "medium-avatar" },
+  { value: "30", label: "MVP Avatar", scale: 1, mode: "mvp-avatar" },
+];
+
+const STORY_IMAGE_FIT_OPTIONS = [
+  { value: "auto", label: "Smart Auto" },
+  { value: "crop", label: "Crop to frame" },
+  { value: "fit", label: "Fit full portrait" },
+];
 
 const CUSTOM_STORY_SLOT_OPTIONS = [
   { value: "after-jersey", label: "Below jersey story" },
@@ -186,6 +204,59 @@ function buildCloudPhotosIndex(photoSnap) {
   });
 
   return idx;
+}
+
+
+function getStoryImageSizeMeta(value) {
+  const match = STORY_IMAGE_SIZE_OPTIONS.find(
+    (option) => String(option.value) === String(value || "")
+  );
+  return match || STORY_IMAGE_SIZE_OPTIONS[0];
+}
+
+function resolveDateMs(rawMs, fallback = Date.now()) {
+  const n = Number(rawMs || 0);
+  if (Number.isFinite(n) && n > 0) return n;
+  return fallback;
+}
+
+function makeDateInputValue(ms) {
+  const d = new Date(resolveDateMs(ms));
+  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
+function dateInputToMs(value, fallback = Date.now()) {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  const parsed = new Date(`${raw}T12:00:00`);
+  const ms = parsed.getTime();
+  return Number.isNaN(ms) ? fallback : ms;
+}
+
+function getFreshnessBadge(createdAtMs, archived = false) {
+  if (archived) return { label: "ARCHIVE", tone: "rgba(148,163,184,0.16)", border: "rgba(148,163,184,0.3)", color: "#cbd5e1" };
+  const now = Date.now();
+  const ms = resolveDateMs(createdAtMs, now);
+  const ageDays = Math.max(0, (now - ms) / (1000 * 60 * 60 * 24));
+  const d = new Date(ms);
+  const current = new Date(now);
+  const sameMonth = d.getFullYear() === current.getFullYear() && d.getMonth() === current.getMonth();
+  if (ageDays <= 1) return { label: "NEW", tone: "rgba(34,197,94,0.16)", border: "rgba(34,197,94,0.34)", color: "#86efac" };
+  if (ageDays <= 7) return { label: "THIS WEEK", tone: "rgba(59,130,246,0.16)", border: "rgba(59,130,246,0.34)", color: "#bfdbfe" };
+  if (sameMonth) return { label: "THIS SEASON", tone: "rgba(250,204,21,0.13)", border: "rgba(250,204,21,0.3)", color: "#fde68a" };
+  return { label: "ARCHIVE", tone: "rgba(148,163,184,0.16)", border: "rgba(148,163,184,0.3)", color: "#cbd5e1" };
+}
+
+function makeVoterId(identity) {
+  return slugFromName(
+    identity?.memberId ||
+      identity?.playerId ||
+      identity?.email ||
+      identity?.shortName ||
+      identity?.fullName ||
+      "guest"
+  );
 }
 
 export function NewsPage({
@@ -497,6 +568,9 @@ export function NewsPage({
     slotKey: "after-hero",
     playerName: "",
     imageUrl: "",
+    imageSize: "100",
+    imageFit: "auto",
+    publishDate: makeDateInputValue(Date.now()),
   });
 
   const [customStories, setCustomStories] = useState([]);
@@ -506,6 +580,8 @@ export function NewsPage({
   const [storyFormNotice, setStoryFormNotice] = useState("");
   const [editingStoryId, setEditingStoryId] = useState("");
   const [loadingStories, setLoadingStories] = useState(true);
+  const [storyImageAspectById, setStoryImageAspectById] = useState({});
+  const storyStudioRef = useRef(null);
 
   useEffect(() => {
     const storiesRef = collection(db, CUSTOM_NEWS_STORIES_COLLECTION);
@@ -588,10 +664,20 @@ export function NewsPage({
       slotKey: String(story.slotKey || "after-hero"),
       playerName: String(story.playerName || ""),
       imageUrl: String(story.imageUrl || ""),
+      imageSize: String(story.imageSize || "100"),
+      imageFit: String(story.imageFit || "auto"),
+      publishDate: makeDateInputValue(story.publishDateMs || story.createdAtMs || Date.now()),
     });
     setShowCreateStoryForm(true);
     setStoryFormError("");
     setStoryFormNotice(`Editing "${story.title || "story"}".`);
+
+    window.setTimeout(() => {
+      storyStudioRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
   };
 
   const handleSaveCustomStory = async () => {
@@ -602,7 +688,10 @@ export function NewsPage({
     const tag = String(storyDraft.tag || "").trim() || "Story";
     const playerName = String(storyDraft.playerName || "").trim();
     const imageUrl = String(storyDraft.imageUrl || "").trim();
+    const imageSize = String(storyDraft.imageSize || "100");
+    const imageFit = String(storyDraft.imageFit || "auto");
     const slotKey = String(storyDraft.slotKey || "after-hero");
+    const publishDateMs = dateInputToMs(storyDraft.publishDate, Date.now());
 
     if (!title) {
       setStoryFormError("Please add a story title.");
@@ -640,8 +729,11 @@ export function NewsPage({
           slotKey,
           playerName,
           imageUrl,
+          imageSize,
+          imageFit,
           archived: false,
-          createdAtMs,
+          createdAtMs: publishDateMs || createdAtMs,
+          publishDateMs: publishDateMs || createdAtMs,
           updatedAtMs: Date.now(),
           createdBy:
             identity?.shortName || identity?.fullName || identity?.name || "Admin",
@@ -1319,6 +1411,30 @@ This will remove it from live news and archives for everyone.`
     </a>
   );
 
+
+  const renderStoryDateBadges = (dateValue = Date.now(), archived = false) => {
+    const dateMs = resolveDateMs(dateValue, Date.now());
+    const freshness = getFreshnessBadge(dateMs, archived);
+
+    return (
+      <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", alignItems: "center", margin: "0.35rem 0 0.65rem" }}>
+        <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(dateMs))}</span>
+        <span
+          style={{
+            ...metaChipStyle,
+            background: freshness.tone,
+            border: `1px solid ${freshness.border}`,
+            color: freshness.color,
+            fontWeight: 900,
+            letterSpacing: "0.04em",
+          }}
+        >
+          {freshness.label}
+        </span>
+      </div>
+    );
+  };
+
   // ---------------- KIT POLL STATE ----------------
   const [kitOrders, setKitOrders] = useState([]);
   const [kitOrdersError, setKitOrdersError] = useState("");
@@ -1370,20 +1486,315 @@ This will remove it from live news and archives for everyone.`
   };
 
 
-  const renderCustomStoryCard = (story, { archivedView = false } = {}) => {
-    if (!story) return null;
+  // ---------------- CUSTOM POLL STATE ----------------
+  const createEmptyPollDraft = () => ({
+    question: "",
+    tag: "Poll",
+    optionA: "",
+    optionB: "",
+    playerName: "",
+    imageUrl: "",
+    publishDate: makeDateInputValue(Date.now()),
+  });
 
-    const playerName = String(story.playerName || "").trim();
+  const [customPolls, setCustomPolls] = useState([]);
+  const [pollVotes, setPollVotes] = useState([]);
+  const [showCreatePollForm, setShowCreatePollForm] = useState(false);
+  const [pollDraft, setPollDraft] = useState(createEmptyPollDraft);
+  const [pollFormError, setPollFormError] = useState("");
+  const [pollFormNotice, setPollFormNotice] = useState("");
+  const [editingPollId, setEditingPollId] = useState("");
+
+  useEffect(() => {
+    const pollsRef = collection(db, CUSTOM_POLLS_COLLECTION);
+    const unsubscribe = onSnapshot(
+      pollsRef,
+      (snapshot) => {
+        const nextPolls = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() || {}),
+        }));
+        setCustomPolls(nextPolls);
+      },
+      (error) => {
+        console.error("[NewsPage] failed to subscribe to custom polls:", error);
+        setPollFormError("Could not load custom polls.");
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const votesRef = collection(db, CUSTOM_POLL_VOTES_COLLECTION);
+    const unsubscribe = onSnapshot(
+      votesRef,
+      (snapshot) => {
+        const nextVotes = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() || {}),
+        }));
+        setPollVotes(nextVotes);
+      },
+      (error) => {
+        console.error("[NewsPage] failed to subscribe to custom poll votes:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const activeCustomPolls = useMemo(
+    () => customPolls.filter((poll) => poll && !poll.archived),
+    [customPolls]
+  );
+
+  const archivedCustomPolls = useMemo(
+    () => customPolls.filter((poll) => poll && poll.archived),
+    [customPolls]
+  );
+
+  const sortedActiveCustomPolls = useMemo(() => {
+    return activeCustomPolls.slice().sort((a, b) =>
+      Number(b?.publishDateMs || b?.createdAtMs || 0) -
+      Number(a?.publishDateMs || a?.createdAtMs || 0)
+    );
+  }, [activeCustomPolls]);
+
+  const pollVotesByPollId = useMemo(() => {
+    const out = {};
+    (pollVotes || []).forEach((vote) => {
+      const pollId = String(vote?.pollId || "");
+      const choice = String(vote?.choice || "");
+      if (!pollId || !choice) return;
+      if (!out[pollId]) out[pollId] = { A: 0, B: 0, byVoter: {} };
+      if (choice === "A" || choice === "B") out[pollId][choice] += 1;
+      if (vote?.voterId) out[pollId].byVoter[vote.voterId] = choice;
+    });
+    return out;
+  }, [pollVotes]);
+
+  const activeCustomPollCount = activeCustomPolls.length;
+  const hasReachedCustomPollLimit = activeCustomPollCount >= CUSTOM_POLL_LIMIT;
+
+  const handlePollDraftChange = (field, value) => {
+    setPollDraft((current) => ({ ...current, [field]: value }));
+    setPollFormError("");
+    setPollFormNotice("");
+  };
+
+  const resetPollDraft = () => {
+    setPollDraft(createEmptyPollDraft());
+    setEditingPollId("");
+    setPollFormError("");
+    setPollFormNotice("");
+  };
+
+  const handleEditCustomPoll = (poll) => {
+    if (!canManageCustomStories || !poll) return;
+    setEditingPollId(poll.id || "");
+    setPollDraft({
+      question: String(poll.question || ""),
+      tag: String(poll.tag || "Poll"),
+      optionA: String(poll.optionA || ""),
+      optionB: String(poll.optionB || ""),
+      playerName: String(poll.playerName || ""),
+      imageUrl: String(poll.imageUrl || ""),
+      publishDate: makeDateInputValue(poll.publishDateMs || poll.createdAtMs || Date.now()),
+    });
+    setShowCreatePollForm(true);
+    setPollFormError("");
+    setPollFormNotice(`Editing "${poll.question || "poll"}".`);
+  };
+
+  const handleSaveCustomPoll = async () => {
+    if (!canManageCustomStories) return;
+
+    const question = String(pollDraft.question || "").trim();
+    const tag = String(pollDraft.tag || "").trim() || "Poll";
+    const optionA = String(pollDraft.optionA || "").trim();
+    const optionB = String(pollDraft.optionB || "").trim();
+    const playerName = String(pollDraft.playerName || "").trim();
+    const imageUrl = String(pollDraft.imageUrl || "").trim();
+    const publishDateMs = dateInputToMs(pollDraft.publishDate, Date.now());
+
+    if (!question) {
+      setPollFormError("Please add a poll question.");
+      return;
+    }
+    if (!optionA || !optionB) {
+      setPollFormError("Please add two poll options.");
+      return;
+    }
+    if (!editingPollId && hasReachedCustomPollLimit) {
+      setPollFormError("You already have 2 active polls. Archive or delete one first.");
+      return;
+    }
+
+    try {
+      const pollId = editingPollId || `poll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const existing = customPolls.find((poll) => poll?.id === editingPollId);
+      const createdAtMs = editingPollId ? Number(existing?.createdAtMs || Date.now()) : Date.now();
+
+      await setDoc(
+        doc(db, CUSTOM_POLLS_COLLECTION, pollId),
+        {
+          question,
+          tag,
+          optionA,
+          optionB,
+          playerName,
+          imageUrl,
+          archived: false,
+          createdAtMs,
+          publishDateMs,
+          updatedAtMs: Date.now(),
+          createdBy: identity?.shortName || identity?.fullName || identity?.name || "Admin",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setPollFormNotice(editingPollId ? "Poll updated." : "Poll created.");
+      setPollDraft(createEmptyPollDraft());
+      setEditingPollId("");
+      setShowCreatePollForm(false);
+      setPollFormError("");
+    } catch (error) {
+      console.error("[NewsPage] failed to save custom poll:", error);
+      setPollFormError("Could not save the poll. Please try again.");
+    }
+  };
+
+  const handleArchiveToggleCustomPoll = async (pollId) => {
+    if (!canManageCustomStories || !pollId) return;
+    const targetPoll = customPolls.find((poll) => poll?.id === pollId);
+    if (!targetPoll) return;
+
+    if (targetPoll.archived && activeCustomPolls.length >= CUSTOM_POLL_LIMIT) {
+      setPollFormError("You already have 2 active polls. Archive or delete one before restoring another.");
+      return;
+    }
+
+    try {
+      await setDoc(
+        doc(db, CUSTOM_POLLS_COLLECTION, pollId),
+        {
+          archived: !targetPoll.archived,
+          archivedAtMs: !targetPoll.archived ? Date.now() : null,
+          updatedAtMs: Date.now(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setPollFormError("");
+      setPollFormNotice(targetPoll.archived ? "Poll restored." : "Poll archived.");
+    } catch (error) {
+      console.error("[NewsPage] failed to archive poll:", error);
+      setPollFormError("Could not update poll archive status.");
+    }
+  };
+
+  const handleDeleteCustomPoll = async (pollId) => {
+    if (!canManageCustomStories || !pollId) return;
+    const pollToDelete = customPolls.find((poll) => poll?.id === pollId);
+    if (!pollToDelete) return;
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        `Delete "${pollToDelete.question || "this poll"}" permanently?
+
+Votes for this poll will no longer be shown.`
+      );
+      if (!confirmed) return;
+    }
+
+    try {
+      await deleteDoc(doc(db, CUSTOM_POLLS_COLLECTION, pollId));
+      if (editingPollId === pollId) resetPollDraft();
+      setPollFormError("");
+      setPollFormNotice("Poll deleted.");
+    } catch (error) {
+      console.error("[NewsPage] failed to delete poll:", error);
+      setPollFormError("Could not delete this poll. Please try again.");
+    }
+  };
+
+  const handleVoteCustomPoll = async (poll, choice) => {
+    if (!poll?.id) return;
+    if (!identity || identity.role === "spectator") {
+      onGoToSignIn?.();
+      return;
+    }
+
+    const voterId = makeVoterId(identity);
+    if (!voterId || voterId === "guest") {
+      onGoToSignIn?.();
+      return;
+    }
+
+    try {
+      await setDoc(
+        doc(db, CUSTOM_POLL_VOTES_COLLECTION, `${poll.id}__${voterId}`),
+        {
+          pollId: poll.id,
+          voterId,
+          voterName: identity?.shortName || identity?.fullName || identity?.name || "Player",
+          choice,
+          updatedAtMs: Date.now(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("[NewsPage] failed to vote in custom poll:", error);
+    }
+  };
+
+  const renderCustomPollCard = (poll, { archivedView = false } = {}) => {
+    if (!poll) return null;
+
+    const playerName = String(poll.playerName || "").trim();
     const playerPhotoUrl = playerName ? getPlayerPhoto(playerName) : null;
-    const displayImageUrl = playerPhotoUrl || String(story.imageUrl || "").trim() || null;
+    const displayImageUrl = playerPhotoUrl || String(poll.imageUrl || "").trim() || null;
+    const pollDateMs = resolveDateMs(poll.publishDateMs || poll.createdAtMs, Date.now());
+    const freshness = getFreshnessBadge(pollDateMs, archivedView || poll.archived);
+    const counts = pollVotesByPollId[poll.id] || { A: 0, B: 0, byVoter: {} };
+    const totalVotes = Number(counts.A || 0) + Number(counts.B || 0);
+    const voterId = makeVoterId(identity);
+    const myChoice = voterId ? counts.byVoter?.[voterId] : "";
+
+    const optionButton = (choice, label, count) => {
+      const pct = totalVotes > 0 ? Math.round((Number(count || 0) / totalVotes) * 100) : 0;
+      const selected = myChoice === choice;
+      return (
+        <button
+          type="button"
+          className={selected ? "primary-btn" : "secondary-btn"}
+          onClick={() => handleVoteCustomPoll(poll, choice)}
+          disabled={archivedView || poll.archived}
+          style={{
+            width: "100%",
+            justifyContent: "space-between",
+            display: "flex",
+            gap: "0.7rem",
+            alignItems: "center",
+            padding: "0.7rem 0.9rem",
+          }}
+        >
+          <span>{label}</span>
+          <strong>{count} vote{Number(count || 0) === 1 ? "" : "s"} · {pct}%</strong>
+        </button>
+      );
+    };
 
     return (
-      <section key={story.id} className="card" style={{ overflow: "hidden" }}>
+      <section key={poll.id} className="card" style={{ overflow: "hidden" }}>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns:
-              displayImageUrl || playerName ? (isNarrow ? "1fr" : "0.95fr 1.05fr") : "1fr",
+            gridTemplateColumns: displayImageUrl || playerName ? (isNarrow ? "1fr" : "0.8fr 1.2fr") : "1fr",
             gap: "1rem",
             alignItems: "stretch",
           }}
@@ -1391,12 +1802,12 @@ This will remove it from live news and archives for everyone.`
           {(displayImageUrl || playerName) && (
             <div
               style={{
-                minHeight: isNarrow ? 220 : 260,
+                minHeight: isNarrow ? 180 : 220,
                 borderRadius: "1rem",
                 overflow: "hidden",
                 position: "relative",
                 background:
-                  "radial-gradient(circle at top left, rgba(59,130,246,0.22), transparent 55%), linear-gradient(135deg, #020617, #111827 55%, #0f172a 100%)",
+                  "radial-gradient(circle at top left, rgba(250,204,21,0.18), transparent 55%), linear-gradient(135deg, #020617, #111827 55%, #0f172a 100%)",
                 border: "1px solid rgba(148,163,184,0.18)",
                 display: "flex",
                 alignItems: "center",
@@ -1406,12 +1817,195 @@ This will remove it from live news and archives for everyone.`
               {displayImageUrl ? (
                 <img
                   src={displayImageUrl}
-                  alt={playerName || story.title}
+                  alt={playerName || poll.question}
                   style={{
-                    width: "100%",
-                    height: "100%",
+                    width: playerPhotoUrl ? 116 : "100%",
+                    height: playerPhotoUrl ? 116 : "100%",
+                    borderRadius: playerPhotoUrl ? "999px" : "0",
                     objectFit: playerPhotoUrl ? "cover" : "contain",
                     display: "block",
+                    border: playerPhotoUrl ? "1px solid rgba(255,255,255,0.22)" : "none",
+                    boxShadow: playerPhotoUrl ? "0 0 0 4px rgba(250,204,21,0.12), 0 18px 45px rgba(15,23,42,0.55)" : "none",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 116,
+                    height: 116,
+                    borderRadius: "999px",
+                    background: "linear-gradient(135deg, rgba(250,204,21,0.95), rgba(245,158,11,0.86))",
+                    color: "#0f172a",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "2rem",
+                    fontWeight: 900,
+                  }}
+                >
+                  {getInitials(playerName || poll.question)}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem", marginBottom: "0.7rem" }}>
+              <span style={metaChipStyle}>🗳️ {poll.tag || "Poll"}</span>
+              <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(pollDateMs))}</span>
+              <span
+                style={{
+                  ...metaChipStyle,
+                  background: freshness.tone,
+                  border: `1px solid ${freshness.border}`,
+                  color: freshness.color,
+                  fontWeight: 900,
+                }}
+              >
+                {freshness.label}
+              </span>
+            </div>
+
+            <h2 style={{ marginTop: 0 }}>{poll.question}</h2>
+            {playerName ? <p className="muted small">Featuring {playerName}</p> : null}
+
+            <div style={{ display: "grid", gap: "0.55rem", marginTop: "0.9rem" }}>
+              {optionButton("A", poll.optionA || "Option A", counts.A || 0)}
+              {optionButton("B", poll.optionB || "Option B", counts.B || 0)}
+            </div>
+
+            <p className="muted small" style={{ marginTop: "0.65rem" }}>
+              Total votes: <strong>{totalVotes}</strong>
+              {myChoice ? ` · You voted ${myChoice}` : ""}
+            </p>
+
+            {canManageCustomStories && (
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.8rem" }}>
+                {!archivedView && (
+                  <button type="button" className="secondary-btn" onClick={() => handleEditCustomPoll(poll)} style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}>
+                    Edit
+                  </button>
+                )}
+                <button type="button" className="secondary-btn" onClick={() => handleArchiveToggleCustomPoll(poll.id)} style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}>
+                  {poll.archived ? "Restore" : "Archive"}
+                </button>
+                <button type="button" className="secondary-btn" onClick={() => handleDeleteCustomPoll(poll.id)} style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem", borderColor: "rgba(248,113,113,0.4)", color: "#fecaca" }}>
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+
+  const renderCustomStoryCard = (story, { archivedView = false } = {}) => {
+    if (!story) return null;
+
+    const playerName = String(story.playerName || "").trim();
+    const playerPhotoUrl = playerName ? getPlayerPhoto(playerName) : null;
+    const displayImageUrl = playerPhotoUrl || String(story.imageUrl || "").trim() || null;
+    const imageSizeMeta = getStoryImageSizeMeta(story.imageSize || "100");
+    const requestedImageFit = ["auto", "crop", "fit"].includes(String(story.imageFit || "auto"))
+      ? String(story.imageFit || "auto")
+      : "auto";
+    const measuredAspect = storyImageAspectById[story.id];
+    const resolvedImageFit = requestedImageFit === "auto"
+      ? Number(measuredAspect || 0) > 0 && Number(measuredAspect) < 0.92
+        ? "fit"
+        : "crop"
+      : requestedImageFit;
+    const storyDateMs = resolveDateMs(story.publishDateMs || story.createdAtMs, Date.now());
+    const freshness = getFreshnessBadge(storyDateMs, archivedView || story.archived);
+    const isMvpAvatarImage = imageSizeMeta.mode === "mvp-avatar";
+    const isMediumAvatarImage = imageSizeMeta.mode === "medium-avatar";
+    const isAvatarImage = isMvpAvatarImage || isMediumAvatarImage;
+    const imageScale = Number(imageSizeMeta.scale || 1);
+    const baseImageHeight = isNarrow ? 220 : 260;
+    const imagePanelHeight = isMvpAvatarImage
+      ? 126
+      : isMediumAvatarImage
+        ? 184
+        : Math.max(145, Math.round(baseImageHeight * imageScale));
+    const imageColumnWidth = isMvpAvatarImage
+      ? "150px"
+      : isMediumAvatarImage
+        ? "220px"
+        : imageScale >= 0.95
+          ? "0.95fr"
+          : imageScale >= 0.85
+            ? "0.86fr"
+            : imageScale >= 0.75
+              ? "0.76fr"
+              : "0.66fr";
+    const imageInnerSize = isMvpAvatarImage ? 92 : isMediumAvatarImage ? 150 : "100%";
+    const usePortraitFrame = !isAvatarImage && resolvedImageFit === "fit";
+    const panelWidthPercent = Math.round(imageScale * 100);
+
+    return (
+      <section key={story.id} className="card" style={{ overflow: "hidden" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              displayImageUrl || playerName ? (isNarrow ? "1fr" : `${imageColumnWidth} minmax(0, 1fr)`) : "1fr",
+            gap: "1rem",
+            alignItems: "stretch",
+          }}
+        >
+          {(displayImageUrl || playerName) && (
+            <div
+              style={{
+                width: "100%",
+                maxWidth: isAvatarImage ? imageColumnWidth : `${panelWidthPercent}%`,
+                height: usePortraitFrame ? "auto" : imagePanelHeight,
+                minHeight: usePortraitFrame ? undefined : imagePanelHeight,
+                aspectRatio: usePortraitFrame ? "4 / 5" : undefined,
+                justifySelf: "center",
+                alignSelf: "start",
+                borderRadius: isMvpAvatarImage ? "999px" : "1rem",
+                overflow: "hidden",
+                position: "relative",
+                background:
+                  "radial-gradient(circle at top left, rgba(59,130,246,0.22), transparent 55%), linear-gradient(135deg, #020617, #111827 55%, #0f172a 100%)",
+                border: "1px solid rgba(148,163,184,0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: isAvatarImage
+                  ? "0 0 0 4px rgba(59,130,246,0.12), 0 18px 45px rgba(15,23,42,0.55)"
+                  : "none",
+              }}
+            >
+              {displayImageUrl ? (
+                <img
+                  src={displayImageUrl}
+                  alt={playerName || story.title}
+                  onLoad={(event) => {
+                    const img = event.currentTarget;
+                    const naturalWidth = Number(img?.naturalWidth || 0);
+                    const naturalHeight = Number(img?.naturalHeight || 0);
+                    if (!story?.id || !naturalWidth || !naturalHeight) return;
+                    const aspect = naturalWidth / naturalHeight;
+                    setStoryImageAspectById((current) => {
+                      if (Math.abs(Number(current[story.id] || 0) - aspect) < 0.01) return current;
+                      return { ...current, [story.id]: aspect };
+                    });
+                  }}
+                  style={{
+                    width: imageInnerSize,
+                    height: imageInnerSize,
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    borderRadius: isAvatarImage ? "999px" : "0",
+                    objectFit: "cover",
+                    objectPosition: "center center",
+                    display: "block",
+                    transform: "none",
+                    boxShadow: isAvatarImage ? "0 0 0 4px rgba(59,130,246,0.12)" : "none",
+                    border: isAvatarImage ? "1px solid rgba(255,255,255,0.22)" : "none",
                   }}
                 />
               ) : (
@@ -1440,8 +2034,9 @@ This will remove it from live news and archives for everyone.`
                 <div
                   style={{
                     position: "absolute",
-                    left: "0.8rem",
-                    bottom: "0.8rem",
+                    left: isAvatarImage ? "50%" : "0.8rem",
+                    bottom: isAvatarImage ? "0.35rem" : "0.8rem",
+                    transform: isAvatarImage ? "translateX(-50%)" : "none",
                     padding: "0.4rem 0.7rem",
                     borderRadius: "999px",
                     background: "rgba(2,6,23,0.8)",
@@ -1483,6 +2078,22 @@ This will remove it from live news and archives for everyone.`
               >
                 <span>📰</span>
                 <span>{story.tag || "Story"}</span>
+              </div>
+
+              <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", alignItems: "center" }}>
+                <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(storyDateMs))}</span>
+                <span
+                  style={{
+                    ...metaChipStyle,
+                    background: freshness.tone,
+                    border: `1px solid ${freshness.border}`,
+                    color: freshness.color,
+                    fontWeight: 900,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {freshness.label}
+                </span>
               </div>
 
               {!archivedView && canManageCustomStories && (
@@ -1628,7 +2239,7 @@ This will remove it from live news and archives for everyone.`
       </header>
 
       {canManageCustomStories && (
-        <section className="card" style={{ overflow: "hidden" }}>
+        <section ref={storyStudioRef} className="card" style={{ overflow: "hidden" }}>
           <div
             style={{
               display: "flex",
@@ -1764,6 +2375,46 @@ This will remove it from live news and archives for everyone.`
                   />
                 </label>
 
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Photo size</span>
+                  <select
+                    value={storyDraft.imageSize}
+                    onChange={(e) => handleStoryDraftChange("imageSize", e.target.value)}
+                    style={newsInputStyle}
+                  >
+                    {STORY_IMAGE_SIZE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Photo framing</span>
+                  <select
+                    value={storyDraft.imageFit}
+                    onChange={(e) => handleStoryDraftChange("imageFit", e.target.value)}
+                    style={newsInputStyle}
+                  >
+                    {STORY_IMAGE_FIT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Publish date</span>
+                  <input
+                    type="date"
+                    value={storyDraft.publishDate}
+                    onChange={(e) => handleStoryDraftChange("publishDate", e.target.value)}
+                    style={newsInputStyle}
+                  />
+                </label>
+
                 <label style={{ display: "grid", gap: "0.35rem", gridColumn: "1 / -1" }}>
                   <span style={{ fontWeight: 700 }}>Story body</span>
                   <textarea
@@ -1801,6 +2452,190 @@ This will remove it from live news and archives for everyone.`
         </section>
       )}
 
+
+      {canManageCustomStories && (
+        <section className="card" style={{ overflow: "hidden" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+              gap: "1rem",
+              alignItems: "center",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ marginTop: 0, marginBottom: "0.35rem" }}>Custom poll studio</h2>
+              <p className="muted" style={{ margin: 0 }}>
+                Create up to 2 active polls. Votes are saved in Firebase, not local storage.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.55rem" }}>
+              <span style={metaChipStyle}>
+                Active polls: <strong>{activeCustomPollCount}</strong> / {CUSTOM_POLL_LIMIT}
+              </span>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setShowCreatePollForm((current) => !current);
+                  setPollFormError("");
+                  setPollFormNotice("");
+                }}
+                disabled={hasReachedCustomPollLimit && !showCreatePollForm}
+                style={{ opacity: hasReachedCustomPollLimit && !showCreatePollForm ? 0.65 : 1 }}
+              >
+                {showCreatePollForm ? "Close poll form" : "Create poll"}
+              </button>
+            </div>
+          </div>
+
+          {hasReachedCustomPollLimit && (
+            <div
+              style={{
+                marginTop: "0.9rem",
+                padding: "0.85rem 1rem",
+                borderRadius: "1rem",
+                background: "rgba(245, 158, 11, 0.12)",
+                border: "1px solid rgba(245, 158, 11, 0.25)",
+                color: "#fde68a",
+              }}
+            >
+              You have reached the limit of 2 active polls. Archive or delete one first.
+            </div>
+          )}
+
+          {showCreatePollForm && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                borderRadius: "1rem",
+                background: "rgba(15,23,42,0.4)",
+                border: "1px solid rgba(148,163,184,0.18)",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isNarrow ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                  gap: "0.85rem",
+                }}
+              >
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Poll question</span>
+                  <input
+                    type="text"
+                    value={pollDraft.question}
+                    onChange={(e) => handlePollDraftChange("question", e.target.value)}
+                    placeholder="Who deserves the spotlight this week?"
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Poll tag</span>
+                  <input
+                    type="text"
+                    value={pollDraft.tag}
+                    onChange={(e) => handlePollDraftChange("tag", e.target.value)}
+                    placeholder="Poll / Vote / Fan choice"
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Option A</span>
+                  <input
+                    type="text"
+                    value={pollDraft.optionA}
+                    onChange={(e) => handlePollDraftChange("optionA", e.target.value)}
+                    placeholder="First option"
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Option B</span>
+                  <input
+                    type="text"
+                    value={pollDraft.optionB}
+                    onChange={(e) => handlePollDraftChange("optionB", e.target.value)}
+                    placeholder="Second option"
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Player picture (optional)</span>
+                  <select
+                    value={pollDraft.playerName}
+                    onChange={(e) => handlePollDraftChange("playerName", e.target.value)}
+                    style={newsInputStyle}
+                  >
+                    <option value="">No player selected</option>
+                    {allKnownPlayers.map((playerName) => (
+                      <option key={playerName} value={playerName}>
+                        {playerName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Outside image URL (optional)</span>
+                  <input
+                    type="text"
+                    value={pollDraft.imageUrl}
+                    onChange={(e) => handlePollDraftChange("imageUrl", e.target.value)}
+                    placeholder="https://..."
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Publish date</span>
+                  <input
+                    type="date"
+                    value={pollDraft.publishDate}
+                    onChange={(e) => handlePollDraftChange("publishDate", e.target.value)}
+                    style={newsInputStyle}
+                  />
+                </label>
+              </div>
+
+              {pollFormError && (
+                <div style={{ marginTop: "0.85rem", color: "#fca5a5", fontWeight: 600 }}>
+                  {pollFormError}
+                </div>
+              )}
+
+              {pollFormNotice && !pollFormError && (
+                <div style={{ marginTop: "0.85rem", color: "#86efac", fontWeight: 600 }}>
+                  {pollFormNotice}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "0.65rem", flexWrap: "wrap", marginTop: "1rem" }}>
+                <button type="button" className="primary-btn" onClick={handleSaveCustomPoll}>
+                  {editingPollId ? "Update poll" : "Save poll"}
+                </button>
+                <button type="button" className="secondary-btn" onClick={resetPollDraft}>
+                  Reset
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {sortedActiveCustomPolls.length > 0 && (
+        <div style={{ display: "grid", gap: "1rem" }}>
+          {sortedActiveCustomPolls.map((poll) => renderCustomPollCard(poll))}
+        </div>
+      )}
+
       {/* ✅ JERSEY STORY */}
       <section className="card" style={{ overflow: "hidden" }}>
         <div
@@ -1830,6 +2665,7 @@ This will remove it from live news and archives for everyone.`
             </div>
 
             <h2 style={{ marginTop: 0 }}>TurfKings jersey orders</h2>
+            {renderStoryDateBadges(Date.now())}
             <p style={{ marginTop: "0.35rem" }}>
               We&apos;re about to place an order for the new TurfKings team kit.
               If you want one, vote below so we can count numbers. Price is
@@ -1927,6 +2763,7 @@ This will remove it from live news and archives for everyone.`
       <section className="card news-hero-card">
         <div className="news-hero-main">
           <h2>Tournament recap</h2>
+          {renderStoryDateBadges(Date.now())}
           <p className="news-hero-text">
             So far we&apos;ve logged <strong>{totalMatches || 0}</strong> matches and{" "}
             <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side league.
@@ -1976,6 +2813,7 @@ This will remove it from live news and archives for everyone.`
       <section className="card news-grid">
         <div className="news-column">
           <h2>Headlines</h2>
+          {renderStoryDateBadges(Date.now())}
           <ul className="news-list">
             {tableLeader && (
               <li className="news-list-item">
@@ -2021,6 +2859,7 @@ This will remove it from live news and archives for everyone.`
 
         <div className="news-column">
           <h2>Match of the Tournament</h2>
+          {renderStoryDateBadges(Date.now())}
           {biggestWin ? (
             <div className="news-match-feature">
               <p className="news-match-label">Match #{biggestWin.matchNo}</p>
@@ -2079,6 +2918,7 @@ This will remove it from live news and archives for everyone.`
             </div>
             <div>
               <p className="mvp-label">Tournament MVP (so far)</p>
+              {renderStoryDateBadges(Date.now())}
               <h2 className="mvp-name">{bestOverall.name}</h2>
               <p className="mvp-team">
                 {bestOverall.teamName && bestOverall.teamName !== "—"
@@ -2113,6 +2953,7 @@ This will remove it from live news and archives for everyone.`
       {/* STREAK WATCH */}
       <section className="card news-streak-card">
         <h2>Streak watch</h2>
+        {renderStoryDateBadges(Date.now())}
         {!streakStats.bestGoal && !streakStats.bestAssist ? (
           <p className="muted">
             No streaks yet – once players start scoring and assisting in back-to-back games,
@@ -2182,6 +3023,31 @@ This will remove it from live news and archives for everyone.`
                     </summary>
                     <div style={{ marginTop: "0.8rem" }}>
                       {renderCustomStoryCard(story, { archivedView: true })}
+                    </div>
+                  </details>
+                ))}
+            </div>
+          </details>
+        )}
+
+
+        {archivedCustomPolls.length > 0 && (
+          <details style={{ marginTop: "0.8rem" }}>
+            <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+              🗳️ Archived custom polls ({archivedCustomPolls.length})
+            </summary>
+
+            <div style={{ marginTop: "0.8rem", display: "grid", gap: "0.8rem" }}>
+              {archivedCustomPolls
+                .slice()
+                .sort((a, b) => Number(b?.archivedAtMs || 0) - Number(a?.archivedAtMs || 0))
+                .map((poll) => (
+                  <details key={poll.id}>
+                    <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+                      🗳️ {poll.question || "Untitled poll"}
+                    </summary>
+                    <div style={{ marginTop: "0.8rem" }}>
+                      {renderCustomPollCard(poll, { archivedView: true })}
                     </div>
                   </details>
                 ))}

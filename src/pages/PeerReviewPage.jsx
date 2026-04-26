@@ -2,24 +2,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "../firebaseConfig";
-import { submitPeerRating } from "../storage/firebaseRepository.js";
 
-const LOCAL_VOTE_PREFIX = "turfkings_peer_vote_v1";
-
-const EMAIL_TO_PLAYER_NAME = {
-  "nkululekolerato@gmail.com": "Nkululeko",
-  "nmbulungeni@gmail.com": "Enoch",
-  "mduduzi933@gmail.com": "Mdu",
-};
 
 function getCurrentWeekKey() {
   const now = new Date();
   const day = now.getDay();
-  const sunday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - day
-  );
+  const sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day);
   const y = sunday.getFullYear();
   const m = String(sunday.getMonth() + 1).padStart(2, "0");
   const d = String(sunday.getDate()).padStart(2, "0");
@@ -53,6 +41,10 @@ function firstNameOf(name) {
   return parts[0] || "";
 }
 
+function normaliseName(name) {
+  return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function uniqueByName(list = []) {
   const seen = new Set();
   const out = [];
@@ -67,6 +59,30 @@ function uniqueByName(list = []) {
   return out;
 }
 
+function isUsefulTeamFilterLabel(label) {
+  const key = safeLower(label);
+  if (!key) return false;
+  if (key === "all" || key === "all players") return false;
+  return true;
+}
+
+function getPeerRatingDocId({ seasonId, weekKey, raterName, targetName }) {
+  return [
+    String(seasonId || "UNKNOWN_SEASON"),
+    String(weekKey || "UNKNOWN_WEEK"),
+    slugFromName(raterName),
+    slugFromName(targetName),
+  ].join("__");
+}
+
+function getInitials(name) {
+  if (!name) return "";
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return (parts[0].slice(0, 2) || "").toUpperCase();
+  return ((parts[0][0] || "") + (parts[parts.length - 1][0] || "")).toUpperCase();
+}
+
 export function PeerReviewPage({
   teams,
   playerPhotosByName = {},
@@ -78,58 +94,42 @@ export function PeerReviewPage({
 
   const [selectedRater, setSelectedRater] = useState(null);
   const [raterLocked, setRaterLocked] = useState(false);
-
   const [activeTarget, setActiveTarget] = useState(null);
 
   const [attack, setAttack] = useState(0);
   const [defence, setDefence] = useState(0);
+  const [playmaking, setPlaymaking] = useState(0);
   const [gk, setGk] = useState(0);
   const [comment, setComment] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [filterTeam, setFilterTeam] = useState("ALL");
-
   const [ratedTargets, setRatedTargets] = useState([]);
 
   const [cloudPhotoIndex, setCloudPhotoIndex] = useState({});
-  const [, setMemberAliasMap] = useState({});
   const [memberCanonicalMap, setMemberCanonicalMap] = useState({});
   const [memberPlayers, setMemberPlayers] = useState([]);
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
-  // ---------------- ADMIN BASELINE STATE ----------------
   const [baselineMap, setBaselineMap] = useState({});
   const [baselineLoaded, setBaselineLoaded] = useState(false);
   const [baselineTarget, setBaselineTarget] = useState(null);
   const [baselineAttack, setBaselineAttack] = useState(0);
   const [baselineDefence, setBaselineDefence] = useState(0);
+  const [baselinePlaymaking, setBaselinePlaymaking] = useState(0);
   const [baselineGk, setBaselineGk] = useState(0);
   const [baselineStatusMsg, setBaselineStatusMsg] = useState("");
   const [savingBaseline, setSavingBaseline] = useState(false);
   const [baselineFilterTeam, setBaselineFilterTeam] = useState("ALL");
+  const [showRatedBaselinePlayers, setShowRatedBaselinePlayers] = useState(false);
+  const [showAdminBaselinePanel, setShowAdminBaselinePanel] = useState(false);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setHeaderScrolled(window.scrollY > 6);
-    };
-
+    const handleScroll = () => setHeaderScrolled(window.scrollY > 6);
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  const normaliseName = (name) =>
-    String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
-
-  const getInitials = (name) => {
-    if (!name) return "";
-    const parts = String(name).trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return "";
-    if (parts.length === 1) return (parts[0].slice(0, 2) || "").toUpperCase();
-    return (
-      ((parts[0][0] || "") + (parts[parts.length - 1][0] || "")).toUpperCase()
-    );
-  };
 
   const resolveCanonicalName = (rawName) => {
     const pretty = toTitleCase(rawName || "");
@@ -151,16 +151,13 @@ export function PeerReviewPage({
     if (!name) return null;
 
     const canonical = resolveCanonicalName(name);
-    const firstCanonical = firstNameOf(canonical);
     const pretty = toTitleCase(name);
-    const firstPretty = firstNameOf(pretty);
-
     const candidates = [
       name,
       pretty,
       canonical,
-      firstPretty,
-      firstCanonical,
+      firstNameOf(pretty),
+      firstNameOf(canonical),
       slugFromName(name),
       slugFromName(pretty),
       slugFromName(canonical),
@@ -188,7 +185,6 @@ export function PeerReviewPage({
 
         if (cancelled) return;
 
-        const aliasMap = {};
         const canonicalMap = {};
         const photoIdx = {};
         const memberList = [];
@@ -197,12 +193,6 @@ export function PeerReviewPage({
           const k = safeLower(key);
           if (!k || !value) return;
           if (!canonicalMap[k]) canonicalMap[k] = value;
-        };
-
-        const addAlias = (key, value) => {
-          const k = safeLower(key);
-          if (!k || !value) return;
-          if (!aliasMap[k]) aliasMap[k] = value;
         };
 
         const addPhoto = (key, value) => {
@@ -216,41 +206,29 @@ export function PeerReviewPage({
           const fullName = toTitleCase(data.fullName || data.name || "");
           const shortName = toTitleCase(data.shortName || data.displayName || "");
           const aliases = Array.isArray(data.aliases) ? data.aliases : [];
-          const teamLabel = String(data.teamLabel || data.team || "").trim();
+          const rawTeam = String(data.teamLabel || data.team || "").trim();
+          const teamLabel = isUsefulTeamFilterLabel(rawTeam) ? rawTeam : "Other players";
 
           if (!fullName) return;
 
-          memberList.push({
-            name: fullName,
-            teamLabel: teamLabel || "Other players",
-          });
+          memberList.push({ name: fullName, teamLabel });
 
-          addCanon(fullName, fullName);
-          addCanon(slugFromName(fullName), fullName);
-
-          const firstFull = firstNameOf(fullName);
-          if (firstFull) addCanon(firstFull, fullName);
-
-          addAlias(fullName, fullName);
+          [fullName, slugFromName(fullName), firstNameOf(fullName)].forEach((key) =>
+            addCanon(key, fullName)
+          );
 
           if (shortName) {
-            addCanon(shortName, fullName);
-            addCanon(slugFromName(shortName), fullName);
-            addAlias(shortName, fullName);
-
-            const firstShort = firstNameOf(shortName);
-            if (firstShort) addCanon(firstShort, fullName);
+            [shortName, slugFromName(shortName), firstNameOf(shortName)].forEach((key) =>
+              addCanon(key, fullName)
+            );
           }
 
           aliases.forEach((alias) => {
             const prettyAlias = toTitleCase(alias);
             if (!prettyAlias) return;
-            addCanon(prettyAlias, fullName);
-            addCanon(slugFromName(prettyAlias), fullName);
-            addAlias(prettyAlias, fullName);
-
-            const firstAlias = firstNameOf(prettyAlias);
-            if (firstAlias) addCanon(firstAlias, fullName);
+            [prettyAlias, slugFromName(prettyAlias), firstNameOf(prettyAlias)].forEach((key) =>
+              addCanon(key, fullName)
+            );
           });
         });
 
@@ -258,28 +236,22 @@ export function PeerReviewPage({
           const data = docSnap.data() || {};
           const photoData = data.photoData || "";
           const rawName = toTitleCase(data.name || docSnap.id || "");
-
           if (!photoData || !rawName) return;
 
           const canonical = canonicalMap[safeLower(rawName)] || rawName;
-          const firstRaw = firstNameOf(rawName);
-          const firstCanonical = firstNameOf(canonical);
-
           [
             rawName,
             canonical,
             slugFromName(rawName),
             slugFromName(canonical),
-            firstRaw,
-            firstCanonical,
+            firstNameOf(rawName),
+            firstNameOf(canonical),
             docSnap.id,
           ]
-            .map((x) => String(x || "").trim())
             .filter(Boolean)
             .forEach((key) => addPhoto(key, photoData));
         });
 
-        setMemberAliasMap(aliasMap);
         setMemberCanonicalMap(canonicalMap);
         setCloudPhotoIndex(photoIdx);
         setMemberPlayers(
@@ -303,21 +275,16 @@ export function PeerReviewPage({
     };
   }, []);
 
-  // Current-week / current-squad players only
   const allPlayers = useMemo(() => {
     const list = [];
 
     (teams || []).forEach((t) => {
       (t.players || []).forEach((p) => {
-        const rawName =
-          typeof p === "string" ? p : p?.name || p?.displayName || "";
+        const rawName = typeof p === "string" ? p : p?.name || p?.displayName || "";
         const canonical = resolveCanonicalName(rawName || "");
         if (!canonical) return;
 
-        list.push({
-          name: canonical,
-          teamLabel: t.label || "",
-        });
+        list.push({ name: canonical, teamLabel: t.label || "" });
       });
     });
 
@@ -331,7 +298,6 @@ export function PeerReviewPage({
     );
   }, [teams, memberCanonicalMap]);
 
-  // Admin list = all known members + current squad players
   const baselinePlayerPool = useMemo(() => {
     const combined = [...(memberPlayers || []), ...(allPlayers || [])];
     return uniqueByName(
@@ -348,8 +314,7 @@ export function PeerReviewPage({
 
   const entryRole = identity?.role || null;
   const isAdmin = entryRole === "admin";
-  const isEntryPlayer =
-    entryRole === "player" || entryRole === "captain" || entryRole === "admin";
+  const isEntryPlayer = entryRole === "player" || entryRole === "captain" || entryRole === "admin";
   const isSpectator = entryRole === "spectator";
   const isSignedInPlayer = !!identity && isEntryPlayer;
 
@@ -360,34 +325,13 @@ export function PeerReviewPage({
     let candidateName =
       identity?.fullName ||
       identity?.shortName ||
-      (identity?.email && EMAIL_TO_PLAYER_NAME[identity.email.toLowerCase()]) ||
       null;
-
-    if (!candidateName && identity?.email) {
-      const email = identity.email.toLowerCase();
-      candidateName = EMAIL_TO_PLAYER_NAME[email] || null;
-    }
 
     if (!candidateName) return;
 
     const canonicalCandidate = resolveCanonicalName(candidateName);
     const normCandidate = normaliseName(canonicalCandidate);
-
-    let matched =
-      allPlayerNames.find((n) => normaliseName(n) === normCandidate) || null;
-
-    if (!matched && identity?.email) {
-      const email = identity.email.toLowerCase();
-      const alias = EMAIL_TO_PLAYER_NAME[email];
-      if (alias) {
-        const canonicalAlias = resolveCanonicalName(alias);
-        matched =
-          allPlayerNames.find(
-            (n) => normaliseName(n) === normaliseName(canonicalAlias)
-          ) || canonicalAlias;
-      }
-    }
-
+    const matched = allPlayerNames.find((n) => normaliseName(n) === normCandidate) || null;
     const finalName = matched || canonicalCandidate;
 
     setSelectedRater(finalName);
@@ -397,37 +341,43 @@ export function PeerReviewPage({
 
   useEffect(() => {
     if (!selectedRater) return;
-    if (typeof window === "undefined") return;
 
-    const rNorm = normaliseName(selectedRater);
-    const ratedSet = new Set();
+    let cancelled = false;
 
-    try {
-      for (let i = 0; i < window.localStorage.length; i += 1) {
-        const key = window.localStorage.key(i);
-        if (!key || !key.startsWith(`${LOCAL_VOTE_PREFIX}:`)) continue;
+    async function loadWeeklyRatingsAlreadySubmitted() {
+      const seasonId = String(activeSeasonId || "UNKNOWN_SEASON");
+      const raterCanonical = resolveCanonicalName(selectedRater);
+      const raterNorm = normaliseName(raterCanonical);
+      const ratedSet = new Set();
 
-        const parts = key.split(":");
-        if (parts.length < 5) continue;
+      try {
+        const snap = await getDocs(collection(db, "peerRatings"));
 
-        const [, storedSeasonId, storedWeek, storedRater, storedTarget] = parts;
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const sameSeason = String(data.seasonId || "UNKNOWN_SEASON") === seasonId;
+          const sameWeek = String(data.weekKey || "") === String(weekKey);
+          const sameRater = normaliseName(data.raterNameNormalized || data.raterName || "") === raterNorm;
 
-        if (
-          storedSeasonId === String(activeSeasonId || "UNKNOWN_SEASON") &&
-          storedWeek === weekKey &&
-          storedRater === rNorm
-        ) {
-          ratedSet.add(storedTarget);
-        }
+          if (!sameSeason || !sameWeek || !sameRater) return;
+
+          const targetCanonical = resolveCanonicalName(data.targetName || "");
+          const targetNorm = normaliseName(data.targetNameNormalized || targetCanonical || data.targetName || "");
+          if (targetNorm) ratedSet.add(targetNorm);
+        });
+      } catch (err) {
+        console.error("Failed to load weekly peer ratings:", err);
       }
-    } catch {
-      // ignore
+
+      if (!cancelled) setRatedTargets(Array.from(ratedSet));
     }
 
-    setRatedTargets(Array.from(ratedSet));
-  }, [selectedRater, weekKey, activeSeasonId]);
+    loadWeeklyRatingsAlreadySubmitted();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRater, weekKey, activeSeasonId, memberCanonicalMap]);
 
-  // ---------------- LOAD ADMIN BASELINES ----------------
   useEffect(() => {
     let cancelled = false;
 
@@ -436,19 +386,17 @@ export function PeerReviewPage({
         const snap = await getDocs(collection(db, "peerRatingBaselines"));
         if (cancelled) return;
 
-        const seasonId = String(activeSeasonId || "UNKNOWN_SEASON");
         const next = {};
 
         snap.forEach((docSnap) => {
           const data = docSnap.data() || {};
-          if (String(data.seasonId || "") !== seasonId) return;
-
           const targetName = resolveCanonicalName(data.targetName || "");
           if (!targetName) return;
 
           next[safeLower(targetName)] = {
             attack: Number(data.attack ?? 0) || 0,
             defence: Number(data.defence ?? 0) || 0,
+            playmaking: Number(data.playmaking ?? 0) || 0,
             gk: Number(data.gk ?? 0) || 0,
             targetName,
             updatedAtMs: Number(data.updatedAtMs || 0) || 0,
@@ -469,31 +417,27 @@ export function PeerReviewPage({
     return () => {
       cancelled = true;
     };
-  }, [activeSeasonId, memberCanonicalMap]);
+  }, [memberCanonicalMap]);
 
   const teamsForFilter = useMemo(() => {
     const labels = new Set();
-    (teams || []).forEach((t) => labels.add(t.label));
+    (teams || []).forEach((t) => {
+      if (isUsefulTeamFilterLabel(t?.label)) labels.add(t.label);
+    });
     return ["ALL", ...Array.from(labels).sort()];
   }, [teams]);
 
-  // Keep peer-review targets restricted to current-week/current-squad players
   const candidateTargets = useMemo(() => {
     return allPlayers.filter((p) => {
-      if (selectedRater && normaliseName(p.name) === normaliseName(selectedRater)) {
-        return false;
-      }
+      if (selectedRater && normaliseName(p.name) === normaliseName(selectedRater)) return false;
       if (filterTeam !== "ALL" && p.teamLabel !== filterTeam) return false;
       return true;
     });
   }, [allPlayers, selectedRater, filterTeam]);
 
-  // Admin baseline targets use all known players, not only the current week
   const baselineTargets = useMemo(() => {
     return baselinePlayerPool.filter((p) => {
-      if (baselineFilterTeam !== "ALL" && p.teamLabel !== baselineFilterTeam) {
-        return false;
-      }
+      if (baselineFilterTeam !== "ALL" && p.teamLabel !== baselineFilterTeam) return false;
       return true;
     });
   }, [baselinePlayerPool, baselineFilterTeam]);
@@ -502,21 +446,50 @@ export function PeerReviewPage({
     return new Set((allPlayers || []).map((p) => safeLower(p.name)));
   }, [allPlayers]);
 
+  const visibleBaselineTargets = useMemo(() => {
+    if (showRatedBaselinePlayers) return baselineTargets;
+
+    return baselineTargets.filter((p) => {
+      const existing = baselineMap[safeLower(p.name)] || null;
+      const hasBaseline =
+        Number(existing?.attack || 0) > 0 ||
+        Number(existing?.defence || 0) > 0 ||
+        Number(existing?.playmaking || 0) > 0 ||
+        Number(existing?.gk || 0) > 0;
+      return !hasBaseline;
+    });
+  }, [baselineTargets, baselineMap, showRatedBaselinePlayers]);
+
   const baselineCurrentWeekTargets = useMemo(() => {
-    return baselineTargets.filter((p) => currentWeekNameSet.has(safeLower(p.name)));
-  }, [baselineTargets, currentWeekNameSet]);
+    return visibleBaselineTargets.filter((p) => currentWeekNameSet.has(safeLower(p.name)));
+  }, [visibleBaselineTargets, currentWeekNameSet]);
 
   const baselineOtherTargets = useMemo(() => {
-    return baselineTargets.filter((p) => !currentWeekNameSet.has(safeLower(p.name)));
-  }, [baselineTargets, currentWeekNameSet]);
+    return visibleBaselineTargets.filter((p) => !currentWeekNameSet.has(safeLower(p.name)));
+  }, [visibleBaselineTargets, currentWeekNameSet]);
 
   const baselineFilterOptions = useMemo(() => {
     const labels = new Set();
     (baselinePlayerPool || []).forEach((p) => {
-      if (p?.teamLabel) labels.add(p.teamLabel);
+      if (isUsefulTeamFilterLabel(p?.teamLabel)) labels.add(p.teamLabel);
     });
     return ["ALL", ...Array.from(labels).sort()];
   }, [baselinePlayerPool]);
+
+  const resetPeerForm = () => {
+    setAttack(0);
+    setDefence(0);
+    setPlaymaking(0);
+    setGk(0);
+    setComment("");
+  };
+
+  const resetBaselineForm = () => {
+    setBaselineAttack(0);
+    setBaselineDefence(0);
+    setBaselinePlaymaking(0);
+    setBaselineGk(0);
+  };
 
   const handleStarClick = (setter, value) => {
     setter(value);
@@ -572,17 +545,12 @@ export function PeerReviewPage({
 
   const handleSelectTarget = (name) => {
     setStatusMsg("");
-
     if (activeTarget === name) {
       setActiveTarget(null);
       return;
     }
-
     setActiveTarget(name);
-    setAttack(0);
-    setDefence(0);
-    setGk(0);
-    setComment("");
+    resetPeerForm();
   };
 
   const handleSubmitForTarget = async (targetName) => {
@@ -592,87 +560,72 @@ export function PeerReviewPage({
       setStatusMsg("Peer voting is reserved for Turf Kings players.");
       return;
     }
-
     if (!selectedRater) {
       setStatusMsg("Step 1: confirm who you are first.");
       return;
     }
-
     if (!targetName) {
       setStatusMsg("Tap a teammate first, then submit their rating.");
       return;
     }
 
-    const hasAnyScore = attack || defence || gk;
+    const hasAnyScore = attack || defence || playmaking || gk;
     if (!hasAnyScore) {
-      setStatusMsg(
-        "Give at least one rating (Attack, Defence, or Goalkeeping), or cancel."
-      );
+      setStatusMsg("Give at least one rating (Attack, Defence, Playmaking, or Goalkeeping), or cancel.");
       return;
     }
 
     const seasonId = String(activeSeasonId || "UNKNOWN_SEASON");
     const raterCanonical = resolveCanonicalName(selectedRater);
     const targetCanonical = resolveCanonicalName(targetName);
-
     const raterNorm = normaliseName(raterCanonical);
     const targetNorm = normaliseName(targetCanonical);
-
-    const voteKey = `${LOCAL_VOTE_PREFIX}:${seasonId}:${weekKey}:${raterNorm}:${targetNorm}`;
-
-    try {
-      if (typeof window !== "undefined") {
-        const already = window.localStorage.getItem(voteKey);
-        if (already) {
-          setStatusMsg(`You’ve already rated ${targetCanonical} for this week.`);
-          setActiveTarget(null);
-          return;
-        }
-      }
-    } catch {
-      // ignore
-    }
-
-    const now = new Date();
-
-    const docData = {
-      raterName: raterCanonical,
-      raterNameNormalized: raterNorm,
-      targetName: targetCanonical,
-      targetNameNormalized: targetNorm,
-      attack: attack || null,
-      defence: defence || null,
-      gk: gk || null,
-      comment: comment.trim() || null,
-      createdAtMs: now.getTime(),
-      weekKey,
-      seasonId,
-      source: "peer-review-page",
-    };
+    const peerRatingDocId = getPeerRatingDocId({ seasonId, weekKey, raterName: raterCanonical, targetName: targetCanonical });
 
     setSubmitting(true);
 
     try {
-      await submitPeerRating(docData);
-
-      try {
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(voteKey, "1");
-        }
-      } catch {
-        // ignore
-      }
-
-      setRatedTargets((prev) => {
-        if (prev.includes(targetNorm)) return prev;
-        return [...prev, targetNorm];
+      const snap = await getDocs(collection(db, "peerRatings"));
+      const alreadyRated = snap.docs.some((docSnap) => {
+        if (docSnap.id === peerRatingDocId) return true;
+        const data = docSnap.data() || {};
+        return (
+          String(data.seasonId || "UNKNOWN_SEASON") === seasonId &&
+          String(data.weekKey || "") === String(weekKey) &&
+          normaliseName(data.raterNameNormalized || data.raterName || "") === raterNorm &&
+          normaliseName(data.targetNameNormalized || data.targetName || "") === targetNorm
+        );
       });
 
+      if (alreadyRated) {
+        setStatusMsg(`You’ve already rated ${targetCanonical} for this week.`);
+        setRatedTargets((prev) => (prev.includes(targetNorm) ? prev : [...prev, targetNorm]));
+        setActiveTarget(null);
+        return;
+      }
+
+      const now = new Date();
+      const docData = {
+        raterName: raterCanonical,
+        raterNameNormalized: raterNorm,
+        targetName: targetCanonical,
+        targetNameNormalized: targetNorm,
+        attack: attack || null,
+        defence: defence || null,
+        playmaking: playmaking || null,
+        gk: gk || null,
+        comment: comment.trim() || null,
+        createdAtMs: now.getTime(),
+        weekKey,
+        seasonId,
+        source: "peer-review-page",
+      };
+
+      await setDoc(doc(db, "peerRatings", peerRatingDocId), docData, { merge: false });
+
+      setRatedTargets((prev) => (prev.includes(targetNorm) ? prev : [...prev, targetNorm]));
       setActiveTarget(null);
-      setAttack(0);
-      setDefence(0);
-      setGk(0);
-      setComment("");
+      resetPeerForm();
       setStatusMsg(`✅ Saved rating for ${targetCanonical}.`);
     } catch (err) {
       console.error("Peer rating submit error", err);
@@ -686,23 +639,16 @@ export function PeerReviewPage({
     if (raterLocked) return;
     setSelectedRater(null);
     setActiveTarget(null);
-    setAttack(0);
-    setDefence(0);
-    setGk(0);
-    setComment("");
+    resetPeerForm();
     setStatusMsg("");
     setRatedTargets([]);
   };
 
-  // ---------------- ADMIN BASELINE ACTIONS ----------------
   const handleSelectBaselineTarget = (name) => {
     setBaselineStatusMsg("");
-
     if (baselineTarget === name) {
       setBaselineTarget(null);
-      setBaselineAttack(0);
-      setBaselineDefence(0);
-      setBaselineGk(0);
+      resetBaselineForm();
       return;
     }
 
@@ -712,6 +658,7 @@ export function PeerReviewPage({
     setBaselineTarget(canonical);
     setBaselineAttack(Number(existing?.attack || 0));
     setBaselineDefence(Number(existing?.defence || 0));
+    setBaselinePlaymaking(Number(existing?.playmaking || 0));
     setBaselineGk(Number(existing?.gk || 0));
   };
 
@@ -722,13 +669,12 @@ export function PeerReviewPage({
       setBaselineStatusMsg("Only admin can save baseline ratings.");
       return;
     }
-
     if (!targetName) {
       setBaselineStatusMsg("Select a player first.");
       return;
     }
 
-    const hasAnyBaseline = baselineAttack || baselineDefence || baselineGk;
+    const hasAnyBaseline = baselineAttack || baselineDefence || baselinePlaymaking || baselineGk;
     if (!hasAnyBaseline) {
       setBaselineStatusMsg("Give at least one baseline rating before saving.");
       return;
@@ -737,20 +683,21 @@ export function PeerReviewPage({
     const seasonId = String(activeSeasonId || "UNKNOWN_SEASON");
     const targetCanonical = resolveCanonicalName(targetName);
     const targetNorm = normaliseName(targetCanonical);
-    const docId = `${seasonId}__${slugFromName(targetCanonical)}`;
+    const docId = slugFromName(targetCanonical);
     const now = new Date();
 
     const payload = {
-      seasonId,
+      seasonIdLastUpdated: seasonId,
       targetName: targetCanonical,
       targetNameNormalized: targetNorm,
       attack: baselineAttack || 0,
       defence: baselineDefence || 0,
+      playmaking: baselinePlaymaking || 0,
       gk: baselineGk || 0,
       updatedAtMs: now.getTime(),
       updatedByName: identity?.fullName || identity?.shortName || "Admin",
       updatedByEmail: identity?.email || "",
-      source: "peer-review-admin-baseline",
+      source: "peer-review-admin-baseline-global",
     };
 
     setSavingBaseline(true);
@@ -763,6 +710,7 @@ export function PeerReviewPage({
         [safeLower(targetCanonical)]: {
           attack: payload.attack,
           defence: payload.defence,
+          playmaking: payload.playmaking,
           gk: payload.gk,
           targetName: targetCanonical,
           updatedAtMs: payload.updatedAtMs,
@@ -773,25 +721,16 @@ export function PeerReviewPage({
 
       setBaselineStatusMsg(`✅ Baseline saved for ${targetCanonical}.`);
       setBaselineTarget(null);
-      setBaselineAttack(0);
-      setBaselineDefence(0);
-      setBaselineGk(0);
+      resetBaselineForm();
     } catch (err) {
       console.error("Baseline save error", err);
-      setBaselineStatusMsg(
-        "⚠️ Something went wrong saving this baseline. Please try again."
-      );
+      setBaselineStatusMsg("⚠️ Something went wrong saving this baseline. Please try again.");
     } finally {
       setSavingBaseline(false);
     }
   };
 
-  const signedInName =
-    selectedRater ||
-    identity?.fullName ||
-    identity?.shortName ||
-    identity?.email ||
-    null;
+  const signedInName = selectedRater || identity?.fullName || identity?.shortName || identity?.email || null;
 
   const renderBaselineCard = (p) => {
     const isActive = baselineTarget === p.name;
@@ -801,27 +740,15 @@ export function PeerReviewPage({
     const hasBaseline =
       Number(existing?.attack || 0) > 0 ||
       Number(existing?.defence || 0) > 0 ||
+      Number(existing?.playmaking || 0) > 0 ||
       Number(existing?.gk || 0) > 0;
 
     return (
-      <div
-        key={`${p.name}-baseline`}
-        className={`peer-player-card ${isActive ? "active" : ""}`}
-      >
-        <button
-          type="button"
-          className="peer-player-main"
-          onClick={() => handleSelectBaselineTarget(p.name)}
-        >
+      <div key={`${p.name}-baseline`} className={`peer-player-card ${isActive ? "active" : ""}`}>
+        <button type="button" className="peer-player-main" onClick={() => handleSelectBaselineTarget(p.name)}>
           <div className="peer-player-avatar">
             {photoUrl ? (
-              <img
-                src={photoUrl}
-                alt={p.name}
-                className="peer-avatar-photo"
-                loading="lazy"
-                decoding="async"
-              />
+              <img src={photoUrl} alt={p.name} className="peer-avatar-photo" loading="lazy" decoding="async" />
             ) : (
               <div className="peer-avatar-fallback">{initials}</div>
             )}
@@ -830,11 +757,9 @@ export function PeerReviewPage({
           <div className="peer-player-meta">
             <div className="peer-player-name">{p.name}</div>
             <div className="peer-player-team">{p.teamLabel || "—"}</div>
-
             {hasBaseline ? (
               <div className="peer-player-rated-tag">
-                Baseline set: A {existing.attack || 0} · D {existing.defence || 0} · GK{" "}
-                {existing.gk || 0}
+                Baseline set: A {existing.attack || 0} · D {existing.defence || 0} · P {existing.playmaking || 0} · GK {existing.gk || 0}
               </div>
             ) : (
               <div className="peer-player-rated-tag">No baseline yet</div>
@@ -843,26 +768,11 @@ export function PeerReviewPage({
         </button>
 
         {isActive && (
-          <div
-            className="peer-player-rating-inline"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            {renderBaselineStarsRow(
-              "Attack baseline",
-              baselineAttack,
-              setBaselineAttack
-            )}
-            {renderBaselineStarsRow(
-              "Defence baseline",
-              baselineDefence,
-              setBaselineDefence
-            )}
-            {renderBaselineStarsRow(
-              "Goalkeeping baseline",
-              baselineGk,
-              setBaselineGk
-            )}
+          <div className="peer-player-rating-inline" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+            {renderBaselineStarsRow("Attack baseline", baselineAttack, setBaselineAttack)}
+            {renderBaselineStarsRow("Defence baseline", baselineDefence, setBaselineDefence)}
+            {renderBaselineStarsRow("Playmaking baseline", baselinePlaymaking, setBaselinePlaymaking)}
+            {renderBaselineStarsRow("Goalkeeping baseline", baselineGk, setBaselineGk)}
 
             <div className="actions-row">
               <button
@@ -889,41 +799,94 @@ export function PeerReviewPage({
 
   return (
     <div className="page peer-review-page">
-      <div
-        className={`landing-header-sticky ${
-          headerScrolled ? "is-scrolled" : ""
-        }`}
-      >
+      <style>{`
+        .peer-review-page .peer-card {
+          background: #101827 !important;
+          border: 1px solid #64748b !important;
+          box-shadow: none !important;
+        }
+
+        .peer-review-page .peer-purpose-card {
+          background: #111827 !important;
+          border: 1px solid #94a3b8 !important;
+          box-shadow: none !important;
+        }
+
+        .peer-review-page .peer-purpose-card.weekly {
+          border-left: 5px solid #facc15 !important;
+        }
+
+        .peer-review-page .peer-purpose-card.baseline {
+          border-left: 5px solid #38bdf8 !important;
+        }
+
+        .peer-review-page .peer-purpose-title {
+          color: #ffffff !important;
+          font-weight: 900 !important;
+        }
+
+        .peer-review-page .peer-purpose-card p,
+        .peer-review-page .peer-purpose-card .muted {
+          color: #dbeafe !important;
+          opacity: 1 !important;
+        }
+
+        .peer-review-page .peer-admin-explainer {
+          background: #0f172a !important;
+          border: 1px solid #94a3b8 !important;
+          box-shadow: none !important;
+        }
+
+        .peer-review-page .peer-admin-explainer p {
+          color: #e2e8f0 !important;
+          opacity: 1 !important;
+        }
+
+        .peer-review-page .peer-safe-primary {
+          background: #15803d !important;
+          color: #ffffff !important;
+          border: 2px solid #bbf7d0 !important;
+          box-shadow: none !important;
+          text-shadow: none !important;
+        }
+
+        .peer-review-page .peer-safe-secondary {
+          background: #111827 !important;
+          color: #ffffff !important;
+          border: 1px solid #94a3b8 !important;
+          box-shadow: none !important;
+          text-shadow: none !important;
+        }
+
+        .peer-review-page .team-pill-btn.active {
+          background: #facc15 !important;
+          color: #111827 !important;
+          border-color: #fef08a !important;
+          box-shadow: none !important;
+          text-shadow: none !important;
+        }
+
+        .peer-review-page .team-pill-btn:not(.active),
+        .peer-review-page .peer-player-card,
+        .peer-review-page .peer-player-main,
+        .peer-review-page .primary-btn,
+        .peer-review-page .secondary-btn {
+          box-shadow: none !important;
+          text-shadow: none !important;
+        }
+      `}</style>
+      <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
         <header className="header">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              width: "100%",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", width: "100%" }}>
             <div className="header-title" style={{ minWidth: 0 }}>
               <h1 style={{ margin: 0 }}>Peer Ratings</h1>
             </div>
-
             <button
               className="secondary-btn"
               onClick={onBack}
               aria-label="Home"
               title="Home"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.05rem",
-                flexShrink: 0,
-              }}
+              style={{ minWidth: "46px", width: "46px", height: "46px", padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "1.05rem", flexShrink: 0 }}
             >
               🏠
             </button>
@@ -933,160 +896,182 @@ export function PeerReviewPage({
 
       <header className="header">
         <p className="subtitle">
-          Quiet, anonymous scorecard for <strong>Turf Kings players</strong> to rate
-          each other. These ratings feed into the Player Cards.
-        </p>
-        <p className="subtitle">
-          Reviews are weekly and tied to the <strong>current season</strong>.
+          <strong>Weekly ratings</strong> and <strong>admin baselines</strong>.
         </p>
       </header>
 
       <section className="card peer-card">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+            gap: "0.85rem",
+            marginBottom: "1.1rem",
+          }}
+        >
+          <div
+            className="peer-purpose-card weekly"
+            style={{
+              borderRadius: "1rem",
+              padding: "0.95rem",
+            }}
+          >
+            <div className="peer-purpose-title" style={{ marginBottom: "0.35rem" }}>🗓️ Weekly ratings</div>
+            <p className="muted small" style={{ margin: 0, lineHeight: 1.45 }}>
+              This week’s player reviews.
+            </p>
+          </div>
+
+          {isAdmin && (
+            <div
+              className="peer-purpose-card baseline"
+              style={{
+                borderRadius: "1rem",
+                padding: "0.95rem",
+              }}
+            >
+              <div className="peer-purpose-title" style={{ marginBottom: "0.35rem" }}>🛡️ Admin baselines</div>
+              <p className="muted small" style={{ margin: 0, lineHeight: 1.45 }}>
+                Long-term player levels.
+              </p>
+            </div>
+          )}
+        </div>
         {isAdmin && (
           <div className="peer-step" style={{ marginBottom: "1.25rem" }}>
-            <div className="peer-step-header">
-              <h2>Admin – Baseline ratings</h2>
-              <div className="peer-current-rater">
-                <strong>Admin tool</strong> for setting each player's starting peer level.
+            <div
+              className="peer-step-header"
+              style={{
+                alignItems: "flex-start",
+                gap: "0.85rem",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <h2 style={{ marginBottom: "0.25rem" }}>Admin baselines</h2>
+                <div className="peer-current-rater">
+                  Long-term ratings setup.
+                </div>
               </div>
+
+              <button
+                type="button"
+                className={showAdminBaselinePanel ? "secondary-btn peer-safe-secondary" : "primary-btn peer-safe-primary"}
+                onClick={() => setShowAdminBaselinePanel((current) => !current)}
+                style={{ flexShrink: 0 }}
+              >
+                {showAdminBaselinePanel ? "Hide tool" : "Open tool"}
+              </button>
             </div>
 
-            <p className="muted small" style={{ marginBottom: "0.8rem" }}>
-              These baseline ratings are saved separately from weekly squad voting.
-              Admin can rate all known players, even if they are not in this week's squad.
-            </p>
-
-            <div className="peer-filter-row">
-              <span className="muted small">Filter by team:</span>
-              <div className="team-pill-row">
-                {baselineFilterOptions.map((label) => (
-                  <button
-                    key={`baseline-${label}`}
-                    type="button"
-                    className={`team-pill-btn ${
-                      baselineFilterTeam === label ? "active" : ""
-                    }`}
-                    onClick={() => {
-                      setBaselineFilterTeam(label);
-                      setBaselineTarget(null);
-                      setBaselineAttack(0);
-                      setBaselineDefence(0);
-                      setBaselineGk(0);
-                      setBaselineStatusMsg("");
-                    }}
-                  >
-                    {label === "ALL" ? "All players" : label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {!baselineLoaded ? (
-              <p className="muted small">Loading admin baselines…</p>
-            ) : (
-              <>
-                <div style={{ marginTop: "0.9rem" }}>
-                  <h3 style={{ marginBottom: "0.55rem" }}>Played this week</h3>
-                  {baselineCurrentWeekTargets.length === 0 ? (
-                    <p className="muted small">
-                      No current-week players in this filter.
-                    </p>
-                  ) : (
-                    <div className="peer-player-grid">
-                      {baselineCurrentWeekTargets.map(renderBaselineCard)}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ marginTop: "1.1rem" }}>
-                  <h3 style={{ marginBottom: "0.55rem" }}>
-                    Other players / not in current week
-                  </h3>
-                  {baselineOtherTargets.length === 0 ? (
-                    <p className="muted small">
-                      No other players in this filter.
-                    </p>
-                  ) : (
-                    <div className="peer-player-grid">
-                      {baselineOtherTargets.map(renderBaselineCard)}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-
-            {baselineStatusMsg && (
-              <p className="status-text" style={{ marginTop: "0.75rem" }}>
-                {baselineStatusMsg}
+            <div
+              className="peer-admin-explainer"
+              style={{
+                marginTop: "0.75rem",
+                padding: "0.8rem 0.9rem",
+                borderRadius: "0.9rem",
+              }}
+            >
+              <p className="muted small" style={{ margin: 0, lineHeight: 1.45 }}>
+                Global per-player baselines. Edit only when needed.
               </p>
+            </div>
+
+            {showAdminBaselinePanel && (
+              <>
+                <div className="peer-filter-row" style={{ marginTop: "0.95rem" }}>
+                  <span className="muted small">Filter by team:</span>
+                  <div className="team-pill-row">
+                    {baselineFilterOptions.map((label) => (
+                      <button
+                        key={`baseline-${label}`}
+                        type="button"
+                        className={`team-pill-btn ${baselineFilterTeam === label ? "active" : ""}`}
+                        onClick={() => {
+                          setBaselineFilterTeam(label);
+                          setBaselineTarget(null);
+                          resetBaselineForm();
+                          setBaselineStatusMsg("");
+                        }}
+                      >
+                        {label === "ALL" ? "All teams" : label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="actions-row" style={{ marginTop: "0.8rem" }}>
+                  <button type="button" className="secondary-btn" onClick={() => setShowRatedBaselinePlayers((current) => !current)}>
+                    {showRatedBaselinePlayers ? "Hide rated" : "Show rated"}
+                  </button>
+                </div>
+
+                {!baselineLoaded ? (
+                  <p className="muted small">Loading baselines…</p>
+                ) : (
+                  <>
+                    <div style={{ marginTop: "0.9rem" }}>
+                      <h3 style={{ marginBottom: "0.55rem" }}>Played this week</h3>
+                      {baselineCurrentWeekTargets.length === 0 ? (
+                        <p className="muted small">No players here.</p>
+                      ) : (
+                        <div className="peer-player-grid">{baselineCurrentWeekTargets.map(renderBaselineCard)}</div>
+                      )}
+                    </div>
+
+                    <div style={{ marginTop: "1.1rem" }}>
+                      <h3 style={{ marginBottom: "0.55rem" }}>Other players / not in current week</h3>
+                      {baselineOtherTargets.length === 0 ? (
+                        <p className="muted small">No players here.</p>
+                      ) : (
+                        <div className="peer-player-grid">{baselineOtherTargets.map(renderBaselineCard)}</div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {baselineStatusMsg && <p className="status-text" style={{ marginTop: "0.75rem" }}>{baselineStatusMsg}</p>}
+              </>
             )}
           </div>
         )}
 
         <div className="peer-step">
           <div className="peer-step-header">
-            <h2>Step 1 – Who are you?</h2>
+            <div>
+              <h2 style={{ marginBottom: "0.25rem" }}>Weekly reviews – Step 1: Who are you?</h2>
+              <p className="muted small" style={{ margin: 0 }}>This section is for this week&apos;s player-to-player reviews. It is separate from admin baselines.</p>
+            </div>
             {signedInName && isSignedInPlayer && (
               <div className="peer-current-rater">
-                Voting as{" "}
-                <strong>
-                  {selectedRater || signedInName}
-                  {raterLocked ? " (verified)" : ""}
-                </strong>{" "}
+                Voting as <strong>{selectedRater || signedInName}{raterLocked ? " (verified)" : ""}</strong>{" "}
                 {!raterLocked && (
-                  <button
-                    type="button"
-                    className="link-btn"
-                    onClick={handleChangeRater}
-                  >
-                    change
-                  </button>
+                  <button type="button" className="link-btn" onClick={handleChangeRater}>change</button>
                 )}
               </div>
             )}
           </div>
 
           {!isSignedInPlayer && (
-            <>
-              {isSpectator ? (
-                <p className="muted small">
-                  You are signed in as a spectator. Only <strong>Turf Kings players</strong>{" "}
-                  can submit peer ratings.
-                </p>
-              ) : (
-                <p className="muted small">
-                  You are not signed in as a Turf Kings player.
-                </p>
-              )}
-            </>
+            <p className="muted small">
+              {isSpectator
+                ? "You are signed in as a spectator. Only Turf Kings players can submit peer ratings."
+                : "You are not signed in as a Turf Kings player."}
+            </p>
           )}
 
           {isSignedInPlayer && !selectedRater && (
             <>
-              <p className="muted small">
-                Tap your name from the Turf Kings squads.
-              </p>
-
-              <div
-                className="peer-player-grid"
-                style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
-              >
+              <p className="muted small">Tap your name from the Turf Kings squads.</p>
+              <div className="peer-player-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
                 {allPlayers.map((p) => {
                   const photoUrl = getPhotoFor(p.name);
                   const initials = getInitials(p.name);
-
                   return (
                     <button
                       key={`${p.name}-rater`}
                       type="button"
                       className="peer-player-main"
-                      style={{
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        borderRadius: "16px",
-                        padding: "0.85rem",
-                        background: "rgba(255,255,255,0.04)",
-                        textAlign: "left",
-                      }}
+                      style={{ border: "1px solid rgba(255,255,255,0.12)", borderRadius: "16px", padding: "0.85rem", background: "rgba(255,255,255,0.04)", textAlign: "left" }}
                       onClick={() => {
                         setSelectedRater(p.name);
                         setRaterLocked(false);
@@ -1094,17 +1079,7 @@ export function PeerReviewPage({
                       }}
                     >
                       <div className="peer-player-avatar">
-                        {photoUrl ? (
-                          <img
-                            src={photoUrl}
-                            alt={p.name}
-                            className="peer-avatar-photo"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ) : (
-                          <div className="peer-avatar-fallback">{initials}</div>
-                        )}
+                        {photoUrl ? <img src={photoUrl} alt={p.name} className="peer-avatar-photo" loading="lazy" decoding="async" /> : <div className="peer-avatar-fallback">{initials}</div>}
                       </div>
                       <div className="peer-player-meta">
                         <div className="peer-player-name">{p.name}</div>
@@ -1119,13 +1094,16 @@ export function PeerReviewPage({
         </div>
 
         <div className="peer-step">
-          <h2>Step 2 – Rate your teammates</h2>
+          <div className="peer-step-header">
+            <div>
+              <h2 style={{ marginBottom: "0.25rem" }}>Weekly reviews – Step 2: Rate your teammates</h2>
+              <p className="muted small" style={{ margin: 0 }}>
+                These ratings are saved for week <strong>{weekKey}</strong>. They do not overwrite the admin baseline.
+              </p>
+            </div>
+          </div>
 
-          {!isSignedInPlayer && (
-            <p className="muted">
-              We need to know who you are in Step 1 before you can rate teammates.
-            </p>
-          )}
+          {!isSignedInPlayer && <p className="muted">We need to know who you are in Step 1 before you can rate teammates.</p>}
 
           {isSignedInPlayer && selectedRater && (
             <>
@@ -1142,16 +1120,14 @@ export function PeerReviewPage({
                         setActiveTarget(null);
                       }}
                     >
-                      {label === "ALL" ? "All teams" : label}
+                      {label === "ALL" ? "All" : label}
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="peer-player-grid">
-                {candidateTargets.length === 0 && (
-                  <p className="muted small">No teammates available in this filter.</p>
-                )}
+                {candidateTargets.length === 0 && <p className="muted small">No teammates available in this filter.</p>}
 
                 {candidateTargets.map((p) => {
                   const isActive = activeTarget === p.name;
@@ -1161,48 +1137,23 @@ export function PeerReviewPage({
                   const initials = getInitials(p.name);
 
                   return (
-                    <div
-                      key={`${p.name}-target`}
-                      className={`peer-player-card ${isActive ? "active" : ""} ${
-                        isRated ? "rated" : ""
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="peer-player-main"
-                        onClick={() => handleSelectTarget(p.name)}
-                      >
+                    <div key={`${p.name}-target`} className={`peer-player-card ${isActive ? "active" : ""} ${isRated ? "rated" : ""}`}>
+                      <button type="button" className="peer-player-main" onClick={() => handleSelectTarget(p.name)}>
                         <div className="peer-player-avatar">
-                          {photoUrl ? (
-                            <img
-                              src={photoUrl}
-                              alt={p.name}
-                              className="peer-avatar-photo"
-                              loading="lazy"
-                              decoding="async"
-                            />
-                          ) : (
-                            <div className="peer-avatar-fallback">{initials}</div>
-                          )}
+                          {photoUrl ? <img src={photoUrl} alt={p.name} className="peer-avatar-photo" loading="lazy" decoding="async" /> : <div className="peer-avatar-fallback">{initials}</div>}
                         </div>
-
                         <div className="peer-player-meta">
                           <div className="peer-player-name">{p.name}</div>
                           <div className="peer-player-team">{p.teamLabel || "—"}</div>
-                          {isRated && (
-                            <div className="peer-player-rated-tag">Rated this week</div>
-                          )}
+                          {isRated && <div className="peer-player-rated-tag">Rated this week</div>}
                         </div>
                       </button>
 
                       {isActive && (
-                        <div
-                          className="peer-player-rating-inline"
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                        >
+                        <div className="peer-player-rating-inline" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
                           {renderStarsRow("Attack", attack, setAttack)}
                           {renderStarsRow("Defence", defence, setDefence)}
+                          {renderStarsRow("Playmaking", playmaking, setPlaymaking)}
                           {renderStarsRow("Goalkeeping", gk, setGk)}
 
                           <div className="peer-field">
@@ -1222,6 +1173,7 @@ export function PeerReviewPage({
                             <button
                               type="button"
                               className="primary-btn"
+                              disabled={submitting}
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -1242,11 +1194,7 @@ export function PeerReviewPage({
                 })}
               </div>
 
-              {statusMsg && (
-                <p className="status-text" style={{ marginTop: "0.75rem" }}>
-                  {statusMsg}
-                </p>
-              )}
+              {statusMsg && <p className="status-text" style={{ marginTop: "0.75rem" }}>{statusMsg}</p>}
             </>
           )}
         </div>
@@ -1254,3 +1202,5 @@ export function PeerReviewPage({
     </div>
   );
 }
+
+export default PeerReviewPage;
