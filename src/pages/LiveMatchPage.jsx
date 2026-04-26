@@ -1,18 +1,38 @@
 import React from "react";
-import ThreeTeamLeagueLiveMatchPage from "./3TeamLeagueLiveMatchPage";
-import FiveVFiveLiveMatchPage from "./5v5LiveMatchPage";
+import ThreeTeamLeagueLiveMatchPage from "./ThreeTeamLeague_LiveMatchPage";
+import FriendlyLiveMatchPage from "./Friendly_LiveMatchPage";
+import { MATCH_MODE, buildMatchClassification } from "../core/matchConfig.js";
 
 export function LiveMatchPage(props) {
-  const matchMode =
-    props.currentMatch?.matchMode ||
-    props.pendingMatchStartContext?.matchMode ||
-    "5_V_5";
+  const classification = buildMatchClassification({
+    matchMode:
+      props.currentMatch?.matchMode ||
+      props.pendingMatchStartContext?.matchMode ||
+      props.matchMode,
+    gameFormat:
+      props.currentMatch?.gameFormat ||
+      props.pendingMatchStartContext?.gameFormat ||
+      props.gameFormat,
+    legacyGameFormat:
+      props.currentMatch?.matchMode ||
+      props.pendingMatchStartContext?.matchMode ||
+      props.currentMatch?.gameFormat ||
+      props.pendingMatchStartContext?.gameFormat ||
+      props.gameFormat,
+  });
 
-  if (matchMode === "5_V_5") {
-    return <FiveVFiveLiveMatchPage {...props} />;
+  const sharedProps = {
+    ...props,
+    matchMode: classification.matchMode,
+    gameFormat: classification.gameFormat,
+    playersPerSide: classification.playersPerSide,
+  };
+
+  if (classification.matchMode === MATCH_MODE.LEAGUE) {
+    return <ThreeTeamLeagueLiveMatchPage {...sharedProps} />;
   }
 
-  return <ThreeTeamLeagueLiveMatchPage {...props} />;
+  return <FriendlyLiveMatchPage {...sharedProps} />;
 }
 
 export default LiveMatchPage;
