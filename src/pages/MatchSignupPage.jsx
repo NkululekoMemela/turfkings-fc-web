@@ -3483,7 +3483,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               <div className="signup-top-meta">
                 <div className="signup-attendance-badge">
                   <span className="signup-attendance-badge-label">
-                    Attendance
+                    Attendance Badge 🛡️
                   </span>
                   <strong>{attendanceBadgeText}</strong>
                   {attendanceSubtext ? <small>{attendanceSubtext}</small> : null}

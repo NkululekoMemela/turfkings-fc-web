@@ -719,7 +719,18 @@ export function LandingPage({
             >
               {renderTileContent({
                 isMobile,
-                icon: "🧩",
+                icon: (
+                  <img
+                    src="/strategy.png"
+                    alt=""
+                    style={{
+                      width: isMobile ? 30 : 26,
+                      height: isMobile ? 30 : 26,
+                      objectFit: "contain",
+                    }}
+                    draggable="false"
+                  />
+                ),
                 desktopLines: ["Lineups &", "Formations"],
                 mobileLines: ["Lineups &", "Formations"],
               })}
@@ -733,7 +744,7 @@ export function LandingPage({
             >
               {renderTileContent({
                 isMobile,
-                icon: "📝",
+                icon: "📰",
                 desktopLines: ["News &", "Highlights"],
                 mobileLines: ["News &", "Highlights"],
               })}
@@ -824,7 +835,7 @@ export function LandingPage({
               >
                 {renderTileContent({
                   isMobile,
-                  icon: "📝",
+                  icon: "📰",
                   desktopLines: ["News &", "Highlights"],
                   mobileLines: ["News &", "Highlights"],
                 })}
