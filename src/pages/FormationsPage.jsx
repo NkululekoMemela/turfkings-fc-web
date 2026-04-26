@@ -92,6 +92,78 @@ const FORMATIONS_6 = {
   },
 };
 
+
+const GAME_TYPE_7 = "7_aside";
+const DEFAULT_FORMATION_ID_7 = "7_3_2_1";
+
+const FORMATIONS_7 = {
+  "7_3_2_1": {
+    id: "7_3_2_1",
+    label: "3-2-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 25, y: 68 },
+      { id: "def_c", label: "DEF", x: 50, y: 72 },
+      { id: "def_r", label: "DEF", x: 75, y: 68 },
+      { id: "mid_l", label: "MID", x: 38, y: 43 },
+      { id: "mid_r", label: "MID", x: 62, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+  "7_2_3_1": {
+    id: "7_2_3_1",
+    label: "2-3-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 35, y: 68 },
+      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 43 },
+      { id: "mid_c", label: "MID", x: 50, y: 39 },
+      { id: "mid_r", label: "MID", x: 72, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 18 },
+    ],
+  },
+  "7_2_2_2": {
+    id: "7_2_2_2",
+    label: "2-2-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 35, y: 68 },
+      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      { id: "mid_l", label: "MID", x: 35, y: 43 },
+      { id: "mid_r", label: "MID", x: 65, y: 43 },
+      { id: "fwd_l", label: "ST", x: 38, y: 20 },
+      { id: "fwd_r", label: "ST", x: 62, y: 20 },
+    ],
+  },
+  "7_3_1_2": {
+    id: "7_3_1_2",
+    label: "3-1-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 25, y: 68 },
+      { id: "def_c", label: "DEF", x: 50, y: 72 },
+      { id: "def_r", label: "DEF", x: 75, y: 68 },
+      { id: "mid", label: "MID", x: 50, y: 44 },
+      { id: "fwd_l", label: "ST", x: 38, y: 20 },
+      { id: "fwd_r", label: "ST", x: 62, y: 20 },
+    ],
+  },
+  "7_1_3_2": {
+    id: "7_1_3_2",
+    label: "1-3-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def", label: "DEF", x: 50, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 45 },
+      { id: "mid_c", label: "MID", x: 50, y: 40 },
+      { id: "mid_r", label: "MID", x: 72, y: 45 },
+      { id: "fwd_l", label: "ST", x: 38, y: 20 },
+      { id: "fwd_r", label: "ST", x: 62, y: 20 },
+    ],
+  },
+};
+
 const FORMATIONS_11_WITH_ULTRA_DEFENSIVE = (() => {
   const adjusted = {};
 
@@ -162,25 +234,42 @@ const FORMATIONS_11_WITH_ULTRA_DEFENSIVE = (() => {
 })();
 
 function isSmallSidedGameType(type) {
-  return type === GAME_TYPE_5 || type === GAME_TYPE_6;
+  return type === GAME_TYPE_5 || type === GAME_TYPE_6 || type === GAME_TYPE_7;
 }
 
 function getFormationsMapForGameType(type) {
   if (type === GAME_TYPE_11) return FORMATIONS_11_WITH_ULTRA_DEFENSIVE;
+  if (type === GAME_TYPE_7) return FORMATIONS_7;
   if (type === GAME_TYPE_6) return FORMATIONS_6;
   return FORMATIONS_5;
 }
 
 function getDefaultFormationIdForGameType(type) {
   if (type === GAME_TYPE_11) return DEFAULT_FORMATION_ID_11;
+  if (type === GAME_TYPE_7) return DEFAULT_FORMATION_ID_7;
   if (type === GAME_TYPE_6) return DEFAULT_FORMATION_ID_6;
   return DEFAULT_FORMATION_ID_5;
 }
 
 function getGameTypeFilenameLabel(type) {
   if (type === GAME_TYPE_11) return "11aside";
+  if (type === GAME_TYPE_7) return "7aside";
   if (type === GAME_TYPE_6) return "6aside";
   return "5aside";
+}
+
+function getGameTypeLabel(type) {
+  if (type === GAME_TYPE_11) return "11-a-side";
+  if (type === GAME_TYPE_7) return "7-a-side";
+  if (type === GAME_TYPE_6) return "6-a-side";
+  return "5-a-side";
+}
+
+function gameFormatToFormationGameType(format) {
+  const value = String(format || "").trim().toUpperCase();
+  if (value === "7_V_7" || value === "7V7" || value === "7_ASIDE") return GAME_TYPE_7;
+  if (value === "6_V_6" || value === "6V6" || value === "6_ASIDE") return GAME_TYPE_6;
+  return GAME_TYPE_5;
 }
 
 
@@ -188,6 +277,15 @@ function getFormationTacticalLabel(formation, gameType) {
   const id = String(formation?.id || "").toLowerCase();
   const label = String(formation?.label || "").toLowerCase();
   const text = `${id} ${label}`;
+
+  if (gameType === GAME_TYPE_7) {
+    if (id === "7_3_2_1" || text.includes("3-2-1")) return "Balanced";
+    if (id === "7_2_3_1" || text.includes("2-3-1")) return "Control";
+    if (id === "7_2_2_2" || text.includes("2-2-2")) return "Attacking";
+    if (id === "7_3_1_2" || text.includes("3-1-2")) return "Counter Attack";
+    if (id === "7_1_3_2" || text.includes("1-3-2")) return "High Press";
+    return "Balanced";
+  }
 
   if (gameType === GAME_TYPE_6) {
     if (id === "6_3_2_0" || text.includes("3-2-0") || text.includes("3-2")) return "Ultra Defensive";
@@ -223,6 +321,14 @@ function getFormationDisplayLabel(formation, gameType) {
   const tacticalLabel = getFormationTacticalLabel(formation, gameType);
 
   const pickShape = () => {
+    if (gameType === GAME_TYPE_7) {
+      if (id === "7_3_2_1" || text.includes("3-2-1")) return "3-2-1";
+      if (id === "7_2_3_1" || text.includes("2-3-1")) return "2-3-1";
+      if (id === "7_2_2_2" || text.includes("2-2-2")) return "2-2-2";
+      if (id === "7_3_1_2" || text.includes("3-1-2")) return "3-1-2";
+      if (id === "7_1_3_2" || text.includes("1-3-2")) return "1-3-2";
+    }
+
     if (gameType === GAME_TYPE_6) {
       if (id === "6_2_2_1" || text.includes("2-2-1")) return "2-2-1";
       if (id === "6_1_3_1" || text.includes("1-3-1")) return "1-3-1";
@@ -838,26 +944,27 @@ export function FormationsPage({
   authUser = null,
   onBack,
   onGoToSquads,
+  matchType = "FRIENDLY",
   gameFormat = "5_V_5",
 }) {
   const canEditLineups = true;
-  const isFiveVFive = gameFormat === "5_V_5";
+  const isFriendlyMatch = String(matchType || "FRIENDLY").toUpperCase() !== "LEAGUE";
 
   const [lineupsByTeam, setLineupsByTeam] = useState(() => loadSavedLineups());
 
   const sourceTeams = useMemo(() => {
-    if (!isFiveVFive) return teams || [];
+    if (!isFriendlyMatch) return teams || [];
     return Array.isArray(fiveVFiveTeams) && fiveVFiveTeams.length
       ? fiveVFiveTeams
       : [];
-  }, [isFiveVFive, teams, fiveVFiveTeams]);
+  }, [isFriendlyMatch, teams, fiveVFiveTeams]);
 
   const initialTeamId =
     currentMatch?.teamAId || (sourceTeams[0] ? sourceTeams[0].id : null);
 
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId);
 
-  const [gameType, setGameType] = useState(GAME_TYPE_5);
+  const [gameType, setGameType] = useState(() => gameFormatToFormationGameType(gameFormat));
 
   const [players, setPlayers] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -867,6 +974,12 @@ export function FormationsPage({
   const exportRef = useRef(null);
   const longPressTimerRef = useRef(null);
 
+  useEffect(() => {
+    const nextGameType = gameFormatToFormationGameType(gameFormat);
+    if (isSmallSidedGameType(nextGameType)) {
+      setGameType(nextGameType);
+    }
+  }, [gameFormat]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -1231,7 +1344,7 @@ export function FormationsPage({
       return loggedInCanonicalName || "";
     }
 
-    if (gameType === GAME_TYPE_5) {
+    if (isSmallSidedGameType(gameType)) {
       return selectedTeamCanonical?.captain || "";
     }
 
@@ -1741,7 +1854,7 @@ export function FormationsPage({
           </button>
         </div>
         <p className="muted small" style={{ marginTop: "0.65rem" }}>
-          Match day format: <strong>{isFiveVFive ? "Normal 5 v 5" : "3 Team League"}</strong>
+          Match day format: <strong>{isFriendlyMatch ? `Friendly ${getGameTypeLabel(gameType)}` : `League ${getGameTypeLabel(gameType)}`}</strong>
         </p>
       </header>
     </>
@@ -1797,6 +1910,13 @@ export function FormationsPage({
               </button>
               <button
                 type="button"
+                className={`segmented-option ${gameType === GAME_TYPE_7 ? "active" : ""}`}
+                onClick={() => handleGameTypeClick(GAME_TYPE_7)}
+              >
+                7-a-side
+              </button>
+              <button
+                type="button"
                 className={`segmented-option ${gameType === GAME_TYPE_11 ? "active" : ""}`}
                 onClick={() => handleGameTypeClick(GAME_TYPE_11)}
               >
@@ -1807,7 +1927,7 @@ export function FormationsPage({
 
           {isSmallSidedGameType(gameType) ? (
             <div className="field-row inline-field">
-              <label>Team ({gameType === GAME_TYPE_6 ? "6-a-side" : "5-a-side"})</label>
+              <label>Team ({getGameTypeLabel(gameType)})</label>
               <div className="team-pill-row">
                 {canonicalTeams.map((t) => (
                   <button
@@ -1881,7 +2001,7 @@ export function FormationsPage({
                   boxShadow: "0 6px 14px rgba(2, 6, 23, 0.18)",
                 }}
               >
-                {isSmallSidedGameType(gameType) ? selectedTeamCanonical?.label || (gameType === GAME_TYPE_6 ? "6-a-side" : "5-a-side") : "TurfKings FC"}
+                {isSmallSidedGameType(gameType) ? selectedTeamCanonical?.label || getGameTypeLabel(gameType) : "TurfKings FC"}
               </div>
 
               {formation.positions.map((pos) => {

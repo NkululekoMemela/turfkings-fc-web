@@ -10,6 +10,13 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import {
+  MATCH_MODE,
+  GAME_FORMAT,
+  getGameFormatConfig,
+  normalizeMatchMode,
+  normalizeGameFormat,
+} from "../core/matchConfig.js";
 
 const MASTER_CODE = "3333"; // Nkululeko only
 const UNSEEDED_ID = "__unseeded__";
@@ -340,11 +347,30 @@ export function SquadsPage({
   onUpdateFiveVFiveTeams,
   onBack,
   identity = null,
-  gameFormat = "5_V_5",
+  matchType = MATCH_MODE.FRIENDLY,
+  gameFormat = GAME_FORMAT.FIVE_V_FIVE,
 }) {
   const isAdmin = isAdminIdentity(identity);
   const canEdit = isAdmin;
-  const isFiveVFive = gameFormat === "5_V_5";
+
+  const resolvedMatchType = normalizeMatchMode(
+    matchType || gameFormat,
+    MATCH_MODE.FRIENDLY
+  );
+  const resolvedGameFormat = normalizeGameFormat(
+    gameFormat,
+    GAME_FORMAT.FIVE_V_FIVE
+  );
+  const formatConfig = getGameFormatConfig(resolvedGameFormat);
+  const playersPerSide = Number(formatConfig?.playersPerSide || 5);
+  const gameFormatLabel = formatConfig?.label || "5 v 5";
+  const isFriendly = resolvedMatchType === MATCH_MODE.FRIENDLY;
+  const isLeague = resolvedMatchType === MATCH_MODE.LEAGUE;
+  const matchTypeLabel = isLeague ? "League" : "Friendly";
+
+  // Legacy naming kept locally to avoid disturbing the rest of this file.
+  // It now means: use the Friendly squads section.
+  const isFiveVFive = isFriendly;
 
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [localLeagueTeams, setLocalLeagueTeams] = useState(() =>
@@ -999,13 +1025,13 @@ export function SquadsPage({
         {!playersLoading && (
           <>
             <p className="muted small" style={{ marginBottom: "0.55rem" }}>
-              Match day format: <strong>{isFiveVFive ? "Normal 5 v 5" : "3 Team League"}</strong>
+              Match setup: <strong>{matchTypeLabel} • {gameFormatLabel}</strong>
             </p>
             <p className="muted small">
               {isAdmin
-                ? isFiveVFive
-                  ? "Admin mode: you can edit the separate 5 v 5 teams Dark and Light, their captains, colors, and player placement."
-                  : "Admin mode: you can edit the 3 Team League squads, captains, player placement, and team colors."
+                ? isFriendly
+                  ? `Admin mode: you can edit the Friendly ${gameFormatLabel} teams Dark and Light, their captains, colors, and player placement.`
+                  : `Admin mode: you can edit the League ${gameFormatLabel} squads, captains, player placement, and team colors.`
                 : "View mode: team cards and squads are visible to everyone."}
             </p>
           </>
@@ -1027,10 +1053,10 @@ export function SquadsPage({
             }}
           >
             <div className="muted small" style={{ fontWeight: 700 }}>
-              Separate Normal 5 v 5 squads
+              Separate Friendly squads
             </div>
             <div className="muted small">
-              Dark and Light are stored separately from the 3 Team League squads, so you can switch formats between different weeks without disturbing league continuity.
+              Dark and Light are stored separately from the League squads, so you can switch between Friendly and League without disturbing league continuity. The selected game format controls the target team size.
             </div>
           </div>
         )}
@@ -1038,17 +1064,20 @@ export function SquadsPage({
         <div className="squads-grid">
           {sourceTeams.map((team) => {
             const inputId = team.id;
-            const listId = `players-db-${gameFormat}-${inputId}`;
+            const listId = `players-db-${resolvedGameFormat}-${inputId}`;
             const capOptions = captainOptionsForTeam(team);
             const currentCapId =
               team.captainId && playersById.has(team.captainId)
                 ? team.captainId
                 : "";
-            const cardId = `team-${gameFormat}-${team.id}`;
+            const cardId = `team-${resolvedGameFormat}-${team.id}`;
             const theme = getTeamTheme(team);
+            const playerCount = Array.isArray(team.players) ? team.players.length : 0;
+            const teamReady = playerCount >= playersPerSide;
+            const playerCountText = `${playerCount}/${playersPerSide}`;
 
             return (
-              <React.Fragment key={`team-fragment-${gameFormat}-${team.id}`}>
+              <React.Fragment key={`team-fragment-${resolvedGameFormat}-${team.id}`}>
                 {renderCardShell(
                   cardId,
                   team.label,
@@ -1070,6 +1099,16 @@ export function SquadsPage({
                           <div className="team-color-name">
                             <span className="team-color-dot" />
                             {theme.colorName}
+                          </div>
+                          <div
+                            className="muted small"
+                            style={{
+                              marginTop: "0.25rem",
+                              fontWeight: 800,
+                              color: teamReady ? "#86efac" : "#fde68a",
+                            }}
+                          >
+                            Players: {playerCountText} • {teamReady ? "Ready" : "Needs players"}
                           </div>
                         </div>
                       </div>
@@ -1160,7 +1199,7 @@ export function SquadsPage({
 
                         return (
                           <li
-                            key={`${gameFormat}-${team.id}-${pid}-${idx}`}
+                            key={`${resolvedGameFormat}-${team.id}-${pid}-${idx}`}
                             className="player-row"
                           >
                             <div className="player-row-left">

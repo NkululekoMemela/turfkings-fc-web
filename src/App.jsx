@@ -1031,6 +1031,7 @@ function buildRawHighlightFirebaseDoc(highlight, options = {}) {
     matchDayId,
     currentMatchNo = 1,
     activeSeasonId = null,
+    matchType = MATCH_TYPE.FRIENDLY,
     gameFormat = "5_V_5",
     identity = null,
   } = options;
@@ -1059,8 +1060,9 @@ function buildRawHighlightFirebaseDoc(highlight, options = {}) {
       Number.isFinite(Number(highlight?.matchNo)) && Number(highlight?.matchNo) > 0
         ? Number(highlight.matchNo)
         : Number(currentMatchNo || 1),
-    seasonId: gameFormat === "5_V_5" ? null : activeSeasonId || highlight?.seasonId || null,
-    gameFormat: gameFormat || highlight?.gameFormat || "5_V_5",
+    seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || highlight?.seasonId || null,
+    matchType: normalizeMatchMode(matchType || highlight?.matchType || gameFormat),
+    gameFormat: normalizeGameFormat(gameFormat || highlight?.gameFormat || GAME_FORMAT.FIVE_V_FIVE),
     tag: safeTag,
     type: safeTag,
     playerName: highlight?.playerName || null,
@@ -1156,6 +1158,7 @@ async function archiveWinningHighlightsToFirebase({
   matchDayId,
   archiveSelection,
   activeSeasonId,
+  matchType = MATCH_TYPE.FRIENDLY,
   gameFormat,
   currentMatchNo,
 }) {
@@ -1210,8 +1213,9 @@ async function archiveWinningHighlightsToFirebase({
         ...winner,
         clipId,
         id: clipId,
-        seasonId: gameFormat === "5_V_5" ? null : activeSeasonId || null,
-        gameFormat: gameFormat || "5_V_5",
+        seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || null,
+        matchType: normalizeMatchMode(matchType || gameFormat),
+        gameFormat: normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE),
         matchNo: Number(currentMatchNo || winner?.matchNo || 1),
         archivedAtISO: new Date().toISOString(),
         archivedAt: serverTimestamp(),
@@ -1346,6 +1350,7 @@ function resolveCameraLaunchTeams({
 
 function buildCameraLiveContext({
   activeSeasonId,
+  matchType = MATCH_TYPE.LEAGUE,
   gameFormat,
   currentMatchNo,
   launchTeams,
@@ -1358,7 +1363,8 @@ function buildCameraLiveContext({
   return {
     matchIsLive: true,
     seasonId: activeSeasonId || null,
-    gameFormat: gameFormat || "3_TEAM_LEAGUE",
+    matchType: normalizeMatchMode(matchType || MATCH_TYPE.LEAGUE),
+    gameFormat: normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE),
     matchId: `tk-${activeSeasonId || "season"}-${currentMatchNo || 1}`,
     matchNo: Number(currentMatchNo || 1),
     teamAId: launchTeams.teamAId,
@@ -1387,6 +1393,28 @@ async function writeCameraLiveContextToFirebase(cameraLiveContext) {
     },
     { merge: true }
   );
+}
+
+function buildMatchMetadata({ matchType, gameFormat, matchMode } = {}) {
+  const resolvedMatchType = normalizeMatchMode(
+    matchType || gameFormat,
+    MATCH_TYPE.FRIENDLY
+  );
+  const resolvedGameFormat = normalizeGameFormat(
+    gameFormat || GAME_FORMAT.FIVE_V_FIVE,
+    GAME_FORMAT.FIVE_V_FIVE
+  );
+
+  return {
+    matchType: resolvedMatchType,
+    gameFormat: resolvedGameFormat,
+    matchMode:
+      resolvedMatchType === MATCH_TYPE.LEAGUE
+        ? matchMode === "scheduled_target"
+          ? "scheduled_target"
+          : "round_robin"
+        : null,
+  };
 }
 
 export default function App() {
@@ -1638,7 +1666,7 @@ export default function App() {
     ({
       teams,
       currentMatchNo,
-      currentMatch: effectiveLiveMatch,
+      currentMatch,
       currentEvents,
       results,
       allEvents,
@@ -1739,6 +1767,7 @@ export default function App() {
 
     return buildCameraLiveContext({
       activeSeasonId,
+      matchType,
       gameFormat,
       currentMatchNo,
       launchTeams: currentCameraLaunchTeams,
@@ -1746,6 +1775,7 @@ export default function App() {
   }, [
     hasLiveMatch,
     running,
+    matchType,
     gameFormat,
     activeSeasonId,
     currentMatchNo,
@@ -2433,16 +2463,29 @@ export default function App() {
 
   const handleAddEvent = (event) => {
     if (USE_V2) {
-      updateActiveSeason((prevSeason) => ({
-        ...prevSeason,
-        currentEvents: [...(prevSeason.currentEvents || []), event],
-      }));
+      updateActiveSeason((prevSeason) => {
+        const eventMeta = buildMatchMetadata({
+          matchType: prevSeason?.matchType || matchType,
+          gameFormat: prevSeason?.gameFormat || gameFormat,
+          matchMode: prevSeason?.matchMode || matchMode,
+        });
+
+        return {
+          ...prevSeason,
+          currentEvents: [
+            ...(prevSeason.currentEvents || []),
+            { ...event, ...eventMeta },
+          ],
+        };
+      });
       return;
     }
 
+    const eventMeta = buildMatchMetadata({ matchType, gameFormat, matchMode });
+
     updateState((prev) => ({
       ...prev,
-      currentEvents: [...prev.currentEvents, event],
+      currentEvents: [...prev.currentEvents, { ...event, ...eventMeta }],
     }));
   };
 
@@ -2496,8 +2539,15 @@ export default function App() {
           confirmedLineupsByMatchNo[matchNo] ||
           null;
 
+        const matchMeta = buildMatchMetadata({
+          matchType: prevSeason?.matchType || matchType,
+          gameFormat: prevSeason?.gameFormat || gameFormat,
+          matchMode: prevSeason?.matchMode || matchMode,
+        });
+
         const committedEvents = (prevSeason.currentEvents || []).map((e) => ({
           ...e,
+          ...matchMeta,
           matchNo,
         }));
 
@@ -2508,7 +2558,7 @@ export default function App() {
           goalsA,
           goalsB,
           verifiedLineups,
-        });
+        }).map((e) => ({ ...e, ...matchMeta }));
 
         const allCommittedEvents = [...committedEvents, ...cleanSheetEvents];
 
@@ -2523,6 +2573,7 @@ export default function App() {
         const newMatchNo = matchNo + 1;
 
         const newResult = {
+          ...matchMeta,
           matchNo,
           teamAId,
           teamBId,
@@ -2607,8 +2658,15 @@ export default function App() {
         confirmedLineupsByMatchNo[matchNo] ||
         null;
 
+      const matchMeta = buildMatchMetadata({
+        matchType: prev?.matchType || matchType,
+        gameFormat: prev?.gameFormat || gameFormat,
+        matchMode: prev?.matchMode || matchMode,
+      });
+
       const committedEvents = prev.currentEvents.map((e) => ({
         ...e,
+        ...matchMeta,
         matchNo,
       }));
 
@@ -2619,7 +2677,7 @@ export default function App() {
         goalsA,
         goalsB,
         verifiedLineups,
-      });
+      }).map((e) => ({ ...e, ...matchMeta }));
 
       const allCommittedEvents = [...committedEvents, ...cleanSheetEvents];
 
@@ -2634,6 +2692,7 @@ export default function App() {
       const newMatchNo = prev.currentMatchNo + 1;
 
       const newResult = {
+        ...matchMeta,
         matchNo,
         teamAId,
         teamBId,
@@ -2803,8 +2862,20 @@ export default function App() {
       const safeAllEvents = Array.isArray(prevSeason?.allEvents)
         ? prevSeason.allEvents
         : [];
+      const safeResults = Array.isArray(prevSeason?.results)
+        ? prevSeason.results
+        : [];
+      const targetResult = safeResults.find(
+        (r) => Number(r?.matchNo) === Number(matchNo)
+      );
+      const matchMeta = buildMatchMetadata({
+        matchType: targetResult?.matchType || prevSeason?.matchType || matchType,
+        gameFormat: targetResult?.gameFormat || prevSeason?.gameFormat || gameFormat,
+        matchMode: targetResult?.matchMode || prevSeason?.matchMode || matchMode,
+      });
 
       const newEvent = {
+        ...matchMeta,
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         matchNo: Number(matchNo),
         timeSeconds: Number(eventData?.timeSeconds ?? 0),
@@ -2816,12 +2887,9 @@ export default function App() {
 
       const nextAllEvents = [...safeAllEvents, newEvent];
 
-      const safeResults = Array.isArray(prevSeason?.results)
-        ? prevSeason.results
-        : [];
       const nextResults = safeResults.map((r) =>
         Number(r?.matchNo) === Number(matchNo)
-          ? buildUpdatedResultFromEvents(r, nextAllEvents)
+          ? { ...buildUpdatedResultFromEvents(r, nextAllEvents), ...matchMeta }
           : r
       );
 
@@ -3169,8 +3237,8 @@ export default function App() {
           matchDayId,
           archiveSelection: highlightArchiveSelection,
           activeSeasonId,
-          gameFormat,
           matchType,
+          gameFormat,
           currentMatchNo,
         });
         await clearRawHighlightsFromFirebase(matchDayId);
@@ -3192,9 +3260,16 @@ export default function App() {
         }
 
         updateActiveSeason((prevSeason) => {
+          const savedMatchMeta = buildMatchMetadata({
+            matchType: prevSeason?.matchType || matchType,
+            gameFormat: prevSeason?.gameFormat || gameFormat,
+            matchMode: prevSeason?.matchMode || matchMode,
+          });
+
           const entry = {
             id,
             createdAt: now.toISOString(),
+            ...savedMatchMeta,
             results: prevSeason.results || [],
             allEvents: prevSeason.allEvents || [],
             teams: prevSeason.teams || [],
@@ -3238,9 +3313,16 @@ export default function App() {
       }
 
       updateState((prev) => {
+        const savedMatchMeta = buildMatchMetadata({
+          matchType: prev?.matchType || matchType,
+          gameFormat: prev?.gameFormat || gameFormat,
+          matchMode: prev?.matchMode || matchMode,
+        });
+
         const entry = {
           id,
           createdAt: now.toISOString(),
+          ...savedMatchMeta,
           results: prev.results || [],
           allEvents: prev.allEvents || [],
           teams: prev.teams || [],
@@ -3496,7 +3578,7 @@ export default function App() {
     )}`;
 
     window.location.href = launchUrl;
-    };
+  };
 
   const pagesWithBottomNav = new Set([
     PAGE_LANDING,
@@ -3881,6 +3963,7 @@ export default function App() {
           onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
           canPreviewPreviousSeasonUI={canPreviewPreviousSeasonUI}
           isAdmin={isAdmin}
+          matchType={matchType}
         />
       )}
 

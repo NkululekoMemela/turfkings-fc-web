@@ -20,12 +20,109 @@ import {
   toTitleCaseLoose,
   uniqueNames,
 } from "../core/lineups.js";
+import { getGameFormatConfig } from "../core/matchConfig.js";
 
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 const PLAYERS_COLLECTION = "players";
 const ROTATION_INTERVAL_SECONDS = 5 * 60;
+
+
+const FORMATIONS_6_FRIENDLY = {
+  "2-2-1": {
+    id: "2-2-1",
+    label: "2-2-1",
+    positions: [
+      { id: "p1", label: "ST", x: 50, y: 18 },
+      { id: "p2", label: "LM", x: 30, y: 42 },
+      { id: "p3", label: "RM", x: 70, y: 42 },
+      { id: "p4", label: "LB", x: 32, y: 68 },
+      { id: "p5", label: "RB", x: 68, y: 68 },
+      { id: "p6", label: "GK", x: 50, y: 88 },
+    ],
+  },
+  "2-1-2": {
+    id: "2-1-2",
+    label: "2-1-2",
+    positions: [
+      { id: "p1", label: "LF", x: 35, y: 18 },
+      { id: "p2", label: "RF", x: 65, y: 18 },
+      { id: "p3", label: "CM", x: 50, y: 45 },
+      { id: "p4", label: "LB", x: 32, y: 68 },
+      { id: "p5", label: "RB", x: 68, y: 68 },
+      { id: "p6", label: "GK", x: 50, y: 88 },
+    ],
+  },
+};
+
+const DEFAULT_FORMATION_ID_6_FRIENDLY = "2-2-1";
+
+const FORMATIONS_7_FRIENDLY = {
+  "2-3-1": {
+    id: "2-3-1",
+    label: "2-3-1",
+    positions: [
+      { id: "p1", label: "ST", x: 50, y: 16 },
+      { id: "p2", label: "LM", x: 25, y: 40 },
+      { id: "p3", label: "CM", x: 50, y: 44 },
+      { id: "p4", label: "RM", x: 75, y: 40 },
+      { id: "p5", label: "LB", x: 32, y: 68 },
+      { id: "p6", label: "RB", x: 68, y: 68 },
+      { id: "p7", label: "GK", x: 50, y: 88 },
+    ],
+  },
+  "3-2-1": {
+    id: "3-2-1",
+    label: "3-2-1",
+    positions: [
+      { id: "p1", label: "ST", x: 50, y: 16 },
+      { id: "p2", label: "LM", x: 35, y: 42 },
+      { id: "p3", label: "RM", x: 65, y: 42 },
+      { id: "p4", label: "LB", x: 24, y: 68 },
+      { id: "p5", label: "CB", x: 50, y: 72 },
+      { id: "p6", label: "RB", x: 76, y: 68 },
+      { id: "p7", label: "GK", x: 50, y: 88 },
+    ],
+  },
+};
+
+const DEFAULT_FORMATION_ID_7_FRIENDLY = "2-3-1";
+
+function getFriendlyFormationTools(gameFormat) {
+  const playersPerSide = getGameFormatConfig(gameFormat).playersPerSide;
+
+  if (playersPerSide === 7) {
+    return {
+      playersPerSide,
+      formatLabel: "7 v 7",
+      shortLabel: "7v7",
+      formationMap: FORMATIONS_7_FRIENDLY,
+      defaultFormationId: DEFAULT_FORMATION_ID_7_FRIENDLY,
+      lineupStorageKey: "7",
+    };
+  }
+
+  if (playersPerSide === 6) {
+    return {
+      playersPerSide,
+      formatLabel: "6 v 6",
+      shortLabel: "6v6",
+      formationMap: FORMATIONS_6_FRIENDLY,
+      defaultFormationId: DEFAULT_FORMATION_ID_6_FRIENDLY,
+      lineupStorageKey: "6",
+    };
+  }
+
+  return {
+    playersPerSide: 5,
+    formatLabel: "5 v 5",
+    shortLabel: "5v5",
+    formationMap: FORMATIONS_5,
+    defaultFormationId: DEFAULT_FORMATION_ID_5,
+    lineupStorageKey: "5",
+  };
+}
 
 const matchEndSound =
   typeof Audio !== "undefined" ? new Audio(SOUND_URL) : null;
@@ -234,10 +331,12 @@ function sanitizeLiveLineupToRegisteredPlayers(
   lineup,
   registeredPlayers = [],
   canonicalName,
-  playerKeyFor
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
 ) {
   const formation =
-    FORMATIONS_5[lineup?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
   const validRegistered = uniquePlayersNormalized(
     registeredPlayers || [],
@@ -290,11 +389,18 @@ function sanitizeLiveLineupToRegisteredPlayers(
   };
 }
 
-function liveLineupStateEquals(a, b, canonicalName, playerKeyFor) {
+function liveLineupStateEquals(
+  a,
+  b,
+  canonicalName,
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
+) {
   const formationA =
-    FORMATIONS_5[a?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[a?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
   const formationB =
-    FORMATIONS_5[b?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[b?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
   if (formationA.id !== formationB.id) return false;
 
@@ -437,12 +543,14 @@ function roleTagFromPosition(positionIdOrLabel = "") {
 function getPlayerRoleTagMapFromSnapshot(
   snapshot,
   canonicalName,
-  playerKeyFor
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
 ) {
   const out = {};
 
   const formation =
-    FORMATIONS_5[snapshot?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[snapshot?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
   const labelByPosId = new Map(
     (formation?.positions || []).map((pos) => [pos.id, pos.label || pos.id])
@@ -469,6 +577,8 @@ function buildGoalRecorderChoices({
   fallbackPlayers = [],
   canonicalName,
   playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5,
 }) {
   const onField = getOnFieldPlayersFromSnapshot(
     snapshot,
@@ -487,7 +597,9 @@ function buildGoalRecorderChoices({
   const roleTagMap = getPlayerRoleTagMapFromSnapshot(
     snapshot,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   return [
@@ -506,9 +618,13 @@ function buildGoalRecorderChoices({
   ];
 }
 
-function lineupHasEmptyPositions(lineup) {
+function lineupHasEmptyPositions(
+  lineup,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
+) {
   const formation =
-    FORMATIONS_5[lineup?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
   return formation.positions.some((pos) => {
     const name = lineup?.positions?.[pos.id];
@@ -655,7 +771,9 @@ async function hardReset5v5MatchDoc(summaryInfo, matchSeconds) {
     await setDoc(
       ref,
       {
-        matchMode: "5_V_5",
+        matchMode: summaryInfo.matchMode || "5_V_5",
+        gameFormat: summaryInfo.gameFormat || "5_V_5",
+        playersPerSide: summaryInfo.playersPerSide || 5,
         matchNumber: summaryInfo.matchNumber,
         teamAId: summaryInfo.teamAId,
         teamBId: summaryInfo.teamBId,
@@ -689,7 +807,9 @@ async function appendEventToFirestore(
 
     const common = {
       ...summaryInfo,
-      matchMode: "5_V_5",
+      matchMode: summaryInfo.matchMode || "5_V_5",
+      gameFormat: summaryInfo.gameFormat || "5_V_5",
+      playersPerSide: summaryInfo.playersPerSide || 5,
       matchSeconds: matchSeconds ?? 0,
       secondsLeft:
         typeof secondsLeft === "number" ? Math.max(secondsLeft, 0) : null,
@@ -729,7 +849,9 @@ async function overwriteEventsInFirestore(
     await setDoc(
       ref,
       {
-        matchMode: "5_V_5",
+        matchMode: summaryInfo.matchMode || "5_V_5",
+        gameFormat: summaryInfo.gameFormat || "5_V_5",
+        playersPerSide: summaryInfo.playersPerSide || 5,
         events: allEvents,
         matchSeconds: matchSeconds ?? 0,
         secondsLeft:
@@ -756,7 +878,9 @@ async function writeFinalSummaryToFirestore(
     await setDoc(
       ref,
       {
-        matchMode: "5_V_5",
+        matchMode: finalSummary?.matchMode || "5_V_5",
+        gameFormat: finalSummary?.gameFormat || "5_V_5",
+        playersPerSide: finalSummary?.playersPerSide || 5,
         finalSummary,
         events,
         isFinished: true,
@@ -927,10 +1051,12 @@ function LineupBoard({
   displayCompactPlayerName,
   playerKeyFor,
   getPlayerPhoto,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5,
   disabled = false,
 }) {
   const formation =
-    FORMATIONS_5[lineup?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [guestName, setGuestName] = useState("");
 
@@ -950,13 +1076,15 @@ function LineupBoard({
         lineup,
         allRegistered,
         canonicalName,
-        playerKeyFor
+        playerKeyFor,
+        formationMap,
+        defaultFormationId
       ),
-    [lineup, allRegistered, canonicalName, playerKeyFor]
+    [lineup, allRegistered, canonicalName, playerKeyFor, formationMap, defaultFormationId]
   );
 
   useEffect(() => {
-    if (!liveLineupStateEquals(lineup, sanitizedLineup, canonicalName, playerKeyFor)) {
+    if (!liveLineupStateEquals(lineup, sanitizedLineup, canonicalName, playerKeyFor, formationMap, defaultFormationId)) {
       setLineup((prev) => ({
         ...prev,
         ...sanitizedLineup,
@@ -1309,6 +1437,7 @@ export function FriendlyLiveMatchPage({
   isCaptain = false,
   canControlMatch = false,
   pendingMatchStartContext = null,
+  gameFormat = "5_V_5",
   confirmedLineupSnapshot = null,
   confirmedLineupsByMatchNo = {},
   playerPhotosByName = {},
@@ -1325,6 +1454,15 @@ export function FriendlyLiveMatchPage({
   const role = String(activeRole || "spectator").trim().toLowerCase();
   const isControllerSession =
     Boolean(pendingMatchStartContext) && canControlMatch;
+  const friendlyFormat = getFriendlyFormationTools(gameFormat);
+  const {
+    playersPerSide,
+    formatLabel,
+    shortLabel: formatShortLabel,
+    formationMap,
+    defaultFormationId,
+    lineupStorageKey,
+  } = friendlyFormat;
 
   const [players, setPlayers] = useState([]);
   const [playersLoading, setPlayersLoading] = useState(true);
@@ -1576,17 +1714,19 @@ export function FriendlyLiveMatchPage({
       sanitizeLiveLineupToRegisteredPlayers(
         resolvePreferredTeamLineup(
           teamA,
-          "5",
+          lineupStorageKey,
           savedLineups,
-          FORMATIONS_5,
-          DEFAULT_FORMATION_ID_5,
+          formationMap,
+          defaultFormationId,
           teamA?.players || []
         ),
         teamA?.players || [],
         canonicalName,
-        playerKeyFor
+        playerKeyFor,
+        formationMap,
+        defaultFormationId
       ),
-    [teamA, savedLineups, canonicalName, playerKeyFor]
+    [teamA, savedLineups, canonicalName, playerKeyFor, formationMap, defaultFormationId, lineupStorageKey]
   );
 
   const defaultTeamBLineup = useMemo(
@@ -1594,17 +1734,19 @@ export function FriendlyLiveMatchPage({
       sanitizeLiveLineupToRegisteredPlayers(
         resolvePreferredTeamLineup(
           teamB,
-          "5",
+          lineupStorageKey,
           savedLineups,
-          FORMATIONS_5,
-          DEFAULT_FORMATION_ID_5,
+          formationMap,
+          defaultFormationId,
           teamB?.players || []
         ),
         teamB?.players || [],
         canonicalName,
-        playerKeyFor
+        playerKeyFor,
+        formationMap,
+        defaultFormationId
       ),
-    [teamB, savedLineups, canonicalName, playerKeyFor]
+    [teamB, savedLineups, canonicalName, playerKeyFor, formationMap, defaultFormationId, lineupStorageKey]
   );
 
   const [verifyTeamALineup, setVerifyTeamALineup] =
@@ -1873,6 +2015,8 @@ export function FriendlyLiveMatchPage({
       fallbackPlayers: fallbackTeam?.players || [],
       canonicalName,
       playerKeyFor,
+      formationMap,
+      defaultFormationId,
     });
   }, [
     scoringTeamId,
@@ -1906,6 +2050,8 @@ export function FriendlyLiveMatchPage({
       fallbackPlayers: fallbackTeam?.players || [],
       canonicalName,
       playerKeyFor,
+      formationMap,
+      defaultFormationId,
     });
   }, [
     shiboboTeamId,
@@ -1928,7 +2074,9 @@ export function FriendlyLiveMatchPage({
   }, [shiboboChoices, shiboboPlayerName]);
 
   const basicSummary = {
-    matchMode: "5_V_5",
+    matchMode: gameFormat || "5_V_5",
+    gameFormat: gameFormat || "5_V_5",
+    playersPerSide,
     matchNumber: currentMatchNo,
     teamAId,
     teamBId,
@@ -1962,16 +2110,16 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
-    if (lineupHasEmptyPositions(verifyTeamALineup)) {
+    if (lineupHasEmptyPositions(verifyTeamALineup, formationMap, defaultFormationId)) {
       window.alert(
-        `${getShortLabel(teamA, "Team A")} lineup is incomplete. Please fill all 5 positions before confirming.`
+        `${getShortLabel(teamA, "Team A")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
       );
       return;
     }
 
-    if (lineupHasEmptyPositions(verifyTeamBLineup)) {
+    if (lineupHasEmptyPositions(verifyTeamBLineup, formationMap, defaultFormationId)) {
       window.alert(
-        `${getShortLabel(teamB, "Team B")} lineup is incomplete. Please fill all 5 positions before confirming.`
+        `${getShortLabel(teamB, "Team B")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
       );
       return;
     }
@@ -1982,7 +2130,7 @@ export function FriendlyLiveMatchPage({
     const snapshotA = createVerifiedLineupSnapshot({
       teamId: teamAId,
       lineup: verifyTeamALineup,
-      formationMap: FORMATIONS_5,
+      formationMap,
       registeredPlayers: teamA?.players || [],
       confirmedBy: confirmedByName,
       confirmedByRole,
@@ -1992,7 +2140,7 @@ export function FriendlyLiveMatchPage({
     const snapshotB = createVerifiedLineupSnapshot({
       teamId: teamBId,
       lineup: verifyTeamBLineup,
-      formationMap: FORMATIONS_5,
+      formationMap,
       registeredPlayers: teamB?.players || [],
       confirmedBy: confirmedByName,
       confirmedByRole,
@@ -2198,7 +2346,9 @@ export function FriendlyLiveMatchPage({
       teamBId,
       goalsA,
       goalsB,
-      matchMode: "5_V_5",
+      matchMode: gameFormat || "5_V_5",
+      gameFormat: gameFormat || "5_V_5",
+      playersPerSide,
     };
 
     onConfirmEndMatch?.(summary);
@@ -2349,7 +2499,7 @@ export function FriendlyLiveMatchPage({
   return (
     <div className="page live-page">
       <header className="header">
-        <h1>Normal 5 v 5</h1>
+        <h1>Friendly {formatLabel}</h1>
         <p>
           <TeamColorBadge team={teamA} fallback="DARK" /> vs{" "}
           <TeamColorBadge team={teamB} fallback="LIGHT" />
@@ -2475,6 +2625,8 @@ export function FriendlyLiveMatchPage({
             displayCompactPlayerName={displayCompactPlayerName}
             playerKeyFor={playerKeyFor}
             getPlayerPhoto={getPlayerPhoto}
+            formationMap={formationMap}
+            defaultFormationId={defaultFormationId}
             disabled={!canControlMatch}
           />
 
@@ -2488,6 +2640,8 @@ export function FriendlyLiveMatchPage({
             displayCompactPlayerName={displayCompactPlayerName}
             playerKeyFor={playerKeyFor}
             getPlayerPhoto={getPlayerPhoto}
+            formationMap={formationMap}
+            defaultFormationId={defaultFormationId}
             disabled={!canControlMatch}
           />
         </div>
@@ -2629,7 +2783,7 @@ export function FriendlyLiveMatchPage({
       {showVerifyModal && (
         <div className="modal-backdrop">
           <div className="modal live-verify-modal">
-            <h3>Verify 5 v 5 lineups before the match</h3>
+            <h3>Verify {formatLabel} lineups before the match</h3>
             <p className="muted live-verify-note">______________________</p>
 
             <div className="live-lineup-columns">
@@ -2649,6 +2803,8 @@ export function FriendlyLiveMatchPage({
                     displayCompactPlayerName={displayCompactPlayerName}
                     playerKeyFor={playerKeyFor}
                     getPlayerPhoto={getPlayerPhoto}
+                    formationMap={formationMap}
+                    defaultFormationId={defaultFormationId}
                     disabled={!canControlMatch}
                   />
 
@@ -2662,6 +2818,8 @@ export function FriendlyLiveMatchPage({
                     displayCompactPlayerName={displayCompactPlayerName}
                     playerKeyFor={playerKeyFor}
                     getPlayerPhoto={getPlayerPhoto}
+                    formationMap={formationMap}
+                    defaultFormationId={defaultFormationId}
                     disabled={!canControlMatch}
                   />
                 </>
@@ -2930,7 +3088,7 @@ export function FriendlyLiveMatchPage({
       {showConfirmModal && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>Confirm End of 5 v 5 Match</h3>
+            <h3>Confirm End of {formatLabel} Match</h3>
             <p>
               <TeamColorBadge team={teamA} fallback="DARK" /> {goalsA} – {goalsB}{" "}
               <TeamColorBadge team={teamB} fallback="LIGHT" />

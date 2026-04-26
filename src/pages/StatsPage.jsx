@@ -228,6 +228,14 @@ function getPreferredStatsDisplayName(canonicalFullName, shortDisplayName = "") 
   return shorty || canon;
 }
 
+function normalizeStatsMatchType(value) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (raw === "FRIENDLY" || raw === "5_V_5" || raw === "6_V_6" || raw === "7_V_7") {
+    return "FRIENDLY";
+  }
+  return "LEAGUE";
+}
+
 // ---------------- PAGE ----------------
 export function StatsPage({
   teams = [],
@@ -245,6 +253,7 @@ export function StatsPage({
   seasons = [],
   playerPhotosByName = {},
   matchDayHistory = [],
+  friendlyMatchDayHistory = [],
   onDeleteSavedMatch = null,
   onUpdateSavedEvent = null,
   onDeleteSavedEvent = null,
@@ -252,6 +261,7 @@ export function StatsPage({
   onDeleteCurrentEmptySeason = null,
   canPreviewPreviousSeasonUI = false,
   isAdmin = false,
+  matchType = "LEAGUE",
 }) {
   const safeMembers = Array.isArray(members) ? members : [];
   const safeSeasons = Array.isArray(seasons) ? seasons : [];
@@ -272,8 +282,13 @@ export function StatsPage({
   const safeMatchDayHistory = Array.isArray(matchDayHistory)
     ? matchDayHistory
     : [];
+  const safeFriendlyMatchDayHistory = Array.isArray(friendlyMatchDayHistory)
+    ? friendlyMatchDayHistory
+    : [];
 
   const isAdminUser = Boolean(isAdmin);
+  const normalizedMatchType = normalizeStatsMatchType(matchType);
+  const isFriendlyMatchType = normalizedMatchType === "FRIENDLY";
 
   const [nameToCanonical, setNameToCanonical] = useState({});
   const [canonicalToShort, setCanonicalToShort] = useState({});
@@ -452,6 +467,7 @@ export function StatsPage({
     Boolean(canPreviewPreviousSeasonUI);
 
   const isViewingPreviousSeason = seasonScope !== CURRENT_SCOPE;
+  const showFriendlyStats = isFriendlyMatchType && !isViewingPreviousSeason;
 
   const hasCurrentSeasonMatchHistory = useMemo(() => {
     return safeMatchDayHistory.some((day) => {
@@ -561,6 +577,15 @@ export function StatsPage({
   }, [currentMatchDay]);
 
   const scopedArchivedResults = useMemo(() => {
+    if (showFriendlyStats) {
+      return safeFriendlyMatchDayHistory.flatMap((d) =>
+        attachMatchDayMeta(
+          d?.results,
+          d?.id || d?.matchDayId || d?.date || d?.day || "FRIENDLY"
+        )
+      );
+    }
+
     if (isViewingPreviousSeason) {
       const mh = Array.isArray(selectedPrevSeason?.matchDayHistory)
         ? selectedPrevSeason.matchDayHistory
@@ -588,9 +613,20 @@ export function StatsPage({
     selectedPrevSeason,
     safeMatchDayHistory,
     safeArchivedResultsProp,
+    showFriendlyStats,
+    safeFriendlyMatchDayHistory,
   ]);
 
   const scopedArchivedEvents = useMemo(() => {
+    if (showFriendlyStats) {
+      return safeFriendlyMatchDayHistory.flatMap((d) =>
+        attachMatchDayMeta(
+          d?.allEvents,
+          d?.id || d?.matchDayId || d?.date || d?.day || "FRIENDLY"
+        )
+      );
+    }
+
     if (isViewingPreviousSeason) {
       const mh = Array.isArray(selectedPrevSeason?.matchDayHistory)
         ? selectedPrevSeason.matchDayHistory
@@ -618,6 +654,8 @@ export function StatsPage({
     selectedPrevSeason,
     safeMatchDayHistory,
     safeArchivedEventsProp,
+    showFriendlyStats,
+    safeFriendlyMatchDayHistory,
   ]);
 
   const scopedCurrentResults = useMemo(() => {
@@ -1408,6 +1446,12 @@ export function StatsPage({
 
   const [activeTab, setActiveTab] = useState("teams");
 
+  useEffect(() => {
+    if (showFriendlyStats && activeTab === "teams") {
+      setActiveTab("combined");
+    }
+  }, [showFriendlyStats, activeTab]);
+
   const currentSeasonRange = useMemo(() => {
     const now = new Date();
     const fmt = new Intl.DateTimeFormat(undefined, {
@@ -1528,6 +1572,8 @@ export function StatsPage({
         gap: "0.6rem",
       };
 
+
+
   return (
     <div className="page stats-page">
       <div
@@ -1583,6 +1629,7 @@ export function StatsPage({
         </div>
       </div>
 
+      {!showFriendlyStats && (
       <section className="card">
         <h2>Season</h2>
 
@@ -1692,10 +1739,11 @@ export function StatsPage({
           </div>
         </div>
       </section>
+      )}
 
       {!isViewingPreviousSeason && (
         <section className="card">
-          <h2>View</h2>
+          <h2>{showFriendlyStats ? "Friendly View" : "View"}</h2>
           <div className="stats-controls">
             <div className="stats-controls-left">
               <div className="segment-wrapper">
@@ -1709,7 +1757,7 @@ export function StatsPage({
                     }
                     onClick={() => setViewMode("current")}
                   >
-                    Current week
+                    {showFriendlyStats ? "Current friendly day" : "Current week"}
                   </button>
                   <button
                     type="button"
@@ -1720,13 +1768,14 @@ export function StatsPage({
                     }
                     onClick={() => setViewMode("season")}
                   >
-                    Full season
+                    {showFriendlyStats ? "All friendlies" : "Full season"}
                   </button>
                 </div>
               </div>
             </div>
 
             <div className="actions-row stats-tabs">
+              {!showFriendlyStats && (
               <button
                 className={
                   activeTab === "teams" ? "secondary-btn active" : "secondary-btn"
@@ -1735,6 +1784,7 @@ export function StatsPage({
               >
                 Team Standings
               </button>
+              )}
               <button
                 className={
                   activeTab === "matches" ? "secondary-btn active" : "secondary-btn"
@@ -1866,7 +1916,7 @@ export function StatsPage({
         </section>
       )}
 
-      {activeTab === "teams" && (
+      {!showFriendlyStats && activeTab === "teams" && (
         <section className="card">
           <h2>
             {isViewingPreviousSeason
@@ -1930,9 +1980,13 @@ export function StatsPage({
               ? isPreviewingPreviousSeasonUI
                 ? "Player Rankings — Previous Season Preview"
                 : "Player Rankings — Previous Season"
-              : viewMode === "season"
-                ? "Player Rankings — Current Season"
-                : "Player Rankings — Current Week"}
+              : showFriendlyStats
+                ? viewMode === "season"
+                  ? "Player Rankings — All Friendlies"
+                  : "Player Rankings — Current Friendly Day"
+                : viewMode === "season"
+                  ? "Player Rankings — Current Season"
+                  : "Player Rankings — Current Week"}
           </h2>
           <div className="table-wrapper">
             <table className="stats-table">
@@ -1979,9 +2033,13 @@ export function StatsPage({
               ? isPreviewingPreviousSeasonUI
                 ? "Top Scorers — Previous Season Preview"
                 : "Top Scorers — Previous Season"
-              : viewMode === "season"
-                ? "Top Scorers — Current Season"
-                : "Top Scorers — Current Week"}
+              : showFriendlyStats
+                ? viewMode === "season"
+                  ? "Top Scorers — All Friendlies"
+                  : "Top Scorers — Current Friendly Day"
+                : viewMode === "season"
+                  ? "Top Scorers — Current Season"
+                  : "Top Scorers — Current Week"}
           </h2>
           <div className="table-wrapper">
             <table className="stats-table">
@@ -2022,9 +2080,13 @@ export function StatsPage({
               ? isPreviewingPreviousSeasonUI
                 ? "Top Playmakers — Previous Season Preview"
                 : "Top Playmakers — Previous Season"
-              : viewMode === "season"
-                ? "Top Playmakers — Current Season"
-                : "Top Playmakers — Current Week"}
+              : showFriendlyStats
+                ? viewMode === "season"
+                  ? "Top Playmakers — All Friendlies"
+                  : "Top Playmakers — Current Friendly Day"
+                : viewMode === "season"
+                  ? "Top Playmakers — Current Season"
+                  : "Top Playmakers — Current Week"}
           </h2>
           <div className="table-wrapper">
             <table className="stats-table">
@@ -2065,9 +2127,13 @@ export function StatsPage({
               ? isPreviewingPreviousSeasonUI
                 ? "Clean Sheets — Previous Season Preview"
                 : "Clean Sheets — Previous Season"
-              : viewMode === "season"
-                ? "Clean Sheets — Current Season"
-                : "Clean Sheets — Current Week"}
+              : showFriendlyStats
+                ? viewMode === "season"
+                  ? "Clean Sheets — All Friendlies"
+                  : "Clean Sheets — Current Friendly Day"
+                : viewMode === "season"
+                  ? "Clean Sheets — Current Season"
+                  : "Clean Sheets — Current Week"}
           </h2>
           <div className="table-wrapper">
             <table className="stats-table">
@@ -2112,9 +2178,13 @@ export function StatsPage({
               ? isPreviewingPreviousSeasonUI
                 ? "All Match Results — Previous Season Preview"
                 : "All Match Results — Previous Season"
-              : viewMode === "season"
-                ? "All Match Results — Current Season"
-                : "All Match Results — Current Week"}
+              : showFriendlyStats
+                ? viewMode === "season"
+                  ? "All Match Results — All Friendlies"
+                  : "All Match Results — Current Friendly Day"
+                : viewMode === "season"
+                  ? "All Match Results — Current Season"
+                  : "All Match Results — Current Week"}
           </h2>
           <p className="muted">
             Tap a match row to see goal scorers and assists for that game.

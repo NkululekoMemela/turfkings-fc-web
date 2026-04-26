@@ -20,11 +20,124 @@ import {
   toTitleCaseLoose,
   uniqueNames,
 } from "../core/lineups.js";
+import {
+  GAME_FORMAT,
+  getGameFormatConfig,
+  normalizeGameFormat,
+} from "../core/matchConfig.js";
 
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 const PLAYERS_COLLECTION = "players";
+
+
+const GAME_TYPE_6 = "6_aside";
+const GAME_TYPE_7 = "7_aside";
+const DEFAULT_FORMATION_ID_6 = "6_2_2_1";
+const DEFAULT_FORMATION_ID_7 = "7_3_2_1";
+
+const FORMATIONS_6 = {
+  "6_2_2_1": {
+    id: "6_2_2_1",
+    label: "2-2-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 34, y: 68 },
+      { id: "def_r", label: "DEF", x: 66, y: 68 },
+      { id: "mid_l", label: "MID", x: 35, y: 43 },
+      { id: "mid_r", label: "MID", x: 65, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+  "6_1_3_1": {
+    id: "6_1_3_1",
+    label: "1-3-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def", label: "DEF", x: 50, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 45 },
+      { id: "mid_c", label: "MID", x: 50, y: 42 },
+      { id: "mid_r", label: "MID", x: 72, y: 45 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+  "6_2_1_2": {
+    id: "6_2_1_2",
+    label: "2-1-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 35, y: 68 },
+      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      { id: "mid", label: "MID", x: 50, y: 45 },
+      { id: "fwd_l", label: "ST", x: 35, y: 20 },
+      { id: "fwd_r", label: "ST", x: 65, y: 20 },
+    ],
+  },
+};
+
+const FORMATIONS_7 = {
+  "7_3_2_1": {
+    id: "7_3_2_1",
+    label: "3-2-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 28, y: 68 },
+      { id: "def_c", label: "DEF", x: 50, y: 72 },
+      { id: "def_r", label: "DEF", x: 72, y: 68 },
+      { id: "mid_l", label: "MID", x: 36, y: 43 },
+      { id: "mid_r", label: "MID", x: 64, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+  "7_2_3_1": {
+    id: "7_2_3_1",
+    label: "2-3-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 35, y: 68 },
+      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 43 },
+      { id: "mid_c", label: "MID", x: 50, y: 40 },
+      { id: "mid_r", label: "MID", x: 72, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 18 },
+    ],
+  },
+  "7_2_2_2": {
+    id: "7_2_2_2",
+    label: "2-2-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 35, y: 68 },
+      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      { id: "mid_l", label: "MID", x: 35, y: 43 },
+      { id: "mid_r", label: "MID", x: 65, y: 43 },
+      { id: "fwd_l", label: "ST", x: 35, y: 18 },
+      { id: "fwd_r", label: "ST", x: 65, y: 18 },
+    ],
+  },
+};
+
+function getLineupGameTypeFromFormat(rawFormat) {
+  const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
+  if (safeFormat === GAME_FORMAT.SEVEN_V_SEVEN) return GAME_TYPE_7;
+  if (safeFormat === GAME_FORMAT.SIX_V_SIX) return GAME_TYPE_6;
+  return "5";
+}
+
+function getLiveFormationsMap(rawFormat) {
+  const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
+  if (safeFormat === GAME_FORMAT.SEVEN_V_SEVEN) return FORMATIONS_7;
+  if (safeFormat === GAME_FORMAT.SIX_V_SIX) return FORMATIONS_6;
+  return FORMATIONS_5;
+}
+
+function getLiveDefaultFormationId(rawFormat) {
+  const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
+  if (safeFormat === GAME_FORMAT.SEVEN_V_SEVEN) return DEFAULT_FORMATION_ID_7;
+  if (safeFormat === GAME_FORMAT.SIX_V_SIX) return DEFAULT_FORMATION_ID_6;
+  return DEFAULT_FORMATION_ID_5;
+}
 
 const matchEndSound =
   typeof Audio !== "undefined" ? new Audio(SOUND_URL) : null;
@@ -247,10 +360,12 @@ function sanitizeLiveLineupToRegisteredPlayers(
   lineup,
   registeredPlayers = [],
   canonicalName,
-  playerKeyFor
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
 ) {
   const formation =
-    FORMATIONS_5[lineup?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
   const validRegistered = uniquePlayersNormalized(
     registeredPlayers || [],
@@ -303,11 +418,18 @@ function sanitizeLiveLineupToRegisteredPlayers(
   };
 }
 
-function liveLineupStateEquals(a, b, canonicalName, playerKeyFor) {
+function liveLineupStateEquals(
+  a,
+  b,
+  canonicalName,
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
+) {
   const formationA =
-    FORMATIONS_5[a?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[a?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
   const formationB =
-    FORMATIONS_5[b?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[b?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
   if (formationA.id !== formationB.id) return false;
 
@@ -456,12 +578,14 @@ function roleTagFromPosition(positionIdOrLabel = "") {
 function getPlayerRoleTagMapFromSnapshot(
   snapshot,
   canonicalName,
-  playerKeyFor
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
 ) {
   const out = {};
 
   const formation =
-    FORMATIONS_5[snapshot?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[snapshot?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
   const labelByPosId = new Map(
     (formation?.positions || []).map((pos) => [pos.id, pos.label || pos.id])
@@ -488,6 +612,8 @@ function buildGoalRecorderChoices({
   fallbackPlayers = [],
   canonicalName,
   playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5,
 }) {
   const onField = getOnFieldPlayersFromSnapshot(
     snapshot,
@@ -506,7 +632,9 @@ function buildGoalRecorderChoices({
   const roleTagMap = getPlayerRoleTagMapFromSnapshot(
     snapshot,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   return [
@@ -525,9 +653,13 @@ function buildGoalRecorderChoices({
   ];
 }
 
-function lineupHasEmptyPositions(lineup) {
+function lineupHasEmptyPositions(
+  lineup,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
+) {
   const formation =
-    FORMATIONS_5[lineup?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
   return formation.positions.some((pos) => {
     const name = lineup?.positions?.[pos.id];
@@ -974,9 +1106,11 @@ function LineupBoard({
   playerKeyFor,
   getPlayerPhoto,
   disabled = false,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5,
 }) {
   const formation =
-    FORMATIONS_5[lineup?.formationId] || FORMATIONS_5[DEFAULT_FORMATION_ID_5];
+    formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [guestName, setGuestName] = useState("");
 
@@ -996,13 +1130,15 @@ function LineupBoard({
         lineup,
         allRegistered,
         canonicalName,
-        playerKeyFor
+        playerKeyFor,
+        formationMap,
+        defaultFormationId
       ),
-    [lineup, allRegistered, canonicalName, playerKeyFor]
+    [lineup, allRegistered, canonicalName, playerKeyFor, formationMap, defaultFormationId]
   );
 
   useEffect(() => {
-    if (!liveLineupStateEquals(lineup, sanitizedLineup, canonicalName, playerKeyFor)) {
+    if (!liveLineupStateEquals(lineup, sanitizedLineup, canonicalName, playerKeyFor, formationMap, defaultFormationId)) {
       setLineup((prev) => ({
         ...prev,
         ...sanitizedLineup,
@@ -1317,6 +1453,9 @@ export function ThreeTeamLeagueLiveMatchPage({
   isCaptain = false,
   canControlMatch = false,
   pendingMatchStartContext = null,
+  matchType = "LEAGUE",
+  gameFormat = GAME_FORMAT.FIVE_V_FIVE,
+  playersPerSide = null,
   confirmedLineupSnapshot = null,
   confirmedLineupsByMatchNo = {},
   playerPhotosByName = {},
@@ -1332,6 +1471,13 @@ export function ThreeTeamLeagueLiveMatchPage({
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
   const role = String(activeRole || "spectator").trim().toLowerCase();
+  const formatConfig = getGameFormatConfig(gameFormat);
+  const liveGameFormat = normalizeGameFormat(gameFormat, GAME_FORMAT.FIVE_V_FIVE);
+  const livePlayersPerSide = Number(playersPerSide || formatConfig.playersPerSide || 5);
+  const liveFormatLabel = formatConfig.label || `${livePlayersPerSide} v ${livePlayersPerSide}`;
+  const liveLineupGameType = getLineupGameTypeFromFormat(liveGameFormat);
+  const liveFormationsMap = getLiveFormationsMap(liveGameFormat);
+  const liveDefaultFormationId = getLiveDefaultFormationId(liveGameFormat);
   const isControllerSession =
     Boolean(pendingMatchStartContext) && canControlMatch;
 
@@ -1587,17 +1733,19 @@ export function ThreeTeamLeagueLiveMatchPage({
       sanitizeLiveLineupToRegisteredPlayers(
         resolvePreferredTeamLineup(
           teamA,
-          "5",
+          liveLineupGameType,
           savedLineups,
-          FORMATIONS_5,
-          DEFAULT_FORMATION_ID_5,
+          liveFormationsMap,
+          liveDefaultFormationId,
           teamA?.players || []
         ),
         teamA?.players || [],
         canonicalName,
-        playerKeyFor
+        playerKeyFor,
+        liveFormationsMap,
+        liveDefaultFormationId
       ),
-    [teamA, savedLineups, canonicalName, playerKeyFor]
+    [teamA, savedLineups, canonicalName, playerKeyFor, liveLineupGameType, liveFormationsMap, liveDefaultFormationId]
   );
 
   const defaultTeamBLineup = useMemo(
@@ -1605,17 +1753,19 @@ export function ThreeTeamLeagueLiveMatchPage({
       sanitizeLiveLineupToRegisteredPlayers(
         resolvePreferredTeamLineup(
           teamB,
-          "5",
+          liveLineupGameType,
           savedLineups,
-          FORMATIONS_5,
-          DEFAULT_FORMATION_ID_5,
+          liveFormationsMap,
+          liveDefaultFormationId,
           teamB?.players || []
         ),
         teamB?.players || [],
         canonicalName,
-        playerKeyFor
+        playerKeyFor,
+        liveFormationsMap,
+        liveDefaultFormationId
       ),
-    [teamB, savedLineups, canonicalName, playerKeyFor]
+    [teamB, savedLineups, canonicalName, playerKeyFor, liveLineupGameType, liveFormationsMap, liveDefaultFormationId]
   );
 
   const [verifyTeamALineup, setVerifyTeamALineup] =
@@ -1882,6 +2032,8 @@ export function ThreeTeamLeagueLiveMatchPage({
       fallbackPlayers: fallbackTeam?.players || [],
       canonicalName,
       playerKeyFor,
+      formationMap: liveFormationsMap,
+      defaultFormationId: liveDefaultFormationId,
     });
   }, [
     scoringTeamId,
@@ -1918,16 +2070,16 @@ export function ThreeTeamLeagueLiveMatchPage({
       return;
     }
 
-    if (lineupHasEmptyPositions(verifyTeamALineup)) {
+    if (lineupHasEmptyPositions(verifyTeamALineup, liveFormationsMap, liveDefaultFormationId)) {
       window.alert(
-        `${teamA?.label || "Team A"} lineup is incomplete. Please fill all 5 positions before confirming.`
+        `${teamA?.label || "Team A"} lineup is incomplete. Please fill all required positions before confirming.`
       );
       return;
     }
 
-    if (lineupHasEmptyPositions(verifyTeamBLineup)) {
+    if (lineupHasEmptyPositions(verifyTeamBLineup, liveFormationsMap, liveDefaultFormationId)) {
       window.alert(
-        `${teamB?.label || "Team B"} lineup is incomplete. Please fill all 5 positions before confirming.`
+        `${teamB?.label || "Team B"} lineup is incomplete. Please fill all required positions before confirming.`
       );
       return;
     }
@@ -1938,7 +2090,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     const snapshotA = createVerifiedLineupSnapshot({
       teamId: teamAId,
       lineup: verifyTeamALineup,
-      formationMap: FORMATIONS_5,
+      formationMap: liveFormationsMap,
       registeredPlayers: teamA?.players || [],
       confirmedBy: confirmedByName,
       confirmedByRole,
@@ -1948,7 +2100,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     const snapshotB = createVerifiedLineupSnapshot({
       teamId: teamBId,
       lineup: verifyTeamBLineup,
-      formationMap: FORMATIONS_5,
+      formationMap: liveFormationsMap,
       registeredPlayers: teamB?.players || [],
       confirmedBy: confirmedByName,
       confirmedByRole,
@@ -2583,7 +2735,7 @@ export function ThreeTeamLeagueLiveMatchPage({
         <div className="modal-backdrop">
           <div className="modal live-verify-modal">
             <h3>Verify lineups before the match</h3>
-            <p className="muted live-verify-note">______________________</p>
+            <p className="muted live-verify-note">League • {liveFormatLabel} • verify the selected on-field players before recording goals.</p>
 
             <div className="live-lineup-columns">
               {!playersReady ? (
@@ -2603,6 +2755,8 @@ export function ThreeTeamLeagueLiveMatchPage({
                     playerKeyFor={playerKeyFor}
                     getPlayerPhoto={getPlayerPhoto}
                     disabled={!canControlMatch}
+                    formationMap={liveFormationsMap}
+                    defaultFormationId={liveDefaultFormationId}
                   />
 
                   <LineupBoard
@@ -2616,6 +2770,8 @@ export function ThreeTeamLeagueLiveMatchPage({
                     playerKeyFor={playerKeyFor}
                     getPlayerPhoto={getPlayerPhoto}
                     disabled={!canControlMatch}
+                    formationMap={liveFormationsMap}
+                    defaultFormationId={liveDefaultFormationId}
                   />
                 </>
               )}
