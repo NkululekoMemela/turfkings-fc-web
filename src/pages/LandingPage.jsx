@@ -590,7 +590,7 @@ export function LandingPage({
 
         <h2>Upcoming Match #{currentMatchNo}</h2>
 
-        {fixturedMode && canSeeCaptainStyleControls && (
+        {fixturedMode && (
           <div style={{ marginBottom: "0.9rem" }}>
             <div
               style={{
@@ -616,8 +616,9 @@ export function LandingPage({
             </div>
 
             <div className="muted small">
-              Common target:{" "}
-              <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+              Season Target:{" "}
+              <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong> {" "}
+              Matches
             </div>
           </div>
         )}
@@ -665,11 +666,7 @@ export function LandingPage({
           </p>
         )}
 
-        {fixturedMode && (
-          <p className="muted small" style={{ marginTop: "-0.1rem" }}>
-            Pairing override is locked while Fixtured mode is active.
-          </p>
-        )}
+
 
         {canSeeCaptainStyleControls ? (
           <div
