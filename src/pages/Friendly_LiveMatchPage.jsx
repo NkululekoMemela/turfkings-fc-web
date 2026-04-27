@@ -455,13 +455,17 @@ function getOnFieldPlayersFromSnapshot(
   snapshot,
   fallbackPlayers = [],
   canonicalName,
-  playerKeyFor
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
 ) {
   const sanitized = sanitizeLiveLineupToRegisteredPlayers(
     snapshot,
     fallbackPlayers,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   return uniqueNames(
@@ -475,13 +479,17 @@ function getBenchPlayersFromSnapshot(
   snapshot,
   fallbackPlayers = [],
   canonicalName,
-  playerKeyFor
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
 ) {
   const sanitized = sanitizeLiveLineupToRegisteredPlayers(
     snapshot,
     fallbackPlayers,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   const assignedKeys = new Set(
@@ -584,14 +592,18 @@ function buildGoalRecorderChoices({
     snapshot,
     fallbackPlayers,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   const bench = getBenchPlayersFromSnapshot(
     snapshot,
     fallbackPlayers,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   const roleTagMap = getPlayerRoleTagMapFromSnapshot(
@@ -1780,7 +1792,9 @@ export function FriendlyLiveMatchPage({
               existingConfirmedFromApp?.[teamAId] || {},
               teamA?.players || [],
               canonicalName,
-              playerKeyFor
+              playerKeyFor,
+              formationMap,
+              defaultFormationId
             ),
           }
         : {}),
@@ -1790,7 +1804,9 @@ export function FriendlyLiveMatchPage({
               existingConfirmedFromApp?.[teamBId] || {},
               teamB?.players || [],
               canonicalName,
-              playerKeyFor
+              playerKeyFor,
+              formationMap,
+              defaultFormationId
             ),
           }
         : {}),
@@ -1803,6 +1819,8 @@ export function FriendlyLiveMatchPage({
     teamB,
     canonicalName,
     playerKeyFor,
+    formationMap,
+    defaultFormationId,
   ]);
 
   const hasVerifiedLineups = Boolean(
@@ -2028,6 +2046,8 @@ export function FriendlyLiveMatchPage({
     teamBId,
     canonicalName,
     playerKeyFor,
+    formationMap,
+    defaultFormationId,
   ]);
 
   const shiboboChoices = useMemo(() => {
@@ -2063,6 +2083,8 @@ export function FriendlyLiveMatchPage({
     teamBId,
     canonicalName,
     playerKeyFor,
+    formationMap,
+    defaultFormationId,
   ]);
 
   const assistOptions = useMemo(() => {
@@ -2091,18 +2113,36 @@ export function FriendlyLiveMatchPage({
       verifiedLineupA,
       teamA?.players || [],
       canonicalName,
-      playerKeyFor
+      playerKeyFor,
+      formationMap,
+      defaultFormationId
     ).length;
-  }, [verifiedLineupA, teamA, canonicalName, playerKeyFor]);
+  }, [
+    verifiedLineupA,
+    teamA,
+    canonicalName,
+    playerKeyFor,
+    formationMap,
+    defaultFormationId,
+  ]);
 
   const teamBBenchCount = useMemo(() => {
     return getBenchPlayersFromSnapshot(
       verifiedLineupB,
       teamB?.players || [],
       canonicalName,
-      playerKeyFor
+      playerKeyFor,
+      formationMap,
+      defaultFormationId
     ).length;
-  }, [verifiedLineupB, teamB, canonicalName, playerKeyFor]);
+  }, [
+    verifiedLineupB,
+    teamB,
+    canonicalName,
+    playerKeyFor,
+    formationMap,
+    defaultFormationId,
+  ]);
 
   const handleConfirmLineups = () => {
     if (!canControlMatch) {

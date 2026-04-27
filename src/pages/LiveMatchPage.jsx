@@ -1,28 +1,35 @@
+// src/pages/LiveMatchPage.jsx
 import React from "react";
-import ThreeTeamLeagueLiveMatchPage from "./ThreeTeamLeague_LiveMatchPage";
+import ThreeTeamLeagueLiveMatchPage from "./ThreeTeamLeague_LiveMatchPage.jsx";
 import FriendlyLiveMatchPage from "./Friendly_LiveMatchPage";
 import { MATCH_MODE, buildMatchClassification } from "../core/matchConfig.js";
 
 export function LiveMatchPage(props) {
+  const liveCurrentMatch =
+    props.pendingMatchStartContext?.currentMatch ||
+    props.currentMatch ||
+    null;
+
   const classification = buildMatchClassification({
     matchMode:
-      props.currentMatch?.matchMode ||
+      liveCurrentMatch?.matchMode ||
       props.pendingMatchStartContext?.matchMode ||
       props.matchMode,
     gameFormat:
-      props.currentMatch?.gameFormat ||
+      liveCurrentMatch?.gameFormat ||
       props.pendingMatchStartContext?.gameFormat ||
       props.gameFormat,
     legacyGameFormat:
-      props.currentMatch?.matchMode ||
+      liveCurrentMatch?.matchMode ||
       props.pendingMatchStartContext?.matchMode ||
-      props.currentMatch?.gameFormat ||
+      liveCurrentMatch?.gameFormat ||
       props.pendingMatchStartContext?.gameFormat ||
       props.gameFormat,
   });
 
   const sharedProps = {
     ...props,
+    currentMatch: liveCurrentMatch,
     matchMode: classification.matchMode,
     gameFormat: classification.gameFormat,
     playersPerSide: classification.playersPerSide,

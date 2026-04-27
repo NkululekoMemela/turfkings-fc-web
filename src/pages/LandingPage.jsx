@@ -1,3 +1,4 @@
+// src/pages/LandingPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
@@ -156,6 +157,7 @@ export function LandingPage({
   onUpdatePairing,
   onStartMatch,
   onSetMatchType,
+  onForceSetMatchType,
   onSetGameFormat,
   onForceSetGameFormat,
   formatSwitchLocked = false,
@@ -482,6 +484,11 @@ export function LandingPage({
     if (!change?.kind || !change?.value) return;
 
     if (change.kind === "matchType") {
+      if (isFormatLocked && typeof onForceSetMatchType === "function") {
+        onForceSetMatchType(change.value);
+        return;
+      }
+
       if (typeof onSetMatchType === "function") {
         onSetMatchType(change.value);
         return;
@@ -490,9 +497,18 @@ export function LandingPage({
       // Legacy fallback while App.jsx is still being migrated:
       // Friendly is represented by the selected game format; League by 3_TEAM_LEAGUE.
       if (change.value === MATCH_MODE.LEAGUE) {
-        onSetGameFormat?.("3_TEAM_LEAGUE");
+        if (isFormatLocked && typeof onForceSetGameFormat === "function") {
+          onForceSetGameFormat("3_TEAM_LEAGUE");
+        } else {
+          onSetGameFormat?.("3_TEAM_LEAGUE");
+        }
       } else {
-        onSetGameFormat?.(resolvedGameFormat || GAME_FORMAT.FIVE_V_FIVE);
+        const fallbackFormat = resolvedGameFormat || GAME_FORMAT.FIVE_V_FIVE;
+        if (isFormatLocked && typeof onForceSetGameFormat === "function") {
+          onForceSetGameFormat(fallbackFormat);
+        } else {
+          onSetGameFormat?.(fallbackFormat);
+        }
       }
       return;
     }
@@ -701,11 +717,8 @@ export function LandingPage({
                       key={option.value}
                       type="button"
                       className="secondary-btn"
-                      onClick={() => {
-                        if (isFormatLocked) return;
-                        requestMatchTypeChange(option.value);
-                      }}
-                      disabled={isFormatLocked}
+                      onClick={() => requestMatchTypeChange(option.value)}
+                      disabled={false}
                       style={{
                         borderRadius: "999px",
                         padding: "0.45rem 0.9rem",
@@ -849,11 +862,8 @@ export function LandingPage({
                       key={option.value}
                       type="button"
                       className="secondary-btn"
-                      onClick={() => {
-                        if (isFormatLocked) return;
-                        requestGameFormatChange(option.value);
-                      }}
-                      disabled={isFormatLocked}
+                      onClick={() => requestGameFormatChange(option.value)}
+                      disabled={false}
                       style={{
                         borderRadius: "999px",
                         padding: "0.45rem 0.9rem",

@@ -481,6 +481,62 @@ function ensureFiveVFiveTeamsShape(rawTeams) {
   });
 }
 
+
+function repairLeagueCurrentMatch(match, teams = [], fallbackActiveTeamIds = []) {
+  const safeTeams = Array.isArray(teams) ? teams.filter((team) => team?.id) : [];
+  const teamIds = safeTeams.map((team) => team.id);
+
+  if (teamIds.length < 2) {
+    return {
+      teamAId: teamIds[0] || null,
+      teamBId: teamIds[1] || null,
+      standbyId: teamIds[2] || null,
+    };
+  }
+
+  const fallbackIds = Array.from(
+    new Set(
+      (Array.isArray(fallbackActiveTeamIds) ? fallbackActiveTeamIds : []).filter(
+        (teamId) => teamIds.includes(teamId)
+      )
+    )
+  );
+
+  const rawA = match?.teamAId || null;
+  const rawB = match?.teamBId || null;
+  const rawStandby = match?.standbyId || null;
+
+  const hasValidDistinctPair =
+    rawA && rawB && rawA !== rawB && teamIds.includes(rawA) && teamIds.includes(rawB);
+
+  if (hasValidDistinctPair) {
+    return {
+      teamAId: rawA,
+      teamBId: rawB,
+      standbyId:
+        rawStandby &&
+        teamIds.includes(rawStandby) &&
+        rawStandby !== rawA &&
+        rawStandby !== rawB
+          ? rawStandby
+          : teamIds.find((teamId) => teamId !== rawA && teamId !== rawB) || null,
+    };
+  }
+
+  const teamAId = fallbackIds[0] || teamIds[0] || null;
+  const teamBId =
+    fallbackIds.find((teamId) => teamId !== teamAId) ||
+    teamIds.find((teamId) => teamId !== teamAId) ||
+    null;
+
+  return {
+    teamAId,
+    teamBId,
+    standbyId: teamIds.find((teamId) => teamId !== teamAId && teamId !== teamBId) || null,
+  };
+}
+
+
 /* ---------------- State helpers ---------------- */
 
 function ensureSeasonSchedulingShape(season) {
@@ -1737,13 +1793,27 @@ export default function App() {
       };
     }
 
+    const repairedLeagueMatch = repairLeagueCurrentMatch(
+      currentMatch,
+      teams,
+      normalizedActiveTeamIds
+    );
+
     return {
-      ...(currentMatch || {}),
+      ...repairedLeagueMatch,
       matchType: MATCH_TYPE.LEAGUE,
       matchMode,
       gameFormat,
     };
-  }, [matchType, gameFormat, fiveVFiveTeams, currentMatch, matchMode]);
+  }, [
+    matchType,
+    gameFormat,
+    fiveVFiveTeams,
+    currentMatch,
+    matchMode,
+    teams,
+    normalizedActiveTeamIds,
+  ]);
 
   const currentCameraLaunchTeams = useMemo(() => {
     return resolveCameraLaunchTeams({
@@ -1982,24 +2052,6 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    console.log("[TK DEBUG] Match mode state", {
-      matchMode,
-      scheduledTarget,
-      scheduledFixturesCount: scheduledFixtures.length,
-      currentResultsCount: (results || []).length,
-      archivedResultsCount: archivedResultsFromHistory.length,
-      fullResultsCount: fullResults.length,
-    });
-  }, [
-    matchMode,
-    scheduledTarget,
-    scheduledFixtures.length,
-    results,
-    archivedResultsFromHistory.length,
-    fullResults.length,
-  ]);
-
-  useEffect(() => {
     if (!running) return;
     if (secondsLeft <= 0) return;
 
@@ -2053,15 +2105,26 @@ export default function App() {
       return;
     }
 
+    const safeMatch = repairLeagueCurrentMatch(
+      match,
+      teams,
+      normalizedActiveTeamIds
+    );
+
+    if (!safeMatch.teamAId || !safeMatch.teamBId || safeMatch.teamAId === safeMatch.teamBId) {
+      window.alert("Please choose two different teams before starting the match.");
+      return;
+    }
+
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
-        currentMatch: match,
+        currentMatch: safeMatch,
       }));
       return;
     }
 
-    updateState((prev) => ({ ...prev, currentMatch: match }));
+    updateState((prev) => ({ ...prev, currentMatch: safeMatch }));
   };
 
   const handleUpdateSmartOffset = (nextValue) => {
@@ -2394,10 +2457,25 @@ export default function App() {
       return;
     }
 
+    const safeStartMatch =
+      matchType === MATCH_TYPE.LEAGUE
+        ? repairLeagueCurrentMatch(effectiveLiveMatch, teams, normalizedActiveTeamIds)
+        : effectiveLiveMatch;
+
+    if (
+      matchType === MATCH_TYPE.LEAGUE &&
+      (!safeStartMatch?.teamAId ||
+        !safeStartMatch?.teamBId ||
+        safeStartMatch.teamAId === safeStartMatch.teamBId)
+    ) {
+      window.alert("Please choose two different League teams before starting the match.");
+      return;
+    }
+
     const startContext = {
       matchNo: currentMatchNo,
       createdAt: new Date().toISOString(),
-      currentMatch,
+      currentMatch: safeStartMatch,
       teams,
       fiveVFiveTeams,
       identity,
@@ -3897,10 +3975,10 @@ export default function App() {
           secondsLeft={secondsLeft}
           timeUp={timeUp}
           running={running}
-          teams={teams}
-          fiveVFiveTeams={fiveVFiveTeams}
-          currentMatchNo={currentMatchNo}
-          currentMatch={effectiveLiveMatch}
+          teams={pendingMatchStartContext?.teams || teams}
+          fiveVFiveTeams={pendingMatchStartContext?.fiveVFiveTeams || fiveVFiveTeams}
+          currentMatchNo={pendingMatchStartContext?.matchNo || currentMatchNo}
+          currentMatch={pendingMatchStartContext?.currentMatch || effectiveLiveMatch}
           currentEvents={currentEvents}
           identity={identity}
           activeRole={activeRole}
@@ -3908,8 +3986,8 @@ export default function App() {
           isCaptain={isCaptain}
           canControlMatch={canStartMatch}
           pendingMatchStartContext={pendingMatchStartContext}
-          matchType={matchType}
-          gameFormat={gameFormat}
+          matchType={pendingMatchStartContext?.matchType || matchType}
+          gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={playerPhotosByName}
@@ -3939,6 +4017,9 @@ export default function App() {
       {page === PAGE_STATS && (
         <StatsPage
           teams={teams}
+          friendlyTeams={fiveVFiveTeams}
+          fiveVFiveTeams={fiveVFiveTeams}
+          gameFormat={gameFormat}
           results={results}
           allEvents={allEvents}
           archivedResults={archivedResultsFromHistory}

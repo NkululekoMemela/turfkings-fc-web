@@ -26,16 +26,42 @@ const STATE_DOC_ID = "main";
 const STATE_COLLECTION_V2 = "appState_v2";
 const STATE_DOC_ID_V2 = "main";
 
+/* -----------------------------------------
+   FIRESTORE SAFE SERIALIZER
+------------------------------------------*/
+function stripUndefinedDeep(value) {
+  if (value === undefined) return null;
+
+  if (Array.isArray(value)) {
+    return value.map(stripUndefinedDeep);
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    !(value instanceof Date)
+  ) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, stripUndefinedDeep(v)])
+    );
+  }
+
+  return value;
+}
+
 /**
  * Save full app state to Firestore (LEGACY).
  */
 export async function saveStateToFirebase(state) {
   try {
     const ref = doc(db, STATE_COLLECTION, STATE_DOC_ID);
+
     await setDoc(
       ref,
       {
-        state,
+        state: stripUndefinedDeep(state),
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
@@ -67,38 +93,43 @@ export async function loadStateFromFirebase() {
  */
 export function subscribeToState(callback) {
   const ref = doc(db, STATE_COLLECTION, STATE_DOC_ID);
-  const unsubscribe = onSnapshot(
+
+  return onSnapshot(
     ref,
     (snap) => {
       if (!snap.exists()) {
         callback(null);
         return;
       }
-      const data = snap.data();
-      callback(data?.state ?? null);
+      callback(snap.data()?.state ?? null);
     },
     (err) => {
       console.error("State subscription error:", err);
     }
   );
-  return unsubscribe;
 }
 
 /* =======================================================================
    V2: FULL APP STATE
-   ======================================================================= */
+======================================================================= */
 
 export async function saveStateToFirebaseV2(state) {
   try {
     const ref = doc(db, STATE_COLLECTION_V2, STATE_DOC_ID_V2);
+
+    // Critical fix for Friendly matches:
+    // strips undefined values before Firestore write.
+    const cleanedState = stripUndefinedDeep(state);
+
     await setDoc(
       ref,
       {
-        state,
+        state: cleanedState,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
+
   } catch (err) {
     console.error("Failed to save state to Firebase (V2):", err);
   }
@@ -108,10 +139,12 @@ export async function loadStateFromFirebaseV2() {
   try {
     const ref = doc(db, STATE_COLLECTION_V2, STATE_DOC_ID_V2);
     const snap = await getDoc(ref);
+
     if (!snap.exists()) return null;
 
     const data = snap.data();
     return data?.state ?? null;
+
   } catch (err) {
     console.error("Failed to load state from Firebase (V2):", err);
     return null;
@@ -120,27 +153,25 @@ export async function loadStateFromFirebaseV2() {
 
 export function subscribeToStateV2(callback) {
   const ref = doc(db, STATE_COLLECTION_V2, STATE_DOC_ID_V2);
-  const unsubscribe = onSnapshot(
+
+  return onSnapshot(
     ref,
     (snap) => {
       if (!snap.exists()) {
         callback(null);
         return;
       }
-      const data = snap.data();
-      callback(data?.state ?? null);
+
+      callback(snap.data()?.state ?? null);
     },
     (err) => {
       console.error("State subscription error (V2):", err);
     }
   );
-  return unsubscribe;
 }
 
 /**
  * Submit a single peer rating to Firestore.
- * IMPORTANT:
- * Accept the full payload and preserve the fields needed by usePeerRatings.
  */
 export async function submitPeerRating(payload) {
   const cleanRater = String(payload?.raterName || "").trim();
@@ -185,31 +216,33 @@ export async function submitPeerRating(payload) {
     createdAt: serverTimestamp(),
   };
 
-  const colRef = collection(db, "peerRatings");
-  await addDoc(colRef, docPayload);
+  await addDoc(collection(db, "peerRatings"), docPayload);
 }
 
 /* =======================================================================
-   KIT ORDERS / POLL
-   ======================================================================= */
+KIT ORDERS / POLL
+======================================================================= */
 
 const KIT_ORDERS_COLLECTION = "kitOrders";
 
 export function subscribeToKitOrders(callback) {
-  const colRef = collection(db, KIT_ORDERS_COLLECTION);
-  const q = query(colRef, orderBy("nameLower", "asc"));
+  const q = query(
+    collection(db, KIT_ORDERS_COLLECTION),
+    orderBy("nameLower", "asc")
+  );
 
-  const unsub = onSnapshot(
+  return onSnapshot(
     q,
     (snap) => {
       const list = [];
+
       snap.forEach((d) => {
-        const data = d.data() || {};
         list.push({
           memberId: d.id,
-          ...data,
+          ...(d.data() || {}),
         });
       });
+
       callback(list);
     },
     (err) => {
@@ -217,8 +250,6 @@ export function subscribeToKitOrders(callback) {
       callback([]);
     }
   );
-
-  return unsub;
 }
 
 export async function upsertKitOrder({ memberId, name }) {
@@ -229,9 +260,8 @@ export async function upsertKitOrder({ memberId, name }) {
     throw new Error("Missing memberId or name");
   }
 
-  const ref = doc(db, KIT_ORDERS_COLLECTION, cleanId);
   await setDoc(
-    ref,
+    doc(db, KIT_ORDERS_COLLECTION, cleanId),
     {
       memberId: cleanId,
       name: cleanName,
@@ -245,5 +275,8 @@ export async function upsertKitOrder({ memberId, name }) {
 export async function removeKitOrder(memberId) {
   const cleanId = String(memberId || "").trim();
   if (!cleanId) return;
-  await deleteDoc(doc(db, KIT_ORDERS_COLLECTION, cleanId));
+
+  await deleteDoc(
+    doc(db, KIT_ORDERS_COLLECTION, cleanId)
+  );
 }

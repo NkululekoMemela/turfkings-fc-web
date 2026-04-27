@@ -1,3 +1,4 @@
+// src/pages/StatsPage.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebaseConfig";
 import { collection, getDocs } from "firebase/firestore";
@@ -239,6 +240,12 @@ function normalizeStatsMatchType(value) {
 // ---------------- PAGE ----------------
 export function StatsPage({
   teams = [],
+  friendlyTeams = [],
+  friendlyTeamsByFormat = null,
+  fiveVFiveTeams = [],
+  sixVSixTeams = [],
+  sevenVSevenTeams = [],
+  gameFormat = "5_V_5",
   results = [],
   allEvents = [],
   cameFromLive = false,
@@ -271,6 +278,22 @@ export function StatsPage({
       : {};
 
   const safeTeamsProp = Array.isArray(teams) ? teams : [];
+  const safeFriendlyTeamsProp = Array.isArray(friendlyTeams)
+    ? friendlyTeams
+    : [];
+  const safeFiveVFiveTeamsProp = Array.isArray(fiveVFiveTeams)
+    ? fiveVFiveTeams
+    : [];
+  const safeSixVSixTeamsProp = Array.isArray(sixVSixTeams)
+    ? sixVSixTeams
+    : [];
+  const safeSevenVSevenTeamsProp = Array.isArray(sevenVSevenTeams)
+    ? sevenVSevenTeams
+    : [];
+  const safeFriendlyTeamsByFormat =
+    friendlyTeamsByFormat && typeof friendlyTeamsByFormat === "object"
+      ? friendlyTeamsByFormat
+      : {};
   const safeResultsProp = Array.isArray(results) ? results : [];
   const safeEventsProp = Array.isArray(allEvents) ? allEvents : [];
   const safeArchivedResultsProp = Array.isArray(archivedResults)
@@ -289,6 +312,46 @@ export function StatsPage({
   const isAdminUser = Boolean(isAdmin);
   const normalizedMatchType = normalizeStatsMatchType(matchType);
   const isFriendlyMatchType = normalizedMatchType === "FRIENDLY";
+
+  const normalizeStatsGameFormat = (value) => {
+    const raw = String(value || "5_V_5").trim().toUpperCase();
+    if (raw === "6_V_6" || raw === "6V6" || raw === "SIX_V_SIX") return "6_V_6";
+    if (raw === "7_V_7" || raw === "7V7" || raw === "SEVEN_V_SEVEN") return "7_V_7";
+    return "5_V_5";
+  };
+
+  const friendlyTeamsForCurrentFormat = useMemo(() => {
+    const resolvedFormat = normalizeStatsGameFormat(gameFormat);
+
+    const fromMap = Array.isArray(safeFriendlyTeamsByFormat?.[resolvedFormat])
+      ? safeFriendlyTeamsByFormat[resolvedFormat]
+      : Array.isArray(safeFriendlyTeamsByFormat?.[resolvedFormat.toLowerCase()])
+        ? safeFriendlyTeamsByFormat[resolvedFormat.toLowerCase()]
+        : [];
+
+    if (fromMap.length > 0) return fromMap;
+    if (safeFriendlyTeamsProp.length > 0) return safeFriendlyTeamsProp;
+
+    if (resolvedFormat === "6_V_6" && safeSixVSixTeamsProp.length > 0) {
+      return safeSixVSixTeamsProp;
+    }
+
+    if (resolvedFormat === "7_V_7" && safeSevenVSevenTeamsProp.length > 0) {
+      return safeSevenVSevenTeamsProp;
+    }
+
+    // Backward compatibility: current app state still stores the generic
+    // Friendly squads under this older prop name. Do not treat it as
+    // specifically 5v5-only here.
+    return safeFiveVFiveTeamsProp;
+  }, [
+    gameFormat,
+    safeFriendlyTeamsByFormat,
+    safeFriendlyTeamsProp,
+    safeFiveVFiveTeamsProp,
+    safeSixVSixTeamsProp,
+    safeSevenVSevenTeamsProp,
+  ]);
 
   const [nameToCanonical, setNameToCanonical] = useState({});
   const [canonicalToShort, setCanonicalToShort] = useState({});
@@ -548,10 +611,26 @@ export function StatsPage({
   };
 
   const scopedTeams = useMemo(() => {
-    if (!isViewingPreviousSeason) return safeTeamsProp;
+    if (!isViewingPreviousSeason) {
+      if (showFriendlyStats) {
+        // Friendly stats must use the Friendly squads from SquadsPage for
+        // the active format (5v5 / 6v6 / 7v7), not League season teams.
+        return friendlyTeamsForCurrentFormat.length > 0
+          ? friendlyTeamsForCurrentFormat
+          : safeTeamsProp;
+      }
+      return safeTeamsProp;
+    }
+
     const t = selectedPrevSeason?.teams;
     return Array.isArray(t) ? t : [];
-  }, [isViewingPreviousSeason, safeTeamsProp, selectedPrevSeason]);
+  }, [
+    isViewingPreviousSeason,
+    showFriendlyStats,
+    friendlyTeamsForCurrentFormat,
+    safeTeamsProp,
+    selectedPrevSeason,
+  ]);
 
   const attachMatchDayMeta = (items, matchDayId) => {
     const id = matchDayId ? String(matchDayId) : "";
@@ -734,16 +813,89 @@ export function StatsPage({
 
   const teamById = useMemo(() => {
     const map = new Map();
+
+    const addTeamKey = (key, team) => {
+      const raw = String(key || "").trim();
+      if (!raw) return;
+      if (!map.has(raw)) map.set(raw, team);
+      if (!map.has(raw.toUpperCase())) map.set(raw.toUpperCase(), team);
+      if (!map.has(raw.toLowerCase())) map.set(raw.toLowerCase(), team);
+    };
+
     (scopedTeams || []).forEach((t) => {
-      if (t?.id) map.set(t.id, t);
+      const rawId = String(t?.id || "").trim();
+      const label = String(t?.label || "").trim();
+      const abbrev = String(t?.abbrev || "").trim();
+
+      addTeamKey(rawId, t);
+      addTeamKey(label, t);
+      addTeamKey(abbrev, t);
+
+      const sideKey = `${rawId} ${label} ${abbrev}`.toLowerCase();
+      if (sideKey.includes("black") || sideKey.includes("dark")) {
+        addTeamKey("BLACK", t);
+        addTeamKey("DARK", t);
+      }
+      if (sideKey.includes("white") || sideKey.includes("light")) {
+        addTeamKey("WHITE", t);
+        addTeamKey("LIGHT", t);
+      }
     });
+
     return map;
   }, [scopedTeams]);
 
-  const getTeamName = (id) => teamById.get(id)?.label || "Unknown";
+  const getFriendlyTeamName = useCallback(
+    (id) => {
+      const raw = String(id || "").trim();
+      if (!raw) return "Unknown";
+
+      const team =
+        teamById.get(raw) ||
+        teamById.get(raw.toUpperCase()) ||
+        teamById.get(raw.toLowerCase()) ||
+        null;
+
+      if (team?.label) return team.label;
+
+      const upper = raw.toUpperCase();
+      if (upper === "BLACK" || upper === "DARK") return "Dark";
+      if (upper === "WHITE" || upper === "LIGHT") return "Light";
+
+      return raw || "Unknown";
+    },
+    [teamById]
+  );
+
+  const getTeamName = useCallback(
+    (id) => {
+      if (showFriendlyStats) return getFriendlyTeamName(id);
+
+      const raw = String(id || "").trim();
+      if (!raw) return "Unknown";
+
+      const team =
+        teamById.get(raw) ||
+        teamById.get(raw.toUpperCase()) ||
+        teamById.get(raw.toLowerCase()) ||
+        null;
+
+      return team?.label || "Unknown";
+    },
+    [showFriendlyStats, getFriendlyTeamName, teamById]
+  );
 
   const teamPlayersById = useMemo(() => {
     const out = {};
+
+    const addPlayersKey = (key, players) => {
+      const raw = String(key || "").trim();
+      if (!raw) return;
+      out[raw] = players;
+      out[raw.toUpperCase()] = players;
+      out[raw.toLowerCase()] = players;
+    };
+
     (scopedTeams || []).forEach((t) => {
       const rawPlayers = Array.isArray(t?.players) ? t.players : [];
       const canonicalPlayers = rawPlayers
@@ -753,29 +905,81 @@ export function StatsPage({
         .map((name) => resolveCanonicalName(name))
         .filter(Boolean);
 
-      out[t?.id] = canonicalPlayers;
+      const rawId = String(t?.id || "").trim();
+      const label = String(t?.label || "").trim();
+      const abbrev = String(t?.abbrev || "").trim();
+      const sideKey = `${rawId} ${label} ${abbrev}`.toLowerCase();
+
+      addPlayersKey(rawId, canonicalPlayers);
+      addPlayersKey(label, canonicalPlayers);
+      addPlayersKey(abbrev, canonicalPlayers);
+
+      if (showFriendlyStats) {
+        if (sideKey.includes("black") || sideKey.includes("dark")) {
+          addPlayersKey("BLACK", canonicalPlayers);
+          addPlayersKey("DARK", canonicalPlayers);
+        }
+        if (sideKey.includes("white") || sideKey.includes("light")) {
+          addPlayersKey("WHITE", canonicalPlayers);
+          addPlayersKey("LIGHT", canonicalPlayers);
+        }
+      }
     });
+
     return out;
-  }, [scopedTeams, resolveCanonicalName]);
+  }, [scopedTeams, showFriendlyStats, resolveCanonicalName]);
 
   const getPlayersForTeam = (teamId) => {
-    return Array.isArray(teamPlayersById?.[teamId])
-      ? teamPlayersById[teamId]
-      : [];
+    const raw = String(teamId || "").trim();
+    return (
+      teamPlayersById?.[raw] ||
+      teamPlayersById?.[raw.toUpperCase()] ||
+      teamPlayersById?.[raw.toLowerCase()] ||
+      []
+    );
   };
 
   const playerTeamMap = useMemo(() => {
     const map = {};
+
+    // First use the selected squad source (League teams for League mode,
+    // Friendly squads for Friendly mode).
     (scopedTeams || []).forEach((t) => {
+      const label = String(t?.label || "").trim();
       (t?.players || []).forEach((p) => {
         const rawName =
-          typeof p === "string" ? p : p?.name || p?.displayName || "";
+          typeof p === "string"
+            ? p
+            : p?.name || p?.displayName || p?.fullName || p?.shortName || "";
         const canon = resolveCanonicalName(rawName);
-        if (canon && !map[canon]) map[canon] = t.label;
+        if (canon && label && !map[canon]) map[canon] = label;
       });
     });
+
+    // Then use the actual event teamId. This is important for Friendly stats
+    // because scorer/assist events are the strongest evidence of which side
+    // the player represented on that match day, even if the squad list was
+    // later edited or the player was a guest.
+    (visibleEvents || []).forEach((e) => {
+      const teamLabel = getTeamName(e?.teamId);
+      const apply = (rawName) => {
+        const canon = resolveCanonicalName(rawName);
+        if (!canon || !teamLabel || teamLabel === "Unknown") return;
+        map[canon] = teamLabel;
+      };
+
+      if (e?.type === "goal") {
+        apply(e?.scorer);
+        apply(e?.assist);
+      }
+
+      if (e?.type === "clean_sheet") {
+        apply(e?.playerName || e?.scorer);
+      }
+    });
+
     return map;
-  }, [scopedTeams, resolveCanonicalName]);
+  }, [scopedTeams, visibleEvents, getTeamName, resolveCanonicalName]);
 
   const teamStats = useMemo(() => {
     const base = {};

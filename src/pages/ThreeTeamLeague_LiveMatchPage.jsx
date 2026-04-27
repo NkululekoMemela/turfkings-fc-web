@@ -1,3 +1,4 @@
+// src/pages/ThreeTeamLeague_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import { db } from "../firebaseConfig.js";
@@ -354,6 +355,35 @@ function movePlayerToFront(list = [], name = "", canonicalName, playerKeyFor) {
     canonicalName,
     playerKeyFor
   );
+}
+
+function getLineupPlayerNames(lineup = {}, canonicalName) {
+  const names = [
+    ...Object.values(lineup?.positions || {}),
+    ...(Array.isArray(lineup?.benchSnapshot) ? lineup.benchSnapshot : []),
+    ...(Array.isArray(lineup?.registeredPlayers) ? lineup.registeredPlayers : []),
+    ...(Array.isArray(lineup?.guestPlayers) ? lineup.guestPlayers : []),
+  ]
+    .map((name) => canonicalName(name))
+    .filter(Boolean);
+
+  return uniqueNames(names);
+}
+
+function buildRegisteredFallbackPlayers(teamPlayers = [], lineup = {}, canonicalName) {
+  const fromTeam = uniqueNames(
+    (Array.isArray(teamPlayers) ? teamPlayers : [])
+      .map((name) => canonicalName(name))
+      .filter(Boolean)
+  );
+
+  if (fromTeam.length) return fromTeam;
+
+  // Important for League 5s/6s/7s:
+  // If Manage Squads has not been fully seeded for the chosen side yet,
+  // do not wipe the FormationPage lineup. Use the saved formation players
+  // as the temporary registered pool for the pre-match verification screen.
+  return getLineupPlayerNames(lineup, canonicalName);
 }
 
 function sanitizeLiveLineupToRegisteredPlayers(
@@ -1113,6 +1143,7 @@ function LineupBoard({
     formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [guestName, setGuestName] = useState("");
+  const lastSanitizedSignatureRef = useRef("");
 
   useEffect(() => {
     setSelectedPlayer(null);
@@ -1138,13 +1169,43 @@ function LineupBoard({
   );
 
   useEffect(() => {
-    if (!liveLineupStateEquals(lineup, sanitizedLineup, canonicalName, playerKeyFor, formationMap, defaultFormationId)) {
-      setLineup((prev) => ({
-        ...prev,
-        ...sanitizedLineup,
-      }));
+    if (
+      liveLineupStateEquals(
+        lineup,
+        sanitizedLineup,
+        canonicalName,
+        playerKeyFor,
+        formationMap,
+        defaultFormationId
+      )
+    ) {
+      return;
     }
-  }, [lineup, sanitizedLineup, setLineup, canonicalName, playerKeyFor]);
+
+    const signature = JSON.stringify({
+      formationId: sanitizedLineup?.formationId || "",
+      positions: sanitizedLineup?.positions || {},
+      guestPlayers: sanitizedLineup?.guestPlayers || [],
+      benchSnapshot: sanitizedLineup?.benchSnapshot || [],
+      registeredPlayers: sanitizedLineup?.registeredPlayers || [],
+    });
+
+    if (lastSanitizedSignatureRef.current === signature) return;
+    lastSanitizedSignatureRef.current = signature;
+
+    setLineup((prev) => ({
+      ...prev,
+      ...sanitizedLineup,
+    }));
+  }, [
+    lineup,
+    sanitizedLineup,
+    setLineup,
+    canonicalName,
+    playerKeyFor,
+    formationMap,
+    defaultFormationId,
+  ]);
 
   const assignedNames = Object.values(sanitizedLineup?.positions || {})
     .map((name) => canonicalName(name))
@@ -1469,7 +1530,46 @@ export function ThreeTeamLeagueLiveMatchPage({
   onGoToStats,
   onOpenHighlightsCamera,
 }) {
-  const { teamAId, teamBId, standbyId } = currentMatch || {};
+  const liveTeams =
+    Array.isArray(pendingMatchStartContext?.teams) &&
+    pendingMatchStartContext.teams.length
+      ? pendingMatchStartContext.teams
+      : Array.isArray(teams)
+      ? teams
+      : [];
+
+  const rawLiveCurrentMatch =
+    pendingMatchStartContext?.currentMatch ||
+    currentMatch ||
+    {};
+
+  const validTeamIds = new Set(liveTeams.map((team) => team?.id).filter(Boolean));
+
+  const rawTeamAId = rawLiveCurrentMatch?.teamAId || null;
+  const rawTeamBId = rawLiveCurrentMatch?.teamBId || null;
+  const rawStandbyId = rawLiveCurrentMatch?.standbyId || null;
+
+  const hasValidPair =
+    rawTeamAId &&
+    rawTeamBId &&
+    rawTeamAId !== rawTeamBId &&
+    validTeamIds.has(rawTeamAId) &&
+    validTeamIds.has(rawTeamBId);
+
+  const teamAId = hasValidPair ? rawTeamAId : liveTeams[0]?.id || null;
+  const teamBId = hasValidPair
+    ? rawTeamBId
+    : liveTeams.find((team) => team?.id && team.id !== teamAId)?.id || null;
+  const standbyId =
+    rawStandbyId &&
+    validTeamIds.has(rawStandbyId) &&
+    rawStandbyId !== teamAId &&
+    rawStandbyId !== teamBId
+      ? rawStandbyId
+      : liveTeams.find(
+          (team) => team?.id && team.id !== teamAId && team.id !== teamBId
+        )?.id || null;
+
   const role = String(activeRole || "spectator").trim().toLowerCase();
   const formatConfig = getGameFormatConfig(gameFormat);
   const liveGameFormat = normalizeGameFormat(gameFormat, GAME_FORMAT.FIVE_V_FIVE);
@@ -1580,7 +1680,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   );
 
   const canonicalTeams = useMemo(() => {
-    return (teams || []).map((t) => ({
+    return (liveTeams || []).map((t) => ({
       ...t,
       playerIds: (t.players || [])
         .map((p) => (typeof p === "string" ? p : p?.id || ""))
@@ -1595,7 +1695,7 @@ export function ThreeTeamLeagueLiveMatchPage({
       captain: canonicalName(t.captain || ""),
       captainId: t.captainId || null,
     }));
-  }, [teams, canonicalName]);
+  }, [liveTeams, canonicalName]);
 
   const teamA = getTeamById(canonicalTeams, teamAId);
   const teamB = getTeamById(canonicalTeams, teamBId);
@@ -1728,45 +1828,73 @@ export function ThreeTeamLeagueLiveMatchPage({
   const alarmLoopRef = useRef(null);
   const savedLineups = useMemo(() => loadSavedLineups(), []);
 
-  const defaultTeamALineup = useMemo(
-    () =>
-      sanitizeLiveLineupToRegisteredPlayers(
-        resolvePreferredTeamLineup(
-          teamA,
-          liveLineupGameType,
-          savedLineups,
-          liveFormationsMap,
-          liveDefaultFormationId,
-          teamA?.players || []
-        ),
-        teamA?.players || [],
-        canonicalName,
-        playerKeyFor,
-        liveFormationsMap,
-        liveDefaultFormationId
-      ),
-    [teamA, savedLineups, canonicalName, playerKeyFor, liveLineupGameType, liveFormationsMap, liveDefaultFormationId]
-  );
+  const defaultTeamALineup = useMemo(() => {
+    const preferred = resolvePreferredTeamLineup(
+      teamA,
+      liveLineupGameType,
+      savedLineups,
+      liveFormationsMap,
+      liveDefaultFormationId,
+      teamA?.players || []
+    );
 
-  const defaultTeamBLineup = useMemo(
-    () =>
-      sanitizeLiveLineupToRegisteredPlayers(
-        resolvePreferredTeamLineup(
-          teamB,
-          liveLineupGameType,
-          savedLineups,
-          liveFormationsMap,
-          liveDefaultFormationId,
-          teamB?.players || []
-        ),
-        teamB?.players || [],
-        canonicalName,
-        playerKeyFor,
-        liveFormationsMap,
-        liveDefaultFormationId
-      ),
-    [teamB, savedLineups, canonicalName, playerKeyFor, liveLineupGameType, liveFormationsMap, liveDefaultFormationId]
-  );
+    const registeredPool = buildRegisteredFallbackPlayers(
+      teamA?.players || [],
+      preferred,
+      canonicalName
+    );
+
+    return sanitizeLiveLineupToRegisteredPlayers(
+      preferred,
+      registeredPool,
+      canonicalName,
+      playerKeyFor,
+      liveFormationsMap,
+      liveDefaultFormationId
+    );
+  }, [
+    teamA,
+    savedLineups,
+    canonicalName,
+    playerKeyFor,
+    liveLineupGameType,
+    liveFormationsMap,
+    liveDefaultFormationId,
+  ]);
+
+  const defaultTeamBLineup = useMemo(() => {
+    const preferred = resolvePreferredTeamLineup(
+      teamB,
+      liveLineupGameType,
+      savedLineups,
+      liveFormationsMap,
+      liveDefaultFormationId,
+      teamB?.players || []
+    );
+
+    const registeredPool = buildRegisteredFallbackPlayers(
+      teamB?.players || [],
+      preferred,
+      canonicalName
+    );
+
+    return sanitizeLiveLineupToRegisteredPlayers(
+      preferred,
+      registeredPool,
+      canonicalName,
+      playerKeyFor,
+      liveFormationsMap,
+      liveDefaultFormationId
+    );
+  }, [
+    teamB,
+    savedLineups,
+    canonicalName,
+    playerKeyFor,
+    liveLineupGameType,
+    liveFormationsMap,
+    liveDefaultFormationId,
+  ]);
 
   const [verifyTeamALineup, setVerifyTeamALineup] =
     useState(defaultTeamALineup);
@@ -1797,9 +1925,15 @@ export function ThreeTeamLeagueLiveMatchPage({
         ? {
             [teamAId]: sanitizeLiveLineupToRegisteredPlayers(
               existingConfirmedFromApp?.[teamAId] || {},
-              teamA?.players || [],
+              buildRegisteredFallbackPlayers(
+                teamA?.players || [],
+                existingConfirmedFromApp?.[teamAId] || {},
+                canonicalName
+              ),
               canonicalName,
-              playerKeyFor
+              playerKeyFor,
+              liveFormationsMap,
+              liveDefaultFormationId
             ),
           }
         : {}),
@@ -1807,9 +1941,15 @@ export function ThreeTeamLeagueLiveMatchPage({
         ? {
             [teamBId]: sanitizeLiveLineupToRegisteredPlayers(
               existingConfirmedFromApp?.[teamBId] || {},
-              teamB?.players || [],
+              buildRegisteredFallbackPlayers(
+                teamB?.players || [],
+                existingConfirmedFromApp?.[teamBId] || {},
+                canonicalName
+              ),
               canonicalName,
-              playerKeyFor
+              playerKeyFor,
+              liveFormationsMap,
+              liveDefaultFormationId
             ),
           }
         : {}),
@@ -1822,6 +1962,8 @@ export function ThreeTeamLeagueLiveMatchPage({
     teamB,
     canonicalName,
     playerKeyFor,
+    liveFormationsMap,
+    liveDefaultFormationId,
   ]);
 
   const hasVerifiedLineups = Boolean(
@@ -2091,7 +2233,11 @@ export function ThreeTeamLeagueLiveMatchPage({
       teamId: teamAId,
       lineup: verifyTeamALineup,
       formationMap: liveFormationsMap,
-      registeredPlayers: teamA?.players || [],
+      registeredPlayers: buildRegisteredFallbackPlayers(
+        teamA?.players || [],
+        verifyTeamALineup,
+        canonicalName
+      ),
       confirmedBy: confirmedByName,
       confirmedByRole,
       preferredCaptainNames: getTeamCaptainNames(teamA, canonicalName),
@@ -2101,7 +2247,11 @@ export function ThreeTeamLeagueLiveMatchPage({
       teamId: teamBId,
       lineup: verifyTeamBLineup,
       formationMap: liveFormationsMap,
-      registeredPlayers: teamB?.players || [],
+      registeredPlayers: buildRegisteredFallbackPlayers(
+        teamB?.players || [],
+        verifyTeamBLineup,
+        canonicalName
+      ),
       confirmedBy: confirmedByName,
       confirmedByRole,
       preferredCaptainNames: getTeamCaptainNames(teamB, canonicalName),
@@ -2749,7 +2899,11 @@ export function ThreeTeamLeagueLiveMatchPage({
                     team={teamA}
                     lineup={verifyTeamALineup}
                     setLineup={setVerifyTeamALineup}
-                    registeredPlayers={teamA?.players || []}
+                    registeredPlayers={buildRegisteredFallbackPlayers(
+                      teamA?.players || [],
+                      verifyTeamALineup,
+                      canonicalName
+                    )}
                     canonicalName={canonicalName}
                     displayCompactPlayerName={displayCompactPlayerName}
                     playerKeyFor={playerKeyFor}
@@ -2764,7 +2918,11 @@ export function ThreeTeamLeagueLiveMatchPage({
                     team={teamB}
                     lineup={verifyTeamBLineup}
                     setLineup={setVerifyTeamBLineup}
-                    registeredPlayers={teamB?.players || []}
+                    registeredPlayers={buildRegisteredFallbackPlayers(
+                      teamB?.players || [],
+                      verifyTeamBLineup,
+                      canonicalName
+                    )}
                     canonicalName={canonicalName}
                     displayCompactPlayerName={displayCompactPlayerName}
                     playerKeyFor={playerKeyFor}
