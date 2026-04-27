@@ -33,8 +33,89 @@ function firstNameOf(name) {
 
 function isoDateOnly(x) {
   const s = String(x || "").trim();
-  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  const m = s.match(/(\d{4}-\d{2}-\d{2})/);
   return m ? m[1] : "";
+}
+
+function friendlyDateFromRecord(record = {}) {
+  const candidates = [
+    record?._tkMatchDayId,
+    record?._tkMatchDayLabel,
+    record?.matchDayId,
+    record?.id,
+    record?.date,
+    record?.createdAt,
+    record?.updatedAt,
+  ];
+
+  for (const value of candidates) {
+    const iso = isoDateOnly(value);
+    if (iso) return iso;
+  }
+
+  for (const value of candidates) {
+    const raw = String(value || "").trim();
+    if (!raw || raw.toUpperCase() === "FRIENDLY" || raw === "UNKNOWN") continue;
+
+    const parsed = new Date(raw);
+    if (parsed && !Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10);
+    }
+  }
+
+  return "";
+}
+
+function startOfLocalDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function formatFriendlyDayLabel(isoDate, indexFromNewest = 0) {
+  const iso = isoDateOnly(isoDate);
+  if (!iso) return "Friendly";
+
+  const d = startOfLocalDay(`${iso}T00:00:00`);
+  const now = startOfLocalDay(new Date());
+  const diffDays = Math.round((now.getTime() - d.getTime()) / 86400000);
+
+  if (diffDays === 0) return "Today";
+  if (diffDays > 0 && diffDays <= 6) return "This week";
+  if (indexFromNewest === 1 && diffDays > 6 && diffDays <= 13) {
+    return "Last week";
+  }
+
+  return d.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function formatFriendlyDuplicateSuffix(duplicateIndex = 0) {
+  const n = Number(duplicateIndex || 0);
+  return n > 0 ? `_${n + 1}` : "";
+}
+
+function normalizeStatsGameFormatValue(value, fallback = "5_V_5") {
+  const raw = String(value || fallback || "5_V_5").trim().toUpperCase();
+  if (raw === "6_V_6" || raw === "6V6" || raw === "SIX_V_SIX") return "6_V_6";
+  if (raw === "7_V_7" || raw === "7V7" || raw === "SEVEN_V_SEVEN") return "7_V_7";
+  return "5_V_5";
+}
+
+function getStatsGameFormat(record = {}, fallback = "5_V_5") {
+  return normalizeStatsGameFormatValue(
+    record?.gameFormat || record?.format || record?.matchFormat || fallback,
+    fallback
+  );
+}
+
+function formatStatsGameFormatLabel(value) {
+  const resolved = normalizeStatsGameFormatValue(value);
+  if (resolved === "6_V_6") return "6v6";
+  if (resolved === "7_V_7") return "7v7";
+  return "5v5";
 }
 
 function formatEventTypeLabel(type, role = "") {
@@ -44,6 +125,14 @@ function formatEventTypeLabel(type, role = "") {
     return "clean sheet";
   }
   return "goal";
+}
+
+function formatSecondsSafe(seconds) {
+  const v = Number(seconds || 0);
+  const safe = Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+  const m = Math.floor(safe / 60).toString().padStart(2, "0");
+  const s = (safe % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
 }
 
 
@@ -348,15 +437,8 @@ export function StatsPage({
   const normalizedMatchType = normalizeStatsMatchType(matchType);
   const isFriendlyMatchType = normalizedMatchType === "FRIENDLY";
 
-  const normalizeStatsGameFormat = (value) => {
-    const raw = String(value || "5_V_5").trim().toUpperCase();
-    if (raw === "6_V_6" || raw === "6V6" || raw === "SIX_V_SIX") return "6_V_6";
-    if (raw === "7_V_7" || raw === "7V7" || raw === "SEVEN_V_SEVEN") return "7_V_7";
-    return "5_V_5";
-  };
-
   const friendlyTeamsForCurrentFormat = useMemo(() => {
-    const resolvedFormat = normalizeStatsGameFormat(gameFormat);
+    const resolvedFormat = normalizeStatsGameFormatValue(gameFormat);
 
     const fromMap = Array.isArray(safeFriendlyTeamsByFormat?.[resolvedFormat])
       ? safeFriendlyTeamsByFormat[resolvedFormat]
@@ -564,8 +646,8 @@ export function StatsPage({
     seasonScope === PREVIEW_PREVIOUS_SCOPE &&
     Boolean(canPreviewPreviousSeasonUI);
 
-  const isViewingPreviousSeason = seasonScope !== CURRENT_SCOPE;
-  const showFriendlyStats = isFriendlyMatchType && !isViewingPreviousSeason;
+  const isViewingPreviousSeason = !isFriendlyMatchType && seasonScope !== CURRENT_SCOPE;
+  const showFriendlyStats = isFriendlyMatchType;
 
   const hasCurrentSeasonMatchHistory = useMemo(() => {
     return safeMatchDayHistory.some((day) => {
@@ -833,9 +915,25 @@ export function StatsPage({
   ]);
 
   const [viewMode, setViewMode] = useState("current");
+  const FRIENDLY_PREVIOUS_MONTH_SCOPE = "__FRIENDLY_PREVIOUS_MONTH__";
+  const [friendlyMonthScope, setFriendlyMonthScope] = useState(CURRENT_SCOPE);
+
   useEffect(() => {
     if (isViewingPreviousSeason) setViewMode("season");
   }, [isViewingPreviousSeason]);
+
+  useEffect(() => {
+    if (!showFriendlyStats) {
+      setFriendlyMonthScope(CURRENT_SCOPE);
+    }
+  }, [showFriendlyStats]);
+
+  useEffect(() => {
+    if (showFriendlyStats && friendlyMonthScope === FRIENDLY_PREVIOUS_MONTH_SCOPE) {
+      setViewMode("season");
+    }
+  }, [showFriendlyStats, friendlyMonthScope]);
+
 
   const seasonResults = useMemo(
     () => [...scopedArchivedResults, ...scopedCurrentResults],
@@ -847,29 +945,104 @@ export function StatsPage({
     [scopedArchivedEvents, scopedCurrentEvents]
   );
 
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const friendlyDateWindow = useMemo(() => {
+    const now = new Date();
+    const today = startOfLocalDay(now);
+
+    const currentWeekStart = new Date(today);
+    currentWeekStart.setDate(today.getDate() - today.getDay());
+
+    const currentWeekEnd = new Date(currentWeekStart);
+    currentWeekEnd.setDate(currentWeekStart.getDate() + 7);
+
+    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const previousMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+
+    return {
+      currentWeekStart,
+      currentWeekEnd,
+      currentMonthStart,
+      nextMonthStart,
+      previousMonthStart,
+    };
+  }, []);
+
+  const isFriendlyRecordInWindow = (record, mode) => {
+    const iso = friendlyDateFromRecord(record);
+    if (!iso) return false;
+
+    const d = startOfLocalDay(`${iso}T00:00:00`);
+    const {
+      currentWeekStart,
+      currentWeekEnd,
+      currentMonthStart,
+      nextMonthStart,
+      previousMonthStart,
+    } = friendlyDateWindow;
+
+    if (friendlyMonthScope === FRIENDLY_PREVIOUS_MONTH_SCOPE) {
+      return d >= previousMonthStart && d < currentMonthStart;
+    }
+
+    if (mode === "season") {
+      return d >= currentMonthStart && d < nextMonthStart;
+    }
+
+    return d >= currentWeekStart && d < currentWeekEnd;
+  };
+
   const visibleResultsRaw = useMemo(() => {
     if (isViewingPreviousSeason) return seasonResults;
+
+    if (showFriendlyStats) {
+      return (seasonResults || []).filter((r) =>
+        isFriendlyRecordInWindow(r, viewMode)
+      );
+    }
+
     return viewMode === "season" ? seasonResults : scopedCurrentResults;
   }, [
     isViewingPreviousSeason,
+    showFriendlyStats,
     viewMode,
     seasonResults,
     scopedCurrentResults,
+    friendlyDateWindow,
+    friendlyMonthScope,
   ]);
 
   const visibleEventsRaw = useMemo(() => {
     if (isViewingPreviousSeason) return seasonEventsRaw;
+
+    if (showFriendlyStats) {
+      return (seasonEventsRaw || []).filter((e) =>
+        isFriendlyRecordInWindow(e, viewMode)
+      );
+    }
+
     return viewMode === "season" ? seasonEventsRaw : scopedCurrentEvents;
   }, [
     isViewingPreviousSeason,
+    showFriendlyStats,
     viewMode,
     seasonEventsRaw,
     scopedCurrentEvents,
+    friendlyDateWindow,
+    friendlyMonthScope,
   ]);
+
+  const statsResultsRawForView = visibleResultsRaw;
+  const statsEventsRawForView = visibleEventsRaw;
 
   const visibleEvents = useMemo(() => {
     return dedupeEvents(
-      (visibleEventsRaw || [])
+      (statsEventsRawForView || [])
         .filter((e) => e?.type !== "shibobo")
         .map((e) => ({
           ...e,
@@ -878,7 +1051,7 @@ export function StatsPage({
           playerName: resolveCanonicalName(e?.playerName),
         }))
     );
-  }, [visibleEventsRaw, resolveCanonicalName]);
+  }, [statsEventsRawForView, resolveCanonicalName]);
 
   const teamById = useMemo(() => {
     const map = new Map();
@@ -1068,7 +1241,7 @@ export function StatsPage({
       };
     });
 
-    (visibleResultsRaw || []).forEach((r) => {
+    (statsResultsRawForView || []).forEach((r) => {
       const a = base[r?.teamAId];
       const b = base[r?.teamBId];
       if (!a || !b) return;
@@ -1113,7 +1286,7 @@ export function StatsPage({
     });
 
     return arr;
-  }, [scopedTeams, visibleResultsRaw]);
+  }, [scopedTeams, statsResultsRawForView]);
 
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
 
@@ -1401,7 +1574,7 @@ export function StatsPage({
 
   const matchDayOptions = useMemo(() => {
     const map = new Map();
-    (visibleResultsRaw || []).forEach((r) => {
+    (statsResultsRawForView || []).forEach((r) => {
       const id = r?._tkMatchDayId || "UNKNOWN";
       const label =
         isoDateOnly(r?._tkMatchDayLabel) ||
@@ -1422,7 +1595,7 @@ export function StatsPage({
 
     arr.sort((a, b) => toSortable(b.id) - toSortable(a.id));
     return arr;
-  }, [visibleResultsRaw]);
+  }, [statsResultsRawForView]);
 
   const [matchDayFilter, setMatchDayFilter] = useState("ALL");
 
@@ -1431,11 +1604,11 @@ export function StatsPage({
   }, [seasonScope, viewMode]);
 
   const filteredResults = useMemo(() => {
-    if (matchDayFilter === "ALL") return visibleResultsRaw || [];
-    return (visibleResultsRaw || []).filter(
+    if (matchDayFilter === "ALL") return statsResultsRawForView || [];
+    return (statsResultsRawForView || []).filter(
       (r) => (r?._tkMatchDayId || "UNKNOWN") === matchDayFilter
     );
-  }, [visibleResultsRaw, matchDayFilter]);
+  }, [statsResultsRawForView, matchDayFilter]);
 
   const filteredEvents = useMemo(() => {
     if (matchDayFilter === "ALL") return visibleEvents || [];
@@ -1444,11 +1617,65 @@ export function StatsPage({
     );
   }, [visibleEvents, matchDayFilter]);
 
+  const friendlyDisplayResults = useMemo(() => {
+    if (!showFriendlyStats) return [];
+
+    const arr = (filteredResults || []).map((r, originalIndex) => ({
+      ...r,
+      _tkFriendlyDate: friendlyDateFromRecord(r),
+      _tkOriginalIndex: originalIndex,
+    }));
+
+    arr.sort((a, b) => {
+      const ad = a?._tkFriendlyDate ? new Date(`${a._tkFriendlyDate}T00:00:00`) : null;
+      const bd = b?._tkFriendlyDate ? new Date(`${b._tkFriendlyDate}T00:00:00`) : null;
+      const at = ad && !Number.isNaN(ad.getTime()) ? ad.getTime() : 0;
+      const bt = bd && !Number.isNaN(bd.getTime()) ? bd.getTime() : 0;
+      if (bt !== at) return bt - at;
+
+      const bm = Number(b?.matchNo || 0);
+      const am = Number(a?.matchNo || 0);
+      if (bm !== am) return bm - am;
+
+      return Number(b?._tkOriginalIndex || 0) - Number(a?._tkOriginalIndex || 0);
+    });
+
+    const uniqueDatesNewest = [];
+    arr.forEach((r) => {
+      const d = r?._tkFriendlyDate || "";
+      if (d && !uniqueDatesNewest.includes(d)) uniqueDatesNewest.push(d);
+    });
+
+    const seenByDate = {};
+
+    return arr.map((r) => {
+      const dateKey = r?._tkFriendlyDate || "UNKNOWN";
+      const duplicateIndex = seenByDate[dateKey] || 0;
+      seenByDate[dateKey] = duplicateIndex + 1;
+
+      const dateRank = uniqueDatesNewest.indexOf(dateKey);
+      const label = formatFriendlyDayLabel(
+        dateKey,
+        dateRank >= 0 ? dateRank : duplicateIndex
+      );
+
+      return {
+        ...r,
+        _tkFriendlyDuplicateIndex: duplicateIndex,
+        _tkFriendlyDayLabel: `${label}${formatFriendlyDuplicateSuffix(duplicateIndex)}`,
+      };
+    });
+  }, [filteredResults, showFriendlyStats]);
+
   const sortedResults = useMemo(() => {
+    if (showFriendlyStats) {
+      return friendlyDisplayResults;
+    }
+
     const arr = (filteredResults || []).slice();
     arr.sort((a, b) => Number(a?.matchNo || 0) - Number(b?.matchNo || 0));
     return arr;
-  }, [filteredResults]);
+  }, [filteredResults, friendlyDisplayResults, showFriendlyStats, viewMode]);
 
   const matchKeyOf = (r) =>
     `${r?._tkMatchDayId || "UNKNOWN"}::${Number(r?.matchNo || 0)}`;
@@ -1469,10 +1696,6 @@ export function StatsPage({
   }, [filteredEvents]);
 
   const [expandedMatchKey, setExpandedMatchKey] = useState(null);
-
-  useEffect(() => {
-    setExpandedMatchKey(null);
-  }, [matchDayFilter, seasonScope, viewMode]);
 
   const toggleMatchDetails = (key) => {
     setExpandedMatchKey((prev) => (prev === key ? null : key));
@@ -1640,17 +1863,62 @@ export function StatsPage({
   }, [addingForMatchKey, newEventDraft.teamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const canDeleteFromThisView =
-    canAdminEditThisView && typeof onDeleteSavedMatch === "function";
+    isAdminUser &&
+    !isViewingPreviousSeason &&
+    typeof onDeleteSavedMatch === "function" &&
+    (canAdminEditThisView || showFriendlyStats);
 
-  const handleDeleteMatch = (matchNo) => {
+  const handleDeleteMatch = (recordOrMatchNo) => {
     if (!canDeleteFromThisView) return;
 
+    const isRecord =
+      recordOrMatchNo &&
+      typeof recordOrMatchNo === "object" &&
+      !Array.isArray(recordOrMatchNo);
+
+    const matchNo = isRecord ? recordOrMatchNo?.matchNo : recordOrMatchNo;
+    const recordMatchType = isRecord
+      ? inferStatsRecordType(recordOrMatchNo)
+      : showFriendlyStats
+        ? "FRIENDLY"
+        : "LEAGUE";
+
+    if (showFriendlyStats && recordMatchType !== "FRIENDLY") {
+      window.alert(
+        "Delete blocked: this does not look like a Friendly record, so it will not be deleted from Friendlies View."
+      );
+      return;
+    }
+
+    if (!showFriendlyStats && recordMatchType !== "LEAGUE") {
+      window.alert(
+        "Delete blocked: this does not look like a League record, so it will not be deleted from League View."
+      );
+      return;
+    }
+
+    const formatLabel = isRecord
+      ? formatStatsGameFormatLabel(getStatsGameFormat(recordOrMatchNo, gameFormat))
+      : formatStatsGameFormatLabel(gameFormat);
+
+    const friendlyLabel = isRecord
+      ? recordOrMatchNo?._tkFriendlyDayLabel || friendlyDateFromRecord(recordOrMatchNo)
+      : "";
+
+    const confirmTitle = showFriendlyStats
+      ? `Delete Friendly Day${friendlyLabel ? ` (${friendlyLabel})` : ""}?`
+      : `Delete saved match #${matchNo} from the current week?`;
+
     const ok = window.confirm(
-      `Delete saved match #${matchNo} from the current week?\n\nThis will remove the match result and all linked scorer/assist events for that match.`
+      `${confirmTitle}\n\nThis will remove the match result and all linked scorer/assist events for that match.`
     );
     if (!ok) return;
 
-    onDeleteSavedMatch(matchNo);
+    onDeleteSavedMatch(matchNo, {
+      matchType: recordMatchType,
+      gameFormat: isRecord ? getStatsGameFormat(recordOrMatchNo, gameFormat) : gameFormat,
+      matchDayId: isRecord ? recordOrMatchNo?._tkMatchDayId || null : null,
+    });
     setExpandedMatchKey(null);
     cancelEditEvent();
     cancelAddEvent();
@@ -1718,12 +1986,39 @@ export function StatsPage({
   }, [cameFromLive, onBack]);
 
   const [activeTab, setActiveTab] = useState("teams");
+  const [isManagingFriendlyDay, setIsManagingFriendlyDay] = useState(false);
+
+  useEffect(() => {
+    if (
+      !showFriendlyStats ||
+      viewMode !== "current" ||
+      friendlyMonthScope !== CURRENT_SCOPE ||
+      activeTab !== "matches"
+    ) {
+      setIsManagingFriendlyDay(false);
+    }
+  }, [showFriendlyStats, viewMode, friendlyMonthScope, activeTab]);
 
   useEffect(() => {
     if (showFriendlyStats && activeTab === "teams") {
       setActiveTab("combined");
     }
   }, [showFriendlyStats, activeTab]);
+
+
+  useEffect(() => {
+    if (
+      showFriendlyStats &&
+      activeTab === "matches" &&
+      viewMode === "current" &&
+      sortedResults.length > 0
+    ) {
+      setExpandedMatchKey(matchKeyOf(sortedResults[0]));
+      return;
+    }
+
+    setExpandedMatchKey(null);
+  }, [matchDayFilter, seasonScope, viewMode, showFriendlyStats, activeTab, sortedResults]);
 
   const currentSeasonRange = useMemo(() => {
     const now = new Date();
@@ -1739,6 +2034,28 @@ export function StatsPage({
     const { startISO, endISO } = getSeasonDateBounds(selectedPrevSeason);
     return monthRangeLabel(startISO, endISO);
   }, [selectedPrevSeason]);
+
+  const friendlyCurrentMonthLabel = useMemo(() => {
+    const now = new Date();
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      year: "numeric",
+    }).format(now);
+  }, []);
+
+  const friendlyPreviousMonthLabel = useMemo(() => {
+    const now = new Date();
+    const previous = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      year: "numeric",
+    }).format(previous);
+  }, []);
+
+  const friendlyMonthContextLabel =
+    friendlyMonthScope === FRIENDLY_PREVIOUS_MONTH_SCOPE
+      ? `Previous month • ${friendlyPreviousMonthLabel}`
+      : `Current month • ${friendlyCurrentMonthLabel}`;
 
   const seasonContextTitle = useMemo(() => {
     if (!isViewingPreviousSeason) return "Current season";
@@ -2014,24 +2331,104 @@ export function StatsPage({
       </section>
       )}
 
-      {!isViewingPreviousSeason && (
+      {showFriendlyStats && (
         <section className="card">
-          <h2>{showFriendlyStats ? "Friendly View" : "View"}</h2>
-          <div className="stats-controls">
-            <div className="stats-controls-left">
+          <h2>Month</h2>
+
+          <div className="muted stats-context-line" style={{ marginBottom: "0.75rem" }}>
+            <strong>{friendlyMonthContextLabel}</strong> •{" "}
+            <span>{viewMode === "current" && friendlyMonthScope === CURRENT_SCOPE ? "Current week" : "Full month"}</span>
+          </div>
+
+          <div className="stats-controls stats-controls-align-center">
+            <div className="stats-controls-left stats-controls-left-wide">
               <div className="segment-wrapper">
                 <div className="segmented-toggle">
                   <button
                     type="button"
                     className={
-                      viewMode === "current"
+                      friendlyMonthScope === CURRENT_SCOPE
                         ? "segmented-option active"
                         : "segmented-option"
                     }
-                    onClick={() => setViewMode("current")}
+                    onClick={() => setFriendlyMonthScope(CURRENT_SCOPE)}
                   >
-                    {showFriendlyStats ? "Current friendly day" : "Current week"}
+                    Current
                   </button>
+
+                  <button
+                    type="button"
+                    className={
+                      friendlyMonthScope === FRIENDLY_PREVIOUS_MONTH_SCOPE
+                        ? "segmented-option active"
+                        : "segmented-option"
+                    }
+                    onClick={() => setFriendlyMonthScope(FRIENDLY_PREVIOUS_MONTH_SCOPE)}
+                  >
+                    Previous
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!isViewingPreviousSeason && (
+        <section className="card">
+          {showFriendlyStats ? (
+            <div className="tk-friendly-view-header-row">
+              <h2>Friendlies View</h2>
+
+              {isAdminUser &&
+                friendlyMonthScope === CURRENT_SCOPE &&
+                viewMode === "current" &&
+                sortedResults.length > 0 && (
+                <button
+                  type="button"
+                  className={
+                    isManagingFriendlyDay
+                      ? "tk-manage-friendly-btn active"
+                      : "tk-manage-friendly-btn"
+                  }
+                  onClick={() => {
+                    if (isManagingFriendlyDay) {
+                      setIsManagingFriendlyDay(false);
+                      return;
+                    }
+
+                    setFriendlyMonthScope(CURRENT_SCOPE);
+                    setViewMode("current");
+                    setActiveTab("matches");
+                    setIsManagingFriendlyDay(true);
+                  }}
+                >
+                  {isManagingFriendlyDay
+                    ? "Done Editing"
+                    : "Edit Goal"}
+                </button>
+              )}
+            </div>
+          ) : (
+            <h2>View</h2>
+          )}
+          <div className="stats-controls">
+            <div className="stats-controls-left">
+              <div className="segment-wrapper">
+                <div className="segmented-toggle">
+                  {!(showFriendlyStats && friendlyMonthScope === FRIENDLY_PREVIOUS_MONTH_SCOPE) && (
+                    <button
+                      type="button"
+                      className={
+                        viewMode === "current"
+                          ? "segmented-option active"
+                          : "segmented-option"
+                      }
+                      onClick={() => setViewMode("current")}
+                    >
+                      Current week
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={
@@ -2041,7 +2438,7 @@ export function StatsPage({
                     }
                     onClick={() => setViewMode("season")}
                   >
-                    {showFriendlyStats ? "All friendlies" : "Full season"}
+                    {showFriendlyStats ? "Full month" : "Full season"}
                   </button>
                 </div>
               </div>
@@ -2452,18 +2849,22 @@ export function StatsPage({
                 ? "All Match Results — Previous Season Preview"
                 : "All Match Results — Previous Season"
               : showFriendlyStats
-                ? viewMode === "season"
-                  ? "All Match Results — All Friendlies"
-                  : "All Match Results — Current Friendly Day"
+                ? friendlyMonthScope === FRIENDLY_PREVIOUS_MONTH_SCOPE
+                  ? "All Match Results — Previous Month"
+                  : viewMode === "season"
+                    ? "All Match Results — Full Month"
+                    : "All Match Results — Current Week"
                 : viewMode === "season"
                   ? "All Match Results — Current Season"
                   : "All Match Results — Current Week"}
           </h2>
           <p className="muted">
-            Tap a match row to see goal scorers and assists for that game.
+            {showFriendlyStats && viewMode === "current" && friendlyMonthScope === CURRENT_SCOPE
+              ? "Current week friendly scoreline and goal breakdown."
+              : "Tap a match row to see goal scorers and assists for that game."}
           </p>
 
-          {viewMode === "season" && (
+          {viewMode === "season" && !showFriendlyStats && (
             <div className="tk-matchday-filter-row">
               <button
                 className={matchDayFilter === "ALL" ? "tk-md-btn active" : "tk-md-btn"}
@@ -2491,11 +2892,318 @@ export function StatsPage({
             </div>
           )}
 
+          {showFriendlyStats && viewMode === "current" && friendlyMonthScope === CURRENT_SCOPE ? (
+            <div className="tk-friendly-recap-wrap">
+              {sortedResults.length === 0 ? (
+                <p className="muted">No matches played yet.</p>
+              ) : (
+                <ul className="news-match-list tk-friendly-recap-list">
+                  {sortedResults.map((r) => {
+                    const teamAName = getTeamName(r.teamAId);
+                    const teamBName = getTeamName(r.teamBId);
+                    const mk = matchKeyOf(r);
+                    const events = (eventsByMatchKey.get(mk) || [])
+                      .filter((e) => e?.type !== "clean_sheet")
+                      .slice()
+                      .sort(
+                        (a, b) =>
+                          Number(a?.timeSeconds || 0) -
+                          Number(b?.timeSeconds || 0)
+                      );
+
+                    const friendlyLabel = r._tkFriendlyDayLabel || "Today";
+
+                    return (
+                      <li key={mk} className="news-match-item tk-friendly-recap-item">
+                        <div className="news-match-header">
+                          <span className="news-match-number">
+                            Friendly day — {friendlyLabel}
+                          </span>
+                          <span className="news-match-scoreline">
+                            <span>{teamAName}</span>
+                            <span className="score">
+                              {r.goalsA} – {r.goalsB}
+                            </span>
+                            <span>{teamBName}</span>
+                          </span>
+                        </div>
+
+                        {isManagingFriendlyDay && canDeleteFromThisView && (
+                          <div className="tk-friendly-manage-panel">
+                            <div className="tk-friendly-manage-title">
+                              Admin controls
+                            </div>
+
+                            <div className="tk-friendly-manage-actions">
+                              {canAdminEditThisView && typeof onAddSavedEvent === "function" && (
+                                <button
+                                  type="button"
+                                  className="tk-edit-btn"
+                                  onClick={() => startAddEvent(r, r.teamAId)}
+                                >
+                                  Add missing goal
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                className="tk-danger-btn"
+                                onClick={() => handleDeleteMatch(r)}
+                              >
+                                Delete Friendly Day
+                              </button>
+                            </div>
+
+                            {addingForMatchKey === mk && (
+                              <div className="tk-admin-panel tk-admin-panel-spaced">
+                                <div className="tk-admin-grid">
+                                  <div>
+                                    <label className="tk-small-label">Scorer</label>
+                                    <select
+                                      className="tk-small-select"
+                                      value={newEventDraft.scorer}
+                                      onChange={(evt) =>
+                                        setNewEventDraft((prev) => ({
+                                          ...prev,
+                                          scorer: evt.target.value,
+                                        }))
+                                      }
+                                    >
+                                      <option value="">Select player</option>
+                                      {getPlayersForTeam(newEventDraft.teamId).map((name) => (
+                                        <option key={`friendly-add-scorer-${name}`} value={name}>
+                                          {name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="tk-small-label">Assist</label>
+                                    <select
+                                      className="tk-small-select"
+                                      value={newEventDraft.assist || ""}
+                                      onChange={(evt) =>
+                                        setNewEventDraft((prev) => ({
+                                          ...prev,
+                                          assist: evt.target.value,
+                                        }))
+                                      }
+                                    >
+                                      <option value="">None</option>
+                                      {getPlayersForTeam(newEventDraft.teamId)
+                                        .filter((name) => name !== newEventDraft.scorer)
+                                        .map((name) => (
+                                          <option key={`friendly-add-assist-${name}`} value={name}>
+                                            {name}
+                                          </option>
+                                        ))}
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="tk-small-label">Team</label>
+                                    <select
+                                      className="tk-small-select"
+                                      value={newEventDraft.teamId}
+                                      onChange={(evt) =>
+                                        setNewEventDraft((prev) => ({
+                                          ...prev,
+                                          teamId: evt.target.value,
+                                        }))
+                                      }
+                                    >
+                                      <option value={r.teamAId}>{teamAName}</option>
+                                      <option value={r.teamBId}>{teamBName}</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                <div className="tk-inline-actions">
+                                  <button
+                                    type="button"
+                                    className="tk-edit-btn"
+                                    onClick={() => saveAddEvent(r)}
+                                  >
+                                    Save new goal
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="secondary-btn"
+                                    onClick={cancelAddEvent}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {events.length === 0 ? (
+                          <p className="muted small">
+                            No goal or assist breakdown recorded for this friendly.
+                          </p>
+                        ) : (
+                          <ul className="news-event-list">
+                            {events.map((e, i) => {
+                              const actionLabel = formatEventTypeLabel(e.type, e.role);
+                              const assistPart = e.assist
+                                ? ` (assist: ${e.assist})`
+                                : "";
+                              const eventTeamName = getTeamName(e.teamId);
+                              const teamSuffix =
+                                eventTeamName && eventTeamName !== "Unknown"
+                                  ? `, ${eventTeamName}`
+                                  : "";
+                              const isEditingThisEvent =
+                                editingEventId === String(e?.id || "");
+                              const editPlayers = getPlayersForTeam(eventDraft.teamId);
+                              const editAssistPlayers = editPlayers.filter(
+                                (name) => name !== eventDraft.scorer
+                              );
+
+                              return (
+                                <li
+                                  key={e.id || `${mk}-friendly-event-${i}`}
+                                  className={
+                                    isEditingThisEvent
+                                      ? "news-event-item tk-friendly-event-editing"
+                                      : "news-event-item"
+                                  }
+                                >
+                                  <span className="news-event-time">
+                                    {formatSecondsSafe(e.timeSeconds)}
+                                  </span>
+
+                                  <span className="news-event-text">
+                                    <strong>
+                                      {i + 1}. {actionLabel === "goal" ? "Goal" : actionLabel}
+                                    </strong>{" "}
+                                    – {e.scorer || e.playerName || "Unknown player"}
+                                    {assistPart}
+                                    {teamSuffix}
+
+                                    {isManagingFriendlyDay && canAdminEditThisView && !isEditingThisEvent && (
+                                      <span className="tk-friendly-event-actions">
+                                        <button
+                                          type="button"
+                                          className="tk-linkish-btn"
+                                          onClick={() => startEditEvent(e)}
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="tk-linkish-btn"
+                                          onClick={() => handleDeleteEvent(e)}
+                                        >
+                                          Delete
+                                        </button>
+                                      </span>
+                                    )}
+
+                                    {isEditingThisEvent && (
+                                      <div className="tk-admin-panel tk-admin-panel-spaced tk-friendly-inline-edit">
+                                        <div className="tk-admin-grid">
+                                          <div>
+                                            <label className="tk-small-label">Scorer</label>
+                                            <select
+                                              className="tk-small-select"
+                                              value={eventDraft.scorer}
+                                              onChange={(evt) =>
+                                                setEventDraft((prev) => ({
+                                                  ...prev,
+                                                  scorer: evt.target.value,
+                                                }))
+                                              }
+                                            >
+                                              <option value="">Select player</option>
+                                              {editPlayers.map((name) => (
+                                                <option key={`friendly-edit-scorer-${name}`} value={name}>
+                                                  {name}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          <div>
+                                            <label className="tk-small-label">Assist</label>
+                                            <select
+                                              className="tk-small-select"
+                                              value={eventDraft.assist || ""}
+                                              onChange={(evt) =>
+                                                setEventDraft((prev) => ({
+                                                  ...prev,
+                                                  assist: evt.target.value,
+                                                }))
+                                              }
+                                            >
+                                              <option value="">None</option>
+                                              {editAssistPlayers.map((name) => (
+                                                <option key={`friendly-edit-assist-${name}`} value={name}>
+                                                  {name}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          <div>
+                                            <label className="tk-small-label">Team</label>
+                                            <select
+                                              className="tk-small-select"
+                                              value={eventDraft.teamId}
+                                              onChange={(evt) =>
+                                                setEventDraft((prev) => ({
+                                                  ...prev,
+                                                  teamId: evt.target.value,
+                                                }))
+                                              }
+                                            >
+                                              <option value={r.teamAId}>{teamAName}</option>
+                                              <option value={r.teamBId}>{teamBName}</option>
+                                            </select>
+                                          </div>
+                                        </div>
+
+                                        <div className="tk-inline-actions">
+                                          <button
+                                            type="button"
+                                            className="tk-edit-btn"
+                                            onClick={() => saveEditEvent(e)}
+                                          >
+                                            Save event
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="secondary-btn"
+                                            onClick={cancelEditEvent}
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+
+
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          ) : (
           <div className="table-wrapper">
             <table className="stats-table">
               <thead>
                 <tr>
-                  <th>Match #</th>
+                  <th>{showFriendlyStats ? "Friendly Day" : "Match #"}</th>
                   <th>Team A</th>
                   <th>Score</th>
                   <th>Team B</th>
@@ -2563,8 +3271,8 @@ export function StatsPage({
                           <span className="match-toggle-indicator">
                             {isExpanded ? "▾" : "▸"}
                           </span>{" "}
-                          {r.matchNo}
-                          {matchDayFilter === "ALL" && mdLabel ? (
+                          {showFriendlyStats ? r._tkFriendlyDayLabel || "Friendly" : r.matchNo}
+                          {!showFriendlyStats && matchDayFilter === "ALL" && mdLabel ? (
                             <span className="tk-md-muted">{mdLabel}</span>
                           ) : null}
                         </td>
@@ -2919,7 +3627,7 @@ export function StatsPage({
                             )}
                           </td>
                           <td>
-                            {canAdminEditThisView && (
+                            {(canAdminEditThisView || canDeleteFromThisView) && (
                               <div
                                 className="tk-match-admin-box"
                                 onClick={(evt) => evt.stopPropagation()}
@@ -2929,7 +3637,7 @@ export function StatsPage({
                                 </div>
 
                                 <div className="tk-match-admin-row">
-                                  {typeof onAddSavedEvent === "function" && (
+                                  {canAdminEditThisView && typeof onAddSavedEvent === "function" && (
                                     <button
                                       type="button"
                                       className="tk-edit-btn"
@@ -2939,13 +3647,13 @@ export function StatsPage({
                                     </button>
                                   )}
 
-                                  {typeof onDeleteSavedMatch === "function" && (
+                                  {canDeleteFromThisView && (
                                     <button
                                       type="button"
                                       className="tk-danger-btn"
-                                      onClick={() => handleDeleteMatch(r.matchNo)}
+                                      onClick={() => handleDeleteMatch(r)}
                                     >
-                                      Delete match
+                                      {showFriendlyStats ? "Delete Friendly Day" : "Delete match"}
                                     </button>
                                   )}
                                 </div>
@@ -3069,8 +3777,238 @@ export function StatsPage({
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
+
+      <style>{`
+        .tk-friendly-recap-wrap {
+          margin-top: 0.85rem;
+          overflow: visible;
+        }
+
+        .tk-friendly-recap-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: grid;
+          gap: 0.95rem;
+        }
+
+        .tk-friendly-recap-item {
+          border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+          padding-bottom: 0.85rem;
+        }
+
+        .tk-friendly-recap-item:last-child {
+          border-bottom: 0;
+          padding-bottom: 0;
+        }
+
+        .news-match-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 0.8rem;
+          align-items: flex-start;
+          flex-wrap: wrap;
+        }
+
+        .news-match-number {
+          color: rgba(226, 232, 240, 0.86);
+          font-size: 0.92rem;
+        }
+
+        .news-match-scoreline {
+          display: inline-flex;
+          gap: 0.45rem;
+          align-items: baseline;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          font-weight: 800;
+        }
+
+        .news-match-scoreline .score {
+          font-size: 1.25rem;
+          color: #f8fafc;
+          white-space: nowrap;
+        }
+
+        .news-event-list {
+          list-style: none;
+          padding: 0;
+          margin: 0.55rem 0 0;
+          display: grid;
+          gap: 0.35rem;
+        }
+
+        .news-event-item {
+          display: grid;
+          grid-template-columns: 3.3rem minmax(0, 1fr);
+          gap: 0.45rem;
+          align-items: start;
+          line-height: 1.45;
+        }
+
+        .news-event-time {
+          color: rgba(203, 213, 225, 0.78);
+          font-variant-numeric: tabular-nums;
+        }
+
+        .news-event-text {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+
+        
+        .tk-friendly-view-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1rem;
+          margin-bottom: 1rem;
+          flex-wrap: nowrap;
+          width: 100%;
+        }
+
+        .tk-friendly-view-header-row h2{
+          margin:0;
+          line-height: 1;
+        }
+
+.tk-results-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.8rem;
+          flex-wrap: wrap;
+        }
+
+        .tk-results-header-row h2 {
+          margin-bottom: 0;
+        }
+
+        .tk-manage-friendly-btn {
+          margin: 0;
+          animation: tk-dim-admin-pulse 2.8s ease-in-out infinite;
+          border: 1px solid rgba(125, 211, 252, 0.7);
+          background: linear-gradient(
+            135deg,
+            rgba(15, 23, 42, 0.9),
+            rgba(14, 165, 233, 0.22)
+          );
+          color: #e0f2fe;
+          border-radius: 999px;
+          padding: 0.5rem 0.82rem;
+          font-weight: 800;
+          cursor: pointer;
+          box-shadow:
+            inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+            0 0 0 0 rgba(56, 189, 248, 0.0);
+          white-space: nowrap;
+          line-height: 1;
+        }
+
+        .tk-manage-friendly-btn.active {
+          animation: none;
+          background: linear-gradient(135deg, #22c55e, #38bdf8);
+          color: #02111f;
+          box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+        }
+
+        .tk-friendly-event-actions {
+          display: inline-flex;
+          gap: 0.45rem;
+          margin-left: 0.55rem;
+          flex-wrap: wrap;
+        }
+
+        .tk-friendly-event-editing {
+          align-items: start;
+        }
+
+        .tk-friendly-inline-edit {
+          margin-top: 0.5rem;
+        }
+
+        .tk-friendly-manage-panel {
+          margin: 0.85rem 0 1rem;
+          padding: 0.85rem;
+          border: 1px solid rgba(56, 189, 248, 0.22);
+          border-radius: 16px;
+          background: rgba(2, 25, 40, 0.35);
+        }
+
+        .tk-friendly-manage-title {
+          font-weight: 900;
+          margin-bottom: 0.55rem;
+          color: rgba(226, 232, 240, 0.92);
+        }
+
+        .tk-friendly-manage-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.65rem;
+          flex-wrap: wrap;
+        }
+
+        @keyframes tk-dim-admin-pulse {
+          0%, 100% {
+            border-color: rgba(125, 211, 252, 0.55);
+            background: linear-gradient(
+              135deg,
+              rgba(15, 23, 42, 0.9),
+              rgba(14, 165, 233, 0.18)
+            );
+            box-shadow:
+              inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+              0 0 0 0 rgba(56, 189, 248, 0.0);
+            filter: brightness(1);
+          }
+          50% {
+            border-color: rgba(186, 230, 253, 0.98);
+            background: linear-gradient(
+              135deg,
+              rgba(8, 47, 73, 0.95),
+              rgba(56, 189, 248, 0.38)
+            );
+            box-shadow:
+              inset 0 0 16px rgba(56, 189, 248, 0.20),
+              0 0 10px rgba(56, 189, 248, 0.18);
+            filter: brightness(1.04);
+          }
+        }
+
+        @media (max-width: 520px) {
+          .tk-friendly-view-header-row{
+            gap:0.75rem;
+          }
+
+          .tk-manage-friendly-btn{
+            padding: 0.45rem 0.7rem;
+            font-size: 0.82rem;
+          }
+
+
+          .tk-results-header-row {
+            align-items: flex-start;
+            flex-direction: column;
+          }
+
+          .tk-manage-friendly-btn {
+            align-self: flex-end;
+          }
+
+          .tk-friendly-manage-actions {
+            justify-content: stretch;
+          }
+
+          .tk-friendly-manage-actions button {
+            flex: 1 1 auto;
+          }
+        }
+
+      `}</style>
+
     </div>
   );
 }

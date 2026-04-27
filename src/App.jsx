@@ -3019,10 +3019,59 @@ export default function App() {
     setPage(PAGE_LANDING);
   };
 
-  const handleDeleteSavedMatch = (matchNoToDelete) => {
+  const handleDeleteSavedMatch = (matchNoToDelete, deleteContext = {}) => {
     if (!USE_V2) return;
 
+    const requestedMatchType = normalizeMatchMode(
+      deleteContext?.matchType || matchType,
+      MATCH_TYPE.LEAGUE
+    );
+    const requestedMatchDayId = String(deleteContext?.matchDayId || "").trim();
+
     updateActiveSeason((prevSeason) => {
+      if (requestedMatchType === MATCH_TYPE.FRIENDLY) {
+        const safeFriendlyHistory = Array.isArray(prevSeason?.friendlyMatchDayHistory)
+          ? prevSeason.friendlyMatchDayHistory
+          : [];
+
+        const nextFriendlyHistory = safeFriendlyHistory
+          .map((day) => {
+            const dayId = String(day?.id || day?.matchDayId || day?.date || "").trim();
+
+            // Preferred path: one Friendly record represents one Friendly day/match.
+            // Remove the whole archived friendly entry when the IDs match.
+            if (requestedMatchDayId && dayId && dayId === requestedMatchDayId) {
+              return null;
+            }
+
+            const dayResults = Array.isArray(day?.results) ? day.results : [];
+            const dayEvents = Array.isArray(day?.allEvents) ? day.allEvents : [];
+
+            const nextResults = dayResults.filter(
+              (r) => Number(r?.matchNo) !== Number(matchNoToDelete)
+            );
+            const nextEvents = dayEvents.filter(
+              (e) => Number(e?.matchNo) !== Number(matchNoToDelete)
+            );
+
+            if (nextResults.length === 0 && nextEvents.length === 0) {
+              return null;
+            }
+
+            return {
+              ...day,
+              results: nextResults,
+              allEvents: nextEvents,
+            };
+          })
+          .filter(Boolean);
+
+        return {
+          ...prevSeason,
+          friendlyMatchDayHistory: nextFriendlyHistory,
+        };
+      }
+
       const safeResults = Array.isArray(prevSeason?.results)
         ? prevSeason.results
         : [];
