@@ -139,6 +139,32 @@ function renderTileContent({ isMobile, icon, desktopLines, mobileLines }) {
   );
 }
 
+function renderPublicImageIcon({
+  src,
+  alt = "",
+  isMobile,
+  mobileSize = 32,
+  desktopSize = 30,
+  glow = true,
+}) {
+  const size = isMobile ? mobileSize : desktopSize;
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      style={{
+        width: size,
+        height: size,
+        objectFit: "contain",
+        display: "block",
+        filter: glow ? "drop-shadow(0 0 7px rgba(56,189,248,0.45))" : "none",
+      }}
+      draggable="false"
+    />
+  );
+}
+
 export function LandingPage({
   teams,
   currentMatchNo,
@@ -1058,7 +1084,18 @@ export function LandingPage({
             >
               {renderTileContent({
                 isMobile,
-                icon: "📰",
+                icon: (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: isMobile ? "1.55rem" : "1.38rem",
+                      lineHeight: 1,
+                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
+                    }}
+                  >
+                    📰
+                  </span>
+                ),
                 desktopLines: ["News &", "Highlights"],
                 mobileLines: ["News &", "Highlights"],
               })}
@@ -1171,9 +1208,15 @@ export function LandingPage({
             >
               {renderTileContent({
                 isMobile,
-                icon: "📷📲",
-                desktopLines: ["View", "Highlights"],
-                mobileLines: ["View", "Highlights"],
+                icon: renderPublicImageIcon({
+                  src: "/videotape.png",
+                  alt: "",
+                  isMobile,
+                  mobileSize: 31,
+                  desktopSize: 28,
+                }),
+                desktopLines: ["Video", "Highlights"],
+                mobileLines: ["Video", "Highlights"],
               })}
             </button>
 
@@ -1263,7 +1306,18 @@ export function LandingPage({
               >
                 {renderTileContent({
                   isMobile,
-                  icon: "📰",
+                  icon: (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: isMobile ? "1.55rem" : "1.38rem",
+                      lineHeight: 1,
+                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
+                    }}
+                  >
+                    📰
+                  </span>
+                ),
                   desktopLines: ["News &", "Highlights"],
                   mobileLines: ["News &", "Highlights"],
                 })}
@@ -1376,9 +1430,15 @@ export function LandingPage({
               >
                 {renderTileContent({
                   isMobile,
-                  icon: "🎞️",
-                  desktopLines: ["View", "Highlights"],
-                  mobileLines: ["View", "Highlights"],
+                  icon: renderPublicImageIcon({
+                    src: "/videotape.png",
+                    alt: "",
+                    isMobile,
+                    mobileSize: 31,
+                    desktopSize: 28,
+                  }),
+                  desktopLines: ["Video", "Highlights"],
+                  mobileLines: ["Video", "Highlights"],
                 })}
               </button>
             </div>
