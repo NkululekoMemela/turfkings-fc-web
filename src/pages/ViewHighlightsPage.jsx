@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// src/pages/ViewHighlightsPage.jsx
+
+import React, { useEffect, useMemo, useState } from "react";
 
 function safeLower(value) {
   return String(value || "").trim().toLowerCase();
@@ -73,6 +75,7 @@ function getHighlightId(highlight, index) {
 function getHighlightPlayerName(highlight) {
   return toTitleCaseLoose(
     highlight?.goalScorer ||
+      highlight?.goalScorerName ||
       highlight?.scorer ||
       highlight?.playerName ||
       highlight?.keeperName ||
@@ -84,14 +87,18 @@ function getHighlightPlayerName(highlight) {
 function getHighlightTitle(highlight) {
   const type = normalizeHighlightType(highlight?.tag || highlight?.type || "");
   const player = getHighlightPlayerName(highlight);
+
+  if (highlight?.title) return highlight.title;
   if (type === "goal") return `Goal by ${player}`;
   if (type === "save") return `Save by ${player}`;
   if (type === "skill") return `Skill by ${player}`;
-  return highlight?.title || `Highlight by ${player}`;
+
+  return `Highlight by ${player}`;
 }
 
 function getVoteBuckets(votesByHighlight, highlights) {
   const buckets = {};
+
   (highlights || []).forEach((highlight, index) => {
     buckets[getHighlightId(highlight, index)] = 0;
   });
@@ -114,6 +121,7 @@ function buildArchiveSelection(highlights, votesByHighlight) {
   const enriched = safeHighlights.map((highlight, index) => {
     const id = getHighlightId(highlight, index);
     const type = normalizeHighlightType(highlight?.tag || highlight?.type || "");
+
     return {
       ...highlight,
       id,
@@ -126,8 +134,10 @@ function buildArchiveSelection(highlights, votesByHighlight) {
 
   const ranker = (a, b) => {
     if (b.votes !== a.votes) return b.votes - a.votes;
+
     const aTime = new Date(a.createdAt || a.timestamp || 0).getTime();
     const bTime = new Date(b.createdAt || b.timestamp || 0).getTime();
+
     return bTime - aTime;
   };
 
@@ -158,31 +168,22 @@ function buildLocalClipId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return `clip-${crypto.randomUUID()}`;
   }
+
   return `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes || 0);
+  if (!value) return "0 MB";
+
+  const mb = value / (1024 * 1024);
+  return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
 }
 
 function getFileExtension(file) {
   const name = String(file?.name || "");
   const ext = name.includes(".") ? name.split(".").pop() : "mp4";
   return String(ext || "mp4").toLowerCase();
-}
-
-function formatFileSize(bytes) {
-  const value = Number(bytes || 0);
-  if (!value) return "0 MB";
-  const mb = value / (1024 * 1024);
-  return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
-}
-
-function getLikelyPlayersFromHighlights(highlights) {
-  const names = new Set();
-
-  (highlights || []).forEach((highlight) => {
-    const name = getHighlightPlayerName(highlight);
-    if (name && safeLower(name) !== "unknown") names.add(name);
-  });
-
-  return Array.from(names).sort((a, b) => a.localeCompare(b));
 }
 
 const buttonBase = {
@@ -211,65 +212,29 @@ export function ViewHighlightsPage({
   votesByUser = {},
   onVotesChange,
   onHighlightsSelectionChange,
-  onBack,
-
-  /*
-    LOW-HANGING FRUIT VIDEO UPLOAD CONTRACT
-
-    Preferred parent integration:
-      onUploadHighlight({
-        file,
-        clipId,
-        storageFileName,
-        source,
-        type,
-        tag,
-        playerName,
-        goalScorer,
-        keeperName,
-        skillPlayer,
-        assist,
-        teamName,
-        title,
-        notes,
-        durationSeconds,
-        createdBy,
-        createdByName,
-        createdAt,
-      })
-
-    The parent can upload the file to Firebase Storage and save the Firestore
-    raw_highlights document, then return either:
-      { videoUrl, downloadUrl, storagePath, clipId, ...extraFields }
-
-    This component also supports local preview mode if onUploadHighlight is not
-    supplied, so the UI can be tested immediately before Firebase wiring.
-  */
   onUploadHighlight,
-  canUploadHighlights,
-  availablePlayers = [],
-  availableTeams = [],
+  onBack,
 }) {
   const [localVotesByUser, setLocalVotesByUser] = useState(votesByUser || {});
-  const [localUploadedHighlights, setLocalUploadedHighlights] = useState([]);
+  const [localHighlights, setLocalHighlights] = useState([]);
   const [activeFilter, setActiveFilter] = useState("all");
+
   const [showUploadPanel, setShowUploadPanel] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState({ state: "idle", message: "" });
-  const [uploadForm, setUploadForm] = useState({
-    type: "goal",
-    playerName: "",
-    assist: "",
-    teamName: "",
-    title: "",
-    notes: "",
-  });
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [selectedFilePreviewUrl, setSelectedFilePreviewUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [uploadSuccess, setUploadSuccess] = useState("");
+  const [clipFile, setClipFile] = useState(null);
+  const [clipPreviewUrl, setClipPreviewUrl] = useState("");
+  const [clipType, setClipType] = useState("goal");
+  const [playerName, setPlayerName] = useState("");
+  const [assistName, setAssistName] = useState("");
+  const [teamName, setTeamName] = useState("");
+  const [clipTitle, setClipTitle] = useState("");
+  const [clipNotes, setClipNotes] = useState("");
+
   const [viewportWidth, setViewportWidth] = useState(
     typeof window === "undefined" ? 1280 : window.innerWidth
   );
-
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     setLocalVotesByUser(votesByUser || {});
@@ -277,20 +242,21 @@ export function ViewHighlightsPage({
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
+
     const onResize = () => setViewportWidth(window.innerWidth);
     onResize();
+
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
   useEffect(() => {
     return () => {
-      if (selectedFilePreviewUrl) URL.revokeObjectURL(selectedFilePreviewUrl);
-      localUploadedHighlights.forEach((item) => {
-        if (item?.isLocalPreview && item?.mediaUrl) URL.revokeObjectURL(item.mediaUrl);
-      });
+      if (clipPreviewUrl) {
+        URL.revokeObjectURL(clipPreviewUrl);
+      }
     };
-  }, [selectedFilePreviewUrl, localUploadedHighlights]);
+  }, [clipPreviewUrl]);
 
   const isMobile = viewportWidth <= 680;
   const isTablet = viewportWidth > 680 && viewportWidth <= 1100;
@@ -326,71 +292,58 @@ export function ViewHighlightsPage({
   const identityKey = useMemo(() => getIdentityKey(identity), [identity]);
   const identityName = useMemo(() => getIdentityDisplayName(identity), [identity]);
   const isLoggedIn = Boolean(identityKey);
-  const uploadEnabled = canUploadHighlights == null ? isLoggedIn : Boolean(canUploadHighlights);
-
-  const baseHighlights = useMemo(() => {
-    return Array.isArray(currentMatchDayHighlights) ? currentMatchDayHighlights : [];
-  }, [currentMatchDayHighlights]);
-
-  const combinedRawHighlights = useMemo(() => {
-    return [...baseHighlights, ...localUploadedHighlights];
-  }, [baseHighlights, localUploadedHighlights]);
 
   const highlights = useMemo(() => {
-    return combinedRawHighlights.map((highlight, index) => ({
-      ...highlight,
-      id: getHighlightId(highlight, index),
-      normalizedType: normalizeHighlightType(highlight?.tag || highlight?.type || ""),
-      mediaUrl: getHighlightMediaUrl(highlight),
-      playerName: getHighlightPlayerName(highlight),
-      title: getHighlightTitle(highlight),
-    }));
-  }, [combinedRawHighlights]);
+    const combined = [
+      ...(Array.isArray(currentMatchDayHighlights) ? currentMatchDayHighlights : []),
+      ...(Array.isArray(localHighlights) ? localHighlights : []),
+    ];
+
+    const seen = new Set();
+
+    return combined
+      .map((highlight, index) => {
+        const id = getHighlightId(highlight, index);
+
+        return {
+          ...highlight,
+          id,
+          clipId: highlight?.clipId || id,
+          normalizedType: normalizeHighlightType(highlight?.tag || highlight?.type || ""),
+          mediaUrl: getHighlightMediaUrl(highlight),
+          playerName: getHighlightPlayerName(highlight),
+          title: getHighlightTitle(highlight),
+        };
+      })
+      .filter((highlight) => {
+        const key = String(highlight.clipId || highlight.id || "").trim();
+        if (!key) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [currentMatchDayHighlights, localHighlights]);
 
   const playerOptions = useMemo(() => {
     const names = new Set();
 
-    (Array.isArray(availablePlayers) ? availablePlayers : []).forEach((player) => {
-      if (typeof player === "string") {
-        if (player.trim()) names.add(toTitleCaseLoose(player));
-        return;
-      }
-
-      const name =
-        player?.shortName ||
-        player?.fullName ||
-        player?.displayName ||
-        player?.name ||
-        player?.playerName ||
-        "";
-
-      if (String(name).trim()) names.add(toTitleCaseLoose(name));
+    highlights.forEach((highlight) => {
+      const name = getHighlightPlayerName(highlight);
+      if (name && safeLower(name) !== "unknown") names.add(name);
     });
 
-    getLikelyPlayersFromHighlights(highlights).forEach((name) => names.add(name));
-
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [availablePlayers, highlights]);
+  }, [highlights]);
 
   const teamOptions = useMemo(() => {
     const names = new Set();
-
-    (Array.isArray(availableTeams) ? availableTeams : []).forEach((team) => {
-      if (typeof team === "string") {
-        if (team.trim()) names.add(toTitleCaseLoose(team));
-        return;
-      }
-
-      const name = team?.name || team?.teamName || team?.label || team?.id || "";
-      if (String(name).trim()) names.add(toTitleCaseLoose(name));
-    });
 
     highlights.forEach((highlight) => {
       if (highlight?.teamName) names.add(toTitleCaseLoose(highlight.teamName));
     });
 
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [availableTeams, highlights]);
+  }, [highlights]);
 
   const voteCounts = useMemo(
     () => getVoteBuckets(localVotesByUser, highlights),
@@ -413,55 +366,152 @@ export function ViewHighlightsPage({
 
   const userVotes = localVotesByUser[identityKey] || {};
 
-  const resetUploadForm = () => {
-    setUploadForm({
-      type: "goal",
-      playerName: "",
-      assist: "",
-      teamName: "",
-      title: "",
-      notes: "",
-    });
-    setSelectedFile(null);
-    setUploadStatus({ state: "idle", message: "" });
-    if (selectedFilePreviewUrl) URL.revokeObjectURL(selectedFilePreviewUrl);
-    setSelectedFilePreviewUrl("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  const resetUploadFields = () => {
+    setClipFile(null);
 
-  const updateUploadField = (field, value) => {
-    setUploadForm((prev) => ({ ...prev, [field]: value }));
+    if (clipPreviewUrl) {
+      URL.revokeObjectURL(clipPreviewUrl);
+    }
+
+    setClipPreviewUrl("");
+    setClipType("goal");
+    setPlayerName("");
+    setAssistName("");
+    setTeamName("");
+    setClipTitle("");
+    setClipNotes("");
+    setUploadError("");
+    setUploadSuccess("");
   };
 
   const handleFileChange = (event) => {
     const file = event?.target?.files?.[0] || null;
 
-    if (selectedFilePreviewUrl) {
-      URL.revokeObjectURL(selectedFilePreviewUrl);
-      setSelectedFilePreviewUrl("");
+    setUploadError("");
+    setUploadSuccess("");
+
+    if (clipPreviewUrl) {
+      URL.revokeObjectURL(clipPreviewUrl);
+      setClipPreviewUrl("");
     }
 
     if (!file) {
-      setSelectedFile(null);
+      setClipFile(null);
       return;
     }
 
     if (!String(file.type || "").startsWith("video/")) {
-      setSelectedFile(null);
-      setUploadStatus({
-        state: "error",
-        message: "Please select a video file.",
-      });
+      setClipFile(null);
+      setUploadError("Please choose a video file.");
       return;
     }
 
-    setSelectedFile(file);
-    setSelectedFilePreviewUrl(URL.createObjectURL(file));
-    setUploadStatus({ state: "idle", message: "" });
+    setClipFile(file);
+    setClipPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handleUploadClip = async () => {
+    setUploadError("");
+    setUploadSuccess("");
+
+    if (!isLoggedIn) {
+      setUploadError("Please sign in before uploading highlights.");
+      return;
+    }
+
+    if (!clipFile) {
+      setUploadError("Please choose a video clip first.");
+      return;
+    }
+
+    const cleanPlayerName = toTitleCaseLoose(playerName);
+
+    if (!cleanPlayerName) {
+      setUploadError("Please enter the player linked to this highlight.");
+      return;
+    }
+
+    if (typeof onUploadHighlight !== "function") {
+      setUploadError("Upload is not connected yet. App.jsx must pass onUploadHighlight.");
+      return;
+    }
+
+    const normalizedType = normalizeHighlightType(clipType);
+    const clipId = buildLocalClipId();
+    const createdAt = new Date().toISOString();
+
+    const payload = {
+      file: clipFile,
+      clipId,
+      id: clipId,
+      highlightId: clipId,
+      source: "manual_upload",
+      storageFileName: `${clipId}.${getFileExtension(clipFile)}`,
+      type: normalizedType,
+      tag: normalizedType,
+      playerName: cleanPlayerName,
+      goalScorer: normalizedType === "goal" ? cleanPlayerName : "",
+      goalScorerName: normalizedType === "goal" ? cleanPlayerName : "",
+      scorer: normalizedType === "goal" ? cleanPlayerName : "",
+      keeperName: normalizedType === "save" ? cleanPlayerName : "",
+      skillPlayer: normalizedType === "skill" ? cleanPlayerName : "",
+      assist: toTitleCaseLoose(assistName),
+      teamName: toTitleCaseLoose(teamName),
+      title:
+        clipTitle.trim() ||
+        (normalizedType === "goal"
+          ? `Goal by ${cleanPlayerName}`
+          : normalizedType === "save"
+          ? `Save by ${cleanPlayerName}`
+          : normalizedType === "skill"
+          ? `Skill by ${cleanPlayerName}`
+          : `Highlight by ${cleanPlayerName}`),
+      notes: clipNotes.trim(),
+      durationSeconds: 15,
+      createdBy: identityKey,
+      createdByName: identityName,
+      createdAt,
+      timestamp: createdAt,
+    };
+
+    try {
+      setUploading(true);
+
+      const savedHighlight = await onUploadHighlight(payload);
+
+      if (savedHighlight) {
+        setLocalHighlights((prev) => {
+          const existing = Array.isArray(prev) ? prev : [];
+          const savedKey = String(savedHighlight.clipId || savedHighlight.id || "").trim();
+
+          if (
+            savedKey &&
+            existing.some(
+              (item) => String(item.clipId || item.id || "").trim() === savedKey
+            )
+          ) {
+            return existing;
+          }
+
+          return [...existing, savedHighlight];
+        });
+      }
+
+      setUploadSuccess("Highlight uploaded successfully.");
+      resetUploadFields();
+      setShowUploadPanel(false);
+      setActiveFilter("all");
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Upload failed:", error);
+      setUploadError(error?.message || "Failed to upload highlight.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const castVote = (category, highlightId) => {
     if (!isLoggedIn) return;
+
     const next = {
       ...localVotesByUser,
       [identityKey]: {
@@ -469,6 +519,7 @@ export function ViewHighlightsPage({
         [category]: highlightId,
       },
     };
+
     setLocalVotesByUser(next);
     onVotesChange?.(next);
   };
@@ -484,151 +535,14 @@ export function ViewHighlightsPage({
       `${highlight.normalizedType || "highlight"}-${highlight.playerName || "clip"}.mp4`;
     a.target = "_blank";
     a.rel = "noreferrer";
+
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
   };
 
-  const submitUpload = async () => {
-    if (!uploadEnabled) {
-      setUploadStatus({
-        state: "error",
-        message: "You need permission to upload highlights.",
-      });
-      return;
-    }
-
-    if (!selectedFile) {
-      setUploadStatus({
-        state: "error",
-        message: "Please choose a 15-second video clip first.",
-      });
-      return;
-    }
-
-    const cleanType = normalizeHighlightType(uploadForm.type);
-    const cleanPlayer = toTitleCaseLoose(uploadForm.playerName);
-
-    if (!cleanPlayer) {
-      setUploadStatus({
-        state: "error",
-        message: "Please enter or select the player linked to this highlight.",
-      });
-      return;
-    }
-
-    const clipId = buildLocalClipId();
-    const ext = getFileExtension(selectedFile);
-    const createdAt = new Date().toISOString();
-    const title =
-      uploadForm.title.trim() ||
-      (cleanType === "goal"
-        ? `Goal by ${cleanPlayer}`
-        : cleanType === "save"
-        ? `Save by ${cleanPlayer}`
-        : cleanType === "skill"
-        ? `Skill by ${cleanPlayer}`
-        : `Highlight by ${cleanPlayer}`);
-
-    const payload = {
-      file: selectedFile,
-      clipId,
-      id: clipId,
-      highlightId: clipId,
-      source: "manual_upload",
-      storageFileName: `${clipId}.${ext}`,
-      type: cleanType,
-      tag: cleanType,
-      playerName: cleanPlayer,
-      goalScorer: cleanType === "goal" ? cleanPlayer : "",
-      keeperName: cleanType === "save" ? cleanPlayer : "",
-      skillPlayer: cleanType === "skill" ? cleanPlayer : "",
-      assist: toTitleCaseLoose(uploadForm.assist),
-      teamName: toTitleCaseLoose(uploadForm.teamName),
-      title,
-      notes: uploadForm.notes.trim(),
-      durationSeconds: 15,
-      createdBy: identityKey,
-      createdByName: identityName,
-      createdAt,
-      timestamp: createdAt,
-    };
-
-    setUploadStatus({
-      state: "uploading",
-      message: "Uploading highlight...",
-    });
-
-    try {
-      let savedHighlight = null;
-
-      if (typeof onUploadHighlight === "function") {
-        const result = await onUploadHighlight(payload);
-        savedHighlight = {
-          ...payload,
-          ...(result || {}),
-          file: undefined,
-          mediaUrl:
-            result?.mediaUrl ||
-            result?.videoUrl ||
-            result?.downloadUrl ||
-            result?.fileUrl ||
-            "",
-          videoUrl:
-            result?.videoUrl ||
-            result?.downloadUrl ||
-            result?.mediaUrl ||
-            result?.fileUrl ||
-            "",
-        };
-      } else {
-        const localUrl = URL.createObjectURL(selectedFile);
-        savedHighlight = {
-          ...payload,
-          file: undefined,
-          mediaUrl: localUrl,
-          videoUrl: localUrl,
-          isLocalPreview: true,
-          uploadWarning:
-            "Local preview only. Wire onUploadHighlight in the parent to save to Firebase.",
-        };
-      }
-
-      setLocalUploadedHighlights((prev) => [...prev, savedHighlight]);
-      setUploadStatus({
-        state: "success",
-        message:
-          typeof onUploadHighlight === "function"
-            ? "Highlight uploaded."
-            : "Local preview added. Firebase upload is not wired yet.",
-      });
-
-      setUploadForm({
-        type: "goal",
-        playerName: "",
-        assist: "",
-        teamName: "",
-        title: "",
-        notes: "",
-      });
-      setSelectedFile(null);
-      if (selectedFilePreviewUrl) URL.revokeObjectURL(selectedFilePreviewUrl);
-      setSelectedFilePreviewUrl("");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      setActiveFilter("all");
-    } catch (error) {
-      console.error("Failed to upload highlight:", error);
-      setUploadStatus({
-        state: "error",
-        message: error?.message || "Failed to upload highlight. Please try again.",
-      });
-    }
-  };
-
   const renderUploadPanel = () => {
     if (!showUploadPanel) return null;
-
-    const disabled = uploadStatus.state === "uploading";
 
     return (
       <div style={cardStyle}>
@@ -643,23 +557,23 @@ export function ViewHighlightsPage({
           }}
         >
           <div style={{ minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: isMobile ? "1.35rem" : "1.6rem" }}>
+            <h2 style={{ margin: 0, fontSize: isMobile ? "1.3rem" : "1.6rem" }}>
               Upload 15-second Highlight
             </h2>
             <div style={{ marginTop: "0.35rem", opacity: 0.78, fontSize: "0.94rem" }}>
-              Use this for clips already saved on the phone. Pushit and 5 Asides Camera can later feed the same highlight format.
+              Use this for clips already saved on the phone. Later, Pushit and 5 Asides Camera can feed the same highlight format.
             </div>
           </div>
 
           <button
             type="button"
-            onClick={resetUploadForm}
-            disabled={disabled}
+            onClick={resetUploadFields}
+            disabled={uploading}
             style={{
               ...buttonBase,
               background: "rgba(255,255,255,0.04)",
               color: "#e5e7eb",
-              opacity: disabled ? 0.6 : 1,
+              opacity: uploading ? 0.6 : 1,
             }}
           >
             Reset
@@ -669,24 +583,23 @@ export function ViewHighlightsPage({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)",
+            gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) minmax(0,1fr)",
             gap: "0.85rem",
           }}
         >
           <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
             <span style={{ fontWeight: 800 }}>Clip file</span>
             <input
-              ref={fileInputRef}
               type="file"
               accept="video/*"
               capture="environment"
               onChange={handleFileChange}
-              disabled={disabled || !uploadEnabled}
+              disabled={uploading}
               style={inputBase}
             />
-            {selectedFile && (
+            {clipFile && (
               <span style={{ opacity: 0.74, fontSize: "0.88rem" }}>
-                {selectedFile.name} • {formatFileSize(selectedFile.size)}
+                {clipFile.name} • {formatFileSize(clipFile.size)}
               </span>
             )}
           </label>
@@ -694,35 +607,35 @@ export function ViewHighlightsPage({
           <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
             <span style={{ fontWeight: 800 }}>Highlight type</span>
             <select
-              value={uploadForm.type}
-              onChange={(event) => updateUploadField("type", event.target.value)}
-              disabled={disabled || !uploadEnabled}
+              value={clipType}
+              onChange={(event) => setClipType(event.target.value)}
+              disabled={uploading}
               style={inputBase}
             >
               <option value="goal">Goal</option>
-              <option value="save">Save</option>
               <option value="skill">Skill</option>
+              <option value="save">Save</option>
               <option value="other">Other</option>
             </select>
           </label>
 
           <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
             <span style={{ fontWeight: 800 }}>
-              {uploadForm.type === "save"
+              {clipType === "save"
                 ? "Keeper / player"
-                : uploadForm.type === "skill"
+                : clipType === "skill"
                 ? "Skill player"
                 : "Goal scorer / player"}
             </span>
             <input
-              list="highlight-player-options"
-              value={uploadForm.playerName}
-              onChange={(event) => updateUploadField("playerName", event.target.value)}
-              disabled={disabled || !uploadEnabled}
+              list="tk-highlight-player-options"
+              value={playerName}
+              onChange={(event) => setPlayerName(event.target.value)}
+              disabled={uploading}
               placeholder="e.g. Theo"
               style={inputBase}
             />
-            <datalist id="highlight-player-options">
+            <datalist id="tk-highlight-player-options">
               {playerOptions.map((name) => (
                 <option key={name} value={name} />
               ))}
@@ -732,28 +645,28 @@ export function ViewHighlightsPage({
           <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
             <span style={{ fontWeight: 800 }}>Team</span>
             <input
-              list="highlight-team-options"
-              value={uploadForm.teamName}
-              onChange={(event) => updateUploadField("teamName", event.target.value)}
-              disabled={disabled || !uploadEnabled}
+              list="tk-highlight-team-options"
+              value={teamName}
+              onChange={(event) => setTeamName(event.target.value)}
+              disabled={uploading}
               placeholder="Optional"
               style={inputBase}
             />
-            <datalist id="highlight-team-options">
+            <datalist id="tk-highlight-team-options">
               {teamOptions.map((name) => (
                 <option key={name} value={name} />
               ))}
             </datalist>
           </label>
 
-          {uploadForm.type === "goal" && (
+          {clipType === "goal" && (
             <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
               <span style={{ fontWeight: 800 }}>Assist</span>
               <input
-                list="highlight-player-options"
-                value={uploadForm.assist}
-                onChange={(event) => updateUploadField("assist", event.target.value)}
-                disabled={disabled || !uploadEnabled}
+                list="tk-highlight-player-options"
+                value={assistName}
+                onChange={(event) => setAssistName(event.target.value)}
+                disabled={uploading}
                 placeholder="Optional"
                 style={inputBase}
               />
@@ -763,9 +676,9 @@ export function ViewHighlightsPage({
           <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
             <span style={{ fontWeight: 800 }}>Title override</span>
             <input
-              value={uploadForm.title}
-              onChange={(event) => updateUploadField("title", event.target.value)}
-              disabled={disabled || !uploadEnabled}
+              value={clipTitle}
+              onChange={(event) => setClipTitle(event.target.value)}
+              disabled={uploading}
               placeholder="Optional"
               style={inputBase}
             />
@@ -781,9 +694,9 @@ export function ViewHighlightsPage({
           >
             <span style={{ fontWeight: 800 }}>Notes</span>
             <textarea
-              value={uploadForm.notes}
-              onChange={(event) => updateUploadField("notes", event.target.value)}
-              disabled={disabled || !uploadEnabled}
+              value={clipNotes}
+              onChange={(event) => setClipNotes(event.target.value)}
+              disabled={uploading}
               placeholder="Optional: match number, moment, context..."
               rows={3}
               style={{ ...inputBase, resize: "vertical" }}
@@ -791,18 +704,18 @@ export function ViewHighlightsPage({
           </label>
         </div>
 
-        {selectedFilePreviewUrl && (
+        {clipPreviewUrl && (
           <div style={{ marginTop: "1rem", display: "grid", gap: "0.55rem" }}>
             <strong>Preview</strong>
             <video
               controls
               preload="metadata"
               playsInline
-              src={selectedFilePreviewUrl}
+              src={clipPreviewUrl}
               style={{
                 width: "100%",
                 borderRadius: "16px",
-                background: "#000000",
+                background: "#000",
                 maxHeight: isMobile ? "360px" : "520px",
                 objectFit: "contain",
               }}
@@ -810,24 +723,21 @@ export function ViewHighlightsPage({
           </div>
         )}
 
-        {uploadStatus.message && (
+        {(uploadError || uploadSuccess) && (
           <div
             style={{
               marginTop: "1rem",
               padding: "0.8rem 0.9rem",
               borderRadius: "14px",
               border: "1px solid rgba(255,255,255,0.1)",
-              background:
-                uploadStatus.state === "error"
-                  ? "rgba(239,68,68,0.16)"
-                  : uploadStatus.state === "success"
-                  ? "rgba(34,197,94,0.16)"
-                  : "rgba(255,255,255,0.06)",
+              background: uploadError
+                ? "rgba(239,68,68,0.16)"
+                : "rgba(34,197,94,0.16)",
               color: "#e5e7eb",
               fontWeight: 700,
             }}
           >
-            {uploadStatus.message}
+            {uploadError || uploadSuccess}
           </div>
         )}
 
@@ -842,29 +752,23 @@ export function ViewHighlightsPage({
         >
           <button
             type="button"
-            onClick={submitUpload}
-            disabled={disabled || !uploadEnabled}
+            onClick={handleUploadClip}
+            disabled={uploading || !clipFile}
             style={{
               ...buttonBase,
               background: "rgba(34,197,94,0.22)",
               color: "#e5e7eb",
-              opacity: disabled || !uploadEnabled ? 0.6 : 1,
+              opacity: uploading || !clipFile ? 0.6 : 1,
               width: isMobile ? "100%" : "auto",
               boxSizing: "border-box",
             }}
           >
-            {uploadStatus.state === "uploading" ? "Uploading..." : "Save highlight"}
+            {uploading ? "Uploading..." : "Save Highlight"}
           </button>
 
-          {!uploadEnabled && (
+          {!isLoggedIn && (
             <div style={{ opacity: 0.78, fontSize: "0.92rem" }}>
-              Upload access is disabled for this user.
-            </div>
-          )}
-
-          {typeof onUploadHighlight !== "function" && (
-            <div style={{ opacity: 0.78, fontSize: "0.92rem", flex: "1 1 320px" }}>
-              Developer note: wire <strong>onUploadHighlight</strong> from the parent to upload to Firebase Storage.
+              Sign in to upload highlights.
             </div>
           )}
         </div>
@@ -888,6 +792,7 @@ export function ViewHighlightsPage({
         <div style={{ display: "grid", gap: "0.55rem" }}>
           {candidates.map((item) => {
             const selected = userVotes[category] === item.id;
+
             return (
               <button
                 key={`${category}-${item.id}`}
@@ -1020,6 +925,7 @@ export function ViewHighlightsPage({
             >
               {["all", "goal", "skill", "save", "other"].map((filterKey) => {
                 const active = activeFilter === filterKey;
+
                 return (
                   <button
                     key={filterKey}
@@ -1038,6 +944,7 @@ export function ViewHighlightsPage({
                   </button>
                 );
               })}
+
               {!isLoggedIn && (
                 <div
                   style={{
@@ -1047,7 +954,7 @@ export function ViewHighlightsPage({
                     width: isMobile ? "100%" : "auto",
                   }}
                 >
-                  Log in to vote for goal, skill, and save of the night.
+                  Log in to upload and vote for goal, skill, and save of the night.
                 </div>
               )}
             </div>
@@ -1111,11 +1018,6 @@ export function ViewHighlightsPage({
                       {highlight.assist && (
                         <div style={{ marginTop: "0.25rem", opacity: 0.74, fontSize: "0.9rem" }}>
                           Assist: <strong>{highlight.assist}</strong>
-                        </div>
-                      )}
-                      {highlight.uploadWarning && (
-                        <div style={{ marginTop: "0.45rem", opacity: 0.78, fontSize: "0.88rem" }}>
-                          {highlight.uploadWarning}
                         </div>
                       )}
                     </div>
@@ -1198,7 +1100,7 @@ export function ViewHighlightsPage({
                         <>Only the winning save should survive when End Match Day is confirmed.</>
                       )}
                       {highlight.normalizedType === "other" && (
-                        <>This clip is available to watch, but it is not part of the goal, skill, or save voting categories.</>
+                        <>This clip is available to watch, but it is not part of goal, skill, or save voting.</>
                       )}
                     </div>
                   </div>
@@ -1249,7 +1151,7 @@ export function ViewHighlightsPage({
               <div>
                 <div style={{ fontSize: "0.85rem", opacity: 0.75 }}>Upload access</div>
                 <div style={{ fontWeight: 800, fontSize: isMobile ? "1rem" : "1.08rem" }}>
-                  {uploadEnabled ? "Enabled" : "Disabled"}
+                  {isLoggedIn ? "Enabled" : "Login required"}
                 </div>
               </div>
             </div>

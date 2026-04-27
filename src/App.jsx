@@ -14,6 +14,7 @@ import { MigrationPage } from "./pages/MigrationPage.jsx";
 import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import ViewHighlightsPage from "./pages/ViewHighlightsPage.jsx";
+import VideoHighlightsRepository from "./storage/VideohighlightsRepository.js";
 import BottomNav from "./components/BottomNav.jsx";
 import {
   MATCH_MODE as MATCH_TYPE,
@@ -3966,6 +3967,59 @@ export default function App() {
     window.location.href = launchUrl;
   };
 
+
+  const handleUploadHighlight = async (payload) => {
+    const matchDayId = buildCurrentMatchDayId(
+      activeSeasonId,
+      gameFormat,
+      activeMatchNo,
+      matchType
+    );
+
+    const savedHighlight =
+      await VideoHighlightsRepository.uploadAndSaveRawHighlight({
+        matchDayId,
+        file: payload?.file,
+        highlight: {
+          ...(payload || {}),
+          matchDayId,
+          activeSeasonId,
+          matchType,
+          gameFormat,
+          matchNo: activeMatchNo,
+          createdBy:
+            identity?.memberId ||
+            identity?.playerId ||
+            identity?.email ||
+            identity?.shortName ||
+            "",
+          createdByName:
+            identity?.shortName ||
+            identity?.fullName ||
+            identity?.displayName ||
+            identity?.email ||
+            "Unknown",
+        },
+      });
+
+    setCurrentMatchDayHighlights((prev) => {
+      const existing = Array.isArray(prev) ? prev : [];
+      const key = String(savedHighlight?.clipId || savedHighlight?.id || "").trim();
+
+      if (!key) return existing;
+
+      const alreadyExists = existing.some(
+        (item) => String(item?.clipId || item?.id || "").trim() === key
+      );
+
+      if (alreadyExists) return existing;
+
+      return [...existing, savedHighlight];
+    });
+
+    return savedHighlight;
+  };
+
   const pagesWithBottomNav = new Set([
     PAGE_LANDING,
     PAGE_MATCH_SIGNUP,
@@ -4363,6 +4417,7 @@ export default function App() {
           activeRole={activeRole}
           currentMatchDayHighlights={currentMatchDayHighlights}
           votesByUser={highlightVotesByUser}
+          onUploadHighlight={handleUploadHighlight}
           onVotesChange={async (nextVotes) => {
             setHighlightVotesByUser(nextVotes);
 
