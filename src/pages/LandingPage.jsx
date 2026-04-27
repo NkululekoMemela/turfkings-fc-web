@@ -157,7 +157,6 @@ export function LandingPage({
   onUpdatePairing,
   onStartMatch,
   onSetMatchType,
-  onForceSetMatchType,
   onSetGameFormat,
   onForceSetGameFormat,
   formatSwitchLocked = false,
@@ -484,11 +483,6 @@ export function LandingPage({
     if (!change?.kind || !change?.value) return;
 
     if (change.kind === "matchType") {
-      if (isFormatLocked && typeof onForceSetMatchType === "function") {
-        onForceSetMatchType(change.value);
-        return;
-      }
-
       if (typeof onSetMatchType === "function") {
         onSetMatchType(change.value);
         return;
@@ -497,18 +491,9 @@ export function LandingPage({
       // Legacy fallback while App.jsx is still being migrated:
       // Friendly is represented by the selected game format; League by 3_TEAM_LEAGUE.
       if (change.value === MATCH_MODE.LEAGUE) {
-        if (isFormatLocked && typeof onForceSetGameFormat === "function") {
-          onForceSetGameFormat("3_TEAM_LEAGUE");
-        } else {
-          onSetGameFormat?.("3_TEAM_LEAGUE");
-        }
+        onSetGameFormat?.("3_TEAM_LEAGUE");
       } else {
-        const fallbackFormat = resolvedGameFormat || GAME_FORMAT.FIVE_V_FIVE;
-        if (isFormatLocked && typeof onForceSetGameFormat === "function") {
-          onForceSetGameFormat(fallbackFormat);
-        } else {
-          onSetGameFormat?.(fallbackFormat);
-        }
+        onSetGameFormat?.(resolvedGameFormat || GAME_FORMAT.FIVE_V_FIVE);
       }
       return;
     }
@@ -564,6 +549,9 @@ export function LandingPage({
 
   const closeHeaderMenu = () => setShowHeaderMenu(false);
 
+  const isLeagueMatchType =
+    String(matchType || "").trim().toUpperCase() === "LEAGUE";
+
   const menuItems = [
     {
       label: "Change Profile",
@@ -573,12 +561,12 @@ export function LandingPage({
     {
       label: "End Season",
       onClick: () => onOpenEndSeasonModal?.(),
-      show: isAdmin && typeof onOpenEndSeasonModal === "function",
+      show: isLeagueMatchType && isAdmin && typeof onOpenEndSeasonModal === "function",
     },
     {
       label: "End Match Day",
       onClick: () => onOpenBackupModal?.(),
-      show: isAdmin,
+      show: isLeagueMatchType && isAdmin,
     },
   ].filter((item) => item.show);
 
@@ -717,8 +705,11 @@ export function LandingPage({
                       key={option.value}
                       type="button"
                       className="secondary-btn"
-                      onClick={() => requestMatchTypeChange(option.value)}
-                      disabled={false}
+                      onClick={() => {
+                        if (isFormatLocked) return;
+                        requestMatchTypeChange(option.value);
+                      }}
+                      disabled={isFormatLocked}
                       style={{
                         borderRadius: "999px",
                         padding: "0.45rem 0.9rem",
@@ -862,8 +853,11 @@ export function LandingPage({
                       key={option.value}
                       type="button"
                       className="secondary-btn"
-                      onClick={() => requestGameFormatChange(option.value)}
-                      disabled={false}
+                      onClick={() => {
+                        if (isFormatLocked) return;
+                        requestGameFormatChange(option.value);
+                      }}
+                      disabled={isFormatLocked}
                       style={{
                         borderRadius: "999px",
                         padding: "0.45rem 0.9rem",
@@ -1183,7 +1177,7 @@ export function LandingPage({
               })}
             </button>
 
-            {isAdmin && (
+            {isLeagueMatchType && isAdmin && (
               <button
                 className="secondary-btn"
                 onClick={onOpenBackupModal}

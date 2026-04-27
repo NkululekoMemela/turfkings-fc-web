@@ -1473,6 +1473,75 @@ function buildMatchMetadata({ matchType, gameFormat, matchMode } = {}) {
   };
 }
 
+function isFriendlyRecord(record = {}) {
+  const metaType = normalizeMatchMode(
+    record?.matchType || record?.matchMode || record?.gameFormat || "",
+    MATCH_TYPE.LEAGUE
+  );
+
+  return metaType === MATCH_TYPE.FRIENDLY;
+}
+
+function splitRecordsByMatchType(records = []) {
+  const league = [];
+  const friendly = [];
+
+  (Array.isArray(records) ? records : []).forEach((record) => {
+    if (isFriendlyRecord(record)) friendly.push(record);
+    else league.push(record);
+  });
+
+  return { league, friendly };
+}
+
+function attachMatchMetadataToRecords(records = [], meta = {}) {
+  return (Array.isArray(records) ? records : []).map((record) => ({
+    ...record,
+    ...meta,
+  }));
+}
+
+function getRecordMatchType(record = {}) {
+  return normalizeMatchMode(
+    record?.matchType || record?.matchMode || record?.gameFormat || "",
+    MATCH_TYPE.LEAGUE
+  );
+}
+
+function getNextMatchNoForMatchType({
+  matchType,
+  currentResults = [],
+}) {
+  const wantedType = normalizeMatchMode(matchType, MATCH_TYPE.FRIENDLY);
+
+  const liveResults = (Array.isArray(currentResults) ? currentResults : []).filter(
+    (result) => getRecordMatchType(result) === wantedType
+  );
+
+  const maxNo = liveResults.reduce((max, result) => {
+    const n = Number(result?.matchNo);
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
+
+  return maxNo + 1;
+}
+
+function buildFriendlyMatchArchiveId({
+  gameFormat,
+  matchNo,
+  createdAt = new Date(),
+}) {
+  const datePart = createdAt.toISOString().slice(0, 10);
+  const safeFormat = normalizeGameFormat(
+    gameFormat || GAME_FORMAT.FIVE_V_FIVE,
+    GAME_FORMAT.FIVE_V_FIVE
+  )
+    .toLowerCase()
+    .replace(/_/g, "");
+
+  return `${safeFormat}__${datePart}__match-${Number(matchNo || 1)}`;
+}
+
 export default function App() {
   const [page, setPage] = useState(PAGE_ENTRY);
 
@@ -1576,13 +1645,13 @@ export default function App() {
     const safeItems = Array.isArray(items) ? items : [];
     if (!safeItems.length) return;
 
-    const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo, matchType);
+    const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, activeMatchNo, matchType);
 
     await Promise.all(
       safeItems.map(async (item) => {
         const docPayload = buildRawHighlightFirebaseDoc(item, {
           matchDayId,
-          currentMatchNo,
+          currentMatchNo: activeMatchNo,
           activeSeasonId,
           gameFormat,
           matchType,
@@ -1671,6 +1740,7 @@ export default function App() {
     allEvents,
     streaks,
     matchDayHistory,
+    friendlyMatchDayHistory,
     playerPhotosByName,
     yearEndAttendance;
 
@@ -1702,6 +1772,7 @@ export default function App() {
     allEvents = s?.allEvents || [];
     streaks = s?.streaks || {};
     matchDayHistory = s?.matchDayHistory || [];
+    friendlyMatchDayHistory = s?.friendlyMatchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
     matchType = normalizeMatchMode(s?.matchType || s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
     gameFormat = normalizeGameFormat(s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
@@ -1728,6 +1799,7 @@ export default function App() {
       allEvents,
       streaks,
       matchDayHistory = [],
+      friendlyMatchDayHistory = [],
       playerPhotosByName = {},
       yearEndAttendance = [],
     } = legacy || createDefaultState());
@@ -1815,20 +1887,33 @@ export default function App() {
     normalizedActiveTeamIds,
   ]);
 
+  const leagueCurrentMatchNo = getNextMatchNoForMatchType({
+    matchType: MATCH_TYPE.LEAGUE,
+    currentResults: results,
+  });
+
+  const friendlyCurrentMatchNo = getNextMatchNoForMatchType({
+    matchType: MATCH_TYPE.FRIENDLY,
+    currentResults: results,
+  });
+
+  const activeMatchNo =
+    matchType === MATCH_TYPE.LEAGUE ? leagueCurrentMatchNo : friendlyCurrentMatchNo;
+
   const currentCameraLaunchTeams = useMemo(() => {
     return resolveCameraLaunchTeams({
       teams,
       currentMatch: effectiveLiveMatch,
       currentConfirmedLineupSnapshot,
       confirmedLineupsByMatchNo,
-      currentMatchNo,
+      currentMatchNo: activeMatchNo,
     });
   }, [
     teams,
     effectiveLiveMatch,
     currentConfirmedLineupSnapshot,
     confirmedLineupsByMatchNo,
-    currentMatchNo,
+    activeMatchNo,
   ]);
 
   const currentCameraLiveContext = useMemo(() => {
@@ -1839,7 +1924,7 @@ export default function App() {
       activeSeasonId,
       matchType,
       gameFormat,
-      currentMatchNo,
+      currentMatchNo: activeMatchNo,
       launchTeams: currentCameraLaunchTeams,
     });
   }, [
@@ -1848,7 +1933,7 @@ export default function App() {
     matchType,
     gameFormat,
     activeSeasonId,
-    currentMatchNo,
+    activeMatchNo,
     currentCameraLaunchTeams,
   ]);
 
@@ -1881,7 +1966,7 @@ export default function App() {
     const applyReturnedHighlights = async (items) => {
       const normalized = (Array.isArray(items) ? items : [])
         .map((item) =>
-          normalizeReturnedHighlight(item, currentMatchNo || 1, gameFormat || "5_V_5")
+          normalizeReturnedHighlight(item, activeMatchNo || 1, gameFormat || "5_V_5")
         )
         .filter(Boolean);
 
@@ -1944,13 +2029,19 @@ export default function App() {
       window.removeEventListener("hashchange", onHashChange);
       window.removeEventListener("message", onMessage);
     };
-  }, [currentMatchNo, gameFormat, matchType]);
+  }, [activeMatchNo, gameFormat, matchType]);
 
 
   const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
     (day) => day?.results || []
   );
   const archivedEventsFromHistory = (matchDayHistory || []).flatMap(
+    (day) => day?.allEvents || []
+  );
+  const archivedFriendlyResultsFromHistory = (friendlyMatchDayHistory || []).flatMap(
+    (day) => day?.results || []
+  );
+  const archivedFriendlyEventsFromHistory = (friendlyMatchDayHistory || []).flatMap(
     (day) => day?.allEvents || []
   );
   const hasFirebaseHistory = (matchDayHistory || []).length > 0;
@@ -2473,7 +2564,7 @@ export default function App() {
     }
 
     const startContext = {
-      matchNo: currentMatchNo,
+      matchNo: activeMatchNo,
       createdAt: new Date().toISOString(),
       currentMatch: safeStartMatch,
       teams,
@@ -2501,7 +2592,7 @@ export default function App() {
     if (safeSnapshot) {
       setConfirmedLineupsByMatchNo((prev) => ({
         ...prev,
-        [currentMatchNo]: safeSnapshot,
+        [activeMatchNo]: safeSnapshot,
       }));
     }
 
@@ -2609,19 +2700,22 @@ export default function App() {
       updateActiveSeason((prevSeason) => {
         const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
 
-        const matchNo = prevSeason.currentMatchNo || 1;
+        const matchMeta = buildMatchMetadata({
+          matchType: prevSeason?.matchType || matchType,
+          gameFormat: prevSeason?.gameFormat || gameFormat,
+          matchMode: prevSeason?.matchMode || matchMode,
+        });
+
+        const matchNo = getNextMatchNoForMatchType({
+          matchType: matchMeta.matchType,
+          currentResults: prevSeason.results || [],
+        });
         const isFixturedMode = prevSeason.matchMode === "scheduled_target";
 
         const verifiedLineups =
           currentConfirmedLineupSnapshot ||
           confirmedLineupsByMatchNo[matchNo] ||
           null;
-
-        const matchMeta = buildMatchMetadata({
-          matchType: prevSeason?.matchType || matchType,
-          gameFormat: prevSeason?.gameFormat || gameFormat,
-          matchMode: prevSeason?.matchMode || matchMode,
-        });
 
         const committedEvents = (prevSeason.currentEvents || []).map((e) => ({
           ...e,
@@ -2640,22 +2734,38 @@ export default function App() {
 
         const allCommittedEvents = [...committedEvents, ...cleanSheetEvents];
 
-        const rotationResult = computeNextFromResult(prevSeason.streaks, {
-          teamAId,
-          teamBId,
-          standbyId,
-          goalsA,
-          goalsB,
-        });
+        const isFriendlyResult = matchMeta.matchType === MATCH_TYPE.FRIENDLY;
 
-        const newMatchNo = matchNo + 1;
+        const rotationResult = isFriendlyResult
+          ? {
+              winnerId:
+                Number(goalsA || 0) === Number(goalsB || 0)
+                  ? null
+                  : Number(goalsA || 0) > Number(goalsB || 0)
+                    ? teamAId
+                    : teamBId,
+              isDraw: Number(goalsA || 0) === Number(goalsB || 0),
+              nextTeamAId: teamAId,
+              nextTeamBId: teamBId,
+              nextStandbyId: standbyId || null,
+              updatedStreaks: prevSeason.streaks || {},
+            }
+          : computeNextFromResult(prevSeason.streaks, {
+              teamAId,
+              teamBId,
+              standbyId,
+              goalsA,
+              goalsB,
+            });
+
+        const newMatchNo = Math.max(Number(prevSeason.currentMatchNo || 1), matchNo + 1);
 
         const newResult = {
           ...matchMeta,
           matchNo,
           teamAId,
           teamBId,
-          standbyId,
+          standbyId: standbyId || null,
           goalsA,
           goalsB,
           winnerId: rotationResult.winnerId,
@@ -2667,13 +2777,15 @@ export default function App() {
           ? prevSeason.scheduledFixtures
           : [];
 
-        let nextCurrentMatch = {
-          teamAId: rotationResult.nextTeamAId,
-          teamBId: rotationResult.nextTeamBId,
-          standbyId: rotationResult.nextStandbyId,
-        };
+        let nextCurrentMatch = isFriendlyResult
+          ? prevSeason.currentMatch
+          : {
+              teamAId: rotationResult.nextTeamAId,
+              teamBId: rotationResult.nextTeamBId,
+              standbyId: rotationResult.nextStandbyId,
+            };
 
-        if (isFixturedMode) {
+        if (!isFriendlyResult && isFixturedMode) {
           nextScheduledFixtures = markScheduledFixtureCompleted({
             fixtures: nextScheduledFixtures,
             teamAId,
@@ -2699,6 +2811,39 @@ export default function App() {
           nextCurrentMatch =
             buildCurrentMatchFromFixture(nextFixture, prevSeason.teams) ||
             nextCurrentMatch;
+        }
+
+        if (isFriendlyResult) {
+          const friendlyEntry = {
+            id: buildFriendlyMatchArchiveId({
+              gameFormat: matchMeta.gameFormat,
+              matchNo,
+              createdAt: new Date(),
+            }),
+            createdAt: new Date().toISOString(),
+            matchType: MATCH_TYPE.FRIENDLY,
+            gameFormat: matchMeta.gameFormat,
+            matchMode: null,
+            results: [newResult],
+            allEvents: allCommittedEvents,
+            teams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
+            playerAppearances: [],
+          };
+
+          return {
+            ...prevSeason,
+            currentMatchNo: 1,
+            currentMatch: nextCurrentMatch,
+            streaks: rotationResult.updatedStreaks,
+            currentEvents: [],
+            allEvents: [],
+            results: [],
+            friendlyMatchDayHistory: [
+              ...(prevSeason.friendlyMatchDayHistory || []),
+              friendlyEntry,
+            ],
+            scheduledFixtures: nextScheduledFixtures,
+          };
         }
 
         return {
@@ -2729,18 +2874,21 @@ export default function App() {
     updateState((prev) => {
       const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
 
-      const matchNo = prev.currentMatchNo;
-
-      const verifiedLineups =
-        currentConfirmedLineupSnapshot ||
-        confirmedLineupsByMatchNo[matchNo] ||
-        null;
-
       const matchMeta = buildMatchMetadata({
         matchType: prev?.matchType || matchType,
         gameFormat: prev?.gameFormat || gameFormat,
         matchMode: prev?.matchMode || matchMode,
       });
+
+      const matchNo = getNextMatchNoForMatchType({
+        matchType: matchMeta.matchType,
+        currentResults: prev.results || [],
+      });
+
+      const verifiedLineups =
+        currentConfirmedLineupSnapshot ||
+        confirmedLineupsByMatchNo[matchNo] ||
+        null;
 
       const committedEvents = prev.currentEvents.map((e) => ({
         ...e,
@@ -2767,7 +2915,7 @@ export default function App() {
         goalsB,
       });
 
-      const newMatchNo = prev.currentMatchNo + 1;
+      const newMatchNo = Math.max(Number(prev.currentMatchNo || 1), matchNo + 1);
 
       const newResult = {
         ...matchMeta,
@@ -2781,6 +2929,38 @@ export default function App() {
         isDraw: rotationResult.isDraw,
         confirmedLineupSnapshot: verifiedLineups,
       };
+
+      if (matchMeta.matchType === MATCH_TYPE.FRIENDLY) {
+        const friendlyEntry = {
+          id: buildFriendlyMatchArchiveId({
+            gameFormat: matchMeta.gameFormat,
+            matchNo,
+            createdAt: new Date(),
+          }),
+          createdAt: new Date().toISOString(),
+          matchType: MATCH_TYPE.FRIENDLY,
+          gameFormat: matchMeta.gameFormat,
+          matchMode: null,
+          results: [newResult],
+          allEvents: allCommittedEvents,
+          teams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
+          playerAppearances: [],
+        };
+
+        return {
+          ...prev,
+          currentMatchNo: 1,
+          currentMatch: prev.currentMatch,
+          streaks: rotationResult.updatedStreaks,
+          currentEvents: [],
+          allEvents: [],
+          results: [],
+          friendlyMatchDayHistory: [
+            ...(prev.friendlyMatchDayHistory || []),
+            friendlyEntry,
+          ],
+        };
+      }
 
       return {
         ...prev,
@@ -3237,6 +3417,7 @@ export default function App() {
         allEvents: [],
         results: [],
         matchDayHistory: prevSeason.matchDayHistory || [],
+        friendlyMatchDayHistory: prevSeason.friendlyMatchDayHistory || [],
         matchMode: "round_robin",
         scheduledTarget: null,
         scheduledFixtures: [],
@@ -3268,6 +3449,7 @@ export default function App() {
       allEvents: [],
       results: [],
       matchDayHistory: prev.matchDayHistory || [],
+      friendlyMatchDayHistory: prev.friendlyMatchDayHistory || [],
       matchMode: "round_robin",
       scheduledTarget: null,
       scheduledFixtures: [],
@@ -3306,7 +3488,7 @@ export default function App() {
       String(now.getDate()).padStart(2, "0");
 
     try {
-      const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo, matchType);
+      const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, activeMatchNo, matchType);
       const highlightsArchivePayload = buildHighlightsArchivePayload();
       console.log("[TK HIGHLIGHTS] archive winners on End Match Day:", highlightsArchivePayload);
 
@@ -3317,7 +3499,7 @@ export default function App() {
           activeSeasonId,
           matchType,
           gameFormat,
-          currentMatchNo,
+          currentMatchNo: activeMatchNo,
         });
         await clearRawHighlightsFromFirebase(matchDayId);
       }
@@ -3344,23 +3526,61 @@ export default function App() {
             matchMode: prevSeason?.matchMode || matchMode,
           });
 
-          const entry = {
-            id,
-            createdAt: now.toISOString(),
-            ...savedMatchMeta,
-            results: prevSeason.results || [],
-            allEvents: prevSeason.allEvents || [],
-            teams: prevSeason.teams || [],
-            playerAppearances: safeParticipationEntries,
-          };
+          const currentResultsWithMeta = attachMatchMetadataToRecords(
+            prevSeason.results || [],
+            savedMatchMeta
+          );
+          const currentEventsWithMeta = attachMatchMetadataToRecords(
+            prevSeason.allEvents || [],
+            savedMatchMeta
+          );
 
-          const newHistory = [...(prevSeason.matchDayHistory || []), entry];
+          const splitResults = splitRecordsByMatchType(currentResultsWithMeta);
+          const splitEvents = splitRecordsByMatchType(currentEventsWithMeta);
+
+          const leagueEntry =
+            splitResults.league.length > 0 || splitEvents.league.length > 0
+              ? {
+                  id,
+                  createdAt: now.toISOString(),
+                  ...savedMatchMeta,
+                  matchType: MATCH_TYPE.LEAGUE,
+                  results: splitResults.league,
+                  allEvents: splitEvents.league,
+                  teams: prevSeason.teams || [],
+                  playerAppearances: safeParticipationEntries,
+                }
+              : null;
+
+          const friendlyEntry =
+            splitResults.friendly.length > 0 || splitEvents.friendly.length > 0
+              ? {
+                  id,
+                  createdAt: now.toISOString(),
+                  matchType: MATCH_TYPE.FRIENDLY,
+                  gameFormat: savedMatchMeta.gameFormat,
+                  matchMode: null,
+                  results: splitResults.friendly,
+                  allEvents: splitEvents.friendly,
+                  teams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
+                  playerAppearances: [],
+                }
+              : null;
+
+          const newLeagueHistory = leagueEntry
+            ? [...(prevSeason.matchDayHistory || []), leagueEntry]
+            : prevSeason.matchDayHistory || [];
+
+          const newFriendlyHistory = friendlyEntry
+            ? [...(prevSeason.friendlyMatchDayHistory || []), friendlyEntry]
+            : prevSeason.friendlyMatchDayHistory || [];
 
           return {
             ...prevSeason,
-            matchDayHistory: newHistory,
+            matchDayHistory: newLeagueHistory,
+            friendlyMatchDayHistory: newFriendlyHistory,
             matchType: MATCH_TYPE.FRIENDLY,
-        gameFormat: GAME_FORMAT.FIVE_V_FIVE,
+            gameFormat: GAME_FORMAT.FIVE_V_FIVE,
             activeTeamIds: (prevSeason.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
             fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
             currentMatchNo: 1,
@@ -3397,23 +3617,61 @@ export default function App() {
           matchMode: prev?.matchMode || matchMode,
         });
 
-        const entry = {
-          id,
-          createdAt: now.toISOString(),
-          ...savedMatchMeta,
-          results: prev.results || [],
-          allEvents: prev.allEvents || [],
-          teams: prev.teams || [],
-          playerAppearances: pendingParticipationEntries || [],
-        };
+        const currentResultsWithMeta = attachMatchMetadataToRecords(
+          prev.results || [],
+          savedMatchMeta
+        );
+        const currentEventsWithMeta = attachMatchMetadataToRecords(
+          prev.allEvents || [],
+          savedMatchMeta
+        );
 
-        const newHistory = [...(prev.matchDayHistory || []), entry];
+        const splitResults = splitRecordsByMatchType(currentResultsWithMeta);
+        const splitEvents = splitRecordsByMatchType(currentEventsWithMeta);
+
+        const leagueEntry =
+          splitResults.league.length > 0 || splitEvents.league.length > 0
+            ? {
+                id,
+                createdAt: now.toISOString(),
+                ...savedMatchMeta,
+                matchType: MATCH_TYPE.LEAGUE,
+                results: splitResults.league,
+                allEvents: splitEvents.league,
+                teams: prev.teams || [],
+                playerAppearances: pendingParticipationEntries || [],
+              }
+            : null;
+
+        const friendlyEntry =
+          splitResults.friendly.length > 0 || splitEvents.friendly.length > 0
+            ? {
+                id,
+                createdAt: now.toISOString(),
+                matchType: MATCH_TYPE.FRIENDLY,
+                gameFormat: savedMatchMeta.gameFormat,
+                matchMode: null,
+                results: splitResults.friendly,
+                allEvents: splitEvents.friendly,
+                teams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
+                playerAppearances: [],
+              }
+            : null;
+
+        const newLeagueHistory = leagueEntry
+          ? [...(prev.matchDayHistory || []), leagueEntry]
+          : prev.matchDayHistory || [];
+
+        const newFriendlyHistory = friendlyEntry
+          ? [...(prev.friendlyMatchDayHistory || []), friendlyEntry]
+          : prev.friendlyMatchDayHistory || [];
 
         return {
           ...prev,
-          matchDayHistory: newHistory,
+          matchDayHistory: newLeagueHistory,
+          friendlyMatchDayHistory: newFriendlyHistory,
           matchType: MATCH_TYPE.FRIENDLY,
-        gameFormat: GAME_FORMAT.FIVE_V_FIVE,
+          gameFormat: GAME_FORMAT.FIVE_V_FIVE,
           activeTeamIds: (prev.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
           fiveVFiveTeams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
           currentMatchNo: 1,
@@ -3549,6 +3807,7 @@ export default function App() {
         allEvents: [],
         results: [],
         matchDayHistory: [],
+        friendlyMatchDayHistory: [],
         matchMode: "round_robin",
         scheduledTarget: null,
         scheduledFixtures: [],
@@ -3597,7 +3856,7 @@ export default function App() {
 
     return {
       matchDayId: new Date().toISOString().slice(0, 10),
-      matchNo: currentMatchNo || 1,
+      matchNo: activeMatchNo || 1,
       seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || null,
       matchType,
       gameFormat: normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE),
@@ -3624,7 +3883,7 @@ export default function App() {
       currentMatch: effectiveLiveMatch,
       currentConfirmedLineupSnapshot,
       confirmedLineupsByMatchNo,
-      currentMatchNo,
+      currentMatchNo: activeMatchNo,
     });
 
     const isOfficialMatchLive =
@@ -3637,8 +3896,8 @@ export default function App() {
       teamName: "Turf Kings FC",
       matchIsLive: isOfficialMatchLive,
       canUseOutsideOfficialMatch: true,
-      matchId: `tk-${activeSeasonId || "season"}-${currentMatchNo || 1}`,
-      matchNo: Number(currentMatchNo || 1),
+      matchId: `tk-${activeSeasonId || "season"}-${activeMatchNo || 1}`,
+      matchNo: Number(activeMatchNo || 1),
       seasonId: activeSeasonId || null,
       matchType: matchType || MATCH_TYPE.FRIENDLY,
       gameFormat: normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE),
@@ -3887,7 +4146,7 @@ export default function App() {
       {page === PAGE_LANDING && (
         <LandingPage
           teams={teams}
-          currentMatchNo={currentMatchNo}
+          currentMatchNo={activeMatchNo}
           currentMatch={effectiveLiveMatch}
           results={fullResults}
           streaks={streaks}
@@ -3977,7 +4236,7 @@ export default function App() {
           running={running}
           teams={pendingMatchStartContext?.teams || teams}
           fiveVFiveTeams={pendingMatchStartContext?.fiveVFiveTeams || fiveVFiveTeams}
-          currentMatchNo={pendingMatchStartContext?.matchNo || currentMatchNo}
+          currentMatchNo={pendingMatchStartContext?.matchNo || activeMatchNo}
           currentMatch={pendingMatchStartContext?.currentMatch || effectiveLiveMatch}
           currentEvents={currentEvents}
           identity={identity}
@@ -4006,7 +4265,7 @@ export default function App() {
       {page === PAGE_SPECTATOR && (
         <SpectatorPage
           teams={teams}
-          currentMatchNo={currentMatchNo}
+          currentMatchNo={activeMatchNo}
           currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
           results={results}
@@ -4037,6 +4296,7 @@ export default function App() {
           seasons={USE_V2 ? safeV2ForStats?.seasons || [] : []}
           playerPhotosByName={playerPhotosByName}
           matchDayHistory={matchDayHistory || []}
+          friendlyMatchDayHistory={friendlyMatchDayHistory || []}
           onDeleteSavedMatch={handleDeleteSavedMatch}
           onUpdateSavedEvent={handleUpdateSavedEvent}
           onDeleteSavedEvent={handleDeleteSavedEvent}
@@ -4078,7 +4338,7 @@ export default function App() {
               identity?.email ||
               "Unknown";
 
-            const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo, matchType);
+            const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, activeMatchNo, matchType);
 
             if (userId && matchDayId) {
               try {

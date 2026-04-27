@@ -237,6 +237,41 @@ function normalizeStatsMatchType(value) {
   return "LEAGUE";
 }
 
+function inferStatsRecordType(record = {}) {
+  const explicit =
+    record?.matchType ||
+    record?.matchMode ||
+    record?.gameFormat ||
+    record?.format ||
+    "";
+
+  if (explicit) return normalizeStatsMatchType(explicit);
+
+  const ids = [
+    record?.teamAId,
+    record?.teamBId,
+    record?.winnerId,
+    record?.teamId,
+  ]
+    .map((x) => String(x || "").trim().toUpperCase())
+    .filter(Boolean);
+
+  const friendlySideIds = new Set(["BLACK", "WHITE", "DARK", "LIGHT"]);
+
+  if (ids.length && ids.every((id) => friendlySideIds.has(id))) {
+    return "FRIENDLY";
+  }
+
+  return "LEAGUE";
+}
+
+function filterStatsRecordsForView(items = [], showFriendlyStats = false) {
+  const wantedType = showFriendlyStats ? "FRIENDLY" : "LEAGUE";
+  return (Array.isArray(items) ? items : []).filter(
+    (item) => inferStatsRecordType(item) === wantedType
+  );
+}
+
 // ---------------- PAGE ----------------
 export function StatsPage({
   teams = [],
@@ -657,36 +692,47 @@ export function StatsPage({
 
   const scopedArchivedResults = useMemo(() => {
     if (showFriendlyStats) {
-      return safeFriendlyMatchDayHistory.flatMap((d) =>
+      const fromFriendlyHistory = safeFriendlyMatchDayHistory.flatMap((d) =>
         attachMatchDayMeta(
           d?.results,
           d?.id || d?.matchDayId || d?.date || d?.day || "FRIENDLY"
         )
       );
+
+      return filterStatsRecordsForView(fromFriendlyHistory, true);
     }
 
     if (isViewingPreviousSeason) {
       const mh = Array.isArray(selectedPrevSeason?.matchDayHistory)
         ? selectedPrevSeason.matchDayHistory
         : [];
-      return mh.flatMap((d) =>
-        attachMatchDayMeta(
-          d?.results,
-          d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
-        )
+      return filterStatsRecordsForView(
+        mh.flatMap((d) =>
+          attachMatchDayMeta(
+            d?.results,
+            d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
+          )
+        ),
+        false
       );
     }
 
     if (safeMatchDayHistory.length > 0) {
-      return safeMatchDayHistory.flatMap((d) =>
-        attachMatchDayMeta(
-          d?.results,
-          d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
-        )
+      return filterStatsRecordsForView(
+        safeMatchDayHistory.flatMap((d) =>
+          attachMatchDayMeta(
+            d?.results,
+            d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
+          )
+        ),
+        false
       );
     }
 
-    return attachMatchDayMeta(safeArchivedResultsProp, "UNKNOWN");
+    return filterStatsRecordsForView(
+      attachMatchDayMeta(safeArchivedResultsProp, "UNKNOWN"),
+      showFriendlyStats
+    );
   }, [
     isViewingPreviousSeason,
     selectedPrevSeason,
@@ -698,36 +744,47 @@ export function StatsPage({
 
   const scopedArchivedEvents = useMemo(() => {
     if (showFriendlyStats) {
-      return safeFriendlyMatchDayHistory.flatMap((d) =>
+      const fromFriendlyHistory = safeFriendlyMatchDayHistory.flatMap((d) =>
         attachMatchDayMeta(
           d?.allEvents,
           d?.id || d?.matchDayId || d?.date || d?.day || "FRIENDLY"
         )
       );
+
+      return filterStatsRecordsForView(fromFriendlyHistory, true);
     }
 
     if (isViewingPreviousSeason) {
       const mh = Array.isArray(selectedPrevSeason?.matchDayHistory)
         ? selectedPrevSeason.matchDayHistory
         : [];
-      return mh.flatMap((d) =>
-        attachMatchDayMeta(
-          d?.allEvents,
-          d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
-        )
+      return filterStatsRecordsForView(
+        mh.flatMap((d) =>
+          attachMatchDayMeta(
+            d?.allEvents,
+            d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
+          )
+        ),
+        false
       );
     }
 
     if (safeMatchDayHistory.length > 0) {
-      return safeMatchDayHistory.flatMap((d) =>
-        attachMatchDayMeta(
-          d?.allEvents,
-          d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
-        )
+      return filterStatsRecordsForView(
+        safeMatchDayHistory.flatMap((d) =>
+          attachMatchDayMeta(
+            d?.allEvents,
+            d?.id || d?.matchDayId || d?.date || d?.day || "UNKNOWN"
+          )
+        ),
+        false
       );
     }
 
-    return attachMatchDayMeta(safeArchivedEventsProp, "UNKNOWN");
+    return filterStatsRecordsForView(
+      attachMatchDayMeta(safeArchivedEventsProp, "UNKNOWN"),
+      showFriendlyStats
+    );
   }, [
     isViewingPreviousSeason,
     selectedPrevSeason,
@@ -739,10 +796,16 @@ export function StatsPage({
 
   const scopedCurrentResults = useMemo(() => {
     if (!isViewingPreviousSeason) {
-      return attachMatchDayMeta(safeResultsProp, currentMatchDayId || "CURRENT");
+      return filterStatsRecordsForView(
+        attachMatchDayMeta(safeResultsProp, currentMatchDayId || "CURRENT"),
+        showFriendlyStats
+      );
     }
     const r = selectedPrevSeason?.results;
-    return attachMatchDayMeta(Array.isArray(r) ? r : [], "UNKNOWN");
+    return filterStatsRecordsForView(
+      attachMatchDayMeta(Array.isArray(r) ? r : [], "UNKNOWN"),
+      false
+    );
   }, [
     isViewingPreviousSeason,
     safeResultsProp,
@@ -752,10 +815,16 @@ export function StatsPage({
 
   const scopedCurrentEvents = useMemo(() => {
     if (!isViewingPreviousSeason) {
-      return attachMatchDayMeta(safeEventsProp, currentMatchDayId || "CURRENT");
+      return filterStatsRecordsForView(
+        attachMatchDayMeta(safeEventsProp, currentMatchDayId || "CURRENT"),
+        showFriendlyStats
+      );
     }
     const e = selectedPrevSeason?.allEvents;
-    return attachMatchDayMeta(Array.isArray(e) ? e : [], "UNKNOWN");
+    return filterStatsRecordsForView(
+      attachMatchDayMeta(Array.isArray(e) ? e : [], "UNKNOWN"),
+      false
+    );
   }, [
     isViewingPreviousSeason,
     safeEventsProp,
