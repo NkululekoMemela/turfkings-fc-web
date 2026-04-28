@@ -60,11 +60,13 @@ const FORMATIONS_6 = {
     label: "2-1-2",
     positions: [
       { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 35, y: 68 },
-      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      // Wider defensive and attacking lanes to avoid overlap on mobile
+      // and to make the formation look useful for real planning.
+      { id: "def_l", label: "DEF", x: 27, y: 68 },
+      { id: "def_r", label: "DEF", x: 73, y: 68 },
       { id: "mid", label: "MID", x: 50, y: 45 },
-      { id: "fwd_l", label: "ST", x: 35, y: 20 },
-      { id: "fwd_r", label: "ST", x: 65, y: 20 },
+      { id: "fwd_l", label: "ST", x: 28, y: 20 },
+      { id: "fwd_r", label: "ST", x: 72, y: 20 },
     ],
   },
   "6_2_3_0": {
@@ -1193,6 +1195,7 @@ export function FormationsPage({
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoMessage, setPhotoMessage] = useState("");
   const [showPhotoPanel, setShowPhotoPanel] = useState(false);
+  const [selectedPhotoPlayerName, setSelectedPhotoPlayerName] = useState("");
 
   useEffect(() => {
     if (!playerPhotosByName) return;
@@ -1302,15 +1305,16 @@ export function FormationsPage({
   }, [identity, authUser, playerResolver]);
 
   const isVerifiedPlayer = !!verifiedPlayerName;
-  const photoPlayer = verifiedPlayerName;
 
   const handlePhotoFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!isVerifiedPlayer || !photoPlayer) {
+    if (!canUploadPhotoForCurrentSelection || !photoPlayer) {
       setPhotoMessage(
-        "We can't tell which player you are. Please verify your player identity on the home screen first."
+        isTemporaryOpponentTeam
+          ? "Please choose a guest player before uploading a photo."
+          : "We can't tell which player you are. Please verify your player identity on the home screen first."
       );
       e.target.value = "";
       return;
@@ -1327,16 +1331,26 @@ export function FormationsPage({
         reader.readAsDataURL(file);
       });
 
-      const docId = slugFromName(photoPlayer);
+      const docId = isTemporaryOpponentTeam
+        ? `${slugFromName(selectedTeamCanonical?.label || selectedTeamCanonical?.id || "guest")}_${slugFromName(photoPlayer)}`
+        : slugFromName(photoPlayer);
 
       await setDoc(
         doc(db, "playerPhotos", docId),
         {
           name: photoPlayer,
           teamId: selectedTeamCanonical ? selectedTeamCanonical.id : "turf_kings",
+          teamName: selectedTeamCanonical?.label || null,
+          isTemporaryOpponentPhoto: Boolean(isTemporaryOpponentTeam),
           photoData: dataUrl,
           updatedAt: serverTimestamp(),
           uploadedByEmail: authUser?.email || identity?.email || null,
+          uploadedByName:
+            identity?.shortName ||
+            identity?.fullName ||
+            identity?.displayName ||
+            identity?.name ||
+            null,
         },
         { merge: true }
       );
@@ -1384,6 +1398,38 @@ export function FormationsPage({
 
   const selectedTeamCanonical =
     canonicalTeams.find((t) => t.id === selectedTeamId) || canonicalTeams[0] || null;
+
+  const isTemporaryOpponentTeam = useMemo(() => {
+    return Boolean(
+      selectedTeamCanonical?.isGuestOpponent ||
+        selectedTeamCanonical?.temporaryGuestOpponent ||
+        selectedTeamCanonical?.challengeRole === "guest"
+    );
+  }, [selectedTeamCanonical]);
+
+  const teamPhotoUploadPlayers = useMemo(() => {
+    return uniqueByLower(selectedTeamCanonical?.players || []);
+  }, [selectedTeamCanonical]);
+
+  useEffect(() => {
+    if (!isTemporaryOpponentTeam) return;
+    if (
+      selectedPhotoPlayerName &&
+      teamPhotoUploadPlayers.some(
+        (name) => normKey(name) === normKey(selectedPhotoPlayerName)
+      )
+    ) {
+      return;
+    }
+    setSelectedPhotoPlayerName(teamPhotoUploadPlayers[0] || "");
+  }, [isTemporaryOpponentTeam, selectedPhotoPlayerName, teamPhotoUploadPlayers]);
+
+  const photoPlayer = isTemporaryOpponentTeam
+    ? selectedPhotoPlayerName
+    : verifiedPlayerName;
+
+  const canUploadPhotoForCurrentSelection =
+    Boolean(photoPlayer) && (isVerifiedPlayer || isTemporaryOpponentTeam);
 
   const loggedInCanonicalName = useMemo(() => {
     const rawName =
@@ -2315,20 +2361,48 @@ export function FormationsPage({
               <div className="photo-upload-block">
                 <h4>Player photo</h4>
                 <p className="muted small">
-                  Upload a profile picture for your card. Photos are stored in the TurfKings database for future awards and player cards.
+                  Upload a profile picture for the selected player card.
                 </p>
 
-                <div className="field-row">
-                  {isVerifiedPlayer ? (
+                {isTemporaryOpponentTeam ? (
+                  <div className="field-row">
+                    <label>Guest player</label>
+                    <select
+                      className="lineups-select"
+                      value={selectedPhotoPlayerName}
+                      onChange={(e) => {
+                        setSelectedPhotoPlayerName(e.target.value);
+                        setPhotoMessage("");
+                      }}
+                      disabled={uploadingPhoto || teamPhotoUploadPlayers.length === 0}
+                    >
+                      {teamPhotoUploadPlayers.length === 0 ? (
+                        <option value="">No guest players yet</option>
+                      ) : (
+                        teamPhotoUploadPlayers.map((name) => (
+                          <option key={`guest-photo-${name}`} value={name}>
+                            {displayCompactName(name)}
+                          </option>
+                        ))
+                      )}
+                    </select>
                     <p className="muted small">
-                      Uploading as <strong>{verifiedPlayerName}</strong>.
+                      Guest photos are saved for this temporary opponent list only. They do not create permanent Turf Kings player records.
                     </p>
-                  ) : (
-                    <p className="error-text small">
-                      We can&apos;t tell which player you are. Please verify your player identity on the home screen before uploading a photo.
-                    </p>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="field-row">
+                    {isVerifiedPlayer ? (
+                      <p className="muted small">
+                        Uploading as <strong>{verifiedPlayerName}</strong>.
+                      </p>
+                    ) : (
+                      <p className="error-text small">
+                        We can&apos;t tell which player you are. Please verify your player identity on the home screen before uploading a photo.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="field-row">
                   <label>Upload image</label>
@@ -2336,7 +2410,7 @@ export function FormationsPage({
                     type="file"
                     accept="image/*"
                     onChange={handlePhotoFileChange}
-                    disabled={uploadingPhoto || !isVerifiedPlayer}
+                    disabled={uploadingPhoto || !canUploadPhotoForCurrentSelection}
                   />
                 </div>
 
