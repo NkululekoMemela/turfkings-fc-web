@@ -70,7 +70,7 @@ const PAGE_PAYMENT = "payment";
 const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 
 const MASTER_CODE = "3333";
-const MATCH_SECONDS = 5 * 60;
+const DEFAULT_MATCH_SECONDS = 60 * 60;
 
 const GUEST_OPPONENT_ID = "guest_opponent";
 const TURF_KINGS_CHALLENGE_ID = "turf_kings_challenge";
@@ -1707,10 +1707,22 @@ export default function App() {
     }
   });
 
-  const [secondsLeft, setSecondsLeft] = useState(MATCH_SECONDS);
+  const [matchSeconds, setMatchSeconds] = useState(DEFAULT_MATCH_SECONDS);
+  const [secondsLeft, setSecondsLeft] = useState(DEFAULT_MATCH_SECONDS);
   const [running, setRunning] = useState(false);
   const [timeUp, setTimeUp] = useState(false);
   const [hasLiveMatch, setHasLiveMatch] = useState(false);
+
+  const handleUpdateFriendlyMatchSeconds = (nextSeconds) => {
+    const safeSeconds = Number(nextSeconds);
+    if (!Number.isFinite(safeSeconds) || safeSeconds < 10 * 60) return;
+
+    setMatchSeconds(safeSeconds);
+
+    // Admin duration edits intentionally reset the visible friendly timer.
+    setSecondsLeft(safeSeconds);
+    setTimeUp(false);
+  };
 
   const [pendingMatchStartContext, setPendingMatchStartContext] = useState(
     null
@@ -2691,7 +2703,7 @@ export default function App() {
     };
 
     setPendingMatchStartContext(startContext);
-    setSecondsLeft(MATCH_SECONDS);
+    setSecondsLeft(matchSeconds);
     setTimeUp(false);
     setRunning(true);
     setHasLiveMatch(true);
@@ -2716,7 +2728,7 @@ export default function App() {
     setPendingMatchStartContext(null);
     setRunning(false);
     setTimeUp(false);
-    setSecondsLeft(MATCH_SECONDS);
+    setSecondsLeft(matchSeconds);
     setHasLiveMatch(false);
     setCurrentConfirmedLineupSnapshot(null);
 
@@ -2811,7 +2823,17 @@ export default function App() {
   const handleConfirmEndMatch = async (summary) => {
     if (USE_V2) {
       updateActiveSeason((prevSeason) => {
-        const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
+        const {
+        teamAId,
+        teamBId,
+        standbyId,
+        goalsA,
+        goalsB,
+        teamALabel,
+        teamBLabel,
+        teamASnapshot,
+        teamBSnapshot,
+      } = summary;
 
         const matchMeta = buildMatchMetadata({
           matchType: prevSeason?.matchType || matchType,
@@ -2873,12 +2895,30 @@ export default function App() {
 
         const newMatchNo = Math.max(Number(prevSeason.currentMatchNo || 1), matchNo + 1);
 
+        const friendlyTeamsSnapshot = getActiveFriendlyTeams(prevSeason?.fiveVFiveTeams);
+        const teamASnapshotSafe =
+          teamASnapshot ||
+          friendlyTeamsSnapshot.find((team) => team?.id === teamAId) ||
+          null;
+        const teamBSnapshotSafe =
+          teamBSnapshot ||
+          friendlyTeamsSnapshot.find((team) => team?.id === teamBId) ||
+          null;
+        const resolvedTeamALabel =
+          teamALabel || teamASnapshotSafe?.label || teamAId || "Team A";
+        const resolvedTeamBLabel =
+          teamBLabel || teamBSnapshotSafe?.label || teamBId || "Team B";
+
         const newResult = {
           ...matchMeta,
           matchNo,
           teamAId,
           teamBId,
           standbyId: standbyId || null,
+          teamALabel: resolvedTeamALabel,
+          teamBLabel: resolvedTeamBLabel,
+          teamASnapshot: teamASnapshotSafe,
+          teamBSnapshot: teamBSnapshotSafe,
           goalsA,
           goalsB,
           winnerId: rotationResult.winnerId,
@@ -2939,7 +2979,7 @@ export default function App() {
             matchMode: null,
             results: [newResult],
             allEvents: allCommittedEvents,
-            teams: getActiveFriendlyTeams(prevSeason?.fiveVFiveTeams),
+            teams: friendlyTeamsSnapshot,
             playerAppearances: [],
           };
 
@@ -2973,7 +3013,7 @@ export default function App() {
 
       setRunning(false);
       setTimeUp(false);
-      setSecondsLeft(MATCH_SECONDS);
+      setSecondsLeft(matchSeconds);
       setHasLiveMatch(false);
       setPendingMatchStartContext(null);
       setCurrentConfirmedLineupSnapshot(null);
@@ -2985,7 +3025,17 @@ export default function App() {
     }
 
     updateState((prev) => {
-      const { teamAId, teamBId, standbyId, goalsA, goalsB } = summary;
+      const {
+        teamAId,
+        teamBId,
+        standbyId,
+        goalsA,
+        goalsB,
+        teamALabel,
+        teamBLabel,
+        teamASnapshot,
+        teamBSnapshot,
+      } = summary;
 
       const matchMeta = buildMatchMetadata({
         matchType: prev?.matchType || matchType,
@@ -3030,12 +3080,30 @@ export default function App() {
 
       const newMatchNo = Math.max(Number(prev.currentMatchNo || 1), matchNo + 1);
 
+      const friendlyTeamsSnapshot = getActiveFriendlyTeams(prev?.fiveVFiveTeams);
+      const teamASnapshotSafe =
+        teamASnapshot ||
+        friendlyTeamsSnapshot.find((team) => team?.id === teamAId) ||
+        null;
+      const teamBSnapshotSafe =
+        teamBSnapshot ||
+        friendlyTeamsSnapshot.find((team) => team?.id === teamBId) ||
+        null;
+      const resolvedTeamALabel =
+        teamALabel || teamASnapshotSafe?.label || teamAId || "Team A";
+      const resolvedTeamBLabel =
+        teamBLabel || teamBSnapshotSafe?.label || teamBId || "Team B";
+
       const newResult = {
         ...matchMeta,
         matchNo,
         teamAId,
         teamBId,
         standbyId,
+        teamALabel: resolvedTeamALabel,
+        teamBLabel: resolvedTeamBLabel,
+        teamASnapshot: teamASnapshotSafe,
+        teamBSnapshot: teamBSnapshotSafe,
         goalsA,
         goalsB,
         winnerId: rotationResult.winnerId,
@@ -3056,7 +3124,7 @@ export default function App() {
           matchMode: null,
           results: [newResult],
           allEvents: allCommittedEvents,
-          teams: getActiveFriendlyTeams(prev?.fiveVFiveTeams),
+          teams: friendlyTeamsSnapshot,
           playerAppearances: [],
         };
 
@@ -3092,7 +3160,7 @@ export default function App() {
 
     setRunning(false);
     setTimeUp(false);
-    setSecondsLeft(MATCH_SECONDS);
+    setSecondsLeft(matchSeconds);
     setHasLiveMatch(false);
     setPendingMatchStartContext(null);
     setCurrentConfirmedLineupSnapshot(null);
@@ -3108,7 +3176,7 @@ export default function App() {
   const handleDiscardMatchAndBack = async () => {
     setRunning(false);
     setTimeUp(false);
-    setSecondsLeft(MATCH_SECONDS);
+    setSecondsLeft(matchSeconds);
     setHasLiveMatch(false);
     setPendingMatchStartContext(null);
     writeCameraLiveContextToFirebase(null).catch((error) => {
@@ -3937,7 +4005,7 @@ export default function App() {
 
       setRunning(false);
       setTimeUp(false);
-      setSecondsLeft(MATCH_SECONDS);
+      setSecondsLeft(matchSeconds);
       setHasLiveMatch(false);
       setPendingMatchStartContext(null);
       setCurrentConfirmedLineupSnapshot(null);
@@ -4445,7 +4513,7 @@ export default function App() {
 
       {page === PAGE_LIVE && (
         <LiveMatchPage
-          matchSeconds={MATCH_SECONDS}
+          matchSeconds={matchSeconds}
           secondsLeft={secondsLeft}
           timeUp={timeUp}
           running={running}
@@ -4462,6 +4530,7 @@ export default function App() {
           pendingMatchStartContext={pendingMatchStartContext}
           matchType={pendingMatchStartContext?.matchType || matchType}
           gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
+          onUpdateMatchSeconds={handleUpdateFriendlyMatchSeconds}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={playerPhotosByName}
@@ -4643,6 +4712,10 @@ export default function App() {
           teams={teams}
           fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
           currentMatch={effectiveLiveMatch}
+          currentEvents={currentEvents}
+          allEvents={allEvents}
+          results={results}
+          friendlyMatchDayHistory={friendlyMatchDayHistory || []}
           playerPhotosByName={playerPhotosByName}
           identity={identity}
           onBack={handleBackToLanding}

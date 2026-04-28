@@ -795,13 +795,19 @@ function getTeamAccent(team = {}) {
 }
 
 function getShortLabel(team = {}, fallback = "LIGHT") {
-  const explicit = String(team?.teamColorName || team?.colorName || "").trim();
   const label = String(team?.label || "").trim();
+  const explicit = String(team?.teamColorName || team?.colorName || "").trim();
 
-  if (explicit) return explicit.toUpperCase();
+  // Friendly challenge teams should be shown by team name, not by shirt colour.
+  // Example: Turf Kings vs Farmers FC, not Red vs Blue.
   if (label) return label.toUpperCase();
+  if (explicit) return explicit.toUpperCase();
 
   return fallback;
+}
+
+function getTeamDisplayName(team = {}, fallback = "TEAM") {
+  return String(team?.label || team?.name || team?.title || fallback || "TEAM").trim();
 }
 
 function TeamColorBadge({ team, fallback = "LIGHT" }) {
@@ -1534,6 +1540,7 @@ export function FriendlyLiveMatchPage({
   canControlMatch = false,
   pendingMatchStartContext = null,
   gameFormat = "5_V_5",
+  onUpdateMatchSeconds = null,
   confirmedLineupSnapshot = null,
   confirmedLineupsByMatchNo = {},
   playerPhotosByName = {},
@@ -1593,6 +1600,13 @@ export function FriendlyLiveMatchPage({
   const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   const alarmLoopRef = useRef(null);
+
+  // Keep the referee/captain scoring screen awake and ready during the match.
+  // This is intentionally silent: being on this page is already the "ref mode".
+  const wakeLockRef = useRef(null);
+  const idleTimerRef = useRef(null);
+  const [screenDimmed, setScreenDimmed] = useState(false);
+
   const savedLineups = useMemo(() => loadSavedLineups(), []);
 
   useEffect(() => {
@@ -2042,6 +2056,113 @@ export function FriendlyLiveMatchPage({
   }, [running]);
 
   useEffect(() => {
+    let mounted = true;
+
+    const canUseWindow = typeof window !== "undefined";
+    const canUseDocument = typeof document !== "undefined";
+    if (!canUseWindow || !canUseDocument) return undefined;
+
+    async function requestScreenWakeLock() {
+      try {
+        if (!("wakeLock" in navigator)) return;
+        if (wakeLockRef.current) return;
+
+        const lock = await navigator.wakeLock.request("screen");
+        if (!mounted) {
+          lock.release?.().catch(() => {});
+          return;
+        }
+
+        wakeLockRef.current = lock;
+
+        lock.addEventListener?.("release", () => {
+          if (mounted) wakeLockRef.current = null;
+        });
+      } catch (err) {
+        // Some browsers/devices do not support wake lock. Silent fallback is fine.
+        console.warn("Screen wake lock unavailable:", err);
+      }
+    }
+
+    function resetIdleTimer() {
+      if (!mounted) return;
+
+      setScreenDimmed(false);
+
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+
+      idleTimerRef.current = setTimeout(() => {
+        if (mounted) setScreenDimmed(true);
+      }, 10000);
+    }
+
+    async function handleVisibilityChange() {
+      if (document.hidden) return;
+      await requestScreenWakeLock();
+      resetIdleTimer();
+    }
+
+    async function tryPortraitLock() {
+      try {
+        // Most browsers only allow orientation lock in fullscreen/PWA contexts.
+        // We attempt it silently and keep the app working if blocked.
+        if (window.screen?.orientation?.lock) {
+          await window.screen.orientation.lock("portrait");
+        }
+      } catch (_) {
+        // ignore portrait-lock failures
+      }
+    }
+
+    requestScreenWakeLock();
+    tryPortraitLock();
+    resetIdleTimer();
+
+    const activityEvents = [
+      "touchstart",
+      "touchmove",
+      "pointerdown",
+      "mousemove",
+      "keydown",
+      "click",
+    ];
+
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, resetIdleTimer, { passive: true });
+    });
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      mounted = false;
+
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, resetIdleTimer);
+      });
+
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release?.().catch(() => {});
+        wakeLockRef.current = null;
+      }
+
+      try {
+        window.screen?.orientation?.unlock?.();
+      } catch (_) {
+        // ignore orientation unlock failures
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isControllerSession) return;
     if (!teamA || !teamB) return;
 
@@ -2053,8 +2174,10 @@ export function FriendlyLiveMatchPage({
         matchNumber: currentMatchNo,
         teamAId,
         teamBId,
-        teamALabel: getShortLabel(teamA, "DARK"),
-        teamBLabel: getShortLabel(teamB, "LIGHT"),
+        teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
+        teamBLabel: getTeamDisplayName(teamB, "Opponent"),
+        teamAColorName: teamA?.teamColorName || teamA?.colorName || "",
+        teamBColorName: teamB?.teamColorName || teamB?.colorName || "",
       },
       matchSeconds
     );
@@ -2199,8 +2322,10 @@ export function FriendlyLiveMatchPage({
     matchNumber: currentMatchNo,
     teamAId,
     teamBId,
-    teamALabel: getShortLabel(teamA, "DARK"),
-    teamBLabel: getShortLabel(teamB, "LIGHT"),
+    teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
+    teamBLabel: getTeamDisplayName(teamB, "Opponent"),
+    teamAColorName: teamA?.teamColorName || teamA?.colorName || "",
+    teamBColorName: teamB?.teamColorName || teamB?.colorName || "",
   };
 
   const rotationInfo = getRotationDue(matchSeconds || 0, displaySeconds || 0);
@@ -2362,6 +2487,10 @@ export function FriendlyLiveMatchPage({
       id: Date.now().toString(),
       type: "goal",
       teamId: scoringTeamId,
+      teamLabel:
+        scoringTeamId === teamAId
+          ? getTeamDisplayName(teamA, "Turf Kings")
+          : getTeamDisplayName(teamB, "Opponent"),
       scorer: scorerName,
       assist: assistName || null,
       scorerType: scorerIsGuest ? "guest" : "registered",
@@ -2415,6 +2544,10 @@ export function FriendlyLiveMatchPage({
       id: Date.now().toString(),
       type: "shibobo",
       teamId: shiboboTeamId,
+      teamLabel:
+        shiboboTeamId === teamAId
+          ? getTeamDisplayName(teamA, "Turf Kings")
+          : getTeamDisplayName(teamB, "Opponent"),
       playerName: shiboboPlayerName,
       victimName: shiboboVictimName || null,
       timeSeconds: (matchSeconds || 0) - (displaySeconds || 0),
@@ -2487,6 +2620,12 @@ export function FriendlyLiveMatchPage({
     const summary = {
       teamAId,
       teamBId,
+      teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
+      teamBLabel: getTeamDisplayName(teamB, "Opponent"),
+      teamAColorName: teamA?.teamColorName || teamA?.colorName || "",
+      teamBColorName: teamB?.teamColorName || teamB?.colorName || "",
+      teamASnapshot: teamA || null,
+      teamBSnapshot: teamB || null,
       goalsA,
       goalsB,
       matchMode: gameFormat || "5_V_5",
@@ -2498,6 +2637,8 @@ export function FriendlyLiveMatchPage({
 
     const finalSummary = {
       ...basicSummary,
+      teamASnapshot: teamA || null,
+      teamBSnapshot: teamB || null,
       goalsA,
       goalsB,
       verifiedLineups: sanitizedConfirmedSnapshots || null,
@@ -2639,8 +2780,30 @@ export function FriendlyLiveMatchPage({
     setUndoError("");
   };
 
+  const handleSubtleDurationEdit = () => {
+    if (!isAdmin || typeof onUpdateMatchSeconds !== "function") return;
+
+    const currentMinutes = Math.round(Number(matchSeconds || 0) / 60) || 60;
+    const raw = window.prompt("Match length in minutes", String(currentMinutes));
+    if (raw == null) return;
+
+    const minutes = Number(String(raw).trim());
+    if (!Number.isFinite(minutes) || minutes < 10 || minutes > 180) {
+      window.alert("Please choose a match length between 10 and 180 minutes.");
+      return;
+    }
+
+    onUpdateMatchSeconds(Math.round(minutes * 60));
+  };
+
   return (
-    <div className="page live-page">
+    <div
+      className="page live-page"
+      style={{
+        opacity: screenDimmed ? 0.42 : 1,
+        transition: "opacity 0.8s ease",
+      }}
+    >
       <header className="header">
         <h1>Friendly {formatLabel}</h1>
         <p>
@@ -2657,7 +2820,26 @@ export function FriendlyLiveMatchPage({
 
       <section className="card">
         <div className="timer-row">
-          <div className="timer-display">{formattedTime}</div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem" }}>
+            <div className="timer-display">{formattedTime}</div>
+            {isAdmin && typeof onUpdateMatchSeconds === "function" && (
+              <button
+                type="button"
+                className="link-btn"
+                onClick={handleSubtleDurationEdit}
+                title="Adjust match length"
+                aria-label="Adjust match length"
+                style={{
+                  opacity: 0.56,
+                  fontSize: "0.92rem",
+                  padding: "0.1rem 0.25rem",
+                  lineHeight: 1,
+                }}
+              >
+                ⚙
+              </button>
+            )}
+          </div>
           {running ? (
             <span className="muted small">Live timer running</span>
           ) : timeUp ? (
@@ -2688,36 +2870,6 @@ export function FriendlyLiveMatchPage({
           </div>
         </div>
 
-        <div
-          className="card"
-          style={{
-            marginTop: "1rem",
-            background: "rgba(15, 23, 42, 0.55)",
-            border: "1px solid rgba(148,163,184,0.22)",
-          }}
-        >
-          <div className="event-log-header">
-            <h3>Rotation</h3>
-            {canControlMatch && (
-              <button
-                className="secondary-btn"
-                type="button"
-                onClick={handleMarkRotationDone}
-              >
-                Mark rotation done
-              </button>
-            )}
-          </div>
-          <p className="muted small">
-            Next rotation in <strong>{formatSeconds(rotationInfo.remaining)}</strong>
-          </p>
-          <p className="muted small">
-            Bench: {getShortLabel(teamA, "TEAM A")} {teamABenchCount} •{" "}
-            {getShortLabel(teamB, "TEAM B")} {teamBBenchCount}
-          </p>
-          <p className="muted small">GK switch suggested at each rotation.</p>
-        </div>
-
         <div className="event-input">
           <h3>Live Actions</h3>
 
@@ -2737,14 +2889,7 @@ export function FriendlyLiveMatchPage({
               ⚽ Record Goal
             </button>
 
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={handleStartShiboboRecord}
-              disabled={!canControlMatch || !hasVerifiedLineups}
-            >
-              😮‍💨 Record Shibobo
-            </button>
+
 
             <button
               className="secondary-btn"
@@ -2755,38 +2900,6 @@ export function FriendlyLiveMatchPage({
               Undo last
             </button>
           </div>
-        </div>
-
-        <div className="live-lineup-columns" style={{ marginTop: "1rem" }}>
-          <LineupBoard
-            title={getShortLabel(teamA, "TEAM A")}
-            team={teamA}
-            lineup={verifyTeamALineup}
-            setLineup={setVerifyTeamALineup}
-            registeredPlayers={teamA?.players || []}
-            canonicalName={canonicalName}
-            displayCompactPlayerName={displayCompactPlayerName}
-            playerKeyFor={playerKeyFor}
-            getPlayerPhoto={getPlayerPhoto}
-            formationMap={formationMap}
-            defaultFormationId={defaultFormationId}
-            disabled={!canControlMatch}
-          />
-
-          <LineupBoard
-            title={getShortLabel(teamB, "OTHER TEAM")}
-            team={teamB}
-            lineup={verifyTeamBLineup}
-            setLineup={setVerifyTeamBLineup}
-            registeredPlayers={teamB?.players || []}
-            canonicalName={canonicalName}
-            displayCompactPlayerName={displayCompactPlayerName}
-            playerKeyFor={playerKeyFor}
-            getPlayerPhoto={getPlayerPhoto}
-            formationMap={formationMap}
-            defaultFormationId={defaultFormationId}
-            disabled={!canControlMatch}
-          />
         </div>
 
         <div className="event-log">
@@ -2802,7 +2915,7 @@ export function FriendlyLiveMatchPage({
                 }}
                 disabled={!playersReady}
               >
-                🧩 Verify Lineups
+                🧩 Lineups
               </button>
             )}
           </div>
@@ -2824,55 +2937,6 @@ export function FriendlyLiveMatchPage({
                       {e.assist
                         ? ` (assist: ${displayCompactPlayerName(e.assist)})`
                         : ""}
-                    </span>
-                    {canControlMatch && (
-                      <div className="event-actions">
-                        <button
-                          className="link-btn"
-                          type="button"
-                          onClick={() => handleRequestDelete(idx)}
-                        >
-                          ❌ delete
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                );
-              }
-
-              if (e.type === "shibobo") {
-                const label = eventLabel(e.teamId, teamAId, teamBId, teamA, teamB);
-                return (
-                  <li key={e.id || idx} className="event-item">
-                    <span>
-                      [{formatEventClock(matchSeconds, displaySeconds, e.timeSeconds)}]{" "}
-                      <strong>{label}</strong> – Shibobo:{" "}
-                      {displayCompactPlayerName(e.playerName)}
-                      {e.victimName
-                        ? ` on ${displayCompactPlayerName(e.victimName)}`
-                        : ""}
-                    </span>
-                    {canControlMatch && (
-                      <div className="event-actions">
-                        <button
-                          className="link-btn"
-                          type="button"
-                          onClick={() => handleRequestDelete(idx)}
-                        >
-                          ❌ delete
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                );
-              }
-
-              if (e.type === "rotation") {
-                return (
-                  <li key={e.id || idx} className="event-item">
-                    <span>
-                      [{formatEventClock(matchSeconds, displaySeconds, e.timeSeconds)}]{" "}
-                      <strong>Rotation completed</strong>
                     </span>
                     {canControlMatch && (
                       <div className="event-actions">
@@ -3121,103 +3185,6 @@ export function FriendlyLiveMatchPage({
                     className="secondary-btn"
                     type="button"
                     onClick={handleCancelGoalRecord}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showShiboboRecorder && (
-        <div className="modal-backdrop">
-          <div className="modal">
-            <h3>Record Shibobo</h3>
-
-            {!shiboboTeamId ? (
-              <>
-                <div className="field-row">
-                  <label>Which side made the shibobo?</label>
-                  <div className="team-toggle">
-                    <button
-                      className="toggle-btn tk-team-color-btn"
-                      type="button"
-                      onClick={() => setShiboboTeamId(teamAId)}
-                    >
-                      <TeamColorBadge team={teamA} fallback="DARK" />
-                    </button>
-                    <button
-                      className="toggle-btn tk-team-color-btn"
-                      type="button"
-                      onClick={() => setShiboboTeamId(teamBId)}
-                    >
-                      <TeamColorBadge team={teamB} fallback="LIGHT" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="actions-row">
-                  <button
-                    className="secondary-btn"
-                    type="button"
-                    onClick={() => setShowShiboboRecorder(false)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <PlayerChoiceGrid
-                  title="Player"
-                  players={shiboboChoices}
-                  selectedName={shiboboPlayerName}
-                  onSelect={(name) => setShiboboPlayerName(name)}
-                  displayCompactPlayerName={displayCompactPlayerName}
-                  getPlayerPhoto={getPlayerPhoto}
-                  guestSnapshotChecker={(name) =>
-                    isGuestPlayerInSnapshot(selectedShiboboSnapshot, name)
-                  }
-                  disabled={!hasVerifiedLineups}
-                />
-
-                <PlayerChoiceGrid
-                  title="Victim (optional)"
-                  players={victimOptions}
-                  selectedName={shiboboVictimName}
-                  onSelect={(name) => setShiboboVictimName(name)}
-                  displayCompactPlayerName={displayCompactPlayerName}
-                  getPlayerPhoto={getPlayerPhoto}
-                  guestSnapshotChecker={() => false}
-                  disabled={!hasVerifiedLineups}
-                />
-
-                <div className="actions-row">
-                  <button
-                    className="secondary-btn"
-                    type="button"
-                    onClick={() => {
-                      setShiboboTeamId("");
-                      setShiboboPlayerName("");
-                      setShiboboVictimName("");
-                    }}
-                  >
-                    ← Back
-                  </button>
-                  <button
-                    className="primary-btn"
-                    type="button"
-                    onClick={handleAddShiboboEvent}
-                    disabled={!shiboboPlayerName}
-                  >
-                    Save Shibobo
-                  </button>
-                  <button
-                    className="secondary-btn"
-                    type="button"
-                    onClick={() => setShowShiboboRecorder(false)}
                   >
                     Cancel
                   </button>

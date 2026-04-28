@@ -2658,7 +2658,7 @@ export function StatsPage({
                   ? "Player Rankings — Current Season"
                   : "Player Rankings — Current Week"}
           </h2>
-          <div className="table-wrapper">
+          <div className="table-wrapper tk-wide-table-wrapper">
             <table className="stats-table">
               <thead>
                 <tr>
@@ -3199,7 +3199,7 @@ export function StatsPage({
               )}
             </div>
           ) : (
-          <div className="table-wrapper">
+          <div className="table-wrapper tk-wide-table-wrapper tk-match-results-wide-wrapper">
             <table className="stats-table">
               <thead>
                 <tr>
@@ -4004,6 +4004,294 @@ export function StatsPage({
 
           .tk-friendly-manage-actions button {
             flex: 1 1 auto;
+          }
+        }
+
+
+        /* TurfKings dark navy table skin — matches Friendly Live Match page */
+        .stats-page .table-wrapper {
+          border-radius: 18px;
+          overflow: hidden;
+          background: linear-gradient(
+            180deg,
+            #081B3A 0%,
+            #06142F 55%,
+            #020B1F 100%
+          );
+          box-shadow:
+            inset 0 0 0 1px rgba(96, 165, 250, 0.14),
+            0 8px 28px rgba(2, 12, 27, 0.45);
+        }
+
+        .stats-page .stats-table {
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+          overflow: hidden;
+          border-radius: 18px;
+          background: linear-gradient(
+            180deg,
+            #081B3A 0%,
+            #06142F 55%,
+            #020B1F 100%
+          );
+          box-shadow:
+            inset 0 0 0 1px rgba(96, 165, 250, 0.14),
+            0 8px 28px rgba(2, 12, 27, 0.45);
+        }
+
+        .stats-page .stats-table thead th {
+          background: linear-gradient(
+            180deg,
+            rgba(17, 65, 120, 0.92),
+            rgba(10, 34, 72, 0.96)
+          );
+          color: #EAF4FF;
+          font-weight: 900;
+          border-bottom: 1px solid rgba(125, 211, 252, 0.2);
+        }
+
+        .stats-page .stats-table tbody tr {
+          background: transparent;
+          transition: background 0.18s ease;
+        }
+
+        .stats-page .stats-table tbody tr:nth-child(even) {
+          background: rgba(255, 255, 255, 0.018);
+        }
+
+        .stats-page .stats-table tbody tr:hover {
+          background: rgba(56, 189, 248, 0.08);
+        }
+
+        .stats-page .stats-table td {
+          color: #E2E8F0;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .stats-page .stats-table tbody tr:last-child td {
+          border-bottom: none;
+        }
+
+        .stats-page .match-details-row td {
+          background: rgba(2, 11, 31, 0.74);
+        }
+
+        .stats-page .match-row.expanded td,
+        .stats-page .match-row:hover td {
+          background: rgba(56, 189, 248, 0.08);
+        }
+
+        /* Make each goal in the friendly current-week recap easier to scan */
+        .stats-page .news-event-item {
+          padding-bottom: 0.7rem;
+          margin-bottom: 0.7rem;
+          border-bottom: 1px solid rgba(94, 234, 212, 0.18);
+        }
+
+        .stats-page .news-event-item:last-child {
+          border-bottom: none;
+          margin-bottom: 0;
+          padding-bottom: 0;
+        }
+
+        .stats-page .news-event-time {
+          color: rgba(186, 230, 253, 0.86);
+          font-weight: 800;
+        }
+
+
+        /* TurfKings dark navy card skin for StatsPage sections.
+           This targets the green outer cards, including the friendly recap card. */
+        .stats-page > .card {
+          background: linear-gradient(
+            180deg,
+            #081B3A 0%,
+            #06142F 55%,
+            #020B1F 100%
+          ) !important;
+          border: 1px solid rgba(96, 165, 250, 0.22) !important;
+          box-shadow:
+            inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+            0 12px 30px rgba(2, 12, 27, 0.48) !important;
+        }
+
+        .stats-page .tk-friendly-recap-wrap,
+        .stats-page .tk-friendly-recap-list,
+        .stats-page .tk-friendly-recap-item,
+        .stats-page .news-match-item {
+          background: transparent !important;
+        }
+
+        .stats-page .tk-friendly-recap-item {
+          border-bottom: 1px solid rgba(96, 165, 250, 0.18) !important;
+        }
+
+        .stats-page .tk-friendly-recap-item:last-child {
+          border-bottom: 0 !important;
+        }
+
+        .stats-page .news-match-scoreline .score {
+          color: #f8fafc !important;
+        }
+
+        .stats-page .news-match-number,
+        .stats-page .muted {
+          color: rgba(203, 213, 225, 0.82);
+        }
+
+        .stats-page .news-event-item {
+          padding-bottom: 0.7rem;
+          margin-bottom: 0.7rem;
+          border-bottom: 1px solid rgba(125, 211, 252, 0.16) !important;
+        }
+
+        .stats-page .news-event-item:last-child {
+          border-bottom: none !important;
+          margin-bottom: 0;
+          padding-bottom: 0;
+        }
+
+        .stats-page .news-event-time {
+          color: rgba(186, 230, 253, 0.9) !important;
+          font-weight: 900;
+        }
+
+
+        /* Default: keep most StatsPage tables compact in portrait mobile.
+           Only explicitly marked wide tables are allowed to scroll sideways. */
+        .stats-page .table-wrapper {
+          overflow-x: hidden !important;
+          overflow-y: visible !important;
+          max-width: 100%;
+        }
+
+        .stats-page .stats-table {
+          width: 100% !important;
+          min-width: 0 !important;
+          table-layout: fixed;
+        }
+
+        .stats-page .stats-table th,
+        .stats-page .stats-table td {
+          white-space: normal !important;
+          overflow-wrap: anywhere;
+          word-break: normal;
+          vertical-align: middle;
+        }
+
+        .stats-page .tk-wide-table-wrapper {
+          overflow-x: auto !important;
+          overflow-y: hidden !important;
+          -webkit-overflow-scrolling: touch;
+          max-width: 100%;
+        }
+
+        .stats-page .tk-wide-table-wrapper .stats-table {
+          min-width: 650px !important;
+          table-layout: auto;
+        }
+
+        .stats-page .tk-wide-table-wrapper .stats-table th,
+        .stats-page .tk-wide-table-wrapper .stats-table td {
+          white-space: nowrap !important;
+          overflow-wrap: normal;
+        }
+
+        .stats-page .tk-wide-table-wrapper .stats-table th:nth-child(2),
+        .stats-page .tk-wide-table-wrapper .stats-table td:nth-child(2),
+        .stats-page .tk-match-results-wide-wrapper .stats-table th:nth-child(5),
+        .stats-page .tk-match-results-wide-wrapper .stats-table td:nth-child(5) {
+          white-space: normal !important;
+          min-width: 130px;
+        }
+
+        @media (max-width: 520px) {
+          .stats-page .card {
+            padding-left: 0.95rem;
+            padding-right: 0.95rem;
+          }
+
+          .stats-page .stats-table {
+            font-size: 0.74rem;
+          }
+
+          .stats-page .stats-table th,
+          .stats-page .stats-table td {
+            padding: 0.48rem 0.28rem;
+            line-height: 1.22;
+          }
+
+          .stats-page .stats-table th:first-child,
+          .stats-page .stats-table td:first-child {
+            width: 1.65rem;
+            text-align: center;
+          }
+
+          .stats-page .stats-table th:nth-child(2),
+          .stats-page .stats-table td:nth-child(2) {
+            width: 27%;
+          }
+
+          .stats-page .stats-table th:nth-child(3),
+          .stats-page .stats-table td:nth-child(3) {
+            width: 24%;
+          }
+
+          .stats-page .stats-table th:last-child,
+          .stats-page .stats-table td:last-child {
+            width: 2.6rem;
+            text-align: center;
+          }
+
+          .stats-page .stats-table th {
+            font-size: 0.72rem;
+            letter-spacing: 0.01em;
+          }
+
+          .stats-page .tk-wide-table-wrapper .stats-table {
+            font-size: 0.78rem;
+          }
+
+          .stats-page .tk-wide-table-wrapper .stats-table th,
+          .stats-page .tk-wide-table-wrapper .stats-table td {
+            padding: 0.5rem 0.55rem;
+          }
+
+          .stats-page .tk-wide-table-wrapper .stats-table th:first-child,
+          .stats-page .tk-wide-table-wrapper .stats-table td:first-child,
+          .stats-page .tk-wide-table-wrapper .stats-table th:nth-child(2),
+          .stats-page .tk-wide-table-wrapper .stats-table td:nth-child(2),
+          .stats-page .tk-wide-table-wrapper .stats-table th:nth-child(3),
+          .stats-page .tk-wide-table-wrapper .stats-table td:nth-child(3),
+          .stats-page .tk-wide-table-wrapper .stats-table th:last-child,
+          .stats-page .tk-wide-table-wrapper .stats-table td:last-child {
+            width: auto;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .stats-page .card {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+          }
+
+          .stats-page .stats-table {
+            font-size: 0.68rem;
+          }
+
+          .stats-page .stats-table th,
+          .stats-page .stats-table td {
+            padding: 0.42rem 0.2rem;
+          }
+
+          .stats-page .tk-wide-table-wrapper .stats-table {
+            font-size: 0.76rem;
+          }
+
+          .stats-page .tk-wide-table-wrapper .stats-table th,
+          .stats-page .tk-wide-table-wrapper .stats-table td {
+            padding: 0.46rem 0.5rem;
           }
         }
 

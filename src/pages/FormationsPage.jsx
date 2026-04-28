@@ -1,3 +1,4 @@
+// src/pages/FormationsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { db } from "../firebaseConfig";
@@ -394,6 +395,55 @@ function slugFromName(name) {
 function firstNameOf(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   return parts.length ? parts[0] : "";
+}
+
+function getLocalDateKey(value = new Date()) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (!d || Number.isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isoDateOnly(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : "";
+}
+
+function getFriendlyHistoryDateKey(day = {}) {
+  const candidates = [
+    day?.id,
+    day?.matchDayId,
+    day?.date,
+    day?.day,
+    day?.createdAt,
+    day?.updatedAt,
+  ];
+
+  for (const value of candidates) {
+    const iso = isoDateOnly(value);
+    if (iso) return iso;
+  }
+
+  for (const value of candidates) {
+    const raw = String(value || "").trim();
+    if (!raw || raw.toUpperCase() === "FRIENDLY" || raw === "UNKNOWN") continue;
+
+    const parsed = new Date(raw);
+    if (parsed && !Number.isNaN(parsed.getTime())) {
+      return getLocalDateKey(parsed);
+    }
+  }
+
+  return "";
+}
+
+function isTodayFriendlyHistoryDay(day = {}) {
+  const todayKey = getLocalDateKey(new Date());
+  const dayKey = getFriendlyHistoryDateKey(day);
+  return Boolean(todayKey && dayKey && todayKey === dayKey);
 }
 
 function uniqueByLower(list = []) {
@@ -939,6 +989,7 @@ export function FormationsPage({
   currentEvents = [],
   allEvents = [],
   results = [],
+  friendlyMatchDayHistory = [],
   playerPhotosByName = {},
   identity = null,
   authUser = null,
@@ -965,6 +1016,16 @@ export function FormationsPage({
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId);
 
   const [gameType, setGameType] = useState(() => gameFormatToFormationGameType(gameFormat));
+
+  const selectedSmallSidedGameType = useMemo(
+    () => gameFormatToFormationGameType(gameFormat),
+    [gameFormat]
+  );
+
+  const visibleGameTypeOptions = useMemo(
+    () => [selectedSmallSidedGameType, GAME_TYPE_11],
+    [selectedSmallSidedGameType]
+  );
 
   const [players, setPlayers] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -1452,6 +1513,90 @@ export function FormationsPage({
     });
   }, [allEvents, currentEvents]);
 
+  const todayFriendlyHistory = useMemo(() => {
+    if (!isFriendlyMatch) return [];
+    return (Array.isArray(friendlyMatchDayHistory) ? friendlyMatchDayHistory : [])
+      .filter(isTodayFriendlyHistoryDay);
+  }, [isFriendlyMatch, friendlyMatchDayHistory]);
+
+  const todayFriendlyEvents = useMemo(() => {
+    if (!isFriendlyMatch) return [];
+
+    return todayFriendlyHistory.flatMap((day) => {
+      const events = Array.isArray(day?.allEvents)
+        ? day.allEvents
+        : Array.isArray(day?.events)
+          ? day.events
+          : [];
+
+      const matchDayId =
+        day?.id ||
+        day?.matchDayId ||
+        day?.date ||
+        day?.day ||
+        getFriendlyHistoryDateKey(day) ||
+        "FRIENDLY";
+
+      return events.map((event) => ({
+        ...event,
+        _tkMatchDayId: event?._tkMatchDayId || matchDayId,
+      }));
+    });
+  }, [isFriendlyMatch, todayFriendlyHistory]);
+
+  const todayFriendlyResults = useMemo(() => {
+    if (!isFriendlyMatch) return [];
+
+    return todayFriendlyHistory.flatMap((day) => {
+      const dayResults = Array.isArray(day?.results) ? day.results : [];
+      const matchDayId =
+        day?.id ||
+        day?.matchDayId ||
+        day?.date ||
+        day?.day ||
+        getFriendlyHistoryDateKey(day) ||
+        "FRIENDLY";
+
+      return dayResults.map((result) => ({
+        ...result,
+        _tkMatchDayId: result?._tkMatchDayId || matchDayId,
+      }));
+    });
+  }, [isFriendlyMatch, todayFriendlyHistory]);
+
+  const formationEventsForDecorations = useMemo(() => {
+    const combined = [
+      ...(currentMatchDayEvents || []),
+      ...(todayFriendlyEvents || []),
+    ];
+
+    const seen = new Set();
+    return combined.filter((e) => {
+      if (!e) return false;
+
+      const key =
+        e.id ??
+        [
+          e._tkMatchDayId ?? "d?",
+          e.matchNo ?? "m?",
+          e.timeSeconds ?? "t?",
+          e.type ?? "type?",
+          e.teamId ?? "team?",
+          e.scorer ?? e.playerName ?? "p?",
+          e.assist ?? "a?",
+          e.role ?? "role?",
+        ].join("|");
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [currentMatchDayEvents, todayFriendlyEvents]);
+
+  const formationResultsForDecorations = useMemo(() => {
+    return [...(results || []), ...(todayFriendlyResults || [])];
+  }, [results, todayFriendlyResults]);
+
   const matchDayDecorations = useMemo(() => {
     if (!isSmallSidedGameType(gameType)) return {};
     if (!selectedTeamCanonical?.id) return {};
@@ -1463,15 +1608,15 @@ export function FormationsPage({
     return buildFormationDecorations({
       teamId: selectedTeamCanonical.id,
       players: teamPlayers,
-      events: currentMatchDayEvents,
-      results,
+      events: formationEventsForDecorations,
+      results: formationResultsForDecorations,
       resolveCanonicalName: canonicalName,
     });
   }, [
     gameType,
     selectedTeamCanonical,
-    currentMatchDayEvents,
-    results,
+    formationEventsForDecorations,
+    formationResultsForDecorations,
     canonicalName,
   ]);
 
@@ -1894,34 +2039,16 @@ export function FormationsPage({
           <div className="field-row inline-field">
             <label>Game type</label>
             <div className="segmented-toggle">
-              <button
-                type="button"
-                className={`segmented-option ${gameType === GAME_TYPE_5 ? "active" : ""}`}
-                onClick={() => handleGameTypeClick(GAME_TYPE_5)}
-              >
-                5-a-side
-              </button>
-              <button
-                type="button"
-                className={`segmented-option ${gameType === GAME_TYPE_6 ? "active" : ""}`}
-                onClick={() => handleGameTypeClick(GAME_TYPE_6)}
-              >
-                6-a-side
-              </button>
-              <button
-                type="button"
-                className={`segmented-option ${gameType === GAME_TYPE_7 ? "active" : ""}`}
-                onClick={() => handleGameTypeClick(GAME_TYPE_7)}
-              >
-                7-a-side
-              </button>
-              <button
-                type="button"
-                className={`segmented-option ${gameType === GAME_TYPE_11 ? "active" : ""}`}
-                onClick={() => handleGameTypeClick(GAME_TYPE_11)}
-              >
-                11-a-side
-              </button>
+              {visibleGameTypeOptions.map((type) => (
+                <button
+                  key={`game-type-${type}`}
+                  type="button"
+                  className={`segmented-option ${gameType === type ? "active" : ""}`}
+                  onClick={() => handleGameTypeClick(type)}
+                >
+                  {getGameTypeLabel(type)}
+                </button>
+              ))}
             </div>
           </div>
 
