@@ -520,13 +520,17 @@ function getOnFieldPlayersFromSnapshot(
   snapshot,
   fallbackPlayers = [],
   canonicalName,
-  playerKeyFor
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
 ) {
   const sanitized = sanitizeLiveLineupToRegisteredPlayers(
     snapshot,
     fallbackPlayers,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   return uniqueNames(
@@ -540,13 +544,17 @@ function getBenchPlayersFromSnapshot(
   snapshot,
   fallbackPlayers = [],
   canonicalName,
-  playerKeyFor
+  playerKeyFor,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5
 ) {
   const sanitized = sanitizeLiveLineupToRegisteredPlayers(
     snapshot,
     fallbackPlayers,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   const assignedKeys = new Set(
@@ -649,14 +657,18 @@ function buildGoalRecorderChoices({
     snapshot,
     fallbackPlayers,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   const bench = getBenchPlayersFromSnapshot(
     snapshot,
     fallbackPlayers,
     canonicalName,
-    playerKeyFor
+    playerKeyFor,
+    formationMap,
+    defaultFormationId
   );
 
   const roleTagMap = getPlayerRoleTagMapFromSnapshot(
@@ -2187,6 +2199,8 @@ export function ThreeTeamLeagueLiveMatchPage({
     teamBId,
     canonicalName,
     playerKeyFor,
+    liveFormationsMap,
+    liveDefaultFormationId,
   ]);
 
   const assistOptions = useMemo(() => {

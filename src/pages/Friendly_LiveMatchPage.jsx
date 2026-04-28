@@ -1,3 +1,4 @@
+// src/pages/Friendly_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import { db } from "../firebaseConfig.js";
@@ -642,6 +643,89 @@ function lineupHasEmptyPositions(
     const name = lineup?.positions?.[pos.id];
     return !String(name || "").trim();
   });
+}
+
+function createFriendlyVerifiedLineupSnapshot({
+  teamId,
+  lineup,
+  formationMap = FORMATIONS_5,
+  defaultFormationId = DEFAULT_FORMATION_ID_5,
+  registeredPlayers = [],
+  canonicalName,
+  playerKeyFor,
+  playersPerSide = 5,
+  confirmedBy = "",
+  confirmedByRole = "",
+}) {
+  const formation =
+    formationMap?.[lineup?.formationId] ||
+    formationMap?.[defaultFormationId] ||
+    Object.values(formationMap || {})[0] ||
+    null;
+
+  const positionIds = (formation?.positions || [])
+    .slice(0, Number(playersPerSide || 5))
+    .map((pos) => pos.id);
+
+  const normalizedPositions = {};
+  const usedKeys = new Set();
+
+  positionIds.forEach((posId) => {
+    const canonical = canonicalName(lineup?.positions?.[posId] || "");
+    const key = playerKeyFor(canonical);
+
+    if (canonical && key && !usedKeys.has(key)) {
+      normalizedPositions[posId] = canonical;
+      usedKeys.add(key);
+    } else {
+      normalizedPositions[posId] = null;
+    }
+  });
+
+  const normalizedGuests = uniquePlayersNormalized(
+    lineup?.guestPlayers || [],
+    canonicalName,
+    playerKeyFor
+  ).filter((name) => !usedKeys.has(playerKeyFor(name)));
+
+  const registeredBench = uniquePlayersNormalized(
+    registeredPlayers || [],
+    canonicalName,
+    playerKeyFor
+  ).filter((name) => !usedKeys.has(playerKeyFor(name)));
+
+  const benchSnapshot = uniquePlayersNormalized(
+    [...normalizedGuests, ...registeredBench],
+    canonicalName,
+    playerKeyFor
+  ).filter((name) => !usedKeys.has(playerKeyFor(name)));
+
+  const baseSnapshot = createVerifiedLineupSnapshot({
+    teamId,
+    lineup: {
+      ...lineup,
+      formationId: formation?.id || lineup?.formationId || defaultFormationId,
+      positions: normalizedPositions,
+      guestPlayers: normalizedGuests,
+      benchSnapshot,
+    },
+    formationMap,
+    registeredPlayers,
+    confirmedBy,
+    confirmedByRole,
+    preferredCaptainNames: [],
+  });
+
+  return {
+    ...baseSnapshot,
+    formationId: formation?.id || baseSnapshot.formationId,
+    formationLabel: formation?.label || baseSnapshot.formationLabel,
+    positions: normalizedPositions,
+    guestPlayers: normalizedGuests,
+    benchSnapshot,
+    playersPerSide: Number(playersPerSide || positionIds.length || 5),
+    onFieldPlayerCount: Object.values(normalizedPositions).filter(Boolean).length,
+  };
 }
 
 function normalizeHexColor(v) {
@@ -1963,6 +2047,9 @@ export function FriendlyLiveMatchPage({
 
     hardReset5v5MatchDoc(
       {
+        matchMode: gameFormat || "5_V_5",
+        gameFormat: gameFormat || "5_V_5",
+        playersPerSide,
         matchNumber: currentMatchNo,
         teamAId,
         teamBId,
@@ -1971,7 +2058,17 @@ export function FriendlyLiveMatchPage({
       },
       matchSeconds
     );
-  }, [isControllerSession, currentMatchNo, teamAId, teamBId, teamA, teamB, matchSeconds]);
+  }, [
+    isControllerSession,
+    currentMatchNo,
+    teamAId,
+    teamBId,
+    teamA,
+    teamB,
+    matchSeconds,
+    gameFormat,
+    playersPerSide,
+  ]);
 
   const displaySeconds = useMemo(() => {
     if (typeof secondsLeft === "number" && !Number.isNaN(secondsLeft)) {
@@ -2167,24 +2264,30 @@ export function FriendlyLiveMatchPage({
     const confirmedByName = getIdentityDisplayName(identity);
     const confirmedByRole = role;
 
-    const snapshotA = createVerifiedLineupSnapshot({
+    const snapshotA = createFriendlyVerifiedLineupSnapshot({
       teamId: teamAId,
       lineup: verifyTeamALineup,
       formationMap,
+      defaultFormationId,
       registeredPlayers: teamA?.players || [],
+      canonicalName,
+      playerKeyFor,
+      playersPerSide,
       confirmedBy: confirmedByName,
       confirmedByRole,
-      preferredCaptainNames: [],
     });
 
-    const snapshotB = createVerifiedLineupSnapshot({
+    const snapshotB = createFriendlyVerifiedLineupSnapshot({
       teamId: teamBId,
       lineup: verifyTeamBLineup,
       formationMap,
+      defaultFormationId,
       registeredPlayers: teamB?.players || [],
+      canonicalName,
+      playerKeyFor,
+      playersPerSide,
       confirmedBy: confirmedByName,
       confirmedByRole,
-      preferredCaptainNames: [],
     });
 
     const merged = {

@@ -72,6 +72,11 @@ const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 const MASTER_CODE = "3333";
 const MATCH_SECONDS = 5 * 60;
 
+const GUEST_OPPONENT_ID = "guest_opponent";
+const TURF_KINGS_CHALLENGE_ID = "turf_kings_challenge";
+const TURF_KINGS_SLOT_ID = "dark";
+const GUEST_OPPONENT_SLOT_ID = "light";
+
 const USE_V2 = true;
 
 const IS_STAGING =
@@ -443,9 +448,107 @@ function normalizeFiveVFiveTeams(teams = []) {
   }));
 }
 
+function isGuestOpponentTeam(team = {}) {
+  return (
+    team?.id === GUEST_OPPONENT_ID ||
+    team?.isGuestOpponent === true ||
+    team?.temporaryGuestOpponent === true
+  );
+}
+
+function isTurfKingsChallengeTeam(team = {}) {
+  return (
+    team?.id === TURF_KINGS_CHALLENGE_ID ||
+    team?.isTurfKingsChallengeTeam === true ||
+    team?.temporaryChallengeTeam === true
+  );
+}
+
 function ensureFiveVFiveTeamsShape(rawTeams) {
-  const defaults = buildDefaultFiveVFiveTeams();
   const incoming = normalizeFiveVFiveTeams(rawTeams);
+
+  const slotTurfKingsChallenge = incoming.find(
+    (team) =>
+      team?.id === TURF_KINGS_SLOT_ID &&
+      team?.guestChallengeActive === true &&
+      (team?.isTurfKingsChallengeTeam === true || team?.challengeRole === "home")
+  );
+
+  const slotGuestOpponent = incoming.find(
+    (team) =>
+      team?.id === GUEST_OPPONENT_SLOT_ID &&
+      team?.guestChallengeActive === true &&
+      (team?.isGuestOpponent === true || team?.temporaryGuestOpponent === true || team?.challengeRole === "guest")
+  );
+
+  // Preferred architecture:
+  // keep the normal Friendly slots, but rename them while the challenge is active.
+  // dark  -> Turf Kings
+  // light -> guest opponent, e.g. Canal Walk
+  // This lets the rest of the app keep finding the normal two Friendly team IDs.
+  if (slotTurfKingsChallenge && slotGuestOpponent) {
+    return [
+      {
+        ...slotTurfKingsChallenge,
+        id: TURF_KINGS_SLOT_ID,
+        label: slotTurfKingsChallenge.label || "Turf Kings",
+        abbrev: slotTurfKingsChallenge.abbrev || "TKG",
+        guestChallengeActive: true,
+        isTurfKingsChallengeTeam: true,
+        challengeRole: "home",
+      },
+      {
+        ...slotGuestOpponent,
+        id: GUEST_OPPONENT_SLOT_ID,
+        label: slotGuestOpponent.label || "Guest Opponent",
+        abbrev: slotGuestOpponent.abbrev || "GST",
+        guestChallengeActive: true,
+        isGuestOpponent: true,
+        temporaryGuestOpponent: true,
+        challengeRole: "guest",
+      },
+    ];
+  }
+
+  const legacyTurfKingsChallenge = incoming.find(
+    (team) =>
+      team?.id === TURF_KINGS_CHALLENGE_ID ||
+      (team?.id !== TURF_KINGS_SLOT_ID && team?.isTurfKingsChallengeTeam === true)
+  );
+
+  const legacyGuestOpponent = incoming.find(
+    (team) =>
+      team?.id === GUEST_OPPONENT_ID ||
+      (team?.id !== GUEST_OPPONENT_SLOT_ID && team?.isGuestOpponent === true)
+  );
+
+  // Backward compatibility for any old saved attempt using custom IDs.
+  // Convert it immediately into the safer dark/light slot model.
+  if (legacyTurfKingsChallenge && legacyGuestOpponent) {
+    return [
+      {
+        ...legacyTurfKingsChallenge,
+        id: TURF_KINGS_SLOT_ID,
+        label: legacyTurfKingsChallenge.label || "Turf Kings",
+        abbrev: legacyTurfKingsChallenge.abbrev || "TKG",
+        guestChallengeActive: true,
+        isTurfKingsChallengeTeam: true,
+        challengeRole: "home",
+      },
+      {
+        ...legacyGuestOpponent,
+        id: GUEST_OPPONENT_SLOT_ID,
+        label: legacyGuestOpponent.label || "Guest Opponent",
+        abbrev: legacyGuestOpponent.abbrev || "GST",
+        guestChallengeActive: true,
+        isGuestOpponent: true,
+        temporaryGuestOpponent: true,
+        challengeRole: "guest",
+      },
+    ];
+  }
+
+  const defaults = buildDefaultFiveVFiveTeams();
   const byId = new Map(
     incoming.filter((team) => team.id).map((team) => [team.id, team])
   );
@@ -480,6 +583,10 @@ function ensureFiveVFiveTeamsShape(rawTeams) {
       captain: String(incomingTeam.captain || "").trim(),
     };
   });
+}
+
+function getActiveFriendlyTeams(fiveVFiveTeams = []) {
+  return ensureFiveVFiveTeamsShape(fiveVFiveTeams).slice(0, 2);
 }
 
 
@@ -1822,7 +1929,10 @@ export default function App() {
   }
 
   const captainRoleTeams = useMemo(
-    () => (matchType === MATCH_TYPE.FRIENDLY ? fiveVFiveTeams : teams || []),
+    () =>
+      matchType === MATCH_TYPE.FRIENDLY
+        ? getActiveFriendlyTeams(fiveVFiveTeams)
+        : teams || [],
     [matchType, fiveVFiveTeams, teams]
   );
 
@@ -1854,14 +1964,14 @@ export default function App() {
 
   const effectiveLiveMatch = useMemo(() => {
     if (matchType === MATCH_TYPE.FRIENDLY) {
-      const safeFiveVFiveTeams = ensureFiveVFiveTeamsShape(fiveVFiveTeams);
+      const activeFriendlyTeams = getActiveFriendlyTeams(fiveVFiveTeams);
       return {
         ...(currentMatch || {}),
         matchType: MATCH_TYPE.FRIENDLY,
         matchMode: MATCH_TYPE.FRIENDLY,
         gameFormat,
-        teamAId: safeFiveVFiveTeams[0]?.id || "dark",
-        teamBId: safeFiveVFiveTeams[1]?.id || "light",
+        teamAId: activeFriendlyTeams[0]?.id || "dark",
+        teamBId: activeFriendlyTeams[1]?.id || "light",
         standbyId: null,
       };
     }
@@ -1903,7 +2013,7 @@ export default function App() {
 
   const currentCameraLaunchTeams = useMemo(() => {
     return resolveCameraLaunchTeams({
-      teams,
+      teams: matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams,
       currentMatch: effectiveLiveMatch,
       currentConfirmedLineupSnapshot,
       confirmedLineupsByMatchNo,
@@ -1911,6 +2021,8 @@ export default function App() {
     });
   }, [
     teams,
+    fiveVFiveTeams,
+    matchType,
     effectiveLiveMatch,
     currentConfirmedLineupSnapshot,
     confirmedLineupsByMatchNo,
@@ -2568,8 +2680,8 @@ export default function App() {
       matchNo: activeMatchNo,
       createdAt: new Date().toISOString(),
       currentMatch: safeStartMatch,
-      teams,
-      fiveVFiveTeams,
+      teams: matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams,
+      fiveVFiveTeams: getActiveFriendlyTeams(fiveVFiveTeams),
       identity,
       matchType,
       gameFormat,
@@ -2827,7 +2939,7 @@ export default function App() {
             matchMode: null,
             results: [newResult],
             allEvents: allCommittedEvents,
-            teams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
+            teams: getActiveFriendlyTeams(prevSeason?.fiveVFiveTeams),
             playerAppearances: [],
           };
 
@@ -2944,7 +3056,7 @@ export default function App() {
           matchMode: null,
           results: [newResult],
           allEvents: allCommittedEvents,
-          teams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
+          teams: getActiveFriendlyTeams(prev?.fiveVFiveTeams),
           playerAppearances: [],
         };
 
@@ -3612,7 +3724,7 @@ export default function App() {
                   matchMode: null,
                   results: splitResults.friendly,
                   allEvents: splitEvents.friendly,
-                  teams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
+                  teams: getActiveFriendlyTeams(prevSeason?.fiveVFiveTeams),
                   playerAppearances: [],
                 }
               : null;
@@ -3703,7 +3815,7 @@ export default function App() {
                 matchMode: null,
                 results: splitResults.friendly,
                 allEvents: splitEvents.friendly,
-                teams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
+                teams: getActiveFriendlyTeams(prev?.fiveVFiveTeams),
                 playerAppearances: [],
               }
             : null;
@@ -3929,7 +4041,7 @@ export default function App() {
     }
 
     const launchTeams = resolveCameraLaunchTeams({
-      teams,
+      teams: matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams,
       currentMatch: effectiveLiveMatch,
       currentConfirmedLineupSnapshot,
       confirmedLineupsByMatchNo,
@@ -4338,7 +4450,7 @@ export default function App() {
           timeUp={timeUp}
           running={running}
           teams={pendingMatchStartContext?.teams || teams}
-          fiveVFiveTeams={pendingMatchStartContext?.fiveVFiveTeams || fiveVFiveTeams}
+          fiveVFiveTeams={pendingMatchStartContext?.fiveVFiveTeams || getActiveFriendlyTeams(fiveVFiveTeams)}
           currentMatchNo={pendingMatchStartContext?.matchNo || activeMatchNo}
           currentMatch={pendingMatchStartContext?.currentMatch || effectiveLiveMatch}
           currentEvents={currentEvents}
@@ -4367,7 +4479,7 @@ export default function App() {
 
       {page === PAGE_SPECTATOR && (
         <SpectatorPage
-          teams={teams}
+          teams={matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
           currentMatchNo={activeMatchNo}
           currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
@@ -4379,8 +4491,8 @@ export default function App() {
       {page === PAGE_STATS && (
         <StatsPage
           teams={teams}
-          friendlyTeams={fiveVFiveTeams}
-          fiveVFiveTeams={fiveVFiveTeams}
+          friendlyTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
+          fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
           gameFormat={gameFormat}
           results={results}
           allEvents={allEvents}
@@ -4512,7 +4624,7 @@ export default function App() {
       {page === PAGE_SQUADS && (
         <SquadsPage
           teams={teams}
-          fiveVFiveTeams={fiveVFiveTeams}
+          fiveVFiveTeams={ensureFiveVFiveTeamsShape(fiveVFiveTeams)}
           onUpdateTeams={handleUpdateTeams}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
@@ -4529,7 +4641,7 @@ export default function App() {
       {page === PAGE_FORMATIONS && (
         <FormationsPage
           teams={teams}
-          fiveVFiveTeams={fiveVFiveTeams}
+          fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
           currentMatch={effectiveLiveMatch}
           playerPhotosByName={playerPhotosByName}
           identity={identity}

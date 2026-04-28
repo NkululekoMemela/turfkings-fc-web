@@ -592,7 +592,7 @@ export function ViewHighlightsPage({
             <input
               type="file"
               accept="video/*"
-              capture="environment"
+
               onChange={handleFileChange}
               disabled={uploading}
               style={inputBase}

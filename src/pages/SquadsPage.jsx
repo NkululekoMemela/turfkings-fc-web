@@ -1,3 +1,4 @@
+// src/pages/SquadsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import {
@@ -20,6 +21,12 @@ import {
 
 const MASTER_CODE = "3333"; // Nkululeko only
 const UNSEEDED_ID = "__unseeded__";
+const GUEST_OPPONENT_ID = "guest_opponent";
+const TURF_KINGS_CHALLENGE_ID = "turf_kings_challenge";
+const DEFAULT_GUEST_OPPONENT_NAME = "Canal Walk";
+const TURF_KINGS_SLOT_ID = "dark";
+const GUEST_OPPONENT_SLOT_ID = "light";
+const TURF_KINGS_LOGO_URL = `${import.meta.env.BASE_URL}turfkings-share.jpeg`;
 const PLAYERS_COLLECTION = "players";
 const ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
 const LONG_PRESS_MS = 650;
@@ -202,6 +209,117 @@ function themeFromAccent(accent, colorName, text = "#E5E7EB") {
   };
 }
 
+function todayChallengeDateText() {
+  const d = new Date();
+  return d.toLocaleDateString("en-ZA", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function parseChallengeDateLoose(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    const [, y, m, d] = iso;
+    return new Date(Number(y), Number(m) - 1, Number(d));
+  }
+
+  const numeric = raw.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (numeric) {
+    const [, d, m, y] = numeric;
+    return new Date(Number(y), Number(m) - 1, Number(d));
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  return null;
+}
+
+function getInitialsFromName(name = "") {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!parts.length) return "FC";
+  if (parts.length === 1) return parts[0].slice(0, 3).toUpperCase();
+
+  return parts
+    .slice(0, 3)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
+function TeamShirtIcon({ color = "#22C55E", size = 18 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      <path
+        d="M9 4 12 6 15 4l4 2 2 5-3 2v7a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-7l-3-2 2-5 4-2Z"
+        fill={color}
+        stroke="rgba(255,255,255,0.78)"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function GeneratedOpponentCrest({ name = "Opponent", theme = {} }) {
+  const accent = theme.accent || "#D97706";
+  const initials = getInitialsFromName(name);
+
+  return (
+    <div
+      style={{
+        width: "82px",
+        height: "82px",
+        borderRadius: "24px",
+        margin: "0 auto",
+        background: `radial-gradient(circle at top, ${hexToRgba(accent, 0.42)}, rgba(15,23,42,0.94) 62%)`,
+        border: `2px solid ${hexToRgba(accent, 0.9)}`,
+        boxShadow: `0 14px 30px ${hexToRgba(accent, 0.2)}`,
+        display: "grid",
+        placeItems: "center",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: "9px",
+          borderRadius: "20px",
+          border: "1px solid rgba(255,255,255,0.18)",
+        }}
+      />
+      <div style={{ textAlign: "center", lineHeight: 1 }}>
+        <div
+          style={{
+            fontSize: "1.35rem",
+            fontWeight: 950,
+            color: "#FDE68A",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {initials}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 function getThemeFromColorName(rawColorName = "") {
   const key = String(rawColorName || "").trim().toLowerCase();
   if (!key) return null;
@@ -338,6 +456,190 @@ function buildDefaultFiveVFiveTeams() {
   ]);
 }
 
+function buildGuestOpponentTeam({
+  name = DEFAULT_GUEST_OPPONENT_NAME,
+  players = [],
+  teamColorName = "Gold",
+  disabledFriendlyTeamId = "light",
+  disabledFriendlyTeamSnapshot = null,
+} = {}) {
+  const label = toTitleCase(name) || DEFAULT_GUEST_OPPONENT_NAME;
+
+  return {
+    id: GUEST_OPPONENT_ID,
+    label,
+    abbrev: normalizeAbbrev(label) || "GST",
+    teamColorName: toTitleCase(teamColorName || "Gold"),
+    teamColorHex: getThemeFromColorName(teamColorName || "Gold")?.accent || "#D97706",
+    players: Array.from(
+      new Set(
+        (players || [])
+          .map((p) =>
+            toTitleCase(typeof p === "string" ? p : p?.name || p?.displayName || "")
+          )
+          .filter(Boolean)
+      )
+    ),
+    captainId: null,
+    captain: "",
+    isGuestOpponent: true,
+    temporaryGuestOpponent: true,
+    disabledFriendlyTeamId,
+    disabledFriendlyTeamSnapshot,
+  };
+}
+
+function buildTurfKingsChallengeTeam({ players = [], teamColorName = "Green" } = {}) {
+  return {
+    id: TURF_KINGS_CHALLENGE_ID,
+    label: "Turf Kings",
+    abbrev: "TKG",
+    teamColorName: toTitleCase(teamColorName || "Green"),
+    teamColorHex: getThemeFromColorName(teamColorName || "Green")?.accent || "#22C55E",
+    players: Array.from(new Set((players || []).filter(Boolean))),
+    captainId: null,
+    captain: "",
+    isTurfKingsChallengeTeam: true,
+    temporaryChallengeTeam: true,
+  };
+}
+
+function isTurfKingsChallengeTeam(team) {
+  return Boolean(team?.isTurfKingsChallengeTeam || team?.id === TURF_KINGS_CHALLENGE_ID);
+}
+
+function isGuestOpponentTeam(team) {
+  return Boolean(team?.isGuestOpponent || team?.id === GUEST_OPPONENT_ID);
+}
+
+function ensureTwoBaseFriendlyTeams(inputTeams = [], guestTeam = null) {
+  const defaults = buildDefaultFiveVFiveTeams();
+  const fromGuestSnapshot = guestTeam?.disabledFriendlyTeamSnapshot
+    ? [guestTeam.disabledFriendlyTeamSnapshot]
+    : [];
+
+  const candidates = normalizeIncomingTeams([
+    ...(inputTeams || []),
+    ...fromGuestSnapshot,
+  ]).filter((team) => !isGuestOpponentTeam(team));
+
+  const byId = new Map(candidates.map((team) => [team.id, team]));
+
+  const mergedDefaults = defaults.map((team) => byId.get(team.id) || team);
+  const extras = candidates.filter(
+    (team) => !mergedDefaults.some((base) => base.id === team.id)
+  );
+
+  return [...mergedDefaults, ...extras].slice(0, 2);
+}
+
+
+function isGuestChallengeSlotMode(teams = []) {
+  const safeTeams = Array.isArray(teams) ? teams : [];
+  const turf = safeTeams.find((team) => team?.id === TURF_KINGS_SLOT_ID);
+  const guest = safeTeams.find((team) => team?.id === GUEST_OPPONENT_SLOT_ID);
+
+  return Boolean(
+    turf?.guestChallengeActive === true &&
+      guest?.guestChallengeActive === true &&
+      guest?.isGuestOpponent === true
+  );
+}
+
+function buildSlotBasedChallengeTeams({
+  baseTeams = [],
+  turfKingsPlayers = [],
+  guestPlayers = [],
+  guestName = DEFAULT_GUEST_OPPONENT_NAME,
+  turfKingsColorName = "Green",
+  guestColorName = "Gold",
+  challengeDate = "",
+  challengeKickoff = "18:30",
+  challengeVenue = "Canal Walk 5s Arena",
+} = {}) {
+  const defaults = buildDefaultFiveVFiveTeams();
+  const normalizedBase = normalizeIncomingTeams(baseTeams);
+  const darkBase = normalizedBase.find((team) => team.id === TURF_KINGS_SLOT_ID) || defaults[0];
+  const lightBase = normalizedBase.find((team) => team.id === GUEST_OPPONENT_SLOT_ID) || defaults[1];
+
+  const cleanGuestName = toTitleCase(guestName) || DEFAULT_GUEST_OPPONENT_NAME;
+  const cleanTurfColor = toTitleCase(turfKingsColorName || "Green");
+  const cleanGuestColor = toTitleCase(guestColorName || "Gold");
+
+  const turfTheme = getThemeFromColorName(cleanTurfColor);
+  const guestTheme = getThemeFromColorName(cleanGuestColor);
+
+  const turfTeam = {
+    ...darkBase,
+    id: TURF_KINGS_SLOT_ID,
+    originalFriendlySlotId: TURF_KINGS_SLOT_ID,
+    label: "Turf Kings",
+    abbrev: "TKG",
+    teamColorName: cleanTurfColor,
+    teamColorHex: turfTheme?.accent || darkBase.teamColorHex || "#22C55E",
+    players: Array.from(new Set((turfKingsPlayers || []).filter(Boolean))),
+    captainId: darkBase.captainId || null,
+    captain: darkBase.captain || "",
+    guestChallengeActive: true,
+    isTurfKingsChallengeTeam: true,
+    challengeRole: "home",
+    challengeDate,
+    challengeKickoff,
+    challengeVenue,
+  };
+
+  const guestTeam = {
+    ...lightBase,
+    id: GUEST_OPPONENT_SLOT_ID,
+    originalFriendlySlotId: GUEST_OPPONENT_SLOT_ID,
+    label: cleanGuestName,
+    abbrev: normalizeAbbrev(cleanGuestName) || "GST",
+    teamColorName: cleanGuestColor,
+    teamColorHex: guestTheme?.accent || lightBase.teamColorHex || "#D97706",
+    players: Array.from(
+      new Set(
+        (guestPlayers || [])
+          .map((p) => toTitleCase(typeof p === "string" ? p : p?.name || p?.displayName || ""))
+          .filter(Boolean)
+      )
+    ),
+    captainId: null,
+    captain: "",
+    guestChallengeActive: true,
+    isGuestOpponent: true,
+    temporaryGuestOpponent: true,
+    challengeRole: "guest",
+    challengeDate,
+    challengeKickoff,
+    challengeVenue,
+  };
+
+  return [turfTeam, guestTeam];
+}
+
+function restoreNormalFriendlyTeamsFromSlots(teams = []) {
+  const defaults = buildDefaultFiveVFiveTeams();
+  const normalized = normalizeIncomingTeams(teams);
+  const dark = normalized.find((team) => team.id === TURF_KINGS_SLOT_ID);
+  const light = normalized.find((team) => team.id === GUEST_OPPONENT_SLOT_ID);
+
+  return [
+    {
+      ...defaults[0],
+      players: Array.isArray(dark?.players) ? dark.players : [],
+      captainId: dark?.captainId || null,
+      captain: dark?.captain || "",
+    },
+    {
+      ...defaults[1],
+      players: [],
+      captainId: null,
+      captain: "",
+    },
+  ];
+}
+
+
 /* ---------------- Component ---------------- */
 
 export function SquadsPage({
@@ -347,10 +649,11 @@ export function SquadsPage({
   onUpdateFiveVFiveTeams,
   onBack,
   identity = null,
+  isAdmin: isAdminFromApp = false,
   matchType = MATCH_MODE.FRIENDLY,
   gameFormat = GAME_FORMAT.FIVE_V_FIVE,
 }) {
-  const isAdmin = isAdminIdentity(identity);
+  const isAdmin = Boolean(isAdminFromApp || isAdminIdentity(identity));
   const canEdit = isAdmin;
 
   const resolvedMatchType = normalizeMatchMode(
@@ -393,9 +696,58 @@ export function SquadsPage({
   const [pendingDeletePlayerId, setPendingDeletePlayerId] = useState("");
   const [deletePlayerError, setDeletePlayerError] = useState("");
 
+  const existingGuestTeam = useMemo(
+    () =>
+      (fiveVFiveTeams || []).find(
+        (team) => team?.id === GUEST_OPPONENT_SLOT_ID && team?.guestChallengeActive === true
+      ) || null,
+    [fiveVFiveTeams]
+  );
+
+  const existingTurfKingsChallengeTeam = useMemo(
+    () =>
+      (fiveVFiveTeams || []).find(
+        (team) => team?.id === TURF_KINGS_SLOT_ID && team?.guestChallengeActive === true
+      ) || null,
+    [fiveVFiveTeams]
+  );
+
+  const [guestOpponentEnabled, setGuestOpponentEnabled] = useState(() =>
+    isGuestChallengeSlotMode(fiveVFiveTeams)
+  );
+  const [guestOpponentName, setGuestOpponentName] = useState(() =>
+    existingGuestTeam?.label || DEFAULT_GUEST_OPPONENT_NAME
+  );
+  const [disabledFriendlyTeamId, setDisabledFriendlyTeamId] = useState(() =>
+    existingGuestTeam?.disabledFriendlyTeamId || "light"
+  );
+  const [guestOpponentPlayers, setGuestOpponentPlayers] = useState(() =>
+    Array.isArray(existingGuestTeam?.players) ? existingGuestTeam.players : []
+  );
+  const [guestOpponentColorName, setGuestOpponentColorName] = useState(() =>
+    existingGuestTeam?.teamColorName || "Gold"
+  );
+  const [turfKingsChallengeColorName, setTurfKingsChallengeColorName] = useState(() =>
+    existingTurfKingsChallengeTeam?.teamColorName || "Green"
+  );
+  const [challengeDate, setChallengeDate] = useState(() =>
+    existingGuestTeam?.challengeDate || todayChallengeDateText()
+  );
+  const [challengeKickoff, setChallengeKickoff] = useState(() =>
+    existingGuestTeam?.challengeKickoff || "18:30"
+  );
+  const [challengeVenue, setChallengeVenue] = useState(() =>
+    existingGuestTeam?.challengeVenue || "Canal Walk 5s Arena"
+  );
+  const [turfKingsChallengePlayers, setTurfKingsChallengePlayers] = useState(() =>
+    Array.isArray(existingTurfKingsChallengeTeam?.players)
+      ? existingTurfKingsChallengeTeam.players
+      : []
+  );
 
   const [savingCardId, setSavingCardId] = useState("");
   const cardRefs = useRef({});
+  const challengeAdvertRef = useRef(null);
   const longPressTimersRef = useRef({});
 
   useEffect(() => {
@@ -420,9 +772,29 @@ export function SquadsPage({
 
   useEffect(() => {
     const normalized = normalizeIncomingTeams(fiveVFiveTeams);
+    const challengeIsActive = isGuestChallengeSlotMode(normalized);
+    const guest = normalized.find((team) => team.id === GUEST_OPPONENT_SLOT_ID);
+    const turf = normalized.find((team) => team.id === TURF_KINGS_SLOT_ID);
+
     setLocalFiveVFiveTeams(
       normalized.length === 2 ? normalized : buildDefaultFiveVFiveTeams()
     );
+
+    setGuestOpponentEnabled(challengeIsActive);
+
+    if (challengeIsActive && guest) {
+      setGuestOpponentName(guest.label || DEFAULT_GUEST_OPPONENT_NAME);
+      setGuestOpponentPlayers(Array.isArray(guest.players) ? guest.players : []);
+      setGuestOpponentColorName(guest.teamColorName || "Gold");
+      setChallengeDate(guest.challengeDate || todayChallengeDateText());
+      setChallengeKickoff(guest.challengeKickoff || "18:30");
+      setChallengeVenue(guest.challengeVenue || "Canal Walk 5s Arena");
+    }
+
+    if (challengeIsActive && turf) {
+      setTurfKingsChallengePlayers(Array.isArray(turf.players) ? turf.players : []);
+      setTurfKingsChallengeColorName(turf.teamColorName || "Green");
+    }
   }, [fiveVFiveTeams]);
 
   useEffect(() => {
@@ -501,8 +873,103 @@ export function SquadsPage({
     setLocalFiveVFiveTeams((prev) => normalizeTeamsAgainstPlayers(prev));
   }, [allPlayers, playersById]);
 
-  const sourceTeams = isFiveVFive ? localFiveVFiveTeams : localLeagueTeams;
-  const setSourceTeams = isFiveVFive ? setLocalFiveVFiveTeams : setLocalLeagueTeams;
+  const baseFriendlyTeams = useMemo(() => {
+    const normalized = normalizeIncomingTeams(localFiveVFiveTeams);
+    return normalized.length === 2 ? normalized : buildDefaultFiveVFiveTeams();
+  }, [localFiveVFiveTeams]);
+
+  const turfKingsChallengeTeam = useMemo(() => {
+    const teamsForChallenge = buildSlotBasedChallengeTeams({
+      baseTeams: baseFriendlyTeams,
+      turfKingsPlayers: turfKingsChallengePlayers,
+      guestPlayers: guestOpponentPlayers,
+      guestName: guestOpponentName,
+      turfKingsColorName: turfKingsChallengeColorName,
+      guestColorName: guestOpponentColorName,
+      challengeDate,
+      challengeKickoff,
+      challengeVenue,
+    });
+    return teamsForChallenge[0];
+  }, [
+    baseFriendlyTeams,
+    turfKingsChallengePlayers,
+    guestOpponentPlayers,
+    guestOpponentName,
+    turfKingsChallengeColorName,
+    guestOpponentColorName,
+    challengeDate,
+    challengeKickoff,
+    challengeVenue,
+  ]);
+
+  const guestOpponentTeam = useMemo(() => {
+    const teamsForChallenge = buildSlotBasedChallengeTeams({
+      baseTeams: baseFriendlyTeams,
+      turfKingsPlayers: turfKingsChallengePlayers,
+      guestPlayers: guestOpponentPlayers,
+      guestName: guestOpponentName,
+      turfKingsColorName: turfKingsChallengeColorName,
+      guestColorName: guestOpponentColorName,
+      challengeDate,
+      challengeKickoff,
+      challengeVenue,
+    });
+    return teamsForChallenge[1];
+  }, [
+    baseFriendlyTeams,
+    turfKingsChallengePlayers,
+    guestOpponentPlayers,
+    guestOpponentName,
+    turfKingsChallengeColorName,
+    guestOpponentColorName,
+    challengeDate,
+    challengeKickoff,
+    challengeVenue,
+  ]);
+
+  const sourceTeams = useMemo(() => {
+    if (isFiveVFive && guestOpponentEnabled) {
+      return [turfKingsChallengeTeam, guestOpponentTeam];
+    }
+
+    return isFiveVFive ? baseFriendlyTeams : localLeagueTeams;
+  }, [
+    isFiveVFive,
+    guestOpponentEnabled,
+    turfKingsChallengeTeam,
+    guestOpponentTeam,
+    baseFriendlyTeams,
+    localLeagueTeams,
+  ]);
+
+  const setSourceTeams = (updater) => {
+    if (isFiveVFive && guestOpponentEnabled) {
+      const current = [turfKingsChallengeTeam, guestOpponentTeam];
+      const nextTeams = typeof updater === "function" ? updater(current) : updater;
+      const nextTurf = (nextTeams || []).find((team) => team.id === TURF_KINGS_SLOT_ID);
+      const nextGuest = (nextTeams || []).find((team) => team.id === GUEST_OPPONENT_SLOT_ID);
+
+      if (nextTurf) {
+        setTurfKingsChallengePlayers(Array.isArray(nextTurf.players) ? nextTurf.players : []);
+        setTurfKingsChallengeColorName(nextTurf.teamColorName || "Green");
+      }
+
+      if (nextGuest) {
+        setGuestOpponentName(nextGuest.label || DEFAULT_GUEST_OPPONENT_NAME);
+        setGuestOpponentPlayers(Array.isArray(nextGuest.players) ? nextGuest.players : []);
+        setGuestOpponentColorName(nextGuest.teamColorName || "Gold");
+      }
+
+      return;
+    }
+
+    if (isFiveVFive) {
+      setLocalFiveVFiveTeams(updater);
+    } else {
+      setLocalLeagueTeams(updater);
+    }
+  };
 
   const assignedIds = useMemo(() => {
     const s = new Set();
@@ -544,6 +1011,68 @@ export function SquadsPage({
     setAddErrors((prev) => ({ ...prev, [id]: "" }));
   };
 
+  const buildCurrentSlotChallengeTeams = ({
+    enabled = guestOpponentEnabled,
+    nextTurfKingsPlayers = turfKingsChallengePlayers,
+    nextGuestPlayers = guestOpponentPlayers,
+    nextGuestName = guestOpponentName,
+    nextGuestColorName = guestOpponentColorName,
+    nextTurfKingsColorName = turfKingsChallengeColorName,
+    nextChallengeDate = challengeDate,
+    nextChallengeKickoff = challengeKickoff,
+    nextChallengeVenue = challengeVenue,
+  } = {}) => {
+    if (!enabled) {
+      return restoreNormalFriendlyTeamsFromSlots(localFiveVFiveTeams);
+    }
+
+    return buildSlotBasedChallengeTeams({
+      baseTeams: localFiveVFiveTeams,
+      turfKingsPlayers: nextTurfKingsPlayers,
+      guestPlayers: nextGuestPlayers,
+      guestName: nextGuestName,
+      turfKingsColorName: nextTurfKingsColorName,
+      guestColorName: nextGuestColorName,
+      challengeDate: nextChallengeDate,
+      challengeKickoff: nextChallengeKickoff,
+      challengeVenue: nextChallengeVenue,
+    });
+  };
+
+  const persistSlotChallengeState = (options = {}) => {
+    if (!canEdit) return;
+    const nextTeams = buildCurrentSlotChallengeTeams(options);
+    setLocalFiveVFiveTeams(nextTeams);
+    onUpdateFiveVFiveTeams?.(nextTeams);
+  };
+
+  const handleTurnChallengeOn = () => {
+    if (!canEdit) return;
+
+    const nextTeams = buildCurrentSlotChallengeTeams({ enabled: true });
+    setGuestOpponentEnabled(true);
+    setLocalFiveVFiveTeams(nextTeams);
+    onUpdateFiveVFiveTeams?.(nextTeams);
+  };
+
+  const handleTakeChallengeDown = () => {
+    if (!canEdit) return;
+
+    const ok =
+      typeof window !== "undefined"
+        ? window.confirm(
+            "Take down the special challenge and return to normal Dark vs Light friendly squads?"
+          )
+        : true;
+
+    if (!ok) return;
+
+    setGuestOpponentEnabled(false);
+    const normalTeams = restoreNormalFriendlyTeamsFromSlots(localFiveVFiveTeams);
+    setLocalFiveVFiveTeams(normalTeams);
+    onUpdateFiveVFiveTeams?.(normalTeams);
+  };
+
   const handleTeamLabelChange = (teamId, value) => {
     if (!canEdit) return;
     setSourceTeams((prev) =>
@@ -561,6 +1090,17 @@ export function SquadsPage({
 
   const handleTeamColorNameChange = (teamId, value) => {
     if (!canEdit) return;
+
+    if (guestOpponentEnabled && teamId === TURF_KINGS_SLOT_ID) {
+      setTurfKingsChallengeColorName(value);
+      return;
+    }
+
+    if (guestOpponentEnabled && teamId === GUEST_OPPONENT_SLOT_ID) {
+      setGuestOpponentColorName(value);
+      return;
+    }
+
     setSourceTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, teamColorName: value } : t))
     );
@@ -618,6 +1158,31 @@ export function SquadsPage({
     const raw = pendingNames[id] || "";
     const trimmed = raw.trim();
     if (!trimmed) return;
+
+    const targetTeam = sourceTeams.find((team) => team.id === id);
+
+    if (targetTeam && isGuestOpponentTeam(targetTeam)) {
+      const selectedId = parseChoiceToPlayerId(trimmed);
+      const selectedName = playersById.has(selectedId)
+        ? displayNameOf(selectedId)
+        : toTitleCase(
+            trimmed.includes("|")
+              ? trimmed.split("|").slice(1).join("|")
+              : selectedId
+          );
+
+      if (!selectedName) return;
+
+      setGuestOpponentPlayers((prev) => {
+        const existing = new Set((prev || []).map((p) => toTitleCase(p).toLowerCase()));
+        if (existing.has(selectedName.toLowerCase())) return prev;
+        return [...(prev || []), selectedName];
+      });
+
+      setPendingNames((prev) => ({ ...prev, [id]: "" }));
+      setAddErrors((prev) => ({ ...prev, [id]: "" }));
+      return;
+    }
 
     let chosenId = parseChoiceToPlayerId(trimmed);
     if (!playersById.has(chosenId)) {
@@ -691,6 +1256,16 @@ export function SquadsPage({
 
   const handleRemovePlayer = async (teamId, playerIdOrLegacy) => {
     if (!canEdit) return;
+
+    const targetTeam = sourceTeams.find((team) => team.id === teamId);
+    if (targetTeam && isGuestOpponentTeam(targetTeam)) {
+      setGuestOpponentPlayers((prev) =>
+        (prev || []).filter(
+          (name) => toTitleCase(name).toLowerCase() !== toTitleCase(playerIdOrLegacy).toLowerCase()
+        )
+      );
+      return;
+    }
 
     if (playersById.has(playerIdOrLegacy)) {
       setSourceTeams((prev) =>
@@ -811,7 +1386,11 @@ export function SquadsPage({
       });
 
     const cleanedLeagueTeams = cleanOne(localLeagueTeams);
-    const cleanedFiveVFiveTeams = cleanOne(localFiveVFiveTeams);
+    const cleanedFiveVFiveTeams = cleanOne(
+      isFiveVFive && guestOpponentEnabled
+        ? buildCurrentSlotChallengeTeams({ enabled: true })
+        : restoreNormalFriendlyTeamsFromSlots(localFiveVFiveTeams)
+    );
 
     const validationError =
       validateTeams(cleanedLeagueTeams) || validateTeams(cleanedFiveVFiveTeams);
@@ -907,6 +1486,43 @@ export function SquadsPage({
       setSavingCardId("");
     }
   };
+
+  const handleSaveChallengeAdvert = async () => {
+    const node = challengeAdvertRef.current;
+    if (!node) return;
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 3,
+        backgroundColor: "#071226",
+      });
+
+      const link = document.createElement("a");
+      link.download = `${slugFromName(`turf_kings_vs_${guestOpponentTeam.label || "opponent"}`)}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error("[Squads] Failed to save challenge advert:", err);
+      if (typeof window !== "undefined") {
+        window.alert("Could not save the challenge advert.");
+      }
+    }
+  };
+
+  const formattedChallengeDate = useMemo(() => {
+    const dateObj = parseChallengeDateLoose(challengeDate);
+    if (!dateObj || Number.isNaN(dateObj.getTime())) {
+      return challengeDate || "Match date to be confirmed";
+    }
+
+    return dateObj.toLocaleDateString("en-ZA", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }, [challengeDate]);
 
   const startLongPressSave = (cardId, label) => {
     clearLongPress(cardId);
@@ -1030,9 +1646,9 @@ export function SquadsPage({
             <p className="muted small">
               {isAdmin
                 ? isFriendly
-                  ? `Admin mode: you can edit the Friendly ${gameFormatLabel} teams Dark and Light, their captains, colors, and player placement.`
-                  : `Admin mode: you can edit the League ${gameFormatLabel} squads, captains, player placement, and team colors.`
-                : "View mode: team cards and squads are visible to everyone."}
+                  ? `Admin mode: edit Friendly ${gameFormatLabel} squads.`
+                  : `Admin mode: edit League ${gameFormatLabel} squads.`
+                : "View mode: squads are visible to everyone."}
             </p>
           </>
         )}
@@ -1043,21 +1659,237 @@ export function SquadsPage({
           <div
             style={{
               marginBottom: "1rem",
-              padding: "0.95rem",
+              padding: "0.8rem",
               borderRadius: "16px",
-              border: "1px solid rgba(255,255,255,0.08)",
-              background:
-                "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.88))",
+              border: guestOpponentEnabled
+                ? "1px solid rgba(34,197,94,0.32)"
+                : "1px solid rgba(255,255,255,0.08)",
+              background: guestOpponentEnabled
+                ? "transparent"
+                : "rgba(15,23,42,0.45)",
               display: "grid",
-              gap: "0.35rem",
+              gap: "0.75rem",
             }}
           >
-            <div className="muted small" style={{ fontWeight: 700 }}>
-              Separate Friendly squads
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <div className="muted small" style={{ fontWeight: 800 }}>
+                Guest challenge
+              </div>
+
+              {isAdmin && !guestOpponentEnabled && (
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={handleTurnChallengeOn}
+                >
+                  Use guest opponent
+                </button>
+              )}
+
+              {isAdmin && guestOpponentEnabled && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.5rem",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    className="primary-btn"
+                    style={{
+                      pointerEvents: "none",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    Challenge on
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={handleTakeChallengeDown}
+                    style={{
+                      borderColor: "rgba(248,113,113,0.45)",
+                      color: "#fecaca",
+                    }}
+                  >
+                    Take down
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="muted small">
-              Dark and Light are stored separately from the League squads, so you can switch between Friendly and League without disturbing league continuity. The selected game format controls the target team size.
-            </div>
+
+            {guestOpponentEnabled && (
+              <>
+                {isAdmin && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr",
+                      gap: "0.65rem",
+                      minWidth: 0,
+                      width: "100%",
+                    }}
+                  >
+                    <input
+                      className="text-input"
+                      value={guestOpponentName}
+                      onChange={(e) => setGuestOpponentName(e.target.value)}
+                      onBlur={() => persistSlotChallengeState({ nextGuestName: guestOpponentName })}
+                      disabled={!canEdit}
+                      placeholder="Opponent name"
+                      style={{ width: "100%", boxSizing: "border-box", minWidth: 0 }}
+                    />
+                    <input
+                      type="text"
+                      className="text-input"
+                      value={challengeDate}
+                      onChange={(e) => setChallengeDate(e.target.value)}
+                      onBlur={() => persistSlotChallengeState({ nextChallengeDate: challengeDate })}
+                      disabled={!canEdit}
+                      placeholder="17 May 2026"
+                      title="Use a date like 17 May 2026"
+                      style={{ width: "100%", boxSizing: "border-box", minWidth: 0 }}
+                    />
+                    <input
+                      type="time"
+                      className="text-input"
+                      value={challengeKickoff}
+                      onChange={(e) => setChallengeKickoff(e.target.value)}
+                      onBlur={() => persistSlotChallengeState({ nextChallengeKickoff: challengeKickoff })}
+                      disabled={!canEdit}
+                      style={{ width: "100%", boxSizing: "border-box", minWidth: 0 }}
+                    />
+                    <input
+                      className="text-input"
+                      value={challengeVenue}
+                      onChange={(e) => setChallengeVenue(e.target.value)}
+                      onBlur={() => persistSlotChallengeState({ nextChallengeVenue: challengeVenue })}
+                      disabled={!canEdit}
+                      placeholder="Venue"
+                      style={{ width: "100%", boxSizing: "border-box", minWidth: 0 }}
+                    />
+                  </div>
+                )}
+
+                <div
+                  ref={challengeAdvertRef}
+                  style={{
+                    borderRadius: "20px",
+                    overflow: "hidden",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background:
+                      `radial-gradient(circle at top left, ${getTeamTheme(turfKingsChallengeTeam).glow}, transparent 35%), radial-gradient(circle at bottom right, ${getTeamTheme(guestOpponentTeam).glow}, transparent 38%), linear-gradient(135deg, #06122A, #0F172A 55%, #14532D)`,
+                    padding: "1rem",
+                    display: "grid",
+                    gap: "0.8rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      textAlign: "center",
+                      fontWeight: 900,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      color: "#BBF7D0",
+                      fontSize: "0.82rem",
+                    }}
+                  >
+                    Friendly Challenge Match
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto 1fr",
+                      gap: "0.75rem",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ textAlign: "center", display: "grid", gap: "0.45rem" }}>
+                      <div
+                        style={{
+                          width: "74px",
+                          height: "74px",
+                          borderRadius: "22px",
+                          margin: "0 auto",
+                          background: "rgba(255,255,255,0.08)",
+                          border: "1px solid rgba(255,255,255,0.18)",
+                          display: "grid",
+                          placeItems: "center",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <img
+                          src={TURF_KINGS_LOGO_URL}
+                          alt="Turf Kings"
+                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                        />
+                      </div>
+                      <strong style={{ color: "#F8FAFC" }}>Turf Kings</strong>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: "1.7rem",
+                        fontWeight: 950,
+                        color: "#FDE68A",
+                      }}
+                    >
+                      VS
+                    </div>
+
+                    <div style={{ textAlign: "center", display: "grid", gap: "0.45rem" }}>
+                      <GeneratedOpponentCrest
+                        name={guestOpponentTeam.label || "Canal Walk"}
+                        theme={getTeamTheme(guestOpponentTeam)}
+                      />
+                      <strong style={{ color: "#F8FAFC" }}>
+                        {guestOpponentTeam.label || "Canal Walk"}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      textAlign: "center",
+                      color: "#CBD5E1",
+                      fontWeight: 700,
+                      fontSize: "0.92rem",
+                    }}
+                  >
+                    <div>{gameFormatLabel} • One-off Friendly</div>
+                    <div style={{ color: "#FDE68A", fontSize: "1rem", marginTop: "0.25rem" }}>
+                      {formattedChallengeDate}
+                    </div>
+                    <div style={{ fontSize: "0.88rem", marginTop: "0.2rem" }}>
+                      Kick Off: {challengeKickoff || "18:30"} • Venue: {challengeVenue || "Canal Walk 5s Arena"}
+                    </div>
+                  </div>
+                </div>
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={handleSaveChallengeAdvert}
+                    style={{ width: "100%" }}
+                  >
+                    Save advert
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -1075,6 +1907,8 @@ export function SquadsPage({
             const playerCount = Array.isArray(team.players) ? team.players.length : 0;
             const teamReady = playerCount >= playersPerSide;
             const playerCountText = `${playerCount}/${playersPerSide}`;
+            const isGuestTeamCard = guestOpponentEnabled && team.id === GUEST_OPPONENT_SLOT_ID;
+            const isChallengeTeamCard = guestOpponentEnabled && team.id === TURF_KINGS_SLOT_ID;
 
             return (
               <React.Fragment key={`team-fragment-${resolvedGameFormat}-${team.id}`}>
@@ -1093,10 +1927,17 @@ export function SquadsPage({
                               <span className="team-abbrev-badge">{team.abbrev}</span>
                             ) : null}
                           </div>
-                          <div className="team-subtitle">
-                            Captain: {captainTagText(team) || "—"}
-                          </div>
-                          <div className="team-color-name">
+                          {isAdmin && (
+                            <div className="team-subtitle">
+                              {isGuestTeamCard
+                                ? "Temporary opponent"
+                                : isChallengeTeamCard
+                                ? "Database players"
+                                : <>Captain: {captainTagText(team) || "—"}</>}
+                            </div>
+                          )}
+                          <div className="team-color-name" style={{ display: "inline-flex", alignItems: "center", gap: "0.38rem" }}>
+                            <TeamShirtIcon color={theme.accent} size={18} />
                             <span className="team-color-dot" />
                             {theme.colorName}
                           </div>
@@ -1114,7 +1955,42 @@ export function SquadsPage({
                       </div>
                     </div>
 
-                    {isAdmin && (
+                    {isAdmin && (isGuestTeamCard || isChallengeTeamCard) && (
+                      <div className="team-config">
+                        <div className="field-row-top-spaced">
+                          <input
+                            className="text-input"
+                            value={
+                              isChallengeTeamCard
+                                ? turfKingsChallengeColorName
+                                : isGuestTeamCard
+                                ? guestOpponentColorName
+                                : team.teamColorName || ""
+                            }
+                            placeholder="Team color name"
+                            onChange={(e) =>
+                              handleTeamColorNameChange(team.id, e.target.value)
+                            }
+                            onBlur={() => {
+                              if (guestOpponentEnabled && team.id === TURF_KINGS_SLOT_ID) {
+                                persistSlotChallengeState({
+                                  nextTurfKingsColorName: turfKingsChallengeColorName,
+                                });
+                              }
+
+                              if (guestOpponentEnabled && team.id === GUEST_OPPONENT_SLOT_ID) {
+                                persistSlotChallengeState({
+                                  nextGuestColorName: guestOpponentColorName,
+                                });
+                              }
+                            }}
+                            disabled={!canEdit}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {isAdmin && !isGuestTeamCard && !isChallengeTeamCard && (
                       <div className="team-config">
                         <div className="field-row-inline">
                           <input
@@ -1191,9 +2067,9 @@ export function SquadsPage({
 
                     <ul className="player-list">
                       {(team.players || []).map((pid, idx) => {
-                        const label = displayNameOf(pid);
+                        const label = isGuestTeamCard ? toTitleCase(pid) : displayNameOf(pid);
                         const isCaptain =
-                          team.captainId && playersById.has(team.captainId)
+                          !isGuestTeamCard && team.captainId && playersById.has(team.captainId)
                             ? team.captainId === pid
                             : false;
 
@@ -1227,7 +2103,11 @@ export function SquadsPage({
                           <div className="player-row-left">
                             <span className="player-number">0</span>
                             <span className="player-name-text">
-                              No players yet in this squad.
+                              {isGuestTeamCard
+                                ? "Type opponent players below."
+                                : isChallengeTeamCard
+                                ? "Add Turf Kings players from database."
+                                : "No players yet in this squad."}
                             </span>
                           </div>
                         </li>
@@ -1239,18 +2119,20 @@ export function SquadsPage({
                         <div className="add-player-row">
                           <input
                             className="text-input"
-                            placeholder="Add / select player..."
-                            list={listId}
+                            placeholder={isGuestTeamCard ? "Type guest player name..." : "Add / select player..."}
+                            list={isGuestTeamCard ? undefined : listId}
                             value={pendingNames[inputId] || ""}
                             onChange={(e) =>
                               handlePendingChange(inputId, e.target.value)
                             }
                           />
-                          <datalist id={listId}>
-                            {availableForTeams.map((val) => (
-                              <option key={`${team.id}-available-${val}`} value={val} />
-                            ))}
-                          </datalist>
+                          {!isGuestTeamCard && (
+                            <datalist id={listId}>
+                              {availableForTeams.map((val) => (
+                                <option key={`${team.id}-available-${val}`} value={val} />
+                              ))}
+                            </datalist>
+                          )}
 
                           <button
                             className="secondary-btn"
@@ -1293,7 +2175,8 @@ export function SquadsPage({
                     <div className="team-subtitle">
                       {unseededPlayers.length} not currently assigned
                     </div>
-                    <div className="team-color-name">
+                    <div className="team-color-name" style={{ display: "inline-flex", alignItems: "center", gap: "0.38rem" }}>
+                      <TeamShirtIcon color="#64748B" size={18} />
                       <span className="team-color-dot" />
                       Slate
                     </div>
