@@ -278,6 +278,7 @@ export function NewsPage({
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [playerCanonicalMap, setPlayerCanonicalMap] = useState({});
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
+  const [newsSeasonState, setNewsSeasonState] = useState(null);
   const { normalizeName } = useMemberNameMap(Array.isArray(members) ? members : []);
 
   const shortDisplayByNormalized = useMemo(() => {
@@ -361,6 +362,109 @@ export function NewsPage({
   }, []);
 
   useEffect(() => {
+    const ref = doc(db, "appState_v2", "main");
+    const unsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        const data = snap.exists() ? snap.data() || {} : {};
+        setNewsSeasonState(data.state || null);
+      },
+      (error) => {
+        console.error("[NewsPage] failed to subscribe to season state:", error);
+        setNewsSeasonState(null);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const newsSeasonContext = useMemo(() => {
+    const state = newsSeasonState || {};
+    const seasons = Array.isArray(state.seasons) ? state.seasons : [];
+    const activeSeasonId = String(state.activeSeasonId || "").trim();
+    const activeIndex = seasons.findIndex(
+      (season) => String(season?.seasonId || "").trim() === activeSeasonId
+    );
+    const activeSeason = activeIndex >= 0 ? seasons[activeIndex] : seasons[0] || null;
+    const previousSeason = activeIndex > 0 ? seasons[activeIndex - 1] : null;
+
+    const hasMatchDayData = (history = []) =>
+      (Array.isArray(history) ? history : []).some((day) => {
+        const dayResults = Array.isArray(day?.results) ? day.results.length : 0;
+        const dayEvents = Array.isArray(day?.allEvents) ? day.allEvents.length : 0;
+        return dayResults > 0 || dayEvents > 0;
+      });
+
+    const seasonHasStarted = (season) => {
+      if (!season || typeof season !== "object") return false;
+      return (
+        (Array.isArray(season.results) && season.results.length > 0) ||
+        (Array.isArray(season.allEvents) && season.allEvents.length > 0) ||
+        (Array.isArray(season.currentEvents) && season.currentEvents.length > 0) ||
+        hasMatchDayData(season.matchDayHistory)
+      );
+    };
+
+    const activePropsHaveStarted =
+      (Array.isArray(results) && results.length > 0) ||
+      (Array.isArray(allEvents) && allEvents.length > 0) ||
+      (Array.isArray(currentResults) && currentResults.length > 0) ||
+      (Array.isArray(currentEvents) && currentEvents.length > 0) ||
+      hasMatchDayData(matchDayHistory);
+
+    const previousSeasonHasNews = seasonHasStarted(previousSeason);
+    const shouldUsePreviousSeasonNews =
+      Boolean(previousSeason && previousSeasonHasNews) &&
+      !activePropsHaveStarted &&
+      !seasonHasStarted(activeSeason);
+
+    const carrySeason = shouldUsePreviousSeasonNews ? previousSeason : null;
+    const carryNo = Number(carrySeason?.seasonNo || 0);
+    const activeNo = Number(activeSeason?.seasonNo || 0);
+
+    return {
+      seasons,
+      activeSeason,
+      previousSeason,
+      shouldUsePreviousSeasonNews,
+      seasonForNews: carrySeason,
+      seasonLabel: shouldUsePreviousSeasonNews
+        ? carryNo
+          ? `Season ${carryNo}`
+          : String(carrySeason?.seasonId || "Previous season")
+        : activeNo
+          ? `Season ${activeNo}`
+          : "Current season",
+      pageContextLabel: shouldUsePreviousSeasonNews
+        ? `${activeNo ? `Season ${activeNo}` : "New season"} · showing previous-season news until first match`
+        : activeNo
+          ? `Season ${activeNo}`
+          : "Current season",
+    };
+  }, [
+    newsSeasonState,
+    results,
+    allEvents,
+    currentResults,
+    currentEvents,
+    matchDayHistory,
+  ]);
+
+  const effectiveTeams = useMemo(() => {
+    const season = newsSeasonContext.seasonForNews;
+    if (newsSeasonContext.shouldUsePreviousSeasonNews && season) {
+      if (Array.isArray(season.teamsSnapshot) && season.teamsSnapshot.length > 0) {
+        return season.teamsSnapshot;
+      }
+      if (Array.isArray(season.teams) && season.teams.length > 0) {
+        return season.teams;
+      }
+    }
+
+    return Array.isArray(teams) ? teams : [];
+  }, [newsSeasonContext, teams]);
+
+  useEffect(() => {
     const handleScroll = () => {
       setHeaderScrolled(window.scrollY > 6);
     };
@@ -373,9 +477,9 @@ export function NewsPage({
   // ---------- Helpers ----------
   const teamById = useMemo(() => {
     const map = new Map();
-    (teams || []).forEach((t) => map.set(t.id, t));
+    (effectiveTeams || []).forEach((t) => map.set(t.id, t));
     return map;
-  }, [teams]);
+  }, [effectiveTeams]);
 
   const getTeamName = (id) => teamById.get(id)?.label || "Unknown";
 
@@ -389,7 +493,7 @@ export function NewsPage({
   // Map player -> team label (first team that contains the player)
   const playerTeamMap = useMemo(() => {
     const map = {};
-    (teams || []).forEach((t) => {
+    (effectiveTeams || []).forEach((t) => {
       (t.players || []).forEach((p) => {
         const rawName = typeof p === "string" ? p : p?.name || p?.displayName || p?.shortName;
         const name = normalizeName(rawName);
@@ -399,7 +503,7 @@ export function NewsPage({
       });
     });
     return map;
-  }, [teams, normalizeName]);
+  }, [effectiveTeams, normalizeName]);
 
   const getPlayerTeamAbbrev = (playerName) => {
     const teamName = playerTeamMap[normalizeName(playerName)];
@@ -432,7 +536,7 @@ export function NewsPage({
       addPhotoKey(key, url);
     });
 
-    (teams || []).forEach((t) => {
+    (effectiveTeams || []).forEach((t) => {
       if (t.playerPhotos) {
         Object.entries(t.playerPhotos).forEach(([name, url]) => {
           if (!name || !url) return;
@@ -466,7 +570,7 @@ export function NewsPage({
     });
 
     return map;
-  }, [teams, playerPhotosByName, cloudPhotosIndex]);
+  }, [effectiveTeams, playerPhotosByName, cloudPhotosIndex]);
 
   const resolveCanonicalPlayerName = useCallback(
     (name) => resolveCanonicalNameFromMap(name, playerCanonicalMap),
@@ -559,7 +663,7 @@ export function NewsPage({
     });
 
     return list.sort((a, b) => a.localeCompare(b));
-  }, [members, teams]);
+  }, [members, effectiveTeams]);
 
   const createEmptyStoryDraft = () => ({
     title: "",
@@ -815,11 +919,37 @@ This will remove it from live news and archives for everyone.`
 
 
   // ---------- RAW DATA SPLIT ----------
-  const fullResultsRaw = results || [];
-  const fullEventsRaw = allEvents || [];
+  const effectiveMatchDayHistory = useMemo(() => {
+    const season = newsSeasonContext.seasonForNews;
+    if (newsSeasonContext.shouldUsePreviousSeasonNews && season) {
+      return Array.isArray(season.matchDayHistory) ? season.matchDayHistory : [];
+    }
+
+    return Array.isArray(matchDayHistory) ? matchDayHistory : [];
+  }, [newsSeasonContext, matchDayHistory]);
+
+  const fullResultsRaw = useMemo(() => {
+    if (newsSeasonContext.shouldUsePreviousSeasonNews) {
+      return effectiveMatchDayHistory.flatMap((day) =>
+        Array.isArray(day?.results) ? day.results : []
+      );
+    }
+
+    return Array.isArray(results) ? results : [];
+  }, [newsSeasonContext.shouldUsePreviousSeasonNews, effectiveMatchDayHistory, results]);
+
+  const fullEventsRaw = useMemo(() => {
+    if (newsSeasonContext.shouldUsePreviousSeasonNews) {
+      return effectiveMatchDayHistory.flatMap((day) =>
+        Array.isArray(day?.allEvents) ? day.allEvents : []
+      );
+    }
+
+    return Array.isArray(allEvents) ? allEvents : [];
+  }, [newsSeasonContext.shouldUsePreviousSeasonNews, effectiveMatchDayHistory, allEvents]);
 
   const latestSavedMatchDay = useMemo(() => {
-    const days = Array.isArray(matchDayHistory) ? matchDayHistory.filter(Boolean) : [];
+    const days = Array.isArray(effectiveMatchDayHistory) ? effectiveMatchDayHistory.filter(Boolean) : [];
     if (!days.length) return null;
 
     const withData = days.filter((day) => {
@@ -837,7 +967,7 @@ This will remove it from live news and archives for everyone.`
       const bTime = new Date(bStamp).getTime() || 0;
       return bTime - aTime;
     })[0];
-  }, [matchDayHistory]);
+  }, [effectiveMatchDayHistory]);
 
   const weekResultsRaw = Array.isArray(latestSavedMatchDay?.results) && latestSavedMatchDay.results.length
     ? latestSavedMatchDay.results
@@ -877,7 +1007,7 @@ This will remove it from live news and archives for everyone.`
   // ---------- TEAM TABLE (full tournament so far) ----------
   const teamStats = useMemo(() => {
     const base = {};
-    (teams || []).forEach((t) => {
+    (effectiveTeams || []).forEach((t) => {
       base[t.id] = {
         teamId: t.id,
         name: t.label,
@@ -939,7 +1069,7 @@ This will remove it from live news and archives for everyone.`
     });
 
     return arr;
-  }, [teams, cleanTournamentResults]);
+  }, [effectiveTeams, cleanTournamentResults]);
 
   const tableLeader = teamStats[0] || null;
 
@@ -1110,6 +1240,143 @@ This will remove it from live news and archives for everyone.`
     });
     return best;
   }, [cleanTournamentResults]);
+
+  const completedSeasonSummaries = useMemo(() => {
+    const summarizeSeason = (season) => {
+      if (!season) return null;
+      const seasonTeams =
+        Array.isArray(season?.teamsSnapshot) && season.teamsSnapshot.length > 0
+          ? season.teamsSnapshot
+          : Array.isArray(season?.teams)
+            ? season.teams
+            : [];
+      const history = Array.isArray(season?.matchDayHistory) ? season.matchDayHistory : [];
+      const seasonResults = history.flatMap((day) =>
+        Array.isArray(day?.results) ? day.results : []
+      );
+      const seasonEvents = history.flatMap((day) =>
+        Array.isArray(day?.allEvents) ? day.allEvents : []
+      );
+      if (!seasonResults.length && !seasonEvents.length) return null;
+
+      const standingsBase = {};
+      seasonTeams.forEach((team) => {
+        if (!team?.id) return;
+        standingsBase[team.id] = {
+          teamId: team.id,
+          name: team.label || team.id,
+          points: 0,
+          goalDiff: 0,
+          goalsFor: 0,
+          played: 0,
+        };
+      });
+
+      seasonResults.forEach((result) => {
+        const a = standingsBase[result?.teamAId];
+        const b = standingsBase[result?.teamBId];
+        if (!a || !b) return;
+        const gA = Number(result?.goalsA || 0);
+        const gB = Number(result?.goalsB || 0);
+        a.played += 1;
+        b.played += 1;
+        a.goalsFor += gA;
+        b.goalsFor += gB;
+        a.goalDiff += gA - gB;
+        b.goalDiff += gB - gA;
+        if (result?.isDraw) {
+          a.points += 1;
+          b.points += 1;
+        } else if (result?.winnerId === result?.teamAId) {
+          a.points += 3;
+        } else if (result?.winnerId === result?.teamBId) {
+          b.points += 3;
+        }
+      });
+
+      const standings = Object.values(standingsBase).sort((x, y) => {
+        if (y.points !== x.points) return y.points - x.points;
+        if (y.goalDiff !== x.goalDiff) return y.goalDiff - x.goalDiff;
+        if (y.goalsFor !== x.goalsFor) return y.goalsFor - x.goalsFor;
+        return String(x.name || "").localeCompare(String(y.name || ""));
+      });
+
+      const playerTotals = {};
+      const ensurePlayer = (rawName) => {
+        const name = normalizeName(rawName);
+        if (!name) return null;
+        if (!playerTotals[name]) {
+          playerTotals[name] = { name, goals: 0, assists: 0, shibobos: 0, total: 0 };
+        }
+        return playerTotals[name];
+      };
+
+      seasonEvents.forEach((event) => {
+        if (event?.scorer) {
+          const player = ensurePlayer(event.scorer);
+          if (player) {
+            if (event.type === "goal") player.goals += 1;
+            else if (event.type === "shibobo") player.shibobos += 1;
+          }
+        }
+        if (event?.assist) {
+          const assister = ensurePlayer(event.assist);
+          if (assister) assister.assists += 1;
+        }
+      });
+
+      const players = Object.values(playerTotals).map((player) => ({
+        ...player,
+        total: player.goals + player.assists + player.shibobos,
+      }));
+
+      const topGoals = players.slice().sort((a, b) => {
+        if (b.goals !== a.goals) return b.goals - a.goals;
+        return a.name.localeCompare(b.name);
+      })[0] || null;
+
+      const mvp = players.slice().sort((a, b) => {
+        if (b.total !== a.total) return b.total - a.total;
+        if (b.goals !== a.goals) return b.goals - a.goals;
+        return a.name.localeCompare(b.name);
+      })[0] || null;
+
+      return {
+        seasonId: season?.seasonId || "",
+        seasonNo: Number(season?.seasonNo || 0),
+        label: Number(season?.seasonNo || 0)
+          ? `Season ${Number(season.seasonNo)}`
+          : String(season?.seasonId || "Season"),
+        matches: seasonResults.length,
+        goals: seasonResults.reduce(
+          (sum, result) => sum + Number(result?.goalsA || 0) + Number(result?.goalsB || 0),
+          0
+        ),
+        champion: standings[0] || null,
+        topGoals,
+        mvp,
+      };
+    };
+
+    return (newsSeasonContext.seasons || [])
+      .map(summarizeSeason)
+      .filter(Boolean)
+      .sort((a, b) => Number(b.seasonNo || 0) - Number(a.seasonNo || 0));
+  }, [newsSeasonContext.seasons, normalizeName]);
+
+  const previousSeasonSummary = useMemo(() => {
+    if (!newsSeasonContext.seasonForNews) return null;
+    return completedSeasonSummaries.find(
+      (summary) => String(summary.seasonId || "") === String(newsSeasonContext.seasonForNews?.seasonId || "")
+    ) || completedSeasonSummaries[0] || null;
+  }, [completedSeasonSummaries, newsSeasonContext.seasonForNews]);
+
+  const earlierSeasonSummary = useMemo(() => {
+    if (!previousSeasonSummary) return null;
+    return completedSeasonSummaries.find(
+      (summary) => String(summary.seasonId || "") !== String(previousSeasonSummary.seasonId || "")
+    ) || null;
+  }, [completedSeasonSummaries, previousSeasonSummary]);
 
   // ---------- RECAP (LATEST SAVED MATCH-DAY ONLY) ----------
   const recapResults = useMemo(() => {
@@ -2207,6 +2474,18 @@ Votes for this poll will no longer be shown.`
           >
             <div className="header-title" style={{ minWidth: 0 }}>
               <h1 style={{ margin: 0 }}>News &amp; highlights</h1>
+              <div
+                style={{
+                  marginTop: "0.18rem",
+                  fontSize: "0.72rem",
+                  fontWeight: 800,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.76)",
+                }}
+              >
+                {newsSeasonContext.pageContextLabel}
+              </div>
             </div>
 
             <button
@@ -2234,7 +2513,7 @@ Votes for this poll will no longer be shown.`
 
       <header className="header">
         <p className="subtitle">
-          Automatic recap built from your full TurfKings match history.
+          {newsSeasonContext.shouldUsePreviousSeasonNews ? "Previous-season stories stay here until the new season kicks off." : "Automatic recap built from your full TurfKings match history."}
         </p>
       </header>
 
@@ -2762,15 +3041,17 @@ Votes for this poll will no longer be shown.`
       {/* HERO SUMMARY */}
       <section className="card news-hero-card">
         <div className="news-hero-main">
-          <h2>Tournament recap</h2>
+          <h2>{newsSeasonContext.shouldUsePreviousSeasonNews ? `${newsSeasonContext.seasonLabel} recap` : "Tournament recap"}</h2>
           {renderStoryDateBadges(Date.now())}
           <p className="news-hero-text">
-            So far we&apos;ve logged <strong>{totalMatches || 0}</strong> matches and{" "}
+            {newsSeasonContext.shouldUsePreviousSeasonNews ? "Last season finished with" : "So far we\'ve logged"}{" "}
+            <strong>{totalMatches || 0}</strong> matches and{" "}
             <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side league.
           </p>
           {tableLeader && (
             <p className="news-hero-text">
-              <strong>{tableLeader.name}</strong> currently lead the table with{" "}
+              <strong>{tableLeader.name}</strong>{" "}
+              {newsSeasonContext.shouldUsePreviousSeasonNews ? "finished top of the table with" : "currently lead the table with"}{" "}
               <strong>{tableLeader.points}</strong> points and a goal difference of{" "}
               <strong>{tableLeader.goalDiff}</strong> from {tableLeader.played} games.
             </p>
@@ -2809,6 +3090,48 @@ Votes for this poll will no longer be shown.`
 
       {renderCustomStoriesAt("after-hero")}
 
+      {newsSeasonContext.shouldUsePreviousSeasonNews && previousSeasonSummary && (
+        <section className="card" style={{ overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div>
+              <h2 style={{ marginTop: 0 }}>Previous season honours</h2>
+              <p className="muted" style={{ marginTop: "0.25rem" }}>
+                These stories stay alive until the first match of the new season is played.
+              </p>
+            </div>
+            <span style={metaChipStyle}>{previousSeasonSummary.label}</span>
+          </div>
+
+          <div className="news-stat-chips" style={{ marginTop: "0.9rem" }}>
+            <div className="news-stat-chip">
+              Champion
+              <span>{previousSeasonSummary.champion?.name || "—"}</span>
+            </div>
+            <div className="news-stat-chip">
+              MVP
+              <span>{previousSeasonSummary.mvp ? `${previousSeasonSummary.mvp.name} (${previousSeasonSummary.mvp.total})` : "—"}</span>
+            </div>
+            <div className="news-stat-chip">
+              Top scorer
+              <span>{previousSeasonSummary.topGoals ? `${previousSeasonSummary.topGoals.name} (${previousSeasonSummary.topGoals.goals})` : "—"}</span>
+            </div>
+            <div className="news-stat-chip">
+              Season output
+              <span>{previousSeasonSummary.matches} matches · {previousSeasonSummary.goals} goals</span>
+            </div>
+          </div>
+
+          {earlierSeasonSummary && (
+            <p className="muted" style={{ marginTop: "0.9rem" }}>
+              Compared with {earlierSeasonSummary.label}: {previousSeasonSummary.matches - earlierSeasonSummary.matches >= 0 ? "+" : ""}
+              {previousSeasonSummary.matches - earlierSeasonSummary.matches} matches and {previousSeasonSummary.goals - earlierSeasonSummary.goals >= 0 ? "+" : ""}
+              {previousSeasonSummary.goals - earlierSeasonSummary.goals} goals.
+              {earlierSeasonSummary.champion?.name ? ` Previous champion: ${earlierSeasonSummary.champion.name}.` : ""}
+            </p>
+          )}
+        </section>
+      )}
+
       {/* HEADLINES + BIGGEST WIN */}
       <section className="card news-grid">
         <div className="news-column">
@@ -2819,7 +3142,8 @@ Votes for this poll will no longer be shown.`
               <li className="news-list-item">
                 <span className="news-tag">Standings</span>
                 <span>
-                  <strong>{tableLeader.name}</strong> sit on top with{" "}
+                  <strong>{tableLeader.name}</strong>{" "}
+                  {newsSeasonContext.shouldUsePreviousSeasonNews ? "finished on top with" : "sit on top with"}{" "}
                   {tableLeader.points} points ({tableLeader.won}W {tableLeader.drawn}D{" "}
                   {tableLeader.lost}L).
                 </span>
@@ -2830,8 +3154,9 @@ Votes for this poll will no longer be shown.`
               <li className="news-list-item">
                 <span className="news-tag">Goals</span>
                 <span>
-                  <strong>{topScorer.name}</strong> leads the golden-boot race with{" "}
-                  {topScorer.goals} goals so far.
+                  <strong>{topScorer.name}</strong>{" "}
+                  {newsSeasonContext.shouldUsePreviousSeasonNews ? "won the golden boot with" : "leads the golden-boot race with"}{" "}
+                  {topScorer.goals} goals{newsSeasonContext.shouldUsePreviousSeasonNews ? "." : " so far."}
                 </span>
               </li>
             )}
@@ -2841,7 +3166,7 @@ Votes for this poll will no longer be shown.`
                 <span className="news-tag">Assists</span>
                 <span>
                   <strong>{topPlaymaker.name}</strong> has created {topPlaymaker.assists}{" "}
-                  goals, topping the playmaker chart.
+                  goals, {newsSeasonContext.shouldUsePreviousSeasonNews ? "finishing top of the playmaker chart." : "topping the playmaker chart."}
                 </span>
               </li>
             )}
@@ -2917,7 +3242,7 @@ Votes for this poll will no longer be shown.`
               )}
             </div>
             <div>
-              <p className="mvp-label">Tournament MVP (so far)</p>
+              <p className="mvp-label">{newsSeasonContext.shouldUsePreviousSeasonNews ? "MVP 💎" : "Tournament MVP (so far)"}</p>
               {renderStoryDateBadges(Date.now())}
               <h2 className="mvp-name">{bestOverall.name}</h2>
               <p className="mvp-team">

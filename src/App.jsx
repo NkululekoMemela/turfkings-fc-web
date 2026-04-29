@@ -736,6 +736,111 @@ function buildDefaultParticipationEntries({
   return out;
 }
 
+
+function readRenderedPlayerCardSnapshotFromLocalStorage(seasonId) {
+  if (typeof window === "undefined") return null;
+
+  const safeSeasonId = String(seasonId || "").trim();
+  const keys = safeSeasonId
+    ? [`tk_player_card_snapshot_${safeSeasonId}`, "tk_player_card_snapshot_latest"]
+    : ["tk_player_card_snapshot_latest"];
+
+  for (const key of keys) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") continue;
+      if (!parsed.players || typeof parsed.players !== "object") continue;
+
+      if (safeSeasonId && parsed.seasonId && String(parsed.seasonId) !== safeSeasonId) {
+        continue;
+      }
+
+      return parsed;
+    } catch {
+      // ignore bad localStorage snapshots
+    }
+  }
+
+  return null;
+}
+
+function buildFinalPlayerCardSnapshot({
+  season,
+  peerRatingsByPlayer = {},
+  renderedPlayerCardSnapshot = null,
+}) {
+  if (!season || typeof season !== "object") {
+    return {
+      createdAt: new Date().toISOString(),
+      seasonId: "",
+      players: {},
+    };
+  }
+
+  const history = Array.isArray(season.matchDayHistory)
+    ? season.matchDayHistory
+    : [];
+
+  const events = [
+    ...history.flatMap((day) =>
+      Array.isArray(day?.allEvents) ? day.allEvents : []
+    ),
+    ...(Array.isArray(season.allEvents) ? season.allEvents : []),
+    ...(Array.isArray(season.currentEvents) ? season.currentEvents : []),
+  ];
+
+  const results = [
+    ...history.flatMap((day) =>
+      Array.isArray(day?.results) ? day.results : []
+    ),
+    ...(Array.isArray(season.results) ? season.results : []),
+  ];
+
+  const playerAppearances = history.flatMap((day) =>
+    Array.isArray(day?.playerAppearances)
+      ? day.playerAppearances.map((entry) => ({
+          ...entry,
+          matchDayId:
+            entry?.matchDayId ||
+            day?.id ||
+            day?.matchDayId ||
+            day?.date ||
+            "",
+          matchDayCreatedAt:
+            entry?.matchDayCreatedAt || day?.createdAt || "",
+        }))
+      : []
+  );
+
+  return {
+    createdAt: new Date().toISOString(),
+    seasonId: season.seasonId || "",
+    seasonNo: Number(season.seasonNo || 0),
+    source: renderedPlayerCardSnapshot?.players
+      ? "end_season_exact_rendered_player_card_snapshot"
+      : "end_season_frozen_player_card_snapshot",
+    players: renderedPlayerCardSnapshot?.players || {},
+    renderedSnapshotCreatedAt: renderedPlayerCardSnapshot?.createdAt || null,
+    weights: {
+      formStats: 0.55,
+      formPeer: 0.45,
+      attributeAdmin: 0.5,
+      attributePeer: 0.5,
+      overallStats: 0.4,
+      overallPeer: 0.3,
+      overallForm: 0.3,
+    },
+    teams: Array.isArray(season.teams) ? season.teams : [],
+    events,
+    results,
+    playerAppearances,
+    peerRatingsByPlayer: peerRatingsByPlayer || {},
+  };
+}
+
 async function saveParticipationForMatchDay({
   seasonId,
   seasonNo,
@@ -2259,6 +2364,22 @@ export default function App() {
       const { seasonId, seasonNo } = nextSeasonIdFromExisting(safePrev.seasons);
       const { activeSeason } = getActiveSeasonFromV2State(safePrev);
       const baseTeams = activeSeason?.teams || [];
+      const renderedPlayerCardSnapshot = readRenderedPlayerCardSnapshotFromLocalStorage(
+        activeSeason?.seasonId
+      );
+      const finalPlayerCardSnapshot = buildFinalPlayerCardSnapshot({
+        season: activeSeason,
+        peerRatingsByPlayer,
+        renderedPlayerCardSnapshot,
+      });
+
+      const archivedActiveSeason = {
+        ...activeSeason,
+        finalPlayerCardSnapshot,
+        finalPlayerCardSnapshotCreatedAt:
+          finalPlayerCardSnapshot?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
 
       const newSeason = {
         seasonId,
@@ -2289,7 +2410,14 @@ export default function App() {
       return {
         ...safePrev,
         activeSeasonId: seasonId,
-        seasons: [...safePrev.seasons, newSeason],
+        seasons: [
+          ...safePrev.seasons.map((season) =>
+            season?.seasonId === safePrev.activeSeasonId
+              ? archivedActiveSeason
+              : season
+          ),
+          newSeason,
+        ],
         updatedAt: new Date().toISOString(),
       };
     });
@@ -2712,6 +2840,25 @@ export default function App() {
           peerRatingsByPlayer={peerRatingsByPlayer}
           playerPhotosByName={playerPhotosByName}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
+          activeSeasonNo={USE_V2 ? activeSeasonNo : null}
+          finalPlayerCardSnapshot={
+            USE_V2
+              ? (() => {
+                  const seasons = Array.isArray(safeV2ForStats?.seasons)
+                    ? safeV2ForStats.seasons
+                    : [];
+                  const activeIndex = seasons.findIndex(
+                    (season) =>
+                      String(season?.seasonId || "") ===
+                      String(safeV2ForStats?.activeSeasonId || "")
+                  );
+
+                  return activeIndex > 0
+                    ? seasons[activeIndex - 1]?.finalPlayerCardSnapshot || null
+                    : null;
+                })()
+              : null
+          }
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
