@@ -30,6 +30,40 @@ function safeLower(s) {
   return String(s || "").trim().toLowerCase();
 }
 
+function safeNumber(v) {
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function valueOrZero(v) {
+  const n = safeNumber(v);
+  return n == null ? 0 : n;
+}
+
+function clamp(min, val, max) {
+  return Math.max(min, Math.min(max, val));
+}
+
+function round1(v) {
+  return Math.round(Number(v || 0) * 10) / 10;
+}
+
+function hasPositiveNumber(v) {
+  return typeof v === "number" && !Number.isNaN(v) && v > 0;
+}
+
+function firstNameOf(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[0] : "";
+}
+
+function getInitials(name) {
+  if (!name || typeof name !== "string") return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 function getForcedCanonicalName(rawName) {
   const raw = String(rawName || "").trim();
@@ -62,36 +96,6 @@ function getForcedCanonicalName(rawName) {
   return "";
 }
 
-
-function firstNameOf(name) {
-  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-  return parts.length ? parts[0] : "";
-}
-
-function safeNumber(v) {
-  if (typeof v === "number" && !Number.isNaN(v)) return v;
-  return null;
-}
-
-function getInitials(name) {
-  if (!name || typeof name !== "string") return "?";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-function clamp(min, val, max) {
-  return Math.max(min, Math.min(max, val));
-}
-
-function round1(v) {
-  return Math.round(Number(v || 0) * 10) / 10;
-}
-
-function hasPositiveNumber(v) {
-  return typeof v === "number" && !Number.isNaN(v) && v > 0;
-}
-
 function blendPeerValue(adminVal, squadVal) {
   const admin = safeNumber(adminVal);
   const squad = safeNumber(squadVal);
@@ -99,12 +103,9 @@ function blendPeerValue(adminVal, squadVal) {
   const hasAdmin = hasPositiveNumber(admin);
   const hasSquad = squad != null;
 
-  if (hasAdmin && hasSquad) {
-    return round1(admin * 0.2 + squad * 0.8);
-  }
+  if (hasAdmin && hasSquad) return round1(admin * 0.2 + squad * 0.8);
   if (hasAdmin) return round1(admin);
   if (hasSquad) return round1(squad);
-
   return null;
 }
 
@@ -115,6 +116,26 @@ function blendPeerValue(adminVal, squadVal) {
 function applyScoreFloor(score10) {
   const raw = clamp(0, Number(score10 || 0), 10);
   return round1(3 + (raw / 10) * 7);
+}
+
+function normalizeMode(...values) {
+  const joined = values.map((v) => safeLower(v)).filter(Boolean).join(" ");
+  if (joined.includes("friendly") || joined.includes("friendlies")) return "FRIENDLY";
+  return "LEAGUE";
+}
+
+function isFriendlyMode(mode) {
+  return normalizeMode(mode) === "FRIENDLY";
+}
+
+function isTurfKingsTeamName(teamName = "") {
+  const key = safeLower(teamName);
+  return (
+    key === "turf kings" ||
+    key === "turfkings" ||
+    key.includes("turf kings") ||
+    key.includes("turfkings")
+  );
 }
 
 function makeStyleLabel(attackAvg, defenceAvg, playmakingAvg, gkAvg) {
@@ -231,6 +252,132 @@ function buildPlayersRegistry(playersSnap) {
   });
 
   return { mapNameToCanon, mapCanonToShort };
+}
+
+function dedupeEvents(events = []) {
+  const seen = new Set();
+  const out = [];
+
+  (events || []).forEach((e) => {
+    if (!e) return;
+
+    const key =
+      e.id ??
+      [
+        e.matchNo ?? "m?",
+        e.timeSeconds ?? "t?",
+        e.type ?? "type?",
+        e.teamId ?? "team?",
+        e.scorer ?? e.playerName ?? "p?",
+        e.assist ?? "a?",
+        e.role ?? "role?",
+      ].join("|");
+
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(e);
+  });
+
+  return out;
+}
+
+function getEventSeconds(event) {
+  const direct = safeNumber(event?.timeSeconds ?? event?.seconds);
+  if (direct != null) return Math.max(0, direct);
+
+  const minute = safeNumber(event?.minute ?? event?.timeMinute ?? event?.matchMinute);
+  if (minute != null) return Math.max(0, minute * 60);
+
+  return 0;
+}
+
+function getEventTeamId(event) {
+  return String(event?.teamId || event?.scoringTeamId || "").trim();
+}
+
+function isDefensiveRoleText(roleLike = "") {
+  const role = safeLower(roleLike);
+
+  return (
+    role === "gk" ||
+    role === "def" ||
+    role.includes("goalkeeper") ||
+    role.includes("keeper") ||
+    role.includes("defender") ||
+    role.includes("defence") ||
+    role.includes("defense") ||
+    role.includes("back") ||
+    role.includes("cb") ||
+    role.includes("lb") ||
+    role.includes("rb")
+  );
+}
+
+function isGkRoleText(roleLike = "") {
+  const role = safeLower(roleLike);
+  return role === "gk" || role.includes("goalkeeper") || role.includes("keeper");
+}
+
+function getPlayerRawName(playerLike) {
+  if (typeof playerLike === "string") return playerLike;
+  return (
+    playerLike?.name ||
+    playerLike?.displayName ||
+    playerLike?.fullName ||
+    playerLike?.playerName ||
+    playerLike?.shortName ||
+    ""
+  );
+}
+
+function getPlayerRoleText(playerLike) {
+  if (!playerLike || typeof playerLike === "string") return "";
+  return (
+    playerLike.role ||
+    playerLike.position ||
+    playerLike.lineupRole ||
+    playerLike.ratingRole ||
+    playerLike.formationRole ||
+    playerLike.positionLabel ||
+    ""
+  );
+}
+
+function buildTeamPlayerMeta(teams = [], canonicalMap = {}) {
+  const out = {};
+
+  (teams || []).forEach((team) => {
+    const teamId = String(team?.id || team?.teamId || team?.key || "").trim();
+    const teamName = String(team?.label || team?.name || team?.title || "").trim();
+
+    (team?.players || []).forEach((playerLike) => {
+      const raw = getPlayerRawName(playerLike);
+      const canon = resolveCanonicalNameFromMap(raw, canonicalMap);
+      if (!canon) return;
+
+      if (!out[canon]) {
+        out[canon] = {
+          teamId,
+          teamName,
+          roleText: getPlayerRoleText(playerLike),
+          isDefensive: isDefensiveRoleText(getPlayerRoleText(playerLike)),
+          isGk: isGkRoleText(getPlayerRoleText(playerLike)),
+        };
+      } else {
+        out[canon] = {
+          ...out[canon],
+          teamId: out[canon].teamId || teamId,
+          teamName: out[canon].teamName || teamName,
+          roleText: out[canon].roleText || getPlayerRoleText(playerLike),
+          isDefensive:
+            out[canon].isDefensive || isDefensiveRoleText(getPlayerRoleText(playerLike)),
+          isGk: out[canon].isGk || isGkRoleText(getPlayerRoleText(playerLike)),
+        };
+      }
+    });
+  });
+
+  return out;
 }
 
 function buildParticipationForSeason(season, canonicalMap) {
@@ -379,34 +526,7 @@ function collectSeasonEvents(season) {
   );
 }
 
-function dedupeEvents(events = []) {
-  const seen = new Set();
-  const out = [];
-
-  (events || []).forEach((e) => {
-    if (!e) return;
-
-    const key =
-      e.id ??
-      [
-        e.matchNo ?? "m?",
-        e.timeSeconds ?? "t?",
-        e.type ?? "type?",
-        e.teamId ?? "team?",
-        e.scorer ?? e.playerName ?? "p?",
-        e.assist ?? "a?",
-        e.role ?? "role?",
-      ].join("|");
-
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push(e);
-  });
-
-  return out;
-}
-
-function buildSeasonStatsByPlayer(events, canonicalMap) {
+function buildLeagueStatsByPlayer(events, canonicalMap) {
   const stats = {};
 
   const ensure = (canonName) => {
@@ -464,6 +584,153 @@ function buildSeasonStatsByPlayer(events, canonicalMap) {
   return stats;
 }
 
+function buildFriendlyStatsByPlayer(events, teams, canonicalMap) {
+  const stats = {};
+  const teamMetaByPlayer = buildTeamPlayerMeta(teams, canonicalMap);
+
+  const ensure = (canonName) => {
+    if (!stats[canonName]) {
+      stats[canonName] = {
+        goals: 0,
+        assists: 0,
+        shibobos: 0,
+        cleanMinutes: 0,
+        cleanSheetPm: 0,
+        defensive10MinBlocks: 0,
+        defensive7MinSupportBlocks: 0,
+        friendlyRatingPoints: 0,
+        rawStatsScore: 0,
+        minutesPlayed: 60,
+      };
+    }
+    return stats[canonName];
+  };
+
+  Object.keys(teamMetaByPlayer).forEach((canonName) => ensure(canonName));
+
+  const unique = dedupeEvents(events);
+  const goalEvents = unique.filter((e) => e?.type === "goal");
+  const lastEventSeconds = unique.reduce((max, e) => {
+    return Math.max(max, getEventSeconds(e));
+  }, 0);
+  const matchDurationSeconds = Math.max(60 * 60, lastEventSeconds || 0);
+  const matchDurationMinutes = Math.max(1, matchDurationSeconds / 60);
+
+  goalEvents.forEach((e) => {
+    if (e.scorer) {
+      const scorer = resolveCanonicalNameFromMap(e.scorer, canonicalMap);
+      if (scorer) ensure(scorer).goals += 1;
+    }
+
+    if (e.assist) {
+      const assister = resolveCanonicalNameFromMap(e.assist, canonicalMap);
+      if (assister) ensure(assister).assists += 1;
+    }
+  });
+
+  unique
+    .filter((e) => e?.type === "shibobo")
+    .forEach((e) => {
+      const playerName = e.playerName || e.scorer || "";
+      const canon = resolveCanonicalNameFromMap(playerName, canonicalMap);
+      if (canon) ensure(canon).shibobos += 1;
+    });
+
+  const teamIds = new Set(
+    Object.values(teamMetaByPlayer)
+      .map((m) => String(m?.teamId || "").trim())
+      .filter(Boolean)
+  );
+
+  const cleanMinutesByTeam = {};
+
+  teamIds.forEach((teamId) => {
+    const concededTimes = goalEvents
+      .filter((e) => {
+        const scoringTeamId = getEventTeamId(e);
+        return scoringTeamId && scoringTeamId !== teamId;
+      })
+      .map(getEventSeconds)
+      .filter((seconds) => Number.isFinite(seconds))
+      .map((seconds) => clamp(0, seconds, matchDurationSeconds))
+      .sort((a, b) => a - b);
+
+    const points = [0, ...concededTimes, matchDurationSeconds];
+    let cleanSeconds = 0;
+
+    for (let i = 0; i < points.length - 1; i += 1) {
+      cleanSeconds += Math.max(0, points[i + 1] - points[i]);
+    }
+
+    cleanMinutesByTeam[teamId] = cleanSeconds / 60;
+  });
+
+  Object.entries(teamMetaByPlayer).forEach(([canonName, meta]) => {
+    const s = ensure(canonName);
+    const teamCleanMinutes = valueOrZero(cleanMinutesByTeam[meta.teamId]);
+    const receivesDefensiveMinutes = Boolean(meta.isDefensive || meta.isGk);
+
+    s.minutesPlayed = matchDurationMinutes;
+    s.cleanMinutes = receivesDefensiveMinutes ? round1(teamCleanMinutes) : 0;
+    s.cleanSheetPm =
+      receivesDefensiveMinutes && matchDurationMinutes > 0
+        ? round1(s.cleanMinutes / matchDurationMinutes)
+        : 0;
+
+    // Rating-only friendly defensive support:
+    // - every 10 clean minutes = goal-equivalent rating point
+    // - every 7 clean minutes = assist-equivalent rating point
+    const defensiveGoalEquiv = receivesDefensiveMinutes
+      ? Math.floor(teamCleanMinutes / 10)
+      : 0;
+    const defensiveAssistEquiv = receivesDefensiveMinutes
+      ? Math.floor(teamCleanMinutes / 7)
+      : 0;
+
+    s.defensive10MinBlocks = defensiveGoalEquiv;
+    s.defensive7MinSupportBlocks = defensiveAssistEquiv;
+
+    s.friendlyRatingPoints =
+      s.goals +
+      s.assists +
+      s.shibobos * 0.25 +
+      defensiveGoalEquiv +
+      defensiveAssistEquiv;
+
+    s.rawStatsScore = s.friendlyRatingPoints;
+  });
+
+  Object.values(stats).forEach((s) => {
+    s.points = round1(s.friendlyRatingPoints || 0);
+  });
+
+  return stats;
+}
+
+function combineRatingStats(leagueStats = {}, friendlyStats = {}) {
+  const out = {};
+  const names = new Set([
+    ...Object.keys(leagueStats || {}),
+    ...Object.keys(friendlyStats || {}),
+  ]);
+
+  names.forEach((name) => {
+    const l = leagueStats[name] || {};
+    const f = friendlyStats[name] || {};
+    const leaguePoints = valueOrZero(l.rawStatsScore ?? l.points);
+    const friendlyPoints = valueOrZero(f.rawStatsScore ?? f.friendlyRatingPoints);
+
+    out[name] = {
+      goals: valueOrZero(l.goals) + valueOrZero(f.goals) * 0.7,
+      assists: valueOrZero(l.assists) + valueOrZero(f.assists) * 0.7,
+      points: leaguePoints + friendlyPoints,
+      rawStatsScore: leaguePoints + friendlyPoints,
+    };
+  });
+
+  return out;
+}
+
 function buildPeerScore10FromBaseline(baseline) {
   if (!baseline) return null;
 
@@ -485,7 +752,7 @@ function buildCarrySnapshotsForPreviousSeason(previousSeason, canonicalMap, base
 
   const seasonId = String(previousSeason?.seasonId || "").trim();
   const events = collectSeasonEvents(previousSeason);
-  const statsByPlayer = buildSeasonStatsByPlayer(events, canonicalMap);
+  const statsByPlayer = buildLeagueStatsByPlayer(events, canonicalMap);
   const participationByPlayer = buildParticipationForSeason(previousSeason, canonicalMap);
   const baselinesForSeason =
     baselinesBySeason[seasonId] || baselinesBySeason.UNKNOWN_SEASON || {};
@@ -540,7 +807,7 @@ function buildCarrySnapshotsForPreviousSeason(previousSeason, canonicalMap, base
     if (gamesPlayed > 0) {
       const rawForm =
         peerScore10 != null
-          ? round1(pointsPerGame / maxPpg * 10 * 0.7 + peerScore10 * 0.3)
+          ? round1((pointsPerGame / maxPpg) * 10 * 0.7 + peerScore10 * 0.3)
           : round1((pointsPerGame / maxPpg) * 10);
 
       const rawOverall =
@@ -637,9 +904,7 @@ function collectCurrentLiveResults(mainData = {}, activeSeason = null) {
   ];
 
   for (const arr of candidates) {
-    if (Array.isArray(arr) && arr.length > 0) {
-      return arr;
-    }
+    if (Array.isArray(arr) && arr.length > 0) return arr;
   }
 
   return [];
@@ -658,9 +923,7 @@ function getCurrentTeamsSnapshot(mainData = {}, activeSeason = null) {
   ];
 
   for (const arr of candidates) {
-    if (Array.isArray(arr) && arr.length > 0) {
-      return arr;
-    }
+    if (Array.isArray(arr) && arr.length > 0) return arr;
   }
 
   return [];
@@ -668,7 +931,7 @@ function getCurrentTeamsSnapshot(mainData = {}, activeSeason = null) {
 
 /**
  * Prefer previous archived season when it exists.
- * If not, fall back to current live season (archived matchDayHistory + live current results).
+ * If not, fall back to current live season.
  */
 function buildChampionshipStarsByPlayer(mainSnap, canonicalMap, activeSeasonId) {
   if (!mainSnap.exists()) return {};
@@ -712,9 +975,7 @@ function buildChampionshipStarsByPlayer(mainSnap, canonicalMap, activeSeasonId) 
     const prevStandings = buildTeamStandingsFromResults(prevResults, prevTeams);
     const winner = prevStandings[0] || null;
 
-    if (winner) {
-      championTeam = prevTeams.find((t) => t?.id === winner.teamId) || null;
-    }
+    if (winner) championTeam = prevTeams.find((t) => t?.id === winner.teamId) || null;
   } else {
     const currentTeams = getCurrentTeamsSnapshot(mainData, activeSeason);
     const archivedCurrentSeasonResults = collectResultsFromMatchDayHistory(
@@ -746,17 +1007,14 @@ function buildChampionshipStarsByPlayer(mainSnap, canonicalMap, activeSeasonId) 
     const currentStandings = buildTeamStandingsFromResults(combinedResults, currentTeams);
     const winner = currentStandings[0] || null;
 
-    if (winner) {
-      championTeam = currentTeams.find((t) => t?.id === winner.teamId) || null;
-    }
+    if (winner) championTeam = currentTeams.find((t) => t?.id === winner.teamId) || null;
   }
 
   const stars = {};
   const players = Array.isArray(championTeam?.players) ? championTeam.players : [];
 
   players.forEach((p) => {
-    const raw =
-      typeof p === "string" ? p : p?.name || p?.displayName || "";
+    const raw = typeof p === "string" ? p : p?.name || p?.displayName || "";
     const canon = resolveCanonicalNameFromMap(raw, canonicalMap);
     if (!canon) return;
     stars[canon] = Number(stars[canon] || 0) + 1;
@@ -783,10 +1041,17 @@ export function PlayerCardPage({
   peerRatingsByPlayer,
   playerPhotosByName,
   activeSeasonId = null,
+  activeMatchType = "LEAGUE",
+  matchType = "",
+  currentMatchType = "",
+  statsMode = "",
   onBack,
 }) {
   const { authUser } = useAuth() || {};
   const user = authUser || null;
+
+  const cardMode = normalizeMode(activeMatchType, matchType, currentMatchType, statsMode);
+  const friendlyCardMode = cardMode === "FRIENDLY";
 
   const authIdentityKey = useMemo(() => {
     const dn = safeLower(user?.displayName || "");
@@ -822,10 +1087,7 @@ export function PlayerCardPage({
   const canonicalNameCacheRef = useRef({});
 
   useEffect(() => {
-    const handleScroll = () => {
-      setHeaderScrolled(window.scrollY > 6);
-    };
-
+    const handleScroll = () => setHeaderScrolled(window.scrollY > 6);
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
@@ -876,10 +1138,7 @@ export function PlayerCardPage({
           (s) => String(s?.seasonId || "") === String(activeSeasonId || "")
         );
 
-        const previousSeason =
-          activeIndex > 0
-            ? seasons[activeIndex - 1]
-            : null;
+        const previousSeason = activeIndex > 0 ? seasons[activeIndex - 1] : null;
 
         const carrySnapshots = buildCarrySnapshotsForPreviousSeason(
           previousSeason,
@@ -1028,9 +1287,7 @@ export function PlayerCardPage({
   );
 
   // ---------------- EVENTS / STATS ----------------
-  const uniqueEvents = useMemo(() => {
-    return dedupeEvents(seasonEvents);
-  }, [seasonEvents]);
+  const uniqueEvents = useMemo(() => dedupeEvents(seasonEvents), [seasonEvents]);
 
   const peerRatingsCanon = useMemo(() => {
     const out = {};
@@ -1042,21 +1299,28 @@ export function PlayerCardPage({
     return out;
   }, [peerRatingsRaw, resolveCanonicalName]);
 
-  const statsByPlayer = useMemo(() => {
-    return buildSeasonStatsByPlayer(uniqueEvents, nameToCanonical);
+  const leagueStatsByPlayer = useMemo(() => {
+    return buildLeagueStatsByPlayer(uniqueEvents, nameToCanonical);
   }, [uniqueEvents, nameToCanonical]);
+
+  const friendlyStatsByPlayer = useMemo(() => {
+    return buildFriendlyStatsByPlayer(uniqueEvents, teams, nameToCanonical);
+  }, [uniqueEvents, teams, nameToCanonical]);
+
+  // Important: ratings are intentionally NOT mode-switched.
+  // Mode changes only alter the card wording/stat fields shown.
+  const ratingStatsByPlayer = useMemo(() => {
+    return combineRatingStats(leagueStatsByPlayer, friendlyStatsByPlayer);
+  }, [leagueStatsByPlayer, friendlyStatsByPlayer]);
 
   const playerTeamMap = useMemo(() => {
     const map = {};
 
     (teams || []).forEach((t) => {
       (t.players || []).forEach((p) => {
-        const raw =
-          typeof p === "string" ? p : p?.name || p?.displayName || "";
+        const raw = getPlayerRawName(p);
         const canon = resolveCanonicalName(raw);
-        if (canon && !map[canon]) {
-          map[canon] = t.label;
-        }
+        if (canon && !map[canon]) map[canon] = t.label;
       });
     });
 
@@ -1065,7 +1329,9 @@ export function PlayerCardPage({
 
   const playersWithRatings = useMemo(() => {
     const allNames = new Set([
-      ...Object.keys(statsByPlayer || {}),
+      ...Object.keys(ratingStatsByPlayer || {}),
+      ...Object.keys(leagueStatsByPlayer || {}),
+      ...Object.keys(friendlyStatsByPlayer || {}),
       ...Object.keys(peerRatingsCanon || {}),
       ...Object.keys(participationByPlayer || {}),
       ...Object.keys(baselineByPlayer || {}),
@@ -1075,8 +1341,7 @@ export function PlayerCardPage({
 
     (teams || []).forEach((t) => {
       (t.players || []).forEach((p) => {
-        const raw =
-          typeof p === "string" ? p : p?.name || p?.displayName || "";
+        const raw = getPlayerRawName(p);
         const canon = resolveCanonicalName(raw);
         if (canon) allNames.add(canon);
       });
@@ -1085,11 +1350,11 @@ export function PlayerCardPage({
     let maxRaw = 0;
     let maxPpg = 0;
 
-    Object.entries(statsByPlayer || {}).forEach(([canonName, p]) => {
+    Object.entries(ratingStatsByPlayer || {}).forEach(([canonName, p]) => {
       if (p.rawStatsScore > maxRaw) maxRaw = p.rawStatsScore;
 
       const gp = Number(participationByPlayer?.[canonName]?.gamesPlayed || 0);
-      const ppg = gp > 0 ? p.points / gp : 0;
+      const ppg = gp > 0 ? p.points / gp : p.points;
       if (ppg > maxPpg) maxPpg = ppg;
     });
 
@@ -1101,8 +1366,12 @@ export function PlayerCardPage({
     allNames.forEach((canonName) => {
       if (!canonName) return;
 
-      const stats = statsByPlayer[canonName] || {
-        name: canonName,
+      const ratingStats = ratingStatsByPlayer[canonName] || {
+        points: 0,
+        rawStatsScore: 0,
+      };
+
+      const leagueStats = leagueStatsByPlayer[canonName] || {
         goals: 0,
         assists: 0,
         cleanSheets: 0,
@@ -1111,6 +1380,21 @@ export function PlayerCardPage({
         points: 0,
         rawStatsScore: 0,
       };
+
+      const friendlyStats = friendlyStatsByPlayer[canonName] || {
+        goals: 0,
+        assists: 0,
+        shibobos: 0,
+        cleanMinutes: 0,
+        cleanSheetPm: 0,
+        defensive10MinBlocks: 0,
+        defensive7MinSupportBlocks: 0,
+        friendlyRatingPoints: 0,
+        minutesPlayed: 60,
+        points: 0,
+      };
+
+      const visibleStats = friendlyCardMode ? friendlyStats : leagueStats;
 
       const peer = peerRatingsCanon[canonName] || null;
       const baseline = baselineByPlayer[canonName] || null;
@@ -1124,15 +1408,58 @@ export function PlayerCardPage({
       const gamesPlayed = Number(participation.gamesPlayed || 0);
       const matchDaysPresent = Number(participation.matchDaysPresent || 0);
 
-      const pointsPerGame = gamesPlayed > 0 ? stats.points / gamesPlayed : 0;
-      const statsScore10 = clamp(0, (stats.rawStatsScore / maxRaw) * 10, 10);
+      const ratingGames = gamesPlayed > 0 ? gamesPlayed : 1;
+      const pointsPerGame = ratingStats.points / ratingGames;
+      const statsScore10 = clamp(0, (ratingStats.rawStatsScore / maxRaw) * 10, 10);
 
-      const squadAttackAvg = peer ? safeNumber(peer.attackAvg) : null;
-      const squadDefenceAvg = peer ? safeNumber(peer.defenceAvg) : null;
-      const squadPlaymakingAvg = peer
-        ? safeNumber(peer.playmakingAvg ?? peer.playmakerAvg ?? peer.passingAvg)
+      const squadAttackAvg = peer
+        ? safeNumber(
+            peer.attackAvg ??
+              peer.attack ??
+              peer.attackingAvg ??
+              peer.attacking ??
+              peer.attackRating
+          )
         : null;
-      const squadGkAvg = peer ? safeNumber(peer.gkAvg) : null;
+
+      const squadDefenceAvg = peer
+        ? safeNumber(
+            peer.defenceAvg ??
+              peer.defenseAvg ??
+              peer.defence ??
+              peer.defense ??
+              peer.defendingAvg ??
+              peer.defending ??
+              peer.defenceRating ??
+              peer.defenseRating
+          )
+        : null;
+
+      const squadPlaymakingAvg = peer
+        ? safeNumber(
+            peer.playmakingAvg ??
+              peer.playmakerAvg ??
+              peer.playmaking ??
+              peer.playmaker ??
+              peer.passingAvg ??
+              peer.passing ??
+              peer.plyAvg ??
+              peer.ply ??
+              peer.creativityAvg ??
+              peer.creativity
+          )
+        : null;
+
+      const squadGkAvg = peer
+        ? safeNumber(
+            peer.gkAvg ??
+              peer.goalkeeperAvg ??
+              peer.keeperAvg ??
+              peer.gk ??
+              peer.goalkeeper ??
+              peer.keeper
+          )
+        : null;
 
       const adminAttack = baseline ? safeNumber(baseline.attack) : null;
       const adminDefence = baseline ? safeNumber(baseline.defence) : null;
@@ -1157,7 +1484,7 @@ export function PlayerCardPage({
       let currentVisibleForm = null;
       let currentVisibleOverall = 0;
 
-      if (gamesPlayed > 0) {
+      if (ratingStats.rawStatsScore > 0) {
         const rawForm =
           peerScore10 != null
             ? round1(ppgScore10 * 0.7 + peerScore10 * 0.3)
@@ -1165,9 +1492,7 @@ export function PlayerCardPage({
 
         const rawOverall =
           peerScore10 != null
-            ? round1(
-                statsScore10 * 0.4 + peerScore10 * 0.3 + rawForm * 0.3
-              )
+            ? round1(statsScore10 * 0.4 + peerScore10 * 0.3 + rawForm * 0.3)
             : round1(statsScore10 * 0.65 + rawForm * 0.35);
 
         currentVisibleForm = applyScoreFloor(rawForm);
@@ -1206,22 +1531,27 @@ export function PlayerCardPage({
 
       const isYou =
         !!authIdentityKey &&
-        safeLower(resolveCanonicalName(authIdentityKey)) ===
-          safeLower(canonName);
+        safeLower(resolveCanonicalName(authIdentityKey)) === safeLower(canonName);
 
       out.push({
         id: safeLower(canonName),
         name: canonName,
         displayName,
         shortName,
-        teamName: playerTeamMap[canonName] || "—",
+        teamName: playerTeamMap[canonName] || (friendlyCardMode ? "Turf Kings" : "—"),
         photoUrl,
 
-        goals: stats.goals,
-        assists: stats.assists,
-        gkCleanSheets: stats.gkCleanSheets,
-        defCleanSheets: stats.defCleanSheets,
-        points: stats.points,
+        goals: valueOrZero(visibleStats.goals),
+        assists: valueOrZero(visibleStats.assists),
+        gkCleanSheets: valueOrZero(visibleStats.gkCleanSheets),
+        defCleanSheets: valueOrZero(visibleStats.defCleanSheets),
+        cleanMinutes: valueOrZero(visibleStats.cleanMinutes),
+        cleanSheetPm: valueOrZero(visibleStats.cleanSheetPm),
+        defensive10MinBlocks: valueOrZero(visibleStats.defensive10MinBlocks),
+        defensive7MinSupportBlocks: valueOrZero(visibleStats.defensive7MinSupportBlocks),
+        friendlyMinutes: valueOrZero(visibleStats.minutesPlayed),
+        shibobos: valueOrZero(visibleStats.shibobos),
+        points: round1(valueOrZero(visibleStats.points)),
 
         gamesPlayed,
         matchDaysPresent,
@@ -1250,14 +1580,14 @@ export function PlayerCardPage({
       if (b.points !== a.points) return b.points - a.points;
       if (b.goals !== a.goals) return b.goals - a.goals;
 
-      return String(a.displayName || "").localeCompare(
-        String(b.displayName || "")
-      );
+      return String(a.displayName || "").localeCompare(String(b.displayName || ""));
     });
 
     return out;
   }, [
-    statsByPlayer,
+    ratingStatsByPlayer,
+    leagueStatsByPlayer,
+    friendlyStatsByPlayer,
     peerRatingsCanon,
     baselineByPlayer,
     participationByPlayer,
@@ -1269,27 +1599,27 @@ export function PlayerCardPage({
     resolveShortDisplay,
     carrySnapshotByPlayer,
     championshipStarsByPlayer,
+    friendlyCardMode,
   ]);
 
   const [teamFilter, setTeamFilter] = useState("ALL");
   const [playerViewFilter, setPlayerViewFilter] = useState("ACTIVE");
   const [search, setSearch] = useState("");
 
+  useEffect(() => {
+    if (friendlyCardMode && teamFilter !== "ALL" && teamFilter !== "Turf Kings") {
+      setTeamFilter("ALL");
+    }
+  }, [friendlyCardMode, teamFilter]);
+
   const searchLower = useMemo(() => search.trim().toLowerCase(), [search]);
 
   const filteredPlayers = useMemo(() => {
     return playersWithRatings.filter((p) => {
-      if (playerViewFilter === "ACTIVE" && Number(p.gamesPlayed || 0) <= 0) {
-        return false;
-      }
+      if (playerViewFilter === "ACTIVE" && Number(p.overall || 0) <= 0) return false;
+      if (playerViewFilter === "OFF_SEASON" && Number(p.overall || 0) > 0) return false;
 
-      if (playerViewFilter === "OFF_SEASON" && Number(p.gamesPlayed || 0) > 0) {
-        return false;
-      }
-
-      if (teamFilter !== "ALL" && p.teamName && p.teamName !== teamFilter) {
-        return false;
-      }
+      if (teamFilter !== "ALL" && p.teamName && p.teamName !== teamFilter) return false;
 
       if (!searchLower) return true;
 
@@ -1301,10 +1631,14 @@ export function PlayerCardPage({
   }, [playersWithRatings, playerViewFilter, teamFilter, searchLower]);
 
   const uniqueTeams = useMemo(() => {
+    if (friendlyCardMode) return ["ALL", "Turf Kings"];
+
     const set = new Set();
-    (teams || []).forEach((t) => set.add(t.label));
+    (teams || []).forEach((t) => {
+      if (t?.label) set.add(t.label);
+    });
     return ["ALL", ...Array.from(set)];
-  }, [teams]);
+  }, [teams, friendlyCardMode]);
 
   // ---------------- PHONE BACK BUTTON SUPPORT ----------------
   useEffect(() => {
@@ -1327,9 +1661,7 @@ export function PlayerCardPage({
 
     window.addEventListener("popstate", handlePopState);
 
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
+    return () => window.removeEventListener("popstate", handlePopState);
   }, [onBack]);
 
   async function saveCardImage(player) {
@@ -1346,9 +1678,7 @@ export function PlayerCardPage({
       });
 
       const link = document.createElement("a");
-      link.download = `${slugFromName(
-        player.displayName || player.name
-      )}_card.png`;
+      link.download = `${slugFromName(player.displayName || player.name)}_card.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
@@ -1375,25 +1705,15 @@ export function PlayerCardPage({
   }
 
   function getFormArrow(player) {
-    if (player.formScore10 == null) {
-      return { symbol: "", color: "transparent" };
-    }
-    if (player.formScore10 > player.overall) {
-      return { symbol: "↑", color: "#22c55e" };
-    }
-    if (player.formScore10 < player.overall) {
-      return { symbol: "↓", color: "#ef4444" };
-    }
+    if (player.formScore10 == null) return { symbol: "", color: "transparent" };
+    if (player.formScore10 > player.overall) return { symbol: "↑", color: "#22c55e" };
+    if (player.formScore10 < player.overall) return { symbol: "↓", color: "#ef4444" };
     return { symbol: "", color: "transparent" };
   }
 
   return (
     <div className="page player-cards-page">
-      <div
-        className={`landing-header-sticky ${
-          headerScrolled ? "is-scrolled" : ""
-        }`}
-      >
+      <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
         <header className="header">
           <div
             style={{
@@ -1405,7 +1725,19 @@ export function PlayerCardPage({
             }}
           >
             <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>Player cards</h1>
+              <h1 style={{ margin: 0 }}>
+                Player cards
+                <span
+                  style={{
+                    marginLeft: "0.45rem",
+                    fontSize: "0.72rem",
+                    letterSpacing: "0.08em",
+                    opacity: 0.78,
+                  }}
+                >
+                  {friendlyCardMode ? "FRIENDLY VIEW" : "LEAGUE VIEW"}
+                </span>
+              </h1>
             </div>
 
             <button
@@ -1451,7 +1783,7 @@ export function PlayerCardPage({
                 onClick={() => setPlayerViewFilter("ACTIVE")}
                 aria-pressed={playerViewFilter === "ACTIVE"}
               >
-                Active season
+                Active players
               </button>
 
               <button
@@ -1464,17 +1796,14 @@ export function PlayerCardPage({
                 onClick={() => setPlayerViewFilter("OFF_SEASON")}
                 aria-pressed={playerViewFilter === "OFF_SEASON"}
               >
-                Off-season
+                Unrated
               </button>
             </div>
           </div>
 
           <div className="player-card-filter">
             <label>Team</label>
-            <select
-              value={teamFilter}
-              onChange={(e) => setTeamFilter(e.target.value)}
-            >
+            <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
               {uniqueTeams.map((t) => (
                 <option key={t} value={t}>
                   {t === "ALL" ? "All teams" : t}
@@ -1501,8 +1830,8 @@ export function PlayerCardPage({
         ) : filteredPlayers.length === 0 ? (
           <p className="muted">
             {playerViewFilter === "OFF_SEASON"
-              ? "No off-season players found for this filter."
-              : "No active season players found for this filter."}
+              ? "No unrated players found for this filter."
+              : "No active players found for this filter."}
           </p>
         ) : (
           <div className="player-card-grid">
@@ -1536,24 +1865,26 @@ export function PlayerCardPage({
                   }}
                   title="Double-click to save card. On mobile, long-press to save."
                 >
-                  <img
-                    src={TurfKingsLogo}
-                    alt=""
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      right: "0.8rem",
-                      bottom: "1rem",
-                      width: "110px",
-                      height: "110px",
-                      objectFit: "contain",
-                      opacity: 0.8,
-                      filter: "grayscale(0.1) brightness(1.1)",
-                      pointerEvents: "none",
-                      userSelect: "none",
-                      zIndex: 0,
-                    }}
-                  />
+                  {isTurfKingsTeamName(p.teamName) && (
+                    <img
+                      src={TurfKingsLogo}
+                      alt=""
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        right: "0.8rem",
+                        bottom: "1rem",
+                        width: "110px",
+                        height: "110px",
+                        objectFit: "contain",
+                        opacity: 0.8,
+                        filter: "grayscale(0.1) brightness(1.1)",
+                        pointerEvents: "none",
+                        userSelect: "none",
+                        zIndex: 0,
+                      }}
+                    />
+                  )}
 
                   <div style={{ position: "relative", zIndex: 1 }}>
                     <div className="fifa-card-top">
@@ -1621,20 +1952,10 @@ export function PlayerCardPage({
                                   gap: "0.14rem",
                                 }}
                               >
-                                <span
-                                  style={{
-                                    display: "inline-block",
-                                    minWidth: "0.18rem",
-                                  }}
-                                />
+                                <span style={{ display: "inline-block", minWidth: "0.18rem" }} />
                                 <span>{p.formScore10.toFixed(1)}</span>
                                 {formArrow.symbol ? (
-                                  <span
-                                    style={{
-                                      color: formArrow.color,
-                                      fontWeight: 900,
-                                    }}
-                                  >
+                                  <span style={{ color: formArrow.color, fontWeight: 900 }}>
                                     {formArrow.symbol}
                                   </span>
                                 ) : null}
@@ -1686,9 +2007,7 @@ export function PlayerCardPage({
                     <div className="fifa-mid-row">
                       <div className="fifa-chip">
                         <span className="chip-label">Stats</span>
-                        <span className="chip-value">
-                          {p.statsScore10.toFixed(1)}/10
-                        </span>
+                        <span className="chip-value">{p.statsScore10.toFixed(1)}/10</span>
                       </div>
                       <div className="fifa-chip">
                         <span className="chip-label">Peer</span>
@@ -1705,15 +2024,11 @@ export function PlayerCardPage({
                         <span className="fifa-attr-label">ATT</span>
                         {p.attackAvg != null ? (
                           <>
-                            <span className="fifa-attr-value">
-                              {p.attackAvg.toFixed(1)}/5
-                            </span>
+                            <span className="fifa-attr-value">{p.attackAvg.toFixed(1)}/5</span>
                             <span className="fifa-attr-desc">ATTACK</span>
                           </>
                         ) : (
-                          <span className="fifa-attr-desc fifa-attr-unrated">
-                            No votes yet
-                          </span>
+                          <span className="fifa-attr-desc fifa-attr-unrated">No votes yet</span>
                         )}
                       </div>
 
@@ -1721,15 +2036,11 @@ export function PlayerCardPage({
                         <span className="fifa-attr-label">DEF</span>
                         {p.defenceAvg != null ? (
                           <>
-                            <span className="fifa-attr-value">
-                              {p.defenceAvg.toFixed(1)}/5
-                            </span>
+                            <span className="fifa-attr-value">{p.defenceAvg.toFixed(1)}/5</span>
                             <span className="fifa-attr-desc">DEFENCE</span>
                           </>
                         ) : (
-                          <span className="fifa-attr-desc fifa-attr-unrated">
-                            No votes yet
-                          </span>
+                          <span className="fifa-attr-desc fifa-attr-unrated">No votes yet</span>
                         )}
                       </div>
 
@@ -1737,15 +2048,11 @@ export function PlayerCardPage({
                         <span className="fifa-attr-label">PLY</span>
                         {p.playmakingAvg != null ? (
                           <>
-                            <span className="fifa-attr-value">
-                              {p.playmakingAvg.toFixed(1)}/5
-                            </span>
+                            <span className="fifa-attr-value">{p.playmakingAvg.toFixed(1)}/5</span>
                             <span className="fifa-attr-desc">PLAYMAKING</span>
                           </>
                         ) : (
-                          <span className="fifa-attr-desc fifa-attr-unrated">
-                            No votes yet
-                          </span>
+                          <span className="fifa-attr-desc fifa-attr-unrated">No votes yet</span>
                         )}
                       </div>
 
@@ -1753,17 +2060,28 @@ export function PlayerCardPage({
                         <span className="fifa-attr-label">TOTAL</span>
                         <span className="fifa-attr-value">{p.points}</span>
                         <span className="fifa-attr-desc">
-                          points in {p.gamesPlayed} matches
+                          {friendlyCardMode
+                            ? "rating points"
+                            : `points in ${p.gamesPlayed} matches`}
                         </span>
                       </div>
                     </div>
 
-                    <div className="fifa-bottom-stats">
-                      <span>⚽ {p.goals} Goals</span>
-                      <span>🎯 {p.assists} Assists</span>
-                      <span>🥅 {p.gkCleanSheets} Saves CS</span>
-                      <span>🌀 {p.defCleanSheets} Defence CS</span>
-                    </div>
+                    {friendlyCardMode ? (
+                      <div className="fifa-bottom-stats">
+                        <span>⚽ {p.goals} Goals</span>
+                        <span>🎯 {p.assists} Assists</span>
+                        <span>🧱 {p.defensive10MinBlocks}× 10-min DEF blocks</span>
+                        <span>⏱️ {round1(p.friendlyMinutes)} min played</span>
+                      </div>
+                    ) : (
+                      <div className="fifa-bottom-stats">
+                        <span>⚽ {p.goals} Goals</span>
+                        <span>🎯 {p.assists} Assists</span>
+                        <span>🥅 {p.gkCleanSheets} Saves CS</span>
+                        <span>🌀 {p.defCleanSheets} Defence CS</span>
+                      </div>
+                    )}
 
                     {p.styleLabel && (
                       <p
@@ -1790,3 +2108,5 @@ export function PlayerCardPage({
     </div>
   );
 }
+
+export default PlayerCardPage;

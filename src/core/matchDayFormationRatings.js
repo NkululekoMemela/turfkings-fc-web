@@ -8,6 +8,27 @@ function round1(v) {
   return Math.round(Number(v || 0) * 10) / 10;
 }
 
+function safeLower(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function safeNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function firstDefined(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return "";
+}
+
+function isFriendlyMode(value) {
+  const v = safeLower(value);
+  return v === "friendly" || v === "friendlies";
+}
+
 function dedupeEvents(events = []) {
   const seen = new Set();
   const out = [];
@@ -63,8 +84,111 @@ function getTeamResultSummary(teamId, results = []) {
   };
 }
 
+function getEventMinute(event) {
+  const seconds = safeNumber(
+    firstDefined(event?.timeSeconds, event?.seconds),
+    NaN
+  );
+
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return seconds / 60;
+  }
+
+  const minute = safeNumber(
+    firstDefined(event?.minute, event?.timeMinute, event?.matchMinute),
+    NaN
+  );
+
+  return Number.isFinite(minute) ? minute : 0;
+}
+
+function isDefensiveFriendlyRole(roleValue) {
+  const role = safeLower(roleValue);
+
+  return (
+    role === "gk" ||
+    role === "def" ||
+    role.includes("goalkeeper") ||
+    role.includes("keeper") ||
+    role.includes("defender") ||
+    role.includes("defence") ||
+    role.includes("defense") ||
+    role.includes("back") ||
+    role.includes("cb") ||
+    role.includes("lb") ||
+    role.includes("rb")
+  );
+}
+
+function getFriendlyDefensiveBonusForTeam({
+  teamId,
+  events = [],
+  matchDurationMinutes = 60,
+}) {
+  const safeTeamId = String(teamId || "").trim();
+  if (!safeTeamId) {
+    return {
+      ratingBonusGoals: 0,
+      ratingBonusAssists: 0,
+      cleanWindows: [],
+    };
+  }
+
+  const duration = Math.max(0, safeNumber(matchDurationMinutes, 60));
+
+  const concededMinutes = dedupeEvents(events)
+    .filter((e) => e?.type === "goal")
+    .filter((e) => {
+      const scoringTeamId = String(e?.teamId || "").trim();
+      return scoringTeamId && scoringTeamId !== safeTeamId;
+    })
+    .map(getEventMinute)
+    .filter((minute) => Number.isFinite(minute))
+    .map((minute) => clamp(0, minute, duration))
+    .sort((a, b) => a - b);
+
+  const checkpoints = [0, ...concededMinutes, duration];
+
+  let ratingBonusGoals = 0;
+  let ratingBonusAssists = 0;
+  const cleanWindows = [];
+
+  for (let i = 0; i < checkpoints.length - 1; i += 1) {
+    const startMinute = checkpoints[i];
+    const endMinute = checkpoints[i + 1];
+    const cleanMinutes = Math.max(0, endMinute - startMinute);
+
+    if (cleanMinutes <= 0) continue;
+
+    const goalEquivalent = Math.floor(cleanMinutes / 10);
+    const assistEquivalent = Math.floor(cleanMinutes / 7);
+
+    ratingBonusGoals += goalEquivalent;
+    ratingBonusAssists += assistEquivalent;
+
+    cleanWindows.push({
+      startMinute,
+      endMinute,
+      cleanMinutes,
+      goalEquivalent,
+      assistEquivalent,
+    });
+  }
+
+  return {
+    ratingBonusGoals,
+    ratingBonusAssists,
+    cleanWindows,
+  };
+}
+
 export function buildMatchDayStatsByPlayer(events = [], resolveCanonicalName) {
   const stats = {};
+
+  const safeResolve =
+    typeof resolveCanonicalName === "function"
+      ? resolveCanonicalName
+      : (x) => String(x || "").trim();
 
   const ensure = (canonName) => {
     if (!canonName) return null;
@@ -87,7 +211,7 @@ export function buildMatchDayStatsByPlayer(events = [], resolveCanonicalName) {
     if (!e) return;
 
     if (e.type === "clean_sheet") {
-      const holder = resolveCanonicalName(e.playerName || e.scorer || "");
+      const holder = safeResolve(e.playerName || e.scorer || "");
       const s = ensure(holder);
       if (!s) return;
 
@@ -98,13 +222,13 @@ export function buildMatchDayStatsByPlayer(events = [], resolveCanonicalName) {
     }
 
     if (e.type === "goal" && e.scorer) {
-      const scorer = resolveCanonicalName(e.scorer || "");
+      const scorer = safeResolve(e.scorer || "");
       const s = ensure(scorer);
       if (s) s.goals += 1;
     }
 
     if (e.assist) {
-      const assister = resolveCanonicalName(e.assist || "");
+      const assister = safeResolve(e.assist || "");
       const a = ensure(assister);
       if (a) a.assists += 1;
     }
@@ -121,7 +245,7 @@ export function buildMatchDayStatsByPlayer(events = [], resolveCanonicalName) {
   return stats;
 }
 
-function computeRawRating(playerStats, teamResultSummary) {
+function computeRawRating(playerStats, teamResultSummary, ratingMode = "LEAGUE") {
   let raw = 6.2;
 
   // modest team effect
@@ -137,6 +261,13 @@ function computeRawRating(playerStats, teamResultSummary) {
   raw += Number(playerStats?.gkCleanSheets || 0) * 0.42;
   raw += Number(playerStats?.defCleanSheets || 0) * 0.26;
 
+  // Friendlies-only defensive rating support.
+  // These do NOT change the real stats table. They only improve the rating.
+  if (isFriendlyMode(ratingMode)) {
+    raw += Number(playerStats?.friendlyRatingBonusGoals || 0) * 0.62;
+    raw += Number(playerStats?.friendlyRatingBonusAssists || 0) * 0.36;
+  }
+
   return clamp(5.8, raw, 9.4);
 }
 
@@ -146,22 +277,54 @@ export function buildFormationDecorations({
   events = [],
   results = [],
   resolveCanonicalName,
+  ratingMode = "LEAGUE",
+  matchType = "",
+  matchDurationMinutes = 60,
 }) {
   const safeResolve =
     typeof resolveCanonicalName === "function"
       ? resolveCanonicalName
       : (x) => String(x || "").trim();
 
+  const effectiveRatingMode = isFriendlyMode(matchType)
+    ? "FRIENDLY"
+    : isFriendlyMode(ratingMode)
+      ? "FRIENDLY"
+      : "LEAGUE";
+
   const statsByPlayer = buildMatchDayStatsByPlayer(events, safeResolve);
   const teamResultSummary = getTeamResultSummary(teamId, results);
 
+  const friendlyDefensiveTeamBonus =
+    effectiveRatingMode === "FRIENDLY"
+      ? getFriendlyDefensiveBonusForTeam({
+          teamId,
+          events,
+          matchDurationMinutes,
+        })
+      : {
+          ratingBonusGoals: 0,
+          ratingBonusAssists: 0,
+          cleanWindows: [],
+        };
+
   const out = {};
 
-  (players || []).forEach((rawName) => {
+  (players || []).forEach((playerEntry) => {
+    const rawName =
+      typeof playerEntry === "string"
+        ? playerEntry
+        : firstDefined(
+            playerEntry?.name,
+            playerEntry?.playerName,
+            playerEntry?.displayName,
+            playerEntry?.fullName
+          );
+
     const canon = safeResolve(rawName);
     if (!canon) return;
 
-    const stats = statsByPlayer[canon] || {
+    const baseStats = statsByPlayer[canon] || {
       goals: 0,
       assists: 0,
       cleanSheets: 0,
@@ -170,12 +333,55 @@ export function buildFormationDecorations({
       points: 0,
     };
 
-    const teamHasPlayed = Number(teamResultSummary?.played || 0) > 0;
+    const role =
+      typeof playerEntry === "string"
+        ? baseStats?.role
+        : firstDefined(
+            playerEntry?.role,
+            playerEntry?.position,
+            playerEntry?.lineupRole,
+            playerEntry?.ratingRole,
+            playerEntry?.formationRole,
+            playerEntry?.positionLabel,
+            baseStats?.role
+          );
+
+    const receivesFriendlyDefensiveBonus =
+      effectiveRatingMode === "FRIENDLY" && isDefensiveFriendlyRole(role);
+
+    const stats = {
+      ...baseStats,
+      friendlyRatingBonusGoals: receivesFriendlyDefensiveBonus
+        ? friendlyDefensiveTeamBonus.ratingBonusGoals
+        : 0,
+      friendlyRatingBonusAssists: receivesFriendlyDefensiveBonus
+        ? friendlyDefensiveTeamBonus.ratingBonusAssists
+        : 0,
+      friendlyRatingCleanWindows: receivesFriendlyDefensiveBonus
+        ? friendlyDefensiveTeamBonus.cleanWindows
+        : [],
+    };
+
+    stats.points =
+      Number(stats.goals || 0) +
+      Number(stats.assists || 0) +
+      Number(stats.gkCleanSheets || 0) +
+      Number(stats.defCleanSheets || 0);
+
+    const hasAnyFriendlyEvent = dedupeEvents(events).some(
+      (e) => e?.type === "goal" || e?.type === "shibobo" || e?.type === "rotation"
+    );
+
+    const teamHasPlayed =
+      effectiveRatingMode === "FRIENDLY"
+        ? hasAnyFriendlyEvent ||
+          Number(friendlyDefensiveTeamBonus.cleanWindows?.length || 0) > 0
+        : Number(teamResultSummary?.played || 0) > 0;
 
     // Everyone on a team that has already played gets a rating.
     // Teams that have not played stay unrated.
     const rating = teamHasPlayed
-      ? round1(computeRawRating(stats, teamResultSummary))
+      ? round1(computeRawRating(stats, teamResultSummary, effectiveRatingMode))
       : null;
 
     out[canon] = {
@@ -186,11 +392,17 @@ export function buildFormationDecorations({
         assists: Number(stats.assists || 0),
         gkCS: Number(stats.gkCleanSheets || 0),
         defCS: Number(stats.defCleanSheets || 0),
+
+        // Friendlies-only rating metadata.
+        // These are deliberately separate from real goals/assists.
+        friendlyRatingBonusGoals: Number(stats.friendlyRatingBonusGoals || 0),
+        friendlyRatingBonusAssists: Number(stats.friendlyRatingBonusAssists || 0),
       },
       stats,
       teamHasPlayed,
       rank: null,
       isTopPerformer: false,
+      ratingMode: effectiveRatingMode,
     };
   });
 
@@ -201,12 +413,20 @@ export function buildFormationDecorations({
       const br = Number(b[1].rating || 0);
       if (br !== ar) return br - ar;
 
-      const aGoals = Number(a[1]?.icons?.goals || 0);
-      const bGoals = Number(b[1]?.icons?.goals || 0);
+      const aGoals =
+        Number(a[1]?.icons?.goals || 0) +
+        Number(a[1]?.icons?.friendlyRatingBonusGoals || 0);
+      const bGoals =
+        Number(b[1]?.icons?.goals || 0) +
+        Number(b[1]?.icons?.friendlyRatingBonusGoals || 0);
       if (bGoals !== aGoals) return bGoals - aGoals;
 
-      const aAssists = Number(a[1]?.icons?.assists || 0);
-      const bAssists = Number(b[1]?.icons?.assists || 0);
+      const aAssists =
+        Number(a[1]?.icons?.assists || 0) +
+        Number(a[1]?.icons?.friendlyRatingBonusAssists || 0);
+      const bAssists =
+        Number(b[1]?.icons?.assists || 0) +
+        Number(b[1]?.icons?.friendlyRatingBonusAssists || 0);
       if (bAssists !== aAssists) return bAssists - aAssists;
 
       return String(a[0] || "").localeCompare(String(b[0] || ""));

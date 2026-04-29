@@ -4671,11 +4671,23 @@ export default function App() {
 
       {page === PAGE_PLAYER_CARDS && (
         <PlayerCardPage
-          teams={teams}
-          allEvents={fullSeasonEventsForStats}
+          teams={matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
+          allEvents={
+            matchType === MATCH_TYPE.FRIENDLY
+              ? archivedFriendlyEventsFromHistory
+              : fullSeasonEventsForStats
+          }
+          archivedEvents={
+            matchType === MATCH_TYPE.FRIENDLY
+              ? currentEvents
+              : []
+          }
           peerRatingsByPlayer={peerRatingsByPlayer}
           playerPhotosByName={playerPhotosByName}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
+          activeMatchType={matchType}
+          matchType={matchType}
+          gameFormat={gameFormat}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
