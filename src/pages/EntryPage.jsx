@@ -665,6 +665,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
   const [whatsAppReminderStatus, setWhatsAppReminderStatus] = useState("");
 
   const [adminPreviewRole, setAdminPreviewRole] = useState("admin");
+  const [showAdminPreviewControls, setShowAdminPreviewControls] = useState(false);
 
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [withdrawReason, setWithdrawReason] = useState("");
@@ -950,8 +951,13 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
       googleEmail
     );
 
-    const actingRole =
+    // Important for admin preview mode:
+    // - realRole preserves the Google/account-backed role for reference.
+    // - role and actingRole are both set to the selected preview role so downstream
+    //   pages that check either identity.role or identity.actingRole behave consistently.
+    const effectiveRole =
       isAdminViewer && adminPreviewRole ? adminPreviewRole : resolvedRole;
+    const actingRole = effectiveRole;
 
     setVerifyStatus(
       `Welcome, ${selectedMember.shortName}! Your email has been verified.`
@@ -961,8 +967,12 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
     const memberData = memberSnap.exists() ? memberSnap.data() || {} : {};
 
     const completionPayload = {
-      role: resolvedRole,
+      // Keep the app UI fully aligned with the selected preview mode.
+      // Some downstream pages use identity.role, others use identity.actingRole.
+      role: effectiveRole,
       actingRole,
+      realRole: resolvedRole,
+      isRolePreview: isAdminViewer && effectiveRole !== resolvedRole,
       memberId: selectedMember.id,
       playerId: playerId || null,
       fullName: selectedMember.fullName,
@@ -1445,22 +1455,72 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
           </div>
 
           {isAdminViewer && (
-            <div className="field-column" style={{ marginTop: "1rem" }}>
-              <label>Admin view mode</label>
-              <p className="muted small" style={{ marginTop: "0.25rem" }}>
-                This lets you preview the app as admin, captain, ordinary player
-                or spectator.
-              </p>
-              <select
-                className="text-input"
-                value={adminPreviewRole}
-                onChange={(e) => setAdminPreviewRole(e.target.value)}
+            <div
+              style={{
+                marginTop: "1rem",
+                borderRadius: "18px",
+                border: "1px solid rgba(56,189,248,0.18)",
+                background:
+                  "linear-gradient(180deg, rgba(56,189,248,0.08), rgba(15,23,42,0.04))",
+                overflow: "hidden",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowAdminPreviewControls((prev) => !prev)}
+                style={{
+                  width: "100%",
+                  border: "none",
+                  background: "transparent",
+                  color: "#e0f2fe",
+                  cursor: "pointer",
+                  padding: "0.75rem 0.85rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  textAlign: "left",
+                }}
               >
-                <option value="admin">Admin</option>
-                <option value="captain">Captain</option>
-                <option value="player">Player</option>
-                <option value="spectator">Spectator</option>
-              </select>
+                <span style={{ display: "flex", flexDirection: "column", gap: "0.18rem" }}>
+                  <strong style={{ fontSize: "0.9rem" }}>Admin view mode</strong>
+                  <span className="muted small">
+                    Current preview: <strong>{adminPreviewRole}</strong>
+                  </span>
+                </span>
+                <span
+                  style={{
+                    fontSize: "0.78rem",
+                    fontWeight: 800,
+                    borderRadius: "999px",
+                    padding: "0.25rem 0.55rem",
+                    background: "rgba(15,23,42,0.42)",
+                    border: "1px solid rgba(148,163,184,0.18)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {showAdminPreviewControls ? "Hide" : "Change"}
+                </span>
+              </button>
+
+              {showAdminPreviewControls && (
+                <div className="field-column" style={{ padding: "0 0.85rem 0.85rem" }}>
+                  <p className="muted small" style={{ marginTop: 0 }}>
+                    Default is admin. If you choose player, captain, or spectator,
+                    the rest of the app receives that selected role as the active identity.
+                  </p>
+                  <select
+                    className="text-input"
+                    value={adminPreviewRole}
+                    onChange={(e) => setAdminPreviewRole(e.target.value)}
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="captain">Captain</option>
+                    <option value="player">Player</option>
+                    <option value="spectator">Spectator</option>
+                  </select>
+                </div>
+              )}
             </div>
           )}
 

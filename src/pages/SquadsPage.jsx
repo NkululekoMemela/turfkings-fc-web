@@ -302,8 +302,24 @@ function getTeamTheme(team = {}) {
 
 /* ---------------- Component ---------------- */
 
-export function SquadsPage({ teams, onUpdateTeams, onBack, identity = null }) {
-  const isAdmin = isAdminIdentity(identity);
+export function SquadsPage({
+  teams,
+  onUpdateTeams,
+  onBack,
+  identity = null,
+  activeRole = "",
+  isAdmin: isAdminProp = false,
+}) {
+  const effectiveRole = String(
+    activeRole || identity?.actingRole || identity?.role || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const isAdmin = effectiveRole
+    ? effectiveRole === "admin"
+    : Boolean(isAdminProp) || isAdminIdentity(identity);
+
   const canEdit = isAdmin;
 
   const [headerScrolled, setHeaderScrolled] = useState(false);
