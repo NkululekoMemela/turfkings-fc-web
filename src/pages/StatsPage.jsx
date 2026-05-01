@@ -2599,7 +2599,7 @@ export function StatsPage({
           </h2>
           <div className="muted stats-subtitle-tight">{headerRangeText}</div>
 
-          <div className="table-wrapper">
+          <div className="table-wrapper tk-scroll-table-wrapper tk-team-identity-table">
             <table className="stats-table">
               <thead>
                 <tr>
@@ -2658,7 +2658,7 @@ export function StatsPage({
                   ? "Player Rankings — Current Season"
                   : "Player Rankings — Current Week"}
           </h2>
-          <div className="table-wrapper tk-wide-table-wrapper">
+          <div className="table-wrapper tk-scroll-table-wrapper tk-player-identity-table tk-player-small-table">
             <table className="stats-table">
               <thead>
                 <tr>
@@ -2711,7 +2711,7 @@ export function StatsPage({
                   ? "Top Scorers — Current Season"
                   : "Top Scorers — Current Week"}
           </h2>
-          <div className="table-wrapper">
+          <div className="table-wrapper tk-scroll-table-wrapper tk-player-identity-table tk-player-small-table">
             <table className="stats-table">
               <thead>
                 <tr>
@@ -2758,7 +2758,7 @@ export function StatsPage({
                   ? "Top Playmakers — Current Season"
                   : "Top Playmakers — Current Week"}
           </h2>
-          <div className="table-wrapper">
+          <div className="table-wrapper tk-scroll-table-wrapper tk-player-identity-table tk-player-small-table">
             <table className="stats-table">
               <thead>
                 <tr>
@@ -2805,7 +2805,7 @@ export function StatsPage({
                   ? "Clean Sheets — Current Season"
                   : "Clean Sheets — Current Week"}
           </h2>
-          <div className="table-wrapper">
+          <div className="table-wrapper tk-scroll-table-wrapper tk-player-identity-table">
             <table className="stats-table">
               <thead>
                 <tr>
@@ -3199,7 +3199,7 @@ export function StatsPage({
               )}
             </div>
           ) : (
-          <div className="table-wrapper tk-wide-table-wrapper tk-match-results-wide-wrapper">
+          <div className="table-wrapper tk-scroll-table-wrapper tk-match-results-table tk-match-identity-table">
             <table className="stats-table">
               <thead>
                 <tr>
@@ -3261,19 +3261,35 @@ export function StatsPage({
                     (name) => name !== newEventDraft.scorer
                   );
 
+                  const eventShortName = (name) => {
+                    const canon = resolveCanonicalName(name || "");
+                    const preferred =
+                      getPreferredStatsDisplayName(canon, resolveShortDisplay(canon)) ||
+                      toTitleCase(name || "") ||
+                      "Unknown";
+
+                    return firstNameOf(preferred) || preferred;
+                  };
+
                   return (
                     <React.Fragment key={mk}>
                       <tr
                         className={isExpanded ? "match-row expanded" : "match-row"}
                         onClick={() => toggleMatchDetails(mk)}
                       >
-                        <td>
-                          <span className="match-toggle-indicator">
-                            {isExpanded ? "▾" : "▸"}
-                          </span>{" "}
-                          {showFriendlyStats ? r._tkFriendlyDayLabel || "Friendly" : r.matchNo}
+                        <td className="tk-match-no-cell">
+                          <div className="tk-match-no-inner">
+                            <span className="match-toggle-indicator">
+                              {isExpanded ? "▾" : "▸"}
+                            </span>
+                            <span className="tk-match-no-main">
+                              {showFriendlyStats ? r._tkFriendlyDayLabel || "Friendly" : r.matchNo}
+                            </span>
+                          </div>
                           {!showFriendlyStats && matchDayFilter === "ALL" && mdLabel ? (
-                            <span className="tk-md-muted">{mdLabel}</span>
+                            <span className="tk-match-date-mini">
+                              {String(mdLabel).slice(5) || mdLabel}
+                            </span>
                           ) : null}
                         </td>
                         <td>{teamAName}</td>
@@ -3306,12 +3322,15 @@ export function StatsPage({
                                     <div key={(e.id || i) + "-a"} className="scorer-line">
                                       {!isEditingThisEvent ? (
                                         <div className="tk-event-line">
-                                          <div className="tk-event-line-text">
-                                            {e.scorer}
-                                            {e.assist
-                                              ? ` (assist: ${e.assist})`
-                                              : ""}{" "}
-                                            – {actionLabel}
+                                          <div className="tk-event-line-text tk-expanded-goal-line">
+                                            <span className="tk-expanded-scorer">
+                                              {eventShortName(e.scorer)}
+                                            </span>
+                                            {e.assist ? (
+                                              <span className="tk-expanded-assist">
+                                                assist: {eventShortName(e.assist)}
+                                              </span>
+                                            ) : null}
                                           </div>
 
                                           {canAdminEditThisView && (
@@ -3476,12 +3495,15 @@ export function StatsPage({
                                     <div key={(e.id || i) + "-b"} className="scorer-line">
                                       {!isEditingThisEvent ? (
                                         <div className="tk-event-line">
-                                          <div className="tk-event-line-text">
-                                            {e.scorer}
-                                            {e.assist
-                                              ? ` (assist: ${e.assist})`
-                                              : ""}{" "}
-                                            – {actionLabel}
+                                          <div className="tk-event-line-text tk-expanded-goal-line">
+                                            <span className="tk-expanded-scorer">
+                                              {eventShortName(e.scorer)}
+                                            </span>
+                                            {e.assist ? (
+                                              <span className="tk-expanded-assist">
+                                                assist: {eventShortName(e.assist)}
+                                              </span>
+                                            ) : null}
                                           </div>
 
                                           {canAdminEditThisView && (
@@ -4158,141 +4180,668 @@ export function StatsPage({
         }
 
 
-        /* Default: keep most StatsPage tables compact in portrait mobile.
-           Only explicitly marked wide tables are allowed to scroll sideways. */
+        /* Premium compact scroll tables with reliable frozen identity columns.
+           This version avoids fake stretching: columns keep natural sports-table widths,
+           while identity columns remain locked during horizontal scroll. */
         .stats-page .table-wrapper {
-          overflow-x: hidden !important;
-          overflow-y: visible !important;
           max-width: 100%;
+          border-radius: 18px;
+          overflow-x: auto !important;
+          overflow-y: visible !important;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-x: contain;
+          scrollbar-width: thin;
+          position: relative;
+          isolation: isolate;
+          background: linear-gradient(
+            180deg,
+            #081B3A 0%,
+            #06142F 55%,
+            #020B1F 100%
+          );
+        }
+
+        .stats-page .table-wrapper::after {
+          content: "";
+          position: sticky;
+          right: 0;
+          top: 0;
+          float: right;
+          width: 14px;
+          height: 1px;
+          pointer-events: none;
+          box-shadow: -12px 0 18px rgba(2, 8, 23, 0.72);
+          z-index: 12;
         }
 
         .stats-page .stats-table {
-          width: 100% !important;
+          width: auto !important;
           min-width: 0 !important;
-          table-layout: fixed;
+          max-width: none !important;
+          table-layout: fixed !important;
+          border-collapse: separate !important;
+          border-spacing: 0 !important;
+          border-radius: 18px;
+          overflow: visible !important;
+          background: transparent !important;
+          box-shadow: none !important;
         }
 
         .stats-page .stats-table th,
         .stats-page .stats-table td {
-          white-space: normal !important;
-          overflow-wrap: anywhere;
-          word-break: normal;
-          vertical-align: middle;
-        }
-
-        .stats-page .tk-wide-table-wrapper {
-          overflow-x: auto !important;
-          overflow-y: hidden !important;
-          -webkit-overflow-scrolling: touch;
-          max-width: 100%;
-        }
-
-        .stats-page .tk-wide-table-wrapper .stats-table {
-          min-width: 650px !important;
-          table-layout: auto;
-        }
-
-        .stats-page .tk-wide-table-wrapper .stats-table th,
-        .stats-page .tk-wide-table-wrapper .stats-table td {
+          padding: 0.42rem 0.32rem !important;
           white-space: nowrap !important;
-          overflow-wrap: normal;
+          overflow-wrap: normal !important;
+          word-break: normal !important;
+          vertical-align: middle;
+          line-height: 1.18;
+          text-align: center;
+          box-sizing: border-box;
         }
 
-        .stats-page .tk-wide-table-wrapper .stats-table th:nth-child(2),
-        .stats-page .tk-wide-table-wrapper .stats-table td:nth-child(2),
-        .stats-page .tk-match-results-wide-wrapper .stats-table th:nth-child(5),
-        .stats-page .tk-match-results-wide-wrapper .stats-table td:nth-child(5) {
-          white-space: normal !important;
-          min-width: 130px;
+        .stats-page .stats-table th {
+          font-size: 0.70rem;
+          letter-spacing: 0;
+        }
+
+        .stats-page .stats-table td {
+          font-size: 0.76rem;
+        }
+
+        .stats-page .tk-scroll-table-wrapper .stats-table th:first-child,
+        .stats-page .tk-scroll-table-wrapper .stats-table td:first-child {
+          min-width: 1.55rem !important;
+          width: 1.55rem !important;
+          max-width: 1.55rem !important;
+          padding-left: 0.08rem !important;
+          padding-right: 0.08rem !important;
+          text-align: center !important;
+        }
+
+        .stats-page .tk-player-identity-table .stats-table th:nth-child(2),
+        .stats-page .tk-player-identity-table .stats-table td:nth-child(2),
+        .stats-page .tk-team-identity-table .stats-table th:nth-child(2),
+        .stats-page .tk-team-identity-table .stats-table td:nth-child(2) {
+          min-width: 5.95rem !important;
+          width: 5.95rem !important;
+          max-width: 5.95rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .stats-page .tk-player-identity-table .stats-table th:nth-child(3),
+        .stats-page .tk-player-identity-table .stats-table td:nth-child(3) {
+          min-width: 4.35rem !important;
+          width: 4.35rem !important;
+          max-width: 4.35rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .stats-page .tk-team-identity-table .stats-table th:nth-child(n+3),
+        .stats-page .tk-team-identity-table .stats-table td:nth-child(n+3) {
+          min-width: 2.55rem !important;
+          width: 2.55rem !important;
+          max-width: 2.55rem !important;
+        }
+
+        .stats-page .tk-player-identity-table .stats-table th:nth-child(n+4),
+        .stats-page .tk-player-identity-table .stats-table td:nth-child(n+4) {
+          min-width: 3.15rem !important;
+          width: 3.15rem !important;
+          max-width: 3.15rem !important;
+        }
+
+        .stats-page .tk-player-identity-table .stats-table th:nth-child(6),
+        .stats-page .tk-player-identity-table .stats-table td:nth-child(6) {
+          min-width: 2.45rem !important;
+          width: 2.45rem !important;
+          max-width: 2.45rem !important;
+        }
+
+        .stats-page .tk-player-identity-table .stats-table th:nth-child(7),
+        .stats-page .tk-player-identity-table .stats-table td:nth-child(7) {
+          min-width: 3.8rem !important;
+          width: 3.8rem !important;
+          max-width: 3.8rem !important;
+        }
+
+
+
+        /* Top Scorers + Playmakers: 4-column tables should fill the card,
+           not leave a blank empty runway on the right. Keep the same premium
+           sticky identity feel, but relax the Player column to use leftover space. */
+        .stats-page .tk-player-small-table .stats-table {
+          width: 100% !important;
+          min-width: 100% !important;
+          table-layout: fixed !important;
+        }
+
+        .stats-page .tk-player-small-table .stats-table th:first-child,
+        .stats-page .tk-player-small-table .stats-table td:first-child {
+          min-width: 1.55rem !important;
+          width: 1.55rem !important;
+          max-width: 1.55rem !important;
+        }
+
+        .stats-page .tk-player-small-table .stats-table th:nth-child(2),
+        .stats-page .tk-player-small-table .stats-table td:nth-child(2) {
+          min-width: 0 !important;
+          width: auto !important;
+          max-width: none !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .stats-page .tk-player-small-table .stats-table th:nth-child(3),
+        .stats-page .tk-player-small-table .stats-table td:nth-child(3) {
+          min-width: 5.1rem !important;
+          width: 5.1rem !important;
+          max-width: 5.1rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .stats-page .tk-player-small-table .stats-table th:nth-child(4),
+        .stats-page .tk-player-small-table .stats-table td:nth-child(4) {
+          min-width: 3.25rem !important;
+          width: 3.25rem !important;
+          max-width: 3.25rem !important;
+          text-align: center !important;
+          font-weight: 900;
+        }
+
+        /* Premium compact Match Results table. */
+        .stats-page .tk-match-results-table .stats-table {
+          table-layout: fixed !important;
+          width: 100% !important;
+          min-width: 27rem !important;
+        }
+
+        .stats-page .tk-match-results-table .stats-table th,
+        .stats-page .tk-match-results-table .stats-table td {
+          padding: 0.44rem 0.34rem !important;
+        }
+
+        .stats-page .tk-match-results-table .stats-table th:first-child,
+        .stats-page .tk-match-results-table .stats-table td:first-child {
+          min-width: 3.15rem !important;
+          width: 3.15rem !important;
+          max-width: 3.15rem !important;
+          text-align: center !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+        }
+
+        .stats-page .tk-match-results-table .stats-table th:nth-child(2),
+        .stats-page .tk-match-results-table .stats-table td:nth-child(2),
+        .stats-page .tk-match-results-table .stats-table th:nth-child(4),
+        .stats-page .tk-match-results-table .stats-table td:nth-child(4) {
+          min-width: 4.9rem !important;
+          width: 4.9rem !important;
+          max-width: 4.9rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .stats-page .tk-match-results-table .stats-table th:nth-child(3),
+        .stats-page .tk-match-results-table .stats-table td:nth-child(3) {
+          min-width: 3.25rem !important;
+          width: 3.25rem !important;
+          max-width: 3.25rem !important;
+          text-align: center !important;
+          font-weight: 900;
+        }
+
+        .stats-page .tk-match-results-table .stats-table th:nth-child(5),
+        .stats-page .tk-match-results-table .stats-table td:nth-child(5) {
+          min-width: 5.9rem !important;
+          width: 5.9rem !important;
+          max-width: 5.9rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .stats-page .tk-match-no-cell {
+          vertical-align: middle !important;
+        }
+
+        .stats-page .tk-match-no-inner {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.16rem;
+          width: 100%;
+          line-height: 1;
+        }
+
+        .stats-page .tk-match-no-main {
+          font-weight: 900;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .stats-page .tk-match-date-mini {
+          display: block;
+          margin-top: 0.14rem;
+          font-size: 0.58rem;
+          line-height: 1;
+          opacity: 0.62;
+          letter-spacing: -0.02em;
+        }
+
+        .stats-page .tk-player-identity-table .stats-table th:first-child,
+        .stats-page .tk-player-identity-table .stats-table td:first-child,
+        .stats-page .tk-team-identity-table .stats-table th:first-child,
+        .stats-page .tk-team-identity-table .stats-table td:first-child {
+          position: sticky !important;
+          left: 0 !important;
+          z-index: 30 !important;
+          background: #071833 !important;
+          background-clip: padding-box !important;
+          box-shadow: 1px 0 0 rgba(125, 211, 252, 0.12);
+        }
+
+        .stats-page .tk-player-identity-table .stats-table th:nth-child(2),
+        .stats-page .tk-player-identity-table .stats-table td:nth-child(2),
+        .stats-page .tk-team-identity-table .stats-table th:nth-child(2),
+        .stats-page .tk-team-identity-table .stats-table td:nth-child(2) {
+          position: sticky !important;
+          left: 1.55rem !important;
+          z-index: 29 !important;
+          background: #071833 !important;
+          background-clip: padding-box !important;
+          box-shadow: 7px 0 11px rgba(2, 8, 23, 0.46);
+        }
+
+        .stats-page .tk-match-identity-table .stats-table th:first-child,
+        .stats-page .tk-match-identity-table .stats-table td:first-child {
+          position: sticky !important;
+          left: 0 !important;
+          z-index: 30 !important;
+          background: #071833 !important;
+          background-clip: padding-box !important;
+          box-shadow: 7px 0 11px rgba(2, 8, 23, 0.46);
+        }
+
+        .stats-page .tk-player-identity-table .stats-table thead th:first-child,
+        .stats-page .tk-player-identity-table .stats-table thead th:nth-child(2),
+        .stats-page .tk-team-identity-table .stats-table thead th:first-child,
+        .stats-page .tk-team-identity-table .stats-table thead th:nth-child(2),
+        .stats-page .tk-match-identity-table .stats-table thead th:first-child {
+          z-index: 40 !important;
+          background: linear-gradient(
+            180deg,
+            rgba(17, 65, 120, 1),
+            rgba(10, 34, 72, 1)
+          ) !important;
+        }
+
+        .stats-page .tk-player-identity-table .stats-table tbody tr:nth-child(even) td:first-child,
+        .stats-page .tk-player-identity-table .stats-table tbody tr:nth-child(even) td:nth-child(2),
+        .stats-page .tk-team-identity-table .stats-table tbody tr:nth-child(even) td:first-child,
+        .stats-page .tk-team-identity-table .stats-table tbody tr:nth-child(even) td:nth-child(2),
+        .stats-page .tk-match-identity-table .stats-table tbody tr:nth-child(even) td:first-child {
+          background: #08203f !important;
         }
 
         @media (max-width: 520px) {
           .stats-page .card {
-            padding-left: 0.95rem;
-            padding-right: 0.95rem;
-          }
-
-          .stats-page .stats-table {
-            font-size: 0.74rem;
+            padding-left: 0.68rem;
+            padding-right: 0.68rem;
           }
 
           .stats-page .stats-table th,
           .stats-page .stats-table td {
-            padding: 0.48rem 0.28rem;
-            line-height: 1.22;
-          }
-
-          .stats-page .stats-table th:first-child,
-          .stats-page .stats-table td:first-child {
-            width: 1.65rem;
-            text-align: center;
-          }
-
-          .stats-page .stats-table th:nth-child(2),
-          .stats-page .stats-table td:nth-child(2) {
-            width: 27%;
-          }
-
-          .stats-page .stats-table th:nth-child(3),
-          .stats-page .stats-table td:nth-child(3) {
-            width: 24%;
-          }
-
-          .stats-page .stats-table th:last-child,
-          .stats-page .stats-table td:last-child {
-            width: 2.6rem;
-            text-align: center;
+            padding: 0.38rem 0.24rem !important;
           }
 
           .stats-page .stats-table th {
-            font-size: 0.72rem;
-            letter-spacing: 0.01em;
+            font-size: 0.66rem;
           }
 
-          .stats-page .tk-wide-table-wrapper .stats-table {
-            font-size: 0.78rem;
+          .stats-page .stats-table td {
+            font-size: 0.70rem;
           }
 
-          .stats-page .tk-wide-table-wrapper .stats-table th,
-          .stats-page .tk-wide-table-wrapper .stats-table td {
-            padding: 0.5rem 0.55rem;
+          .stats-page .tk-scroll-table-wrapper .stats-table th:first-child,
+          .stats-page .tk-scroll-table-wrapper .stats-table td:first-child {
+            min-width: 1.36rem !important;
+            width: 1.36rem !important;
+            max-width: 1.36rem !important;
           }
 
-          .stats-page .tk-wide-table-wrapper .stats-table th:first-child,
-          .stats-page .tk-wide-table-wrapper .stats-table td:first-child,
-          .stats-page .tk-wide-table-wrapper .stats-table th:nth-child(2),
-          .stats-page .tk-wide-table-wrapper .stats-table td:nth-child(2),
-          .stats-page .tk-wide-table-wrapper .stats-table th:nth-child(3),
-          .stats-page .tk-wide-table-wrapper .stats-table td:nth-child(3),
-          .stats-page .tk-wide-table-wrapper .stats-table th:last-child,
-          .stats-page .tk-wide-table-wrapper .stats-table td:last-child {
-            width: auto;
+          .stats-page .tk-player-identity-table .stats-table th:nth-child(2),
+          .stats-page .tk-player-identity-table .stats-table td:nth-child(2),
+          .stats-page .tk-team-identity-table .stats-table th:nth-child(2),
+          .stats-page .tk-team-identity-table .stats-table td:nth-child(2) {
+            left: 1.36rem !important;
+            min-width: 5.35rem !important;
+            width: 5.35rem !important;
+            max-width: 5.35rem !important;
+          }
+
+          .stats-page .tk-player-identity-table .stats-table th:nth-child(3),
+          .stats-page .tk-player-identity-table .stats-table td:nth-child(3) {
+            min-width: 4rem !important;
+            width: 4rem !important;
+            max-width: 4rem !important;
+          }
+
+          .stats-page .tk-team-identity-table .stats-table th:nth-child(n+3),
+          .stats-page .tk-team-identity-table .stats-table td:nth-child(n+3) {
+            min-width: 2.35rem !important;
+            width: 2.35rem !important;
+            max-width: 2.35rem !important;
+          }
+
+          .stats-page .tk-player-identity-table .stats-table th:nth-child(n+4),
+          .stats-page .tk-player-identity-table .stats-table td:nth-child(n+4) {
+            min-width: 2.85rem !important;
+            width: 2.85rem !important;
+            max-width: 2.85rem !important;
+          }
+
+          .stats-page .tk-player-identity-table .stats-table th:nth-child(6),
+          .stats-page .tk-player-identity-table .stats-table td:nth-child(6) {
+            min-width: 2.2rem !important;
+            width: 2.2rem !important;
+            max-width: 2.2rem !important;
+          }
+
+          .stats-page .tk-player-identity-table .stats-table th:nth-child(7),
+          .stats-page .tk-player-identity-table .stats-table td:nth-child(7) {
+            min-width: 3.45rem !important;
+            width: 3.45rem !important;
+            max-width: 3.45rem !important;
+          }
+
+
+          .stats-page .tk-player-small-table .stats-table {
+            width: 100% !important;
+            min-width: 100% !important;
+            table-layout: fixed !important;
+          }
+
+          .stats-page .tk-player-small-table .stats-table th:first-child,
+          .stats-page .tk-player-small-table .stats-table td:first-child {
+            min-width: 1.36rem !important;
+            width: 1.36rem !important;
+            max-width: 1.36rem !important;
+          }
+
+          .stats-page .tk-player-small-table .stats-table th:nth-child(2),
+          .stats-page .tk-player-small-table .stats-table td:nth-child(2) {
+            left: 1.36rem !important;
+            min-width: 0 !important;
+            width: auto !important;
+            max-width: none !important;
+          }
+
+          .stats-page .tk-player-small-table .stats-table th:nth-child(3),
+          .stats-page .tk-player-small-table .stats-table td:nth-child(3) {
+            min-width: 4.75rem !important;
+            width: 4.75rem !important;
+            max-width: 4.75rem !important;
+          }
+
+          .stats-page .tk-player-small-table .stats-table th:nth-child(4),
+          .stats-page .tk-player-small-table .stats-table td:nth-child(4) {
+            min-width: 3rem !important;
+            width: 3rem !important;
+            max-width: 3rem !important;
           }
         }
 
         @media (max-width: 380px) {
           .stats-page .card {
-            padding-left: 0.75rem;
-            padding-right: 0.75rem;
-          }
-
-          .stats-page .stats-table {
-            font-size: 0.68rem;
+            padding-left: 0.56rem;
+            padding-right: 0.56rem;
           }
 
           .stats-page .stats-table th,
           .stats-page .stats-table td {
-            padding: 0.42rem 0.2rem;
+            padding: 0.34rem 0.2rem !important;
           }
 
-          .stats-page .tk-wide-table-wrapper .stats-table {
-            font-size: 0.76rem;
+          .stats-page .stats-table th {
+            font-size: 0.62rem;
           }
 
-          .stats-page .tk-wide-table-wrapper .stats-table th,
-          .stats-page .tk-wide-table-wrapper .stats-table td {
-            padding: 0.46rem 0.5rem;
+          .stats-page .stats-table td {
+            font-size: 0.66rem;
           }
+        }
+
+
+
+
+        /* Final tuned override: Match Results table only. */
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table {
+          table-layout: fixed !important;
+          width: 100% !important;
+          min-width: 24.25rem !important;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th,
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td {
+          padding: 0.38rem 0.32rem !important;
+          white-space: nowrap !important;
+          text-align: center !important;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child,
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:first-child {
+          min-width: 3.75rem !important;
+          width: 3.75rem !important;
+          max-width: 3.75rem !important;
+          text-align: left !important;
+          padding-left: 0.36rem !important;
+          padding-right: 0.2rem !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(2),
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(2),
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(4),
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(4) {
+          min-width: 4.15rem !important;
+          width: 4.15rem !important;
+          max-width: 4.15rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(3),
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(3) {
+          min-width: 3.15rem !important;
+          width: 3.15rem !important;
+          max-width: 3.15rem !important;
+          text-align: center !important;
+          font-weight: 900 !important;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(5),
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(5) {
+          min-width: 6.7rem !important;
+          width: 6.7rem !important;
+          max-width: 6.7rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .tk-match-no-inner {
+          justify-content: flex-start !important;
+          gap: 0.18rem !important;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .tk-match-date-mini {
+          margin-left: 1.06rem !important;
+        }
+
+        @media (max-width: 520px) {
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table {
+            min-width: 23.65rem !important;
+          }
+
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th,
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td {
+            padding: 0.36rem 0.28rem !important;
+          }
+
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child,
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:first-child {
+            min-width: 3.68rem !important;
+            width: 3.68rem !important;
+            max-width: 3.68rem !important;
+          }
+
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(2),
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(2),
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(4),
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(4) {
+            min-width: 4rem !important;
+            width: 4rem !important;
+            max-width: 4rem !important;
+          }
+
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(3),
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(3) {
+            min-width: 3.05rem !important;
+            width: 3.05rem !important;
+            max-width: 3.05rem !important;
+          }
+
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(5),
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(5) {
+            min-width: 6.55rem !important;
+            width: 6.55rem !important;
+            max-width: 6.55rem !important;
+          }
+        }
+
+
+        /* Final polish: Top Scorers + Playmakers must use balanced equal columns.
+           Keep # compact, then give Player / Team / Goals-Assists equal breathing room. */
+        .stats-page .tk-player-small-table .stats-table {
+          width: 100% !important;
+          min-width: 100% !important;
+          table-layout: fixed !important;
+        }
+
+        .stats-page .tk-player-small-table .stats-table th:first-child,
+        .stats-page .tk-player-small-table .stats-table td:first-child {
+          min-width: 1.45rem !important;
+          width: 1.45rem !important;
+          max-width: 1.45rem !important;
+          padding-left: 0.1rem !important;
+          padding-right: 0.1rem !important;
+          text-align: center !important;
+        }
+
+        .stats-page .tk-player-small-table .stats-table th:nth-child(2),
+        .stats-page .tk-player-small-table .stats-table td:nth-child(2),
+        .stats-page .tk-player-small-table .stats-table th:nth-child(3),
+        .stats-page .tk-player-small-table .stats-table td:nth-child(3),
+        .stats-page .tk-player-small-table .stats-table th:nth-child(4),
+        .stats-page .tk-player-small-table .stats-table td:nth-child(4) {
+          min-width: 0 !important;
+          width: calc((100% - 1.45rem) / 3) !important;
+          max-width: none !important;
+          padding-left: 0.32rem !important;
+          padding-right: 0.32rem !important;
+          overflow: hidden !important;
+          text-overflow: clip !important;
+        }
+
+        .stats-page .tk-player-small-table .stats-table th:nth-child(2),
+        .stats-page .tk-player-small-table .stats-table td:nth-child(2) {
+          left: 1.45rem !important;
+          text-align: left !important;
+        }
+
+        .stats-page .tk-player-small-table .stats-table th:nth-child(3),
+        .stats-page .tk-player-small-table .stats-table td:nth-child(3) {
+          text-align: left !important;
+        }
+
+        .stats-page .tk-player-small-table .stats-table th:nth-child(4),
+        .stats-page .tk-player-small-table .stats-table td:nth-child(4) {
+          text-align: center !important;
+          font-weight: 900 !important;
+        }
+
+        /* Match Results expanded rows: stacked scorer/assist blocks for mobile readability. */
+        .stats-page .match-details-row td {
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: unset !important;
+          vertical-align: top;
+        }
+
+        .stats-page .match-details-row .team-scorers {
+          display: grid;
+          gap: 0.42rem;
+          min-width: 0;
+          max-width: 100%;
+        }
+
+        .stats-page .match-details-row .scorer-line {
+          min-width: 0;
+          max-width: 100%;
+        }
+
+        .stats-page .match-details-row .tk-event-line {
+          display: block;
+          min-width: 0;
+          max-width: 100%;
+        }
+
+        .stats-page .tk-expanded-goal-line {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.08rem;
+          min-width: 0;
+          max-width: 100%;
+          line-height: 1.16;
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: unset !important;
+        }
+
+        .stats-page .tk-expanded-scorer {
+          display: block;
+          min-width: 0;
+          max-width: 100%;
+          font-weight: 400;
+          font-size: 0.70rem;
+          color: rgba(226, 232, 240, 0.94);
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: unset !important;
+          overflow-wrap: anywhere;
+        }
+
+        .stats-page .tk-expanded-assist {
+          display: block;
+          min-width: 0;
+          max-width: 100%;
+          font-style: italic;
+          font-weight: 400;
+          font-size: 0.61rem;
+          color: rgba(203, 213, 225, 0.72);
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: unset !important;
+          overflow-wrap: anywhere;
         }
 
       `}</style>
