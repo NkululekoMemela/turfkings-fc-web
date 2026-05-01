@@ -322,6 +322,23 @@ function getStoredRole(identity) {
   return "spectator";
 }
 
+function getRealStoredRole(identity) {
+  const role = String(identity?.realRole || identity?.role || "spectator")
+    .trim()
+    .toLowerCase();
+
+  if (
+    role === "admin" ||
+    role === "captain" ||
+    role === "player" ||
+    role === "spectator"
+  ) {
+    return role;
+  }
+
+  return "spectator";
+}
+
 function ensureIdentityShape(identity) {
   if (!identity || typeof identity !== "object") return null;
 
@@ -1018,6 +1035,111 @@ function buildDefaultParticipationEntries({
   return out;
 }
 
+
+function readRenderedPlayerCardSnapshotFromLocalStorage(seasonId) {
+  if (typeof window === "undefined") return null;
+
+  const safeSeasonId = String(seasonId || "").trim();
+  const keys = safeSeasonId
+    ? [`tk_player_card_snapshot_${safeSeasonId}`, "tk_player_card_snapshot_latest"]
+    : ["tk_player_card_snapshot_latest"];
+
+  for (const key of keys) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") continue;
+      if (!parsed.players || typeof parsed.players !== "object") continue;
+
+      if (safeSeasonId && parsed.seasonId && String(parsed.seasonId) !== safeSeasonId) {
+        continue;
+      }
+
+      return parsed;
+    } catch {
+      // ignore bad localStorage snapshots
+    }
+  }
+
+  return null;
+}
+
+function buildFinalPlayerCardSnapshot({
+  season,
+  peerRatingsByPlayer = {},
+  renderedPlayerCardSnapshot = null,
+}) {
+  if (!season || typeof season !== "object") {
+    return {
+      createdAt: new Date().toISOString(),
+      seasonId: "",
+      players: {},
+    };
+  }
+
+  const history = Array.isArray(season.matchDayHistory)
+    ? season.matchDayHistory
+    : [];
+
+  const events = [
+    ...history.flatMap((day) =>
+      Array.isArray(day?.allEvents) ? day.allEvents : []
+    ),
+    ...(Array.isArray(season.allEvents) ? season.allEvents : []),
+    ...(Array.isArray(season.currentEvents) ? season.currentEvents : []),
+  ];
+
+  const results = [
+    ...history.flatMap((day) =>
+      Array.isArray(day?.results) ? day.results : []
+    ),
+    ...(Array.isArray(season.results) ? season.results : []),
+  ];
+
+  const playerAppearances = history.flatMap((day) =>
+    Array.isArray(day?.playerAppearances)
+      ? day.playerAppearances.map((entry) => ({
+          ...entry,
+          matchDayId:
+            entry?.matchDayId ||
+            day?.id ||
+            day?.matchDayId ||
+            day?.date ||
+            "",
+          matchDayCreatedAt:
+            entry?.matchDayCreatedAt || day?.createdAt || "",
+        }))
+      : []
+  );
+
+  return {
+    createdAt: new Date().toISOString(),
+    seasonId: season.seasonId || "",
+    seasonNo: Number(season.seasonNo || 0),
+    source: renderedPlayerCardSnapshot?.players
+      ? "end_season_exact_rendered_player_card_snapshot"
+      : "end_season_frozen_player_card_snapshot",
+    players: renderedPlayerCardSnapshot?.players || {},
+    renderedSnapshotCreatedAt: renderedPlayerCardSnapshot?.createdAt || null,
+    weights: {
+      formStats: 0.55,
+      formPeer: 0.45,
+      attributeAdmin: 0.5,
+      attributePeer: 0.5,
+      overallStats: 0.4,
+      overallPeer: 0.3,
+      overallForm: 0.3,
+    },
+    teams: Array.isArray(season.teams) ? season.teams : [],
+    events,
+    results,
+    playerAppearances,
+    peerRatingsByPlayer: peerRatingsByPlayer || {},
+  };
+}
+
 async function saveParticipationForMatchDay({
   seasonId,
   seasonNo,
@@ -1664,6 +1786,7 @@ export default function App() {
   });
 
   const members = useMembers();
+  const [showAdminReclaimNudge, setShowAdminReclaimNudge] = useState(true);
 
   const handleEntryComplete = (payload) => {
     const safePayload = ensureIdentityShape(payload);
@@ -1953,13 +2076,28 @@ export default function App() {
     [identity, captainRoleTeams]
   );
 
+  const realRole = useMemo(() => getRealStoredRole(identity), [identity]);
+  const isAdminPreviewingAnotherRole = realRole === "admin" && activeRole !== "admin";
+
+  const pageIdentity = useMemo(() => {
+    if (!identity || typeof identity !== "object") return identity;
+
+    return {
+      ...identity,
+      realRole,
+      role: activeRole,
+      actingRole: activeRole,
+      isAdminPreviewingAnotherRole,
+    };
+  }, [identity, activeRole, realRole, isAdminPreviewingAnotherRole]);
+
   const isAdmin = activeRole === "admin";
   const isCaptain = activeRole === "captain";
   const isPlayer = activeRole === "player";
   const isSpectator = activeRole === "spectator";
 
   const canStartMatch = isAdmin || isCaptain;
-  const canManageSquads = true;
+  const canManageSquads = isAdmin;
   const canPreviewPreviousSeasonUI = IS_STAGING && isAdmin;
   const normalizedActiveTeamIds = useMemo(() => {
     const teamIds = (teams || []).map((team) => team?.id).filter(Boolean);
@@ -2156,6 +2294,36 @@ export default function App() {
     };
   }, [activeMatchNo, gameFormat, matchType]);
 
+
+  useEffect(() => {
+    if (!isAdminPreviewingAnotherRole) return undefined;
+
+    setShowAdminReclaimNudge(true);
+    const timer = window.setTimeout(() => {
+      setShowAdminReclaimNudge(false);
+    }, 6500);
+
+    return () => window.clearTimeout(timer);
+  }, [isAdminPreviewingAnotherRole, activeRole]);
+
+  const handleReclaimAdminRole = () => {
+    if (!identity || typeof identity !== "object") return;
+
+    const nextIdentity = {
+      ...identity,
+      role: "admin",
+      realRole: "admin",
+      actingRole: "admin",
+      isAdminPreviewingAnotherRole: false,
+    };
+
+    setIdentity(nextIdentity);
+    setShowAdminReclaimNudge(false);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("tk_identity_v1", JSON.stringify(nextIdentity));
+    }
+  };
 
   const archivedResultsFromHistory = (matchDayHistory || []).flatMap(
     (day) => day?.results || []
@@ -2691,6 +2859,7 @@ export default function App() {
     const startContext = {
       matchNo: activeMatchNo,
       createdAt: new Date().toISOString(),
+<<<<<<< HEAD
       currentMatch: safeStartMatch,
       teams: matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams,
       fiveVFiveTeams: getActiveFriendlyTeams(fiveVFiveTeams),
@@ -2698,6 +2867,11 @@ export default function App() {
       matchType,
       gameFormat,
       activeTeamIds: normalizedActiveTeamIds,
+=======
+      currentMatch,
+      teams,
+      identity: pageIdentity,
+>>>>>>> main
       matchMode,
       scheduledTarget,
     };
@@ -4013,6 +4187,22 @@ export default function App() {
       const { seasonId, seasonNo } = nextSeasonIdFromExisting(safePrev.seasons);
       const { activeSeason } = getActiveSeasonFromV2State(safePrev);
       const baseTeams = activeSeason?.teams || [];
+      const renderedPlayerCardSnapshot = readRenderedPlayerCardSnapshotFromLocalStorage(
+        activeSeason?.seasonId
+      );
+      const finalPlayerCardSnapshot = buildFinalPlayerCardSnapshot({
+        season: activeSeason,
+        peerRatingsByPlayer,
+        renderedPlayerCardSnapshot,
+      });
+
+      const archivedActiveSeason = {
+        ...activeSeason,
+        finalPlayerCardSnapshot,
+        finalPlayerCardSnapshotCreatedAt:
+          finalPlayerCardSnapshot?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
 
       const newSeason = {
         seasonId,
@@ -4048,7 +4238,14 @@ export default function App() {
       return {
         ...safePrev,
         activeSeasonId: seasonId,
-        seasons: [...safePrev.seasons, newSeason],
+        seasons: [
+          ...safePrev.seasons.map((season) =>
+            season?.seasonId === safePrev.activeSeasonId
+              ? archivedActiveSeason
+              : season
+          ),
+          newSeason,
+        ],
         updatedAt: new Date().toISOString(),
       };
     });
@@ -4289,6 +4486,194 @@ export default function App() {
           user-select: none;
         }
 
+        .tk-admin-reclaim-wrap {
+          position: fixed;
+          top: calc(78px + env(safe-area-inset-top, 0px));
+          right: 10px;
+          z-index: 12000;
+          display: flex;
+          justify-content: flex-end;
+          pointer-events: none;
+        }
+
+        .tk-admin-reclaim-card,
+        .tk-admin-reclaim-tab {
+          pointer-events: auto;
+          border: 1px solid rgba(250,204,21,0.38);
+          color: #fef9c3;
+          box-shadow: 0 18px 44px rgba(2,6,23,0.50), 0 0 26px rgba(250,204,21,0.13);
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .tk-admin-reclaim-card {
+          width: min(340px, calc(100vw - 24px));
+          border-radius: 20px;
+          padding: 0.78rem;
+          background: radial-gradient(circle at 0% 0%, rgba(250,204,21,0.18), transparent 50%), radial-gradient(circle at 100% 100%, rgba(34,211,238,0.14), transparent 55%), linear-gradient(180deg, rgba(15,23,42,0.97), rgba(2,6,23,0.96));
+          animation: tkReclaimIn 0.24s ease-out;
+        }
+
+        .tk-admin-reclaim-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.7rem;
+        }
+
+        .tk-admin-reclaim-left {
+          display: flex;
+          align-items: center;
+          gap: 0.65rem;
+          min-width: 0;
+        }
+
+        .tk-admin-reclaim-icon {
+          width: 38px;
+          height: 38px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+          background: linear-gradient(135deg, rgba(250,204,21,0.95), rgba(59,130,246,0.95));
+          box-shadow: 0 0 22px rgba(250,204,21,0.20);
+        }
+
+        .tk-admin-reclaim-title {
+          display: block;
+          font-size: 0.86rem;
+          font-weight: 950;
+          letter-spacing: 0.01em;
+          line-height: 1.08;
+          color: #fff7ed;
+        }
+
+        .tk-admin-reclaim-subtitle {
+          display: block;
+          margin-top: 0.18rem;
+          font-size: 0.72rem;
+          color: rgba(226,232,240,0.82);
+          line-height: 1.22;
+        }
+
+        .tk-admin-reclaim-minimize {
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          border: 1px solid rgba(148,163,184,0.25);
+          background: rgba(15,23,42,0.76);
+          color: #e2e8f0;
+          cursor: pointer;
+          font-size: 1rem;
+          font-weight: 900;
+          line-height: 1;
+          flex: 0 0 auto;
+        }
+
+        .tk-admin-reclaim-copy {
+          margin: 0.72rem 0 0;
+          color: rgba(226,232,240,0.86);
+          font-size: 0.78rem;
+          line-height: 1.38;
+        }
+
+        .tk-admin-reclaim-actions {
+          margin-top: 0.72rem;
+          display: flex;
+          gap: 0.55rem;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .tk-admin-reclaim-primary,
+        .tk-admin-reclaim-secondary {
+          border-radius: 999px;
+          padding: 0.55rem 0.78rem;
+          font-size: 0.76rem;
+          font-weight: 900;
+          cursor: pointer;
+          border: 1px solid rgba(255,255,255,0.16);
+          touch-action: manipulation;
+        }
+
+        .tk-admin-reclaim-primary {
+          background: linear-gradient(90deg, #22d3ee, #6366f1);
+          color: #020617;
+          box-shadow: 0 10px 22px rgba(34,211,238,0.18);
+        }
+
+        .tk-admin-reclaim-secondary {
+          background: rgba(15,23,42,0.72);
+          color: #e2e8f0;
+        }
+
+        .tk-admin-reclaim-role {
+          padding: 0.18rem 0.5rem;
+          border-radius: 999px;
+          background: rgba(250,204,21,0.12);
+          border: 1px solid rgba(250,204,21,0.24);
+          color: #fde68a;
+          font-size: 0.66rem;
+          font-weight: 950;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+
+        .tk-admin-reclaim-tab {
+          position: fixed;
+          right: 0;
+          top: calc(118px + env(safe-area-inset-top, 0px));
+          z-index: 12000;
+          min-width: 42px;
+          min-height: 78px;
+          border-radius: 18px 0 0 18px;
+          border-right: none;
+          background: radial-gradient(circle at 50% 0%, rgba(250,204,21,0.22), transparent 58%), linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.96));
+          display: inline-flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 0.18rem;
+          cursor: pointer;
+          animation: tkReclaimPulse 2.1s ease-in-out infinite;
+        }
+
+        .tk-admin-reclaim-tab-role {
+          writing-mode: vertical-rl;
+          transform: rotate(180deg);
+          font-size: 0.58rem;
+          font-weight: 950;
+          letter-spacing: 0.08em;
+          color: #fde68a;
+          text-transform: uppercase;
+        }
+
+        @media (max-width: 520px) {
+          .tk-admin-reclaim-wrap {
+            top: calc(108px + env(safe-area-inset-top, 0px));
+            right: 8px;
+          }
+
+          .tk-admin-reclaim-card {
+            width: min(318px, calc(100vw - 18px));
+          }
+
+          .tk-admin-reclaim-tab {
+            top: calc(132px + env(safe-area-inset-top, 0px));
+          }
+        }
+
+        @keyframes tkReclaimIn {
+          from { opacity: 0; transform: translateX(10px) scale(0.98); }
+          to { opacity: 1; transform: translateX(0) scale(1); }
+        }
+
+        @keyframes tkReclaimPulse {
+          0%, 100% { transform: translateX(0); box-shadow: 0 18px 44px rgba(2,6,23,0.50), 0 0 18px rgba(250,204,21,0.12); }
+          50% { transform: translateX(-3px); box-shadow: 0 18px 44px rgba(2,6,23,0.50), 0 0 28px rgba(250,204,21,0.22); }
+        }
+
         .app-root.has-bottom-nav {
           padding-bottom: 96px;
         }
@@ -4417,6 +4802,70 @@ export default function App() {
 
       {IS_STAGING && <div className="tk-staging-badge">Testing Version</div>}
 
+      {isAdminPreviewingAnotherRole && showAdminReclaimNudge && (
+        <div className="tk-admin-reclaim-wrap">
+          <div className="tk-admin-reclaim-card" role="status" aria-live="polite">
+            <div className="tk-admin-reclaim-head">
+              <div className="tk-admin-reclaim-left">
+                <span className="tk-admin-reclaim-icon" aria-hidden="true">🛡️</span>
+                <span style={{ minWidth: 0, textAlign: "left" }}>
+                  <span className="tk-admin-reclaim-title">
+                    You are viewing as {activeRole}
+                  </span>
+                  <span className="tk-admin-reclaim-subtitle">
+                    Admin powers are hidden in this preview mode.
+                  </span>
+                </span>
+              </div>
+              <button
+                type="button"
+                className="tk-admin-reclaim-minimize"
+                onClick={() => setShowAdminReclaimNudge(false)}
+                title="Minimize admin preview reminder"
+                aria-label="Minimize admin preview reminder"
+              >
+                –
+              </button>
+            </div>
+
+            <p className="tk-admin-reclaim-copy">
+              Change profile back to <strong>Admin</strong> to reclaim your full admin powers.
+            </p>
+
+            <div className="tk-admin-reclaim-actions">
+              <button
+                type="button"
+                className="tk-admin-reclaim-primary"
+                onClick={handleReclaimAdminRole}
+              >
+                Reclaim admin role
+              </button>
+              <button
+                type="button"
+                className="tk-admin-reclaim-secondary"
+                onClick={() => setShowAdminReclaimNudge(false)}
+              >
+                Keep previewing
+              </button>
+              <span className="tk-admin-reclaim-role">{activeRole} mode</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAdminPreviewingAnotherRole && !showAdminReclaimNudge && (
+        <button
+          type="button"
+          className="tk-admin-reclaim-tab"
+          onClick={() => setShowAdminReclaimNudge(true)}
+          title={`Viewing as ${activeRole}. Tap to reclaim admin role.`}
+          aria-label={`Viewing as ${activeRole}. Tap to reclaim admin role.`}
+        >
+          <span aria-hidden="true">🛡️</span>
+          <span className="tk-admin-reclaim-tab-role">{activeRole}</span>
+        </button>
+      )}
+
       {page === PAGE_ENTRY && (
         <EntryPage
           identity={identity}
@@ -4462,7 +4911,7 @@ export default function App() {
           onOpenHighlightsCamera={handleOpenHighlightsCamera}
           onGoToEntryDev={() => setPage(PAGE_ENTRY)}
           onGoToPayments={handleGoToMatchSignup}
-          identity={identity}
+          identity={pageIdentity}
           activeRole={activeRole}
           isAdmin={isAdmin}
           isCaptain={isCaptain}
@@ -4475,7 +4924,8 @@ export default function App() {
 
       {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (
         <MatchSignupPage
-          identity={identity}
+          identity={pageIdentity}
+          activeRole={activeRole}
           currentUser={null}
           teams={teams}
           activeSeasonId={activeSeasonId}
@@ -4496,7 +4946,7 @@ export default function App() {
 
       {page === PAGE_PAYMENT && (
         <PaymentPage
-          identity={identity}
+          identity={pageIdentity}
           activeRole={activeRole}
           activeSeasonId={activeSeasonId}
           paymentContext={paymentContext}
@@ -4522,7 +4972,7 @@ export default function App() {
           currentMatchNo={pendingMatchStartContext?.matchNo || activeMatchNo}
           currentMatch={pendingMatchStartContext?.currentMatch || effectiveLiveMatch}
           currentEvents={currentEvents}
-          identity={identity}
+          identity={pageIdentity}
           activeRole={activeRole}
           isAdmin={isAdmin}
           isCaptain={isCaptain}
@@ -4652,7 +5102,7 @@ export default function App() {
           currentEvents={currentEvents}
           matchDayHistory={matchDayHistory}
           playerPhotosByName={playerPhotosByName}
-          identity={identity}
+          identity={pageIdentity}
           yearEndAttendance={yearEndAttendance}
           onUpdateYearEndAttendance={(nextList) =>
             updateState((prev) => {
@@ -4685,9 +5135,31 @@ export default function App() {
           peerRatingsByPlayer={peerRatingsByPlayer}
           playerPhotosByName={playerPhotosByName}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
+<<<<<<< HEAD
           activeMatchType={matchType}
           matchType={matchType}
           gameFormat={gameFormat}
+=======
+          activeSeasonNo={USE_V2 ? activeSeasonNo : null}
+          finalPlayerCardSnapshot={
+            USE_V2
+              ? (() => {
+                  const seasons = Array.isArray(safeV2ForStats?.seasons)
+                    ? safeV2ForStats.seasons
+                    : [];
+                  const activeIndex = seasons.findIndex(
+                    (season) =>
+                      String(season?.seasonId || "") ===
+                      String(safeV2ForStats?.activeSeasonId || "")
+                  );
+
+                  return activeIndex > 0
+                    ? seasons[activeIndex - 1]?.finalPlayerCardSnapshot || null
+                    : null;
+                })()
+              : null
+          }
+>>>>>>> main
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
@@ -4696,7 +5168,7 @@ export default function App() {
         <PeerReviewPage
           teams={teams}
           playerPhotosByName={playerPhotosByName}
-          identity={identity}
+          identity={pageIdentity}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           onBack={() => setPage(PAGE_STATS)}
         />
@@ -4709,7 +5181,7 @@ export default function App() {
           onUpdateTeams={handleUpdateTeams}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
-          identity={identity}
+          identity={pageIdentity}
           isAdmin={isAdmin}
           activeRole={activeRole}
           matchType={matchType}
@@ -4720,6 +5192,7 @@ export default function App() {
       )}
 
       {page === PAGE_FORMATIONS && (
+<<<<<<< HEAD
         <FormationsPage
           teams={teams}
           fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
@@ -4736,6 +5209,19 @@ export default function App() {
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
         />
+=======
+      <FormationsPage
+        teams={teams}
+        currentMatch={currentMatch}
+        currentEvents={currentEvents}
+        allEvents={allEvents}
+        results={results}
+        playerPhotosByName={playerPhotosByName}
+        identity={pageIdentity}
+        onBack={handleBackToLanding}
+        onGoToSquads={handleGoToSquads}
+      />
+>>>>>>> main
       )}
 
       {showBackupModal && (

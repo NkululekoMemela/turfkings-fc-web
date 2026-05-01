@@ -786,6 +786,7 @@ function statusFromWeekState(selectedWeeks, paidWeeks) {
 
 export default function MatchSignupPage({
   identity,
+  activeRole = "",
   currentUser,
   teams = [],
   activeSeasonId,
@@ -2191,18 +2192,14 @@ export default function MatchSignupPage({
   );
 
   const canManageSignupsAsAdmin = useMemo(() => {
-    const role = String(
-      identity?.role || currentUser?.role || identity?.status || ""
+    const effectiveRole = String(
+      activeRole || identity?.actingRole || identity?.role || currentUser?.role || ""
     )
       .trim()
       .toLowerCase();
 
-    const email = String(identity?.email || currentUser?.email || "")
-      .trim()
-      .toLowerCase();
-
-    return role === "admin" || email === "nkululekolerato@gmail.com";
-  }, [identity, currentUser]);
+    return effectiveRole === "admin";
+  }, [activeRole, identity, currentUser]);
 
   const adminCleanupCandidates = useMemo(() => {
     if (!canManageSignupsAsAdmin) return [];

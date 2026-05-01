@@ -649,11 +649,21 @@ export function SquadsPage({
   onUpdateFiveVFiveTeams,
   onBack,
   identity = null,
-  isAdmin: isAdminFromApp = false,
+  activeRole = "",
+  isAdmin: isAdminProp = false,
   matchType = MATCH_MODE.FRIENDLY,
   gameFormat = GAME_FORMAT.FIVE_V_FIVE,
 }) {
-  const isAdmin = Boolean(isAdminFromApp || isAdminIdentity(identity));
+  const effectiveRole = String(
+    activeRole || identity?.actingRole || identity?.role || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const isAdmin = effectiveRole
+    ? effectiveRole === "admin"
+    : Boolean(isAdminProp) || isAdminIdentity(identity);
+
   const canEdit = isAdmin;
 
   const resolvedMatchType = normalizeMatchMode(
