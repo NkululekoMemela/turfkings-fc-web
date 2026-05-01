@@ -109,6 +109,22 @@ const labelCapsuleStyle = {
   color: "#bae6fd",
 };
 
+const rejoiningBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  padding: "0.2rem 0.55rem",
+  borderRadius: "999px",
+  fontSize: "0.72rem",
+  fontWeight: 800,
+  letterSpacing: "0.025em",
+  textTransform: "uppercase",
+  background: "linear-gradient(90deg, rgba(16,185,129,0.18), rgba(34,211,238,0.13))",
+  border: "1px solid rgba(45,212,191,0.42)",
+  color: "#99f6e4",
+  boxShadow: "0 0 18px rgba(45,212,191,0.12)",
+};
+
 function toTitleCase(name) {
   return String(name || "")
     .trim()
@@ -342,6 +358,43 @@ async function resolveSignedInRoleFromPlayerDoc(member, emailFromGoogle = "") {
   return "player";
 }
 
+function getPrivateContactDeletePayload(extra = {}) {
+  return {
+    email: deleteField(),
+    whatsappNumber: deleteField(),
+    phoneNumber: deleteField(),
+    whatsappNumberUpdatedAt: deleteField(),
+    whatsappVerificationAdminName: deleteField(),
+    whatsappVerificationStatus: deleteField(),
+    ...extra,
+  };
+}
+
+async function clearWithdrawnPlayerPrivateDetails({ memberId = "", playerId = "" }) {
+  if (memberId) {
+    await updateDoc(
+      doc(db, MEMBERS_COLLECTION, memberId),
+      getPrivateContactDeletePayload({
+        status: "withdrawn",
+        updatedAt: serverTimestamp(),
+      })
+    );
+  }
+
+  if (playerId) {
+    try {
+      await updateDoc(
+        doc(db, PLAYERS_COLLECTION, playerId),
+        getPrivateContactDeletePayload({
+          updatedAt: serverTimestamp(),
+        })
+      );
+    } catch (err) {
+      console.error("[EntryPage] Could not clear player contact details:", err);
+    }
+  }
+}
+
 export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -357,7 +410,16 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
 
   const [withdrawalAlert, setWithdrawalAlert] = useState(null);
 
-  const [memberDepartureAlert, setMemberDepartureAlert] = useState(null);
+  const [memberDepartureAlerts, setMemberDepartureAlerts] = useState([]);
+  const [isAdminNoticePanelOpen, setIsAdminNoticePanelOpen] = useState(false);
+  const [activeAdminNoticeIndex, setActiveAdminNoticeIndex] = useState(0);
+  const [dismissedPendingNoticeIds, setDismissedPendingNoticeIds] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem("tk_dismissedPendingNoticeIds") || "[]");
+    } catch (err) {
+      return [];
+    }
+  });
 
   useEffect(() => {
     if (!isAdminViewer) return;
@@ -401,36 +463,41 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
     const q = query(
       collection(db, WITHDRAWAL_REQUESTS_COLLECTION),
       orderBy("requestedAt", "desc"),
-      limit(1)
+      limit(10)
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      if (snap.empty) return;
+      if (snap.empty) {
+        setMemberDepartureAlerts([]);
+        return;
+      }
 
-      const docSnap = snap.docs[0];
-      const data = docSnap.data() || {};
-      const requestedAt = Number(data.requestedAtMs || 0);
-      if (!requestedAt) return;
-
-      const lastSeen = Number(
-        window.localStorage.getItem("tk_lastSeenMemberDeparture_ts") || 0
-      );
-
-      if (requestedAt > lastSeen) {
-        setMemberDepartureAlert({
+      const unreadDepartures = snap.docs
+        .map((d) => {
+          const data = d.data() || {};
+          return { docSnap: d, data };
+        })
+        .filter(({ data }) => !data.adminAcknowledgedAt && !data.adminAcknowledgedAtMs)
+        .map(({ docSnap, data }) => ({
           requestId: docSnap.id,
           memberId: data.memberId || "",
           playerId: data.playerId || "",
           name: data.fullName || data.shortName || "Unknown player",
           shortName: data.shortName || "",
-          email: data.email || "",
-          whatsappNumber: data.whatsappNumber || "",
-          requestedAt,
-        });
-        window.localStorage.setItem(
-          "tk_lastSeenMemberDeparture_ts",
-          String(requestedAt)
-        );
+          requestedAt: Number(data.requestedAtMs || 0),
+          isLegacyNotice:
+            data.outcome === "withdrawn" || data.outcome === "withdrawn_by_player",
+        }))
+        .filter((item) => item.requestedAt);
+
+      setMemberDepartureAlerts(unreadDepartures);
+
+      if (unreadDepartures.length > 0) {
+        try {
+          navigator.vibrate?.(250);
+        } catch (err) {
+          // Vibration is optional and may be blocked on some devices/browsers.
+        }
       }
     });
 
@@ -468,6 +535,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
             role: data.role || "player",
             status: data.status || "active",
             createdAt: data.createdAt || null,
+            rejoinRequestedAt: data.rejoinRequestedAt || null,
           };
         });
 
@@ -494,6 +562,73 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
     () => members.filter((m) => m.status === "pending"),
     [members]
   );
+
+  const adminNotices = useMemo(() => {
+    if (!isAdminViewer) return [];
+
+    const notices = [];
+
+    memberDepartureAlerts.forEach((departure) => {
+      notices.push({
+        id: `departure-${departure.requestId}`,
+        type: "departure",
+        title: "Turf Kings notice",
+        tag: "Admin alert",
+        icon: "🔔",
+        message: (
+          <>
+            <strong>{departure.name}</strong> has sadly decided to leave the group.
+          </>
+        ),
+        helper:
+          "Acknowledging this notice will mark the departure as read and remove any remaining private contact details from active records.",
+        payload: departure,
+      });
+    });
+
+    pendingMembers
+      .filter((m) => !dismissedPendingNoticeIds.includes(m.id))
+      .forEach((m) => {
+        notices.push({
+          id: `pending-${m.id}`,
+          type: "new_player",
+          title: "New player request",
+          tag: m.rejoinRequestedAt ? "Rejoining player" : "Pending signup",
+          icon: m.rejoinRequestedAt ? "↩️" : "✨",
+          message: (
+            <>
+              <strong>{m.fullName}</strong>{" "}
+              {m.rejoinRequestedAt
+                ? "wants to rejoin TurfKings."
+                : "wants to join TurfKings."}
+            </>
+          ),
+          helper:
+            "Approve or reject this request directly here. The old Admin Desk section has been removed to keep the entry page clean.",
+          payload: m,
+        });
+      });
+
+    return notices;
+  }, [dismissedPendingNoticeIds, isAdminViewer, memberDepartureAlerts, pendingMembers]);
+
+  const notificationCount = adminNotices.length;
+  const activeAdminNotice = adminNotices[Math.min(activeAdminNoticeIndex, Math.max(notificationCount - 1, 0))] || null;
+
+  useEffect(() => {
+    if (notificationCount > 0) {
+      setIsAdminNoticePanelOpen(true);
+    } else {
+      setIsAdminNoticePanelOpen(false);
+      setActiveAdminNoticeIndex(0);
+    }
+  }, [notificationCount]);
+
+  useEffect(() => {
+    if (activeAdminNoticeIndex > Math.max(notificationCount - 1, 0)) {
+      setActiveAdminNoticeIndex(Math.max(notificationCount - 1, 0));
+    }
+  }, [activeAdminNoticeIndex, notificationCount]);
 
   const [selectedMemberId, setSelectedMemberId] = useState(() => {
     if (identity?.memberId) return identity.memberId;
@@ -630,21 +765,71 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
       return;
     }
 
-    const exists = members.some(
-      (m) =>
-        m.fullName.toLowerCase() === fullName.toLowerCase() ||
-        (m.email && m.email.toLowerCase() === email.toLowerCase())
-    );
+    const normalizedFullName = fullName.toLowerCase();
+    const normalizedEmail = email.toLowerCase();
+    const shortName = fullName.split(" ")[0];
+    const pendingDocId = slugFromName(fullName);
 
-    if (exists) {
+    const existingMember = members.find((m) => {
+      const sameName = String(m.fullName || "").toLowerCase() === normalizedFullName;
+      const sameEmail =
+        m.email && String(m.email || "").toLowerCase() === normalizedEmail;
+      return sameName || sameEmail;
+    });
+
+    if (existingMember) {
+      if (existingMember.status === "withdrawn") {
+        try {
+          await updateDoc(doc(db, MEMBERS_COLLECTION, existingMember.id), {
+            fullName,
+            shortName,
+            email,
+            whatsappNumber: normalizeWhatsAppNumber(newWhatsApp),
+            role: "player",
+            status: "pending",
+            rejoinRequestedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+
+          if (newPhotoFile) {
+            const portraitData = await makePortraitPhotoDataUrl(newPhotoFile);
+            await savePlayerPhotoForIdentity({
+              fullName,
+              shortName,
+              playerId: pendingDocId,
+              email,
+              role: "player",
+              status: "pending",
+              sourceMemberId: existingMember.id,
+              photoData: portraitData,
+            });
+          }
+
+          setNewReqStatus(
+            newPhotoFile
+              ? "Rejoin request captured and your profile photo has been saved for admin review."
+              : "Rejoin request captured. An admin will approve you again."
+          );
+          setNewFullName("");
+          setNewEmail("");
+          setNewWhatsApp("");
+          setNewPhotoFile(null);
+          setNewPhotoPreview("");
+          return;
+        } catch (err) {
+          console.error("Error creating rejoin request:", err);
+          setNewReqError("Could not send rejoin request. Please try again.");
+          return;
+        }
+      }
+
       setNewReqError(
-        "This name or email already exists on the TurfKings list."
+        existingMember.status === "pending"
+          ? "This player already has a pending request awaiting admin approval."
+          : "This name or email already exists on the TurfKings list."
       );
       return;
     }
-
-    const shortName = fullName.split(" ")[0];
-    const pendingDocId = slugFromName(fullName);
 
     try {
       const requestRef = await addDoc(collection(db, MEMBERS_COLLECTION), {
@@ -903,26 +1088,31 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
       return;
     }
 
-    const safeEmail = String(selectedMember.email || "").trim();
-    const safeWhatsApp = String(selectedMember.whatsappNumber || "").trim();
-
     try {
+      const playerId =
+        selectedMember.playerId ||
+        slugFromName(selectedMember.shortName || selectedMember.fullName || "");
+
       await addDoc(collection(db, WITHDRAWAL_REQUESTS_COLLECTION), {
         memberId: selectedMember.id,
-        playerId: selectedMember.playerId || slugFromName(selectedMember.shortName || selectedMember.fullName || ""),
+        playerId,
         fullName: selectedMember.fullName || "",
         shortName: selectedMember.shortName || "",
-        email: safeEmail,
-        whatsappNumber: safeWhatsApp,
-        status: selectedMember.status || "active",
+        statusBeforeLeaving: selectedMember.status || "active",
         reason: String(withdrawReason || "").trim(),
         requestedAt: serverTimestamp(),
         requestedAtMs: Date.now(),
-        processed: false,
+        processed: true,
+        outcome: "withdrawn_by_player",
+      });
+
+      await clearWithdrawnPlayerPrivateDetails({
+        memberId: selectedMember.id,
+        playerId,
       });
 
       setWithdrawStatus(
-        "Your departure request has been sent to admin. You are always welcome to return in future."
+        "You have left TurfKings. Your private contact details have been removed from the active system. You are always welcome to return in future."
       );
       setWithdrawReason("");
       setShowWithdrawForm(false);
@@ -951,6 +1141,8 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
     try {
       await updateDoc(doc(db, MEMBERS_COLLECTION, memberId), {
         status: "active",
+        rejoinReviewedAt: serverTimestamp(),
+        rejoinRequestedAt: deleteField(),
       });
 
       await upsertPlayerFromMember({
@@ -964,63 +1156,58 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
     }
   };
 
-  const handleProcessDeparture = async () => {
-    if (!memberDepartureAlert?.requestId || !memberDepartureAlert?.memberId) {
-      setMemberDepartureAlert(null);
+  const handleCloseDepartureNotice = async (departureNotice) => {
+    const departure = departureNotice?.payload || departureNotice;
+
+    if (!departure?.requestId) {
       return;
     }
 
-    const ok = window.confirm(
-      `${memberDepartureAlert.name} wants to leave TurfKings.\n\n` +
-        `This will clear their private contact details from the active system, ` +
-        `mark them as withdrawn, and keep their historical name/stats in the archives.\n\n` +
-        `Proceed?`
-    );
-
-    if (!ok) return;
-
     try {
-      await updateDoc(doc(db, MEMBERS_COLLECTION, memberDepartureAlert.memberId), {
-        status: "withdrawn",
-        email: deleteField(),
-        whatsappNumber: deleteField(),
-        updatedAt: serverTimestamp(),
+      await clearWithdrawnPlayerPrivateDetails({
+        memberId: departure.memberId,
+        playerId:
+          departure.playerId ||
+          slugFromName(departure.shortName || departure.name || ""),
       });
 
-      const playerId =
-        memberDepartureAlert.playerId ||
-        slugFromName(
-          toTitleCase(
-            memberDepartureAlert.shortName || memberDepartureAlert.name || ""
-          )
-        );
-
-      if (playerId) {
-        try {
-          await updateDoc(doc(db, PLAYERS_COLLECTION, playerId), {
-            email: deleteField(),
-            whatsappNumber: deleteField(),
-            updatedAt: serverTimestamp(),
-          });
-        } catch (err) {
-          console.error("[EntryPage] Could not clear player contact details:", err);
-        }
-      }
-
       await updateDoc(
-        doc(db, WITHDRAWAL_REQUESTS_COLLECTION, memberDepartureAlert.requestId),
+        doc(db, WITHDRAWAL_REQUESTS_COLLECTION, departure.requestId),
         {
-          processedAt: serverTimestamp(),
-          processedAtMs: Date.now(),
+          adminAcknowledgedAt: serverTimestamp(),
+          adminAcknowledgedAtMs: Date.now(),
           processed: true,
-          outcome: "withdrawn",
+          outcome: "withdrawn_notice_acknowledged",
         }
       );
 
-      setMemberDepartureAlert(null);
+      setMemberDepartureAlerts((prev) =>
+        prev.filter((item) => item.requestId !== departure.requestId)
+      );
     } catch (err) {
-      console.error("[EntryPage] Failed processing departure:", err);
-      window.alert("Could not process this departure request just now.");
+      console.error("[EntryPage] Failed acknowledging departure notice:", err);
+      window.alert("Could not close this departure notice just now. Please try again.");
+    }
+  };
+
+  const handleAcknowledgeAdminNotice = async (notice) => {
+    if (!notice) return;
+
+    if (notice.type === "departure") {
+      await handleCloseDepartureNotice(notice);
+      return;
+    }
+
+    if (notice.type === "new_player") {
+      setDismissedPendingNoticeIds((prev) => {
+        const next = Array.from(new Set([...prev, notice.payload?.id].filter(Boolean)));
+        try {
+          window.localStorage.setItem("tk_dismissedPendingNoticeIds", JSON.stringify(next));
+        } catch (err) {
+          // Local storage is optional; the alert can still be dismissed for this session.
+        }
+        return next;
+      });
     }
   };
 
@@ -1028,6 +1215,8 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
     try {
       await updateDoc(doc(db, MEMBERS_COLLECTION, memberId), {
         status: "rejected",
+        rejoinReviewedAt: serverTimestamp(),
+        rejoinRequestedAt: deleteField(),
       });
     } catch (err) {
       console.error("Reject failed:", err);
@@ -1037,6 +1226,36 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
 
   return (
     <div className="page entry-page">
+      <style>{`
+        @keyframes tkNoticeFloat { 0%, 100% { transform: translateY(0) scale(1); } 45% { transform: translateY(-5px) scale(1.035); } }
+        @keyframes tkNoticePulse { 0% { box-shadow: 0 0 0 0 rgba(34,211,238,0.44), 0 18px 48px rgba(2,6,23,0.45); } 70% { box-shadow: 0 0 0 14px rgba(34,211,238,0), 0 18px 48px rgba(2,6,23,0.45); } 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0), 0 18px 48px rgba(2,6,23,0.45); } }
+        @keyframes tkNoticeRing { 0%, 100% { transform: rotate(0deg); } 12% { transform: rotate(13deg); } 24% { transform: rotate(-11deg); } 36% { transform: rotate(9deg); } 48% { transform: rotate(-7deg); } 60% { transform: rotate(4deg); } }
+        @keyframes tkNoticeSlideIn { from { opacity: 0; transform: translateX(18px) scale(0.96); } to { opacity: 1; transform: translateX(0) scale(1); } }
+        .tk-admin-notification-dock { position: fixed; right: max(0.85rem, env(safe-area-inset-right)); top: calc(5.15rem + env(safe-area-inset-top)); z-index: 4000; pointer-events: none; }
+        .tk-admin-notification-bell { pointer-events: auto; position: relative; width: 3.25rem; height: 3.25rem; border: 0; border-radius: 999px; cursor: pointer; display: grid; place-items: center; background: radial-gradient(circle at 28% 20%, rgba(255,255,255,0.35), transparent 25%), linear-gradient(135deg, rgba(34,211,238,0.98), rgba(99,102,241,0.96)); color: #020617; box-shadow: 0 18px 48px rgba(2,6,23,0.46); animation: tkNoticePulse 1.85s ease-out infinite, tkNoticeFloat 2.6s ease-in-out infinite; }
+        .tk-admin-notification-bell span { display: inline-block; animation: tkNoticeRing 1.35s ease-in-out infinite; transform-origin: 50% 10%; font-size: 1.25rem; }
+        .tk-admin-notification-count { position: absolute; top: -0.32rem; right: -0.32rem; min-width: 1.28rem; height: 1.28rem; padding: 0 0.28rem; border-radius: 999px; display: grid; place-items: center; background: #ef4444; color: #fff; border: 2px solid rgba(15,23,42,0.98); font-size: 0.72rem; font-weight: 950; line-height: 1; box-shadow: 0 8px 22px rgba(239,68,68,0.38); }
+        .tk-admin-notification-card { pointer-events: auto; width: min(350px, calc(100vw - 1.7rem)); border-radius: 22px; overflow: hidden; background: radial-gradient(circle at top left, rgba(34,211,238,0.22), transparent 36%), radial-gradient(circle at bottom right, rgba(34,197,94,0.16), transparent 38%), linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.97)); border: 1px solid rgba(125,211,252,0.34); color: #f8fafc; box-shadow: 0 24px 70px rgba(2,6,23,0.62); animation: tkNoticeSlideIn 180ms ease-out; }
+        .tk-admin-notification-topline { display: flex; align-items: center; gap: 0.75rem; padding: 0.86rem 0.95rem 0.62rem; border-bottom: 1px solid rgba(148,163,184,0.15); }
+        .tk-admin-notification-icon { flex: 0 0 auto; width: 2.3rem; height: 2.3rem; border-radius: 999px; display: grid; place-items: center; background: radial-gradient(circle at 28% 20%, rgba(255,255,255,0.35), transparent 25%), linear-gradient(135deg, rgba(34,211,238,0.98), rgba(99,102,241,0.96)); color: #020617; box-shadow: 0 0 0 0 rgba(34,211,238,0.44); animation: tkNoticePulse 1.85s ease-out infinite; }
+        .tk-admin-notification-icon span { display: inline-block; animation: tkNoticeRing 1.35s ease-in-out infinite; transform-origin: 50% 10%; }
+        .tk-admin-notification-title-wrap { min-width: 0; flex: 1; }
+        .tk-admin-notification-count-pill { margin-left: auto; border-radius: 999px; padding: 0.18rem 0.5rem; font-size: 0.68rem; font-weight: 950; color: #e0f2fe; background: rgba(14,165,233,0.14); border: 1px solid rgba(56,189,248,0.24); }
+        .tk-admin-notification-title { font-weight: 900; letter-spacing: 0.01em; line-height: 1.15; }
+        .tk-admin-notification-tag { display: inline-flex; align-items: center; width: max-content; margin-top: 0.28rem; border-radius: 999px; padding: 0.16rem 0.48rem; font-size: 0.66rem; font-weight: 900; text-transform: uppercase; color: #bae6fd; background: rgba(14,165,233,0.12); border: 1px solid rgba(56,189,248,0.22); }
+        .tk-admin-notification-body { padding: 0.86rem 0.95rem 0.95rem; }
+        .tk-admin-notification-message { margin: 0; line-height: 1.42; font-size: 0.92rem; }
+        .tk-admin-notification-helper { margin: 0.65rem 0 0; color: #94a3b8; line-height: 1.42; font-size: 0.78rem; }
+        .tk-admin-notification-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; justify-content: flex-start; margin-top: 0.9rem; }
+        .tk-admin-notification-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.55rem; margin-top: 0.9rem; padding-top: 0.78rem; border-top: 1px solid rgba(148,163,184,0.14); }
+        .tk-admin-notification-nav-buttons { display: flex; gap: 0.45rem; }
+        .tk-admin-notification-nav-btn { border: 1px solid rgba(148,163,184,0.28); border-radius: 999px; padding: 0.42rem 0.72rem; color: #dbeafe; font-size: 0.76rem; font-weight: 850; cursor: pointer; background: rgba(15,23,42,0.58); }
+        .tk-admin-notification-nav-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+        .tk-admin-notification-minimize { border: 0; border-radius: 999px; padding: 0.42rem 0.72rem; color: #bae6fd; font-size: 0.76rem; font-weight: 900; cursor: pointer; background: rgba(14,165,233,0.13); }
+        .tk-admin-notification-primary { border: 0; border-radius: 999px; padding: 0.6rem 1rem; color: #022c22; font-weight: 900; cursor: pointer; background: linear-gradient(90deg, #22d3ee, #34d399); box-shadow: 0 10px 26px rgba(34,211,238,0.18); }
+        .tk-admin-notification-secondary { border: 1px solid rgba(148,163,184,0.34); border-radius: 999px; padding: 0.6rem 1rem; color: #e2e8f0; font-weight: 850; cursor: pointer; background: rgba(15,23,42,0.7); }
+        @media (max-width: 520px) { .tk-admin-notification-dock { right: 0.62rem; top: calc(4.45rem + env(safe-area-inset-top)); } .tk-admin-notification-card { width: min(330px, calc(100vw - 1.24rem)); border-radius: 19px; } }
+      `}</style>
       <header className="header">
         <div className="header-title">
           <img src={TurfKingsLogo} alt="Turf Kings logo" className="tk-logo" />
@@ -1509,55 +1728,6 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
         </section>
       )}
 
-      {isAdminViewer && (
-        <section className="card" style={premiumPanelStyle}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem", alignItems: "center" }}>
-            <span style={labelCapsuleStyle}>Admin desk</span>
-          </div>
-          <h2 style={{ marginTop: "0.85rem" }}>Pending player requests (admin only)</h2>
-
-          {pendingMembers.length === 0 ? (
-            <p className="muted">No pending requests at the moment.</p>
-          ) : (
-            <ul className="news-list">
-              {pendingMembers.map((m) => (
-                <li key={m.id} className="news-list-item">
-                  <div style={{ flex: 1 }}>
-                    <strong>{m.fullName}</strong>{" "}
-                    {m.email && (
-                      <span className="muted small">({m.email})</span>
-                    )}
-                  </div>
-
-                  <div className="actions-row" style={{ gap: "0.5rem" }}>
-                    <button
-                      type="button"
-                      className="primary-btn"
-                      onClick={() => handleApproveMember(m.id)}
-                    >
-                      Approve
-                    </button>
-
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() => handleRejectMember(m.id)}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <p className="muted small" style={{ marginTop: "0.5rem" }}>
-            Approved players will immediately appear as <strong>active</strong>{" "}
-            in the dropdown above.
-          </p>
-        </section>
-      )}
-
       {showWhatsAppReminderModal && whatsAppReminderContext && (
         <div className="modal-backdrop">
           <div className="modal" style={{ maxWidth: "520px" }}>
@@ -1734,54 +1904,120 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
         </div>
       )}
 
-      {isAdminViewer && memberDepartureAlert && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "6.2rem",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 2000,
-            padding: "0.95rem 1rem",
-            borderRadius: "0.75rem",
-            background:
-              "linear-gradient(135deg, rgba(251,191,36,0.16), #111827)",
-            border: "1px solid rgba(251,191,36,0.75)",
-            color: "#f9fafb",
-            boxShadow: "0 14px 40px rgba(15,23,42,0.9)",
-            maxWidth: "440px",
-            width: "calc(100% - 2rem)",
-            fontSize: "0.85rem",
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: "0.3rem" }}>
-            Player departure request
-          </div>
-
-          <div style={{ lineHeight: 1.5 }}>
-            <strong>{memberDepartureAlert.name}</strong> wants to leave TurfKings.
-          </div>
-
-          <div
-            className="actions-row"
-            style={{ marginTop: "0.8rem", justifyContent: "flex-start", gap: "0.6rem" }}
-          >
+      {isAdminViewer && notificationCount > 0 && (
+        <div className="tk-admin-notification-dock" aria-live="polite">
+          {!isAdminNoticePanelOpen ? (
             <button
               type="button"
-              className="primary-btn"
-              onClick={handleProcessDeparture}
+              className="tk-admin-notification-bell"
+              onClick={() => setIsAdminNoticePanelOpen(true)}
+              aria-label={`Open ${notificationCount} Turf Kings notification${notificationCount === 1 ? "" : "s"}`}
             >
-              Process Departure
+              <span aria-hidden="true">🔔</span>
+              <div className="tk-admin-notification-count">{notificationCount}</div>
             </button>
+          ) : activeAdminNotice ? (
+            <div className="tk-admin-notification-card" role="status">
+              <div className="tk-admin-notification-topline">
+                <div className="tk-admin-notification-icon" aria-hidden="true">
+                  <span>{activeAdminNotice.icon || "🔔"}</span>
+                </div>
 
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => setMemberDepartureAlert(null)}
-            >
-              Dismiss
-            </button>
-          </div>
+                <div className="tk-admin-notification-title-wrap">
+                  <div className="tk-admin-notification-title">{activeAdminNotice.title}</div>
+                  <div className="tk-admin-notification-tag">{activeAdminNotice.tag}</div>
+                </div>
+
+                <div className="tk-admin-notification-count-pill">
+                  {Math.min(activeAdminNoticeIndex + 1, notificationCount)} of {notificationCount}
+                </div>
+              </div>
+
+              <div className="tk-admin-notification-body">
+                <p className="tk-admin-notification-message">
+                  {activeAdminNotice.message}
+                </p>
+
+                <p className="tk-admin-notification-helper">
+                  {activeAdminNotice.helper}
+                </p>
+
+                {activeAdminNotice.type === "new_player" ? (
+                  <div className="tk-admin-notification-actions">
+                    <button
+                      type="button"
+                      className="tk-admin-notification-primary"
+                      onClick={async () => {
+                        await handleApproveMember(activeAdminNotice.payload?.id);
+                        await handleAcknowledgeAdminNotice(activeAdminNotice);
+                      }}
+                    >
+                      Approve
+                    </button>
+
+                    <button
+                      type="button"
+                      className="tk-admin-notification-secondary"
+                      onClick={async () => {
+                        await handleRejectMember(activeAdminNotice.payload?.id);
+                        await handleAcknowledgeAdminNotice(activeAdminNotice);
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                ) : (
+                  <div className="tk-admin-notification-actions">
+                    <button
+                      type="button"
+                      className="tk-admin-notification-primary"
+                      onClick={() => handleAcknowledgeAdminNotice(activeAdminNotice)}
+                    >
+                      Got it
+                    </button>
+                  </div>
+                )}
+
+                <div className="tk-admin-notification-nav">
+                  <div className="tk-admin-notification-nav-buttons">
+                    <button
+                      type="button"
+                      className="tk-admin-notification-nav-btn"
+                      disabled={notificationCount <= 1}
+                      onClick={() =>
+                        setActiveAdminNoticeIndex((idx) =>
+                          idx <= 0 ? notificationCount - 1 : idx - 1
+                        )
+                      }
+                    >
+                      Back
+                    </button>
+
+                    <button
+                      type="button"
+                      className="tk-admin-notification-nav-btn"
+                      disabled={notificationCount <= 1}
+                      onClick={() =>
+                        setActiveAdminNoticeIndex((idx) =>
+                          idx >= notificationCount - 1 ? 0 : idx + 1
+                        )
+                      }
+                    >
+                      Next
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="tk-admin-notification-minimize"
+                    onClick={() => setIsAdminNoticePanelOpen(false)}
+                  >
+                    Minimize
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 
