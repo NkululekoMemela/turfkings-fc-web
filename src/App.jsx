@@ -2859,19 +2859,13 @@ export default function App() {
     const startContext = {
       matchNo: activeMatchNo,
       createdAt: new Date().toISOString(),
-<<<<<<< HEAD
       currentMatch: safeStartMatch,
       teams: matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams,
       fiveVFiveTeams: getActiveFriendlyTeams(fiveVFiveTeams),
-      identity,
+      identity: pageIdentity,
       matchType,
       gameFormat,
       activeTeamIds: normalizedActiveTeamIds,
-=======
-      currentMatch,
-      teams,
-      identity: pageIdentity,
->>>>>>> main
       matchMode,
       scheduledTarget,
     };
@@ -5135,11 +5129,9 @@ export default function App() {
           peerRatingsByPlayer={peerRatingsByPlayer}
           playerPhotosByName={playerPhotosByName}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
-<<<<<<< HEAD
           activeMatchType={matchType}
           matchType={matchType}
           gameFormat={gameFormat}
-=======
           activeSeasonNo={USE_V2 ? activeSeasonNo : null}
           finalPlayerCardSnapshot={
             USE_V2
@@ -5159,7 +5151,6 @@ export default function App() {
                 })()
               : null
           }
->>>>>>> main
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
@@ -5192,7 +5183,6 @@ export default function App() {
       )}
 
       {page === PAGE_FORMATIONS && (
-<<<<<<< HEAD
         <FormationsPage
           teams={teams}
           fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
@@ -5202,26 +5192,13 @@ export default function App() {
           results={results}
           friendlyMatchDayHistory={friendlyMatchDayHistory || []}
           playerPhotosByName={playerPhotosByName}
-          identity={identity}
+          identity={pageIdentity}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
           matchType={matchType}
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
         />
-=======
-      <FormationsPage
-        teams={teams}
-        currentMatch={currentMatch}
-        currentEvents={currentEvents}
-        allEvents={allEvents}
-        results={results}
-        playerPhotosByName={playerPhotosByName}
-        identity={pageIdentity}
-        onBack={handleBackToLanding}
-        onGoToSquads={handleGoToSquads}
-      />
->>>>>>> main
       )}
 
       {showBackupModal && (

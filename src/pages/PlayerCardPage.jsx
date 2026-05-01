@@ -1838,15 +1838,25 @@ export function PlayerCardPage({
         ? round1(carry.overall)
         : currentVisibleOverall;
 
-      const displayGoals = shouldUseCarry ? Number(carry.goals || 0) : Number(stats.goals || 0);
-      const displayAssists = shouldUseCarry ? Number(carry.assists || 0) : Number(stats.assists || 0);
+      const displayGoals = shouldUseCarry
+        ? Number(carry.goals || 0)
+        : Number(visibleStats.goals || 0);
+
+      const displayAssists = shouldUseCarry
+        ? Number(carry.assists || 0)
+        : Number(visibleStats.assists || 0);
+
       const displayGkCleanSheets = shouldUseCarry
         ? Number(carry.gkCleanSheets || 0)
-        : Number(stats.gkCleanSheets || 0);
+        : Number(visibleStats.gkCleanSheets || 0);
+
       const displayDefCleanSheets = shouldUseCarry
         ? Number(carry.defCleanSheets || 0)
-        : Number(stats.defCleanSheets || 0);
-      const displayPoints = shouldUseCarry ? Number(carry.points || 0) : Number(stats.points || 0);
+        : Number(visibleStats.defCleanSheets || 0);
+
+      const displayPoints = shouldUseCarry
+        ? Number(carry.points || 0)
+        : Number(visibleStats.points || 0);
       const displayGamesPlayed = shouldUseCarry
         ? Number(carry.gamesPlayed || 0)
         : gamesPlayed;
