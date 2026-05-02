@@ -1,5 +1,5 @@
 // src/pages/LandingPage.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto1 from "../assets/TurfKings.jpg";
@@ -27,28 +27,6 @@ const activePrimaryStyle = {
   boxShadow:
     "0 0 0 1px rgba(148, 255, 255, 0.35), 0 0 24px rgba(56,189,248,0.50)",
   border: "none",
-};
-
-const headerMenuPanelStyle = {
-  marginTop: "0.4rem",
-  padding: "0.15rem 0 0.2rem",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
-  gap: "0.22rem",
-};
-
-const headerMenuTextStyle = {
-  background: "transparent",
-  border: "none",
-  padding: "0.1rem 0",
-  margin: 0,
-  color: "rgba(255,255,255,0.9)",
-  fontSize: "0.84rem",
-  fontWeight: 500,
-  lineHeight: 1.2,
-  textAlign: "left",
-  cursor: "pointer",
 };
 
 function getIdentityRole(identity) {
@@ -165,6 +143,31 @@ function renderPublicImageIcon({
   );
 }
 
+function formatMatchDurationLabel(seconds) {
+  const safeSeconds = Number(seconds);
+  if (!Number.isFinite(safeSeconds) || safeSeconds <= 0) return "Default";
+
+  const minutes = safeSeconds / 60;
+  if (minutes < 60) {
+    return `${Number.isInteger(minutes) ? minutes : minutes.toFixed(1)} min`;
+  }
+
+  const hours = minutes / 60;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hr`;
+}
+
+function secondsToEditableMinutes(seconds, fallbackSeconds = 60 * 60) {
+  const safeSeconds = Number(seconds);
+  const fallback = Number(fallbackSeconds);
+  const resolved = Number.isFinite(safeSeconds) && safeSeconds > 0
+    ? safeSeconds
+    : Number.isFinite(fallback) && fallback > 0
+      ? fallback
+      : 60 * 60;
+
+  return String(Number((resolved / 60).toFixed(2))).replace(/\.0$/, "");
+}
+
 export function LandingPage({
   teams,
   currentMatchNo,
@@ -176,6 +179,10 @@ export function LandingPage({
   gameFormat = "5_V_5",
   leagueMode = null,
   matchMode = "round_robin",
+  matchSeconds = 60 * 60,
+  defaultMatchSeconds = 60 * 60,
+  onUpdateMatchSeconds,
+  durationSwitchLocked = false,
   scheduledTarget = null,
   scheduledFixtures = [],
   smartOffset = 5,
@@ -229,10 +236,11 @@ export function LandingPage({
   );
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
-  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
-  const menuRef = useRef(null);
-
+  const [showDurationModal, setShowDurationModal] = useState(false);
+  const [durationDraftMinutes, setDurationDraftMinutes] = useState(() =>
+    secondsToEditableMinutes(matchSeconds, defaultMatchSeconds)
+  );
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth <= 480;
@@ -268,18 +276,6 @@ export function LandingPage({
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(event.target)) {
-        setShowHeaderMenu(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -293,6 +289,10 @@ export function LandingPage({
     if (!showFixturesModal) return;
     setFixtureTargetDraft(scheduledTarget ?? smartTarget ?? "");
   }, [showFixturesModal, scheduledTarget, smartTarget]);
+
+  useEffect(() => {
+    setDurationDraftMinutes(secondsToEditableMinutes(matchSeconds, defaultMatchSeconds));
+  }, [matchSeconds, defaultMatchSeconds]);
 
   const resolvedRole = useMemo(() => {
     if (activeRole === "admin") return "admin";
@@ -334,6 +334,21 @@ export function LandingPage({
     GAME_FORMAT_OPTIONS.find((option) => option.value === resolvedGameFormat) ||
     GAME_FORMAT_OPTIONS[0];
   const activeGameFormatLabel = activeGameFormatOption?.label || "5 v 5";
+  const resolvedMatchSeconds = Number.isFinite(Number(matchSeconds))
+    ? Number(matchSeconds)
+    : Number(defaultMatchSeconds || 60 * 60);
+  const resolvedDefaultMatchSeconds = Number.isFinite(Number(defaultMatchSeconds))
+    ? Number(defaultMatchSeconds)
+    : isThreeTeamLeague
+      ? 5 * 60
+      : 60 * 60;
+  const matchDurationLabel = formatMatchDurationLabel(resolvedMatchSeconds);
+  const defaultDurationLabel = formatMatchDurationLabel(resolvedDefaultMatchSeconds);
+  const durationIsCustom =
+    Math.round(resolvedMatchSeconds) !== Math.round(resolvedDefaultMatchSeconds);
+  const settingsSummary = isThreeTeamLeague
+    ? `League • ${resolvedLeagueMode === "scheduled_target" ? "Fixtured" : "Round Robin"} • ${activeGameFormatLabel} • ${matchDurationLabel}`
+    : `Friendly • ${activeGameFormatLabel} • ${matchDurationLabel}`;
   const fixturedMode =
     isThreeTeamLeague && resolvedLeagueMode === "scheduled_target";
 
@@ -577,28 +592,43 @@ export function LandingPage({
     onGenerateScheduledPlan?.(Math.round(numericTarget));
   };
 
-  const closeHeaderMenu = () => setShowHeaderMenu(false);
+  const handleApplyMatchDuration = () => {
+    if (durationSwitchLocked) {
+      window.alert("Finish or discard the live match before changing match length.");
+      return;
+    }
 
-  const isLeagueMatchType =
-    String(matchType || "").trim().toUpperCase() === "LEAGUE";
+    const minutes = Number(durationDraftMinutes);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      window.alert("Please enter a valid match length in minutes.");
+      return;
+    }
 
-  const menuItems = [
-    {
-      label: "Change Profile",
-      onClick: () => onGoToEntryDev?.(),
-      show: true,
-    },
-    {
-      label: "End Season",
-      onClick: () => onOpenEndSeasonModal?.(),
-      show: isLeagueMatchType && isAdmin && typeof onOpenEndSeasonModal === "function",
-    },
-    {
-      label: "End Match Day",
-      onClick: () => onOpenBackupModal?.(),
-      show: isLeagueMatchType && isAdmin,
-    },
-  ].filter((item) => item.show);
+    const nextSeconds = Math.round(minutes * 60);
+
+    if (Math.round(nextSeconds) !== Math.round(resolvedDefaultMatchSeconds)) {
+      const ok = window.confirm(
+        `${isThreeTeamLeague ? "League" : "Friendly"} default is ${defaultDurationLabel}.\n\nYou are changing this match type to ${formatMatchDurationLabel(nextSeconds)}. Continue only if this is intentional.`
+      );
+      if (!ok) return;
+    }
+
+    onUpdateMatchSeconds?.(nextSeconds, resolvedMatchType);
+    setShowDurationModal(false);
+  };
+
+  const handleResetMatchDuration = () => {
+    if (durationSwitchLocked) {
+      window.alert("Finish or discard the live match before changing match length.");
+      return;
+    }
+
+    setDurationDraftMinutes(
+      secondsToEditableMinutes(resolvedDefaultMatchSeconds, resolvedDefaultMatchSeconds)
+    );
+    onUpdateMatchSeconds?.(resolvedDefaultMatchSeconds, resolvedMatchType);
+    setShowDurationModal(false);
+  };
 
   return (
     <div className="page landing-page">
@@ -648,8 +678,7 @@ export function LandingPage({
         }
 
         .landing-wave-header .header-title,
-        .landing-wave-header .landing-header-divider,
-        .landing-wave-header .tk-match-mode-ribbon-lip {
+        .landing-wave-header .landing-header-divider {
           position: relative;
           z-index: 2;
         }
@@ -658,42 +687,70 @@ export function LandingPage({
           min-height: 76px;
           padding: 16px 12px 0 12px;
           box-sizing: border-box;
+          width: 100%;
+          max-width: 920px;
+          margin: 0 auto;
+        }
+
+        @media (min-width: 760px) {
+          .landing-header-sticky {
+            margin-left: 0;
+            margin-right: 0;
+          }
+
+          .landing-wave-header .header-title {
+            padding-left: 18px;
+            padding-right: 18px;
+          }
         }
 
         .landing-wave-header .landing-header-divider {
           display: none;
         }
 
-        .tk-match-mode-ribbon-lip {
+        .tk-ribbon-mode-label {
           position: absolute;
-          left: 58px;
-          bottom: -2px;
           z-index: 3;
-          height: 17px;
+          left: 14.9%;
+          top: 85.25%;
+          transform: translateY(-50%);
           display: inline-flex;
           align-items: center;
-          gap: 0.44rem;
-          color: #f8fafc;
-          font-size: 0.52rem;
-          font-weight: 950;
-          line-height: 1;
-          letter-spacing: 0.075em;
-          text-transform: uppercase;
+          gap: 6px;
           pointer-events: none;
           user-select: none;
+          color: #f8fafc;
+          font-size: clamp(0.48rem, 0.62vw, 0.68rem);
+          font-weight: 900;
+          line-height: 1;
+          letter-spacing: clamp(0.045em, 0.08vw, 0.085em);
+          text-transform: uppercase;
           white-space: nowrap;
-          text-shadow: 0 1px 9px rgba(2, 6, 23, 0.65);
+          text-shadow: 0 1px 2px rgba(2, 6, 23, 0.88);
         }
 
-        .tk-match-mode-ribbon-dot {
+        .tk-ribbon-mode-label-dot {
           width: 6px;
           height: 6px;
-          border-radius: 999px;
           flex: 0 0 auto;
-          box-shadow: 0 0 10px currentColor;
+          border-radius: 999px;
+          background: currentColor;
+          box-shadow: 0 0 8px currentColor;
+        }
+
+        @media (min-width: 760px) {
+          .tk-ribbon-mode-label {
+            font-size: clamp(0.58rem, 0.52vw, 0.72rem);
+            letter-spacing: 0.08em;
+          }
         }
 
         @media (max-width: 480px) {
+          .tk-ribbon-mode-label {
+            font-size: 0.47rem;
+            letter-spacing: 0.075em;
+          }
+
           .landing-header-sticky {
             margin: -1rem -0.75rem 0.28rem -0.75rem;
           }
@@ -713,13 +770,6 @@ export function LandingPage({
             padding: 14px 11px 0 11px;
           }
 
-          .tk-match-mode-ribbon-lip {
-            left: 56px;
-            bottom: -2px;
-            font-size: 0.50rem;
-            letter-spacing: 0.065em;
-            height: 16px;
-          }
         }
       `}</style>
       <div
@@ -783,82 +833,41 @@ export function LandingPage({
               stroke="rgba(34,211,238,0.35)"
               strokeWidth="1.2"
             />
+
           </svg>
+
+          <div className="tk-ribbon-mode-label" aria-label={modeLipLabel}>
+            <span
+              className="tk-ribbon-mode-label-dot"
+              style={{ color: modeLipDotColor }}
+              aria-hidden="true"
+            />
+            <span>{modeLipLabel}</span>
+          </div>
 
           <div className="header-title">
             <div
-              ref={menuRef}
               style={{
                 display: "flex",
                 alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: "0.75rem",
+                gap: "12px",
+                minWidth: 0,
                 width: "100%",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "12px",
-                  minWidth: 0,
-                  flex: 1,
-                }}
-              >
-                <img
-                  src={TurfKingsLogo}
-                  alt="Turf Kings logo"
-                  className="tk-logo"
-                />
-                <div style={{ minWidth: 0 }}>
-                  <h1 style={{ margin: 0 }}>Turf Kings 5-A-Side</h1>
-
-                  {showHeaderMenu && menuItems.length > 0 && (
-                    <div style={headerMenuPanelStyle}>
-                      {menuItems.map((item) => (
-                        <button
-                          key={item.label}
-                          type="button"
-                          onClick={() => {
-                            item.onClick?.();
-                            closeHeaderMenu();
-                          }}
-                          style={headerMenuTextStyle}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ flexShrink: 0, alignSelf: "flex-start" }}>
-                <button
-                  type="button"
-                  className="menu-btn"
-                  aria-label="Open navigation menu"
-                  onClick={() => setShowHeaderMenu((prev) => !prev)}
-                >
-                  ☰
-                </button>
+              <img
+                src={TurfKingsLogo}
+                alt="Turf Kings logo"
+                className="tk-logo"
+              />
+              <div style={{ minWidth: 0 }}>
+                <h1 style={{ margin: 0 }}>Turf Kings 5-A-Side</h1>
               </div>
             </div>
           </div>
 
-          <div
-            className="landing-header-divider"
-            style={{ marginTop: showHeaderMenu ? "0.45rem" : undefined }}
-          />
+          <div className="landing-header-divider" />
 
-          <div className="tk-match-mode-ribbon-lip" aria-label={modeLipLabel}>
-            <span
-              className="tk-match-mode-ribbon-dot"
-              style={{ background: modeLipDotColor, color: modeLipDotColor }}
-              aria-hidden="true"
-            />
-            {modeLipLabel}
-          </div>
         </header>
       </div>
 
@@ -867,8 +876,8 @@ export function LandingPage({
           Grand Central (CT) – Wednesdays, 17:30–19:00
         </p>
 
-        <div className="header-top-row">
-          <div className="auth-status">
+        <div className="header-top-row" style={{ width: "100%" }}>
+          <div className="auth-status" style={{ width: "100%" }}>
             <span className="auth-text">
               Viewing as <strong>{identityName}</strong>
               <span className="muted small">
@@ -877,9 +886,37 @@ export function LandingPage({
             </span>
 
             {currentUser && resolvedRole !== "spectator" && (
-              <div className="muted small" style={{ marginTop: "0.2rem" }}>
-                Google account:{" "}
-                <strong>{currentUser.displayName || currentUser.email}</strong>
+              <div
+                className="muted small"
+                style={{
+                  marginTop: "0.2rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  width: "100%",
+                  flexWrap: "nowrap",
+                }}
+              >
+                <span>
+                  Google account:{" "}
+                  <strong>{currentUser.displayName || currentUser.email}</strong>
+                </span>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => onGoToEntryDev?.()}
+                  style={{
+                    minHeight: "30px",
+                    padding: "0.28rem 0.68rem",
+                    borderRadius: "999px",
+                    fontSize: "0.76rem",
+                    fontWeight: 800,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Change Profile
+                </button>
               </div>
             )}
           </div>
@@ -911,9 +948,7 @@ export function LandingPage({
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.16rem" }}>
                 <span style={{ fontWeight: 850 }}>⚙️ Match Settings</span>
                 <span className="muted small">
-                  {isThreeTeamLeague
-                    ? `League • ${fixturedMode ? "Fixtured" : "Round Robin"} • ${activeGameFormatLabel}`
-                    : `Friendly • ${activeGameFormatLabel}`}
+                  {settingsSummary}
                 </span>
               </span>
               <span
@@ -1140,6 +1175,55 @@ export function LandingPage({
                 })}
               </div>
             </div>
+
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => {
+                setDurationDraftMinutes(
+                  secondsToEditableMinutes(resolvedMatchSeconds, resolvedDefaultMatchSeconds)
+                );
+                setShowDurationModal(true);
+              }}
+              disabled={durationSwitchLocked}
+              style={{
+                width: "100%",
+                minHeight: "48px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                borderRadius: "1rem",
+                padding: "0.65rem 0.78rem",
+                border: durationIsCustom
+                  ? "1px solid rgba(250,204,21,0.38)"
+                  : "1px solid rgba(148,163,184,0.20)",
+                background: durationIsCustom
+                  ? "linear-gradient(180deg, rgba(250,204,21,0.10), rgba(15,23,42,0.70))"
+                  : "rgba(15,23,42,0.50)",
+                color: "#e5e7eb",
+                textAlign: "left",
+              }}
+            >
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.6rem",
+                  minWidth: 0,
+                }}
+              >
+                <span aria-hidden="true" style={{ fontSize: "1.2rem" }}>⏱️</span>
+                <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                  <span style={{ fontWeight: 800 }}>Match Length</span>
+                  <span className="muted small">
+                    {matchDurationLabel}
+                    {durationIsCustom ? " • custom" : ` • default ${defaultDurationLabel}`}
+                  </span>
+                </span>
+              </span>
+              <span aria-hidden="true" className="muted small">Edit</span>
+            </button>
               </div>
             )}
           </div>
@@ -1457,7 +1541,7 @@ export function LandingPage({
               })}
             </button>
 
-            {isLeagueMatchType && isAdmin && (
+            {isThreeTeamLeague && isAdmin && (
               <button
                 className="secondary-btn"
                 onClick={onOpenBackupModal}
@@ -1473,7 +1557,7 @@ export function LandingPage({
               </button>
             )}
 
-            {isLeagueMatchType && isAdmin && typeof onOpenEndSeasonModal === "function" && (
+            {isThreeTeamLeague && isAdmin && typeof onOpenEndSeasonModal === "function" && (
               <button
                 className="secondary-btn"
                 onClick={onOpenEndSeasonModal}
@@ -1797,12 +1881,16 @@ export function LandingPage({
             className="website-btn"
             onClick={onGoToPayments}
             style={{
-              minHeight: "54px",
+              height: "48px",
+              minHeight: "48px",
+              maxHeight: "48px",
               width: "100%",
+              padding: "0 1rem",
               boxSizing: "border-box",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              lineHeight: 1,
             }}
           >
             <span
@@ -1812,19 +1900,19 @@ export function LandingPage({
                 justifyContent: "center",
                 gap: "0.5rem",
                 width: "100%",
+                height: "100%",
+                lineHeight: 1,
               }}
             >
               <span
-                aria-hidden="true"
                 style={{
-                  width: "24px",
-                  height: "24px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "1.25rem",
+                  width: 22,
+                  height: 22,
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: 20,
                   lineHeight: 1,
-                  flex: "0 0 24px",
+                  flex: "0 0 22px",
                 }}
               >
                 💳
@@ -1839,12 +1927,17 @@ export function LandingPage({
             rel="noreferrer"
             className="website-btn"
             style={{
-              minHeight: "54px",
+              height: "48px",
+              minHeight: "48px",
+              maxHeight: "48px",
               width: "100%",
+              padding: "0 1rem",
               boxSizing: "border-box",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              lineHeight: 1,
+              textDecoration: "none",
             }}
           >
             <span
@@ -1854,19 +1947,19 @@ export function LandingPage({
                 justifyContent: "center",
                 gap: "0.5rem",
                 width: "100%",
+                height: "100%",
+                lineHeight: 1,
               }}
             >
               <span
-                aria-hidden="true"
                 style={{
-                  width: "24px",
-                  height: "24px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "1.25rem",
+                  width: 22,
+                  height: 22,
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: 20,
                   lineHeight: 1,
-                  flex: "0 0 24px",
+                  flex: "0 0 22px",
                 }}
               >
                 ⚔️
@@ -1881,12 +1974,17 @@ export function LandingPage({
             rel="noreferrer"
             className="website-btn"
             style={{
-              minHeight: "54px",
+              height: "48px",
+              minHeight: "48px",
+              maxHeight: "48px",
               width: "100%",
+              padding: "0 1rem",
               boxSizing: "border-box",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              lineHeight: 1,
+              textDecoration: "none",
             }}
           >
             <span
@@ -1896,17 +1994,19 @@ export function LandingPage({
                 justifyContent: "center",
                 gap: "0.5rem",
                 width: "100%",
+                height: "100%",
+                lineHeight: 1,
               }}
             >
               <img
                 src="/WorldCup.png"
-                alt="2026 FIFA World Cup"
+                alt=""
                 style={{
-                  width: "24px",
-                  height: "24px",
+                  width: 22,
+                  height: 22,
                   objectFit: "contain",
                   display: "block",
-                  flex: "0 0 24px",
+                  flex: "0 0 22px",
                 }}
                 draggable="false"
               />
@@ -1915,6 +2015,103 @@ export function LandingPage({
           </a>
         </div>
       </section>
+
+      {showDurationModal && (
+        <div className="modal-backdrop">
+          <div
+            className="modal"
+            style={{
+              width: "min(92vw, 420px)",
+              padding: isMobile ? "1rem" : "1.15rem",
+            }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: "0.35rem" }}>⏱️ Match Length</h3>
+            <p className="muted small" style={{ marginTop: 0 }}>
+              Default for {isThreeTeamLeague ? "League" : "Friendly"}: <strong>{defaultDurationLabel}</strong>
+            </p>
+
+            <div className="field-row">
+              <label>Minutes</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type="number"
+                  min="1"
+                  max="180"
+                  step="0.5"
+                  className="text-input"
+                  value={durationDraftMinutes}
+                  onChange={(e) => setDurationDraftMinutes(e.target.value)}
+                  disabled={durationSwitchLocked}
+                  autoFocus
+                  style={{
+                    width: "100%",
+                    paddingRight: "3.15rem",
+                    boxSizing: "border-box",
+                  }}
+                />
+                <span
+                  className="muted small"
+                  style={{
+                    position: "absolute",
+                    right: "0.75rem",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                  }}
+                >
+                  min
+                </span>
+              </div>
+            </div>
+
+            {durationIsCustom && (
+              <p className="muted small" style={{ color: "#facc15", marginTop: "0.35rem" }}>
+                Custom length active.
+              </p>
+            )}
+
+            <div
+              className="actions-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: "0.55rem",
+                marginTop: "0.9rem",
+              }}
+            >
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setShowDurationModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handleApplyMatchDuration}
+                disabled={durationSwitchLocked}
+              >
+                Apply
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={handleResetMatchDuration}
+              disabled={durationSwitchLocked}
+              style={{
+                width: "100%",
+                marginTop: "0.55rem",
+                borderRadius: "999px",
+              }}
+            >
+              Reset to {defaultDurationLabel}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showFormatModal && (
         <div className="modal-backdrop">

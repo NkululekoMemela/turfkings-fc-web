@@ -22,6 +22,7 @@ export default function BottomNav({
   currentPage,
   onNavigate,
   canAccessPayments = true,
+  hidden = false,
 }) {
   const [isHidden, setIsHidden] = useState(false);
 
@@ -67,7 +68,7 @@ export default function BottomNav({
 
   return (
     <>
-      <nav className={`tk-bottom-nav-flat ${isHidden ? "is-hidden" : ""}`} aria-label="Turf Kings navigation">
+      <nav className={`tk-bottom-nav-flat ${isHidden || hidden ? "is-hidden" : ""}`} aria-label="Turf Kings navigation">
         <div className="tk-bottom-nav-inner">
           <div className="tk-bottom-nav-scroll">
             {visible.map((item) => {
@@ -141,6 +142,13 @@ export default function BottomNav({
         .tk-bottom-nav-flat.is-hidden {
           transform: translateY(calc(100% - 14px));
           opacity: .82;
+          pointer-events: auto;
+        }
+
+        .tk-bottom-nav-flat.is-hidden-by-modal {
+          transform: translateY(110%);
+          opacity: 0;
+          pointer-events: none;
         }
 
         .tk-bottom-nav-flat.is-hidden::before {

@@ -1181,19 +1181,6 @@ function LineupBoard({
   );
 
   useEffect(() => {
-    if (
-      liveLineupStateEquals(
-        lineup,
-        sanitizedLineup,
-        canonicalName,
-        playerKeyFor,
-        formationMap,
-        defaultFormationId
-      )
-    ) {
-      return;
-    }
-
     const signature = JSON.stringify({
       formationId: sanitizedLineup?.formationId || "",
       positions: sanitizedLineup?.positions || {},
@@ -1203,14 +1190,44 @@ function LineupBoard({
     });
 
     if (lastSanitizedSignatureRef.current === signature) return;
-    lastSanitizedSignatureRef.current = signature;
 
-    setLineup((prev) => ({
-      ...prev,
-      ...sanitizedLineup,
-    }));
+    setLineup((prev) => {
+      if (
+        liveLineupStateEquals(
+          prev,
+          sanitizedLineup,
+          canonicalName,
+          playerKeyFor,
+          formationMap,
+          defaultFormationId
+        )
+      ) {
+        lastSanitizedSignatureRef.current = signature;
+        return prev;
+      }
+
+      const next = {
+        ...prev,
+        ...sanitizedLineup,
+      };
+
+      const prevSignature = JSON.stringify({
+        formationId: prev?.formationId || "",
+        positions: prev?.positions || {},
+        guestPlayers: prev?.guestPlayers || [],
+        benchSnapshot: prev?.benchSnapshot || [],
+        registeredPlayers: prev?.registeredPlayers || [],
+      });
+
+      if (prevSignature === signature) {
+        lastSanitizedSignatureRef.current = signature;
+        return prev;
+      }
+
+      lastSanitizedSignatureRef.current = signature;
+      return next;
+    });
   }, [
-    lineup,
     sanitizedLineup,
     setLineup,
     canonicalName,
@@ -2896,7 +2913,7 @@ export function ThreeTeamLeagueLiveMatchPage({
       </section>
 
       {showVerifyModal && (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal live-verify-modal">
             <h3>Verify lineups before the match</h3>
             <p className="muted live-verify-note">League • {liveFormatLabel} • verify the selected on-field players before recording goals.</p>
@@ -2982,7 +2999,7 @@ export function ThreeTeamLeagueLiveMatchPage({
       )}
 
       {showConfirmModal && (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal">
             <h3>Confirm End of Match</h3>
             <p>
@@ -3014,7 +3031,7 @@ export function ThreeTeamLeagueLiveMatchPage({
       )}
 
       {showDeleteModal && (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal">
             <h3>Confirm Delete Event</h3>
             <p>To delete an event, enter any team captain&apos;s password.</p>
@@ -3053,7 +3070,7 @@ export function ThreeTeamLeagueLiveMatchPage({
       )}
 
       {showBackModal && (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal">
             <h3>Discard match &amp; go back?</h3>
             <p>
@@ -3095,7 +3112,7 @@ export function ThreeTeamLeagueLiveMatchPage({
       )}
 
       {showUndoModal && (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal">
             <h3>Undo last event?</h3>
             <p>To undo the last event, enter any team captain&apos;s password.</p>

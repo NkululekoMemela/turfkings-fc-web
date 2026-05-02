@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { LiveMatchPage } from "./pages/LiveMatchPage.jsx";
@@ -70,7 +70,10 @@ const PAGE_PAYMENT = "payment";
 const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 
 const MASTER_CODE = "3333";
-const DEFAULT_MATCH_SECONDS = 60 * 60;
+const DEFAULT_LEAGUE_MATCH_SECONDS = 5 * 60;
+const DEFAULT_FRIENDLY_MATCH_SECONDS = 60 * 60;
+const DEFAULT_MATCH_SECONDS = DEFAULT_FRIENDLY_MATCH_SECONDS;
+const MATCH_SECONDS_STORAGE_KEY = "tk_match_seconds_by_type_v1";
 
 const GUEST_OPPONENT_ID = "guest_opponent";
 const TURF_KINGS_CHALLENGE_ID = "turf_kings_challenge";
@@ -1681,6 +1684,31 @@ async function writeCameraLiveContextToFirebase(cameraLiveContext) {
   );
 }
 
+function buildCameraLiveContextSignature(cameraLiveContext) {
+  if (!cameraLiveContext) return "__camera_context_off__";
+
+  const stableContext = {
+    ...cameraLiveContext,
+    updatedAtISO: null,
+    teamAPlayers: Array.isArray(cameraLiveContext.teamAPlayers)
+      ? cameraLiveContext.teamAPlayers.map((player) => ({
+          id: player?.id || "",
+          name: player?.name || "",
+          teamId: player?.teamId || "",
+        }))
+      : [],
+    teamBPlayers: Array.isArray(cameraLiveContext.teamBPlayers)
+      ? cameraLiveContext.teamBPlayers.map((player) => ({
+          id: player?.id || "",
+          name: player?.name || "",
+          teamId: player?.teamId || "",
+        }))
+      : [],
+  };
+
+  return JSON.stringify(stableContext);
+}
+
 function buildMatchMetadata({ matchType, gameFormat, matchMode } = {}) {
   const resolvedMatchType = normalizeMatchMode(
     matchType || gameFormat,
@@ -1772,6 +1800,47 @@ function buildFriendlyMatchArchiveId({
   return `${safeFormat}__${datePart}__match-${Number(matchNo || 1)}`;
 }
 
+function getDefaultMatchSecondsForType(rawMatchType) {
+  const safeMatchType = normalizeMatchMode(rawMatchType, MATCH_TYPE.FRIENDLY);
+  return safeMatchType === MATCH_TYPE.LEAGUE
+    ? DEFAULT_LEAGUE_MATCH_SECONDS
+    : DEFAULT_FRIENDLY_MATCH_SECONDS;
+}
+
+function normalizeMatchSecondsValue(value, fallbackSeconds) {
+  const safeSeconds = Number(value);
+  const fallback = Number(fallbackSeconds);
+
+  if (Number.isFinite(safeSeconds) && safeSeconds >= 60) {
+    return Math.round(safeSeconds);
+  }
+
+  return Number.isFinite(fallback) && fallback >= 60
+    ? Math.round(fallback)
+    : DEFAULT_MATCH_SECONDS;
+}
+
+function normalizeMatchSecondsByType(value = {}) {
+  const raw = value && typeof value === "object" ? value : {};
+
+  return {
+    [MATCH_TYPE.LEAGUE]: normalizeMatchSecondsValue(
+      raw[MATCH_TYPE.LEAGUE] ?? raw.LEAGUE ?? raw.league,
+      DEFAULT_LEAGUE_MATCH_SECONDS
+    ),
+    [MATCH_TYPE.FRIENDLY]: normalizeMatchSecondsValue(
+      raw[MATCH_TYPE.FRIENDLY] ?? raw.FRIENDLY ?? raw.friendly,
+      DEFAULT_FRIENDLY_MATCH_SECONDS
+    ),
+  };
+}
+
+function getMatchSecondsForType(matchSecondsByType, rawMatchType) {
+  const safeMatchType = normalizeMatchMode(rawMatchType, MATCH_TYPE.FRIENDLY);
+  const defaults = getDefaultMatchSecondsForType(safeMatchType);
+  return normalizeMatchSecondsValue(matchSecondsByType?.[safeMatchType], defaults);
+}
+
 export default function App() {
   const [page, setPage] = useState(PAGE_ENTRY);
 
@@ -1787,6 +1856,7 @@ export default function App() {
 
   const members = useMembers();
   const [showAdminReclaimNudge, setShowAdminReclaimNudge] = useState(true);
+  const lastCameraLiveContextSignatureRef = useRef(null);
 
   const handleEntryComplete = (payload) => {
     const safePayload = ensureIdentityShape(payload);
@@ -1830,21 +1900,43 @@ export default function App() {
     }
   });
 
-  const [matchSeconds, setMatchSeconds] = useState(DEFAULT_MATCH_SECONDS);
+  const [matchSecondsByType, setMatchSecondsByType] = useState(() => {
+    if (typeof window === "undefined") {
+      return normalizeMatchSecondsByType();
+    }
+
+    try {
+      const raw = window.localStorage.getItem(MATCH_SECONDS_STORAGE_KEY);
+      return normalizeMatchSecondsByType(raw ? JSON.parse(raw) : null);
+    } catch {
+      return normalizeMatchSecondsByType();
+    }
+  });
+
   const [secondsLeft, setSecondsLeft] = useState(DEFAULT_MATCH_SECONDS);
   const [running, setRunning] = useState(false);
   const [timeUp, setTimeUp] = useState(false);
   const [hasLiveMatch, setHasLiveMatch] = useState(false);
 
-  const handleUpdateFriendlyMatchSeconds = (nextSeconds) => {
-    const safeSeconds = Number(nextSeconds);
-    if (!Number.isFinite(safeSeconds) || safeSeconds < 10 * 60) return;
+  const handleUpdateMatchSeconds = (nextSeconds, nextMatchType = matchType) => {
+    if (running || hasLiveMatch) {
+      window.alert("Finish or discard the live match before changing match length.");
+      return;
+    }
 
-    setMatchSeconds(safeSeconds);
+    const safeMatchType = normalizeMatchMode(nextMatchType, MATCH_TYPE.FRIENDLY);
+    const fallbackSeconds = getDefaultMatchSecondsForType(safeMatchType);
+    const safeSeconds = normalizeMatchSecondsValue(nextSeconds, fallbackSeconds);
 
-    // Admin duration edits intentionally reset the visible friendly timer.
-    setSecondsLeft(safeSeconds);
-    setTimeUp(false);
+    setMatchSecondsByType((prev) => ({
+      ...normalizeMatchSecondsByType(prev),
+      [safeMatchType]: safeSeconds,
+    }));
+
+    if (safeMatchType === normalizeMatchMode(matchType, MATCH_TYPE.FRIENDLY)) {
+      setSecondsLeft(safeSeconds);
+      setTimeUp(false);
+    }
   };
 
   const [pendingMatchStartContext, setPendingMatchStartContext] = useState(
@@ -1962,6 +2054,18 @@ export default function App() {
       // ignore localStorage failures
     }
   }, [smartOffset]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        MATCH_SECONDS_STORAGE_KEY,
+        JSON.stringify(normalizeMatchSecondsByType(matchSecondsByType))
+      );
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [matchSecondsByType]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -2161,6 +2265,15 @@ export default function App() {
   const activeMatchNo =
     matchType === MATCH_TYPE.LEAGUE ? leagueCurrentMatchNo : friendlyCurrentMatchNo;
 
+  const defaultMatchSeconds = getDefaultMatchSecondsForType(matchType);
+  const matchSeconds = getMatchSecondsForType(matchSecondsByType, matchType);
+
+  useEffect(() => {
+    if (running || hasLiveMatch) return;
+    setSecondsLeft(matchSeconds);
+    setTimeUp(false);
+  }, [matchType, matchSeconds, running, hasLiveMatch]);
+
   const currentCameraLaunchTeams = useMemo(() => {
     return resolveCameraLaunchTeams({
       teams: matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams,
@@ -2200,8 +2313,12 @@ export default function App() {
     currentCameraLaunchTeams,
   ]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!USE_V2) return;
+
+    const nextSignature = buildCameraLiveContextSignature(currentCameraLiveContext);
+    if (lastCameraLiveContextSignatureRef.current === nextSignature) return;
+    lastCameraLiveContextSignatureRef.current = nextSignature;
 
     let cancelled = false;
 
@@ -4405,7 +4522,7 @@ export default function App() {
     PAGE_PEER_REVIEW,
   ]);
 
-  const showBottomNav = pagesWithBottomNav.has(page);
+  const showBottomNav = pagesWithBottomNav.has(page) && page !== PAGE_LIVE;
 
   const handleBottomNavNavigate = (targetPage) => {
     if (!targetPage || targetPage === page) return;
@@ -4879,6 +4996,10 @@ export default function App() {
           hasLiveMatch={hasLiveMatch}
           matchType={matchType}
           gameFormat={gameFormat}
+          matchSeconds={matchSeconds}
+          defaultMatchSeconds={defaultMatchSeconds}
+          onUpdateMatchSeconds={handleUpdateMatchSeconds}
+          durationSwitchLocked={hasLiveMatch || running}
           activeTeamIds={normalizedActiveTeamIds}
           matchMode={matchMode}
           scheduledTarget={scheduledTarget}
@@ -4974,7 +5095,7 @@ export default function App() {
           pendingMatchStartContext={pendingMatchStartContext}
           matchType={pendingMatchStartContext?.matchType || matchType}
           gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
-          onUpdateMatchSeconds={handleUpdateFriendlyMatchSeconds}
+          onUpdateMatchSeconds={handleUpdateMatchSeconds}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={playerPhotosByName}
