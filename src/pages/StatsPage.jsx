@@ -1704,7 +1704,40 @@ export function StatsPage({
   const canAdminEditThisView =
     isAdminUser && !isViewingPreviousSeason && viewMode === "current";
 
+  const isCurrentFriendlyWeekView =
+    showFriendlyStats &&
+    friendlyMonthScope === CURRENT_SCOPE &&
+    viewMode === "current" &&
+    !isViewingPreviousSeason;
+
+  const isEditableCurrentFriendlyWeekRecord = useCallback(
+    (record = {}) => {
+      if (!isCurrentFriendlyWeekView) return false;
+      return isFriendlyRecordInWindow(record, "current");
+    },
+    [isCurrentFriendlyWeekView, friendlyDateWindow, friendlyMonthScope]
+  );
+
+  const blockNonCurrentFriendlyEdit = useCallback(() => {
+    window.alert(
+      "Editing is locked: only current-week friendly matches can be edited."
+    );
+  }, []);
+
+  const [isManagingFriendlyDay, setIsManagingFriendlyDay] = useState(false);
+
+  const friendlyAdminToolsActive =
+    isAdminUser &&
+    isCurrentFriendlyWeekView &&
+    isManagingFriendlyDay;
+
+  const adminEditingToolsActive = showFriendlyStats
+    ? friendlyAdminToolsActive
+    : canAdminEditThisView;
+
   const [editingEventId, setEditingEventId] = useState(null);
+  const [editingEventRecord, setEditingEventRecord] = useState(null);
+  const [pendingDeleteEvent, setPendingDeleteEvent] = useState(null);
   const [eventDraft, setEventDraft] = useState({
     scorer: "",
     assist: "",
@@ -1713,7 +1746,11 @@ export function StatsPage({
   });
 
   const startEditEvent = (e) => {
-    if (!canAdminEditThisView) return;
+    if (!adminEditingToolsActive) return;
+    if (showFriendlyStats && !isEditableCurrentFriendlyWeekRecord(e)) {
+      blockNonCurrentFriendlyEdit();
+      return;
+    }
     if (e?.type === "clean_sheet") {
       window.alert(
         "Clean-sheet events are generated from verified lineups and match result. Edit the score/result instead of editing this event directly."
@@ -1722,6 +1759,7 @@ export function StatsPage({
     }
 
     setEditingEventId(String(e?.id || ""));
+    setEditingEventRecord(e || null);
     setEventDraft({
       scorer: e?.scorer || "",
       assist: e?.assist || "",
@@ -1732,6 +1770,7 @@ export function StatsPage({
 
   const cancelEditEvent = () => {
     setEditingEventId(null);
+    setEditingEventRecord(null);
     setEventDraft({
       scorer: "",
       assist: "",
@@ -1740,8 +1779,12 @@ export function StatsPage({
     });
   };
 
-  const saveEditEvent = (e) => {
-    if (!canAdminEditThisView) return;
+  const saveEditEvent = (e = editingEventRecord) => {
+    if (!adminEditingToolsActive) return;
+    if (showFriendlyStats && !isEditableCurrentFriendlyWeekRecord(e)) {
+      blockNonCurrentFriendlyEdit();
+      return;
+    }
     if (typeof onUpdateSavedEvent !== "function") return;
 
     const scorer = String(eventDraft?.scorer || "").trim();
@@ -1763,6 +1806,7 @@ export function StatsPage({
   };
 
   const [addingForMatchKey, setAddingForMatchKey] = useState(null);
+  const [addingMatchRecord, setAddingMatchRecord] = useState(null);
   const [newEventDraft, setNewEventDraft] = useState({
     scorer: "",
     assist: "",
@@ -1771,9 +1815,14 @@ export function StatsPage({
   });
 
   const startAddEvent = (r, defaultTeamId = "") => {
-    if (!canAdminEditThisView) return;
+    if (!adminEditingToolsActive) return;
+    if (showFriendlyStats && !isEditableCurrentFriendlyWeekRecord(r)) {
+      blockNonCurrentFriendlyEdit();
+      return;
+    }
 
     setAddingForMatchKey(matchKeyOf(r));
+    setAddingMatchRecord(r || null);
     setNewEventDraft({
       scorer: "",
       assist: "",
@@ -1784,6 +1833,7 @@ export function StatsPage({
 
   const cancelAddEvent = () => {
     setAddingForMatchKey(null);
+    setAddingMatchRecord(null);
     setNewEventDraft({
       scorer: "",
       assist: "",
@@ -1792,8 +1842,12 @@ export function StatsPage({
     });
   };
 
-  const saveAddEvent = (r) => {
-    if (!canAdminEditThisView) return;
+  const saveAddEvent = (r = addingMatchRecord) => {
+    if (!adminEditingToolsActive) return;
+    if (showFriendlyStats && !isEditableCurrentFriendlyWeekRecord(r)) {
+      blockNonCurrentFriendlyEdit();
+      return;
+    }
     if (typeof onAddSavedEvent !== "function") return;
 
     const scorer = String(newEventDraft?.scorer || "").trim();
@@ -1866,7 +1920,7 @@ export function StatsPage({
     isAdminUser &&
     !isViewingPreviousSeason &&
     typeof onDeleteSavedMatch === "function" &&
-    (canAdminEditThisView || showFriendlyStats);
+    adminEditingToolsActive;
 
   const handleDeleteMatch = (recordOrMatchNo) => {
     if (!canDeleteFromThisView) return;
@@ -1875,6 +1929,13 @@ export function StatsPage({
       recordOrMatchNo &&
       typeof recordOrMatchNo === "object" &&
       !Array.isArray(recordOrMatchNo);
+
+    if (showFriendlyStats) {
+      if (!isRecord || !isEditableCurrentFriendlyWeekRecord(recordOrMatchNo)) {
+        blockNonCurrentFriendlyEdit();
+        return;
+      }
+    }
 
     const matchNo = isRecord ? recordOrMatchNo?.matchNo : recordOrMatchNo;
     const recordMatchType = isRecord
@@ -1925,21 +1986,49 @@ export function StatsPage({
   };
 
   const handleDeleteEvent = (e) => {
-    if (!canAdminEditThisView) return;
+    if (!adminEditingToolsActive) return;
+    if (showFriendlyStats && !isEditableCurrentFriendlyWeekRecord(e)) {
+      blockNonCurrentFriendlyEdit();
+      return;
+    }
     if (typeof onDeleteSavedEvent !== "function") return;
 
-    const eventLabel =
-      e?.type === "clean_sheet"
-        ? `${e?.playerName || e?.scorer || "this player"} clean-sheet event`
-        : `${e?.scorer || "this player"} event`;
+    if (e?.type === "clean_sheet") {
+      window.alert(
+        "Clean-sheet events are generated from verified lineups and match result. Edit the score/result instead of deleting this event directly."
+      );
+      return;
+    }
 
-    const ok = window.confirm(
-      `Delete ${eventLabel}?\n\nThe score and standings will now update automatically from the remaining events.`
-    );
-    if (!ok) return;
-
-    onDeleteSavedEvent(e?.id);
+    setPendingDeleteEvent(e || null);
   };
+
+  const cancelDeleteEvent = () => {
+    setPendingDeleteEvent(null);
+  };
+
+  const confirmDeleteEvent = () => {
+    if (!adminEditingToolsActive) return;
+    if (showFriendlyStats && !isEditableCurrentFriendlyWeekRecord(pendingDeleteEvent)) {
+      blockNonCurrentFriendlyEdit();
+      return;
+    }
+    if (typeof onDeleteSavedEvent !== "function") return;
+    if (!pendingDeleteEvent?.id) return;
+
+    onDeleteSavedEvent(pendingDeleteEvent.id);
+    setPendingDeleteEvent(null);
+  };
+
+  useEffect(() => {
+    if (!showFriendlyStats || isManagingFriendlyDay) return;
+
+    setEditingEventId(null);
+    setEditingEventRecord(null);
+    setPendingDeleteEvent(null);
+    setAddingForMatchKey(null);
+    setAddingMatchRecord(null);
+  }, [showFriendlyStats, isManagingFriendlyDay]);
 
   const inactivityTimerRef = useRef(null);
 
@@ -1986,7 +2075,6 @@ export function StatsPage({
   }, [cameFromLive, onBack]);
 
   const [activeTab, setActiveTab] = useState("teams");
-  const [isManagingFriendlyDay, setIsManagingFriendlyDay] = useState(false);
 
   useEffect(() => {
     if (
@@ -2007,18 +2095,30 @@ export function StatsPage({
 
 
   useEffect(() => {
-    if (
+    const shouldAutoOpenCurrentWeekFriendlyTable =
       showFriendlyStats &&
       activeTab === "matches" &&
       viewMode === "current" &&
-      sortedResults.length > 0
-    ) {
+      friendlyMonthScope === CURRENT_SCOPE &&
+      sortedResults.length > 0;
+
+    if (shouldAutoOpenCurrentWeekFriendlyTable) {
+      // Perfect Table 1 rule: when users land on Current Week friendlies,
+      // the latest/top friendly match opens automatically to show scorers + assists.
       setExpandedMatchKey(matchKeyOf(sortedResults[0]));
       return;
     }
 
     setExpandedMatchKey(null);
-  }, [matchDayFilter, seasonScope, viewMode, showFriendlyStats, activeTab, sortedResults]);
+  }, [
+    matchDayFilter,
+    seasonScope,
+    viewMode,
+    friendlyMonthScope,
+    showFriendlyStats,
+    activeTab,
+    sortedResults,
+  ]);
 
   const currentSeasonRange = useMemo(() => {
     const now = new Date();
@@ -2163,6 +2263,64 @@ export function StatsPage({
       };
 
 
+  const editModalPlayers = editingEventId ? getPlayersForTeam(eventDraft.teamId) : [];
+  const editModalAssistPlayers = editModalPlayers.filter(
+    (name) => name !== eventDraft.scorer
+  );
+
+  const editModalTeamOptions = (() => {
+    const seen = new Set();
+    const options = [];
+
+    (scopedTeams || []).forEach((team) => {
+      const id = String(team?.id || team?.label || "").trim();
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      options.push({ id, label: team?.label || id });
+    });
+
+    const currentTeamId = String(eventDraft.teamId || editingEventRecord?.teamId || "").trim();
+    if (currentTeamId && !seen.has(currentTeamId)) {
+      options.unshift({ id: currentTeamId, label: getTeamName(currentTeamId) });
+    }
+
+    return options;
+  })();
+
+  const addModalPlayers = addingForMatchKey ? getPlayersForTeam(newEventDraft.teamId) : [];
+  const addModalAssistPlayers = addModalPlayers.filter(
+    (name) => name !== newEventDraft.scorer
+  );
+
+  const addModalTeamOptions = (() => {
+    const seen = new Set();
+    const options = [];
+
+    const addOption = (id, label) => {
+      const safeId = String(id || "").trim();
+      if (!safeId || seen.has(safeId)) return;
+      seen.add(safeId);
+      options.push({ id: safeId, label: label || getTeamName(safeId) || safeId });
+    };
+
+    if (addingMatchRecord) {
+      addOption(addingMatchRecord.teamAId, getTeamName(addingMatchRecord.teamAId));
+      addOption(addingMatchRecord.teamBId, getTeamName(addingMatchRecord.teamBId));
+    }
+
+    (scopedTeams || []).forEach((team) => {
+      const id = String(team?.id || team?.label || "").trim();
+      addOption(id, team?.label || id);
+    });
+
+    const currentTeamId = String(newEventDraft.teamId || addingMatchRecord?.teamAId || "").trim();
+    if (currentTeamId && !seen.has(currentTeamId)) {
+      options.unshift({ id: currentTeamId, label: getTeamName(currentTeamId) });
+    }
+
+    return options;
+  })();
+
 
   return (
     <div className="page stats-page">
@@ -2218,6 +2376,7 @@ export function StatsPage({
           </button>
         </div>
       </div>
+
 
       {!showFriendlyStats && (
       <section className="card">
@@ -2658,7 +2817,7 @@ export function StatsPage({
                   ? "Player Rankings — Current Season"
                   : "Player Rankings — Current Week"}
           </h2>
-          <div className="table-wrapper tk-scroll-table-wrapper tk-player-identity-table tk-player-small-table">
+          <div className="table-wrapper tk-scroll-table-wrapper tk-player-identity-table tk-player-summary-table">
             <table className="stats-table">
               <thead>
                 <tr>
@@ -2864,6 +3023,13 @@ export function StatsPage({
               : "Tap a match row to see goal scorers and assists for that game."}
           </p>
 
+          {showFriendlyStats && isAdminUser && isManagingFriendlyDay && (
+            <div className="tk-friendly-admin-ethics-banner tk-friendly-admin-ethics-inline" aria-label="Friendly admin editing guidance">
+              <strong>Friendly admin tools</strong> are for resolving conflicts and contested outcomes only.
+              Do not misuse them to doctor official scores, because that will damage team confidence.
+            </div>
+          )}
+
           {viewMode === "season" && !showFriendlyStats && (
             <div className="tk-matchday-filter-row">
               <button
@@ -2892,7 +3058,7 @@ export function StatsPage({
             </div>
           )}
 
-          {showFriendlyStats && viewMode === "current" && friendlyMonthScope === CURRENT_SCOPE ? (
+          {false ? (
             <div className="tk-friendly-recap-wrap">
               {sortedResults.length === 0 ? (
                 <p className="muted">No matches played yet.</p>
@@ -2935,108 +3101,24 @@ export function StatsPage({
                             </div>
 
                             <div className="tk-friendly-manage-actions">
-                              {canAdminEditThisView && typeof onAddSavedEvent === "function" && (
+                              {adminEditingToolsActive && typeof onAddSavedEvent === "function" && (
                                 <button
                                   type="button"
-                                  className="tk-edit-btn"
+                                  className="tk-admin-compact-btn primary"
                                   onClick={() => startAddEvent(r, r.teamAId)}
                                 >
-                                  Add missing goal
+                                  + Goal
                                 </button>
                               )}
 
                               <button
                                 type="button"
-                                className="tk-danger-btn"
+                                className="tk-admin-compact-btn danger"
                                 onClick={() => handleDeleteMatch(r)}
                               >
-                                Delete Friendly Day
+                                Delete Match
                               </button>
                             </div>
-
-                            {addingForMatchKey === mk && (
-                              <div className="tk-admin-panel tk-admin-panel-spaced">
-                                <div className="tk-admin-grid">
-                                  <div>
-                                    <label className="tk-small-label">Scorer</label>
-                                    <select
-                                      className="tk-small-select"
-                                      value={newEventDraft.scorer}
-                                      onChange={(evt) =>
-                                        setNewEventDraft((prev) => ({
-                                          ...prev,
-                                          scorer: evt.target.value,
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Select player</option>
-                                      {getPlayersForTeam(newEventDraft.teamId).map((name) => (
-                                        <option key={`friendly-add-scorer-${name}`} value={name}>
-                                          {name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  <div>
-                                    <label className="tk-small-label">Assist</label>
-                                    <select
-                                      className="tk-small-select"
-                                      value={newEventDraft.assist || ""}
-                                      onChange={(evt) =>
-                                        setNewEventDraft((prev) => ({
-                                          ...prev,
-                                          assist: evt.target.value,
-                                        }))
-                                      }
-                                    >
-                                      <option value="">None</option>
-                                      {getPlayersForTeam(newEventDraft.teamId)
-                                        .filter((name) => name !== newEventDraft.scorer)
-                                        .map((name) => (
-                                          <option key={`friendly-add-assist-${name}`} value={name}>
-                                            {name}
-                                          </option>
-                                        ))}
-                                    </select>
-                                  </div>
-
-                                  <div>
-                                    <label className="tk-small-label">Team</label>
-                                    <select
-                                      className="tk-small-select"
-                                      value={newEventDraft.teamId}
-                                      onChange={(evt) =>
-                                        setNewEventDraft((prev) => ({
-                                          ...prev,
-                                          teamId: evt.target.value,
-                                        }))
-                                      }
-                                    >
-                                      <option value={r.teamAId}>{teamAName}</option>
-                                      <option value={r.teamBId}>{teamBName}</option>
-                                    </select>
-                                  </div>
-                                </div>
-
-                                <div className="tk-inline-actions">
-                                  <button
-                                    type="button"
-                                    className="tk-edit-btn"
-                                    onClick={() => saveAddEvent(r)}
-                                  >
-                                    Save new goal
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="secondary-btn"
-                                    onClick={cancelAddEvent}
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </div>
-                            )}
                           </div>
                         )}
 
@@ -3056,8 +3138,7 @@ export function StatsPage({
                                 eventTeamName && eventTeamName !== "Unknown"
                                   ? `, ${eventTeamName}`
                                   : "";
-                              const isEditingThisEvent =
-                                editingEventId === String(e?.id || "");
+                              const isEditingThisEvent = false;
                               const editPlayers = getPlayersForTeam(eventDraft.teamId);
                               const editAssistPlayers = editPlayers.filter(
                                 (name) => name !== eventDraft.scorer
@@ -3084,21 +3165,25 @@ export function StatsPage({
                                     {assistPart}
                                     {teamSuffix}
 
-                                    {isManagingFriendlyDay && canAdminEditThisView && !isEditingThisEvent && (
-                                      <span className="tk-friendly-event-actions">
+                                    {isManagingFriendlyDay && adminEditingToolsActive && !isEditingThisEvent && (
+                                      <span className="tk-friendly-event-actions tk-mini-admin-actions">
                                         <button
                                           type="button"
-                                          className="tk-linkish-btn"
+                                          className="tk-mini-admin-btn"
+                                          title="Edit goal"
+                                          aria-label="Edit goal"
                                           onClick={() => startEditEvent(e)}
                                         >
-                                          Edit
+                                          ✎
                                         </button>
                                         <button
                                           type="button"
-                                          className="tk-linkish-btn"
+                                          className="tk-mini-admin-btn danger"
+                                          title="Delete goal"
+                                          aria-label="Delete goal"
                                           onClick={() => handleDeleteEvent(e)}
                                         >
-                                          Delete
+                                          ×
                                         </button>
                                       </span>
                                     )}
@@ -3315,8 +3400,7 @@ export function StatsPage({
                                     e.type,
                                     e.role
                                   );
-                                  const isEditingThisEvent =
-                                    editingEventId === String(e?.id || "");
+                                  const isEditingThisEvent = false;
 
                                   return (
                                     <div key={(e.id || i) + "-a"} className="scorer-line">
@@ -3333,28 +3417,32 @@ export function StatsPage({
                                             ) : null}
                                           </div>
 
-                                          {canAdminEditThisView && (
-                                            <div>
+                                          {adminEditingToolsActive && (
+                                            <div className="tk-mini-admin-actions">
                                               <button
                                                 type="button"
-                                                className="tk-linkish-btn"
-                                                onClick={(evt) => {
-                                                  evt.stopPropagation();
-                                                  startEditEvent(e);
-                                                }}
-                                              >
-                                                Edit
-                                              </button>
+                                                className="tk-mini-admin-btn"
+                                              title="Edit goal"
+                                              aria-label="Edit goal"
+                                              onClick={(evt) => {
+                                                evt.stopPropagation();
+                                                startEditEvent(e);
+                                              }}
+                                            >
+                                              ✎
+                                            </button>
                                               <button
                                                 type="button"
-                                                className="tk-linkish-btn"
-                                                onClick={(evt) => {
-                                                  evt.stopPropagation();
-                                                  handleDeleteEvent(e);
-                                                }}
-                                              >
-                                                Delete
-                                              </button>
+                                                className="tk-mini-admin-btn danger"
+                                              title="Delete goal"
+                                              aria-label="Delete goal"
+                                              onClick={(evt) => {
+                                                evt.stopPropagation();
+                                                handleDeleteEvent(e);
+                                              }}
+                                            >
+                                              ×
+                                            </button>
                                             </div>
                                           )}
                                         </div>
@@ -3488,8 +3576,7 @@ export function StatsPage({
                                     e.type,
                                     e.role
                                   );
-                                  const isEditingThisEvent =
-                                    editingEventId === String(e?.id || "");
+                                  const isEditingThisEvent = false;
 
                                   return (
                                     <div key={(e.id || i) + "-b"} className="scorer-line">
@@ -3506,28 +3593,32 @@ export function StatsPage({
                                             ) : null}
                                           </div>
 
-                                          {canAdminEditThisView && (
-                                            <div>
+                                          {adminEditingToolsActive && (
+                                            <div className="tk-mini-admin-actions">
                                               <button
                                                 type="button"
-                                                className="tk-linkish-btn"
-                                                onClick={(evt) => {
-                                                  evt.stopPropagation();
-                                                  startEditEvent(e);
-                                                }}
-                                              >
-                                                Edit
-                                              </button>
+                                                className="tk-mini-admin-btn"
+                                              title="Edit goal"
+                                              aria-label="Edit goal"
+                                              onClick={(evt) => {
+                                                evt.stopPropagation();
+                                                startEditEvent(e);
+                                              }}
+                                            >
+                                              ✎
+                                            </button>
                                               <button
                                                 type="button"
-                                                className="tk-linkish-btn"
-                                                onClick={(evt) => {
-                                                  evt.stopPropagation();
-                                                  handleDeleteEvent(e);
-                                                }}
-                                              >
-                                                Delete
-                                              </button>
+                                                className="tk-mini-admin-btn danger"
+                                              title="Delete goal"
+                                              aria-label="Delete goal"
+                                              onClick={(evt) => {
+                                                evt.stopPropagation();
+                                                handleDeleteEvent(e);
+                                              }}
+                                            >
+                                              ×
+                                            </button>
                                             </div>
                                           )}
                                         </div>
@@ -3649,7 +3740,7 @@ export function StatsPage({
                             )}
                           </td>
                           <td>
-                            {(canAdminEditThisView || canDeleteFromThisView) && (
+                            {(adminEditingToolsActive || canDeleteFromThisView) && (
                               <div
                                 className="tk-match-admin-box"
                                 onClick={(evt) => evt.stopPropagation()}
@@ -3659,135 +3750,26 @@ export function StatsPage({
                                 </div>
 
                                 <div className="tk-match-admin-row">
-                                  {canAdminEditThisView && typeof onAddSavedEvent === "function" && (
+                                  {adminEditingToolsActive && typeof onAddSavedEvent === "function" && (
                                     <button
                                       type="button"
-                                      className="tk-edit-btn"
+                                      className="tk-admin-compact-btn primary"
                                       onClick={() => startAddEvent(r, r.teamAId)}
                                     >
-                                      Add event
+                                      + Goal
                                     </button>
                                   )}
 
                                   {canDeleteFromThisView && (
                                     <button
                                       type="button"
-                                      className="tk-danger-btn"
+                                      className="tk-admin-compact-btn danger"
                                       onClick={() => handleDeleteMatch(r)}
                                     >
-                                      {showFriendlyStats ? "Delete Friendly Day" : "Delete match"}
+                                      {showFriendlyStats ? "Delete Match" : "Delete match"}
                                     </button>
                                   )}
                                 </div>
-
-                                {isAddingEvent && (
-                                  <div className="tk-admin-panel tk-admin-panel-spaced">
-                                    <div className="tk-admin-grid">
-                                      <div>
-                                        <label className="tk-small-label">
-                                          Scorer
-                                        </label>
-                                        <select
-                                          className="tk-small-select"
-                                          value={newEventDraft.scorer}
-                                          onChange={(evt) =>
-                                            setNewEventDraft((prev) => ({
-                                              ...prev,
-                                              scorer: evt.target.value,
-                                            }))
-                                          }
-                                        >
-                                          <option value="">Select player</option>
-                                          {addPlayers.map((name) => (
-                                            <option
-                                              key={`add-scorer-${name}`}
-                                              value={name}
-                                            >
-                                              {name}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div>
-                                        <label className="tk-small-label">
-                                          Assist
-                                        </label>
-                                        <select
-                                          className="tk-small-select"
-                                          value={newEventDraft.assist || ""}
-                                          onChange={(evt) =>
-                                            setNewEventDraft((prev) => ({
-                                              ...prev,
-                                              assist: evt.target.value,
-                                            }))
-                                          }
-                                        >
-                                          <option value="">None</option>
-                                          {addAssistPlayers.map((name) => (
-                                            <option
-                                              key={`add-assist-${name}`}
-                                              value={name}
-                                            >
-                                              {name}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div>
-                                        <label className="tk-small-label">
-                                          Type
-                                        </label>
-                                        <select
-                                          className="tk-small-select"
-                                          value={newEventDraft.type}
-                                          onChange={(evt) =>
-                                            setNewEventDraft((prev) => ({
-                                              ...prev,
-                                              type: evt.target.value,
-                                            }))
-                                          }
-                                        >
-                                          <option value="goal">goal</option>
-                                        </select>
-                                      </div>
-                                      <div>
-                                        <label className="tk-small-label">
-                                          Team
-                                        </label>
-                                        <select
-                                          className="tk-small-select"
-                                          value={newEventDraft.teamId}
-                                          onChange={(evt) =>
-                                            setNewEventDraft((prev) => ({
-                                              ...prev,
-                                              teamId: evt.target.value,
-                                            }))
-                                          }
-                                        >
-                                          <option value={r.teamAId}>{teamAName}</option>
-                                          <option value={r.teamBId}>{teamBName}</option>
-                                        </select>
-                                      </div>
-                                    </div>
-
-                                    <div className="tk-inline-actions">
-                                      <button
-                                        type="button"
-                                        className="tk-edit-btn"
-                                        onClick={() => saveAddEvent(r)}
-                                      >
-                                        Save new event
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="secondary-btn"
-                                        onClick={cancelAddEvent}
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             )}
                           </td>
@@ -3803,7 +3785,535 @@ export function StatsPage({
         </section>
       )}
 
+
+      {editingEventId && editingEventRecord && (
+        <div
+          className="tk-edit-goal-modal-backdrop"
+          role="presentation"
+          onClick={cancelEditEvent}
+        >
+          <div
+            className="tk-edit-goal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit goal"
+            onClick={(evt) => evt.stopPropagation()}
+          >
+            <div className="tk-edit-goal-modal-head">
+              <div>
+                <div className="tk-edit-goal-kicker">Admin edit</div>
+                <h3>Edit goal</h3>
+              </div>
+              <button
+                type="button"
+                className="tk-edit-goal-modal-close"
+                onClick={cancelEditEvent}
+                aria-label="Close edit goal popup"
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="tk-edit-goal-modal-grid">
+              <div>
+                <label className="tk-small-label">Team</label>
+                <select
+                  className="tk-small-select tk-modal-select"
+                  value={eventDraft.teamId}
+                  onChange={(evt) =>
+                    setEventDraft((prev) => ({
+                      ...prev,
+                      teamId: evt.target.value,
+                    }))
+                  }
+                >
+                  {editModalTeamOptions.map((team) => (
+                    <option key={`modal-edit-team-${team.id}`} value={team.id}>
+                      {team.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="tk-small-label">Scorer</label>
+                <select
+                  className="tk-small-select tk-modal-select"
+                  value={eventDraft.scorer}
+                  onChange={(evt) =>
+                    setEventDraft((prev) => ({
+                      ...prev,
+                      scorer: evt.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Select player</option>
+                  {editModalPlayers.map((name) => (
+                    <option key={`modal-edit-scorer-${name}`} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="tk-small-label">Assist</label>
+                <select
+                  className="tk-small-select tk-modal-select"
+                  value={eventDraft.assist || ""}
+                  onChange={(evt) =>
+                    setEventDraft((prev) => ({
+                      ...prev,
+                      assist: evt.target.value,
+                    }))
+                  }
+                >
+                  <option value="">None</option>
+                  {editModalAssistPlayers.map((name) => (
+                    <option key={`modal-edit-assist-${name}`} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="tk-edit-goal-modal-actions">
+              <button
+                type="button"
+                className="tk-edit-goal-save-btn"
+                onClick={() => saveEditEvent()}
+              >
+                Save edit
+              </button>
+              <button
+                type="button"
+                className="tk-edit-goal-cancel-btn"
+                onClick={cancelEditEvent}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addingForMatchKey && addingMatchRecord && (
+        <div
+          className="tk-edit-goal-modal-backdrop"
+          role="presentation"
+          onClick={cancelAddEvent}
+        >
+          <div
+            className="tk-edit-goal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add goal"
+            onClick={(evt) => evt.stopPropagation()}
+          >
+            <div className="tk-edit-goal-modal-head">
+              <div>
+                <div className="tk-edit-goal-kicker">Admin add</div>
+                <h3>Add goal</h3>
+              </div>
+              <button
+                type="button"
+                className="tk-edit-goal-modal-close"
+                onClick={cancelAddEvent}
+                aria-label="Close add goal popup"
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="tk-edit-goal-modal-grid">
+              <div>
+                <label className="tk-small-label">Team</label>
+                <select
+                  className="tk-small-select tk-modal-select"
+                  value={newEventDraft.teamId}
+                  onChange={(evt) =>
+                    setNewEventDraft((prev) => ({
+                      ...prev,
+                      teamId: evt.target.value,
+                    }))
+                  }
+                >
+                  {addModalTeamOptions.map((team) => (
+                    <option key={`modal-add-team-${team.id}`} value={team.id}>
+                      {team.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="tk-small-label">Scorer</label>
+                <select
+                  className="tk-small-select tk-modal-select"
+                  value={newEventDraft.scorer}
+                  onChange={(evt) =>
+                    setNewEventDraft((prev) => ({
+                      ...prev,
+                      scorer: evt.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Select player</option>
+                  {addModalPlayers.map((name) => (
+                    <option key={`modal-add-scorer-${name}`} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="tk-small-label">Assist</label>
+                <select
+                  className="tk-small-select tk-modal-select"
+                  value={newEventDraft.assist || ""}
+                  onChange={(evt) =>
+                    setNewEventDraft((prev) => ({
+                      ...prev,
+                      assist: evt.target.value,
+                    }))
+                  }
+                >
+                  <option value="">None</option>
+                  {addModalAssistPlayers.map((name) => (
+                    <option key={`modal-add-assist-${name}`} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="tk-edit-goal-modal-actions">
+              <button
+                type="button"
+                className="tk-edit-goal-save-btn"
+                onClick={() => saveAddEvent()}
+              >
+                Save goal
+              </button>
+              <button
+                type="button"
+                className="tk-edit-goal-cancel-btn"
+                onClick={cancelAddEvent}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {pendingDeleteEvent && (
+        <div
+          className="tk-edit-goal-modal-backdrop"
+          role="presentation"
+          onClick={cancelDeleteEvent}
+        >
+          <div
+            className="tk-edit-goal-modal tk-delete-goal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delete goal"
+            onClick={(evt) => evt.stopPropagation()}
+          >
+            <div className="tk-edit-goal-modal-head">
+              <div>
+                <div className="tk-edit-goal-kicker">Admin delete</div>
+                <h3>Delete goal?</h3>
+              </div>
+              <button
+                type="button"
+                className="tk-edit-goal-modal-close"
+                onClick={cancelDeleteEvent}
+                aria-label="Close delete goal popup"
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="tk-delete-goal-summary">
+              <div className="tk-delete-goal-line">
+                <span>Scorer</span>
+                <strong>{getPreferredStatsDisplayName(
+                  resolveCanonicalName(pendingDeleteEvent?.scorer || pendingDeleteEvent?.playerName || ""),
+                  resolveShortDisplay(resolveCanonicalName(pendingDeleteEvent?.scorer || pendingDeleteEvent?.playerName || ""))
+                ) || pendingDeleteEvent?.scorer || "Unknown"}</strong>
+              </div>
+
+              {pendingDeleteEvent?.assist && (
+                <div className="tk-delete-goal-line">
+                  <span>Assist</span>
+                  <em>{getPreferredStatsDisplayName(
+                    resolveCanonicalName(pendingDeleteEvent.assist),
+                    resolveShortDisplay(resolveCanonicalName(pendingDeleteEvent.assist))
+                  ) || pendingDeleteEvent.assist}</em>
+                </div>
+              )}
+
+              <div className="tk-delete-goal-line">
+                <span>Team</span>
+                <strong>{getTeamName(pendingDeleteEvent?.teamId)}</strong>
+              </div>
+            </div>
+
+            <p className="tk-delete-goal-warning">
+              This tool is only for resolving conflicts or contested outcomes.
+              Do not use it to doctor official scores.
+            </p>
+
+            <div className="tk-edit-goal-modal-actions">
+              <button
+                type="button"
+                className="tk-edit-goal-cancel-btn"
+                onClick={cancelDeleteEvent}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="tk-delete-goal-confirm-btn"
+                onClick={confirmDeleteEvent}
+              >
+                Delete goal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
+
+        .tk-friendly-admin-ethics-banner {
+          margin: 0 0 0.9rem;
+          padding: 0.72rem 0.88rem;
+          border-radius: 18px;
+          border: 1px solid rgba(251, 191, 36, 0.42);
+          background: linear-gradient(135deg, rgba(69, 26, 3, 0.48), rgba(8, 47, 73, 0.38));
+          color: rgba(254, 243, 199, 0.95);
+          font-size: 0.82rem;
+          line-height: 1.35;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035), 0 12px 28px rgba(2, 8, 23, 0.28);
+        }
+
+        .tk-friendly-admin-ethics-banner strong {
+          color: #fde68a;
+        }
+
+        @media (max-width: 520px) {
+          .tk-friendly-admin-ethics-banner {
+            margin: 0.2rem 0 0.85rem;
+            padding: 0.68rem 0.78rem;
+            font-size: 0.76rem;
+          }
+        }
+
+        .tk-edit-goal-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+          background: rgba(2, 6, 23, 0.62);
+          backdrop-filter: blur(8px);
+        }
+
+        .tk-edit-goal-modal {
+          width: min(92vw, 430px);
+          border-radius: 24px;
+          padding: 1rem;
+          border: 1px solid rgba(125, 211, 252, 0.32);
+          background:
+            radial-gradient(circle at 20% 0%, rgba(34, 211, 238, 0.16), transparent 35%),
+            linear-gradient(180deg, #081B3A 0%, #06142F 58%, #020B1F 100%);
+          box-shadow:
+            0 24px 60px rgba(0, 0, 0, 0.48),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+        }
+
+        .tk-edit-goal-modal-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.8rem;
+          margin-bottom: 0.9rem;
+        }
+
+        .tk-edit-goal-kicker {
+          color: rgba(125, 211, 252, 0.92);
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+        }
+
+        .tk-edit-goal-modal h3 {
+          margin: 0.1rem 0 0;
+          font-size: 1.25rem;
+        }
+
+        .tk-edit-goal-modal-close {
+          width: 2rem;
+          height: 2rem;
+          border-radius: 999px;
+          border: 1px solid rgba(148, 163, 184, 0.32);
+          background: rgba(15, 23, 42, 0.86);
+          color: #e2e8f0;
+          cursor: pointer;
+          font-size: 1.15rem;
+          line-height: 1;
+        }
+
+        .tk-edit-goal-modal-grid {
+          display: grid;
+          gap: 0.75rem;
+        }
+
+        .tk-edit-goal-modal .tk-small-label {
+          display: block;
+          margin-bottom: 0.28rem;
+          font-size: 0.78rem;
+          font-weight: 900;
+          color: rgba(226, 232, 240, 0.86);
+        }
+
+        .tk-modal-select {
+          width: 100% !important;
+          min-height: 2.45rem;
+          border-radius: 14px !important;
+          background: rgba(15, 23, 42, 0.92) !important;
+          color: #e5eefb !important;
+          border: 1px solid rgba(125, 211, 252, 0.30) !important;
+          padding: 0.5rem 0.65rem !important;
+        }
+
+        .tk-edit-goal-modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.65rem;
+          margin-top: 1rem;
+          flex-wrap: wrap;
+        }
+
+        .tk-edit-goal-save-btn,
+        .tk-edit-goal-cancel-btn {
+          border-radius: 999px;
+          padding: 0.58rem 0.9rem;
+          font-weight: 900;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .tk-edit-goal-save-btn {
+          border: 1px solid rgba(125, 211, 252, 0.55);
+          background: linear-gradient(135deg, #22c55e, #38bdf8);
+          color: #02111f;
+          box-shadow: 0 0 18px rgba(56, 189, 248, 0.22);
+        }
+
+        .tk-edit-goal-cancel-btn {
+          border: 1px solid rgba(148, 163, 184, 0.32);
+          background: rgba(15, 23, 42, 0.86);
+          color: #e2e8f0;
+        }
+
+
+
+        .tk-delete-goal-modal {
+          border-color: rgba(248, 113, 113, 0.38);
+        }
+
+        .tk-delete-goal-summary {
+          display: grid;
+          gap: 0.62rem;
+          margin: 0.2rem 0 0.75rem;
+          padding: 0.78rem;
+          border-radius: 16px;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(2, 8, 23, 0.28);
+        }
+
+        .tk-delete-goal-line {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 0.9rem;
+          min-width: 0;
+        }
+
+        .tk-delete-goal-line span {
+          color: rgba(203, 213, 225, 0.70);
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          flex-shrink: 0;
+        }
+
+        .tk-delete-goal-line strong,
+        .tk-delete-goal-line em {
+          color: rgba(248, 250, 252, 0.95);
+          font-size: 0.86rem;
+          text-align: right;
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+
+        .tk-delete-goal-line em {
+          font-size: 0.78rem;
+          color: rgba(203, 213, 225, 0.82);
+        }
+
+        .tk-delete-goal-warning {
+          margin: 0.2rem 0 0.9rem;
+          color: rgba(254, 202, 202, 0.90);
+          font-size: 0.76rem;
+          line-height: 1.35;
+        }
+
+        .tk-delete-goal-confirm-btn {
+          flex: 1 1 0;
+          min-height: 2.35rem;
+          border: 1px solid rgba(248, 113, 113, 0.68);
+          border-radius: 999px;
+          background: linear-gradient(135deg, rgba(127, 29, 29, 0.92), rgba(248, 113, 113, 0.76));
+          color: #fff7f7;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        @media (max-width: 520px) {
+          .tk-edit-goal-modal-backdrop {
+            align-items: center;
+            justify-content: center;
+            padding: 0.85rem;
+          }
+
+          .tk-edit-goal-modal {
+            width: 100%;
+            max-height: calc(100dvh - 7.5rem);
+            overflow-y: auto;
+            border-radius: 22px;
+            transform: translateY(-1.2rem);
+          }
+
+          .tk-edit-goal-modal-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+          }
+        }
         .tk-friendly-recap-wrap {
           margin-top: 0.85rem;
           overflow: visible;
@@ -3938,10 +4448,7 @@ export function StatsPage({
         }
 
         .tk-friendly-event-actions {
-          display: inline-flex;
-          gap: 0.45rem;
           margin-left: 0.55rem;
-          flex-wrap: wrap;
         }
 
         .tk-friendly-event-editing {
@@ -4355,6 +4862,119 @@ export function StatsPage({
           font-weight: 900;
         }
 
+        /* Summary Player Stats: compact content-driven layout.
+           This keeps desktop premium without fake-stretched gaps, while mobile
+           can scroll just enough for full team names such as "Farmers Fc". */
+        .stats-page .tk-player-summary-table .stats-table {
+          width: max-content !important;
+          min-width: 0 !important;
+          table-layout: fixed !important;
+        }
+
+        .stats-page .tk-player-summary-table .stats-table th:first-child,
+        .stats-page .tk-player-summary-table .stats-table td:first-child {
+          min-width: 1.55rem !important;
+          width: 1.55rem !important;
+          max-width: 1.55rem !important;
+        }
+
+        .stats-page .tk-player-summary-table .stats-table th:nth-child(2),
+        .stats-page .tk-player-summary-table .stats-table td:nth-child(2) {
+          min-width: 5.95rem !important;
+          width: 5.95rem !important;
+          max-width: 5.95rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+
+        .stats-page .tk-player-summary-table .stats-table th:nth-child(3),
+        .stats-page .tk-player-summary-table .stats-table td:nth-child(3) {
+          min-width: 5.55rem !important;
+          width: 5.55rem !important;
+          max-width: 5.55rem !important;
+          text-align: left !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+        }
+
+        .stats-page .tk-player-summary-table .stats-table th:nth-child(4),
+        .stats-page .tk-player-summary-table .stats-table td:nth-child(4),
+        .stats-page .tk-player-summary-table .stats-table th:nth-child(5),
+        .stats-page .tk-player-summary-table .stats-table td:nth-child(5) {
+          min-width: 3.1rem !important;
+          width: 3.1rem !important;
+          max-width: 3.1rem !important;
+          text-align: center !important;
+        }
+
+        .stats-page .tk-player-summary-table .stats-table th:nth-child(6),
+        .stats-page .tk-player-summary-table .stats-table td:nth-child(6) {
+          min-width: 2.25rem !important;
+          width: 2.25rem !important;
+          max-width: 2.25rem !important;
+          text-align: center !important;
+        }
+
+        .stats-page .tk-player-summary-table .stats-table th:nth-child(7),
+        .stats-page .tk-player-summary-table .stats-table td:nth-child(7) {
+          min-width: 3.45rem !important;
+          width: 3.45rem !important;
+          max-width: 3.45rem !important;
+          text-align: center !important;
+        }
+
+
+
+        /* Desktop/tablet: Summary Player Stats should fill the card neatly.
+           Mobile keeps the compact scroll widths below. */
+        @media (min-width: 769px) {
+          .stats-page .tk-player-summary-table .stats-table {
+            width: 100% !important;
+            min-width: 100% !important;
+            table-layout: fixed !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:first-child,
+          .stats-page .tk-player-summary-table .stats-table td:first-child {
+            width: 3.5% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(2),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(2) {
+            width: 24% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(3),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(3) {
+            width: 24% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(4),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(4),
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(5),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(5),
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(7),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(7) {
+            width: 14% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(6),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(6) {
+            width: 6.5% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+          }
+        }
+
         /* Premium compact Match Results table. */
         .stats-page .tk-match-results-table .stats-table {
           table-layout: fixed !important;
@@ -4597,6 +5217,58 @@ export function StatsPage({
             max-width: 3rem !important;
           }
         }
+
+          .stats-page .tk-player-summary-table .stats-table {
+            width: max-content !important;
+            min-width: 0 !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:first-child,
+          .stats-page .tk-player-summary-table .stats-table td:first-child {
+            min-width: 1.36rem !important;
+            width: 1.36rem !important;
+            max-width: 1.36rem !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(2),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(2) {
+            left: 1.36rem !important;
+            min-width: 5.35rem !important;
+            width: 5.35rem !important;
+            max-width: 5.35rem !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(3),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(3) {
+            min-width: 5.55rem !important;
+            width: 5.55rem !important;
+            max-width: 5.55rem !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(4),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(4),
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(5),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(5) {
+            min-width: 2.75rem !important;
+            width: 2.75rem !important;
+            max-width: 2.75rem !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(6),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(6) {
+            min-width: 2rem !important;
+            width: 2rem !important;
+            max-width: 2rem !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(7),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(7) {
+            min-width: 3.25rem !important;
+            width: 3.25rem !important;
+            max-width: 3.25rem !important;
+          }
 
         @media (max-width: 380px) {
           .stats-page .card {
@@ -4842,6 +5514,242 @@ export function StatsPage({
           overflow: visible !important;
           text-overflow: unset !important;
           overflow-wrap: anywhere;
+        }
+
+
+        /* Perfect Table 1 refinement: friendly match dropdown admin tools + first-column breathing room. */
+        .stats-page .tk-match-admin-box {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          padding: 0.38rem 0.32rem;
+          border-radius: 12px;
+          background: rgba(2, 8, 23, 0.28);
+          overflow: hidden;
+        }
+
+        .stats-page .tk-match-admin-title {
+          font-size: 0.68rem;
+          line-height: 1.05;
+          letter-spacing: 0.06em;
+          white-space: normal;
+          overflow-wrap: anywhere;
+          margin-bottom: 0.34rem;
+        }
+
+        .stats-page .tk-match-admin-row {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.35rem;
+          align-items: stretch;
+        }
+
+        .stats-page .tk-match-admin-row .tk-edit-btn,
+        .stats-page .tk-match-admin-row .tk-danger-btn {
+          width: 100%;
+          min-width: 0;
+          max-width: 100%;
+          padding: 0.38rem 0.42rem;
+          font-size: 0.68rem;
+          line-height: 1.05;
+          white-space: nowrap;
+          text-align: center;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table {
+          min-width: 24.95rem !important;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child,
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:first-child {
+          min-width: 4.25rem !important;
+          width: 4.25rem !important;
+          max-width: 4.25rem !important;
+          padding-left: 0.44rem !important;
+          padding-right: 0.42rem !important;
+        }
+
+        .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child {
+          letter-spacing: -0.01em;
+        }
+
+        @media (max-width: 520px) {
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table {
+            min-width: 24.65rem !important;
+          }
+
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child,
+          .stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:first-child {
+            min-width: 4.15rem !important;
+            width: 4.15rem !important;
+            max-width: 4.15rem !important;
+          }
+        }
+
+
+        /* FINAL desktop/tablet correction for Summary Player Stats.
+           Keep the mobile-friendly compact scrolling rules below 768px,
+           but fill the desktop card instead of leaving empty space. */
+        @media (min-width: 769px) {
+          .stats-page .tk-player-summary-table {
+            overflow-x: hidden !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table {
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th,
+          .stats-page .tk-player-summary-table .stats-table td {
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:first-child,
+          .stats-page .tk-player-summary-table .stats-table td:first-child {
+            width: 4% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(2),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(2) {
+            width: 24% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: left !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(3),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(3) {
+            width: 24% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: left !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(4),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(4),
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(5),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(5) {
+            width: 12% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(6),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(6) {
+            width: 7% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center !important;
+          }
+
+          .stats-page .tk-player-summary-table .stats-table th:nth-child(7),
+          .stats-page .tk-player-summary-table .stats-table td:nth-child(7) {
+            width: 17% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center !important;
+          }
+        }
+
+
+        /* Compact admin tools for Perfect Table 1 expanded rows.
+           Keeps table layout untouched while preventing admin controls from clipping. */
+        .stats-page .tk-mini-admin-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.7rem;
+          margin-top: 0.35rem;
+          flex-wrap: nowrap;
+        }
+
+        .stats-page .tk-mini-admin-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 1.46rem;
+          height: 1.46rem;
+          margin: 0;
+          padding: 0;
+          border-radius: 999px;
+          border: 1px solid rgba(148, 163, 184, 0.45);
+          background: rgba(15, 23, 42, 0.72);
+          color: rgba(226, 232, 240, 0.94);
+          font-size: 0.7rem;
+          font-weight: 900;
+          line-height: 1;
+          cursor: pointer;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035);
+        }
+
+        .stats-page .tk-mini-admin-btn.danger {
+          border-color: rgba(248, 113, 113, 0.55);
+          color: #fecaca;
+          background: rgba(69, 10, 10, 0.38);
+        }
+
+        .stats-page .tk-match-admin-row {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.42rem;
+          align-items: stretch;
+        }
+
+        .stats-page .tk-admin-compact-btn {
+          width: 100%;
+          min-height: 1.55rem;
+          padding: 0.34rem 0.55rem;
+          border-radius: 999px;
+          font-size: 0.68rem;
+          font-weight: 900;
+          letter-spacing: 0.01em;
+          line-height: 1;
+          white-space: nowrap;
+          cursor: pointer;
+          text-align: center;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.045);
+        }
+
+        .stats-page .tk-admin-compact-btn.primary {
+          border: 1px solid rgba(56, 189, 248, 0.72);
+          background: rgba(8, 47, 73, 0.48);
+          color: #e0f2fe;
+        }
+
+        .stats-page .tk-admin-compact-btn.danger {
+          border: 1px solid rgba(248, 113, 113, 0.68);
+          background: rgba(69, 10, 10, 0.45);
+          color: #fecaca;
+        }
+
+        @media (max-width: 520px) {
+          .stats-page .tk-mini-admin-actions {
+            gap: 0.78rem;
+          }
+
+          .stats-page .tk-mini-admin-btn {
+            width: 1.48rem;
+            height: 1.48rem;
+            font-size: 0.62rem;
+          }
+
+          .stats-page .tk-admin-compact-btn {
+            min-height: 1.38rem;
+            padding: 0.28rem 0.42rem;
+            font-size: 0.58rem;
+          }
+
+          .stats-page .tk-match-admin-title {
+            font-size: 0.62rem;
+            letter-spacing: 0.08em;
+          }
         }
 
       `}</style>

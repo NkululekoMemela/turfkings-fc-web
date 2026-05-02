@@ -230,6 +230,7 @@ export function LandingPage({
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const menuRef = useRef(null);
 
   const [isMobile, setIsMobile] = useState(() => {
@@ -335,6 +336,9 @@ export function LandingPage({
   const activeGameFormatLabel = activeGameFormatOption?.label || "5 v 5";
   const fixturedMode =
     isThreeTeamLeague && resolvedLeagueMode === "scheduled_target";
+
+  const modeLipLabel = isThreeTeamLeague ? "LEAGUE MODE" : "FRIENDLY MODE";
+  const modeLipDotColor = isThreeTeamLeague ? "#facc15" : "#38bdf8";
 
   let ribbonText = "";
   if (isThreeTeamLeague && teamA && teamB && standbyTeam) {
@@ -598,12 +602,189 @@ export function LandingPage({
 
   return (
     <div className="page landing-page">
+      <style>{`
+        /*
+          Pure SVG ribbon: no dim rectangular shell.
+          The bright SVG wave is the only visible top-ribbon shape and is pulled
+          to the page edge so it does not feel bulky or boxed-in.
+        */
+        .landing-page {
+          padding-top: 0 !important;
+        }
+
+        .landing-header-sticky {
+          overflow: visible;
+          margin: -1rem -0.75rem 0.34rem -0.75rem;
+          padding: 0 !important;
+          background: transparent !important;
+          border: 0 !important;
+          box-shadow: none !important;
+        }
+
+        .landing-header-sticky > .landing-wave-header {
+          position: relative;
+          overflow: visible;
+          height: 122px;
+          min-height: 122px;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          border: none !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          isolation: isolate;
+        }
+
+        .tk-ribbon-wave-svg {
+          position: absolute;
+          top: -1px;
+          left: 0;
+          width: 100%;
+          height: 123px;
+          z-index: 0;
+          overflow: visible;
+          pointer-events: none;
+          filter: drop-shadow(0 13px 22px rgba(2, 6, 23, 0.24));
+        }
+
+        .landing-wave-header .header-title,
+        .landing-wave-header .landing-header-divider,
+        .landing-wave-header .tk-match-mode-ribbon-lip {
+          position: relative;
+          z-index: 2;
+        }
+
+        .landing-wave-header .header-title {
+          min-height: 76px;
+          padding: 16px 12px 0 12px;
+          box-sizing: border-box;
+        }
+
+        .landing-wave-header .landing-header-divider {
+          display: none;
+        }
+
+        .tk-match-mode-ribbon-lip {
+          position: absolute;
+          left: 58px;
+          bottom: -2px;
+          z-index: 3;
+          height: 17px;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.44rem;
+          color: #f8fafc;
+          font-size: 0.52rem;
+          font-weight: 950;
+          line-height: 1;
+          letter-spacing: 0.075em;
+          text-transform: uppercase;
+          pointer-events: none;
+          user-select: none;
+          white-space: nowrap;
+          text-shadow: 0 1px 9px rgba(2, 6, 23, 0.65);
+        }
+
+        .tk-match-mode-ribbon-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 999px;
+          flex: 0 0 auto;
+          box-shadow: 0 0 10px currentColor;
+        }
+
+        @media (max-width: 480px) {
+          .landing-header-sticky {
+            margin: -1rem -0.75rem 0.28rem -0.75rem;
+          }
+
+          .landing-header-sticky > .landing-wave-header {
+            height: 120px;
+            min-height: 120px;
+          }
+
+          .tk-ribbon-wave-svg {
+            top: -1px;
+            height: 121px;
+          }
+
+          .landing-wave-header .header-title {
+            min-height: 74px;
+            padding: 14px 11px 0 11px;
+          }
+
+          .tk-match-mode-ribbon-lip {
+            left: 56px;
+            bottom: -2px;
+            font-size: 0.50rem;
+            letter-spacing: 0.065em;
+            height: 16px;
+          }
+        }
+      `}</style>
       <div
         className={`landing-header-sticky ${
           headerScrolled ? "is-scrolled" : ""
         }`}
       >
-        <header className="header">
+        <header className="landing-wave-header">
+          <svg
+            className="tk-ribbon-wave-svg"
+            viewBox="0 0 390 122"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <defs>
+              <linearGradient id="tkLandingRibbonWaveGradient" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#1d4ed8" />
+                <stop offset="42%" stopColor="#071329" />
+                <stop offset="100%" stopColor="#22c55e" />
+              </linearGradient>
+              <radialGradient id="tkLandingRibbonModeGlow" cx="22%" cy="86%" r="56%">
+                <stop offset="0%" stopColor="rgba(34,211,238,0.34)" />
+                <stop offset="58%" stopColor="rgba(34,211,238,0.08)" />
+                <stop offset="100%" stopColor="rgba(34,211,238,0)" />
+              </radialGradient>
+            </defs>
+
+            <path
+              d="
+                M 0 0
+                H 390
+                V 86
+                H 190
+                C 171 86, 164 119, 144 119
+                H 55
+                C 43 119, 38 86, 28 86
+                H 0
+                Z
+              "
+              fill="url(#tkLandingRibbonWaveGradient)"
+            />
+            <path
+              d="
+                M 0 0
+                H 390
+                V 86
+                H 190
+                C 171 86, 164 119, 144 119
+                H 55
+                C 43 119, 38 86, 28 86
+                H 0
+                Z
+              "
+              fill="url(#tkLandingRibbonModeGlow)"
+              opacity="0.9"
+            />
+            <path
+              d="M 28 86 C 38 86, 43 119, 55 119 H 144 C 164 119, 171 86, 190 86"
+              fill="none"
+              stroke="rgba(34,211,238,0.35)"
+              strokeWidth="1.2"
+            />
+          </svg>
+
           <div className="header-title">
             <div
               ref={menuRef}
@@ -669,10 +850,19 @@ export function LandingPage({
             className="landing-header-divider"
             style={{ marginTop: showHeaderMenu ? "0.45rem" : undefined }}
           />
+
+          <div className="tk-match-mode-ribbon-lip" aria-label={modeLipLabel}>
+            <span
+              className="tk-match-mode-ribbon-dot"
+              style={{ background: modeLipDotColor, color: modeLipDotColor }}
+              aria-hidden="true"
+            />
+            {modeLipLabel}
+          </div>
         </header>
       </div>
 
-      <header className="header" style={{ marginTop: "0.75rem" }}>
+      <header className="header" style={{ marginTop: "0.25rem" }}>
         <p className="subtitle">
           Grand Central (CT) – Wednesdays, 17:30–19:00
         </p>
@@ -698,13 +888,58 @@ export function LandingPage({
 
       <section className="card landing-first-card">
         {canSeeCaptainStyleControls && (
-          <div
-            style={{
-              marginBottom: "0.9rem",
-              display: "grid",
-              gap: "0.85rem",
-            }}
-          >
+          <div style={{ marginBottom: "0.9rem" }}>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => setShowSettingsPanel((prev) => !prev)}
+              aria-expanded={showSettingsPanel}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                borderRadius: "1rem",
+                padding: "0.75rem 0.9rem",
+                background:
+                  "linear-gradient(145deg, rgba(15,23,42,0.92), rgba(2,6,23,0.92))",
+                border: "1px solid rgba(148,163,184,0.18)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+              }}
+            >
+              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.16rem" }}>
+                <span style={{ fontWeight: 850 }}>⚙️ Match Settings</span>
+                <span className="muted small">
+                  {isThreeTeamLeague
+                    ? `League • ${fixturedMode ? "Fixtured" : "Round Robin"} • ${activeGameFormatLabel}`
+                    : `Friendly • ${activeGameFormatLabel}`}
+                </span>
+              </span>
+              <span
+                aria-hidden="true"
+                style={{
+                  fontSize: "1rem",
+                  transform: showSettingsPanel ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.18s ease",
+                }}
+              >
+                ▾
+              </span>
+            </button>
+
+            {showSettingsPanel && (
+              <div
+                style={{
+                  marginTop: "0.75rem",
+                  display: "grid",
+                  gap: "0.85rem",
+                  padding: "0.85rem",
+                  borderRadius: "1rem",
+                  background: "rgba(15,23,42,0.40)",
+                  border: "1px solid rgba(148,163,184,0.14)",
+                }}
+              >
             <div>
               <div
                 className="muted small"
@@ -905,6 +1140,8 @@ export function LandingPage({
                 })}
               </div>
             </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1235,6 +1472,25 @@ export function LandingPage({
                 })}
               </button>
             )}
+
+            {isLeagueMatchType && isAdmin && typeof onOpenEndSeasonModal === "function" && (
+              <button
+                className="secondary-btn"
+                onClick={onOpenEndSeasonModal}
+                type="button"
+                style={tileButtonStyle(isMobile, {
+                  border: "1px solid rgba(250,204,21,0.34)",
+                  boxShadow: "0 0 18px rgba(250,204,21,0.10)",
+                })}
+              >
+                {renderTileContent({
+                  isMobile,
+                  icon: "🏆",
+                  desktopLines: ["End Season"],
+                  mobileLines: ["End", "Season"],
+                })}
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -1540,8 +1796,41 @@ export function LandingPage({
             type="button"
             className="website-btn"
             onClick={onGoToPayments}
+            style={{
+              minHeight: "54px",
+              width: "100%",
+              boxSizing: "border-box",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            💳 Pay for next month games
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+                width: "100%",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: "24px",
+                  height: "24px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "1.25rem",
+                  lineHeight: 1,
+                  flex: "0 0 24px",
+                }}
+              >
+                💳
+              </span>
+              <span>Pay for next month games</span>
+            </span>
           </button>
 
           <a
@@ -1549,8 +1838,80 @@ export function LandingPage({
             target="_blank"
             rel="noreferrer"
             className="website-btn"
+            style={{
+              minHeight: "54px",
+              width: "100%",
+              boxSizing: "border-box",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            ⚔️ Messi vs Ronaldo
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+                width: "100%",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: "24px",
+                  height: "24px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "1.25rem",
+                  lineHeight: 1,
+                  flex: "0 0 24px",
+                }}
+              >
+                ⚔️
+              </span>
+              <span>Messi vs Ronaldo</span>
+            </span>
+          </a>
+
+          <a
+            href="https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/scores-fixtures?country=&wtw-filter=ALL"
+            target="_blank"
+            rel="noreferrer"
+            className="website-btn"
+            style={{
+              minHeight: "54px",
+              width: "100%",
+              boxSizing: "border-box",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+                width: "100%",
+              }}
+            >
+              <img
+                src="/WorldCup.png"
+                alt="2026 FIFA World Cup"
+                style={{
+                  width: "24px",
+                  height: "24px",
+                  objectFit: "contain",
+                  display: "block",
+                  flex: "0 0 24px",
+                }}
+                draggable="false"
+              />
+              <span>2026 FIFA World Cup</span>
+            </span>
           </a>
         </div>
       </section>
