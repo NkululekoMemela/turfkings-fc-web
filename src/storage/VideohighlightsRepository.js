@@ -14,7 +14,7 @@ import {
 
 import {
   ref,
-  uploadBytes,
+  uploadBytesResumable,
   getDownloadURL,
   deleteObject,
 } from "firebase/storage";
@@ -22,8 +22,7 @@ import {
 import { db, storage } from "../firebaseConfig";
 
 // ============================
-// ROOT STRUCTURE (NEW)
-// ============================
+// ROOT STRUCTURE
 // video_highlights/{matchId}/
 //    raw/
 //    archived/
@@ -51,6 +50,15 @@ function voteDoc(matchId, userId) {
 }
 
 // ============================
+// HELPERS
+// ============================
+
+function cleanFirestorePayload(input) {
+  const { file, previewFile, localFile, blob, ...safe } = input || {};
+  return safe;
+}
+
+// ============================
 // STORAGE PATH
 // ============================
 
@@ -65,7 +73,7 @@ export function buildVideoStoragePath({
 }
 
 // ============================
-// UPLOAD VIDEO
+// UPLOAD WITH PROGRESS
 // ============================
 
 export async function uploadHighlightVideoFile({
@@ -73,6 +81,7 @@ export async function uploadHighlightVideoFile({
   matchId,
   clipId,
   source = "manual_upload",
+  onProgress,
 }) {
   if (!file) throw new Error("No video file supplied");
 
@@ -85,37 +94,58 @@ export async function uploadHighlightVideoFile({
 
   const storageRef = ref(storage, path);
 
-  await uploadBytes(storageRef, file);
+  return new Promise((resolve, reject) => {
+    const uploadTask = uploadBytesResumable(storageRef, file);
 
-  const url = await getDownloadURL(storageRef);
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const progress =
+          snapshot.totalBytes > 0
+            ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
+            : 0;
 
-  return {
-    storagePath: path,
-    videoUrl: url,
-    mediaUrl: url,
-    downloadUrl: url,
-  };
+        onProgress?.(progress);
+      },
+      (error) => {
+        reject(error);
+      },
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+
+          resolve({
+            storagePath: path,
+            videoUrl: url,
+            mediaUrl: url,
+            downloadUrl: url,
+          });
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
 }
 
 // ============================
 // SAVE RAW DOC
 // ============================
 
-export async function saveRawHighlightDoc({
-  matchId,
-  highlight,
-}) {
+export async function saveRawHighlightDoc({ matchId, highlight }) {
+  const safeHighlight = cleanFirestorePayload(highlight);
+
   const payload = {
-    ...highlight,
+    ...safeHighlight,
     matchId,
     updatedAtServer: serverTimestamp(),
   };
 
-  await setDoc(
-    rawDoc(matchId, payload.clipId),
-    payload,
-    { merge: true }
-  );
+  if (!payload.clipId) {
+    throw new Error("Missing clipId while saving highlight metadata.");
+  }
+
+  await setDoc(rawDoc(matchId, payload.clipId), payload, { merge: true });
 
   return payload;
 }
@@ -128,17 +158,28 @@ export async function uploadAndSaveRawHighlight({
   matchId,
   file,
   highlight,
+  onProgress,
 }) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!file) throw new Error("Missing video file.");
+
+  const safeHighlight = cleanFirestorePayload(highlight);
+
   const base = {
-    ...highlight,
+    ...safeHighlight,
     matchId,
   };
+
+  if (!base.clipId) {
+    throw new Error("Missing clipId.");
+  }
 
   const uploaded = await uploadHighlightVideoFile({
     file,
     matchId,
     clipId: base.clipId,
     source: base.source || "manual_upload",
+    onProgress,
   });
 
   return saveRawHighlightDoc({
@@ -155,11 +196,9 @@ export async function uploadAndSaveRawHighlight({
 // ============================
 
 export async function loadRawHighlightsFromFirebase(matchId) {
-  const q = query(
-    rawRef(matchId),
-    orderBy("createdAt", "desc")
-  );
+  if (!matchId) return [];
 
+  const q = query(rawRef(matchId), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
 
   return snap.docs.map((d) => ({
@@ -177,10 +216,13 @@ export async function saveHighlightVotesToFirebase({
   userId,
   votes,
 }) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!userId) throw new Error("Missing userId.");
+
   await setDoc(
     voteDoc(matchId, userId),
     {
-      ...votes,
+      ...cleanFirestorePayload(votes),
       updatedAtServer: serverTimestamp(),
     },
     { merge: true }
@@ -188,6 +230,8 @@ export async function saveHighlightVotesToFirebase({
 }
 
 export async function loadHighlightVotesFromFirebase(matchId) {
+  if (!matchId) return {};
+
   const snap = await getDocs(votesRef(matchId));
 
   const out = {};
@@ -199,22 +243,28 @@ export async function loadHighlightVotesFromFirebase(matchId) {
 }
 
 // ============================
-// ARCHIVE WINNERS
+// ARCHIVE
 // ============================
 
 export async function archiveWinningHighlightsToFirebase({
   matchId,
   highlights,
 }) {
+  if (!matchId) throw new Error("Missing matchId.");
+
   const batch = writeBatch(db);
 
-  highlights.forEach((h) => {
+  (highlights || []).forEach((h) => {
+    const safeHighlight = cleanFirestorePayload(h);
+    if (!safeHighlight.clipId) return;
+
     batch.set(
-      archiveDoc(matchId, h.clipId),
+      archiveDoc(matchId, safeHighlight.clipId),
       {
-        ...h,
+        ...safeHighlight,
         archived: true,
         archivedAt: new Date().toISOString(),
+        updatedAtServer: serverTimestamp(),
       },
       { merge: true }
     );
@@ -222,11 +272,11 @@ export async function archiveWinningHighlightsToFirebase({
 
   await batch.commit();
 
-  return highlights;
+  return highlights || [];
 }
 
 // ============================
-// DELETE RAW (WITH STORAGE)
+// DELETE
 // ============================
 
 export async function deleteRawHighlightFromFirebase({
@@ -234,23 +284,29 @@ export async function deleteRawHighlightFromFirebase({
   clipId,
   storagePath,
 }) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!clipId) throw new Error("Missing clipId.");
+
   await deleteDoc(rawDoc(matchId, clipId));
 
   if (storagePath) {
     const fileRef = ref(storage, storagePath);
+
     try {
       await deleteObject(fileRef);
     } catch (e) {
-      console.warn("Storage delete failed", e);
+      console.warn("[TK HIGHLIGHTS] Storage delete failed:", e);
     }
   }
 }
 
 // ============================
-// CLEAR ALL RAW
+// CLEAR RAW
 // ============================
 
 export async function clearRawHighlightsFromFirebase(matchId) {
+  if (!matchId) return;
+
   const snap = await getDocs(rawRef(matchId));
   const batch = writeBatch(db);
 
@@ -262,36 +318,19 @@ export async function clearRawHighlightsFromFirebase(matchId) {
 }
 
 // ============================
-// EXTERNAL IMPORT (Pushit etc.)
-// ============================
-
-export async function importExternalHighlight({
-  matchId,
-  provider = "pushit",
-  externalClip,
-}) {
-  return saveRawHighlightDoc({
-    matchId,
-    highlight: {
-      ...externalClip,
-      source: provider,
-    },
-  });
-}
-
-// ============================
 // EXPORT
 // ============================
 
 const VideoHighlightsRepository = {
   uploadAndSaveRawHighlight,
+  uploadHighlightVideoFile,
+  saveRawHighlightDoc,
   loadRawHighlightsFromFirebase,
   saveHighlightVotesToFirebase,
   loadHighlightVotesFromFirebase,
   archiveWinningHighlightsToFirebase,
   clearRawHighlightsFromFirebase,
   deleteRawHighlightFromFirebase,
-  importExternalHighlight,
 };
 
 export default VideoHighlightsRepository;

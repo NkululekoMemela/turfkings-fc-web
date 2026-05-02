@@ -318,6 +318,41 @@ function statusClass(status) {
   return "is-approved";
 }
 
+function describeUploadError(error, stage = "upload") {
+  const code = String(error?.code || "").trim();
+  const message = String(error?.message || "").trim();
+
+  if (code.includes("storage/unauthorized")) {
+    return "Firebase Storage rejected the video upload. This usually means Storage rules do not allow video_highlights uploads for this signed-in user.";
+  }
+
+  if (code.includes("storage/canceled")) {
+    return "The upload was cancelled before it finished.";
+  }
+
+  if (code.includes("storage/quota-exceeded")) {
+    return "Firebase Storage quota was exceeded. The file could not be uploaded.";
+  }
+
+  if (code.includes("permission-denied")) {
+    return "Firestore rejected the highlight details after the video upload. This usually means Firestore rules blocked the metadata save.";
+  }
+
+  if (stage === "validation") {
+    return message || "The selected file failed validation.";
+  }
+
+  if (stage === "firestore") {
+    return message || "The video uploaded, but the clip details could not be saved to Firestore.";
+  }
+
+  if (stage === "storage") {
+    return message || "Firebase Storage failed while uploading the video file.";
+  }
+
+  return message || "Upload failed. Please try again.";
+}
+
 function buildFallbackMatchId({ matchType, gameFormat, activeSeasonId, currentMatchNo }) {
   const today = new Date().toISOString().slice(0, 10);
   const type = safeLower(matchType).includes("league") ? "league" : "friendly";
@@ -459,6 +494,11 @@ export function ViewHighlightsPage({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [uploadNotice, setUploadNotice] = useState("");
+  const [uploadSuccess, setUploadSuccess] = useState("");
+  const [uploadStage, setUploadStage] = useState("idle");
+  const [uploadStep, setUploadStep] = useState("Waiting for clip");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadDebug, setUploadDebug] = useState(null);
 
   const [clipFile, setClipFile] = useState(null);
   const [clipPreviewUrl, setClipPreviewUrl] = useState("");
@@ -588,6 +628,11 @@ export function ViewHighlightsPage({
     setTeamName("");
     setUploadError("");
     setUploadNotice("");
+    setUploadSuccess("");
+    setUploadStage("idle");
+    setUploadStep("Waiting for clip");
+    setUploadProgress(0);
+    setUploadDebug(null);
 
     if (clipPreviewUrl) URL.revokeObjectURL(clipPreviewUrl);
     setClipPreviewUrl("");
@@ -619,6 +664,11 @@ export function ViewHighlightsPage({
     const file = event?.target?.files?.[0] || null;
     setUploadError("");
     setUploadNotice("");
+    setUploadSuccess("");
+    setUploadStage(file ? "validation" : "idle");
+    setUploadStep(file ? "Checking file..." : "Waiting for clip");
+    setUploadProgress(0);
+    setUploadDebug(null);
 
     if (clipPreviewUrl) {
       URL.revokeObjectURL(clipPreviewUrl);
@@ -630,7 +680,11 @@ export function ViewHighlightsPage({
 
     const basicError = validateFileBasics(file);
     if (basicError) {
-      if (file) setUploadError(basicError);
+      if (file) {
+        setUploadStage("failed");
+        setUploadStep("Validation failed");
+        setUploadError(basicError);
+      }
       return;
     }
 
@@ -658,33 +712,51 @@ export function ViewHighlightsPage({
       setClipFile(file);
       setClipDuration(duration);
       setClipPreviewUrl(URL.createObjectURL(file));
+      setUploadStage("ready");
+      setUploadStep("Ready to upload");
+      setUploadProgress(0);
     } catch (error) {
-      setUploadError(error?.message || "Could not read this video file.");
+      setUploadStage("failed");
+      setUploadStep("Could not read duration");
+      setUploadError(describeUploadError(error, "validation"));
     }
   };
 
   const handleSubmitUpload = async () => {
     setUploadError("");
     setUploadNotice("");
+    setUploadSuccess("");
+    setUploadStage("validation");
+    setUploadStep("Checking upload details...");
+    setUploadProgress(0);
+    setUploadDebug(null);
 
     if (!canUpload) {
+      setUploadStage("failed");
+      setUploadStep("Upload blocked");
       setUploadError("Only signed-in TurfKings players, captains, or admin can upload clips.");
       return;
     }
 
     const basicError = validateFileBasics(clipFile);
     if (basicError) {
+      setUploadStage("failed");
+      setUploadStep("Validation failed");
       setUploadError(basicError);
       return;
     }
 
     const cleanPlayerName = toTitleCaseLoose(playerName);
     if (!cleanPlayerName) {
+      setUploadStage("failed");
+      setUploadStep("Player missing");
       setUploadError("Select the player shown in this highlight.");
       return;
     }
 
     if (!clipDuration || clipDuration > MAX_VIDEO_SECONDS) {
+      setUploadStage("failed");
+      setUploadStep("Invalid clip");
       setUploadError("Please choose a valid short highlight clip first.");
       return;
     }
@@ -734,6 +806,9 @@ export function ViewHighlightsPage({
 
     try {
       setUploading(true);
+      setUploadStage("metadata");
+      setUploadStep("Preparing Firebase record...");
+      setUploadProgress(3);
 
       let savedHighlight = null;
 
@@ -742,9 +817,34 @@ export function ViewHighlightsPage({
           matchId: resolvedMatchId,
           file: clipFile,
           highlight: payload,
+          onProgress: (progress) => {
+            const stage = progress?.stage || "storage";
+            const percent = Number(progress?.percent || 0);
+
+            setUploadStage(stage);
+            setUploadDebug(progress || null);
+
+            if (stage === "metadata") {
+              setUploadStep(progress?.message || "Preparing highlight folder...");
+              setUploadProgress(5);
+            } else if (stage === "storage") {
+              setUploadStep(`Uploading video to Firebase Storage... ${Math.max(0, Math.min(100, Math.round(percent)))}%`);
+              setUploadProgress(Math.max(5, Math.min(92, Math.round(percent * 0.87 + 5))));
+            } else if (stage === "firestore") {
+              setUploadStep(progress?.message || "Saving clip details to Firestore...");
+              setUploadProgress(95);
+            } else if (stage === "complete") {
+              setUploadStep("Upload complete.");
+              setUploadProgress(100);
+            }
+          },
         });
       } else if (typeof onUploadHighlight === "function") {
+        setUploadStage("storage");
+        setUploadStep("Uploading through App.jsx...");
+        setUploadProgress(20);
         savedHighlight = await onUploadHighlight(payload);
+        setUploadProgress(100);
       } else {
         throw new Error("Upload is not connected yet.");
       }
@@ -761,12 +861,26 @@ export function ViewHighlightsPage({
       });
 
       setSelectedTab("pending");
-      setShowUploadModal(false);
-      resetUpload();
+      setUploadStage("complete");
+      setUploadStep("Upload complete. Waiting for review.");
+      setUploadProgress(100);
+      setUploadSuccess("Clip uploaded successfully and sent to Pending Review.");
       await loadHighlights();
+      window.setTimeout(() => {
+        setShowUploadModal(false);
+        resetUpload();
+      }, 850);
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Upload failed:", error);
-      setUploadError(error?.message || "Failed to upload highlight.");
+      const failedStage = uploadStage === "firestore" ? "firestore" : uploadStage === "metadata" ? "firestore" : "storage";
+      setUploadStage("failed");
+      setUploadStep(failedStage === "firestore" ? "Failed while saving clip details" : "Failed while uploading video");
+      setUploadError(describeUploadError(error, failedStage));
+      setUploadDebug({
+        stage: failedStage,
+        code: error?.code || null,
+        message: error?.message || String(error || "Unknown upload error"),
+      });
     } finally {
       setUploading(false);
     }
@@ -1280,6 +1394,60 @@ export function ViewHighlightsPage({
           color: #fecaca;
         }
 
+        .tkh-success {
+          margin-top: 12px;
+          border-radius: 16px;
+          padding: 0.76rem 0.9rem;
+          font-weight: 850;
+          line-height: 1.35;
+          background: rgba(34,197,94,0.14);
+          border: 1px solid rgba(34,197,94,0.32);
+          color: #bbf7d0;
+        }
+
+        .tkh-upload-progress {
+          margin-top: 12px;
+          border-radius: 16px;
+          padding: 0.82rem 0.9rem;
+          background: rgba(15,23,42,0.70);
+          border: 1px solid rgba(148,163,184,0.20);
+        }
+
+        .tkh-progress-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: center;
+          font-size: 0.86rem;
+          font-weight: 900;
+          color: rgba(226,232,240,0.92);
+        }
+
+        .tkh-progress-track {
+          width: 100%;
+          height: 10px;
+          margin-top: 10px;
+          border-radius: 999px;
+          overflow: hidden;
+          background: rgba(148,163,184,0.18);
+        }
+
+        .tkh-progress-fill {
+          height: 100%;
+          width: 0%;
+          border-radius: 999px;
+          background: linear-gradient(90deg, #22c55e, #86efac);
+          transition: width 0.18s ease;
+        }
+
+        .tkh-progress-debug {
+          margin-top: 8px;
+          color: rgba(226,232,240,0.62);
+          font-size: 0.74rem;
+          line-height: 1.35;
+          overflow-wrap: anywhere;
+        }
+
         .tkh-preview-video {
           width: 100%;
           max-height: 380px;
@@ -1563,7 +1731,36 @@ export function ViewHighlightsPage({
               </div>
             )}
 
+            {(uploading || uploadStage === "metadata" || uploadStage === "storage" || uploadStage === "firestore" || uploadStage === "complete" || uploadStage === "failed") && (
+              <div className="tkh-upload-progress">
+                <div className="tkh-progress-head">
+                  <span>{uploadStep}</span>
+                  <span>{Math.max(0, Math.min(100, Math.round(uploadProgress)))}%</span>
+                </div>
+                <div className="tkh-progress-track" aria-hidden="true">
+                  <div
+                    className="tkh-progress-fill"
+                    style={{
+                      width: `${Math.max(0, Math.min(100, Math.round(uploadProgress)))}%`,
+                      background:
+                        uploadStage === "failed"
+                          ? "linear-gradient(90deg, #ef4444, #fecaca)"
+                          : "linear-gradient(90deg, #22c55e, #86efac)",
+                    }}
+                  />
+                </div>
+                {uploadDebug?.code || uploadDebug?.message ? (
+                  <div className="tkh-progress-debug">
+                    {uploadDebug?.code ? `Code: ${uploadDebug.code}` : ""}
+                    {uploadDebug?.code && uploadDebug?.message ? " • " : ""}
+                    {uploadDebug?.message || ""}
+                  </div>
+                ) : null}
+              </div>
+            )}
+
             {uploadNotice && <div className="tkh-warning">{uploadNotice}</div>}
+            {uploadSuccess && <div className="tkh-success">{uploadSuccess}</div>}
             {uploadError && <div className="tkh-error">{uploadError}</div>}
 
             <div className="tkh-upload-actions">
