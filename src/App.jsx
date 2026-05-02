@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { LiveMatchPage } from "./pages/LiveMatchPage.jsx";
@@ -69,8 +69,7 @@ const PAGE_MATCH_SIGNUP = "match-signup";
 const PAGE_PAYMENT = "payment";
 const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 
-const DEFAULT_ADMIN_CODE = "3333";
-const ADMIN_CODE_STORAGE_KEY = "tk_admin_code_v1";
+const MASTER_CODE = "3333";
 const DEFAULT_LEAGUE_MATCH_SECONDS = 5 * 60;
 const DEFAULT_FRIENDLY_MATCH_SECONDS = 60 * 60;
 const DEFAULT_MATCH_SECONDS = DEFAULT_FRIENDLY_MATCH_SECONDS;
@@ -1316,6 +1315,36 @@ function buildCurrentMatchDayId(activeSeasonId, gameFormat, currentMatchNo, matc
   return `${safeFormat}__${today}`;
 }
 
+function buildVideoHighlightsMatchId({
+  activeSeasonId,
+  gameFormat,
+  currentMatchNo,
+  matchType,
+  currentMatch,
+} = {}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const resolvedType = normalizeMatchMode(matchType || gameFormat, MATCH_TYPE.FRIENDLY);
+  const resolvedFormat = normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE)
+    .toLowerCase()
+    .replace(/_/g, "");
+
+  if (resolvedType === MATCH_TYPE.LEAGUE) {
+    const seasonPart = String(activeSeasonId || "season").trim() || "season";
+    const matchPart = Number(currentMatchNo || 1);
+    const teamA = String(currentMatch?.teamAId || "teamA")
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, "");
+    const teamB = String(currentMatch?.teamBId || "teamB")
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, "");
+
+    return `league__${seasonPart}__match_${matchPart}__${teamA}_vs_${teamB}`;
+  }
+
+  return `friendly__${resolvedFormat}__${today}`;
+}
+
+
 function buildRawHighlightFirebaseDoc(highlight, options = {}) {
   const {
     matchDayId,
@@ -1685,31 +1714,6 @@ async function writeCameraLiveContextToFirebase(cameraLiveContext) {
   );
 }
 
-function buildCameraLiveContextSignature(cameraLiveContext) {
-  if (!cameraLiveContext) return "__camera_context_off__";
-
-  const stableContext = {
-    ...cameraLiveContext,
-    updatedAtISO: null,
-    teamAPlayers: Array.isArray(cameraLiveContext.teamAPlayers)
-      ? cameraLiveContext.teamAPlayers.map((player) => ({
-          id: player?.id || "",
-          name: player?.name || "",
-          teamId: player?.teamId || "",
-        }))
-      : [],
-    teamBPlayers: Array.isArray(cameraLiveContext.teamBPlayers)
-      ? cameraLiveContext.teamBPlayers.map((player) => ({
-          id: player?.id || "",
-          name: player?.name || "",
-          teamId: player?.teamId || "",
-        }))
-      : [],
-  };
-
-  return JSON.stringify(stableContext);
-}
-
 function buildMatchMetadata({ matchType, gameFormat, matchMode } = {}) {
   const resolvedMatchType = normalizeMatchMode(
     matchType || gameFormat,
@@ -1842,11 +1846,6 @@ function getMatchSecondsForType(matchSecondsByType, rawMatchType) {
   return normalizeMatchSecondsValue(matchSecondsByType?.[safeMatchType], defaults);
 }
 
-function normalizeAdminCode(value) {
-  const clean = String(value || "").trim();
-  return clean || DEFAULT_ADMIN_CODE;
-}
-
 export default function App() {
   const [page, setPage] = useState(PAGE_ENTRY);
 
@@ -1862,7 +1861,6 @@ export default function App() {
 
   const members = useMembers();
   const [showAdminReclaimNudge, setShowAdminReclaimNudge] = useState(true);
-  const lastCameraLiveContextSignatureRef = useRef(null);
 
   const handleEntryComplete = (payload) => {
     const safePayload = ensureIdentityShape(payload);
@@ -1885,71 +1883,6 @@ export default function App() {
   const [state, setState] = useState(() =>
     USE_V2 ? loadStateV2() : loadState()
   );
-
-  const [adminCode, setAdminCode] = useState(() => {
-    if (typeof window === "undefined") return DEFAULT_ADMIN_CODE;
-    try {
-      return normalizeAdminCode(
-        window.localStorage.getItem(ADMIN_CODE_STORAGE_KEY) || DEFAULT_ADMIN_CODE
-      );
-    } catch {
-      return DEFAULT_ADMIN_CODE;
-    }
-  });
-
-  const isAdminCode = (value) =>
-    String(value || "").trim() === normalizeAdminCode(adminCode);
-
-  const handleUpdateAdminCode = async ({ currentCode, nextCode }) => {
-    if (!isAdmin) {
-      return { ok: false, message: "Only admin can change the admin code." };
-    }
-
-    if (!isAdminCode(currentCode)) {
-      return { ok: false, message: "Current admin code is incorrect." };
-    }
-
-    const cleanNextCode = String(nextCode || "").trim();
-    if (cleanNextCode.length < 4) {
-      return { ok: false, message: "New admin code must be at least 4 characters." };
-    }
-
-    if (cleanNextCode.length > 24) {
-      return { ok: false, message: "New admin code must be 24 characters or fewer." };
-    }
-
-    const normalizedNextCode = normalizeAdminCode(cleanNextCode);
-
-    try {
-      await setDoc(
-        doc(db, "app_settings", "security"),
-        {
-          adminCode: normalizedNextCode,
-          updatedAtISO: new Date().toISOString(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch (error) {
-      console.error("[TK SETTINGS] Failed to save admin code to Firebase:", error);
-      return {
-        ok: false,
-        message: "Could not save the new admin code to Firebase. Nothing changed.",
-      };
-    }
-
-    setAdminCode(normalizedNextCode);
-
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem(ADMIN_CODE_STORAGE_KEY, normalizedNextCode);
-      } catch {
-        // ignore localStorage failures
-      }
-    }
-
-    return { ok: true, message: "Admin code updated." };
-  };
 
   const activeSeasonIdForPeerRatings = USE_V2
     ? ensureV2StateShape(state)?.activeSeasonId || null
@@ -2051,33 +1984,53 @@ export default function App() {
     const safeItems = Array.isArray(items) ? items : [];
     if (!safeItems.length) return;
 
-    const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, activeMatchNo, matchType);
+    const matchId = buildVideoHighlightsMatchId({
+      activeSeasonId,
+      gameFormat,
+      currentMatchNo: activeMatchNo,
+      matchType,
+      currentMatch: effectiveLiveMatch,
+    });
 
     await Promise.all(
       safeItems.map(async (item) => {
-        const docPayload = buildRawHighlightFirebaseDoc(item, {
-          matchDayId,
-          currentMatchNo: activeMatchNo,
-          activeSeasonId,
-          gameFormat,
-          matchType,
-          identity,
-        });
-
-        if (!docPayload?.clipId) return;
-
-        const highlightRef = doc(
-          db,
-          "matchdays",
-          matchDayId,
-          "raw_highlights",
-          docPayload.clipId
+        const normalized = normalizeReturnedHighlight(
+          item,
+          activeMatchNo || 1,
+          gameFormat || GAME_FORMAT.FIVE_V_FIVE
         );
 
-        await setDoc(highlightRef, docPayload, { merge: true });
+        if (!normalized?.clipId) return;
+
+        await VideoHighlightsRepository.importExternalHighlight({
+          matchId,
+          provider: normalized.source || "camera_return",
+          externalClip: {
+            ...normalized,
+            matchId,
+            seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || null,
+            matchType,
+            gameFormat,
+            matchNo: activeMatchNo,
+            status: "pending",
+            createdBy:
+              identity?.memberId ||
+              identity?.playerId ||
+              identity?.email ||
+              identity?.shortName ||
+              "",
+            createdByName:
+              identity?.shortName ||
+              identity?.fullName ||
+              identity?.displayName ||
+              identity?.email ||
+              "Unknown",
+          },
+        });
       })
     );
   };
+
 
   const updateState = (updater) => {
     setState((prev) => {
@@ -2115,35 +2068,6 @@ export default function App() {
       }
     );
     return () => unsubscribe && unsubscribe();
-  }, []);
-
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, "app_settings", "security"));
-        if (cancelled || !snap.exists()) return;
-
-        const cloudCode = normalizeAdminCode(snap.data()?.adminCode);
-        setAdminCode(cloudCode);
-
-        if (typeof window !== "undefined") {
-          try {
-            window.localStorage.setItem(ADMIN_CODE_STORAGE_KEY, cloudCode);
-          } catch {
-            // ignore localStorage failures
-          }
-        }
-      } catch (error) {
-        console.error("[TK SETTINGS] Failed to load admin code from Firebase:", error);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
@@ -2368,6 +2292,18 @@ export default function App() {
   const defaultMatchSeconds = getDefaultMatchSecondsForType(matchType);
   const matchSeconds = getMatchSecondsForType(matchSecondsByType, matchType);
 
+  const currentVideoHighlightsMatchId = useMemo(
+    () =>
+      buildVideoHighlightsMatchId({
+        activeSeasonId,
+        gameFormat,
+        currentMatchNo: activeMatchNo,
+        matchType,
+        currentMatch: effectiveLiveMatch,
+      }),
+    [activeSeasonId, gameFormat, activeMatchNo, matchType, effectiveLiveMatch]
+  );
+
   useEffect(() => {
     if (running || hasLiveMatch) return;
     setSecondsLeft(matchSeconds);
@@ -2413,12 +2349,8 @@ export default function App() {
     currentCameraLaunchTeams,
   ]);
 
-  useEffect(() => {
+    useEffect(() => {
     if (!USE_V2) return;
-
-    const nextSignature = buildCameraLiveContextSignature(currentCameraLiveContext);
-    if (lastCameraLiveContextSignatureRef.current === nextSignature) return;
-    lastCameraLiveContextSignatureRef.current = nextSignature;
 
     let cancelled = false;
 
@@ -3945,7 +3877,7 @@ export default function App() {
   };
 
   const requireAdminCode = () => {
-    if (!isAdminCode(backupCode)) {
+    if (backupCode.trim() !== MASTER_CODE) {
       setBackupError("Invalid admin code.");
       return false;
     }
@@ -4005,7 +3937,7 @@ export default function App() {
   };
 
   const handleConfirmClearOnly = () => {
-    if (!isAdminCode(clearOnlyConfirmCode)) {
+    if (clearOnlyConfirmCode.trim() !== MASTER_CODE) {
       setClearOnlyConfirmError("Invalid admin code. Nothing has been cleared.");
       return;
     }
@@ -4089,7 +4021,7 @@ export default function App() {
   };
 
   const handleSaveAndClearMatchDay = async () => {
-    if (!isAdminCode(saveConfirmCode)) {
+    if (saveConfirmCode.trim() !== MASTER_CODE) {
       setSaveConfirmError("Invalid admin code. Nothing has been saved or cleared.");
       return;
     }
@@ -4103,20 +4035,28 @@ export default function App() {
       String(now.getDate()).padStart(2, "0");
 
     try {
-      const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, activeMatchNo, matchType);
       const highlightsArchivePayload = buildHighlightsArchivePayload();
       console.log("[TK HIGHLIGHTS] archive winners on End Match Day:", highlightsArchivePayload);
 
-      if (matchDayId && highlightArchiveSelection) {
-        await archiveWinningHighlightsToFirebase({
-          matchDayId,
-          archiveSelection: highlightArchiveSelection,
-          activeSeasonId,
-          matchType,
-          gameFormat,
-          currentMatchNo: activeMatchNo,
-        });
-        await clearRawHighlightsFromFirebase(matchDayId);
+      if (currentVideoHighlightsMatchId && highlightArchiveSelection) {
+        const selectedHighlights = [
+          ...(Array.isArray(highlightArchiveSelection?.topGoals)
+            ? highlightArchiveSelection.topGoals
+            : []),
+          ...(highlightArchiveSelection?.bestSkill
+            ? [highlightArchiveSelection.bestSkill]
+            : []),
+          ...(highlightArchiveSelection?.bestSave
+            ? [highlightArchiveSelection.bestSave]
+            : []),
+        ].filter(Boolean);
+
+        if (selectedHighlights.length > 0) {
+          await VideoHighlightsRepository.archiveWinningHighlightsToFirebase({
+            matchId: currentVideoHighlightsMatchId,
+            highlights: selectedHighlights,
+          });
+        }
       }
       if (USE_V2) {
         const activeSeasonId = safeV2ForStats?.activeSeasonId || "";
@@ -4374,7 +4314,7 @@ export default function App() {
   };
 
   const requireAdminCodeEndSeason = () => {
-    if (!isAdminCode(endSeasonCode)) {
+    if (endSeasonCode.trim() !== MASTER_CODE) {
       setEndSeasonError("Invalid admin code.");
       return false;
     }
@@ -4557,38 +4497,40 @@ export default function App() {
 
 
   const handleUploadHighlight = async (payload) => {
-    const matchDayId = buildCurrentMatchDayId(
-      activeSeasonId,
-      gameFormat,
-      activeMatchNo,
-      matchType
-    );
+    const matchId = currentVideoHighlightsMatchId;
 
-    const savedHighlight =
-      await VideoHighlightsRepository.uploadAndSaveRawHighlight({
-        matchDayId,
-        file: payload?.file,
-        highlight: {
-          ...(payload || {}),
-          matchDayId,
-          activeSeasonId,
-          matchType,
-          gameFormat,
-          matchNo: activeMatchNo,
-          createdBy:
-            identity?.memberId ||
-            identity?.playerId ||
-            identity?.email ||
-            identity?.shortName ||
-            "",
-          createdByName:
-            identity?.shortName ||
-            identity?.fullName ||
-            identity?.displayName ||
-            identity?.email ||
-            "Unknown",
-        },
-      });
+    const clipId =
+      String(payload?.clipId || payload?.id || "").trim() ||
+      `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const savedHighlight = await VideoHighlightsRepository.uploadAndSaveRawHighlight({
+      matchId,
+      file: payload?.file,
+      highlight: {
+        ...(payload || {}),
+        clipId,
+        id: clipId,
+        matchId,
+        seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || null,
+        matchType,
+        gameFormat,
+        matchNo: activeMatchNo,
+        status: "pending",
+        createdAt: payload?.createdAt || new Date().toISOString(),
+        createdBy:
+          identity?.memberId ||
+          identity?.playerId ||
+          identity?.email ||
+          identity?.shortName ||
+          "",
+        createdByName:
+          identity?.shortName ||
+          identity?.fullName ||
+          identity?.displayName ||
+          identity?.email ||
+          "Unknown",
+      },
+    });
 
     setCurrentMatchDayHighlights((prev) => {
       const existing = Array.isArray(prev) ? prev : [];
@@ -4608,6 +4550,7 @@ export default function App() {
     return savedHighlight;
   };
 
+
   const pagesWithBottomNav = new Set([
     PAGE_LANDING,
     PAGE_MATCH_SIGNUP,
@@ -4622,7 +4565,7 @@ export default function App() {
     PAGE_PEER_REVIEW,
   ]);
 
-  const showBottomNav = pagesWithBottomNav.has(page) && page !== PAGE_LIVE;
+  const showBottomNav = pagesWithBottomNav.has(page);
 
   const handleBottomNavNavigate = (targetPage) => {
     if (!targetPage || targetPage === page) return;
@@ -5100,8 +5043,6 @@ export default function App() {
           defaultMatchSeconds={defaultMatchSeconds}
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
           durationSwitchLocked={hasLiveMatch || running}
-          adminCode={adminCode}
-          onUpdateAdminCode={handleUpdateAdminCode}
           activeTeamIds={normalizedActiveTeamIds}
           matchMode={matchMode}
           scheduledTarget={scheduledTarget}
@@ -5198,7 +5139,6 @@ export default function App() {
           matchType={pendingMatchStartContext?.matchType || matchType}
           gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
-          adminCode={adminCode}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={playerPhotosByName}
@@ -5262,8 +5202,20 @@ export default function App() {
 
       {page === PAGE_VIEW_HIGHLIGHTS && (
         <ViewHighlightsPage
-          identity={identity}
+          matchId={currentVideoHighlightsMatchId}
+          identity={pageIdentity}
           activeRole={activeRole}
+          isAdmin={isAdmin}
+          isCaptain={isCaptain}
+          isPlayer={isPlayer}
+          members={members}
+          teams={matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
+          friendlyTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
+          currentMatch={effectiveLiveMatch}
+          matchType={matchType}
+          gameFormat={gameFormat}
+          activeSeasonId={activeSeasonId}
+          currentMatchNo={activeMatchNo}
           currentMatchDayHighlights={currentMatchDayHighlights}
           votesByUser={highlightVotesByUser}
           onUploadHighlight={handleUploadHighlight}
@@ -5272,34 +5224,23 @@ export default function App() {
 
             const userId =
               String(
-                identity?.memberId ||
-                  identity?.playerId ||
-                  identity?.email ||
-                  identity?.shortName ||
-                  identity?.fullName ||
-                  identity?.displayName ||
+                pageIdentity?.memberId ||
+                  pageIdentity?.playerId ||
+                  pageIdentity?.email ||
+                  pageIdentity?.shortName ||
+                  pageIdentity?.fullName ||
+                  pageIdentity?.displayName ||
                   ""
               )
                 .trim()
                 .toLowerCase();
 
-            const userName =
-              identity?.shortName ||
-              identity?.fullName ||
-              identity?.displayName ||
-              identity?.name ||
-              identity?.email ||
-              "Unknown";
-
-            const matchDayId = buildCurrentMatchDayId(activeSeasonId, gameFormat, activeMatchNo, matchType);
-
-            if (userId && matchDayId) {
+            if (userId && currentVideoHighlightsMatchId) {
               try {
-                await saveHighlightVotesToFirebase({
-                  matchDayId,
+                await VideoHighlightsRepository.saveHighlightVotesToFirebase({
+                  matchId: currentVideoHighlightsMatchId,
                   userId,
-                  userName,
-                  votesByUser: nextVotes,
+                  votes: nextVotes?.[userId] || {},
                 });
               } catch (error) {
                 console.error("[TK HIGHLIGHTS] Failed to save highlight votes:", error);
@@ -5310,6 +5251,7 @@ export default function App() {
           onBack={handleBackToLanding}
         />
       )}
+
 
       {page === PAGE_NEWS && (
         <NewsPage

@@ -1,12 +1,20 @@
 // src/pages/ViewHighlightsPage.jsx
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import VideoHighlightsRepository, {
+  saveRawHighlightDoc,
+} from "../storage/VideohighlightsRepository.js";
 
 const MAX_VIDEO_SECONDS = 25;
 const IDEAL_MIN_SECONDS = 15;
 const IDEAL_MAX_SECONDS = 20;
 const MAX_VIDEO_BYTES = 80 * 1024 * 1024; // 80 MB
-const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm", "video/x-m4v"];
+const ALLOWED_VIDEO_TYPES = [
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-m4v",
+];
 
 function safeLower(value) {
   return String(value || "").trim().toLowerCase();
@@ -83,6 +91,17 @@ function formatSeconds(value) {
   return `${minutes}:${seconds}`;
 }
 
+function formatDate(value) {
+  const d = new Date(value || Date.now());
+  if (Number.isNaN(d.getTime())) return "Today";
+  return d.toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function getHighlightMediaUrl(highlight) {
   return (
     highlight?.videoUrl ||
@@ -109,6 +128,7 @@ function getHighlightPlayerName(highlight) {
       highlight?.goalScorerName ||
       highlight?.scorer ||
       highlight?.playerName ||
+      highlight?.player ||
       highlight?.keeperName ||
       highlight?.skillPlayer ||
       "Unknown"
@@ -129,9 +149,7 @@ function getHighlightTitle(highlight) {
 function getStatus(highlight) {
   const raw = safeLower(highlight?.status || "");
   if (raw === "pending" || raw === "approved" || raw === "rejected") return raw;
-
-  // Backward compatibility: existing old clips had no moderation status.
-  return "approved";
+  return "approved"; // old clips without moderation status remain visible
 }
 
 function normalizeHighlight(highlight, index = 0) {
@@ -178,10 +196,7 @@ function buildArchiveSelection(highlights, votesByUser) {
   const approved = safeHighlights
     .map((item, index) => normalizeHighlight(item, index))
     .filter((item) => item.status === "approved")
-    .map((item) => ({
-      ...item,
-      votes: voteCounts[item.id] || 0,
-    }));
+    .map((item) => ({ ...item, votes: voteCounts[item.id] || 0 }));
 
   const ranker = (a, b) => {
     if (b.votes !== a.votes) return b.votes - a.votes;
@@ -207,6 +222,12 @@ function getNameFromPlayerEntry(entry) {
   );
 }
 
+function normalizeTeamsInput(teams) {
+  if (Array.isArray(teams)) return teams;
+  if (teams && typeof teams === "object") return Object.values(teams);
+  return [];
+}
+
 function buildPlayerOptions({ members = [], teams = [], highlights = [] }) {
   const names = new Set();
 
@@ -215,7 +236,7 @@ function buildPlayerOptions({ members = [], teams = [], highlights = [] }) {
     if (name) names.add(name);
   });
 
-  (Array.isArray(teams) ? teams : []).forEach((team) => {
+  normalizeTeamsInput(teams).forEach((team) => {
     (Array.isArray(team?.players) ? team.players : []).forEach((player) => {
       const name = getNameFromPlayerEntry(player);
       if (name) names.add(name);
@@ -233,7 +254,7 @@ function buildPlayerOptions({ members = [], teams = [], highlights = [] }) {
 function buildTeamOptions(teams = [], highlights = []) {
   const names = new Set();
 
-  (Array.isArray(teams) ? teams : []).forEach((team) => {
+  normalizeTeamsInput(teams).forEach((team) => {
     const label = toTitleCaseLoose(team?.label || team?.name || "");
     if (label) names.add(label);
   });
@@ -286,33 +307,25 @@ function typeBadgeLabel(type) {
 }
 
 function statusBadgeLabel(status) {
-  if (status === "pending") return "Pending review";
+  if (status === "pending") return "Pending";
   if (status === "rejected") return "Rejected";
   return "Approved";
 }
 
-function statusStyle(status) {
-  if (status === "pending") {
-    return {
-      background: "rgba(250,204,21,0.16)",
-      borderColor: "rgba(250,204,21,0.36)",
-      color: "#fde68a",
-    };
-  }
+function statusClass(status) {
+  if (status === "pending") return "is-pending";
+  if (status === "rejected") return "is-rejected";
+  return "is-approved";
+}
 
-  if (status === "rejected") {
-    return {
-      background: "rgba(248,113,113,0.16)",
-      borderColor: "rgba(248,113,113,0.36)",
-      color: "#fecaca",
-    };
+function buildFallbackMatchId({ matchType, gameFormat, activeSeasonId, currentMatchNo }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const type = safeLower(matchType).includes("league") ? "league" : "friendly";
+  const format = String(gameFormat || "5_V_5").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  if (type === "league") {
+    return `league_${String(activeSeasonId || "season").trim() || "season"}_${today}_m${Number(currentMatchNo || 1)}`;
   }
-
-  return {
-    background: "rgba(34,197,94,0.16)",
-    borderColor: "rgba(34,197,94,0.36)",
-    color: "#bbf7d0",
-  };
+  return `friendly_${format}_${today}`;
 }
 
 function HighlightCard({
@@ -325,24 +338,21 @@ function HighlightCard({
   onApprove,
   onReject,
   onDelete,
-  compact = false,
 }) {
-  const status = highlight.status;
-  const statusTheme = statusStyle(status);
   const isSelectedVote = userVoteForType === highlight.id;
 
   return (
     <article className="tkh-card">
-      <div className="tkh-card-top">
-        <div className="tkh-card-title-wrap">
-          <div className="tkh-player-line">{highlight.playerName}</div>
-          <div className="tkh-title-line">{highlight.title}</div>
+      <div className="tkh-card-head">
+        <div className="tkh-card-title-block">
+          <div className="tkh-player-name">{highlight.playerName}</div>
+          <div className="tkh-clip-title">{highlight.title}</div>
         </div>
 
-        <div className="tkh-badge-stack">
+        <div className="tkh-badges">
           <span className="tkh-type-badge">{typeBadgeLabel(highlight.normalizedType)}</span>
-          <span className="tkh-status-badge" style={statusTheme}>
-            {statusBadgeLabel(status)}
+          <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
+            {statusBadgeLabel(highlight.status)}
           </span>
         </div>
       </div>
@@ -360,7 +370,7 @@ function HighlightCard({
       )}
 
       <div className="tkh-meta-row">
-        <span>{highlight.teamName ? toTitleCaseLoose(highlight.teamName) : "Team not set"}</span>
+        <span>{highlight.teamName ? toTitleCaseLoose(highlight.teamName) : "No team"}</span>
         <span>{highlight.durationSeconds ? formatSeconds(highlight.durationSeconds) : "Clip"}</span>
         <span>{voteCount} vote{voteCount === 1 ? "" : "s"}</span>
       </div>
@@ -369,22 +379,25 @@ function HighlightCard({
         <div className="tkh-soft-line">Assist: <strong>{toTitleCaseLoose(highlight.assist)}</strong></div>
       )}
 
-      {highlight.createdByName && (
-        <div className="tkh-soft-line">Uploaded by {highlight.createdByName}</div>
-      )}
+      <div className="tkh-soft-line">
+        Uploaded {formatDate(highlight.createdAt)}
+        {highlight.createdByName ? ` by ${highlight.createdByName}` : ""}
+      </div>
 
       <div className="tkh-card-actions">
-        {status === "approved" && canVote && ["goal", "save", "skill"].includes(highlight.normalizedType) && (
-          <button
-            type="button"
-            className={`tkh-btn tkh-btn-vote ${isSelectedVote ? "is-selected" : ""}`}
-            onClick={() => onVote?.(highlight.normalizedType, highlight.id)}
-          >
-            {isSelectedVote ? "Selected" : "Vote"}
-          </button>
-        )}
+        {highlight.status === "approved" &&
+          canVote &&
+          ["goal", "save", "skill"].includes(highlight.normalizedType) && (
+            <button
+              type="button"
+              className={`tkh-btn tkh-btn-vote ${isSelectedVote ? "is-selected" : ""}`}
+              onClick={() => onVote?.(highlight.normalizedType, highlight.id)}
+            >
+              {isSelectedVote ? "Selected" : "Vote"}
+            </button>
+          )}
 
-        {isModerator && status === "pending" && (
+        {isModerator && highlight.status === "pending" && (
           <>
             <button type="button" className="tkh-btn tkh-btn-approve" onClick={() => onApprove?.(highlight)}>
               Approve
@@ -406,6 +419,11 @@ function HighlightCard({
 }
 
 export function ViewHighlightsPage({
+  matchId,
+  activeSeasonId = null,
+  currentMatchNo = 1,
+  matchType = "FRIENDLY",
+  gameFormat = "5_V_5",
   identity,
   activeRole = "spectator",
   currentMatchDayHighlights = [],
@@ -422,10 +440,20 @@ export function ViewHighlightsPage({
 }) {
   const fileInputRef = useRef(null);
 
-  const [localVotesByUser, setLocalVotesByUser] = useState(votesByUser || {});
+  const resolvedMatchId = useMemo(
+    () =>
+      String(matchId || "").trim() ||
+      buildFallbackMatchId({ matchType, gameFormat, activeSeasonId, currentMatchNo }),
+    [matchId, matchType, gameFormat, activeSeasonId, currentMatchNo]
+  );
+
+  const [firebaseHighlights, setFirebaseHighlights] = useState([]);
   const [localHighlights, setLocalHighlights] = useState([]);
+  const [localVotesByUser, setLocalVotesByUser] = useState(votesByUser || {});
   const [selectedTab, setSelectedTab] = useState("approved");
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [loadingHighlights, setLoadingHighlights] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -447,9 +475,30 @@ export function ViewHighlightsPage({
   const isModerator = role === "admin" || role === "captain";
   const canUpload = isLoggedIn && ["admin", "captain", "player"].includes(role);
 
+  const loadHighlights = async () => {
+    if (!resolvedMatchId) return;
+
+    try {
+      setLoadingHighlights(true);
+      setLoadError("");
+      const loaded = await VideoHighlightsRepository.loadRawHighlightsFromFirebase(resolvedMatchId);
+      setFirebaseHighlights(Array.isArray(loaded) ? loaded : []);
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Failed to load highlights:", error);
+      setLoadError(error?.message || "Could not load highlights from Firebase.");
+    } finally {
+      setLoadingHighlights(false);
+    }
+  };
+
   useEffect(() => {
     setLocalVotesByUser(votesByUser || {});
   }, [votesByUser]);
+
+  useEffect(() => {
+    loadHighlights();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedMatchId]);
 
   useEffect(() => {
     return () => {
@@ -460,6 +509,7 @@ export function ViewHighlightsPage({
   const allHighlights = useMemo(() => {
     const combined = [
       ...(Array.isArray(currentMatchDayHighlights) ? currentMatchDayHighlights : []),
+      ...(Array.isArray(firebaseHighlights) ? firebaseHighlights : []),
       ...(Array.isArray(localHighlights) ? localHighlights : []),
     ];
 
@@ -475,7 +525,7 @@ export function ViewHighlightsPage({
         return true;
       })
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  }, [currentMatchDayHighlights, localHighlights]);
+  }, [currentMatchDayHighlights, firebaseHighlights, localHighlights]);
 
   const playerOptions = useMemo(
     () => buildPlayerOptions({ members, teams, highlights: allHighlights }),
@@ -639,11 +689,6 @@ export function ViewHighlightsPage({
       return;
     }
 
-    if (typeof onUploadHighlight !== "function") {
-      setUploadError("Upload is not connected yet. App.jsx must pass onUploadHighlight.");
-      return;
-    }
-
     const normalizedType = normalizeHighlightType(clipType);
     const clipId = buildLocalClipId();
     const createdAt = new Date().toISOString();
@@ -676,6 +721,11 @@ export function ViewHighlightsPage({
           : `Highlight by ${cleanPlayerName}`,
       durationSeconds: Math.round(clipDuration),
       fileSizeBytes: clipFile.size,
+      matchId: resolvedMatchId,
+      activeSeasonId,
+      matchType,
+      gameFormat,
+      matchNo: currentMatchNo,
       createdBy: identityKey,
       createdByName: identityName,
       createdAt,
@@ -684,7 +734,21 @@ export function ViewHighlightsPage({
 
     try {
       setUploading(true);
-      const savedHighlight = await onUploadHighlight(payload);
+
+      let savedHighlight = null;
+
+      if (resolvedMatchId) {
+        savedHighlight = await VideoHighlightsRepository.uploadAndSaveRawHighlight({
+          matchId: resolvedMatchId,
+          file: clipFile,
+          highlight: payload,
+        });
+      } else if (typeof onUploadHighlight === "function") {
+        savedHighlight = await onUploadHighlight(payload);
+      } else {
+        throw new Error("Upload is not connected yet.");
+      }
+
       const nextHighlight = normalizeHighlight(savedHighlight || payload);
 
       setLocalHighlights((prev) => {
@@ -699,6 +763,7 @@ export function ViewHighlightsPage({
       setSelectedTab("pending");
       setShowUploadModal(false);
       resetUpload();
+      await loadHighlights();
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Upload failed:", error);
       setUploadError(error?.message || "Failed to upload highlight.");
@@ -707,54 +772,98 @@ export function ViewHighlightsPage({
     }
   };
 
-  const updateLocalHighlightStatus = (highlight, status) => {
-    const targetId = String(highlight?.id || highlight?.clipId || "").trim();
+  const upsertLocalHighlight = (highlight) => {
+    const normalized = normalizeHighlight(highlight);
+    const targetId = String(normalized?.id || normalized?.clipId || "").trim();
     if (!targetId) return;
 
     setLocalHighlights((prev) => {
       const existing = Array.isArray(prev) ? prev : [];
       const found = existing.some((item) => String(item.id || item.clipId || "").trim() === targetId);
 
-      if (!found) {
-        return [...existing, { ...highlight, status }];
-      }
+      if (!found) return [...existing, normalized];
 
       return existing.map((item) =>
-        String(item.id || item.clipId || "").trim() === targetId ? { ...item, status } : item
+        String(item.id || item.clipId || "").trim() === targetId ? normalized : item
       );
     });
+
+    setFirebaseHighlights((prev) =>
+      (Array.isArray(prev) ? prev : []).map((item) =>
+        String(item.id || item.clipId || "").trim() === targetId ? normalized : item
+      )
+    );
   };
 
   const removeLocalHighlight = (highlight) => {
     const targetId = String(highlight?.id || highlight?.clipId || "").trim();
     if (!targetId) return;
 
-    setLocalHighlights((prev) =>
-      (Array.isArray(prev) ? prev : []).filter(
-        (item) => String(item.id || item.clipId || "").trim() !== targetId
-      )
-    );
+    const filterFn = (item) => String(item.id || item.clipId || "").trim() !== targetId;
+    setLocalHighlights((prev) => (Array.isArray(prev) ? prev : []).filter(filterFn));
+    setFirebaseHighlights((prev) => (Array.isArray(prev) ? prev : []).filter(filterFn));
+  };
+
+  const persistStatus = async (highlight, status) => {
+    const updated = normalizeHighlight({ ...highlight, status, updatedAt: new Date().toISOString() });
+    upsertLocalHighlight(updated);
+
+    if (resolvedMatchId && updated.clipId) {
+      await saveRawHighlightDoc({
+        matchId: resolvedMatchId,
+        highlight: updated,
+      });
+      await loadHighlights();
+    }
+
+    return updated;
   };
 
   const handleApprove = async (highlight) => {
-    updateLocalHighlightStatus(highlight, "approved");
-    await onApproveHighlight?.(highlight);
-    setSelectedTab("approved");
+    try {
+      const updated = await persistStatus(highlight, "approved");
+      await onApproveHighlight?.(updated);
+      setSelectedTab("approved");
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Approve failed:", error);
+      window.alert(error?.message || "Could not approve this highlight.");
+    }
   };
 
   const handleReject = async (highlight) => {
-    updateLocalHighlightStatus(highlight, "rejected");
-    await onRejectHighlight?.(highlight);
+    try {
+      const updated = await persistStatus(highlight, "rejected");
+      await onRejectHighlight?.(updated);
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Reject failed:", error);
+      window.alert(error?.message || "Could not reject this highlight.");
+    }
   };
 
   const handleDelete = async (highlight) => {
-    const confirmed = window.confirm("Delete this highlight from the page?");
+    const confirmed = window.confirm("Delete this highlight permanently?");
     if (!confirmed) return;
-    removeLocalHighlight(highlight);
-    await onDeleteHighlight?.(highlight);
+
+    try {
+      removeLocalHighlight(highlight);
+
+      if (resolvedMatchId && highlight?.clipId) {
+        await VideoHighlightsRepository.deleteRawHighlightFromFirebase({
+          matchId: resolvedMatchId,
+          clipId: highlight.clipId,
+          storagePath: highlight.storagePath,
+        });
+      }
+
+      await onDeleteHighlight?.(highlight);
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Delete failed:", error);
+      window.alert(error?.message || "Could not delete this highlight.");
+      await loadHighlights();
+    }
   };
 
-  const castVote = (category, highlightId) => {
+  const castVote = async (category, highlightId) => {
     if (!isLoggedIn) return;
 
     const next = {
@@ -766,7 +875,19 @@ export function ViewHighlightsPage({
     };
 
     setLocalVotesByUser(next);
-    onVotesChange?.(next);
+
+    try {
+      if (resolvedMatchId) {
+        await VideoHighlightsRepository.saveHighlightVotesToFirebase({
+          matchId: resolvedMatchId,
+          userId: identityKey,
+          votes: next[identityKey],
+        });
+      }
+      await onVotesChange?.(next);
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Vote save failed:", error);
+    }
   };
 
   return (
@@ -776,9 +897,9 @@ export function ViewHighlightsPage({
           min-height: 100vh;
           color: #e5e7eb;
           background:
-            radial-gradient(circle at 10% 0%, rgba(34,197,94,0.20), transparent 30%),
-            radial-gradient(circle at 90% 15%, rgba(59,130,246,0.20), transparent 32%),
-            linear-gradient(135deg, #0b2ea8 0%, #091347 38%, #6e3ec8 72%, #1f9f59 100%);
+            radial-gradient(circle at 12% 0%, rgba(34,197,94,0.18), transparent 30%),
+            radial-gradient(circle at 90% 0%, rgba(15,118,110,0.14), transparent 26%),
+            linear-gradient(180deg, #020617 0%, #071426 46%, #08111f 100%);
           padding: 18px;
           box-sizing: border-box;
         }
@@ -792,15 +913,15 @@ export function ViewHighlightsPage({
 
         .tkh-panel,
         .tkh-card {
-          background: rgba(6,18,42,0.76);
-          border: 1px solid rgba(255,255,255,0.10);
-          border-radius: 22px;
-          box-shadow: 0 18px 44px rgba(0,0,0,0.24);
+          background: rgba(15, 23, 42, 0.82);
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          box-shadow: 0 18px 46px rgba(0,0,0,0.28);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
         }
 
         .tkh-panel {
+          border-radius: 22px;
           padding: 16px;
         }
 
@@ -814,33 +935,54 @@ export function ViewHighlightsPage({
 
         .tkh-title {
           margin: 0;
-          font-size: clamp(2rem, 5vw, 3.4rem);
+          font-size: clamp(2rem, 5vw, 3.35rem);
           line-height: 0.98;
-          letter-spacing: -0.04em;
+          letter-spacing: -0.045em;
         }
 
         .tkh-subtitle {
           margin-top: 8px;
-          color: rgba(226,232,240,0.78);
+          color: rgba(226,232,240,0.76);
           font-size: 0.96rem;
         }
 
-        .tkh-actions {
+        .tkh-match-pill {
+          display: inline-flex;
+          width: fit-content;
+          margin-top: 10px;
+          border-radius: 999px;
+          padding: 0.34rem 0.65rem;
+          background: rgba(34,197,94,0.10);
+          border: 1px solid rgba(34,197,94,0.22);
+          color: #bbf7d0;
+          font-size: 0.76rem;
+          font-weight: 900;
+          max-width: 100%;
+          overflow-wrap: anywhere;
+        }
+
+        .tkh-actions,
+        .tkh-card-actions,
+        .tkh-tabs,
+        .tkh-filters,
+        .tkh-upload-actions {
           display: flex;
-          gap: 10px;
+          gap: 8px;
           flex-wrap: wrap;
           align-items: center;
         }
 
-        .tkh-btn {
+        .tkh-btn,
+        .tkh-tab,
+        .tkh-filter {
           appearance: none;
-          border: 1px solid rgba(255,255,255,0.13);
           border-radius: 999px;
-          padding: 0.68rem 0.92rem;
-          cursor: pointer;
+          border: 1px solid rgba(148,163,184,0.22);
           color: #e5e7eb;
-          background: rgba(255,255,255,0.06);
+          background: rgba(255,255,255,0.055);
+          padding: 0.66rem 0.9rem;
           font-weight: 900;
+          cursor: pointer;
           line-height: 1;
           touch-action: manipulation;
         }
@@ -850,51 +992,55 @@ export function ViewHighlightsPage({
           cursor: not-allowed;
         }
 
-        .tkh-btn-primary {
-          background: linear-gradient(135deg, rgba(34,197,94,0.95), rgba(22,163,74,0.94));
-          border-color: rgba(134,239,172,0.46);
-          color: #052e16;
-          box-shadow: 0 12px 28px rgba(34,197,94,0.22);
-        }
-
+        .tkh-btn-primary,
+        .tkh-tab.is-active,
+        .tkh-filter.is-active,
         .tkh-btn-vote.is-selected,
         .tkh-btn-approve {
-          background: rgba(34,197,94,0.18);
+          background: rgba(34,197,94,0.17);
           border-color: rgba(34,197,94,0.42);
           color: #bbf7d0;
+          box-shadow: 0 0 20px rgba(34,197,94,0.10);
+        }
+
+        .tkh-btn-primary {
+          background: linear-gradient(135deg, rgba(34,197,94,0.96), rgba(21,128,61,0.94));
+          color: #052e16;
+          border-color: rgba(134,239,172,0.5);
         }
 
         .tkh-btn-reject,
         .tkh-btn-danger {
-          background: rgba(239,68,68,0.12);
-          border-color: rgba(248,113,113,0.32);
+          background: rgba(239,68,68,0.13);
+          border-color: rgba(248,113,113,0.34);
           color: #fecaca;
         }
 
-        .tkh-tabs,
-        .tkh-filters {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
+        .tkh-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
         }
 
-        .tkh-tab,
-        .tkh-filter {
-          appearance: none;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.12);
-          color: #e5e7eb;
-          background: rgba(255,255,255,0.04);
-          padding: 0.56rem 0.82rem;
-          font-weight: 900;
-          cursor: pointer;
+        .tkh-summary-card {
+          border-radius: 18px;
+          padding: 12px;
+          background: rgba(255,255,255,0.045);
+          border: 1px solid rgba(148,163,184,0.14);
+          min-width: 0;
         }
 
-        .tkh-tab.is-active,
-        .tkh-filter.is-active {
-          background: rgba(34,197,94,0.18);
-          border-color: rgba(34,197,94,0.42);
-          color: #bbf7d0;
+        .tkh-summary-label {
+          color: rgba(226,232,240,0.68);
+          font-size: 0.78rem;
+          font-weight: 850;
+        }
+
+        .tkh-summary-value {
+          margin-top: 4px;
+          font-size: 1.28rem;
+          font-weight: 1000;
+          overflow-wrap: anywhere;
         }
 
         .tkh-grid {
@@ -906,37 +1052,36 @@ export function ViewHighlightsPage({
         .tkh-card {
           min-width: 0;
           overflow: hidden;
+          border-radius: 22px;
           padding: 12px;
           display: grid;
           gap: 10px;
         }
 
-        .tkh-card-top {
+        .tkh-card-head {
           display: flex;
           justify-content: space-between;
           gap: 10px;
           align-items: flex-start;
         }
 
-        .tkh-card-title-wrap {
-          min-width: 0;
-        }
+        .tkh-card-title-block { min-width: 0; }
 
-        .tkh-player-line {
+        .tkh-player-name {
           font-size: 1.18rem;
           font-weight: 1000;
           line-height: 1.05;
           overflow-wrap: anywhere;
         }
 
-        .tkh-title-line {
+        .tkh-clip-title {
           margin-top: 3px;
-          color: rgba(226,232,240,0.74);
+          color: rgba(226,232,240,0.72);
           font-size: 0.86rem;
           overflow-wrap: anywhere;
         }
 
-        .tkh-badge-stack {
+        .tkh-badges {
           display: flex;
           flex-direction: column;
           align-items: flex-end;
@@ -959,6 +1104,24 @@ export function ViewHighlightsPage({
           color: #e5e7eb;
         }
 
+        .tkh-status-badge.is-approved {
+          background: rgba(34,197,94,0.16);
+          border-color: rgba(34,197,94,0.36);
+          color: #bbf7d0;
+        }
+
+        .tkh-status-badge.is-pending {
+          background: rgba(250,204,21,0.14);
+          border-color: rgba(250,204,21,0.34);
+          color: #fde68a;
+        }
+
+        .tkh-status-badge.is-rejected {
+          background: rgba(248,113,113,0.14);
+          border-color: rgba(248,113,113,0.34);
+          color: #fecaca;
+        }
+
         .tkh-video {
           width: 100%;
           aspect-ratio: 16 / 9;
@@ -968,14 +1131,19 @@ export function ViewHighlightsPage({
           object-fit: contain;
         }
 
-        .tkh-video-empty {
-          min-height: 180px;
+        .tkh-video-empty,
+        .tkh-empty {
           display: grid;
           place-items: center;
-          border-radius: 16px;
-          border: 1px dashed rgba(255,255,255,0.18);
+          text-align: center;
+          border-radius: 18px;
+          border: 1px dashed rgba(148,163,184,0.24);
           color: rgba(226,232,240,0.70);
+          font-weight: 850;
         }
+
+        .tkh-video-empty { min-height: 180px; }
+        .tkh-empty { padding: 28px 16px; }
 
         .tkh-meta-row {
           display: flex;
@@ -986,54 +1154,31 @@ export function ViewHighlightsPage({
         }
 
         .tkh-meta-row span,
-        .tkh-soft-line {
-          overflow-wrap: anywhere;
-        }
+        .tkh-soft-line { overflow-wrap: anywhere; }
 
         .tkh-soft-line {
           color: rgba(226,232,240,0.72);
           font-size: 0.84rem;
         }
 
-        .tkh-card-actions {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-          align-items: center;
+        .tkh-system-note,
+        .tkh-error-box {
+          border-radius: 16px;
+          padding: 0.78rem 0.9rem;
+          font-weight: 850;
+          line-height: 1.35;
         }
 
-        .tkh-empty {
-          padding: 26px 16px;
-          text-align: center;
-          color: rgba(226,232,240,0.72);
-          font-weight: 800;
+        .tkh-system-note {
+          background: rgba(34,197,94,0.09);
+          border: 1px solid rgba(34,197,94,0.22);
+          color: #bbf7d0;
         }
 
-        .tkh-summary-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .tkh-summary-card {
-          border-radius: 18px;
-          padding: 12px;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.09);
-          min-width: 0;
-        }
-
-        .tkh-summary-label {
-          color: rgba(226,232,240,0.70);
-          font-size: 0.78rem;
-          font-weight: 800;
-        }
-
-        .tkh-summary-value {
-          margin-top: 4px;
-          font-size: 1.3rem;
-          font-weight: 1000;
-          overflow-wrap: anywhere;
+        .tkh-error-box {
+          background: rgba(239,68,68,0.13);
+          border: 1px solid rgba(248,113,113,0.32);
+          color: #fecaca;
         }
 
         .tkh-modal-backdrop {
@@ -1054,7 +1199,7 @@ export function ViewHighlightsPage({
           overflow: auto;
           border-radius: 24px;
           background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98));
-          border: 1px solid rgba(255,255,255,0.12);
+          border: 1px solid rgba(148,163,184,0.20);
           box-shadow: 0 26px 80px rgba(0,0,0,0.55);
           padding: 16px;
           box-sizing: border-box;
@@ -1096,7 +1241,7 @@ export function ViewHighlightsPage({
           width: 100%;
           box-sizing: border-box;
           border-radius: 14px;
-          border: 1px solid rgba(255,255,255,0.14);
+          border: 1px solid rgba(148,163,184,0.24);
           background: rgba(255,255,255,0.06);
           color: #e5e7eb;
           padding: 0.74rem 0.82rem;
@@ -1145,64 +1290,24 @@ export function ViewHighlightsPage({
 
         .tkh-upload-actions {
           margin-top: 14px;
-          display: flex;
           justify-content: flex-end;
-          gap: 10px;
-          flex-wrap: wrap;
         }
 
         @media (max-width: 980px) {
-          .tkh-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .tkh-summary-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
+          .tkh-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .tkh-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
 
         @media (max-width: 620px) {
-          .tkh-page {
-            padding: 12px;
-          }
-
-          .tkh-panel {
-            padding: 13px;
-            border-radius: 18px;
-          }
-
-          .tkh-actions,
-          .tkh-upload-actions {
-            width: 100%;
-          }
-
-          .tkh-actions .tkh-btn,
-          .tkh-upload-actions .tkh-btn {
-            width: 100%;
-          }
-
-          .tkh-grid,
-          .tkh-form-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .tkh-summary-grid {
-            grid-template-columns: 1fr 1fr;
-          }
-
-          .tkh-card-top {
-            flex-direction: column;
-          }
-
-          .tkh-badge-stack {
-            flex-direction: row;
-            align-items: center;
-            flex-wrap: wrap;
-          }
-
-          .tkh-card-actions .tkh-btn {
-            flex: 1 1 auto;
-          }
+          .tkh-page { padding: 12px; }
+          .tkh-panel { padding: 13px; border-radius: 18px; }
+          .tkh-actions, .tkh-upload-actions { width: 100%; }
+          .tkh-actions .tkh-btn, .tkh-upload-actions .tkh-btn { width: 100%; }
+          .tkh-grid, .tkh-form-grid { grid-template-columns: 1fr; }
+          .tkh-summary-grid { grid-template-columns: 1fr 1fr; }
+          .tkh-card-head { flex-direction: column; }
+          .tkh-badges { flex-direction: row; align-items: center; flex-wrap: wrap; }
+          .tkh-card-actions .tkh-btn { flex: 1 1 auto; }
         }
       `}</style>
 
@@ -1211,11 +1316,12 @@ export function ViewHighlightsPage({
           <div>
             <h1 className="tkh-title">Video Highlights</h1>
             <div className="tkh-subtitle">
-              Upload short TurfKings clips, review them safely, then vote for the best moments.
+              Upload short match clips, review them safely, then vote for the best moments.
             </div>
             <div className="tkh-subtitle">
               Signed in as <strong>{identityName}</strong> • Role: <strong>{activeRole}</strong>
             </div>
+            <div className="tkh-match-pill">Storage: video_highlights / {resolvedMatchId}</div>
           </div>
 
           <div className="tkh-actions">
@@ -1228,11 +1334,16 @@ export function ViewHighlightsPage({
             >
               Upload clip
             </button>
+            <button type="button" className="tkh-btn" onClick={loadHighlights} disabled={loadingHighlights}>
+              {loadingHighlights ? "Refreshing..." : "Refresh"}
+            </button>
             <button type="button" className="tkh-btn" onClick={onBack}>
               Back
             </button>
           </div>
         </section>
+
+        {loadError && <section className="tkh-error-box">{loadError}</section>}
 
         <section className="tkh-panel">
           <div className="tkh-summary-grid">
@@ -1299,6 +1410,12 @@ export function ViewHighlightsPage({
             ))}
           </div>
         </section>
+
+        {!isModerator && pendingHighlights.length > 0 && (
+          <section className="tkh-system-note">
+            {pendingHighlights.length} uploaded clip{pendingHighlights.length === 1 ? " is" : "s are"} waiting for captain/admin review.
+          </section>
+        )}
 
         {visibleHighlights.length === 0 ? (
           <section className="tkh-panel tkh-empty">
