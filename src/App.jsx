@@ -69,7 +69,8 @@ const PAGE_MATCH_SIGNUP = "match-signup";
 const PAGE_PAYMENT = "payment";
 const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 
-const MASTER_CODE = "3333";
+const DEFAULT_ADMIN_CODE = "3333";
+const ADMIN_CODE_STORAGE_KEY = "tk_admin_code_v1";
 const DEFAULT_LEAGUE_MATCH_SECONDS = 5 * 60;
 const DEFAULT_FRIENDLY_MATCH_SECONDS = 60 * 60;
 const DEFAULT_MATCH_SECONDS = DEFAULT_FRIENDLY_MATCH_SECONDS;
@@ -1841,6 +1842,11 @@ function getMatchSecondsForType(matchSecondsByType, rawMatchType) {
   return normalizeMatchSecondsValue(matchSecondsByType?.[safeMatchType], defaults);
 }
 
+function normalizeAdminCode(value) {
+  const clean = String(value || "").trim();
+  return clean || DEFAULT_ADMIN_CODE;
+}
+
 export default function App() {
   const [page, setPage] = useState(PAGE_ENTRY);
 
@@ -1879,6 +1885,71 @@ export default function App() {
   const [state, setState] = useState(() =>
     USE_V2 ? loadStateV2() : loadState()
   );
+
+  const [adminCode, setAdminCode] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_ADMIN_CODE;
+    try {
+      return normalizeAdminCode(
+        window.localStorage.getItem(ADMIN_CODE_STORAGE_KEY) || DEFAULT_ADMIN_CODE
+      );
+    } catch {
+      return DEFAULT_ADMIN_CODE;
+    }
+  });
+
+  const isAdminCode = (value) =>
+    String(value || "").trim() === normalizeAdminCode(adminCode);
+
+  const handleUpdateAdminCode = async ({ currentCode, nextCode }) => {
+    if (!isAdmin) {
+      return { ok: false, message: "Only admin can change the admin code." };
+    }
+
+    if (!isAdminCode(currentCode)) {
+      return { ok: false, message: "Current admin code is incorrect." };
+    }
+
+    const cleanNextCode = String(nextCode || "").trim();
+    if (cleanNextCode.length < 4) {
+      return { ok: false, message: "New admin code must be at least 4 characters." };
+    }
+
+    if (cleanNextCode.length > 24) {
+      return { ok: false, message: "New admin code must be 24 characters or fewer." };
+    }
+
+    const normalizedNextCode = normalizeAdminCode(cleanNextCode);
+
+    try {
+      await setDoc(
+        doc(db, "app_settings", "security"),
+        {
+          adminCode: normalizedNextCode,
+          updatedAtISO: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("[TK SETTINGS] Failed to save admin code to Firebase:", error);
+      return {
+        ok: false,
+        message: "Could not save the new admin code to Firebase. Nothing changed.",
+      };
+    }
+
+    setAdminCode(normalizedNextCode);
+
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(ADMIN_CODE_STORAGE_KEY, normalizedNextCode);
+      } catch {
+        // ignore localStorage failures
+      }
+    }
+
+    return { ok: true, message: "Admin code updated." };
+  };
 
   const activeSeasonIdForPeerRatings = USE_V2
     ? ensureV2StateShape(state)?.activeSeasonId || null
@@ -2044,6 +2115,35 @@ export default function App() {
       }
     );
     return () => unsubscribe && unsubscribe();
+  }, []);
+
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "app_settings", "security"));
+        if (cancelled || !snap.exists()) return;
+
+        const cloudCode = normalizeAdminCode(snap.data()?.adminCode);
+        setAdminCode(cloudCode);
+
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(ADMIN_CODE_STORAGE_KEY, cloudCode);
+          } catch {
+            // ignore localStorage failures
+          }
+        }
+      } catch (error) {
+        console.error("[TK SETTINGS] Failed to load admin code from Firebase:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -3845,7 +3945,7 @@ export default function App() {
   };
 
   const requireAdminCode = () => {
-    if (backupCode.trim() !== MASTER_CODE) {
+    if (!isAdminCode(backupCode)) {
       setBackupError("Invalid admin code.");
       return false;
     }
@@ -3905,7 +4005,7 @@ export default function App() {
   };
 
   const handleConfirmClearOnly = () => {
-    if (clearOnlyConfirmCode.trim() !== MASTER_CODE) {
+    if (!isAdminCode(clearOnlyConfirmCode)) {
       setClearOnlyConfirmError("Invalid admin code. Nothing has been cleared.");
       return;
     }
@@ -3989,7 +4089,7 @@ export default function App() {
   };
 
   const handleSaveAndClearMatchDay = async () => {
-    if (saveConfirmCode.trim() !== MASTER_CODE) {
+    if (!isAdminCode(saveConfirmCode)) {
       setSaveConfirmError("Invalid admin code. Nothing has been saved or cleared.");
       return;
     }
@@ -4274,7 +4374,7 @@ export default function App() {
   };
 
   const requireAdminCodeEndSeason = () => {
-    if (endSeasonCode.trim() !== MASTER_CODE) {
+    if (!isAdminCode(endSeasonCode)) {
       setEndSeasonError("Invalid admin code.");
       return false;
     }
@@ -5000,6 +5100,8 @@ export default function App() {
           defaultMatchSeconds={defaultMatchSeconds}
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
           durationSwitchLocked={hasLiveMatch || running}
+          adminCode={adminCode}
+          onUpdateAdminCode={handleUpdateAdminCode}
           activeTeamIds={normalizedActiveTeamIds}
           matchMode={matchMode}
           scheduledTarget={scheduledTarget}
@@ -5096,6 +5198,7 @@ export default function App() {
           matchType={pendingMatchStartContext?.matchType || matchType}
           gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
+          adminCode={adminCode}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={playerPhotosByName}

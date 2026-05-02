@@ -1,6 +1,12 @@
 // src/pages/ViewHighlightsPage.jsx
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+const MAX_VIDEO_SECONDS = 25;
+const IDEAL_MIN_SECONDS = 15;
+const IDEAL_MAX_SECONDS = 20;
+const MAX_VIDEO_BYTES = 80 * 1024 * 1024; // 80 MB
+const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm", "video/x-m4v"];
 
 function safeLower(value) {
   return String(value || "").trim().toLowerCase();
@@ -26,16 +32,15 @@ function normalizeHighlightType(type) {
 
 function getIdentityKey(identity) {
   if (!identity || typeof identity !== "object") return "";
-  return (
+  return String(
     identity.memberId ||
-    identity.playerId ||
-    identity.email ||
-    identity.shortName ||
-    identity.fullName ||
-    identity.displayName ||
-    ""
+      identity.playerId ||
+      identity.email ||
+      identity.shortName ||
+      identity.fullName ||
+      identity.displayName ||
+      ""
   )
-    .toString()
     .trim()
     .toLowerCase();
 }
@@ -52,6 +57,32 @@ function getIdentityDisplayName(identity) {
   );
 }
 
+function buildLocalClipId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return `clip-${crypto.randomUUID()}`;
+  }
+  return `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getFileExtension(file) {
+  const name = String(file?.name || "");
+  const ext = name.includes(".") ? name.split(".").pop() : "mp4";
+  return String(ext || "mp4").toLowerCase();
+}
+
+function formatFileSize(bytes) {
+  const mb = Number(bytes || 0) / (1024 * 1024);
+  if (!Number.isFinite(mb) || mb <= 0) return "0 MB";
+  return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
+}
+
+function formatSeconds(value) {
+  const total = Math.max(0, Math.round(Number(value || 0)));
+  const minutes = Math.floor(total / 60).toString().padStart(2, "0");
+  const seconds = (total % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
 function getHighlightMediaUrl(highlight) {
   return (
     highlight?.videoUrl ||
@@ -63,7 +94,7 @@ function getHighlightMediaUrl(highlight) {
   );
 }
 
-function getHighlightId(highlight, index) {
+function getHighlightId(highlight, index = 0) {
   return (
     highlight?.clipId ||
     highlight?.id ||
@@ -92,208 +123,341 @@ function getHighlightTitle(highlight) {
   if (type === "goal") return `Goal by ${player}`;
   if (type === "save") return `Save by ${player}`;
   if (type === "skill") return `Skill by ${player}`;
-
   return `Highlight by ${player}`;
 }
 
-function getVoteBuckets(votesByHighlight, highlights) {
-  const buckets = {};
+function getStatus(highlight) {
+  const raw = safeLower(highlight?.status || "");
+  if (raw === "pending" || raw === "approved" || raw === "rejected") return raw;
 
+  // Backward compatibility: existing old clips had no moderation status.
+  return "approved";
+}
+
+function normalizeHighlight(highlight, index = 0) {
+  const id = getHighlightId(highlight, index);
+  const normalizedType = normalizeHighlightType(highlight?.tag || highlight?.type || "");
+  const playerName = getHighlightPlayerName(highlight);
+
+  return {
+    ...highlight,
+    id,
+    clipId: highlight?.clipId || id,
+    highlightId: highlight?.highlightId || id,
+    normalizedType,
+    type: normalizedType,
+    tag: normalizedType,
+    status: getStatus(highlight),
+    mediaUrl: getHighlightMediaUrl(highlight),
+    playerName,
+    title: getHighlightTitle(highlight),
+    createdAt: highlight?.createdAt || highlight?.timestamp || new Date().toISOString(),
+    votes: Number(highlight?.votes || 0),
+  };
+}
+
+function getVoteBuckets(votesByUser, highlights) {
+  const buckets = {};
   (highlights || []).forEach((highlight, index) => {
     buckets[getHighlightId(highlight, index)] = 0;
   });
 
-  Object.values(votesByHighlight || {}).forEach((userVote) => {
+  Object.values(votesByUser || {}).forEach((userVote) => {
     Object.values(userVote || {}).forEach((highlightId) => {
-      if (highlightId && buckets[highlightId] != null) {
-        buckets[highlightId] += 1;
-      }
+      if (highlightId && buckets[highlightId] != null) buckets[highlightId] += 1;
     });
   });
 
   return buckets;
 }
 
-function buildArchiveSelection(highlights, votesByHighlight) {
+function buildArchiveSelection(highlights, votesByUser) {
   const safeHighlights = Array.isArray(highlights) ? highlights : [];
-  const voteCounts = getVoteBuckets(votesByHighlight, safeHighlights);
+  const voteCounts = getVoteBuckets(votesByUser, safeHighlights);
 
-  const enriched = safeHighlights.map((highlight, index) => {
-    const id = getHighlightId(highlight, index);
-    const type = normalizeHighlightType(highlight?.tag || highlight?.type || "");
-
-    return {
-      ...highlight,
-      id,
-      normalizedType: type,
-      votes: voteCounts[id] || 0,
-      playerName: getHighlightPlayerName(highlight),
-      mediaUrl: getHighlightMediaUrl(highlight),
-    };
-  });
+  const approved = safeHighlights
+    .map((item, index) => normalizeHighlight(item, index))
+    .filter((item) => item.status === "approved")
+    .map((item) => ({
+      ...item,
+      votes: voteCounts[item.id] || 0,
+    }));
 
   const ranker = (a, b) => {
     if (b.votes !== a.votes) return b.votes - a.votes;
-
-    const aTime = new Date(a.createdAt || a.timestamp || 0).getTime();
-    const bTime = new Date(b.createdAt || b.timestamp || 0).getTime();
-
-    return bTime - aTime;
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
   };
 
-  const goals = enriched.filter((item) => item.normalizedType === "goal").sort(ranker);
-  const skills = enriched.filter((item) => item.normalizedType === "skill").sort(ranker);
-  const saves = enriched.filter((item) => item.normalizedType === "save").sort(ranker);
-
-  const topGoals = goals.slice(0, 3);
-  const bestSkill = skills[0] || null;
-  const bestSave = saves[0] || null;
-
-  const goalsByScorer = topGoals.reduce((acc, item) => {
-    const key = item.playerName || "Unknown";
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(item);
-    return acc;
-  }, {});
+  const goals = approved.filter((item) => item.normalizedType === "goal").sort(ranker);
+  const skills = approved.filter((item) => item.normalizedType === "skill").sort(ranker);
+  const saves = approved.filter((item) => item.normalizedType === "save").sort(ranker);
 
   return {
-    topGoals,
-    bestSkill,
-    bestSave,
-    goalsByScorer,
+    topGoals: goals.slice(0, 3),
+    bestSkill: skills[0] || null,
+    bestSave: saves[0] || null,
   };
 }
 
-function buildLocalClipId() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return `clip-${crypto.randomUUID()}`;
+function getNameFromPlayerEntry(entry) {
+  if (typeof entry === "string") return toTitleCaseLoose(entry);
+  if (!entry || typeof entry !== "object") return "";
+  return toTitleCaseLoose(
+    entry.fullName || entry.displayName || entry.shortName || entry.name || entry.playerName || ""
+  );
+}
+
+function buildPlayerOptions({ members = [], teams = [], highlights = [] }) {
+  const names = new Set();
+
+  (Array.isArray(members) ? members : []).forEach((member) => {
+    const name = getNameFromPlayerEntry(member);
+    if (name) names.add(name);
+  });
+
+  (Array.isArray(teams) ? teams : []).forEach((team) => {
+    (Array.isArray(team?.players) ? team.players : []).forEach((player) => {
+      const name = getNameFromPlayerEntry(player);
+      if (name) names.add(name);
+    });
+  });
+
+  (Array.isArray(highlights) ? highlights : []).forEach((highlight) => {
+    const name = getHighlightPlayerName(highlight);
+    if (name && safeLower(name) !== "unknown") names.add(name);
+  });
+
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
+function buildTeamOptions(teams = [], highlights = []) {
+  const names = new Set();
+
+  (Array.isArray(teams) ? teams : []).forEach((team) => {
+    const label = toTitleCaseLoose(team?.label || team?.name || "");
+    if (label) names.add(label);
+  });
+
+  (Array.isArray(highlights) ? highlights : []).forEach((highlight) => {
+    const teamName = toTitleCaseLoose(highlight?.teamName || highlight?.teamLabel || "");
+    if (teamName) names.add(teamName);
+  });
+
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
+function readVideoDuration(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error("No file selected."));
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      video.load();
+    };
+
+    video.onloadedmetadata = () => {
+      const duration = Number(video.duration || 0);
+      cleanup();
+      resolve(duration);
+    };
+
+    video.onerror = () => {
+      cleanup();
+      reject(new Error("Could not read this video's duration."));
+    };
+
+    video.src = url;
+  });
+}
+
+function typeBadgeLabel(type) {
+  if (type === "goal") return "⚽ Goal";
+  if (type === "save") return "🧤 Save";
+  if (type === "skill") return "✨ Skill";
+  return "🎬 Clip";
+}
+
+function statusBadgeLabel(status) {
+  if (status === "pending") return "Pending review";
+  if (status === "rejected") return "Rejected";
+  return "Approved";
+}
+
+function statusStyle(status) {
+  if (status === "pending") {
+    return {
+      background: "rgba(250,204,21,0.16)",
+      borderColor: "rgba(250,204,21,0.36)",
+      color: "#fde68a",
+    };
   }
 
-  return `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  if (status === "rejected") {
+    return {
+      background: "rgba(248,113,113,0.16)",
+      borderColor: "rgba(248,113,113,0.36)",
+      color: "#fecaca",
+    };
+  }
+
+  return {
+    background: "rgba(34,197,94,0.16)",
+    borderColor: "rgba(34,197,94,0.36)",
+    color: "#bbf7d0",
+  };
 }
 
-function formatFileSize(bytes) {
-  const value = Number(bytes || 0);
-  if (!value) return "0 MB";
+function HighlightCard({
+  highlight,
+  voteCount = 0,
+  isModerator = false,
+  canVote = false,
+  userVoteForType = null,
+  onVote,
+  onApprove,
+  onReject,
+  onDelete,
+  compact = false,
+}) {
+  const status = highlight.status;
+  const statusTheme = statusStyle(status);
+  const isSelectedVote = userVoteForType === highlight.id;
 
-  const mb = value / (1024 * 1024);
-  return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
+  return (
+    <article className="tkh-card">
+      <div className="tkh-card-top">
+        <div className="tkh-card-title-wrap">
+          <div className="tkh-player-line">{highlight.playerName}</div>
+          <div className="tkh-title-line">{highlight.title}</div>
+        </div>
+
+        <div className="tkh-badge-stack">
+          <span className="tkh-type-badge">{typeBadgeLabel(highlight.normalizedType)}</span>
+          <span className="tkh-status-badge" style={statusTheme}>
+            {statusBadgeLabel(status)}
+          </span>
+        </div>
+      </div>
+
+      {highlight.mediaUrl ? (
+        <video
+          className="tkh-video"
+          controls
+          preload="metadata"
+          playsInline
+          src={highlight.mediaUrl}
+        />
+      ) : (
+        <div className="tkh-video-empty">Video URL not available yet.</div>
+      )}
+
+      <div className="tkh-meta-row">
+        <span>{highlight.teamName ? toTitleCaseLoose(highlight.teamName) : "Team not set"}</span>
+        <span>{highlight.durationSeconds ? formatSeconds(highlight.durationSeconds) : "Clip"}</span>
+        <span>{voteCount} vote{voteCount === 1 ? "" : "s"}</span>
+      </div>
+
+      {highlight.assist && (
+        <div className="tkh-soft-line">Assist: <strong>{toTitleCaseLoose(highlight.assist)}</strong></div>
+      )}
+
+      {highlight.createdByName && (
+        <div className="tkh-soft-line">Uploaded by {highlight.createdByName}</div>
+      )}
+
+      <div className="tkh-card-actions">
+        {status === "approved" && canVote && ["goal", "save", "skill"].includes(highlight.normalizedType) && (
+          <button
+            type="button"
+            className={`tkh-btn tkh-btn-vote ${isSelectedVote ? "is-selected" : ""}`}
+            onClick={() => onVote?.(highlight.normalizedType, highlight.id)}
+          >
+            {isSelectedVote ? "Selected" : "Vote"}
+          </button>
+        )}
+
+        {isModerator && status === "pending" && (
+          <>
+            <button type="button" className="tkh-btn tkh-btn-approve" onClick={() => onApprove?.(highlight)}>
+              Approve
+            </button>
+            <button type="button" className="tkh-btn tkh-btn-reject" onClick={() => onReject?.(highlight)}>
+              Reject
+            </button>
+          </>
+        )}
+
+        {isModerator && (
+          <button type="button" className="tkh-btn tkh-btn-danger" onClick={() => onDelete?.(highlight)}>
+            Delete
+          </button>
+        )}
+      </div>
+    </article>
+  );
 }
-
-function getFileExtension(file) {
-  const name = String(file?.name || "");
-  const ext = name.includes(".") ? name.split(".").pop() : "mp4";
-  return String(ext || "mp4").toLowerCase();
-}
-
-const buttonBase = {
-  border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: "12px",
-  padding: "0.7rem 0.95rem",
-  cursor: "pointer",
-  fontWeight: 700,
-};
-
-const inputBase = {
-  width: "100%",
-  border: "1px solid rgba(255,255,255,0.14)",
-  borderRadius: "12px",
-  padding: "0.75rem 0.85rem",
-  background: "rgba(255,255,255,0.06)",
-  color: "#e5e7eb",
-  boxSizing: "border-box",
-  outline: "none",
-};
 
 export function ViewHighlightsPage({
   identity,
   activeRole = "spectator",
   currentMatchDayHighlights = [],
   votesByUser = {},
+  members = [],
+  teams = [],
   onVotesChange,
   onHighlightsSelectionChange,
   onUploadHighlight,
+  onApproveHighlight,
+  onRejectHighlight,
+  onDeleteHighlight,
   onBack,
 }) {
+  const fileInputRef = useRef(null);
+
   const [localVotesByUser, setLocalVotesByUser] = useState(votesByUser || {});
   const [localHighlights, setLocalHighlights] = useState([]);
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [selectedTab, setSelectedTab] = useState("approved");
+  const [selectedFilter, setSelectedFilter] = useState("all");
 
-  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [uploadSuccess, setUploadSuccess] = useState("");
+  const [uploadNotice, setUploadNotice] = useState("");
+
   const [clipFile, setClipFile] = useState(null);
   const [clipPreviewUrl, setClipPreviewUrl] = useState("");
+  const [clipDuration, setClipDuration] = useState(null);
   const [clipType, setClipType] = useState("goal");
   const [playerName, setPlayerName] = useState("");
   const [assistName, setAssistName] = useState("");
   const [teamName, setTeamName] = useState("");
-  const [clipTitle, setClipTitle] = useState("");
-  const [clipNotes, setClipNotes] = useState("");
 
-  const [viewportWidth, setViewportWidth] = useState(
-    typeof window === "undefined" ? 1280 : window.innerWidth
-  );
+  const identityKey = useMemo(() => getIdentityKey(identity), [identity]);
+  const identityName = useMemo(() => getIdentityDisplayName(identity), [identity]);
+  const role = safeLower(activeRole);
+  const isLoggedIn = Boolean(identityKey);
+  const isModerator = role === "admin" || role === "captain";
+  const canUpload = isLoggedIn && ["admin", "captain", "player"].includes(role);
 
   useEffect(() => {
     setLocalVotesByUser(votesByUser || {});
   }, [votesByUser]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-
-    const onResize = () => setViewportWidth(window.innerWidth);
-    onResize();
-
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  useEffect(() => {
     return () => {
-      if (clipPreviewUrl) {
-        URL.revokeObjectURL(clipPreviewUrl);
-      }
+      if (clipPreviewUrl) URL.revokeObjectURL(clipPreviewUrl);
     };
   }, [clipPreviewUrl]);
 
-  const isMobile = viewportWidth <= 680;
-  const isTablet = viewportWidth > 680 && viewportWidth <= 1100;
-
-  const pageStyle = {
-    minHeight: "100vh",
-    background:
-      "radial-gradient(circle at top, rgba(34,197,94,0.12), transparent 28%), linear-gradient(135deg, #0b2ea8 0%, #091347 36%, #6e3ec8 70%, #1f9f59 100%)",
-    color: "#e5e7eb",
-    padding: isMobile ? "12px" : "20px",
-    boxSizing: "border-box",
-  };
-
-  const containerStyle = {
-    maxWidth: "1480px",
-    margin: "0 auto",
-    display: "grid",
-    gap: isMobile ? "12px" : "20px",
-  };
-
-  const cardStyle = {
-    background: "rgba(6, 18, 42, 0.76)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: isMobile ? "16px" : "20px",
-    padding: isMobile ? "14px" : "18px",
-    boxShadow: "0 16px 40px rgba(0,0,0,0.22)",
-    backdropFilter: "blur(10px)",
-    minWidth: 0,
-    overflow: "hidden",
-    boxSizing: "border-box",
-  };
-
-  const identityKey = useMemo(() => getIdentityKey(identity), [identity]);
-  const identityName = useMemo(() => getIdentityDisplayName(identity), [identity]);
-  const isLoggedIn = Boolean(identityKey);
-
-  const highlights = useMemo(() => {
+  const allHighlights = useMemo(() => {
     const combined = [
       ...(Array.isArray(currentMatchDayHighlights) ? currentMatchDayHighlights : []),
       ...(Array.isArray(localHighlights) ? localHighlights : []),
@@ -302,132 +466,176 @@ export function ViewHighlightsPage({
     const seen = new Set();
 
     return combined
-      .map((highlight, index) => {
-        const id = getHighlightId(highlight, index);
-
-        return {
-          ...highlight,
-          id,
-          clipId: highlight?.clipId || id,
-          normalizedType: normalizeHighlightType(highlight?.tag || highlight?.type || ""),
-          mediaUrl: getHighlightMediaUrl(highlight),
-          playerName: getHighlightPlayerName(highlight),
-          title: getHighlightTitle(highlight),
-        };
-      })
+      .map((highlight, index) => normalizeHighlight(highlight, index))
       .filter((highlight) => {
-        const key = String(highlight.clipId || highlight.id || "").trim();
+        const key = String(highlight?.id || highlight?.clipId || "").trim();
         if (!key) return true;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
-      });
+      })
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }, [currentMatchDayHighlights, localHighlights]);
 
-  const playerOptions = useMemo(() => {
-    const names = new Set();
-
-    highlights.forEach((highlight) => {
-      const name = getHighlightPlayerName(highlight);
-      if (name && safeLower(name) !== "unknown") names.add(name);
-    });
-
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [highlights]);
-
-  const teamOptions = useMemo(() => {
-    const names = new Set();
-
-    highlights.forEach((highlight) => {
-      if (highlight?.teamName) names.add(toTitleCaseLoose(highlight.teamName));
-    });
-
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [highlights]);
-
-  const voteCounts = useMemo(
-    () => getVoteBuckets(localVotesByUser, highlights),
-    [localVotesByUser, highlights]
+  const playerOptions = useMemo(
+    () => buildPlayerOptions({ members, teams, highlights: allHighlights }),
+    [members, teams, allHighlights]
   );
 
+  const teamOptions = useMemo(
+    () => buildTeamOptions(teams, allHighlights),
+    [teams, allHighlights]
+  );
+
+  const approvedHighlights = useMemo(
+    () => allHighlights.filter((item) => item.status === "approved"),
+    [allHighlights]
+  );
+
+  const pendingHighlights = useMemo(
+    () => allHighlights.filter((item) => item.status === "pending"),
+    [allHighlights]
+  );
+
+  const rejectedHighlights = useMemo(
+    () => allHighlights.filter((item) => item.status === "rejected"),
+    [allHighlights]
+  );
+
+  const tabHighlights = useMemo(() => {
+    if (selectedTab === "pending") return pendingHighlights;
+    if (selectedTab === "rejected") return rejectedHighlights;
+    return approvedHighlights;
+  }, [selectedTab, approvedHighlights, pendingHighlights, rejectedHighlights]);
+
+  const visibleHighlights = useMemo(() => {
+    if (selectedFilter === "all") return tabHighlights;
+    return tabHighlights.filter((item) => item.normalizedType === selectedFilter);
+  }, [tabHighlights, selectedFilter]);
+
+  const voteCounts = useMemo(
+    () => getVoteBuckets(localVotesByUser, approvedHighlights),
+    [localVotesByUser, approvedHighlights]
+  );
+
+  const userVotes = localVotesByUser[identityKey] || {};
+
   const archiveSelection = useMemo(
-    () => buildArchiveSelection(highlights, localVotesByUser),
-    [highlights, localVotesByUser]
+    () => buildArchiveSelection(approvedHighlights, localVotesByUser),
+    [approvedHighlights, localVotesByUser]
   );
 
   useEffect(() => {
     onHighlightsSelectionChange?.(archiveSelection);
   }, [archiveSelection, onHighlightsSelectionChange]);
 
-  const visibleHighlights = useMemo(() => {
-    if (activeFilter === "all") return highlights;
-    return highlights.filter((item) => item.normalizedType === activeFilter);
-  }, [highlights, activeFilter]);
-
-  const userVotes = localVotesByUser[identityKey] || {};
-
-  const resetUploadFields = () => {
+  const resetUpload = () => {
     setClipFile(null);
-
-    if (clipPreviewUrl) {
-      URL.revokeObjectURL(clipPreviewUrl);
-    }
-
-    setClipPreviewUrl("");
+    setClipDuration(null);
     setClipType("goal");
     setPlayerName("");
     setAssistName("");
     setTeamName("");
-    setClipTitle("");
-    setClipNotes("");
     setUploadError("");
-    setUploadSuccess("");
+    setUploadNotice("");
+
+    if (clipPreviewUrl) URL.revokeObjectURL(clipPreviewUrl);
+    setClipPreviewUrl("");
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleFileChange = (event) => {
-    const file = event?.target?.files?.[0] || null;
+  const closeUploadModal = () => {
+    if (uploading) return;
+    setShowUploadModal(false);
+    resetUpload();
+  };
 
+  const validateFileBasics = (file) => {
+    if (!file) return "Please choose a video clip.";
+
+    const type = String(file.type || "").trim().toLowerCase();
+    const isAllowedType = type.startsWith("video/") || ALLOWED_VIDEO_TYPES.includes(type);
+
+    if (!isAllowedType) return "Please choose a video file only.";
+    if (file.size > MAX_VIDEO_BYTES) {
+      return `This file is too large (${formatFileSize(file.size)}). Maximum size is ${formatFileSize(MAX_VIDEO_BYTES)}.`;
+    }
+
+    return "";
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event?.target?.files?.[0] || null;
     setUploadError("");
-    setUploadSuccess("");
+    setUploadNotice("");
 
     if (clipPreviewUrl) {
       URL.revokeObjectURL(clipPreviewUrl);
       setClipPreviewUrl("");
     }
 
-    if (!file) {
-      setClipFile(null);
+    setClipFile(null);
+    setClipDuration(null);
+
+    const basicError = validateFileBasics(file);
+    if (basicError) {
+      if (file) setUploadError(basicError);
       return;
     }
 
-    if (!String(file.type || "").startsWith("video/")) {
-      setClipFile(null);
-      setUploadError("Please choose a video file.");
-      return;
-    }
+    try {
+      const duration = await readVideoDuration(file);
 
-    setClipFile(file);
-    setClipPreviewUrl(URL.createObjectURL(file));
+      if (!Number.isFinite(duration) || duration <= 0) {
+        setUploadError("Could not confirm this clip duration. Please choose another video.");
+        return;
+      }
+
+      if (duration > MAX_VIDEO_SECONDS) {
+        setUploadError(
+          `This clip is ${formatSeconds(duration)} long. Please upload a highlight of ${MAX_VIDEO_SECONDS} seconds or less.`
+        );
+        return;
+      }
+
+      if (duration < IDEAL_MIN_SECONDS || duration > IDEAL_MAX_SECONDS) {
+        setUploadNotice(
+          `Accepted, but ideal TurfKings highlights are ${IDEAL_MIN_SECONDS}–${IDEAL_MAX_SECONDS} seconds. This one is ${formatSeconds(duration)}.`
+        );
+      }
+
+      setClipFile(file);
+      setClipDuration(duration);
+      setClipPreviewUrl(URL.createObjectURL(file));
+    } catch (error) {
+      setUploadError(error?.message || "Could not read this video file.");
+    }
   };
 
-  const handleUploadClip = async () => {
+  const handleSubmitUpload = async () => {
     setUploadError("");
-    setUploadSuccess("");
+    setUploadNotice("");
 
-    if (!isLoggedIn) {
-      setUploadError("Please sign in before uploading highlights.");
+    if (!canUpload) {
+      setUploadError("Only signed-in TurfKings players, captains, or admin can upload clips.");
       return;
     }
 
-    if (!clipFile) {
-      setUploadError("Please choose a video clip first.");
+    const basicError = validateFileBasics(clipFile);
+    if (basicError) {
+      setUploadError(basicError);
       return;
     }
 
     const cleanPlayerName = toTitleCaseLoose(playerName);
-
     if (!cleanPlayerName) {
-      setUploadError("Please enter the player linked to this highlight.");
+      setUploadError("Select the player shown in this highlight.");
+      return;
+    }
+
+    if (!clipDuration || clipDuration > MAX_VIDEO_SECONDS) {
+      setUploadError("Please choose a valid short highlight clip first.");
       return;
     }
 
@@ -447,6 +655,7 @@ export function ViewHighlightsPage({
       highlightId: clipId,
       source: "manual_upload",
       storageFileName: `${clipId}.${getFileExtension(clipFile)}`,
+      status: "pending",
       type: normalizedType,
       tag: normalizedType,
       playerName: cleanPlayerName,
@@ -455,19 +664,18 @@ export function ViewHighlightsPage({
       scorer: normalizedType === "goal" ? cleanPlayerName : "",
       keeperName: normalizedType === "save" ? cleanPlayerName : "",
       skillPlayer: normalizedType === "skill" ? cleanPlayerName : "",
-      assist: toTitleCaseLoose(assistName),
+      assist: normalizedType === "goal" ? toTitleCaseLoose(assistName) : "",
       teamName: toTitleCaseLoose(teamName),
       title:
-        clipTitle.trim() ||
-        (normalizedType === "goal"
+        normalizedType === "goal"
           ? `Goal by ${cleanPlayerName}`
           : normalizedType === "save"
           ? `Save by ${cleanPlayerName}`
           : normalizedType === "skill"
           ? `Skill by ${cleanPlayerName}`
-          : `Highlight by ${cleanPlayerName}`),
-      notes: clipNotes.trim(),
-      durationSeconds: 15,
+          : `Highlight by ${cleanPlayerName}`,
+      durationSeconds: Math.round(clipDuration),
+      fileSizeBytes: clipFile.size,
       createdBy: identityKey,
       createdByName: identityName,
       createdAt,
@@ -476,37 +684,74 @@ export function ViewHighlightsPage({
 
     try {
       setUploading(true);
-
       const savedHighlight = await onUploadHighlight(payload);
+      const nextHighlight = normalizeHighlight(savedHighlight || payload);
 
-      if (savedHighlight) {
-        setLocalHighlights((prev) => {
-          const existing = Array.isArray(prev) ? prev : [];
-          const savedKey = String(savedHighlight.clipId || savedHighlight.id || "").trim();
+      setLocalHighlights((prev) => {
+        const existing = Array.isArray(prev) ? prev : [];
+        const key = String(nextHighlight.id || nextHighlight.clipId || "").trim();
+        if (key && existing.some((item) => String(item.id || item.clipId || "").trim() === key)) {
+          return existing;
+        }
+        return [...existing, nextHighlight];
+      });
 
-          if (
-            savedKey &&
-            existing.some(
-              (item) => String(item.clipId || item.id || "").trim() === savedKey
-            )
-          ) {
-            return existing;
-          }
-
-          return [...existing, savedHighlight];
-        });
-      }
-
-      setUploadSuccess("Highlight uploaded successfully.");
-      resetUploadFields();
-      setShowUploadPanel(false);
-      setActiveFilter("all");
+      setSelectedTab("pending");
+      setShowUploadModal(false);
+      resetUpload();
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Upload failed:", error);
       setUploadError(error?.message || "Failed to upload highlight.");
     } finally {
       setUploading(false);
     }
+  };
+
+  const updateLocalHighlightStatus = (highlight, status) => {
+    const targetId = String(highlight?.id || highlight?.clipId || "").trim();
+    if (!targetId) return;
+
+    setLocalHighlights((prev) => {
+      const existing = Array.isArray(prev) ? prev : [];
+      const found = existing.some((item) => String(item.id || item.clipId || "").trim() === targetId);
+
+      if (!found) {
+        return [...existing, { ...highlight, status }];
+      }
+
+      return existing.map((item) =>
+        String(item.id || item.clipId || "").trim() === targetId ? { ...item, status } : item
+      );
+    });
+  };
+
+  const removeLocalHighlight = (highlight) => {
+    const targetId = String(highlight?.id || highlight?.clipId || "").trim();
+    if (!targetId) return;
+
+    setLocalHighlights((prev) =>
+      (Array.isArray(prev) ? prev : []).filter(
+        (item) => String(item.id || item.clipId || "").trim() !== targetId
+      )
+    );
+  };
+
+  const handleApprove = async (highlight) => {
+    updateLocalHighlightStatus(highlight, "approved");
+    await onApproveHighlight?.(highlight);
+    setSelectedTab("approved");
+  };
+
+  const handleReject = async (highlight) => {
+    updateLocalHighlightStatus(highlight, "rejected");
+    await onRejectHighlight?.(highlight);
+  };
+
+  const handleDelete = async (highlight) => {
+    const confirmed = window.confirm("Delete this highlight from the page?");
+    if (!confirmed) return;
+    removeLocalHighlight(highlight);
+    await onDeleteHighlight?.(highlight);
   };
 
   const castVote = (category, highlightId) => {
@@ -524,692 +769,702 @@ export function ViewHighlightsPage({
     onVotesChange?.(next);
   };
 
-  const downloadHighlight = (highlight) => {
-    const url = highlight?.mediaUrl;
-    if (!url) return;
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download =
-      highlight?.downloadName ||
-      `${highlight.normalizedType || "highlight"}-${highlight.playerName || "clip"}.mp4`;
-    a.target = "_blank";
-    a.rel = "noreferrer";
-
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
-  const renderUploadPanel = () => {
-    if (!showUploadPanel) return null;
-
-    return (
-      <div style={cardStyle}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: "0.75rem",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            marginBottom: "1rem",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: isMobile ? "1.3rem" : "1.6rem" }}>
-              Upload 15-second Highlight
-            </h2>
-            <div style={{ marginTop: "0.35rem", opacity: 0.78, fontSize: "0.94rem" }}>
-              Use this for clips already saved on the phone. Later, Pushit and 5 Asides Camera can feed the same highlight format.
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={resetUploadFields}
-            disabled={uploading}
-            style={{
-              ...buttonBase,
-              background: "rgba(255,255,255,0.04)",
-              color: "#e5e7eb",
-              opacity: uploading ? 0.6 : 1,
-            }}
-          >
-            Reset
-          </button>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) minmax(0,1fr)",
-            gap: "0.85rem",
-          }}
-        >
-          <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
-            <span style={{ fontWeight: 800 }}>Clip file</span>
-            <input
-              type="file"
-              accept="video/*"
-
-              onChange={handleFileChange}
-              disabled={uploading}
-              style={inputBase}
-            />
-            {clipFile && (
-              <span style={{ opacity: 0.74, fontSize: "0.88rem" }}>
-                {clipFile.name} • {formatFileSize(clipFile.size)}
-              </span>
-            )}
-          </label>
-
-          <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
-            <span style={{ fontWeight: 800 }}>Highlight type</span>
-            <select
-              value={clipType}
-              onChange={(event) => setClipType(event.target.value)}
-              disabled={uploading}
-              style={inputBase}
-            >
-              <option value="goal">Goal</option>
-              <option value="skill">Skill</option>
-              <option value="save">Save</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-
-          <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
-            <span style={{ fontWeight: 800 }}>
-              {clipType === "save"
-                ? "Keeper / player"
-                : clipType === "skill"
-                ? "Skill player"
-                : "Goal scorer / player"}
-            </span>
-            <input
-              list="tk-highlight-player-options"
-              value={playerName}
-              onChange={(event) => setPlayerName(event.target.value)}
-              disabled={uploading}
-              placeholder="e.g. Theo"
-              style={inputBase}
-            />
-            <datalist id="tk-highlight-player-options">
-              {playerOptions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </label>
-
-          <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
-            <span style={{ fontWeight: 800 }}>Team</span>
-            <input
-              list="tk-highlight-team-options"
-              value={teamName}
-              onChange={(event) => setTeamName(event.target.value)}
-              disabled={uploading}
-              placeholder="Optional"
-              style={inputBase}
-            />
-            <datalist id="tk-highlight-team-options">
-              {teamOptions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </label>
-
-          {clipType === "goal" && (
-            <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
-              <span style={{ fontWeight: 800 }}>Assist</span>
-              <input
-                list="tk-highlight-player-options"
-                value={assistName}
-                onChange={(event) => setAssistName(event.target.value)}
-                disabled={uploading}
-                placeholder="Optional"
-                style={inputBase}
-              />
-            </label>
-          )}
-
-          <label style={{ display: "grid", gap: "0.35rem", minWidth: 0 }}>
-            <span style={{ fontWeight: 800 }}>Title override</span>
-            <input
-              value={clipTitle}
-              onChange={(event) => setClipTitle(event.target.value)}
-              disabled={uploading}
-              placeholder="Optional"
-              style={inputBase}
-            />
-          </label>
-
-          <label
-            style={{
-              display: "grid",
-              gap: "0.35rem",
-              minWidth: 0,
-              gridColumn: isMobile ? "auto" : "1 / -1",
-            }}
-          >
-            <span style={{ fontWeight: 800 }}>Notes</span>
-            <textarea
-              value={clipNotes}
-              onChange={(event) => setClipNotes(event.target.value)}
-              disabled={uploading}
-              placeholder="Optional: match number, moment, context..."
-              rows={3}
-              style={{ ...inputBase, resize: "vertical" }}
-            />
-          </label>
-        </div>
-
-        {clipPreviewUrl && (
-          <div style={{ marginTop: "1rem", display: "grid", gap: "0.55rem" }}>
-            <strong>Preview</strong>
-            <video
-              controls
-              preload="metadata"
-              playsInline
-              src={clipPreviewUrl}
-              style={{
-                width: "100%",
-                borderRadius: "16px",
-                background: "#000",
-                maxHeight: isMobile ? "360px" : "520px",
-                objectFit: "contain",
-              }}
-            />
-          </div>
-        )}
-
-        {(uploadError || uploadSuccess) && (
-          <div
-            style={{
-              marginTop: "1rem",
-              padding: "0.8rem 0.9rem",
-              borderRadius: "14px",
-              border: "1px solid rgba(255,255,255,0.1)",
-              background: uploadError
-                ? "rgba(239,68,68,0.16)"
-                : "rgba(34,197,94,0.16)",
-              color: "#e5e7eb",
-              fontWeight: 700,
-            }}
-          >
-            {uploadError || uploadSuccess}
-          </div>
-        )}
-
-        <div
-          style={{
-            marginTop: "1rem",
-            display: "flex",
-            gap: "0.75rem",
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <button
-            type="button"
-            onClick={handleUploadClip}
-            disabled={uploading || !clipFile}
-            style={{
-              ...buttonBase,
-              background: "rgba(34,197,94,0.22)",
-              color: "#e5e7eb",
-              opacity: uploading || !clipFile ? 0.6 : 1,
-              width: isMobile ? "100%" : "auto",
-              boxSizing: "border-box",
-            }}
-          >
-            {uploading ? "Uploading..." : "Save Highlight"}
-          </button>
-
-          {!isLoggedIn && (
-            <div style={{ opacity: 0.78, fontSize: "0.92rem" }}>
-              Sign in to upload highlights.
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderVotePanel = (category, titleText) => {
-    const candidates = highlights.filter((item) => item.normalizedType === category);
-
-    return (
-      <div style={cardStyle}>
-        <h3 style={{ marginTop: 0, marginBottom: "0.85rem", fontSize: isMobile ? "1.02rem" : "1.15rem" }}>
-          {titleText}
-        </h3>
-
-        {!candidates.length && (
-          <div style={{ opacity: 0.74 }}>No {category} highlights yet for this match day.</div>
-        )}
-
-        <div style={{ display: "grid", gap: "0.55rem" }}>
-          {candidates.map((item) => {
-            const selected = userVotes[category] === item.id;
-
-            return (
-              <button
-                key={`${category}-${item.id}`}
-                type="button"
-                onClick={() => castVote(category, item.id)}
-                disabled={!isLoggedIn}
-                style={{
-                  ...buttonBase,
-                  textAlign: "left",
-                  background: selected ? "rgba(34,197,94,0.22)" : "rgba(255,255,255,0.04)",
-                  color: "#e5e7eb",
-                  opacity: !isLoggedIn ? 0.65 : 1,
-                  width: "100%",
-                  fontSize: isMobile ? "0.92rem" : "1rem",
-                  minWidth: 0,
-                  boxSizing: "border-box",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "0.75rem",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{item.title}</span>
-                  <span style={{ whiteSpace: "nowrap" }}>{voteCounts[item.id] || 0} vote(s)</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <div style={pageStyle}>
-      <div style={containerStyle}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isTablet || isMobile ? "1fr" : "minmax(0, 2.2fr) minmax(320px, 1fr)",
-            gap: isMobile ? "12px" : "20px",
-            alignItems: "start",
-          }}
-        >
-          <div style={{ display: "grid", gap: isMobile ? "12px" : "20px", minWidth: 0 }}>
-            <div
-              style={{
-                ...cardStyle,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: isMobile ? "flex-start" : "center",
-                gap: "1rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ minWidth: 0, flex: "1 1 320px" }}>
-                <h1
-                  style={{
-                    margin: 0,
-                    fontSize: isMobile ? "2rem" : "clamp(2.3rem, 4vw, 3.2rem)",
-                    lineHeight: 1.05,
-                    overflowWrap: "anywhere",
-                  }}
-                >
-                  View Highlights
-                </h1>
-                <div style={{ marginTop: "0.45rem", opacity: 0.8, fontSize: isMobile ? "0.95rem" : "1rem" }}>
-                  Upload, watch, vote, and prepare the best clips for archiving
-                </div>
-                <div style={{ marginTop: "0.3rem", fontSize: isMobile ? "0.9rem" : "0.96rem", opacity: 0.8 }}>
-                  Viewing as <strong>{identityName}</strong> • Role: <strong>{activeRole}</strong>
-                </div>
-              </div>
+    <div className="tkh-page">
+      <style>{`
+        .tkh-page {
+          min-height: 100vh;
+          color: #e5e7eb;
+          background:
+            radial-gradient(circle at 10% 0%, rgba(34,197,94,0.20), transparent 30%),
+            radial-gradient(circle at 90% 15%, rgba(59,130,246,0.20), transparent 32%),
+            linear-gradient(135deg, #0b2ea8 0%, #091347 38%, #6e3ec8 72%, #1f9f59 100%);
+          padding: 18px;
+          box-sizing: border-box;
+        }
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.75rem",
-                  flexWrap: "wrap",
-                  width: isMobile ? "100%" : "auto",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setShowUploadPanel((prev) => !prev)}
-                  style={{
-                    ...buttonBase,
-                    background: showUploadPanel ? "rgba(34,197,94,0.22)" : "rgba(255,255,255,0.04)",
-                    color: "#e5e7eb",
-                    minWidth: isMobile ? "100%" : "150px",
-                    width: isMobile ? "100%" : "auto",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {showUploadPanel ? "Close upload" : "Upload clip"}
-                </button>
+        .tkh-shell {
+          width: min(1180px, 100%);
+          margin: 0 auto;
+          display: grid;
+          gap: 16px;
+        }
 
-                <button
-                  type="button"
-                  onClick={onBack}
-                  style={{
-                    ...buttonBase,
-                    background: "rgba(255,255,255,0.04)",
-                    color: "#e5e7eb",
-                    minWidth: isMobile ? "100%" : "112px",
-                    width: isMobile ? "100%" : "auto",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  ← Back
-                </button>
-              </div>
+        .tkh-panel,
+        .tkh-card {
+          background: rgba(6,18,42,0.76);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: 22px;
+          box-shadow: 0 18px 44px rgba(0,0,0,0.24);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }
+
+        .tkh-panel {
+          padding: 16px;
+        }
+
+        .tkh-hero {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          flex-wrap: wrap;
+        }
+
+        .tkh-title {
+          margin: 0;
+          font-size: clamp(2rem, 5vw, 3.4rem);
+          line-height: 0.98;
+          letter-spacing: -0.04em;
+        }
+
+        .tkh-subtitle {
+          margin-top: 8px;
+          color: rgba(226,232,240,0.78);
+          font-size: 0.96rem;
+        }
+
+        .tkh-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .tkh-btn {
+          appearance: none;
+          border: 1px solid rgba(255,255,255,0.13);
+          border-radius: 999px;
+          padding: 0.68rem 0.92rem;
+          cursor: pointer;
+          color: #e5e7eb;
+          background: rgba(255,255,255,0.06);
+          font-weight: 900;
+          line-height: 1;
+          touch-action: manipulation;
+        }
+
+        .tkh-btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .tkh-btn-primary {
+          background: linear-gradient(135deg, rgba(34,197,94,0.95), rgba(22,163,74,0.94));
+          border-color: rgba(134,239,172,0.46);
+          color: #052e16;
+          box-shadow: 0 12px 28px rgba(34,197,94,0.22);
+        }
+
+        .tkh-btn-vote.is-selected,
+        .tkh-btn-approve {
+          background: rgba(34,197,94,0.18);
+          border-color: rgba(34,197,94,0.42);
+          color: #bbf7d0;
+        }
+
+        .tkh-btn-reject,
+        .tkh-btn-danger {
+          background: rgba(239,68,68,0.12);
+          border-color: rgba(248,113,113,0.32);
+          color: #fecaca;
+        }
+
+        .tkh-tabs,
+        .tkh-filters {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .tkh-tab,
+        .tkh-filter {
+          appearance: none;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.12);
+          color: #e5e7eb;
+          background: rgba(255,255,255,0.04);
+          padding: 0.56rem 0.82rem;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .tkh-tab.is-active,
+        .tkh-filter.is-active {
+          background: rgba(34,197,94,0.18);
+          border-color: rgba(34,197,94,0.42);
+          color: #bbf7d0;
+        }
+
+        .tkh-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .tkh-card {
+          min-width: 0;
+          overflow: hidden;
+          padding: 12px;
+          display: grid;
+          gap: 10px;
+        }
+
+        .tkh-card-top {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          align-items: flex-start;
+        }
+
+        .tkh-card-title-wrap {
+          min-width: 0;
+        }
+
+        .tkh-player-line {
+          font-size: 1.18rem;
+          font-weight: 1000;
+          line-height: 1.05;
+          overflow-wrap: anywhere;
+        }
+
+        .tkh-title-line {
+          margin-top: 3px;
+          color: rgba(226,232,240,0.74);
+          font-size: 0.86rem;
+          overflow-wrap: anywhere;
+        }
+
+        .tkh-badge-stack {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 6px;
+          flex: 0 0 auto;
+        }
+
+        .tkh-type-badge,
+        .tkh-status-badge {
+          border-radius: 999px;
+          padding: 0.32rem 0.52rem;
+          font-size: 0.72rem;
+          font-weight: 1000;
+          white-space: nowrap;
+          border: 1px solid rgba(255,255,255,0.14);
+        }
+
+        .tkh-type-badge {
+          background: rgba(255,255,255,0.07);
+          color: #e5e7eb;
+        }
+
+        .tkh-video {
+          width: 100%;
+          aspect-ratio: 16 / 9;
+          max-height: 520px;
+          border-radius: 16px;
+          background: #000;
+          object-fit: contain;
+        }
+
+        .tkh-video-empty {
+          min-height: 180px;
+          display: grid;
+          place-items: center;
+          border-radius: 16px;
+          border: 1px dashed rgba(255,255,255,0.18);
+          color: rgba(226,232,240,0.70);
+        }
+
+        .tkh-meta-row {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          color: rgba(226,232,240,0.72);
+          font-size: 0.82rem;
+        }
+
+        .tkh-meta-row span,
+        .tkh-soft-line {
+          overflow-wrap: anywhere;
+        }
+
+        .tkh-soft-line {
+          color: rgba(226,232,240,0.72);
+          font-size: 0.84rem;
+        }
+
+        .tkh-card-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .tkh-empty {
+          padding: 26px 16px;
+          text-align: center;
+          color: rgba(226,232,240,0.72);
+          font-weight: 800;
+        }
+
+        .tkh-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .tkh-summary-card {
+          border-radius: 18px;
+          padding: 12px;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.09);
+          min-width: 0;
+        }
+
+        .tkh-summary-label {
+          color: rgba(226,232,240,0.70);
+          font-size: 0.78rem;
+          font-weight: 800;
+        }
+
+        .tkh-summary-value {
+          margin-top: 4px;
+          font-size: 1.3rem;
+          font-weight: 1000;
+          overflow-wrap: anywhere;
+        }
+
+        .tkh-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 20000;
+          display: grid;
+          place-items: center;
+          padding: 16px;
+          background: rgba(2,6,23,0.74);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+        }
+
+        .tkh-modal {
+          width: min(680px, 100%);
+          max-height: min(86vh, 820px);
+          overflow: auto;
+          border-radius: 24px;
+          background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98));
+          border: 1px solid rgba(255,255,255,0.12);
+          box-shadow: 0 26px 80px rgba(0,0,0,0.55);
+          padding: 16px;
+          box-sizing: border-box;
+        }
+
+        .tkh-modal-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+          margin-bottom: 12px;
+        }
+
+        .tkh-modal-title {
+          margin: 0;
+          font-size: 1.5rem;
+        }
+
+        .tkh-form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .tkh-field {
+          display: grid;
+          gap: 6px;
+          min-width: 0;
+        }
+
+        .tkh-field label {
+          font-size: 0.84rem;
+          font-weight: 950;
+          color: rgba(226,232,240,0.88);
+        }
+
+        .tkh-input,
+        .tkh-select {
+          width: 100%;
+          box-sizing: border-box;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(255,255,255,0.06);
+          color: #e5e7eb;
+          padding: 0.74rem 0.82rem;
+          outline: none;
+        }
+
+        .tkh-select option {
+          background: #0f172a;
+          color: #e5e7eb;
+        }
+
+        .tkh-help {
+          color: rgba(226,232,240,0.66);
+          font-size: 0.78rem;
+          line-height: 1.35;
+        }
+
+        .tkh-warning,
+        .tkh-error {
+          margin-top: 12px;
+          border-radius: 16px;
+          padding: 0.76rem 0.9rem;
+          font-weight: 850;
+          line-height: 1.35;
+        }
+
+        .tkh-warning {
+          background: rgba(250,204,21,0.13);
+          border: 1px solid rgba(250,204,21,0.30);
+          color: #fde68a;
+        }
+
+        .tkh-error {
+          background: rgba(239,68,68,0.14);
+          border: 1px solid rgba(248,113,113,0.32);
+          color: #fecaca;
+        }
+
+        .tkh-preview-video {
+          width: 100%;
+          max-height: 380px;
+          border-radius: 18px;
+          background: #000;
+          object-fit: contain;
+        }
+
+        .tkh-upload-actions {
+          margin-top: 14px;
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        @media (max-width: 980px) {
+          .tkh-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .tkh-summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 620px) {
+          .tkh-page {
+            padding: 12px;
+          }
+
+          .tkh-panel {
+            padding: 13px;
+            border-radius: 18px;
+          }
+
+          .tkh-actions,
+          .tkh-upload-actions {
+            width: 100%;
+          }
+
+          .tkh-actions .tkh-btn,
+          .tkh-upload-actions .tkh-btn {
+            width: 100%;
+          }
+
+          .tkh-grid,
+          .tkh-form-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .tkh-summary-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .tkh-card-top {
+            flex-direction: column;
+          }
+
+          .tkh-badge-stack {
+            flex-direction: row;
+            align-items: center;
+            flex-wrap: wrap;
+          }
+
+          .tkh-card-actions .tkh-btn {
+            flex: 1 1 auto;
+          }
+        }
+      `}</style>
+
+      <div className="tkh-shell">
+        <section className="tkh-panel tkh-hero">
+          <div>
+            <h1 className="tkh-title">Video Highlights</h1>
+            <div className="tkh-subtitle">
+              Upload short TurfKings clips, review them safely, then vote for the best moments.
             </div>
-
-            {renderUploadPanel()}
-
-            <div
-              style={{
-                ...cardStyle,
-                display: "flex",
-                gap: "0.55rem",
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
-              {["all", "goal", "skill", "save", "other"].map((filterKey) => {
-                const active = activeFilter === filterKey;
-
-                return (
-                  <button
-                    key={filterKey}
-                    type="button"
-                    onClick={() => setActiveFilter(filterKey)}
-                    style={{
-                      ...buttonBase,
-                      background: active ? "rgba(34,197,94,0.18)" : "rgba(255,255,255,0.04)",
-                      color: "#e5e7eb",
-                      flex: isMobile ? "1 1 calc(50% - 6px)" : "0 0 auto",
-                      minWidth: isMobile ? "0" : "auto",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    {filterKey === "all" ? "All" : toTitleCaseLoose(filterKey)}
-                  </button>
-                );
-              })}
-
-              {!isLoggedIn && (
-                <div
-                  style={{
-                    marginLeft: isMobile ? 0 : "auto",
-                    fontSize: "0.92rem",
-                    opacity: 0.8,
-                    width: isMobile ? "100%" : "auto",
-                  }}
-                >
-                  Log in to upload and vote for goal, skill, and save of the night.
-                </div>
-              )}
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile
-                  ? "1fr"
-                  : isTablet
-                  ? "repeat(2, minmax(0, 1fr))"
-                  : "repeat(3, minmax(0, 1fr))",
-                gap: isMobile ? "12px" : "20px",
-                alignItems: "stretch",
-              }}
-            >
-              {renderVotePanel("goal", "Vote: Goal of the Night")}
-              {renderVotePanel("skill", "Vote: Skill of the Night")}
-              {renderVotePanel("save", "Vote: Save of the Night")}
-            </div>
-
-            <div style={{ display: "grid", gap: isMobile ? "12px" : "20px" }}>
-              {!visibleHighlights.length && (
-                <div style={cardStyle}>No highlights are available for this match day yet.</div>
-              )}
-
-              {visibleHighlights.map((highlight) => (
-                <div
-                  key={highlight.id}
-                  style={{
-                    ...cardStyle,
-                    display: "grid",
-                    gap: "14px",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "0.75rem",
-                      flexWrap: "wrap",
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <div style={{ minWidth: 0, flex: "1 1 300px" }}>
-                      <h3
-                        style={{
-                          margin: 0,
-                          fontSize: isMobile ? "1.15rem" : "1.35rem",
-                          lineHeight: 1.15,
-                          overflowWrap: "anywhere",
-                        }}
-                      >
-                        {highlight.title}
-                      </h3>
-                      <div style={{ marginTop: "0.45rem", opacity: 0.8, fontSize: isMobile ? "0.92rem" : "0.98rem" }}>
-                        {toTitleCaseLoose(highlight.normalizedType)} • {highlight.playerName}
-                        {highlight.teamName ? ` • ${highlight.teamName}` : ""}
-                        {highlight.source ? ` • ${toTitleCaseLoose(String(highlight.source).replace(/_/g, " "))}` : ""}
-                      </div>
-                      {highlight.assist && (
-                        <div style={{ marginTop: "0.25rem", opacity: 0.74, fontSize: "0.9rem" }}>
-                          Assist: <strong>{highlight.assist}</strong>
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ textAlign: isMobile ? "left" : "right", minWidth: isMobile ? "100%" : "90px" }}>
-                      <div style={{ fontSize: "0.88rem", opacity: 0.75 }}>Votes</div>
-                      <div style={{ fontWeight: 800, fontSize: "1.3rem" }}>
-                        {voteCounts[highlight.id] || 0}
-                      </div>
-                    </div>
-                  </div>
-
-                  {highlight.mediaUrl ? (
-                    <video
-                      controls
-                      preload="metadata"
-                      playsInline
-                      style={{
-                        width: "100%",
-                        borderRadius: "16px",
-                        background: "#000000",
-                        maxHeight: isMobile ? "420px" : "680px",
-                        objectFit: "contain",
-                      }}
-                      src={highlight.mediaUrl}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        borderRadius: "14px",
-                        border: "1px dashed rgba(255,255,255,0.14)",
-                        padding: "1rem",
-                        opacity: 0.76,
-                      }}
-                    >
-                      No media URL yet for this highlight.
-                    </div>
-                  )}
-
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "0.75rem",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => downloadHighlight(highlight)}
-                      disabled={!highlight.mediaUrl}
-                      style={{
-                        ...buttonBase,
-                        background: "rgba(34,197,94,0.16)",
-                        color: "#e5e7eb",
-                        opacity: highlight.mediaUrl ? 1 : 0.55,
-                        width: isMobile ? "100%" : "auto",
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      ⬇ Download highlight
-                    </button>
-
-                    <div
-                      style={{
-                        opacity: 0.8,
-                        fontSize: isMobile ? "0.9rem" : "0.94rem",
-                        flex: "1 1 320px",
-                        minWidth: 0,
-                      }}
-                    >
-                      {highlight.normalizedType === "goal" && (
-                        <>If this goal finishes in the top 3 by End Match Day, it should be archived under <strong>{highlight.playerName}</strong>.</>
-                      )}
-                      {highlight.normalizedType === "skill" && (
-                        <>Only the winning skill should survive when End Match Day is confirmed.</>
-                      )}
-                      {highlight.normalizedType === "save" && (
-                        <>Only the winning save should survive when End Match Day is confirmed.</>
-                      )}
-                      {highlight.normalizedType === "other" && (
-                        <>This clip is available to watch, but it is not part of goal, skill, or save voting.</>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="tkh-subtitle">
+              Signed in as <strong>{identityName}</strong> • Role: <strong>{activeRole}</strong>
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: isMobile ? "12px" : "20px", minWidth: 0 }}>
-            <div
-              style={{
-                ...cardStyle,
-                display: "grid",
-                gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "1fr",
-                gap: "16px",
-              }}
+          <div className="tkh-actions">
+            <button
+              type="button"
+              className="tkh-btn tkh-btn-primary"
+              onClick={() => setShowUploadModal(true)}
+              disabled={!canUpload}
+              title={canUpload ? "Upload a short highlight" : "Sign in as a player, captain, or admin to upload"}
             >
+              Upload clip
+            </button>
+            <button type="button" className="tkh-btn" onClick={onBack}>
+              Back
+            </button>
+          </div>
+        </section>
+
+        <section className="tkh-panel">
+          <div className="tkh-summary-grid">
+            <div className="tkh-summary-card">
+              <div className="tkh-summary-label">Approved clips</div>
+              <div className="tkh-summary-value">{approvedHighlights.length}</div>
+            </div>
+            <div className="tkh-summary-card">
+              <div className="tkh-summary-label">Pending review</div>
+              <div className="tkh-summary-value">{pendingHighlights.length}</div>
+            </div>
+            <div className="tkh-summary-card">
+              <div className="tkh-summary-label">Best skill</div>
+              <div className="tkh-summary-value">{archiveSelection.bestSkill?.playerName || "Pending"}</div>
+            </div>
+            <div className="tkh-summary-card">
+              <div className="tkh-summary-label">Best save</div>
+              <div className="tkh-summary-value">{archiveSelection.bestSave?.playerName || "Pending"}</div>
+            </div>
+          </div>
+        </section>
+
+        <section className="tkh-panel">
+          <div className="tkh-tabs">
+            <button
+              type="button"
+              className={`tkh-tab ${selectedTab === "approved" ? "is-active" : ""}`}
+              onClick={() => setSelectedTab("approved")}
+            >
+              Approved ({approvedHighlights.length})
+            </button>
+
+            {isModerator && (
+              <button
+                type="button"
+                className={`tkh-tab ${selectedTab === "pending" ? "is-active" : ""}`}
+                onClick={() => setSelectedTab("pending")}
+              >
+                Pending ({pendingHighlights.length})
+              </button>
+            )}
+
+            {isModerator && rejectedHighlights.length > 0 && (
+              <button
+                type="button"
+                className={`tkh-tab ${selectedTab === "rejected" ? "is-active" : ""}`}
+                onClick={() => setSelectedTab("rejected")}
+              >
+                Rejected ({rejectedHighlights.length})
+              </button>
+            )}
+          </div>
+
+          <div className="tkh-filters" style={{ marginTop: 10 }}>
+            {["all", "goal", "save", "skill", "other"].map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                className={`tkh-filter ${selectedFilter === filter ? "is-active" : ""}`}
+                onClick={() => setSelectedFilter(filter)}
+              >
+                {filter === "all" ? "All" : toTitleCaseLoose(filter)}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {visibleHighlights.length === 0 ? (
+          <section className="tkh-panel tkh-empty">
+            {selectedTab === "pending"
+              ? "No clips are waiting for review."
+              : selectedTab === "rejected"
+              ? "No rejected clips."
+              : "No approved highlights yet. Upload clips and approve them here."}
+          </section>
+        ) : (
+          <section className="tkh-grid">
+            {visibleHighlights.map((highlight) => (
+              <HighlightCard
+                key={highlight.id}
+                highlight={highlight}
+                voteCount={voteCounts[highlight.id] || 0}
+                isModerator={isModerator}
+                canVote={isLoggedIn}
+                userVoteForType={userVotes[highlight.normalizedType] || null}
+                onVote={castVote}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                onDelete={handleDelete}
+              />
+            ))}
+          </section>
+        )}
+
+        <section className="tkh-panel">
+          <h3 style={{ margin: "0 0 10px" }}>End Match Day archive preview</h3>
+          <div className="tkh-meta-row">
+            <span>
+              Top goals: <strong>{archiveSelection.topGoals.map((g) => g.playerName).join(", ") || "Pending"}</strong>
+            </span>
+            <span>
+              Best skill: <strong>{archiveSelection.bestSkill?.playerName || "Pending"}</strong>
+            </span>
+            <span>
+              Best save: <strong>{archiveSelection.bestSave?.playerName || "Pending"}</strong>
+            </span>
+          </div>
+        </section>
+      </div>
+
+      {showUploadModal && (
+        <div className="tkh-modal-backdrop">
+          <div className="tkh-modal" role="dialog" aria-modal="true" aria-label="Upload highlight clip">
+            <div className="tkh-modal-head">
               <div>
-                <div style={{ fontSize: "0.85rem", opacity: 0.75 }}>Total clips</div>
-                <div style={{ fontWeight: 800, fontSize: isMobile ? "1.6rem" : "2rem", lineHeight: 1.1 }}>
-                  {highlights.length}
+                <h2 className="tkh-modal-title">Upload clip</h2>
+                <div className="tkh-help">
+                  Short match highlights only. Clips go to pending review before the team can see them.
                 </div>
               </div>
-              <div>
-                <div style={{ fontSize: "0.85rem", opacity: 0.75 }}>Top goals to archive</div>
-                <div style={{ fontWeight: 800, fontSize: isMobile ? "1.6rem" : "2rem", lineHeight: 1.1 }}>
-                  {archiveSelection.topGoals.length}
+              <button type="button" className="tkh-btn" onClick={closeUploadModal} disabled={uploading}>
+                Close
+              </button>
+            </div>
+
+            <div className="tkh-form-grid">
+              <div className="tkh-field" style={{ gridColumn: "1 / -1" }}>
+                <label>Video file</label>
+                <input
+                  ref={fileInputRef}
+                  className="tkh-input"
+                  type="file"
+                  accept="video/mp4,video/quicktime,video/webm,video/*"
+                  onChange={handleFileChange}
+                  disabled={uploading}
+                />
+                <div className="tkh-help">
+                  Maximum {MAX_VIDEO_SECONDS}s and {formatFileSize(MAX_VIDEO_BYTES)}. Ideal: {IDEAL_MIN_SECONDS}–{IDEAL_MAX_SECONDS}s.
                 </div>
               </div>
-              <div>
-                <div style={{ fontSize: "0.85rem", opacity: 0.75 }}>Best skill chosen</div>
-                <div style={{ fontWeight: 800, fontSize: isMobile ? "1rem" : "1.08rem", overflowWrap: "anywhere" }}>
-                  {archiveSelection.bestSkill?.playerName || "Pending"}
-                </div>
+
+              <div className="tkh-field">
+                <label>Highlight type</label>
+                <select className="tkh-select" value={clipType} onChange={(e) => setClipType(e.target.value)} disabled={uploading}>
+                  <option value="goal">Goal</option>
+                  <option value="save">Save</option>
+                  <option value="skill">Skill</option>
+                  <option value="other">Other</option>
+                </select>
               </div>
-              <div>
-                <div style={{ fontSize: "0.85rem", opacity: 0.75 }}>Best save chosen</div>
-                <div style={{ fontWeight: 800, fontSize: isMobile ? "1rem" : "1.08rem", overflowWrap: "anywhere" }}>
-                  {archiveSelection.bestSave?.playerName || "Pending"}
-                </div>
+
+              <div className="tkh-field">
+                <label>{clipType === "goal" ? "Scorer / player shown" : "Player shown"}</label>
+                <input
+                  className="tkh-input"
+                  list="tkh-player-options"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="Select or type player"
+                  disabled={uploading}
+                />
+                <datalist id="tkh-player-options">
+                  {playerOptions.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
               </div>
-              <div>
-                <div style={{ fontSize: "0.85rem", opacity: 0.75 }}>Voting access</div>
-                <div style={{ fontWeight: 800, fontSize: isMobile ? "1rem" : "1.08rem" }}>
-                  {isLoggedIn ? "Enabled" : "Login required"}
+
+              {clipType === "goal" && (
+                <div className="tkh-field">
+                  <label>Assist</label>
+                  <input
+                    className="tkh-input"
+                    list="tkh-player-options"
+                    value={assistName}
+                    onChange={(e) => setAssistName(e.target.value)}
+                    placeholder="Optional"
+                    disabled={uploading}
+                  />
                 </div>
-              </div>
-              <div>
-                <div style={{ fontSize: "0.85rem", opacity: 0.75 }}>Upload access</div>
-                <div style={{ fontWeight: 800, fontSize: isMobile ? "1rem" : "1.08rem" }}>
-                  {isLoggedIn ? "Enabled" : "Login required"}
-                </div>
+              )}
+
+              <div className="tkh-field">
+                <label>Team</label>
+                <input
+                  className="tkh-input"
+                  list="tkh-team-options"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  placeholder="Optional"
+                  disabled={uploading}
+                />
+                <datalist id="tkh-team-options">
+                  {teamOptions.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
               </div>
             </div>
 
-            <div style={cardStyle}>
-              <h3 style={{ marginTop: 0, fontSize: isMobile ? "1.1rem" : "1.3rem" }}>
-                Archive snapshot for End Match Day
-              </h3>
-
-              <div style={{ display: "grid", gap: "1rem" }}>
-                <div>
-                  <strong>Top 3 goals</strong>
-                  <div style={{ marginTop: "0.45rem", display: "grid", gap: "0.4rem" }}>
-                    {archiveSelection.topGoals.length ? (
-                      archiveSelection.topGoals.map((item, index) => (
-                        <div key={`top-goal-${item.id}`} style={{ overflowWrap: "anywhere" }}>
-                          {index + 1}. {item.playerName} • {item.votes} vote(s)
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ opacity: 0.74 }}>No goals selected yet.</div>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <strong>Best skill</strong>
-                  <div style={{ marginTop: "0.35rem", opacity: 0.86, overflowWrap: "anywhere" }}>
-                    {archiveSelection.bestSkill
-                      ? `${archiveSelection.bestSkill.playerName} • ${archiveSelection.bestSkill.votes} vote(s)`
-                      : "No skill selected yet."}
-                  </div>
-                </div>
-
-                <div>
-                  <strong>Best save</strong>
-                  <div style={{ marginTop: "0.35rem", opacity: 0.86, overflowWrap: "anywhere" }}>
-                    {archiveSelection.bestSave
-                      ? `${archiveSelection.bestSave.playerName} • ${archiveSelection.bestSave.votes} vote(s)`
-                      : "No save selected yet."}
-                  </div>
-                </div>
+            {clipFile && (
+              <div className="tkh-help" style={{ marginTop: 12 }}>
+                Selected: <strong>{clipFile.name}</strong> • {formatFileSize(clipFile.size)}
+                {clipDuration ? ` • ${formatSeconds(clipDuration)}` : ""}
               </div>
-            </div>
+            )}
 
-            <div style={cardStyle}>
-              <h3 style={{ marginTop: 0, fontSize: isMobile ? "1.1rem" : "1.3rem" }}>
-                Provider-ready structure
-              </h3>
-              <div style={{ display: "grid", gap: "0.55rem", opacity: 0.86, fontSize: "0.94rem" }}>
-                <div><strong>manual_upload</strong> — phone memory upload, ready now.</div>
-                <div><strong>five_asides_camera</strong> — same metadata shape later from your own camera app.</div>
-                <div><strong>pushit</strong> — same metadata shape later from imported Pushit clips.</div>
+            {clipPreviewUrl && (
+              <div style={{ marginTop: 12 }}>
+                <video className="tkh-preview-video" controls playsInline preload="metadata" src={clipPreviewUrl} />
               </div>
+            )}
+
+            {uploadNotice && <div className="tkh-warning">{uploadNotice}</div>}
+            {uploadError && <div className="tkh-error">{uploadError}</div>}
+
+            <div className="tkh-upload-actions">
+              <button type="button" className="tkh-btn" onClick={resetUpload} disabled={uploading}>
+                Reset
+              </button>
+              <button
+                type="button"
+                className="tkh-btn tkh-btn-primary"
+                onClick={handleSubmitUpload}
+                disabled={uploading || !clipFile}
+              >
+                {uploading ? "Uploading..." : "Submit for review"}
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

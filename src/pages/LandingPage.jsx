@@ -18,7 +18,7 @@ import {
   normalizeMatchMode,
 } from "../core/matchConfig.js";
 
-const CAPTAIN_CODES = ["11", "22", "3333"];
+const CAPTAIN_CODES = ["11", "22"];
 
 const activePrimaryStyle = {
   background:
@@ -183,6 +183,8 @@ export function LandingPage({
   defaultMatchSeconds = 60 * 60,
   onUpdateMatchSeconds,
   durationSwitchLocked = false,
+  adminCode = "3333",
+  onUpdateAdminCode,
   scheduledTarget = null,
   scheduledFixtures = [],
   smartOffset = 5,
@@ -238,9 +240,14 @@ export function LandingPage({
 
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showDurationModal, setShowDurationModal] = useState(false);
+  const [showAdminCodeModal, setShowAdminCodeModal] = useState(false);
   const [durationDraftMinutes, setDurationDraftMinutes] = useState(() =>
     secondsToEditableMinutes(matchSeconds, defaultMatchSeconds)
   );
+  const [adminCodeStatus, setAdminCodeStatus] = useState("");
+  const [adminCodeBusy, setAdminCodeBusy] = useState(false);
+  const [showCodes, setShowCodes] = useState(true);
+  const [codeCopyStatus, setCodeCopyStatus] = useState("");
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth <= 480;
@@ -320,6 +327,134 @@ export function LandingPage({
     if (resolvedRole === "player") return "player";
     return "spectator";
   }, [resolvedRole]);
+
+
+  const activeCaptainCodes = useMemo(() => {
+    const code = String(adminCode || "3333").trim() || "3333";
+    return Array.from(new Set([...CAPTAIN_CODES, code]));
+  }, [adminCode]);
+
+  const isAdminCode = (value) =>
+    String(value || "").trim() === (String(adminCode || "3333").trim() || "3333");
+
+  const closeSettingsPanelAfterPopup = () => {
+    setShowSettingsPanel(false);
+  };
+
+  const closeAdminCodeModal = () => {
+    setShowAdminCodeModal(false);
+    setCodeCopyStatus("");
+    closeSettingsPanelAfterPopup();
+  };
+
+  const closeDurationModal = () => {
+    setShowDurationModal(false);
+    closeSettingsPanelAfterPopup();
+  };
+
+  const closeFixturesModal = () => {
+    setShowFixturesModal(false);
+    closeSettingsPanelAfterPopup();
+  };
+
+  const copyCodeToClipboard = async (label, value) => {
+    const text = String(value || "").trim();
+    if (!text) return;
+
+    if (!showCodes) {
+      setCodeCopyStatus("Show codes before copying.");
+      return;
+    }
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else if (typeof document !== "undefined") {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      setCodeCopyStatus(`${label} copied.`);
+    } catch (error) {
+      console.error("[TK SETTINGS] Copy code failed:", error);
+      setCodeCopyStatus("Could not copy code. Tap and hold the code to copy.");
+    }
+  };
+
+  const renderCodeRow = (label, value, accent = "rgba(148,163,184,0.14)") => {
+    const displayValue = showCodes ? String(value || "") : String(value || "").replace(/./g, "•");
+
+    return (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) auto",
+          alignItems: "center",
+          gap: "0.45rem",
+          padding: "0.52rem 0.55rem",
+          borderRadius: "0.8rem",
+          background: "rgba(15,23,42,0.42)",
+          border: `1px solid ${accent}`,
+        }}
+      >
+        <label
+          className="muted small"
+          style={{
+            display: "grid",
+            gap: "0.22rem",
+            minWidth: 0,
+          }}
+        >
+          <span>{label}</span>
+          <input
+            type="text"
+            readOnly
+            inputMode="numeric"
+            value={displayValue}
+            onFocus={(event) => event.target.select()}
+            style={{
+              width: "100%",
+              minWidth: 0,
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              color: "#f8fafc",
+              fontSize: "1rem",
+              fontWeight: 900,
+              letterSpacing: showCodes ? "0.12em" : "0.05em",
+              padding: 0,
+              userSelect: "text",
+              WebkitUserSelect: "text",
+            }}
+          />
+        </label>
+
+        <button
+          type="button"
+          className="secondary-btn"
+          onClick={() => copyCodeToClipboard(label, value)}
+          disabled={!showCodes}
+          style={{
+            minHeight: "32px",
+            padding: "0.25rem 0.62rem",
+            borderRadius: "999px",
+            fontSize: "0.72rem",
+            fontWeight: 850,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Copy
+        </button>
+      </div>
+    );
+  };
 
   const resolvedMatchType = normalizeMatchMode(
     matchType || (gameFormat === "3_TEAM_LEAGUE" ? MATCH_MODE.LEAGUE : MATCH_MODE.FRIENDLY)
@@ -519,6 +654,7 @@ export function LandingPage({
 
   const cancelGameFormatChange = () => {
     setShowFormatModal(false);
+    closeSettingsPanelAfterPopup();
     setPendingGameFormat(null);
     setFormatCode("");
     setFormatError("");
@@ -564,7 +700,7 @@ export function LandingPage({
   const confirmGameFormatChange = () => {
     if (!pendingGameFormat) return;
 
-    if (!CAPTAIN_CODES.includes(formatCode.trim())) {
+    if (!activeCaptainCodes.includes(formatCode.trim())) {
       setFormatError("Invalid captain code.");
       return;
     }
@@ -576,7 +712,7 @@ export function LandingPage({
   const handleProtectedTargetChange = (target) => {
     if (!isAdmin) return;
 
-    if (fixtureAdminCode.trim() !== "3333") {
+    if (!isAdminCode(fixtureAdminCode)) {
       setFixtureAdminError("Invalid admin code.");
       return;
     }
@@ -614,7 +750,7 @@ export function LandingPage({
     }
 
     onUpdateMatchSeconds?.(nextSeconds, resolvedMatchType);
-    setShowDurationModal(false);
+    closeDurationModal();
   };
 
   const handleResetMatchDuration = () => {
@@ -627,7 +763,56 @@ export function LandingPage({
       secondsToEditableMinutes(resolvedDefaultMatchSeconds, resolvedDefaultMatchSeconds)
     );
     onUpdateMatchSeconds?.(resolvedDefaultMatchSeconds, resolvedMatchType);
-    setShowDurationModal(false);
+    closeDurationModal();
+  };
+
+  const generateAdminCode = () => {
+    if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
+      const values = new Uint32Array(1);
+      window.crypto.getRandomValues(values);
+      return String(1000 + (values[0] % 9000));
+    }
+
+    return String(Math.floor(1000 + Math.random() * 9000));
+  };
+
+  const handleRegenerateAdminCode = async () => {
+    if (!isAdmin) return;
+
+    if (typeof onUpdateAdminCode !== "function") {
+      setAdminCodeStatus("Admin code updater is not connected yet.");
+      return;
+    }
+
+    const ok = window.confirm(
+      "Generate a new admin code?\n\nThe old admin code will stop working for admin-only actions."
+    );
+    if (!ok) return;
+
+    const nextCode = generateAdminCode();
+    setAdminCodeStatus("");
+    setAdminCodeBusy(true);
+
+    try {
+      const result = await onUpdateAdminCode({
+        currentCode: adminCode,
+        nextCode,
+      });
+
+      if (!result?.ok) {
+        setAdminCodeStatus(result?.message || "Could not update admin code.");
+        return;
+      }
+
+      setShowCodes(true);
+      setCodeCopyStatus("");
+      setAdminCodeStatus(`New admin code generated: ${nextCode}`);
+    } catch (error) {
+      console.error("[TK SETTINGS] Admin code update failed:", error);
+      setAdminCodeStatus("Could not update admin code.");
+    } finally {
+      setAdminCodeBusy(false);
+    }
   };
 
   return (
@@ -726,7 +911,7 @@ export function LandingPage({
           letter-spacing: clamp(0.045em, 0.08vw, 0.085em);
           text-transform: uppercase;
           white-space: nowrap;
-          text-shadow: 0 1px 2px rgba(2, 6, 23, 0.88);
+          text-shadow: none;
         }
 
         .tk-ribbon-mode-label-dot {
@@ -735,7 +920,7 @@ export function LandingPage({
           flex: 0 0 auto;
           border-radius: 999px;
           background: currentColor;
-          box-shadow: 0 0 8px currentColor;
+          box-shadow: none;
         }
 
         @media (min-width: 760px) {
@@ -1224,6 +1409,49 @@ export function LandingPage({
               </span>
               <span aria-hidden="true" className="muted small">Edit</span>
             </button>
+
+            {(isAdmin || isCaptain) && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setAdminCodeStatus("");
+                  setCodeCopyStatus("");
+                  setShowCodes(true);
+                  setShowAdminCodeModal(true);
+                }}
+                style={{
+                  width: "100%",
+                  minHeight: "42px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  borderRadius: "1rem",
+                  padding: "0.55rem 0.78rem",
+                  border: "1px solid rgba(148,163,184,0.18)",
+                  background: "rgba(15,23,42,0.42)",
+                  color: "#e5e7eb",
+                  textAlign: "left",
+                }}
+              >
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.55rem",
+                    minWidth: 0,
+                    fontWeight: 800,
+                  }}
+                >
+                  <span aria-hidden="true">🔐</span>
+                  <span>Click for password update</span>
+                </span>
+                <span className="muted small" style={{ whiteSpace: "nowrap" }}>
+                  View
+                </span>
+              </button>
+            )}
               </div>
             )}
           </div>
@@ -2016,6 +2244,97 @@ export function LandingPage({
         </div>
       </section>
 
+      {showAdminCodeModal && (
+        <div className="modal-backdrop">
+          <div
+            className="modal"
+            style={{
+              width: "min(92vw, 360px)",
+              padding: isMobile ? "0.92rem" : "1rem",
+              borderRadius: "1.05rem",
+              border: "1px solid rgba(148,163,184,0.20)",
+              background:
+                "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                marginBottom: "0.65rem",
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: "1rem" }}>🔐 Access codes</h3>
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => setShowCodes((prev) => !prev)}
+                style={{ fontSize: "0.78rem", fontWeight: 850 }}
+              >
+                {showCodes ? "Hide" : "Show"}
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: "0.5rem" }}>
+              {isAdmin && renderCodeRow("Admin", adminCode, "rgba(34,197,94,0.22)")}
+
+              {CAPTAIN_CODES.map((code, index) => (
+                <React.Fragment key={`captain-code-${code}-${index}`}>
+                  {renderCodeRow(`Captain ${index + 1}`, code)}
+                </React.Fragment>
+              ))}
+            </div>
+
+            {isAdmin && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleRegenerateAdminCode}
+                disabled={adminCodeBusy}
+                style={{
+                  width: "100%",
+                  marginTop: "0.7rem",
+                  minHeight: "40px",
+                  borderRadius: "999px",
+                }}
+              >
+                {adminCodeBusy ? "Generating…" : "Generate new admin code"}
+              </button>
+            )}
+
+            {(adminCodeStatus || codeCopyStatus) && (
+              <p
+                className="muted small"
+                style={{
+                  margin: "0.58rem 0 0",
+                  color: (adminCodeStatus || codeCopyStatus).includes("copied") || (adminCodeStatus || codeCopyStatus).includes("generated") ? "#86efac" : "#fecaca",
+                  fontWeight: 750,
+                  lineHeight: 1.35,
+                }}
+              >
+                {adminCodeStatus || codeCopyStatus}
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={closeAdminCodeModal}
+              style={{
+                width: "100%",
+                marginTop: "0.75rem",
+                minHeight: "42px",
+                borderRadius: "999px",
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
       {showDurationModal && (
         <div className="modal-backdrop">
           <div
@@ -2082,7 +2401,7 @@ export function LandingPage({
               <button
                 type="button"
                 className="secondary-btn"
-                onClick={() => setShowDurationModal(false)}
+                onClick={closeDurationModal}
               >
                 Cancel
               </button>
@@ -2247,7 +2566,7 @@ export function LandingPage({
               <button
                 type="button"
                 className="secondary-btn"
-                onClick={() => setShowFixturesModal(false)}
+                onClick={closeFixturesModal}
                 aria-label="Close fixtures"
                 style={{
                   width: "42px",
@@ -2408,7 +2727,7 @@ export function LandingPage({
             >
               <button
                 className="secondary-btn"
-                onClick={() => setShowFixturesModal(false)}
+                onClick={closeFixturesModal}
                 style={{
                   width: isMobile ? "100%" : "min(320px, 100%)",
                   touchAction: "manipulation",
