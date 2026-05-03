@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import VideoHighlightsRepository, {
   saveRawHighlightDoc,
 } from "../storage/VideoHighlightsRepository.js";
+import { curateHighlights } from "../core/VideoHighlightCuration.js";
 
 const MAX_VIDEO_SECONDS = 25;
 const IDEAL_MIN_SECONDS = 15;
@@ -480,6 +481,72 @@ function getFilterLabel(filter) {
   return "MOM-ish 😅";
 }
 
+function getHighlightMatchDayKey(highlight) {
+  const explicit = String(
+    highlight?.matchDayId ||
+      highlight?.matchdayId ||
+      highlight?.matchDate ||
+      highlight?.archiveMatchDayId ||
+      highlight?.createdDate ||
+      ""
+  ).trim();
+
+  if (explicit) return explicit;
+
+  const rawDate =
+    highlight?.archivedAtISO ||
+    highlight?.createdAtISO ||
+    highlight?.createdAt ||
+    highlight?.timestamp ||
+    highlight?.uploadedAtISO ||
+    highlight?.uploadedAt ||
+    "";
+
+  const d = new Date(rawDate || Date.now());
+  if (Number.isNaN(d.getTime())) return "Current match day";
+  return d.toISOString().slice(0, 10);
+}
+
+function formatMatchDayHeading(value) {
+  const raw = String(value || "").trim();
+  const d = new Date(raw);
+
+  if (Number.isNaN(d.getTime())) return raw || "Current match day";
+
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function groupGoalHighlightsByMatchDay(highlights = [], votesById = {}) {
+  const goals = (Array.isArray(highlights) ? highlights : [])
+    .map((item, index) => normalizeHighlight(item, index))
+    .filter((item) => item.normalizedType === "goal")
+    .map((item) => ({ ...item, votes: votesById[item.id] || Number(item.votes || 0) }))
+    .sort((a, b) => {
+      const dayDiff = String(getHighlightMatchDayKey(b)).localeCompare(String(getHighlightMatchDayKey(a)));
+      if (dayDiff !== 0) return dayDiff;
+      if (Number(b.votes || 0) !== Number(a.votes || 0)) return Number(b.votes || 0) - Number(a.votes || 0);
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+
+  const map = new Map();
+  goals.forEach((goal) => {
+    const key = getHighlightMatchDayKey(goal);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(goal);
+  });
+
+  return Array.from(map.entries()).map(([matchDayId, items]) => ({
+    matchDayId,
+    label: formatMatchDayHeading(matchDayId),
+    goals: items,
+  }));
+}
+
 function getMissingBadges(highlight) {
   const badges = [];
   if (needsPlayer(highlight)) badges.push("Needs player");
@@ -644,14 +711,20 @@ export function VideoHighlightsPage({
   );
 
   const [firebaseHighlights, setFirebaseHighlights] = useState([]);
+  const [archivedHighlights, setArchivedHighlights] = useState([]);
   const [localHighlights, setLocalHighlights] = useState([]);
   const [localVotesByUser, setLocalVotesByUser] = useState(votesByUser || {});
-  const [mainTab, setMainTab] = useState("highlights");
+  const [mainTab, setMainTab] = useState("currentWeek");
   const [selectedTab, setSelectedTab] = useState("approved");
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [loadingHighlights, setLoadingHighlights] = useState(false);
   const [loadError, setLoadError] = useState("");
+
+  const [curationResult, setCurationResult] = useState(null);
+  const [runningCuration, setRunningCuration] = useState(false);
+  const [cleanupInProgress, setCleanupInProgress] = useState(false);
+  const [curationNotice, setCurationNotice] = useState("");
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -695,8 +768,14 @@ export function VideoHighlightsPage({
     try {
       setLoadingHighlights(true);
       setLoadError("");
-      const loaded = await VideoHighlightsRepository.loadRawHighlightsFromFirebase(resolvedMatchId);
+      const [loaded, archived] = await Promise.all([
+        VideoHighlightsRepository.loadRawHighlightsFromFirebase(resolvedMatchId),
+        typeof VideoHighlightsRepository.loadArchivedHighlightsFromFirebase === "function"
+          ? VideoHighlightsRepository.loadArchivedHighlightsFromFirebase(resolvedMatchId)
+          : Promise.resolve([]),
+      ]);
       setFirebaseHighlights(Array.isArray(loaded) ? loaded : []);
+      setArchivedHighlights(Array.isArray(archived) ? archived : []);
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Failed to load highlights:", error);
       setLoadError(error?.message || "Could not load highlights from Firebase.");
@@ -788,6 +867,13 @@ export function VideoHighlightsPage({
     () => buildArchiveSelection(approvedHighlights, localVotesByUser),
     [approvedHighlights, localVotesByUser]
   );
+
+  const topGoalGroups = useMemo(() => {
+    const weeklyGoalsSource = archivedHighlights.length
+      ? archivedHighlights
+      : archiveSelection.topGoals;
+    return groupGoalHighlightsByMatchDay(weeklyGoalsSource, voteCounts);
+  }, [archivedHighlights, archiveSelection.topGoals, voteCounts]);
 
   useEffect(() => {
     onHighlightsSelectionChange?.(archiveSelection);
@@ -1161,6 +1247,74 @@ export function VideoHighlightsPage({
     }
   };
 
+  const handleRunCuration = () => {
+    if (!isModerator) return;
+
+    try {
+      setRunningCuration(true);
+      setCurationNotice("");
+
+      const result = curateHighlights({
+        highlights: approvedHighlights,
+        votesByUser: localVotesByUser,
+      });
+
+      setCurationResult(result);
+      setMainTab("currentWeek");
+      setSelectedTab("approved");
+      setSelectedFilter("all");
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Curation failed:", error);
+      window.alert(error?.message || "Could not run curation.");
+    } finally {
+      setRunningCuration(false);
+    }
+  };
+
+  const handleConfirmCleanup = async () => {
+    if (!isModerator || !curationResult) return;
+
+    const cleanupCandidates = Array.isArray(curationResult.cleanupCandidates)
+      ? curationResult.cleanupCandidates
+      : [];
+
+    const confirmed = window.confirm(
+      `Confirm cleanup? ${cleanupCandidates.length} clip${cleanupCandidates.length === 1 ? "" : "s"} will be removed from Firebase. Winners will remain available.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setCleanupInProgress(true);
+      setCurationNotice("");
+
+      for (const clip of cleanupCandidates) {
+        const clipId = String(clip?.clipId || clip?.id || clip?.highlightId || "").trim();
+        if (!clipId) continue;
+
+        await VideoHighlightsRepository.deleteRawHighlightFromFirebase({
+          matchId: resolvedMatchId,
+          clipId,
+          storagePath: clip.storagePath,
+        });
+
+        removeLocalHighlight({ ...clip, clipId });
+      }
+
+      await loadHighlights();
+      setCurationNotice(
+        `Cleanup complete. ${cleanupCandidates.length} clip${cleanupCandidates.length === 1 ? "" : "s"} removed.`
+      );
+      setCurationResult(null);
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Cleanup failed:", error);
+      window.alert(error?.message || "Could not complete cleanup.");
+      await loadHighlights();
+    } finally {
+      setCleanupInProgress(false);
+    }
+  };
+
   const castVote = async (category, highlightId) => {
     if (!isLoggedIn) return;
 
@@ -1250,6 +1404,19 @@ export function VideoHighlightsPage({
           font-weight: 950;
         }
 
+        .tkh-voting-window-note {
+          width: fit-content;
+          max-width: 100%;
+          border-radius: 0.95rem;
+          padding: 0.58rem 0.72rem;
+          background: rgba(250, 204, 21, 0.12);
+          border: 1px solid rgba(250, 204, 21, 0.26);
+          color: #fde68a;
+          font-size: 0.82rem;
+          font-weight: 850;
+          line-height: 1.35;
+        }
+
         .tkh-page-intro h2 {
           margin: 0;
           color: #ffffff;
@@ -1328,14 +1495,31 @@ export function VideoHighlightsPage({
         }
 
         .tkh-view-toggle {
-          width: fit-content;
+          width: min(100%, 360px);
           max-width: 100%;
           margin: 0 auto;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0;
+          padding: 0.22rem;
+          border-radius: 999px;
+          background: rgba(2, 6, 23, 0.88);
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          overflow: hidden;
         }
 
         .tkh-view-toggle .pill-toggle {
-          min-width: 136px;
-          font-weight: 850;
+          min-width: 0;
+          width: 100%;
+          justify-content: center;
+          font-weight: 900;
+          border-radius: 999px;
+        }
+
+        .tkh-view-toggle .pill-toggle-active {
+          background: #f8fafc !important;
+          color: #020617 !important;
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.25);
         }
 
         .tkh-compact-filter-row {
@@ -1509,6 +1693,42 @@ export function VideoHighlightsPage({
         .tkh-empty-mini,
         .tkh-system-note,
         .tkh-error-box,
+        .tkh-matchday-goal-stack {
+          display: grid;
+          gap: 1rem;
+        }
+
+        .tkh-matchday-goal-group {
+          display: grid;
+          gap: 0.7rem;
+          padding: 0.78rem;
+          border-radius: 1rem;
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          background: rgba(15, 23, 42, 0.28);
+        }
+
+        .tkh-matchday-goal-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          flex-wrap: wrap;
+        }
+
+        .tkh-matchday-goal-head h3 {
+          margin: 0;
+        }
+
+        .tkh-matchday-goal-head span {
+          border-radius: 999px;
+          padding: 0.3rem 0.6rem;
+          color: #fde68a;
+          background: rgba(250, 204, 21, 0.11);
+          border: 1px solid rgba(250, 204, 21, 0.22);
+          font-size: 0.76rem;
+          font-weight: 950;
+        }
+
         .tkh-cleanup-note {
           border-radius: 1rem;
           padding: 0.9rem;
@@ -1526,6 +1746,42 @@ export function VideoHighlightsPage({
         }
 
         .tkh-system-note,
+        .tkh-matchday-goal-stack {
+          display: grid;
+          gap: 1rem;
+        }
+
+        .tkh-matchday-goal-group {
+          display: grid;
+          gap: 0.7rem;
+          padding: 0.78rem;
+          border-radius: 1rem;
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          background: rgba(15, 23, 42, 0.28);
+        }
+
+        .tkh-matchday-goal-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          flex-wrap: wrap;
+        }
+
+        .tkh-matchday-goal-head h3 {
+          margin: 0;
+        }
+
+        .tkh-matchday-goal-head span {
+          border-radius: 999px;
+          padding: 0.3rem 0.6rem;
+          color: #fde68a;
+          background: rgba(250, 204, 21, 0.11);
+          border: 1px solid rgba(250, 204, 21, 0.22);
+          font-size: 0.76rem;
+          font-weight: 950;
+        }
+
         .tkh-cleanup-note {
           background: rgba(14, 165, 233, 0.08);
           border: 1px solid rgba(56, 189, 248, 0.20);
@@ -1653,9 +1909,25 @@ export function VideoHighlightsPage({
         }
 
         .tkh-warning {
-          background: rgba(250, 204, 21, 0.13);
-          border: 1px solid rgba(250, 204, 21, 0.30);
-          color: #fde68a;
+          margin-top: 0.75rem;
+          border-radius: 1rem;
+          padding: 0.86rem 0.95rem;
+          background:
+            radial-gradient(circle at 0% 0%, rgba(34, 197, 94, 0.10), transparent 42%),
+            rgba(2, 6, 23, 0.76);
+          border: 1px solid rgba(148, 163, 184, 0.28);
+          color: #e5e7eb;
+          font-size: 0.86rem;
+          font-weight: 850;
+          line-height: 1.42;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+        }
+
+        .tkh-warning strong {
+          color: #86efac;
+          font-weight: 1000;
         }
 
         .tkh-success {
@@ -1710,6 +1982,75 @@ export function VideoHighlightsPage({
           gap: 0.55rem;
           justify-content: flex-end;
           flex-wrap: wrap;
+        }
+
+        .tkh-curation-panel {
+          display: grid;
+          gap: 0.8rem;
+          border-radius: 1rem;
+          padding: 0.9rem;
+          background: rgba(2, 6, 23, 0.92);
+          border: 1px solid rgba(148, 163, 184, 0.24);
+          color: #e5e7eb;
+          box-shadow: 0 16px 36px rgba(2, 6, 23, 0.22);
+        }
+
+        .tkh-curation-panel strong {
+          color: #f8fafc;
+          font-weight: 1000;
+        }
+
+        .tkh-curation-title {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          flex-wrap: wrap;
+          font-weight: 1000;
+        }
+
+        .tkh-curation-count {
+          border-radius: 999px;
+          padding: 0.32rem 0.62rem;
+          color: #fecaca;
+          background: rgba(127, 29, 29, 0.34);
+          border: 1px solid rgba(248, 113, 113, 0.32);
+          font-size: 0.78rem;
+          font-weight: 1000;
+        }
+
+        .tkh-curation-summary {
+          display: flex;
+          gap: 0.45rem;
+          flex-wrap: wrap;
+          color: rgba(226, 232, 240, 0.74);
+          font-size: 0.82rem;
+          line-height: 1.35;
+        }
+
+        .tkh-curation-summary span {
+          border-radius: 999px;
+          padding: 0.32rem 0.55rem;
+          background: rgba(15, 23, 42, 0.88);
+          border: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .tkh-curation-actions {
+          display: flex;
+          gap: 0.55rem;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .tkh-curation-notice {
+          border-radius: 1rem;
+          padding: 0.78rem 0.9rem;
+          background: rgba(34, 197, 94, 0.12);
+          border: 1px solid rgba(34, 197, 94, 0.28);
+          color: #bbf7d0;
+          font-size: 0.84rem;
+          font-weight: 900;
+          line-height: 1.35;
         }
 
         @media (max-width: 980px) {
@@ -1799,6 +2140,9 @@ export function VideoHighlightsPage({
           <span>{isLeagueMode ? "League teams:" : "Featured match:"}</span>
           <strong>{teamContextText}</strong>
         </div>
+        <div className="tkh-voting-window-note">
+          Current Week clips stay open for voting for 24 hours after the game. Winners are kept under Top Goals.
+        </div>
         <div className="tkh-header-actions">
           <button
             type="button"
@@ -1812,30 +2156,41 @@ export function VideoHighlightsPage({
           <button type="button" className="tkh-btn" onClick={loadHighlights} disabled={loadingHighlights}>
             {loadingHighlights ? "Refreshing..." : "Refresh"}
           </button>
+          {isModerator && (
+            <button
+              type="button"
+              className="tkh-btn"
+              onClick={handleRunCuration}
+              disabled={runningCuration || cleanupInProgress || approvedHighlights.length === 0}
+              title="Select the top 2 goals, best save, and best skill, then preview cleanup."
+            >
+              {runningCuration ? "Running..." : "Run Curation"}
+            </button>
+          )}
         </div>
       </header>
 
       {loadError && <section className="card tkh-error-box">{loadError}</section>}
 
       <section className="card tkh-card-section">
-        <div className="pill-toggle-group tkh-view-toggle" role="tablist" aria-label="Highlights view">
+        <div className="pill-toggle-group tkh-view-toggle" role="tablist" aria-label="Video highlights view">
           <button
             type="button"
-            className={`pill-toggle ${mainTab === "highlights" ? "pill-toggle-active" : ""}`}
-            onClick={() => setMainTab("highlights")}
+            className={`pill-toggle ${mainTab === "currentWeek" ? "pill-toggle-active" : ""}`}
+            onClick={() => setMainTab("currentWeek")}
           >
-            Highlights
+            Current Week
           </button>
           <button
             type="button"
             className={`pill-toggle ${mainTab === "winners" ? "pill-toggle-active" : ""}`}
             onClick={() => setMainTab("winners")}
           >
-            Weekly Winners ⭐
+            Top Goals ⭐
           </button>
         </div>
 
-        {mainTab === "highlights" && (
+        {mainTab === "currentWeek" && (
           <div className="tkh-compact-filter-row">
             <label className="tkh-compact-select-label">
               Review
@@ -1867,13 +2222,59 @@ export function VideoHighlightsPage({
           </div>
         )}
 
-        {mainTab === "highlights" && !isModerator && pendingHighlights.length > 0 && (
+        {mainTab === "currentWeek" && !isModerator && pendingHighlights.length > 0 && (
           <div className="tkh-system-note">
             {pendingHighlights.length} clip{pendingHighlights.length === 1 ? "" : "s"} waiting for review.
           </div>
         )}
 
-        {mainTab === "highlights" && (
+        {curationNotice && (
+          <div className="tkh-curation-notice">
+            {curationNotice}
+          </div>
+        )}
+
+        {isModerator && curationResult && (
+          <div className="tkh-curation-panel">
+            <div className="tkh-curation-title">
+              <span>⚠️ Cleanup preview</span>
+              <span className="tkh-curation-count">
+                {curationResult.cleanupCandidates?.length || 0} clip{(curationResult.cleanupCandidates?.length || 0) === 1 ? "" : "s"} will be removed
+              </span>
+            </div>
+
+            <div className="tkh-curation-summary">
+              <span>🥅 Top goals kept: <strong>{curationResult.topGoals?.length || 0}</strong></span>
+              <span>🧤 Best save: <strong>{curationResult.bestSave?.playerName || curationResult.bestSave?.title || "Pending"}</strong></span>
+              <span>🎯 Best skill: <strong>{curationResult.bestSkill?.playerName || curationResult.bestSkill?.title || "Pending"}</strong></span>
+            </div>
+
+            <div className="tkh-soft-line">
+              Review this before confirming. Winners remain; only non-selected clips are deleted from Firebase.
+            </div>
+
+            <div className="tkh-curation-actions">
+              <button
+                type="button"
+                className="tkh-btn tkh-btn-danger"
+                onClick={handleConfirmCleanup}
+                disabled={cleanupInProgress}
+              >
+                {cleanupInProgress ? "Cleaning..." : "Confirm Cleanup"}
+              </button>
+              <button
+                type="button"
+                className="tkh-btn"
+                onClick={() => setCurationResult(null)}
+                disabled={cleanupInProgress}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {mainTab === "currentWeek" && (
           <>
             {visibleHighlights.length === 0 ? (
               <div className="tkh-empty">
@@ -1910,86 +2311,50 @@ export function VideoHighlightsPage({
           <div className="tkh-winners-panel">
             <div className="tkh-winners-head">
               <div>
-                <h2>Weekly Winners</h2>
-                <p>Top clips retained for Goal of the Month or Goal of the Season voting later.</p>
+                <h2>Top Goals</h2>
+                <p>Past match-day goal winners are kept here for Goal of the Month and Goal of the Season voting.</p>
               </div>
               <span className="tkh-winners-badge">Archive ready</span>
             </div>
 
-            <div className="tkh-winner-section">
-              <h3>Top 2 goals</h3>
-              {archiveSelection.topGoals.length === 0 ? (
-                <div className="tkh-empty-mini">No goal winners yet.</div>
-              ) : (
-                <div className="tkh-grid tkh-winner-grid">
-                  {archiveSelection.topGoals.map((goal, index) => (
-                    <div key={goal.id} className="tkh-winner-card-wrap">
-                      <div className="tkh-winner-rank">#{index + 1} Goal</div>
-                      <HighlightCard
-                        highlight={goal}
-                        teams={teams}
-                        matchType={matchType}
-                        voteCount={voteCounts[goal.id] || 0}
-                        isModerator={isModerator}
-                        canVote={isLoggedIn}
-                        userVoteForType={userVotes[goal.normalizedType] || null}
-                        onVote={castVote}
-                        onApprove={handleApprove}
-                        onReject={handleReject}
-                        onDelete={handleDelete}
-                      />
+            {topGoalGroups.length === 0 ? (
+              <div className="tkh-empty-mini">No top goals saved yet.</div>
+            ) : (
+              <div className="tkh-matchday-goal-stack">
+                {topGoalGroups.map((group) => (
+                  <section key={group.matchDayId} className="tkh-matchday-goal-group">
+                    <div className="tkh-matchday-goal-head">
+                      <h3>{group.label}</h3>
+                      <span>{group.goals.length} goal{group.goals.length === 1 ? "" : "s"}</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
 
-            <div className="tkh-winner-section tkh-winner-two-col">
-              <div>
-                <h3>Best save</h3>
-                {archiveSelection.bestSave ? (
-                  <HighlightCard
-                    highlight={archiveSelection.bestSave}
-                    teams={teams}
-                    matchType={matchType}
-                    voteCount={voteCounts[archiveSelection.bestSave.id] || 0}
-                    isModerator={isModerator}
-                    canVote={isLoggedIn}
-                    userVoteForType={userVotes[archiveSelection.bestSave.normalizedType] || null}
-                    onVote={castVote}
-                    onApprove={handleApprove}
-                    onReject={handleReject}
-                    onDelete={handleDelete}
-                  />
-                ) : (
-                  <div className="tkh-empty-mini">No save winner yet.</div>
-                )}
+                    <div className="tkh-grid tkh-winner-grid">
+                      {group.goals.map((goal, index) => (
+                        <div key={goal.id} className="tkh-winner-card-wrap">
+                          <div className="tkh-winner-rank">#{index + 1} Goal</div>
+                          <HighlightCard
+                            highlight={goal}
+                            teams={teams}
+                            matchType={matchType}
+                            voteCount={voteCounts[goal.id] || Number(goal.votes || 0)}
+                            isModerator={isModerator}
+                            canVote={isLoggedIn}
+                            userVoteForType={userVotes[goal.normalizedType] || null}
+                            onVote={castVote}
+                            onApprove={handleApprove}
+                            onReject={handleReject}
+                            onDelete={handleDelete}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))}
               </div>
-
-              <div>
-                <h3>Best skill</h3>
-                {archiveSelection.bestSkill ? (
-                  <HighlightCard
-                    highlight={archiveSelection.bestSkill}
-                    teams={teams}
-                    matchType={matchType}
-                    voteCount={voteCounts[archiveSelection.bestSkill.id] || 0}
-                    isModerator={isModerator}
-                    canVote={isLoggedIn}
-                    userVoteForType={userVotes[archiveSelection.bestSkill.normalizedType] || null}
-                    onVote={castVote}
-                    onApprove={handleApprove}
-                    onReject={handleReject}
-                    onDelete={handleDelete}
-                  />
-                ) : (
-                  <div className="tkh-empty-mini">No skill winner yet.</div>
-                )}
-              </div>
-            </div>
+            )}
 
             <div className="tkh-cleanup-note">
-              Future cleanup rule: keep the top 2 goals, 1 save, and 1 skill after admin notification/download approval.
+              After admin download/approval, Current Week keeps only the top 2 goals, 1 save, and 1 skill. The rest are cleaned from Firebase.
             </div>
           </div>
         )}

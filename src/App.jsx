@@ -4563,6 +4563,7 @@ export default function App() {
     PAGE_SQUADS,
     PAGE_FORMATIONS,
     PAGE_PEER_REVIEW,
+    PAGE_VIEW_HIGHLIGHTS,
   ]);
 
   const showBottomNav = pagesWithBottomNav.has(page);
@@ -4597,6 +4598,11 @@ export default function App() {
 
     if (targetPage === PAGE_NEWS) {
       setPage(PAGE_NEWS);
+      return;
+    }
+
+    if (targetPage === PAGE_VIEW_HIGHLIGHTS) {
+      setPage(PAGE_VIEW_HIGHLIGHTS);
       return;
     }
 
