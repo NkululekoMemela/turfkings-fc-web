@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import VideoHighlightsRepository, {
   saveRawHighlightDoc,
 } from "../storage/VideoHighlightsRepository.js";
-import { curateHighlights } from "../core/VideoHighlightCuration.js";
 
 const MAX_VIDEO_SECONDS = 25;
 const IDEAL_MIN_SECONDS = 15;
@@ -114,6 +113,30 @@ function formatDate(value) {
   return d.toLocaleDateString(undefined, {
     day: "2-digit",
     month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getCurrentWeekVotingDeadline(nowInput = new Date()) {
+  const now = nowInput instanceof Date ? new Date(nowInput) : new Date(nowInput || Date.now());
+  const safeNow = Number.isNaN(now.getTime()) ? new Date() : now;
+  const deadline = new Date(safeNow);
+  const day = deadline.getDay(); // 0 = Sunday
+  const daysUntilSunday = (7 - day) % 7;
+
+  deadline.setDate(deadline.getDate() + daysUntilSunday);
+  deadline.setHours(23, 59, 59, 999);
+
+  return deadline;
+}
+
+function formatVotingDeadline(deadlineInput) {
+  const deadline = deadlineInput instanceof Date ? deadlineInput : new Date(deadlineInput || Date.now());
+  if (Number.isNaN(deadline.getTime())) return "Sunday night";
+
+  return deadline.toLocaleDateString(undefined, {
+    weekday: "long",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -521,10 +544,10 @@ function formatMatchDayHeading(value) {
   });
 }
 
-function groupGoalHighlightsByMatchDay(highlights = [], votesById = {}) {
-  const goals = (Array.isArray(highlights) ? highlights : [])
+function groupTopVotedClipsByMatchDay(highlights = [], votesById = {}) {
+  const clips = (Array.isArray(highlights) ? highlights : [])
     .map((item, index) => normalizeHighlight(item, index))
-    .filter((item) => item.normalizedType === "goal")
+    .filter((item) => ["goal", "save", "skill"].includes(item.normalizedType))
     .map((item) => ({ ...item, votes: votesById[item.id] || Number(item.votes || 0) }))
     .sort((a, b) => {
       const dayDiff = String(getHighlightMatchDayKey(b)).localeCompare(String(getHighlightMatchDayKey(a)));
@@ -534,17 +557,39 @@ function groupGoalHighlightsByMatchDay(highlights = [], votesById = {}) {
     });
 
   const map = new Map();
-  goals.forEach((goal) => {
-    const key = getHighlightMatchDayKey(goal);
+  clips.forEach((clip) => {
+    const key = getHighlightMatchDayKey(clip);
     if (!map.has(key)) map.set(key, []);
-    map.get(key).push(goal);
+    map.get(key).push(clip);
   });
 
   return Array.from(map.entries()).map(([matchDayId, items]) => ({
     matchDayId,
     label: formatMatchDayHeading(matchDayId),
-    goals: items,
+    clips: items,
   }));
+}
+
+function getCurationWinners(result) {
+  if (!result || typeof result !== "object") return [];
+
+  const directWinners = Array.isArray(result.winners) ? result.winners : [];
+  const fallbackWinners = [
+    ...(Array.isArray(result.topGoals) ? result.topGoals : []),
+    result.bestSave || null,
+    result.bestSkill || null,
+  ].filter(Boolean);
+
+  const combined = directWinners.length ? directWinners : fallbackWinners;
+  const seen = new Set();
+
+  return combined.filter((clip, index) => {
+    const key = getHighlightId(clip, index);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function getMissingBadges(highlight) {
@@ -744,6 +789,8 @@ export function VideoHighlightsPage({
   const [assistName, setAssistName] = useState("");
   const [teamName, setTeamName] = useState("");
 
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
   const identityKey = useMemo(() => getIdentityKey(identity), [identity]);
   const identityName = useMemo(() => getIdentityDisplayName(identity), [identity]);
   const defaultClubName = useMemo(() => getIdentityClub(identity), [identity]);
@@ -754,12 +801,20 @@ export function VideoHighlightsPage({
   const isLeagueMode = safeLower(matchType).includes("league");
   const teamContextText = useMemo(() => getTeamContextText(teams, matchType), [teams, matchType]);
   const featuredTeamNames = useMemo(() => getFeaturedTeamNames(teams, matchType), [teams, matchType]);
+  const votingDeadline = useMemo(() => getCurrentWeekVotingDeadline(nowTick), [nowTick]);
+  const votingDeadlineLabel = useMemo(() => formatVotingDeadline(votingDeadline), [votingDeadline]);
+  const votingWindowClosed = nowTick > votingDeadline.getTime();
 
   useEffect(() => {
     const handleScroll = () => setHeaderScrolled(window.scrollY > 6);
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTick(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const loadHighlights = async () => {
@@ -868,12 +923,34 @@ export function VideoHighlightsPage({
     [approvedHighlights, localVotesByUser]
   );
 
-  const topGoalGroups = useMemo(() => {
-    const weeklyGoalsSource = archivedHighlights.length
-      ? archivedHighlights
-      : archiveSelection.topGoals;
-    return groupGoalHighlightsByMatchDay(weeklyGoalsSource, voteCounts);
-  }, [archivedHighlights, archiveSelection.topGoals, voteCounts]);
+  const currentTopVotedClips = useMemo(
+    () => [
+      ...archiveSelection.topGoals,
+      archiveSelection.bestSave,
+      archiveSelection.bestSkill,
+    ].filter(Boolean),
+    [archiveSelection.topGoals, archiveSelection.bestSave, archiveSelection.bestSkill]
+  );
+
+  const currentTopVotedClipNames = useMemo(
+    () =>
+      currentTopVotedClips
+        .map((clip) => clip?.playerName || clip?.title || "")
+        .filter(Boolean)
+        .join(", "),
+    [currentTopVotedClips]
+  );
+
+  const topVotedClipGroups = useMemo(() => {
+    const source = archivedHighlights.length ? archivedHighlights : currentTopVotedClips;
+    return groupTopVotedClipsByMatchDay(source, voteCounts);
+  }, [archivedHighlights, currentTopVotedClips, voteCounts]);
+
+  useEffect(() => {
+    if (votingWindowClosed) {
+      setMainTab("winners");
+    }
+  }, [votingWindowClosed]);
 
   useEffect(() => {
     onHighlightsSelectionChange?.(archiveSelection);
@@ -1247,16 +1324,24 @@ export function VideoHighlightsPage({
     }
   };
 
-  const handleRunCuration = () => {
+  const handleRunCuration = async () => {
     if (!isModerator) return;
 
     try {
       setRunningCuration(true);
       setCurationNotice("");
 
-      const result = curateHighlights({
+      const result = await VideoHighlightsRepository.runVideoHighlightCuration({
+        matchId: resolvedMatchId,
         highlights: approvedHighlights,
         votesByUser: localVotesByUser,
+        curationMeta: {
+          matchType,
+          gameFormat,
+          activeSeasonId,
+          currentMatchNo,
+          teamContextText,
+        },
       });
 
       setCurationResult(result);
@@ -1278,8 +1363,10 @@ export function VideoHighlightsPage({
       ? curationResult.cleanupCandidates
       : [];
 
+    const winners = getCurationWinners(curationResult);
+
     const confirmed = window.confirm(
-      `Confirm cleanup? ${cleanupCandidates.length} clip${cleanupCandidates.length === 1 ? "" : "s"} will be removed from Firebase. Winners will remain available.`
+      `Confirm cleanup? ${winners.length} winning clip${winners.length === 1 ? "" : "s"} will be archived permanently and ${cleanupCandidates.length} non-winning clip${cleanupCandidates.length === 1 ? "" : "s"} will be removed from Firebase.`
     );
 
     if (!confirmed) return;
@@ -1288,22 +1375,30 @@ export function VideoHighlightsPage({
       setCleanupInProgress(true);
       setCurationNotice("");
 
-      for (const clip of cleanupCandidates) {
-        const clipId = String(clip?.clipId || clip?.id || clip?.highlightId || "").trim();
-        if (!clipId) continue;
+      const confirmCleanup =
+        VideoHighlightsRepository.confirmCleanupAndArchiveHighlights ||
+        VideoHighlightsRepository.confirmAndDeleteVideoCleanupCandidates;
 
-        await VideoHighlightsRepository.deleteRawHighlightFromFirebase({
-          matchId: resolvedMatchId,
-          clipId,
-          storagePath: clip.storagePath,
-        });
+      const result = await confirmCleanup({
+        matchId: resolvedMatchId,
+        winners,
+        cleanupCandidates,
+        curationRunId: curationResult.curationRunId || "",
+        curationMeta: {
+          matchType,
+          gameFormat,
+          activeSeasonId,
+          currentMatchNo,
+          teamContextText,
+        },
+      });
 
-        removeLocalHighlight({ ...clip, clipId });
-      }
+      (result?.deleted || []).forEach((clip) => removeLocalHighlight(clip));
 
       await loadHighlights();
+      setMainTab("winners");
       setCurationNotice(
-        `Cleanup complete. ${cleanupCandidates.length} clip${cleanupCandidates.length === 1 ? "" : "s"} removed.`
+        `Cleanup complete. ${result?.archivedCount ?? winners.length} winner${(result?.archivedCount ?? winners.length) === 1 ? "" : "s"} archived and ${result?.deletedCount ?? cleanupCandidates.length} clip${(result?.deletedCount ?? cleanupCandidates.length) === 1 ? "" : "s"} removed.`
       );
       setCurationResult(null);
     } catch (error) {
@@ -2141,7 +2236,7 @@ export function VideoHighlightsPage({
           <strong>{teamContextText}</strong>
         </div>
         <div className="tkh-voting-window-note">
-          Current Week clips stay open for voting for 24 hours after the game. Winners are kept under Top Goals.
+          Current Week clips stay open for voting until Sunday night. After that, Top Voted becomes the main highlights hub.
         </div>
         <div className="tkh-header-actions">
           <button
@@ -2178,6 +2273,7 @@ export function VideoHighlightsPage({
             type="button"
             className={`pill-toggle ${mainTab === "currentWeek" ? "pill-toggle-active" : ""}`}
             onClick={() => setMainTab("currentWeek")}
+            title={votingWindowClosed ? "This week’s voting window has closed. Top Voted is now the main hub." : `Voting closes ${votingDeadlineLabel}`}
           >
             Current Week
           </button>
@@ -2186,7 +2282,7 @@ export function VideoHighlightsPage({
             className={`pill-toggle ${mainTab === "winners" ? "pill-toggle-active" : ""}`}
             onClick={() => setMainTab("winners")}
           >
-            Top Goals ⭐
+            Top Voted ⭐
           </button>
         </div>
 
@@ -2244,7 +2340,7 @@ export function VideoHighlightsPage({
             </div>
 
             <div className="tkh-curation-summary">
-              <span>🥅 Top goals kept: <strong>{curationResult.topGoals?.length || 0}</strong></span>
+              <span>⭐ Winners: <strong>{getCurationWinners(curationResult).length}</strong></span>
               <span>🧤 Best save: <strong>{curationResult.bestSave?.playerName || curationResult.bestSave?.title || "Pending"}</strong></span>
               <span>🎯 Best skill: <strong>{curationResult.bestSkill?.playerName || curationResult.bestSkill?.title || "Pending"}</strong></span>
             </div>
@@ -2276,6 +2372,11 @@ export function VideoHighlightsPage({
 
         {mainTab === "currentWeek" && (
           <>
+            {votingWindowClosed && (
+              <div className="tkh-system-note">
+                Voting for this week has closed. Top Voted is now the main highlights hub, but you can still review current-week clips here.
+              </div>
+            )}
             {visibleHighlights.length === 0 ? (
               <div className="tkh-empty">
                 {selectedTab === "pending"
@@ -2311,35 +2412,35 @@ export function VideoHighlightsPage({
           <div className="tkh-winners-panel">
             <div className="tkh-winners-head">
               <div>
-                <h2>Top Goals</h2>
-                <p>Past match-day goal winners are kept here for Goal of the Month and Goal of the Season voting.</p>
+                <h2>Top Voted Clips</h2>
+                <p>This is the main highlights hub after the weekly voting window closes on Sunday night. Winners are kept here for monthly and season voting.</p>
               </div>
               <span className="tkh-winners-badge">Archive ready</span>
             </div>
 
-            {topGoalGroups.length === 0 ? (
-              <div className="tkh-empty-mini">No top goals saved yet.</div>
+            {topVotedClipGroups.length === 0 ? (
+              <div className="tkh-empty-mini">No top voted clips saved yet.</div>
             ) : (
               <div className="tkh-matchday-goal-stack">
-                {topGoalGroups.map((group) => (
+                {topVotedClipGroups.map((group) => (
                   <section key={group.matchDayId} className="tkh-matchday-goal-group">
                     <div className="tkh-matchday-goal-head">
                       <h3>{group.label}</h3>
-                      <span>{group.goals.length} goal{group.goals.length === 1 ? "" : "s"}</span>
+                      <span>{group.clips.length} clip{group.clips.length === 1 ? "" : "s"}</span>
                     </div>
 
                     <div className="tkh-grid tkh-winner-grid">
-                      {group.goals.map((goal, index) => (
-                        <div key={goal.id} className="tkh-winner-card-wrap">
-                          <div className="tkh-winner-rank">#{index + 1} Goal</div>
+                      {group.clips.map((clip, index) => (
+                        <div key={clip.id} className="tkh-winner-card-wrap">
+                          <div className="tkh-winner-rank">#{index + 1} Clip</div>
                           <HighlightCard
-                            highlight={goal}
+                            highlight={clip}
                             teams={teams}
                             matchType={matchType}
-                            voteCount={voteCounts[goal.id] || Number(goal.votes || 0)}
+                            voteCount={voteCounts[clip.id] || Number(clip.votes || 0)}
                             isModerator={isModerator}
                             canVote={isLoggedIn}
-                            userVoteForType={userVotes[goal.normalizedType] || null}
+                            userVoteForType={userVotes[clip.normalizedType] || null}
                             onVote={castVote}
                             onApprove={handleApprove}
                             onReject={handleReject}
@@ -2354,13 +2455,13 @@ export function VideoHighlightsPage({
             )}
 
             <div className="tkh-cleanup-note">
-              After admin download/approval, Current Week keeps only the top 2 goals, 1 save, and 1 skill. The rest are cleaned from Firebase.
+              After admin download/approval, Current Week keeps the top 2 goals, 1 save, and 1 skill as Top Voted clips. The rest are cleaned from Firebase after the weekly voting window closes.
             </div>
           </div>
         )}
 
         <div className="tkh-archive">
-          <span>Top goals kept: <strong>{archiveSelection.topGoals.map((g) => g.playerName).join(", ") || "Pending"}</strong></span>
+          <span>Top voted clips: <strong>{currentTopVotedClipNames || "Pending"}</strong></span>
           <span>Best skill: <strong>{archiveSelection.bestSkill?.playerName || "Pending"}</strong></span>
           <span>Best save: <strong>{archiveSelection.bestSave?.playerName || "Pending"}</strong></span>
         </div>

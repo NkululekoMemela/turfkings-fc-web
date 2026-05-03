@@ -25,13 +25,17 @@ import { curateHighlights } from "../core/VideoHighlightCuration.js";
 // ============================
 // ROOT STRUCTURE
 // video_highlights/{matchId}/
-//    raw/              temporary current-week clips
-//    archived/         weekly winners: top 2 goals, best save, best skill
-//    votes/            user votes
-//    cleanup_queue/    non-winners waiting for admin review/confirmation
+//    raw/                  temporary current-week clips
+//    archived/             weekly winners: top 2 goals, best save, best skill
+//    votes/                user votes
+//    cleanup_queue/        non-winners waiting for admin review/confirmation
+//    curation/             curation run summaries
+//    recording_devices/    phones that confirmed they are recording this match
+//    capture_requests/     goal/save/skill capture triggers for camera devices
 // ============================
 
 const DEFAULT_CLEANUP_GRACE_HOURS = 24;
+const RECORDING_DEVICE_ONLINE_WINDOW_SECONDS = 45;
 
 function matchRef(matchId) {
   return doc(db, "video_highlights", matchId);
@@ -41,6 +45,8 @@ const rawRef = (id) => collection(matchRef(id), "raw");
 const archiveRef = (id) => collection(matchRef(id), "archived");
 const votesRef = (id) => collection(matchRef(id), "votes");
 const cleanupQueueRef = (id) => collection(matchRef(id), "cleanup_queue");
+const recordingDevicesRef = (id) => collection(matchRef(id), "recording_devices");
+const captureRequestsRef = (id) => collection(matchRef(id), "capture_requests");
 
 function rawDoc(matchId, clipId) {
   return doc(rawRef(matchId), clipId);
@@ -58,6 +64,14 @@ function cleanupQueueDoc(matchId, clipId) {
   return doc(cleanupQueueRef(matchId), clipId);
 }
 
+function recordingDeviceDoc(matchId, deviceId) {
+  return doc(recordingDevicesRef(matchId), deviceId);
+}
+
+function captureRequestDoc(matchId, requestId) {
+  return doc(captureRequestsRef(matchId), requestId);
+}
+
 // ============================
 // HELPERS
 // ============================
@@ -69,6 +83,12 @@ function cleanFirestorePayload(input) {
 
 function safeString(value) {
   return String(value || "").trim();
+}
+
+function safeId(value, fallbackPrefix = "id") {
+  const raw = safeString(value);
+  if (raw) return raw.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `${fallbackPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function getClipId(highlight) {
@@ -88,6 +108,59 @@ function normalizeProgressPayload(progress, fallbackStage = "storage") {
   return {
     stage: fallbackStage,
     percent: Number.isFinite(percent) ? percent : 0,
+  };
+}
+
+function makeCurationRunId() {
+  return `video-curation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeCaptureType(type) {
+  const key = String(type || "").trim().toLowerCase();
+  if (key.includes("save")) return "save";
+  if (key.includes("skill") || key.includes("shibobo")) return "skill";
+  if (key.includes("goal")) return "goal";
+  return key || "clip";
+}
+
+function normalizeDeviceStatus(rawDevice) {
+  const device = rawDevice || {};
+  const lastSeenISO = device.lastSeenISO || device.updatedAtISO || device.joinedAtISO || null;
+  const lastSeenTime = lastSeenISO ? new Date(lastSeenISO).getTime() : 0;
+  const online = lastSeenTime
+    ? Date.now() - lastSeenTime <= RECORDING_DEVICE_ONLINE_WINDOW_SECONDS * 1000
+    : Boolean(device.online);
+
+  return {
+    ...device,
+    online,
+    isRecording: Boolean(device.isRecording),
+    confirmedRecording: Boolean(device.confirmedRecording),
+  };
+}
+
+function normalizeCaptureMetadata({
+  event = {},
+  metadata = {},
+  type = "goal",
+  matchContext = {},
+} = {}) {
+  const safeEvent = cleanFirestorePayload(event);
+  const safeMetadata = cleanFirestorePayload(metadata);
+  const safeType = normalizeCaptureType(type || safeEvent?.type || safeMetadata?.type);
+
+  return {
+    type: safeType,
+    tag: safeType,
+    event: {
+      ...safeEvent,
+      type: safeType,
+    },
+    metadata: {
+      ...safeMetadata,
+      type: safeType,
+    },
+    matchContext: cleanFirestorePayload(matchContext),
   };
 }
 
@@ -117,6 +190,8 @@ export async function uploadHighlightVideoFile({
   onProgress,
 }) {
   if (!file) throw new Error("No video file supplied");
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!clipId) throw new Error("Missing clipId.");
 
   const path = buildVideoStoragePath({
     file,
@@ -173,6 +248,8 @@ export async function uploadHighlightVideoFile({
 // ============================
 
 export async function saveRawHighlightDoc({ matchId, highlight }) {
+  if (!matchId) throw new Error("Missing matchId.");
+
   const safeHighlight = cleanFirestorePayload(highlight);
 
   const payload = {
@@ -252,7 +329,7 @@ export async function uploadAndSaveRawHighlight({
 }
 
 // ============================
-// LOAD RAW / ARCHIVED
+// LOAD RAW / ARCHIVED / CLEANUP QUEUE
 // ============================
 
 export async function loadRawHighlightsFromFirebase(matchId) {
@@ -327,21 +404,355 @@ export async function loadHighlightVotesFromFirebase(matchId) {
 }
 
 // ============================
+// AUTO-CAPTURE: RECORDING DEVICES
+// ============================
+
+export async function registerRecordingDeviceSession({
+  matchId,
+  deviceId,
+  deviceName = "Recording device",
+  userId = "",
+  userName = "",
+  appVersion = "",
+  platform = "android",
+  matchContext = {},
+} = {}) {
+  if (!matchId) throw new Error("Missing matchId.");
+
+  const safeDeviceId = safeId(deviceId, "device");
+  const nowISO = new Date().toISOString();
+
+  const payload = {
+    matchId,
+    deviceId: safeDeviceId,
+    deviceName: safeString(deviceName) || "Recording device",
+    userId: safeString(userId) || null,
+    userName: safeString(userName) || "Unknown",
+    appVersion: safeString(appVersion) || null,
+    platform: safeString(platform) || "android",
+    source: "5_asides_near_me_camera_app",
+    role: "recording_device",
+    confirmedRecording: true,
+    confirmedLiveMatch: true,
+    isRecording: true,
+    online: true,
+    matchContext: cleanFirestorePayload(matchContext),
+    joinedAtISO: nowISO,
+    lastSeenISO: nowISO,
+    updatedAtISO: nowISO,
+    joinedAtServer: serverTimestamp(),
+    lastSeenServer: serverTimestamp(),
+    updatedAtServer: serverTimestamp(),
+  };
+
+  await setDoc(recordingDeviceDoc(matchId, safeDeviceId), payload, { merge: true });
+
+  return payload;
+}
+
+export async function updateRecordingDeviceHeartbeat({
+  matchId,
+  deviceId,
+  isRecording = true,
+  batteryLevel = null,
+  storageFreeBytes = null,
+  appVersion = "",
+  extra = {},
+} = {}) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!deviceId) throw new Error("Missing deviceId.");
+
+  const nowISO = new Date().toISOString();
+
+  const payload = {
+    ...cleanFirestorePayload(extra),
+    matchId,
+    deviceId: safeId(deviceId, "device"),
+    isRecording: Boolean(isRecording),
+    online: true,
+    confirmedRecording: true,
+    batteryLevel: batteryLevel ?? null,
+    storageFreeBytes: storageFreeBytes ?? null,
+    appVersion: safeString(appVersion) || null,
+    lastSeenISO: nowISO,
+    updatedAtISO: nowISO,
+    lastSeenServer: serverTimestamp(),
+    updatedAtServer: serverTimestamp(),
+  };
+
+  await setDoc(recordingDeviceDoc(matchId, payload.deviceId), payload, { merge: true });
+
+  return payload;
+}
+
+export async function markRecordingDeviceSessionStopped({
+  matchId,
+  deviceId,
+  reason = "user_stopped_recording",
+} = {}) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!deviceId) throw new Error("Missing deviceId.");
+
+  const stoppedAtISO = new Date().toISOString();
+
+  const payload = {
+    matchId,
+    deviceId: safeId(deviceId, "device"),
+    isRecording: false,
+    online: false,
+    stoppedReason: safeString(reason) || "user_stopped_recording",
+    stoppedAtISO,
+    updatedAtISO: stoppedAtISO,
+    stoppedAtServer: serverTimestamp(),
+    updatedAtServer: serverTimestamp(),
+  };
+
+  await setDoc(recordingDeviceDoc(matchId, payload.deviceId), payload, { merge: true });
+
+  return payload;
+}
+
+export async function loadRecordingDeviceSessions(matchId) {
+  if (!matchId) return [];
+
+  const q = query(recordingDevicesRef(matchId), orderBy("lastSeenISO", "desc"));
+  const snap = await getDocs(q);
+
+  return snap.docs.map((d) =>
+    normalizeDeviceStatus({
+      id: d.id,
+      ...d.data(),
+    })
+  );
+}
+
+// ============================
+// AUTO-CAPTURE: CAPTURE REQUESTS
+// ============================
+
+export async function createCaptureRequestForMatchEvent({
+  matchId,
+  eventId = "",
+  event = {},
+  type = "goal",
+  requestedBy = "",
+  requestedByName = "",
+  preRollSeconds = 15,
+  postRollSeconds = 5,
+  matchContext = {},
+  metadata = {},
+  status = "pending_metadata",
+} = {}) {
+  if (!matchId) throw new Error("Missing matchId.");
+
+  const normalized = normalizeCaptureMetadata({ event, metadata, type, matchContext });
+  const safeType = normalized.type;
+  const requestId = safeId(eventId || event?.id, `capture-${safeType}`);
+  const requestedAtISO = new Date().toISOString();
+
+  const payload = {
+    matchId,
+    requestId,
+    eventId: safeString(eventId || event?.id) || requestId,
+    source: "live_match_event",
+    captureSource: "5_asides_near_me_video_approach",
+    type: safeType,
+    tag: safeType,
+    status: safeString(status) || "pending_metadata",
+    captureLifecycleStatus: "requested",
+    event: normalized.event,
+    metadata: normalized.metadata,
+    matchContext: normalized.matchContext,
+    requestedBy: safeString(requestedBy) || null,
+    requestedByName: safeString(requestedByName) || "Unknown",
+    preRollSeconds: Number(preRollSeconds || 15),
+    postRollSeconds: Number(postRollSeconds || 5),
+    expectedClipSeconds: Number(preRollSeconds || 15) + Number(postRollSeconds || 5),
+    requestedAtISO,
+    updatedAtISO: requestedAtISO,
+    requestedAtServer: serverTimestamp(),
+    updatedAtServer: serverTimestamp(),
+  };
+
+  await setDoc(captureRequestDoc(matchId, requestId), payload, { merge: true });
+
+  return payload;
+}
+
+export async function updateCaptureRequestMetadata({
+  matchId,
+  requestId,
+  event = {},
+  metadata = {},
+  type = "goal",
+  matchContext = {},
+  status = "metadata_attached",
+} = {}) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!requestId) throw new Error("Missing requestId.");
+
+  const normalized = normalizeCaptureMetadata({ event, metadata, type, matchContext });
+  const updatedAtISO = new Date().toISOString();
+
+  const payload = {
+    type: normalized.type,
+    tag: normalized.tag,
+    status: safeString(status) || "metadata_attached",
+    captureLifecycleStatus: "metadata_attached",
+    event: normalized.event,
+    metadata: normalized.metadata,
+    matchContext: normalized.matchContext,
+    updatedAtISO,
+    metadataUpdatedAtISO: updatedAtISO,
+    updatedAtServer: serverTimestamp(),
+    metadataUpdatedAtServer: serverTimestamp(),
+  };
+
+  await setDoc(captureRequestDoc(matchId, requestId), payload, { merge: true });
+
+  return {
+    matchId,
+    requestId,
+    ...payload,
+  };
+}
+
+export async function markCaptureRequestDisputed({
+  matchId,
+  requestId,
+  event = {},
+  metadata = {},
+  type = "goal",
+  matchContext = {},
+  reason = "goal_disputed",
+} = {}) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!requestId) throw new Error("Missing requestId.");
+
+  const normalized = normalizeCaptureMetadata({ event, metadata, type, matchContext });
+  const disputedAtISO = new Date().toISOString();
+
+  const payload = {
+    type: normalized.type,
+    tag: normalized.tag,
+    status: "disputed",
+    captureLifecycleStatus: "disputed",
+    disputed: true,
+    disputedReason: safeString(reason) || "goal_disputed",
+    event: normalized.event,
+    metadata: normalized.metadata,
+    matchContext: normalized.matchContext,
+    disputedAtISO,
+    updatedAtISO: disputedAtISO,
+    disputedAtServer: serverTimestamp(),
+    updatedAtServer: serverTimestamp(),
+  };
+
+  await setDoc(captureRequestDoc(matchId, requestId), payload, { merge: true });
+
+  return {
+    matchId,
+    requestId,
+    ...payload,
+  };
+}
+
+export async function deleteCaptureRequest({
+  matchId,
+  requestId,
+} = {}) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!requestId) throw new Error("Missing requestId.");
+
+  await deleteDoc(captureRequestDoc(matchId, requestId));
+
+  return {
+    matchId,
+    requestId,
+    deleted: true,
+  };
+}
+
+// Backward-compatible clearer alias.
+export async function deleteCaptureRequestFromFirebase(args = {}) {
+  return deleteCaptureRequest(args);
+}
+
+export async function updateCaptureRequestDeviceStatus({
+  matchId,
+  requestId,
+  deviceId,
+  deviceName = "",
+  status = "received",
+  clipId = "",
+  storagePath = "",
+  videoUrl = "",
+  errorMessage = "",
+  extra = {},
+} = {}) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!requestId) throw new Error("Missing requestId.");
+  if (!deviceId) throw new Error("Missing deviceId.");
+
+  const safeDeviceId = safeId(deviceId, "device");
+  const updatedAtISO = new Date().toISOString();
+
+  const deviceStatus = {
+    ...cleanFirestorePayload(extra),
+    deviceId: safeDeviceId,
+    deviceName: safeString(deviceName) || "Recording device",
+    status: safeString(status) || "received",
+    clipId: safeString(clipId) || null,
+    storagePath: safeString(storagePath) || null,
+    videoUrl: safeString(videoUrl) || null,
+    errorMessage: safeString(errorMessage) || null,
+    updatedAtISO,
+  };
+
+  await setDoc(
+    captureRequestDoc(matchId, requestId),
+    {
+      [`deviceStatuses.${safeDeviceId}`]: deviceStatus,
+      updatedAtISO,
+      updatedAtServer: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return deviceStatus;
+}
+
+export async function loadCaptureRequestsForMatch(matchId) {
+  if (!matchId) return [];
+
+  const q = query(captureRequestsRef(matchId), orderBy("requestedAtISO", "desc"));
+  const snap = await getDocs(q);
+
+  return snap.docs.map((d) => ({
+    id: d.id,
+    ...d.data(),
+  }));
+}
+
+// ============================
 // ARCHIVE
 // ============================
 
-export async function archiveWinningHighlightsToFirebase({
+export async function saveArchivedHighlightsToFirebase({
   matchId,
   highlights,
   curationRunId = "",
   curationMeta = {},
-}) {
+} = {}) {
   if (!matchId) throw new Error("Missing matchId.");
+
+  const safeHighlights = Array.isArray(highlights) ? highlights : [];
+  if (!safeHighlights.length) return [];
 
   const batch = writeBatch(db);
   const archivedAtISO = new Date().toISOString();
 
-  (highlights || []).forEach((h) => {
+  safeHighlights.forEach((h) => {
     const safeHighlight = cleanFirestorePayload(h);
     const clipId = getClipId(safeHighlight);
     if (!clipId) return;
@@ -355,7 +766,7 @@ export async function archiveWinningHighlightsToFirebase({
         matchId,
         archived: true,
         status: "archived",
-        curationRunId: curationRunId || null,
+        curationRunId: curationRunId || safeHighlight.curationRunId || null,
         curationMeta: cleanFirestorePayload(curationMeta),
         archivedAtISO,
         archivedAt: archivedAtISO,
@@ -367,7 +778,22 @@ export async function archiveWinningHighlightsToFirebase({
 
   await batch.commit();
 
-  return highlights || [];
+  return safeHighlights;
+}
+
+// Backward-compatible name retained so older imports do not break.
+export async function archiveWinningHighlightsToFirebase({
+  matchId,
+  highlights,
+  curationRunId = "",
+  curationMeta = {},
+} = {}) {
+  return saveArchivedHighlightsToFirebase({
+    matchId,
+    highlights,
+    curationRunId,
+    curationMeta,
+  });
 }
 
 // ============================
@@ -403,7 +829,7 @@ export async function markVideoCleanupCandidatesForAdminReview({
       matchId,
       cleanupStatus: "pending_admin_review",
       cleanupReason: safeCandidate.cleanupReason || "Not selected for weekly winners",
-      curationRunId: curationRunId || null,
+      curationRunId: curationRunId || safeCandidate.curationRunId || null,
       curationMeta: cleanFirestorePayload(curationMeta),
       cleanupMarkedAtISO,
       cleanupEligibleAtISO,
@@ -421,7 +847,7 @@ export async function markVideoCleanupCandidatesForAdminReview({
     cleanupStatus: "pending_admin_review",
     cleanupMarkedAtISO,
     cleanupEligibleAtISO,
-    curationRunId: curationRunId || null,
+    curationRunId: curationRunId || candidate?.curationRunId || null,
   }));
 }
 
@@ -432,6 +858,7 @@ export async function runVideoHighlightCuration({
   limits,
   curationMeta = {},
   graceHours = DEFAULT_CLEANUP_GRACE_HOURS,
+  saveCleanupQueue = true,
 } = {}) {
   if (!matchId) throw new Error("Missing matchId.");
 
@@ -443,9 +870,7 @@ export async function runVideoHighlightCuration({
     ? votesByUser
     : await loadHighlightVotesFromFirebase(matchId);
 
-  const curationRunId = `video-curation-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
+  const curationRunId = makeCurationRunId();
 
   const selection = curateHighlights({
     highlights: safeHighlights,
@@ -453,23 +878,25 @@ export async function runVideoHighlightCuration({
     limits,
   });
 
-  const winners = selection.winners || [];
-  const cleanupCandidates = selection.cleanupCandidates || [];
-
-  await archiveWinningHighlightsToFirebase({
-    matchId,
-    highlights: winners,
+  const winners = (selection.winners || []).map((winner) => ({
+    ...winner,
     curationRunId,
-    curationMeta,
-  });
+  }));
 
-  const queuedCleanupCandidates = await markVideoCleanupCandidatesForAdminReview({
-    matchId,
-    cleanupCandidates,
+  const cleanupCandidates = (selection.cleanupCandidates || []).map((candidate) => ({
+    ...candidate,
     curationRunId,
-    curationMeta,
-    graceHours,
-  });
+  }));
+
+  const queuedCleanupCandidates = saveCleanupQueue
+    ? await markVideoCleanupCandidatesForAdminReview({
+        matchId,
+        cleanupCandidates,
+        curationRunId,
+        curationMeta,
+        graceHours,
+      })
+    : cleanupCandidates;
 
   const runSummary = {
     curationRunId,
@@ -480,6 +907,8 @@ export async function runVideoHighlightCuration({
     cleanupCandidateCount: queuedCleanupCandidates.length,
     ranAtISO: new Date().toISOString(),
     cleanupGraceHours: Number(graceHours || DEFAULT_CLEANUP_GRACE_HOURS),
+    archivedDuringCuration: false,
+    archiveTiming: "confirm_cleanup",
   };
 
   await setDoc(
@@ -503,9 +932,19 @@ export async function runVideoHighlightCuration({
 export async function confirmAndDeleteVideoCleanupCandidates({
   matchId,
   cleanupCandidates,
+  winners = [],
+  curationRunId = "",
+  curationMeta = {},
   requireEligibleWindow = false,
 } = {}) {
   if (!matchId) throw new Error("Missing matchId.");
+
+  const archivedWinners = await saveArchivedHighlightsToFirebase({
+    matchId,
+    highlights: winners,
+    curationRunId,
+    curationMeta,
+  });
 
   const candidates = Array.isArray(cleanupCandidates) && cleanupCandidates.length
     ? cleanupCandidates
@@ -541,12 +980,38 @@ export async function confirmAndDeleteVideoCleanupCandidates({
     deleted.push({ ...candidate, clipId });
   }
 
+  const confirmedAtISO = new Date().toISOString();
+  const summaryId = curationRunId || `cleanup-confirm-${Date.now()}`;
+
+  await setDoc(
+    doc(matchRef(matchId), "curation", summaryId),
+    {
+      matchId,
+      curationRunId: summaryId,
+      curationMeta: cleanFirestorePayload(curationMeta),
+      confirmedAtISO,
+      confirmedAtServer: serverTimestamp(),
+      archivedCount: archivedWinners.length,
+      deletedCount: deleted.length,
+      skippedCount: skipped.length,
+      confirmCleanupCompleted: true,
+    },
+    { merge: true }
+  );
+
   return {
+    archived: archivedWinners,
     deleted,
     skipped,
+    archivedCount: archivedWinners.length,
     deletedCount: deleted.length,
     skippedCount: skipped.length,
   };
+}
+
+// Clearer alias for the page button flow: Confirm Cleanup = archive winners first, then delete non-winners.
+export async function confirmCleanupAndArchiveHighlights(args = {}) {
+  return confirmAndDeleteVideoCleanupCandidates(args);
 }
 
 // ============================
@@ -604,10 +1069,23 @@ const VideoHighlightsRepository = {
   loadVideoCleanupQueueFromFirebase,
   saveHighlightVotesToFirebase,
   loadHighlightVotesFromFirebase,
+  registerRecordingDeviceSession,
+  updateRecordingDeviceHeartbeat,
+  markRecordingDeviceSessionStopped,
+  loadRecordingDeviceSessions,
+  createCaptureRequestForMatchEvent,
+  updateCaptureRequestMetadata,
+  markCaptureRequestDisputed,
+  deleteCaptureRequest,
+  deleteCaptureRequestFromFirebase,
+  updateCaptureRequestDeviceStatus,
+  loadCaptureRequestsForMatch,
+  saveArchivedHighlightsToFirebase,
   archiveWinningHighlightsToFirebase,
   markVideoCleanupCandidatesForAdminReview,
   runVideoHighlightCuration,
   confirmAndDeleteVideoCleanupCandidates,
+  confirmCleanupAndArchiveHighlights,
   clearRawHighlightsFromFirebase,
   deleteRawHighlightFromFirebase,
 };

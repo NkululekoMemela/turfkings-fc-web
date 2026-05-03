@@ -22,6 +22,7 @@ import {
   uniqueNames,
 } from "../core/lineups.js";
 import { getGameFormatConfig } from "../core/matchConfig.js";
+import VideoHighlightsRepository from "../storage/VideoHighlightsRepository.js";
 
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
@@ -1517,6 +1518,39 @@ function getRotationDue(matchSeconds, secondsLeft) {
   };
 }
 
+function getLocalDateKey(dateInput = new Date()) {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput || Date.now());
+  const safe = Number.isNaN(d.getTime()) ? new Date() : d;
+  const year = safe.getFullYear();
+  const month = String(safe.getMonth() + 1).padStart(2, "0");
+  const day = String(safe.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeFormatKey(gameFormat = "5_V_5") {
+  const raw = String(gameFormat || "5_V_5").trim().toLowerCase();
+  if (raw.includes("7")) return "7v7";
+  if (raw.includes("6")) return "6v6";
+  return "5v5";
+}
+
+function buildFriendlyVideoHighlightsMatchId(gameFormat = "5_V_5") {
+  return `friendly__${normalizeFormatKey(gameFormat)}__${getLocalDateKey()}`;
+}
+
+function getIdentityKey(identity) {
+  return String(
+    identity?.uid ||
+      identity?.memberId ||
+      identity?.playerId ||
+      identity?.email ||
+      identity?.shortName ||
+      identity?.fullName ||
+      identity?.displayName ||
+      ""
+  ).trim();
+}
+
 function eventLabel(teamId, teamAId, teamBId, teamA, teamB) {
   if (teamId === teamAId) return getShortLabel(teamA, "TEAM A");
   if (teamId === teamBId) return getShortLabel(teamB, "TEAM B");
@@ -1552,6 +1586,9 @@ export function FriendlyLiveMatchPage({
   onConfirmEndMatch,
   onBackToLanding,
   onGoToStats,
+  matchId = "",
+  videoHighlightsMatchId = "",
+  currentVideoHighlightsMatchId = "",
 }) {
   const { teamAId, teamBId } = currentMatch || {};
   const role = String(activeRole || "spectator").trim().toLowerCase();
@@ -1598,6 +1635,9 @@ export function FriendlyLiveMatchPage({
   const [undoError, setUndoError] = useState("");
 
   const [showVerifyModal, setShowVerifyModal] = useState(false);
+
+  const [activeGoalCaptureRequest, setActiveGoalCaptureRequest] = useState(null);
+  const [showGoalCancelDecision, setShowGoalCancelDecision] = useState(false);
 
   const alarmLoopRef = useRef(null);
 
@@ -2328,6 +2368,16 @@ export function FriendlyLiveMatchPage({
     teamBColorName: teamB?.teamColorName || teamB?.colorName || "",
   };
 
+
+  const resolvedVideoHighlightsMatchId = useMemo(() => {
+    return (
+      String(currentVideoHighlightsMatchId || "").trim() ||
+      String(videoHighlightsMatchId || "").trim() ||
+      String(matchId || "").trim() ||
+      buildFriendlyVideoHighlightsMatchId(gameFormat)
+    );
+  }, [currentVideoHighlightsMatchId, videoHighlightsMatchId, matchId, gameFormat]);
+
   const rotationInfo = getRotationDue(matchSeconds || 0, displaySeconds || 0);
 
   const teamABenchCount = useMemo(() => {
@@ -2425,6 +2475,87 @@ export function FriendlyLiveMatchPage({
     setShowVerifyModal(false);
   };
 
+  const closeGoalRecorderCleanly = ({ clearCapture = false } = {}) => {
+    setShowGoalRecorder(false);
+    setGoalStep("team");
+    setScoringTeamId("");
+    setScorerName("");
+    setAssistName("");
+    setShowGoalCancelDecision(false);
+
+    if (clearCapture) {
+      setActiveGoalCaptureRequest(null);
+    }
+  };
+
+  const createImmediateGoalCaptureRequest = () => {
+    if (!resolvedVideoHighlightsMatchId) return null;
+
+    const requestId = `friendly_goal_${Date.now()}`;
+    const elapsedSeconds = Math.max((matchSeconds || 0) - (displaySeconds || 0), 0);
+    const scoreBefore = {
+      goalsA,
+      goalsB,
+      [teamAId || "teamA"]: goalsA,
+      [teamBId || "teamB"]: goalsB,
+    };
+
+    const optimisticRequest = {
+      requestId,
+      eventId: requestId,
+      matchId: resolvedVideoHighlightsMatchId,
+      type: "goal",
+      status: "pending_metadata",
+      timeSeconds: elapsedSeconds,
+    };
+
+    setActiveGoalCaptureRequest(optimisticRequest);
+
+    VideoHighlightsRepository.createCaptureRequestForMatchEvent({
+      matchId: resolvedVideoHighlightsMatchId,
+      eventId: requestId,
+      type: "goal",
+      requestedBy: getIdentityKey(identity),
+      requestedByName: getIdentityDisplayName(identity),
+      preRollSeconds: 15,
+      postRollSeconds: 5,
+      status: "pending_metadata",
+      event: {
+        id: requestId,
+        eventId: requestId,
+        type: "goal",
+        status: "pending_metadata",
+        captureStage: "record_goal_clicked",
+        metadataStatus: "pending",
+        matchNo: currentMatchNo,
+        matchType: "FRIENDLY",
+        gameFormat: gameFormat || "5_V_5",
+        timeSeconds: elapsedSeconds,
+        scoreBefore,
+      },
+      metadata: {
+        metadataStatus: "pending",
+        trigger: "record_goal_clicked",
+        scorer: null,
+        assist: null,
+        teamId: null,
+        teamName: null,
+      },
+      matchContext: {
+        ...basicSummary,
+        scoreBefore,
+      },
+    })
+      .then((created) => {
+        if (created?.requestId) setActiveGoalCaptureRequest(created);
+      })
+      .catch((err) => {
+        console.warn("[TK AUTO-CAPTURE] Failed to create immediate goal capture request:", err);
+      });
+
+    return optimisticRequest;
+  };
+
   const handleStartGoalRecord = () => {
     if (!canControlMatch) {
       window.alert("Only captains or admin can record goals.");
@@ -2434,6 +2565,8 @@ export function FriendlyLiveMatchPage({
       window.alert("Verify lineups before recording goals.");
       return;
     }
+
+    createImmediateGoalCaptureRequest();
 
     setShowGoalRecorder(true);
     setGoalStep("team");
@@ -2450,11 +2583,79 @@ export function FriendlyLiveMatchPage({
   };
 
   const handleCancelGoalRecord = () => {
-    setShowGoalRecorder(false);
-    setGoalStep("team");
-    setScoringTeamId("");
-    setScorerName("");
-    setAssistName("");
+    if (activeGoalCaptureRequest?.requestId && activeGoalCaptureRequest?.matchId) {
+      setShowGoalCancelDecision(true);
+      return;
+    }
+
+    closeGoalRecorderCleanly({ clearCapture: true });
+  };
+
+  const handleMarkGoalCaptureDisputed = async () => {
+    const request = activeGoalCaptureRequest;
+    closeGoalRecorderCleanly({ clearCapture: false });
+
+    if (!request?.matchId || !request?.requestId) {
+      setActiveGoalCaptureRequest(null);
+      return;
+    }
+
+    try {
+      await VideoHighlightsRepository.markCaptureRequestDisputed({
+        matchId: request.matchId,
+        requestId: request.requestId,
+        type: "goal",
+        reason: "goal_recording_cancelled_as_disputed_before_metadata_completed",
+        event: {
+          id: request.eventId || request.requestId,
+          eventId: request.eventId || request.requestId,
+          type: "goal",
+          status: "disputed",
+          metadataStatus: "disputed_pending_review",
+          captureStage: "record_goal_cancelled_disputed",
+          timeSeconds: request.timeSeconds ?? Math.max((matchSeconds || 0) - (displaySeconds || 0), 0),
+        },
+        metadata: {
+          metadataStatus: "disputed_pending_review",
+          scorer: null,
+          assist: null,
+          teamId: null,
+          teamName: null,
+        },
+        matchContext: {
+          ...basicSummary,
+          scoreBefore: {
+            goalsA,
+            goalsB,
+          },
+        },
+      });
+    } catch (err) {
+      console.warn("[TK AUTO-CAPTURE] Failed to mark disputed capture:", err);
+    } finally {
+      setActiveGoalCaptureRequest(null);
+    }
+  };
+
+  const handleDeleteMistakeGoalCapture = async () => {
+    const request = activeGoalCaptureRequest;
+    closeGoalRecorderCleanly({ clearCapture: false });
+
+    if (!request?.matchId || !request?.requestId) {
+      setActiveGoalCaptureRequest(null);
+      return;
+    }
+
+    try {
+      await VideoHighlightsRepository.deleteCaptureRequest({
+        matchId: request.matchId,
+        requestId: request.requestId,
+      });
+    } catch (err) {
+      console.warn("[TK AUTO-CAPTURE] Failed to delete mistaken capture request:", err);
+    } finally {
+      setActiveGoalCaptureRequest(null);
+    }
   };
 
   const handleAddGoalEvent = async () => {
@@ -2500,10 +2701,54 @@ export function FriendlyLiveMatchPage({
           : "registered"
         : null,
       timeSeconds: (matchSeconds || 0) - (displaySeconds || 0),
+      captureRequestId: activeGoalCaptureRequest?.requestId || null,
+      videoHighlightsMatchId: activeGoalCaptureRequest?.matchId || resolvedVideoHighlightsMatchId || null,
     };
 
     onAddEvent?.(event);
 
+    if (activeGoalCaptureRequest?.matchId && activeGoalCaptureRequest?.requestId) {
+      const scoreAfter = {
+        goalsA: scoringTeamId === teamAId ? goalsA + 1 : goalsA,
+        goalsB: scoringTeamId === teamBId ? goalsB + 1 : goalsB,
+        [teamAId || "teamA"]: scoringTeamId === teamAId ? goalsA + 1 : goalsA,
+        [teamBId || "teamB"]: scoringTeamId === teamBId ? goalsB + 1 : goalsB,
+      };
+
+      VideoHighlightsRepository.updateCaptureRequestMetadata({
+        matchId: activeGoalCaptureRequest.matchId,
+        requestId: activeGoalCaptureRequest.requestId,
+        status: "metadata_completed",
+        type: "goal",
+        event: {
+          ...event,
+          eventId: activeGoalCaptureRequest.eventId || activeGoalCaptureRequest.requestId,
+          metadataStatus: "completed",
+          captureStage: "goal_metadata_completed",
+          scoreAfter,
+        },
+        metadata: {
+          metadataStatus: "completed",
+          eventId: event.id,
+          scorer: scorerName,
+          assist: assistName || null,
+          teamId: scoringTeamId,
+          teamName: event.teamLabel,
+          matchNo: currentMatchNo,
+          matchType: "FRIENDLY",
+          gameFormat: gameFormat || "5_V_5",
+          scoreAfter,
+        },
+        matchContext: {
+          ...basicSummary,
+          scoreAfter,
+        },
+      }).catch((err) => {
+        console.warn("[TK AUTO-CAPTURE] Failed to update goal capture metadata:", err);
+      });
+    }
+
+    setActiveGoalCaptureRequest(null);
     setScoringTeamId("");
     setScorerName("");
     setAssistName("");
@@ -2668,6 +2913,20 @@ export function FriendlyLiveMatchPage({
     setDeleteError("");
   };
 
+  const deleteLinkedCaptureRequestForEvent = (event) => {
+    const requestId = event?.captureRequestId;
+    const captureMatchId = event?.videoHighlightsMatchId || resolvedVideoHighlightsMatchId;
+
+    if (!requestId || !captureMatchId) return;
+
+    VideoHighlightsRepository.deleteCaptureRequest({
+      matchId: captureMatchId,
+      requestId,
+    }).catch((err) => {
+      console.warn("[TK AUTO-CAPTURE] Failed to delete linked capture request:", err);
+    });
+  };
+
   const handleConfirmDelete = () => {
     if (!canControlMatch) {
       setDeleteError("Only captains or admin can delete events.");
@@ -2681,6 +2940,8 @@ export function FriendlyLiveMatchPage({
     }
 
     if (deleteIndex !== null) {
+      const deletedEvent = currentEvents[deleteIndex] || null;
+      deleteLinkedCaptureRequestForEvent(deletedEvent);
       onDeleteEvent?.(deleteIndex);
       const newEvents = currentEvents.filter((_, i) => i !== deleteIndex);
       overwriteEventsInFirestore(
@@ -2765,6 +3026,8 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
+    const undoneEvent = currentEvents[currentEvents.length - 1] || null;
+    deleteLinkedCaptureRequestForEvent(undoneEvent);
     onUndoLastEvent?.();
     const newEvents = currentEvents.slice(0, -1);
 
@@ -3195,6 +3458,41 @@ export function FriendlyLiveMatchPage({
         </div>
       )}
 
+
+      {showGoalCancelDecision && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>Keep this captured moment?</h3>
+            <p>
+              The camera trigger was already sent when you clicked Record Goal.
+              Choose whether this was a disputed moment worth keeping or a mistake that must be deleted.
+            </p>
+            <div className="actions-row">
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={() => setShowGoalCancelDecision(false)}
+              >
+                Go back
+              </button>
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={handleMarkGoalCaptureDisputed}
+              >
+                Keep as disputed
+              </button>
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={handleDeleteMistakeGoalCapture}
+              >
+                Mistake — delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showConfirmModal && (
         <div className="modal-backdrop">
           <div className="modal">

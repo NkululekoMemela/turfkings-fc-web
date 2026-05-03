@@ -69,6 +69,11 @@ const PAGE_MATCH_SIGNUP = "match-signup";
 const PAGE_PAYMENT = "payment";
 const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 
+const CAMERA_APP_DEEP_LINK_SCHEME = "fiveasidesnearmecamera://open";
+const CAMERA_APP_INSTALL_URL = "/five-asides-near-me-camera.apk";
+const CAMERA_APP_INSTALL_GUIDE_URL = "/camera-app";
+const CAMERA_APP_OPEN_FALLBACK_MS = 1400;
+
 const MASTER_CODE = "3333";
 const DEFAULT_LEAGUE_MATCH_SECONDS = 5 * 60;
 const DEFAULT_FRIENDLY_MATCH_SECONDS = 60 * 60;
@@ -1978,6 +1983,7 @@ export default function App() {
   const [currentMatchDayHighlights, setCurrentMatchDayHighlights] = useState([]);
   const [highlightVotesByUser, setHighlightVotesByUser] = useState({});
   const [highlightArchiveSelection, setHighlightArchiveSelection] = useState(null);
+  const [cameraInstallPrompt, setCameraInstallPrompt] = useState(null);
 
 
   const persistReturnedHighlightsToFirebase = async (items) => {
@@ -4465,16 +4471,32 @@ export default function App() {
     });
 
     const isOfficialMatchLive =
-      matchType === MATCH_TYPE.LEAGUE &&
-      Boolean(hasLiveMatch) &&
+      Boolean(hasLiveMatch || running) &&
       Boolean(launchTeams.teamAId && launchTeams.teamBId);
+
+    const recordingMatchId =
+      currentVideoHighlightsMatchId ||
+      buildVideoHighlightsMatchId({
+        activeSeasonId,
+        gameFormat,
+        currentMatchNo: activeMatchNo,
+        matchType,
+        currentMatch: effectiveLiveMatch,
+      });
 
     const payload = {
       sourceApp: "TurfKings",
+      productName: "5 Asides Near Me",
       teamName: "Turf Kings FC",
+      launchPurpose: "record_live_match",
+      recordingMode: "match_recording_device",
+      confirmedRecordingRequired: true,
+      cameraAppMode: "recording_device",
       matchIsLive: isOfficialMatchLive,
       canUseOutsideOfficialMatch: true,
       matchId: `tk-${activeSeasonId || "season"}-${activeMatchNo || 1}`,
+      videoHighlightsMatchId: recordingMatchId,
+      currentVideoHighlightsMatchId: recordingMatchId,
       matchNo: Number(activeMatchNo || 1),
       seasonId: activeSeasonId || null,
       matchType: matchType || MATCH_TYPE.FRIENDLY,
@@ -4486,15 +4508,70 @@ export default function App() {
       teamAPlayers: launchTeams.teamAPlayers,
       teamBPlayers: launchTeams.teamBPlayers,
       defaultTag: "goal",
+      recordingDeviceSession: {
+        collectionPath: `video_highlights/${recordingMatchId}/recording_devices`,
+        requiresConfirmation: true,
+        heartbeatSeconds: 15,
+      },
+      captureRequests: {
+        collectionPath: `video_highlights/${recordingMatchId}/capture_requests`,
+        listen: true,
+        preRollSeconds: 15,
+        postRollSeconds: 5,
+      },
+      returnUrl: "turfkings://camera-return",
+      openedAtISO: new Date().toISOString(),
     };
 
-    const launchUrl = `fiveasidesnearmecamera://open?payload=${encodeURIComponent(
+    const launchUrl = `${CAMERA_APP_DEEP_LINK_SCHEME}?payload=${encodeURIComponent(
       JSON.stringify(payload)
     )}`;
 
+    let appProbablyOpened = false;
+
+    const markOpened = () => {
+      appProbablyOpened = true;
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) markOpened();
+    };
+
+    const cleanupListeners = () => {
+      window.removeEventListener("pagehide", markOpened);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", markOpened);
+    };
+
+    window.addEventListener("pagehide", markOpened, { once: true });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", markOpened, { once: true });
+
+    setCameraInstallPrompt(null);
     window.location.href = launchUrl;
+
+    window.setTimeout(() => {
+      cleanupListeners();
+      if (appProbablyOpened || document.hidden) return;
+
+      setCameraInstallPrompt({
+        payload,
+        launchUrl,
+        installUrl: CAMERA_APP_INSTALL_URL,
+        installGuideUrl: CAMERA_APP_INSTALL_GUIDE_URL,
+        shownAtISO: new Date().toISOString(),
+      });
+    }, CAMERA_APP_OPEN_FALLBACK_MS);
   };
 
+  const handleRetryOpenHighlightsCamera = () => {
+    if (!cameraInstallPrompt?.launchUrl || typeof window === "undefined") return;
+    window.location.href = cameraInstallPrompt.launchUrl;
+  };
+
+  const handleCloseCameraInstallPrompt = () => {
+    setCameraInstallPrompt(null);
+  };
 
   const handleUploadHighlight = async (payload) => {
     const matchId = currentVideoHighlightsMatchId;
@@ -5371,6 +5448,105 @@ export default function App() {
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
         />
+      )}
+
+      {cameraInstallPrompt && (
+        <div className="modal-backdrop" style={{ zIndex: 10080 }}>
+          <div
+            className="modal"
+            style={{
+              maxWidth: "520px",
+              width: "92vw",
+              padding: isBackupModalMobile ? "1.05rem" : "1.25rem",
+              border: "1px solid rgba(56,189,248,0.38)",
+              background:
+                "radial-gradient(circle at top, rgba(56,189,248,0.18), rgba(2,6,23,0.98) 58%)",
+              boxShadow: "0 22px 60px rgba(0,0,0,0.55), 0 0 34px rgba(56,189,248,0.12)",
+            }}
+          >
+            <div style={{ textAlign: "center", marginBottom: "0.85rem" }}>
+              <div
+                style={{
+                  width: "76px",
+                  height: "76px",
+                  borderRadius: "999px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "2.65rem",
+                  background: "rgba(56,189,248,0.14)",
+                  border: "1px solid rgba(125,211,252,0.34)",
+                  boxShadow: "0 0 24px rgba(56,189,248,0.18)",
+                }}
+              >
+                📹
+              </div>
+              <h3 style={{ margin: "0.65rem 0 0.25rem", color: "#bae6fd" }}>
+                Install Camera App
+              </h3>
+              <p style={{ margin: 0, fontWeight: 800 }}>
+                Record this live match as a 5-Asides Near Me recording device.
+              </p>
+            </div>
+
+            <div
+              style={{
+                padding: "0.9rem",
+                borderRadius: "1rem",
+                border: "1px solid rgba(56,189,248,0.24)",
+                background: "rgba(15,23,42,0.58)",
+                marginBottom: "1rem",
+                lineHeight: 1.5,
+              }}
+            >
+              <p style={{ marginTop: 0, fontWeight: 900 }}>
+                The camera app did not open automatically.
+              </p>
+              <p style={{ margin: "0.45rem 0" }}>
+                Install it once, then tap the lens button again. The app will open directly into this match and ask you to confirm that your phone is recording.
+              </p>
+              <p style={{ margin: "0.65rem 0 0", color: "#bae6fd" }}>
+                Match link prepared: <strong>{cameraInstallPrompt.payload?.currentVideoHighlightsMatchId || "current match"}</strong>
+              </p>
+            </div>
+
+            <div
+              className="actions-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isBackupModalMobile ? "1fr" : "1fr 1fr",
+                gap: "0.65rem",
+                marginTop: "1rem",
+              }}
+            >
+              <button className="secondary-btn" type="button" onClick={handleCloseCameraInstallPrompt}>
+                Not now
+              </button>
+              <button className="secondary-btn" type="button" onClick={handleRetryOpenHighlightsCamera}>
+                Try open again
+              </button>
+              <a
+                className="primary-btn"
+                href={cameraInstallPrompt.installUrl}
+                download
+                style={{
+                  gridColumn: isBackupModalMobile ? "auto" : "1 / -1",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textDecoration: "none",
+                  background:
+                    "linear-gradient(135deg, rgba(14,165,233,0.98), rgba(56,189,248,0.92))",
+                  border: "1px solid rgba(125,211,252,0.42)",
+                  color: "#020617",
+                  fontWeight: 950,
+                }}
+              >
+                Download Camera App APK
+              </a>
+            </div>
+          </div>
+        </div>
       )}
 
       {showBackupModal && (
