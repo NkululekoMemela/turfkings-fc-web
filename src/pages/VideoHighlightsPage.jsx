@@ -1,9 +1,9 @@
-// src/pages/ViewHighlightsPage.jsx
+// src/pages/VideoHighlightsPage.jsx
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import VideoHighlightsRepository, {
   saveRawHighlightDoc,
-} from "../storage/VideohighlightsRepository.js";
+} from "../storage/VideoHighlightsRepository.js";
 
 const MAX_VIDEO_SECONDS = 25;
 const IDEAL_MIN_SECONDS = 15;
@@ -15,6 +15,10 @@ const ALLOWED_VIDEO_TYPES = [
   "video/webm",
   "video/x-m4v",
 ];
+
+const PENDING_PLAYER = "Player pending";
+const PENDING_TEAM = "Team pending";
+const PENDING_CLUB = "Club pending";
 
 function safeLower(value) {
   return String(value || "").trim().toLowerCase();
@@ -41,7 +45,8 @@ function normalizeHighlightType(type) {
 function getIdentityKey(identity) {
   if (!identity || typeof identity !== "object") return "";
   return String(
-    identity.memberId ||
+    identity.uid ||
+      identity.memberId ||
       identity.playerId ||
       identity.email ||
       identity.shortName ||
@@ -62,6 +67,17 @@ function getIdentityDisplayName(identity) {
     identity.name ||
     identity.email ||
     "Guest"
+  );
+}
+
+function getIdentityClub(identity) {
+  if (!identity || typeof identity !== "object") return "Turf Kings";
+  return toTitleCaseLoose(
+    identity.clubName ||
+      identity.club ||
+      identity.homeClubName ||
+      identity.organizationName ||
+      "Turf Kings"
   );
 }
 
@@ -122,40 +138,87 @@ function getHighlightId(highlight, index = 0) {
   );
 }
 
+function firstCleanName(...values) {
+  for (const value of values) {
+    const clean = toTitleCaseLoose(value);
+    if (clean && !["Unknown", "Undefined", "Null", "Na"].includes(clean)) return clean;
+  }
+  return "";
+}
+
 function getHighlightPlayerName(highlight) {
-  return toTitleCaseLoose(
-    highlight?.goalScorer ||
-      highlight?.goalScorerName ||
-      highlight?.scorer ||
-      highlight?.playerName ||
-      highlight?.player ||
-      highlight?.keeperName ||
-      highlight?.skillPlayer ||
-      "Unknown"
+  return (
+    firstCleanName(
+      highlight?.goalScorer,
+      highlight?.goalScorerName,
+      highlight?.scorer,
+      highlight?.playerName,
+      highlight?.player,
+      highlight?.keeperName,
+      highlight?.skillPlayer
+    ) || PENDING_PLAYER
   );
+}
+
+function getHighlightTeamName(highlight) {
+  return (
+    firstCleanName(
+      highlight?.teamName,
+      highlight?.teamLabel,
+      highlight?.sideName,
+      highlight?.team
+    ) || PENDING_TEAM
+  );
+}
+
+function getHighlightClubName(highlight) {
+  return (
+    firstCleanName(
+      highlight?.clubName,
+      highlight?.club,
+      highlight?.ownerClubName,
+      highlight?.uploaderClubName
+    ) || PENDING_CLUB
+  );
+}
+
+function needsPlayer(highlight) {
+  return safeLower(getHighlightPlayerName(highlight)) === safeLower(PENDING_PLAYER);
+}
+
+function needsTeam(highlight) {
+  return safeLower(getHighlightTeamName(highlight)) === safeLower(PENDING_TEAM);
+}
+
+function needsClub(highlight) {
+  return safeLower(getHighlightClubName(highlight)) === safeLower(PENDING_CLUB);
 }
 
 function getHighlightTitle(highlight) {
   const type = normalizeHighlightType(highlight?.tag || highlight?.type || "");
   const player = getHighlightPlayerName(highlight);
+  const isPending = safeLower(player) === safeLower(PENDING_PLAYER);
 
-  if (highlight?.title) return highlight.title;
-  if (type === "goal") return `Goal by ${player}`;
-  if (type === "save") return `Save by ${player}`;
-  if (type === "skill") return `Skill by ${player}`;
-  return `Highlight by ${player}`;
+  if (highlight?.title && !safeLower(highlight.title).includes("unknown")) return highlight.title;
+
+  if (type === "goal") return isPending ? "Goal clip" : `Goal by ${player}`;
+  if (type === "save") return isPending ? "Save clip" : `Save by ${player}`;
+  if (type === "skill") return isPending ? "Skill clip" : `Skill by ${player}`;
+  return isPending ? "Match clip" : `Highlight by ${player}`;
 }
 
 function getStatus(highlight) {
   const raw = safeLower(highlight?.status || "");
   if (raw === "pending" || raw === "approved" || raw === "rejected") return raw;
-  return "approved"; // old clips without moderation status remain visible
+  return "approved";
 }
 
 function normalizeHighlight(highlight, index = 0) {
   const id = getHighlightId(highlight, index);
   const normalizedType = normalizeHighlightType(highlight?.tag || highlight?.type || "");
   const playerName = getHighlightPlayerName(highlight);
+  const teamName = getHighlightTeamName(highlight);
+  const clubName = getHighlightClubName(highlight);
 
   return {
     ...highlight,
@@ -168,6 +231,8 @@ function normalizeHighlight(highlight, index = 0) {
     status: getStatus(highlight),
     mediaUrl: getHighlightMediaUrl(highlight),
     playerName,
+    teamName,
+    clubName,
     title: getHighlightTitle(highlight),
     createdAt: highlight?.createdAt || highlight?.timestamp || new Date().toISOString(),
     votes: Number(highlight?.votes || 0),
@@ -208,7 +273,7 @@ function buildArchiveSelection(highlights, votesByUser) {
   const saves = approved.filter((item) => item.normalizedType === "save").sort(ranker);
 
   return {
-    topGoals: goals.slice(0, 3),
+    topGoals: goals.slice(0, 2),
     bestSkill: skills[0] || null,
     bestSave: saves[0] || null,
   };
@@ -245,7 +310,7 @@ function buildPlayerOptions({ members = [], teams = [], highlights = [] }) {
 
   (Array.isArray(highlights) ? highlights : []).forEach((highlight) => {
     const name = getHighlightPlayerName(highlight);
-    if (name && safeLower(name) !== "unknown") names.add(name);
+    if (name && safeLower(name) !== safeLower(PENDING_PLAYER)) names.add(name);
   });
 
   return Array.from(names).sort((a, b) => a.localeCompare(b));
@@ -260,8 +325,8 @@ function buildTeamOptions(teams = [], highlights = []) {
   });
 
   (Array.isArray(highlights) ? highlights : []).forEach((highlight) => {
-    const teamName = toTitleCaseLoose(highlight?.teamName || highlight?.teamLabel || "");
-    if (teamName) names.add(teamName);
+    const teamName = getHighlightTeamName(highlight);
+    if (teamName && safeLower(teamName) !== safeLower(PENDING_TEAM)) names.add(teamName);
   });
 
   return Array.from(names).sort((a, b) => a.localeCompare(b));
@@ -323,32 +388,19 @@ function describeUploadError(error, stage = "upload") {
   const message = String(error?.message || "").trim();
 
   if (code.includes("storage/unauthorized")) {
-    return "Firebase Storage rejected the video upload. This usually means Storage rules do not allow video_highlights uploads for this signed-in user.";
+    return "Firebase Storage rejected the video upload. Check Storage rules for video_highlights uploads.";
   }
 
-  if (code.includes("storage/canceled")) {
-    return "The upload was cancelled before it finished.";
-  }
-
-  if (code.includes("storage/quota-exceeded")) {
-    return "Firebase Storage quota was exceeded. The file could not be uploaded.";
-  }
+  if (code.includes("storage/canceled")) return "The upload was cancelled before it finished.";
+  if (code.includes("storage/quota-exceeded")) return "Firebase Storage quota was exceeded.";
 
   if (code.includes("permission-denied")) {
-    return "Firestore rejected the highlight details after the video upload. This usually means Firestore rules blocked the metadata save.";
+    return "Firestore rejected the highlight details after the video upload.";
   }
 
-  if (stage === "validation") {
-    return message || "The selected file failed validation.";
-  }
-
-  if (stage === "firestore") {
-    return message || "The video uploaded, but the clip details could not be saved to Firestore.";
-  }
-
-  if (stage === "storage") {
-    return message || "Firebase Storage failed while uploading the video file.";
-  }
+  if (stage === "validation") return message || "The selected file failed validation.";
+  if (stage === "firestore") return message || "The video uploaded, but clip details could not be saved.";
+  if (stage === "storage") return message || "Firebase Storage failed while uploading the video.";
 
   return message || "Upload failed. Please try again.";
 }
@@ -363,8 +415,83 @@ function buildFallbackMatchId({ matchType, gameFormat, activeSeasonId, currentMa
   return `friendly_${format}_${today}`;
 }
 
+function getTeamLabel(team, fallback = "") {
+  return toTitleCaseLoose(team?.label || team?.name || team?.teamName || fallback);
+}
+
+function getFeaturedTeamNames(teams = [], matchType = "FRIENDLY") {
+  const names = normalizeTeamsInput(teams)
+    .map((team, index) => getTeamLabel(team, `Team ${index + 1}`))
+    .filter(Boolean);
+
+  const isLeague = safeLower(matchType).includes("league");
+
+  if (isLeague) return names.slice(0, 3);
+  return names.slice(0, 2);
+}
+
+function getMatchupLabel(highlight, teams = [], matchType = "FRIENDLY") {
+  const explicit = firstCleanName(
+    highlight?.matchup,
+    highlight?.fixtureLabel,
+    highlight?.matchLabel,
+    highlight?.opponentLabel
+  );
+  if (explicit && explicit.includes(" vs ")) return explicit;
+
+  const home = firstCleanName(
+    highlight?.homeTeamName,
+    highlight?.homeTeam,
+    highlight?.teamAName,
+    highlight?.teamA
+  );
+  const away = firstCleanName(
+    highlight?.awayTeamName,
+    highlight?.awayTeam,
+    highlight?.teamBName,
+    highlight?.teamB,
+    highlight?.opponentName,
+    highlight?.opponent
+  );
+  if (home && away) return `${home} vs ${away}`;
+
+  const featured = getFeaturedTeamNames(teams, matchType);
+  if (featured.length >= 2) return `${featured[0]} vs ${featured[1]}`;
+
+  const teamName = getHighlightTeamName(highlight);
+  return safeLower(teamName) === safeLower(PENDING_TEAM) ? "Matchup pending" : teamName;
+}
+
+function getTeamContextText(teams = [], matchType = "FRIENDLY") {
+  const featured = getFeaturedTeamNames(teams, matchType);
+  const isLeague = safeLower(matchType).includes("league");
+
+  if (isLeague) return featured.length ? featured.join(" • ") : "League teams pending";
+  if (featured.length >= 2) return `${featured[0]} vs ${featured[1]}`;
+  if (featured.length === 1) return featured[0];
+  return "Friendly teams pending";
+}
+
+function getFilterLabel(filter) {
+  if (filter === "all") return "All";
+  if (filter === "goal") return "Goals";
+  if (filter === "save") return "Saves";
+  if (filter === "skill") return "Skills";
+  return "MOM-ish 😅";
+}
+
+function getMissingBadges(highlight) {
+  const badges = [];
+  if (needsPlayer(highlight)) badges.push("Needs player");
+  if (needsTeam(highlight)) badges.push("Needs team");
+  if (needsClub(highlight)) badges.push("Needs club");
+  return badges;
+}
+
 function HighlightCard({
   highlight,
+  teams = [],
+  matchType = "FRIENDLY",
   voteCount = 0,
   isModerator = false,
   canVote = false,
@@ -375,37 +502,65 @@ function HighlightCard({
   onDelete,
 }) {
   const isSelectedVote = userVoteForType === highlight.id;
+  const missingBadges = getMissingBadges(highlight);
+  const matchupLabel = getMatchupLabel(highlight, teams, matchType);
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  const handleShare = async () => {
+    const url = getHighlightMediaUrl(highlight);
+    if (!url) return;
+
+    try {
+      if (canShare) {
+        await navigator.share({
+          title: highlight.title || "Turf Kings highlight",
+          text: `${highlight.title || "Turf Kings highlight"} • ${matchupLabel}`,
+          url,
+        });
+        return;
+      }
+
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        window.alert("Highlight link copied.");
+      }
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Share failed:", error);
+    }
+  };
 
   return (
     <article className="tkh-card">
-      <div className="tkh-card-head">
+      <div className="tkh-card-top">
         <div className="tkh-card-title-block">
           <div className="tkh-player-name">{highlight.playerName}</div>
           <div className="tkh-clip-title">{highlight.title}</div>
         </div>
 
-        <div className="tkh-badges">
-          <span className="tkh-type-badge">{typeBadgeLabel(highlight.normalizedType)}</span>
-          <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
-            {statusBadgeLabel(highlight.status)}
-          </span>
-        </div>
+        <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
+          {statusBadgeLabel(highlight.status)}
+        </span>
       </div>
 
-      {highlight.mediaUrl ? (
-        <video
-          className="tkh-video"
-          controls
-          preload="metadata"
-          playsInline
-          src={highlight.mediaUrl}
-        />
-      ) : (
-        <div className="tkh-video-empty">Video URL not available yet.</div>
-      )}
+      <video
+        className="tkh-video"
+        controls
+        preload="metadata"
+        playsInline
+        src={highlight.mediaUrl}
+      />
+
+      <div className="tkh-badge-row">
+        <span className="tkh-type-badge">{typeBadgeLabel(highlight.normalizedType)}</span>
+        {missingBadges.map((badge) => (
+          <span key={badge} className="tkh-missing-badge">{badge}</span>
+        ))}
+      </div>
 
       <div className="tkh-meta-row">
-        <span>{highlight.teamName ? toTitleCaseLoose(highlight.teamName) : "No team"}</span>
+        <span>{highlight.clubName}</span>
+        <span className="tkh-matchup-label">{matchupLabel}</span>
+        <span>{highlight.teamName}</span>
         <span>{highlight.durationSeconds ? formatSeconds(highlight.durationSeconds) : "Clip"}</span>
         <span>{voteCount} vote{voteCount === 1 ? "" : "s"}</span>
       </div>
@@ -432,6 +587,12 @@ function HighlightCard({
             </button>
           )}
 
+        {highlight.mediaUrl && (
+          <button type="button" className="tkh-btn" onClick={handleShare}>
+            {canShare ? "Share" : "Copy link"}
+          </button>
+        )}
+
         {isModerator && highlight.status === "pending" && (
           <>
             <button type="button" className="tkh-btn tkh-btn-approve" onClick={() => onApprove?.(highlight)}>
@@ -453,7 +614,7 @@ function HighlightCard({
   );
 }
 
-export function ViewHighlightsPage({
+export function VideoHighlightsPage({
   matchId,
   activeSeasonId = null,
   currentMatchNo = 1,
@@ -485,8 +646,10 @@ export function ViewHighlightsPage({
   const [firebaseHighlights, setFirebaseHighlights] = useState([]);
   const [localHighlights, setLocalHighlights] = useState([]);
   const [localVotesByUser, setLocalVotesByUser] = useState(votesByUser || {});
+  const [mainTab, setMainTab] = useState("highlights");
   const [selectedTab, setSelectedTab] = useState("approved");
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [headerScrolled, setHeaderScrolled] = useState(false);
   const [loadingHighlights, setLoadingHighlights] = useState(false);
   const [loadError, setLoadError] = useState("");
 
@@ -510,10 +673,21 @@ export function ViewHighlightsPage({
 
   const identityKey = useMemo(() => getIdentityKey(identity), [identity]);
   const identityName = useMemo(() => getIdentityDisplayName(identity), [identity]);
+  const defaultClubName = useMemo(() => getIdentityClub(identity), [identity]);
   const role = safeLower(activeRole);
   const isLoggedIn = Boolean(identityKey);
   const isModerator = role === "admin" || role === "captain";
   const canUpload = isLoggedIn && ["admin", "captain", "player"].includes(role);
+  const isLeagueMode = safeLower(matchType).includes("league");
+  const teamContextText = useMemo(() => getTeamContextText(teams, matchType), [teams, matchType]);
+  const featuredTeamNames = useMemo(() => getFeaturedTeamNames(teams, matchType), [teams, matchType]);
+
+  useEffect(() => {
+    const handleScroll = () => setHeaderScrolled(window.scrollY > 6);
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const loadHighlights = async () => {
     if (!resolvedMatchId) return;
@@ -705,7 +879,7 @@ export function ViewHighlightsPage({
 
       if (duration < IDEAL_MIN_SECONDS || duration > IDEAL_MAX_SECONDS) {
         setUploadNotice(
-          `Accepted, but ideal TurfKings highlights are ${IDEAL_MIN_SECONDS}–${IDEAL_MAX_SECONDS} seconds. This one is ${formatSeconds(duration)}.`
+          `Accepted. Ideal highlights are ${IDEAL_MIN_SECONDS}–${IDEAL_MAX_SECONDS}s. This one is ${formatSeconds(duration)}.`
         );
       }
 
@@ -734,7 +908,7 @@ export function ViewHighlightsPage({
     if (!canUpload) {
       setUploadStage("failed");
       setUploadStep("Upload blocked");
-      setUploadError("Only signed-in TurfKings players, captains, or admin can upload clips.");
+      setUploadError("Only signed-in players, captains, or admin can upload clips.");
       return;
     }
 
@@ -746,14 +920,6 @@ export function ViewHighlightsPage({
       return;
     }
 
-    const cleanPlayerName = toTitleCaseLoose(playerName);
-    if (!cleanPlayerName) {
-      setUploadStage("failed");
-      setUploadStep("Player missing");
-      setUploadError("Select the player shown in this highlight.");
-      return;
-    }
-
     if (!clipDuration || clipDuration > MAX_VIDEO_SECONDS) {
       setUploadStage("failed");
       setUploadStep("Invalid clip");
@@ -761,9 +927,13 @@ export function ViewHighlightsPage({
       return;
     }
 
+    const cleanPlayerName = toTitleCaseLoose(playerName) || PENDING_PLAYER;
+    const cleanTeamName = toTitleCaseLoose(teamName) || PENDING_TEAM;
+    const cleanClubName = defaultClubName || PENDING_CLUB;
     const normalizedType = normalizeHighlightType(clipType);
     const clipId = buildLocalClipId();
     const createdAt = new Date().toISOString();
+    const cleanAssistName = normalizedType === "goal" ? toTitleCaseLoose(assistName) : "";
 
     const payload = {
       file: clipFile,
@@ -775,22 +945,27 @@ export function ViewHighlightsPage({
       status: "pending",
       type: normalizedType,
       tag: normalizedType,
+      clubName: cleanClubName,
+      uploaderClubName: cleanClubName,
       playerName: cleanPlayerName,
-      goalScorer: normalizedType === "goal" ? cleanPlayerName : "",
-      goalScorerName: normalizedType === "goal" ? cleanPlayerName : "",
-      scorer: normalizedType === "goal" ? cleanPlayerName : "",
-      keeperName: normalizedType === "save" ? cleanPlayerName : "",
-      skillPlayer: normalizedType === "skill" ? cleanPlayerName : "",
-      assist: normalizedType === "goal" ? toTitleCaseLoose(assistName) : "",
-      teamName: toTitleCaseLoose(teamName),
+      goalScorer: normalizedType === "goal" && cleanPlayerName !== PENDING_PLAYER ? cleanPlayerName : "",
+      goalScorerName: normalizedType === "goal" && cleanPlayerName !== PENDING_PLAYER ? cleanPlayerName : "",
+      scorer: normalizedType === "goal" && cleanPlayerName !== PENDING_PLAYER ? cleanPlayerName : "",
+      keeperName: normalizedType === "save" && cleanPlayerName !== PENDING_PLAYER ? cleanPlayerName : "",
+      skillPlayer: normalizedType === "skill" && cleanPlayerName !== PENDING_PLAYER ? cleanPlayerName : "",
+      assist: cleanAssistName,
+      teamName: cleanTeamName,
       title:
         normalizedType === "goal"
-          ? `Goal by ${cleanPlayerName}`
+          ? cleanPlayerName === PENDING_PLAYER ? "Goal clip" : `Goal by ${cleanPlayerName}`
           : normalizedType === "save"
-          ? `Save by ${cleanPlayerName}`
+          ? cleanPlayerName === PENDING_PLAYER ? "Save clip" : `Save by ${cleanPlayerName}`
           : normalizedType === "skill"
-          ? `Skill by ${cleanPlayerName}`
-          : `Highlight by ${cleanPlayerName}`,
+          ? cleanPlayerName === PENDING_PLAYER ? "Skill clip" : `Skill by ${cleanPlayerName}`
+          : cleanPlayerName === PENDING_PLAYER ? "Match clip" : `Highlight by ${cleanPlayerName}`,
+      metadataComplete: cleanPlayerName !== PENDING_PLAYER && cleanTeamName !== PENDING_TEAM,
+      needsPlayer: cleanPlayerName === PENDING_PLAYER,
+      needsTeam: cleanTeamName === PENDING_TEAM,
       durationSeconds: Math.round(clipDuration),
       fileSizeBytes: clipFile.size,
       matchId: resolvedMatchId,
@@ -807,7 +982,7 @@ export function ViewHighlightsPage({
     try {
       setUploading(true);
       setUploadStage("metadata");
-      setUploadStep("Preparing Firebase record...");
+      setUploadStep("Preparing upload...");
       setUploadProgress(3);
 
       let savedHighlight = null;
@@ -819,7 +994,7 @@ export function ViewHighlightsPage({
           highlight: payload,
           onProgress: (progress) => {
             const stage = progress?.stage || "storage";
-            const percent = Number(progress?.percent || 0);
+            const percent = Number(progress?.percent ?? progress ?? 0);
 
             setUploadStage(stage);
             setUploadDebug(progress || null);
@@ -828,10 +1003,11 @@ export function ViewHighlightsPage({
               setUploadStep(progress?.message || "Preparing highlight folder...");
               setUploadProgress(5);
             } else if (stage === "storage") {
-              setUploadStep(`Uploading video to Firebase Storage... ${Math.max(0, Math.min(100, Math.round(percent)))}%`);
-              setUploadProgress(Math.max(5, Math.min(92, Math.round(percent * 0.87 + 5))));
+              const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
+              setUploadStep(`Uploading video... ${safePercent}%`);
+              setUploadProgress(Math.max(5, Math.min(92, Math.round(safePercent * 0.87 + 5))));
             } else if (stage === "firestore") {
-              setUploadStep(progress?.message || "Saving clip details to Firestore...");
+              setUploadStep(progress?.message || "Saving clip details...");
               setUploadProgress(95);
             } else if (stage === "complete") {
               setUploadStep("Upload complete.");
@@ -864,15 +1040,16 @@ export function ViewHighlightsPage({
       setUploadStage("complete");
       setUploadStep("Upload complete. Waiting for review.");
       setUploadProgress(100);
-      setUploadSuccess("Clip uploaded successfully and sent to Pending Review.");
+      setUploadSuccess("Clip uploaded successfully.");
       await loadHighlights();
+
       window.setTimeout(() => {
         setShowUploadModal(false);
         resetUpload();
       }, 850);
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Upload failed:", error);
-      const failedStage = uploadStage === "firestore" ? "firestore" : uploadStage === "metadata" ? "firestore" : "storage";
+      const failedStage = uploadStage === "firestore" || uploadStage === "metadata" ? "firestore" : "storage";
       setUploadStage("failed");
       setUploadStep(failedStage === "firestore" ? "Failed while saving clip details" : "Failed while uploading video");
       setUploadError(describeUploadError(error, failedStage));
@@ -919,7 +1096,14 @@ export function ViewHighlightsPage({
   };
 
   const persistStatus = async (highlight, status) => {
-    const updated = normalizeHighlight({ ...highlight, status, updatedAt: new Date().toISOString() });
+    const updated = normalizeHighlight({
+      ...highlight,
+      status,
+      updatedAt: new Date().toISOString(),
+      approvedWithMissingDetails:
+        status === "approved" && (needsPlayer(highlight) || needsTeam(highlight)),
+    });
+
     upsertLocalHighlight(updated);
 
     if (resolvedMatchId && updated.clipId) {
@@ -1005,100 +1189,116 @@ export function ViewHighlightsPage({
   };
 
   return (
-    <div className="tkh-page">
+    <div className="page video-highlights-page">
       <style>{`
-        .tkh-page {
-          min-height: 100vh;
-          color: #e5e7eb;
-          background:
-            radial-gradient(circle at 12% 0%, rgba(34,197,94,0.18), transparent 30%),
-            radial-gradient(circle at 90% 0%, rgba(15,118,110,0.14), transparent 26%),
-            linear-gradient(180deg, #020617 0%, #071426 46%, #08111f 100%);
-          padding: 18px;
+        .video-highlights-page {
+          padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+        }
+
+        .video-highlights-page *,
+        .video-highlights-page *::before,
+        .video-highlights-page *::after {
           box-sizing: border-box;
         }
 
-        .tkh-shell {
-          width: min(1180px, 100%);
-          margin: 0 auto;
-          display: grid;
-          gap: 16px;
+        .video-highlights-page .header-title {
+          min-width: 0;
         }
 
-        .tkh-panel,
-        .tkh-card {
-          background: rgba(15, 23, 42, 0.82);
-          border: 1px solid rgba(148, 163, 184, 0.16);
-          box-shadow: 0 18px 46px rgba(0,0,0,0.28);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-        }
-
-        .tkh-panel {
-          border-radius: 22px;
-          padding: 16px;
-        }
-
-        .tkh-hero {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 14px;
-          flex-wrap: wrap;
-        }
-
-        .tkh-title {
+        .video-highlights-page .header-title h1 {
           margin: 0;
-          font-size: clamp(2rem, 5vw, 3.35rem);
-          line-height: 0.98;
-          letter-spacing: -0.045em;
-        }
-
-        .tkh-subtitle {
-          margin-top: 8px;
-          color: rgba(226,232,240,0.76);
-          font-size: 0.96rem;
-        }
-
-        .tkh-match-pill {
-          display: inline-flex;
-          width: fit-content;
-          margin-top: 10px;
-          border-radius: 999px;
-          padding: 0.34rem 0.65rem;
-          background: rgba(34,197,94,0.10);
-          border: 1px solid rgba(34,197,94,0.22);
-          color: #bbf7d0;
-          font-size: 0.76rem;
-          font-weight: 900;
           max-width: 100%;
-          overflow-wrap: anywhere;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
-        .tkh-actions,
-        .tkh-card-actions,
-        .tkh-tabs,
-        .tkh-filters,
-        .tkh-upload-actions {
+        .tkh-ribbon-subtitle-line {
+          margin: 0.35rem 0 0 !important;
+          color: rgba(226, 232, 240, 0.82) !important;
+          font-weight: 850;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .tkh-page-intro {
+          display: grid;
+          gap: 0.55rem;
+        }
+
+        .tkh-intro-copy {
+          margin: 0;
+          max-width: 680px;
+          color: rgba(226, 232, 240, 0.80);
+          font-size: 0.92rem;
+          line-height: 1.42;
+        }
+
+        .tkh-feature-line {
           display: flex;
-          gap: 8px;
+          flex-wrap: wrap;
+          gap: 0.35rem;
+          align-items: baseline;
+          color: rgba(226, 232, 240, 0.72);
+          font-size: 0.86rem;
+          line-height: 1.35;
+        }
+
+        .tkh-feature-line strong {
+          color: #f8fafc;
+          font-weight: 950;
+        }
+
+        .tkh-page-intro h2 {
+          margin: 0;
+          color: #ffffff;
+          font-size: clamp(1.55rem, 4vw, 2.15rem);
+          line-height: 1.08;
+        }
+
+        .tkh-subtitle,
+        .tkh-soft-line,
+        .tkh-meta-row {
+          color: rgba(226, 232, 240, 0.72);
+        }
+
+        .tkh-matchup-label {
+          color: #f8fafc;
+          font-weight: 950;
+        }
+
+        .tkh-header-actions {
+          display: flex;
+          gap: 0.55rem;
           flex-wrap: wrap;
           align-items: center;
+          margin-top: 0.28rem;
         }
 
-        .tkh-btn,
-        .tkh-tab,
-        .tkh-filter {
+        .tkh-header-actions .tkh-btn {
+          min-width: 104px;
+          padding: 0.58rem 0.95rem;
+        }
+
+        .tkh-card-section {
+          display: grid;
+          gap: 0.9rem;
+        }
+
+        .tkh-btn {
           appearance: none;
           border-radius: 999px;
-          border: 1px solid rgba(148,163,184,0.22);
+          border: 1px solid rgba(148, 163, 184, 0.38);
           color: #e5e7eb;
-          background: rgba(255,255,255,0.055);
+          background: rgba(15, 23, 42, 0.92);
           padding: 0.66rem 0.9rem;
           font-weight: 900;
           cursor: pointer;
           line-height: 1;
           touch-action: manipulation;
+          box-shadow: none;
+          text-shadow: none;
         }
 
         .tkh-btn:disabled {
@@ -1106,193 +1306,278 @@ export function ViewHighlightsPage({
           cursor: not-allowed;
         }
 
-        .tkh-btn-primary,
-        .tkh-tab.is-active,
-        .tkh-filter.is-active,
-        .tkh-btn-vote.is-selected,
-        .tkh-btn-approve {
-          background: rgba(34,197,94,0.17);
-          border-color: rgba(34,197,94,0.42);
-          color: #bbf7d0;
-          box-shadow: 0 0 20px rgba(34,197,94,0.10);
+        .tkh-btn-primary {
+          background: linear-gradient(135deg, #16a34a, #22c55e);
+          border-color: rgba(187, 247, 208, 0.65);
+          color: #052e16;
+          box-shadow: 0 12px 24px rgba(22, 163, 74, 0.22);
         }
 
-        .tkh-btn-primary {
-          background: linear-gradient(135deg, rgba(34,197,94,0.96), rgba(21,128,61,0.94));
-          color: #052e16;
-          border-color: rgba(134,239,172,0.5);
+        .tkh-btn-vote.is-selected,
+        .tkh-btn-approve {
+          background: rgba(34, 197, 94, 0.16);
+          border-color: rgba(34, 197, 94, 0.42);
+          color: #bbf7d0;
         }
 
         .tkh-btn-reject,
         .tkh-btn-danger {
-          background: rgba(239,68,68,0.13);
-          border-color: rgba(248,113,113,0.34);
+          background: rgba(127, 29, 29, 0.42);
+          border-color: rgba(248, 113, 113, 0.38);
           color: #fecaca;
         }
 
-        .tkh-summary-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 10px;
+        .tkh-view-toggle {
+          width: fit-content;
+          max-width: 100%;
+          margin: 0 auto;
         }
 
-        .tkh-summary-card {
-          border-radius: 18px;
-          padding: 12px;
-          background: rgba(255,255,255,0.045);
-          border: 1px solid rgba(148,163,184,0.14);
-          min-width: 0;
-        }
-
-        .tkh-summary-label {
-          color: rgba(226,232,240,0.68);
-          font-size: 0.78rem;
+        .tkh-view-toggle .pill-toggle {
+          min-width: 136px;
           font-weight: 850;
         }
 
-        .tkh-summary-value {
-          margin-top: 4px;
-          font-size: 1.28rem;
-          font-weight: 1000;
-          overflow-wrap: anywhere;
+        .tkh-compact-filter-row {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.65rem;
+          padding: 0.75rem;
+          border-radius: 1rem;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(15, 23, 42, 0.42);
+        }
+
+        .tkh-compact-select-label {
+          display: grid;
+          gap: 0.35rem;
+          color: rgba(226, 232, 240, 0.66);
+          font-size: 0.72rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .tkh-compact-select,
+        .tkh-input,
+        .tkh-select {
+          width: 100%;
+          min-width: 0;
+          border-radius: 0.85rem;
+          border: 1px solid rgba(148, 163, 184, 0.34);
+          background: #0f172a;
+          color: #e5e7eb;
+          padding: 0.76rem 0.82rem;
+          font-size: 0.9rem;
+          font-weight: 850;
+          outline: none;
+        }
+
+        .tkh-compact-select option,
+        .tkh-select option {
+          background: #0f172a;
+          color: #e5e7eb;
         }
 
         .tkh-grid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 16px;
+          gap: 0.85rem;
+          min-width: 0;
         }
 
         .tkh-card {
           min-width: 0;
           overflow: hidden;
-          border-radius: 22px;
-          padding: 12px;
+          border-radius: 1rem;
+          padding: 0.72rem;
           display: grid;
-          gap: 10px;
+          gap: 0.6rem;
+          background: rgba(15, 23, 42, 0.74);
+          border: 1px solid rgba(148, 163, 184, 0.22);
         }
 
-        .tkh-card-head {
+        .tkh-card-top {
           display: flex;
           justify-content: space-between;
-          gap: 10px;
+          gap: 0.75rem;
           align-items: flex-start;
         }
 
         .tkh-card-title-block { min-width: 0; }
 
         .tkh-player-name {
-          font-size: 1.18rem;
+          font-size: 1.02rem;
           font-weight: 1000;
-          line-height: 1.05;
+          line-height: 1.1;
+          color: #ffffff;
           overflow-wrap: anywhere;
         }
 
         .tkh-clip-title {
-          margin-top: 3px;
-          color: rgba(226,232,240,0.72);
-          font-size: 0.86rem;
+          margin-top: 0.18rem;
+          color: rgba(226, 232, 240, 0.70);
+          font-size: 0.8rem;
           overflow-wrap: anywhere;
         }
 
-        .tkh-badges {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          gap: 6px;
-          flex: 0 0 auto;
+        .tkh-status-badge {
+          background: transparent;
+          border: 0;
+          padding: 0;
+          border-radius: 0;
+          font-size: 0.68rem;
+          font-weight: 1000;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          white-space: nowrap;
         }
 
+        .tkh-status-badge.is-approved { color: #86efac; }
+        .tkh-status-badge.is-pending { color: #fde68a; }
+        .tkh-status-badge.is-rejected { color: #fecaca; }
+
         .tkh-type-badge,
-        .tkh-status-badge {
+        .tkh-missing-badge,
+        .tkh-winners-badge,
+        .tkh-winner-rank {
           border-radius: 999px;
-          padding: 0.32rem 0.52rem;
-          font-size: 0.72rem;
+          padding: 0.3rem 0.5rem;
+          font-size: 0.7rem;
           font-weight: 1000;
           white-space: nowrap;
-          border: 1px solid rgba(255,255,255,0.14);
+          border: 1px solid rgba(255, 255, 255, 0.14);
         }
 
         .tkh-type-badge {
-          background: rgba(255,255,255,0.07);
+          background: rgba(148, 163, 184, 0.12);
           color: #e5e7eb;
         }
 
-        .tkh-status-badge.is-approved {
-          background: rgba(34,197,94,0.16);
-          border-color: rgba(34,197,94,0.36);
-          color: #bbf7d0;
-        }
-
-        .tkh-status-badge.is-pending {
-          background: rgba(250,204,21,0.14);
-          border-color: rgba(250,204,21,0.34);
+        .tkh-missing-badge,
+        .tkh-winners-badge,
+        .tkh-winner-rank {
+          background: rgba(250, 204, 21, 0.12);
+          border-color: rgba(250, 204, 21, 0.30);
           color: #fde68a;
         }
 
-        .tkh-status-badge.is-rejected {
-          background: rgba(248,113,113,0.14);
-          border-color: rgba(248,113,113,0.34);
-          color: #fecaca;
-        }
-
-        .tkh-video {
+        .tkh-video,
+        .tkh-preview-video {
           width: 100%;
-          aspect-ratio: 16 / 9;
-          max-height: 520px;
-          border-radius: 16px;
+          max-width: 100%;
+          border-radius: 0.85rem;
           background: #000;
           object-fit: contain;
         }
 
-        .tkh-video-empty,
-        .tkh-empty {
-          display: grid;
-          place-items: center;
-          text-align: center;
-          border-radius: 18px;
-          border: 1px dashed rgba(148,163,184,0.24);
-          color: rgba(226,232,240,0.70);
-          font-weight: 850;
+        .tkh-video {
+          aspect-ratio: 16 / 9;
+          max-height: 520px;
         }
 
-        .tkh-video-empty { min-height: 180px; }
-        .tkh-empty { padding: 28px 16px; }
+        .tkh-preview-video {
+          max-height: 380px;
+        }
+
+        .tkh-meta-row,
+        .tkh-card-actions,
+        .tkh-badge-row,
+        .tkh-archive {
+          display: flex;
+          gap: 0.45rem;
+          flex-wrap: wrap;
+          align-items: center;
+        }
 
         .tkh-meta-row {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-          color: rgba(226,232,240,0.72);
-          font-size: 0.82rem;
+          font-size: 0.78rem;
+          line-height: 1.35;
         }
 
         .tkh-meta-row span,
-        .tkh-soft-line { overflow-wrap: anywhere; }
-
         .tkh-soft-line {
-          color: rgba(226,232,240,0.72);
-          font-size: 0.84rem;
+          overflow-wrap: anywhere;
         }
 
+        .tkh-soft-line {
+          font-size: 0.8rem;
+          line-height: 1.35;
+        }
+
+        .tkh-empty,
+        .tkh-empty-mini,
         .tkh-system-note,
-        .tkh-error-box {
-          border-radius: 16px;
-          padding: 0.78rem 0.9rem;
+        .tkh-error-box,
+        .tkh-cleanup-note {
+          border-radius: 1rem;
+          padding: 0.9rem;
           font-weight: 850;
           line-height: 1.35;
         }
 
-        .tkh-system-note {
-          background: rgba(34,197,94,0.09);
-          border: 1px solid rgba(34,197,94,0.22);
-          color: #bbf7d0;
+        .tkh-empty,
+        .tkh-empty-mini {
+          display: grid;
+          place-items: center;
+          text-align: center;
+          border: 1px dashed rgba(148, 163, 184, 0.34);
+          color: rgba(226, 232, 240, 0.70);
         }
 
-        .tkh-error-box {
-          background: rgba(239,68,68,0.13);
-          border: 1px solid rgba(248,113,113,0.32);
+        .tkh-system-note,
+        .tkh-cleanup-note {
+          background: rgba(14, 165, 233, 0.08);
+          border: 1px solid rgba(56, 189, 248, 0.20);
+          color: #bae6fd;
+        }
+
+        .tkh-error-box,
+        .tkh-error {
+          background: rgba(127, 29, 29, 0.36);
+          border: 1px solid rgba(248, 113, 113, 0.34);
           color: #fecaca;
+        }
+
+        .tkh-archive {
+          color: rgba(226, 232, 240, 0.74);
+          font-size: 0.82rem;
+          line-height: 1.35;
+          padding-top: 0.2rem;
+          border-top: 1px solid rgba(148, 163, 184, 0.16);
+        }
+
+        .tkh-winners-panel,
+        .tkh-winner-section,
+        .tkh-winner-card-wrap {
+          display: grid;
+          gap: 0.75rem;
+        }
+
+        .tkh-winners-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.75rem;
+        }
+
+        .tkh-winners-head h2,
+        .tkh-winner-section h3 {
+          margin: 0;
+          color: #ffffff;
+        }
+
+        .tkh-winners-head p {
+          margin: 0.35rem 0 0;
+          color: rgba(226, 232, 240, 0.70);
+          font-size: 0.84rem;
+          line-height: 1.35;
+        }
+
+        .tkh-winner-two-col {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.85rem;
         }
 
         .tkh-modal-backdrop {
@@ -1301,135 +1586,106 @@ export function ViewHighlightsPage({
           z-index: 20000;
           display: grid;
           place-items: center;
-          padding: 16px;
-          background: rgba(2,6,23,0.74);
+          padding: 1rem;
+          background: rgba(2, 6, 23, 0.74);
           backdrop-filter: blur(10px);
           -webkit-backdrop-filter: blur(10px);
         }
 
         .tkh-modal {
-          width: min(680px, 100%);
+          width: min(620px, 100%);
           max-height: min(86vh, 820px);
           overflow: auto;
-          border-radius: 24px;
-          background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98));
-          border: 1px solid rgba(148,163,184,0.20);
-          box-shadow: 0 26px 80px rgba(0,0,0,0.55);
-          padding: 16px;
+          border-radius: 1.25rem;
+          background: #101827;
+          border: 1px solid rgba(148, 163, 184, 0.34);
+          padding: 1rem;
           box-sizing: border-box;
         }
 
         .tkh-modal-head {
           display: flex;
           justify-content: space-between;
-          gap: 12px;
+          gap: 0.8rem;
           align-items: flex-start;
-          margin-bottom: 12px;
+          margin-bottom: 0.8rem;
         }
 
         .tkh-modal-title {
           margin: 0;
-          font-size: 1.5rem;
+          font-size: 1.35rem;
+          color: #ffffff;
         }
 
         .tkh-form-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
+          gap: 0.75rem;
         }
 
         .tkh-field {
           display: grid;
-          gap: 6px;
+          gap: 0.36rem;
           min-width: 0;
         }
 
         .tkh-field label {
-          font-size: 0.84rem;
+          font-size: 0.82rem;
           font-weight: 950;
-          color: rgba(226,232,240,0.88);
-        }
-
-        .tkh-input,
-        .tkh-select {
-          width: 100%;
-          box-sizing: border-box;
-          border-radius: 14px;
-          border: 1px solid rgba(148,163,184,0.24);
-          background: rgba(255,255,255,0.06);
-          color: #e5e7eb;
-          padding: 0.74rem 0.82rem;
-          outline: none;
-        }
-
-        .tkh-select option {
-          background: #0f172a;
-          color: #e5e7eb;
+          color: rgba(226, 232, 240, 0.88);
         }
 
         .tkh-help {
-          color: rgba(226,232,240,0.66);
+          color: rgba(226, 232, 240, 0.66);
           font-size: 0.78rem;
           line-height: 1.35;
         }
 
         .tkh-warning,
-        .tkh-error {
-          margin-top: 12px;
-          border-radius: 16px;
+        .tkh-error,
+        .tkh-success,
+        .tkh-upload-progress {
+          margin-top: 0.75rem;
+          border-radius: 1rem;
           padding: 0.76rem 0.9rem;
           font-weight: 850;
           line-height: 1.35;
         }
 
         .tkh-warning {
-          background: rgba(250,204,21,0.13);
-          border: 1px solid rgba(250,204,21,0.30);
+          background: rgba(250, 204, 21, 0.13);
+          border: 1px solid rgba(250, 204, 21, 0.30);
           color: #fde68a;
         }
 
-        .tkh-error {
-          background: rgba(239,68,68,0.14);
-          border: 1px solid rgba(248,113,113,0.32);
-          color: #fecaca;
-        }
-
         .tkh-success {
-          margin-top: 12px;
-          border-radius: 16px;
-          padding: 0.76rem 0.9rem;
-          font-weight: 850;
-          line-height: 1.35;
-          background: rgba(34,197,94,0.14);
-          border: 1px solid rgba(34,197,94,0.32);
+          background: rgba(34, 197, 94, 0.14);
+          border: 1px solid rgba(34, 197, 94, 0.32);
           color: #bbf7d0;
         }
 
         .tkh-upload-progress {
-          margin-top: 12px;
-          border-radius: 16px;
-          padding: 0.82rem 0.9rem;
-          background: rgba(15,23,42,0.70);
-          border: 1px solid rgba(148,163,184,0.20);
+          background: #0f172a;
+          border: 1px solid rgba(148, 163, 184, 0.24);
         }
 
         .tkh-progress-head {
           display: flex;
           justify-content: space-between;
-          gap: 12px;
+          gap: 0.75rem;
           align-items: center;
-          font-size: 0.86rem;
+          font-size: 0.84rem;
           font-weight: 900;
-          color: rgba(226,232,240,0.92);
+          color: rgba(226, 232, 240, 0.92);
         }
 
         .tkh-progress-track {
           width: 100%;
           height: 10px;
-          margin-top: 10px;
+          margin-top: 0.6rem;
           border-radius: 999px;
           overflow: hidden;
-          background: rgba(148,163,184,0.18);
+          background: rgba(148, 163, 184, 0.18);
         }
 
         .tkh-progress-fill {
@@ -1441,192 +1697,309 @@ export function ViewHighlightsPage({
         }
 
         .tkh-progress-debug {
-          margin-top: 8px;
-          color: rgba(226,232,240,0.62);
+          margin-top: 0.5rem;
+          color: rgba(226, 232, 240, 0.62);
           font-size: 0.74rem;
           line-height: 1.35;
           overflow-wrap: anywhere;
         }
 
-        .tkh-preview-video {
-          width: 100%;
-          max-height: 380px;
-          border-radius: 18px;
-          background: #000;
-          object-fit: contain;
-        }
-
         .tkh-upload-actions {
-          margin-top: 14px;
+          margin-top: 0.9rem;
+          display: flex;
+          gap: 0.55rem;
           justify-content: flex-end;
+          flex-wrap: wrap;
         }
 
         @media (max-width: 980px) {
-          .tkh-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .tkh-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .tkh-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
         }
 
         @media (max-width: 620px) {
-          .tkh-page { padding: 12px; }
-          .tkh-panel { padding: 13px; border-radius: 18px; }
-          .tkh-actions, .tkh-upload-actions { width: 100%; }
-          .tkh-actions .tkh-btn, .tkh-upload-actions .tkh-btn { width: 100%; }
-          .tkh-grid, .tkh-form-grid { grid-template-columns: 1fr; }
-          .tkh-summary-grid { grid-template-columns: 1fr 1fr; }
-          .tkh-card-head { flex-direction: column; }
-          .tkh-badges { flex-direction: row; align-items: center; flex-wrap: wrap; }
-          .tkh-card-actions .tkh-btn { flex: 1 1 auto; }
+          .video-highlights-page .header-title h1 {
+            font-size: clamp(1.45rem, 7vw, 2.05rem);
+          }
+
+          /* Mobile ribbon: keep only the page title so it does not crowd the badge/home button. */
+          .tkh-ribbon-subtitle-line {
+            display: none !important;
+          }
+
+          .tkh-header-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.55rem;
+          }
+
+          .tkh-header-actions .tkh-btn {
+            width: 100%;
+            min-width: 0;
+          }
+
+          .tkh-view-toggle {
+            width: 100%;
+          }
+
+          .tkh-view-toggle .pill-toggle {
+            flex: 1 1 0;
+            min-width: 0;
+          }
+
+          .tkh-compact-filter-row,
+          .tkh-form-grid,
+          .tkh-winner-two-col,
+          .tkh-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .tkh-card-top,
+          .tkh-winners-head,
+          .tkh-modal-head {
+            flex-direction: column;
+          }
+
+          .tkh-card-actions .tkh-btn,
+          .tkh-upload-actions .tkh-btn {
+            flex: 1 1 auto;
+          }
         }
       `}</style>
 
-      <div className="tkh-shell">
-        <section className="tkh-panel tkh-hero">
-          <div>
-            <h1 className="tkh-title">Video Highlights</h1>
-            <div className="tkh-subtitle">
-              Upload short match clips, review them safely, then vote for the best moments.
+      <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
+        <header className="header">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", width: "100%" }}>
+            <div className="header-title" style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0 }}>Video Highlights</h1>
+              <p className="subtitle tkh-ribbon-subtitle-line">
+                <strong>{isLeagueMode ? "League highlights" : "Friendly highlights"}</strong> • {teamContextText}
+              </p>
             </div>
-            <div className="tkh-subtitle">
-              Signed in as <strong>{identityName}</strong> • Role: <strong>{activeRole}</strong>
-            </div>
-            <div className="tkh-match-pill">Storage: video_highlights / {resolvedMatchId}</div>
-          </div>
-
-          <div className="tkh-actions">
             <button
-              type="button"
-              className="tkh-btn tkh-btn-primary"
-              onClick={() => setShowUploadModal(true)}
-              disabled={!canUpload}
-              title={canUpload ? "Upload a short highlight" : "Sign in as a player, captain, or admin to upload"}
+              className="secondary-btn"
+              onClick={onBack}
+              aria-label="Home"
+              title="Home"
+              style={{ minWidth: "46px", width: "46px", height: "46px", padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "1.05rem", flexShrink: 0 }}
             >
-              Upload clip
-            </button>
-            <button type="button" className="tkh-btn" onClick={loadHighlights} disabled={loadingHighlights}>
-              {loadingHighlights ? "Refreshing..." : "Refresh"}
-            </button>
-            <button type="button" className="tkh-btn" onClick={onBack}>
-              Back
+              🏠
             </button>
           </div>
-        </section>
-
-        {loadError && <section className="tkh-error-box">{loadError}</section>}
-
-        <section className="tkh-panel">
-          <div className="tkh-summary-grid">
-            <div className="tkh-summary-card">
-              <div className="tkh-summary-label">Approved clips</div>
-              <div className="tkh-summary-value">{approvedHighlights.length}</div>
-            </div>
-            <div className="tkh-summary-card">
-              <div className="tkh-summary-label">Pending review</div>
-              <div className="tkh-summary-value">{pendingHighlights.length}</div>
-            </div>
-            <div className="tkh-summary-card">
-              <div className="tkh-summary-label">Best skill</div>
-              <div className="tkh-summary-value">{archiveSelection.bestSkill?.playerName || "Pending"}</div>
-            </div>
-            <div className="tkh-summary-card">
-              <div className="tkh-summary-label">Best save</div>
-              <div className="tkh-summary-value">{archiveSelection.bestSave?.playerName || "Pending"}</div>
-            </div>
-          </div>
-        </section>
-
-        <section className="tkh-panel">
-          <div className="tkh-tabs">
-            <button
-              type="button"
-              className={`tkh-tab ${selectedTab === "approved" ? "is-active" : ""}`}
-              onClick={() => setSelectedTab("approved")}
-            >
-              Approved ({approvedHighlights.length})
-            </button>
-
-            {isModerator && (
-              <button
-                type="button"
-                className={`tkh-tab ${selectedTab === "pending" ? "is-active" : ""}`}
-                onClick={() => setSelectedTab("pending")}
-              >
-                Pending ({pendingHighlights.length})
-              </button>
-            )}
-
-            {isModerator && rejectedHighlights.length > 0 && (
-              <button
-                type="button"
-                className={`tkh-tab ${selectedTab === "rejected" ? "is-active" : ""}`}
-                onClick={() => setSelectedTab("rejected")}
-              >
-                Rejected ({rejectedHighlights.length})
-              </button>
-            )}
-          </div>
-
-          <div className="tkh-filters" style={{ marginTop: 10 }}>
-            {["all", "goal", "save", "skill", "other"].map((filter) => (
-              <button
-                key={filter}
-                type="button"
-                className={`tkh-filter ${selectedFilter === filter ? "is-active" : ""}`}
-                onClick={() => setSelectedFilter(filter)}
-              >
-                {filter === "all" ? "All" : toTitleCaseLoose(filter)}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {!isModerator && pendingHighlights.length > 0 && (
-          <section className="tkh-system-note">
-            {pendingHighlights.length} uploaded clip{pendingHighlights.length === 1 ? " is" : "s are"} waiting for captain/admin review.
-          </section>
-        )}
-
-        {visibleHighlights.length === 0 ? (
-          <section className="tkh-panel tkh-empty">
-            {selectedTab === "pending"
-              ? "No clips are waiting for review."
-              : selectedTab === "rejected"
-              ? "No rejected clips."
-              : "No approved highlights yet. Upload clips and approve them here."}
-          </section>
-        ) : (
-          <section className="tkh-grid">
-            {visibleHighlights.map((highlight) => (
-              <HighlightCard
-                key={highlight.id}
-                highlight={highlight}
-                voteCount={voteCounts[highlight.id] || 0}
-                isModerator={isModerator}
-                canVote={isLoggedIn}
-                userVoteForType={userVotes[highlight.normalizedType] || null}
-                onVote={castVote}
-                onApprove={handleApprove}
-                onReject={handleReject}
-                onDelete={handleDelete}
-              />
-            ))}
-          </section>
-        )}
-
-        <section className="tkh-panel">
-          <h3 style={{ margin: "0 0 10px" }}>End Match Day archive preview</h3>
-          <div className="tkh-meta-row">
-            <span>
-              Top goals: <strong>{archiveSelection.topGoals.map((g) => g.playerName).join(", ") || "Pending"}</strong>
-            </span>
-            <span>
-              Best skill: <strong>{archiveSelection.bestSkill?.playerName || "Pending"}</strong>
-            </span>
-            <span>
-              Best save: <strong>{archiveSelection.bestSave?.playerName || "Pending"}</strong>
-            </span>
-          </div>
-        </section>
+        </header>
       </div>
+
+      <header className="header tkh-page-intro">
+        <h2>Highlights hub</h2>
+        <p className="tkh-intro-copy">
+          Upload a short match clip, vote for the best moments, and check weekly winners.
+        </p>
+        <div className="tkh-feature-line">
+          <span>{isLeagueMode ? "League teams:" : "Featured match:"}</span>
+          <strong>{teamContextText}</strong>
+        </div>
+        <div className="tkh-header-actions">
+          <button
+            type="button"
+            className="tkh-btn tkh-btn-primary"
+            onClick={() => setShowUploadModal(true)}
+            disabled={!canUpload}
+            title={canUpload ? "Upload a short highlight" : "Sign in as a player, captain, or admin to upload"}
+          >
+            Upload
+          </button>
+          <button type="button" className="tkh-btn" onClick={loadHighlights} disabled={loadingHighlights}>
+            {loadingHighlights ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+      </header>
+
+      {loadError && <section className="card tkh-error-box">{loadError}</section>}
+
+      <section className="card tkh-card-section">
+        <div className="pill-toggle-group tkh-view-toggle" role="tablist" aria-label="Highlights view">
+          <button
+            type="button"
+            className={`pill-toggle ${mainTab === "highlights" ? "pill-toggle-active" : ""}`}
+            onClick={() => setMainTab("highlights")}
+          >
+            Highlights
+          </button>
+          <button
+            type="button"
+            className={`pill-toggle ${mainTab === "winners" ? "pill-toggle-active" : ""}`}
+            onClick={() => setMainTab("winners")}
+          >
+            Weekly Winners ⭐
+          </button>
+        </div>
+
+        {mainTab === "highlights" && (
+          <div className="tkh-compact-filter-row">
+            <label className="tkh-compact-select-label">
+              Review
+              <select
+                className="tkh-compact-select"
+                value={selectedTab}
+                onChange={(event) => setSelectedTab(event.target.value)}
+              >
+                <option value="approved">Approved ({approvedHighlights.length})</option>
+                {isModerator && <option value="pending">Pending ({pendingHighlights.length})</option>}
+                {isModerator && rejectedHighlights.length > 0 && (
+                  <option value="rejected">Rejected ({rejectedHighlights.length})</option>
+                )}
+              </select>
+            </label>
+
+            <label className="tkh-compact-select-label">
+              Type
+              <select
+                className="tkh-compact-select"
+                value={selectedFilter}
+                onChange={(event) => setSelectedFilter(event.target.value)}
+              >
+                {["all", "goal", "save", "skill", "other"].map((filter) => (
+                  <option key={filter} value={filter}>{getFilterLabel(filter)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
+        {mainTab === "highlights" && !isModerator && pendingHighlights.length > 0 && (
+          <div className="tkh-system-note">
+            {pendingHighlights.length} clip{pendingHighlights.length === 1 ? "" : "s"} waiting for review.
+          </div>
+        )}
+
+        {mainTab === "highlights" && (
+          <>
+            {visibleHighlights.length === 0 ? (
+              <div className="tkh-empty">
+                {selectedTab === "pending"
+                  ? "No clips waiting for review."
+                  : selectedTab === "rejected"
+                  ? "No rejected clips."
+                  : "No approved highlights yet."}
+              </div>
+            ) : (
+              <div className="tkh-grid">
+                {visibleHighlights.map((highlight) => (
+                  <HighlightCard
+                    key={highlight.id}
+                    highlight={highlight}
+                    teams={teams}
+                    matchType={matchType}
+                    voteCount={voteCounts[highlight.id] || 0}
+                    isModerator={isModerator}
+                    canVote={isLoggedIn}
+                    userVoteForType={userVotes[highlight.normalizedType] || null}
+                    onVote={castVote}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {mainTab === "winners" && (
+          <div className="tkh-winners-panel">
+            <div className="tkh-winners-head">
+              <div>
+                <h2>Weekly Winners</h2>
+                <p>Top clips retained for Goal of the Month or Goal of the Season voting later.</p>
+              </div>
+              <span className="tkh-winners-badge">Archive ready</span>
+            </div>
+
+            <div className="tkh-winner-section">
+              <h3>Top 2 goals</h3>
+              {archiveSelection.topGoals.length === 0 ? (
+                <div className="tkh-empty-mini">No goal winners yet.</div>
+              ) : (
+                <div className="tkh-grid tkh-winner-grid">
+                  {archiveSelection.topGoals.map((goal, index) => (
+                    <div key={goal.id} className="tkh-winner-card-wrap">
+                      <div className="tkh-winner-rank">#{index + 1} Goal</div>
+                      <HighlightCard
+                        highlight={goal}
+                        teams={teams}
+                        matchType={matchType}
+                        voteCount={voteCounts[goal.id] || 0}
+                        isModerator={isModerator}
+                        canVote={isLoggedIn}
+                        userVoteForType={userVotes[goal.normalizedType] || null}
+                        onVote={castVote}
+                        onApprove={handleApprove}
+                        onReject={handleReject}
+                        onDelete={handleDelete}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="tkh-winner-section tkh-winner-two-col">
+              <div>
+                <h3>Best save</h3>
+                {archiveSelection.bestSave ? (
+                  <HighlightCard
+                    highlight={archiveSelection.bestSave}
+                    teams={teams}
+                    matchType={matchType}
+                    voteCount={voteCounts[archiveSelection.bestSave.id] || 0}
+                    isModerator={isModerator}
+                    canVote={isLoggedIn}
+                    userVoteForType={userVotes[archiveSelection.bestSave.normalizedType] || null}
+                    onVote={castVote}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onDelete={handleDelete}
+                  />
+                ) : (
+                  <div className="tkh-empty-mini">No save winner yet.</div>
+                )}
+              </div>
+
+              <div>
+                <h3>Best skill</h3>
+                {archiveSelection.bestSkill ? (
+                  <HighlightCard
+                    highlight={archiveSelection.bestSkill}
+                    teams={teams}
+                    matchType={matchType}
+                    voteCount={voteCounts[archiveSelection.bestSkill.id] || 0}
+                    isModerator={isModerator}
+                    canVote={isLoggedIn}
+                    userVoteForType={userVotes[archiveSelection.bestSkill.normalizedType] || null}
+                    onVote={castVote}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onDelete={handleDelete}
+                  />
+                ) : (
+                  <div className="tkh-empty-mini">No skill winner yet.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="tkh-cleanup-note">
+              Future cleanup rule: keep the top 2 goals, 1 save, and 1 skill after admin notification/download approval.
+            </div>
+          </div>
+        )}
+
+        <div className="tkh-archive">
+          <span>Top goals kept: <strong>{archiveSelection.topGoals.map((g) => g.playerName).join(", ") || "Pending"}</strong></span>
+          <span>Best skill: <strong>{archiveSelection.bestSkill?.playerName || "Pending"}</strong></span>
+          <span>Best save: <strong>{archiveSelection.bestSave?.playerName || "Pending"}</strong></span>
+        </div>
+      </section>
 
       {showUploadModal && (
         <div className="tkh-modal-backdrop">
@@ -1635,7 +2008,7 @@ export function ViewHighlightsPage({
               <div>
                 <h2 className="tkh-modal-title">Upload clip</h2>
                 <div className="tkh-help">
-                  Short match highlights only. Clips go to pending review before the team can see them.
+                  Metadata can be completed later by admin/captain.
                 </div>
               </div>
               <button type="button" className="tkh-btn" onClick={closeUploadModal} disabled={uploading}>
@@ -1655,12 +2028,12 @@ export function ViewHighlightsPage({
                   disabled={uploading}
                 />
                 <div className="tkh-help">
-                  Maximum {MAX_VIDEO_SECONDS}s and {formatFileSize(MAX_VIDEO_BYTES)}. Ideal: {IDEAL_MIN_SECONDS}–{IDEAL_MAX_SECONDS}s.
+                  Max {MAX_VIDEO_SECONDS}s / {formatFileSize(MAX_VIDEO_BYTES)}.
                 </div>
               </div>
 
               <div className="tkh-field">
-                <label>Highlight type</label>
+                <label>Type</label>
                 <select className="tkh-select" value={clipType} onChange={(e) => setClipType(e.target.value)} disabled={uploading}>
                   <option value="goal">Goal</option>
                   <option value="save">Save</option>
@@ -1676,7 +2049,7 @@ export function ViewHighlightsPage({
                   list="tkh-player-options"
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="Select or type player"
+                  placeholder="Optional"
                   disabled={uploading}
                 />
                 <datalist id="tkh-player-options">
@@ -1773,7 +2146,7 @@ export function ViewHighlightsPage({
                 onClick={handleSubmitUpload}
                 disabled={uploading || !clipFile}
               >
-                {uploading ? "Uploading..." : "Submit for review"}
+                {uploading ? "Uploading..." : "Submit"}
               </button>
             </div>
           </div>
@@ -1783,4 +2156,4 @@ export function ViewHighlightsPage({
   );
 }
 
-export default ViewHighlightsPage;
+export default VideoHighlightsPage;

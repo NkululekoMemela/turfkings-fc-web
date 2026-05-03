@@ -13,8 +13,8 @@ import { PeerReviewPage } from "./pages/PeerReviewPage.jsx";
 import { MigrationPage } from "./pages/MigrationPage.jsx";
 import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
-import ViewHighlightsPage from "./pages/ViewHighlightsPage.jsx";
-import VideoHighlightsRepository from "./storage/VideohighlightsRepository.js";
+import VideoHighlightsPage from "./pages/VideoHighlightsPage.jsx";
+import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
 import BottomNav from "./components/BottomNav.jsx";
 import {
   MATCH_MODE as MATCH_TYPE,
@@ -5201,7 +5201,7 @@ export default function App() {
       )}
 
       {page === PAGE_VIEW_HIGHLIGHTS && (
-        <ViewHighlightsPage
+        <VideoHighlightsPage
           matchId={currentVideoHighlightsMatchId}
           identity={pageIdentity}
           activeRole={activeRole}

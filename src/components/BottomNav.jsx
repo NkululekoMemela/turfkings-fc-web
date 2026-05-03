@@ -15,6 +15,7 @@ const items = [
   { key: "peer-review", emoji: "⭐", label: "Rate" },
   { key: "player-cards", emoji: "🪪", label: "Cards" },
   { key: "news", emoji: "📰", label: "News" },
+  { key: "view-highlights", image: "/videotape.png", label: "Videos" },
   { key: "match-signup", emoji: "💳", label: "Pay" },
 ];
 
