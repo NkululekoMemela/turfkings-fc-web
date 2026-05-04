@@ -4480,17 +4480,18 @@ export default function App() {
         currentMatch: effectiveLiveMatch,
       });
 
-    const cameraMatchIsLive = Boolean(
-      hasLiveMatch ||
-        running ||
-        page === PAGE_LIVE ||
-        pendingMatchStartContext
-    );
-
+    // CAMERA PAYLOAD V3:
+    // For this camera test, a tap on the TurfKings lens button means the user
+    // is intentionally opening the official recording-device flow.
+    // MainActivity.kt requires sourceApp=TurfKings + matchIsLive=true + matchId.
+    // The matchId MUST be the video_highlights document id because Android listens at:
+    // video_highlights/{matchId}/capture_requests
+    const cameraPayloadVersion = "camera_payload_v3_force_official_recording_device";
     const hasMatchSides = Boolean(launchTeams.teamAId && launchTeams.teamBId);
-    const isOfficialMatchLive = Boolean(cameraMatchIsLive && hasMatchSides && recordingMatchId);
+    const isOfficialMatchLive = Boolean(recordingMatchId && hasMatchSides);
 
     const payload = {
+      payloadVersion: cameraPayloadVersion,
       sourceApp: "TurfKings",
       productName: "5 Asides Near Me",
       teamName: "Turf Kings FC",
@@ -4498,10 +4499,9 @@ export default function App() {
       recordingMode: "match_recording_device",
       confirmedRecordingRequired: true,
       cameraAppMode: "recording_device",
+      isOfficial: true,
+      officialContext: true,
 
-      // IMPORTANT:
-      // Android MainActivity listens to video_highlights/{matchId}/capture_requests.
-      // So matchId must be the video_highlights document ID, not the older tk-season-match id.
       matchIsLive: isOfficialMatchLive,
       matchId: recordingMatchId,
       videoHighlightsMatchId: recordingMatchId,
@@ -4535,7 +4535,7 @@ export default function App() {
       openedAtISO: new Date().toISOString(),
     };
 
-    console.log("[TK CAMERA] Opening camera with payload:", payload);
+    console.log("[TK CAMERA] PAYLOAD V3 opening camera:", payload);
 
     const launchUrl = `${CAMERA_APP_DEEP_LINK_SCHEME}?payload=${encodeURIComponent(
       JSON.stringify(payload)
