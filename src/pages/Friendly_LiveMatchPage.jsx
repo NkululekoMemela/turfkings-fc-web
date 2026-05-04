@@ -2505,52 +2505,82 @@ export function FriendlyLiveMatchPage({
       eventId: requestId,
       matchId: resolvedVideoHighlightsMatchId,
       type: "goal",
-      status: "pending_metadata",
+      status: "requested",
+      captureLifecycleStatus: "requested",
       timeSeconds: elapsedSeconds,
     };
 
     setActiveGoalCaptureRequest(optimisticRequest);
 
-    VideoHighlightsRepository.createCaptureRequestForMatchEvent({
-      matchId: resolvedVideoHighlightsMatchId,
-      eventId: requestId,
-      type: "goal",
-      requestedBy: getIdentityKey(identity),
-      requestedByName: getIdentityDisplayName(identity),
-      preRollSeconds: 15,
-      postRollSeconds: 5,
-      status: "pending_metadata",
-      event: {
-        id: requestId,
+    // [TK_CAMERA_TRIGGER]
+    // Send the capture request directly to the exact Firestore path the Android camera listens to.
+    // This fires immediately when Record Goal is clicked, before scorer/assist metadata is collected.
+    const captureRef = doc(
+      db,
+      "video_highlights",
+      resolvedVideoHighlightsMatchId,
+      "capture_requests",
+      requestId
+    );
+
+    setDoc(
+      captureRef,
+      {
+        requestId,
         eventId: requestId,
+        matchId: resolvedVideoHighlightsMatchId,
         type: "goal",
-        status: "pending_metadata",
+        tag: "goal",
+        status: "requested",
+        captureLifecycleStatus: "requested",
+        captureSource: "turfkings_live_match_page",
         captureStage: "record_goal_clicked",
         metadataStatus: "pending",
-        matchNo: currentMatchNo,
-        matchType: "FRIENDLY",
-        gameFormat: gameFormat || "5_V_5",
-        timeSeconds: elapsedSeconds,
-        scoreBefore,
+        requestedBy: getIdentityKey(identity) || "unknown",
+        requestedByName: getIdentityDisplayName(identity),
+        requestedAt: serverTimestamp(),
+        requestedAtMillis: Date.now(),
+        preRollSeconds: 15,
+        postRollSeconds: 5,
+        event: {
+          id: requestId,
+          eventId: requestId,
+          type: "goal",
+          tag: "goal",
+          status: "requested",
+          captureLifecycleStatus: "requested",
+          captureStage: "record_goal_clicked",
+          metadataStatus: "pending",
+          matchNo: currentMatchNo,
+          matchType: "FRIENDLY",
+          gameFormat: gameFormat || "5_V_5",
+          timeSeconds: elapsedSeconds,
+          scoreBefore,
+        },
+        metadata: {
+          metadataStatus: "pending",
+          trigger: "record_goal_clicked",
+          scorer: null,
+          assist: null,
+          teamId: null,
+          teamName: null,
+        },
+        matchContext: {
+          ...basicSummary,
+          matchId: resolvedVideoHighlightsMatchId,
+          scoreBefore,
+        },
       },
-      metadata: {
-        metadataStatus: "pending",
-        trigger: "record_goal_clicked",
-        scorer: null,
-        assist: null,
-        teamId: null,
-        teamName: null,
-      },
-      matchContext: {
-        ...basicSummary,
-        scoreBefore,
-      },
-    })
-      .then((created) => {
-        if (created?.requestId) setActiveGoalCaptureRequest(created);
+      { merge: true }
+    )
+      .then(() => {
+        console.log("[TK_CAMERA_TRIGGER] capture request created", {
+          matchId: resolvedVideoHighlightsMatchId,
+          requestId,
+        });
       })
       .catch((err) => {
-        console.warn("[TK AUTO-CAPTURE] Failed to create immediate goal capture request:", err);
+        console.warn("[TK_CAMERA_TRIGGER] Failed to create immediate goal capture request:", err);
       });
 
     return optimisticRequest;
