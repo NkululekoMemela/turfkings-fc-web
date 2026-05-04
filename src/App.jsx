@@ -4470,10 +4470,6 @@ export default function App() {
       currentMatchNo: activeMatchNo,
     });
 
-    const isOfficialMatchLive =
-      Boolean(hasLiveMatch || running) &&
-      Boolean(launchTeams.teamAId && launchTeams.teamBId);
-
     const recordingMatchId =
       currentVideoHighlightsMatchId ||
       buildVideoHighlightsMatchId({
@@ -4484,6 +4480,16 @@ export default function App() {
         currentMatch: effectiveLiveMatch,
       });
 
+    const cameraMatchIsLive = Boolean(
+      hasLiveMatch ||
+        running ||
+        page === PAGE_LIVE ||
+        pendingMatchStartContext
+    );
+
+    const hasMatchSides = Boolean(launchTeams.teamAId && launchTeams.teamBId);
+    const isOfficialMatchLive = Boolean(cameraMatchIsLive && hasMatchSides && recordingMatchId);
+
     const payload = {
       sourceApp: "TurfKings",
       productName: "5 Asides Near Me",
@@ -4492,11 +4498,17 @@ export default function App() {
       recordingMode: "match_recording_device",
       confirmedRecordingRequired: true,
       cameraAppMode: "recording_device",
+
+      // IMPORTANT:
+      // Android MainActivity listens to video_highlights/{matchId}/capture_requests.
+      // So matchId must be the video_highlights document ID, not the older tk-season-match id.
       matchIsLive: isOfficialMatchLive,
-      canUseOutsideOfficialMatch: true,
-      matchId: `tk-${activeSeasonId || "season"}-${activeMatchNo || 1}`,
+      matchId: recordingMatchId,
       videoHighlightsMatchId: recordingMatchId,
       currentVideoHighlightsMatchId: recordingMatchId,
+      legacyMatchId: `tk-${activeSeasonId || "season"}-${activeMatchNo || 1}`,
+
+      canUseOutsideOfficialMatch: true,
       matchNo: Number(activeMatchNo || 1),
       seasonId: activeSeasonId || null,
       matchType: matchType || MATCH_TYPE.FRIENDLY,
@@ -4522,6 +4534,8 @@ export default function App() {
       returnUrl: "turfkings://camera-return",
       openedAtISO: new Date().toISOString(),
     };
+
+    console.log("[TK CAMERA] Opening camera with payload:", payload);
 
     const launchUrl = `${CAMERA_APP_DEEP_LINK_SCHEME}?payload=${encodeURIComponent(
       JSON.stringify(payload)
