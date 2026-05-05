@@ -817,11 +817,22 @@ export function LandingPage({
                 style={tileButtonStyle(isMobile)}
               >
                 {renderTileContent({
-                  isMobile,
-                  icon: "🧩",
-                  desktopLines: ["Lineups &", "Formations"],
-                  mobileLines: ["Lineups &", "Formations"],
-                })}
+                isMobile,
+                icon: (
+                  <img
+                    src="/formations-icon.png"
+                    alt=""
+                    style={{
+                      width: isMobile ? 30 : 26,
+                      height: isMobile ? 30 : 26,
+                      objectFit: "contain",
+                    }}
+                    draggable="false"
+                  />
+                ),
+                desktopLines: ["Lineups &", "Formations"],
+                mobileLines: ["Lineups &", "Formations"],
+              })}
               </button>
 
               <button
