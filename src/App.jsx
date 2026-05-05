@@ -14,6 +14,7 @@ import { MigrationPage } from "./pages/MigrationPage.jsx";
 import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import VideoHighlightsPage from "./pages/VideoHighlightsPage.jsx";
+import HomePage from "./pages/HomePage.jsx";
 import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
 import BottomNav from "./components/BottomNav.jsx";
 import {
@@ -54,6 +55,7 @@ import { db } from "./firebaseConfig.js";
 import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 
 // Page constants
+const PAGE_HOME = "home";
 const PAGE_ENTRY = "entry";
 const PAGE_LANDING = "landing";
 const PAGE_LIVE = "live";
@@ -1852,7 +1854,7 @@ function getMatchSecondsForType(matchSecondsByType, rawMatchType) {
 }
 
 export default function App() {
-  const [page, setPage] = useState(PAGE_ENTRY);
+  const [page, setPage] = useState(PAGE_HOME);
 
   const [identity, setIdentity] = useState(() => {
     if (typeof window === "undefined") return null;
@@ -5117,12 +5119,33 @@ export default function App() {
         </button>
       )}
 
+      {page === PAGE_HOME && (
+        <HomePage
+          onRegisterClub={() => {
+            window.alert("Club registration wizard is coming next.");
+          }}
+          onFindClub={() => {
+            window.alert("Club search will be connected next.");
+          }}
+          onBrowseClub={(club) => {
+            if (club?.id === "turf-kings") {
+              setPage(PAGE_ENTRY);
+              return;
+            }
+
+            window.alert(`${club?.name || "This club"} profile is coming next.`);
+          }}
+          onEnterTurfKings={() => setPage(PAGE_ENTRY)}
+        />
+      )}
+
       {page === PAGE_ENTRY && (
         <EntryPage
           identity={identity}
           members={members}
           onComplete={handleEntryComplete}
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}
+          onGoHome={() => setPage(PAGE_HOME)}
         />
       )}
 
@@ -5196,6 +5219,7 @@ export default function App() {
           members={members}
           onComplete={handleEntryComplete}
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}
+          onGoHome={() => setPage(PAGE_HOME)}
         />
       )}
 

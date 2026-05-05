@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 
+const FANM_HOME_LOGO = "/HomePage/Logo_icon.jpeg";
+
 import { auth, signInWithGoogle } from "../firebaseConfig";
 import { db } from "../firebaseConfig";
 import {
@@ -395,7 +397,7 @@ async function clearWithdrawnPlayerPrivateDetails({ memberId = "", playerId = ""
   }
 }
 
-export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
+export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }) {
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -1264,6 +1266,42 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
         .tk-admin-notification-minimize { border: 0; border-radius: 999px; padding: 0.42rem 0.72rem; color: #bae6fd; font-size: 0.76rem; font-weight: 900; cursor: pointer; background: rgba(14,165,233,0.13); }
         .tk-admin-notification-primary { border: 0; border-radius: 999px; padding: 0.6rem 1rem; color: #022c22; font-weight: 900; cursor: pointer; background: linear-gradient(90deg, #22d3ee, #34d399); box-shadow: 0 10px 26px rgba(34,211,238,0.18); }
         .tk-admin-notification-secondary { border: 1px solid rgba(148,163,184,0.34); border-radius: 999px; padding: 0.6rem 1rem; color: #e2e8f0; font-weight: 850; cursor: pointer; background: rgba(15,23,42,0.7); }
+
+        .tk-entry-signedin-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.85rem;
+          margin-top: 0.35rem;
+        }
+        .tk-entry-home-btn {
+          flex: 0 0 auto;
+          width: 46px;
+          height: 46px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.36);
+          background: rgba(255,255,255,0.94);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px;
+          cursor: pointer;
+          box-shadow: 0 12px 26px rgba(2,6,23,0.28), 0 0 0 1px rgba(34,211,238,0.08);
+          transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+          touch-action: manipulation;
+        }
+        .tk-entry-home-btn:hover {
+          transform: translateY(-1px);
+          border-color: rgba(34,211,238,0.65);
+          box-shadow: 0 16px 32px rgba(2,6,23,0.34), 0 0 18px rgba(34,211,238,0.18);
+        }
+        .tk-entry-home-btn img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 999px;
+          display: block;
+        }
         @media (max-width: 520px) { .tk-admin-notification-dock { right: 0.62rem; top: calc(4.45rem + env(safe-area-inset-top)); } .tk-admin-notification-card { width: min(330px, calc(100vw - 1.24rem)); border-radius: 19px; } }
       `}</style>
       <header className="header">
@@ -1280,10 +1318,24 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding }) {
         )}
 
         {currentUser && (
-          <p className="muted small">
-            Currently signed in as{" "}
-            <strong>{currentUser.displayName || currentUser.email}</strong>.
-          </p>
+          <div className="tk-entry-signedin-row">
+            <p className="muted small" style={{ margin: 0 }}>
+              Currently signed in as{" "}
+              <strong>{currentUser.displayName || currentUser.email}</strong>.
+            </p>
+
+            {onGoHome && (
+              <button
+                type="button"
+                className="tk-entry-home-btn"
+                onClick={onGoHome}
+                title="Back to 5 Asides Near Me HomePage"
+                aria-label="Back to 5 Asides Near Me HomePage"
+              >
+                <img src={FANM_HOME_LOGO} alt="5 Asides Near Me" />
+              </button>
+            )}
+          </div>
         )}
       </header>
 
