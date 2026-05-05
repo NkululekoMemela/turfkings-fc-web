@@ -718,7 +718,7 @@ export function LandingPage({
                 isMobile,
                 icon: (
                   <img
-                    src="/strategy.png"
+                    src="/formations-icon.png"
                     alt=""
                     style={{
                       width: isMobile ? 30 : 26,
