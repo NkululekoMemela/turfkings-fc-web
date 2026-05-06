@@ -9,7 +9,7 @@ import React, { useEffect, useState } from "react";
 const items = [
   { key: "landing", emoji: "🏡", label: "Home" },
   { key: "stats", emoji: "📊", label: "Stats" },
-  { key: "live", emoji: "⚽", label: "Live" },
+  //{ key: "live", emoji: "⚽", label: "Live" },
   { key: "squads", emoji: "👥", label: "Squads" },
   { key: "formations", image: "/formations-icon.png", label: "Lineups" },
   { key: "peer-review", emoji: "⭐", label: "Rate" },
