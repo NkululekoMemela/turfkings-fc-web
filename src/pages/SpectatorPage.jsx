@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { db } from "../firebaseConfig.js";
+import { getMatchDoc } from "../core/clubFirestorePaths";
 import { doc, onSnapshot } from "firebase/firestore";
 
 // same helper used in LiveMatchPage (reimplemented here)
@@ -41,7 +42,7 @@ export function SpectatorPage(props) {
   const [localSecondsLeft, setLocalSecondsLeft] = useState(null);
 
   useEffect(() => {
-    const ref = doc(db, "matches", "current");
+    const ref = getMatchDoc(db, "current");
 
     const unsub = onSnapshot(
       ref,
