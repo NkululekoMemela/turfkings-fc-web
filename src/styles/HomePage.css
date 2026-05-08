@@ -2382,3 +2382,195 @@
     gap: 8px !important;
   }
 }
+
+/* ---- HomePage Buttons 3 */
+
+.fanm-entry-card {
+  min-height: 118px;
+  text-align: left;
+  background: linear-gradient(
+    180deg,
+    rgba(7, 24, 48, 0.98),
+    rgba(5, 20, 40, 0.98)
+  );
+  box-shadow: none;
+}
+
+.fanm-entry-card--primary {
+  background: linear-gradient(
+    135deg,
+    rgba(10, 72, 66, 0.92),
+    rgba(12, 38, 72, 0.96)
+  );
+}
+
+.fanm-entry-card__row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.fanm-entry-card__icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 1.4rem;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.fanm-entry-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fanm-entry-card__main strong {
+  font-size: 1rem;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.fanm-entry-card__main small {
+  font-size: 0.8rem;
+  line-height: 1.15;
+  opacity: 0.72;
+}
+
+@media (max-width: 720px) {
+  .fanm-entry-card {
+    min-height: 92px;
+  }
+
+  .fanm-entry-card__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    font-size: 1.25rem;
+  }
+}
+
+/* =========================================================
+   2026-05-07 SECOND THEME: STADIUM DUSK
+   This replaces the overly pale warm mode.
+
+   Design goal:
+   - Keep the current dark theme as the main cinematic look.
+   - Give the second mode a calmer premium dusk backdrop.
+   - Avoid loud pale backgrounds.
+   - Keep all major cards dark enough to feel premium.
+   - Add slightly warmer, softer contrast so it feels different from deep mode.
+========================================================= */
+
+.fanm-home-shell.fanm-theme-deep {
+  --shell-bg:
+    radial-gradient(circle at 8% 8%, rgba(34, 197, 94, 0.16), transparent 30%),
+    radial-gradient(circle at 88% 12%, rgba(56, 189, 248, 0.14), transparent 32%),
+    radial-gradient(circle at 64% 92%, rgba(245, 158, 11, 0.10), transparent 34%),
+    linear-gradient(135deg, #102334 0%, #17334a 44%, #21394a 100%) !important;
+
+  --surface: rgba(22, 43, 61, 0.88) !important;
+  --surface-strong: rgba(17, 35, 52, 0.96) !important;
+  --surface-soft: rgba(24, 49, 70, 0.72) !important;
+  --surface-tint: rgba(22, 78, 76, 0.36) !important;
+
+  --ink: #eef7ff !important;
+  --ink-strong: #ffffff !important;
+  --muted: rgba(219, 233, 244, 0.76) !important;
+  --muted-strong: rgba(235, 244, 252, 0.88) !important;
+
+  --line: rgba(255, 255, 255, 0.12) !important;
+  --line-strong: rgba(255, 255, 255, 0.20) !important;
+
+  --glass-dark: rgba(11, 24, 39, 0.88) !important;
+  --glass-dark-line: rgba(255, 255, 255, 0.16) !important;
+
+  --primary: #36d66b !important;
+  --primary-2: #b5df3a !important;
+  --accent: #67d8cc !important;
+
+  --hero-photo-overlay:
+    linear-gradient(180deg, rgba(8, 17, 30, 0.28), rgba(8, 17, 30, 0.74)) !important;
+}
+
+/* Dusk mode should feel softer, not brighter. */
+.fanm-home-shell.fanm-theme-deep {
+  color: var(--ink) !important;
+}
+
+/* Shared premium panels in the second theme. */
+.fanm-home-shell.fanm-theme-deep .fanm-topbar,
+.fanm-home-shell.fanm-theme-deep .fanm-hero__content,
+.fanm-home-shell.fanm-theme-deep .fanm-section,
+.fanm-home-shell.fanm-theme-deep .fanm-final-cta,
+.fanm-home-shell.fanm-theme-deep .fanm-brand-showcase,
+.fanm-home-shell.fanm-theme-deep .fanm-entry-brand-strip {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(103, 216, 204, 0.055), transparent 36%),
+    rgba(17, 35, 52, 0.90) !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  box-shadow:
+    0 24px 60px rgba(2, 8, 18, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+}
+
+/* Keep topbar crisp and calm. */
+.fanm-home-shell.fanm-theme-deep .fanm-topbar {
+  background:
+    linear-gradient(135deg, rgba(16, 35, 53, 0.96), rgba(12, 28, 44, 0.96)) !important;
+}
+
+/* Hero photo should remain rich, not washed out. */
+.fanm-home-shell.fanm-theme-deep .fanm-hero-panel,
+.fanm-home-shell.fanm-theme-deep .fanm-hero-panel--photo {
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  box-shadow:
+    0 26px 70px rgba(2, 8, 18, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+}
+
+/* Entry buttons: keep them button-like, calmer, no ugly shadow. */
+.fanm-home-shell.fanm-theme-deep .fanm-entry-card {
+  background:
+    linear-gradient(180deg, rgba(13, 29, 47, 0.98), rgba(9, 23, 39, 0.98)) !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  box-shadow: none !important;
+}
+
+.fanm-home-shell.fanm-theme-deep .fanm-entry-card--primary {
+  background:
+    linear-gradient(135deg, rgba(20, 84, 74, 0.90), rgba(15, 43, 68, 0.96)) !important;
+  border-color: rgba(54, 214, 107, 0.30) !important;
+}
+
+/* Club cards and inner cards stay premium but slightly warmer. */
+.fanm-home-shell.fanm-theme-deep .fanm-club-card,
+.fanm-home-shell.fanm-theme-deep .fanm-register-club-tile,
+.fanm-home-shell.fanm-theme-deep .fanm-feature-card,
+.fanm-home-shell.fanm-theme-deep .fanm-video-card,
+.fanm-home-shell.fanm-theme-deep .fanm-steps-card,
+.fanm-home-shell.fanm-theme-deep .fanm-onboarding-copy,
+.fanm-home-shell.fanm-theme-deep .fanm-map-list > div {
+  background: rgba(15, 34, 53, 0.86) !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+}
+
+/* Logo showcase remains clean, but not glaring white. */
+.fanm-home-shell.fanm-theme-deep .fanm-entry-brand-strip__logo,
+.fanm-home-shell.fanm-theme-deep .fanm-full-logo-card {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(235, 245, 240, 0.86)) !important;
+}
+
+/* Theme toggle in second theme gets a subtle active look. */
+.fanm-home-shell.fanm-theme-deep .fanm-theme-toggle {
+  border-color: rgba(103, 216, 204, 0.34) !important;
+  background: rgba(103, 216, 204, 0.11) !important;
+  color: #ffffff !important;
+}
