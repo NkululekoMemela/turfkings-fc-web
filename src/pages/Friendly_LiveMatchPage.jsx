@@ -3,6 +3,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import { db } from "../firebaseConfig.js";
 import {
+  getMatchDoc,
+  getPlayerPhotosCollection,
+} from "../core/clubFirestorePaths";
+import {
   doc,
   updateDoc,
   setDoc,
@@ -870,7 +874,7 @@ function getRoleBadgeStyle(roleTag = "", isSub = false) {
 
 async function hardReset5v5MatchDoc(summaryInfo, matchSeconds) {
   try {
-    const ref = doc(db, "matches", MATCH_DOC_ID);
+    const ref = getMatchDoc(db, MATCH_DOC_ID);
     await setDoc(
       ref,
       {
@@ -906,7 +910,7 @@ async function appendEventToFirestore(
   matchSeconds
 ) {
   try {
-    const ref = doc(db, "matches", MATCH_DOC_ID);
+    const ref = getMatchDoc(db, MATCH_DOC_ID);
 
     const common = {
       ...summaryInfo,
@@ -948,7 +952,7 @@ async function overwriteEventsInFirestore(
   matchSeconds
 ) {
   try {
-    const ref = doc(db, "matches", MATCH_DOC_ID);
+    const ref = getMatchDoc(db, MATCH_DOC_ID);
     await setDoc(
       ref,
       {
@@ -977,7 +981,7 @@ async function writeFinalSummaryToFirestore(
   matchSeconds
 ) {
   try {
-    const ref = doc(db, "matches", MATCH_DOC_ID);
+    const ref = getMatchDoc(db, MATCH_DOC_ID);
     await setDoc(
       ref,
       {
@@ -1775,7 +1779,7 @@ export function FriendlyLiveMatchPage({
 
     async function loadPhotos() {
       try {
-        const snap = await getDocs(collection(db, "playerPhotos"));
+        const snap = await getDocs(getPlayerPhotosCollection(db));
         if (cancelled) return;
 
         const loaded = {};
@@ -2064,7 +2068,7 @@ export function FriendlyLiveMatchPage({
 
     const pushTimer = async () => {
       try {
-        const ref = doc(db, "matches", MATCH_DOC_ID);
+        const ref = getMatchDoc(db, MATCH_DOC_ID);
         await updateDoc(ref, {
           secondsLeft: Math.max(secondsLeft, 0),
           matchSeconds: matchSeconds ?? 0,
