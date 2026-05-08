@@ -6,6 +6,7 @@ import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
 import { useMemberNameMap } from "../core/nameMapping.js";
 import { db } from "../firebaseConfig.js";
+import { getPlayerPhotosCollection } from "../core/clubFirestorePaths";
 import {
   collection,
   deleteDoc,
@@ -339,7 +340,7 @@ export function NewsPage({
       try {
         const [playersSnap, photosSnap] = await Promise.all([
           getDocs(collection(db, "players")),
-          getDocs(collection(db, "playerPhotos")),
+          getDocs(getPlayerPhotosCollection(db)),
         ]);
 
         if (!isMounted) return;

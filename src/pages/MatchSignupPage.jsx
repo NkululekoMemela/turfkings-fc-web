@@ -12,6 +12,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import { getPlayerPhotosCollection } from "../core/clubFirestorePaths";
 
 const MIN_PLAYERS = 10;
 const MAX_PLAYERS = 25;
@@ -1086,7 +1087,7 @@ export default function MatchSignupPage({
 
     async function loadPhotos() {
       try {
-        const snap = await getDocs(collection(db, "playerPhotos"));
+        const snap = await getDocs(getPlayerPhotosCollection(db));
         if (cancelled) return;
 
         const loaded = {};

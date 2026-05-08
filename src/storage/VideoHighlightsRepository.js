@@ -38,7 +38,7 @@ const DEFAULT_CLEANUP_GRACE_HOURS = 24;
 const RECORDING_DEVICE_ONLINE_WINDOW_SECONDS = 45;
 
 function matchRef(matchId) {
-  return doc(db, "video_highlights", matchId);
+  return getClubDoc(db, CLUB_COLLECTIONS.videoHighlights, matchId);
 }
 
 const rawRef = (id) => collection(matchRef(id), "raw");
