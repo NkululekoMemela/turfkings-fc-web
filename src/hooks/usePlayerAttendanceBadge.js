@@ -2,6 +2,14 @@
 import { useEffect, useState } from "react";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import {
+  getClubStateDoc,
+  getPlayersCollection,
+  getPlayerPhotosCollection,
+  getPendingSignupsCollection,
+  getMatchSignupsCollection,
+} from "../core/clubFirestorePaths";
+
 
 function firstNameOf(value) {
   return String(value || "").trim().split(/\s+/).filter(Boolean)[0] || "";
@@ -253,7 +261,7 @@ export default function usePlayerAttendanceBadge(beneficiary) {
       }
 
       try {
-        const mainRef = doc(db, "appState_v2", "main");
+        const mainRef = getClubStateDoc(db);
         const mainSnap = await getDoc(mainRef);
 
         if (cancelled) return;

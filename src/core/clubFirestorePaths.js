@@ -1,9 +1,6 @@
 // src/core/clubFirestorePaths.js
 
-import {
-  collection,
-  doc,
-} from "firebase/firestore";
+import { collection, doc } from "firebase/firestore";
 
 import {
   clubCollectionPath,
@@ -22,10 +19,7 @@ export function getClubCollection(
   collectionName,
   clubId = DEFAULT_CLUB_ID
 ) {
-  return collection(
-    db,
-    clubCollectionPath(collectionName, clubId)
-  );
+  return collection(db, clubCollectionPath(collectionName, clubId));
 }
 
 export function getClubDoc(
@@ -34,104 +28,56 @@ export function getClubDoc(
   docId,
   clubId = DEFAULT_CLUB_ID
 ) {
-  return doc(
-    db,
-    clubDocPath(collectionName, docId, clubId)
-  );
+  return doc(db, clubDocPath(collectionName, docId, clubId));
 }
 
-/*
-|--------------------------------------------------------------------------
-| Convenience helpers
-|--------------------------------------------------------------------------
-*/
+export function getPlayersCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.players, clubId);
+}
 
-export function getPlayersCollection(
+export function getPlayerDoc(db, playerId, clubId = DEFAULT_CLUB_ID) {
+  return getClubDoc(db, CLUB_COLLECTIONS.players, playerId, clubId);
+}
+
+export function getMembersCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.members, clubId);
+}
+
+export function getMatchSignupsCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.matchSignups, clubId);
+}
+
+export function getPendingSignupsCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.pendingSignups, clubId);
+}
+
+export function getPeerRatingsCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.peerRatings, clubId);
+}
+
+export function getPeerRatingBaselinesCollection(
   db,
   clubId = DEFAULT_CLUB_ID
 ) {
-  return getClubCollection(
-    db,
-    CLUB_COLLECTIONS.players,
-    clubId
-  );
+  return getClubCollection(db, CLUB_COLLECTIONS.peerRatingBaselines, clubId);
 }
 
-export function getPlayerDoc(
-  db,
-  playerId,
-  clubId = DEFAULT_CLUB_ID
-) {
-  return getClubDoc(
-    db,
-    CLUB_COLLECTIONS.players,
-    playerId,
-    clubId
-  );
+export function getPlayerPhotosCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.playerPhotos, clubId);
 }
 
-export function getMembersCollection(
-  db,
-  clubId = DEFAULT_CLUB_ID
-) {
-  return getClubCollection(
-    db,
-    CLUB_COLLECTIONS.members,
-    clubId
-  );
+export function getMatchesCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.matches, clubId);
 }
 
-export function getMatchSignupsCollection(
-  db,
-  clubId = DEFAULT_CLUB_ID
-) {
-  return getClubCollection(
-    db,
-    CLUB_COLLECTIONS.matchSignups,
-    clubId
-  );
+export function getMatchDoc(db, docId, clubId = DEFAULT_CLUB_ID) {
+  return getClubDoc(db, CLUB_COLLECTIONS.matches, docId, clubId);
 }
 
-export function getPeerRatingsCollection(
-  db,
-  clubId = DEFAULT_CLUB_ID
-) {
-  return getClubCollection(
-    db,
-    CLUB_COLLECTIONS.peerRatings,
-    clubId
-  );
+export function getNewsStoriesCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.newsStories, clubId);
 }
 
-export function getMatchesCollection(
-  db,
-  clubId = DEFAULT_CLUB_ID
-) {
-  return getClubCollection(
-    db,
-    CLUB_COLLECTIONS.matches,
-    clubId
-  );
-}
-
-export function getNewsStoriesCollection(
-  db,
-  clubId = DEFAULT_CLUB_ID
-) {
-  return getClubCollection(
-    db,
-    CLUB_COLLECTIONS.newsStories,
-    clubId
-  );
-}
-
-export function getVideoHighlightsCollection(
-  db,
-  clubId = DEFAULT_CLUB_ID
-) {
-  return getClubCollection(
-    db,
-    CLUB_COLLECTIONS.videoHighlights,
-    clubId
-  );
+export function getVideoHighlightsCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.videoHighlights, clubId);
 }

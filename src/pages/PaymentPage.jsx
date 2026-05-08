@@ -7,6 +7,10 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+// import { getClubDoc, CLUB_COLLECTIONS } from "../core/clubFirestorePaths";
+
+import { getClubDoc } from "../core/clubFirestorePaths";
+import { CLUB_COLLECTIONS } from "../core/clubPaths";
 
 const PAYMENT_METHOD_LABEL = "Yoco";
 const COST_PER_GAME_DEFAULT = 65;
@@ -290,7 +294,7 @@ export default function PaymentPage({
     setLoading(true);
     setError("");
 
-    const ref = doc(db, "matchSignups", signupDocId);
+    const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
 
     const unsub = onSnapshot(
       ref,
@@ -475,7 +479,7 @@ export default function PaymentPage({
         throw new Error("Yoco checkout did not return a redirect URL.");
       }
 
-      const ref = doc(db, "matchSignups", signupDocId);
+      const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
       setDoc(
         ref,
         {
@@ -543,7 +547,7 @@ export default function PaymentPage({
     setError("");
 
     try {
-      const ref = doc(db, "matchSignups", signupDocId);
+      const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
 
       await setDoc(
         ref,

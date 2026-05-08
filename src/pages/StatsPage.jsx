@@ -1,7 +1,11 @@
 // src/pages/StatsPage.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebaseConfig";
-import { collection, getDocs } from "firebase/firestore";
+import { getDocs } from "firebase/firestore";
+import {
+  getPlayersCollection,
+  getPlayerPhotosCollection,
+} from "../core/clubFirestorePaths";
 
 // ---------------- HELPERS ----------------
 function toTitleCase(name) {
@@ -479,7 +483,7 @@ export function StatsPage({
 
     async function loadPlayersRegistry() {
       try {
-        const playersSnap = await getDocs(collection(db, "players"));
+        const playersSnap = await getDocs(getPlayersCollection(db));
         if (!isMounted) return;
 
         const { mapNameToCanon, mapCanonToShort } = buildPlayersRegistry(playersSnap);
@@ -1293,7 +1297,7 @@ export function StatsPage({
   useEffect(() => {
     async function loadPhotos() {
       try {
-        const snap = await getDocs(collection(db, "playerPhotos"));
+        const snap = await getDocs(getPlayerPhotosCollection(db));
         const idx = {};
 
         const add = (k, url) => {

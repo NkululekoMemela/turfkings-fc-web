@@ -1,7 +1,8 @@
 // src/hooks/usePeerRatings.js
 import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { onSnapshot } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import { getPeerRatingsCollection } from "../core/clubFirestorePaths";
 
 function toNumberOrNull(v) {
   const n = Number(v);
@@ -34,15 +35,17 @@ function getStartOfWeekFromKey(weekKey) {
 
 function getCurrentWeekKey() {
   const now = new Date();
-  const day = now.getDay(); // 0 = Sunday
+  const day = now.getDay();
   const sunday = new Date(
     now.getFullYear(),
     now.getMonth(),
     now.getDate() - day
   );
+
   const y = sunday.getFullYear();
   const m = String(sunday.getMonth() + 1).padStart(2, "0");
   const d = String(sunday.getDate()).padStart(2, "0");
+
   return `${y}-${m}-${d}`;
 }
 
@@ -53,9 +56,7 @@ function getWeekDistanceFromCurrent(weekKey, currentWeekKey) {
   if (!a || !b) return null;
 
   const diffMs = b.getTime() - a.getTime();
-  const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
-
-  return diffWeeks;
+  return Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
 }
 
 function getRecencyWeight(weekKey, currentWeekKey) {
@@ -63,40 +64,19 @@ function getRecencyWeight(weekKey, currentWeekKey) {
 
   if (diffWeeks == null) return 0;
   if (diffWeeks < 0) return 0;
+  if (diffWeeks === 0) return 0.6;
+  if (diffWeeks === 1) return 0.2;
+  if (diffWeeks === 2) return 0.1;
 
-  if (diffWeeks === 0) return 0.6; // this week
-  if (diffWeeks === 1) return 0.2; // last week
-  if (diffWeeks === 2) return 0.1; // two weeks ago
-
-  return 0; // anything older ignored
+  return 0;
 }
 
-/**
- * Returns:
- * {
- *   [playerName]: {
- *      attackAvg,
- *      defenceAvg,
- *      gkAvg,
- *      voteCount,
- *      weightedVoteCount,
- *      hasCurrentWeekReview
- *   }
- * }
- *
- * Rules:
- * - only current season reviews are used
- * - current week reviews carry the highest weight
- * - older weeks decay fast
- * - previous-season reviews are ignored completely
- */
 export function usePeerRatings(activeSeasonId = null) {
   const [peerRatingsByPlayer, setPeerRatingsByPlayer] = useState({});
 
   useEffect(() => {
-    const colRef = collection(db, "peerRatings");
+    const colRef = getPeerRatingsCollection(db);
     const currentWeekKey = getCurrentWeekKey();
-    const activeSeasonKey = String(activeSeasonId || "").trim();
 
     const unsub = onSnapshot(colRef, (snap) => {
       const acc = {};
@@ -109,6 +89,7 @@ export function usePeerRatings(activeSeasonId = null) {
           d?.playerName ||
           d?.targetNameNormalized ||
           "";
+
         if (!rawName || typeof rawName !== "string") return;
 
         const weekKey = String(d?.weekKey || "").trim();
@@ -124,19 +105,15 @@ export function usePeerRatings(activeSeasonId = null) {
         if (!acc[key]) {
           acc[key] = {
             displayName: name,
-
             attackWeightedSum: 0,
             attackWeightTotal: 0,
             attackVotes: 0,
-
             defenceWeightedSum: 0,
             defenceWeightTotal: 0,
             defenceVotes: 0,
-
             gkWeightedSum: 0,
             gkWeightTotal: 0,
             gkVotes: 0,
-
             weightedVoteCount: 0,
             rawVoteCount: 0,
             hasCurrentWeekReview: false,
@@ -181,25 +158,19 @@ export function usePeerRatings(activeSeasonId = null) {
       const out = {};
 
       Object.values(acc).forEach((rec) => {
-        const attackAvg =
-          rec.attackWeightTotal > 0
-            ? rec.attackWeightedSum / rec.attackWeightTotal
-            : null;
-
-        const defenceAvg =
-          rec.defenceWeightTotal > 0
-            ? rec.defenceWeightedSum / rec.defenceWeightTotal
-            : null;
-
-        const gkAvg =
-          rec.gkWeightTotal > 0
-            ? rec.gkWeightedSum / rec.gkWeightTotal
-            : null;
-
         out[rec.displayName] = {
-          attackAvg,
-          defenceAvg,
-          gkAvg,
+          attackAvg:
+            rec.attackWeightTotal > 0
+              ? rec.attackWeightedSum / rec.attackWeightTotal
+              : null,
+          defenceAvg:
+            rec.defenceWeightTotal > 0
+              ? rec.defenceWeightedSum / rec.defenceWeightTotal
+              : null,
+          gkAvg:
+            rec.gkWeightTotal > 0
+              ? rec.gkWeightedSum / rec.gkWeightTotal
+              : null,
           voteCount: rec.rawVoteCount,
           weightedVoteCount: rec.weightedVoteCount,
           hasCurrentWeekReview: rec.hasCurrentWeekReview,

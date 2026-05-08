@@ -1,7 +1,13 @@
 // src/pages/PlayerCardPage.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebaseConfig";
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { getDoc, getDocs } from "firebase/firestore";
+import {
+  getClubStateDoc,
+  getPlayersCollection,
+  getPeerRatingBaselinesCollection,
+  getPlayerPhotosCollection,
+} from "../core/clubFirestorePaths";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { toPng } from "html-to-image";
 import TurfKingsLogo from "../assets/TurfKings_logo_transparent.png";
@@ -1407,10 +1413,10 @@ export function PlayerCardPage({
         setBaselineLoaded(false);
 
         const [playersSnap, mainSnap, baselinesSnap, photosSnap] = await Promise.all([
-          getDocs(collection(db, "players")),
-          getDoc(doc(db, "appState_v2", "main")),
-          getDocs(collection(db, "peerRatingBaselines")),
-          getDocs(collection(db, "playerPhotos")),
+          getDocs(getPlayersCollection(db)),
+          getDoc(getClubStateDoc(db)),
+          getDocs(getPeerRatingBaselinesCollection(db)),
+          getDocs(getPlayerPhotosCollection(db)),
         ]);
 
         if (!isMounted) return;
