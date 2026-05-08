@@ -2,6 +2,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import {
+  getPlayersCollection,
+  getMembersCollection,
+  getPlayerPhotosCollection,
+  getPeerRatingsCollection,
+  getPeerRatingBaselinesCollection,
+  getClubDoc,
+} from "../core/clubFirestorePaths";
+import { CLUB_COLLECTIONS } from "../core/clubPaths";
 
 
 function getCurrentWeekKey() {
@@ -179,8 +188,8 @@ export function PeerReviewPage({
     async function loadMembersAndPhotos() {
       try {
         const [membersSnap, photosSnap] = await Promise.all([
-          getDocs(collection(db, "members")),
-          getDocs(collection(db, "playerPhotos")),
+          getDocs(getMembersCollection(db)),
+          getDocs(getPlayerPhotosCollection(db)),
         ]);
 
         if (cancelled) return;
@@ -351,7 +360,7 @@ export function PeerReviewPage({
       const ratedSet = new Set();
 
       try {
-        const snap = await getDocs(collection(db, "peerRatings"));
+        const snap = await getDocs(getPeerRatingsCollection(db));
 
         snap.forEach((docSnap) => {
           const data = docSnap.data() || {};
@@ -383,7 +392,7 @@ export function PeerReviewPage({
 
     async function loadBaselines() {
       try {
-        const snap = await getDocs(collection(db, "peerRatingBaselines"));
+        const snap = await getDocs(getPeerRatingBaselinesCollection(db));
         if (cancelled) return;
 
         const next = {};
@@ -585,7 +594,7 @@ export function PeerReviewPage({
     setSubmitting(true);
 
     try {
-      const snap = await getDocs(collection(db, "peerRatings"));
+      const snap = await getDocs(getPeerRatingsCollection(db));
       const alreadyRated = snap.docs.some((docSnap) => {
         if (docSnap.id === peerRatingDocId) return true;
         const data = docSnap.data() || {};
@@ -621,7 +630,7 @@ export function PeerReviewPage({
         source: "peer-review-page",
       };
 
-      await setDoc(doc(db, "peerRatings", peerRatingDocId), docData, { merge: false });
+      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatings, peerRatingDocId), docData, { merge: false });
 
       setRatedTargets((prev) => (prev.includes(targetNorm) ? prev : [...prev, targetNorm]));
       setActiveTarget(null);
@@ -703,7 +712,7 @@ export function PeerReviewPage({
     setSavingBaseline(true);
 
     try {
-      await setDoc(doc(db, "peerRatingBaselines", docId), payload, { merge: true });
+      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatingBaselines, docId), payload, { merge: true });
 
       setBaselineMap((prev) => ({
         ...prev,
