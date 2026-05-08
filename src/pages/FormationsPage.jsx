@@ -3,6 +3,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { db } from "../firebaseConfig";
 import {
+  getPlayersCollection,
+  getMembersCollection,
+  getPlayerPhotosCollection,
+  getPeerRatingsCollection,
+  getPeerRatingBaselinesCollection,
+} from "../core/clubFirestorePaths";
+import {
   collection,
   doc,
   getDocs,
@@ -1208,7 +1215,7 @@ export function FormationsPage({
   useEffect(() => {
     async function loadPhotos() {
       try {
-        const snap = await getDocs(collection(db, "playerPhotos"));
+        const snap = await getDocs(getPlayerPhotosCollection(db));
         const rawPhotos = [];
 
         snap.forEach((docSnap) => {
@@ -1336,7 +1343,7 @@ export function FormationsPage({
         : slugFromName(photoPlayer);
 
       await setDoc(
-        doc(db, "playerPhotos", docId),
+        getClubDoc(db, CLUB_COLLECTIONS.playerPhotos, docId),
         {
           name: photoPlayer,
           teamId: selectedTeamCanonical ? selectedTeamCanonical.id : "turf_kings",

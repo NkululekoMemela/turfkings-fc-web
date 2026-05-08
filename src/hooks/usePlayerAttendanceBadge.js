@@ -4,11 +4,13 @@ import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import {
   getClubStateDoc,
+  getClubCollection,
   getPlayersCollection,
   getPlayerPhotosCollection,
   getPendingSignupsCollection,
   getMatchSignupsCollection,
 } from "../core/clubFirestorePaths";
+import { CLUB_COLLECTIONS } from "../core/clubPaths";
 
 
 function firstNameOf(value) {
@@ -289,7 +291,7 @@ export default function usePlayerAttendanceBadge(beneficiary) {
           return;
         }
 
-        const seasonSnaps = await getDocs(collection(db, "seasons"));
+        const seasonSnaps = await getDocs(getClubCollection(db, CLUB_COLLECTIONS.seasons));
         if (cancelled) return;
 
         const rows = [];
@@ -297,7 +299,7 @@ export default function usePlayerAttendanceBadge(beneficiary) {
           seasonSnaps.docs.map(async (seasonDoc) => {
             try {
               const attendanceSnap = await getDocs(
-                collection(db, "seasons", seasonDoc.id, "attendance")
+                collection(db, "clubs", "turf-kings", "seasons", seasonDoc.id, "attendance")
               );
               attendanceSnap.forEach((docSnap) =>
                 rows.push({

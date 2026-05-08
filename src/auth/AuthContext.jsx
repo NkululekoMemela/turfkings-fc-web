@@ -13,6 +13,13 @@ import {
   signOut as firebaseSignOut,
 } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
+import {
+  getPlayersCollection,
+  getMembersCollection,
+  getPlayerPhotosCollection,
+  getPeerRatingsCollection,
+  getPeerRatingBaselinesCollection,
+} from "../core/clubFirestorePaths";
 import { collection, getDocs, query, where } from "firebase/firestore";
 
 // ---------- helpers ----------
@@ -65,7 +72,7 @@ export function AuthProvider({ children }) {
 
         // 1) Try Firestore: members doc matching this email
         try {
-          const membersRef = collection(db, "members");
+          const membersRef = getMembersCollection(db);
           const q = query(membersRef, where("email", "==", email));
           const snap = await getDocs(q);
 

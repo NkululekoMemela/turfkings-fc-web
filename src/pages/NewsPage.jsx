@@ -6,7 +6,11 @@ import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
 import { useMemberNameMap } from "../core/nameMapping.js";
 import { db } from "../firebaseConfig.js";
-import { getPlayerPhotosCollection } from "../core/clubFirestorePaths";
+import {
+  getClubStateDoc,
+  getPlayersCollection,
+  getPlayerPhotosCollection,
+} from "../core/clubFirestorePaths";
 import {
   collection,
   deleteDoc,
@@ -339,7 +343,7 @@ export function NewsPage({
     async function loadPlayerPhotoData() {
       try {
         const [playersSnap, photosSnap] = await Promise.all([
-          getDocs(collection(db, "players")),
+          getDocs(getPlayersCollection(db)),
           getDocs(getPlayerPhotosCollection(db)),
         ]);
 
@@ -363,7 +367,7 @@ export function NewsPage({
   }, []);
 
   useEffect(() => {
-    const ref = doc(db, "appState_v2", "main");
+    const ref = getClubStateDoc(db);
     const unsubscribe = onSnapshot(
       ref,
       (snap) => {
