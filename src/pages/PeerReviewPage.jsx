@@ -270,14 +270,6 @@ export function PeerReviewPage({
 
         setMemberCanonicalMap(canonicalMap);
         setCloudPhotoIndex(photoIdx);
-        window.__PEER_REVIEW_DEBUG__ = {
-          safeActiveClubId,
-          activeClubName,
-          membersFromClubMembersCollection: memberList,
-          canonicalValues: Object.values(canonicalMap),
-        };
-
-        console.log("[PeerReviewPage DEBUG]", window.__PEER_REVIEW_DEBUG__);
 
         setMemberPlayers(
           uniqueByName(
