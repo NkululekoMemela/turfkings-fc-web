@@ -14,7 +14,7 @@ import { MigrationPage } from "./pages/MigrationPage.jsx";
 import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import VideoHighlightsPage from "./pages/VideoHighlightsPage.jsx";
-import HomePage from "./pages/HomePage.jsx";
+import HomePage_HUB from "./pages/HomePage_HUB.jsx";
 import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
 import BottomNav from "./components/BottomNav.jsx";
 import { buildClubIdentity, DEFAULT_CLUB_ID } from "./core/clubIdentity.js";
@@ -5266,7 +5266,7 @@ export default function App() {
       )}
 
       {page === PAGE_HOME && (
-        <HomePage
+        <HomePage_HUB
           onRegisterClub={() => {
             window.alert("Club registration wizard is coming next.");
           }}
