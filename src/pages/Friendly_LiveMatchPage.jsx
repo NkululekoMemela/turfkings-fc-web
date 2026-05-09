@@ -1562,6 +1562,8 @@ function eventLabel(teamId, teamAId, teamBId, teamA, teamB) {
 }
 
 export function FriendlyLiveMatchPage({
+  activeClubId = "turf-kings",
+  activeClub = null,
   matchSeconds,
   secondsLeft,
   timeUp,
@@ -1594,6 +1596,7 @@ export function FriendlyLiveMatchPage({
   videoHighlightsMatchId = "",
   currentVideoHighlightsMatchId = "",
 }) {
+  const safeActiveClubId = activeClubId || "turf-kings";
   const { teamAId, teamBId } = currentMatch || {};
   const role = String(activeRole || "spectator").trim().toLowerCase();
   const isControllerSession =

@@ -5316,8 +5316,6 @@ export default function App() {
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
           durationSwitchLocked={hasLiveMatch || running}
           activeTeamIds={normalizedActiveTeamIds}
-          activeClub={activeClub}
-          activeClubId={activeClubId}
           matchMode={matchMode}
           scheduledTarget={scheduledTarget}
           scheduledFixtures={scheduledFixtures}
@@ -5600,8 +5598,6 @@ export default function App() {
               : null
           }
           onBack={() => setPage(PAGE_STATS)}
-          activeClub={activeClub}
-          activeClubId={activeClubId}
         />
       )}
 

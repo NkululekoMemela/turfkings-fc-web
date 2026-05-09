@@ -1,6 +1,5 @@
 // src/pages/NewsPage.jsx
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
-import JaydTribute from "../assets/Jayd_Tribute.jpeg";
 import JerseyImage from "../assets/Jersey.jpeg";
 import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
@@ -28,7 +27,6 @@ import {
 } from "../storage/firebaseRepository.js";
 
 const BAD_MATCH_NUMBERS = new Set();
-const injuredPlayerName = "Jayd";
 
 const VENUE_MAP_URL =
   "https://www.google.com/maps/search/?api=1&query=Haveva%20Lower%20Main%20Road%20Observatory";
@@ -1660,9 +1658,6 @@ This will remove it from live news and archives for everyone.`
     padding: "0.78rem 0.9rem",
     outline: "none",
   };
-
-  const injuredAvatarUrl =
-    (injuredPlayerName && mergedPhotoMap[injuredPlayerName]) || JaydTribute;
 
   const renderVenueChip = () => (
     <a
@@ -3508,36 +3503,7 @@ Votes for this poll will no longer be shown.`
             </div>
           </section>
         </details>
-
-        {/* Jayd story inside Old stories */}
-        <details style={{ marginTop: "0.8rem" }}>
-          <summary style={{ cursor: "pointer", fontWeight: 800 }}>
-            🩹 Jayd story (tap to expand)
-          </summary>
-
-          <section className="card injury-tribute-card">
-            <div className="injury-photo-wrapper">
-              <img src={injuredAvatarUrl} alt="Injury tribute" className="injury-photo" />
-            </div>
-            <div className="injury-text">
-              <h2>Looking forward to Jayd&apos;s recovery</h2>
-              <p>
-                In the middle of this shot – standing between <strong>Enock</strong> and the
-                brilliant <strong>Justin</strong> – is <strong>{injuredPlayerName}</strong>,
-                our teammate battling a long-term injury.
-              </p>
-              <p>
-                <strong>Ebrahim</strong> is dropping a knee in front, but the whole frame is
-                really about the player in the centre: a reminder of the energy, link-up and calm
-                presence we can&apos;t wait to have back on the pitch.
-              </p>
-              <p className="injury-cta">
-                From the whole TurfKings family: speedy recovery, bro – your spot is waiting.
-              </p>
-            </div>
-          </section>
-        </details>
-      </details>
+</details>
 
       {renderCustomStoriesAt("before-recap")}
 
