@@ -1,12 +1,11 @@
-// src/components/homeHub/HomePage_HUB_SignupModal.jsx
+// src/components/HomePage_HUB/HomePage_HUB_SignupModal.jsx
 
 import React, { useMemo, useState } from "react";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import { db } from "../../firebaseConfig";
 import HomePage_HUB_ClubRegisterForm from "./HomePage_HUB_ClubRegisterForm";
 import HomePage_HUB_LogoGenerator from "./HomePage_HUB_LogoGenerator";
 import HomePage_HUB_BankingForm from "./HomePage_HUB_BankingForm";
-import { normalizeBankDetails, slugifyClubName } from "../../core/homePageHubLogoUtils";
+import { slugifyClubName } from "../../core/homePageHubLogoUtils";
+import { createHomePageHubClub } from "../../storage/homePageHubClubRepository";
 
 const INITIAL_CLUB_DRAFT = {
   clubName: "",
@@ -19,7 +18,16 @@ const INITIAL_CLUB_DRAFT = {
   logoText: "FC",
 };
 
-export default function HomePage_HUB_SignupModal({ isOpen, onClose, onJoinExistingClub, onClubCreated }) {
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+export default function HomePage_HUB_SignupModal({
+  isOpen,
+  onClose,
+  onJoinExistingClub,
+  onClubCreated,
+}) {
   const [mode, setMode] = useState("choice");
   const [step, setStep] = useState(1);
   const [clubDraft, setClubDraft] = useState(INITIAL_CLUB_DRAFT);
@@ -45,14 +53,19 @@ export default function HomePage_HUB_SignupModal({ isOpen, onClose, onJoinExisti
   function validateBeforeSubmit() {
     if (!clubDraft.clubName.trim()) return "Club name is required.";
     if (!clubId) return "Club ID could not be created from the club name.";
+    if (!clubDraft.location.trim()) return "Club location is required.";
+    if (!clubDraft.weeklyPlayTime.trim()) return "Weekly play time is required.";
     if (!clubDraft.captainName.trim()) return "Captain name is required.";
     if (!clubDraft.captainEmail.trim()) return "Captain email is required.";
+    if (!isValidEmail(clubDraft.captainEmail)) return "Captain email is not valid.";
     return "";
   }
 
   async function createClub() {
     setErrorText("");
+
     const validationError = validateBeforeSubmit();
+
     if (validationError) {
       setErrorText(validationError);
       setStep(1);
@@ -61,88 +74,54 @@ export default function HomePage_HUB_SignupModal({ isOpen, onClose, onJoinExisti
 
     try {
       setSubmitting(true);
-      const captainEmail = clubDraft.captainEmail.trim().toLowerCase();
-      const bankDetails = normalizeBankDetails(bankingDraft);
-      const selectedGeneratedLogo = logoDraft.selectedGeneratedLogoId || "";
-      const uploadedLogoUrl = logoDraft.uploadedLogoUrl || "";
 
-      await setDoc(
-        doc(db, "clubs", clubId),
-        {
-          id: clubId,
-          name: clubDraft.clubName.trim(),
-          location: clubDraft.location.trim(),
-          area: clubDraft.location.trim(),
-          weeklyPlayTime: clubDraft.weeklyPlayTime.trim(),
-          accent: clubDraft.accent || "#16a34a",
-          activity: "New club",
-          clubRating: "Unranked",
-          helpNeeded: 0,
-          members: 1,
-          logoText: clubDraft.logoText || clubDraft.clubName.trim().slice(0, 2).toUpperCase(),
-          image: uploadedLogoUrl,
-          logoUrl: uploadedLogoUrl,
-          branding: {
-            uploadedLogoUrl,
-            selectedGeneratedLogo,
-            generatedLogoPrompt: logoDraft.generatedLogoPrompt || "",
-            logoStorage: logoDraft.storage || null,
-            transparentTwinStatus: selectedGeneratedLogo || uploadedLogoUrl ? "pending" : "not_started",
-          },
-          banking: bankDetails,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          createdBy: captainEmail,
-          description: "",
-        },
-        { merge: true }
-      );
+      const createdClub = await createHomePageHubClub({
+        clubId,
+        clubDraft,
+        logoDraft,
+        bankingDraft,
+      });
 
-      await setDoc(
-        doc(db, "clubs", clubId, "state", "main"),
-        {
-          activeMatch: null,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          seasonStatus: "setup",
-          signupOpen: true,
-        },
-        { merge: true }
-      );
-
-      await setDoc(
-        doc(db, "clubs", clubId, "members", captainEmail),
-        {
-          name: clubDraft.captainName.trim(),
-          email: captainEmail,
-          role: "captain",
-          joinedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      onClubCreated?.({ id: clubId, name: clubDraft.clubName.trim() });
+      onClubCreated?.(createdClub);
       resetAndClose();
     } catch (error) {
       console.error("[HomePage_HUB] Failed to create club:", error);
-      setErrorText("Failed to create club. Check Firebase permissions and try again.");
+      setErrorText(
+        error?.message ||
+          "Failed to create club. Check Firebase permissions and try again."
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="hub-modal-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) resetAndClose();
-    }}>
-      <section className="hub-modal" role="dialog" aria-modal="true" aria-label="Sign up free">
+    <div
+      className="hub-modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) resetAndClose();
+      }}
+    >
+      <section
+        className="hub-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Sign up free"
+      >
         <header className="hub-modal__header">
           <div>
             <span>Free signup</span>
             <h2>{mode === "register" ? "Register your club" : "Start playing"}</h2>
           </div>
-          <button type="button" onClick={resetAndClose} aria-label="Close signup modal">×</button>
+
+          <button
+            type="button"
+            onClick={resetAndClose}
+            aria-label="Close signup modal"
+          >
+            ×
+          </button>
         </header>
 
         {mode === "choice" ? (
@@ -170,6 +149,7 @@ export default function HomePage_HUB_SignupModal({ isOpen, onClose, onJoinExisti
                   type="button"
                   className={step === item ? "is-active" : ""}
                   onClick={() => setStep(item)}
+                  disabled={submitting}
                 >
                   {item}
                 </button>
@@ -177,15 +157,25 @@ export default function HomePage_HUB_SignupModal({ isOpen, onClose, onJoinExisti
             </div>
 
             {step === 1 ? (
-              <HomePage_HUB_ClubRegisterForm clubDraft={clubDraft} onChange={setClubDraft} />
+              <HomePage_HUB_ClubRegisterForm
+                clubDraft={clubDraft}
+                onChange={setClubDraft}
+              />
             ) : null}
 
             {step === 2 ? (
-              <HomePage_HUB_LogoGenerator clubDraft={{ ...clubDraft, clubId }} logoDraft={logoDraft} onChange={setLogoDraft} />
+              <HomePage_HUB_LogoGenerator
+                clubDraft={{ ...clubDraft, clubId }}
+                logoDraft={logoDraft}
+                onChange={setLogoDraft}
+              />
             ) : null}
 
             {step === 3 ? (
-              <HomePage_HUB_BankingForm bankingDraft={bankingDraft} onChange={setBankingDraft} />
+              <HomePage_HUB_BankingForm
+                bankingDraft={bankingDraft}
+                onChange={setBankingDraft}
+              />
             ) : null}
 
             {errorText ? <div className="hub-error-box">{errorText}</div> : null}
@@ -194,17 +184,32 @@ export default function HomePage_HUB_SignupModal({ isOpen, onClose, onJoinExisti
               <button
                 type="button"
                 className="hub-secondary-button"
-                onClick={() => (step === 1 ? setMode("choice") : setStep((current) => Math.max(1, current - 1)))}
+                disabled={submitting}
+                onClick={() =>
+                  step === 1
+                    ? setMode("choice")
+                    : setStep((current) => Math.max(1, current - 1))
+                }
               >
                 Back
               </button>
 
               {step < 3 ? (
-                <button type="button" className="hub-primary-button" onClick={() => setStep((current) => Math.min(3, current + 1))}>
+                <button
+                  type="button"
+                  className="hub-primary-button"
+                  disabled={submitting}
+                  onClick={() => setStep((current) => Math.min(3, current + 1))}
+                >
                   Continue
                 </button>
               ) : (
-                <button type="button" className="hub-primary-button" onClick={createClub} disabled={submitting}>
+                <button
+                  type="button"
+                  className="hub-primary-button"
+                  onClick={createClub}
+                  disabled={submitting}
+                >
                   {submitting ? "Creating..." : "Create club"}
                 </button>
               )}
