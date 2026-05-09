@@ -1359,6 +1359,8 @@ export function PlayerCardPage({
   activeClub = null,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
+  const isTurfKingsClub = safeActiveClubId === "turf-kings";
+  const activeClubName = String(activeClub?.shortName || activeClub?.name || "Club").trim();
   const { authUser } = useAuth() || {};
   const user = authUser || null;
 
@@ -1418,13 +1420,14 @@ export function PlayerCardPage({
         const [playersSnap, mainSnap, baselinesSnap, photosSnap] = await Promise.all([
           getDocs(getPlayersCollection(db, safeActiveClubId)),
           getDoc(getClubStateDoc(db, safeActiveClubId)),
-          getDocs(getPeerRatingBaselinesCollection(db)),
+          getDocs(getPeerRatingBaselinesCollection(db, safeActiveClubId)),
           getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
         ]);
 
         if (!isMounted) return;
 
         const { mapNameToCanon, mapCanonToShort } = buildPlayersRegistry(playersSnap);
+
         const participation = buildParticipationFromMainDoc(
           mainSnap,
           mapNameToCanon,
@@ -1510,7 +1513,7 @@ export function PlayerCardPage({
     return () => {
       isMounted = false;
     };
-  }, [activeSeasonId, finalPlayerCardSnapshot]);
+  }, [activeSeasonId, finalPlayerCardSnapshot, safeActiveClubId]);
 
   const resolveCanonicalName = useCallback(
     (rawName) => {
@@ -1658,6 +1661,18 @@ export function PlayerCardPage({
     return map;
   }, [teams, resolveCanonicalName]);
 
+  const activeClubPlayerNames = useMemo(() => {
+    return new Set(
+      Object.values(nameToCanonical || {})
+        .map((name) => String(name || "").trim())
+        .filter(Boolean)
+    );
+  }, [nameToCanonical]);
+
+  const allowFallbackPlayers =
+    safeActiveClubId === "turf-kings" ||
+    activeClubPlayerNames.size > 0;
+
   const playersWithRatings = useMemo(() => {
     const allNames = new Set([
       ...Object.keys(ratingStatsByPlayer || {}),
@@ -1696,6 +1711,20 @@ export function PlayerCardPage({
 
     allNames.forEach((canonName) => {
       if (!canonName) return;
+      if (
+        allowFallbackPlayers &&
+        activeClubPlayerNames.size > 0 &&
+        !activeClubPlayerNames.has(canonName)
+      ) {
+        return;
+      }
+
+      if (
+        !allowFallbackPlayers &&
+        activeClubPlayerNames.size === 0
+      ) {
+        return;
+      }
 
       const ratingStats = ratingStatsByPlayer[canonName] || {
         points: 0,
@@ -1908,7 +1937,7 @@ export function PlayerCardPage({
         name: canonName,
         displayName,
         shortName,
-        teamName: playerTeamMap[canonName] || (friendlyCardMode ? "Turf Kings" : "—"),
+        teamName: playerTeamMap[canonName] || (friendlyCardMode ? activeClubName : "—"),
         photoUrl,
 
         goals: friendlyCardMode && !shouldUseCarry ? valueOrZero(visibleStats.goals) : displayGoals,
@@ -1987,6 +2016,7 @@ export function PlayerCardPage({
     championshipStarsByPlayer,
     friendlyCardMode,
     activeSeasonHasStarted,
+    activeClubPlayerNames,
   ]);
 
   useEffect(() => {
@@ -2310,7 +2340,7 @@ export function PlayerCardPage({
                   }}
                   title="Double-click to save card. On mobile, long-press to save."
                 >
-                  {isTurfKingsTeamName(p.teamName) && (
+                  {isTurfKingsClub && isTurfKingsTeamName(p.teamName) && (
                     <img
                       src={TurfKingsLogo}
                       alt=""

@@ -102,6 +102,7 @@ export function PeerReviewPage({
   activeClub = null,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
+  const activeClubName = String(activeClub?.shortName || activeClub?.name || "this club").trim();
   const [weekKey] = useState(() => getCurrentWeekKey());
 
   const [selectedRater, setSelectedRater] = useState(null);
@@ -191,7 +192,7 @@ export function PeerReviewPage({
     async function loadMembersAndPhotos() {
       try {
         const [membersSnap, photosSnap] = await Promise.all([
-          getDocs(getMembersCollection(db)),
+          getDocs(getMembersCollection(db, safeActiveClubId)),
           getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
         ]);
 
@@ -363,7 +364,7 @@ export function PeerReviewPage({
       const ratedSet = new Set();
 
       try {
-        const snap = await getDocs(getPeerRatingsCollection(db));
+        const snap = await getDocs(getPeerRatingsCollection(db, safeActiveClubId));
 
         snap.forEach((docSnap) => {
           const data = docSnap.data() || {};
@@ -388,14 +389,14 @@ export function PeerReviewPage({
     return () => {
       cancelled = true;
     };
-  }, [selectedRater, weekKey, activeSeasonId, memberCanonicalMap]);
+  }, [selectedRater, weekKey, activeSeasonId, memberCanonicalMap, safeActiveClubId]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadBaselines() {
       try {
-        const snap = await getDocs(getPeerRatingBaselinesCollection(db));
+        const snap = await getDocs(getPeerRatingBaselinesCollection(db, safeActiveClubId));
         if (cancelled) return;
 
         const next = {};
@@ -429,7 +430,7 @@ export function PeerReviewPage({
     return () => {
       cancelled = true;
     };
-  }, [memberCanonicalMap]);
+  }, [memberCanonicalMap, safeActiveClubId]);
 
   const teamsForFilter = useMemo(() => {
     const labels = new Set();
@@ -569,7 +570,7 @@ export function PeerReviewPage({
     setStatusMsg("");
 
     if (!isSignedInPlayer) {
-      setStatusMsg("Peer voting is reserved for Turf Kings players.");
+      setStatusMsg(`Peer voting is reserved for ${activeClubName} players.`);
       return;
     }
     if (!selectedRater) {
@@ -597,7 +598,7 @@ export function PeerReviewPage({
     setSubmitting(true);
 
     try {
-      const snap = await getDocs(getPeerRatingsCollection(db));
+      const snap = await getDocs(getPeerRatingsCollection(db, safeActiveClubId));
       const alreadyRated = snap.docs.some((docSnap) => {
         if (docSnap.id === peerRatingDocId) return true;
         const data = docSnap.data() || {};
@@ -633,7 +634,7 @@ export function PeerReviewPage({
         source: "peer-review-page",
       };
 
-      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatings, peerRatingDocId), docData, { merge: false });
+      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatings, peerRatingDocId, safeActiveClubId), docData, { merge: false });
 
       setRatedTargets((prev) => (prev.includes(targetNorm) ? prev : [...prev, targetNorm]));
       setActiveTarget(null);
@@ -715,7 +716,7 @@ export function PeerReviewPage({
     setSavingBaseline(true);
 
     try {
-      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatingBaselines, docId), payload, { merge: true });
+      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatingBaselines, docId, safeActiveClubId), payload, { merge: true });
 
       setBaselineMap((prev) => ({
         ...prev,
@@ -1066,14 +1067,14 @@ export function PeerReviewPage({
           {!isSignedInPlayer && (
             <p className="muted small">
               {isSpectator
-                ? "You are signed in as a spectator. Only Turf Kings players can submit peer ratings."
-                : "You are not signed in as a Turf Kings player."}
+                ? "You are signed in as a spectator. Only club players can submit peer ratings."
+                : "You are not signed in as a club player."}
             </p>
           )}
 
           {isSignedInPlayer && !selectedRater && (
             <>
-              <p className="muted small">Tap your name from the Turf Kings squads.</p>
+              <p className="muted small">Tap your name from this club's squads.</p>
               <div className="peer-player-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
                 {allPlayers.map((p) => {
                   const photoUrl = getPhotoFor(p.name);
