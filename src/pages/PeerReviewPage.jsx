@@ -221,7 +221,9 @@ export function PeerReviewPage({
           const shortName = toTitleCase(data.shortName || data.displayName || "");
           const aliases = Array.isArray(data.aliases) ? data.aliases : [];
           const rawTeam = String(data.teamLabel || data.team || "").trim();
-          const teamLabel = isUsefulTeamFilterLabel(rawTeam) ? rawTeam : "Other players";
+          const teamLabel = isTurfKingsClub
+            ? (isUsefulTeamFilterLabel(rawTeam) ? rawTeam : "Other players")
+            : activeClubName;
 
           if (!fullName) return;
 
@@ -271,7 +273,7 @@ export function PeerReviewPage({
         window.__PEER_REVIEW_DEBUG__ = {
           safeActiveClubId,
           activeClubName,
-          membersFromClubMembersCollection: memberList.map((p) => p.name),
+          membersFromClubMembersCollection: memberList,
           canonicalValues: Object.values(canonicalMap),
         };
 
