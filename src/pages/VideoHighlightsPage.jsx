@@ -625,8 +625,8 @@ function HighlightCard({
     try {
       if (canShare) {
         await navigator.share({
-          title: highlight.title || "Turf Kings highlight",
-          text: `${highlight.title || "Turf Kings highlight"} • ${matchupLabel}`,
+          title: highlight.title || "Club highlight",
+          text: `${highlight.title || "Club highlight"} • ${matchupLabel}`,
           url,
         });
         return;

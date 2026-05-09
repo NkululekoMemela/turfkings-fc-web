@@ -2517,7 +2517,7 @@ Votes for this poll will no longer be shown.`
 
       <header className="header">
         <p className="subtitle">
-          {newsSeasonContext.shouldUsePreviousSeasonNews ? "Previous-season stories stay here until the new season kicks off." : "Automatic recap built from your full TurfKings match history."}
+          {newsSeasonContext.shouldUsePreviousSeasonNews ? "Previous-season stories stay here until the new season kicks off." : "Automatic recap built from this club's full match history."}
         </p>
       </header>
 
@@ -3055,7 +3055,7 @@ Votes for this poll will no longer be shown.`
           <p className="news-hero-text">
             {newsSeasonContext.shouldUsePreviousSeasonNews ? "Last season finished with" : "So far we\'ve logged"}{" "}
             <strong>{totalMatches || 0}</strong> matches and{" "}
-            <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side league.
+            <strong>{totalGoals || 0}</strong> goals in this club league.
           </p>
           {tableLeader && (
             <p className="news-hero-text">
@@ -3184,7 +3184,7 @@ Votes for this poll will no longer be shown.`
               <li className="news-list-item">
                 <span className="news-tag">Info</span>
                 <span>
-                  No stats yet – start a live match to generate your first round of TurfKings news.
+                  No stats yet – start a live match to generate your first round of club news.
                 </span>
               </li>
             )}

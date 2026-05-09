@@ -1010,6 +1010,12 @@ export function FormationsPage({
   gameFormat = "5_V_5",
 }) {
   const canEditLineups = true;
+  const activeClubName = String(
+    activeClub?.shortName ||
+    activeClub?.name ||
+    activeClubName
+  ).trim();
+
   const isFriendlyMatch = String(matchType || "FRIENDLY").toUpperCase() !== "LEAGUE";
 
   const [lineupsByTeam, setLineupsByTeam] = useState(() => loadSavedLineups());
@@ -2127,7 +2133,7 @@ export function FormationsPage({
             <div className="field-row inline-field">
               <label>11-a-side squad</label>
               <p className="muted small">
-                Using full Turf Kings player pool <strong>({turfKingsPlayers.length} players)</strong>.
+                Using full club player pool <strong>({turfKingsPlayers.length} players)</strong>.
               </p>
             </div>
           )}
@@ -2183,7 +2189,7 @@ export function FormationsPage({
                   boxShadow: "0 6px 14px rgba(2, 6, 23, 0.18)",
                 }}
               >
-                {isSmallSidedGameType(gameType) ? selectedTeamCanonical?.label || getGameTypeLabel(gameType) : "TurfKings FC"}
+                {isSmallSidedGameType(gameType) ? selectedTeamCanonical?.label || getGameTypeLabel(gameType) : activeClubName}
               </div>
 
               {formation.positions.map((pos) => {

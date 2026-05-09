@@ -1,7 +1,7 @@
 // src/core/VideoHighlightCuration.js
 
 /*
-  Turf Kings Video Highlight Curation Engine
+  Video Highlight Curation Engine
 
   Purpose:
   - Current Week / current matchday clips live in video_highlights/{matchId}/raw

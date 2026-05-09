@@ -169,7 +169,7 @@ export function SpectatorPage(props) {
         {matchNumber ? (
           <p>Watching match #{matchNumber}</p>
         ) : (
-          <p>Live Turf Kings score tracker</p>
+          <p>Live score tracker</p>
         )}
       </header>
 

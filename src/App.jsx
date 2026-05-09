@@ -5643,6 +5643,7 @@ export default function App() {
           friendlyMatchDayHistory={friendlyMatchDayHistory || []}
           playerPhotosByName={playerPhotosByName}
           identity={pageIdentity}
+          activeClub={activeClub}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
           matchType={matchType}

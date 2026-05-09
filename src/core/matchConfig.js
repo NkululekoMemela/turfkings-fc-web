@@ -1,5 +1,5 @@
 // src/core/matchConfig.js
-// Central source of truth for Turf Kings match modes and game formats.
+// Central source of truth for club match modes and game formats.
 
 export const MATCH_MODE = Object.freeze({
   FRIENDLY: "FRIENDLY",
