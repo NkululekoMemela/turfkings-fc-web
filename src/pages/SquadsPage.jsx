@@ -493,8 +493,8 @@ function buildGuestOpponentTeam({
 function buildTurfKingsChallengeTeam({ players = [], teamColorName = "Green" } = {}) {
   return {
     id: TURF_KINGS_CHALLENGE_ID,
-    label: "Turf Kings",
-    abbrev: "TKG",
+    label: toTitleCase(activeClubName) || "Turf Kings",
+    abbrev: normalizeAbbrev(activeClubName) || "TKG",
     teamColorName: toTitleCase(teamColorName || "Green"),
     teamColorHex: getThemeFromColorName(teamColorName || "Green")?.accent || "#22C55E",
     players: Array.from(new Set((players || []).filter(Boolean))),
@@ -551,6 +551,7 @@ function buildSlotBasedChallengeTeams({
   baseTeams = [],
   turfKingsPlayers = [],
   guestPlayers = [],
+  activeClubName = "Turf Kings",
   guestName = DEFAULT_GUEST_OPPONENT_NAME,
   turfKingsColorName = "Green",
   guestColorName = "Gold",
@@ -898,6 +899,7 @@ export function SquadsPage({
       turfKingsPlayers: turfKingsChallengePlayers,
       guestPlayers: guestOpponentPlayers,
       guestName: guestOpponentName,
+      activeClubName,
       turfKingsColorName: turfKingsChallengeColorName,
       guestColorName: guestOpponentColorName,
       challengeDate,
@@ -923,6 +925,7 @@ export function SquadsPage({
       turfKingsPlayers: turfKingsChallengePlayers,
       guestPlayers: guestOpponentPlayers,
       guestName: guestOpponentName,
+      activeClubName,
       turfKingsColorName: turfKingsChallengeColorName,
       guestColorName: guestOpponentColorName,
       challengeDate,
@@ -1513,7 +1516,7 @@ export function SquadsPage({
       });
 
       const link = document.createElement("a");
-      link.download = `${slugFromName(`turf_kings_vs_${guestOpponentTeam.label || "opponent"}`)}.png`;
+      link.download = `${slugFromName(`${slugFromName(activeClubName)}_vs_${guestOpponentTeam.label || "opponent"}`)}.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
@@ -1846,11 +1849,11 @@ export function SquadsPage({
                       >
                         <img
                           src={TURF_KINGS_LOGO_URL}
-                          alt="Turf Kings"
+                          alt={activeClubName}
                           style={{ width: "100%", height: "100%", objectFit: "contain" }}
                         />
                       </div>
-                      <strong style={{ color: "#F8FAFC" }}>Turf Kings</strong>
+                      <strong style={{ color: "#F8FAFC" }}>{activeClubName}</strong>
                     </div>
 
                     <div
@@ -2120,7 +2123,7 @@ export function SquadsPage({
                               {isGuestTeamCard
                                 ? "Type opponent players below."
                                 : isChallengeTeamCard
-                                ? "Add Turf Kings players from database."
+                                ? `Add ${activeClubName} players from database.`
                                 : "No players yet in this squad."}
                             </span>
                           </div>
