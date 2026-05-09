@@ -3390,7 +3390,7 @@ Votes for this poll will no longer be shown.`
         )}
 
         {/* Year-End story inside Old stories */}
-        <details style={{ marginTop: "0.8rem" }}>
+        <details style={{ marginTop: "0.8rem", display: isTurfKingsClub ? undefined : "none" }}>
           <summary style={{ cursor: "pointer", fontWeight: 800 }}>
             ✨ Year-End Function (tap to expand)
           </summary>
@@ -3572,14 +3572,14 @@ Votes for this poll will no longer be shown.`
         )}
       </section>
 
-      {showRSVP && (
+      {isTurfKingsClub && showRSVP && (
         <RSVPModal
           identity={identity}
           onClose={() => setShowRSVP(false)}
         />
       )}
 
-      {showProgramModal && (
+      {isTurfKingsClub && showProgramModal && (
         <YearEndProgramModal
           identity={identity}
           onClose={() => setShowProgramModal(false)}
