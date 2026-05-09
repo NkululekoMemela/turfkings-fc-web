@@ -992,6 +992,8 @@ const LONG_PRESS_MS = 650;
 const MAX_SUBS = 6;
 
 export function FormationsPage({
+  activeClubId = "turf-kings",
+  activeClub = null,
   teams = [],
   fiveVFiveTeams = [],
   currentMatch,
@@ -1215,7 +1217,7 @@ export function FormationsPage({
   useEffect(() => {
     async function loadPhotos() {
       try {
-        const snap = await getDocs(getPlayerPhotosCollection(db));
+        const snap = await getDocs(getPlayerPhotosCollection(db, activeClubId));
         const rawPhotos = [];
 
         snap.forEach((docSnap) => {

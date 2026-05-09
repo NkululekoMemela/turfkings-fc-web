@@ -29,6 +29,57 @@ const PLAYERS_COLLECTION = "players";
 const PLAYER_PHOTOS_COLLECTION = "playerPhotos";
 const WITHDRAWAL_REQUESTS_COLLECTION = "member_withdrawal_requests";
 
+const DEFAULT_CLUB_ID = "turf-kings";
+const DEFAULT_CLUB_NAME = "Turf Kings FC";
+
+function safeClubIdFromSelectedClub(club) {
+  return String(club?.id || DEFAULT_CLUB_ID).trim() || DEFAULT_CLUB_ID;
+}
+
+function safeClubNameFromSelectedClub(club) {
+  return String(club?.name || DEFAULT_CLUB_NAME).trim() || DEFAULT_CLUB_NAME;
+}
+
+function clubCollectionRef(clubId, collectionName) {
+  return collection(db, "clubs", safeClubIdFromSelectedClub({ id: clubId }), collectionName);
+}
+
+function clubDocRef(clubId, collectionName, docId) {
+  return doc(db, "clubs", safeClubIdFromSelectedClub({ id: clubId }), collectionName, String(docId || "").trim());
+}
+
+function membersCollectionRef(clubId) {
+  return clubCollectionRef(clubId, MEMBERS_COLLECTION);
+}
+
+function memberDocRef(clubId, memberId) {
+  return clubDocRef(clubId, MEMBERS_COLLECTION, memberId);
+}
+
+function playersCollectionRef(clubId) {
+  return clubCollectionRef(clubId, PLAYERS_COLLECTION);
+}
+
+function playerDocRef(clubId, playerId) {
+  return clubDocRef(clubId, PLAYERS_COLLECTION, playerId);
+}
+
+function playerPhotosCollectionRef(clubId) {
+  return clubCollectionRef(clubId, PLAYER_PHOTOS_COLLECTION);
+}
+
+function playerPhotoDocRef(clubId, photoId) {
+  return clubDocRef(clubId, PLAYER_PHOTOS_COLLECTION, photoId);
+}
+
+function withdrawalRequestsCollectionRef(clubId) {
+  return clubCollectionRef(clubId, WITHDRAWAL_REQUESTS_COLLECTION);
+}
+
+function withdrawalRequestDocRef(clubId, requestId) {
+  return clubDocRef(clubId, WITHDRAWAL_REQUESTS_COLLECTION, requestId);
+}
+
 const brightPrimaryStyle = {
   background:
     "radial-gradient(circle at 0% 0%, rgba(56,189,248,0.25), transparent 55%), radial-gradient(circle at 100% 100%, rgba(59,130,246,0.35), transparent 55%), linear-gradient(90deg, #22d3ee, #38bdf8, #6366f1)",
@@ -218,12 +269,12 @@ function getPhotoDocIdsFromIdentity({ fullName = "", shortName = "", playerId = 
   return Array.from(new Set(ids));
 }
 
-async function findExistingPhotoDataByIdentity(identityLike) {
+async function findExistingPhotoDataByIdentity(identityLike, clubId = DEFAULT_CLUB_ID) {
   const ids = getPhotoDocIdsFromIdentity(identityLike);
 
   for (const id of ids) {
     try {
-      const snap = await getDoc(doc(db, PLAYER_PHOTOS_COLLECTION, id));
+      const snap = await getDoc(playerPhotoDocRef(clubId, id));
       if (snap.exists()) {
         const data = snap.data() || {};
         if (data.photoData) {
@@ -243,6 +294,7 @@ async function findExistingPhotoDataByIdentity(identityLike) {
 }
 
 async function savePlayerPhotoForIdentity({
+  clubId = DEFAULT_CLUB_ID,
   fullName = "",
   shortName = "",
   playerId = "",
@@ -259,7 +311,7 @@ async function savePlayerPhotoForIdentity({
   if (!preferredId || !photoData) return null;
 
   await setDoc(
-    doc(db, PLAYER_PHOTOS_COLLECTION, preferredId),
+    playerPhotoDocRef(clubId, preferredId),
     {
       name: toTitleCase(fullName || shortName || preferredId),
       shortName: toTitleCase(shortName || fullName || preferredId),
@@ -276,7 +328,7 @@ async function savePlayerPhotoForIdentity({
   return preferredId;
 }
 
-async function upsertPlayerFromMember(member) {
+async function upsertPlayerFromMember(member, clubId = DEFAULT_CLUB_ID) {
   if (!member) return null;
 
   const shortName = (member.shortName || "").trim();
@@ -292,7 +344,7 @@ async function upsertPlayerFromMember(member) {
 
   try {
     await setDoc(
-      doc(db, PLAYERS_COLLECTION, playerId),
+      playerDocRef(clubId, playerId),
       {
         name: displayName,
         fullName: fullName || displayName,
@@ -320,7 +372,7 @@ async function upsertPlayerFromMember(member) {
   }
 }
 
-async function resolveSignedInRoleFromPlayerDoc(member, emailFromGoogle = "") {
+async function resolveSignedInRoleFromPlayerDoc(member, emailFromGoogle = "", clubId = DEFAULT_CLUB_ID) {
   const shortName = toTitleCase(member?.shortName || "");
   const fullName = toTitleCase(member?.fullName || "");
   const displayName = toTitleCase(shortName || fullName);
@@ -338,7 +390,7 @@ async function resolveSignedInRoleFromPlayerDoc(member, emailFromGoogle = "") {
 
   for (const pid of candidateIds) {
     try {
-      const snap = await getDoc(doc(db, PLAYERS_COLLECTION, pid));
+      const snap = await getDoc(playerDocRef(clubId, pid));
       if (!snap.exists()) continue;
 
       const data = snap.data() || {};
@@ -372,10 +424,10 @@ function getPrivateContactDeletePayload(extra = {}) {
   };
 }
 
-async function clearWithdrawnPlayerPrivateDetails({ memberId = "", playerId = "" }) {
+async function clearWithdrawnPlayerPrivateDetails({ clubId = DEFAULT_CLUB_ID, memberId = "", playerId = "" }) {
   if (memberId) {
     await updateDoc(
-      doc(db, MEMBERS_COLLECTION, memberId),
+      memberDocRef(clubId, memberId),
       getPrivateContactDeletePayload({
         status: "withdrawn",
         updatedAt: serverTimestamp(),
@@ -386,7 +438,7 @@ async function clearWithdrawnPlayerPrivateDetails({ memberId = "", playerId = ""
   if (playerId) {
     try {
       await updateDoc(
-        doc(db, PLAYERS_COLLECTION, playerId),
+        playerDocRef(clubId, playerId),
         getPrivateContactDeletePayload({
           updatedAt: serverTimestamp(),
         })
@@ -397,8 +449,29 @@ async function clearWithdrawnPlayerPrivateDetails({ memberId = "", playerId = ""
   }
 }
 
-export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }) {
+export function EntryPage({
+  identity,
+  selectedClub,
+  onComplete,
+  onDevSkipToLanding,
+  onGoHome,
+}) {
   const [currentUser, setCurrentUser] = useState(null);
+
+  const activeClub = useMemo(() => selectedClub || {
+    id: DEFAULT_CLUB_ID,
+    name: DEFAULT_CLUB_NAME,
+    logoUrl: TurfKingsLogo,
+    image: TeamPhoto,
+    weeklyPlayTime: "Wednesdays · 19:00",
+  }, [selectedClub]);
+
+  const activeClubId = safeClubIdFromSelectedClub(activeClub);
+  const activeClubName = safeClubNameFromSelectedClub(activeClub);
+  const activeClubShortName = String(activeClub?.shortName || activeClubName).trim();
+  const isTurfKingsClub = activeClubId === DEFAULT_CLUB_ID;
+  const activeClubLogoSrc = activeClub?.logoUrl || activeClub?.logo || activeClub?.image || (isTurfKingsClub ? TurfKingsLogo : FANM_HOME_LOGO);
+  const activeClubHeroImage = activeClub?.heroImage || activeClub?.teamPhoto || activeClub?.image || (isTurfKingsClub ? TeamPhoto : activeClubLogoSrc);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -407,8 +480,23 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
     return () => unsub();
   }, []);
 
-  const isAdminViewer =
-    currentUser && currentUser.email && isCaptainEmail(currentUser.email);
+  const isAdminViewer = (() => {
+    const email = String(currentUser?.email || "").trim().toLowerCase();
+    if (!email) return false;
+
+    const clubAdminEmails = [
+      activeClub?.adminEmail,
+      activeClub?.ownerEmail,
+      activeClub?.captainEmail,
+      activeClub?.createdByEmail,
+      ...(Array.isArray(activeClub?.adminEmails) ? activeClub.adminEmails : []),
+      ...(Array.isArray(activeClub?.captainEmails) ? activeClub.captainEmails : []),
+    ]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+
+    return isCaptainEmail(email) || clubAdminEmails.includes(email);
+  })();
 
   const [withdrawalAlert, setWithdrawalAlert] = useState(null);
 
@@ -463,7 +551,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
     if (!isAdminViewer) return;
 
     const q = query(
-      collection(db, WITHDRAWAL_REQUESTS_COLLECTION),
+      withdrawalRequestsCollectionRef(activeClubId),
       orderBy("requestedAt", "desc"),
       limit(10)
     );
@@ -504,7 +592,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
     });
 
     return () => unsub();
-  }, [isAdminViewer]);
+  }, [isAdminViewer, activeClubId]);
 
   const [mode, setMode] = useState(() => {
     if (identity?.actingRole === "spectator" || identity?.role === "spectator") {
@@ -521,7 +609,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
     setLoadingMembers(true);
     setMembersError("");
 
-    const colRef = collection(db, MEMBERS_COLLECTION);
+    const colRef = membersCollectionRef(activeClubId);
 
     const unsub = onSnapshot(
       colRef,
@@ -547,13 +635,13 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       },
       (err) => {
         console.error("Error loading members:", err);
-        setMembersError("Could not load TurfKings members.");
+        setMembersError(`Could not load ${activeClubName} members.`);
         setLoadingMembers(false);
       }
     );
 
     return () => unsub();
-  }, []);
+  }, [activeClubId, activeClubName]);
 
   const activeMembers = useMemo(
     () => members.filter((m) => m.status === "active"),
@@ -574,7 +662,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       notices.push({
         id: `departure-${departure.requestId}`,
         type: "departure",
-        title: "Turf Kings notice",
+        title: `${activeClubName} notice`,
         tag: "Admin alert",
         icon: "🔔",
         message: (
@@ -601,8 +689,8 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
             <>
               <strong>{m.fullName}</strong>{" "}
               {m.rejoinRequestedAt
-                ? "wants to rejoin TurfKings."
-                : "wants to join TurfKings."}
+                ? `wants to rejoin ${activeClubName}.`
+                : `wants to join ${activeClubName}.`}
             </>
           ),
           helper:
@@ -633,9 +721,15 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
   }, [activeAdminNoticeIndex, notificationCount]);
 
   const [selectedMemberId, setSelectedMemberId] = useState(() => {
-    if (identity?.memberId) return identity.memberId;
+    if (identity?.clubId === activeClubId && identity?.memberId) return identity.memberId;
     return "";
   });
+
+  useEffect(() => {
+    setSelectedMemberId(identity?.clubId === activeClubId && identity?.memberId ? identity.memberId : "");
+    setVerifyError("");
+    setVerifyStatus("");
+  }, [activeClubId]);
   const [verifyError, setVerifyError] = useState("");
   const [verifyStatus, setVerifyStatus] = useState("");
 
@@ -783,7 +877,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
     if (existingMember) {
       if (existingMember.status === "withdrawn") {
         try {
-          await updateDoc(doc(db, MEMBERS_COLLECTION, existingMember.id), {
+          await updateDoc(memberDocRef(activeClubId, existingMember.id), {
             fullName,
             shortName,
             email,
@@ -797,6 +891,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
           if (newPhotoFile) {
             const portraitData = await makePortraitPhotoDataUrl(newPhotoFile);
             await savePlayerPhotoForIdentity({
+              clubId: activeClubId,
               fullName,
               shortName,
               playerId: pendingDocId,
@@ -829,13 +924,13 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       setNewReqError(
         existingMember.status === "pending"
           ? "This player already has a pending request awaiting admin approval."
-          : "This name or email already exists on the TurfKings list."
+          : `This name or email already exists on the ${activeClubName} list.`
       );
       return;
     }
 
     try {
-      const requestRef = await addDoc(collection(db, MEMBERS_COLLECTION), {
+      const requestRef = await addDoc(membersCollectionRef(activeClubId), {
         fullName,
         shortName,
         email,
@@ -848,6 +943,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       if (newPhotoFile) {
         const portraitData = await makePortraitPhotoDataUrl(newPhotoFile);
         await savePlayerPhotoForIdentity({
+          clubId: activeClubId,
           fullName,
           shortName,
           playerId: pendingDocId,
@@ -880,7 +976,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
     setVerifyStatus("");
 
     if (!selectedMember) {
-      setVerifyError("Please select your name on the TurfKings list.");
+      setVerifyError(`Please select your name on the ${activeClubName} list.`);
       return;
     }
 
@@ -929,7 +1025,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
 
     if (!memberEmail) {
       try {
-        await updateDoc(doc(db, MEMBERS_COLLECTION, selectedMember.id), {
+        await updateDoc(memberDocRef(activeClubId, selectedMember.id), {
           email: googleEmail,
         });
       } catch (err) {
@@ -941,7 +1037,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       ...selectedMember,
       id: selectedMember.id,
       email: googleEmail,
-    });
+    }, activeClubId);
 
     const resolvedRole = await resolveSignedInRoleFromPlayerDoc(
       {
@@ -950,7 +1046,8 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
         playerId,
         email: googleEmail,
       },
-      googleEmail
+      googleEmail,
+      activeClubId
     );
 
     // Important for admin preview mode:
@@ -965,10 +1062,12 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       `Welcome, ${selectedMember.shortName}! Your email has been verified.`
     );
 
-    const memberSnap = await getDoc(doc(db, MEMBERS_COLLECTION, selectedMember.id));
+    const memberSnap = await getDoc(memberDocRef(activeClubId, selectedMember.id));
     const memberData = memberSnap.exists() ? memberSnap.data() || {} : {};
 
     const completionPayload = {
+      clubId: activeClubId,
+      clubName: activeClubName,
       // Keep the app UI fully aligned with the selected preview mode.
       // Some downstream pages use identity.role, others use identity.actingRole.
       role: effectiveRole,
@@ -1008,7 +1107,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       fullName: selectedMember.fullName,
       shortName: selectedMember.shortName,
       playerId: playerId || "",
-    });
+    }, activeClubId);
 
     if (!existingPhoto) {
       setPhotoReminderContext({
@@ -1043,6 +1142,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
         (photoReminderFile ? await makePortraitPhotoDataUrl(photoReminderFile) : "");
 
       await savePlayerPhotoForIdentity({
+        clubId: activeClubId,
         fullName: photoReminderContext.fullName,
         shortName: photoReminderContext.shortName,
         playerId: photoReminderContext.playerId,
@@ -1079,7 +1179,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
     setWhatsAppReminderStatus("");
 
     try {
-      await updateDoc(doc(db, MEMBERS_COLLECTION, whatsAppReminderContext.memberId), {
+      await updateDoc(memberDocRef(activeClubId, whatsAppReminderContext.memberId), {
         whatsappNumber: normalized,
         updatedAt: serverTimestamp(),
       });
@@ -1105,7 +1205,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
         selectedMember.playerId ||
         slugFromName(selectedMember.shortName || selectedMember.fullName || "");
 
-      await addDoc(collection(db, WITHDRAWAL_REQUESTS_COLLECTION), {
+      await addDoc(withdrawalRequestsCollectionRef(activeClubId), {
         memberId: selectedMember.id,
         playerId,
         fullName: selectedMember.fullName || "",
@@ -1119,12 +1219,13 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       });
 
       await clearWithdrawnPlayerPrivateDetails({
+        clubId: activeClubId,
         memberId: selectedMember.id,
         playerId,
       });
 
       setWithdrawStatus(
-        "You have left TurfKings. Your private contact details have been removed from the active system. You are always welcome to return in future."
+        `You have left ${activeClubName}. Your private contact details have been removed from the active system. You are always welcome to return in future.`
       );
       setWithdrawReason("");
       setShowWithdrawForm(false);
@@ -1136,6 +1237,8 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
 
   const handleContinueAsSpectator = () => {
     onComplete({
+      clubId: activeClubId,
+      clubName: activeClubName,
       role: "spectator",
       actingRole: "spectator",
       memberId: null,
@@ -1151,7 +1254,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
     const member = members.find((m) => m.id === memberId) || null;
 
     try {
-      await updateDoc(doc(db, MEMBERS_COLLECTION, memberId), {
+      await updateDoc(memberDocRef(clubId, memberId), {
         status: "active",
         rejoinReviewedAt: serverTimestamp(),
         rejoinRequestedAt: deleteField(),
@@ -1161,7 +1264,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
         ...member,
         id: memberId,
         status: "active",
-      });
+      }, activeClubId);
     } catch (err) {
       console.error("Approve failed:", err);
       alert("Could not approve member. Check console for details.");
@@ -1177,6 +1280,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
 
     try {
       await clearWithdrawnPlayerPrivateDetails({
+        clubId: activeClubId,
         memberId: departure.memberId,
         playerId:
           departure.playerId ||
@@ -1184,7 +1288,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       });
 
       await updateDoc(
-        doc(db, WITHDRAWAL_REQUESTS_COLLECTION, departure.requestId),
+        withdrawalRequestDocRef(activeClubId, departure.requestId),
         {
           adminAcknowledgedAt: serverTimestamp(),
           adminAcknowledgedAtMs: Date.now(),
@@ -1225,7 +1329,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
 
   const handleRejectMember = async (memberId) => {
     try {
-      await updateDoc(doc(db, MEMBERS_COLLECTION, memberId), {
+      await updateDoc(memberDocRef(clubId, memberId), {
         status: "rejected",
         rejoinReviewedAt: serverTimestamp(),
         rejoinRequestedAt: deleteField(),
@@ -1306,8 +1410,8 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
       `}</style>
       <header className="header">
         <div className="header-title">
-          <img src={TurfKingsLogo} alt="Turf Kings logo" className="tk-logo" />
-          <h1>Turf Kings 5-A-Side</h1>
+          <img src={activeClubLogoSrc} alt={`${activeClubName} logo`} className="tk-logo" />
+          <h1>{activeClubName}</h1>
         </div>
 
         {!currentUser && (
@@ -1349,7 +1453,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
           }}
         >
           <div style={{ minWidth: 0 }}>
-            <div style={labelCapsuleStyle}>TurfKings Entry</div>
+            <div style={labelCapsuleStyle}>{activeClubShortName} Entry</div>
             <h2
               style={{
                 marginTop: "0.9rem",
@@ -1358,7 +1462,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
                 lineHeight: 1.06,
               }}
             >
-              Welcome to the Turf Kings player platform
+              Welcome to the {activeClubName} player platform
             </h2>
             <p
               className="muted"
@@ -1389,8 +1493,8 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
             }}
           >
             <img
-              src={TeamPhoto}
-              alt="Turf Kings team"
+              src={activeClubHeroImage}
+              alt={`${activeClubName} team`}
               style={{
                 width: "100%",
                 height: "auto",
@@ -1432,7 +1536,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
                   }
             }
           >
-            🏃‍♂️ TurfKings player
+            🏃‍♂️ {activeClubShortName} player
           </button>
 
           <button
@@ -1475,7 +1579,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
           </p>
 
           <div className="field-column" style={{ marginTop: "1rem" }}>
-            <label>Select your name (Turf Kings player list)</label>
+            <label>Select your name ({activeClubName} player list)</label>
             <p className="muted small" style={{ marginTop: "0.25rem" }}>
               There are {activeMembers.length} players on the list – scroll down.
             </p>
@@ -1669,7 +1773,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
                   onChange={(e) => setNewWhatsApp(e.target.value)}
                 />
                 <p className="muted small" style={{ marginTop: "0.35rem" }}>
-                  Used only for TurfKings reminders and updates.
+                  Used only for {activeClubName} reminders and updates.
                 </p>
               </div>
 
@@ -1732,7 +1836,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
               )}
 
               <p className="muted small" style={{ marginTop: "0.4rem" }}>
-                Your request will go to the TurfKings admin. Once approved
+                Your request will go to the {activeClubName} admin. Once approved
                 you&apos;ll appear under the Unseeded tab and can be placed into
                 a squad.
               </p>
@@ -1750,7 +1854,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
               }}
               style={{ fontSize: "0.88rem" }}
             >
-              {showWithdrawForm ? "Close departure request" : "Need to leave TurfKings?"}
+              {showWithdrawForm ? "Close departure request" : "Need to leave {activeClubName}?"}
             </button>
 
             {showWithdrawForm && (
@@ -1912,7 +2016,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
           <div className="modal" style={{ maxWidth: "560px" }}>
             <h3>Add your profile photo</h3>
             <p className="muted small" style={{ marginTop: "0.35rem" }}>
-              You are already on the TurfKings system, but you do not have a player photo yet.
+              You are already on the {activeClubName} system, but you do not have a player photo yet.
               This is optional, but it helps with player cards and match pages.
             </p>
 
@@ -2023,7 +2127,7 @@ export function EntryPage({ identity, onComplete, onDevSkipToLanding, onGoHome }
               type="button"
               className="tk-admin-notification-bell"
               onClick={() => setIsAdminNoticePanelOpen(true)}
-              aria-label={`Open ${notificationCount} Turf Kings notification${notificationCount === 1 ? "" : "s"}`}
+              aria-label={`Open ${notificationCount} ${activeClubName} notification${notificationCount === 1 ? "" : "s"}`}
             >
               <span aria-hidden="true">🔔</span>
               <div className="tk-admin-notification-count">{notificationCount}</div>

@@ -1779,7 +1779,7 @@ export function FriendlyLiveMatchPage({
 
     async function loadPhotos() {
       try {
-        const snap = await getDocs(getPlayerPhotosCollection(db));
+        const snap = await getDocs(getPlayerPhotosCollection(db, safeActiveClubId));
         if (cancelled) return;
 
         const loaded = {};

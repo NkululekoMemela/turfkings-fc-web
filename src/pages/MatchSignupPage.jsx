@@ -204,6 +204,7 @@ async function resolveProfileDocTarget({
   currentUser,
   displayName,
   userId,
+  activeClubId = "turf-kings",
 }) {
   const candidates = buildProfileDocCandidates({
     identity,
@@ -214,7 +215,7 @@ async function resolveProfileDocTarget({
 
   for (const candidate of candidates) {
     try {
-      const snap = await getDoc(doc(db, candidate.collection, candidate.id));
+      const snap = await getDoc(getClubDoc(db, candidate.collection, candidate.id, activeClubId));
       if (snap.exists()) {
         return {
           ...candidate,
@@ -802,9 +803,12 @@ export default function MatchSignupPage({
   activeSeasonId,
   selectedTeamName = "",
   currentTeamName = "",
+  activeClubId = "turf-kings",
+  activeClub = null,
   onBack,
   onProceedToPayment,
 }) {
+  const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
   const [viewportWidth, setViewportWidth] = useState(() => {
     if (typeof window === "undefined") return 390;
     return window.innerWidth;
@@ -897,7 +901,7 @@ export default function MatchSignupPage({
   }, [showCalendarPopup]);
 
   useEffect(() => {
-    const ref = getClubDoc(db, "state", "matchSignupSettings");
+    const ref = getClubDoc(db, "state", "matchSignupSettings", activeClubId);
     const unsubscribe = onSnapshot(
       ref,
       (snap) => {
@@ -998,6 +1002,7 @@ export default function MatchSignupPage({
         currentUser,
         displayName,
         userId: payerUserId,
+        activeClubId,
       });
 
       if (cancelled) return;
@@ -1061,7 +1066,7 @@ export default function MatchSignupPage({
 
     try {
       await setDoc(
-        doc(db, profileTarget.collection, profileTarget.id),
+        getClubDoc(db, profileTarget.collection, profileTarget.id, activeClubId),
         {
           userId: payerUserId,
           playerName: displayName,
@@ -1096,7 +1101,7 @@ export default function MatchSignupPage({
 
     async function loadPhotos() {
       try {
-        const snap = await getDocs(getPlayerPhotosCollection(db));
+        const snap = await getDocs(getPlayerPhotosCollection(db, activeClubId));
         if (cancelled) return;
 
         const loaded = {};
@@ -1135,7 +1140,7 @@ export default function MatchSignupPage({
 
     async function loadPlayersDirectory() {
       try {
-        const snap = await getDocs(getPlayersCollection(db));
+        const snap = await getDocs(getPlayersCollection(db, activeClubId));
         if (cancelled) return;
 
         const nextPlayers = [];
@@ -1334,7 +1339,7 @@ export default function MatchSignupPage({
       }
 
       try {
-        const mainRef = getClubStateDoc(db);
+        const mainRef = getClubStateDoc(db, activeClubId);
         const mainSnap = await getDoc(mainRef);
 
         if (cancelled) return;
@@ -1362,7 +1367,7 @@ export default function MatchSignupPage({
           return;
         }
 
-        const seasonSnaps = await getDocs(getClubCollection(db, CLUB_COLLECTIONS.seasons));
+        const seasonSnaps = await getDocs(getClubCollection(db, CLUB_COLLECTIONS.seasons, activeClubId));
         if (cancelled) return;
 
         const rows = [];
@@ -1370,7 +1375,7 @@ export default function MatchSignupPage({
           seasonSnaps.docs.map(async (seasonDoc) => {
             try {
               const attendanceSnap = await getDocs(
-                collection(db, "clubs", "turf-kings", "seasons", seasonDoc.id, "attendance")
+                collection(db, "clubs", activeClubId, "seasons", seasonDoc.id, "attendance")
               );
               attendanceSnap.forEach((docSnap) =>
                 rows.push({
@@ -1444,8 +1449,8 @@ export default function MatchSignupPage({
         setMatchSignupStateLoaded(false);
 
         const [pendingSnap, matchSignupSnap] = await Promise.all([
-          getDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId)),
-          getDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, pendingId)),
+          getDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId, activeClubId)),
+          getDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, pendingId, activeClubId)),
         ]);
 
         if (cancelled) return;
@@ -1680,8 +1685,8 @@ export default function MatchSignupPage({
       setLiveCommittedUsers(nextCommittedUsers);
     };
 
-    const pendingQuery = query(getPendingSignupsCollection(db));
-    const matchSignupQuery = query(getMatchSignupsCollection(db));
+    const pendingQuery = query(getPendingSignupsCollection(db, activeClubId));
+    const matchSignupQuery = query(getMatchSignupsCollection(db, activeClubId));
 
     const unsubscribePending = onSnapshot(
       pendingQuery,
@@ -2547,7 +2552,7 @@ export default function MatchSignupPage({
 
     try {
       await setDoc(
-        getClubDoc(db, "state", "matchSignupSettings"),
+        getClubDoc(db, "state", "matchSignupSettings", activeClubId),
         {
           ...cleaned,
           updatedAt: serverTimestamp(),
@@ -2585,7 +2590,7 @@ export default function MatchSignupPage({
       const paymentStatus = statusFromWeekState(selectedWeeks, paidWeeks);
 
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, pendingId),
+        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, pendingId, activeClubId),
         {
           signupDocId: pendingId,
           sourcePendingSignupId: pendingId,
@@ -2746,7 +2751,7 @@ export default function MatchSignupPage({
         createdAt: serverTimestamp(),
       };
 
-      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId), payload, {
+      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId, activeClubId), payload, {
         merge: true,
       });
 
@@ -2848,7 +2853,7 @@ export default function MatchSignupPage({
     setAdminCleanupError("");
 
     try {
-      const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, target.docId);
+      const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, target.docId, activeClubId);
       const pendingSnap = await getDoc(pendingRef);
 
       const pendingData = pendingSnap.exists()
@@ -2929,7 +2934,7 @@ export default function MatchSignupPage({
       );
 
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, target.docId),
+        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, target.docId, activeClubId),
         {
           selectedWeeks: nextSelectedWeeks,
           paidWeeks: nextPaidWeeks,
@@ -2993,7 +2998,7 @@ export default function MatchSignupPage({
     setAdminCleanupError("");
 
     try {
-      const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, target.docId);
+      const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, target.docId, activeClubId);
       const pendingSnap = await getDoc(pendingRef);
       const pendingData = pendingSnap.exists()
         ? pendingSnap.data() || {}
@@ -3060,7 +3065,7 @@ export default function MatchSignupPage({
       );
 
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, target.docId),
+        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, target.docId, activeClubId),
         {
           ...identityPayload,
           selectedWeeks: nextSelectedWeeks,
@@ -3114,7 +3119,7 @@ export default function MatchSignupPage({
     setAdminCleanupError("");
 
     try {
-      const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, target.docId);
+      const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, target.docId, activeClubId);
       const pendingSnap = await getDoc(pendingRef);
       if (!pendingSnap.exists()) {
         throw new Error("Pending signup record not found.");
@@ -3145,7 +3150,7 @@ export default function MatchSignupPage({
       );
 
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, target.docId),
+        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, target.docId, activeClubId),
         {
           selectedWeeks: paidWeeksOnly,
           paidWeeks: paidWeeksOnly,
@@ -3204,9 +3209,9 @@ export default function MatchSignupPage({
     try {
       await Promise.all(
         targetDocIds.map(async (docId) => {
-          await deleteDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, docId));
+          await deleteDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, docId, activeClubId));
           try {
-            await deleteDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, docId));
+            await deleteDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, docId, activeClubId));
           } catch (error) {
             console.warn("Match signup delete skipped:", error);
           }
@@ -3263,7 +3268,7 @@ export default function MatchSignupPage({
       const removedDocIds = [];
 
       for (const record of targetRecords) {
-        const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, record.docId);
+        const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, record.docId, activeClubId);
         const pendingSnap = await getDoc(pendingRef);
         if (!pendingSnap.exists()) continue;
 
@@ -3292,7 +3297,7 @@ export default function MatchSignupPage({
         if (!nextSelectedWeeks.length) {
           await deleteDoc(pendingRef);
           try {
-            await deleteDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, record.docId));
+            await deleteDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, record.docId, activeClubId));
           } catch (error) {
             console.warn("Match signup delete skipped:", error);
           }
@@ -3326,7 +3331,7 @@ export default function MatchSignupPage({
         );
 
         await setDoc(
-          getClubDoc(db, CLUB_COLLECTIONS.matchSignups, record.docId),
+          getClubDoc(db, CLUB_COLLECTIONS.matchSignups, record.docId, activeClubId),
           {
             selectedWeeks: nextSelectedWeeks,
             paidWeeks: nextPaidWeeks,
@@ -3371,7 +3376,7 @@ export default function MatchSignupPage({
     try {
       setSelectedWeeks([]);
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId),
+        getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId, activeClubId),
         {
           activeSeasonId: resolvedSeasonId,
           seasonAtSignupTime: resolvedSeasonId,
@@ -3597,7 +3602,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             }}
           >
             <option value="self">Myself</option>
-            <option value="existing_player">Another Turf Kings player</option>
+            <option value="existing_player">Another ${activeClubName} player</option>
           </select>
         </div>
 
@@ -4389,7 +4394,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             </div>
 
             <p className="muted small signup-calendar-note">
-              Add your WhatsApp number so TurfKings can send football-related
+              Add your WhatsApp number so ${activeClubName} can send football-related
               reminders like weather reschedules, payment confirmations, and match
               updates.
             </p>

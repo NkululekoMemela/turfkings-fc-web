@@ -1,10 +1,11 @@
 // src/pages/HomePage.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import "../styles/HomePage.css";
-import demoClubs from "../data/demoClubs.js";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../firebaseConfig";
 import HomeHero from "../components/home/HomeHero.jsx";
 import HomeClubDiscovery from "../components/home/HomeClubDiscovery.jsx";
-import HomeOnboardingPreview from "../components/home/HomeOnboardingPreview.jsx";
+import HomeClubSignup from "../components/home/HomeClubSignup.jsx";
 import HomePlatformFeatures from "../components/home/HomePlatformFeatures.jsx";
 import HomeTutorials from "../components/home/HomeTutorials.jsx";
 import HomeMapPreview from "../components/home/HomeMapPreview.jsx";
@@ -20,6 +21,33 @@ export default function HomePage({
 }) {
   const [theme, setTheme] = useState("balanced");
   const [activeView, setActiveView] = useState("entry");
+  const [clubs, setClubs] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadClubs() {
+      try {
+        const snap = await getDocs(collection(db, "clubs"));
+        const firebaseClubs = snap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+
+        if (!cancelled) {
+          setClubs(firebaseClubs);
+        }
+      } catch (error) {
+        console.error("[FANM] Failed to load clubs:", error);
+      }
+    }
+
+    loadClubs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleViewClub = (club) => {
     if (club?.id === "turf-kings") {
@@ -64,7 +92,7 @@ export default function HomePage({
 
   const showFullHome = activeView === "features";
   const showClubDiscovery = activeView === "clubs" || activeView === "features";
-  const showCaptainOnboarding = activeView === "captain";
+  const showCaptainSignup = activeView === "captain";
 
   return (
     <main className={`fanm-home-shell fanm-theme-${theme}`}>
@@ -99,7 +127,7 @@ export default function HomePage({
           >
             {theme === "balanced" ? "Deep mode" : "Warm mode"}
           </button>
-          <button type="button" className="fanm-nav-primary" onClick={() => onEnterTurfKings?.(demoClubs[0])}>
+          <button type="button" className="fanm-nav-primary" onClick={() => onEnterTurfKings?.(clubs.find((club) => club.id === "turf-kings") || null)}>
             Enter Turf Kings
           </button>
         </nav>
@@ -126,17 +154,22 @@ export default function HomePage({
         </section>
       )}
 
-      {showCaptainOnboarding && (
-        <HomeOnboardingPreview
-          onStartSetup={() => handleComingSoon("The full club setup wizard is the next build step.")}
+      {showCaptainSignup && (
+        <HomeClubSignup
           onClose={() => setActiveView("entry")}
+          onClubCreated={(club) => {
+            console.log("[FANM] Club created:", club);
+            window.alert(`${club.name} created successfully.`);
+            setActiveView("clubs");
+            scrollToSection("clubs");
+          }}
         />
       )}
 
       {showClubDiscovery && (
         <>
           <HomeClubDiscovery
-            clubs={demoClubs}
+            clubs={clubs}
             onRegisterClub={startCaptainFlow}
             onViewClub={handleViewClub}
             onJoinClub={(club, meta) => {
@@ -148,7 +181,7 @@ export default function HomePage({
             }}
             onChallengeClub={(club) => handleComingSoon(`Club challenges will be reserved for club leaders/admins. ${club.name} challenge flow is coming later.`)}
           />
-          <HomeMapPreview clubs={demoClubs} />
+          <HomeMapPreview clubs={clubs} />
         </>
       )}
 

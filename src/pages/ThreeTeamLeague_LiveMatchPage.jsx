@@ -1750,7 +1750,7 @@ export function ThreeTeamLeagueLiveMatchPage({
 
     async function loadPhotos() {
       try {
-        const snap = await getDocs(getPlayerPhotosCollection(db));
+        const snap = await getDocs(getPlayerPhotosCollection(db, activeClubId));
         if (cancelled) return;
 
         const loaded = {};

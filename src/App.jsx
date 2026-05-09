@@ -17,6 +17,7 @@ import VideoHighlightsPage from "./pages/VideoHighlightsPage.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
 import BottomNav from "./components/BottomNav.jsx";
+import { buildClubIdentity, DEFAULT_CLUB_ID } from "./core/clubIdentity.js";
 import {
   MATCH_MODE as MATCH_TYPE,
   GAME_FORMAT,
@@ -52,6 +53,7 @@ import {
 } from "./core/scheduledFixtures.js";
 
 import { db } from "./firebaseConfig.js";
+import { clubCollectionPath, clubDocPath } from "./core/clubPaths.js";
 import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 
 // Page constants
@@ -80,7 +82,7 @@ const MASTER_CODE = "3333";
 const DEFAULT_LEAGUE_MATCH_SECONDS = 5 * 60;
 const DEFAULT_FRIENDLY_MATCH_SECONDS = 60 * 60;
 const DEFAULT_MATCH_SECONDS = DEFAULT_FRIENDLY_MATCH_SECONDS;
-const MATCH_SECONDS_STORAGE_KEY = "tk_match_seconds_by_type_v1";
+const MATCH_SECONDS_STORAGE_NAME = "match_seconds_by_type_v1";
 
 const GUEST_OPPONENT_ID = "guest_opponent";
 const TURF_KINGS_CHALLENGE_ID = "turf_kings_challenge";
@@ -92,6 +94,48 @@ const USE_V2 = true;
 const IS_STAGING =
   String(import.meta.env.VITE_USE_STAGING || "").trim().toLowerCase() ===
   "true";
+
+function buildClubStorageKey(name, clubId = DEFAULT_CLUB_ID) {
+  const safeName = String(name || "value").trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+  const safeClubId = String(clubId || DEFAULT_CLUB_ID)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "") || DEFAULT_CLUB_ID;
+
+  return `fanm_${safeClubId}_${safeName}`;
+}
+
+function getIdentityStorageKey(clubId = DEFAULT_CLUB_ID) {
+  return buildClubStorageKey("identity_v1", clubId);
+}
+
+function getSmartOffsetStorageKey(clubId = DEFAULT_CLUB_ID) {
+  return buildClubStorageKey("smart_offset_v1", clubId);
+}
+
+function getMatchSecondsStorageKey(clubId = DEFAULT_CLUB_ID) {
+  return buildClubStorageKey(MATCH_SECONDS_STORAGE_NAME, clubId);
+}
+
+function getPlayerCardSnapshotStorageKeys(seasonId, clubId = DEFAULT_CLUB_ID) {
+  const safeClubId = String(clubId || DEFAULT_CLUB_ID).trim() || DEFAULT_CLUB_ID;
+  const safeSeasonId = String(seasonId || "").trim();
+
+  const keys = safeSeasonId
+    ? [
+        buildClubStorageKey(`player_card_snapshot_${safeSeasonId}`, safeClubId),
+        buildClubStorageKey("player_card_snapshot_latest", safeClubId),
+      ]
+    : [buildClubStorageKey("player_card_snapshot_latest", safeClubId)];
+
+  if (safeClubId === DEFAULT_CLUB_ID) {
+    if (safeSeasonId) keys.push(`tk_player_card_snapshot_${safeSeasonId}`);
+    keys.push("tk_player_card_snapshot_latest");
+  }
+
+  return keys;
+}
 
 /* ---------------- Identity helpers ---------------- */
 
@@ -1046,13 +1090,11 @@ function buildDefaultParticipationEntries({
 }
 
 
-function readRenderedPlayerCardSnapshotFromLocalStorage(seasonId) {
+function readRenderedPlayerCardSnapshotFromLocalStorage(seasonId, clubId = DEFAULT_CLUB_ID) {
   if (typeof window === "undefined") return null;
 
   const safeSeasonId = String(seasonId || "").trim();
-  const keys = safeSeasonId
-    ? [`tk_player_card_snapshot_${safeSeasonId}`, "tk_player_card_snapshot_latest"]
-    : ["tk_player_card_snapshot_latest"];
+  const keys = getPlayerCardSnapshotStorageKeys(safeSeasonId, clubId);
 
   for (const key of keys) {
     try {
@@ -1434,13 +1476,14 @@ async function saveHighlightVotesToFirebase({
   userId,
   userName,
   votesByUser,
+  activeClubId = DEFAULT_CLUB_ID,
 }) {
   const safeMatchDayId = String(matchDayId || "").trim();
   const safeUserId = String(userId || "").trim();
   if (!safeMatchDayId || !safeUserId) return;
 
   const userVotes = votesByUser?.[safeUserId] || {};
-  const voteRef = doc(db, "matchdays", safeMatchDayId, "highlight_votes", safeUserId);
+  const voteRef = doc(db, clubDocPath("matchdays", safeMatchDayId, activeClubId), "highlight_votes", safeUserId);
 
   await setDoc(
     voteRef,
@@ -1457,11 +1500,11 @@ async function saveHighlightVotesToFirebase({
   );
 }
 
-async function loadHighlightVotesFromFirebase(matchDayId) {
+async function loadHighlightVotesFromFirebase(matchDayId, activeClubId = DEFAULT_CLUB_ID) {
   const safeMatchDayId = String(matchDayId || "").trim();
   if (!safeMatchDayId) return {};
 
-  const votesRef = collection(db, "matchdays", safeMatchDayId, "highlight_votes");
+  const votesRef = collection(db, clubDocPath("matchdays", safeMatchDayId, activeClubId), "highlight_votes");
   const snapshot = await getDocs(votesRef);
 
   const votes = {};
@@ -1487,6 +1530,7 @@ async function archiveWinningHighlightsToFirebase({
   matchType = MATCH_TYPE.FRIENDLY,
   gameFormat,
   currentMatchNo,
+  activeClubId = DEFAULT_CLUB_ID,
 }) {
   const safeMatchDayId = String(matchDayId || "").trim();
   if (!safeMatchDayId) return;
@@ -1531,7 +1575,7 @@ async function archiveWinningHighlightsToFirebase({
     const clipId = String(winner?.clipId || winner?.id || `winner-${index}`).trim();
     if (!clipId) return;
 
-    const archiveRef = doc(db, "matchdays", safeMatchDayId, "archived_highlights", clipId);
+    const archiveRef = doc(db, clubDocPath("matchdays", safeMatchDayId, activeClubId), "archived_highlights", clipId);
 
     batch.set(
       archiveRef,
@@ -1554,15 +1598,15 @@ async function archiveWinningHighlightsToFirebase({
   await batch.commit();
 }
 
-async function clearRawHighlightsFromFirebase(matchDayId) {
+async function clearRawHighlightsFromFirebase(matchDayId, activeClubId = DEFAULT_CLUB_ID) {
   const safeMatchDayId = String(matchDayId || "").trim();
   if (!safeMatchDayId) return;
 
-  const rawRef = collection(db, "matchdays", safeMatchDayId, "raw_highlights");
+  const rawRef = collection(db, clubDocPath("matchdays", safeMatchDayId, activeClubId), "raw_highlights");
   const snapshot = await getDocs(rawRef);
 
   const deletions = snapshot.docs.map((docSnap) =>
-    deleteDoc(doc(db, "matchdays", safeMatchDayId, "raw_highlights", docSnap.id))
+    deleteDoc(doc(db, clubDocPath("matchdays", safeMatchDayId, activeClubId), "raw_highlights", docSnap.id))
   );
   await Promise.all(deletions);
 }
@@ -1707,8 +1751,9 @@ function buildCameraLiveContext({
   };
 }
 
-async function writeCameraLiveContextToFirebase(cameraLiveContext) {
-  const appStateRef = doc(db, "appState_v2", "main");
+async function writeCameraLiveContextToFirebase(cameraLiveContext, clubId = DEFAULT_CLUB_ID) {
+  const safeClubId = String(clubId || DEFAULT_CLUB_ID).trim() || DEFAULT_CLUB_ID;
+  const appStateRef = doc(db, "clubs", safeClubId, "state", "main");
 
   await setDoc(
     appStateRef,
@@ -1855,16 +1900,68 @@ function getMatchSecondsForType(matchSecondsByType, rawMatchType) {
 
 export default function App() {
   const [page, setPage] = useState(PAGE_HOME);
+  const [selectedHomeClub, setSelectedHomeClub] = useState(null);
 
   const [identity, setIdentity] = useState(() => {
     if (typeof window === "undefined") return null;
     try {
-      const raw = window.localStorage.getItem("tk_identity_v1");
-      return raw ? ensureIdentityShape(JSON.parse(raw)) : null;
+      const scopedRaw = window.localStorage.getItem(getIdentityStorageKey(DEFAULT_CLUB_ID));
+      const legacyRaw = window.localStorage.getItem("tk_identity_v1");
+      const raw = scopedRaw || legacyRaw;
+      const parsed = raw ? ensureIdentityShape(JSON.parse(raw)) : null;
+
+      if (parsed?.clubId && parsed.clubId !== DEFAULT_CLUB_ID) return null;
+      return parsed ? { ...parsed, clubId: parsed.clubId || DEFAULT_CLUB_ID } : null;
     } catch {
       return null;
     }
   });
+
+  const activeClubIdentity = useMemo(() => {
+    const identityClub = identity?.clubId
+      ? {
+          id: identity.clubId,
+          name: identity.clubName,
+          shortName: identity.clubShortName,
+          logoUrl: identity.clubLogoUrl,
+          heroImage: identity.clubHeroImage,
+        }
+      : null;
+
+    return buildClubIdentity(selectedHomeClub || identityClub || { id: DEFAULT_CLUB_ID });
+  }, [
+    selectedHomeClub,
+    identity?.clubId,
+    identity?.clubName,
+    identity?.clubShortName,
+    identity?.clubLogoUrl,
+    identity?.clubHeroImage,
+  ]);
+
+  const activeClubId = activeClubIdentity.id;
+  const activeClub = activeClubIdentity;
+  const activeClubName = activeClubIdentity.name;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const scopedRaw = window.localStorage.getItem(getIdentityStorageKey(activeClubId));
+      const legacyRaw = activeClubId === DEFAULT_CLUB_ID
+        ? window.localStorage.getItem("tk_identity_v1")
+        : null;
+      const raw = scopedRaw || legacyRaw;
+      const parsed = raw ? ensureIdentityShape(JSON.parse(raw)) : null;
+
+      if (parsed && (parsed.clubId || DEFAULT_CLUB_ID) === activeClubId) {
+        setIdentity({ ...parsed, clubId: activeClubId });
+      } else {
+        setIdentity(null);
+      }
+    } catch {
+      setIdentity(null);
+    }
+  }, [activeClubId]);
 
   const members = useMembers();
   const [showAdminReclaimNudge, setShowAdminReclaimNudge] = useState(true);
@@ -1873,14 +1970,29 @@ export default function App() {
     const safePayload = ensureIdentityShape(payload);
     setIdentity(safePayload);
 
+    if (safePayload?.clubId) {
+      setSelectedHomeClub((prev) =>
+        prev?.id === safePayload.clubId
+          ? prev
+          : buildClubIdentity({
+              id: safePayload.clubId,
+              name: safePayload.clubName,
+              shortName: safePayload.clubShortName,
+              logoUrl: safePayload.clubLogoUrl,
+              heroImage: safePayload.clubHeroImage,
+            })
+      );
+    }
+
     if (typeof window !== "undefined") {
+      const payloadClubId = safePayload?.clubId || activeClubId || DEFAULT_CLUB_ID;
       if (safePayload) {
         window.localStorage.setItem(
-          "tk_identity_v1",
-          JSON.stringify(safePayload)
+          getIdentityStorageKey(payloadClubId),
+          JSON.stringify({ ...safePayload, clubId: payloadClubId })
         );
       } else {
-        window.localStorage.removeItem("tk_identity_v1");
+        window.localStorage.removeItem(getIdentityStorageKey(payloadClubId));
       }
     }
 
@@ -1888,7 +2000,7 @@ export default function App() {
   };
 
   const [state, setState] = useState(() =>
-    USE_V2 ? loadStateV2() : loadState()
+    USE_V2 ? loadStateV2(activeClubId) : loadState()
   );
 
   const activeSeasonIdForPeerRatings = USE_V2
@@ -1903,8 +2015,9 @@ export default function App() {
   const [smartOffset, setSmartOffset] = useState(() => {
     if (typeof window === "undefined") return 5;
     try {
-      const raw = window.localStorage.getItem("tk_smart_offset_v1");
-      const parsed = Number(raw);
+      const scopedRaw = window.localStorage.getItem(getSmartOffsetStorageKey(DEFAULT_CLUB_ID));
+      const legacyRaw = window.localStorage.getItem("tk_smart_offset_v1");
+      const parsed = Number(scopedRaw || legacyRaw);
       return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5;
     } catch {
       return 5;
@@ -1917,12 +2030,31 @@ export default function App() {
     }
 
     try {
-      const raw = window.localStorage.getItem(MATCH_SECONDS_STORAGE_KEY);
+      const raw = window.localStorage.getItem(getMatchSecondsStorageKey(DEFAULT_CLUB_ID));
       return normalizeMatchSecondsByType(raw ? JSON.parse(raw) : null);
     } catch {
       return normalizeMatchSecondsByType();
     }
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const rawSmartOffset = window.localStorage.getItem(getSmartOffsetStorageKey(activeClubId));
+      const parsedSmartOffset = Number(rawSmartOffset);
+      setSmartOffset(Number.isFinite(parsedSmartOffset) && parsedSmartOffset >= 0 ? parsedSmartOffset : 5);
+    } catch {
+      setSmartOffset(5);
+    }
+
+    try {
+      const rawMatchSeconds = window.localStorage.getItem(getMatchSecondsStorageKey(activeClubId));
+      setMatchSecondsByType(normalizeMatchSecondsByType(rawMatchSeconds ? JSON.parse(rawMatchSeconds) : null));
+    } catch {
+      setMatchSecondsByType(normalizeMatchSecondsByType());
+    }
+  }, [activeClubId]);
 
   const [secondsLeft, setSecondsLeft] = useState(DEFAULT_MATCH_SECONDS);
   const [running, setRunning] = useState(false);
@@ -2045,7 +2177,7 @@ export default function App() {
       const next = typeof updater === "function" ? updater(prev) : updater;
       if (USE_V2) {
         const safe = ensureV2StateShape(next);
-        saveStateV2(safe);
+        saveStateV2(safe, activeClubId);
         return safe;
       }
       saveState(next);
@@ -2068,36 +2200,46 @@ export default function App() {
   };
 
   useEffect(() => {
-    const unsubscribe = (USE_V2 ? subscribeToStateV2 : subscribeToState)(
-      (cloudState) => {
-        if (!cloudState) return;
-        if (USE_V2) setState(ensureV2StateShape(cloudState));
-        else setState(cloudState);
-      }
-    );
+    if (USE_V2) {
+      setState(ensureV2StateShape(loadStateV2(activeClubId)));
+    }
+
+    const unsubscribe = USE_V2
+      ? subscribeToStateV2(
+          (cloudState) => {
+            if (!cloudState) return;
+            setState(ensureV2StateShape(cloudState));
+          },
+          activeClubId
+        )
+      : subscribeToState((cloudState) => {
+          if (!cloudState) return;
+          setState(cloudState);
+        });
+
     return () => unsubscribe && unsubscribe();
-  }, []);
+  }, [activeClubId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem("tk_smart_offset_v1", String(smartOffset));
+      window.localStorage.setItem(getSmartOffsetStorageKey(activeClubId), String(smartOffset));
     } catch {
       // ignore localStorage failures
     }
-  }, [smartOffset]);
+  }, [smartOffset, activeClubId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(
-        MATCH_SECONDS_STORAGE_KEY,
+        getMatchSecondsStorageKey(activeClubId),
         JSON.stringify(normalizeMatchSecondsByType(matchSecondsByType))
       );
     } catch {
       // ignore localStorage failures
     }
-  }, [matchSecondsByType]);
+  }, [matchSecondsByType, activeClubId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -2364,11 +2506,11 @@ export default function App() {
 
     (async () => {
       try {
-        await writeCameraLiveContextToFirebase(currentCameraLiveContext);
+        await writeCameraLiveContextToFirebase(currentCameraLiveContext, activeClubId);
       } catch (error) {
         if (!cancelled) {
           console.error(
-            "[TK CAMERA] Failed to write cameraLiveContext to appState_v2/main:",
+            "[TK CAMERA] Failed to write club-scoped cameraLiveContext:",
             error
           );
         }
@@ -2478,7 +2620,10 @@ export default function App() {
     setShowAdminReclaimNudge(false);
 
     if (typeof window !== "undefined") {
-      window.localStorage.setItem("tk_identity_v1", JSON.stringify(nextIdentity));
+      window.localStorage.setItem(
+        getIdentityStorageKey(activeClubId),
+        JSON.stringify({ ...nextIdentity, clubId: activeClubId })
+      );
     }
   };
 
@@ -2624,7 +2769,7 @@ export default function App() {
   const handleGoToMatchSignup = () => {
     if (!canAccessMatchSignup) {
       window.alert(
-        "Please sign in as a Turf Kings player before using payments. This prevents untracked payments."
+        "Please sign in as a club player before using payments. This prevents untracked payments."
       );
       setPage(PAGE_ENTRY);
       return;
@@ -3058,7 +3203,7 @@ export default function App() {
     setCurrentConfirmedLineupSnapshot(null);
 
     if (USE_V2) {
-      writeCameraLiveContextToFirebase(null).catch((error) => {
+      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
         console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
       });
     }
@@ -3342,7 +3487,7 @@ export default function App() {
       setHasLiveMatch(false);
       setPendingMatchStartContext(null);
       setCurrentConfirmedLineupSnapshot(null);
-      writeCameraLiveContextToFirebase(null).catch((error) => {
+      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
         console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
       });
       setPage(PAGE_LANDING);
@@ -3490,7 +3635,7 @@ export default function App() {
     setPendingMatchStartContext(null);
     setCurrentConfirmedLineupSnapshot(null);
     try {
-      await writeCameraLiveContextToFirebase(null);
+      await writeCameraLiveContextToFirebase(null, activeClubId);
     } catch (error) {
       console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
     }
@@ -3504,7 +3649,7 @@ export default function App() {
     setSecondsLeft(matchSeconds);
     setHasLiveMatch(false);
     setPendingMatchStartContext(null);
-    writeCameraLiveContextToFirebase(null).catch((error) => {
+    writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
       console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
     });
     setCurrentConfirmedLineupSnapshot(null);
@@ -3515,7 +3660,7 @@ export default function App() {
         currentEvents: [],
       }));
 
-      writeCameraLiveContextToFirebase(null).catch((error) => {
+      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
         console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
       });
     } else {
@@ -4347,7 +4492,8 @@ export default function App() {
       const { activeSeason } = getActiveSeasonFromV2State(safePrev);
       const baseTeams = activeSeason?.teams || [];
       const renderedPlayerCardSnapshot = readRenderedPlayerCardSnapshotFromLocalStorage(
-        activeSeason?.seasonId
+        activeSeason?.seasonId,
+        activeClubId
       );
       const finalPlayerCardSnapshot = buildFinalPlayerCardSnapshot({
         season: activeSeason,
@@ -5127,15 +5273,14 @@ export default function App() {
           onFindClub={() => {
             window.alert("Club search will be connected next.");
           }}
-          onBrowseClub={(club) => {
-            if (club?.id === "turf-kings") {
-              setPage(PAGE_ENTRY);
-              return;
-            }
-
-            window.alert(`${club?.name || "This club"} profile is coming next.`);
+          onViewClub={(club) => {
+            setSelectedHomeClub(buildClubIdentity(club || { id: DEFAULT_CLUB_ID }));
+            setPage(PAGE_ENTRY);
           }}
-          onEnterTurfKings={() => setPage(PAGE_ENTRY)}
+          onEnterTurfKings={(club) => {
+            setSelectedHomeClub(buildClubIdentity(club || { id: DEFAULT_CLUB_ID }));
+            setPage(PAGE_ENTRY);
+          }}
         />
       )}
 
@@ -5143,6 +5288,9 @@ export default function App() {
         <EntryPage
           identity={identity}
           members={members}
+          activeClub={activeClub}
+          activeClubId={activeClubId}
+          selectedClub={activeClubIdentity}
           onComplete={handleEntryComplete}
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}
           onGoHome={() => setPage(PAGE_HOME)}
@@ -5151,6 +5299,10 @@ export default function App() {
 
       {page === PAGE_LANDING && (
         <LandingPage
+          activeClub={activeClubIdentity}
+          activeClubId={activeClubId}
+          activeClubName={activeClubName}
+          clubIdentity={activeClubIdentity}
           teams={teams}
           currentMatchNo={activeMatchNo}
           currentMatch={effectiveLiveMatch}
@@ -5164,6 +5316,8 @@ export default function App() {
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
           durationSwitchLocked={hasLiveMatch || running}
           activeTeamIds={normalizedActiveTeamIds}
+          activeClub={activeClub}
+          activeClubId={activeClubId}
           matchMode={matchMode}
           scheduledTarget={scheduledTarget}
           scheduledFixtures={scheduledFixtures}
@@ -5207,6 +5361,8 @@ export default function App() {
           currentUser={null}
           teams={teams}
           activeSeasonId={activeSeasonId}
+          activeClub={activeClub}
+          activeClubId={activeClubId}
           playerPhotosByName={playerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
@@ -5217,6 +5373,7 @@ export default function App() {
         <EntryPage
           identity={identity}
           members={members}
+          selectedClub={activeClubIdentity}
           onComplete={handleEntryComplete}
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}
           onGoHome={() => setPage(PAGE_HOME)}
@@ -5397,6 +5554,8 @@ export default function App() {
           onGoToSignIn={() => setPage(PAGE_ENTRY)}
           onBack={handleBackToLanding}
           members={members}
+          activeClub={activeClub}
+          activeClubId={activeClubId}
         />
       )}
 
@@ -5420,6 +5579,8 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           activeSeasonNo={USE_V2 ? activeSeasonNo : null}
+          activeClub={activeClub}
+          activeClubId={activeClubId}
           finalPlayerCardSnapshot={
             USE_V2
               ? (() => {
@@ -5439,6 +5600,8 @@ export default function App() {
               : null
           }
           onBack={() => setPage(PAGE_STATS)}
+          activeClub={activeClub}
+          activeClubId={activeClubId}
         />
       )}
 
@@ -5464,6 +5627,8 @@ export default function App() {
           activeRole={activeRole}
           matchType={matchType}
           gameFormat={gameFormat}
+          activeClub={activeClub}
+          activeClubId={activeClubId}
           activeTeamIds={normalizedActiveTeamIds}
           onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
         />
@@ -6188,6 +6353,8 @@ export default function App() {
       {showBottomNav ? (
         <BottomNav
           currentPage={page}
+          activeClub={activeClubIdentity}
+          activeClubName={activeClubName}
           onNavigate={handleBottomNavNavigate}
           hasLiveMatch={hasLiveMatch || running}
           canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}

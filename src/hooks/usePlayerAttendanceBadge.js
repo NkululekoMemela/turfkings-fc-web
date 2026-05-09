@@ -263,7 +263,7 @@ export default function usePlayerAttendanceBadge(beneficiary) {
       }
 
       try {
-        const mainRef = getClubStateDoc(db);
+        const mainRef = getClubStateDoc(db, activeClubId);
         const mainSnap = await getDoc(mainRef);
 
         if (cancelled) return;
@@ -299,7 +299,7 @@ export default function usePlayerAttendanceBadge(beneficiary) {
           seasonSnaps.docs.map(async (seasonDoc) => {
             try {
               const attendanceSnap = await getDocs(
-                collection(db, "clubs", "turf-kings", "seasons", seasonDoc.id, "attendance")
+                collection(db, "clubs", activeClubId, "seasons", seasonDoc.id, "attendance")
               );
               attendanceSnap.forEach((docSnap) =>
                 rows.push({

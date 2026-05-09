@@ -397,7 +397,10 @@ export function StatsPage({
   canPreviewPreviousSeasonUI = false,
   isAdmin = false,
   matchType = "LEAGUE",
+  activeClubId = "turf-kings",
+  activeClub = null,
 }) {
+  const safeActiveClubId = activeClubId || "turf-kings";
   const safeMembers = Array.isArray(members) ? members : [];
   const safeSeasons = Array.isArray(seasons) ? seasons : [];
   const safePlayerPhotosByName =
@@ -483,7 +486,7 @@ export function StatsPage({
 
     async function loadPlayersRegistry() {
       try {
-        const playersSnap = await getDocs(getPlayersCollection(db));
+        const playersSnap = await getDocs(getPlayersCollection(db, safeActiveClubId));
         if (!isMounted) return;
 
         const { mapNameToCanon, mapCanonToShort } = buildPlayersRegistry(playersSnap);
@@ -1297,7 +1300,7 @@ export function StatsPage({
   useEffect(() => {
     async function loadPhotos() {
       try {
-        const snap = await getDocs(getPlayerPhotosCollection(db));
+        const snap = await getDocs(getPlayerPhotosCollection(db, safeActiveClubId));
         const idx = {};
 
         const add = (k, url) => {

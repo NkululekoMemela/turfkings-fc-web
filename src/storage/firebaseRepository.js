@@ -14,21 +14,13 @@ import {
   orderBy,
 } from "firebase/firestore";
 
-// =======================
-// LEGACY (DO NOT CHANGE)
-// =======================
+import { getClubStateDoc, getPeerRatingsCollection } from "../core/clubFirestorePaths.js";
+
+const DEFAULT_CLUB_ID = "turf-kings";
+
 const STATE_COLLECTION = "appState";
 const STATE_DOC_ID = "main";
 
-// =======================
-// V2 (NEW MODEL)
-// =======================
-const STATE_COLLECTION_V2 = "appState_v2";
-const STATE_DOC_ID_V2 = "main";
-
-/* -----------------------------------------
-   FIRESTORE SAFE SERIALIZER
-------------------------------------------*/
 function stripUndefinedDeep(value) {
   if (value === undefined) return null;
 
@@ -36,11 +28,7 @@ function stripUndefinedDeep(value) {
     return value.map(stripUndefinedDeep);
   }
 
-  if (
-    value &&
-    typeof value === "object" &&
-    !(value instanceof Date)
-  ) {
+  if (value && typeof value === "object" && !(value instanceof Date)) {
     return Object.fromEntries(
       Object.entries(value)
         .filter(([, v]) => v !== undefined)
@@ -51,9 +39,6 @@ function stripUndefinedDeep(value) {
   return value;
 }
 
-/**
- * Save full app state to Firestore (LEGACY).
- */
 export async function saveStateToFirebase(state) {
   try {
     const ref = doc(db, STATE_COLLECTION, STATE_DOC_ID);
@@ -71,13 +56,11 @@ export async function saveStateToFirebase(state) {
   }
 }
 
-/**
- * Load full app state from Firestore once (LEGACY).
- */
 export async function loadStateFromFirebase() {
   try {
     const ref = doc(db, STATE_COLLECTION, STATE_DOC_ID);
     const snap = await getDoc(ref);
+
     if (!snap.exists()) return null;
 
     const data = snap.data();
@@ -88,9 +71,6 @@ export async function loadStateFromFirebase() {
   }
 }
 
-/**
- * Subscribe to full app state (LEGACY).
- */
 export function subscribeToState(callback) {
   const ref = doc(db, STATE_COLLECTION, STATE_DOC_ID);
 
@@ -101,6 +81,7 @@ export function subscribeToState(callback) {
         callback(null);
         return;
       }
+
       callback(snap.data()?.state ?? null);
     },
     (err) => {
@@ -109,16 +90,9 @@ export function subscribeToState(callback) {
   );
 }
 
-/* =======================================================================
-   V2: FULL APP STATE
-======================================================================= */
-
-export async function saveStateToFirebaseV2(state) {
+export async function saveStateToFirebaseV2(state, clubId = DEFAULT_CLUB_ID) {
   try {
-    const ref = doc(db, STATE_COLLECTION_V2, STATE_DOC_ID_V2);
-
-    // Critical fix for Friendly matches:
-    // strips undefined values before Firestore write.
+    const ref = getClubStateDoc(db, clubId);
     const cleanedState = stripUndefinedDeep(state);
 
     await setDoc(
@@ -126,33 +100,32 @@ export async function saveStateToFirebaseV2(state) {
       {
         state: cleanedState,
         updatedAt: new Date().toISOString(),
+        clubId,
       },
       { merge: true }
     );
-
   } catch (err) {
     console.error("Failed to save state to Firebase (V2):", err);
   }
 }
 
-export async function loadStateFromFirebaseV2() {
+export async function loadStateFromFirebaseV2(clubId = DEFAULT_CLUB_ID) {
   try {
-    const ref = doc(db, STATE_COLLECTION_V2, STATE_DOC_ID_V2);
+    const ref = getClubStateDoc(db, clubId);
     const snap = await getDoc(ref);
 
     if (!snap.exists()) return null;
 
     const data = snap.data();
     return data?.state ?? null;
-
   } catch (err) {
     console.error("Failed to load state from Firebase (V2):", err);
     return null;
   }
 }
 
-export function subscribeToStateV2(callback) {
-  const ref = doc(db, STATE_COLLECTION_V2, STATE_DOC_ID_V2);
+export function subscribeToStateV2(callback, clubId = DEFAULT_CLUB_ID) {
+  const ref = getClubStateDoc(db, clubId);
 
   return onSnapshot(
     ref,
@@ -170,10 +143,7 @@ export function subscribeToStateV2(callback) {
   );
 }
 
-/**
- * Submit a single peer rating to Firestore.
- */
-export async function submitPeerRating(payload) {
+export async function submitPeerRating(payload, clubId = DEFAULT_CLUB_ID) {
   const cleanRater = String(payload?.raterName || "").trim();
   const cleanTarget = String(payload?.targetName || "").trim();
 
@@ -189,14 +159,14 @@ export async function submitPeerRating(payload) {
 
   const docPayload = {
     raterName: cleanRater,
-    raterNameNormalized: String(
-      payload?.raterNameNormalized || cleanRater
-    ).trim().toLowerCase(),
+    raterNameNormalized: String(payload?.raterNameNormalized || cleanRater)
+      .trim()
+      .toLowerCase(),
 
     targetName: cleanTarget,
-    targetNameNormalized: String(
-      payload?.targetNameNormalized || cleanTarget
-    ).trim().toLowerCase(),
+    targetNameNormalized: String(payload?.targetNameNormalized || cleanTarget)
+      .trim()
+      .toLowerCase(),
 
     attack: toNumOrNull(payload?.attack),
     defence: toNumOrNull(payload?.defence),
@@ -216,12 +186,8 @@ export async function submitPeerRating(payload) {
     createdAt: serverTimestamp(),
   };
 
-  await addDoc(collection(db, "peerRatings"), docPayload);
+  await addDoc(getPeerRatingsCollection(db, clubId), docPayload);
 }
-
-/* =======================================================================
-KIT ORDERS / POLL
-======================================================================= */
 
 const KIT_ORDERS_COLLECTION = "kitOrders";
 
@@ -276,7 +242,5 @@ export async function removeKitOrder(memberId) {
   const cleanId = String(memberId || "").trim();
   if (!cleanId) return;
 
-  await deleteDoc(
-    doc(db, KIT_ORDERS_COLLECTION, cleanId)
-  );
+  await deleteDoc(doc(db, KIT_ORDERS_COLLECTION, cleanId));
 }

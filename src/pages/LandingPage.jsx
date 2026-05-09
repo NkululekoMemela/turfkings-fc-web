@@ -1,10 +1,7 @@
 // src/pages/LandingPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { getTeamById } from "../core/teams.js";
-import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
-import TeamPhoto1 from "../assets/TurfKings.jpg";
-import TeamPhoto2 from "../assets/TurfKings2.jpeg";
-import TeamPhoto3 from "../assets/TurfKings3.jpeg";
+import { buildClubIdentity } from "../core/clubIdentity.js";
 
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
@@ -169,6 +166,10 @@ function secondsToEditableMinutes(seconds, fallbackSeconds = 60 * 60) {
 }
 
 export function LandingPage({
+  activeClub = null,
+  activeClubId = null,
+  activeClubName = null,
+  clubIdentity = null,
   teams,
   currentMatchNo,
   currentMatch,
@@ -253,7 +254,29 @@ export function LandingPage({
     return window.innerWidth <= 480;
   });
 
-  const teamPhotos = [TeamPhoto1, TeamPhoto2, TeamPhoto3];
+  const resolvedClubIdentity = useMemo(
+    () =>
+      clubIdentity ||
+      buildClubIdentity({
+        ...(activeClub || {}),
+        id: activeClubId || activeClub?.id,
+        name: activeClubName || activeClub?.name,
+      }),
+    [clubIdentity, activeClub, activeClubId, activeClubName]
+  );
+
+  const resolvedClubName = resolvedClubIdentity.name || "This Club";
+  const resolvedClubLogo = resolvedClubIdentity.logoUrl || resolvedClubIdentity.logo;
+  const resolvedClubSubtitle = resolvedClubIdentity.subtitle || "Club match hub";
+
+  const teamPhotos = useMemo(() => {
+    const photos = Array.isArray(resolvedClubIdentity.heroImages)
+      ? resolvedClubIdentity.heroImages
+      : [];
+    const fallback = resolvedClubIdentity.heroImage || resolvedClubLogo;
+    return photos.length ? photos : fallback ? [fallback] : [];
+  }, [resolvedClubIdentity, resolvedClubLogo]);
+
   const [photoIndex, setPhotoIndex] = useState(0);
 
   useEffect(() => {
@@ -1041,12 +1064,12 @@ export function LandingPage({
               }}
             >
               <img
-                src={TurfKingsLogo}
-                alt="Turf Kings logo"
+                src={resolvedClubLogo}
+                alt={`${resolvedClubName} logo`}
                 className="tk-logo"
               />
               <div style={{ minWidth: 0 }}>
-                <h1 style={{ margin: 0 }}>Turf Kings 5-A-Side</h1>
+                <h1 style={{ margin: 0 }}>{resolvedClubName} 5-A-Side</h1>
               </div>
             </div>
           </div>
@@ -1057,9 +1080,7 @@ export function LandingPage({
       </div>
 
       <header className="header" style={{ marginTop: "0.25rem" }}>
-        <p className="subtitle">
-          Grand Central (CT) – Wednesdays, 17:30–19:00
-        </p>
+        <p className="subtitle">{resolvedClubSubtitle}</p>
 
         <div className="header-top-row" style={{ width: "100%" }}>
           <div className="auth-status" style={{ width: "100%" }}>
@@ -2038,7 +2059,7 @@ export function LandingPage({
       >
         <img
           src={teamPhotos[photoIndex]}
-          alt={`Turf Kings team ${photoIndex + 1}`}
+          alt={`${resolvedClubName} club image ${photoIndex + 1}`}
           className="team-photo"
           style={{
             width: "100%",

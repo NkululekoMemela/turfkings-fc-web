@@ -279,7 +279,10 @@ export function NewsPage({
   members,
   initialProgramOpen,
   matchDayHistory,
+  activeClubId = "turf-kings",
+  activeClub = null,
 }) {
+  const safeActiveClubId = activeClubId || "turf-kings";
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [playerCanonicalMap, setPlayerCanonicalMap] = useState({});
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
@@ -343,8 +346,8 @@ export function NewsPage({
     async function loadPlayerPhotoData() {
       try {
         const [playersSnap, photosSnap] = await Promise.all([
-          getDocs(getPlayersCollection(db)),
-          getDocs(getPlayerPhotosCollection(db)),
+          getDocs(getPlayersCollection(db, safeActiveClubId)),
+          getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
         ]);
 
         if (!isMounted) return;
@@ -367,7 +370,7 @@ export function NewsPage({
   }, []);
 
   useEffect(() => {
-    const ref = getClubStateDoc(db);
+    const ref = getClubStateDoc(db, safeActiveClubId);
     const unsubscribe = onSnapshot(
       ref,
       (snap) => {

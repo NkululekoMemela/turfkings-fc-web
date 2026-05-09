@@ -98,7 +98,10 @@ export function PeerReviewPage({
   identity = null,
   activeSeasonId = null,
   onBack,
+  activeClubId = "turf-kings",
+  activeClub = null,
 }) {
+  const safeActiveClubId = activeClubId || "turf-kings";
   const [weekKey] = useState(() => getCurrentWeekKey());
 
   const [selectedRater, setSelectedRater] = useState(null);
@@ -189,7 +192,7 @@ export function PeerReviewPage({
       try {
         const [membersSnap, photosSnap] = await Promise.all([
           getDocs(getMembersCollection(db)),
-          getDocs(getPlayerPhotosCollection(db)),
+          getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
         ]);
 
         if (cancelled) return;

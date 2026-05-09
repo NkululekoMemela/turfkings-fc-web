@@ -11,6 +11,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import { getPlayersCollection, getPlayerDoc } from "../core/clubFirestorePaths.js";
 import {
   MATCH_MODE,
   GAME_FORMAT,
@@ -653,7 +654,10 @@ export function SquadsPage({
   isAdmin: isAdminProp = false,
   matchType = MATCH_MODE.FRIENDLY,
   gameFormat = GAME_FORMAT.FIVE_V_FIVE,
+  activeClubId = "turf-kings",
+  activeClub = null,
 }) {
+  const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
   const effectiveRole = String(
     activeRole || identity?.actingRole || identity?.role || ""
   )
@@ -810,7 +814,7 @@ export function SquadsPage({
   useEffect(() => {
     setPlayersLoading(true);
     setPlayersError("");
-    const colRef = collection(db, PLAYERS_COLLECTION);
+    const colRef = getPlayersCollection(db, activeClubId);
     const unsub = onSnapshot(
       colRef,
       (snap) => {
@@ -825,7 +829,7 @@ export function SquadsPage({
       }
     );
     return () => unsub();
-  }, []);
+  }, [activeClubId]);
 
   const playersById = useMemo(() => {
     const m = new Map();
@@ -1147,7 +1151,7 @@ export function SquadsPage({
 
     const newId = slugFromName(fullName);
     await setDoc(
-      doc(db, PLAYERS_COLLECTION, newId),
+      getPlayerDoc(db, newId, activeClubId),
       {
         fullName,
         name: fullName.split(" ")[0] || fullName,
@@ -1313,7 +1317,7 @@ export function SquadsPage({
     const ok =
       typeof window !== "undefined"
         ? window.confirm(
-            `Remove ${name} from the Turf Kings database?\nThey will disappear from the unseeded pool.`
+            `Remove ${name} from this club database?\nThey will disappear from the unseeded pool.`
           )
         : true;
     if (!ok) return;
@@ -1335,7 +1339,7 @@ export function SquadsPage({
 
 
     try {
-      await deleteDoc(doc(db, PLAYERS_COLLECTION, pendingDeletePlayerId));
+      await deleteDoc(getPlayerDoc(db, pendingDeletePlayerId, activeClubId));
       handleCancelDeletePlayer();
     } catch (err) {
       console.error("[Squads] Error deleting player from DB:", err);
@@ -1426,7 +1430,7 @@ export function SquadsPage({
       const batch = writeBatch(db);
       for (const pid of toMakeCaptain) {
         batch.set(
-          doc(db, PLAYERS_COLLECTION, pid),
+          getPlayerDoc(db, pid, activeClubId),
           {
             "roles.captain": true,
             "roles.player": true,
@@ -1438,7 +1442,7 @@ export function SquadsPage({
 
       for (const pid of toRemoveCaptain) {
         batch.set(
-          doc(db, PLAYERS_COLLECTION, pid),
+          getPlayerDoc(db, pid, activeClubId),
           {
             "roles.captain": false,
             updatedAt: serverTimestamp(),
@@ -2316,7 +2320,7 @@ export function SquadsPage({
             <p>
               You are about to permanently remove
               <strong> {displayNameOf(pendingDeletePlayerId)} </strong>
-              from the Turf Kings player database.
+              from the ${activeClubName} player database.
             </p>
             <p className="error-text">
               Warning: this is not the same as moving a player to Unseeded.
@@ -2350,7 +2354,7 @@ export function SquadsPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Squad Changes</h3>
-            <p>Enter the Turf Kings admin code to apply squad changes.</p>
+            <p>Enter the ${activeClubName} admin code to apply squad changes.</p>
 
             <div className="field-row">
               <label>Admin code</label>

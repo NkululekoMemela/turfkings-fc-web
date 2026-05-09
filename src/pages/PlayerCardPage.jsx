@@ -1355,7 +1355,10 @@ export function PlayerCardPage({
   currentMatchType = "",
   statsMode = "",
   onBack,
+  activeClubId = "turf-kings",
+  activeClub = null,
 }) {
+  const safeActiveClubId = activeClubId || "turf-kings";
   const { authUser } = useAuth() || {};
   const user = authUser || null;
 
@@ -1413,10 +1416,10 @@ export function PlayerCardPage({
         setBaselineLoaded(false);
 
         const [playersSnap, mainSnap, baselinesSnap, photosSnap] = await Promise.all([
-          getDocs(getPlayersCollection(db)),
-          getDoc(getClubStateDoc(db)),
+          getDocs(getPlayersCollection(db, safeActiveClubId)),
+          getDoc(getClubStateDoc(db, safeActiveClubId)),
           getDocs(getPeerRatingBaselinesCollection(db)),
-          getDocs(getPlayerPhotosCollection(db)),
+          getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
         ]);
 
         if (!isMounted) return;

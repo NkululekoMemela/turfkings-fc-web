@@ -21,6 +21,8 @@ import {
 
 import { db, storage } from "../firebaseConfig.js";
 import { curateHighlights } from "../core/VideoHighlightCuration.js";
+import { getClubDoc } from "../core/clubFirestorePaths.js";
+import { CLUB_COLLECTIONS, DEFAULT_CLUB_ID } from "../core/clubPaths.js";
 
 // ============================
 // ROOT STRUCTURE
@@ -37,8 +39,8 @@ import { curateHighlights } from "../core/VideoHighlightCuration.js";
 const DEFAULT_CLEANUP_GRACE_HOURS = 24;
 const RECORDING_DEVICE_ONLINE_WINDOW_SECONDS = 45;
 
-function matchRef(matchId) {
-  return getClubDoc(db, CLUB_COLLECTIONS.videoHighlights, matchId);
+function matchRef(matchId, clubId = DEFAULT_CLUB_ID) {
+  return getClubDoc(db, CLUB_COLLECTIONS.videoHighlights, matchId, clubId);
 }
 
 const rawRef = (id) => collection(matchRef(id), "raw");

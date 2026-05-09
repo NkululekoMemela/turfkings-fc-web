@@ -22,10 +22,13 @@ const items = [
 export default function BottomNav({
   currentPage,
   onNavigate,
+  activeClub = null,
+  activeClubName = "Club",
   canAccessPayments = true,
   hidden = false,
 }) {
   const [isHidden, setIsHidden] = useState(false);
+  const navClubName = String(activeClub?.name || activeClubName || "Club").trim() || "Club";
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -69,7 +72,7 @@ export default function BottomNav({
 
   return (
     <>
-      <nav className={`tk-bottom-nav-flat ${isHidden || hidden ? "is-hidden" : ""}`} aria-label="Turf Kings navigation">
+      <nav className={`tk-bottom-nav-flat ${isHidden || hidden ? "is-hidden" : ""}`} aria-label={`${navClubName} navigation`}>
         <div className="tk-bottom-nav-inner">
           <div className="tk-bottom-nav-scroll">
             {visible.map((item) => {
