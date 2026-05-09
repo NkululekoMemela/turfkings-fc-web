@@ -103,6 +103,7 @@ export function PeerReviewPage({
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
   const activeClubName = String(activeClub?.shortName || activeClub?.name || "this club").trim();
+  const isTurfKingsClub = safeActiveClubId === "turf-kings";
   const [weekKey] = useState(() => getCurrentWeekKey());
 
   const [selectedRater, setSelectedRater] = useState(null);
@@ -267,6 +268,15 @@ export function PeerReviewPage({
 
         setMemberCanonicalMap(canonicalMap);
         setCloudPhotoIndex(photoIdx);
+        window.__PEER_REVIEW_DEBUG__ = {
+          safeActiveClubId,
+          activeClubName,
+          membersFromClubMembersCollection: memberList.map((p) => p.name),
+          canonicalValues: Object.values(canonicalMap),
+        };
+
+        console.log("[PeerReviewPage DEBUG]", window.__PEER_REVIEW_DEBUG__);
+
         setMemberPlayers(
           uniqueByName(
             memberList.sort((a, b) => {
@@ -288,6 +298,14 @@ export function PeerReviewPage({
     };
   }, []);
 
+  const activeClubMemberNames = useMemo(() => {
+    return new Set(
+      Object.values(memberCanonicalMap || {})
+        .map((name) => String(name || "").trim())
+        .filter(Boolean)
+    );
+  }, [memberCanonicalMap]);
+
   const allPlayers = useMemo(() => {
     const list = [];
 
@@ -301,7 +319,7 @@ export function PeerReviewPage({
       });
     });
 
-    return uniqueByName(
+    const sorted = uniqueByName(
       list.sort((a, b) => {
         if ((a.teamLabel || "") !== (b.teamLabel || "")) {
           return (a.teamLabel || "").localeCompare(b.teamLabel || "");
@@ -309,7 +327,13 @@ export function PeerReviewPage({
         return (a.name || "").localeCompare(b.name || "");
       })
     );
-  }, [teams, memberCanonicalMap]);
+
+    if (isTurfKingsClub) return sorted;
+
+    if (activeClubMemberNames.size === 0) return [];
+
+    return sorted.filter((p) => activeClubMemberNames.has(resolveCanonicalName(p.name)));
+  }, [teams, memberCanonicalMap, activeClubMemberNames, isTurfKingsClub]);
 
   const baselinePlayerPool = useMemo(() => {
     const combined = [...(memberPlayers || []), ...(allPlayers || [])];

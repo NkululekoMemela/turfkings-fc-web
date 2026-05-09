@@ -5607,6 +5607,8 @@ export default function App() {
           playerPhotosByName={playerPhotosByName}
           identity={pageIdentity}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
+          activeClub={activeClub}
+          activeClubId={activeClubId}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
