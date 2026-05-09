@@ -281,6 +281,7 @@ export function NewsPage({
   activeClub = null,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
+  const isTurfKingsClub = safeActiveClubId === "turf-kings";
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [playerCanonicalMap, setPlayerCanonicalMap] = useState({});
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
@@ -2918,6 +2919,8 @@ Votes for this poll will no longer be shown.`
         </div>
       )}
 
+      {isTurfKingsClub && (
+        <>
       {/* ✅ JERSEY STORY */}
       <section className="card" style={{ overflow: "hidden" }}>
         <div
@@ -3038,6 +3041,9 @@ Votes for this poll will no longer be shown.`
           </div>
         </div>
       </section>
+
+        </>
+      )}
 
       {renderCustomStoriesAt("after-jersey")}
 
