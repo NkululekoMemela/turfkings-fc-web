@@ -1,5 +1,6 @@
 // src/core/clubIdentity.js
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
+import TurfKingsTransparentLogo from "../assets/TurfKings_logo_transparent.png";
 import TurfKingsHero from "../assets/TurfKings.jpg";
 import TurfKingsHero2 from "../assets/TurfKings2.jpeg";
 import TurfKingsHero3 from "../assets/TurfKings3.jpeg";
@@ -15,14 +16,22 @@ function cleanString(value, fallback = "") {
 }
 
 function normalizeClubId(value) {
-  return cleanString(value, DEFAULT_CLUB_ID)
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9_-]/g, "") || DEFAULT_CLUB_ID;
+  return (
+    cleanString(value, DEFAULT_CLUB_ID)
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9_-]/g, "") || DEFAULT_CLUB_ID
+  );
 }
 
 function firstAvailable(...values) {
   return values.find((value) => cleanString(value)) || "";
+}
+
+function galleryUrls(club = {}) {
+  return Array.isArray(club?.media?.gallery)
+    ? club.media.gallery.map((item) => item?.url || item).filter(Boolean)
+    : [];
 }
 
 export function isTurfKingsClub(clubOrId) {
@@ -42,35 +51,40 @@ export function buildClubIdentity(club = {}) {
     ? DEFAULT_CLUB_SHORT_NAME
     : cleanString(club?.shortName || club?.displayName || name, name);
 
-  const logo = turfKings
-    ? TurfKingsLogo
-    : firstAvailable(
-        club?.logoUrl,
-        club?.logo,
-        club?.logoPath,
-        club?.badgeUrl,
-        club?.badge,
-        club?.image,
-        DEFAULT_PLATFORM_LOGO
-      );
+  const uploadedLogo = firstAvailable(
+    club?.logoUrl,
+    club?.branding?.uploadedLogoUrl,
+    club?.media?.logoOriginalUrl,
+    club?.media?.logoTransparentUrl,
+    club?.logo,
+    club?.logoPath,
+    club?.badgeUrl,
+    club?.badge,
+    club?.image
+  );
 
-  const heroImage = turfKings
-    ? TurfKingsHero
-    : firstAvailable(
-        club?.heroImage,
-        club?.heroImageUrl,
-        club?.teamPhoto,
-        club?.teamPhotoUrl,
-        club?.coverImage,
-        club?.coverImageUrl,
-        club?.image,
-        logo,
-        DEFAULT_PLATFORM_LOGO
-      );
+  const logo = turfKings ? TurfKingsLogo : uploadedLogo || DEFAULT_PLATFORM_LOGO;
+
+  const uploadedHero = firstAvailable(
+    club?.media?.coverImageUrl,
+    galleryUrls(club)[0],
+    club?.heroImage,
+    club?.heroImageUrl,
+    club?.teamPhoto,
+    club?.teamPhotoUrl,
+    club?.coverImage,
+    club?.coverImageUrl,
+    club?.image,
+    logo
+  );
+
+  const heroImage = turfKings ? TurfKingsHero : uploadedHero || DEFAULT_PLATFORM_LOGO;
 
   const heroImages = turfKings
     ? [TurfKingsHero, TurfKingsHero2, TurfKingsHero3]
     : [
+        club?.media?.coverImageUrl,
+        ...galleryUrls(club),
         club?.heroImage,
         club?.heroImageUrl,
         club?.teamPhoto,
@@ -88,18 +102,35 @@ export function buildClubIdentity(club = {}) {
     shortName,
     displayName: shortName || name,
     isTurfKings: turfKings,
+
     logo,
     logoUrl: logo,
+    transparentLogoUrl: turfKings
+      ? TurfKingsTransparentLogo
+      : firstAvailable(club?.media?.logoTransparentUrl, club?.branding?.transparentLogoUrl, logo),
+
     heroImage,
     heroImages: heroImages.length ? heroImages : [DEFAULT_PLATFORM_LOGO],
+
     location: cleanString(
-      club?.location || club?.area || club?.city || club?.venue,
+      club?.locationDetails?.displayLocation ||
+        club?.location ||
+        club?.area ||
+        club?.city ||
+        club?.venue,
       turfKings ? "Grand Central (CT)" : "Location not set"
     ),
+
     weeklyPlayTime: cleanString(
-      club?.weeklyPlayTime || club?.playTime || club?.schedule,
+      club?.schedule?.weeklyPlayTime ||
+        club?.weeklyPlayTime ||
+        club?.playTime,
       turfKings ? "Wednesdays, 17:30–19:00" : "Schedule not set"
     ),
+
+    media: club?.media || {},
+    branding: club?.branding || {},
+
     theme: {
       primary: cleanString(club?.primaryColor || club?.accent || club?.accentColor, "#22c55e"),
       secondary: cleanString(club?.secondaryColor, "#38bdf8"),
@@ -118,6 +149,10 @@ export function getClubShortName(club = {}) {
 
 export function getClubLogo(club = {}) {
   return buildClubIdentity(club).logo;
+}
+
+export function getClubTransparentLogo(club = {}) {
+  return buildClubIdentity(club).transparentLogoUrl;
 }
 
 export function getClubHeroImage(club = {}) {

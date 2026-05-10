@@ -6,7 +6,7 @@ import {
   buildLogoStorageNames,
 } from "../../core/homePageHubLogoUtils";
 
-const MAX_GALLERY_FILES = 6;
+const MAX_GALLERY_FILES = 3;
 
 function fileToPreview(file) {
   if (!file) return "";
@@ -27,7 +27,13 @@ export default function HomePage_HUB_LogoGenerator({
         location: clubDraft?.location || clubDraft?.city || clubDraft?.suburb,
         accent: clubDraft?.accent,
       }),
-    [clubDraft?.clubName, clubDraft?.location, clubDraft?.city, clubDraft?.suburb, clubDraft?.accent]
+    [
+      clubDraft?.clubName,
+      clubDraft?.location,
+      clubDraft?.city,
+      clubDraft?.suburb,
+      clubDraft?.accent,
+    ]
   );
 
   const selectedOption = logoDraft?.selectedGeneratedLogoId || "";
@@ -78,7 +84,9 @@ export default function HomePage_HUB_LogoGenerator({
 
   function removeGalleryFile(name) {
     updateLogoDraft({
-      galleryFiles: (logoDraft?.galleryFiles || []).filter((file) => file.name !== name),
+      galleryFiles: (logoDraft?.galleryFiles || []).filter(
+        (file) => file.name !== name
+      ),
     });
   }
 
@@ -88,8 +96,8 @@ export default function HomePage_HUB_LogoGenerator({
         <span>Step 2</span>
         <h3>Club identity</h3>
         <p>
-          Upload an existing logo and a few team photos. AI logo generation can
-          still be connected later.
+          Upload your club logo and up to {MAX_GALLERY_FILES} team photos.
+          These make the club page instantly recognizable.
         </p>
       </div>
 
@@ -118,13 +126,13 @@ export default function HomePage_HUB_LogoGenerator({
       ) : null}
 
       <label className="hub-file-drop">
-        <span>Upload team photos</span>
+        <span>Upload club photos</span>
         <strong>
           {(logoDraft?.galleryFiles || []).length
-            ? `${(logoDraft?.galleryFiles || []).length} photo(s) selected`
-            : "Choose group photos"}
+            ? `${(logoDraft?.galleryFiles || []).length}/${MAX_GALLERY_FILES} photo(s) selected`
+            : "Choose up to 3 group photos"}
         </strong>
-        <small>Optional. Add up to {MAX_GALLERY_FILES} photos for the club page.</small>
+        <small>Optional. Add a few existing team photos for the club page.</small>
         <input
           type="file"
           accept="image/png,image/jpeg,image/webp"

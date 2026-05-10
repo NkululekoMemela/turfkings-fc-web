@@ -1,4 +1,4 @@
-// src/components/homeHub/HomePage_HUB_ClubCard.jsx
+// src/components/HomePage_HUB/HomePage_HUB_ClubCard.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
 import { getClubInitials } from "../../core/homePageHubLogoUtils";
@@ -6,10 +6,14 @@ import { getClubInitials } from "../../core/homePageHubLogoUtils";
 function getHighlightPreview(club) {
   if (club?.highlightText) return club.highlightText;
   if (club?.latestHighlight) return club.latestHighlight;
+
   if (club?.videosAvailable || club?.highlightCount) {
     const count = Number(club.highlightCount || club.videosAvailable || 0);
-    return count > 0 ? `${count} highlight${count === 1 ? "" : "s"} available` : "Highlights coming soon";
+    return count > 0
+      ? `${count} highlight${count === 1 ? "" : "s"} available`
+      : "Highlights coming soon";
   }
+
   return "Highlights coming soon";
 }
 
@@ -17,15 +21,24 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
   const [faceIndex, setFaceIndex] = useState(0);
 
   const initials = useMemo(() => getClubInitials(club?.name), [club?.name]);
+
   const accent = club?.accent || "#16a34a";
-  const location = club?.location || club?.area || "Location to be confirmed";
-  const playTime = club?.weeklyPlayTime || club?.playTime || "Play time to be confirmed";
+  const location =
+    club?.location ||
+    club?.locationDetails?.displayLocation ||
+    club?.area ||
+    "Location to be confirmed";
+  const playTime =
+    club?.weeklyPlayTime ||
+    club?.schedule?.weeklyPlayTime ||
+    club?.playTime ||
+    "Play time to be confirmed";
   const highlightPreview = getHighlightPreview(club);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       setFaceIndex((current) => (current + 1) % 3);
-    }, 4000);
+    }, 7000);
 
     return () => window.clearInterval(timer);
   }, []);
@@ -45,7 +58,7 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
           onOpenClubActions?.(club);
         }
       }}
-      aria-label={`Open ${club.name || "club"} actions`}
+      aria-label={`Open ${club.name || "club"}`}
     >
       <div className={`hub-club-card__cube hub-club-card__cube--face-${faceIndex}`}>
         <section className="hub-club-card__face hub-club-card__face--logo">
@@ -62,8 +75,9 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
               <span>{club.logoText || initials}</span>
             )}
           </div>
+
           <strong>{club.name || "Football Club"}</strong>
-          <small>Tap for options</small>
+          <small>Tap to enter</small>
         </section>
 
         <section className="hub-club-card__face hub-club-card__face--details">

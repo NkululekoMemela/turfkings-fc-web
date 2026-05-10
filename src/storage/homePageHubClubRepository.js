@@ -1,18 +1,12 @@
 // src/storage/homePageHubClubRepository.js
 
-import {
-  doc,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
-
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import {
   getDownloadURL,
   getStorage,
   ref,
   uploadBytes,
 } from "firebase/storage";
-
 import { db } from "../firebaseConfig";
 
 function cleanText(value) {
@@ -21,6 +15,23 @@ function cleanText(value) {
 
 function cleanEmail(value) {
   return cleanText(value).toLowerCase();
+}
+
+function toTitleCase(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function slugFromName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
 }
 
 function safeFileName(name = "file") {
@@ -93,7 +104,7 @@ async function uploadFileToStorage({ clubId, file, folder, prefix }) {
 }
 
 async function uploadGalleryFiles({ clubId, files = [] }) {
-  const cleanFiles = Array.from(files || []).filter(Boolean);
+  const cleanFiles = Array.from(files || []).filter(Boolean).slice(0, 3);
 
   const uploads = await Promise.all(
     cleanFiles.map(async (file, index) => {
@@ -125,7 +136,7 @@ export async function createHomePageHubClub({
 }) {
   const safeClubId = cleanText(clubId);
   const clubName = cleanText(clubDraft.clubName);
-  const captainName = cleanText(clubDraft.captainName);
+  const captainName = toTitleCase(cleanText(clubDraft.captainName));
   const captainEmail = cleanEmail(clubDraft.captainEmail);
 
   if (!safeClubId) throw new Error("Club ID is required.");
@@ -159,6 +170,12 @@ export async function createHomePageHubClub({
   const logoText =
     cleanText(clubDraft.logoText) ||
     clubName.slice(0, 2).toUpperCase();
+
+  const captainShortName =
+    captainName.split(/\s+/).filter(Boolean)[0] || captainName;
+  const captainPlayerId = slugFromName(
+    captainName || captainShortName || captainEmail
+  );
 
   const clubPayload = {
     id: safeClubId,
@@ -216,6 +233,7 @@ export async function createHomePageHubClub({
     captain: {
       name: captainName,
       email: captainEmail,
+      playerId: captainPlayerId,
     },
 
     geo: {
@@ -261,12 +279,37 @@ export async function createHomePageHubClub({
   );
 
   await setDoc(
-    doc(db, "clubs", safeClubId, "members", captainEmail),
+    doc(db, "clubs", safeClubId, "members", captainPlayerId),
     {
-      name: captainName,
+      fullName: captainName,
+      shortName: captainShortName,
       email: captainEmail,
+      whatsappNumber: "",
       role: "captain",
-      joinedAt: now,
+      status: "active",
+      playerId: captainPlayerId,
+      createdAt: now,
+      updatedAt: now,
+      source: "homepage_hub_club_registration",
+    },
+    { merge: true }
+  );
+
+  await setDoc(
+    doc(db, "clubs", safeClubId, "players", captainPlayerId),
+    {
+      name: captainShortName,
+      fullName: captainName,
+      shortName: captainShortName,
+      email: captainEmail,
+      roles: {
+        player: true,
+        captain: true,
+        admin: true,
+      },
+      status: "active",
+      sourceMemberId: captainPlayerId,
+      createdAt: now,
       updatedAt: now,
       source: "homepage_hub_club_registration",
     },

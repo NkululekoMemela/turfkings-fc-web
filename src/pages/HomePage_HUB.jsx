@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
-import { db } from "../firebaseConfig";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "../firebaseConfig";
 import "../styles/HomePage_HUB.css";
 import HomePage_HUB_ClubCard from "../components/HomePage_HUB/HomePage_HUB_ClubCard.jsx";
 import HomePage_HUB_SignupModal from "../components/HomePage_HUB/HomePage_HUB_SignupModal.jsx";
@@ -26,27 +27,112 @@ const FALLBACK_CLUBS = [
   },
 ];
 
+function safeText(value) {
+  return String(value || "").trim();
+}
+
+function normalizeEmail(value) {
+  return safeText(value).toLowerCase();
+}
+
 function normalizeClub(docSnap) {
   const data = docSnap.data() || {};
+
+  const uploadedLogo =
+    data?.logoUrl ||
+    data?.branding?.uploadedLogoUrl ||
+    data?.media?.logoOriginalUrl ||
+    data?.media?.logoTransparentUrl ||
+    data?.image ||
+    "";
+
+  const gallery = Array.isArray(data?.media?.gallery)
+    ? data.media.gallery.map((item) => item?.url || item).filter(Boolean)
+    : [];
+
+  const coverPhoto =
+    data?.media?.coverImageUrl ||
+    gallery[0] ||
+    data?.heroImage ||
+    data?.teamPhoto ||
+    data?.image ||
+    "";
+
+  const hasLogo = Boolean(uploadedLogo);
+
+  const hasPhotos =
+    gallery.length > 0 ||
+    Boolean(data?.media?.coverImageUrl) ||
+    Boolean(data?.heroImage) ||
+    Boolean(data?.teamPhoto);
+
+  const hasBanking =
+    Boolean(data?.banking?.accountNumber) ||
+    Boolean(data?.banking?.accountName) ||
+    Boolean(data?.banking?.accountHolder);
+
+  const hasLocation =
+    Boolean(data?.locationDetails?.displayLocation) ||
+    Boolean(data?.locationDetails?.fullAddress) ||
+    Boolean(data?.location) ||
+    Boolean(data?.area);
+
+  const hasSchedule =
+    Boolean(data?.weeklyPlayTime) ||
+    Boolean(data?.schedule?.weeklyPlayTime) ||
+    Boolean(data?.schedule?.playDay) ||
+    Boolean(data?.schedule?.playTime);
 
   return {
     id: docSnap.id,
     ...data,
+
     name: data.name || docSnap.id,
-    location: data.location || data.area || "Location to be confirmed",
+
+    logoUrl: uploadedLogo,
+    image: uploadedLogo,
+
+    heroImage: coverPhoto,
+    heroImages: gallery,
+
+    location:
+      data?.locationDetails?.displayLocation ||
+      data.location ||
+      data.area ||
+      "Location to be confirmed",
+
     weeklyPlayTime:
-      data.weeklyPlayTime || data.playTime || "Play time to be confirmed",
+      data?.schedule?.weeklyPlayTime ||
+      data.weeklyPlayTime ||
+      data.playTime ||
+      "Play time to be confirmed",
+
     accent: data.accent || "#16a34a",
+
     description:
       data.description ||
       data.summary ||
       "Club page, match nights and football highlights.",
+
     highlightText:
       data.highlightText ||
       data.latestHighlight ||
       data.latestVideoTitle ||
       "Highlights coming soon",
-    mapLabel: data.mapLabel || data.area || data.location || "Club location",
+
+    mapLabel:
+      data.mapLabel ||
+      data.area ||
+      data.location ||
+      "Club location",
+
+    completion: {
+      hasLogo,
+      hasPhotos,
+      hasBanking,
+      hasLocation,
+      hasSchedule,
+    },
   };
 }
 
@@ -73,6 +159,39 @@ function getMapPinStyle(index, total) {
   };
 }
 
+function getMissingClubRequirements(club = {}) {
+  const missing = [];
+
+  if (!club?.completion?.hasLogo) missing.push("Upload a club logo");
+  if (!club?.completion?.hasPhotos) missing.push("Add up to 3 club/team photos");
+  if (!club?.completion?.hasBanking) missing.push("Add banking details");
+  if (!club?.completion?.hasLocation) missing.push("Complete club location");
+  if (!club?.completion?.hasSchedule) missing.push("Add weekly play day/time");
+
+  return missing;
+}
+
+function getClubAdminEmails(club = {}) {
+  return [
+    club?.createdBy,
+    club?.createdByEmail,
+    club?.ownerEmail,
+    club?.adminEmail,
+    club?.captainEmail,
+    club?.captain?.email,
+    ...(Array.isArray(club?.adminEmails) ? club.adminEmails : []),
+    ...(Array.isArray(club?.captainEmails) ? club.captainEmails : []),
+  ]
+    .map(normalizeEmail)
+    .filter(Boolean);
+}
+
+function canCurrentUserManageClub(currentUser, club = {}) {
+  const email = normalizeEmail(currentUser?.email);
+  if (!email) return false;
+  return getClubAdminEmails(club).includes(email);
+}
+
 export default function HomePage_HUB({
   onEnterTurfKings,
   onViewClub,
@@ -86,6 +205,16 @@ export default function HomePage_HUB({
   const [loadingClubs, setLoadingClubs] = useState(true);
   const [signupOpen, setSignupOpen] = useState(false);
   const [activeClub, setActiveClub] = useState(null);
+  const [completionPromptClub, setCompletionPromptClub] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user || null);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,8 +254,30 @@ export default function HomePage_HUB({
     });
   }, [clubs]);
 
+  function normalizeNewClubForHome(club) {
+    const fakeDocSnap = {
+      id: club.id,
+      data: () => club,
+    };
+
+    return normalizeClub(fakeDocSnap);
+  }
+
+  function openClubActions(club) {
+    const missing = getMissingClubRequirements(club);
+    const userCanManage = canCurrentUserManageClub(currentUser, club);
+
+    if (missing.length && userCanManage) {
+      setCompletionPromptClub(club);
+      return;
+    }
+
+    setActiveClub(club);
+  }
+
   function handleViewClub(club) {
     setActiveClub(null);
+    setCompletionPromptClub(null);
 
     if (club?.id === "turf-kings") {
       onEnterTurfKings?.(club);
@@ -139,6 +290,7 @@ export default function HomePage_HUB({
   function handleJoinExistingClub(club = null) {
     setSignupOpen(false);
     setActiveClub(null);
+    setCompletionPromptClub(null);
 
     if (club) {
       onJoinClub?.(club);
@@ -162,24 +314,13 @@ export default function HomePage_HUB({
 
     setClubs((current) => {
       const withoutDuplicate = current.filter((item) => item.id !== club.id);
-
-      return [
-        ...withoutDuplicate,
-        {
-          ...club,
-          location: club.location || "Location to be confirmed",
-          weeklyPlayTime: club.weeklyPlayTime || "Play time to be confirmed",
-          activity: "New club",
-          accent: club.accent || "#16a34a",
-          description:
-            club.description ||
-            "New club page, match nights and football highlights.",
-          highlightText: "First highlights coming soon",
-          mapLabel: club.location || club.area || "New club",
-        },
-      ];
+      return [...withoutDuplicate, normalizeNewClubForHome(club)];
     });
   }
+
+  const completionMissingItems = completionPromptClub
+    ? getMissingClubRequirements(completionPromptClub)
+    : [];
 
   return (
     <main className="homepage-hub-shell homepage-hub-shell--clubs-first">
@@ -244,7 +385,7 @@ export default function HomePage_HUB({
             <HomePage_HUB_ClubCard
               key={club.id}
               club={club}
-              onOpenClubActions={handleViewClub}
+              onOpenClubActions={openClubActions}
             />
           ))}
         </div>
@@ -275,7 +416,7 @@ export default function HomePage_HUB({
                   ...getMapPinStyle(index, visibleClubs.length),
                   "--hub-map-accent": club.accent || "#16a34a",
                 }}
-                onClick={() => setActiveClub(club)}
+                onClick={() => openClubActions(club)}
                 title={club.name}
               >
                 <span>{club.logoText || String(club.name || "FC").slice(0, 2)}</span>
@@ -288,7 +429,7 @@ export default function HomePage_HUB({
               <button
                 type="button"
                 key={club.id}
-                onClick={() => setActiveClub(club)}
+                onClick={() => openClubActions(club)}
               >
                 <strong>{club.name}</strong>
                 <span>{club.location}</span>
@@ -321,6 +462,102 @@ export default function HomePage_HUB({
           </button>
         </section>
       </footer>
+
+      {completionPromptClub ? (
+        <div
+          className="hub-action-sheet-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setCompletionPromptClub(null);
+          }}
+        >
+          <section
+            className="hub-action-sheet"
+            aria-label={`${completionPromptClub.name} setup reminder`}
+          >
+            <button
+              type="button"
+              className="hub-action-sheet__close"
+              onClick={() => setCompletionPromptClub(null)}
+            >
+              ×
+            </button>
+
+            <span className="hub-kicker">Club setup reminder</span>
+            <h2>{completionPromptClub.name} is not fully ready yet</h2>
+
+            <p
+              style={{
+                color: "#64748b",
+                fontWeight: 750,
+                lineHeight: 1.5,
+                marginTop: "14px",
+              }}
+            >
+              Complete the items below so players can identify the club quickly
+              and the platform can map and route payments properly.
+            </p>
+
+            <ul
+              style={{
+                display: "grid",
+                gap: "10px",
+                padding: 0,
+                margin: "18px 0 0",
+                listStyle: "none",
+              }}
+            >
+              {completionMissingItems.map((item) => (
+                <li
+                  key={item}
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: "16px",
+                    background: "#f8fafc",
+                    border: "1px solid rgba(15, 23, 42, 0.10)",
+                    color: "#06152b",
+                    fontWeight: 900,
+                  }}
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
+
+            <div className="hub-action-sheet__buttons">
+              <button
+                type="button"
+                onClick={() => {
+                  setCompletionPromptClub(null);
+                  setSignupOpen(true);
+                }}
+              >
+                Update info
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveClub(completionPromptClub);
+                  setCompletionPromptClub(null);
+                }}
+              >
+                Continue
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const club = completionPromptClub;
+                  setCompletionPromptClub(null);
+                  handleViewClub(club);
+                }}
+              >
+                Open club
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {activeClub ? (
         <div

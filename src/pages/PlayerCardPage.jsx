@@ -10,7 +10,7 @@ import {
 } from "../core/clubFirestorePaths";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { toPng } from "html-to-image";
-import TurfKingsLogo from "../assets/TurfKings_logo_transparent.png";
+import { buildClubIdentity } from "../core/clubIdentity.js";
 
 // ---------------- HELPERS ----------------
 
@@ -1359,8 +1359,13 @@ export function PlayerCardPage({
   activeClub = null,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
-  const isTurfKingsClub = safeActiveClubId === "turf-kings";
-  const activeClubName = String(activeClub?.shortName || activeClub?.name || "Club").trim();
+  const activeClubIdentity = useMemo(
+    () => buildClubIdentity(activeClub || { id: safeActiveClubId }),
+    [activeClub, safeActiveClubId]
+  );
+  const isTurfKingsClub = activeClubIdentity.isTurfKings;
+  const activeClubName = String(activeClubIdentity.shortName || activeClubIdentity.name || "Club").trim();
+  const activeClubWatermarkLogo = activeClubIdentity.transparentLogoUrl || activeClubIdentity.logoUrl || activeClubIdentity.logo;
   const { authUser } = useAuth() || {};
   const user = authUser || null;
 
@@ -2340,9 +2345,9 @@ export function PlayerCardPage({
                   }}
                   title="Double-click to save card. On mobile, long-press to save."
                 >
-                  {isTurfKingsClub && isTurfKingsTeamName(p.teamName) && (
+                  {activeClubWatermarkLogo && (
                     <img
-                      src={TurfKingsLogo}
+                      src={activeClubWatermarkLogo}
                       alt=""
                       aria-hidden="true"
                       style={{
