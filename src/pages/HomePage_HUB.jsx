@@ -7,10 +7,12 @@ import { auth, db } from "../firebaseConfig";
 import "../styles/HomePage_HUB.css";
 import HomePage_HUB_ClubCard from "../components/HomePage_HUB/HomePage_HUB_ClubCard.jsx";
 import HomePage_HUB_SignupModal from "../components/HomePage_HUB/HomePage_HUB_SignupModal.jsx";
+import HomePage_HUB_ClubProfileEditorModal from "../components/HomePage_HUB/HomePage_HUB_ClubProfileEditorModal.jsx";
 
 const HOME_TOP_LOGO = "/HomePage_Hub/5_AsidesNearMe_light_logo.png";
 const HOME_FOOTER_LOGO = "/HomePage_Hub/5_AsidesNearMe_Transparent.png";
 const HOME_FALLBACK_LOGO = "/HomePage/Logo_icon.jpeg";
+const SUPER_ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
 
 const FALLBACK_CLUBS = [
   {
@@ -186,10 +188,15 @@ function getClubAdminEmails(club = {}) {
     .filter(Boolean);
 }
 
+function isSuperAdmin(currentUser) {
+  const email = normalizeEmail(currentUser?.email);
+  return SUPER_ADMIN_EMAILS.includes(email);
+}
+
 function canCurrentUserManageClub(currentUser, club = {}) {
   const email = normalizeEmail(currentUser?.email);
   if (!email) return false;
-  return getClubAdminEmails(club).includes(email);
+  return isSuperAdmin(currentUser) || getClubAdminEmails(club).includes(email);
 }
 
 export default function HomePage_HUB({
@@ -206,6 +213,7 @@ export default function HomePage_HUB({
   const [signupOpen, setSignupOpen] = useState(false);
   const [activeClub, setActiveClub] = useState(null);
   const [completionPromptClub, setCompletionPromptClub] = useState(null);
+  const [profileEditorClub, setProfileEditorClub] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -316,6 +324,22 @@ export default function HomePage_HUB({
       const withoutDuplicate = current.filter((item) => item.id !== club.id);
       return [...withoutDuplicate, normalizeNewClubForHome(club)];
     });
+  }
+
+  function handleClubUpdated(updatedClub) {
+    setClubs((current) =>
+      current.map((club) =>
+        club.id === updatedClub.id
+          ? normalizeNewClubForHome({ ...club, ...updatedClub })
+          : club
+      )
+    );
+
+    setActiveClub((current) =>
+      current?.id === updatedClub.id
+        ? normalizeNewClubForHome({ ...current, ...updatedClub })
+        : current
+    );
   }
 
   const completionMissingItems = completionPromptClub
@@ -635,6 +659,18 @@ export default function HomePage_HUB({
               >
                 Challenge
               </button>
+
+              {canCurrentUserManageClub(currentUser, activeClub) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileEditorClub(activeClub);
+                    setActiveClub(null);
+                  }}
+                >
+                  Edit Club
+                </button>
+              ) : null}
             </div>
           </section>
         </div>
@@ -645,6 +681,13 @@ export default function HomePage_HUB({
         onClose={() => setSignupOpen(false)}
         onJoinExistingClub={() => handleJoinExistingClub(null)}
         onClubCreated={handleClubCreated}
+      />
+
+      <HomePage_HUB_ClubProfileEditorModal
+        isOpen={Boolean(profileEditorClub)}
+        club={profileEditorClub}
+        onClose={() => setProfileEditorClub(null)}
+        onSaved={handleClubUpdated}
       />
     </main>
   );

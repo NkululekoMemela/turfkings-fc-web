@@ -318,3 +318,117 @@ export async function createHomePageHubClub({
 
   return clubPayload;
 }
+
+export async function updateHomePageHubClub({
+  clubId,
+  clubDraft = {},
+  logoDraft = {},
+}) {
+  const safeClubId = cleanText(clubId);
+
+  if (!safeClubId) throw new Error("Club ID is required.");
+
+  const now = serverTimestamp();
+
+  const uploadedLogoUrlFromFile = await uploadFileToStorage({
+    clubId: safeClubId,
+    file: logoDraft.logoFile,
+    folder: "branding",
+    prefix: "logo_update",
+  });
+
+  const uploadedGallery = await uploadGalleryFiles({
+    clubId: safeClubId,
+    files: logoDraft.galleryFiles,
+  });
+
+  const uploadedLogoUrl =
+    uploadedLogoUrlFromFile ||
+    cleanText(logoDraft.uploadedLogoUrl) ||
+    cleanText(logoDraft.generatedLogoDataUrl);
+
+  const selectedGeneratedLogo = cleanText(logoDraft.selectedGeneratedLogoId);
+  const generatedLogoPrompt = cleanText(logoDraft.generatedLogoPrompt);
+  const generatedLogoSvg = cleanText(logoDraft.generatedLogoSvg);
+  const generatedLogoDataUrl = cleanText(logoDraft.generatedLogoDataUrl);
+
+  const locationDisplay = buildDisplayLocation(clubDraft);
+  const fullAddress = buildFullAddress(clubDraft);
+  const weeklyPlayTime = buildWeeklyPlayTime(clubDraft);
+
+  const payload = {
+    name: cleanText(clubDraft.clubName || clubDraft.name),
+    location: locationDisplay,
+    area: cleanText(clubDraft.suburb) || cleanText(clubDraft.city) || locationDisplay,
+    weeklyPlayTime: weeklyPlayTime || "Play time to be confirmed",
+
+    locationDetails: {
+      venueName: cleanText(clubDraft.venueName),
+      address: cleanText(clubDraft.address),
+      fullAddress,
+      suburb: cleanText(clubDraft.suburb),
+      city: cleanText(clubDraft.city),
+      province: cleanText(clubDraft.province),
+      country: cleanText(clubDraft.country) || "South Africa",
+      displayLocation: locationDisplay,
+    },
+
+    schedule: {
+      playDay: cleanText(clubDraft.playDay),
+      playTime: cleanText(clubDraft.playTime),
+      weeklyPlayTime: weeklyPlayTime || "Play time to be confirmed",
+      timezone: cleanText(clubDraft.timezone) || "Africa/Johannesburg",
+    },
+
+    accent: cleanText(clubDraft.accent) || "#16a34a",
+    logoText:
+      cleanText(clubDraft.logoText) ||
+      cleanText(clubDraft.clubName || clubDraft.name).slice(0, 2).toUpperCase(),
+
+    updatedAt: now,
+  };
+
+  if (uploadedLogoUrl) {
+    payload.image = uploadedLogoUrl;
+    payload.logoUrl = uploadedLogoUrl;
+    payload.branding = {
+      uploadedLogoUrl,
+      selectedGeneratedLogo,
+      generatedLogoPrompt,
+      generatedLogoSvg,
+      generatedLogoDataUrl,
+      transparentTwinStatus:
+        selectedGeneratedLogo || uploadedLogoUrl ? "pending" : "not_started",
+      logoSource: uploadedLogoUrlFromFile
+        ? "uploaded_file"
+        : generatedLogoDataUrl
+          ? "generated_svg"
+          : selectedGeneratedLogo
+            ? "prepared_ai_prompt"
+            : "external_url",
+    };
+
+    payload.media = {
+      logoOriginalUrl: uploadedLogoUrl,
+      logoTransparentUrl: "",
+      ...(uploadedGallery.length
+        ? {
+            coverImageUrl: uploadedGallery[0]?.url || "",
+            gallery: uploadedGallery,
+          }
+        : {}),
+    };
+  } else if (uploadedGallery.length) {
+    payload.media = {
+      coverImageUrl: uploadedGallery[0]?.url || "",
+      gallery: uploadedGallery,
+    };
+  }
+
+  await setDoc(doc(db, "clubs", safeClubId), payload, { merge: true });
+
+  return {
+    id: safeClubId,
+    ...payload,
+  };
+}

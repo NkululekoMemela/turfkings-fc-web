@@ -5,6 +5,10 @@ import {
   buildGeneratedLogoOptions,
   buildLogoStorageNames,
 } from "../../core/homePageHubLogoUtils";
+import {
+  buildSvgLogoOptions,
+  getSelectedSvgLogo,
+} from "../../core/homePageHubLogoSvgFactory";
 
 const MAX_GALLERY_FILES = 3;
 
@@ -20,7 +24,7 @@ export default function HomePage_HUB_LogoGenerator({
 }) {
   const [showPrompt, setShowPrompt] = useState(false);
 
-  const options = useMemo(
+  const aiPromptOptions = useMemo(
     () =>
       buildGeneratedLogoOptions({
         clubName: clubDraft?.clubName,
@@ -36,7 +40,18 @@ export default function HomePage_HUB_LogoGenerator({
     ]
   );
 
+  const svgOptions = useMemo(
+    () =>
+      buildSvgLogoOptions({
+        clubName: clubDraft?.clubName,
+        accent: clubDraft?.accent,
+      }),
+    [clubDraft?.clubName, clubDraft?.accent]
+  );
+
   const selectedOption = logoDraft?.selectedGeneratedLogoId || "";
+  const selectedSvgLogo = getSelectedSvgLogo(svgOptions, selectedOption);
+
   const storageNames = buildLogoStorageNames(
     clubDraft?.clubId || clubDraft?.clubName
   );
@@ -71,6 +86,8 @@ export default function HomePage_HUB_LogoGenerator({
       uploadedLogoUrl: "",
       selectedGeneratedLogoId: "",
       generatedLogoPrompt: "",
+      generatedLogoSvg: "",
+      generatedLogoDataUrl: "",
     });
   }
 
@@ -90,14 +107,25 @@ export default function HomePage_HUB_LogoGenerator({
     });
   }
 
+  function selectSvgLogo(option) {
+    updateLogoDraft({
+      selectedGeneratedLogoId: option.id,
+      generatedLogoPrompt: "",
+      generatedLogoSvg: option.svg,
+      generatedLogoDataUrl: option.previewUrl,
+      logoFile: null,
+      uploadedLogoUrl: "",
+    });
+  }
+
   return (
     <div className="hub-form-panel">
       <div className="hub-form-panel__head">
         <span>Step 2</span>
         <h3>Club identity</h3>
         <p>
-          Upload your club logo and up to {MAX_GALLERY_FILES} team photos.
-          These make the club page instantly recognizable.
+          Upload a logo, choose an instant badge, or keep a temporary initials
+          mark. The badge loosely follows your selected club colour.
         </p>
       </div>
 
@@ -121,6 +149,52 @@ export default function HomePage_HUB_LogoGenerator({
             onClick={() => updateLogoDraft({ logoFile: null })}
           >
             Remove logo
+          </button>
+        </div>
+      ) : null}
+
+      <div className="hub-soft-note">
+        <strong>Instant badge generator</strong>
+        <span>
+          Pick a clean generated badge now. You can still upload a real logo later.
+        </span>
+      </div>
+
+      <div className="hub-logo-options hub-logo-options--svg">
+        {svgOptions.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className={`hub-logo-option hub-logo-option--svg ${
+              selectedOption === option.id ? "is-selected" : ""
+            }`}
+            onClick={() => selectSvgLogo(option)}
+            style={{ "--hub-logo-accent": clubDraft?.accent || "#16a34a" }}
+          >
+            <span className="hub-logo-option__svg-preview">
+              <img src={option.previewUrl} alt={`${option.title} preview`} />
+            </span>
+            <strong>{option.title}</strong>
+            <small>{option.tone}</small>
+          </button>
+        ))}
+      </div>
+
+      {selectedSvgLogo ? (
+        <div className="hub-logo-upload-preview">
+          <img src={selectedSvgLogo.previewUrl} alt="Generated club badge preview" />
+          <button
+            type="button"
+            className="hub-secondary-button"
+            onClick={() =>
+              updateLogoDraft({
+                selectedGeneratedLogoId: "",
+                generatedLogoSvg: "",
+                generatedLogoDataUrl: "",
+              })
+            }
+          >
+            Remove badge
           </button>
         </div>
       ) : null}
@@ -167,39 +241,14 @@ export default function HomePage_HUB_LogoGenerator({
             updateLogoDraft({
               uploadedLogoUrl: event.target.value,
               logoFile: null,
+              selectedGeneratedLogoId: "",
+              generatedLogoSvg: "",
+              generatedLogoDataUrl: "",
             })
           }
           placeholder="https://..."
         />
       </label>
-
-      <div className="hub-logo-options">
-        {options.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            className={`hub-logo-option ${
-              selectedOption === option.id ? "is-selected" : ""
-            }`}
-            onClick={() =>
-              updateLogoDraft({
-                selectedGeneratedLogoId: option.id,
-                generatedLogoPrompt: option.prompt,
-                logoFile: null,
-                uploadedLogoUrl: "",
-              })
-            }
-            style={{ "--hub-logo-accent": option.accent }}
-          >
-            <span className="hub-logo-option__badge">
-              <span>{option.initials}</span>
-              <i>⚽</i>
-            </span>
-            <strong>{option.title}</strong>
-            <small>{option.tone}</small>
-          </button>
-        ))}
-      </div>
 
       <button
         type="button"
@@ -212,7 +261,7 @@ export default function HomePage_HUB_LogoGenerator({
       {showPrompt ? (
         <div className="hub-logo-prompt">
           <strong>Prepared prompt</strong>
-          <p>{logoDraft?.generatedLogoPrompt || options[0]?.prompt}</p>
+          <p>{logoDraft?.generatedLogoPrompt || aiPromptOptions[0]?.prompt}</p>
         </div>
       ) : null}
     </div>
