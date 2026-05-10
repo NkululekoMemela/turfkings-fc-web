@@ -1729,3 +1729,843 @@
     padding: 1px !important;
   }
 }
+
+.hub-nav__signed-in {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(6, 21, 43, 0.08);
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .hub-nav {
+    gap: 6px;
+  }
+
+  .hub-nav__signed-in {
+    min-height: 34px;
+    padding: 0 8px;
+    font-size: 0.68rem;
+  }
+}
+
+
+.hub-footer-actions {
+  display: flex;
+  align-items: center;
+  margin-top: 18px;
+}
+
+.hub-footer-tour-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 22px;
+  background: linear-gradient(135deg, #22c55e, #84cc16);
+  color: #052e16;
+  font-size: 0.84rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  box-shadow:
+    0 10px 30px rgba(34, 197, 94, 0.28),
+    inset 0 0 0 1px rgba(255,255,255,0.14);
+}
+
+@media (max-width: 640px) {
+  .homepage-hub-shell {
+    padding: 12px 8px 48px;
+  }
+
+  .hub-topbar,
+  .hub-clubs-section,
+  .hub-map-section,
+  .hub-footer-brand,
+  .hub-modal,
+  .hub-action-sheet {
+    border-radius: 24px;
+  }
+
+  .hub-clubs-section,
+  .hub-map-section,
+  .hub-footer-brand {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .hub-brand strong {
+    font-size: 0.92rem;
+  }
+
+  .hub-brand span {
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+  }
+
+  .hub-nav__primary {
+    min-width: 104px;
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 0.76rem;
+  }
+
+  .hub-club-carousel {
+    grid-auto-columns: minmax(168px, 44vw) !important;
+    gap: 12px !important;
+    margin-left: -12px;
+    margin-right: -12px;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-bottom: 14px !important;
+    overflow-x: auto;
+    scroll-padding-left: 0;
+  }
+
+  .hub-register-card,
+  .hub-club-card {
+    min-height: 270px;
+    border-radius: 24px;
+  }
+
+  .hub-club-card__cube {
+    min-height: 270px;
+  }
+
+  .hub-club-card__face {
+    padding: 14px;
+    border-radius: 24px;
+  }
+
+  .hub-club-card__face--logo {
+    transform: rotateY(0deg) translateZ(52px);
+  }
+
+  .hub-club-card__face--details {
+    transform: rotateY(120deg) translateZ(52px);
+  }
+
+  .hub-club-card__face--highlights {
+    transform: rotateY(240deg) translateZ(52px);
+  }
+
+  .hub-club-card__logo-ring {
+    width: 92px;
+    height: 92px;
+    border-radius: 30px;
+  }
+
+  .hub-club-card__logo-ring img {
+    padding: 10px;
+  }
+
+  .hub-club-card__face strong,
+  .hub-club-card__face h3 {
+    margin-top: 14px;
+    font-size: 1.2rem;
+  }
+
+  .hub-club-card__face p {
+    font-size: 0.92rem;
+  }
+
+  .hub-register-card span {
+    width: 64px;
+    height: 64px;
+    font-size: 2rem;
+  }
+
+  .hub-register-card strong {
+    font-size: 1.05rem;
+  }
+
+  .hub-action-sheet__buttons,
+  .hub-choice-grid,
+  .hub-form-grid,
+  .hub-logo-options,
+  .hub-map-list {
+    grid-template-columns: 1fr;
+  }
+
+  .hub-map-surface {
+    min-height: 280px !important;
+  }
+
+  .hub-footer-brand div {
+    min-height: 160px;
+  }
+
+  .hub-modal-backdrop,
+  .hub-action-sheet-backdrop {
+    padding: 10px;
+  }
+
+  .hub-modal {
+    max-height: 94vh;
+  }
+}
+
+/* append to src/styles/HomePage_HUB.css */
+
+.hub-file-drop {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px dashed rgba(6, 21, 43, 0.20);
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.12), transparent 34%),
+    rgba(248, 250, 252, 0.92);
+  color: #06152b;
+  cursor: pointer;
+}
+
+.hub-file-drop span {
+  color: #087f5b;
+  font-size: 0.76rem;
+  font-weight: 1000;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hub-file-drop strong {
+  font-size: 1rem;
+  font-weight: 1000;
+}
+
+.hub-file-drop small {
+  color: #64748b;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.hub-file-drop input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.hub-logo-upload-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(6, 21, 43, 0.12);
+  background: #ffffff;
+}
+
+.hub-logo-upload-preview img {
+  width: 92px;
+  height: 92px;
+  object-fit: contain;
+  border-radius: 18px;
+  border: 1px solid rgba(6, 21, 43, 0.10);
+  background: #f8fafc;
+}
+
+.hub-gallery-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hub-gallery-preview-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(6, 21, 43, 0.12);
+  background: #ffffff;
+  aspect-ratio: 1;
+}
+
+.hub-gallery-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hub-gallery-preview-item button {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 21, 43, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: #06152b;
+  font-weight: 1000;
+}
+
+@media (max-width: 640px) {
+  .hub-gallery-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hub-logo-upload-preview {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* HUB timing polish */
+.hub-club-card__cube {
+  transition: transform 1.35s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+/* =========================================================
+   PREMIUM DARK-GRADIENT SECTION REFRESH
+========================================================= */
+
+.homepage-hub-shell {
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.10), transparent 26%),
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.10), transparent 24%),
+    linear-gradient(
+      180deg,
+      #edf4ef 0%,
+      #eef3f0 40%,
+      #edf2ef 100%
+    ) !important;
+  background-image: none !important;
+}
+
+.homepage-hub-shell::before,
+.homepage-hub-shell::after {
+  display: none !important;
+}
+
+.hub-topbar,
+.hub-clubs-section,
+.hub-map-section {
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.12), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.10), transparent 28%),
+    linear-gradient(
+      135deg,
+      rgba(7, 20, 40, 0.95) 0%,
+      rgba(11, 30, 52, 0.96) 45%,
+      rgba(16, 65, 66, 0.92) 100%
+    ) !important;
+
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  box-shadow:
+    0 18px 50px rgba(2, 6, 23, 0.24),
+    inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+
+.hub-topbar strong,
+.hub-section-head h1,
+.hub-map-copy h2,
+.hub-map-copy p,
+.hub-section-head p,
+.hub-map-list strong,
+.hub-map-list span {
+  color: #f8fafc !important;
+}
+
+.hub-kicker {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border: 1px solid rgba(74, 222, 128, 0.28) !important;
+  color: #86efac !important;
+}
+
+.hub-register-card,
+.hub-map-list button,
+.hub-loading-card {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,0.93) 0%,
+      rgba(248,250,252,0.92) 100%
+    ) !important;
+
+  border: 1px solid rgba(255,255,255,0.18) !important;
+
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255,255,255,0.7) !important;
+}
+
+.hub-map-card {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,0.10) 0%,
+      rgba(255,255,255,0.06) 100%
+    ) !important;
+
+  border: 1px solid rgba(255,255,255,0.10) !important;
+}
+
+.hub-map-surface {
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.16), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.14), transparent 28%),
+    rgba(255,255,255,0.06) !important;
+
+  border: 1px solid rgba(255,255,255,0.10) !important;
+}
+
+.hub-map-road {
+  opacity: 0.22 !important;
+}
+
+.hub-footer-brand {
+  box-shadow:
+    0 22px 60px rgba(2, 6, 23, 0.28),
+    inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+
+
+/* Hide map-side club list: map should scale without listing every club */
+.hub-map-list {
+  display: none !important;
+}
+
+.hub-map-card {
+  grid-template-columns: 1fr !important;
+}
+
+.hub-map-surface {
+  min-height: 360px !important;
+}
+
+
+.hub-club-filter-ribbon {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+
+  margin-top: 4px;
+  margin-bottom: 18px;
+
+  padding: 9px 10px;
+  border-radius: 999px;
+
+  background: rgba(2, 6, 23, 0.36);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+
+  overflow: hidden;
+}
+
+.hub-club-filter-ribbon__scroll {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.hub-club-filter-ribbon__scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.hub-club-filter-ribbon__pill {
+  flex: 0 0 auto;
+
+  border: 0;
+  background: transparent;
+
+  color: rgba(226, 232, 240, 0.72);
+
+  padding: 5px 0;
+  border-radius: 0;
+
+  font-size: 0.9rem;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+
+  transition: color 0.16s ease, transform 0.16s ease;
+}
+
+.hub-club-filter-ribbon__pill:hover {
+  transform: translateY(-1px);
+  color: #f8fafc;
+}
+
+.hub-club-filter-ribbon__pill--active {
+  position: relative;
+  color: #86efac;
+}
+
+.hub-club-filter-ribbon__pill--active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22c55e, #84cc16);
+}
+
+.hub-club-filter-ribbon__search {
+  flex: 0 0 auto;
+
+  border: 0;
+  background: transparent;
+
+  color: rgba(248, 250, 252, 0.9);
+
+  padding: 5px 0 5px 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+
+  font-size: 0.9rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .hub-club-filter-ribbon {
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 8px 10px;
+  }
+
+  .hub-club-filter-ribbon__scroll {
+    gap: 22px;
+  }
+
+  .hub-club-filter-ribbon__pill,
+  .hub-club-filter-ribbon__search {
+    font-size: 0.82rem;
+  }
+}
+
+
+/* Mobile premium density refinement */
+@media (max-width: 640px) {
+  .hub-topbar {
+    gap: 8px;
+    padding: 9px 10px;
+  }
+
+  .hub-brand {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .hub-brand strong {
+    max-width: 118px;
+    font-size: 0.82rem !important;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+  }
+
+  .hub-brand span {
+    width: 54px !important;
+    height: 54px !important;
+  }
+
+  .hub-nav__primary {
+    min-width: auto !important;
+    min-height: 36px !important;
+    padding: 7px 13px !important;
+    border-radius: 999px;
+    font-size: 0.72rem !important;
+    font-weight: 850;
+    white-space: nowrap;
+  }
+
+  .hub-kicker {
+    font-size: 0.66rem !important;
+    padding: 7px 10px;
+    letter-spacing: 0.07em;
+  }
+
+  .hub-club-filter-ribbon {
+    padding: 7px 9px;
+  }
+
+  .hub-club-filter-ribbon__scroll {
+    gap: 19px;
+  }
+
+  .hub-club-filter-ribbon__pill,
+  .hub-club-filter-ribbon__search {
+    font-size: 0.76rem !important;
+    font-weight: 760;
+    letter-spacing: 0;
+  }
+
+  .hub-club-filter-ribbon__search {
+    padding-left: 12px;
+  }
+
+  .hub-register-card strong,
+  .hub-club-card__face strong,
+  .hub-club-card__face h3 {
+    font-size: 1rem !important;
+    line-height: 1.08;
+  }
+
+  .hub-register-card small,
+  .hub-club-card__face small,
+  .hub-club-card__face p,
+  .hub-club-card__face em {
+    font-size: 0.78rem !important;
+    line-height: 1.28;
+  }
+
+  .hub-map-copy h2,
+  .hub-footer-brand h2 {
+    font-size: clamp(2rem, 12vw, 2.6rem) !important;
+    letter-spacing: -0.055em;
+  }
+
+  .hub-map-copy p,
+  .hub-footer-brand p {
+    font-size: 0.9rem;
+    line-height: 1.42;
+  }
+}
+
+
+/* Mobile premium density refinement */
+@media (max-width: 640px) {
+  .hub-topbar {
+    gap: 8px;
+    padding: 9px 10px;
+  }
+
+  .hub-brand {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .hub-brand strong {
+    max-width: 118px;
+    font-size: 0.82rem !important;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+  }
+
+  .hub-brand span {
+    width: 54px !important;
+    height: 54px !important;
+  }
+
+  .hub-nav__primary {
+    min-width: auto !important;
+    min-height: 36px !important;
+    padding: 7px 13px !important;
+    border-radius: 999px;
+    font-size: 0.72rem !important;
+    font-weight: 850;
+    white-space: nowrap;
+  }
+
+  .hub-kicker {
+    font-size: 0.66rem !important;
+    padding: 7px 10px;
+    letter-spacing: 0.07em;
+  }
+
+  .hub-club-filter-ribbon {
+    padding: 7px 9px;
+  }
+
+  .hub-club-filter-ribbon__scroll {
+    gap: 19px;
+  }
+
+  .hub-club-filter-ribbon__pill,
+  .hub-club-filter-ribbon__search {
+    font-size: 0.76rem !important;
+    font-weight: 760;
+    letter-spacing: 0;
+  }
+
+  .hub-club-filter-ribbon__search {
+    padding-left: 12px;
+  }
+
+  .hub-register-card strong,
+  .hub-club-card__face strong,
+  .hub-club-card__face h3 {
+    font-size: 1rem !important;
+    line-height: 1.08;
+  }
+
+  .hub-register-card small,
+  .hub-club-card__face small,
+  .hub-club-card__face p,
+  .hub-club-card__face em {
+    font-size: 0.78rem !important;
+    line-height: 1.28;
+  }
+
+  .hub-map-copy h2,
+  .hub-footer-brand h2 {
+    font-size: clamp(2rem, 12vw, 2.6rem) !important;
+    letter-spacing: -0.055em;
+  }
+
+  .hub-map-copy p,
+  .hub-footer-brand p {
+    font-size: 0.9rem;
+    line-height: 1.42;
+  }
+}
+
+
+/* Instant SVG club badge generator */
+.hub-logo-options--svg {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.hub-logo-option--svg {
+  min-height: 235px;
+}
+
+.hub-logo-option__svg-preview {
+  width: 112px;
+  height: 112px;
+  display: grid;
+  place-items: center;
+  border-radius: 28px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 16px 35px rgba(15, 23, 42, 0.13);
+}
+
+.hub-logo-option__svg-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+@media (max-width: 640px) {
+  .hub-logo-options--svg {
+    grid-template-columns: 1fr;
+  }
+
+  .hub-logo-option--svg {
+    min-height: 190px;
+  }
+
+  .hub-logo-option__svg-preview {
+    width: 96px;
+    height: 96px;
+    border-radius: 24px;
+  }
+}
+
+/* Make uploaded/generated club logos more prominent on club cards */
+.hub-club-card__logo-ring {
+  width: 136px !important;
+  height: 136px !important;
+  border-radius: 36px !important;
+}
+
+.hub-club-card__logo-ring img {
+  padding: 4px !important;
+}
+
+@media (max-width: 640px) {
+  .hub-club-card__logo-ring {
+    width: 118px !important;
+    height: 118px !important;
+    border-radius: 32px !important;
+  }
+
+  .hub-club-card__logo-ring img {
+    padding: 3px !important;
+  }
+}
+
+/* Stronger club logo presence */
+.hub-club-card__logo-ring {
+  width: 154px !important;
+  height: 154px !important;
+  border-radius: 38px !important;
+}
+
+.hub-club-card__logo-ring img {
+  padding: 2px !important;
+}
+
+@media (max-width: 640px) {
+  .hub-club-card__logo-ring {
+    width: 132px !important;
+    height: 132px !important;
+    border-radius: 34px !important;
+  }
+
+  .hub-club-card__logo-ring img {
+    padding: 1px !important;
+  }
+}
+
+.hub-nav__signed-in {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(6, 21, 43, 0.08);
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .hub-nav {
+    gap: 6px;
+  }
+
+  .hub-nav__signed-in {
+    min-height: 34px;
+    padding: 0 8px;
+    font-size: 0.68rem;
+  }
+}
+
+.hub-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.hub-footer-actions button {
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 18px;
+  background: rgba(34, 197, 94, 0.16);
+  color: #ecfdf5;
+  font-size: 0.82rem;
+  font-weight: 900;
+  box-shadow: inset 0 0 0 1px rgba(134, 239, 172, 0.22);
+}
+
+.hub-footer-actions button:first-child {
+  background: linear-gradient(135deg, #22c55e, #84cc16);
+  color: #052e16;
+}
+
+@media (max-width: 640px) {
+  .hub-footer-actions {
+    gap: 8px;
+  }
+
+  .hub-footer-actions button {
+    flex: 1 1 100%;
+    padding: 10px 14px;
+    font-size: 0.78rem;
+  }
+}

@@ -383,13 +383,31 @@ export default function HomePage_HUB({
         </button>
 
         <nav className="hub-nav">
-          <button
-            type="button"
-            className="hub-nav__primary"
-            onClick={() => setSignupOpen(true)}
-          >
-            Sign up free
-          </button>
+          {currentUser ? (
+            <>
+              <span className="hub-nav__signed-in">
+                Signed in
+              </span>
+
+              <button
+                type="button"
+                className="hub-nav__primary"
+                onClick={() => {
+                  console.log("[HomePage_HUB] New Challenge clicked");
+                }}
+              >
+                New Challenge
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="hub-nav__primary"
+              onClick={() => setSignupOpen(true)}
+            >
+              Sign up free
+            </button>
+          )}
         </nav>
       </header>
 
@@ -530,9 +548,15 @@ export default function HomePage_HUB({
             5 Asides Near Me connects players, captains, payments, highlights
             and club discovery in one clean football platform.
           </p>
-          <button type="button" onClick={() => setSignupOpen(true)}>
-            Sign up free
-          </button>
+          <div className="hub-footer-actions">
+            <button
+              type="button"
+              className="hub-footer-tour-button"
+              onClick={() => console.log("[HomePage_HUB] Open tour")}
+            >
+              Take the tour
+            </button>
+          </div>
         </section>
       </footer>
 
