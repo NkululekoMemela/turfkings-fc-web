@@ -584,8 +584,8 @@ export default function HomePage_HUB({
               <button
                 type="button"
                 onClick={() => {
+                  setProfileEditorClub(completionPromptClub);
                   setCompletionPromptClub(null);
-                  setSignupOpen(true);
                 }}
               >
                 Update info
