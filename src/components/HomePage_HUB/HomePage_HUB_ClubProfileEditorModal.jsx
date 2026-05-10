@@ -1,6 +1,6 @@
 // src/components/HomePage_HUB/HomePage_HUB_ClubProfileEditorModal.jsx
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import HomePage_HUB_ClubRegisterForm from "./HomePage_HUB_ClubRegisterForm";
 import HomePage_HUB_LogoGenerator from "./HomePage_HUB_LogoGenerator";
 import { updateHomePageHubClub } from "../../storage/homePageHubClubRepository";
@@ -61,6 +61,15 @@ export default function HomePage_HUB_ClubProfileEditorModal({
   const [errorText, setErrorText] = useState("");
 
   const clubId = useMemo(() => club?.id || clubDraft.clubId, [club?.id, clubDraft.clubId]);
+
+  useEffect(() => {
+    if (!isOpen || !club?.id) return;
+
+    setClubDraft(getDraftFromClub(club));
+    setLogoDraft(getLogoDraftFromClub(club));
+    setStep(1);
+    setErrorText("");
+  }, [isOpen, club?.id]);
 
   if (!isOpen || !club?.id) return null;
 

@@ -13,6 +13,7 @@ const HOME_TOP_LOGO = "/HomePage_Hub/5_AsidesNearMe_light_logo.png";
 const HOME_FOOTER_LOGO = "/HomePage_Hub/5_AsidesNearMe_Transparent.png";
 const HOME_FALLBACK_LOGO = "/HomePage/Logo_icon.jpeg";
 const SUPER_ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
+const CLUB_CACHE_KEY = "fanm_homepage_hub_clubs_v1";
 
 const FALLBACK_CLUBS = [
   {
@@ -208,7 +209,15 @@ export default function HomePage_HUB({
   onChallengeClub,
   onNavigateToEntryPage,
 }) {
-  const [clubs, setClubs] = useState([]);
+  const [clubs, setClubs] = useState(() => {
+    try {
+      const cached = window.localStorage.getItem(CLUB_CACHE_KEY);
+      const parsed = cached ? JSON.parse(cached) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const [loadingClubs, setLoadingClubs] = useState(true);
   const [signupOpen, setSignupOpen] = useState(false);
   const [activeClub, setActiveClub] = useState(null);
@@ -235,7 +244,14 @@ export default function HomePage_HUB({
         const firebaseClubs = snap.docs.map(normalizeClub);
 
         if (!cancelled) {
-          setClubs(firebaseClubs.length ? firebaseClubs : FALLBACK_CLUBS);
+          const nextClubs = firebaseClubs.length ? firebaseClubs : FALLBACK_CLUBS;
+          setClubs(nextClubs);
+
+          try {
+            window.localStorage.setItem(CLUB_CACHE_KEY, JSON.stringify(nextClubs));
+          } catch {
+            // Ignore cache failures.
+          }
         }
       } catch (error) {
         console.error("[HomePage_HUB] Failed to load clubs:", error);
@@ -275,7 +291,7 @@ export default function HomePage_HUB({
     const missing = getMissingClubRequirements(club);
     const userCanManage = canCurrentUserManageClub(currentUser, club);
 
-    if (missing.length && userCanManage) {
+    if (missing.length && userCanManage && !isSuperAdmin(currentUser)) {
       setCompletionPromptClub(club);
       return;
     }
@@ -423,7 +439,7 @@ export default function HomePage_HUB({
           </button>
         </div>
 
-        {loadingClubs ? (
+        {loadingClubs && !clubs.length ? (
           <div className="hub-loading-card">Loading clubs...</div>
         ) : null}
 
