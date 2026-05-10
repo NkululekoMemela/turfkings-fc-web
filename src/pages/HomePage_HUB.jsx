@@ -357,13 +357,46 @@ export default function HomePage_HUB({
         <div className="hub-section-head hub-section-head--clubs-first">
           <div>
             <span className="hub-kicker">Discover clubs near you</span>
-            <h1>Swipe through clubs</h1>
+          </div>
+        </div>
+
+        <div className="hub-club-filter-ribbon">
+          <div className="hub-club-filter-ribbon__scroll">
+            <button
+              type="button"
+              className="hub-club-filter-ribbon__pill hub-club-filter-ribbon__pill--active"
+            >
+              All
+            </button>
+
+            <button
+              type="button"
+              className="hub-club-filter-ribbon__pill"
+            >
+              My clubs
+            </button>
+
+            <button
+              type="button"
+              className="hub-club-filter-ribbon__pill"
+            >
+              Nearby
+            </button>
+
+            <button
+              type="button"
+              className="hub-club-filter-ribbon__pill"
+            >
+              New
+            </button>
           </div>
 
-          <p>
-            Each block rotates between the club logo, match details and latest
-            highlights.
-          </p>
+          <button
+            type="button"
+            className="hub-club-filter-ribbon__search"
+          >
+            Search 🔎
+          </button>
         </div>
 
         {loadingClubs ? (
