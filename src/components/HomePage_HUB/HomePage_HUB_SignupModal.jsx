@@ -10,8 +10,16 @@ import { createHomePageHubClub } from "../../storage/homePageHubClubRepository";
 const INITIAL_CLUB_DRAFT = {
   clubName: "",
   clubId: "",
-  location: "",
+  venueName: "",
+  address: "",
+  suburb: "",
+  city: "",
+  province: "",
+  country: "South Africa",
+  playDay: "",
+  playTime: "",
   weeklyPlayTime: "",
+  timezone: "Africa/Johannesburg",
   captainName: "",
   captainEmail: "",
   accent: "#16a34a",
@@ -47,14 +55,13 @@ export default function HomePage_HUB_SignupModal({
     setMode("choice");
     setStep(1);
     setErrorText("");
+    setSubmitting(false);
     onClose?.();
   }
 
   function validateBeforeSubmit() {
     if (!clubDraft.clubName.trim()) return "Club name is required.";
     if (!clubId) return "Club ID could not be created from the club name.";
-    if (!clubDraft.location.trim()) return "Club location is required.";
-    if (!clubDraft.weeklyPlayTime.trim()) return "Weekly play time is required.";
     if (!clubDraft.captainName.trim()) return "Captain name is required.";
     if (!clubDraft.captainEmail.trim()) return "Captain email is required.";
     if (!isValidEmail(clubDraft.captainEmail)) return "Captain email is not valid.";
@@ -100,7 +107,7 @@ export default function HomePage_HUB_SignupModal({
       className="hub-modal-backdrop"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) resetAndClose();
+        if (event.target === event.currentTarget && !submitting) resetAndClose();
       }}
     >
       <section
@@ -119,6 +126,7 @@ export default function HomePage_HUB_SignupModal({
             type="button"
             onClick={resetAndClose}
             aria-label="Close signup modal"
+            disabled={submitting}
           >
             ×
           </button>
@@ -210,7 +218,7 @@ export default function HomePage_HUB_SignupModal({
                   onClick={createClub}
                   disabled={submitting}
                 >
-                  {submitting ? "Creating..." : "Create club"}
+                  {submitting ? "Creating club..." : "Create club"}
                 </button>
               )}
             </footer>

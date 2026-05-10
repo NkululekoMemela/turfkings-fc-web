@@ -1056,3 +1056,112 @@
     max-height: 94vh;
   }
 }
+
+/* append to src/styles/HomePage_HUB.css */
+
+.hub-file-drop {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px dashed rgba(6, 21, 43, 0.20);
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.12), transparent 34%),
+    rgba(248, 250, 252, 0.92);
+  color: #06152b;
+  cursor: pointer;
+}
+
+.hub-file-drop span {
+  color: #087f5b;
+  font-size: 0.76rem;
+  font-weight: 1000;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hub-file-drop strong {
+  font-size: 1rem;
+  font-weight: 1000;
+}
+
+.hub-file-drop small {
+  color: #64748b;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.hub-file-drop input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.hub-logo-upload-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(6, 21, 43, 0.12);
+  background: #ffffff;
+}
+
+.hub-logo-upload-preview img {
+  width: 92px;
+  height: 92px;
+  object-fit: contain;
+  border-radius: 18px;
+  border: 1px solid rgba(6, 21, 43, 0.10);
+  background: #f8fafc;
+}
+
+.hub-gallery-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hub-gallery-preview-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(6, 21, 43, 0.12);
+  background: #ffffff;
+  aspect-ratio: 1;
+}
+
+.hub-gallery-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hub-gallery-preview-item button {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 21, 43, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: #06152b;
+  font-weight: 1000;
+}
+
+@media (max-width: 640px) {
+  .hub-gallery-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hub-logo-upload-preview {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
