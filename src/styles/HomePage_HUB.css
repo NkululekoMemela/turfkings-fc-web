@@ -998,7 +998,7 @@
 
 @media (max-width: 640px) {
   .homepage-hub-shell {
-    padding: 12px 10px 48px;
+    padding: 12px 8px 48px;
   }
 
   .hub-topbar,
@@ -1007,7 +1007,14 @@
   .hub-footer-brand,
   .hub-modal,
   .hub-action-sheet {
-    border-radius: 26px;
+    border-radius: 24px;
+  }
+
+  .hub-clubs-section,
+  .hub-map-section,
+  .hub-footer-brand {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
   }
 
   .hub-brand strong {
@@ -1015,20 +1022,85 @@
   }
 
   .hub-brand span {
-    width: 64px;
-    height: 64px;
+    width: 60px;
+    height: 60px;
     border-radius: 14px;
   }
 
   .hub-nav__primary {
-    min-width: 112px;
-    min-height: 42px;
-    padding: 8px 16px;
-    font-size: 0.78rem;
+    min-width: 104px;
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 0.76rem;
   }
 
   .hub-club-carousel {
-    grid-auto-columns: minmax(168px, 44vw);
+    grid-auto-columns: minmax(168px, 44vw) !important;
+    gap: 12px !important;
+    margin-left: -12px;
+    margin-right: -12px;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-bottom: 14px !important;
+    overflow-x: auto;
+    scroll-padding-left: 0;
+  }
+
+  .hub-register-card,
+  .hub-club-card {
+    min-height: 270px;
+    border-radius: 24px;
+  }
+
+  .hub-club-card__cube {
+    min-height: 270px;
+  }
+
+  .hub-club-card__face {
+    padding: 14px;
+    border-radius: 24px;
+  }
+
+  .hub-club-card__face--logo {
+    transform: rotateY(0deg) translateZ(52px);
+  }
+
+  .hub-club-card__face--details {
+    transform: rotateY(120deg) translateZ(52px);
+  }
+
+  .hub-club-card__face--highlights {
+    transform: rotateY(240deg) translateZ(52px);
+  }
+
+  .hub-club-card__logo-ring {
+    width: 92px;
+    height: 92px;
+    border-radius: 30px;
+  }
+
+  .hub-club-card__logo-ring img {
+    padding: 10px;
+  }
+
+  .hub-club-card__face strong,
+  .hub-club-card__face h3 {
+    margin-top: 14px;
+    font-size: 1.2rem;
+  }
+
+  .hub-club-card__face p {
+    font-size: 0.92rem;
+  }
+
+  .hub-register-card span {
+    width: 64px;
+    height: 64px;
+    font-size: 2rem;
+  }
+
+  .hub-register-card strong {
+    font-size: 1.05rem;
   }
 
   .hub-action-sheet__buttons,
@@ -1040,11 +1112,11 @@
   }
 
   .hub-map-surface {
-    min-height: 300px;
+    min-height: 280px !important;
   }
 
   .hub-footer-brand div {
-    min-height: 170px;
+    min-height: 160px;
   }
 
   .hub-modal-backdrop,
