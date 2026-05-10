@@ -2194,7 +2194,7 @@ export default function MatchSignupPage({
     ? beneficiary.isGuest
       ? "Guest player has no previous attendance record"
       : ""
-    : `${attendanceBadge.attended}/${attendanceBadge.total} match days · ${attendanceBadge.gamesPlayed} game${
+    : `${attendanceBadge.attended}/${attendanceBadge.total} weeks · ${attendanceBadge.gamesPlayed} game${
         attendanceBadge.gamesPlayed === 1 ? "" : "s"
       } played`;
 
@@ -4842,7 +4842,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               </div>
 
               <div className="summary-row">
-                <span>Match days attended</span>
+                <span>Weeks attended</span>
                 <strong>{attendanceBadge.attended}</strong>
               </div>
 
