@@ -1059,6 +1059,129 @@ export async function clearRawHighlightsFromFirebase(matchId) {
 }
 
 // ============================
+// CLUB FEATURED HIGHLIGHT
+// ============================
+
+export async function getClubFeaturedHighlight(clubId) {
+  if (!clubId) return null;
+
+  const allVideos = [];
+
+  async function collectFromMatchCollection(collectionRef, sourceLabel) {
+    try {
+      const matchDocsSnap = await getDocs(collectionRef);
+
+      for (const matchDocSnap of matchDocsSnap.docs) {
+        const matchId = matchDocSnap.id;
+
+        const [rawSnap, archivedSnap] = await Promise.allSettled([
+          getDocs(collection(matchDocSnap.ref, "raw")),
+          getDocs(collection(matchDocSnap.ref, "archived")),
+        ]);
+
+        if (rawSnap.status === "fulfilled") {
+          rawSnap.value.docs.forEach((clipDoc) => {
+            allVideos.push({
+              id: clipDoc.id,
+              clipId: clipDoc.id,
+              matchId,
+              sourcePath: `${sourceLabel}/${matchId}/raw`,
+              ...clipDoc.data(),
+            });
+          });
+        }
+
+        if (archivedSnap.status === "fulfilled") {
+          archivedSnap.value.docs.forEach((clipDoc) => {
+            allVideos.push({
+              id: clipDoc.id,
+              clipId: clipDoc.id,
+              matchId,
+              sourcePath: `${sourceLabel}/${matchId}/archived`,
+              ...clipDoc.data(),
+            });
+          });
+        }
+      }
+    } catch (error) {
+      console.warn("[TK FEATURED HIGHLIGHT] Skipped path:", sourceLabel, error);
+    }
+  }
+
+  try {
+    await Promise.all([
+      collectFromMatchCollection(
+        collection(db, "clubs", clubId, CLUB_COLLECTIONS.videoHighlights),
+        `clubs/${clubId}/${CLUB_COLLECTIONS.videoHighlights}`
+      ),
+      collectFromMatchCollection(
+        collection(db, "clubs", clubId, "videoHighlights"),
+        `clubs/${clubId}/videoHighlights`
+      ),
+      collectFromMatchCollection(
+        collection(db, "clubs", clubId, "video_highlights"),
+        `clubs/${clubId}/video_highlights`
+      ),
+      collectFromMatchCollection(
+        collection(db, "video_highlights"),
+        "video_highlights"
+      ),
+      collectFromMatchCollection(
+        collection(db, "videoHighlights"),
+        "videoHighlights"
+      ),
+    ]);
+
+    const videos = allVideos.filter(
+      (item) =>
+        item.downloadUrl ||
+        item.videoUrl ||
+        item.mediaUrl ||
+        item.fileUrl ||
+        item.url ||
+        item.uri
+    );
+
+    console.log("[TK FEATURED HIGHLIGHT SEARCH]", {
+      clubId,
+      foundVideos: videos.length,
+      videos,
+    });
+
+    if (!videos.length) return null;
+
+    const getVotes = (item) =>
+      Number(item.votes || item.voteCount || item.totalVotes || item.upvotes || 0);
+
+    const getTime = (item) =>
+      item.createdAt?.toMillis?.() ||
+      item.createdAtServer?.toMillis?.() ||
+      item.updatedAtServer?.toMillis?.() ||
+      item.timestamp?.toMillis?.() ||
+      new Date(
+        item.createdAtISO ||
+          item.createdAt ||
+          item.timestamp ||
+          item.uploadedAtISO ||
+          item.archivedAtISO ||
+          0
+      ).getTime() ||
+      0;
+
+    videos.sort((a, b) => {
+      const voteDiff = getVotes(b) - getVotes(a);
+      if (voteDiff !== 0) return voteDiff;
+      return getTime(b) - getTime(a);
+    });
+
+    return videos[0];
+  } catch (error) {
+    console.warn("[TK FEATURED HIGHLIGHT] Failed to load featured highlight:", clubId, error);
+    return null;
+  }
+}
+
+// ============================
 // EXPORT
 // ============================
 
@@ -1090,6 +1213,7 @@ const VideoHighlightsRepository = {
   confirmCleanupAndArchiveHighlights,
   clearRawHighlightsFromFirebase,
   deleteRawHighlightFromFirebase,
+  getClubFeaturedHighlight,
 };
 
 export default VideoHighlightsRepository;

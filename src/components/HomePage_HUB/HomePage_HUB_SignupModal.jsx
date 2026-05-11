@@ -20,8 +20,11 @@ const INITIAL_CLUB_DRAFT = {
   playTime: "",
   weeklyPlayTime: "",
   timezone: "Africa/Johannesburg",
+  founderFirstName: "",
+  founderSurname: "",
   captainName: "",
   captainEmail: "",
+  captainWhatsApp: "",
   accent: "#16a34a",
   logoText: "FC",
 };
@@ -61,10 +64,20 @@ export default function HomePage_HUB_SignupModal({
 
   function validateBeforeSubmit() {
     if (!clubDraft.clubName.trim()) return "Club name is required.";
+    if (clubDraft.clubName.trim().length > 16) return "Club name must be 16 characters or less.";
     if (!clubId) return "Club ID could not be created from the club name.";
-    if (!clubDraft.captainName.trim()) return "Captain name is required.";
-    if (!clubDraft.captainEmail.trim()) return "Captain email is required.";
-    if (!isValidEmail(clubDraft.captainEmail)) return "Captain email is not valid.";
+
+    if (!clubDraft.founderFirstName?.trim()) return "First name is required.";
+    if (clubDraft.founderFirstName.trim().length > 20) return "First name must be 20 characters or less.";
+
+    if (!clubDraft.founderSurname?.trim()) return "Surname is required.";
+    if (clubDraft.founderSurname.trim().length > 24) return "Surname must be 24 characters or less.";
+
+    if (!clubDraft.captainEmail.trim()) return "Email is required.";
+    if (!isValidEmail(clubDraft.captainEmail)) return "Email is not valid.";
+
+    if (!clubDraft.captainWhatsApp?.trim()) return "WhatsApp number is required.";
+    if (clubDraft.captainWhatsApp.trim().length > 20) return "WhatsApp number must be 20 characters or less.";
     return "";
   }
 
@@ -82,9 +95,16 @@ export default function HomePage_HUB_SignupModal({
     try {
       setSubmitting(true);
 
+      const founderName = `${clubDraft.founderFirstName || ""} ${clubDraft.founderSurname || ""}`
+        .replace(/\s+/g, " ")
+        .trim();
+
       const createdClub = await createHomePageHubClub({
         clubId,
-        clubDraft,
+        clubDraft: {
+          ...clubDraft,
+          captainName: founderName,
+        },
         logoDraft,
         bankingDraft,
       });
@@ -136,14 +156,18 @@ export default function HomePage_HUB_SignupModal({
           <div className="hub-choice-grid">
             <button type="button" onClick={() => onJoinExistingClub?.()}>
               <span>⚽</span>
-              <strong>Join an existing club</strong>
-              <small>Use the current EntryPage player signup flow.</small>
+              <strong>Join a football club</strong>
+              <small>
+                Discover nearby clubs, verify yourself and become matchday ready.
+              </small>
             </button>
 
             <button type="button" onClick={() => setMode("register")}>
               <span>🏟️</span>
-              <strong>Register a new club</strong>
-              <small>Create a club page, add branding and payment details.</small>
+              <strong>Create your own club</strong>
+              <small>
+                Launch a premium club page with branding, scheduling and payments.
+              </small>
             </button>
           </div>
         ) : null}

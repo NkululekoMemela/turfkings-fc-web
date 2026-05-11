@@ -23,6 +23,7 @@ export default function HomePage_HUB_LogoGenerator({
   onChange,
 }) {
   const [showPrompt, setShowPrompt] = useState(false);
+  const [conceptSeed, setConceptSeed] = useState(0);
 
   const aiPromptOptions = useMemo(
     () =>
@@ -45,8 +46,9 @@ export default function HomePage_HUB_LogoGenerator({
       buildSvgLogoOptions({
         clubName: clubDraft?.clubName,
         accent: clubDraft?.accent,
+        seed: conceptSeed,
       }),
-    [clubDraft?.clubName, clubDraft?.accent]
+    [clubDraft?.clubName, clubDraft?.accent, conceptSeed]
   );
 
   const selectedOption = logoDraft?.selectedGeneratedLogoId || "";
@@ -122,10 +124,9 @@ export default function HomePage_HUB_LogoGenerator({
     <div className="hub-form-panel">
       <div className="hub-form-panel__head">
         <span>Step 2</span>
-        <h3>Club identity</h3>
+        <h3>Choose your club badge</h3>
         <p>
-          Upload a logo, choose an instant badge, or keep a temporary initials
-          mark. The badge loosely follows your selected club colour.
+          Pick a bold football badge. Keep it simple, visible and easy to recognise.
         </p>
       </div>
 
@@ -153,11 +154,27 @@ export default function HomePage_HUB_LogoGenerator({
         </div>
       ) : null}
 
-      <div className="hub-soft-note">
-        <strong>Instant badge generator</strong>
-        <span>
-          Pick a clean generated badge now. You can still upload a real logo later.
-        </span>
+      <div className="hub-badge-toolbar">
+        <div>
+          <strong>Instant badge generator</strong>
+          <span>Three different football logo directions based on your club name.</span>
+        </div>
+
+        <button
+          type="button"
+          className="hub-refresh-concepts-button"
+          onClick={() => {
+            setConceptSeed((current) => current + 1);
+            updateLogoDraft({
+              selectedGeneratedLogoId: "",
+              generatedLogoPrompt: "",
+              generatedLogoSvg: "",
+              generatedLogoDataUrl: "",
+            });
+          }}
+        >
+          ↻ Refresh concepts
+        </button>
       </div>
 
       <div className="hub-logo-options hub-logo-options--svg">

@@ -17,6 +17,17 @@ function getHighlightPreview(club) {
   return "Highlights coming soon";
 }
 
+
+function getClubVideoUrl(club) {
+  return (
+    club?.featuredVideoUrl ||
+    club?.highlightVideoUrl ||
+    club?.videoUrl ||
+    club?.mediaUrl ||
+    ""
+  );
+}
+
 export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
   const [faceIndex, setFaceIndex] = useState(0);
 
@@ -34,6 +45,7 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
     club?.playTime ||
     "Play time to be confirmed";
   const highlightPreview = getHighlightPreview(club);
+  const videoUrl = getClubVideoUrl(club);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -89,10 +101,30 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
         </section>
 
         <section className="hub-club-card__face hub-club-card__face--highlights">
-          <span className="hub-club-card__eyebrow">Highlights</span>
-          <div className="hub-club-card__play">▶</div>
-          <h3>{highlightPreview}</h3>
-          <p>Goals, saves and skills from this club will live here.</p>
+          {videoUrl ? (
+            <>
+              <video
+                className="hub-club-card__highlight-video"
+                src={videoUrl}
+                muted
+                loop
+                playsInline
+                preload="metadata"
+              />
+              <div className="hub-club-card__highlight-overlay">
+                <span className="hub-club-card__eyebrow">Highlights</span>
+                <div className="hub-club-card__play">▶</div>
+                <h3>{highlightPreview === "Highlights coming soon" ? "Club highlight" : highlightPreview}</h3>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="hub-club-card__eyebrow">Highlights</span>
+              <div className="hub-club-card__play">▶</div>
+              <h3>{highlightPreview}</h3>
+              <p>Goals, saves and skills from this club will live here.</p>
+            </>
+          )}
         </section>
       </div>
     </article>

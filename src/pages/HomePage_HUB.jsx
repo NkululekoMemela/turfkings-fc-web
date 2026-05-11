@@ -6,6 +6,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import "../styles/HomePage_HUB.css";
 import HomePage_HUB_ClubCard from "../components/HomePage_HUB/HomePage_HUB_ClubCard.jsx";
+import { getClubFeaturedHighlight } from "../storage/VideoHighlightsRepository.js";
 import HomePage_HUB_SignupModal from "../components/HomePage_HUB/HomePage_HUB_SignupModal.jsx";
 import HomePage_HUB_ClubProfileEditorModal from "../components/HomePage_HUB/HomePage_HUB_ClubProfileEditorModal.jsx";
 
@@ -255,6 +256,7 @@ export default function HomePage_HUB({
   onNavigateToEntryPage,
 }) {
   const [showTour, setShowTour] = React.useState(false);
+  const [clubFeaturedVideos, setClubFeaturedVideos] = useState({});
   const [clubs, setClubs] = useState(() => {
     try {
       const cached = window.localStorage.getItem(CLUB_CACHE_KEY);
@@ -409,7 +411,49 @@ export default function HomePage_HUB({
     ? getMissingClubRequirements(completionPromptClub)
     : [];
 
-  const selectedMapClub = activeMapClub || visibleClubs[0];
+  const selectedMapClub = activeMapClub || null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadClubFeaturedVideos() {
+      if (!visibleClubs?.length) return;
+
+      const entries = await Promise.all(
+        visibleClubs.map(async (club) => {
+          const clubId = club?.id || club?.clubId || club?.slug;
+
+          if (!clubId) return ["", null];
+
+          try {
+            const highlight = await getClubFeaturedHighlight(clubId);
+            const url =
+              highlight?.downloadUrl ||
+              highlight?.videoUrl ||
+              highlight?.mediaUrl ||
+              highlight?.fileUrl ||
+              highlight?.url ||
+              "";
+
+            return [clubId, url || null];
+          } catch (error) {
+            console.warn("[TK HOME HUB] Could not load featured video:", clubId, error);
+            return [clubId, null];
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setClubFeaturedVideos(Object.fromEntries(entries.filter(([clubId]) => clubId)));
+      }
+    }
+
+    loadClubFeaturedVideos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleClubs]);
 
   return (
     <main className="homepage-hub-shell homepage-hub-shell--clubs-first">
@@ -521,13 +565,21 @@ export default function HomePage_HUB({
             <small>Free setup for captains</small>
           </button>
 
-          {visibleClubs.map((club) => (
-            <HomePage_HUB_ClubCard
-              key={club.id}
-              club={club}
-              onOpenClubActions={openClubActions}
-            />
-          ))}
+          {visibleClubs.map((club) => {
+            const clubId = club?.id || club?.clubId || club?.slug;
+            const featuredVideoUrl = clubFeaturedVideos[clubId] || "";
+
+            return (
+              <HomePage_HUB_ClubCard
+                key={club.id}
+                club={{
+                  ...club,
+                  featuredVideoUrl,
+                }}
+                onOpenClubActions={openClubActions}
+              />
+            );
+          })}
         </div>
       </section>
 
@@ -567,9 +619,17 @@ export default function HomePage_HUB({
               );
             })}
           </div>
-
           {selectedMapClub ? (
-            <aside className="hub-map-selected-card">
+            <aside className="hub-map-selected-card hub-map-selected-card--floating" onClick={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                className="hub-map-selected-card__close"
+                onClick={(event) => { event.stopPropagation(); setActiveMapClub(null); }}
+                aria-label="Close selected club"
+              >
+                ×
+              </button>
+
               <span className="hub-map-selected-card__kicker">Selected club</span>
               <strong>{selectedMapClub.name}</strong>
               <small>📍 {selectedMapClub.location}</small>

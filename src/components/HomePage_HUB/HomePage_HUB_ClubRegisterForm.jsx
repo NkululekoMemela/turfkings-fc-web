@@ -31,14 +31,31 @@ export default function HomePage_HUB_ClubRegisterForm({
   );
 
   function updateField(field, value) {
+    const cleanValue =
+      field === "clubName"
+        ? String(value || "").slice(0, 16)
+        : String(value || "");
+
     const nextDraft = {
       ...(clubDraft || {}),
-      [field]: value,
+      [field]: cleanValue,
     };
 
+    const city = String(nextDraft.city || "").trim().toLowerCase();
+    const province = String(nextDraft.province || "").trim().toLowerCase();
+
     if (field === "clubName") {
-      nextDraft.clubId = slugifyClubName(value);
-      nextDraft.logoText = getClubInitials(value);
+      nextDraft.clubId = slugifyClubName(cleanValue);
+      nextDraft.logoText = getClubInitials(cleanValue);
+    }
+
+    if (city === "cape town") {
+      nextDraft.province = nextDraft.province || "Western Cape";
+      nextDraft.country = nextDraft.country || "South Africa";
+    }
+
+    if (province === "western cape") {
+      nextDraft.country = nextDraft.country || "South Africa";
     }
 
     if (
@@ -70,10 +87,11 @@ export default function HomePage_HUB_ClubRegisterForm({
 
           <input
             value={clubDraft?.clubName || ""}
+            maxLength={16}
             onChange={(event) =>
               updateField(
                 "clubName",
-                event.target.value
+                event.target.value.slice(0, 16)
               )
             }
             placeholder="Farmers FC"
@@ -106,8 +124,13 @@ export default function HomePage_HUB_ClubRegisterForm({
                 event.target.value
               )
             }
-            placeholder="Wynberg, Cape Town"
+            placeholder="Start typing the venue address"
+            maxLength={90}
           />
+
+          <small className="hub-field__hint">
+            Tip: enter the venue name, suburb and city. Smart autofill will help with province and country.
+          </small>
         </label>
 
         <label className="hub-field">
@@ -211,35 +234,68 @@ export default function HomePage_HUB_ClubRegisterForm({
         </label>
 
         <label className="hub-field">
-          <span>Captain name</span>
+          <span>First name</span>
 
           <input
-            value={clubDraft?.captainName || ""}
+            value={clubDraft?.founderFirstName || ""}
+            maxLength={20}
             onChange={(event) =>
               updateField(
-                "captainName",
+                "founderFirstName",
                 event.target.value
               )
             }
-            placeholder="Captain name"
+            placeholder="Nkululeko"
           />
         </label>
 
         <label className="hub-field">
-          <span>Captain email</span>
+          <span>Surname</span>
+
+          <input
+            value={clubDraft?.founderSurname || ""}
+            maxLength={24}
+            onChange={(event) =>
+              updateField(
+                "founderSurname",
+                event.target.value
+              )
+            }
+            placeholder="Memela"
+          />
+        </label>
+
+        <label className="hub-field">
+          <span>Email / Gmail</span>
 
           <input
             type="email"
-            value={
-              clubDraft?.captainEmail || ""
-            }
+            value={clubDraft?.captainEmail || ""}
+            maxLength={64}
             onChange={(event) =>
               updateField(
                 "captainEmail",
                 event.target.value
               )
             }
-            placeholder="captain@email.com"
+            placeholder="captain@gmail.com"
+          />
+        </label>
+
+        <label className="hub-field">
+          <span>WhatsApp number</span>
+
+          <input
+            type="tel"
+            value={clubDraft?.captainWhatsApp || ""}
+            maxLength={20}
+            onChange={(event) =>
+              updateField(
+                "captainWhatsApp",
+                event.target.value
+              )
+            }
+            placeholder="+27821234567"
           />
         </label>
       </div>

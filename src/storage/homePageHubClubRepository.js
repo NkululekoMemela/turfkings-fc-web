@@ -138,6 +138,7 @@ export async function createHomePageHubClub({
   const clubName = cleanText(clubDraft.clubName);
   const captainName = toTitleCase(cleanText(clubDraft.captainName));
   const captainEmail = cleanEmail(clubDraft.captainEmail);
+  const captainWhatsApp = cleanText(clubDraft.captainWhatsApp);
 
   if (!safeClubId) throw new Error("Club ID is required.");
   if (!clubName) throw new Error("Club name is required.");
@@ -166,6 +167,7 @@ export async function createHomePageHubClub({
   const locationDisplay = buildDisplayLocation(clubDraft);
   const fullAddress = buildFullAddress(clubDraft);
   const weeklyPlayTime = buildWeeklyPlayTime(clubDraft);
+
 
   const logoText =
     cleanText(clubDraft.logoText) ||
@@ -233,6 +235,8 @@ export async function createHomePageHubClub({
     captain: {
       name: captainName,
       email: captainEmail,
+      whatsappNumber: captainWhatsApp,
+      phoneNumber: captainWhatsApp,
       playerId: captainPlayerId,
     },
 
@@ -261,6 +265,14 @@ export async function createHomePageHubClub({
     description: "",
     createdBy: captainEmail,
     createdAt: now,
+    captain: captainName || captainEmail ? {
+      name: captainName,
+      email: captainEmail,
+      whatsappNumber: captainWhatsApp,
+      phoneNumber: captainWhatsApp,
+      playerId: captainPlayerId,
+    } : undefined,
+
     updatedAt: now,
   };
 
@@ -284,8 +296,9 @@ export async function createHomePageHubClub({
       fullName: captainName,
       shortName: captainShortName,
       email: captainEmail,
-      whatsappNumber: "",
-      role: "captain",
+      whatsappNumber: captainWhatsApp,
+      phoneNumber: captainWhatsApp,
+      role: "admin",
       status: "active",
       playerId: captainPlayerId,
       createdAt: now,
@@ -302,6 +315,8 @@ export async function createHomePageHubClub({
       fullName: captainName,
       shortName: captainShortName,
       email: captainEmail,
+      whatsappNumber: captainWhatsApp,
+      phoneNumber: captainWhatsApp,
       roles: {
         player: true,
         captain: true,
@@ -356,6 +371,18 @@ export async function updateHomePageHubClub({
   const fullAddress = buildFullAddress(clubDraft);
   const weeklyPlayTime = buildWeeklyPlayTime(clubDraft);
 
+  const captainName = toTitleCase(
+    cleanText(clubDraft.captainName) ||
+    `${cleanText(clubDraft.founderFirstName)} ${cleanText(clubDraft.founderSurname)}`.trim()
+  );
+  const captainEmail = cleanEmail(clubDraft.captainEmail);
+  const captainWhatsApp = cleanText(clubDraft.captainWhatsApp);
+  const captainShortName =
+    captainName.split(/\s+/).filter(Boolean)[0] || captainName;
+  const captainPlayerId = slugFromName(
+    captainName || captainShortName || captainEmail
+  );
+
   const payload = {
     name: cleanText(clubDraft.clubName || clubDraft.name),
     location: locationDisplay,
@@ -384,6 +411,14 @@ export async function updateHomePageHubClub({
     logoText:
       cleanText(clubDraft.logoText) ||
       cleanText(clubDraft.clubName || clubDraft.name).slice(0, 2).toUpperCase(),
+
+    captain: captainName || captainEmail ? {
+      name: captainName,
+      email: captainEmail,
+      whatsappNumber: captainWhatsApp,
+      phoneNumber: captainWhatsApp,
+      playerId: captainPlayerId,
+    } : undefined,
 
     updatedAt: now,
   };
