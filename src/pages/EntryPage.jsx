@@ -40,6 +40,10 @@ function safeClubNameFromSelectedClub(club) {
   return String(club?.name || DEFAULT_CLUB_NAME).trim() || DEFAULT_CLUB_NAME;
 }
 
+function clubRootDocRef(clubId) {
+  return doc(db, "clubs", safeClubIdFromSelectedClub({ id: clubId }));
+}
+
 function clubCollectionRef(clubId, collectionName) {
   return collection(db, "clubs", safeClubIdFromSelectedClub({ id: clubId }), collectionName);
 }
@@ -218,6 +222,43 @@ function fileToDataUrl(file) {
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+async function makeLandscapePhotoDataUrl(file, width = 900, height = 506) {
+  const raw = await fileToDataUrl(file);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) {
+          resolve(raw);
+          return;
+        }
+
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(0, 0, width, height);
+
+        const scale = Math.max(width / img.width, height / img.height);
+        const drawW = img.width * scale;
+        const drawH = img.height * scale;
+        const dx = (width - drawW) / 2;
+        const dy = (height - drawH) / 2;
+
+        ctx.drawImage(img, dx, dy, drawW, drawH);
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = reject;
+    img.src = raw;
   });
 }
 
@@ -457,6 +498,9 @@ export function EntryPage({
   onGoHome,
 }) {
   const [currentUser, setCurrentUser] = useState(null);
+  const [clubHeroOverride, setClubHeroOverride] = useState("");
+  const [clubHeroStatus, setClubHeroStatus] = useState("");
+  const [clubHeroError, setClubHeroError] = useState("");
 
   const activeClub = useMemo(() => selectedClub || {
     id: DEFAULT_CLUB_ID,
@@ -471,7 +515,13 @@ export function EntryPage({
   const activeClubShortName = String(activeClub?.shortName || activeClubName).trim();
   const isTurfKingsClub = activeClubId === DEFAULT_CLUB_ID;
   const activeClubLogoSrc = activeClub?.logoUrl || activeClub?.logo || activeClub?.image || (isTurfKingsClub ? TurfKingsLogo : FANM_HOME_LOGO);
-  const activeClubHeroImage = activeClub?.heroImage || activeClub?.teamPhoto || activeClub?.image || (isTurfKingsClub ? TeamPhoto : activeClubLogoSrc);
+  const activeClubHeroImage =
+    clubHeroOverride ||
+    activeClub?.heroImage ||
+    activeClub?.teamPhoto ||
+    (isTurfKingsClub ? TeamPhoto : "");
+
+  const canEditClubHero = false;
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -497,6 +547,8 @@ export function EntryPage({
 
     return isCaptainEmail(email) || clubAdminEmails.includes(email);
   })();
+
+  const realCanEditClubHero = isAdminViewer && !isTurfKingsClub;
 
   const [withdrawalAlert, setWithdrawalAlert] = useState(null);
 
@@ -618,8 +670,22 @@ export function EntryPage({
           const data = d.data() || {};
           return {
             id: d.id,
-            fullName: data.fullName || "",
-            shortName: data.shortName || data.fullName?.split(" ")[0] || "",
+            fullName:
+              data.fullName ||
+              data.displayName ||
+              data.name ||
+              data.playerName ||
+              data.email?.split("@")[0] ||
+              "Unnamed player",
+
+            shortName:
+              data.shortName ||
+              data.fullName?.split(" ")[0] ||
+              data.displayName?.split(" ")[0] ||
+              data.name?.split(" ")[0] ||
+              data.playerName?.split(" ")[0] ||
+              data.email?.split("@")[0] ||
+              "Player",
             email: data.email || "",
             whatsappNumber: data.whatsappNumber || "",
             role: data.role || "player",
@@ -628,6 +694,19 @@ export function EntryPage({
             rejoinRequestedAt: data.rejoinRequestedAt || null,
           };
         });
+
+        console.log(
+          "[EntryPage] Loaded members for",
+          activeClubId,
+          list.map((m) => ({
+            id: m.id,
+            fullName: m.fullName,
+            shortName: m.shortName,
+            email: m.email,
+            role: m.role,
+            status: m.status,
+          }))
+        );
 
         list.sort((a, b) => a.fullName.localeCompare(b.fullName));
         setMembers(list);
@@ -767,6 +846,57 @@ export function EntryPage({
   const [withdrawReason, setWithdrawReason] = useState("");
   const [withdrawStatus, setWithdrawStatus] = useState("");
   const [withdrawError, setWithdrawError] = useState("");
+
+  const handleClubHeroPhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    setClubHeroStatus("");
+    setClubHeroError("");
+
+    if (!file) return;
+
+    try {
+      const heroData = await makeLandscapePhotoDataUrl(file);
+
+      const existingGallery = Array.isArray(activeClub?.media?.gallery)
+        ? activeClub.media.gallery
+            .map((item) => (typeof item === "string" ? { url: item } : item))
+            .filter((item) => item?.url)
+        : [];
+
+      const safeExistingGallery = existingGallery
+        .filter((item) => item.url && !String(item.url).startsWith("data:image"))
+        .slice(0, 2);
+
+      const nextGallery = [
+        { url: heroData, role: "main", uploadedAtMs: Date.now() },
+        ...safeExistingGallery,
+      ].slice(0, 3);
+
+      await setDoc(
+        clubRootDocRef(activeClubId),
+        {
+          heroImage: heroData,
+          teamPhoto: heroData,
+          media: {
+            ...(activeClub?.media || {}),
+            coverImageUrl: heroData,
+            gallery: nextGallery,
+            updatedAt: serverTimestamp(),
+          },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setClubHeroOverride(heroData);
+      setClubHeroStatus("Main club photo updated. Gallery kept to a maximum of 3 photos.");
+    } catch (err) {
+      console.error("[EntryPage] Failed updating club hero photo:", err);
+      setClubHeroError("Could not update the main club photo. Please try another image.");
+    } finally {
+      e.target.value = "";
+    }
+  };
 
   const handleNewPhotoChange = async (e) => {
     const file = e.target.files?.[0];
@@ -1492,19 +1622,95 @@ export function EntryPage({
               justifyContent: "center",
             }}
           >
-            <img
-              src={activeClubHeroImage}
-              alt={`${activeClubName} team`}
+            <div
               style={{
                 width: "100%",
-                height: "auto",
-                maxHeight: "320px",
-                objectFit: "contain",
-                objectPosition: "center",
-                display: "block",
-                borderRadius: "16px",
+                position: "relative",
               }}
-            />
+            >
+              {activeClubHeroImage ? (
+                <img
+                  src={activeClubHeroImage}
+                  alt={`${activeClubName} club`}
+                  style={{
+                    width: "100%",
+                    height: "auto",
+                    maxHeight: "320px",
+                    objectFit: "contain",
+                    objectPosition: "center",
+                    display: "block",
+                    borderRadius: "16px",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    minHeight: "260px",
+                    borderRadius: "16px",
+                    display: "grid",
+                    placeItems: "center",
+                    border: "1px dashed rgba(148,163,184,0.22)",
+                    background:
+                      "radial-gradient(circle at 50% 35%, rgba(34,211,238,0.08), transparent 34%), rgba(2,6,23,0.72)",
+                    color: "rgba(226,232,240,0.34)",
+                    fontSize: "0.78rem",
+                    fontWeight: 900,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  upload group photo
+                </div>
+              )}
+
+              {realCanEditClubHero ? (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <label
+                    title="Change main club photo"
+                    style={{
+                      position: "absolute",
+                      top: "12px",
+                      right: "12px",
+                      width: "38px",
+                      height: "38px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: "999px",
+                      background: "rgba(2,6,23,0.72)",
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      color: "#f8fafc",
+                      fontSize: "1rem",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                      backdropFilter: "blur(10px)",
+                      zIndex: 5,
+                    }}
+                  >
+                    ✎
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleClubHeroPhotoChange}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+
+
+                  {clubHeroStatus ? (
+                    <p className="success-text" style={{ marginTop: "0.45rem" }}>
+                      {clubHeroStatus}
+                    </p>
+                  ) : null}
+
+                  {clubHeroError ? (
+                    <p className="error-text" style={{ marginTop: "0.45rem" }}>
+                      {clubHeroError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </section>

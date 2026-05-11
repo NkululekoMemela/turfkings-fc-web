@@ -139,7 +139,61 @@ function normalizeClub(docSnap) {
   };
 }
 
-function getMapPinStyle(index, total) {
+function getClubLatLng(club = {}) {
+  const lat =
+    club?.locationDetails?.latitude ??
+    club?.locationDetails?.lat ??
+    club?.coordinates?.latitude ??
+    club?.coordinates?.lat ??
+    club?.latitude ??
+    club?.lat;
+
+  const lng =
+    club?.locationDetails?.longitude ??
+    club?.locationDetails?.lng ??
+    club?.locationDetails?.lon ??
+    club?.coordinates?.longitude ??
+    club?.coordinates?.lng ??
+    club?.coordinates?.lon ??
+    club?.longitude ??
+    club?.lng ??
+    club?.lon;
+
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  return { latitude, longitude };
+}
+
+function getMapPinStyle(club, index, clubs = []) {
+  const point = getClubLatLng(club);
+  const geoClubs = clubs
+    .map(getClubLatLng)
+    .filter(Boolean);
+
+  if (point && geoClubs.length >= 2) {
+    const lats = geoClubs.map((item) => item.latitude);
+    const lngs = geoClubs.map((item) => item.longitude);
+
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+
+    const latRange = maxLat - minLat || 0.01;
+    const lngRange = maxLng - minLng || 0.01;
+
+    const x = 12 + ((point.longitude - minLng) / lngRange) * 76;
+    const y = 82 - ((point.latitude - minLat) / latRange) * 64;
+
+    return {
+      left: `${Math.max(10, Math.min(90, x))}%`,
+      top: `${Math.max(14, Math.min(84, y))}%`,
+    };
+  }
+
   const presets = [
     { left: "24%", top: "38%" },
     { left: "54%", top: "46%" },
@@ -149,17 +203,7 @@ function getMapPinStyle(index, total) {
     { left: "15%", top: "67%" },
   ];
 
-  if (presets[index]) return presets[index];
-
-  const safeTotal = Math.max(Number(total || 1), 1);
-  const angle = (index / safeTotal) * Math.PI * 2;
-  const x = 50 + Math.cos(angle) * 32;
-  const y = 50 + Math.sin(angle) * 22;
-
-  return {
-    left: `${Math.max(10, Math.min(88, x))}%`,
-    top: `${Math.max(18, Math.min(78, y))}%`,
-  };
+  return presets[index] || { left: "50%", top: "50%" };
 }
 
 function getMissingClubRequirements(club = {}) {
@@ -201,6 +245,7 @@ function canCurrentUserManageClub(currentUser, club = {}) {
 }
 
 export default function HomePage_HUB({
+
   onEnterTurfKings,
   onViewClub,
   onRegisterClub,
@@ -209,6 +254,7 @@ export default function HomePage_HUB({
   onChallengeClub,
   onNavigateToEntryPage,
 }) {
+  const [showTour, setShowTour] = React.useState(false);
   const [clubs, setClubs] = useState(() => {
     try {
       const cached = window.localStorage.getItem(CLUB_CACHE_KEY);
@@ -224,6 +270,7 @@ export default function HomePage_HUB({
   const [completionPromptClub, setCompletionPromptClub] = useState(null);
   const [profileEditorClub, setProfileEditorClub] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [activeMapClub, setActiveMapClub] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -362,6 +409,8 @@ export default function HomePage_HUB({
     ? getMissingClubRequirements(completionPromptClub)
     : [];
 
+  const selectedMapClub = activeMapClub || visibleClubs[0];
+
   return (
     <main className="homepage-hub-shell homepage-hub-shell--clubs-first">
       <header className="hub-topbar">
@@ -498,35 +547,48 @@ export default function HomePage_HUB({
             <span className="hub-map-road hub-map-road--two" />
             <span className="hub-map-road hub-map-road--three" />
 
-            {visibleClubs.slice(0, 8).map((club, index) => (
-              <button
-                type="button"
-                key={club.id}
-                className="hub-map-pin"
-                style={{
-                  ...getMapPinStyle(index, visibleClubs.length),
-                  "--hub-map-accent": club.accent || "#16a34a",
-                }}
-                onClick={() => openClubActions(club)}
-                title={club.name}
-              >
-                <span>{club.logoText || String(club.name || "FC").slice(0, 2)}</span>
-              </button>
-            ))}
+            {visibleClubs.slice(0, 8).map((club, index) => {
+              const isSelected = selectedMapClub?.id === club.id;
+
+              return (
+                <button
+                  type="button"
+                  key={club.id}
+                  className={`hub-map-pin${isSelected ? " hub-map-pin--active" : ""}`}
+                  style={{
+                    ...getMapPinStyle(club, index, visibleClubs),
+                    "--hub-map-accent": club.accent || "#16a34a",
+                  }}
+                  onClick={() => setActiveMapClub(club)}
+                  title={club.name}
+                >
+                  <span>{club.logoText || String(club.name || "FC").slice(0, 2)}</span>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="hub-map-list">
-            {visibleClubs.slice(0, 4).map((club) => (
-              <button
-                type="button"
-                key={club.id}
-                onClick={() => openClubActions(club)}
-              >
-                <strong>{club.name}</strong>
-                <span>{club.location}</span>
-              </button>
-            ))}
-          </div>
+          {selectedMapClub ? (
+            <aside className="hub-map-selected-card">
+              <span className="hub-map-selected-card__kicker">Selected club</span>
+              <strong>{selectedMapClub.name}</strong>
+              <small>📍 {selectedMapClub.location}</small>
+              <small>🕒 {selectedMapClub.weeklyPlayTime}</small>
+              <p>{selectedMapClub.description}</p>
+
+              <div className="hub-map-selected-card__actions">
+                <button type="button" onClick={() => handleViewClub(selectedMapClub)}>
+                  Open club
+                </button>
+                <button type="button" onClick={() => handleJoinExistingClub(selectedMapClub)}>
+                  Join
+                </button>
+                <button type="button" onClick={() => onChallengeClub?.(selectedMapClub)}>
+                  Challenge
+                </button>
+              </div>
+            </aside>
+          ) : null}
         </div>
       </section>
 
@@ -552,7 +614,7 @@ export default function HomePage_HUB({
             <button
               type="button"
               className="hub-footer-tour-button"
-              onClick={() => console.log("[HomePage_HUB] Open tour")}
+              onClick={() => setShowTour(true)}
             >
               Take the tour
             </button>
@@ -729,6 +791,45 @@ export default function HomePage_HUB({
         onClose={() => setProfileEditorClub(null)}
         onSaved={handleClubUpdated}
       />
+    
+      {showTour ? (
+        <div className="hub-tour-modal-backdrop" onClick={() => setShowTour(false)}>
+          <section className="hub-tour-modal" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="hub-tour-modal-close"
+              onClick={() => setShowTour(false)}
+              aria-label="Close tour"
+            >
+              ×
+            </button>
+
+            <p className="hub-tour-modal-kicker">Choose your guide</p>
+            <h2>Start with the right tour</h2>
+
+            <div className="hub-tour-video-grid">
+              <button
+                type="button"
+                className="hub-tour-video-card"
+                onClick={() => window.open("/club-leader-tour", "_self")}
+              >
+                <span>Club leader guide</span>
+                <small>Set up clubs, payments, players and match flow.</small>
+              </button>
+
+              <button
+                type="button"
+                className="hub-tour-video-card"
+                onClick={() => window.open("/player-tour", "_self")}
+              >
+                <span>Player guide</span>
+                <small>Find clubs, sign up, play and follow highlights.</small>
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
     </main>
   );
 }
