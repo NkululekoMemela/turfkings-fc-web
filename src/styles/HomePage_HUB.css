@@ -5294,3 +5294,74 @@
     transform: rotateY(240deg) translateZ(48px) !important;
   }
 }
+
+
+/* FINAL: working Home HUB search */
+.hub-filter-pill--search-input {
+  min-width: 170px !important;
+  padding: 0 14px !important;
+  cursor: text !important;
+}
+
+.hub-filter-pill--search-input input {
+  width: 120px !important;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  font: inherit !important;
+}
+
+.hub-filter-pill--search-input input::placeholder {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+/* FINAL: remove pale outline from video face */
+.hub-club-card__face--highlights:has(video),
+.hub-club-card__face--highlights:has(.hub-club-card__highlight-video) {
+  border: 0 !important;
+  outline: 0 !important;
+  background: #020617 !important;
+  box-shadow: none !important;
+}
+
+.hub-club-card__face--highlights:has(video)::after,
+.hub-club-card__face--highlights:has(.hub-club-card__highlight-video)::after {
+  display: none !important;
+}
+
+.hub-club-card__highlight-video {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: #020617 !important;
+}
+
+@media (max-width: 640px) {
+  .hub-filter-pill--search-input {
+    min-width: 118px !important;
+  }
+
+  .hub-filter-pill--search-input input {
+    width: 78px !important;
+  }
+}
+
+/* Face 3 video fit: fill the whole card without black side space */
+.hub-club-card__face--highlights .hub-club-card__highlight-video {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center center !important;
+  display: block !important;
+  background: transparent !important;
+}
+
+.hub-club-card__face--highlights {
+  overflow: hidden !important;
+}

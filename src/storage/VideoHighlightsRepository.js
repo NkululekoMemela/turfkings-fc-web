@@ -2,12 +2,14 @@
 
 import {
   collection,
+  collectionGroup,
   doc,
   getDocs,
   setDoc,
   deleteDoc,
   query,
   orderBy,
+  limit,
   writeBatch,
   serverTimestamp,
 } from "firebase/firestore";
@@ -1067,12 +1069,99 @@ export async function getClubFeaturedHighlight(clubId) {
 
   const allVideos = [];
 
+  const getUrl = (item = {}) =>
+    item.downloadUrl ||
+    item.videoUrl ||
+    item.mediaUrl ||
+    item.fileUrl ||
+    item.publicUrl ||
+    item.previewUrl ||
+    item.url ||
+    item.uri ||
+    "";
+
+  const hasUrl = (item = {}) => Boolean(getUrl(item) || item.storagePath);
+
+  const belongsToClub = (item = {}) => {
+    const explicitClubId =
+      item.clubId ||
+      item.clubID ||
+      item.clubSlug ||
+      item.activeClubId ||
+      item.matchContext?.clubId ||
+      item.matchContext?.activeClubId ||
+      item.matchContext?.clubSlug ||
+      item.metadata?.clubId ||
+      item.metadata?.activeClubId ||
+      "";
+
+    if (explicitClubId) {
+      return String(explicitClubId).trim().toLowerCase() === String(clubId).trim().toLowerCase();
+    }
+
+    const clubName =
+      item.clubName ||
+      item.activeClubName ||
+      item.matchContext?.clubName ||
+      item.matchContext?.activeClubName ||
+      item.metadata?.clubName ||
+      "";
+
+    if (clubName && clubId === "turf-kings") {
+      return String(clubName).toLowerCase().includes("turf");
+    }
+
+    // Older uploaded clips may not yet have club metadata.
+    // Treat untagged legacy clips as Turf Kings only so they do not leak into other clubs.
+    return String(clubId).trim().toLowerCase() === "turf-kings";
+  };
+
+  async function resolvePlayableUrl(item = {}) {
+    const existingUrl = getUrl(item);
+
+    if (existingUrl) {
+      return {
+        ...item,
+        downloadUrl: item.downloadUrl || existingUrl,
+        videoUrl: item.videoUrl || existingUrl,
+        mediaUrl: item.mediaUrl || existingUrl,
+      };
+    }
+
+    if (!item.storagePath) return item;
+
+    try {
+      const resolvedUrl = await getDownloadURL(ref(storage, item.storagePath));
+
+      return {
+        ...item,
+        downloadUrl: resolvedUrl,
+        videoUrl: resolvedUrl,
+        mediaUrl: resolvedUrl,
+      };
+    } catch (error) {
+      console.warn("[TK FEATURED HIGHLIGHT] Could not resolve storage URL:", item.storagePath, error);
+      return item;
+    }
+  }
+
   async function collectFromMatchCollection(collectionRef, sourceLabel) {
     try {
       const matchDocsSnap = await getDocs(collectionRef);
 
       for (const matchDocSnap of matchDocsSnap.docs) {
         const matchId = matchDocSnap.id;
+        const directData = matchDocSnap.data?.() || {};
+
+        if (hasUrl(directData)) {
+          allVideos.push({
+            id: matchDocSnap.id,
+            clipId: matchDocSnap.id,
+            matchId,
+            sourcePath: sourceLabel,
+            ...directData,
+          });
+        }
 
         const [rawSnap, archivedSnap] = await Promise.allSettled([
           getDocs(collection(matchDocSnap.ref, "raw")),
@@ -1108,6 +1197,27 @@ export async function getClubFeaturedHighlight(clubId) {
     }
   }
 
+  async function collectFromGroup(groupName) {
+    try {
+      const snap = await getDocs(query(collectionGroup(db, groupName), limit(50)));
+
+      snap.docs.forEach((clipDoc) => {
+        const data = clipDoc.data() || {};
+        const parentMatchRef = clipDoc.ref.parent?.parent;
+
+        allVideos.push({
+          id: clipDoc.id,
+          clipId: clipDoc.id,
+          matchId: data.matchId || parentMatchRef?.id || "",
+          sourcePath: `collectionGroup/${groupName}`,
+          ...data,
+        });
+      });
+    } catch (error) {
+      console.warn("[TK FEATURED HIGHLIGHT] Collection-group scan failed:", groupName, error);
+    }
+  }
+
   try {
     await Promise.all([
       collectFromMatchCollection(
@@ -1130,17 +1240,18 @@ export async function getClubFeaturedHighlight(clubId) {
         collection(db, "videoHighlights"),
         "videoHighlights"
       ),
+      collectFromGroup("raw"),
+      collectFromGroup("archived"),
     ]);
 
-    const videos = allVideos.filter(
-      (item) =>
-        item.downloadUrl ||
-        item.videoUrl ||
-        item.mediaUrl ||
-        item.fileUrl ||
-        item.url ||
-        item.uri
+    const resolvedVideos = await Promise.all(
+      allVideos
+        .filter((item) => hasUrl(item))
+        .filter((item) => belongsToClub(item))
+        .map((item) => resolvePlayableUrl(item))
     );
+
+    const videos = resolvedVideos.filter((item) => getUrl(item));
 
     console.log("[TK FEATURED HIGHLIGHT SEARCH]", {
       clubId,
@@ -1180,6 +1291,7 @@ export async function getClubFeaturedHighlight(clubId) {
     return null;
   }
 }
+
 
 // ============================
 // EXPORT

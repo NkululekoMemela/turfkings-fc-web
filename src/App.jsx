@@ -5479,6 +5479,7 @@ export default function App() {
       {page === PAGE_VIEW_HIGHLIGHTS && (
         <VideoHighlightsPage
           matchId={currentVideoHighlightsMatchId}
+          activeClubId={activeClubId}
           identity={pageIdentity}
           activeRole={activeRole}
           isAdmin={isAdmin}
@@ -5644,6 +5645,7 @@ export default function App() {
           playerPhotosByName={playerPhotosByName}
           identity={pageIdentity}
           activeClub={activeClub}
+          activeClubId={activeClubId}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
           matchType={matchType}

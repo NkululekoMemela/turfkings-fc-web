@@ -235,7 +235,7 @@ export const LINEUP_ROLE_PRIORITY = [
 ];
 
 // ---------------- LOCAL STORAGE ----------------
-export function loadSavedLineups() {
+export function loadSavedLineups(activeClubId = "turf-kings") {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(LOCAL_KEY);

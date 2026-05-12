@@ -1018,7 +1018,13 @@ export function FormationsPage({
 
   const isFriendlyMatch = String(matchType || "FRIENDLY").toUpperCase() !== "LEAGUE";
 
-  const [lineupsByTeam, setLineupsByTeam] = useState(() => loadSavedLineups());
+  const [lineupsByTeam, setLineupsByTeam] = useState(() =>
+    loadSavedLineups(activeClubId)
+  );
+
+  useEffect(() => {
+    setLineupsByTeam(loadSavedLineups(activeClubId));
+  }, [activeClubId]);
 
   const sourceTeams = useMemo(() => {
     if (!isFriendlyMatch) return teams || [];
@@ -1067,7 +1073,7 @@ export function FormationsPage({
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [activeClubId]);
 
   useEffect(() => {
     const safeTeamIds = new Set((sourceTeams || []).map((t) => t.id));
@@ -1077,7 +1083,7 @@ export function FormationsPage({
   }, [sourceTeams, selectedTeamId]);
 
   useEffect(() => {
-    const colRef = collection(db, PLAYERS_COLLECTION);
+    const colRef = getPlayersCollection(db, activeClubId);
 
     const unsub = onSnapshot(
       colRef,
@@ -1393,7 +1399,7 @@ export function FormationsPage({
       .sort((a, b) => a.localeCompare(b));
   }, [players, playerResolver]);
 
-  const turfKingsPlayers = useMemo(() => {
+  const clubPlayers = useMemo(() => {
     return uniqueByLower(activeDbPlayers);
   }, [activeDbPlayers]);
 
@@ -1495,7 +1501,7 @@ export function FormationsPage({
     const targetDefaultFormationId = getDefaultFormationIdForGameType(targetGameType);
 
     const targetPlayerPool =
-      targetGameType === GAME_TYPE_11 ? turfKingsPlayers : targetTeam?.players || [];
+      targetGameType === GAME_TYPE_11 ? clubPlayers : targetTeam?.players || [];
 
     const next = resolveLatestPreferredTeamLineup(
       targetTeam,
@@ -1540,7 +1546,7 @@ export function FormationsPage({
     gameType,
     lineupsByTeam,
     selectedTeamCanonical,
-    turfKingsPlayers,
+    clubPlayers,
     canonicalTeams,
   ]);
 
@@ -1682,7 +1688,7 @@ export function FormationsPage({
   ]);
 
   const benchPoolPlayers =
-    gameType === GAME_TYPE_11 ? turfKingsPlayers : selectedTeamCanonical?.players || [];
+    gameType === GAME_TYPE_11 ? clubPlayers : selectedTeamCanonical?.players || [];
 
   const assignedKeys = new Set(
     Object.values(lineup.positions)
@@ -1772,7 +1778,7 @@ export function FormationsPage({
         previewLineup,
         saveRole
       );
-      saveLineups(updatedMap);
+      saveLineups(updatedMap, activeClubId);
       return updatedMap;
     });
   };
@@ -2133,7 +2139,7 @@ export function FormationsPage({
             <div className="field-row inline-field">
               <label>11-a-side squad</label>
               <p className="muted small">
-                Using full club player pool <strong>({turfKingsPlayers.length} players)</strong>.
+                Using this club player pool <strong>({clubPlayers.length} players)</strong>.
               </p>
             </div>
           )}

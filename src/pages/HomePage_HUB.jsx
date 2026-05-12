@@ -340,6 +340,7 @@ export default function HomePage_HUB({
   const [profileEditorClub, setProfileEditorClub] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [activeMapClub, setActiveMapClub] = useState(null);
+  const [clubSearchQuery, setClubSearchQuery] = useState("");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -396,6 +397,26 @@ export default function HomePage_HUB({
       return String(a.name || "").localeCompare(String(b.name || ""));
     });
   }, [clubs]);
+
+  const filteredVisibleClubs = useMemo(() => {
+    const query = String(clubSearchQuery || "").trim().toLowerCase();
+
+    if (!query) return visibleClubs;
+
+    return visibleClubs.filter((club) => {
+      const haystack = [
+        club?.name,
+        club?.shortName,
+        club?.location,
+        club?.area,
+        club?.weeklyPlayTime,
+        club?.schedule?.weeklyPlayTime,
+        club?.description,
+      ].join(" ").toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [visibleClubs, clubSearchQuery]);
 
   function normalizeNewClubForHome(club) {
     const fakeDocSnap = {
@@ -483,6 +504,40 @@ export default function HomePage_HUB({
 
   const selectedMapClub = activeMapClub || null;
 
+
+  useEffect(() => {
+    async function debugTurfKingsVideoPaths() {
+      const clubId = "turf-kings";
+      const paths = [
+        ["clubs", clubId, "videoHighlights"],
+        ["clubs", clubId, "friendlyVideoHighlights"],
+        ["clubs", clubId, "matchVideos"],
+        ["clubs", clubId, "highlights"],
+        ["clubs", clubId, "friendlyHighlights"],
+        ["video_highlights"],
+        ["videoHighlights"],
+      ];
+
+      console.log("[HOME HUB VIDEO DEBUG] Starting client-side audit");
+
+      for (const parts of paths) {
+        try {
+          const snap = await getDocs(collection(db, ...parts));
+          console.log("[HOME HUB VIDEO DEBUG]", parts.join("/"), "docs:", snap.size);
+
+          snap.docs.slice(0, 5).forEach((docSnap) => {
+            console.log("[HOME HUB VIDEO DEBUG DOC]", parts.join("/"), docSnap.id, docSnap.data());
+          });
+        } catch (error) {
+          console.warn("[HOME HUB VIDEO DEBUG FAILED]", parts.join("/"), error);
+        }
+      }
+    }
+
+    debugTurfKingsVideoPaths();
+  }, []);
+
+
   useEffect(() => {
     let cancelled = false;
 
@@ -502,7 +557,10 @@ export default function HomePage_HUB({
               highlight?.videoUrl ||
               highlight?.mediaUrl ||
               highlight?.fileUrl ||
+              highlight?.publicUrl ||
+              highlight?.previewUrl ||
               highlight?.url ||
+              highlight?.uri ||
               "";
 
             return [clubId, url || null];

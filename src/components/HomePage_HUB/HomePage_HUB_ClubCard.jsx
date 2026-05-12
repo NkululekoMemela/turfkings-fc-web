@@ -176,9 +176,21 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
                 className="hub-club-card__highlight-video"
                 src={videoUrl}
                 muted
+                autoPlay
                 loop
                 playsInline
-                preload="metadata"
+                preload="auto"
+                onLoadedData={(event) => {
+                  const video = event.currentTarget;
+
+                  video.muted = true;
+
+                  const playPromise = video.play();
+
+                  if (playPromise?.catch) {
+                    playPromise.catch(() => {});
+                  }
+                }}
               />
               <div className="hub-club-card__highlight-overlay">
                 <span className="hub-club-card__eyebrow">Highlights</span>

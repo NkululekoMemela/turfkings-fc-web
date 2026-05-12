@@ -728,6 +728,7 @@ function HighlightCard({
 
 export function VideoHighlightsPage({
   matchId,
+  activeClubId = "turf-kings",
   activeSeasonId = null,
   currentMatchNo = 1,
   matchType = "FRIENDLY",
@@ -748,12 +749,19 @@ export function VideoHighlightsPage({
 }) {
   const fileInputRef = useRef(null);
 
-  const resolvedMatchId = useMemo(
-    () =>
+  const resolvedMatchId = useMemo(() => {
+    const baseMatchId =
       String(matchId || "").trim() ||
-      buildFallbackMatchId({ matchType, gameFormat, activeSeasonId, currentMatchNo }),
-    [matchId, matchType, gameFormat, activeSeasonId, currentMatchNo]
-  );
+      buildFallbackMatchId({ matchType, gameFormat, activeSeasonId, currentMatchNo });
+
+    const clubId = String(activeClubId || "turf-kings").trim().toLowerCase();
+
+    // Keep Turf Kings on the legacy path so old clips remain visible.
+    if (!clubId || clubId === "turf-kings") return baseMatchId;
+
+    // Every other club gets its own isolated video highlight folder.
+    return `${clubId}__${baseMatchId}`;
+  }, [matchId, activeClubId, matchType, gameFormat, activeSeasonId, currentMatchNo]);
 
   const [firebaseHighlights, setFirebaseHighlights] = useState([]);
   const [archivedHighlights, setArchivedHighlights] = useState([]);
@@ -1132,6 +1140,8 @@ export function VideoHighlightsPage({
       durationSeconds: Math.round(clipDuration),
       fileSizeBytes: clipFile.size,
       matchId: resolvedMatchId,
+      activeClubId,
+      clubId: activeClubId,
       activeSeasonId,
       matchType,
       gameFormat,
