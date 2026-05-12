@@ -566,6 +566,7 @@ export function EntryPage({
 
   const [memberDepartureAlerts, setMemberDepartureAlerts] = useState([]);
   const [incomingChallengeAlerts, setIncomingChallengeAlerts] = useState([]);
+  const [challengeNoticeAlerts, setChallengeNoticeAlerts] = useState([]);
   const [isAdminNoticePanelOpen, setIsAdminNoticePanelOpen] = useState(false);
   const [activeAdminNoticeIndex, setActiveAdminNoticeIndex] = useState(0);
   const [dismissedPendingNoticeIds, setDismissedPendingNoticeIds] = useState(() => {
@@ -670,6 +671,33 @@ export function EntryPage({
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [membersError, setMembersError] = useState("");
 
+
+
+  useEffect(() => {
+    if (!isAdminViewer || !activeClubId) {
+      setChallengeNoticeAlerts([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "clubs", activeClubId, "challengeNotices"),
+      orderBy("createdAtMs", "desc"),
+      limit(12)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      const notices = snap.docs
+        .map((d) => ({
+          noticeDocId: d.id,
+          ...(d.data() || {}),
+        }))
+        .filter((notice) => notice.status !== "acknowledged");
+
+      setChallengeNoticeAlerts(notices);
+    });
+
+    return () => unsub();
+  }, [isAdminViewer, activeClubId]);
 
 
   useEffect(() => {
@@ -829,6 +857,31 @@ export function EntryPage({
       });
     });
 
+    challengeNoticeAlerts.forEach((notice) => {
+      if (notice.type !== "challenge_cancelled") return;
+
+      notices.push({
+        id: `challenge-notice-${notice.noticeDocId}`,
+        type: "challenge_cancelled",
+        title: "Challenge cancelled",
+        tag: "Fixture update",
+        icon: "⚠️",
+        message: (
+          <>
+            <strong>{notice.fromClubName || "A club"}</strong> cancelled the challenge between{" "}
+            <strong>{notice.homeClubName || "Home club"}</strong> and{" "}
+            <strong>{notice.awayClubName || "Away club"}</strong>.
+          </>
+        ),
+        helper:
+          notice.reason
+            ? `Reason: ${notice.reason}`
+            : "No cancellation reason was provided.",
+        payload: notice,
+      });
+    });
+
+
     pendingMembers
       .filter((m) => !dismissedPendingNoticeIds.includes(m.id))
       .forEach((m) => {
@@ -857,6 +910,7 @@ export function EntryPage({
     activeClubName,
     dismissedPendingNoticeIds,
     incomingChallengeAlerts,
+    challengeNoticeAlerts,
     isAdminViewer,
     memberDepartureAlerts,
     pendingMembers,
@@ -1530,6 +1584,31 @@ export function EntryPage({
 
     if (notice.type === "departure") {
       await handleCloseDepartureNotice(notice);
+      return;
+    }
+
+    if (notice.type === "challenge_cancelled") {
+      const noticeId = notice.payload?.noticeDocId || notice.payload?.noticeId;
+      if (noticeId) {
+        try {
+          await updateDoc(
+            doc(db, "clubs", activeClubId, "challengeNotices", noticeId),
+            {
+              status: "acknowledged",
+              acknowledgedAt: serverTimestamp(),
+              acknowledgedAtMs: Date.now(),
+            }
+          );
+        } catch (err) {
+          console.error("[EntryPage] Failed acknowledging challenge notice:", err);
+          window.alert("Could not close this challenge notice just now.");
+          return;
+        }
+      }
+
+      setChallengeNoticeAlerts((prev) =>
+        prev.filter((item) => item.noticeDocId !== notice.payload?.noticeDocId)
+      );
       return;
     }
 
