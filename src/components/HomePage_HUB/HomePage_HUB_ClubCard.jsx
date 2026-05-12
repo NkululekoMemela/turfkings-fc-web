@@ -123,7 +123,7 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
                   <path d="M3.4 19.2c.4-3.1 2.4-5.1 4.8-5.1s4.4 2 4.8 5.1" />
                   <path d="M11 19.2c.4-3.1 2.4-5.1 4.8-5.1s4.4 2 4.8 5.1" />
                 </svg>
-                <b>{club?.playerCount || club?.memberCount || club?.playersCount || "43"}</b>
+                <b>{club?.playerCount ?? club?.memberCount ?? club?.playersCount ?? 0}</b>
                 <small>Players</small>
               </div>
 
@@ -133,7 +133,7 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
                   <path d="m12 7.6 3 2.2-1.1 3.5h-3.8L9 9.8l3-2.2Z" />
                   <path d="M12 7.6V3.9M15 9.8l3.5-1M13.9 13.3l2.2 3M10.1 13.3l-2.2 3M9 9.8l-3.5-1" />
                 </svg>
-                <b>{club?.gamesPlayed || club?.matchCount || club?.matchesPlayed || "182"}</b>
+                <b>{club?.activityCount ?? club?.signupActivityCount ?? club?.activeWeeksCount ?? 0}</b>
                 <small>Activity</small>
               </div>
             </div>

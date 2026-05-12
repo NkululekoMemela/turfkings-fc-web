@@ -245,6 +245,73 @@ function canCurrentUserManageClub(currentUser, club = {}) {
   return isSuperAdmin(currentUser) || getClubAdminEmails(club).includes(email);
 }
 
+
+function uniqueSafeStrings(values = []) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+async function hydrateClubHubStats(club) {
+  if (!club?.id) return club;
+
+  let playerCount = Number.isFinite(Number(club.playerCount))
+    ? Number(club.playerCount)
+    : null;
+
+  let activityCount = Number.isFinite(Number(club.activityCount))
+    ? Number(club.activityCount)
+    : null;
+
+  try {
+    const playersSnap = await getDocs(collection(db, "clubs", club.id, "players"));
+
+    const activePlayers = playersSnap.docs.filter((docSnap) => {
+      const data = docSnap.data() || {};
+      const status = String(data.status || "active").trim().toLowerCase();
+      return status !== "inactive" && status !== "archived" && status !== "deleted";
+    });
+
+    playerCount = activePlayers.length;
+  } catch (error) {
+    console.warn("[HomePage_HUB] Could not load player count for:", club.id, error);
+  }
+
+  try {
+    const [pendingSnap, matchSnap] = await Promise.all([
+      getDocs(collection(db, "clubs", club.id, "pendingSignups")),
+      getDocs(collection(db, "clubs", club.id, "matchSignups")),
+    ]);
+
+    const weekIds = new Set();
+
+    [...pendingSnap.docs, ...matchSnap.docs].forEach((docSnap) => {
+      const data = docSnap.data() || {};
+
+      uniqueSafeStrings([
+        ...(Array.isArray(data.paidWeeks) ? data.paidWeeks : []),
+        ...(Array.isArray(data.primaryPaidWeeks) ? data.primaryPaidWeeks : []),
+        ...(Array.isArray(data.selectedWeeks) ? data.selectedWeeks : []),
+      ]).forEach((weekId) => weekIds.add(weekId));
+    });
+
+    activityCount = weekIds.size;
+  } catch (error) {
+    console.warn("[HomePage_HUB] Could not load activity count for:", club.id, error);
+  }
+
+  return {
+    ...club,
+    playerCount: playerCount ?? club.playerCount ?? 0,
+    activityCount: activityCount ?? club.activityCount ?? 0,
+  };
+}
+
+
 export default function HomePage_HUB({
 
   onEnterTurfKings,
@@ -290,7 +357,10 @@ export default function HomePage_HUB({
         setLoadingClubs(true);
 
         const snap = await getDocs(collection(db, "clubs"));
-        const firebaseClubs = snap.docs.map(normalizeClub);
+        const firebaseClubsRaw = snap.docs.map(normalizeClub);
+        const firebaseClubs = await Promise.all(
+          firebaseClubsRaw.map((club) => hydrateClubHubStats(club))
+        );
 
         if (!cancelled) {
           const nextClubs = firebaseClubs.length ? firebaseClubs : FALLBACK_CLUBS;
