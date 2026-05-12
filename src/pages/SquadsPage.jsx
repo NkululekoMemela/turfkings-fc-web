@@ -1157,17 +1157,81 @@ export function SquadsPage({
     setLocalFiveVFiveTeams(nextTeams);
     onUpdateFiveVFiveTeams?.(nextTeams);
 
+    const fixtureId =
+      challenge.fixtureId ||
+      `challenge_${String(challenge.challengeId || challenge.acceptedChallengeDocId || Date.now()).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
+    const participatingClubIds = Array.from(
+      new Set(
+        [
+          challenge.challengerClubId,
+          challenge.targetClubId,
+          activeClubId,
+        ]
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    const fixturePayload = {
+      fixtureId,
+      source: "club_challenge",
+      challengeId: challenge.challengeId || "",
+      acceptedChallengeDocId: challenge.acceptedChallengeDocId || "",
+      status: "squads_provisional",
+      signupStatus: "not_open_yet",
+
+      homeClubId: challenge.challengerClubId || activeClubId,
+      homeClubName: challenge.challengerClubName || activeClubName,
+      awayClubId: challenge.targetClubId || "",
+      awayClubName: challenge.targetClubName || opponentName,
+
+      activeClubId,
+      activeClubName,
+      opponentName,
+
+      participatingClubIds,
+      format: challenge.format || "5v5",
+      proposedDate: nextDate,
+      proposedKickoff: nextKickoff,
+      venue: nextVenue,
+
+      provisionalTeams: nextTeams,
+      finalTeamsSource: "pending_paid_signups",
+
+      createdAt: serverTimestamp(),
+      createdAtMs: Date.now(),
+      updatedAt: serverTimestamp(),
+      updatedAtMs: Date.now(),
+    };
+
     try {
-      await updateDoc(
+      const batch = writeBatch(db);
+
+      batch.set(doc(db, "clubChallengeFixtures", fixtureId), fixturePayload, { merge: true });
+
+      participatingClubIds.forEach((clubId) => {
+        batch.set(
+          doc(db, "clubs", clubId, "fixtures", fixtureId),
+          fixturePayload,
+          { merge: true }
+        );
+      });
+
+      batch.update(
         doc(db, "clubs", activeClubId, "acceptedChallenges", challenge.acceptedChallengeDocId),
         {
+          fixtureId,
           fixtureStatus: "created_on_squads_page",
           squadFixtureCreatedAt: serverTimestamp(),
           squadFixtureCreatedAtMs: Date.now(),
         }
       );
+
+      await batch.commit();
     } catch (err) {
-      console.error("[Squads] Could not mark challenge fixture as created:", err);
+      console.error("[Squads] Could not create shared challenge fixture:", err);
+      window.alert("Fixture was created visually, but could not be saved to Firebase.");
     }
   };
 
