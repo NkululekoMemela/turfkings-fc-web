@@ -5,10 +5,14 @@ import {
   collection,
   onSnapshot,
   setDoc,
+  updateDoc,
   deleteDoc,
   doc,
   serverTimestamp,
   writeBatch,
+  query,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import { getPlayersCollection, getPlayerDoc } from "../core/clubFirestorePaths.js";
@@ -710,6 +714,8 @@ export function SquadsPage({
   const [showUnseededPlayers, setShowUnseededPlayers] = useState(false);
   const [pendingDeletePlayerId, setPendingDeletePlayerId] = useState("");
   const [deletePlayerError, setDeletePlayerError] = useState("");
+  const [acceptedChallengeCandidates, setAcceptedChallengeCandidates] = useState([]);
+  const [acceptedChallengesError, setAcceptedChallengesError] = useState("");
 
   const existingGuestTeam = useMemo(
     () =>
@@ -811,6 +817,45 @@ export function SquadsPage({
       setTurfKingsChallengeColorName(turf.teamColorName || "Green");
     }
   }, [fiveVFiveTeams]);
+
+
+  useEffect(() => {
+    if (!canEdit || !activeClubId) {
+      setAcceptedChallengeCandidates([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "clubs", activeClubId, "acceptedChallenges"),
+      orderBy("acceptedAtMs", "desc"),
+      limit(10)
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => {
+            const data = d.data() || {};
+            return {
+              acceptedChallengeDocId: d.id,
+              ...data,
+            };
+          })
+          .filter((item) => item.fixtureStatus === "awaiting_fixture_creation");
+
+        setAcceptedChallengeCandidates(list);
+        setAcceptedChallengesError("");
+      },
+      (err) => {
+        console.error("[Squads] Could not load accepted challenges:", err);
+        setAcceptedChallengesError("Could not load accepted challenges.");
+      }
+    );
+
+    return () => unsub();
+  }, [activeClubId, canEdit]);
+
 
   useEffect(() => {
     setPlayersLoading(true);
@@ -1062,6 +1107,70 @@ export function SquadsPage({
     setLocalFiveVFiveTeams(nextTeams);
     onUpdateFiveVFiveTeams?.(nextTeams);
   };
+
+
+  const getOpponentNameFromAcceptedChallenge = (challenge) => {
+    const activeId = String(activeClubId || "").trim().toLowerCase();
+    const targetId = String(challenge?.targetClubId || "").trim().toLowerCase();
+    const challengerId = String(challenge?.challengerClubId || "").trim().toLowerCase();
+
+    if (activeId && targetId && activeId === targetId) {
+      return toTitleCase(challenge?.challengerClubName || "Opponent");
+    }
+
+    if (activeId && challengerId && activeId === challengerId) {
+      return toTitleCase(challenge?.targetClubName || "Opponent");
+    }
+
+    return toTitleCase(challenge?.challengerClubName || challenge?.targetClubName || "Opponent");
+  };
+
+  const handleCreateSquadsFixtureFromChallenge = async (challenge) => {
+    if (!canEdit || !challenge) return;
+
+    const opponentName = getOpponentNameFromAcceptedChallenge(challenge);
+    const nextDate = challenge.proposedDate || todayChallengeDateText();
+    const nextKickoff = challenge.proposedKickoff || "18:30";
+    const nextVenue = challenge.venue || challenge.proposedVenue || "Venue to be confirmed";
+
+    setGuestOpponentEnabled(true);
+    setGuestOpponentName(opponentName);
+    setChallengeDate(nextDate);
+    setChallengeKickoff(nextKickoff);
+    setChallengeVenue(nextVenue);
+    setGuestOpponentPlayers([]);
+    setTurfKingsChallengePlayers([]);
+
+    const nextTeams = buildSlotBasedChallengeTeams({
+      baseTeams: localFiveVFiveTeams,
+      turfKingsPlayers: [],
+      guestPlayers: [],
+      guestName: opponentName,
+      activeClubName,
+      turfKingsColorName: turfKingsChallengeColorName || "Green",
+      guestColorName: guestOpponentColorName || "Gold",
+      challengeDate: nextDate,
+      challengeKickoff: nextKickoff,
+      challengeVenue: nextVenue,
+    });
+
+    setLocalFiveVFiveTeams(nextTeams);
+    onUpdateFiveVFiveTeams?.(nextTeams);
+
+    try {
+      await updateDoc(
+        doc(db, "clubs", activeClubId, "acceptedChallenges", challenge.acceptedChallengeDocId),
+        {
+          fixtureStatus: "created_on_squads_page",
+          squadFixtureCreatedAt: serverTimestamp(),
+          squadFixtureCreatedAtMs: Date.now(),
+        }
+      );
+    } catch (err) {
+      console.error("[Squads] Could not mark challenge fixture as created:", err);
+    }
+  };
+
 
   const handleTurnChallengeOn = () => {
     if (!canEdit) return;
@@ -1745,6 +1854,72 @@ export function SquadsPage({
                 </div>
               )}
             </div>
+
+
+            {isAdmin && acceptedChallengeCandidates.length > 0 && !guestOpponentEnabled && (
+              <div
+                style={{
+                  borderRadius: "18px",
+                  border: "1px solid rgba(34,197,94,0.22)",
+                  background:
+                    "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(15,23,42,0.38))",
+                  padding: "0.85rem",
+                  display: "grid",
+                  gap: "0.65rem",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ color: "#BBF7D0", fontWeight: 950, letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.72rem" }}>
+                      Accepted challenge ready
+                    </div>
+                    <div className="muted small">
+                      Create a guest fixture here, then build both team sheets.
+                    </div>
+                  </div>
+                </div>
+
+                {acceptedChallengeCandidates.slice(0, 3).map((challenge) => {
+                  const opponentName = getOpponentNameFromAcceptedChallenge(challenge);
+                  return (
+                    <div
+                      key={challenge.acceptedChallengeDocId}
+                      style={{
+                        borderRadius: "16px",
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(2,6,23,0.48)",
+                        padding: "0.75rem",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "0.75rem",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div>
+                        <strong style={{ color: "#F8FAFC" }}>{opponentName}</strong>
+                        <div className="muted small">
+                          {(challenge.format || "5v5").toUpperCase()} • {challenge.proposedDate || "Date TBC"} • {challenge.proposedKickoff || "Kickoff TBC"}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="primary-btn"
+                        onClick={() => handleCreateSquadsFixtureFromChallenge(challenge)}
+                      >
+                        Create fixture
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {acceptedChallengesError && (
+              <p className="error-text small">{acceptedChallengesError}</p>
+            )}
+
 
             {guestOpponentEnabled && (
               <>

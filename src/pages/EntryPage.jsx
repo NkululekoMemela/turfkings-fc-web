@@ -1551,14 +1551,31 @@ export function EntryPage({
     if (!challenge?.challengeId) return;
 
     try {
+      const acceptedPayload = {
+        ...challenge,
+        targetClubId: activeClubId,
+        targetClubName: activeClubName,
+        status: "accepted",
+        acceptedAt: serverTimestamp(),
+        acceptedAtMs: Date.now(),
+        fixtureStatus: "awaiting_fixture_creation",
+      };
+
       await updateDoc(
         doc(db, "clubs", activeClubId, "incomingChallenges", challenge.challengeId),
         {
           status: "accepted",
           respondedAt: serverTimestamp(),
           respondedAtMs: Date.now(),
+          fixtureStatus: "awaiting_fixture_creation",
         }
       );
+
+      await addDoc(collection(db, "acceptedClubChallenges"), acceptedPayload);
+      await addDoc(collection(db, "clubs", activeClubId, "acceptedChallenges"), acceptedPayload);
+      if (challenge.challengerClubId) {
+        await addDoc(collection(db, "clubs", challenge.challengerClubId, "acceptedChallenges"), acceptedPayload);
+      }
     } catch (err) {
       console.error("[EntryPage] Failed accepting challenge:", err);
       window.alert("Could not accept challenge.");
