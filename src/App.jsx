@@ -1899,6 +1899,7 @@ function getMatchSecondsForType(matchSecondsByType, rawMatchType) {
 }
 
 export default function App() {
+  const [entryPageIntent, setEntryPageIntent] = useState(null);
   const [page, setPage] = useState(PAGE_HOME);
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
 
@@ -5279,6 +5280,13 @@ export default function App() {
           }}
           onEnterTurfKings={(club) => {
             setSelectedHomeClub(buildClubIdentity(club || { id: DEFAULT_CLUB_ID }));
+            setEntryPageIntent(null);
+            setPage(PAGE_ENTRY);
+          }}
+          onNavigateToEntryPage={(payload) => {
+            const club = payload?.club || payload;
+            setSelectedHomeClub(buildClubIdentity(club || { id: DEFAULT_CLUB_ID }));
+            setEntryPageIntent(payload?.intent || null);
             setPage(PAGE_ENTRY);
           }}
         />
@@ -5290,6 +5298,7 @@ export default function App() {
           members={members}
           activeClub={activeClub}
           activeClubId={activeClubId}
+          entryPageIntent={entryPageIntent}
           selectedClub={activeClubIdentity}
           onComplete={handleEntryComplete}
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}

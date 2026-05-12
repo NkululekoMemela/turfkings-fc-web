@@ -461,7 +461,7 @@ export default function HomePage_HUB({
     }
 
     if (typeof onNavigateToEntryPage === "function") {
-      onNavigateToEntryPage(club);
+      onNavigateToEntryPage({ club, intent: "join-club" });
       return;
     }
 
@@ -925,7 +925,7 @@ export default function HomePage_HUB({
               ×
             </button>
 
-            <span className="hub-kicker">{activeClub.name}</span>
+            <span className="hub-kicker hub-action-sheet__club-badge">{activeClub.name}</span>
             <h2>What would you like to do?</h2>
 
             <div className="hub-action-sheet__buttons">

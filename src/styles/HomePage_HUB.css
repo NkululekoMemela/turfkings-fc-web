@@ -5365,3 +5365,12 @@
 .hub-club-card__face--highlights {
   overflow: hidden !important;
 }
+
+
+/* Popup club badge: readable, color-blind safer dark green */
+.hub-action-sheet__club-badge {
+  background: rgba(4, 120, 87, 0.14) !important;
+  border: 1px solid rgba(4, 120, 87, 0.30) !important;
+  color: #03543f !important;
+  font-weight: 1000 !important;
+}

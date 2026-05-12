@@ -493,6 +493,7 @@ async function clearWithdrawnPlayerPrivateDetails({ clubId = DEFAULT_CLUB_ID, me
 export function EntryPage({
   identity,
   selectedClub,
+  entryPageIntent = null,
   onComplete,
   onDevSkipToLanding,
   onGoHome,
@@ -818,6 +819,14 @@ export function EntryPage({
   );
 
   const [showNewPlayerForm, setShowNewPlayerForm] = useState(false);
+
+  useEffect(() => {
+    if (entryPageIntent === "join-club") {
+      setShowNewPlayerForm(true);
+      setNewReqError("");
+      setNewReqStatus("");
+    }
+  }, [entryPageIntent]);
   const [newFullName, setNewFullName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newReqStatus, setNewReqStatus] = useState("");
@@ -2060,7 +2069,7 @@ export function EntryPage({
               }}
               style={{ fontSize: "0.88rem" }}
             >
-              {showWithdrawForm ? "Close departure request" : "Need to leave {activeClubName}?"}
+              {showWithdrawForm ? "Close departure request" : `Need to leave ${activeClubName}?`}
             </button>
 
             {showWithdrawForm && (
