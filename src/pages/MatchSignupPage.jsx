@@ -874,6 +874,7 @@ export default function MatchSignupPage({
   const [adminSettingsMessage, setAdminSettingsMessage] = useState("");
   const [adminSettingsSaving, setAdminSettingsSaving] = useState(false);
   const [matchSignupSettings, setMatchSignupSettings] = useState(DEFAULT_MATCH_SIGNUP_SETTINGS);
+  const [sharedChallengeFixtures, setSharedChallengeFixtures] = useState([]);
   const [selectionHydrated, setSelectionHydrated] = useState(false);
   const [matchSignupStateLoaded, setMatchSignupStateLoaded] = useState(false);
 
@@ -937,14 +938,113 @@ export default function MatchSignupPage({
     currentUser?.uid ||
     slugFromLooseName(displayName);
 
-  const allMonthWeeks = useMemo(
-    () => getMonthWednesdays({ visibleOnly: false, settings: matchSignupSettings }),
-    [matchSignupSettings]
-  );
-  const weeks = useMemo(
-    () => getMonthWednesdays({ visibleOnly: true, settings: matchSignupSettings }),
-    [matchSignupSettings]
-  );
+
+
+  useEffect(() => {
+    if (!activeClubId) {
+      setSharedChallengeFixtures([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "clubs", activeClubId, "fixtures")
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const fixtures = snap.docs
+          .map((docSnap) => {
+            const data = docSnap.data() || {};
+
+            return {
+              fixtureId: docSnap.id,
+              ...data,
+            };
+          })
+          .filter((fixture) => {
+            return (
+              fixture?.source === "club_challenge" &&
+              fixture?.status !== "cancelled"
+            );
+          });
+
+        setSharedChallengeFixtures(fixtures);
+      },
+      (error) => {
+        console.error("Failed to subscribe to shared fixtures:", error);
+      }
+    );
+
+    return () => unsub();
+  }, [activeClubId]);
+
+
+  const allMonthWeeks = useMemo(() => {
+    const generatedWeeks = getMonthWednesdays({
+      visibleOnly: false,
+      settings: matchSignupSettings,
+    });
+
+    const byId = new Map();
+
+    generatedWeeks.forEach((week) => {
+      byId.set(week.id, week);
+    });
+
+    sharedChallengeFixtures.forEach((fixture) => {
+      const dateText =
+        fixture?.proposedDate ||
+        fixture?.date ||
+        "";
+
+      if (!dateText) return;
+
+      const fixtureDate = new Date(`${dateText}T12:00:00`);
+      if (Number.isNaN(fixtureDate.getTime())) return;
+
+      const fixtureId =
+        fixture.fixtureId ||
+        fixture.challengeId ||
+        buildDateId(fixtureDate);
+
+      const opponentName =
+        fixture.opponentName ||
+        fixture.awayClubName ||
+        fixture.homeClubName ||
+        "Challenge";
+
+      const challengeWeek = buildMatchDayFromDate(fixtureDate, {
+        id: fixtureId,
+        isChallenge: true,
+        title: `${opponentName} (${String(fixture.format || "5v5").toUpperCase()})`,
+        maxPlayers:
+          Number(fixture.maxPlayers || matchSignupSettings.challenge.maxPlayers || MAX_PLAYERS),
+        costPerGame:
+          Number(fixture.price || matchSignupSettings.challenge.price || COST_PER_GAME),
+      });
+
+      challengeWeek.fixtureSource = "shared_club_fixture";
+      challengeWeek.fixtureId = fixtureId;
+      challengeWeek.opponentName = opponentName;
+      challengeWeek.fixturePayload = fixture;
+
+      byId.set(challengeWeek.id, challengeWeek);
+    });
+
+    return Array.from(byId.values()).sort((a, b) => a.date - b.date);
+  }, [matchSignupSettings, sharedChallengeFixtures]);
+  const weeks = useMemo(() => {
+    const today = new Date();
+
+    return allMonthWeeks.filter((week) => {
+      return week?.date instanceof Date && week.date >= new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+    });
+  }, [allMonthWeeks]);
 
   /*
     Visible/payable cycle:
@@ -1872,7 +1972,10 @@ export default function MatchSignupPage({
         const week = weekById.get(weekId);
         return {
           id: weekId,
-          title: week?.title || "Match day",
+          title:
+            week?.isChallenge && week?.opponentName
+              ? `⚔️ ${week.opponentName}`
+              : week?.title || "Match day",
           type: week?.type || "weekly",
           isChallenge: Boolean(week?.isChallenge),
           dateLabel: week?.label || weekId,

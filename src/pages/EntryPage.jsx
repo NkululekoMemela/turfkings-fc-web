@@ -21,6 +21,7 @@ import {
   orderBy,
   limit,
   deleteField,
+  writeBatch,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
@@ -1551,31 +1552,157 @@ export function EntryPage({
     if (!challenge?.challengeId) return;
 
     try {
+      const fixtureId =
+        challenge.fixtureId ||
+        `challenge_${String(
+          challenge.challengeId || Date.now()
+        ).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
+      const participatingClubIds = Array.from(
+        new Set(
+          [
+            challenge.challengerClubId,
+            activeClubId,
+          ]
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
+
       const acceptedPayload = {
         ...challenge,
+
         targetClubId: activeClubId,
         targetClubName: activeClubName,
+
         status: "accepted",
         acceptedAt: serverTimestamp(),
         acceptedAtMs: Date.now(),
-        fixtureStatus: "awaiting_fixture_creation",
+
+        fixtureId,
+        fixtureStatus: "fixture_created_automatically",
       };
 
-      await updateDoc(
-        doc(db, "clubs", activeClubId, "incomingChallenges", challenge.challengeId),
+      const fixturePayload = {
+        fixtureId,
+
+        source: "club_challenge",
+        challengeId: challenge.challengeId || "",
+
+        status: "confirmed",
+        signupStatus: "open",
+
+        homeClubId: challenge.challengerClubId || "",
+        homeClubName: challenge.challengerClubName || "Home Club",
+
+        awayClubId: activeClubId,
+        awayClubName: activeClubName,
+
+        homeClubLogo:
+          challenge.challengerClubLogo ||
+          challenge.challengerLogo ||
+          challenge.challengerClubBadge ||
+          "",
+
+        awayClubLogo:
+          challenge.targetClubLogo ||
+          challenge.targetLogo ||
+          challenge.targetClubBadge ||
+          "",
+
+        participatingClubIds,
+
+        format: challenge.format || "5v5",
+
+        proposedDate:
+          challenge.proposedDate || "",
+
+        proposedKickoff:
+          challenge.proposedKickoff || "18:30",
+
+        venue:
+          challenge.venue ||
+          challenge.proposedVenue ||
+          "Venue to be confirmed",
+
+        createdAt: serverTimestamp(),
+        createdAtMs: Date.now(),
+
+        updatedAt: serverTimestamp(),
+        updatedAtMs: Date.now(),
+      };
+
+      const batch = writeBatch(db);
+
+      batch.update(
+        doc(
+          db,
+          "clubs",
+          activeClubId,
+          "incomingChallenges",
+          challenge.challengeId
+        ),
         {
           status: "accepted",
           respondedAt: serverTimestamp(),
           respondedAtMs: Date.now(),
-          fixtureStatus: "awaiting_fixture_creation",
+
+          fixtureId,
+          fixtureStatus: "fixture_created_automatically",
         }
       );
 
-      await addDoc(collection(db, "acceptedClubChallenges"), acceptedPayload);
-      await addDoc(collection(db, "clubs", activeClubId, "acceptedChallenges"), acceptedPayload);
+      const acceptedChallengeRef = doc(
+        collection(db, "acceptedClubChallenges")
+      );
+
+      batch.set(acceptedChallengeRef, acceptedPayload);
+
+      const targetAcceptedRef = doc(
+        collection(
+          db,
+          "clubs",
+          activeClubId,
+          "acceptedChallenges"
+        )
+      );
+
+      batch.set(targetAcceptedRef, {
+        ...acceptedPayload,
+        acceptedChallengeDocId: targetAcceptedRef.id,
+      });
+
       if (challenge.challengerClubId) {
-        await addDoc(collection(db, "clubs", challenge.challengerClubId, "acceptedChallenges"), acceptedPayload);
+        const challengerAcceptedRef = doc(
+          collection(
+            db,
+            "clubs",
+            challenge.challengerClubId,
+            "acceptedChallenges"
+          )
+        );
+
+        batch.set(challengerAcceptedRef, {
+          ...acceptedPayload,
+          acceptedChallengeDocId: challengerAcceptedRef.id,
+        });
       }
+
+      batch.set(
+        doc(db, "clubChallengeFixtures", fixtureId),
+        fixturePayload,
+        { merge: true }
+      );
+
+      participatingClubIds.forEach((clubId) => {
+        batch.set(
+          doc(db, "clubs", clubId, "fixtures", fixtureId),
+          fixturePayload,
+          { merge: true }
+        );
+      });
+
+      await batch.commit();
     } catch (err) {
       console.error("[EntryPage] Failed accepting challenge:", err);
       window.alert("Could not accept challenge.");

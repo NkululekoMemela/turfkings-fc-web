@@ -8,6 +8,7 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  getDoc,
   serverTimestamp,
   writeBatch,
   query,
@@ -717,6 +718,8 @@ export function SquadsPage({
   const [acceptedChallengeCandidates, setAcceptedChallengeCandidates] = useState([]);
   const [acceptedChallengesError, setAcceptedChallengesError] = useState("");
 
+  const [activeChallengeFixture, setActiveChallengeFixture] = useState(null);
+
   const existingGuestTeam = useMemo(
     () =>
       (fiveVFiveTeams || []).find(
@@ -739,6 +742,22 @@ export function SquadsPage({
   const [guestOpponentName, setGuestOpponentName] = useState(() =>
     existingGuestTeam?.label || DEFAULT_GUEST_OPPONENT_NAME
   );
+
+  const resolvedHomeClubName =
+    activeChallengeFixture?.homeClubName ||
+    activeClubName ||
+    "Home Club";
+
+  const resolvedAwayClubName =
+    activeChallengeFixture?.awayClubName ||
+    guestOpponentName ||
+    "Opponent";
+
+  const resolvedHomeClubLogo =
+    activeChallengeFixture?.homeClubLogo || "";
+
+  const resolvedAwayClubLogo =
+    activeChallengeFixture?.awayClubLogo || "";
   const [disabledFriendlyTeamId, setDisabledFriendlyTeamId] = useState(() =>
     existingGuestTeam?.disabledFriendlyTeamId || "light"
   );
@@ -817,6 +836,89 @@ export function SquadsPage({
       setTurfKingsChallengeColorName(turf.teamColorName || "Green");
     }
   }, [fiveVFiveTeams]);
+
+
+
+  useEffect(() => {
+    if (!activeClubId) {
+      setActiveChallengeFixture(null);
+      return;
+    }
+
+    const q = query(
+      collection(db, "clubs", activeClubId, "fixtures"),
+      orderBy("createdAtMs", "desc"),
+      limit(5)
+    );
+
+    const unsub = onSnapshot(q, async (snap) => {
+      const fixtures = snap.docs
+        .map((d) => ({
+          id: d.id,
+          ...(d.data() || {}),
+        }))
+        .filter(
+          (fixture) =>
+            fixture?.source === "club_challenge"
+        );
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const sortedFixtures = fixtures
+        .filter((fixture) => fixture?.proposedDate)
+        .sort((a, b) => {
+          const aTime = new Date(`${a.proposedDate}T12:00:00`).getTime();
+          const bTime = new Date(`${b.proposedDate}T12:00:00`).getTime();
+          return aTime - bTime;
+        });
+
+      const upcomingFixture =
+        sortedFixtures.find((fixture) => {
+          const fixtureDate = new Date(`${fixture.proposedDate}T12:00:00`);
+          return !Number.isNaN(fixtureDate.getTime()) && fixtureDate >= today;
+        }) ||
+        sortedFixtures[0] ||
+        fixtures[0] ||
+        null;
+
+      
+      let hydratedFixture = upcomingFixture;
+
+      if (hydratedFixture) {
+        const pickLogo = (clubData = {}) =>
+          clubData.logoUrl ||
+          clubData?.branding?.uploadedLogoUrl ||
+          clubData?.media?.logoOriginalUrl ||
+          clubData?.media?.logoTransparentUrl ||
+          clubData.image ||
+          "";
+
+        let homeClubLogo = hydratedFixture.homeClubLogo || "";
+        let awayClubLogo = hydratedFixture.awayClubLogo || "";
+
+        if (!homeClubLogo && hydratedFixture.homeClubId) {
+          const homeSnap = await getDoc(doc(db, "clubs", hydratedFixture.homeClubId));
+          if (homeSnap.exists()) homeClubLogo = pickLogo(homeSnap.data() || {});
+        }
+
+        if (!awayClubLogo && hydratedFixture.awayClubId) {
+          const awaySnap = await getDoc(doc(db, "clubs", hydratedFixture.awayClubId));
+          if (awaySnap.exists()) awayClubLogo = pickLogo(awaySnap.data() || {});
+        }
+
+        hydratedFixture = {
+          ...hydratedFixture,
+          homeClubLogo,
+          awayClubLogo,
+        };
+      }
+
+      setActiveChallengeFixture(hydratedFixture);
+    });
+
+    return () => unsub();
+  }, [activeClubId]);
 
 
   useEffect(() => {
@@ -938,12 +1040,22 @@ export function SquadsPage({
     return normalized.length === 2 ? normalized : buildDefaultFiveVFiveTeams();
   }, [localFiveVFiveTeams]);
 
+  useEffect(() => {
+    if (!activeChallengeFixture) return;
+
+    setGuestOpponentEnabled(true);
+    setGuestOpponentName(activeChallengeFixture.awayClubName || "Opponent");
+    setChallengeDate(activeChallengeFixture.proposedDate || todayChallengeDateText());
+    setChallengeKickoff(activeChallengeFixture.proposedKickoff || "18:30");
+    setChallengeVenue(activeChallengeFixture.venue || "Venue to be confirmed");
+  }, [activeChallengeFixture]);
+
   const turfKingsChallengeTeam = useMemo(() => {
     const teamsForChallenge = buildSlotBasedChallengeTeams({
       baseTeams: baseFriendlyTeams,
       turfKingsPlayers: turfKingsChallengePlayers,
       guestPlayers: guestOpponentPlayers,
-      guestName: guestOpponentName,
+      guestName: resolvedAwayClubName,
       activeClubName,
       turfKingsColorName: turfKingsChallengeColorName,
       guestColorName: guestOpponentColorName,
@@ -969,7 +1081,7 @@ export function SquadsPage({
       baseTeams: baseFriendlyTeams,
       turfKingsPlayers: turfKingsChallengePlayers,
       guestPlayers: guestOpponentPlayers,
-      guestName: guestOpponentName,
+      guestName: resolvedAwayClubName,
       activeClubName,
       turfKingsColorName: turfKingsChallengeColorName,
       guestColorName: guestOpponentColorName,
@@ -1248,19 +1360,90 @@ export function SquadsPage({
   const handleTakeChallengeDown = () => {
     if (!canEdit) return;
 
+    setGuestOpponentEnabled(false);
+    const normalTeams = restoreNormalFriendlyTeamsFromSlots(localFiveVFiveTeams);
+    setLocalFiveVFiveTeams(normalTeams);
+    onUpdateFiveVFiveTeams?.(normalTeams);
+  };
+
+  const handleCancelChallenge = async () => {
+    if (!canEdit || !activeChallengeFixture?.fixtureId) return;
+
     const ok =
       typeof window !== "undefined"
         ? window.confirm(
-            "Take down the special challenge and return to normal Dark vs Light friendly squads?"
+            `Cancel the challenge between ${resolvedHomeClubName} and ${resolvedAwayClubName}? The opponent club will be notified.`
           )
         : true;
 
     if (!ok) return;
 
-    setGuestOpponentEnabled(false);
-    const normalTeams = restoreNormalFriendlyTeamsFromSlots(localFiveVFiveTeams);
-    setLocalFiveVFiveTeams(normalTeams);
-    onUpdateFiveVFiveTeams?.(normalTeams);
+    const reason =
+      typeof window !== "undefined"
+        ? window.prompt("Reason for cancelling the challenge:", "")
+        : "";
+
+    if (reason === null) return;
+
+    try {
+      const fixtureId = activeChallengeFixture.fixtureId;
+      const participatingClubIds = Array.from(
+        new Set(
+          [
+            activeChallengeFixture.homeClubId,
+            activeChallengeFixture.awayClubId,
+            activeClubId,
+            ...(activeChallengeFixture.participatingClubIds || []),
+          ]
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
+
+      const noticeId = `cancelled_${fixtureId}_${Date.now()}`;
+
+      const noticePayload = {
+        noticeId,
+        type: "challenge_cancelled",
+        fixtureId,
+        challengeId: activeChallengeFixture.challengeId || "",
+        fromClubId: activeClubId,
+        fromClubName: activeClubName,
+        homeClubId: activeChallengeFixture.homeClubId || "",
+        homeClubName: resolvedHomeClubName,
+        awayClubId: activeChallengeFixture.awayClubId || "",
+        awayClubName: resolvedAwayClubName,
+        reason: String(reason || "").trim(),
+        status: "open",
+        createdAt: serverTimestamp(),
+        createdAtMs: Date.now(),
+      };
+
+      const batch = writeBatch(db);
+
+      batch.delete(doc(db, "clubChallengeFixtures", fixtureId));
+
+      participatingClubIds.forEach((clubId) => {
+        batch.delete(doc(db, "clubs", clubId, "fixtures", fixtureId));
+        batch.set(
+          doc(db, "clubs", clubId, "challengeNotices", noticeId),
+          noticePayload,
+          { merge: true }
+        );
+      });
+
+      await batch.commit();
+
+      setActiveChallengeFixture(null);
+      setGuestOpponentEnabled(false);
+
+      const normalTeams = restoreNormalFriendlyTeamsFromSlots(localFiveVFiveTeams);
+      setLocalFiveVFiveTeams(normalTeams);
+      onUpdateFiveVFiveTeams?.(normalTeams);
+    } catch (err) {
+      console.error("[Squads] Could not cancel challenge:", err);
+      window.alert("Could not cancel this challenge.");
+    }
   };
 
   const handleTeamLabelChange = (teamId, value) => {
@@ -1701,9 +1884,15 @@ export function SquadsPage({
   };
 
   const formattedChallengeDate = useMemo(() => {
-    const dateObj = parseChallengeDateLoose(challengeDate);
+    const dateObj = parseChallengeDateLoose(
+      activeChallengeFixture?.proposedDate || challengeDate
+    );
     if (!dateObj || Number.isNaN(dateObj.getTime())) {
-      return challengeDate || "Match date to be confirmed";
+      return (
+      activeChallengeFixture?.proposedDate ||
+      challengeDate ||
+      "Match date to be confirmed"
+    );
     }
 
     return dateObj.toLocaleDateString("en-ZA", {
@@ -1908,12 +2097,28 @@ export function SquadsPage({
                     type="button"
                     className="secondary-btn"
                     onClick={handleTakeChallengeDown}
+                    title="Minimize challenge panel"
                     style={{
-                      borderColor: "rgba(248,113,113,0.45)",
-                      color: "#fecaca",
+                      width: "2.4rem",
+                      height: "2.4rem",
+                      padding: 0,
+                      borderRadius: "999px",
                     }}
                   >
-                    Take down
+                    ˄
+                  </button>
+
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={handleCancelChallenge}
+                    style={{
+                      background: "linear-gradient(135deg, #dc2626, #991b1b)",
+                      color: "#fff",
+                      borderColor: "rgba(254,202,202,0.45)",
+                    }}
+                  >
+                    Cancel challenge
                   </button>
                 </div>
               )}
@@ -2106,12 +2311,30 @@ export function SquadsPage({
                     </div>
 
                     <div style={{ textAlign: "center", display: "grid", gap: "0.45rem" }}>
-                      <GeneratedOpponentCrest
-                        name={guestOpponentTeam.label || "Canal Walk"}
-                        theme={getTeamTheme(guestOpponentTeam)}
-                      />
+                      {resolvedAwayClubLogo ? (
+                        <img
+                          src={resolvedAwayClubLogo}
+                          alt={`${resolvedAwayClubName || "Opponent"} logo`}
+                          style={{
+                            width: "4.2rem",
+                            height: "4.2rem",
+                            objectFit: "contain",
+                            display: "block",
+                            margin: "0 auto",
+                            borderRadius: "18px",
+                            background: "rgba(255,255,255,0.92)",
+                            padding: "0.35rem",
+                            boxShadow: "0 14px 34px rgba(0,0,0,0.28)",
+                          }}
+                        />
+                      ) : (
+                        <GeneratedOpponentCrest
+                          name={resolvedAwayClubName || "Opponent"}
+                          theme={getTeamTheme(guestOpponentTeam)}
+                        />
+                      )}
                       <strong style={{ color: "#F8FAFC" }}>
-                        {guestOpponentTeam.label || "Canal Walk"}
+                        {resolvedAwayClubName || "Opponent"}
                       </strong>
                     </div>
                   </div>
@@ -2129,7 +2352,16 @@ export function SquadsPage({
                       {formattedChallengeDate}
                     </div>
                     <div style={{ fontSize: "0.88rem", marginTop: "0.2rem" }}>
-                      Kick Off: {challengeKickoff || "18:30"} • Venue: {challengeVenue || "Canal Walk 5s Arena"}
+                      Kick Off: {
+                        activeChallengeFixture?.proposedKickoff ||
+                        challengeKickoff ||
+                        "18:30"
+                      }
+                      • Venue: {
+                        activeChallengeFixture?.venue ||
+                        challengeVenue ||
+                        "Venue TBD"
+                      }
                     </div>
                   </div>
                 </div>
@@ -2178,7 +2410,13 @@ export function SquadsPage({
                         <span className="team-color-pill" />
                         <div>
                           <div className="team-title-row">
-                            <h2 className="team-title">{team.label}</h2>
+                            <h2 className="team-title">
+                              {team.id === TURF_KINGS_SLOT_ID
+                                ? resolvedHomeClubName
+                                : team.id === GUEST_OPPONENT_SLOT_ID
+                                ? resolvedAwayClubName
+                                : team.label}
+                            </h2>
                             {team.abbrev ? (
                               <span className="team-abbrev-badge">{team.abbrev}</span>
                             ) : null}

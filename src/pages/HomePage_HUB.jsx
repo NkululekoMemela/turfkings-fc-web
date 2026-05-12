@@ -526,11 +526,23 @@ export default function HomePage_HUB({
       const payload = {
         challengerClubId: identity.clubId,
         challengerClubName: identity.clubName || identity.clubShortName || "Challenger club",
+
+        challengerClubLogo:
+          identity?.logoUrl ||
+          identity?.clubLogoUrl ||
+          identity?.image ||
+          "",
+
         challengerAdminEmail: currentUser?.email || identity?.email || "",
         challengerAdminName: identity?.shortName || identity?.fullName || currentUser?.displayName || "Club admin",
 
         targetClubId: challengeClub.id,
         targetClubName: challengeClub.name || "Target club",
+
+        targetClubLogo:
+          challengeClub?.logoUrl ||
+          challengeClub?.image ||
+          "",
 
         format: challengeFormat,
         proposedDate: challengeDate,
