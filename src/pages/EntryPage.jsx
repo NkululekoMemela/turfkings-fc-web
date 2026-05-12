@@ -76,6 +76,7 @@ function playerPhotoDocRef(clubId, photoId) {
   return clubDocRef(clubId, PLAYER_PHOTOS_COLLECTION, photoId);
 }
 
+import HomePage_HUB_ClubProfileEditorModal from "../components/HomePage_HUB/HomePage_HUB_ClubProfileEditorModal.jsx";
 function withdrawalRequestsCollectionRef(clubId) {
   return clubCollectionRef(clubId, WITHDRAWAL_REQUESTS_COLLECTION);
 }
@@ -502,14 +503,22 @@ export function EntryPage({
   const [clubHeroOverride, setClubHeroOverride] = useState("");
   const [clubHeroStatus, setClubHeroStatus] = useState("");
   const [clubHeroError, setClubHeroError] = useState("");
+  const [entryClubProfileOverride, setEntryClubProfileOverride] = useState(null);
+  const [showEntryClubEditor, setShowEntryClubEditor] = useState(false);
 
-  const activeClub = useMemo(() => selectedClub || {
-    id: DEFAULT_CLUB_ID,
-    name: DEFAULT_CLUB_NAME,
-    logoUrl: TurfKingsLogo,
-    image: TeamPhoto,
-    weeklyPlayTime: "Wednesdays · 19:00",
-  }, [selectedClub]);
+  const activeClub = useMemo(() => {
+    const baseClub = selectedClub || {
+      id: DEFAULT_CLUB_ID,
+      name: DEFAULT_CLUB_NAME,
+      logoUrl: TurfKingsLogo,
+      image: TeamPhoto,
+      weeklyPlayTime: "Wednesdays · 19:00",
+    };
+
+    return entryClubProfileOverride
+      ? { ...baseClub, ...entryClubProfileOverride }
+      : baseClub;
+  }, [selectedClub, entryClubProfileOverride]);
 
   const activeClubId = safeClubIdFromSelectedClub(activeClub);
   const activeClubName = safeClubNameFromSelectedClub(activeClub);
@@ -1545,9 +1554,49 @@ export function EntryPage({
           border-radius: 999px;
           display: block;
         }
+
+        .entry-page .header {
+          position: relative;
+        }
+
+        .tk-entry-club-edit-btn {
+          position: absolute;
+          top: 0.85rem;
+          right: 0.85rem;
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          border: 1px solid rgba(148,163,184,0.24);
+          background: rgba(15,23,42,0.62);
+          color: rgba(248,250,252,0.84);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          font-weight: 950;
+          z-index: 5;
+          backdrop-filter: blur(10px);
+        }
+
+        .tk-entry-club-edit-btn:hover {
+          background: rgba(15,23,42,0.92);
+          color: #ffffff;
+        }
         @media (max-width: 520px) { .tk-admin-notification-dock { right: 0.62rem; top: calc(4.45rem + env(safe-area-inset-top)); } .tk-admin-notification-card { width: min(330px, calc(100vw - 1.24rem)); border-radius: 19px; } }
       `}</style>
       <header className="header">
+        {isAdminViewer ? (
+          <button
+            type="button"
+            className="tk-entry-club-edit-btn"
+            onClick={() => setShowEntryClubEditor(true)}
+            title="Edit club profile"
+            aria-label="Edit club profile"
+          >
+            ✎
+          </button>
+        ) : null}
+
         <div className="header-title">
           <img src={activeClubLogoSrc} alt={`${activeClubName} logo`} className="tk-logo" />
           <h1>{activeClubName}</h1>
@@ -2334,6 +2383,19 @@ export function EntryPage({
           </div>
         </div>
       )}
+
+      <HomePage_HUB_ClubProfileEditorModal
+        isOpen={showEntryClubEditor}
+        club={activeClub}
+        onClose={() => setShowEntryClubEditor(false)}
+        onSaved={(updatedClub) => {
+          setEntryClubProfileOverride((current) => ({
+            ...(current || {}),
+            ...(updatedClub || {}),
+          }));
+          setShowEntryClubEditor(false);
+        }}
+      />
 
       {isAdminViewer && notificationCount > 0 && (
         <div className="tk-admin-notification-dock" aria-live="polite">

@@ -314,6 +314,7 @@ async function hydrateClubHubStats(club) {
 
 export default function HomePage_HUB({
 
+  identity = null,
   onEnterTurfKings,
   onViewClub,
   onRegisterClub,
@@ -427,12 +428,30 @@ export default function HomePage_HUB({
     return normalizeClub(fakeDocSnap);
   }
 
+  function isUsersOwnClub(club) {
+    const userClubId =
+      identity?.clubId ||
+      identity?.homeClubId ||
+      identity?.activeClubId ||
+      "";
+
+    return (
+      String(club?.id || club?.clubId || "").trim().toLowerCase() ===
+      String(userClubId || "").trim().toLowerCase()
+    );
+  }
+
   function openClubActions(club) {
     const missing = getMissingClubRequirements(club);
     const userCanManage = canCurrentUserManageClub(currentUser, club);
 
     if (missing.length && userCanManage && !isSuperAdmin(currentUser)) {
       setCompletionPromptClub(club);
+      return;
+    }
+
+    if (isUsersOwnClub(club)) {
+      handleViewClub(club);
       return;
     }
 

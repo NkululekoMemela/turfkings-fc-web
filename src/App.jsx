@@ -5268,6 +5268,7 @@ export default function App() {
 
       {page === PAGE_HOME && (
         <HomePage_HUB
+          identity={identity}
           onRegisterClub={() => {
             window.alert("Club registration wizard is coming next.");
           }}
