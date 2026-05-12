@@ -1,7 +1,7 @@
 // src/pages/HomePage_HUB.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import "../styles/HomePage_HUB.css";
@@ -342,6 +342,14 @@ export default function HomePage_HUB({
   const [currentUser, setCurrentUser] = useState(null);
   const [activeMapClub, setActiveMapClub] = useState(null);
   const [clubSearchQuery, setClubSearchQuery] = useState("");
+  const [challengeClub, setChallengeClub] = useState(null);
+  const [challengeFormat, setChallengeFormat] = useState("5v5");
+  const [challengeDate, setChallengeDate] = useState("");
+  const [challengeKickoff, setChallengeKickoff] = useState("19:00");
+  const [challengeMessage, setChallengeMessage] = useState("");
+  const [challengeStatus, setChallengeStatus] = useState("");
+  const [challengeError, setChallengeError] = useState("");
+  const [isSubmittingChallenge, setIsSubmittingChallenge] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -469,6 +477,84 @@ export default function HomePage_HUB({
 
     onViewClub?.(club);
   }
+
+
+  function canCurrentUserSendChallenge() {
+    const role = String(identity?.role || identity?.actingRole || identity?.realRole || "").toLowerCase();
+    return Boolean(currentUser?.email) && ["admin", "captain"].includes(role);
+  }
+
+  function openChallengeRequest(club) {
+    setActiveClub(null);
+    setActiveMapClub(null);
+    setChallengeClub(club);
+    setChallengeFormat("5v5");
+    setChallengeDate("");
+    setChallengeKickoff("19:00");
+    setChallengeMessage("");
+    setChallengeStatus("");
+    setChallengeError("");
+  }
+
+  async function submitChallengeRequest() {
+    setChallengeError("");
+    setChallengeStatus("");
+
+    if (!canCurrentUserSendChallenge()) {
+      setChallengeError("Only a signed-in club admin or captain can send a challenge.");
+      return;
+    }
+
+    if (!identity?.clubId) {
+      setChallengeError("Open your own club first before sending challenges.");
+      return;
+    }
+
+    if (!challengeClub?.id) {
+      setChallengeError("Select a club to challenge.");
+      return;
+    }
+
+    if (!challengeDate) {
+      setChallengeError("Please suggest a match date.");
+      return;
+    }
+
+    try {
+      setIsSubmittingChallenge(true);
+
+      const payload = {
+        challengerClubId: identity.clubId,
+        challengerClubName: identity.clubName || identity.clubShortName || "Challenger club",
+        challengerAdminEmail: currentUser?.email || identity?.email || "",
+        challengerAdminName: identity?.shortName || identity?.fullName || currentUser?.displayName || "Club admin",
+
+        targetClubId: challengeClub.id,
+        targetClubName: challengeClub.name || "Target club",
+
+        format: challengeFormat,
+        proposedDate: challengeDate,
+        proposedKickoff: challengeKickoff,
+        message: challengeMessage.trim(),
+
+        status: "pending",
+        createdAt: serverTimestamp(),
+        createdAtMs: Date.now(),
+      };
+
+      await addDoc(collection(db, "clubs", challengeClub.id, "incomingChallenges"), payload);
+      await addDoc(collection(db, "clubChallenges"), payload);
+
+      setChallengeStatus("Challenge sent. The other club admin can review it once incoming challenges are connected.");
+      setChallengeMessage("");
+    } catch (error) {
+      console.error("[HomePage_HUB] Challenge request failed:", error);
+      setChallengeError("Could not send the challenge request. Please try again.");
+    } finally {
+      setIsSubmittingChallenge(false);
+    }
+  }
+
 
   function handleJoinExistingClub(club = null) {
     setSignupOpen(false);
@@ -790,7 +876,7 @@ export default function HomePage_HUB({
                 <button type="button" onClick={() => handleJoinExistingClub(selectedMapClub)}>
                   Join
                 </button>
-                <button type="button" onClick={() => onChallengeClub?.(selectedMapClub)}>
+                <button type="button" onClick={() => openChallengeRequest(selectedMapClub)}>
                   Challenge
                 </button>
               </div>
@@ -962,8 +1048,7 @@ export default function HomePage_HUB({
               <button
                 type="button"
                 onClick={() => {
-                  setActiveClub(null);
-                  onChallengeClub?.(activeClub);
+                  openChallengeRequest(activeClub);
                 }}
               >
                 Challenge
@@ -980,6 +1065,96 @@ export default function HomePage_HUB({
                   Edit Club
                 </button>
               ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+
+      {challengeClub ? (
+        <div
+          className="hub-challenge-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setChallengeClub(null);
+          }}
+        >
+          <section className="hub-challenge-modal" aria-label={`Challenge ${challengeClub.name}`}>
+            <button
+              type="button"
+              className="hub-challenge-modal__close"
+              onClick={() => setChallengeClub(null)}
+            >
+              ×
+            </button>
+
+            <span className="hub-challenge-modal__kicker">Club challenge</span>
+            <h2>Challenge {challengeClub.name}</h2>
+            <p className="hub-challenge-modal__intro">
+              Send a formal challenge request. Match signup and payments will only be created after both clubs agree.
+            </p>
+
+            <div className="hub-challenge-format-grid">
+              {[
+                ["5v5", "5-a-side"],
+                ["6v6", "6-a-side"],
+                ["7v7", "7-a-side"],
+                ["11v11", "11-a-side"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={challengeFormat === value ? "is-selected" : ""}
+                  onClick={() => setChallengeFormat(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="hub-challenge-form-grid">
+              <label>
+                <span>Suggested date</span>
+                <input
+                  type="date"
+                  value={challengeDate}
+                  onChange={(event) => setChallengeDate(event.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Kickoff</span>
+                <input
+                  type="time"
+                  value={challengeKickoff}
+                  onChange={(event) => setChallengeKickoff(event.target.value)}
+                />
+              </label>
+
+              <label className="hub-challenge-form-grid__wide">
+                <span>Message</span>
+                <textarea
+                  rows="4"
+                  value={challengeMessage}
+                  onChange={(event) => setChallengeMessage(event.target.value)}
+                  placeholder="Example: We are available next Friday evening. Let us know if this works."
+                />
+              </label>
+            </div>
+
+            {challengeError ? <p className="hub-challenge-error">{challengeError}</p> : null}
+            {challengeStatus ? <p className="hub-challenge-success">{challengeStatus}</p> : null}
+
+            <div className="hub-challenge-actions">
+              <button type="button" onClick={() => setChallengeClub(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitChallengeRequest}
+                disabled={isSubmittingChallenge}
+              >
+                {isSubmittingChallenge ? "Sending..." : "Send challenge"}
+              </button>
             </div>
           </section>
         </div>
