@@ -12,6 +12,7 @@ import {
   onSnapshot,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   getDoc,
   serverTimestamp,
@@ -563,6 +564,7 @@ export function EntryPage({
   const [withdrawalAlert, setWithdrawalAlert] = useState(null);
 
   const [memberDepartureAlerts, setMemberDepartureAlerts] = useState([]);
+  const [incomingChallengeAlerts, setIncomingChallengeAlerts] = useState([]);
   const [isAdminNoticePanelOpen, setIsAdminNoticePanelOpen] = useState(false);
   const [activeAdminNoticeIndex, setActiveAdminNoticeIndex] = useState(0);
   const [dismissedPendingNoticeIds, setDismissedPendingNoticeIds] = useState(() => {
@@ -667,6 +669,49 @@ export function EntryPage({
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [membersError, setMembersError] = useState("");
 
+
+
+  useEffect(() => {
+    if (!isAdminViewer) return;
+
+    const q = query(
+      collection(db, "clubs", activeClubId, "incomingChallenges"),
+      orderBy("createdAtMs", "desc"),
+      limit(12)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      if (snap.empty) {
+        setIncomingChallengeAlerts([]);
+        return;
+      }
+
+      const challenges = snap.docs
+        .map((d) => {
+          const data = d.data() || {};
+
+          return {
+            challengeId: d.id,
+            challengerClubId: data.challengerClubId || "",
+            challengerClubName: data.challengerClubName || "Unknown club",
+            challengerAdminName: data.challengerAdminName || "Club admin",
+            proposedDate: data.proposedDate || "",
+            proposedKickoff: data.proposedKickoff || "",
+            format: data.format || "5v5",
+            message: data.message || "",
+            status: data.status || "pending",
+            createdAtMs: Number(data.createdAtMs || 0),
+          };
+        })
+        .filter((item) => item.status === "pending");
+
+      setIncomingChallengeAlerts(challenges);
+    });
+
+    return () => unsub();
+  }, [activeClubId, isAdminViewer]);
+
+
   useEffect(() => {
     setLoadingMembers(true);
     setMembersError("");
@@ -765,6 +810,24 @@ export function EntryPage({
       });
     });
 
+    incomingChallengeAlerts.forEach((challenge) => {
+      notices.push({
+        id: `challenge-${challenge.challengeId}`,
+        type: "club_challenge",
+        title: "Incoming challenge",
+        tag: challenge.format.toUpperCase(),
+        icon: "⚔️",
+        message: (
+          <>
+            <strong>{challenge.challengerClubName}</strong> challenged {activeClubName}.
+          </>
+        ),
+        helper:
+          `${challenge.proposedDate || "No date"} · ${challenge.proposedKickoff || "No kickoff"}${challenge.message ? ` · ${challenge.message}` : ""}`,
+        payload: challenge,
+      });
+    });
+
     pendingMembers
       .filter((m) => !dismissedPendingNoticeIds.includes(m.id))
       .forEach((m) => {
@@ -789,7 +852,14 @@ export function EntryPage({
       });
 
     return notices;
-  }, [dismissedPendingNoticeIds, isAdminViewer, memberDepartureAlerts, pendingMembers]);
+  }, [
+    activeClubName,
+    dismissedPendingNoticeIds,
+    incomingChallengeAlerts,
+    isAdminViewer,
+    memberDepartureAlerts,
+    pendingMembers,
+  ]);
 
   const notificationCount = adminNotices.length;
   const activeAdminNotice = adminNotices[Math.min(activeAdminNoticeIndex, Math.max(notificationCount - 1, 0))] || null;
@@ -1474,6 +1544,45 @@ export function EntryPage({
       });
     }
   };
+
+
+
+  const handleAcceptChallenge = async (challenge) => {
+    if (!challenge?.challengeId) return;
+
+    try {
+      await updateDoc(
+        doc(db, "clubs", activeClubId, "incomingChallenges", challenge.challengeId),
+        {
+          status: "accepted",
+          respondedAt: serverTimestamp(),
+          respondedAtMs: Date.now(),
+        }
+      );
+    } catch (err) {
+      console.error("[EntryPage] Failed accepting challenge:", err);
+      window.alert("Could not accept challenge.");
+    }
+  };
+
+  const handleRejectChallenge = async (challenge) => {
+    if (!challenge?.challengeId) return;
+
+    try {
+      await updateDoc(
+        doc(db, "clubs", activeClubId, "incomingChallenges", challenge.challengeId),
+        {
+          status: "rejected",
+          respondedAt: serverTimestamp(),
+          respondedAtMs: Date.now(),
+        }
+      );
+    } catch (err) {
+      console.error("[EntryPage] Failed rejecting challenge:", err);
+      window.alert("Could not reject challenge.");
+    }
+  };
+
 
   const handleRejectMember = async (memberId) => {
     try {
@@ -2435,7 +2544,34 @@ export function EntryPage({
                   {activeAdminNotice.helper}
                 </p>
 
-                {activeAdminNotice.type === "new_player" ? (
+                {activeAdminNotice.type === "club_challenge" ? (
+                  <div className="tk-admin-notification-actions">
+                    <button
+                      type="button"
+                      className="tk-admin-notification-primary"
+                      onClick={() => handleAcceptChallenge(activeAdminNotice.payload)}
+                    >
+                      Accept
+                    </button>
+
+                    <button
+                      type="button"
+                      className="tk-admin-notification-secondary"
+                      onClick={() => handleRejectChallenge(activeAdminNotice.payload)}
+                    >
+                      Reject
+                    </button>
+
+                    <button
+                      type="button"
+                      className="tk-admin-notification-nav-btn"
+                      disabled
+                      title="Club chat coming soon"
+                    >
+                      Discuss
+                    </button>
+                  </div>
+                ) : activeAdminNotice.type === "new_player" ? (
                   <div className="tk-admin-notification-actions">
                     <button
                       type="button"
