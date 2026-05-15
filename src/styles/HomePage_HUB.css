@@ -5566,3 +5566,35 @@
     flex-direction: column;
   }
 }
+
+/* HOME HUB — launch-width layout */
+@media (max-width: 640px) {
+  .homepage-hub-shell {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+
+  .hub-topbar,
+  .hub-clubs-section,
+  .hub-map-section,
+  .hub-footer-brand {
+    width: min(100%, 376px) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .hub-clubs-section,
+  .hub-map-section,
+  .hub-footer-brand {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .hub-club-carousel {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    grid-auto-columns: calc((100% - 10px) / 2) !important;
+    gap: 10px !important;
+  }
+}
+

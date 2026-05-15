@@ -6760,3 +6760,19 @@ body.squad-preview-is-open.admin-squad-preview nav[aria-label="Bottom navigation
   }
 }
 
+
+/* SQUADS PAGE — SINGLE DELETE CONTROL AFTER SWAP REMOVAL */
+
+.squad-preview-mini-actions {
+  left: auto !important;
+  right: -6px !important;
+  width: auto !important;
+  justify-content: flex-end !important;
+}
+
+.squad-preview-mini-actions span {
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 0.72rem !important;
+}
+

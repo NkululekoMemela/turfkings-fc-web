@@ -354,8 +354,12 @@ function getThemeFromColorName(rawColorName = "") {
     return themeFromAccent("#0F172A", "Black", "#CBD5E1");
   }
 
-  if (key.includes("blue") || key.includes("navy")) {
-    return themeFromAccent("#2563EB", "Blue");
+  if (key.includes("blue")) {
+    return themeFromAccent("#38BDF8", "Blue", "#E0F2FE");
+  }
+
+  if (key.includes("navy")) {
+    return themeFromAccent("#1E3A8A", "Navy", "#BFDBFE");
   }
 
   if (key.includes("sky") || key.includes("cyan") || key.includes("teal")) {
@@ -403,11 +407,11 @@ function getTeamTheme(team = {}) {
   // UI default: keep the premium green/gold look for normal Black vs White games.
   // Wear colour remains Black/White on the teamsheet.
   if (team.id === TURF_KINGS_SLOT_ID && (!explicitName || explicitName === "Black")) {
-    return themeFromAccent("#1E3A8A", "Black", "#BFDBFE");
+    return themeFromAccent("#0F172A", "Black", "#CBD5E1");
   }
 
   if (team.id === GUEST_OPPONENT_SLOT_ID && (!explicitName || explicitName === "White")) {
-    return themeFromAccent("#E5E7EB", "White", "#F8FAFC");
+    return themeFromAccent("#F8FAFC", "White", "#0F172A");
   }
 
   const nameTheme = getThemeFromColorName(explicitName);
@@ -680,8 +684,11 @@ function restoreNormalFriendlyTeamsFromSlots(teams = []) {
       id: TURF_KINGS_SLOT_ID,
       label: "Dark",
       abbrev: "DRK",
-      teamColorName: dark.teamColorName || "Black",
-      teamColorHex: dark.teamColorHex || defaults[0].teamColorHex,
+      teamColorName: dark.teamColorName || defaults[0].teamColorName || "Black",
+      teamColorHex:
+        getThemeFromColorName(dark.teamColorName || "Black")?.accent ||
+        dark.teamColorHex ||
+        defaults[0].teamColorHex,
       players: Array.isArray(dark.players) ? dark.players : [],
       captainId: dark.captainId || null,
       captain: dark.captain || "",
@@ -692,8 +699,11 @@ function restoreNormalFriendlyTeamsFromSlots(teams = []) {
       id: GUEST_OPPONENT_SLOT_ID,
       label: "Light",
       abbrev: "LGT",
-      teamColorName: light.teamColorName || "White",
-      teamColorHex: light.teamColorHex || defaults[1].teamColorHex,
+      teamColorName: light.teamColorName || defaults[1].teamColorName || "White",
+      teamColorHex:
+        getThemeFromColorName(light.teamColorName || "White")?.accent ||
+        light.teamColorHex ||
+        defaults[1].teamColorHex,
       players: Array.isArray(light.players) ? light.players : [],
       captainId: light.captainId || null,
       captain: light.captain || "",
@@ -877,9 +887,13 @@ export function SquadsPage({
     const guest = normalized.find((team) => team.id === GUEST_OPPONENT_SLOT_ID);
     const turf = normalized.find((team) => team.id === TURF_KINGS_SLOT_ID);
 
-    setLocalFiveVFiveTeams(
-      normalized.length === 2 ? normalized : buildDefaultFiveVFiveTeams()
-    );
+    setLocalFiveVFiveTeams((prev) => {
+      if (!normalized.length) {
+        return prev?.length ? prev : buildDefaultFiveVFiveTeams();
+      }
+
+      return normalized;
+    });
 
     setGuestOpponentEnabled(challengeIsActive);
 
@@ -1268,7 +1282,7 @@ export function SquadsPage({
     });
     return teamsForChallenge[0];
   }, [
-    baseFriendlyTeams,
+    localFiveVFiveTeams,
     turfKingsChallengePlayers,
     guestOpponentPlayers,
     guestOpponentName,
@@ -1314,7 +1328,7 @@ export function SquadsPage({
       return [turfKingsChallengeTeam, guestOpponentTeam];
     }
 
-    return isFiveVFive ? baseFriendlyTeams : localLeagueTeams;
+    return isFiveVFive ? localFiveVFiveTeams : localLeagueTeams;
   }, [
     isFiveVFive,
     guestOpponentEnabled,
@@ -1671,18 +1685,47 @@ export function SquadsPage({
   const handleTeamColorNameChange = (teamId, value) => {
     if (!canEdit) return;
 
-    if (guestOpponentEnabled && teamId === TURF_KINGS_SLOT_ID) {
-      setTurfKingsChallengeColorName(value);
+    const cleanValue = toTitleCase(value || "");
+    const nextTheme = getThemeFromColorName(cleanValue);
+    const nextHex = nextTheme?.accent || "";
+
+    if (hasActiveGuestChallenge && teamId === TURF_KINGS_SLOT_ID) {
+      setTurfKingsChallengeColorName(cleanValue);
+      persistSlotChallengeState({ nextTurfKingsColorName: cleanValue });
       return;
     }
 
-    if (guestOpponentEnabled && teamId === GUEST_OPPONENT_SLOT_ID) {
-      setGuestOpponentColorName(value);
+    if (hasActiveGuestChallenge && teamId === GUEST_OPPONENT_SLOT_ID) {
+      setGuestOpponentColorName(cleanValue);
+      persistSlotChallengeState({ nextGuestColorName: cleanValue });
       return;
     }
 
-    setSourceTeams((prev) =>
-      prev.map((t) => (t.id === teamId ? { ...t, teamColorName: value } : t))
+    if (isFiveVFive) {
+      setLocalFiveVFiveTeams((prev) =>
+        normalizeIncomingTeams(prev).map((team) =>
+          team.id === teamId
+            ? {
+                ...team,
+                teamColorName: cleanValue,
+                teamColorHex: nextHex,
+              }
+            : team
+        )
+      );
+      return;
+    }
+
+    setLocalLeagueTeams((prev) =>
+      normalizeIncomingTeams(prev).map((team) =>
+        team.id === teamId
+          ? {
+              ...team,
+              teamColorName: cleanValue,
+              teamColorHex: nextHex,
+            }
+          : team
+      )
     );
   };
 
@@ -2008,9 +2051,7 @@ export function SquadsPage({
         const teamColorName = toTitleCase(t.teamColorName || "");
         const typedHex = normalizeHexColor(t.teamColorHex || "");
         const derivedTheme = getThemeFromColorName(teamColorName);
-        const teamColorHex = isValidHexColor(typedHex)
-          ? typedHex
-          : derivedTheme?.accent || "";
+        const teamColorHex = derivedTheme?.accent || (isValidHexColor(typedHex) ? typedHex : "");
         return { ...t, label, abbrev, teamColorHex, teamColorName };
       });
 
@@ -2018,7 +2059,7 @@ export function SquadsPage({
     const cleanedFiveVFiveTeams = cleanOne(
       hasActiveGuestChallenge
         ? buildCurrentSlotChallengeTeams({ enabled: true })
-        : restoreNormalFriendlyTeamsFromSlots(localFiveVFiveTeams)
+        : localFiveVFiveTeams
     );
 
     const validationError =
@@ -2724,17 +2765,6 @@ export function SquadsPage({
                             }}
                           >
                             ×
-                          </span>
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            title="Move to other team"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handlePreviewMovePlayer(team.id, pid);
-                            }}
-                          >
-                            ↔
                           </span>
                         </div>
                       ) : null}
