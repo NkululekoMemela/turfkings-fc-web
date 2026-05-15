@@ -6776,3 +6776,14 @@ body.squad-preview-is-open.admin-squad-preview nav[aria-label="Bottom navigation
   font-size: 0.72rem !important;
 }
 
+
+/* LandingPage only: allow premium ribbon to sit tight to the top */
+.app-root.app-root--landing {
+  padding-top: 0;
+}
+
+@media (max-width: 768px) {
+  .app-root.app-root--landing {
+    padding-top: 0;
+  }
+}

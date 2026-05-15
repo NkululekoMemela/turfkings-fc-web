@@ -513,6 +513,26 @@ export function LandingPage({
   const modeLipLabel = isThreeTeamLeague ? "LEAGUE MODE" : "FRIENDLY MODE";
   const modeLipDotColor = isThreeTeamLeague ? "#facc15" : "#38bdf8";
 
+  const clubWeeklyPlayTime =
+    activeClub?.weeklyPlayTime ||
+    activeClub?.schedule?.weeklyPlayTime ||
+    activeClub?.schedule?.playTime ||
+    activeClub?.playTime ||
+    "";
+
+  const clubVenueLine =
+    activeClub?.locationDetails?.venueName ||
+    activeClub?.locationDetails?.displayLocation ||
+    activeClub?.location ||
+    activeClub?.venue ||
+    "";
+
+  const clubHeaderInfoLine = [clubWeeklyPlayTime, clubVenueLine]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" • ");
+
+
   let ribbonText = "";
   if (isThreeTeamLeague && teamA && teamB && standbyTeam) {
     ribbonText = `League ${activeGameFormatLabel} • Next: ${teamA.label} vs ${teamB.label}       Standby: ${standbyTeam.label}`;
@@ -1079,8 +1099,8 @@ export function LandingPage({
         </header>
       </div>
 
-      <header className="header" style={{ marginTop: "0.25rem" }}>
-        <p className="subtitle">{resolvedClubSubtitle}</p>
+      <header className="header" style={{ marginTop: "1.15rem" }}>
+        <p className="subtitle">{clubHeaderInfoLine || resolvedClubSubtitle}</p>
 
         <div className="header-top-row" style={{ width: "100%" }}>
           <div className="auth-status" style={{ width: "100%" }}>

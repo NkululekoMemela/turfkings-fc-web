@@ -4817,7 +4817,11 @@ export default function App() {
   };
 
   return (
-    <div className={`app-root ${showBottomNav ? "has-bottom-nav" : ""}`}>
+    <div
+      className={`app-root ${showBottomNav ? "has-bottom-nav" : ""} ${
+        page === PAGE_LANDING ? "app-root--landing" : ""
+      }`}
+    >
       <style>{`
         .tk-staging-badge {
           position: fixed;
