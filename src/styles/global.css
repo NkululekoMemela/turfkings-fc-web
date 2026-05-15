@@ -6656,3 +6656,69 @@
     linear-gradient(135deg, #3b82f6, #2563eb) !important;
 }
 
+
+
+/* ADMIN-ONLY FOCUSED SQUAD EDIT MODE */
+
+body.squad-preview-is-open.admin-squad-preview .bottom-nav,
+body.squad-preview-is-open.admin-squad-preview .bottom-navigation,
+body.squad-preview-is-open.admin-squad-preview .mobile-bottom-nav,
+body.squad-preview-is-open.admin-squad-preview .tk-bottom-nav,
+body.squad-preview-is-open.admin-squad-preview nav[aria-label="Bottom navigation"] {
+  display: none !important;
+}
+
+
+/* REMOVE PLAYER NAME BUBBLES */
+
+.squad-preview-label {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  padding: 0 !important;
+  min-width: 0 !important;
+}
+
+.squad-preview-label strong,
+.squad-preview-label span {
+  text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+}
+
+
+/* SAVE ACTIONS NOW LIVE AT BOTTOM */
+
+.squad-preview-bottom-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.85rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148,163,184,0.14);
+}
+
+.squad-preview-bottom-actions .primary-btn {
+  min-width: 170px;
+}
+
+@media (max-width: 680px) {
+  .squad-preview-bottom-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 80;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(15,23,42,0.16),
+        rgba(15,23,42,0.97)
+      );
+    padding: 0.85rem 0 0;
+    flex-direction: column;
+  }
+
+  .squad-preview-bottom-actions .primary-btn,
+  .squad-preview-bottom-actions .secondary-btn {
+    width: 100%;
+  }
+}
+

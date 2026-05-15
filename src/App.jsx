@@ -1841,6 +1841,7 @@ export default function App() {
   const [entryPageIntent, setEntryPageIntent] = useState(null);
   const [page, setPage] = useState(PAGE_HOME);
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
+  const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
   const [identity, setIdentity] = useState(() => {
     if (typeof window === "undefined") return null;
@@ -4730,6 +4731,13 @@ export default function App() {
   };
 
 
+
+  useEffect(() => {
+    if (page !== PAGE_SQUADS) {
+      setSquadsAdminPreviewOpen(false);
+    }
+  }, [page]);
+
   const pagesWithBottomNav = new Set([
     PAGE_LANDING,
     PAGE_MATCH_SIGNUP,
@@ -4745,7 +4753,11 @@ export default function App() {
     PAGE_VIEW_HIGHLIGHTS,
   ]);
 
-  const showBottomNav = pagesWithBottomNav.has(page);
+  const hideBottomNavForSquadAdmin =
+    page === PAGE_SQUADS && Boolean(isAdmin);
+
+  const showBottomNav =
+    pagesWithBottomNav.has(page) && !hideBottomNavForSquadAdmin;
 
   const handleBottomNavNavigate = (targetPage) => {
     if (!targetPage || targetPage === page) return;
@@ -5579,6 +5591,7 @@ export default function App() {
           activeClubId={activeClubId}
           activeTeamIds={normalizedActiveTeamIds}
           onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
+          onSquadPreviewEditingChange={setSquadsAdminPreviewOpen}
         />
       )}
 

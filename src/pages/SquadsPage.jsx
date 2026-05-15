@@ -711,6 +711,7 @@ function restoreNormalFriendlyTeamsFromSlots(teams = []) {
 /* ---------------- Component ---------------- */
 
 export function SquadsPage({
+  onSquadPreviewEditingChange,
   teams = [],
   fiveVFiveTeams = [],
   onUpdateTeams,
@@ -2488,6 +2489,16 @@ export function SquadsPage({
       year: "numeric",
     });
   }, [nextTeamsheetWeekId]);
+
+
+  useEffect(() => {
+    const adminIsEditingPreview = Boolean(showSquadPreview) && Boolean(isAdmin);
+    onSquadPreviewEditingChange?.(adminIsEditingPreview);
+
+    return () => {
+      onSquadPreviewEditingChange?.(false);
+    };
+  }, [showSquadPreview, isAdmin, onSquadPreviewEditingChange]);
 
   const renderAvailablePaidPlayersCard = () => {
     const remainingPaidPlayers = paidTeamSheetPlayers.filter((p) => !assignedIds.has(p.id));
