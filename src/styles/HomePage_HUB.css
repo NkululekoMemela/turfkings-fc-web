@@ -5793,3 +5793,70 @@
     min-height: 210px !important;
   }
 }
+
+/* Fix footer logo rotation stacking: show only one logo at a time */
+
+.hub-footer-logo-stage {
+  position: relative !important;
+  min-height: 190px !important;
+}
+
+.hub-footer-logo-stage .hub-footer-logo-static {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  display: block !important;
+  opacity: 0;
+  animation: hubFooterLogoFade 90s linear infinite;
+}
+
+.hub-footer-logo-stage .hub-footer-logo-static--one {
+  animation-delay: 0s;
+}
+
+.hub-footer-logo-stage .hub-footer-logo-static--two {
+  animation-delay: 30s;
+}
+
+.hub-footer-logo-stage .hub-footer-logo-static--three {
+  animation-delay: 60s;
+}
+
+@keyframes hubFooterLogoFade {
+  0%, 32% {
+    opacity: 1;
+  }
+
+  33%, 100% {
+    opacity: 0;
+  }
+}
+
+  5%, 30% {
+    opacity: 1;
+  }
+
+  33%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Preserve logo quality during rotation */
+
+.hub-footer-logo-stage {
+  background: #020617 !important;
+  overflow: hidden !important;
+}
+
+.hub-footer-logo-stage .hub-footer-logo-static {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  transform: none !important;
+  filter: none !important;
+  image-rendering: auto !important;
+  backface-visibility: hidden;
+}

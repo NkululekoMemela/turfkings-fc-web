@@ -9,6 +9,8 @@ import HomePage_HUB_ClubCard from "../components/HomePage_HUB/HomePage_HUB_ClubC
 import { getClubFeaturedHighlight } from "../storage/VideoHighlightsRepository.js";
 import HomePage_HUB_SignupModal from "../components/HomePage_HUB/HomePage_HUB_SignupModal.jsx";
 import HomePage_HUB_ClubProfileEditorModal from "../components/HomePage_HUB/HomePage_HUB_ClubProfileEditorModal.jsx";
+import HOME_FOOTER_LOGO_LIGHT from "../assets/branding/logo-main-light.jpeg";
+import HOME_FOOTER_LOGO_DAY from "../assets/branding/logo-main-day.jpeg";
 import HOME_FOOTER_LOGO_DARK from "../assets/branding/logo-main-dark.jpeg";
 
 const HOME_TOP_LOGO = "/HomePage_Hub/5_AsidesNearMe_light_logo.png";
@@ -443,7 +445,17 @@ export default function HomePage_HUB({
       identity?.activeClubId ||
       "";
 
-    return (
+    const footerLogoRotation = useMemo(() => {
+    const logos = [
+      { src: HOME_FOOTER_LOGO_LIGHT, label: "light" },
+      { src: HOME_FOOTER_LOGO_DAY, label: "day" },
+      { src: HOME_FOOTER_LOGO_DARK, label: "night" },
+    ];
+
+    return [...logos].sort(() => Math.random() - 0.5);
+  }, []);
+
+  return (
       String(club?.id || club?.clubId || "").trim().toLowerCase() ===
       String(userClubId || "").trim().toLowerCase()
     );
@@ -700,6 +712,16 @@ export default function HomePage_HUB({
     };
   }, [visibleClubs]);
 
+  const footerLogoRotation = useMemo(() => {
+    const logos = [
+      { src: HOME_FOOTER_LOGO_LIGHT, label: "light" },
+      { src: HOME_FOOTER_LOGO_DAY, label: "day" },
+      { src: HOME_FOOTER_LOGO_DARK, label: "night" },
+    ];
+
+    return [...logos].sort(() => Math.random() - 0.5);
+  }, []);
+
   return (
     <main className="homepage-hub-shell homepage-hub-shell--clubs-first">
       <header className="hub-topbar">
@@ -814,7 +836,17 @@ export default function HomePage_HUB({
             const clubId = club?.id || club?.clubId || club?.slug;
             const featuredVideoUrl = clubFeaturedVideos[clubId] || "";
 
-            return (
+            const footerLogoRotation = useMemo(() => {
+    const logos = [
+      { src: HOME_FOOTER_LOGO_LIGHT, label: "light" },
+      { src: HOME_FOOTER_LOGO_DAY, label: "day" },
+      { src: HOME_FOOTER_LOGO_DARK, label: "night" },
+    ];
+
+    return [...logos].sort(() => Math.random() - 0.5);
+  }, []);
+
+  return (
               <HomePage_HUB_ClubCard
                 key={club.id}
                 club={{
@@ -847,7 +879,17 @@ export default function HomePage_HUB({
             {visibleClubs.slice(0, 8).map((club, index) => {
               const isSelected = selectedMapClub?.id === club.id;
 
-              return (
+              const footerLogoRotation = useMemo(() => {
+    const logos = [
+      { src: HOME_FOOTER_LOGO_LIGHT, label: "light" },
+      { src: HOME_FOOTER_LOGO_DAY, label: "day" },
+      { src: HOME_FOOTER_LOGO_DARK, label: "night" },
+    ];
+
+    return [...logos].sort(() => Math.random() - 0.5);
+  }, []);
+
+  return (
                 <button
                   type="button"
                   key={club.id}
@@ -899,14 +941,17 @@ export default function HomePage_HUB({
 
       <footer className="hub-footer-brand">
         <div className="hub-footer-logo-stage">
-          <img
-            src={HOME_FOOTER_LOGO_DARK}
-            alt="5 Asides Near Me"
-            className="hub-footer-logo-static"
-            onError={(event) => {
-              event.currentTarget.src = HOME_TOP_LOGO;
-            }}
-          />
+          {footerLogoRotation.map((logo, index) => (
+            <img
+              key={logo.label}
+              src={logo.src}
+              alt="5 Asides Near Me"
+              className={`hub-footer-logo-static hub-footer-logo-static--${["one", "two", "three"][index]}`}
+              onError={(event) => {
+                event.currentTarget.src = HOME_TOP_LOGO;
+              }}
+            />
+          ))}
         </div>
 
         <section>
