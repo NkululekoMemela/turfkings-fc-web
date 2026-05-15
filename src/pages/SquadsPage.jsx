@@ -680,10 +680,7 @@ function restoreNormalFriendlyTeamsFromSlots(teams = []) {
       id: TURF_KINGS_SLOT_ID,
       label: "Dark",
       abbrev: "DRK",
-      teamColorName:
-        !dark.teamColorName || dark.teamColorName === "Green"
-          ? "Black"
-          : dark.teamColorName,
+      teamColorName: dark.teamColorName || "Black",
       teamColorHex: dark.teamColorHex || defaults[0].teamColorHex,
       players: Array.isArray(dark.players) ? dark.players : [],
       captainId: dark.captainId || null,
@@ -695,10 +692,7 @@ function restoreNormalFriendlyTeamsFromSlots(teams = []) {
       id: GUEST_OPPONENT_SLOT_ID,
       label: "Light",
       abbrev: "LGT",
-      teamColorName:
-        !light.teamColorName || light.teamColorName === "Gold"
-          ? "White"
-          : light.teamColorName,
+      teamColorName: light.teamColorName || "White",
       teamColorHex: light.teamColorHex || defaults[1].teamColorHex,
       players: Array.isArray(light.players) ? light.players : [],
       captainId: light.captainId || null,
@@ -3623,7 +3617,7 @@ export function SquadsPage({
             {renderSquadShapePreview()}
 
             {previewPickTarget && (
-              <div className="squad-preview-picker">
+              <div className="squad-preview-picker squad-preview-floating-picker">
                 <div>
                   <h4>
                     Pick from This Game&apos;s Paid Teamsheet
