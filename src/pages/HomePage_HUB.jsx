@@ -445,17 +445,7 @@ export default function HomePage_HUB({
       identity?.activeClubId ||
       "";
 
-    const footerLogoRotation = useMemo(() => {
-    const logos = [
-      { src: HOME_FOOTER_LOGO_LIGHT, label: "light" },
-      { src: HOME_FOOTER_LOGO_DAY, label: "day" },
-      { src: HOME_FOOTER_LOGO_DARK, label: "night" },
-    ];
-
-    return [...logos].sort(() => Math.random() - 0.5);
-  }, []);
-
-  return (
+    return (
       String(club?.id || club?.clubId || "").trim().toLowerCase() ===
       String(userClubId || "").trim().toLowerCase()
     );
@@ -836,17 +826,7 @@ export default function HomePage_HUB({
             const clubId = club?.id || club?.clubId || club?.slug;
             const featuredVideoUrl = clubFeaturedVideos[clubId] || "";
 
-            const footerLogoRotation = useMemo(() => {
-    const logos = [
-      { src: HOME_FOOTER_LOGO_LIGHT, label: "light" },
-      { src: HOME_FOOTER_LOGO_DAY, label: "day" },
-      { src: HOME_FOOTER_LOGO_DARK, label: "night" },
-    ];
-
-    return [...logos].sort(() => Math.random() - 0.5);
-  }, []);
-
-  return (
+            return (
               <HomePage_HUB_ClubCard
                 key={club.id}
                 club={{
@@ -879,17 +859,7 @@ export default function HomePage_HUB({
             {visibleClubs.slice(0, 8).map((club, index) => {
               const isSelected = selectedMapClub?.id === club.id;
 
-              const footerLogoRotation = useMemo(() => {
-    const logos = [
-      { src: HOME_FOOTER_LOGO_LIGHT, label: "light" },
-      { src: HOME_FOOTER_LOGO_DAY, label: "day" },
-      { src: HOME_FOOTER_LOGO_DARK, label: "night" },
-    ];
-
-    return [...logos].sort(() => Math.random() - 0.5);
-  }, []);
-
-  return (
+              return (
                 <button
                   type="button"
                   key={club.id}
