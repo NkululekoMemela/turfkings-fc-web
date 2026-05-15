@@ -5598,3 +5598,61 @@
   }
 }
 
+
+/* HOME HUB — show two full club cards comfortably on mobile */
+@media (max-width: 640px) {
+  .hub-club-carousel {
+    grid-auto-columns: calc((100% - 16px) / 2) !important;
+    gap: 8px !important;
+  }
+
+  .hub-register-card,
+  .hub-club-card {
+    min-height: 258px !important;
+  }
+
+  .hub-club-card__cube {
+    min-height: 258px !important;
+  }
+}
+
+
+/* HOME HUB — premium mobile carousel spacing */
+@media (max-width: 640px) {
+  .hub-clubs-section {
+    width: min(100%, 376px) !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    overflow: hidden !important;
+  }
+
+  .hub-club-carousel {
+    grid-auto-columns: calc((100% - 18px) / 2) !important;
+    gap: 12px !important;
+    padding: 8px 4px 20px !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    scroll-padding-left: 4px !important;
+  }
+
+  .hub-register-card,
+  .hub-club-card {
+    min-height: 252px !important;
+    border-radius: 22px !important;
+  }
+
+  .hub-club-card__cube {
+    min-height: 252px !important;
+  }
+
+  .hub-club-card__face {
+    border-radius: 22px !important;
+  }
+
+  .hub-club-card__logo-ring {
+    width: 104px !important;
+    height: 104px !important;
+    border-radius: 28px !important;
+  }
+}
+
