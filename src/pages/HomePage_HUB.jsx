@@ -9,9 +9,9 @@ import HomePage_HUB_ClubCard from "../components/HomePage_HUB/HomePage_HUB_ClubC
 import { getClubFeaturedHighlight } from "../storage/VideoHighlightsRepository.js";
 import HomePage_HUB_SignupModal from "../components/HomePage_HUB/HomePage_HUB_SignupModal.jsx";
 import HomePage_HUB_ClubProfileEditorModal from "../components/HomePage_HUB/HomePage_HUB_ClubProfileEditorModal.jsx";
+import HOME_FOOTER_LOGO_DARK from "../assets/branding/logo-main-dark.jpeg";
 
 const HOME_TOP_LOGO = "/HomePage_Hub/5_AsidesNearMe_light_logo.png";
-const HOME_FOOTER_LOGO = "/HomePage_Hub/5_AsidesNearMe_Transparent.png";
 const HOME_FALLBACK_LOGO = "/HomePage/Logo_icon.jpeg";
 const SUPER_ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
 const CLUB_CACHE_KEY = "fanm_homepage_hub_clubs_v1";
@@ -898,10 +898,11 @@ export default function HomePage_HUB({
       </section>
 
       <footer className="hub-footer-brand">
-        <div>
+        <div className="hub-footer-logo-stage">
           <img
-            src={HOME_FOOTER_LOGO}
+            src={HOME_FOOTER_LOGO_DARK}
             alt="5 Asides Near Me"
+            className="hub-footer-logo-static"
             onError={(event) => {
               event.currentTarget.src = HOME_TOP_LOGO;
             }}
