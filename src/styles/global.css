@@ -6789,3 +6789,84 @@ body.squad-preview-is-open.admin-squad-preview nav[aria-label="Bottom navigation
     padding-top: 0;
   }
 }
+
+/* SQUADS PAGE — place squad action buttons inline, not sticky */
+.squads-page .actions-row {
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  z-index: auto !important;
+  width: auto !important;
+  margin: 0.75rem auto 1rem !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.squads-page .actions-row .secondary-btn,
+.squads-page .actions-row .primary-btn {
+  min-width: 132px;
+}
+
+
+/* SQUADS PAGE — action buttons must sit above Upcoming game teamsheet */
+.squads-page .actions-row {
+  order: 0 !important;
+  position: static !important;
+  margin: 0.75rem auto 1.25rem !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.squads-page .teamsheet-export-wrap:not(.available-paid-card-wrap) {
+  order: 1 !important;
+}
+
+.squads-page .available-paid-card-wrap {
+  order: 2 !important;
+}
+
+.squads-page .squad-pool-surface {
+  order: 3 !important;
+}
+
+
+/* SQUADS PAGE — restore premium action pill */
+.squads-page .actions-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 14px !important;
+
+  width: fit-content !important;
+  margin: 0.75rem auto 1.2rem !important;
+
+  padding: 10px 14px !important;
+
+  border-radius: 999px !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(7, 16, 44, 0.92),
+      rgba(8, 18, 52, 0.84)
+    ) !important;
+
+  border: 1px solid rgba(120, 150, 255, 0.16) !important;
+
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+
+/* remove massive dead space under player pool */
+.squads-page .squad-pool-shell,
+.squads-page .squad-pool-surface {
+  margin-bottom: 1rem !important;
+  padding-bottom: 0 !important;
+}
+
+.squads-page {
+  padding-bottom: 2rem !important;
+}
+

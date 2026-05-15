@@ -2590,7 +2590,7 @@ export function SquadsPage({
   };
 
   const renderTeamsheetCard = () => {
-    const matchTeams = sourceTeams.slice(0, 2);
+    const matchTeams = isLeague ? sourceTeams.slice(0, 3) : sourceTeams.slice(0, 2);
 
     return (
       <div className="teamsheet-export-wrap">
@@ -3492,6 +3492,20 @@ export function SquadsPage({
 
         </div>
 
+        <div className="actions-row">
+          <button
+            className="secondary-btn set-squad-pulse-btn"
+            onClick={() => setShowSquadPreview(true)}
+          >
+            Set Squad
+          </button>
+          {isAdmin && (
+            <button className="primary-btn" onClick={handleSaveClick}>
+              Save Squads
+            </button>
+          )}
+        </div>
+
         {renderTeamsheetCard()}
 
         {renderAvailablePaidPlayersCard()}
@@ -3597,19 +3611,6 @@ export function SquadsPage({
             </>
           )}
 
-        <div className="actions-row">
-          <button
-            className="secondary-btn set-squad-pulse-btn"
-            onClick={() => setShowSquadPreview(true)}
-          >
-            Set Squad
-          </button>
-          {isAdmin && (
-            <button className="primary-btn" onClick={handleSaveClick}>
-              Save Squads
-            </button>
-          )}
-        </div>
       </section>
 
       {isAdmin && showSquadPreview && (
