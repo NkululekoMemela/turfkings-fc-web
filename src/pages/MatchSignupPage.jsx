@@ -4710,7 +4710,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
       userSelect: "none",
     }}
   >
-    Canal Walk
+    Challenge
   </div>
 ) : null}
 
@@ -4718,7 +4718,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                   {isMobile ? week.shortLabel : week.label}
                 </div>
                 <div className={`matrix-week-status ${week.status.key}`}>
-                  {week.isChallenge ? "Canal Walk" : isMobile ? week.status.shortLabel : week.status.label}
+                  {week.isChallenge ? "Challenge" : isMobile ? week.status.shortLabel : week.status.label}
                 </div>
                 <div className="matrix-week-count">{week.count} signed</div>
               </div>

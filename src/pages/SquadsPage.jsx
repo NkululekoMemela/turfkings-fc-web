@@ -9,6 +9,8 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  where,
   serverTimestamp,
   writeBatch,
   query,
@@ -16,7 +18,12 @@ import {
   limit,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
-import { getPlayersCollection, getPlayerDoc } from "../core/clubFirestorePaths.js";
+import {
+  getPlayersCollection,
+  getPlayerDoc,
+  getPendingSignupsCollection,
+  getMatchSignupsCollection,
+} from "../core/clubFirestorePaths.js";
 import {
   MATCH_MODE,
   GAME_FORMAT,
@@ -29,7 +36,7 @@ const MASTER_CODE = "3333"; // Nkululeko only
 const UNSEEDED_ID = "__unseeded__";
 const GUEST_OPPONENT_ID = "guest_opponent";
 const TURF_KINGS_CHALLENGE_ID = "turf_kings_challenge";
-const DEFAULT_GUEST_OPPONENT_NAME = "Canal Walk";
+const DEFAULT_GUEST_OPPONENT_NAME = "Opponent";
 const TURF_KINGS_SLOT_ID = "dark";
 const GUEST_OPPONENT_SLOT_ID = "light";
 const TURF_KINGS_LOGO_URL = `${import.meta.env.BASE_URL}turfkings-share.jpeg`;
@@ -393,6 +400,16 @@ function getTeamTheme(team = {}) {
   );
   const explicitName = toTitleCase(team.teamColorName || team.colorName || "");
 
+  // UI default: keep the premium green/gold look for normal Black vs White games.
+  // Wear colour remains Black/White on the teamsheet.
+  if (team.id === TURF_KINGS_SLOT_ID && (!explicitName || explicitName === "Black")) {
+    return themeFromAccent("#1E3A8A", "Black", "#BFDBFE");
+  }
+
+  if (team.id === GUEST_OPPONENT_SLOT_ID && (!explicitName || explicitName === "White")) {
+    return themeFromAccent("#E5E7EB", "White", "#F8FAFC");
+  }
+
   const nameTheme = getThemeFromColorName(explicitName);
   if (nameTheme) {
     return {
@@ -514,7 +531,7 @@ function isTurfKingsChallengeTeam(team) {
   return Boolean(team?.isTurfKingsChallengeTeam || team?.id === TURF_KINGS_CHALLENGE_ID);
 }
 
-function isGuestOpponentTeam(team) {
+function isCurrentGuestOpponentTeam(team) {
   return Boolean(team?.isGuestOpponent || team?.id === GUEST_OPPONENT_ID);
 }
 
@@ -527,7 +544,7 @@ function ensureTwoBaseFriendlyTeams(inputTeams = [], guestTeam = null) {
   const candidates = normalizeIncomingTeams([
     ...(inputTeams || []),
     ...fromGuestSnapshot,
-  ]).filter((team) => !isGuestOpponentTeam(team));
+  ]).filter((team) => !isCurrentGuestOpponentTeam(team));
 
   const byId = new Map(candidates.map((team) => [team.id, team]));
 
@@ -562,7 +579,7 @@ function buildSlotBasedChallengeTeams({
   guestColorName = "Gold",
   challengeDate = "",
   challengeKickoff = "18:30",
-  challengeVenue = "Canal Walk 5s Arena",
+  challengeVenue = "Venue to be confirmed",
 } = {}) {
   const defaults = buildDefaultFiveVFiveTeams();
   const normalizedBase = normalizeIncomingTeams(baseTeams);
@@ -624,24 +641,68 @@ function buildSlotBasedChallengeTeams({
   return [turfTeam, guestTeam];
 }
 
+function stripNormalFriendlyFlags(team = {}) {
+  const {
+    guestChallengeActive,
+    isGuestOpponent,
+    temporaryGuestOpponent,
+    temporaryChallengeTeam,
+    isTurfKingsChallengeTeam,
+    challengeRole,
+    originalFriendlySlotId,
+    challengeDate,
+    challengeKickoff,
+    challengeVenue,
+    disabledFriendlyTeamId,
+    disabledFriendlyTeamSnapshot,
+    ...safe
+  } = team || {};
+
+  return safe;
+}
+
 function restoreNormalFriendlyTeamsFromSlots(teams = []) {
   const defaults = buildDefaultFiveVFiveTeams();
   const normalized = normalizeIncomingTeams(teams);
-  const dark = normalized.find((team) => team.id === TURF_KINGS_SLOT_ID);
-  const light = normalized.find((team) => team.id === GUEST_OPPONENT_SLOT_ID);
+
+  const dark = stripNormalFriendlyFlags(
+    normalized.find((team) => team.id === TURF_KINGS_SLOT_ID) || {}
+  );
+
+  const light = stripNormalFriendlyFlags(
+    normalized.find((team) => team.id === GUEST_OPPONENT_SLOT_ID) || {}
+  );
 
   return [
     {
       ...defaults[0],
-      players: Array.isArray(dark?.players) ? dark.players : [],
-      captainId: dark?.captainId || null,
-      captain: dark?.captain || "",
+      ...dark,
+      id: TURF_KINGS_SLOT_ID,
+      label: "Dark",
+      abbrev: "DRK",
+      teamColorName:
+        !dark.teamColorName || dark.teamColorName === "Green"
+          ? "Black"
+          : dark.teamColorName,
+      teamColorHex: dark.teamColorHex || defaults[0].teamColorHex,
+      players: Array.isArray(dark.players) ? dark.players : [],
+      captainId: dark.captainId || null,
+      captain: dark.captain || "",
     },
     {
       ...defaults[1],
-      players: [],
-      captainId: null,
-      captain: "",
+      ...light,
+      id: GUEST_OPPONENT_SLOT_ID,
+      label: "Light",
+      abbrev: "LGT",
+      teamColorName:
+        !light.teamColorName || light.teamColorName === "Gold"
+          ? "White"
+          : light.teamColorName,
+      teamColorHex: light.teamColorHex || defaults[1].teamColorHex,
+      players: Array.isArray(light.players) ? light.players : [],
+      captainId: light.captainId || null,
+      captain: light.captain || "",
     },
   ];
 }
@@ -710,13 +771,17 @@ export function SquadsPage({
   const [pendingNames, setPendingNames] = useState({});
   const [addErrors, setAddErrors] = useState({});
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showSquadPreview, setShowSquadPreview] = useState(() => Boolean(isAdmin));
+  const [previewPickTarget, setPreviewPickTarget] = useState(null);
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
   const [showUnseededPlayers, setShowUnseededPlayers] = useState(false);
   const [pendingDeletePlayerId, setPendingDeletePlayerId] = useState("");
   const [deletePlayerError, setDeletePlayerError] = useState("");
+  const [deleteCode, setDeleteCode] = useState("");
   const [acceptedChallengeCandidates, setAcceptedChallengeCandidates] = useState([]);
   const [acceptedChallengesError, setAcceptedChallengesError] = useState("");
+  const [signupRecords, setSignupRecords] = useState([]);
 
   const [activeChallengeFixture, setActiveChallengeFixture] = useState(null);
 
@@ -777,7 +842,7 @@ export function SquadsPage({
     existingGuestTeam?.challengeKickoff || "18:30"
   );
   const [challengeVenue, setChallengeVenue] = useState(() =>
-    existingGuestTeam?.challengeVenue || "Canal Walk 5s Arena"
+    existingGuestTeam?.challengeVenue || "Venue to be confirmed"
   );
   const [turfKingsChallengePlayers, setTurfKingsChallengePlayers] = useState(() =>
     Array.isArray(existingTurfKingsChallengeTeam?.players)
@@ -788,6 +853,7 @@ export function SquadsPage({
   const [savingCardId, setSavingCardId] = useState("");
   const cardRefs = useRef({});
   const challengeAdvertRef = useRef(null);
+  const teamsheetCardRef = useRef(null);
   const longPressTimersRef = useRef({});
 
   useEffect(() => {
@@ -828,7 +894,7 @@ export function SquadsPage({
       setGuestOpponentColorName(guest.teamColorName || "Gold");
       setChallengeDate(guest.challengeDate || todayChallengeDateText());
       setChallengeKickoff(guest.challengeKickoff || "18:30");
-      setChallengeVenue(guest.challengeVenue || "Canal Walk 5s Arena");
+      setChallengeVenue(guest.challengeVenue || "Venue to be confirmed");
     }
 
     if (challengeIsActive && turf) {
@@ -997,6 +1063,148 @@ export function SquadsPage({
     return bestShortDisplayFromPlayer({ ...p, id: p.id });
   };
 
+
+  useEffect(() => {
+    if (!activeClubId) {
+      setSignupRecords([]);
+      return undefined;
+    }
+
+    let pendingDocs = [];
+    let paidDocs = [];
+
+    const rebuild = () => {
+      const byDoc = new Map();
+
+      const addDocs = (items, source) => {
+        items.forEach((item) => {
+          const previous = byDoc.get(item.docId) || {};
+          byDoc.set(item.docId, {
+            ...previous,
+            ...(item.data || {}),
+            docId: item.docId,
+            sourceCollections: Array.from(
+              new Set([...(previous.sourceCollections || []), source])
+            ),
+          });
+        });
+      };
+
+      addDocs(pendingDocs, "pendingSignups");
+      addDocs(paidDocs, "matchSignups");
+
+      setSignupRecords(Array.from(byDoc.values()));
+    };
+
+    const unsubPending = onSnapshot(
+      getPendingSignupsCollection(db, activeClubId),
+      (snap) => {
+        pendingDocs = snap.docs.map((d) => ({
+          docId: d.id,
+          data: d.data() || {},
+        }));
+        rebuild();
+      },
+      (err) => console.error("[Squads] Failed to read pending signups:", err)
+    );
+
+    const unsubPaid = onSnapshot(
+      getMatchSignupsCollection(db, activeClubId),
+      (snap) => {
+        paidDocs = snap.docs.map((d) => ({
+          docId: d.id,
+          data: d.data() || {},
+        }));
+        rebuild();
+      },
+      (err) => console.error("[Squads] Failed to read match signups:", err)
+    );
+
+    return () => {
+      unsubPending();
+      unsubPaid();
+    };
+  }, [activeClubId]);
+
+  const nextTeamsheetWeekId = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const ids = new Set();
+
+    signupRecords.forEach((record) => {
+      [
+        ...(Array.isArray(record.selectedWeeks) ? record.selectedWeeks : []),
+        ...(Array.isArray(record.paidWeeks) ? record.paidWeeks : []),
+        ...(Array.isArray(record.primaryPaidWeeks) ? record.primaryPaidWeeks : []),
+      ].forEach((weekId) => {
+        const text = String(weekId || "").trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(text)) ids.add(text);
+      });
+    });
+
+    return (
+      Array.from(ids)
+        .filter((weekId) => {
+          const d = new Date(`${weekId}T12:00:00`);
+          return !Number.isNaN(d.getTime()) && d >= today;
+        })
+        .sort()[0] || ""
+    );
+  }, [signupRecords]);
+
+  const paidTeamSheetPlayers = useMemo(() => {
+    if (!nextTeamsheetWeekId) return [];
+
+    const byId = new Map();
+
+    signupRecords.forEach((record) => {
+      const paidWeeks = Array.from(
+        new Set([
+          ...(Array.isArray(record.paidWeeks) ? record.paidWeeks : []),
+          ...(Array.isArray(record.primaryPaidWeeks) ? record.primaryPaidWeeks : []),
+        ])
+      );
+
+      if (!paidWeeks.includes(nextTeamsheetWeekId)) return;
+
+      const playerId = String(
+        record.beneficiaryPlayerId ||
+          record.playerId ||
+          record.userId ||
+          record.docId ||
+          ""
+      ).trim();
+
+      const playerName = toTitleCase(
+        record.beneficiaryName ||
+          record.playerName ||
+          record.displayName ||
+          record.shortName ||
+          playerId
+      );
+
+      const resolvedId =
+        playersById.has(playerId)
+          ? playerId
+          : resolvePlayerIdFromString(allPlayers, playerName) || playerId;
+
+      if (!resolvedId) return;
+
+      byId.set(resolvedId, {
+        id: resolvedId,
+        fullName: playerName || displayNameOf(resolvedId),
+        paymentStatus: "paid",
+        weekId: nextTeamsheetWeekId,
+      });
+    });
+
+    return Array.from(byId.values()).sort((a, b) =>
+      String(a.fullName || "").localeCompare(String(b.fullName || ""))
+    );
+  }, [signupRecords, nextTeamsheetWeekId, playersById, allPlayers]);
+
+
   const activePlayers = useMemo(
     () => allPlayers.filter((p) => (p.status || "active") === "active"),
     [allPlayers]
@@ -1102,8 +1310,12 @@ export function SquadsPage({
     challengeVenue,
   ]);
 
+  const hasActiveGuestChallenge = Boolean(
+    isFiveVFive && guestOpponentEnabled && activeChallengeFixture
+  );
+
   const sourceTeams = useMemo(() => {
-    if (isFiveVFive && guestOpponentEnabled) {
+    if (hasActiveGuestChallenge) {
       return [turfKingsChallengeTeam, guestOpponentTeam];
     }
 
@@ -1118,7 +1330,7 @@ export function SquadsPage({
   ]);
 
   const setSourceTeams = (updater) => {
-    if (isFiveVFive && guestOpponentEnabled) {
+    if (hasActiveGuestChallenge) {
       const current = [turfKingsChallengeTeam, guestOpponentTeam];
       const nextTeams = typeof updater === "function" ? updater(current) : updater;
       const nextTurf = (nextTeams || []).find((team) => team.id === TURF_KINGS_SLOT_ID);
@@ -1173,7 +1385,7 @@ export function SquadsPage({
     sourceTeams.forEach((t) => {
       (t.players || []).forEach((pid) => {
         if (!playersById.has(pid)) return;
-        list.push(`${pid} | ${displayNameOf(pid)}`);
+        list.push(`${pid} | ${(displayShortOf(pid) || '').split(' ')[0]}`);
       });
     });
     return Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
@@ -1534,7 +1746,7 @@ export function SquadsPage({
 
     const targetTeam = sourceTeams.find((team) => team.id === id);
 
-    if (targetTeam && isGuestOpponentTeam(targetTeam)) {
+    if (targetTeam && isCurrentGuestOpponentTeam(targetTeam)) {
       const selectedId = parseChoiceToPlayerId(trimmed);
       const selectedName = playersById.has(selectedId)
         ? displayNameOf(selectedId)
@@ -1631,7 +1843,7 @@ export function SquadsPage({
     if (!canEdit) return;
 
     const targetTeam = sourceTeams.find((team) => team.id === teamId);
-    if (targetTeam && isGuestOpponentTeam(targetTeam)) {
+    if (targetTeam && isCurrentGuestOpponentTeam(targetTeam)) {
       setGuestOpponentPlayers((prev) =>
         (prev || []).filter(
           (name) => toTitleCase(name).toLowerCase() !== toTitleCase(playerIdOrLegacy).toLowerCase()
@@ -1668,27 +1880,51 @@ export function SquadsPage({
     }
   };
 
+  const currentViewerPlayerIds = useMemo(() => {
+    const values = [
+      identity?.playerId,
+      identity?.memberId,
+      identity?.id,
+      identity?.uid,
+      identity?.shortName,
+      identity?.fullName,
+      identity?.displayName,
+      identity?.name,
+      identity?.email,
+    ]
+      .map((v) => String(v || "").trim().toLowerCase())
+      .filter(Boolean);
+
+    const ids = new Set(values);
+
+    allPlayers.forEach((player) => {
+      const playerStrings = buildIdentityStrings({ ...player, id: player.id });
+      if (playerStrings.some((value) => values.includes(value))) {
+        ids.add(String(player.id || "").trim().toLowerCase());
+      }
+    });
+
+    return ids;
+  }, [identity, allPlayers]);
+
   const handleRequestRemoveUnseeded = (playerId) => {
     if (!canEdit) return;
     if (!playersById.has(playerId)) return;
 
-    const name = displayNameOf(playerId);
-    const ok =
-      typeof window !== "undefined"
-        ? window.confirm(
-            `Remove ${name} from this club database?\nThey will disappear from the unseeded pool.`
-          )
-        : true;
-    if (!ok) return;
-
+    if (currentViewerPlayerIds.has(String(playerId || "").trim().toLowerCase())) {
+      window.alert("You cannot terminate your own membership from this page.");
+      return;
+    }
 
     setPendingDeletePlayerId(playerId);
     setDeletePlayerError("");
+    setDeleteCode("");
   };
 
   const handleCancelDeletePlayer = () => {
     setPendingDeletePlayerId("");
     setDeletePlayerError("");
+    setDeleteCode("");
   };
 
   const handleConfirmDeletePlayer = async () => {
@@ -1696,14 +1932,39 @@ export function SquadsPage({
     if (!pendingDeletePlayerId) return;
     if (!playersById.has(pendingDeletePlayerId)) return;
 
+    if (currentViewerPlayerIds.has(String(pendingDeletePlayerId || "").trim().toLowerCase())) {
+      setDeletePlayerError("You cannot terminate your own membership from this page.");
+      return;
+    }
+
+    if (deleteCode.trim() !== MASTER_CODE) {
+      setDeletePlayerError("Invalid admin code. Membership was not terminated.");
+      return;
+    }
 
     try {
-      await deleteDoc(getPlayerDoc(db, pendingDeletePlayerId, activeClubId));
+      const batch = writeBatch(db);
+
+      batch.delete(getPlayerDoc(db, pendingDeletePlayerId, activeClubId));
+      batch.delete(doc(db, "clubs", activeClubId, "members", pendingDeletePlayerId));
+
+      const membersByPlayerId = await getDocs(
+        query(
+          collection(db, "clubs", activeClubId, "members"),
+          where("playerId", "==", pendingDeletePlayerId)
+        )
+      );
+
+      membersByPlayerId.forEach((memberDoc) => {
+        batch.delete(memberDoc.ref);
+      });
+
+      await batch.commit();
       handleCancelDeletePlayer();
     } catch (err) {
-      console.error("[Squads] Error deleting player from DB:", err);
+      console.error("[Squads] Error terminating membership:", err);
       setDeletePlayerError(
-        "Could not delete this player from the database. Please try again."
+        "Could not terminate this membership. Please try again."
       );
     }
   };
@@ -1760,7 +2021,7 @@ export function SquadsPage({
 
     const cleanedLeagueTeams = cleanOne(localLeagueTeams);
     const cleanedFiveVFiveTeams = cleanOne(
-      isFiveVFive && guestOpponentEnabled
+      hasActiveGuestChallenge
         ? buildCurrentSlotChallengeTeams({ enabled: true })
         : restoreNormalFriendlyTeamsFromSlots(localFiveVFiveTeams)
     );
@@ -1844,6 +2105,9 @@ export function SquadsPage({
         cacheBust: true,
         pixelRatio: 3,
         backgroundColor: "#071226",
+        imagePlaceholder:
+          "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+        skipFonts: true,
       });
 
       const link = document.createElement("a");
@@ -1941,9 +2205,574 @@ export function SquadsPage({
     return unique;
   };
 
+  const assignRegisteredPlayerToTeam = (playerId, targetTeamId) => {
+    if (!canEdit || !playersById.has(playerId)) return;
+
+    setSourceTeams((prev) =>
+      prev.map((team) => {
+        const withoutPlayer = (team.players || []).filter((pid) => pid !== playerId);
+        const isTarget = team.id === targetTeamId;
+        const nextPlayers = isTarget ? [...withoutPlayer, playerId] : withoutPlayer;
+
+        return {
+          ...team,
+          players: nextPlayers,
+          captainId: team.captainId === playerId && !isTarget ? null : team.captainId,
+        };
+      })
+    );
+  };
+
+  const moveRegisteredPlayerToUnseeded = (playerId) => {
+    if (!canEdit || !playersById.has(playerId)) return;
+
+    setSourceTeams((prev) =>
+      prev.map((team) => ({
+        ...team,
+        players: (team.players || []).filter((pid) => pid !== playerId),
+        captainId: team.captainId === playerId ? null : team.captainId,
+      }))
+    );
+  };
+
+  const setRegisteredPlayerAsCaptain = (teamId, playerId) => {
+    if (!canEdit || !playersById.has(playerId)) return;
+
+    setSourceTeams((prev) =>
+      prev.map((team) =>
+        team.id === teamId
+          ? {
+              ...team,
+              captainId: playerId,
+              captain: displayShortOf(playerId),
+            }
+          : team
+      )
+    );
+  };
+
+
+  const getSquadPreviewSlots = () => {
+    if (playersPerSide === 7) {
+      return [
+        { label: "GK", x: 50, y: 88 },
+        { label: "DEF", x: 25, y: 68 },
+        { label: "DEF", x: 50, y: 72 },
+        { label: "DEF", x: 75, y: 68 },
+        { label: "MID", x: 38, y: 43 },
+        { label: "MID", x: 62, y: 43 },
+        { label: "ST", x: 50, y: 20 },
+      ];
+    }
+
+    if (playersPerSide === 6) {
+      return [
+        { label: "GK", x: 50, y: 88 },
+        { label: "DEF", x: 34, y: 68 },
+        { label: "DEF", x: 66, y: 68 },
+        { label: "MID", x: 35, y: 43 },
+        { label: "MID", x: 65, y: 43 },
+        { label: "ST", x: 50, y: 20 },
+      ];
+    }
+
+    return [
+      { label: "GK", x: 50, y: 88 },
+      { label: "DEF", x: 34, y: 65 },
+      { label: "DEF", x: 66, y: 65 },
+      { label: "MID", x: 50, y: 42 },
+      { label: "ST", x: 50, y: 20 },
+    ];
+  };
+
+
+  const handlePreviewSlotClick = (teamId, slotIndex) => {
+    if (!canEdit) return;
+    setPreviewPickTarget({ teamId, slotIndex });
+  };
+
+  const handlePreviewPickPlayer = (playerId) => {
+    if (!canEdit || !previewPickTarget || !playersById.has(playerId)) return;
+
+    const { teamId, slotIndex } = previewPickTarget;
+
+    setSourceTeams((prev) =>
+      prev.map((team) => {
+        const withoutPicked = (team.players || []).filter((pid) => pid !== playerId);
+
+        if (team.id !== teamId) {
+          return {
+            ...team,
+            players: withoutPicked,
+            captainId: team.captainId === playerId ? null : team.captainId,
+          };
+        }
+
+        const nextPlayers = [...withoutPicked];
+        nextPlayers[slotIndex] = playerId;
+
+        return {
+          ...team,
+          players: nextPlayers.filter(Boolean),
+        };
+      })
+    );
+
+    setPreviewPickTarget(null);
+  };
+
+
+  const handlePreviewRemovePlayer = (teamId, playerId) => {
+    if (!canEdit || !playersById.has(playerId)) return;
+
+    setSourceTeams((prev) =>
+      prev.map((team) =>
+        team.id === teamId
+          ? {
+              ...team,
+              players: (team.players || []).filter((pid) => pid !== playerId),
+              captainId: team.captainId === playerId ? null : team.captainId,
+            }
+          : team
+      )
+    );
+  };
+
+  const handlePreviewMovePlayer = (fromTeamId, playerId) => {
+    if (!canEdit || !playersById.has(playerId)) return;
+
+    setSourceTeams((prev) => {
+      const targetTeam = prev.find((team) => team.id !== fromTeamId && !isCurrentGuestOpponentTeam(team));
+      if (!targetTeam) return prev;
+
+      return prev.map((team) => {
+        const withoutPlayer = (team.players || []).filter((pid) => pid !== playerId);
+
+        if (team.id === targetTeam.id) {
+          return {
+            ...team,
+            players: [...withoutPlayer, playerId],
+          };
+        }
+
+        return {
+          ...team,
+          players: withoutPlayer,
+          captainId: team.captainId === playerId ? null : team.captainId,
+        };
+      });
+    });
+  };
+
+
+
+  const isActiveGuestChallenge = Boolean(guestOpponentEnabled && activeChallengeFixture);
+
+  const isCurrentGuestOpponentTeam = (team = {}) => {
+    if (!isActiveGuestChallenge) return false;
+    return Boolean(team?.isGuestOpponent || team?.id === GUEST_OPPONENT_SLOT_ID);
+  };
+
+  const getPreviewTeamName = (team) => {
+    const challengeIsActive = Boolean(guestOpponentEnabled || activeChallengeFixture);
+
+    if (challengeIsActive && team.id === TURF_KINGS_SLOT_ID) {
+      return resolvedHomeClubName || "Home Club";
+    }
+
+    if (challengeIsActive && team.id === GUEST_OPPONENT_SLOT_ID) {
+      return resolvedAwayClubName || "Opponent Club";
+    }
+
+    if (team.id === TURF_KINGS_SLOT_ID) return "Dark";
+    if (team.id === GUEST_OPPONENT_SLOT_ID) return "Light";
+
+    return team.label || "Team";
+  };
+
+
+  const buildShareableTeamsheetText = () => {
+    const lines = ["5 Asides Near Me - Team Sheet", ""];
+
+    sourceTeams.forEach((team) => {
+      const name = getPreviewTeamName(team);
+      const color = team.teamColorName || team.colorName || "";
+      lines.push(`${name}${color ? ` (${color})` : ""}`);
+      lines.push("-".repeat(Math.max(10, name.length)));
+
+      const players = Array.isArray(team.players) ? team.players : [];
+      if (!players.length) {
+        lines.push("No players selected");
+      } else {
+        players.forEach((pid, index) => {
+          lines.push(`${index + 1}. ${displayNameOf(pid)}`);
+        });
+      }
+
+      lines.push("");
+    });
+
+    return lines.join("\\n");
+  };
+
+  const handleDownloadTeamsheet = () => {
+    const text = buildShareableTeamsheetText();
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "team-sheet.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+
+  const handleSaveTeamsheetCardAsImage = async () => {
+    const node = teamsheetCardRef.current;
+    if (!node) return;
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 3,
+        backgroundColor: "#071226",
+      });
+
+      const link = document.createElement("a");
+      link.download = `teamsheet-${nextTeamsheetWeekId || "upcoming-game"}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error("[Squads] Failed to save teamsheet image:", err);
+      window.alert("Could not save the teamsheet card as an image.");
+    }
+  };
+
+
+
+  const handleSaveAvailablePaidPlayersCardAsImage = async () => {
+    const node = cardRefs.current["available-paid-players-card"];
+    if (!node) return;
+
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 3,
+        backgroundColor: "#071226",
+        imagePlaceholder:
+          "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+        skipFonts: true,
+      });
+
+      const link = document.createElement("a");
+      link.download = `available-paid-players-${nextTeamsheetWeekId || "upcoming-game"}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error("[Squads] Failed to save available players card:", err);
+      window.alert("Could not save the available paid players card as an image.");
+    }
+  };
+
+
+  const teamsheetDisplayDate = useMemo(() => {
+    if (!nextTeamsheetWeekId) return "Upcoming game";
+
+    const d = new Date(`${nextTeamsheetWeekId}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return nextTeamsheetWeekId;
+
+    return d.toLocaleDateString("en-ZA", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }, [nextTeamsheetWeekId]);
+
+  const renderAvailablePaidPlayersCard = () => {
+    const remainingPaidPlayers = paidTeamSheetPlayers.filter((p) => !assignedIds.has(p.id));
+
+    if (!remainingPaidPlayers.length) return null;
+
+    return (
+      <div className="teamsheet-export-wrap available-paid-card-wrap">
+        <div className="teamsheet-export-actions">
+          <div>
+            <h3>Available paid players</h3>
+            <p className="muted small">Paid players still available for team placement.</p>
+          </div>
+
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={handleSaveAvailablePaidPlayersCardAsImage}
+          >
+            Download Paid & Booked List
+          </button>
+        </div>
+
+        <div
+          ref={(el) => {
+            cardRefs.current["available-paid-players-card"] = el;
+          }}
+          className="teamsheet-card available-paid-card"
+        >
+          <div className="teamsheet-card-head">
+            <div className="teamsheet-card-club">
+              <img src={activeClub?.logoUrl || TURF_KINGS_LOGO_URL} alt="" />
+              <div>
+                <span>{activeClubName || "Club"}</span>
+                <small>Available paid players</small>
+              </div>
+            </div>
+
+            <strong>{teamsheetDisplayDate}</strong>
+          </div>
+
+          <ol className="available-paid-card-list">
+            {remainingPaidPlayers.length ? (
+              remainingPaidPlayers.map((p) => (
+                <li key={`available-paid-${p.id}`}>{displayNameOf(p.id)}</li>
+              ))
+            ) : (
+              <li>All paid players have been placed into teams.</li>
+            )}
+          </ol>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTeamsheetCard = () => {
+    const matchTeams = sourceTeams.slice(0, 2);
+
+    return (
+      <div className="teamsheet-export-wrap">
+        <div className="teamsheet-export-actions">
+          <div>
+            <h3>Upcoming game teamsheet</h3>
+            <p className="muted small">
+              Share this with the group after saving squads.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={handleSaveTeamsheetCardAsImage}
+          >
+            Download team-sheet
+          </button>
+        </div>
+
+        <div ref={teamsheetCardRef} className="teamsheet-card">
+          <div className="teamsheet-card-head">
+            <div className="teamsheet-card-club">
+              <img
+                src={activeClub?.logoUrl || TURF_KINGS_LOGO_URL}
+                alt=""
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                }}
+              />
+              <div>
+                <span>{activeClubName || "Club"}</span>
+                <small>5 Asides Near Me</small>
+              </div>
+            </div>
+
+            <strong>{teamsheetDisplayDate}</strong>
+          </div>
+
+          <div className="teamsheet-card-grid">
+            {matchTeams.map((team) => {
+              const theme = getTeamTheme(team);
+              const players = Array.isArray(team.players) ? team.players : [];
+
+              return (
+                <div
+                  key={`teamsheet-card-${team.id}`}
+                  className="teamsheet-card-team"
+                  style={{
+                    "--team-accent": theme.accent,
+                    "--team-glow": theme.glow,
+                  }}
+                >
+                  <div className="teamsheet-card-team-head">
+                    <div>
+                      <h4>{getPreviewTeamName(team)}</h4>
+                      <p>
+                        Wear: <strong>{team.teamColorName || theme.colorName || "Team colour"}</strong>
+                      </p>
+                    </div>
+                    <span>{team.abbrev || ""}</span>
+                  </div>
+
+                  <ol>
+                    {players.length ? (
+                      players.map((pid) => (
+                        <li key={`teamsheet-${team.id}-${pid}`}>
+                          {displayNameOf(pid)}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="muted">No players selected</li>
+                    )}
+                  </ol>
+                </div>
+              );
+            })}
+          </div>        </div>
+      </div>
+    );
+  };
+
+  const renderSquadShapePreview = () => {
+    const slots = getSquadPreviewSlots();
+
+    return (
+      <div className="squad-preview-grid">
+        {sourceTeams.map((team) => {
+          const theme = getTeamTheme(team);
+          const players = Array.isArray(team.players) ? team.players : [];
+
+          return (
+            <div
+              key={`preview-${team.id}`}
+              className="squad-preview-pitch-card"
+              style={{
+                "--team-accent": theme.accent,
+                "--team-accent-soft": theme.accentSoft,
+                "--team-glow": theme.glow,
+              }}
+            >
+              <div className="squad-preview-team-head">
+                <span className="squad-preview-team-dot" />
+                <div>
+                  <h4>{getPreviewTeamName(team)}</h4>
+                  <p>{players.length}/{playersPerSide} selected</p>
+
+                  {canEdit ? (
+                    <select
+                      className="squad-preview-colour-select"
+                      value={team.teamColorName || (team.id === TURF_KINGS_SLOT_ID ? "Black" : "White")}
+                      onChange={(event) => handleTeamColorNameChange(team.id, event.target.value)}
+                      title="Shirt colour to wear"
+                    >
+                      <option value="Black">⚫ Wear black</option>
+                      <option value="White">⚪ Wear white</option>
+                      <option value="Red">🔴 Wear red</option>
+                      <option value="Blue">🔵 Wear blue</option>
+                      <option value="Green">🟢 Wear green</option>
+                      <option value="Yellow">🟡 Wear yellow</option>
+                    </select>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="squad-preview-mini-pitch">
+                <div className="squad-preview-centre-circle" />
+                <div className="squad-preview-half-line" />
+                <div className="squad-preview-box top" />
+                <div className="squad-preview-box bottom" />
+
+                {slots.map((slot, index) => {
+                  const pid = players[index];
+                  const label = pid
+                    ? isCurrentGuestOpponentTeam(team)
+                      ? toTitleCase(pid)
+                      : (displayShortOf(pid) || '').split(' ')[0]
+                    : "Empty";
+
+                  const isCaptain =
+                    pid &&
+                    team.captainId &&
+                    playersById.has(team.captainId) &&
+                    team.captainId === pid;
+
+                  return (
+                    <button
+                      type="button"
+                      key={`preview-slot-${team.id}-${index}`}
+                      className={`squad-preview-position ${pid ? "has-player" : "is-empty"}`}
+                      style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
+                      onClick={() => handlePreviewSlotClick(team.id, index)}
+                      title={canEdit ? "Tap to assign player" : "Read-only preview"}
+                    >
+                      <div className="squad-preview-shirt">
+                        {pid ? String(label || "?").charAt(0).toUpperCase() : "+"}
+                      </div>
+                      <div className="squad-preview-label">
+                        <strong>{label}{isCaptain ? " ⭐" : ""}</strong>
+                        <span>{slot.label}</span>
+                      </div>
+
+                      {canEdit && pid ? (
+                        <div className="squad-preview-mini-actions">
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Remove player"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handlePreviewRemovePlayer(team.id, pid);
+                            }}
+                          >
+                            ×
+                          </span>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Move to other team"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handlePreviewMovePlayer(team.id, pid);
+                            }}
+                          >
+                            ↔
+                          </span>
+                        </div>
+                      ) : null}
+                    </button>
+                  );
+                })}
+
+                {players.length > slots.length && (
+                  <div className="squad-preview-extra-list">
+                    
+                    {players.slice(slots.length).map((pid, extraIndex) => (
+                      <button
+                        type="button"
+                        key={`preview-extra-${team.id}-${pid}-${extraIndex}`}
+                        className="squad-preview-extra-player"
+                        onClick={() => handlePreviewSlotClick(team.id, slots.length + extraIndex)}
+                      >
+                        {String(displayShortOf(pid) || displayNameOf(pid) || '').split(' ')[0]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {canEdit && players.length >= playersPerSide && (
+                  <button
+                    type="button"
+                    className="squad-preview-add-extra-btn"
+                    onClick={() => handlePreviewSlotClick(team.id, players.length)}
+                  >
+                    + Extra\nplayer
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderCardShell = (cardId, label, theme, children) => (
     <div
-      className={`squad-surface ${savingCardId === cardId ? "saving" : ""}`}
+      className={`squad-surface ${cardId.includes(UNSEEDED_ID) ? "squad-pool-surface" : "squad-team-surface"} ${savingCardId === cardId ? "saving" : ""}`}
       style={{
         "--team-accent": theme.accent,
         "--team-accent-soft": theme.accentSoft,
@@ -2029,12 +2858,27 @@ export function SquadsPage({
                   : `Admin mode: edit League ${gameFormatLabel} squads.`
                 : "View mode: squads are visible to everyone."}
             </p>
+
+            {isAdmin && (
+              <div className="squad-preview-launch-row">
+                <button
+                  type="button"
+                  className="secondary-btn squad-preview-launch-btn"
+                  onClick={() => setShowSquadPreview(true)}
+                >
+                  👁 Squad Shape Preview
+                </button>
+                <span className="muted small">
+                  Quick visual check only. Final tactics stay in Lineups.
+                </span>
+              </div>
+            )}
           </>
         )}
       </header>
 
       <section className="card">
-        {isFiveVFive && (
+        {isFiveVFive && guestOpponentEnabled && (
           <div
             style={{
               marginBottom: "1rem",
@@ -2069,7 +2913,7 @@ export function SquadsPage({
                   className="secondary-btn"
                   onClick={handleTurnChallengeOn}
                 >
-                  Use guest opponent
+                  Enable external opponent
                 </button>
               )}
 
@@ -2411,11 +3255,7 @@ export function SquadsPage({
                         <div>
                           <div className="team-title-row">
                             <h2 className="team-title">
-                              {team.id === TURF_KINGS_SLOT_ID
-                                ? resolvedHomeClubName
-                                : team.id === GUEST_OPPONENT_SLOT_ID
-                                ? resolvedAwayClubName
-                                : team.label}
+                              {getPreviewTeamName(team)}
                             </h2>
                             {team.abbrev ? (
                               <span className="team-abbrev-badge">{team.abbrev}</span>
@@ -2559,93 +3399,68 @@ export function SquadsPage({
                       </div>
                     )}
 
-                    <ul className="player-list">
-                      {(team.players || []).map((pid, idx) => {
-                        const label = isGuestTeamCard ? toTitleCase(pid) : displayNameOf(pid);
-                        const isCaptain =
-                          !isGuestTeamCard && team.captainId && playersById.has(team.captainId)
-                            ? team.captainId === pid
-                            : false;
+                    
+<div className="club-pool-clean-list">
+  {unseededPlayers.length ? (
+    unseededPlayers.map((pid, index) => {
+      const playerName = displayNameOf(pid);
+      const canDelete =
+        isAdmin &&
+        pid !== identity?.playerId &&
+        pid !== identity?.uid;
 
-                        return (
-                          <li
-                            key={`${resolvedGameFormat}-${team.id}-${pid}-${idx}`}
-                            className="player-row"
-                          >
-                            <div className="player-row-left">
-                              <span className="player-number">{idx + 1}</span>
-                              <span className="player-name-text">
-                                {label}{" "}
-                                {isCaptain ? <span className="muted">(C)</span> : null}
-                              </span>
-                            </div>
+      return (
+        <div
+          key={`pool-clean-${pid}`}
+          className="club-pool-clean-row"
+        >
+          <div className="club-pool-clean-left">
+            <span className="club-pool-clean-number">
+              {index + 1}
+            </span>
 
-                            {isAdmin && (
-                              <button
-                                className="link-btn"
-                                onClick={() => handleRemovePlayer(team.id, pid)}
-                              >
-                                remove
-                              </button>
-                            )}
-                          </li>
-                        );
-                      })}
+            <span className="club-pool-clean-name">
+              {playerName}
+            </span>
+          </div>
 
-                      {(team.players || []).length === 0 && (
-                        <li className="player-row muted small">
-                          <div className="player-row-left">
-                            <span className="player-number">0</span>
-                            <span className="player-name-text">
-                              {isGuestTeamCard
-                                ? "Type opponent players below."
-                                : isChallengeTeamCard
-                                ? `Add ${activeClubName} players from database.`
-                                : "No players yet in this squad."}
-                            </span>
-                          </div>
-                        </li>
-                      )}
-                    </ul>
+          {canDelete ? (
+            <button
+              type="button"
+              className="club-pool-remove-btn"
+              onClick={() => handleDeletePlayerRequest(pid)}
+            >
+              Remove
+            </button>
+          ) : null}
+        </div>
+      );
+    })
+  ) : (
+    <div className="club-pool-empty">
+      No remaining registered players.
+    </div>
+  )}
+</div>
+
 
                     {isAdmin && (
-                      <>
-                        <div className="add-player-row">
-                          <input
-                            className="text-input"
-                            placeholder={isGuestTeamCard ? "Type guest player name..." : "Add / select player..."}
-                            list={isGuestTeamCard ? undefined : listId}
-                            value={pendingNames[inputId] || ""}
-                            onChange={(e) =>
-                              handlePendingChange(inputId, e.target.value)
-                            }
-                          />
-                          {!isGuestTeamCard && (
-                            <datalist id={listId}>
-                              {availableForTeams.map((val) => (
-                                <option key={`${team.id}-available-${val}`} value={val} />
-                              ))}
-                            </datalist>
-                          )}
-
-                          <button
-                            className="secondary-btn"
-                            onClick={() => handleAddPlayer(inputId)}
-                          >
-                            Add
-                          </button>
-                        </div>
-
-                        {addErrors[inputId] && (
-                          <p className="error-text small">{addErrors[inputId]}</p>
-                        )}
-                      </>
+                      <div className="squad-safe-hint">
+                        Build this team from the player pool above. No manual typing for registered club players.
+                      </div>
                     )}
                   </>
                 )}
               </React.Fragment>
             );
           })}
+
+        </div>
+
+        {renderTeamsheetCard()}
+
+        {renderAvailablePaidPlayersCard()}
+
 
           {renderCardShell(
             `${gameFormat}-${UNSEEDED_ID}`,
@@ -2663,7 +3478,7 @@ export function SquadsPage({
                   <span className="team-color-pill" />
                   <div>
                     <div className="team-title-row">
-                      <h2 className="team-title">Unseeded Players</h2>
+                      <h2 className="team-title">Club player pool</h2>
                       <span className="team-abbrev-badge">POOL</span>
                     </div>
                     <div className="team-subtitle">
@@ -2697,93 +3512,62 @@ export function SquadsPage({
                   }}
                 >
                   {showUnseededPlayers
-                    ? `Hide unseeded players (${unseededPlayers.length})`
-                    : `Show unseeded players (${unseededPlayers.length})`}
+                    ? `Hide player pool (${unseededPlayers.length})`
+                    : `Show player pool (${unseededPlayers.length})`}
                 </button>
               </div>
 
               {showUnseededPlayers && (
                 <>
-              <ul className="player-list">
-                {unseededPlayers.map((p, idx) => {
-                  const name = displayNameOf(p.id);
-                  const roles = p.roles || {};
-                  return (
-                    <li key={`${gameFormat}-unseeded-${p.id}`} className="player-row">
-                      <div className="player-row-left">
-                        <span className="player-number">{idx + 1}</span>
-                        <span className="player-name-text">
-                          {name}{" "}
-                          {roles.captain ? <span className="muted">(C)</span> : null}
-                          {roles.coach ? <span className="muted"> (Coach)</span> : null}
-                          {roles.admin ? <span className="muted"> (Admin)</span> : null}
-                        </span>
-                      </div>
+              
+<div className="club-pool-clean-list">
+  {unseededPlayers.length ? (
+    unseededPlayers.map((p, index) => {
+      const isSelf =
+        String(p.id || "").toLowerCase() === String(identity?.playerId || "").toLowerCase() ||
+        String(p.id || "").toLowerCase() === String(identity?.memberId || "").toLowerCase();
 
-                      {isAdmin && (
-                        <button
-                          className="link-btn"
-                          onClick={() => handleRequestRemoveUnseeded(p.id)}
-                        >
-                          ❌ delete?
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
+      return (
+        <div key={`club-pool-${p.id}`} className="club-pool-clean-row">
+          <div className="club-pool-clean-left">
+            <span className="club-pool-clean-number">{index + 1}</span>
+            <span className="club-pool-clean-name">{displayNameOf(p.id)}</span>
+          </div>
 
-                {unseededPlayers.length === 0 && (
-                  <li className="player-row muted small">
-                    <div className="player-row-left">
-                      <span className="player-number">0</span>
-                      <span className="player-name-text">
-                        No unseeded players right now.
-                      </span>
-                    </div>
-                  </li>
-                )}
-              </ul>
+          {isAdmin && !isSelf ? (
+            <button
+              type="button"
+              className="club-pool-remove-btn"
+              onClick={() => handleRequestRemoveUnseeded(p.id)}
+            >
+              Remove
+            </button>
+          ) : null}
+        </div>
+      );
+    })
+  ) : (
+    <div className="club-pool-empty">No remaining registered players.</div>
+  )}
+</div>
+
 
               {isAdmin && (
-                <>
-                  <div className="add-player-row">
-                    <input
-                      className="text-input"
-                      placeholder="Move from team / add manual player..."
-                      list={`players-db-unseeded-${gameFormat}`}
-                      value={pendingNames[UNSEEDED_ID] || ""}
-                      onChange={(e) =>
-                        handlePendingChange(UNSEEDED_ID, e.target.value)
-                      }
-                    />
-                    <datalist id={`players-db-unseeded-${gameFormat}`}>
-                      {availableForUnseeded.map((val) => (
-                        <option key={`unseeded-available-${gameFormat}-${val}`} value={val} />
-                      ))}
-                    </datalist>
-
-                    <button
-                      className="secondary-btn"
-                      onClick={() => handleAddPlayer(UNSEEDED_ID)}
-                    >
-                      Add
-                    </button>
-                  </div>
-
-                  {addErrors[UNSEEDED_ID] && (
-                    <p className="error-text small">{addErrors[UNSEEDED_ID]}</p>
-                  )}
-                </>
+                <div className="squad-safe-hint">
+                  Backup club member list. Use only for late walk-ins or membership cleanup.
+                </div>
               )}
                 </>
               )}
             </>
           )}
-        </div>
 
         <div className="actions-row">
-          <button className="secondary-btn" onClick={onBack}>
-            Back
+          <button
+            className="secondary-btn set-squad-pulse-btn"
+            onClick={() => setShowSquadPreview(true)}
+          >
+            Set Squad
           </button>
           {isAdmin && (
             <button className="primary-btn" onClick={handleSaveClick}>
@@ -2793,20 +3577,114 @@ export function SquadsPage({
         </div>
       </section>
 
+      {isAdmin && showSquadPreview && (
+        <div className="modal-backdrop squad-preview-backdrop">
+          <div className="modal squad-preview-modal">
+            <div className="squad-preview-modal-head">
+              <div>
+                <h3>Squad Shape Preview</h3>
+                <p className="muted small">
+                  Read-only team view while building squads. Final positions and tactics are still managed in Lineups & Formations.
+                </p>
+              </div>
+
+              <div className="squad-preview-modal-actions">
+                <button
+                  type="button"
+                  className="secondary-btn squad-preview-close-btn"
+                  onClick={() => setShowSquadPreview(false)}
+                >
+                  View teamsheet
+                </button>
+<button
+                  type="button"
+                  className="primary-btn squad-preview-save-btn"
+                  onClick={() => {
+                    setShowSquadPreview(false);
+                    handleSaveClick();
+                  }}
+                >
+                  Save Squads
+                </button>
+              </div>
+            </div>
+
+            {renderSquadShapePreview()}
+
+            {previewPickTarget && (
+              <div className="squad-preview-picker">
+                <div>
+                  <h4>
+                    Pick from This Game&apos;s Paid Teamsheet
+                    {nextTeamsheetWeekId ? ` · ${nextTeamsheetWeekId}` : ""}
+                  </h4>
+                  <p className="muted small">
+                    Player will be placed directly into the selected preview slot.
+                  </p>
+                </div>
+
+                <div className="squad-preview-picker-list">
+                  {paidTeamSheetPlayers.length ? (
+                    paidTeamSheetPlayers
+                      .filter((p) => !assignedIds.has(p.id))
+                      .map((p) => (
+                        <button
+                          type="button"
+                          key={`preview-paid-pick-${p.id}`}
+                          className="squad-preview-picker-player squad-preview-picker-player-paid"
+                          onClick={() => handlePreviewPickPlayer(p.id)}
+                        >
+                          ✅ {displayNameOf(p.id)}
+                        </button>
+                      ))
+                  ) : (
+                    <p className="muted small">
+                      No paid players found for the next game yet. Players must appear here after paying/being verified on Match Signup.
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => setPreviewPickTarget(null)}
+                >
+                  Cancel pick
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {isAdmin && pendingDeletePlayerId && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>Delete player from database?</h3>
+            <h3>Terminate club membership?</h3>
             <p>
               You are about to permanently remove
               <strong> {displayNameOf(pendingDeletePlayerId)} </strong>
-              from the ${activeClubName} player database.
+              from the ${activeClubName} club membership list.
             </p>
             <p className="error-text">
-              Warning: this is not the same as moving a player to Unseeded.
-              Only delete if this player was added by mistake or should no longer
-              exist in the database.
+              This will remove the player from the club player pool and club members list.
+              They will no longer appear for squad selection or club access. If this is a mistake,
+              the player must be added again manually.
             </p>
+
+            <div className="field-row">
+              <label>Admin code</label>
+              <input
+                type="password"
+                className="text-input"
+                value={deleteCode}
+                onChange={(e) => {
+                  setDeleteCode(e.target.value);
+                  setDeletePlayerError("");
+                }}
+                placeholder="Enter admin code to confirm"
+              />
+            </div>
 
             {deletePlayerError && <p className="error-text">{deletePlayerError}</p>}
 
@@ -2823,7 +3701,7 @@ export function SquadsPage({
                   borderColor: "rgba(248,113,113,0.65)",
                 }}
               >
-                Yes, delete player
+                Yes, terminate membership
               </button>
             </div>
           </div>

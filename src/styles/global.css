@@ -4747,3 +4747,1912 @@
     rgba(14, 165, 233, 0.5)
   );
 }
+/* =========================================
+   SQUADS PAGE — LAUNCH WIDTH FIX
+   ========================================= */
+
+.squads-page {
+  max-width: 1400px;
+}
+
+.squads-page > .card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  padding: 0.25rem 0 7rem !important;
+}
+
+.squads-page .squads-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)) !important;
+  gap: 1.15rem !important;
+  width: 100%;
+  align-items: start;
+}
+
+.squad-surface,
+.squad-surface-inner,
+.squad-column {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .squads-page {
+    max-width: 100%;
+  }
+
+  .squads-page > .card {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .squads-page .squads-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+}
+
+
+/* Save Squads button visibility enhancement */
+
+.squads-page .primary-btn {
+  box-shadow:
+    0 3px 0 rgba(0,0,0,0.65),
+    0 8px 18px rgba(0,0,0,0.22);
+}
+
+
+/* =========================================
+   SQUADS PAGE — CLICK-TO-ASSIGN DRAFT BOARD
+   ========================================= */
+
+.squads-page .player-row {
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.squad-player-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  max-width: 58%;
+}
+
+.squad-mini-btn {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.88);
+  color: #e5e7eb;
+  border-radius: 999px;
+  padding: 0.22rem 0.48rem;
+  font-size: 0.68rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.72),
+    0 8px 16px rgba(0, 0, 0, 0.22);
+}
+
+.squad-mini-btn:hover {
+  border-color: rgba(56, 189, 248, 0.8);
+  background: rgba(30, 64, 175, 0.92);
+}
+
+.squad-mini-btn-muted {
+  opacity: 0.82;
+}
+
+.squad-mini-btn-danger {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.squad-safe-hint {
+  margin-top: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.38);
+  background: rgba(15, 23, 42, 0.52);
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.squads-page .actions-row .primary-btn {
+  border: 1px solid rgba(2, 6, 23, 0.9);
+  box-shadow:
+    0 3px 0 rgba(2, 6, 23, 0.95),
+    0 12px 24px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+@media (max-width: 768px) {
+  .squad-player-actions {
+    max-width: 100%;
+    justify-content: flex-start;
+    width: 100%;
+    padding-left: 2.1rem;
+  }
+
+  .squads-page .player-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+
+/* =========================================
+   SQUADS PAGE — FRIENDLIER DRAFT BOARD SKIN
+   ========================================= */
+
+.squads-page {
+  color: #f8fafc;
+}
+
+.squads-page > .card {
+  padding-bottom: 7.5rem !important;
+}
+
+.squads-page .squads-grid {
+  gap: 1rem !important;
+}
+
+.squads-page .squad-surface {
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.05)),
+    radial-gradient(circle at top left, var(--team-accent-soft), transparent 42%);
+  box-shadow:
+    0 18px 42px rgba(0,0,0,0.28),
+    0 0 0 1px rgba(255,255,255,0.10);
+}
+
+.squads-page .squad-surface-inner {
+  padding: 0.85rem;
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(248,250,252,0.12), rgba(15,23,42,0.88) 28%, rgba(15,23,42,0.96)),
+    radial-gradient(circle at 100% 0%, var(--team-accent-soft), transparent 36%);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.squads-page .squad-card-topbar {
+  padding: 0.75rem;
+  margin: -0.15rem -0.15rem 0.8rem;
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05)),
+    radial-gradient(circle at top right, var(--team-accent-soft), transparent 52%);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.squads-page .team-title {
+  font-size: clamp(1.25rem, 2.2vw, 1.65rem);
+}
+
+.squads-page .team-abbrev-badge {
+  background: rgba(255,255,255,0.16);
+  border-color: rgba(255,255,255,0.20);
+}
+
+.squads-page .team-subtitle,
+.squads-page .team-color-name {
+  opacity: 0.95;
+}
+
+.squads-page .team-color-pill {
+  width: 12px;
+  height: 54px;
+}
+
+.squads-page .team-config {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.10);
+}
+
+.squads-page .player-list {
+  display: grid;
+  gap: 0.52rem;
+  margin-top: 0.75rem;
+}
+
+.squads-page .player-row {
+  padding: 0.58rem 0.62rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.09);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.035));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 8px 18px rgba(0,0,0,0.12);
+}
+
+.squads-page .player-row-left {
+  gap: 0.55rem;
+}
+
+.squads-page .player-number {
+  width: 30px;
+  height: 30px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08)),
+    var(--team-accent-soft);
+}
+
+.squads-page .player-name-text {
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.squad-player-actions {
+  gap: 0.42rem;
+}
+
+.squad-mini-btn {
+  min-height: 30px;
+  padding: 0.28rem 0.58rem;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.16), rgba(15,23,42,0.82));
+  border-color: rgba(255,255,255,0.18);
+  color: #f8fafc;
+}
+
+.squad-mini-btn:hover {
+  background:
+    linear-gradient(180deg, rgba(56,189,248,0.38), rgba(30,64,175,0.85));
+}
+
+.squad-safe-hint {
+  background: rgba(255,255,255,0.08);
+  border-style: solid;
+  color: #e2e8f0;
+}
+
+.squads-page .secondary-btn {
+  border-color: rgba(255,255,255,0.22);
+}
+
+.squads-page .actions-row {
+  position: sticky;
+  bottom: 4.8rem;
+  z-index: 25;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0.42rem;
+  border-radius: 999px;
+  background: rgba(2,6,23,0.56);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 38px rgba(0,0,0,0.25);
+}
+
+.squads-page .actions-row .primary-btn,
+.squads-page .actions-row .secondary-btn {
+  min-width: 110px;
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .squads-page .squads-grid {
+    display: flex !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding: 0.1rem 0.2rem 0.8rem;
+  }
+
+  .squads-page .squad-surface {
+    flex: 0 0 88%;
+    scroll-snap-align: center;
+  }
+
+  .squads-page .squad-surface:last-child {
+    flex-basis: 92%;
+  }
+
+  .squads-page .actions-row {
+    bottom: 4.4rem;
+  }
+}
+
+
+/* =========================================
+   SQUADS PAGE — PREMIUM SHAPE PREVIEW
+   ========================================= */
+
+.squad-preview-launch-row {
+  margin-top: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.squad-preview-launch-btn {
+  border-color: rgba(56, 189, 248, 0.45);
+  background:
+    radial-gradient(circle at top left, rgba(56,189,248,0.26), transparent 48%),
+    linear-gradient(180deg, rgba(15,23,42,0.96), rgba(2,6,23,0.96));
+  box-shadow:
+    0 3px 0 rgba(2,6,23,0.9),
+    0 14px 26px rgba(0,0,0,0.22);
+}
+
+.squad-preview-backdrop {
+  padding: 1rem;
+}
+
+.squad-preview-modal {
+  width: min(1180px, 96vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 28px;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56,189,248,0.16), transparent 42%),
+    radial-gradient(circle at 100% 0%, rgba(34,197,94,0.14), transparent 38%),
+    linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98));
+}
+
+.squad-preview-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.squad-preview-modal-head h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.35rem;
+}
+
+.squad-preview-close-btn {
+  flex-shrink: 0;
+}
+
+.squad-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.squad-preview-pitch-card {
+  border-radius: 24px;
+  padding: 0.85rem;
+  background:
+    radial-gradient(circle at top right, var(--team-accent-soft), transparent 42%),
+    linear-gradient(180deg, rgba(255,255,255,0.10), rgba(15,23,42,0.9));
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    0 18px 38px rgba(0,0,0,0.28),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.squad-preview-team-head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.squad-preview-team-head h4 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.05rem;
+}
+
+.squad-preview-team-head p {
+  margin: 0.1rem 0 0;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.squad-preview-team-dot {
+  width: 14px;
+  height: 42px;
+  border-radius: 999px;
+  background: var(--team-accent);
+  box-shadow: 0 0 18px var(--team-glow);
+}
+
+.squad-preview-pitch {
+  position: relative;
+  min-height: 310px;
+  border-radius: 22px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255,255,255,0.045) 1px, transparent 1px),
+    radial-gradient(circle at center, rgba(34,197,94,0.16), transparent 48%),
+    linear-gradient(180deg, #064e3b, #022c22);
+  background-size: 34px 34px, 34px 34px, auto, auto;
+  border: 1px solid rgba(187,247,208,0.18);
+}
+
+.squad-preview-half-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid rgba(255,255,255,0.18);
+}
+
+.squad-preview-circle {
+  position: absolute;
+  width: 86px;
+  height: 86px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.squad-preview-player-cloud {
+  position: relative;
+  z-index: 2;
+  min-height: 310px;
+  display: flex;
+  align-content: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 1rem;
+}
+
+.squad-preview-player-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.45rem 0.62rem;
+  border-radius: 999px;
+  background: rgba(2,6,23,0.76);
+  border: 1px solid rgba(255,255,255,0.20);
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 900;
+  box-shadow:
+    0 8px 18px rgba(0,0,0,0.28),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.squad-preview-player-chip span {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--team-accent-soft);
+  color: #ffffff;
+}
+
+.squad-preview-empty {
+  align-self: center;
+  padding: 0.75rem 1rem;
+  border-radius: 18px;
+  background: rgba(2,6,23,0.55);
+  border: 1px dashed rgba(255,255,255,0.24);
+  color: #cbd5e1;
+  font-weight: 800;
+}
+
+@media (max-width: 768px) {
+  .squad-preview-modal {
+    width: 96vw;
+    padding: 0.85rem;
+  }
+
+  .squad-preview-modal-head {
+    flex-direction: column;
+  }
+
+  .squad-preview-close-btn {
+    width: 100%;
+  }
+
+  .squad-preview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* =========================================
+   SQUADS PAGE — RESTORE DARK THEME + TRUE FORMATION PREVIEW
+   ========================================= */
+
+.squads-page .squad-surface,
+.squads-page .squad-surface-inner,
+.squads-page .squad-card-topbar,
+.squads-page .player-row,
+.squads-page .team-config {
+  background-color: unset;
+}
+
+.squads-page .squad-surface {
+  background:
+    radial-gradient(circle at top right, var(--team-accent-soft, rgba(34,197,94,0.16)), transparent 30%),
+    linear-gradient(180deg, rgba(15,23,42,0.96), rgba(2,6,23,0.98)) !important;
+}
+
+.squads-page .squad-surface-inner {
+  background:
+    radial-gradient(circle at bottom left, rgba(34,197,94,0.08), transparent 32%),
+    linear-gradient(180deg, #071226 0%, #08111f 55%, #06101b 100%) !important;
+}
+
+.squads-page .squad-card-topbar {
+  background: transparent !important;
+}
+
+.squads-page .player-row {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.squad-preview-modal {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(37,99,235,0.2), transparent 42%),
+    radial-gradient(circle at 100% 0%, rgba(34,197,94,0.14), transparent 38%),
+    linear-gradient(180deg, #071226, #020617) !important;
+}
+
+.squad-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+  gap: 1rem;
+}
+
+.squad-preview-mini-pitch {
+  position: relative;
+  height: 390px;
+  border-radius: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at center, rgba(56,189,248,0.16), transparent 52%),
+    linear-gradient(180deg, #020617, #071226);
+  border: 1px solid rgba(148,163,184,0.34);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+
+.squad-preview-half-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid rgba(148,163,184,0.34);
+}
+
+.squad-preview-centre-circle {
+  position: absolute;
+  width: 104px;
+  height: 104px;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.32);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.squad-preview-box {
+  position: absolute;
+  left: 18%;
+  width: 64%;
+  height: 18%;
+  border-radius: 18px;
+  border: 1px solid rgba(148,163,184,0.30);
+}
+
+.squad-preview-box.top {
+  top: 4%;
+}
+
+.squad-preview-box.bottom {
+  bottom: 4%;
+}
+
+.squad-preview-position {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 0.22rem;
+  width: 90px;
+  z-index: 3;
+}
+
+.squad-preview-shirt {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px 13px 6px 6px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--team-accent), rgba(15,23,42,0.9));
+  border: 2px solid rgba(248,250,252,0.82);
+  color: #fff;
+  font-weight: 950;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.38);
+}
+
+.squad-preview-position.is-empty .squad-preview-shirt {
+  background: rgba(15,23,42,0.82);
+  border-style: dashed;
+  color: #94a3b8;
+}
+
+.squad-preview-label {
+  min-width: 76px;
+  max-width: 94px;
+  padding: 0.22rem 0.45rem 0.28rem;
+  border-radius: 999px;
+  background: rgba(15,23,42,0.88);
+  border: 1px solid rgba(148,163,184,0.42);
+  text-align: center;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.24);
+}
+
+.squad-preview-label strong {
+  display: block;
+  font-size: 0.65rem;
+  line-height: 1.05;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.squad-preview-label span {
+  display: block;
+  font-size: 0.58rem;
+  line-height: 1;
+  color: #94a3b8;
+  font-weight: 800;
+  margin-top: 0.1rem;
+}
+
+.squad-preview-extra {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.8rem;
+  padding: 0.38rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(2,6,23,0.76);
+  border: 1px solid rgba(250,204,21,0.45);
+  color: #fde68a;
+  font-size: 0.75rem;
+  font-weight: 900;
+  z-index: 4;
+}
+
+@media (max-width: 768px) {
+  .squad-preview-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .squad-preview-mini-pitch {
+    height: 360px;
+  }
+}
+
+
+/* =========================================
+   SQUADS PAGE — DRAFT BOARD FLOW OVERHAUL
+   Pool first, team cards remain visible below
+   ========================================= */
+
+.squads-page .squads-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)) !important;
+  gap: 1rem !important;
+  align-items: start;
+}
+
+.squads-page .squad-pool-surface {
+  order: -10;
+  grid-column: 1 / -1;
+}
+
+.squads-page .squad-pool-surface .squad-surface-inner {
+  background:
+    radial-gradient(circle at top right, rgba(34,197,94,0.16), transparent 34%),
+    linear-gradient(180deg, #071226, #06101b) !important;
+}
+
+.squads-page .squad-pool-surface .squad-card-topbar {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid rgba(148,163,184,0.18);
+}
+
+.squads-page .squad-pool-surface .player-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.65rem;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.squads-page .squad-pool-surface .player-row {
+  border-radius: 18px;
+  border: 1px solid rgba(148,163,184,0.18);
+  background:
+    linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.72)) !important;
+  padding: 0.7rem;
+}
+
+.squads-page .squad-team-surface {
+  order: 5;
+}
+
+.squads-page .team-config {
+  margin-top: 0.55rem;
+  opacity: 0.72;
+}
+
+.squads-page .team-config:hover,
+.squads-page .team-config:focus-within {
+  opacity: 1;
+}
+
+.squads-page .squad-safe-hint {
+  font-size: 0.78rem;
+  border-radius: 16px;
+}
+
+.squads-page .actions-row {
+  position: sticky;
+  bottom: 4.65rem;
+  z-index: 40;
+}
+
+@media (max-width: 768px) {
+  .squads-page .squads-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    overflow-x: visible !important;
+  }
+
+  .squads-page .squad-pool-surface {
+    grid-column: auto;
+  }
+
+  .squads-page .squad-pool-surface .player-list {
+    grid-template-columns: 1fr;
+    max-height: 430px;
+  }
+
+  .squads-page .squad-team-surface {
+    width: 100%;
+  }
+}
+
+
+/* =========================================
+   SQUADS PAGE — COMPACT SELECTION POOL
+   ========================================= */
+
+.squads-page .squad-pool-surface .squad-surface-inner {
+  padding: 0.8rem !important;
+}
+
+.squads-page .squad-pool-surface .squad-card-topbar {
+  padding: 0.7rem 0.8rem !important;
+  margin-bottom: 0.6rem !important;
+}
+
+.squads-page .squad-pool-surface .team-title {
+  font-size: 1.45rem !important;
+}
+
+.squads-page .squad-pool-surface .player-list {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;
+  gap: 0.45rem !important;
+  max-height: 250px !important;
+  overflow-y: auto !important;
+  padding: 0.25rem 0.35rem 0.25rem 0 !important;
+}
+
+.squads-page .squad-pool-surface .player-row {
+  display: grid !important;
+  grid-template-columns: auto 1fr !important;
+  gap: 0.5rem !important;
+  align-items: center !important;
+  padding: 0.48rem 0.55rem !important;
+  min-height: 54px !important;
+  border-radius: 15px !important;
+}
+
+.squads-page .squad-pool-surface .player-row-left {
+  min-width: 0 !important;
+}
+
+.squads-page .squad-pool-surface .player-name-text {
+  display: block !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  font-size: 0.86rem !important;
+}
+
+.squads-page .squad-pool-surface .player-number {
+  width: 26px !important;
+  height: 26px !important;
+  font-size: 0.72rem !important;
+}
+
+.squads-page .squad-pool-surface .squad-player-actions {
+  grid-column: 1 / -1 !important;
+  display: flex !important;
+  justify-content: flex-start !important;
+  gap: 0.35rem !important;
+  padding-left: 2.1rem !important;
+  max-width: none !important;
+}
+
+.squads-page .squad-pool-surface .squad-mini-btn {
+  min-height: 26px !important;
+  max-width: 62px !important;
+  padding: 0.22rem 0.46rem !important;
+  font-size: 0.62rem !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.squads-page .squad-pool-surface .squad-mini-btn-danger {
+  max-width: 72px !important;
+}
+
+.squads-page .squad-pool-surface .squad-safe-hint {
+  margin-top: 0.55rem !important;
+  padding: 0.5rem 0.65rem !important;
+  font-size: 0.76rem !important;
+}
+
+@media (max-width: 768px) {
+  .squads-page .squad-pool-surface .player-list {
+    grid-template-columns: 1fr !important;
+    max-height: 340px !important;
+  }
+
+  .squads-page .squad-pool-surface .player-row {
+    grid-template-columns: auto 1fr !important;
+  }
+}
+
+
+/* SQUADS PAGE — FORCE COMPACT HORIZONTAL PLAYER DRAWER */
+
+.squads-page .squad-pool-surface .player-list {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  max-height: none !important;
+  gap: 0.55rem !important;
+  padding: 0.35rem 0.25rem 0.65rem !important;
+  scrollbar-width: thin;
+}
+
+.squads-page .squad-pool-surface .player-row {
+  flex: 0 0 185px !important;
+  width: 185px !important;
+  min-height: 74px !important;
+  padding: 0.55rem !important;
+  border-radius: 16px !important;
+  display: grid !important;
+  grid-template-columns: auto 1fr !important;
+  align-content: start !important;
+}
+
+.squads-page .squad-pool-surface .player-name-text {
+  max-width: 115px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.squads-page .squad-pool-surface .squad-player-actions {
+  grid-column: 1 / -1 !important;
+  padding-left: 0 !important;
+  margin-top: 0.35rem !important;
+  justify-content: flex-start !important;
+}
+
+.squads-page .squad-pool-surface .squad-mini-btn {
+  max-width: 44px !important;
+  min-height: 23px !important;
+  padding: 0.16rem 0.34rem !important;
+  font-size: 0.58rem !important;
+}
+
+.squads-page .squad-pool-surface .squad-mini-btn-danger {
+  max-width: 56px !important;
+}
+
+.squads-page .squad-pool-surface .team-subtitle,
+.squads-page .squad-pool-surface .team-color-name {
+  display: none !important;
+}
+
+.squads-page .squad-pool-surface .squad-card-topbar {
+  padding-bottom: 0.45rem !important;
+  margin-bottom: 0.35rem !important;
+}
+
+@media (max-width: 768px) {
+  .squads-page .squad-pool-surface .player-row {
+    flex-basis: 172px !important;
+    width: 172px !important;
+  }
+}
+
+
+/* =========================================
+   SQUADS PAGE — CLICKABLE PREVIEW + QUIET POOL
+   ========================================= */
+
+.squad-preview-position {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.squad-preview-position:hover .squad-preview-shirt {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow:
+    0 14px 26px rgba(0,0,0,0.45),
+    0 0 0 3px rgba(56,189,248,0.18);
+}
+
+.squad-preview-picker {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border-radius: 22px;
+  border: 1px solid rgba(56,189,248,0.24);
+  background:
+    radial-gradient(circle at top left, rgba(56,189,248,0.14), transparent 42%),
+    rgba(2,6,23,0.72);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.squad-preview-picker h4 {
+  margin: 0 0 0.2rem;
+  color: #f8fafc;
+}
+
+.squad-preview-picker-list {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.squad-preview-picker-player {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.34);
+  background: rgba(15,23,42,0.92);
+  color: #f8fafc;
+  font-weight: 850;
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+}
+
+.squad-preview-picker-player:hover {
+  border-color: rgba(34,197,94,0.7);
+  background: rgba(22,101,52,0.78);
+}
+
+/* Make the regular pool less dominant */
+.squads-page .squad-pool-surface .squad-player-actions {
+  display: none !important;
+}
+
+.squads-page .squad-pool-surface .player-list {
+  max-height: 145px !important;
+}
+
+.squads-page .squad-pool-surface .player-row {
+  min-height: 46px !important;
+}
+
+
+/* SQUADS PAGE — MAKE PLAYER POOL COMPACT LIKE TEAM CARDS */
+
+.squads-page .squad-pool-surface {
+  grid-column: auto !important;
+  max-width: 380px !important;
+}
+
+.squads-page .squad-pool-surface .player-list {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  max-height: 260px !important;
+  overflow-y: auto !important;
+}
+
+.squads-page .squad-pool-surface .player-row:nth-child(n+6) {
+  display: none !important;
+}
+
+.squads-page .squad-pool-surface:has(.secondary-btn:hover) .player-row:nth-child(n+6) {
+  display: grid !important;
+}
+
+.squads-page .squad-pool-surface .squad-surface-inner {
+  min-height: auto !important;
+}
+
+@media (max-width: 768px) {
+  .squads-page .squad-pool-surface {
+    max-width: 100% !important;
+  }
+}
+
+
+/* =========================================
+   SQUADS PAGE — PREVIEW-FIRST ADMIN WORKFLOW
+   ========================================= */
+
+.squads-page .squad-team-surface {
+  display: none !important;
+}
+
+.squad-preview-modal-actions {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.squad-preview-save-btn,
+.squad-preview-close-btn {
+  min-width: 128px;
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .squad-preview-modal-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .squad-preview-save-btn,
+  .squad-preview-close-btn {
+    width: 100%;
+  }
+}
+
+
+/* SQUADS PAGE — PAID TEAMSHEET PICKER */
+
+.squad-preview-picker-player-paid {
+  border-color: rgba(34, 197, 94, 0.65) !important;
+  background:
+    radial-gradient(circle at top left, rgba(34,197,94,0.24), transparent 48%),
+    rgba(15,23,42,0.94) !important;
+}
+
+
+/* SQUADS PAGE — CLICKABLE PREVIEW SLOTS + VISIBLE TEAMSHEET */
+
+.squad-preview-position {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  z-index: 30 !important;
+  min-width: 112px !important;
+  min-height: 86px !important;
+  border-radius: 18px !important;
+}
+
+.squad-preview-position .squad-preview-shirt,
+.squad-preview-position .squad-preview-label {
+  pointer-events: none !important;
+}
+
+.squad-preview-position:hover {
+  background: rgba(56, 189, 248, 0.08) !important;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.22);
+}
+
+/* After preview closes, show the actual teamsheet result */
+.squads-page .squad-team-surface {
+  display: block !important;
+  max-width: 390px !important;
+}
+
+.squads-page .squad-team-surface .team-config,
+.squads-page .squad-team-surface .squad-safe-hint {
+  display: none !important;
+}
+
+.squads-page .squad-team-surface .squad-surface-inner {
+  min-height: auto !important;
+}
+
+.squads-page .squad-team-surface .player-list {
+  margin-top: 0.8rem !important;
+}
+
+.squads-page .squad-team-surface .squad-player-actions {
+  display: none !important;
+}
+
+
+/* SQUADS PAGE — CLEAN POOL LIST + TEAMSHEET CARD */
+
+.squads-page .squad-pool-surface .player-list {
+  gap: 0.18rem !important;
+}
+
+.squads-page .squad-pool-surface .player-row {
+  min-height: 0 !important;
+  padding: 0.34rem 0.2rem !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.13) !important;
+}
+
+.squads-page .squad-pool-surface .player-number {
+  width: 1.55rem !important;
+  height: 1.55rem !important;
+  font-size: 0.72rem !important;
+}
+
+.squads-page .squad-pool-surface .link-btn {
+  color: #fca5a5 !important;
+  font-size: 0.72rem !important;
+}
+
+.teamsheet-export-wrap {
+  width: min(720px, 100%);
+  margin: 1.2rem auto 0;
+}
+
+.teamsheet-export-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.7rem;
+}
+
+.teamsheet-export-actions h3 {
+  margin: 0;
+}
+
+.teamsheet-card {
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 24px;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at top left, rgba(34,197,94,0.16), transparent 42%),
+    linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98));
+  box-shadow: 0 22px 60px rgba(2,6,23,0.42);
+}
+
+.teamsheet-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  color: #e5e7eb;
+  margin-bottom: 0.8rem;
+}
+
+.teamsheet-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.teamsheet-card-team {
+  border: 1px solid color-mix(in srgb, var(--team-accent) 42%, rgba(148,163,184,0.22));
+  border-radius: 18px;
+  padding: 0.85rem;
+  background:
+    radial-gradient(circle at top, var(--team-glow), transparent 55%),
+    rgba(15,23,42,0.72);
+}
+
+.teamsheet-card-team-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.teamsheet-card-team h4 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.25rem;
+}
+
+.teamsheet-card-team p {
+  margin: 0.12rem 0 0;
+  color: #cbd5e1;
+  font-size: 0.82rem;
+}
+
+.teamsheet-card-team-head span {
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  font-weight: 900;
+}
+
+.teamsheet-card-team ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #f8fafc;
+  line-height: 1.75;
+  font-weight: 800;
+}
+
+@media (max-width: 680px) {
+  .teamsheet-export-actions,
+  .teamsheet-card-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .teamsheet-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* SQUADS PAGE — TEAM SHEET BECOMES MAIN OUTPUT */
+
+.squads-page .squad-team-surface {
+  display: none !important;
+}
+
+.teamsheet-card-club {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.teamsheet-card-club img {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(15,23,42,0.75);
+}
+
+.teamsheet-card-club span {
+  display: block;
+  font-weight: 950;
+  color: #f8fafc;
+}
+
+.teamsheet-card-club small {
+  display: block;
+  color: #cbd5e1;
+  font-weight: 750;
+}
+
+
+/* SQUADS PAGE — OUTPUT-FIRST LAYOUT */
+
+.squads-page section.card {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  justify-items: center !important;
+}
+
+.teamsheet-export-wrap {
+  width: min(860px, calc(100vw - 32px)) !important;
+  margin: 1rem auto 0 !important;
+}
+
+.available-paid-card-wrap {
+  margin-top: 1rem !important;
+}
+
+.available-paid-card-list {
+  columns: 2;
+  column-gap: 2rem;
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #f8fafc;
+  font-weight: 850;
+  line-height: 1.85;
+}
+
+.squads-page .squad-pool-surface {
+  width: min(520px, calc(100vw - 32px)) !important;
+  margin: 1rem auto 5.5rem !important;
+  opacity: 0.92;
+}
+
+@media (max-width: 680px) {
+  .available-paid-card-list {
+    columns: 1;
+  }
+}
+
+
+/* SQUADS PAGE — FINAL OUTPUT ORDER */
+
+.squads-page section.card {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+/* team cards remain hidden for now */
+.squads-page .squad-team-surface {
+  display: none !important;
+}
+
+/* force visual order */
+.squads-page .teamsheet-export-wrap:not(.available-paid-card-wrap) {
+  order: 1 !important;
+}
+
+.squads-page .available-paid-card-wrap {
+  order: 2 !important;
+}
+
+.squads-page .squad-pool-surface {
+  order: 3 !important;
+}
+
+.squads-page .actions-row {
+  order: 4 !important;
+}
+
+/* make teamsheet use the open space properly */
+.teamsheet-export-wrap {
+  width: min(920px, calc(100vw - 32px)) !important;
+  margin: 1rem auto !important;
+}
+
+
+/* SQUADS PAGE — CLUB PLAYER POOL BELOW MAIN OUTPUT */
+
+.squads-page .squad-pool-surface {
+  width: min(860px, calc(100vw - 32px)) !important;
+  margin: 1rem auto 5.5rem !important;
+  opacity: 0.96;
+}
+
+.squads-page .squad-pool-surface .squad-surface-inner {
+  border-radius: 24px !important;
+  padding: 1rem !important;
+  background:
+    radial-gradient(circle at top left, rgba(100,116,139,0.18), transparent 42%),
+    linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98)) !important;
+}
+
+.squads-page .squad-pool-surface .player-list {
+  columns: 2;
+  column-gap: 2rem;
+}
+
+.squads-page .squad-pool-surface .player-row {
+  break-inside: avoid;
+}
+
+@media (max-width: 680px) {
+  .squads-page .squad-pool-surface .player-list {
+    columns: 1;
+  }
+}
+
+
+/* SQUADS PAGE — CLEAN FINAL STACK ORDER */
+
+.squads-page section.card {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+.squads-page .squads-grid {
+  width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+.squads-page .squad-team-surface {
+  display: none !important;
+}
+
+.squads-page .teamsheet-export-wrap:not(.available-paid-card-wrap) {
+  order: 1 !important;
+}
+
+.squads-page .available-paid-card-wrap {
+  order: 2 !important;
+}
+
+.squads-page .squad-pool-surface {
+  order: 3 !important;
+  width: min(860px, calc(100vw - 32px)) !important;
+  margin: 1rem auto 5.5rem !important;
+}
+
+.squads-page .actions-row {
+  order: 4 !important;
+}
+
+
+/* CLEAN CLUB PLAYER POOL */
+
+.club-pool-clean-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.club-pool-clean-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid rgba(148,163,184,0.12);
+}
+
+.club-pool-clean-left {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.club-pool-clean-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(148,163,184,0.14);
+  border: 1px solid rgba(148,163,184,0.2);
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.club-pool-clean-name {
+  color: #f8fafc;
+  font-weight: 850;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.club-pool-remove-btn {
+  border: 1px solid rgba(248,113,113,0.35);
+  background: rgba(127,29,29,0.22);
+  color: #fecaca;
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.club-pool-remove-btn:hover {
+  background: rgba(220,38,38,0.22);
+  border-color: rgba(248,113,113,0.6);
+}
+
+.club-pool-empty {
+  color: #cbd5e1;
+  padding: 0.75rem 0;
+}
+
+
+/* SQUADS PAGE — HIDE OLD CLUB POOL HINT */
+.squads-page .squad-pool-surface .squad-safe-hint {
+  display: none !important;
+}
+
+
+/* SQUADS PAGE — IMAGE EXPORT SAFE STYLES */
+
+.teamsheet-card,
+.teamsheet-card-team,
+.available-paid-card {
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+.teamsheet-card-team {
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+}
+
+.teamsheet-card-subs {
+  margin-top: 0.85rem;
+  border: 1px solid rgba(250, 204, 21, 0.24);
+  border-radius: 18px;
+  padding: 0.85rem;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.teamsheet-card-subs h4 {
+  margin: 0 0 0.45rem;
+  color: #fde68a;
+}
+
+.teamsheet-card-subs ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #f8fafc;
+  font-weight: 850;
+  line-height: 1.7;
+}
+
+
+/* SQUADS PAGE — EXTRA SQUAD PLAYERS INSIDE PREVIEW */
+
+.squad-preview-extra-list {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding: 0.45rem;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.squad-preview-extra-list strong {
+  color: #fde68a;
+  font-size: 0.72rem;
+  margin-right: 0.25rem;
+}
+
+.squad-preview-extra-player {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.86);
+  color: #f8fafc;
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.squad-preview-add-extra-btn {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  border: 1px solid rgba(34, 197, 94, 0.38);
+  background: rgba(22, 163, 74, 0.18);
+  color: #bbf7d0;
+  border-radius: 999px;
+  padding: 0.34rem 0.72rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.squad-preview-extra-list + .squad-preview-add-extra-btn {
+  bottom: 58px;
+}
+
+
+/* SQUADS PAGE — MOBILE-FRIENDLY EXTRA PLAYERS IN PREVIEW */
+
+.squad-preview-extra-list {
+  top: 64px !important;
+  bottom: auto !important;
+  left: 12px !important;
+  right: auto !important;
+  max-width: 46% !important;
+  align-items: flex-start !important;
+  z-index: 35 !important;
+}
+
+.squad-preview-add-extra-btn {
+  top: 64px !important;
+  bottom: auto !important;
+  right: 12px !important;
+  max-width: 92px !important;
+  min-height: 42px !important;
+  white-space: pre-line !important;
+  line-height: 1.05 !important;
+  text-align: center !important;
+  padding: 0.32rem 0.5rem !important;
+  z-index: 36 !important;
+}
+
+.squad-preview-extra-list + .squad-preview-add-extra-btn {
+  bottom: auto !important;
+}
+
+.squad-preview-extra-player {
+  max-width: 92px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 520px) {
+  .squad-preview-extra-list {
+    top: 58px !important;
+    max-width: 48% !important;
+    gap: 0.22rem !important;
+    padding: 0.34rem !important;
+  }
+
+  .squad-preview-extra-list strong {
+    font-size: 0.64rem !important;
+  }
+
+  .squad-preview-extra-player {
+    font-size: 0.62rem !important;
+    padding: 0.14rem 0.42rem !important;
+  }
+
+  .squad-preview-add-extra-btn {
+    top: 58px !important;
+    font-size: 0.62rem !important;
+    max-width: 78px !important;
+  }
+}
+
+
+/* EXTRA SQUAD PLAYERS — CLEAN MINIMAL LOOK */
+
+.squad-preview-extra-list {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.squad-preview-extra-player {
+  background: transparent !important;
+  border: 1px solid rgba(255,255,255,0.16) !important;
+  backdrop-filter: blur(4px);
+  border-radius: 999px !important;
+  padding: 0.12rem 0.5rem !important;
+  color: #f8fafc !important;
+  font-weight: 800 !important;
+}
+
+.squad-preview-extra-list strong {
+  display: none !important;
+}
+
+
+/* SQUADS PAGE — EXTRA PLAYERS FINAL CLEANUP */
+
+.squad-preview-extra-list {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 0.22rem !important;
+  max-width: 108px !important;
+}
+
+.squad-preview-extra-player {
+  max-width: 96px !important;
+  width: fit-content !important;
+}
+
+
+/* SQUADS PAGE — SUBTLE PREVIEW PLAYER CONTROLS */
+
+.squad-preview-mini-actions {
+  position: absolute;
+  top: -7px;
+  right: -8px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: 0.15s ease;
+  pointer-events: auto;
+}
+
+.squad-preview-position:hover .squad-preview-mini-actions,
+.squad-preview-position:focus-within .squad-preview-mini-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.squad-preview-mini-actions span {
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.62rem;
+  font-weight: 950;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(255,255,255,0.22);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.28);
+}
+
+.squad-preview-mini-actions span:first-child {
+  color: #fecaca;
+  border-color: rgba(248,113,113,0.4);
+}
+
+@media (max-width: 700px) {
+  .squad-preview-mini-actions {
+    opacity: 1;
+  }
+}
+
+
+/* SQUADS PAGE — COLOUR PICKER + SET SQUAD BUTTON */
+
+.squad-preview-launch-row {
+  display: none !important;
+}
+
+.squad-preview-colour-select {
+  margin-top: 0.35rem;
+  max-width: 118px;
+  border: 1px solid rgba(148,163,184,0.28);
+  border-radius: 999px;
+  background: rgba(15,23,42,0.72);
+  color: #e5e7eb;
+  font-size: 0.68rem;
+  font-weight: 850;
+  padding: 0.22rem 0.5rem;
+  outline: none;
+}
+
+.squad-preview-colour-select:focus {
+  border-color: rgba(34,197,94,0.55);
+}
+
+@media (max-width: 520px) {
+  .squad-preview-colour-select {
+    max-width: 104px;
+    font-size: 0.62rem;
+  }
+}
+
+
+/* SQUADS PAGE — PREVIEW TEAM HEADER POLISH */
+
+.squad-preview-team-head {
+  position: relative !important;
+}
+
+.squad-preview-colour-select {
+  position: absolute !important;
+  top: 0.65rem !important;
+  right: 0.75rem !important;
+  margin-top: 0 !important;
+}
+
+@media (max-width: 520px) {
+  .squad-preview-colour-select {
+    top: 0.72rem !important;
+    right: 0.7rem !important;
+  }
+}
+
+
+/* SQUADS PAGE — PREMIUM SET SQUAD SHINE */
+
+.set-squad-pulse-btn {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.set-squad-pulse-btn::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.16) 45%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(255, 255, 255, 0.16) 55%,
+    transparent 65%
+  );
+  transform: translateX(-120%) rotate(8deg);
+  animation: setSquadMetalShine 6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.set-squad-pulse-btn {
+  z-index: 0;
+}
+
+@keyframes setSquadMetalShine {
+  0% {
+    transform: translateX(-120%) rotate(8deg);
+    opacity: 0;
+  }
+
+  8% {
+    opacity: 1;
+  }
+
+  16% {
+    transform: translateX(120%) rotate(8deg);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateX(120%) rotate(8deg);
+    opacity: 0;
+  }
+}
+
+
+/* SQUADS PAGE — SET SQUAD SHINE TIMING */
+.set-squad-pulse-btn::after {
+  animation-duration: 7s !important;
+}
+
+@keyframes setSquadMetalShine {
+  0% {
+    transform: translateX(-120%) rotate(8deg);
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  28% {
+    transform: translateX(120%) rotate(8deg);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateX(120%) rotate(8deg);
+    opacity: 0;
+  }
+}
+
+
+/* SQUADS PAGE — BLUE SET SQUAD BUTTON */
+
+.set-squad-pulse-btn {
+  background:
+    linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  border: 1px solid rgba(147,197,253,0.34) !important;
+  color: #eff6ff !important;
+  box-shadow:
+    0 10px 24px rgba(37,99,235,0.28),
+    inset 0 1px 0 rgba(255,255,255,0.16) !important;
+}
+
+.set-squad-pulse-btn:hover {
+  background:
+    linear-gradient(135deg, #3b82f6, #2563eb) !important;
+}
+

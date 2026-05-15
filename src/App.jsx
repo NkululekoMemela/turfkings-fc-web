@@ -535,121 +535,60 @@ function isTurfKingsChallengeTeam(team = {}) {
   );
 }
 
+function stripFriendlyChallengeFlags(team = {}) {
+  const {
+    guestChallengeActive,
+    isGuestOpponent,
+    temporaryGuestOpponent,
+    temporaryChallengeTeam,
+    isTurfKingsChallengeTeam,
+    challengeRole,
+    originalFriendlySlotId,
+    challengeDate,
+    challengeKickoff,
+    challengeVenue,
+    ...safe
+  } = team || {};
+
+  return safe;
+}
+
 function ensureFiveVFiveTeamsShape(rawTeams) {
   const incoming = normalizeFiveVFiveTeams(rawTeams);
-
-  const slotTurfKingsChallenge = incoming.find(
-    (team) =>
-      team?.id === TURF_KINGS_SLOT_ID &&
-      team?.guestChallengeActive === true &&
-      (team?.isTurfKingsChallengeTeam === true || team?.challengeRole === "home")
-  );
-
-  const slotGuestOpponent = incoming.find(
-    (team) =>
-      team?.id === GUEST_OPPONENT_SLOT_ID &&
-      team?.guestChallengeActive === true &&
-      (team?.isGuestOpponent === true || team?.temporaryGuestOpponent === true || team?.challengeRole === "guest")
-  );
-
-  // Preferred architecture:
-  // keep the normal Friendly slots, but rename them while the challenge is active.
-  // dark  -> Turf Kings
-  // light -> guest opponent, e.g. Canal Walk
-  // This lets the rest of the app keep finding the normal two Friendly team IDs.
-  if (slotTurfKingsChallenge && slotGuestOpponent) {
-    return [
-      {
-        ...slotTurfKingsChallenge,
-        id: TURF_KINGS_SLOT_ID,
-        label: slotTurfKingsChallenge.label || "Turf Kings",
-        abbrev: slotTurfKingsChallenge.abbrev || "TKG",
-        guestChallengeActive: true,
-        isTurfKingsChallengeTeam: true,
-        challengeRole: "home",
-      },
-      {
-        ...slotGuestOpponent,
-        id: GUEST_OPPONENT_SLOT_ID,
-        label: slotGuestOpponent.label || "Guest Opponent",
-        abbrev: slotGuestOpponent.abbrev || "GST",
-        guestChallengeActive: true,
-        isGuestOpponent: true,
-        temporaryGuestOpponent: true,
-        challengeRole: "guest",
-      },
-    ];
-  }
-
-  const legacyTurfKingsChallenge = incoming.find(
-    (team) =>
-      team?.id === TURF_KINGS_CHALLENGE_ID ||
-      (team?.id !== TURF_KINGS_SLOT_ID && team?.isTurfKingsChallengeTeam === true)
-  );
-
-  const legacyGuestOpponent = incoming.find(
-    (team) =>
-      team?.id === GUEST_OPPONENT_ID ||
-      (team?.id !== GUEST_OPPONENT_SLOT_ID && team?.isGuestOpponent === true)
-  );
-
-  // Backward compatibility for any old saved attempt using custom IDs.
-  // Convert it immediately into the safer dark/light slot model.
-  if (legacyTurfKingsChallenge && legacyGuestOpponent) {
-    return [
-      {
-        ...legacyTurfKingsChallenge,
-        id: TURF_KINGS_SLOT_ID,
-        label: legacyTurfKingsChallenge.label || "Turf Kings",
-        abbrev: legacyTurfKingsChallenge.abbrev || "TKG",
-        guestChallengeActive: true,
-        isTurfKingsChallengeTeam: true,
-        challengeRole: "home",
-      },
-      {
-        ...legacyGuestOpponent,
-        id: GUEST_OPPONENT_SLOT_ID,
-        label: legacyGuestOpponent.label || "Guest Opponent",
-        abbrev: legacyGuestOpponent.abbrev || "GST",
-        guestChallengeActive: true,
-        isGuestOpponent: true,
-        temporaryGuestOpponent: true,
-        challengeRole: "guest",
-      },
-    ];
-  }
-
   const defaults = buildDefaultFiveVFiveTeams();
+
   const byId = new Map(
-    incoming.filter((team) => team.id).map((team) => [team.id, team])
+    incoming
+      .filter((team) => team?.id === TURF_KINGS_SLOT_ID || team?.id === GUEST_OPPONENT_SLOT_ID)
+      .map((team) => [team.id, stripFriendlyChallengeFlags(team)])
   );
 
   return defaults.map((baseTeam) => {
-    const incomingTeam = byId.get(baseTeam.id);
-    if (!incomingTeam) return { ...baseTeam };
+    const incomingTeam = byId.get(baseTeam.id) || {};
 
     return {
       ...baseTeam,
       ...incomingTeam,
       id: baseTeam.id,
-      label: String(incomingTeam.label || baseTeam.label).trim() || baseTeam.label,
+      label:
+        baseTeam.id === TURF_KINGS_SLOT_ID
+          ? "Dark"
+          : baseTeam.id === GUEST_OPPONENT_SLOT_ID
+          ? "Light"
+          : baseTeam.label,
       abbrev:
-        String(incomingTeam.abbrev || baseTeam.abbrev).trim() || baseTeam.abbrev,
+        baseTeam.id === TURF_KINGS_SLOT_ID
+          ? "DRK"
+          : baseTeam.id === GUEST_OPPONENT_SLOT_ID
+          ? "LGT"
+          : baseTeam.abbrev,
       teamColorName:
-        String(
-          incomingTeam.teamColorName ||
-            incomingTeam.colorName ||
-            baseTeam.teamColorName
-        ).trim() || baseTeam.teamColorName,
+        String(incomingTeam.teamColorName || incomingTeam.colorName || baseTeam.teamColorName).trim() ||
+        baseTeam.teamColorName,
       teamColorHex:
-        String(
-          incomingTeam.teamColorHex ||
-            incomingTeam.colorHex ||
-            baseTeam.teamColorHex
-        ).trim() || baseTeam.teamColorHex,
-      players: Array.isArray(incomingTeam.players)
-        ? [...incomingTeam.players]
-        : [],
+        String(incomingTeam.teamColorHex || incomingTeam.colorHex || baseTeam.teamColorHex).trim() ||
+        baseTeam.teamColorHex,
+      players: Array.isArray(incomingTeam.players) ? [...incomingTeam.players] : [],
       captainId: incomingTeam.captainId || null,
       captain: String(incomingTeam.captain || "").trim(),
     };
