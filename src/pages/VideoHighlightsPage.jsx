@@ -594,9 +594,12 @@ function getCurationWinners(result) {
 
 function getMissingBadges(highlight) {
   const badges = [];
+  const isThrowback = highlight?.highlightEra === "throwback" || highlight?.isThrowback === true;
+
   if (needsPlayer(highlight)) badges.push("Needs player");
-  if (needsTeam(highlight)) badges.push("Needs team");
+  // Team is optional for highlight clips, so do not show a warning badge.
   if (needsClub(highlight)) badges.push("Needs club");
+
   return badges;
 }
 
@@ -608,17 +611,25 @@ function HighlightCard({
   isModerator = false,
   canVote = false,
   userVoteForType = null,
+  currentUserKey = "",
   onVote,
   onApprove,
   onReject,
   onDelete,
+  onIdentifyPlayer,
 }) {
+  const [showShareMenu, setShowShareMenu] = useState(false);
   const isSelectedVote = userVoteForType === highlight.id;
   const missingBadges = getMissingBadges(highlight);
   const matchupLabel = getMatchupLabel(highlight, teams, matchType);
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const canDeleteHighlight =
+    isModerator ||
+    (currentUserKey &&
+      safeLower(highlight?.createdBy) &&
+      safeLower(highlight?.createdBy) === safeLower(currentUserKey));
 
-  const handleShare = async () => {
+  const handleShare = async (shareType = "native") => {
     const url = getHighlightMediaUrl(highlight);
     if (!url) return;
 
@@ -632,10 +643,50 @@ function HighlightCard({
         return;
       }
 
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url);
-        window.alert("Highlight link copied.");
+      const shareTextRaw = `${highlight.title || "Club highlight"} • ${matchupLabel}`;
+      const shareText = encodeURIComponent(shareTextRaw);
+      const shareUrl = encodeURIComponent(url);
+
+      const shareLinks = {
+        whatsapp: `https://wa.me/?text=${shareText}%20${shareUrl}`,
+        facebook: `https://www.facebook.com/sharer/sharer.php?u=${shareUrl}`,
+        twitter: `https://twitter.com/intent/tweet?text=${shareText}&url=${shareUrl}`,
+      };
+
+      if (shareType === "copy") {
+        if (navigator?.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+        }
+        return;
       }
+
+      if (shareType === "download") {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${highlight.title || "club-highlight"}.mp4`;
+        a.rel = "noopener noreferrer";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+
+      if (
+        shareType === "native" &&
+        navigator?.share
+      ) {
+        await navigator.share({
+          title: highlight.title || "Club highlight",
+          text: shareTextRaw,
+          url,
+        });
+        return;
+      }
+
+      const targetUrl =
+        shareLinks[shareType] || shareLinks.whatsapp;
+
+      window.open(targetUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Share failed:", error);
     }
@@ -672,6 +723,23 @@ function HighlightCard({
         {missingBadges.map((badge) => (
           <span key={badge} className="tkh-missing-badge">{badge}</span>
         ))}
+
+        {needsPlayer(highlight) && (
+          <button
+            type="button"
+            className="tkh-btn"
+            onClick={() => onIdentifyPlayer?.(highlight)}
+            style={{
+              padding: "0.36rem 0.6rem",
+              fontSize: "0.72rem",
+              borderColor: "rgba(56,189,248,0.34)",
+              color: "#bae6fd",
+              background: "rgba(14,165,233,0.10)",
+            }}
+          >
+            Help identify player
+          </button>
+        )}
       </div>
 
       <div className="tkh-meta-row">
@@ -706,9 +774,65 @@ function HighlightCard({
           )}
 
         {highlight.mediaUrl && (
-          <button type="button" className="tkh-btn" onClick={handleShare}>
-            {canShare ? "Share" : "Copy link"}
-          </button>
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="tkh-btn"
+              onClick={() => setShowShareMenu((prev) => !prev)}
+            >
+              Share ▾
+            </button>
+
+            {showShareMenu && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "115%",
+                  left: 0,
+                  minWidth: "180px",
+                  borderRadius: "1rem",
+                  overflow: "hidden",
+                  background:
+                    "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+                  border: "1px solid rgba(148,163,184,0.20)",
+                  boxShadow: "0 18px 50px rgba(0,0,0,0.45)",
+                  zIndex: 80,
+                }}
+              >
+                {[
+                  ["copy", "Copy link"],
+                  ["download", "Download clip"],
+                  ["native", "Device share"],
+                  ["whatsapp", "WhatsApp"],
+                  ["facebook", "Facebook"],
+                  ["twitter", "X / Twitter"],
+                ].map(([type, label]) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      handleShare(type);
+                      setShowShareMenu(false);
+                    }}
+                    style={{
+                      width: "100%",
+                      border: "none",
+                      borderBottom: "1px solid rgba(255,255,255,0.06)",
+                      background: "transparent",
+                      color: "#f8fafc",
+                      textAlign: "left",
+                      padding: "0.78rem 1rem",
+                      cursor: "pointer",
+                      fontSize: "0.82rem",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {isModerator && highlight.status === "pending" && (
@@ -722,7 +846,7 @@ function HighlightCard({
           </>
         )}
 
-        {isModerator && (
+        {canDeleteHighlight && (
           <button type="button" className="tkh-btn tkh-btn-danger" onClick={() => onDelete?.(highlight)}>
             Delete
           </button>
@@ -787,6 +911,9 @@ export function VideoHighlightsPage({
   const [curationNotice, setCurationNotice] = useState("");
 
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [identifyTarget, setIdentifyTarget] = useState(null);
+  const [identifyPlayerName, setIdentifyPlayerName] = useState("");
+  const [shareMenuClipId, setShareMenuClipId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [uploadNotice, setUploadNotice] = useState("");
@@ -927,27 +1054,18 @@ export function VideoHighlightsPage({
   );
 
   const scopedApprovedHighlights = useMemo(
-    () =>
-      (mainTab === "throwback" ? throwbackHighlights : currentWeekHighlights).filter(
-        (item) => item.status === "approved"
-      ),
-    [mainTab, currentWeekHighlights, throwbackHighlights]
+    () => allHighlights.filter((item) => item.status === "approved"),
+    [allHighlights]
   );
 
   const scopedPendingHighlights = useMemo(
-    () =>
-      (mainTab === "throwback" ? throwbackHighlights : currentWeekHighlights).filter(
-        (item) => item.status === "pending"
-      ),
-    [mainTab, currentWeekHighlights, throwbackHighlights]
+    () => allHighlights.filter((item) => item.status === "pending"),
+    [allHighlights]
   );
 
   const scopedRejectedHighlights = useMemo(
-    () =>
-      (mainTab === "throwback" ? throwbackHighlights : currentWeekHighlights).filter(
-        (item) => item.status === "rejected"
-      ),
-    [mainTab, currentWeekHighlights, throwbackHighlights]
+    () => allHighlights.filter((item) => item.status === "rejected"),
+    [allHighlights]
   );
 
   const tabHighlights = useMemo(() => {
@@ -957,9 +1075,23 @@ export function VideoHighlightsPage({
   }, [selectedTab, scopedApprovedHighlights, scopedPendingHighlights, scopedRejectedHighlights]);
 
   const visibleHighlights = useMemo(() => {
-    if (selectedFilter === "all") return tabHighlights;
-    return tabHighlights.filter((item) => item.normalizedType === selectedFilter);
-  }, [tabHighlights, selectedFilter]);
+    const filtered =
+      selectedFilter === "all"
+        ? tabHighlights
+        : tabHighlights.filter((item) => item.normalizedType === selectedFilter);
+
+    if (mainTab !== "currentWeek") return filtered;
+
+    const fresh = filtered.filter(
+      (item) => item.highlightEra !== "throwback" && item.isThrowback !== true
+    );
+
+    const throwbacks = filtered.filter(
+      (item) => item.highlightEra === "throwback" || item.isThrowback === true
+    );
+
+    return [...fresh, ...throwbacks];
+  }, [tabHighlights, selectedFilter, mainTab]);
 
   const voteCounts = useMemo(
     () => getVoteBuckets(localVotesByUser, approvedHighlights),
@@ -1380,6 +1512,64 @@ export function VideoHighlightsPage({
     }
   };
 
+  const openIdentifyPlayer = (highlight) => {
+    setIdentifyTarget(highlight || null);
+    setIdentifyPlayerName("");
+  };
+
+  const closeIdentifyPlayer = () => {
+    setIdentifyTarget(null);
+    setIdentifyPlayerName("");
+  };
+
+  const handleConfirmIdentifyPlayer = async () => {
+    const cleanName = toTitleCaseLoose(identifyPlayerName);
+    if (!identifyTarget || !cleanName) return;
+
+    const normalizedType = normalizeHighlightType(identifyTarget?.tag || identifyTarget?.type || "");
+
+    const updated = normalizeHighlight({
+      ...identifyTarget,
+      playerName: cleanName,
+      goalScorer: normalizedType === "goal" ? cleanName : identifyTarget.goalScorer || "",
+      goalScorerName: normalizedType === "goal" ? cleanName : identifyTarget.goalScorerName || "",
+      scorer: normalizedType === "goal" ? cleanName : identifyTarget.scorer || "",
+      keeperName: normalizedType === "save" ? cleanName : identifyTarget.keeperName || "",
+      skillPlayer: normalizedType === "skill" ? cleanName : identifyTarget.skillPlayer || "",
+      title:
+        normalizedType === "goal"
+          ? `Goal by ${cleanName}`
+          : normalizedType === "save"
+          ? `Save by ${cleanName}`
+          : normalizedType === "skill"
+          ? `Skill by ${cleanName}`
+          : `Highlight by ${cleanName}`,
+      metadataComplete: true,
+      needsPlayer: false,
+      identifiedBy: identityName || "Community",
+      identifiedById: identityKey || "",
+      identifiedAt: new Date().toISOString(),
+      playerIdentificationSource: "community",
+      updatedAt: new Date().toISOString(),
+    });
+
+    upsertLocalHighlight(updated);
+
+    try {
+      if (resolvedMatchId && updated.clipId) {
+        await saveRawHighlightDoc({
+          matchId: resolvedMatchId,
+          highlight: updated,
+        });
+        await loadHighlights();
+      }
+      closeIdentifyPlayer();
+    } catch (error) {
+      console.error("[TK HIGHLIGHTS] Player identification failed:", error);
+      window.alert(error?.message || "Could not save player identification.");
+    }
+  };
+
   const handleRunCuration = async () => {
     if (!isModerator) return;
 
@@ -1727,6 +1917,31 @@ export function VideoHighlightsPage({
           color: #fed7aa;
           background: linear-gradient(135deg, rgba(249,115,22,0.16), rgba(168,85,247,0.18));
           border: 1px solid rgba(251,146,60,0.30);
+        }
+
+        .tkh-throwback-divider {
+          grid-column: 1 / -1;
+          margin: 0.4rem 0 0.2rem;
+          padding: 0.9rem 1rem;
+          border-radius: 1.15rem;
+          background:
+            radial-gradient(circle at top left, rgba(249,115,22,0.12), transparent 38%),
+            linear-gradient(135deg, rgba(249,115,22,0.10), rgba(168,85,247,0.12));
+          border: 1px solid rgba(251,146,60,0.22);
+          color: #fed7aa;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+        }
+
+        .tkh-throwback-divider strong {
+          display: block;
+          font-size: 0.96rem;
+          color: #fff7ed;
+          margin-bottom: 0.2rem;
+        }
+
+        .tkh-throwback-divider span {
+          font-size: 0.82rem;
+          color: rgba(255,237,213,0.82);
         }
 
         .tkh-view-toggle {
@@ -2441,7 +2656,7 @@ export function VideoHighlightsPage({
             className="tkh-btn"
             onClick={() => {
               setHighlightEra("throwback");
-              setMainTab("throwback");
+              setMainTab("currentWeek");
               setShowUploadModal(true);
             }}
             disabled={!canUpload}
@@ -2616,7 +2831,11 @@ export function VideoHighlightsPage({
                     <button
                       type="button"
                       className="tkh-btn tkh-btn-primary"
-                      onClick={() => setShowUploadModal(true)}
+                      onClick={() => {
+                        setHighlightEra("current_week");
+                        setMainTab("currentWeek");
+                        setShowUploadModal(true);
+                      }}
                     >
                       {mainTab === "throwback" ? "Upload throwback clip" : "Upload first highlight"}
                     </button>
@@ -2625,8 +2844,33 @@ export function VideoHighlightsPage({
               </div>
             ) : (
               <div className="tkh-grid">
-                {visibleHighlights.map((highlight) => (
-                  <HighlightCard
+                {visibleHighlights.map((highlight, index) => {
+                  const isThrowback =
+                    highlight.highlightEra === "throwback" ||
+                    highlight.isThrowback === true;
+
+                  const previous = visibleHighlights[index - 1];
+
+                  const previousWasThrowback =
+                    previous &&
+                    (previous.highlightEra === "throwback" ||
+                      previous.isThrowback === true);
+
+                  const shouldShowThrowbackDivider =
+                    isThrowback && !previousWasThrowback;
+
+                  return (
+                    <React.Fragment key={highlight.id}>
+                      {shouldShowThrowbackDivider && (
+                        <div className="tkh-throwback-divider">
+                          <strong>Throwback ✨</strong>
+                          <span>
+                            Classic club memories, old rivalries, and nostalgic football moments.
+                          </span>
+                        </div>
+                      )}
+
+                      <HighlightCard
                     key={highlight.id}
                     highlight={highlight}
                     teams={teams}
@@ -2634,13 +2878,17 @@ export function VideoHighlightsPage({
                     voteCount={voteCounts[highlight.id] || 0}
                     isModerator={isModerator}
                     canVote={isLoggedIn}
+                    currentUserKey={identityKey}
                     userVoteForType={userVotes[highlight.normalizedType] || null}
                     onVote={castVote}
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onDelete={handleDelete}
+                    onIdentifyPlayer={openIdentifyPlayer}
                   />
-                ))}
+                    </React.Fragment>
+                  );
+                })}
               </div>
             )}
           </>
@@ -2678,11 +2926,13 @@ export function VideoHighlightsPage({
                             voteCount={voteCounts[clip.id] || Number(clip.votes || 0)}
                             isModerator={isModerator}
                             canVote={isLoggedIn}
+                            currentUserKey={identityKey}
                             userVoteForType={userVotes[clip.normalizedType] || null}
                             onVote={castVote}
                             onApprove={handleApprove}
                             onReject={handleReject}
                             onDelete={handleDelete}
+                            onIdentifyPlayer={openIdentifyPlayer}
                           />
                         </div>
                       ))}
@@ -2700,6 +2950,76 @@ export function VideoHighlightsPage({
           <span>Best save: <strong>{archiveSelection.bestSave?.playerName || "Pending"}</strong></span>
         </div>
       </section>
+
+      {identifyTarget && (
+        <div className="tkh-modal-backdrop">
+          <div className="tkh-modal" role="dialog" aria-modal="true" aria-label="Identify player">
+            <button
+              type="button"
+              onClick={closeIdentifyPlayer}
+              aria-label="Close identify player"
+              style={{
+                position: "absolute",
+                top: "1rem",
+                right: "1rem",
+                width: "44px",
+                height: "44px",
+                borderRadius: "999px",
+                border: "1px solid rgba(56,189,248,0.30)",
+                background: "rgba(15,23,42,0.82)",
+                color: "#7dd3fc",
+                fontSize: "1.45rem",
+                fontWeight: 300,
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                zIndex: 5,
+              }}
+            >
+              ×
+            </button>
+
+            <div className="tkh-modal-head" style={{ paddingRight: "3rem" }}>
+              <div>
+                <h2 className="tkh-modal-title">Help identify player</h2>
+                <div className="tkh-help">
+                  Select the player shown in this clip. Admin or captain can correct it later if needed.
+                </div>
+              </div>
+            </div>
+
+            <div className="tkh-form-grid">
+              <div className="tkh-field" style={{ gridColumn: "1 / -1" }}>
+                <label>Player</label>
+                <input
+                  className="tkh-input"
+                  list="tkh-player-options"
+                  value={identifyPlayerName}
+                  onChange={(e) => setIdentifyPlayerName(e.target.value)}
+                  placeholder="Start typing a player name"
+                  autoFocus
+                />
+                <datalist id="tkh-player-options">
+                  {playerOptions.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+
+            <div className="tkh-upload-actions">
+              <button
+                type="button"
+                className="tkh-btn tkh-btn-primary"
+                onClick={handleConfirmIdentifyPlayer}
+                disabled={!toTitleCaseLoose(identifyPlayerName)}
+              >
+                Save player
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showUploadModal && (
         <div className="tkh-modal-backdrop">

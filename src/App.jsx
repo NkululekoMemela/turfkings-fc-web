@@ -6147,11 +6147,6 @@ export default function App() {
                                 min={0}
                                 max={maxValue}
                                 className="text-input"
-                style={{
-                  width: "100%",
-                  maxWidth: "100%",
-                  boxSizing: "border-box",
-                }}
                                 style={{
                                   width: isBackupModalMobile ? "64px" : "68px",
                                   minWidth: 0,
