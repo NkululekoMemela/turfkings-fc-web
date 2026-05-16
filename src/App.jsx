@@ -4414,7 +4414,7 @@ export default function App() {
     if (hasUnendedMatchDay) {
       window.alert(
         "⚠️ You still have an active match day that has not been ended.\n\n" +
-          "Please click “🏁 End Match Day” first (Save to Firebase & clear), then come back to “🏆 End Season”."
+          "Please click “🏁 End Match Day” first (Save to server & clear), then come back to “🏆 End Season”."
       );
       return;
     }
@@ -5765,7 +5765,7 @@ export default function App() {
                   lineHeight: 1.45,
                 }}
               >
-                Save the match day to Firebase and clear the live board. Attendance is auto-filled; review it only when needed.
+                Save the match day to the server and clear the live board. Attendance is auto-filled; review it only when needed.
               </p>
 
               <div
@@ -6245,7 +6245,7 @@ export default function App() {
                   fontWeight: 900,
                 }}
               >
-                Save to Firebase &amp; clear
+                Save to server &amp; clear
               </button>
             </div>
           </div>
@@ -6312,7 +6312,7 @@ export default function App() {
                 You are about to save an official match day.
               </p>
               <p style={{ margin: "0.45rem 0" }}>
-                ✅ Save all participation and stats to Firebase.
+                ✅ Save all participation and stats to the server.
               </p>
               <p style={{ margin: "0.45rem 0" }}>
                 ✅ Clear the live board for the next match day.
@@ -6384,7 +6384,7 @@ export default function App() {
                   fontWeight: 900,
                 }}
               >
-                Confirm &amp; Save to Firebase
+                Confirm &amp; Save to server
               </button>
             </div>
           </div>
@@ -6415,11 +6415,11 @@ export default function App() {
           >
             <h3 style={{ marginTop: 0, color: "#fecaca" }}>⚠️ Delete day’s games</h3>
             <p style={{ lineHeight: 1.5, marginBottom: "0.75rem" }}>
-              <strong>Delete day’s games will remove this match-day data without saving it to Firebase.</strong>
+              <strong>Delete day’s games will remove this match-day data without saving it to the server.</strong>
             </p>
             <p style={{ lineHeight: 1.5, marginTop: 0, color: "rgba(255,255,255,0.86)" }}>
               Only continue if this was a practice run or dummy data. If this was a real match day,
-              go back and use <strong>Save to Firebase &amp; clear</strong> instead.
+              go back and use <strong>Save to server &amp; clear</strong> instead.
             </p>
             <p style={{ lineHeight: 1.5, color: "#fde68a", fontWeight: 800 }}>
               Do not enter the code unless you are intentionally deleting test data.
