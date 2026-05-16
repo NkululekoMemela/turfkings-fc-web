@@ -412,19 +412,19 @@ function describeUploadError(error, stage = "upload") {
   const message = String(error?.message || "").trim();
 
   if (code.includes("storage/unauthorized")) {
-    return "Firebase Storage rejected the video upload. Check Storage rules for video_highlights uploads.";
+    return "The server rejected the video upload. Check Storage rules for video_highlights uploads.";
   }
 
   if (code.includes("storage/canceled")) return "The upload was cancelled before it finished.";
-  if (code.includes("storage/quota-exceeded")) return "Firebase Storage quota was exceeded.";
+  if (code.includes("storage/quota-exceeded")) return "Server upload storage is currently full.";
 
   if (code.includes("permission-denied")) {
-    return "Firestore rejected the highlight details after the video upload.";
+    return "The server rejected the highlight details after the video upload.";
   }
 
   if (stage === "validation") return message || "The selected file failed validation.";
   if (stage === "firestore") return message || "The video uploaded, but clip details could not be saved.";
-  if (stage === "storage") return message || "Firebase Storage failed while uploading the video.";
+  if (stage === "storage") return message || "The server failed while uploading the video.";
 
   return message || "Upload failed. Please try again.";
 }
@@ -773,6 +773,7 @@ export function VideoHighlightsPage({
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [loadingHighlights, setLoadingHighlights] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [showVotingInfo, setShowVotingInfo] = useState(false);
 
   const [curationResult, setCurationResult] = useState(null);
   const [runningCuration, setRunningCuration] = useState(false);
@@ -841,7 +842,7 @@ export function VideoHighlightsPage({
       setArchivedHighlights(Array.isArray(archived) ? archived : []);
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Failed to load highlights:", error);
-      setLoadError(error?.message || "Could not load highlights from Firebase.");
+      setLoadError(error?.message || "Could not load highlights from the server.");
     } finally {
       setLoadingHighlights(false);
     }
@@ -1376,7 +1377,7 @@ export function VideoHighlightsPage({
     const winners = getCurationWinners(curationResult);
 
     const confirmed = window.confirm(
-      `Confirm cleanup? ${winners.length} winning clip${winners.length === 1 ? "" : "s"} will be archived permanently and ${cleanupCandidates.length} non-winning clip${cleanupCandidates.length === 1 ? "" : "s"} will be removed from Firebase.`
+      `Confirm cleanup? ${winners.length} winning clip${winners.length === 1 ? "" : "s"} will be archived permanently and ${cleanupCandidates.length} non-winning clip${cleanupCandidates.length === 1 ? "" : "s"} will be removed from the server.`
     );
 
     if (!confirmed) return;
@@ -1597,6 +1598,46 @@ export function VideoHighlightsPage({
           background: rgba(127, 29, 29, 0.42);
           border-color: rgba(248, 113, 113, 0.38);
           color: #fecaca;
+        }
+
+        .tkh-tab-info-wrap {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.55rem;
+        }
+
+        .tkh-info-dot {
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          border: 1px solid rgba(56, 189, 248, 0.46);
+          background: rgba(14, 165, 233, 0.10);
+          color: #7dd3fc;
+          font-weight: 1000;
+          cursor: pointer;
+        }
+
+        .tkh-info-popover {
+          position: absolute;
+          top: calc(100% + 0.65rem);
+          right: 50%;
+          transform: translateX(50%);
+          width: min(340px, 88vw);
+          z-index: 20;
+          padding: 0.9rem;
+          border-radius: 1rem;
+          border: 1px solid rgba(148, 163, 184, 0.28);
+          background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98));
+          color: rgba(226,232,240,0.86);
+          box-shadow: 0 22px 44px rgba(0,0,0,0.36);
+          line-height: 1.45;
+          font-size: 0.86rem;
+        }
+
+        .tkh-info-popover strong {
+          color: #f8fafc;
         }
 
         .tkh-view-toggle {
@@ -1846,8 +1887,48 @@ export function VideoHighlightsPage({
           display: grid;
           place-items: center;
           text-align: center;
-          border: 1px dashed rgba(148, 163, 184, 0.34);
-          color: rgba(226, 232, 240, 0.70);
+          border: 1px solid rgba(56, 189, 248, 0.18);
+          color: rgba(226, 232, 240, 0.78);
+          background:
+            radial-gradient(circle at top, rgba(34, 197, 94, 0.10), transparent 42%),
+            linear-gradient(180deg, rgba(15, 23, 42, 0.76), rgba(2, 6, 23, 0.70));
+          border-radius: 1.25rem;
+          min-height: 190px;
+          padding: 1.25rem;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+
+        .tkh-empty-inner {
+          max-width: 520px;
+          display: grid;
+          gap: 0.55rem;
+          justify-items: center;
+        }
+
+        .tkh-empty-icon {
+          width: 64px;
+          height: 64px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          font-size: 2rem;
+          background: rgba(34, 197, 94, 0.13);
+          border: 1px solid rgba(134, 239, 172, 0.24);
+          box-shadow: 0 0 22px rgba(34,197,94,0.12);
+        }
+
+        .tkh-empty-title {
+          margin: 0;
+          color: #f8fafc;
+          font-size: 1.12rem;
+          font-weight: 1000;
+        }
+
+        .tkh-empty-copy {
+          margin: 0;
+          color: rgba(226,232,240,0.72);
+          line-height: 1.45;
+          font-size: 0.9rem;
         }
 
         .tkh-system-note,
@@ -2245,9 +2326,6 @@ export function VideoHighlightsPage({
           <span>{isLeagueMode ? "League teams:" : "Featured match:"}</span>
           <strong>{teamContextText}</strong>
         </div>
-        <div className="tkh-voting-window-note">
-          Current Week clips stay open for voting until Sunday night. After that, Top Voted becomes the main highlights hub.
-        </div>
         <div className="tkh-header-actions">
           <button
             type="button"
@@ -2258,42 +2336,53 @@ export function VideoHighlightsPage({
           >
             Upload
           </button>
-          <button type="button" className="tkh-btn" onClick={loadHighlights} disabled={loadingHighlights}>
-            {loadingHighlights ? "Refreshing..." : "Refresh"}
-          </button>
-          {isModerator && (
-            <button
-              type="button"
-              className="tkh-btn"
-              onClick={handleRunCuration}
-              disabled={runningCuration || cleanupInProgress || approvedHighlights.length === 0}
-              title="Select the top 2 goals, best save, and best skill, then preview cleanup."
-            >
-              {runningCuration ? "Running..." : "Run Curation"}
-            </button>
-          )}
         </div>
       </header>
 
       {loadError && <section className="card tkh-error-box">{loadError}</section>}
 
       <section className="card tkh-card-section">
-        <div className="pill-toggle-group tkh-view-toggle" role="tablist" aria-label="Video highlights view">
+        <div className="tkh-tab-info-wrap">
+          <div className="pill-toggle-group tkh-view-toggle" role="tablist" aria-label="Video highlights view">
+            <button
+              type="button"
+              className={`pill-toggle ${mainTab === "currentWeek" ? "pill-toggle-active" : ""}`}
+              onClick={() => setMainTab("currentWeek")}
+              title={votingWindowClosed ? "This week’s voting window has closed. Top Voted is now the main hub." : `Voting closes ${votingDeadlineLabel}`}
+            >
+              Current Week
+            </button>
+            <button
+              type="button"
+              className={`pill-toggle ${mainTab === "winners" ? "pill-toggle-active" : ""}`}
+              onClick={() => setMainTab("winners")}
+            >
+              Top Voted ⭐
+            </button>
+          </div>
+
           <button
             type="button"
-            className={`pill-toggle ${mainTab === "currentWeek" ? "pill-toggle-active" : ""}`}
-            onClick={() => setMainTab("currentWeek")}
-            title={votingWindowClosed ? "This week’s voting window has closed. Top Voted is now the main hub." : `Voting closes ${votingDeadlineLabel}`}
+            className="tkh-info-dot"
+            onClick={() => setShowVotingInfo((prev) => !prev)}
+            aria-label="Explain highlight voting"
+            title="How highlight voting works"
           >
-            Current Week
+            i
           </button>
-          <button
-            type="button"
-            className={`pill-toggle ${mainTab === "winners" ? "pill-toggle-active" : ""}`}
-            onClick={() => setMainTab("winners")}
-          >
-            Top Voted ⭐
-          </button>
+
+          {showVotingInfo && (
+            <div className="tkh-info-popover">
+              <strong>How weekly winners work</strong>
+              <div style={{ marginTop: "0.45rem" }}>
+                Current Week clips stay open for voting until Sunday night.
+                The top 2 goals, best save, and best skill are kept as Top Voted clips.
+              </div>
+              <div style={{ marginTop: "0.55rem", color: "#fde68a", fontWeight: 850 }}>
+                If no votes are submitted before the deadline, no weekly winners can be selected. Non-winning clips will be cleared after voting closes.
+              </div>
+            </div>
+          )}
         </div>
 
         {mainTab === "currentWeek" && (
@@ -2356,7 +2445,7 @@ export function VideoHighlightsPage({
             </div>
 
             <div className="tkh-soft-line">
-              Review this before confirming. Winners remain; only non-selected clips are deleted from Firebase.
+              Review this before confirming. Winners remain; only non-selected clips are deleted from the server.
             </div>
 
             <div className="tkh-curation-actions">
@@ -2389,11 +2478,28 @@ export function VideoHighlightsPage({
             )}
             {visibleHighlights.length === 0 ? (
               <div className="tkh-empty">
-                {selectedTab === "pending"
-                  ? "No clips waiting for review."
-                  : selectedTab === "rejected"
-                  ? "No rejected clips."
-                  : "No approved highlights yet."}
+                <div className="tkh-empty-inner">
+                  <div className="tkh-empty-icon">🎥</div>
+                  <h3 className="tkh-empty-title">
+                    {selectedTab === "pending"
+                      ? "No clips waiting for review"
+                      : selectedTab === "rejected"
+                      ? "No rejected clips"
+                      : "No highlights uploaded yet"}
+                  </h3>
+                  <p className="tkh-empty-copy">
+                    Upload the best goals, saves, and skills from match day. Once clips are approved, players can vote for the week’s top moments.
+                  </p>
+                  {canUpload && (
+                    <button
+                      type="button"
+                      className="tkh-btn tkh-btn-primary"
+                      onClick={() => setShowUploadModal(true)}
+                    >
+                      Upload first highlight
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="tkh-grid">
@@ -2465,7 +2571,7 @@ export function VideoHighlightsPage({
             )}
 
             <div className="tkh-cleanup-note">
-              After admin download/approval, Current Week keeps the top 2 goals, 1 save, and 1 skill as Top Voted clips. The rest are cleaned from Firebase after the weekly voting window closes.
+              After admin download/approval, Current Week keeps the top 2 goals, 1 save, and 1 skill as Top Voted clips. The rest are cleaned from the server after the weekly voting window closes.
             </div>
           </div>
         )}
