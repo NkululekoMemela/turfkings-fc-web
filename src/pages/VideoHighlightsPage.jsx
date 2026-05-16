@@ -2593,10 +2593,32 @@ export function VideoHighlightsPage({
             grid-template-columns: 1fr;
           }
 
-          .tkh-card-top,
           .tkh-winners-head,
           .tkh-modal-head {
             flex-direction: column;
+          }
+
+          .tkh-card-top {
+            flex-direction: row;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.65rem;
+          }
+
+          .tkh-card-title-block {
+            min-width: 0;
+          }
+
+          .tkh-player-name,
+          .tkh-clip-title {
+            overflow-wrap: anywhere;
+          }
+
+          .tkh-card-top .tkh-throwback-badge,
+          .tkh-card-top .tkh-status-badge {
+            font-size: 0.62rem;
+            padding: 0.24rem 0.42rem;
+            white-space: nowrap;
           }
 
           .tkh-card-actions .tkh-btn,
