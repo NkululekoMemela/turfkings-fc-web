@@ -883,7 +883,6 @@ export function EntryPage({
 
 
     pendingMembers
-      .filter((m) => !dismissedPendingNoticeIds.includes(m.id))
       .forEach((m) => {
         notices.push({
           id: `pending-${m.id}`,
@@ -908,7 +907,6 @@ export function EntryPage({
     return notices;
   }, [
     activeClubName,
-    dismissedPendingNoticeIds,
     incomingChallengeAlerts,
     challengeNoticeAlerts,
     isAdminViewer,
@@ -1527,7 +1525,7 @@ export function EntryPage({
     const member = members.find((m) => m.id === memberId) || null;
 
     try {
-      await updateDoc(memberDocRef(clubId, memberId), {
+      await updateDoc(memberDocRef(activeClubId, memberId), {
         status: "active",
         rejoinReviewedAt: serverTimestamp(),
         rejoinRequestedAt: deleteField(),
@@ -1613,15 +1611,7 @@ export function EntryPage({
     }
 
     if (notice.type === "new_player") {
-      setDismissedPendingNoticeIds((prev) => {
-        const next = Array.from(new Set([...prev, notice.payload?.id].filter(Boolean)));
-        try {
-          window.localStorage.setItem("tk_dismissedPendingNoticeIds", JSON.stringify(next));
-        } catch (err) {
-          // Local storage is optional; the alert can still be dismissed for this session.
-        }
-        return next;
-      });
+      return;
     }
   };
 
@@ -1809,7 +1799,7 @@ export function EntryPage({
 
   const handleRejectMember = async (memberId) => {
     try {
-      await updateDoc(memberDocRef(clubId, memberId), {
+      await updateDoc(memberDocRef(activeClubId, memberId), {
         status: "rejected",
         rejoinReviewedAt: serverTimestamp(),
         rejoinRequestedAt: deleteField(),
