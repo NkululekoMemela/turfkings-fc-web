@@ -418,8 +418,8 @@
      ========================================= */
   
   .ticker {
-    width: min(100%, 760px);
-    margin: 14px auto 18px;
+    width: 100%;
+    margin: 14px 0 18px;
     overflow: hidden;
     white-space: nowrap;
     box-sizing: border-box;

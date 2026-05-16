@@ -2032,6 +2032,19 @@ export default function App() {
     {}
   );
 
+  const rawAdminName =
+    identity?.displayName ||
+    identity?.name ||
+    "";
+
+  const endMatchDayAdminName =
+    typeof rawAdminName === "string" && rawAdminName.trim()
+      ? rawAdminName
+          .trim()
+          .split(" ")[0]
+          .replace(/[^a-zA-Z]/g, "")
+      : "";
+
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupCode, setBackupCode] = useState("");
   const [backupError, setBackupError] = useState("");
@@ -2044,6 +2057,8 @@ export default function App() {
   const [pendingParticipationEntries, setPendingParticipationEntries] = useState(
     []
   );
+  const [showAttendanceAudit, setShowAttendanceAudit] = useState(false);
+  const [showAttendanceInfo, setShowAttendanceInfo] = useState(false);
   const [isBackupModalMobile, setIsBackupModalMobile] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth <= 520;
@@ -5749,13 +5764,196 @@ export default function App() {
                   lineHeight: 1.45,
                 }}
               >
-                Confirm player participation, then save the match day to Firebase and clear the live board.
+                Save the match day to Firebase and clear the live board. Attendance is auto-filled; review it only when needed.
               </p>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.55rem",
+                  marginTop: "0.75rem",
+                }}
+              >
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => {
+                    setShowAttendanceAudit((prev) => !prev);
+                    setShowAttendanceInfo(false);
+                  }}
+                  style={{
+                    width: "fit-content",
+                    padding: "0.45rem 0.85rem",
+                    borderRadius: "999px",
+                    borderColor: "rgba(56,189,248,0.42)",
+                    color: "#bae6fd",
+                    fontWeight: 850,
+                  }}
+                >
+                  {showAttendanceAudit ? "Hide attendance" : "Attendance"}
+                </button>
+
+                {showAttendanceAudit && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAttendanceInfo((prev) => !prev)}
+                    aria-label="Explain attendance"
+                    style={{
+                      width: "34px",
+                      height: "34px",
+                      borderRadius: "999px",
+                      border: "1px solid rgba(56,189,248,0.62)",
+                      background: "rgba(14,165,233,0.12)",
+                      color: "#7dd3fc",
+                      fontWeight: 950,
+                      cursor: "pointer",
+                    }}
+                  >
+                    i
+                  </button>
+                )}
+              </div>
+
+              {showAttendanceAudit && showAttendanceInfo && (
+                <div
+                  style={{
+                    position: "absolute",
+                    zIndex: 30,
+                    marginTop: "0.65rem",
+                    width: isBackupModalMobile ? "min(78vw, 330px)" : "390px",
+                    padding: "1rem",
+                    borderRadius: "18px",
+                    border: "1px solid rgba(148,163,184,0.36)",
+                    background:
+                      "linear-gradient(180deg, rgba(15,23,42,0.985), rgba(2,6,23,0.99))",
+                    boxShadow: "0 22px 50px rgba(0,0,0,0.55)",
+                    color: "rgba(255,255,255,0.92)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "1rem",
+                    }}
+                  >
+                    <strong style={{ fontSize: "1.02rem" }}>
+                      About attendance
+                    </strong>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowAttendanceInfo(false)}
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        color: "rgba(226,232,240,0.78)",
+                        fontSize: "1.35rem",
+                        cursor: "pointer",
+                        lineHeight: 1,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: "0.9rem",
+                      marginTop: "1rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "34px 1fr",
+                        gap: "0.75rem",
+                        alignItems: "start",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: "#22c55e",
+                          fontWeight: 950,
+                          fontSize: "1.15rem",
+                        }}
+                      >
+                        ✓
+                      </span>
+
+                      <div>
+                        <strong>Games played are estimated automatically from today’s match activity.</strong>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "34px 1fr",
+                        gap: "0.75rem",
+                        alignItems: "start",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: "#facc15",
+                          fontWeight: 950,
+                          fontSize: "1.15rem",
+                        }}
+                      >
+                        ⟳
+                      </span>
+
+                      <div>
+                        When teams have substitutes, the system assumes players shared game time fairly across the 5-minute matches.
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "34px 1fr",
+                        gap: "0.75rem",
+                        alignItems: "start",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: "#38bdf8",
+                          fontWeight: 950,
+                          fontSize: "1.15rem",
+                        }}
+                      >
+                        ±
+                      </span>
+
+                      <div>
+                        Use + or − to adjust a player’s games played if they missed matches, arrived late, or were injured early.
+                      </div>
+                    </div>
+                  </div>
+
+                  <p
+                    style={{
+                      margin: "1rem 0 0",
+                      paddingTop: "0.85rem",
+                      borderTop: "1px solid rgba(148,163,184,0.18)",
+                      color: "rgba(226,232,240,0.78)",
+                    }}
+                  >
+                    These records are saved to the club’s statistics history.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div
               style={{
-                display: "flex",
+                display: showAttendanceAudit ? "flex" : "none",
                 flexDirection: "column",
                 gap: isBackupModalMobile ? "0.7rem" : "0.85rem",
                 flex: "1 1 auto",
@@ -6004,12 +6202,30 @@ export default function App() {
                 flexShrink: 0,
               }}
             >
+              <button
+                className="secondary-btn"
+                onClick={handleClearOnly}
+                style={{
+                  borderColor: "rgba(248,113,113,0.62)",
+                  background: "linear-gradient(135deg, rgba(127,29,29,0.96), rgba(220,38,38,0.9))",
+                  color: "#ffffff",
+                  fontWeight: 950,
+                }}
+              >
+                Delete day's games
+              </button>
+
+              <div style={{ textAlign: "center", color: "rgba(226,232,240,0.55)", fontWeight: 900 }}>
+                OR
+              </div>
+
               <button className="secondary-btn" onClick={closeBackupModal}>
                 Cancel
               </button>
-              <button className="secondary-btn" onClick={handleClearOnly}>
-                Clear only
-              </button>
+
+              <div style={{ textAlign: "center", color: "rgba(226,232,240,0.55)", fontWeight: 900 }}>
+                OR
+              </div>
               <button
                 className="primary-btn"
                 type="button"
@@ -6088,12 +6304,14 @@ export default function App() {
                 ✅ Clear the live board for the next match day.
               </p>
               <p style={{ margin: "0.65rem 0 0", color: "#bbf7d0" }}>
-                If this was a practice run or dummy data, cancel and use <strong>Clear only</strong> instead.
+                If this was a practice run or dummy data, cancel and use <strong>Delete day's games</strong> instead.
               </p>
             </div>
 
             <div className="field-row">
-              <label>Enter admin code (Nkululeko)</label>
+              <label>
+  Admin code {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}
+</label>
               <input
                 type="password"
                 className="text-input"
@@ -6165,7 +6383,9 @@ export default function App() {
             </p>
 
             <div className="field-row">
-              <label>Re-enter admin code to confirm discard</label>
+              <label>
+  Re-enter admin code {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""} to confirm discard
+</label>
               <input
                 type="password"
                 className="text-input"
@@ -6317,7 +6537,7 @@ export default function App() {
         </div>
       )}
 
-      {showBottomNav ? (
+      {showBottomNav && !showBackupModal ? (
         <BottomNav
           currentPage={page}
           activeClub={activeClubIdentity}
