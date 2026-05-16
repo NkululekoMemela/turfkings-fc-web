@@ -8,7 +8,7 @@ import VideoHighlightsRepository, {
 const MAX_VIDEO_SECONDS = 25;
 const IDEAL_MIN_SECONDS = 15;
 const IDEAL_MAX_SECONDS = 20;
-const MAX_VIDEO_BYTES = 80 * 1024 * 1024; // 80 MB
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50 MB
 const ALLOWED_VIDEO_TYPES = [
   "video/mp4",
   "video/quicktime",
@@ -356,6 +356,24 @@ function buildTeamOptions(teams = [], highlights = []) {
   return Array.from(names).sort((a, b) => a.localeCompare(b));
 }
 
+function buildTeamPlayerOptions(teams = [], selectedTeamName = "") {
+  const selected = safeLower(selectedTeamName);
+
+  if (!selected) return [];
+
+  const team = normalizeTeamsInput(teams).find((item) => {
+    const label = toTitleCaseLoose(item?.label || item?.name || "");
+    return safeLower(label) === selected;
+  });
+
+  if (!team) return [];
+
+  return (Array.isArray(team.players) ? team.players : [])
+    .map((player) => getNameFromPlayerEntry(player))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+}
+
 function readVideoDuration(file) {
   return new Promise((resolve, reject) => {
     if (!file) {
@@ -445,13 +463,24 @@ function getTeamLabel(team, fallback = "") {
 
 function getFeaturedTeamNames(teams = [], matchType = "FRIENDLY") {
   const names = normalizeTeamsInput(teams)
-    .map((team, index) => getTeamLabel(team, `Team ${index + 1}`))
-    .filter(Boolean);
+    .map((team) => getTeamLabel(team, ""))
+    .filter(Boolean)
+    .filter((name) => {
+      const lower = safeLower(name);
+
+      return (
+        lower !== "team 1" &&
+        lower !== "team 2" &&
+        lower !== "team 3"
+      );
+    });
+
+  const unique = Array.from(new Set(names));
 
   const isLeague = safeLower(matchType).includes("league");
 
-  if (isLeague) return names.slice(0, 3);
-  return names.slice(0, 2);
+  if (isLeague) return unique.slice(0, 3);
+  return unique.slice(0, 2);
 }
 
 function getMatchupLabel(highlight, teams = [], matchType = "FRIENDLY") {
@@ -696,8 +725,15 @@ function HighlightCard({
     <article className={`tkh-card ${highlight.highlightEra === "throwback" || highlight.isThrowback ? "is-throwback" : ""}`}>
       <div className="tkh-card-top">
         <div className="tkh-card-title-block">
-          <div className="tkh-player-name">{highlight.playerName}</div>
-          <div className="tkh-clip-title">{highlight.title}</div>
+          <div className="tkh-player-name">
+  {String(highlight.playerName || "")
+    .trim()
+    .split(" ")[0]}
+</div>
+          <div className="tkh-clip-title">
+            {String(highlight.title || "")
+              .replace(/\bby\s+([A-Za-zÀ-ÿ'-]+)\s+([A-Za-zÀ-ÿ'-]+)/i, "by $1")}
+          </div>
         </div>
 
         <div style={{ display: "grid", gap: "0.35rem", justifyItems: "end" }}>
@@ -751,12 +787,21 @@ function HighlightCard({
       </div>
 
       {highlight.assist && (
-        <div className="tkh-soft-line">Assist: <strong>{toTitleCaseLoose(highlight.assist)}</strong></div>
+        <div className="tkh-soft-line">
+  Assist:{" "}
+  <strong>
+    {String(toTitleCaseLoose(highlight.assist) || "")
+      .trim()
+      .split(" ")[0]}
+  </strong>
+</div>
       )}
 
       <div className="tkh-soft-line">
         Uploaded {formatDate(highlight.createdAt)}
-        {highlight.createdByName ? ` by ${highlight.createdByName}` : ""}
+        {highlight.createdByName
+  ? ` by ${String(highlight.createdByName).trim().split(" ")[0]}`
+  : ""}
       </div>
 
       <div className="tkh-card-actions">
@@ -1026,6 +1071,11 @@ export function VideoHighlightsPage({
   const teamOptions = useMemo(
     () => buildTeamOptions(teams, allHighlights),
     [teams, allHighlights]
+  );
+
+  const selectedTeamPlayerOptions = useMemo(
+    () => buildTeamPlayerOptions(teams, teamName),
+    [teams, teamName]
   );
 
   const approvedHighlights = useMemo(
@@ -3137,48 +3187,119 @@ export function VideoHighlightsPage({
                 </select>
               </div>
 
-              <div className="tkh-field">
-                <label>{clipType === "goal" ? "Scorer / player shown" : "Player shown"}</label>
-                <input
-                  className="tkh-input"
-                  list="tkh-player-options"
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="Optional"
-                  disabled={uploading}
-                />
-                <datalist id="tkh-player-options">
-                  {playerOptions.map((name) => (
-                    <option key={name} value={name} />
-                  ))}
-                </datalist>
-              </div>
+              {highlightEra !== "throwback" ? (
+                <>
+                  <div className="tkh-field" style={{ gridColumn: "1 / -1" }}>
+                    <label>Team first</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                      {teamOptions.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          className={`tkh-btn ${safeLower(teamName) === safeLower(name) ? "tkh-btn-primary" : ""}`}
+                          onClick={() => {
+                            setTeamName(name);
+                            setPlayerName("");
+                            setAssistName("");
+                          }}
+                          disabled={uploading}
+                          style={{
+                            padding: "0.55rem 0.82rem",
+                            borderRadius: "999px",
+                          }}
+                        >
+                          {safeLower(teamName) === safeLower(name) ? "✅ " : ""}
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="tkh-help">
+                      Pick the team first so the player list stays short and accurate.
+                    </div>
+                  </div>
 
-              {highlightEra !== "throwback" && clipType === "goal" && (
+                  <div className="tkh-field" style={{ gridColumn: "1 / -1" }}>
+                    <label>{clipType === "goal" ? "Scorer / player shown" : "Player shown"}</label>
+                    {teamName ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                        {selectedTeamPlayerOptions.map((name) => (
+                          <button
+                            key={name}
+                            type="button"
+                            className={`tkh-btn ${safeLower(playerName) === safeLower(name) ? "tkh-btn-primary" : ""}`}
+                            onClick={() => setPlayerName(name)}
+                            disabled={uploading}
+                            style={{
+                              padding: "0.55rem 0.82rem",
+                              borderRadius: "999px",
+                            }}
+                          >
+                            {safeLower(playerName) === safeLower(name) ? "✅ " : ""}
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="tkh-help">Select a team first.</div>
+                    )}
+                  </div>
+
+                  {clipType === "goal" && (
+                    <div className="tkh-field" style={{ gridColumn: "1 / -1" }}>
+                      <label>Assist</label>
+                      {teamName ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                          <button
+                            type="button"
+                            className={`tkh-btn ${!assistName ? "tkh-btn-primary" : ""}`}
+                            onClick={() => setAssistName("")}
+                            disabled={uploading}
+                            style={{
+                              padding: "0.55rem 0.82rem",
+                              borderRadius: "999px",
+                            }}
+                          >
+                            No assist
+                          </button>
+
+                          {selectedTeamPlayerOptions
+                            .filter((name) => safeLower(name) !== safeLower(playerName))
+                            .map((name) => (
+                              <button
+                                key={name}
+                                type="button"
+                                className={`tkh-btn ${safeLower(assistName) === safeLower(name) ? "tkh-btn-primary" : ""}`}
+                                onClick={() => setAssistName(name)}
+                                disabled={uploading}
+                                style={{
+                                  padding: "0.55rem 0.82rem",
+                                  borderRadius: "999px",
+                                }}
+                              >
+                                {safeLower(assistName) === safeLower(name) ? "✅ " : ""}
+                                {name}
+                              </button>
+                            ))}
+                        </div>
+                      ) : (
+                        <div className="tkh-help">Select a team first.</div>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
                 <div className="tkh-field">
-                  <label>Assist</label>
+                  <label>{clipType === "goal" ? "Scorer / player shown" : "Player shown"}</label>
                   <input
                     className="tkh-input"
                     list="tkh-player-options"
-                    value={assistName}
-                    onChange={(e) => setAssistName(e.target.value)}
+                    value={playerName}
+                    onChange={(e) => setPlayerName(e.target.value)}
                     placeholder="Optional"
                     disabled={uploading}
                   />
-                </div>
-              )}              {highlightEra !== "throwback" && (
-                <div className="tkh-field">
-                  <label>Team</label>
-                  <input
-                    className="tkh-input"
-                    list="tkh-team-options"
-                    value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                    placeholder="Optional"
-                    disabled={uploading}
-                  />
-                  <datalist id="tkh-team-options">
-                    {teamOptions.map((name) => (
+                  <datalist id="tkh-player-options">
+                    {playerOptions.map((name) => (
                       <option key={name} value={name} />
                     ))}
                   </datalist>
