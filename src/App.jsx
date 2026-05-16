@@ -6564,19 +6564,39 @@ export default function App() {
       )}
 
       {USE_V2 && showEndSeasonModal && (
-        <div className="modal-backdrop">
-          <div className="modal">
+        <div
+          className="modal-backdrop"
+          style={{
+            paddingLeft: "1rem",
+            paddingRight: "1rem",
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            className="modal"
+            style={{
+              width: "100%",
+              maxWidth: "390px",
+              borderRadius: "24px",
+              padding: "1.15rem",
+            }}
+          >
             <h3>End Season</h3>
             <p>
               This will create a <strong>new season</strong> and make it active.
-              The current season’s history remains saved in Firestore. (End
+              The current season’s history remains saved on the server. (End
               Match Day is separate.)
             </p>
             <div className="field-row">
-              <label>Admin code (Nkululeko)</label>
+              <label>Admin code {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}</label>
               <input
                 type="password"
                 className="text-input"
+                style={{
+                  width: "100%",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
+                }}
                 value={endSeasonCode}
                 onChange={(e) => {
                   setEndSeasonCode(e.target.value);
@@ -6586,8 +6606,23 @@ export default function App() {
               {endSeasonError && <p className="error-text">{endSeasonError}</p>}
             </div>
             <div className="actions-row">
-              <button className="secondary-btn" onClick={closeEndSeasonModal}>
-                Cancel
+              <button
+                type="button"
+                onClick={closeEndSeasonModal}
+                aria-label="Go back"
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "999px",
+                  border: "1px solid rgba(148,163,184,0.24)",
+                  background: "rgba(15,23,42,0.72)",
+                  color: "#e2e8f0",
+                  fontSize: "1.15rem",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                ←
               </button>
               <button
                 className="primary-btn"
