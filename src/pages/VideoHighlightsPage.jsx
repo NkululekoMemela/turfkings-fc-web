@@ -642,16 +642,21 @@ function HighlightCard({
   };
 
   return (
-    <article className="tkh-card">
+    <article className={`tkh-card ${highlight.highlightEra === "throwback" || highlight.isThrowback ? "is-throwback" : ""}`}>
       <div className="tkh-card-top">
         <div className="tkh-card-title-block">
           <div className="tkh-player-name">{highlight.playerName}</div>
           <div className="tkh-clip-title">{highlight.title}</div>
         </div>
 
-        <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
-          {statusBadgeLabel(highlight.status)}
-        </span>
+        <div style={{ display: "grid", gap: "0.35rem", justifyItems: "end" }}>
+          {(highlight.highlightEra === "throwback" || highlight.isThrowback) && (
+            <span className="tkh-throwback-badge">Throwback ✨</span>
+          )}
+          <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
+            {statusBadgeLabel(highlight.status)}
+          </span>
+        </div>
       </div>
 
       <video
@@ -689,6 +694,7 @@ function HighlightCard({
       <div className="tkh-card-actions">
         {highlight.status === "approved" &&
           canVote &&
+          !(highlight.highlightEra === "throwback" || highlight.isThrowback) &&
           ["goal", "save", "skill"].includes(highlight.normalizedType) && (
             <button
               type="button"
@@ -794,6 +800,7 @@ export function VideoHighlightsPage({
   const [clipPreviewUrl, setClipPreviewUrl] = useState("");
   const [clipDuration, setClipDuration] = useState(null);
   const [clipType, setClipType] = useState("goal");
+  const [highlightEra, setHighlightEra] = useState("current_week");
   const [playerName, setPlayerName] = useState("");
   const [assistName, setAssistName] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -909,11 +916,45 @@ export function VideoHighlightsPage({
     [allHighlights]
   );
 
+  const currentWeekHighlights = useMemo(
+    () => allHighlights.filter((item) => item.highlightEra !== "throwback" && item.isThrowback !== true),
+    [allHighlights]
+  );
+
+  const throwbackHighlights = useMemo(
+    () => allHighlights.filter((item) => item.highlightEra === "throwback" || item.isThrowback === true),
+    [allHighlights]
+  );
+
+  const scopedApprovedHighlights = useMemo(
+    () =>
+      (mainTab === "throwback" ? throwbackHighlights : currentWeekHighlights).filter(
+        (item) => item.status === "approved"
+      ),
+    [mainTab, currentWeekHighlights, throwbackHighlights]
+  );
+
+  const scopedPendingHighlights = useMemo(
+    () =>
+      (mainTab === "throwback" ? throwbackHighlights : currentWeekHighlights).filter(
+        (item) => item.status === "pending"
+      ),
+    [mainTab, currentWeekHighlights, throwbackHighlights]
+  );
+
+  const scopedRejectedHighlights = useMemo(
+    () =>
+      (mainTab === "throwback" ? throwbackHighlights : currentWeekHighlights).filter(
+        (item) => item.status === "rejected"
+      ),
+    [mainTab, currentWeekHighlights, throwbackHighlights]
+  );
+
   const tabHighlights = useMemo(() => {
-    if (selectedTab === "pending") return pendingHighlights;
-    if (selectedTab === "rejected") return rejectedHighlights;
-    return approvedHighlights;
-  }, [selectedTab, approvedHighlights, pendingHighlights, rejectedHighlights]);
+    if (selectedTab === "pending") return scopedPendingHighlights;
+    if (selectedTab === "rejected") return scopedRejectedHighlights;
+    return scopedApprovedHighlights;
+  }, [selectedTab, scopedApprovedHighlights, scopedPendingHighlights, scopedRejectedHighlights]);
 
   const visibleHighlights = useMemo(() => {
     if (selectedFilter === "all") return tabHighlights;
@@ -969,6 +1010,7 @@ export function VideoHighlightsPage({
     setClipFile(null);
     setClipDuration(null);
     setClipType("goal");
+    setHighlightEra("current_week");
     setPlayerName("");
     setAssistName("");
     setTeamName("");
@@ -1115,6 +1157,9 @@ export function VideoHighlightsPage({
       source: "manual_upload",
       storageFileName: `${clipId}.${getFileExtension(clipFile)}`,
       status: "pending",
+      highlightEra,
+      isThrowback: highlightEra === "throwback",
+      votingEligible: highlightEra !== "throwback",
       type: normalizedType,
       tag: normalizedType,
       clubName: cleanClubName,
@@ -1640,6 +1685,50 @@ export function VideoHighlightsPage({
           color: #f8fafc;
         }
 
+        .tkh-throwback-note {
+          margin-top: 0.75rem;
+          border-radius: 1.1rem;
+          padding: 1rem 1.05rem;
+          font-size: 0.9rem;
+          font-weight: 850;
+          line-height: 1.5;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+        }
+
+        .tkh-throwback-note.is-current-week {
+          background:
+            radial-gradient(circle at top left, rgba(34,197,94,0.14), transparent 42%),
+            linear-gradient(135deg, rgba(21,128,61,0.18), rgba(14,165,233,0.12));
+          border: 1px solid rgba(74,222,128,0.32);
+          color: rgba(220,252,231,0.96);
+        }
+
+        .tkh-throwback-note.is-throwback {
+          background:
+            radial-gradient(circle at top left, rgba(249,115,22,0.14), transparent 42%),
+            linear-gradient(135deg, rgba(249,115,22,0.14), rgba(168,85,247,0.14));
+          border: 1px solid rgba(251,146,60,0.24);
+          color: rgba(255,237,213,0.92);
+        }
+
+        .tkh-card.is-throwback {
+          border-color: rgba(251,146,60,0.28);
+          background:
+            radial-gradient(circle at top left, rgba(249,115,22,0.12), transparent 42%),
+            radial-gradient(circle at bottom right, rgba(168,85,247,0.12), transparent 44%),
+            rgba(15,23,42,0.76);
+        }
+
+        .tkh-throwback-badge {
+          border-radius: 999px;
+          padding: 0.3rem 0.55rem;
+          font-size: 0.7rem;
+          font-weight: 1000;
+          color: #fed7aa;
+          background: linear-gradient(135deg, rgba(249,115,22,0.16), rgba(168,85,247,0.18));
+          border: 1px solid rgba(251,146,60,0.30);
+        }
+
         .tkh-view-toggle {
           width: min(100%, 360px);
           max-width: 100%;
@@ -2035,14 +2124,21 @@ export function VideoHighlightsPage({
         }
 
         .tkh-modal {
+          position: relative;
           width: min(620px, 100%);
           max-height: min(86vh, 820px);
           overflow: auto;
-          border-radius: 1.25rem;
-          background: #101827;
-          border: 1px solid rgba(148, 163, 184, 0.34);
-          padding: 1rem;
+          border-radius: 1.5rem;
+          background:
+            radial-gradient(circle at top left, rgba(34,197,94,0.05), transparent 28%),
+            radial-gradient(circle at top right, rgba(168,85,247,0.05), transparent 30%),
+            linear-gradient(180deg, rgba(15,23,42,0.985), rgba(2,6,23,0.985));
+          border: 1px solid rgba(148, 163, 184, 0.26);
+          padding: 1.15rem;
           box-sizing: border-box;
+          box-shadow:
+            0 30px 80px rgba(0,0,0,0.48),
+            inset 0 1px 0 rgba(255,255,255,0.03);
         }
 
         .tkh-modal-head {
@@ -2330,11 +2426,33 @@ export function VideoHighlightsPage({
           <button
             type="button"
             className="tkh-btn tkh-btn-primary"
-            onClick={() => setShowUploadModal(true)}
+            onClick={() => {
+              setHighlightEra("current_week");
+              setShowUploadModal(true);
+            }}
             disabled={!canUpload}
             title={canUpload ? "Upload a short highlight" : "Sign in as a player, captain, or admin to upload"}
           >
-            Upload
+            Upload Fresh Clips
+          </button>
+
+          <button
+            type="button"
+            className="tkh-btn"
+            onClick={() => {
+              setHighlightEra("throwback");
+              setMainTab("throwback");
+              setShowUploadModal(true);
+            }}
+            disabled={!canUpload}
+            title="Upload an older club memory"
+            style={{
+              borderColor: "rgba(251,146,60,0.34)",
+              color: "#fed7aa",
+              background: "linear-gradient(135deg, rgba(249,115,22,0.12), rgba(168,85,247,0.14))",
+            }}
+          >
+            Throwback ✨
           </button>
         </div>
       </header>
@@ -2385,7 +2503,7 @@ export function VideoHighlightsPage({
           )}
         </div>
 
-        {mainTab === "currentWeek" && (
+        {(mainTab === "currentWeek" || mainTab === "throwback") && (
           <div className="tkh-compact-filter-row">
             <label className="tkh-compact-select-label">
               Review
@@ -2417,9 +2535,9 @@ export function VideoHighlightsPage({
           </div>
         )}
 
-        {mainTab === "currentWeek" && !isModerator && pendingHighlights.length > 0 && (
+        {(mainTab === "currentWeek" || mainTab === "throwback") && !isModerator && scopedPendingHighlights.length > 0 && (
           <div className="tkh-system-note">
-            {pendingHighlights.length} clip{pendingHighlights.length === 1 ? "" : "s"} waiting for review.
+            {scopedPendingHighlights.length} clip{scopedPendingHighlights.length === 1 ? "" : "s"} waiting for review.
           </div>
         )}
 
@@ -2481,14 +2599,18 @@ export function VideoHighlightsPage({
                 <div className="tkh-empty-inner">
                   <div className="tkh-empty-icon">🎥</div>
                   <h3 className="tkh-empty-title">
-                    {selectedTab === "pending"
+                    {mainTab === "throwback"
+                      ? "No throwback clips yet"
+                      : selectedTab === "pending"
                       ? "No clips waiting for review"
                       : selectedTab === "rejected"
                       ? "No rejected clips"
                       : "No highlights uploaded yet"}
                   </h3>
                   <p className="tkh-empty-copy">
-                    Upload the best goals, saves, and skills from match day. Once clips are approved, players can vote for the week’s top moments.
+                    {mainTab === "throwback"
+                      ? "Share old goals, classic skills, and memorable club moments. Throwback clips are for memories, not weekly voting."
+                      : "Upload the best goals, saves, and skills from match day. Once clips are approved, players can vote for the week’s top moments."}
                   </p>
                   {canUpload && (
                     <button
@@ -2496,7 +2618,7 @@ export function VideoHighlightsPage({
                       className="tkh-btn tkh-btn-primary"
                       onClick={() => setShowUploadModal(true)}
                     >
-                      Upload first highlight
+                      {mainTab === "throwback" ? "Upload throwback clip" : "Upload first highlight"}
                     </button>
                   )}
                 </div>
@@ -2569,10 +2691,6 @@ export function VideoHighlightsPage({
                 ))}
               </div>
             )}
-
-            <div className="tkh-cleanup-note">
-              After admin download/approval, Current Week keeps the top 2 goals, 1 save, and 1 skill as Top Voted clips. The rest are cleaned from the server after the weekly voting window closes.
-            </div>
           </div>
         )}
 
@@ -2588,13 +2706,66 @@ export function VideoHighlightsPage({
           <div className="tkh-modal" role="dialog" aria-modal="true" aria-label="Upload highlight clip">
             <div className="tkh-modal-head">
               <div>
-                <h2 className="tkh-modal-title">Upload clip</h2>
+                <h2 className="tkh-modal-title">
+                  Upload clip -{" "}
+                  <span
+                    style={{
+                      color: highlightEra === "throwback" ? "#fb923c" : "#4ade80",
+                    }}
+                  >
+                    {highlightEra === "throwback" ? "Throwback ✨" : "Current Week"}
+                  </span>
+                </h2>
                 <div className="tkh-help">
                   Metadata can be completed later by admin/captain.
                 </div>
+
+                <div
+                  className={`tkh-throwback-note ${
+                    highlightEra === "throwback"
+                      ? "is-throwback"
+                      : "is-current-week"
+                  }`}
+                >
+                  {highlightEra === "throwback"
+                    ? "Throwback clips are shared for club memories. They do not enter weekly voting or season awards and will be cleared after Sunday night."
+                    : "Fresh clips enter weekly voting and can become Top Voted. Non-winning clips will be cleared after Sunday night."}
+                </div>
               </div>
-              <button type="button" className="tkh-btn" onClick={closeUploadModal} disabled={uploading}>
-                Close
+              <button
+                type="button"
+                onClick={closeUploadModal}
+                disabled={uploading}
+                aria-label="Close upload modal"
+                style={{
+                  position: "absolute",
+                  top: "1rem",
+                  right: "1rem",
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "999px",
+                  border:
+                    highlightEra === "throwback"
+                      ? "1px solid rgba(251,146,60,0.30)"
+                      : "1px solid rgba(74,222,128,0.30)",
+                  background: "rgba(15,23,42,0.82)",
+                  color:
+                    highlightEra === "throwback"
+                      ? "#fdba74"
+                      : "#86efac",
+                  fontSize: "1.45rem",
+                  fontWeight: 300,
+                  cursor: "pointer",
+                  display: "grid",
+                  placeItems: "center",
+                  boxShadow:
+                    highlightEra === "throwback"
+                      ? "0 0 24px rgba(249,115,22,0.16)"
+                      : "0 0 24px rgba(34,197,94,0.16)",
+                  zIndex: 5,
+                }}
+              >
+                ×
               </button>
             </div>
 
@@ -2641,7 +2812,7 @@ export function VideoHighlightsPage({
                 </datalist>
               </div>
 
-              {clipType === "goal" && (
+              {highlightEra !== "throwback" && clipType === "goal" && (
                 <div className="tkh-field">
                   <label>Assist</label>
                   <input
@@ -2653,24 +2824,24 @@ export function VideoHighlightsPage({
                     disabled={uploading}
                   />
                 </div>
+              )}              {highlightEra !== "throwback" && (
+                <div className="tkh-field">
+                  <label>Team</label>
+                  <input
+                    className="tkh-input"
+                    list="tkh-team-options"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    placeholder="Optional"
+                    disabled={uploading}
+                  />
+                  <datalist id="tkh-team-options">
+                    {teamOptions.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                </div>
               )}
-
-              <div className="tkh-field">
-                <label>Team</label>
-                <input
-                  className="tkh-input"
-                  list="tkh-team-options"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="Optional"
-                  disabled={uploading}
-                />
-                <datalist id="tkh-team-options">
-                  {teamOptions.map((name) => (
-                    <option key={name} value={name} />
-                  ))}
-                </datalist>
-              </div>
             </div>
 
             {clipFile && (
@@ -2719,9 +2890,6 @@ export function VideoHighlightsPage({
             {uploadError && <div className="tkh-error">{uploadError}</div>}
 
             <div className="tkh-upload-actions">
-              <button type="button" className="tkh-btn" onClick={resetUpload} disabled={uploading}>
-                Reset
-              </button>
               <button
                 type="button"
                 className="tkh-btn tkh-btn-primary"
