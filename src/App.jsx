@@ -5699,8 +5699,9 @@ export default function App() {
               className="actions-row"
               style={{
                 display: "grid",
-                gridTemplateColumns: isBackupModalMobile ? "1fr" : "1fr 1fr",
-                gap: "0.65rem",
+                gridTemplateColumns: "auto 1fr",
+                gap: "0.75rem",
+                alignItems: "center",
                 marginTop: "1rem",
               }}
             >
@@ -6146,6 +6147,11 @@ export default function App() {
                                 min={0}
                                 max={maxValue}
                                 className="text-input"
+                style={{
+                  width: "100%",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
+                }}
                                 style={{
                                   width: isBackupModalMobile ? "64px" : "68px",
                                   minWidth: 0,
@@ -6248,7 +6254,15 @@ export default function App() {
 
 
       {showSaveConfirmModal && (
-        <div className="modal-backdrop" style={{ zIndex: 10050 }}>
+        <div
+          className="modal-backdrop"
+          style={{
+            zIndex: 10050,
+            paddingLeft: "1rem",
+            paddingRight: "1rem",
+            boxSizing: "border-box",
+          }}
+        >
           <div
             className="modal"
             style={{
@@ -6315,6 +6329,11 @@ export default function App() {
               <input
                 type="password"
                 className="text-input"
+                style={{
+                  width: "100%",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
+                }}
                 value={saveConfirmCode}
                 onChange={(e) => {
                   setSaveConfirmCode(e.target.value);
@@ -6329,13 +6348,29 @@ export default function App() {
               className="actions-row"
               style={{
                 display: "grid",
-                gridTemplateColumns: isBackupModalMobile ? "1fr" : "1fr 1fr",
-                gap: "0.65rem",
+                gridTemplateColumns: "auto 1fr",
+                gap: "0.75rem",
+                alignItems: "center",
                 marginTop: "1rem",
               }}
             >
-              <button className="secondary-btn" type="button" onClick={closeSaveConfirmModal}>
-                Cancel
+              <button
+                type="button"
+                onClick={closeSaveConfirmModal}
+                aria-label="Go back"
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "999px",
+                  border: "1px solid rgba(148,163,184,0.24)",
+                  background: "rgba(15,23,42,0.72)",
+                  color: "#e2e8f0",
+                  fontSize: "1.15rem",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                ←
               </button>
               <button
                 className="primary-btn"
@@ -6357,7 +6392,15 @@ export default function App() {
       )}
 
       {showClearOnlyConfirmModal && (
-        <div className="modal-backdrop" style={{ zIndex: 10050 }}>
+        <div
+          className="modal-backdrop"
+          style={{
+            zIndex: 10050,
+            paddingLeft: "1rem",
+            paddingRight: "1rem",
+            boxSizing: "border-box",
+          }}
+        >
           <div
             className="modal"
             style={{
@@ -6370,16 +6413,16 @@ export default function App() {
               boxShadow: "0 22px 60px rgba(0,0,0,0.55)",
             }}
           >
-            <h3 style={{ marginTop: 0, color: "#fecaca" }}>⚠️ Clear only warning</h3>
+            <h3 style={{ marginTop: 0, color: "#fecaca" }}>⚠️ Delete day’s games</h3>
             <p style={{ lineHeight: 1.5, marginBottom: "0.75rem" }}>
-              <strong>Clear only will throw away this match-day data without saving it to Firebase.</strong>
+              <strong>Delete day’s games will remove this match-day data without saving it to Firebase.</strong>
             </p>
             <p style={{ lineHeight: 1.5, marginTop: 0, color: "rgba(255,255,255,0.86)" }}>
               Only continue if this was a practice run or dummy data. If this was a real match day,
               go back and use <strong>Save to Firebase &amp; clear</strong> instead.
             </p>
             <p style={{ lineHeight: 1.5, color: "#fde68a", fontWeight: 800 }}>
-              Do not enter the PIN unless you are intentionally discarding test data.
+              Do not enter the code unless you are intentionally deleting test data.
             </p>
 
             <div className="field-row">
@@ -6389,6 +6432,11 @@ export default function App() {
               <input
                 type="password"
                 className="text-input"
+                style={{
+                  width: "100%",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
+                }}
                 value={clearOnlyConfirmCode}
                 onChange={(e) => {
                   setClearOnlyConfirmCode(e.target.value);
@@ -6409,8 +6457,23 @@ export default function App() {
                 marginTop: "1rem",
               }}
             >
-              <button className="primary-btn" type="button" onClick={closeClearOnlyConfirmModal}>
-                Go back — save real data
+              <button
+                type="button"
+                onClick={closeClearOnlyConfirmModal}
+                aria-label="Go back"
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "999px",
+                  border: "1px solid rgba(248,113,113,0.22)",
+                  background: "rgba(15,23,42,0.72)",
+                  color: "#fecaca",
+                  fontSize: "1.15rem",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                ←
               </button>
               <button
                 className="secondary-btn"
@@ -6418,7 +6481,7 @@ export default function App() {
                 onClick={handleConfirmClearOnly}
                 style={{ borderColor: "rgba(248,113,113,0.5)", color: "#fecaca" }}
               >
-                Discard test data
+                Delete day’s games
               </button>
             </div>
           </div>
