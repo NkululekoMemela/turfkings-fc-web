@@ -1,6 +1,7 @@
 {
   "projects": {
-    "default": "turfkings-fc"
+    "default": "turfkings-fc",
+    "staging": "turfkings-staging"
   },
   "targets": {
     "turfkings-fc": {
