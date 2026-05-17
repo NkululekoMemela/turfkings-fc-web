@@ -733,6 +733,9 @@ export function SquadsPage({
   gameFormat = GAME_FORMAT.FIVE_V_FIVE,
   activeClubId = "turf-kings",
   activeClub = null,
+  activeSeasonId = null,
+  seasonNo = null,
+  matchDayHistory = [],
 }) {
   const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
   const effectiveRole = String(
@@ -1263,6 +1266,95 @@ export function SquadsPage({
     () => allPlayers.filter((p) => (p.status || "active") === "active"),
     [allPlayers]
   );
+
+  const seasonPlayerTeamIdByPlayerId = useMemo(() => {
+    if (!isLeague) return new Map();
+
+    const teamLookup = new Map();
+    (localLeagueTeams || []).forEach((team) => {
+      const id = String(team?.id || "").trim();
+      const label = String(team?.label || "").trim().toLowerCase();
+      const abbrev = String(team?.abbrev || "").trim().toLowerCase();
+
+      if (id) teamLookup.set(id.toLowerCase(), id);
+      if (label) teamLookup.set(label, id);
+      if (abbrev) teamLookup.set(abbrev, id);
+    });
+
+    const out = new Map();
+
+    (Array.isArray(matchDayHistory) ? matchDayHistory : []).forEach((day) => {
+      const entries = Array.isArray(day?.playerAppearances)
+        ? day.playerAppearances
+        : [];
+
+      entries.forEach((entry) => {
+        const rawPlayer =
+          entry?.playerId ||
+          entry?.id ||
+          entry?.player ||
+          entry?.playerName ||
+          entry?.name ||
+          "";
+
+        const playerId = playersById.has(rawPlayer)
+          ? rawPlayer
+          : resolvePlayerIdFromString(allPlayers, rawPlayer);
+
+        if (!playerId || out.has(playerId)) return;
+
+        const rawTeam =
+          entry?.teamId ||
+          entry?.team ||
+          entry?.teamName ||
+          entry?.teamLabel ||
+          entry?.side ||
+          "";
+
+        const resolvedTeamId =
+          teamLookup.get(String(rawTeam || "").trim().toLowerCase()) ||
+          String(rawTeam || "").trim();
+
+        if (resolvedTeamId && teamLookup.has(String(resolvedTeamId).toLowerCase())) {
+          out.set(playerId, resolvedTeamId);
+        }
+      });
+    });
+
+    return out;
+  }, [isLeague, matchDayHistory, localLeagueTeams, playersById, allPlayers]);
+
+  useEffect(() => {
+    if (!isLeague) return;
+    if (!seasonPlayerTeamIdByPlayerId.size) return;
+
+    setLocalLeagueTeams((prevTeams) => {
+      const alreadyAssigned = new Set(
+        (prevTeams || []).flatMap((team) =>
+          Array.isArray(team?.players) ? team.players : []
+        )
+      );
+
+      const playersToRestore = Array.from(seasonPlayerTeamIdByPlayerId.entries())
+        .filter(([playerId]) => playersById.has(playerId) && !alreadyAssigned.has(playerId));
+
+      if (!playersToRestore.length) return prevTeams;
+
+      return (prevTeams || []).map((team) => {
+        const addHere = playersToRestore
+          .filter(([, teamId]) => teamId === team.id)
+          .map(([playerId]) => playerId);
+
+        if (!addHere.length) return team;
+
+        return {
+          ...team,
+          players: Array.from(new Set([...(team.players || []), ...addHere])),
+        };
+      });
+    });
+  }, [isLeague, seasonPlayerTeamIdByPlayerId, playersById]);
+
 
   useEffect(() => {
     if (!allPlayers.length) return;

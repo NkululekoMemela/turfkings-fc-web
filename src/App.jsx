@@ -4463,25 +4463,44 @@ export default function App() {
         updatedAt: new Date().toISOString(),
       };
 
+      const defaultLeagueNames = ["Team A", "Team B", "Team C"];
+      const defaultLeagueColours = ["Blue", "White", "Black"];
+
+      const newSeasonTeams = (baseTeams && baseTeams.length ? baseTeams : [
+        { id: "team-a" },
+        { id: "team-b" },
+        { id: "team-c" },
+      ]).slice(0, 3).map((team, index) => ({
+        ...team,
+        id: team?.id || `team-${index + 1}`,
+        label: defaultLeagueNames[index] || `Team ${index + 1}`,
+        abbrev: ["TMA", "TMB", "TMC"][index] || `TM${index + 1}`,
+        teamColorName: defaultLeagueColours[index] || "Blue",
+        teamColorHex: "",
+        players: [],
+        captainId: null,
+        captain: "",
+      }));
+
+      const newSeasonTeamIds = newSeasonTeams
+        .map((team) => team?.id)
+        .filter(Boolean);
+
       const newSeason = {
         seasonId,
         seasonNo,
         matchType: MATCH_TYPE.FRIENDLY,
         gameFormat: GAME_FORMAT.FIVE_V_FIVE,
-        activeTeamIds: (baseTeams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
-        teams: baseTeams,
+        activeTeamIds: newSeasonTeamIds.slice(0, 2),
+        teams: newSeasonTeams,
         fiveVFiveTeams: buildDefaultFiveVFiveTeams(),
         currentMatchNo: 1,
         currentMatch: {
-          teamAId: baseTeams?.[0]?.id ?? null,
-          teamBId: baseTeams?.[1]?.id ?? null,
-          standbyId: baseTeams?.[2]?.id ?? null,
+          teamAId: newSeasonTeamIds?.[0] ?? null,
+          teamBId: newSeasonTeamIds?.[1] ?? null,
+          standbyId: newSeasonTeamIds?.[2] ?? null,
         },
-        streaks: activeSeason?.streaks
-          ? Object.fromEntries(
-              Object.keys(activeSeason.streaks).map((tid) => [tid, 0])
-            )
-          : {},
+        streaks: Object.fromEntries(newSeasonTeamIds.map((tid) => [tid, 0])),
         currentEvents: [],
         allEvents: [],
         results: [],
@@ -5608,6 +5627,9 @@ export default function App() {
           activeClubId={activeClubId}
           activeTeamIds={normalizedActiveTeamIds}
           onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
+          activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
+          seasonNo={USE_V2 ? activeSeasonNo : null}
+          matchDayHistory={matchDayHistory || []}
           onSquadPreviewEditingChange={setSquadsAdminPreviewOpen}
         />
       )}
