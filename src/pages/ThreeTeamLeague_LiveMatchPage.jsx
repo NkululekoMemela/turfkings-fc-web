@@ -1462,7 +1462,7 @@ function LineupBoard({
       </div>
 
       <div className="bench-wrapper live-bench-wrapper">
-        <h4 className="live-bench-title">Bench / Subs</h4>
+        <h4 className="live-bench-title">Bench</h4>
 
         {benchList.length === 0 ? (
           <p className="muted">No bench players available.</p>
@@ -1506,7 +1506,7 @@ function LineupBoard({
 
         {!disabled && (
           <div className="live-guest-add">
-            <label className="muted small live-guest-label">
+            <label className="muted small live-guest-label live-guest-label-hidden">
               Add guest player
             </label>
             <div className="live-guest-row">
@@ -2919,8 +2919,10 @@ export function ThreeTeamLeagueLiveMatchPage({
       {showVerifyModal && (
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal live-verify-modal">
-            <h3>Verify lineups before the match</h3>
-            <p className="muted live-verify-note">League • {liveFormatLabel} • verify the selected on-field players before recording goals.</p>
+            <h3 className="live-lineups-title">Lineups</h3>
+            <p className="muted live-verify-note live-verify-note-compact">
+              {teamA?.label || "Team A"} vs {teamB?.label || "Team B"}
+            </p>
 
             <div className="live-lineup-columns">
               {!playersReady ? (

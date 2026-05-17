@@ -7066,3 +7066,40 @@ body.squad-preview-is-open.admin-squad-preview nav[aria-label="Bottom navigation
   border: none;
 }
 
+
+
+/* LIVE MATCH — cleaner lineup verification modal */
+.live-lineups-title {
+  margin-bottom: 0.15rem !important;
+  font-size: 1.35rem !important;
+  font-weight: 950 !important;
+}
+
+.live-verify-note-compact {
+  margin-top: 0 !important;
+  margin-bottom: 0.85rem !important;
+  font-size: 0.82rem !important;
+}
+
+.live-guest-label-hidden {
+  display: none !important;
+}
+
+/* Make lineup player photos visibly fill the pitch tokens */
+.live-verify-modal .player-shirt.with-photo {
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  border: 2px solid rgba(255, 255, 255, 0.72) !important;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.85),
+    0 8px 18px rgba(0, 0, 0, 0.35) !important;
+}
+
+.live-verify-modal .player-token {
+  gap: 0.25rem !important;
+}
+
+.live-verify-modal .live-bench-title {
+  margin-bottom: 0.45rem !important;
+}
