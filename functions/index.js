@@ -1234,6 +1234,7 @@ exports.handleYocoWebhook = onRequest(
         deepFindFirst(payload, [
           "externalId",
           "external_id",
+          "paymentRecordId",
           "data.externalId",
           "data.external_id",
           "metadata.paymentRecordId",
