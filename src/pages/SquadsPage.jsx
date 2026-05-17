@@ -67,15 +67,16 @@ function slugFromName(name) {
     .replace(/[^a-z0-9_]/g, "");
 }
 
-function normalizeAbbrev(v) {
-  return String(v || "")
+function normalizeAbbrev(value) {
+  return String(value || "")
     .toUpperCase()
     .replace(/[^A-Z]/g, "")
-    .slice(0, 3);
+    .slice(0, 4);
 }
 
-function isValidAbbrev(v) {
-  return /^[A-Z]{3}$/.test(String(v || ""));
+function isValidAbbrev(value) {
+  const clean = String(value || "").trim().toUpperCase();
+  return /^[A-Z]{3,4}$/.test(clean);
 }
 
 function normalizeHexColor(v) {
@@ -467,7 +468,7 @@ function buildDefaultFiveVFiveTeams() {
     {
       id: "dark",
       label: "Dark",
-      abbrev: "DRK",
+      abbrev: "DARK",
       teamColorName: "Black",
       teamColorHex: "#0F172A",
       players: [],
@@ -477,7 +478,7 @@ function buildDefaultFiveVFiveTeams() {
     {
       id: "light",
       label: "Light",
-      abbrev: "LGT",
+      abbrev: "LIGT",
       teamColorName: "White",
       teamColorHex: "#F8FAFC",
       players: [],
@@ -687,7 +688,7 @@ function restoreNormalFriendlyTeamsFromSlots(teams = []) {
       ...dark,
       id: TURF_KINGS_SLOT_ID,
       label: "Dark",
-      abbrev: "DRK",
+      abbrev: "DARK",
       teamColorName: dark.teamColorName || defaults[0].teamColorName || "Black",
       teamColorHex:
         getThemeFromColorName(dark.teamColorName || "Black")?.accent ||
@@ -702,7 +703,7 @@ function restoreNormalFriendlyTeamsFromSlots(teams = []) {
       ...light,
       id: GUEST_OPPONENT_SLOT_ID,
       label: "Light",
-      abbrev: "LGT",
+      abbrev: "LIGT",
       teamColorName: light.teamColorName || defaults[1].teamColorName || "White",
       teamColorHex:
         getThemeFromColorName(light.teamColorName || "White")?.accent ||
@@ -786,7 +787,6 @@ export function SquadsPage({
   const [previewPickTarget, setPreviewPickTarget] = useState(null);
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
-  const [saveDebug, setSaveDebug] = useState("");
 
   const [captainEditLocked, setCaptainEditLocked] = useState(true);
   const [showCaptainLockHelp, setShowCaptainLockHelp] = useState(false);
@@ -1724,11 +1724,75 @@ export function SquadsPage({
     return ok;
   };
 
+  const baseAbbrevFromName = (name) => {
+    const cleanName = String(name || "").trim();
+    const upper = cleanName.toUpperCase();
+    const words = upper.replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+
+    if (!words.length) return "";
+
+    const compact = words.join("");
+
+    if (/^DARK/.test(compact)) return "DARK";
+    if (/^LIGHT/.test(compact)) return "LIGT";
+
+    if (words[0] === "MAN" || words[0] === "MANCHESTER") {
+      const second = words[1] || "";
+      if (second.startsWith("C")) return "MCI";
+      if (second.startsWith("U")) return "MUN";
+    }
+
+    if (compact.startsWith("MADRID")) return "MAD";
+    if (compact.startsWith("BARCELONA")) return "BAR";
+    if (compact.startsWith("AJAX")) return "AJA";
+
+    if (words.length >= 2) {
+      const initials = words.map((word) => word[0]).join("");
+      if (initials.length >= 3) return initials.slice(0, 4);
+    }
+
+    return compact.slice(0, compact.length >= 4 ? 4 : 3);
+  };
+
+  const makeUniqueTeamAbbrev = (teamId, nextName, teamsList = sourceTeams) => {
+    const preferred = normalizeAbbrev(baseAbbrevFromName(nextName));
+    if (!preferred) return "";
+
+    const taken = new Set(
+      (teamsList || [])
+        .filter((team) => team.id !== teamId)
+        .map((team) => normalizeAbbrev(team.abbrev || baseAbbrevFromName(team.label)))
+        .filter(Boolean)
+    );
+
+    if (!taken.has(preferred)) return preferred;
+
+    const compact = String(nextName || "").toUpperCase().replace(/[^A-Z]/g, "");
+    const candidates = [
+      compact.slice(0, 4),
+      compact.slice(0, 3),
+      ...compact.split("").map((_, index) => `${preferred.slice(0, 3)}${compact[index] || ""}`),
+    ]
+      .map(normalizeAbbrev)
+      .filter((value) => value.length >= 3 && value.length <= 4);
+
+    return candidates.find((candidate) => candidate && !taken.has(candidate)) || preferred;
+  };
+
   const handleTeamLabelChange = (teamId, value) => {
     if (!canEdit) return;
     if (!confirmLeagueIdentityChange(teamId, "team name")) return;
+
     setSourceTeams((prev) =>
-      prev.map((t) => (t.id === teamId ? { ...t, label: value } : t))
+      prev.map((t) => {
+        if (t.id !== teamId) return t;
+
+        return {
+          ...t,
+          label: value,
+          abbrev: makeUniqueTeamAbbrev(teamId, value, prev),
+        };
+      })
     );
   };
 
@@ -2089,7 +2153,7 @@ export function SquadsPage({
   const validateTeams = (candidateTeams) => {
     const badAbbrev = candidateTeams.find((t) => t.abbrev && !isValidAbbrev(t.abbrev));
     if (badAbbrev) {
-      return `Invalid abbreviation for "${badAbbrev.label || badAbbrev.id}". Use exactly 3 letters (A–Z).`;
+      return `Invalid abbreviation for "${badAbbrev.label || badAbbrev.id}". Use 3 or 4 letters (A–Z).`;
     }
 
     const badColor = candidateTeams.find((t) => t.teamColorHex && !isValidHexColor(t.teamColorHex));
@@ -2147,7 +2211,8 @@ export function SquadsPage({
     const cleanOne = (list) =>
       list.map((t) => {
         const label = String(t.label || "").trim();
-        const abbrev = normalizeAbbrev(t.abbrev || "");
+        const smartAbbrev = makeUniqueTeamAbbrev(t.id, label || t.label, list);
+        const abbrev = normalizeAbbrev(smartAbbrev || t.abbrev || "");
         const teamColorName = toTitleCase(t.teamColorName || "");
         const typedHex = normalizeHexColor(t.teamColorHex || "");
         const derivedTheme = getThemeFromColorName(teamColorName);
@@ -2242,12 +2307,6 @@ export function SquadsPage({
 
     const activeOutgoingTeams = isFiveVFive ? outgoingFiveVFiveTeams : outgoingLeagueTeams;
 
-    setSaveDebug(
-      `${isFiveVFive ? "Friendly" : "League"} save: ` +
-      activeOutgoingTeams
-        .map((t) => `${t.label} | ${t.teamColorName} | ${t.abbrev} | captain=${t.captain || "none"}`)
-        .join(" / ")
-    );
 
     onUpdateFiveVFiveTeams?.(outgoingFiveVFiveTeams);
 
@@ -2838,11 +2897,6 @@ export function SquadsPage({
                           const nextValue = event.target.value;
                           handleTeamLabelChange(team.id, nextValue);
 
-                          if (team.id === TURF_KINGS_SLOT_ID) {
-                            handleTeamAbbrevChange(team.id, "DRK");
-                          } else if (team.id === GUEST_OPPONENT_SLOT_ID) {
-                            handleTeamAbbrevChange(team.id, "LGT");
-                          }
                         }}
                         disabled={isCurrentGuestOpponentTeam(team)}
                         style={{
@@ -3177,11 +3231,6 @@ export function SquadsPage({
             </span>
           )}
 
-          {saveDebug && (
-            <span className="muted small" style={{ width: "100%", textAlign: "center", color: "#FDE68A" }}>
-              Save debug: {saveDebug}
-            </span>
-          )}
         </div>
       )}
 

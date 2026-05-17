@@ -485,7 +485,7 @@ function buildDefaultFiveVFiveTeams() {
     {
       id: "dark",
       label: "Dark",
-      abbrev: "DRK",
+      abbrev: "DARK",
       teamColorName: "Black",
       teamColorHex: "#0F172A",
       players: [],
@@ -495,7 +495,7 @@ function buildDefaultFiveVFiveTeams() {
     {
       id: "light",
       label: "Light",
-      abbrev: "LGT",
+      abbrev: "LIGT",
       teamColorName: "White",
       teamColorHex: "#F8FAFC",
       players: [],
@@ -574,11 +574,8 @@ function ensureFiveVFiveTeamsShape(rawTeams) {
         String(incomingTeam.label || "").trim() ||
         baseTeam.label,
       abbrev:
-        baseTeam.id === TURF_KINGS_SLOT_ID
-          ? "DRK"
-          : baseTeam.id === GUEST_OPPONENT_SLOT_ID
-          ? "LGT"
-          : baseTeam.abbrev,
+        String(incomingTeam.abbrev || "").trim() ||
+        baseTeam.abbrev,
       teamColorName:
         String(incomingTeam.teamColorName || incomingTeam.colorName || baseTeam.teamColorName).trim() ||
         baseTeam.teamColorName,
