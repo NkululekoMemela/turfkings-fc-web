@@ -2785,19 +2785,58 @@ export function SquadsPage({
   };
 
 
-  const teamsheetDisplayDate = useMemo(() => {
-    if (!nextTeamsheetWeekId) return "Upcoming game";
+  const teamsheetDisplayDateParts = useMemo(() => {
+    if (!nextTeamsheetWeekId) {
+      return { dateLabel: "Upcoming game", scheduleLabel: "" };
+    }
 
     const d = new Date(`${nextTeamsheetWeekId}T12:00:00`);
-    if (Number.isNaN(d.getTime())) return nextTeamsheetWeekId;
+    if (Number.isNaN(d.getTime())) {
+      return { dateLabel: nextTeamsheetWeekId, scheduleLabel: "" };
+    }
 
-    return d.toLocaleDateString("en-ZA", {
-      weekday: "short",
+    const dateLabel = d.toLocaleDateString("en-ZA", {
       day: "2-digit",
       month: "short",
       year: "numeric",
     });
-  }, [nextTeamsheetWeekId]);
+
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+
+    const ymd = (date) => date.toISOString().slice(0, 10);
+    const gameYmd = ymd(d);
+
+    let dayLabel = d.toLocaleDateString("en-ZA", { weekday: "long" });
+    if (gameYmd === ymd(today)) dayLabel = "Today";
+    if (gameYmd === ymd(tomorrow)) dayLabel = "Tomorrow";
+
+    const rawTime =
+      activeClub?.weeklyPlayTime ||
+      activeClub?.schedule?.weeklyPlayTime ||
+      activeClub?.schedule?.playTime ||
+      activeClub?.playTime ||
+      "";
+
+    const cleanedTime = String(rawTime || "")
+      .replace(/^Wednesdays?\s*:?\s*/i, "")
+      .replace(/^Wednesday\s*:?\s*/i, "")
+      .trim();
+
+    const prettyTime = cleanedTime.replace(/\b(\d{1,2}):(\d{2})\b/, (_, h, m) => {
+      const hour = Number(h);
+      if (!Number.isFinite(hour)) return `${h}:${m}`;
+      const suffix = hour >= 12 ? "pm" : "am";
+      const hour12 = hour % 12 || 12;
+      return `${hour12}:${m} ${suffix}`;
+    });
+
+    return {
+      dateLabel,
+      scheduleLabel: prettyTime ? `${dayLabel} ${prettyTime}` : dayLabel,
+    };
+  }, [nextTeamsheetWeekId, activeClub]);
 
 
   useEffect(() => {
@@ -2846,7 +2885,12 @@ export function SquadsPage({
               </div>
             </div>
 
-            <strong>{teamsheetDisplayDate}</strong>
+            <div className="teamsheet-card-date">
+              <strong>{teamsheetDisplayDateParts.dateLabel}</strong>
+              {teamsheetDisplayDateParts.scheduleLabel && (
+                <small>{teamsheetDisplayDateParts.scheduleLabel}</small>
+              )}
+            </div>
           </div>
 
           <ol className="available-paid-card-list">
@@ -2901,7 +2945,12 @@ export function SquadsPage({
               </div>
             </div>
 
-            <strong>{teamsheetDisplayDate}</strong>
+            <div className="teamsheet-card-date">
+              <strong>{teamsheetDisplayDateParts.dateLabel}</strong>
+              {teamsheetDisplayDateParts.scheduleLabel && (
+                <small>{teamsheetDisplayDateParts.scheduleLabel}</small>
+              )}
+            </div>
           </div>
 
           <div className="teamsheet-card-grid">

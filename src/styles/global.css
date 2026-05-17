@@ -6985,3 +6985,19 @@ body.squad-preview-is-open.admin-squad-preview nav[aria-label="Bottom navigation
   margin-top: 18px;
   opacity: 0.75;
 }
+
+
+.teamsheet-card-date {
+  display: grid;
+  gap: 0.12rem;
+  text-align: right;
+}
+
+.teamsheet-card-date strong {
+  font-weight: 900;
+}
+
+.teamsheet-card-date small {
+  color: #cbd5e1;
+  font-weight: 800;
+}
