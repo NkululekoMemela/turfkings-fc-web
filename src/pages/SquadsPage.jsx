@@ -3092,9 +3092,7 @@ export function SquadsPage({
                         <option value="Blue">Wear blue 🔵</option>
                         <option value="Green">Wear green 🟢</option>
                         <option value="Yellow">Wear yellow 🟡</option>
-                        <option value="Gold">🟡 Gold</option>
                         <option value="Purple">Wear purple 🟣</option>
-                        <option value="Pink">🟣 Pink</option>
                       </select>
                     </div>
                   ) : null}
@@ -3279,7 +3277,7 @@ export function SquadsPage({
             className="secondary-btn set-squad-pulse-btn"
             onClick={() => setShowSquadPreview(true)}
           >
-            Set Squad
+            Set Squad ✏️
           </button>
 
           <button className="primary-btn" onClick={handleSaveClick}>
