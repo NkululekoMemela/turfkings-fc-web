@@ -571,11 +571,8 @@ function ensureFiveVFiveTeamsShape(rawTeams) {
       ...incomingTeam,
       id: baseTeam.id,
       label:
-        baseTeam.id === TURF_KINGS_SLOT_ID
-          ? "Dark"
-          : baseTeam.id === GUEST_OPPONENT_SLOT_ID
-          ? "Light"
-          : baseTeam.label,
+        String(incomingTeam.label || "").trim() ||
+        baseTeam.label,
       abbrev:
         baseTeam.id === TURF_KINGS_SLOT_ID
           ? "DRK"
@@ -2331,7 +2328,7 @@ export default function App() {
   const isSpectator = activeRole === "spectator";
 
   const canStartMatch = isAdmin || isCaptain;
-  const canManageSquads = isAdmin;
+  const canManageSquads = isAdmin || isCaptain;
   const canPreviewPreviousSeasonUI = IS_STAGING && isAdmin;
   const normalizedActiveTeamIds = useMemo(() => {
     const teamIds = (teams || []).map((team) => team?.id).filter(Boolean);
@@ -3941,7 +3938,11 @@ export default function App() {
       return;
     }
 
+    console.log("[APP SAVE DEBUG] received fiveVFiveTeams", updatedTeams);
+
     const safeTeams = ensureFiveVFiveTeamsShape(updatedTeams);
+
+    console.log("[APP SAVE DEBUG] safe fiveVFiveTeams", safeTeams);
 
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({

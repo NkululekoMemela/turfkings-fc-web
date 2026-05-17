@@ -36,7 +36,7 @@ import {
   isAdminCode,
 } from "../core/accessCodes.js";
 
-const MASTER_CODE = "3333"; // Nkululeko only
+const MASTER_CODE = "3333"; // Platform admin fallback
 const UNSEEDED_ID = "__unseeded__";
 const GUEST_OPPONENT_ID = "guest_opponent";
 const TURF_KINGS_CHALLENGE_ID = "turf_kings_challenge";
@@ -786,6 +786,7 @@ export function SquadsPage({
   const [previewPickTarget, setPreviewPickTarget] = useState(null);
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [saveDebug, setSaveDebug] = useState("");
 
   const [captainEditLocked, setCaptainEditLocked] = useState(true);
   const [showCaptainLockHelp, setShowCaptainLockHelp] = useState(false);
@@ -825,9 +826,7 @@ export function SquadsPage({
     [fiveVFiveTeams]
   );
 
-  const [guestOpponentEnabled, setGuestOpponentEnabled] = useState(() =>
-    isGuestChallengeSlotMode(fiveVFiveTeams)
-  );
+  const [guestOpponentEnabled, setGuestOpponentEnabled] = useState(false);
   const [guestOpponentName, setGuestOpponentName] = useState(() =>
     existingGuestTeam?.label || DEFAULT_GUEST_OPPONENT_NAME
   );
@@ -879,6 +878,7 @@ export function SquadsPage({
   const challengeAdvertRef = useRef(null);
   const teamsheetCardRef = useRef(null);
   const longPressTimersRef = useRef({});
+  const leagueIdentityConfirmRef = useRef({});
 
   useEffect(() => {
     const handleScroll = () => setHeaderScrolled(window.scrollY > 6);
@@ -951,36 +951,11 @@ export function SquadsPage({
     setLocalLeagueTeams(normalizeIncomingTeams(teams));
   }, [teams]);
 
-  useEffect(() => {
-    const normalized = normalizeIncomingTeams(fiveVFiveTeams);
-    const challengeIsActive = isGuestChallengeSlotMode(normalized);
-    const guest = normalized.find((team) => team.id === GUEST_OPPONENT_SLOT_ID);
-    const turf = normalized.find((team) => team.id === TURF_KINGS_SLOT_ID);
+  // IMPORTANT:
+  // Friendly squad editing is now fully local-first.
+  // We intentionally do NOT continuously rehydrate from fiveVFiveTeams props,
+  // because that was overwriting freshly edited preview state after save.
 
-    setLocalFiveVFiveTeams((prev) => {
-      if (!normalized.length) {
-        return prev?.length ? prev : buildDefaultFiveVFiveTeams();
-      }
-
-      return normalized;
-    });
-
-    setGuestOpponentEnabled(challengeIsActive);
-
-    if (challengeIsActive && guest) {
-      setGuestOpponentName(guest.label || DEFAULT_GUEST_OPPONENT_NAME);
-      setGuestOpponentPlayers(Array.isArray(guest.players) ? guest.players : []);
-      setGuestOpponentColorName(guest.teamColorName || "Gold");
-      setChallengeDate(guest.challengeDate || todayChallengeDateText());
-      setChallengeKickoff(guest.challengeKickoff || "18:30");
-      setChallengeVenue(guest.challengeVenue || "Venue to be confirmed");
-    }
-
-    if (challengeIsActive && turf) {
-      setTurfKingsChallengePlayers(Array.isArray(turf.players) ? turf.players : []);
-      setTurfKingsChallengeColorName(turf.teamColorName || "Green");
-    }
-  }, [fiveVFiveTeams]);
 
 
 
@@ -1328,13 +1303,8 @@ export function SquadsPage({
   }, [localFiveVFiveTeams]);
 
   useEffect(() => {
-    if (!activeChallengeFixture) return;
-
-    setGuestOpponentEnabled(true);
-    setGuestOpponentName(activeChallengeFixture.awayClubName || "Opponent");
-    setChallengeDate(activeChallengeFixture.proposedDate || todayChallengeDateText());
-    setChallengeKickoff(activeChallengeFixture.proposedKickoff || "18:30");
-    setChallengeVenue(activeChallengeFixture.venue || "Venue to be confirmed");
+    // Challenge squads are intentionally isolated from normal friendly squads.
+    // Future challenge squad setup should use challengeSquadsByFixtureId, not fiveVFiveTeams.
   }, [activeChallengeFixture]);
 
   const turfKingsChallengeTeam = useMemo(() => {
@@ -1389,9 +1359,7 @@ export function SquadsPage({
     challengeVenue,
   ]);
 
-  const hasActiveGuestChallenge = Boolean(
-    isFiveVFive && guestOpponentEnabled && activeChallengeFixture
-  );
+  const hasActiveGuestChallenge = false;
 
   const sourceTeams = useMemo(() => {
     if (hasActiveGuestChallenge) {
@@ -1405,6 +1373,7 @@ export function SquadsPage({
     turfKingsChallengeTeam,
     guestOpponentTeam,
     baseFriendlyTeams,
+    localFiveVFiveTeams,
     localLeagueTeams,
   ]);
 
@@ -1737,8 +1706,27 @@ export function SquadsPage({
     }
   };
 
+  const confirmLeagueIdentityChange = (teamId, fieldLabel) => {
+    if (!isLeague) return true;
+
+    const key = `${teamId}:${fieldLabel}`;
+    if (leagueIdentityConfirmRef.current[key]) return true;
+
+    const ok = window.confirm(
+      `You are changing the ${fieldLabel} during an active League season. ` +
+      `This should normally be set once per season. Continue?`
+    );
+
+    if (ok) {
+      leagueIdentityConfirmRef.current[key] = true;
+    }
+
+    return ok;
+  };
+
   const handleTeamLabelChange = (teamId, value) => {
     if (!canEdit) return;
+    if (!confirmLeagueIdentityChange(teamId, "team name")) return;
     setSourceTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, label: value } : t))
     );
@@ -1754,6 +1742,7 @@ export function SquadsPage({
 
   const handleTeamColorNameChange = (teamId, value) => {
     if (!canEdit) return;
+    if (!confirmLeagueIdentityChange(teamId, "team colour")) return;
 
     const cleanValue = toTitleCase(value || "");
     const nextTheme = getThemeFromColorName(cleanValue);
@@ -1801,6 +1790,7 @@ export function SquadsPage({
 
   const handleCaptainChange = (teamId, captainId) => {
     if (!canEdit) return;
+    if (!confirmLeagueIdentityChange(teamId, "team captain")) return;
     setSourceTeams((prev) =>
       prev.map((t) => {
         if (t.id !== teamId) return t;
@@ -2165,11 +2155,14 @@ export function SquadsPage({
         return { ...t, label, abbrev, teamColorHex, teamColorName };
       });
 
-    const cleanedLeagueTeams = cleanOne(localLeagueTeams);
+    // Save from the exact teams currently shown in Squad Shape Preview.
+    // This prevents stale hidden/local state from overwriting preview edits.
+    const cleanedLeagueTeams = cleanOne(
+      isFiveVFive ? localLeagueTeams : sourceTeams
+    );
+
     const cleanedFiveVFiveTeams = cleanOne(
-      hasActiveGuestChallenge
-        ? buildCurrentSlotChallengeTeams({ enabled: true })
-        : localFiveVFiveTeams
+      isFiveVFive ? sourceTeams : localFiveVFiveTeams
     );
 
     const validationError =
@@ -2231,12 +2224,32 @@ export function SquadsPage({
       }))
     );
 
-    onUpdateFiveVFiveTeams?.(
-      cleanedFiveVFiveTeams.map((t) => ({
-        ...t,
-        captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
-      }))
+    const outgoingFiveVFiveTeams = cleanedFiveVFiveTeams.map((t) => ({
+      ...t,
+      captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
+    }));
+
+    setLocalFiveVFiveTeams(outgoingFiveVFiveTeams);
+
+    console.log("[SQUADS SAVE DEBUG] outgoingFiveVFiveTeams", outgoingFiveVFiveTeams);
+    const outgoingLeagueTeams = cleanedLeagueTeams.map((t) => ({
+      ...t,
+      captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
+    }));
+
+    setLocalLeagueTeams(outgoingLeagueTeams);
+    setLocalFiveVFiveTeams(outgoingFiveVFiveTeams);
+
+    const activeOutgoingTeams = isFiveVFive ? outgoingFiveVFiveTeams : outgoingLeagueTeams;
+
+    setSaveDebug(
+      `${isFiveVFive ? "Friendly" : "League"} save: ` +
+      activeOutgoingTeams
+        .map((t) => `${t.label} | ${t.teamColorName} | ${t.abbrev} | captain=${t.captain || "none"}`)
+        .join(" / ")
     );
+
+    onUpdateFiveVFiveTeams?.(outgoingFiveVFiveTeams);
 
     handleCancelSave();
   };
@@ -2530,8 +2543,8 @@ export function SquadsPage({
       return resolvedAwayClubName || "Opponent Club";
     }
 
-    if (team.id === TURF_KINGS_SLOT_ID) return "Dark";
-    if (team.id === GUEST_OPPONENT_SLOT_ID) return "Light";
+    if (team.id === TURF_KINGS_SLOT_ID) return team.label || "Dark";
+    if (team.id === GUEST_OPPONENT_SLOT_ID) return team.label || "Light";
 
     return team.label || "Team";
   };
@@ -2769,6 +2782,7 @@ export function SquadsPage({
                       players.map((pid) => (
                         <li key={`teamsheet-${team.id}-${pid}`}>
                           {displayNameOf(pid)}
+                          {team.captainId === pid ? " (C)" : ""}
                         </li>
                       ))
                     ) : (
@@ -2804,24 +2818,90 @@ export function SquadsPage({
             >
               <div className="squad-preview-team-head">
                 <span className="squad-preview-team-dot" />
-                <div>
-                  <h4>{getPreviewTeamName(team)}</h4>
-                  <p>{players.length}/{playersPerSide} selected</p>
+                <div
+                  style={{
+                    width: "100%",
+                    minWidth: 0,
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) minmax(120px, 150px)",
+                    gap: "0.55rem",
+                    alignItems: "start",
+                  }}
+                >
+                  <div>
+                    {canEdit ? (
+                      <input
+                        className="text-input"
+                        value={team.label || ""}
+                        placeholder="Team name"
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          handleTeamLabelChange(team.id, nextValue);
+
+                          if (team.id === TURF_KINGS_SLOT_ID) {
+                            handleTeamAbbrevChange(team.id, "DRK");
+                          } else if (team.id === GUEST_OPPONENT_SLOT_ID) {
+                            handleTeamAbbrevChange(team.id, "LGT");
+                          }
+                        }}
+                        disabled={isCurrentGuestOpponentTeam(team)}
+                        style={{
+                          width: "100%",
+                          boxSizing: "border-box",
+                          fontWeight: 900,
+                        }}
+                      />
+                    ) : (
+                      <h4>{getPreviewTeamName(team)}</h4>
+                    )}
+
+                    <p style={{ marginTop: "0.35rem" }}>
+                      {players.length}/{playersPerSide} selected
+                    </p>
+                  </div>
 
                   {canEdit ? (
-                    <select
-                      className="squad-preview-colour-select"
-                      value={team.teamColorName || (team.id === TURF_KINGS_SLOT_ID ? "Black" : "White")}
-                      onChange={(event) => handleTeamColorNameChange(team.id, event.target.value)}
-                      title="Shirt colour to wear"
-                    >
-                      <option value="Black">⚫ Wear black</option>
-                      <option value="White">⚪ Wear white</option>
-                      <option value="Red">🔴 Wear red</option>
-                      <option value="Blue">🔵 Wear blue</option>
-                      <option value="Green">🟢 Wear green</option>
-                      <option value="Yellow">🟡 Wear yellow</option>
-                    </select>
+                    <div style={{ display: "grid", gap: "0.35rem" }}>
+                      <select
+                        className="text-input"
+                        value={
+                          team.captainId && playersById.has(team.captainId)
+                            ? team.captainId
+                            : ""
+                        }
+                        onChange={(event) =>
+                          handleCaptainChange(team.id, event.target.value)
+                        }
+                        disabled={captainOptionsForTeam(team).length === 0}
+                        title="Select captain"
+                        style={{ width: "100%", boxSizing: "border-box" }}
+                      >
+                        <option value="">Captain</option>
+                        {captainOptionsForTeam(team).map((pid) => (
+                          <option key={`preview-captain-${team.id}-${pid}`} value={pid}>
+                            ⭐ {displayNameOf(pid)}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="text-input"
+                        value={team.teamColorName || (team.id === TURF_KINGS_SLOT_ID ? "Black" : "White")}
+                        onChange={(event) => handleTeamColorNameChange(team.id, event.target.value)}
+                        title="Wear colour"
+                        style={{ width: "100%", boxSizing: "border-box" }}
+                      >
+                        <option value="Black">Wear black ⚫</option>
+                        <option value="White">Wear white ⚪</option>
+                        <option value="Red">Wear red 🔴</option>
+                        <option value="Blue">Wear blue 🔵</option>
+                        <option value="Green">Wear green 🟢</option>
+                        <option value="Yellow">Wear yellow 🟡</option>
+                        <option value="Gold">🟡 Gold</option>
+                        <option value="Purple">Wear purple 🟣</option>
+                        <option value="Pink">🟣 Pink</option>
+                      </select>
+                    </div>
                   ) : null}
                 </div>
               </div>
@@ -3096,11 +3176,17 @@ export function SquadsPage({
               Last changed by <strong>{lastSquadEditor.name}</strong> · {lastSquadEditor.role}
             </span>
           )}
+
+          {saveDebug && (
+            <span className="muted small" style={{ width: "100%", textAlign: "center", color: "#FDE68A" }}>
+              Save debug: {saveDebug}
+            </span>
+          )}
         </div>
       )}
 
       <section className="card">
-        {isFiveVFive && guestOpponentEnabled && (
+        {false && isFiveVFive && guestOpponentEnabled && (
           <div
             style={{
               marginBottom: "1rem",
@@ -3447,343 +3533,10 @@ export function SquadsPage({
           </div>
         )}
 
-        <div className="squads-grid">
-          {sourceTeams.map((team) => {
-            const inputId = team.id;
-            const listId = `players-db-${resolvedGameFormat}-${inputId}`;
-            const capOptions = captainOptionsForTeam(team);
-            const currentCapId =
-              team.captainId && playersById.has(team.captainId)
-                ? team.captainId
-                : "";
-            const cardId = `team-${resolvedGameFormat}-${team.id}`;
-            const theme = getTeamTheme(team);
-            const playerCount = Array.isArray(team.players) ? team.players.length : 0;
-            const teamReady = playerCount >= playersPerSide;
-            const playerCountText = `${playerCount}/${playersPerSide}`;
-            const isGuestTeamCard = guestOpponentEnabled && team.id === GUEST_OPPONENT_SLOT_ID;
-            const isChallengeTeamCard = guestOpponentEnabled && team.id === TURF_KINGS_SLOT_ID;
-
-            return (
-              <React.Fragment key={`team-fragment-${resolvedGameFormat}-${team.id}`}>
-                {renderCardShell(
-                  cardId,
-                  team.label,
-                  theme,
-                  <>
-                    <div className="squad-card-topbar">
-                      <div className="team-name-wrap">
-                        <span className="team-color-pill" />
-                        <div>
-                          <div className="team-title-row">
-                            <h2 className="team-title">
-                              {getPreviewTeamName(team)}
-                            </h2>
-                            {team.abbrev ? (
-                              <span className="team-abbrev-badge">{team.abbrev}</span>
-                            ) : null}
-                          </div>
-                          {isAdmin && (
-                            <div className="team-subtitle">
-                              {isGuestTeamCard
-                                ? "Temporary opponent"
-                                : isChallengeTeamCard
-                                ? "Database players"
-                                : <>Captain: {captainTagText(team) || "—"}</>}
-                            </div>
-                          )}
-                          <div className="team-color-name" style={{ display: "inline-flex", alignItems: "center", gap: "0.38rem" }}>
-                            <TeamShirtIcon color={theme.accent} size={18} />
-                            <span className="team-color-dot" />
-                            {theme.colorName}
-                          </div>
-                          <div
-                            className="muted small"
-                            style={{
-                              marginTop: "0.25rem",
-                              fontWeight: 800,
-                              color: teamReady ? "#86efac" : "#fde68a",
-                            }}
-                          >
-                            Players: {playerCountText} • {teamReady ? "Ready" : "Needs players"}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {isAdmin && (isGuestTeamCard || isChallengeTeamCard) && (
-                      <div className="team-config">
-                        <div className="field-row-top-spaced">
-                          <input
-                            className="text-input"
-                            value={
-                              isChallengeTeamCard
-                                ? turfKingsChallengeColorName
-                                : isGuestTeamCard
-                                ? guestOpponentColorName
-                                : team.teamColorName || ""
-                            }
-                            placeholder="Team color name"
-                            onChange={(e) =>
-                              handleTeamColorNameChange(team.id, e.target.value)
-                            }
-                            onBlur={() => {
-                              if (guestOpponentEnabled && team.id === TURF_KINGS_SLOT_ID) {
-                                persistSlotChallengeState({
-                                  nextTurfKingsColorName: turfKingsChallengeColorName,
-                                });
-                              }
-
-                              if (guestOpponentEnabled && team.id === GUEST_OPPONENT_SLOT_ID) {
-                                persistSlotChallengeState({
-                                  nextGuestColorName: guestOpponentColorName,
-                                });
-                              }
-                            }}
-                            disabled={!canEdit}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {isAdmin && !isGuestTeamCard && !isChallengeTeamCard && (
-                      <div className="team-config">
-                        <div className="field-row-inline">
-                          <input
-                            className="text-input"
-                            value={team.label || ""}
-                            placeholder="Team name"
-                            onChange={(e) =>
-                              handleTeamLabelChange(team.id, e.target.value)
-                            }
-                            disabled={!canEdit}
-                          />
-                          <input
-                            className="text-input team-abbrev-input"
-                            value={team.abbrev || ""}
-                            placeholder="ABC"
-                            title="3-letter abbreviation (A–Z)"
-                            onChange={(e) =>
-                              handleTeamAbbrevChange(team.id, e.target.value)
-                            }
-                            disabled={!canEdit}
-                          />
-                        </div>
-
-                        <div className="field-row-top-spaced">
-                          <input
-                            className="text-input"
-                            value={team.teamColorName || ""}
-                            placeholder="Team color name e.g. Black or White"
-                            onChange={(e) =>
-                              handleTeamColorNameChange(team.id, e.target.value)
-                            }
-                            disabled={!canEdit}
-                          />
-                        </div>
-
-                        {team.abbrev && !isValidAbbrev(team.abbrev) && canEdit && (
-                          <p className="muted small squad-note">
-                            Abbrev must be exactly 3 letters (A–Z), e.g. DRK / LGT / LIV
-                          </p>
-                        )}
-
-                        {team.teamColorName && canEdit && (
-                          <p className="muted small squad-note">
-                            Enter a simple color name like Black, White, Red, Blue, Gold, Green, Purple or Pink.
-                          </p>
-                        )}
-
-                        <div className="field-row field-row-top-spaced">
-                          <label className="muted small field-label-tight">
-                            Captain
-                          </label>
-                          <select
-                            className="text-input"
-                            value={currentCapId}
-                            onChange={(e) =>
-                              handleCaptainChange(team.id, e.target.value)
-                            }
-                            disabled={!canEdit || capOptions.length === 0}
-                          >
-                            <option value="">
-                              {capOptions.length === 0
-                                ? "Add players to pick a captain"
-                                : "Select captain…"}
-                            </option>
-                            {capOptions.map((pid) => (
-                              <option key={`${team.id}-captain-${pid}`} value={pid}>
-                                {displayNameOf(pid)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-
-                    
-<div className="club-pool-clean-list">
-  {unseededPlayers.length ? (
-    unseededPlayers.map((pid, index) => {
-      const playerName = displayNameOf(pid);
-      const canDelete =
-        isAdmin &&
-        pid !== identity?.playerId &&
-        pid !== identity?.uid;
-
-      return (
-        <div
-          key={`pool-clean-${pid}`}
-          className="club-pool-clean-row"
-        >
-          <div className="club-pool-clean-left">
-            <span className="club-pool-clean-number">
-              {index + 1}
-            </span>
-
-            <span className="club-pool-clean-name">
-              {playerName}
-            </span>
-          </div>
-
-          {canDelete ? (
-            <button
-              type="button"
-              className="club-pool-remove-btn"
-              onClick={() => handleDeletePlayerRequest(pid)}
-            >
-              Remove
-            </button>
-          ) : null}
-        </div>
-      );
-    })
-  ) : (
-    <div className="club-pool-empty">
-      No remaining registered players.
-    </div>
-  )}
-</div>
-
-
-                    {isAdmin && (
-                      <div className="squad-safe-hint">
-                        Build this team from the player pool above. No manual typing for registered club players.
-                      </div>
-                    )}
-                  </>
-                )}
-              </React.Fragment>
-            );
-          })}
-
-        </div>
-
-
         {renderTeamsheetCard()}
 
         {renderAvailablePaidPlayersCard()}
 
-
-          {renderCardShell(
-            `${gameFormat}-${UNSEEDED_ID}`,
-            "unseeded_players",
-            {
-              accent: "#64748B",
-              accentSoft: "rgba(100,116,139,0.16)",
-              glow: "rgba(100,116,139,0.18)",
-              text: "#CBD5E1",
-              colorName: "Slate",
-            },
-            <>
-              <div className="squad-card-topbar">
-                <div className="team-name-wrap">
-                  <span className="team-color-pill" />
-                  <div>
-                    <div className="team-title-row">
-                      <h2 className="team-title">Club player pool</h2>
-                      <span className="team-abbrev-badge">POOL</span>
-                    </div>
-                    <div className="team-subtitle">
-                      {unseededPlayers.length} not currently assigned
-                    </div>
-                    <div className="team-color-name" style={{ display: "inline-flex", alignItems: "center", gap: "0.38rem" }}>
-                      <TeamShirtIcon color="#64748B" size={18} />
-                      <span className="team-color-dot" />
-                      Slate
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  marginTop: "0.75rem",
-                  marginBottom: showUnseededPlayers ? "0.75rem" : 0,
-                }}
-              >
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={() => setShowUnseededPlayers((current) => !current)}
-                  style={{
-                    width: "100%",
-                    maxWidth: "260px",
-                    borderRadius: "999px",
-                  }}
-                >
-                  {showUnseededPlayers
-                    ? `Hide player pool (${unseededPlayers.length})`
-                    : `Show player pool (${unseededPlayers.length})`}
-                </button>
-              </div>
-
-              {showUnseededPlayers && (
-                <>
-              
-<div className="club-pool-clean-list">
-  {unseededPlayers.length ? (
-    unseededPlayers.map((p, index) => {
-      const isSelf =
-        String(p.id || "").toLowerCase() === String(identity?.playerId || "").toLowerCase() ||
-        String(p.id || "").toLowerCase() === String(identity?.memberId || "").toLowerCase();
-
-      return (
-        <div key={`club-pool-${p.id}`} className="club-pool-clean-row">
-          <div className="club-pool-clean-left">
-            <span className="club-pool-clean-number">{index + 1}</span>
-            <span className="club-pool-clean-name">{displayNameOf(p.id)}</span>
-          </div>
-
-          {isAdmin && !isSelf ? (
-            <button
-              type="button"
-              className="club-pool-remove-btn"
-              onClick={() => handleRequestRemoveUnseeded(p.id)}
-            >
-              Remove
-            </button>
-          ) : null}
-        </div>
-      );
-    })
-  ) : (
-    <div className="club-pool-empty">No remaining registered players.</div>
-  )}
-</div>
-
-
-              {isAdmin && (
-                <div className="squad-safe-hint">
-                  Backup club member list. Use only for late walk-ins or membership cleanup.
-                </div>
-              )}
-                </>
-              )}
-            </>
-          )}
 
       </section>
 
