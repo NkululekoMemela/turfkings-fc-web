@@ -1092,6 +1092,12 @@ exports.createYocoCheckout = onRequest(
         ""
       );
 
+      const yocoOrderId = safeString(
+        yocoData.metadata?.orderId ||
+        yocoData.orderId ||
+        ""
+      );
+
       if (!redirectUrl) {
         return res.status(502).json({
           ok: false,
@@ -1129,6 +1135,7 @@ exports.createYocoCheckout = onRequest(
         requestedCancelUrl: resolvedUrls.cancelUrl,
         requestedFailureUrl: resolvedUrls.failureUrl,
         yocoCheckoutId,
+        yocoOrderId,
         yocoResponse: yocoData,
         redirectUrl,
         createdAt: FieldValue.serverTimestamp(),
@@ -1230,6 +1237,11 @@ exports.handleYocoWebhook = onRequest(
     }
 
     try {
+      console.log(
+        "YOCO WEBHOOK PAYLOAD",
+        JSON.stringify(payload, null, 2)
+      );
+
       const externalId = safeString(
         deepFindFirst(payload, [
           "externalId",
@@ -1258,6 +1270,13 @@ exports.handleYocoWebhook = onRequest(
           "data.checkout_id",
           "data.id",
           "id",
+        ]) || ""
+      );
+
+      const orderId = safeString(
+        deepFindFirst(payload, [
+          "order_id",
+          "orderId",
         ]) || ""
       );
 
@@ -1300,11 +1319,25 @@ exports.handleYocoWebhook = onRequest(
         }
       }
 
+      if (!paymentRef && orderId) {
+        const orderSnap = await db
+          .collection("payments")
+          .where("yocoOrderId", "==", orderId)
+          .limit(1)
+          .get();
+
+        if (!orderSnap.empty) {
+          paymentRef = orderSnap.docs[0].ref;
+          paymentData = orderSnap.docs[0].data() || {};
+        }
+      }
+
       if (!paymentRef) {
         console.error("Could not match webhook to payment record.", {
           externalId,
           clientReferenceId,
           checkoutId,
+          orderId,
         });
         return res.status(200).send("No matching payment record");
       }

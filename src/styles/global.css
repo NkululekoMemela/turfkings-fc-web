@@ -6870,3 +6870,79 @@ body.squad-preview-is-open.admin-squad-preview nav[aria-label="Bottom navigation
   padding-bottom: 2rem !important;
 }
 
+
+/* Premium Payment Page polish */
+.payment-page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding-bottom: 120px;
+}
+
+.payment-hero-card,
+.payment-grid-card {
+  border-radius: 30px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background:
+    radial-gradient(circle at top right, rgba(34, 197, 94, 0.22), transparent 34%),
+    linear-gradient(135deg, rgba(4, 13, 34, 0.98), rgba(6, 24, 54, 0.94));
+  box-shadow: 0 28px 70px rgba(0,0,0,0.42);
+  backdrop-filter: blur(16px);
+}
+
+.payment-main-panel {
+  padding: 34px;
+}
+
+.payment-main-top h3 {
+  font-size: clamp(1.65rem, 4vw, 2.35rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.payment-status-pill {
+  border-radius: 999px;
+  padding: 9px 15px;
+  font-weight: 800;
+}
+
+.payment-total-block {
+  margin: 28px 0;
+  padding: 28px;
+  border-radius: 26px;
+  background:
+    linear-gradient(135deg, rgba(34,197,94,0.15), rgba(255,255,255,0.04));
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.payment-total-block .summary-row {
+  padding: 10px 0;
+}
+
+.payment-total-block .total-row {
+  margin-top: 10px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+
+.payment-total-block .total-row strong {
+  font-size: clamp(2rem, 7vw, 3.2rem);
+  font-weight: 950;
+  color: #ffffff;
+}
+
+.payment-action-btn {
+  width: 100%;
+  min-height: 64px;
+  border-radius: 999px;
+  font-size: 1.15rem;
+  font-weight: 900;
+  box-shadow:
+    0 18px 38px rgba(34,197,94,0.28),
+    inset 0 1px 0 rgba(255,255,255,0.28);
+}
+
+.payment-help-text {
+  text-align: center;
+  margin-top: 18px;
+  opacity: 0.75;
+}
