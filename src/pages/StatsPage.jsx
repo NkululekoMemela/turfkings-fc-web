@@ -5709,6 +5709,20 @@ export function StatsPage({
           align-items: stretch;
         }
 
+
+        /* Fill remaining desktop stats tables cleanly */
+        @media (min-width: 769px) {
+
+          .stats-page .tk-team-identity-table .stats-table,
+          .stats-page .tk-player-identity-table:not(.tk-player-small-table):not(.tk-player-summary-table) .stats-table {
+            width: 100% !important;
+            min-width: 100% !important;
+            table-layout: fixed !important;
+          }
+
+        }
+
+
         .stats-page .tk-admin-compact-btn {
           width: 100%;
           min-height: 1.55rem;
@@ -5758,6 +5772,17 @@ export function StatsPage({
             letter-spacing: 0.08em;
           }
         }
+
+
+        /* Mobile: fix Clean Sheets table header width */
+        @media (max-width: 768px) {
+          .stats-page .clean-sheets-table .stats-table {
+            width: 100% !important;
+            min-width: 100% !important;
+            table-layout: fixed !important;
+          }
+        }
+
 
       `}</style>
 
