@@ -1231,17 +1231,33 @@ exports.handleYocoWebhook = onRequest(
 
     try {
       const externalId = safeString(
-        deepFindFirst(payload, ["externalId", "external_id"])
+        deepFindFirst(payload, [
+          "externalId",
+          "external_id",
+          "data.externalId",
+          "data.external_id",
+          "metadata.paymentRecordId",
+        ])
       );
 
       const clientReferenceId = safeString(
-        deepFindFirst(payload, ["clientReferenceId", "client_reference_id"])
+        deepFindFirst(payload, [
+          "clientReferenceId",
+          "client_reference_id",
+          "data.clientReferenceId",
+          "data.client_reference_id",
+        ])
       );
 
       const checkoutId = safeString(
-        deepFindFirst(payload, ["checkoutId", "checkout_id"]) ||
-        ((payload.data && typeof payload.data === "object") ? payload.data.id : "") ||
-        ""
+        deepFindFirst(payload, [
+          "checkoutId",
+          "checkout_id",
+          "data.checkoutId",
+          "data.checkout_id",
+          "data.id",
+          "id",
+        ]) || ""
       );
 
       let paymentRef = null;
