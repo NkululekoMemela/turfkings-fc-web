@@ -137,6 +137,7 @@ export function PeerReviewPage({
   const [baselineFilterTeam, setBaselineFilterTeam] = useState("ALL");
   const [showRatedBaselinePlayers, setShowRatedBaselinePlayers] = useState(false);
   const [showAdminBaselinePanel, setShowAdminBaselinePanel] = useState(false);
+  const [baselineReminderDismissed, setBaselineReminderDismissed] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setHeaderScrolled(window.scrollY > 6);
@@ -761,6 +762,28 @@ export function PeerReviewPage({
     }
   };
 
+  const missingBaselineCurrentWeekTargets = useMemo(() => {
+    if (!isAdmin || !baselineLoaded || !allPlayers.length) return [];
+
+    return allPlayers.filter((p) => {
+      const canonicalName = resolveCanonicalName(p.name);
+      const existing =
+        baselineMap[safeLower(canonicalName)] ||
+        baselineMap[safeLower(p.name)] ||
+        null;
+
+      const hasBaseline =
+        Number(existing?.attack || 0) > 0 ||
+        Number(existing?.defence || 0) > 0 ||
+        Number(existing?.playmaking || 0) > 0 ||
+        Number(existing?.gk || 0) > 0;
+
+      return !hasBaseline;
+    });
+  }, [isAdmin, baselineLoaded, allPlayers, baselineMap, memberCanonicalMap]);
+
+  const adminReminderCount = missingBaselineCurrentWeekTargets.length;
+
   const signedInName = selectedRater || identity?.fullName || identity?.shortName || identity?.email || null;
 
   const renderBaselineCard = (p) => {
@@ -905,6 +928,63 @@ export function PeerReviewPage({
           box-shadow: none !important;
           text-shadow: none !important;
         }
+
+        .peer-reminder-popup {
+          position: fixed;
+          top: 88px;
+          right: 18px;
+          width: min(380px, calc(100vw - 32px));
+          background:
+            linear-gradient(
+              180deg,
+              rgba(15,23,42,.98),
+              rgba(2,6,23,.98)
+            );
+          border: 1px solid rgba(239,68,68,.45);
+          border-radius: 22px;
+          padding: 1rem;
+          z-index: 99999;
+          box-shadow:
+            0 24px 80px rgba(0,0,0,.48),
+            0 0 0 1px rgba(255,255,255,.04) inset;
+          backdrop-filter: blur(18px);
+        }
+
+        .peer-reminder-popup-title {
+          color: #ffffff;
+          font-size: 1rem;
+          font-weight: 900;
+          margin-bottom: .55rem;
+        }
+
+        .peer-reminder-popup-text {
+          color: #cbd5e1;
+          font-size: .86rem;
+          line-height: 1.45;
+        }
+
+        .peer-reminder-player-list {
+          margin-top: .8rem;
+          display: flex;
+          flex-wrap: wrap;
+          gap: .45rem;
+        }
+
+        .peer-reminder-player-pill {
+          padding: .42rem .7rem;
+          border-radius: 999px;
+          background: rgba(239,68,68,.12);
+          border: 1px solid rgba(239,68,68,.32);
+          color: #fecaca;
+          font-size: .78rem;
+          font-weight: 700;
+        }
+
+        .peer-reminder-actions {
+          display: flex;
+          gap: .6rem;
+          margin-top: 1rem;
+        }
       `}</style>
       <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
         <header className="header">
@@ -925,49 +1005,7 @@ export function PeerReviewPage({
         </header>
       </div>
 
-      <header className="header">
-        <p className="subtitle">
-          <strong>Weekly ratings</strong> and <strong>admin baselines</strong>.
-        </p>
-      </header>
-
       <section className="card peer-card">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-            gap: "0.85rem",
-            marginBottom: "1.1rem",
-          }}
-        >
-          <div
-            className="peer-purpose-card weekly"
-            style={{
-              borderRadius: "1rem",
-              padding: "0.95rem",
-            }}
-          >
-            <div className="peer-purpose-title" style={{ marginBottom: "0.35rem" }}>🗓️ Weekly ratings</div>
-            <p className="muted small" style={{ margin: 0, lineHeight: 1.45 }}>
-              This week’s player reviews.
-            </p>
-          </div>
-
-          {isAdmin && (
-            <div
-              className="peer-purpose-card baseline"
-              style={{
-                borderRadius: "1rem",
-                padding: "0.95rem",
-              }}
-            >
-              <div className="peer-purpose-title" style={{ marginBottom: "0.35rem" }}>🛡️ Admin baselines</div>
-              <p className="muted small" style={{ margin: 0, lineHeight: 1.45 }}>
-                Long-term player levels.
-              </p>
-            </div>
-          )}
-        </div>
         {isAdmin && (
           <div className="peer-step" style={{ marginBottom: "1.25rem" }}>
             <div
@@ -1069,68 +1107,7 @@ export function PeerReviewPage({
         <div className="peer-step">
           <div className="peer-step-header">
             <div>
-              <h2 style={{ marginBottom: "0.25rem" }}>Weekly reviews – Step 1: Who are you?</h2>
-              <p className="muted small" style={{ margin: 0 }}>This section is for this week&apos;s player-to-player reviews. It is separate from admin baselines.</p>
-            </div>
-            {signedInName && isSignedInPlayer && (
-              <div className="peer-current-rater">
-                Voting as <strong>{selectedRater || signedInName}{raterLocked ? " (verified)" : ""}</strong>{" "}
-                {!raterLocked && (
-                  <button type="button" className="link-btn" onClick={handleChangeRater}>change</button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {!isSignedInPlayer && (
-            <p className="muted small">
-              {isSpectator
-                ? "You are signed in as a spectator. Only club players can submit peer ratings."
-                : "You are not signed in as a club player."}
-            </p>
-          )}
-
-          {isSignedInPlayer && !selectedRater && (
-            <>
-              <p className="muted small">Tap your name from this club's squads.</p>
-              <div className="peer-player-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-                {allPlayers.map((p) => {
-                  const photoUrl = getPhotoFor(p.name);
-                  const initials = getInitials(p.name);
-                  return (
-                    <button
-                      key={`${p.name}-rater`}
-                      type="button"
-                      className="peer-player-main"
-                      style={{ border: "1px solid rgba(255,255,255,0.12)", borderRadius: "16px", padding: "0.85rem", background: "rgba(255,255,255,0.04)", textAlign: "left" }}
-                      onClick={() => {
-                        setSelectedRater(p.name);
-                        setRaterLocked(false);
-                        setStatusMsg("");
-                      }}
-                    >
-                      <div className="peer-player-avatar">
-                        {photoUrl ? <img src={photoUrl} alt={p.name} className="peer-avatar-photo" loading="lazy" decoding="async" /> : <div className="peer-avatar-fallback">{initials}</div>}
-                      </div>
-                      <div className="peer-player-meta">
-                        <div className="peer-player-name">{p.name}</div>
-                        <div className="peer-player-team">{p.teamLabel}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="peer-step">
-          <div className="peer-step-header">
-            <div>
-              <h2 style={{ marginBottom: "0.25rem" }}>Weekly reviews – Step 2: Rate your teammates</h2>
-              <p className="muted small" style={{ margin: 0 }}>
-                These ratings are saved for week <strong>{weekKey}</strong>. They do not overwrite the admin baseline.
-              </p>
+              <h2 style={{ marginBottom: "0.25rem" }}>Rate your teammates</h2>
             </div>
           </div>
 
@@ -1229,6 +1206,55 @@ export function PeerReviewPage({
             </>
           )}
         </div>
+
+        {isAdmin &&
+          !baselineReminderDismissed &&
+          adminReminderCount > 0 && (
+            <div className="peer-reminder-popup">
+              <div className="peer-reminder-popup-title">
+                Baseline ratings needed
+              </div>
+
+              <div className="peer-reminder-popup-text">
+                Some players who participated this week still need admin baseline ratings.
+              </div>
+
+              <div className="peer-reminder-player-list">
+                {missingBaselineCurrentWeekTargets.map((p) => (
+                  <div
+                    key={p.name}
+                    className="peer-reminder-player-pill"
+                  >
+                    {p.name}
+                  </div>
+                ))}
+              </div>
+
+              <div className="peer-reminder-actions">
+                <button
+                  type="button"
+                  className="primary-btn peer-safe-primary"
+                  onClick={() => {
+                    setShowAdminBaselinePanel(true);
+                    setBaselineReminderDismissed(true);
+                  }}
+                >
+                  Open tool
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-btn peer-safe-secondary"
+                  onClick={() => {
+                    setBaselineReminderDismissed(true);
+                  }}
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          )}
+
       </section>
     </div>
   );

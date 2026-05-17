@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
+import { GLOBAL_CAPTAIN_CODES } from "../core/accessCodes.js";
 
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
@@ -15,7 +16,7 @@ import {
   normalizeMatchMode,
 } from "../core/matchConfig.js";
 
-const CAPTAIN_CODES = ["11", "22"];
+const CAPTAIN_CODES = GLOBAL_CAPTAIN_CODES;
 
 const activePrimaryStyle = {
   background:

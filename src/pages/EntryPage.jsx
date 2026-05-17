@@ -1931,26 +1931,30 @@ export function EntryPage({
           </p>
         )}
 
-        {currentUser && (
-          <div className="tk-entry-signedin-row">
+        <div className="tk-entry-signedin-row">
+          {currentUser ? (
             <p className="muted small" style={{ margin: 0 }}>
               Currently signed in as{" "}
               <strong>{currentUser.displayName || currentUser.email}</strong>.
             </p>
+          ) : (
+            <p className="muted small" style={{ margin: 0 }}>
+              Return to the homepage anytime.
+            </p>
+          )}
 
-            {onGoHome && (
-              <button
-                type="button"
-                className="tk-entry-home-btn"
-                onClick={onGoHome}
-                title="Back to 5 Asides Near Me HomePage"
-                aria-label="Back to 5 Asides Near Me HomePage"
-              >
-                <img src={FANM_HOME_LOGO} alt="5 Asides Near Me" />
-              </button>
-            )}
-          </div>
-        )}
+          {onGoHome && (
+            <button
+              type="button"
+              className="tk-entry-home-btn"
+              onClick={onGoHome}
+              title="Back to 5 Asides Near Me HomePage"
+              aria-label="Back to 5 Asides Near Me HomePage"
+            >
+              <img src={FANM_HOME_LOGO} alt="5 Asides Near Me" />
+            </button>
+          )}
+        </div>
       </header>
 
       <section className="card" style={heroCardStyle}>

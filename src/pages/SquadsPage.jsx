@@ -31,6 +31,10 @@ import {
   normalizeMatchMode,
   normalizeGameFormat,
 } from "../core/matchConfig.js";
+import {
+  isCaptainCode,
+  isAdminCode,
+} from "../core/accessCodes.js";
 
 const MASTER_CODE = "3333"; // Nkululeko only
 const UNSEEDED_ID = "__unseeded__";
@@ -740,7 +744,9 @@ export function SquadsPage({
     ? effectiveRole === "admin"
     : Boolean(isAdminProp) || isAdminIdentity(identity);
 
-  const canEdit = isAdmin;
+
+  const isCaptain =
+    effectiveRole === "captain";
 
   const resolvedMatchType = normalizeMatchMode(
     matchType || gameFormat,
@@ -780,6 +786,19 @@ export function SquadsPage({
   const [previewPickTarget, setPreviewPickTarget] = useState(null);
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
+
+  const [captainEditLocked, setCaptainEditLocked] = useState(true);
+  const [showCaptainLockHelp, setShowCaptainLockHelp] = useState(false);
+
+  const [lastSquadEditor, setLastSquadEditor] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("tk_last_squad_editor") || "null");
+    } catch {
+      return null;
+    }
+  });
+
+  const canEdit = isAdmin || (isCaptain && !captainEditLocked);
   const [showUnseededPlayers, setShowUnseededPlayers] = useState(false);
   const [pendingDeletePlayerId, setPendingDeletePlayerId] = useState("");
   const [deletePlayerError, setDeletePlayerError] = useState("");
@@ -867,6 +886,57 @@ export function SquadsPage({
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (!activeClubId) return undefined;
+
+    const ref = doc(db, "clubs", activeClubId, "settings", "squadControls");
+
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const data = snap.exists() ? snap.data() || {} : {};
+        setCaptainEditLocked(data.captainEditLocked !== false);
+      },
+      (err) => {
+        console.error("[Squads] Failed to read squad controls:", err);
+      }
+    );
+
+    return () => unsub();
+  }, [activeClubId]);
+
+  const handleToggleCaptainEditLock = async () => {
+    if (!isAdmin || !activeClubId) return;
+
+    const nextLocked = !captainEditLocked;
+
+    setCaptainEditLocked(nextLocked);
+
+    try {
+      await setDoc(
+        doc(db, "clubs", activeClubId, "settings", "squadControls"),
+        {
+          captainEditLocked: nextLocked,
+          updatedAt: serverTimestamp(),
+          updatedAtMs: Date.now(),
+          updatedByName:
+            identity?.fullName ||
+            identity?.shortName ||
+            identity?.displayName ||
+            identity?.email ||
+            "Admin",
+          updatedByRole: "admin",
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error("[Squads] Failed to update captain lock:", err);
+      setCaptainEditLocked(!nextLocked);
+      window.alert("Could not update captain editing control.");
+    }
+  };
+
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2007,8 +2077,14 @@ export function SquadsPage({
     }
   };
 
+
   const handleSaveClick = () => {
     if (!canEdit) return;
+
+    if (captainEditLocked && isCaptain && !isAdmin) {
+      setSaveError("Captain editing is currently locked by admin.");
+      return;
+    }
     setSaveCode("");
     setSaveError("");
     setShowSaveModal(true);
@@ -2037,12 +2113,46 @@ export function SquadsPage({
     return "";
   };
 
+
   const handleConfirmSave = async () => {
     if (!canEdit) return;
-    if (saveCode.trim() !== MASTER_CODE) {
-      setSaveError("Invalid admin code.");
+
+    const trimmedCode = String(saveCode || "").trim();
+
+    const validAdmin = isAdminCode(trimmedCode, MASTER_CODE);
+    const validCaptain = isCaptainCode(trimmedCode);
+
+    if (!validAdmin && !validCaptain) {
+      setSaveError("Invalid access code.");
       return;
     }
+
+    if (captainEditLocked && validCaptain && !validAdmin) {
+      setSaveError("Captain changes are locked by admin.");
+      return;
+    }
+
+    const editorName =
+      identity?.fullName ||
+      identity?.shortName ||
+      identity?.displayName ||
+      identity?.email ||
+      (validAdmin ? "Admin" : "Captain");
+
+    const editorPayload = {
+      name: editorName,
+      role: validAdmin ? "Admin" : "Captain",
+      time: new Date().toISOString(),
+    };
+
+    setLastSquadEditor(editorPayload);
+
+    try {
+      localStorage.setItem(
+        "tk_last_squad_editor",
+        JSON.stringify(editorPayload)
+      );
+    } catch {}
 
     const cleanOne = (list) =>
       list.map((t) => {
@@ -2876,41 +2986,118 @@ export function SquadsPage({
         </header>
       </div>
 
-      <header className="header">
-        {playersLoading && (
-          <p className="muted small">Loading players from database…</p>
-        )}
-        {playersError && <p className="error-text">{playersError}</p>}
-        {!playersLoading && (
-          <>
-            <p className="muted small" style={{ marginBottom: "0.55rem" }}>
-              Match setup: <strong>{matchTypeLabel} • {gameFormatLabel}</strong>
-            </p>
-            <p className="muted small">
-              {isAdmin
-                ? isFriendly
-                  ? `Admin mode: edit Friendly ${gameFormatLabel} squads.`
-                  : `Admin mode: edit League ${gameFormatLabel} squads.`
-                : "View mode: squads are visible to everyone."}
-            </p>
+      {canEdit && (
+        <div
+          className="squad-admin-compact-bar"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "0.55rem",
+            flexWrap: "wrap",
+            margin: "0.25rem 0 0.75rem",
+            position: "relative",
+          }}
+        >
+          <button
+            type="button"
+            className="secondary-btn set-squad-pulse-btn"
+            onClick={() => setShowSquadPreview(true)}
+          >
+            Set Squad
+          </button>
 
-            {isAdmin && (
-              <div className="squad-preview-launch-row">
-                <button
-                  type="button"
-                  className="secondary-btn squad-preview-launch-btn"
-                  onClick={() => setShowSquadPreview(true)}
+          <button className="primary-btn" onClick={handleSaveClick}>
+            Save Squads
+          </button>
+
+          {isAdmin && (
+            <span style={{ position: "relative", display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleToggleCaptainEditLock}
+              >
+                {captainEditLocked ? "Unlock Captains" : "Lock Captains"}
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setShowCaptainLockHelp((current) => !current)}
+                title="What does this do?"
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  minWidth: "32px",
+                  padding: 0,
+                  borderRadius: "999px",
+                  fontWeight: 900,
+                }}
+              >
+                ✎
+              </button>
+
+              {showCaptainLockHelp && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 0.55rem)",
+                    right: "50%",
+                    transform: "translateX(50%)",
+                    zIndex: 99999,
+                    width: "min(280px, calc(100vw - 1.25rem))",
+                    maxWidth: "280px",
+                    padding: "0.75rem 0.85rem",
+                    borderRadius: "16px",
+                    background: "rgba(15,23,42,0.98)",
+                    border: "1px solid rgba(148,163,184,0.28)",
+                    boxShadow: "0 18px 44px rgba(2,6,23,0.42)",
+                    color: "#e5e7eb",
+                  }}
                 >
-                  👁 Squad Shape Preview
-                </button>
-                <span className="muted small">
-                  Quick visual check only. Final tactics stay in Lineups.
-                </span>
-              </div>
-            )}
-          </>
-        )}
-      </header>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "-8px",
+                      right: "50%",
+                      marginRight: "-7px",
+                      width: "14px",
+                      height: "14px",
+                      background: "rgba(15,23,42,0.98)",
+                      borderLeft: "1px solid rgba(148,163,184,0.28)",
+                      borderTop: "1px solid rgba(148,163,184,0.28)",
+                      transform: "rotate(45deg)",
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      position: "relative",
+                      zIndex: 2,
+                      color: "#e5e7eb",
+                    fontSize: "0.78rem",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <strong style={{ color: "#ffffff" }}>Captain edit control</strong>
+                  <div style={{ marginTop: "0.25rem" }}>
+                    This is your admin control. Keep captains locked when you do not want them changing squads.
+                    Unlock captains when you want them to help set teams, edit squads, and save using a captain code.
+                  </div>
+                  </div>
+                </div>
+              )}
+            </span>
+          )}
+
+          {lastSquadEditor && (
+            <span className="muted small" style={{ width: "100%", textAlign: "center" }}>
+              Last changed by <strong>{lastSquadEditor.name}</strong> · {lastSquadEditor.role}
+            </span>
+          )}
+        </div>
+      )}
 
       <section className="card">
         {isFiveVFive && guestOpponentEnabled && (
@@ -3492,19 +3679,6 @@ export function SquadsPage({
 
         </div>
 
-        <div className="actions-row">
-          <button
-            className="secondary-btn set-squad-pulse-btn"
-            onClick={() => setShowSquadPreview(true)}
-          >
-            Set Squad
-          </button>
-          {isAdmin && (
-            <button className="primary-btn" onClick={handleSaveClick}>
-              Save Squads
-            </button>
-          )}
-        </div>
 
         {renderTeamsheetCard()}
 
@@ -3613,7 +3787,7 @@ export function SquadsPage({
 
       </section>
 
-      {isAdmin && showSquadPreview && (
+      {canEdit && showSquadPreview && (
         <div className="modal-backdrop squad-preview-backdrop">
           <div className="modal squad-preview-modal">
             <div className="squad-preview-modal-head">
@@ -3744,7 +3918,7 @@ export function SquadsPage({
         </div>
       )}
 
-      {isAdmin && showSaveModal && (
+      {canEdit && showSaveModal && (
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Squad Changes</h3>
