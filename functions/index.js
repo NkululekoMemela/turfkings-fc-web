@@ -701,7 +701,8 @@ async function settleVerifiedPayment({
     throw new Error("Payment record missing signupDocId.");
   }
 
-  const signupRef = db.collection("matchSignups").doc(signupDocId);
+  const activeClubId = safeString(paymentData.activeClubId || paymentData.clubId || "turf-kings");
+  const signupRef = db.collection("clubs").doc(activeClubId).collection("matchSignups").doc(signupDocId);
   const signupSnap = await signupRef.get();
   const signupData = signupSnap.exists ? (signupSnap.data() || {}) : {};
 
@@ -932,7 +933,8 @@ exports.createYocoCheckout = onRequest(
         });
       }
 
-      const signupRef = db.collection("matchSignups").doc(signupDocId);
+      const activeClubId = safeString(body.activeClubId || body.clubId || "turf-kings");
+      const signupRef = db.collection("clubs").doc(activeClubId).collection("matchSignups").doc(signupDocId);
 
       const tSignupRead0 = Date.now();
       const signupSnap = await signupRef.get();
