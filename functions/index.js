@@ -823,8 +823,27 @@ async function settleVerifiedPayment({
     if (!pendingSnap.empty) {
       const pendingBatch = db.batch();
       pendingSnap.forEach((docSnap) => {
+        const pendingData = docSnap.data() || {};
+
+        const selectedWeeks = Array.isArray(pendingData.selectedWeeks)
+          ? pendingData.selectedWeeks
+          : [];
+
         pendingBatch.update(docSnap.ref, {
-          paymentStatus: "paid_confirmed",
+          paidWeeks: selectedWeeks,
+          primaryPaidWeeks: selectedWeeks,
+          unpaidWeeks: [],
+          weeksToPayNow: [],
+          paymentStatus: "paid",
+          isUnpaid: false,
+          amountPaidTotal:
+            Number(paymentData.totalAmount || paymentData.amountDueNow || 0),
+
+          paymentVerifiedAt: FieldValue.serverTimestamp(),
+          verifiedAt: FieldValue.serverTimestamp(),
+          verifiedBy: "yoco_webhook",
+
+          paymentMethod: "Yoco",
           remindersPaused: true,
           remindersEnabled: false,
           updatedAt: FieldValue.serverTimestamp(),
@@ -1180,6 +1199,7 @@ exports.handleYocoWebhook = onRequest(
   {
     region: REGION,
     invoker: "public",
+    secrets: ["YOCO_WEBHOOK_SECRET"],
   },
   async (req, res) => {
     if (req.method !== "POST") {
