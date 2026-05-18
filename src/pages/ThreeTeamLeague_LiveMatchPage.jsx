@@ -2906,14 +2906,6 @@ export function ThreeTeamLeagueLiveMatchPage({
             📊 View Stats
           </button>
 
-          <button
-            className="secondary-btn"
-            type="button"
-            onClick={() => onOpenHighlightsCamera?.()}
-          >
-            📷 Camera
-          </button>
-
           {canControlMatch && (
             <button
               className="primary-btn"

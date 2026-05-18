@@ -629,7 +629,7 @@ export function PeerReviewPage({
         defence: defence || null,
         playmaking: playmaking || null,
         gk: gk || null,
-        comment: comment.trim() || null,
+        comment: null,
         createdAtMs: now.getTime(),
         weekKey,
         seasonId,
@@ -1147,19 +1147,6 @@ export function PeerReviewPage({
                           {renderStarsRow("Playmaking", playmaking, setPlaymaking)}
                           {renderStarsRow("Goalkeeping", gk, setGk)}
 
-                          <div className="peer-field">
-                            <label>Quick comment (optional)</label>
-                            <textarea
-                              className="text-input"
-                              rows={2}
-                              placeholder="Short note – strengths, improvements, compliments..."
-                              value={comment}
-                              onChange={(e) => setComment(e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              onMouseDown={(e) => e.stopPropagation()}
-                            />
-                          </div>
-
                           <div className="actions-row">
                             <button
                               type="button"
@@ -1175,7 +1162,7 @@ export function PeerReviewPage({
                                 handleSubmitForTarget(p.name);
                               }}
                             >
-                              {submitting ? "Sending..." : `Save rating for ${p.name}`}
+                              {submitting ? "Sending..." : `Save rating for ${String(p.name || "").split(" ")[0]}`}
                             </button>
                           </div>
                         </div>
