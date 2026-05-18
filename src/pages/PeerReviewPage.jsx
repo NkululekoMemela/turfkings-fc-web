@@ -75,10 +75,8 @@ function isUsefulTeamFilterLabel(label) {
   return true;
 }
 
-function getPeerRatingDocId({ seasonId, weekKey, raterName, targetName }) {
+function getPeerRatingDocId({ raterName, targetName }) {
   return [
-    String(seasonId || "UNKNOWN_SEASON"),
-    String(weekKey || "UNKNOWN_WEEK"),
     slugFromName(raterName),
     slugFromName(targetName),
   ].join("__");
@@ -616,30 +614,11 @@ export function PeerReviewPage({
     const targetCanonical = resolveCanonicalName(targetName);
     const raterNorm = normaliseName(raterCanonical);
     const targetNorm = normaliseName(targetCanonical);
-    const peerRatingDocId = getPeerRatingDocId({ seasonId, weekKey, raterName: raterCanonical, targetName: targetCanonical });
+    const peerRatingDocId = getPeerRatingDocId({ raterName: raterCanonical, targetName: targetCanonical });
 
     setSubmitting(true);
 
     try {
-      const snap = await getDocs(getPeerRatingsCollection(db, safeActiveClubId));
-      const alreadyRated = snap.docs.some((docSnap) => {
-        if (docSnap.id === peerRatingDocId) return true;
-        const data = docSnap.data() || {};
-        return (
-          String(data.seasonId || "UNKNOWN_SEASON") === seasonId &&
-          String(data.weekKey || "") === String(weekKey) &&
-          normaliseName(data.raterNameNormalized || data.raterName || "") === raterNorm &&
-          normaliseName(data.targetNameNormalized || data.targetName || "") === targetNorm
-        );
-      });
-
-      if (alreadyRated) {
-        setStatusMsg(`You’ve already rated ${targetCanonical} for this week.`);
-        setRatedTargets((prev) => (prev.includes(targetNorm) ? prev : [...prev, targetNorm]));
-        setActiveTarget(null);
-        return;
-      }
-
       const now = new Date();
       const docData = {
         raterName: raterCanonical,
@@ -657,12 +636,12 @@ export function PeerReviewPage({
         source: "peer-review-page",
       };
 
-      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatings, peerRatingDocId, safeActiveClubId), docData, { merge: false });
+      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatings, peerRatingDocId, safeActiveClubId), docData, { merge: true });
 
       setRatedTargets((prev) => (prev.includes(targetNorm) ? prev : [...prev, targetNorm]));
       setActiveTarget(null);
       resetPeerForm();
-      setStatusMsg(`✅ Saved rating for ${targetCanonical}.`);
+      setStatusMsg(`✅ Latest weekly rating saved for ${targetCanonical}.`);
     } catch (err) {
       console.error("Peer rating submit error", err);
       setStatusMsg("⚠️ Something went wrong saving this rating. Please try again.");
@@ -994,7 +973,7 @@ export function PeerReviewPage({
         <header className="header">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", width: "100%" }}>
             <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>Peer Ratings</h1>
+              <h1 style={{ margin: 0 }}>Peer Ratings (Weekly)</h1>
             </div>
             <button
               className="secondary-btn"
