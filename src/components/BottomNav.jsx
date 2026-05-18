@@ -26,6 +26,8 @@ export default function BottomNav({
   activeClubName = "Club",
   canAccessPayments = true,
   hidden = false,
+  locked = false,
+  lockedMessage = "Return to the live match first.",
 }) {
   const [isHidden, setIsHidden] = useState(false);
   const navClubName = String(activeClub?.name || activeClubName || "Club").trim() || "Club";
@@ -84,9 +86,13 @@ export default function BottomNav({
                   type="button"
                   onClick={() => {
                     setIsHidden(false);
+                    if (locked) {
+                      onNavigate?.(item.key);
+                      return;
+                    }
                     if (!isCurrent) onNavigate?.(item.key);
                   }}
-                  className={`nav-pill ${isCurrent ? "is-current" : ""}`}
+                  className={`nav-pill ${isCurrent ? "is-current" : ""} ${locked ? "is-locked" : ""}`}
                   aria-current={isCurrent ? "page" : undefined}
                 >
                   <span className="nav-icon-wrap">
@@ -213,6 +219,17 @@ export default function BottomNav({
           cursor: pointer;
           touch-action: manipulation;
           -webkit-tap-highlight-color: transparent;
+        }
+
+
+        .nav-pill.is-locked {
+          opacity: .42;
+          filter: grayscale(0.75);
+          cursor: not-allowed;
+        }
+
+        .nav-pill.is-locked.is-current {
+          opacity: .58;
         }
 
         .nav-pill:active {

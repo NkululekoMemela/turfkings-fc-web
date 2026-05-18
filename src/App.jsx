@@ -2160,7 +2160,19 @@ export default function App() {
       ? subscribeToStateV2(
           (cloudState) => {
             if (!cloudState) return;
-            setState(ensureV2StateShape(cloudState));
+
+            const nextCloudState = ensureV2StateShape(cloudState);
+            setState((prev) => {
+              try {
+                if (JSON.stringify(prev) === JSON.stringify(nextCloudState)) {
+                  return prev;
+                }
+              } catch (_) {
+                // fall through to update
+              }
+
+              return nextCloudState;
+            });
           },
           activeClubId
         )
@@ -2763,22 +2775,23 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if (!running) return;
-    if (secondsLeft <= 0) return;
+    if (!running) return undefined;
 
-    const id = setInterval(() => {
+    const id = window.setInterval(() => {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
+          window.clearInterval(id);
           setRunning(false);
           setTimeUp(true);
           return 0;
         }
+
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(id);
-  }, [running, secondsLeft]);
+    return () => window.clearInterval(id);
+  }, [running]);
 
   const handleGoToStats = (fromPage) => {
     setStatsReturnPage(fromPage);
@@ -4863,11 +4876,38 @@ export default function App() {
   const hideBottomNavForSquadAdmin =
     page === PAGE_SQUADS && Boolean(isAdmin);
 
+  const isLiveMatchControlLocked = Boolean(hasLiveMatch || running);
+  const isRefereeStatsView = Boolean(isLiveMatchControlLocked && page === PAGE_STATS);
+
+  const [showRefereeLockModal, setShowRefereeLockModal] = useState(false);
+
+  const openRefereeLockModal = () => {
+    setShowRefereeLockModal((prev) => (prev ? prev : true));
+  };
+
+  useEffect(() => {
+    if (!isRefereeStatsView) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setPage(PAGE_LIVE);
+    }, 20000);
+
+    return () => window.clearTimeout(timer);
+  }, [isRefereeStatsView]);
+
   const showBottomNav =
-    pagesWithBottomNav.has(page) && !hideBottomNavForSquadAdmin;
+    pagesWithBottomNav.has(page) &&
+    !hideBottomNavForSquadAdmin &&
+    page !== PAGE_LIVE;
 
   const handleBottomNavNavigate = (targetPage) => {
     if (!targetPage || targetPage === page) return;
+
+    if (isLiveMatchControlLocked) {
+      openRefereeLockModal();
+      return;
+    }
+
 
     if (targetPage === PAGE_STATS) {
       handleGoToStats(page);
@@ -4929,7 +4969,119 @@ export default function App() {
         page === PAGE_LANDING ? "app-root--landing" : ""
       }`}
     >
+      {isLiveMatchControlLocked && (
+        <button
+          type="button"
+          className="tk-live-lock-badge"
+          onClick={() => setPage(PAGE_LIVE)}
+          title="Return to Game Controls"
+        >
+          <span className="tk-live-dot" /> Live
+        </button>
+      )}
+
+      {showRefereeLockModal && (
+        <div className="tk-referee-lock-backdrop" onClick={() => setShowRefereeLockModal(false)}>
+          <div className="tk-referee-lock-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="tk-referee-lock-kicker">
+              <span className="tk-live-dot" /> Live match active
+            </div>
+            <h2>Referee mode is active</h2>
+            <p>Return to Game Controls.</p>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => {
+                setShowRefereeLockModal(false);
+                setPage(PAGE_LIVE);
+              }}
+            >
+              Return to Game Controls
+            </button>
+          </div>
+        </div>
+      )}
+
       <style>{`
+        .tk-live-lock-badge {
+          position: fixed;
+          top: 14px;
+          left: 14px;
+          z-index: 10020;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.55rem 0.85rem;
+          border-radius: 999px;
+          border: 1px solid rgba(248,113,113,0.5);
+          background: rgba(2, 6, 23, 0.92);
+          color: #ffffff;
+          font-size: 0.82rem;
+          font-weight: 950;
+          letter-spacing: 0.03em;
+          box-shadow: 0 10px 26px rgba(0,0,0,0.3);
+          cursor: pointer;
+        }
+
+        .tk-live-dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 999px;
+          background: #ff2d2d;
+          box-shadow: 0 0 0 4px rgba(255,45,45,0.18);
+        }
+
+        .tk-referee-lock-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 10040;
+          display: grid;
+          place-items: center;
+          padding: 1rem 0.75rem;
+          overflow-y: auto;
+          background: rgba(2, 6, 23, 0.72);
+          backdrop-filter: blur(10px);
+        }
+
+        .tk-referee-lock-modal {
+          width: min(350px, calc(100vw - 36px));
+          max-width: calc(100vw - 36px);
+          box-sizing: border-box;
+          border-radius: 20px;
+          padding: 0.95rem;
+          border: 1px solid rgba(248, 113, 113, 0.42);
+          background:
+            radial-gradient(circle at top left, rgba(248,113,113,0.18), transparent 42%),
+            linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98));
+          box-shadow: 0 28px 70px rgba(0,0,0,0.55);
+          color: #f8fafc;
+        }
+
+        .tk-referee-lock-kicker {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.35rem 0.65rem;
+          border-radius: 999px;
+          border: 1px solid rgba(248,113,113,0.35);
+          color: #fecaca;
+          font-size: 0.78rem;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .tk-referee-lock-modal h2 {
+          margin: 0.9rem 0 0.45rem;
+          font-size: 1.15rem;
+        }
+
+        .tk-referee-lock-modal p {
+          margin: 0 0 1rem;
+          color: #cbd5e1;
+          line-height: 1.35;
+        }
+
         .tk-staging-badge {
           position: fixed;
           top: 14px;
@@ -5531,8 +5683,20 @@ export default function App() {
               ? handleBackToLive()
               : handleBackToLanding()
           }
-          onGoToPlayerCards={() => setPage(PAGE_PLAYER_CARDS)}
-          onGoToPeerReview={() => setPage(PAGE_PEER_REVIEW)}
+          onGoToPlayerCards={() => {
+            if (isRefereeStatsView) {
+              openRefereeLockModal();
+              return;
+            }
+            setPage(PAGE_PLAYER_CARDS);
+          }}
+          onGoToPeerReview={() => {
+            if (isRefereeStatsView) {
+              openRefereeLockModal();
+              return;
+            }
+            setPage(PAGE_PEER_REVIEW);
+          }}
           members={members}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           seasons={USE_V2 ? safeV2ForStats?.seasons || [] : []}
@@ -6737,6 +6901,8 @@ export default function App() {
           canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
           canManageSquads={canManageSquads}
           canAccessPayments={canAccessMatchSignup}
+          locked={isRefereeStatsView}
+          lockedMessage="You Are A Referee, have you forgotten? Return to the Game Controls"
         />
       ) : null}
 

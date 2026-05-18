@@ -2030,9 +2030,6 @@ export function ThreeTeamLeagueLiveMatchPage({
       return;
     }
 
-    if (!mustVerifyBeforePlay) {
-      setShowVerifyModal(false);
-    }
   }, [
     mustVerifyBeforePlay,
     hasVerifiedLineups,
