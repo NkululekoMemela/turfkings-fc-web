@@ -54,6 +54,7 @@ import {
 
 import { db } from "./firebaseConfig.js";
 import { clubCollectionPath, clubDocPath } from "./core/clubPaths.js";
+import { getPlayerPhotosCollection } from "./core/clubFirestorePaths.js";
 import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 
 // Page constants
@@ -1900,6 +1901,7 @@ export default function App() {
 
   const members = useMembers();
   const [showAdminReclaimNudge, setShowAdminReclaimNudge] = useState(true);
+  const [preloadedPlayerPhotosByName, setPreloadedPlayerPhotosByName] = useState({});
 
   const handleEntryComplete = (payload) => {
     const safePayload = ensureIdentityShape(payload);
@@ -2171,6 +2173,71 @@ export default function App() {
   }, [activeClubId]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function preloadClubPlayerPhotos() {
+      const safeClubId = String(activeClubId || DEFAULT_CLUB_ID).trim() || DEFAULT_CLUB_ID;
+
+      try {
+        const snap = await getDocs(getPlayerPhotosCollection(db, safeClubId));
+        if (cancelled) return;
+
+        const next = {};
+
+        const addPhotoKey = (key, photoData) => {
+          const raw = String(key || "").trim();
+          if (!raw || !photoData) return;
+
+          const pretty = toTitleCaseLoose(raw);
+          const slug = slugFromLooseName(raw);
+          const first = pretty.split(/\s+/)[0] || "";
+
+          [raw, pretty, safeLower(raw), safeLower(pretty), slug, first, safeLower(first)]
+            .map((x) => String(x || "").trim())
+            .filter(Boolean)
+            .forEach((candidate) => {
+              if (!next[candidate]) next[candidate] = photoData;
+            });
+        };
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+
+          const photoData =
+            data.photoData ||
+            data.photoUrl ||
+            data.photo ||
+            data.image ||
+            data.imageUrl ||
+            "";
+
+          if (!photoData) return;
+
+          [
+            data.name,
+            data.fullName,
+            data.displayName,
+            data.shortName,
+            data.playerName,
+            docSnap.id,
+          ].forEach((key) => addPhotoKey(key, photoData));
+        });
+
+        setPreloadedPlayerPhotosByName(next);
+      } catch (error) {
+        console.error("[TK PHOTOS] Failed to preload club player photos:", error);
+        if (!cancelled) setPreloadedPlayerPhotosByName({});
+      }
+    }
+
+    preloadClubPlayerPhotos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeClubId]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(getSmartOffsetStorageKey(activeClubId), String(smartOffset));
@@ -2290,6 +2357,14 @@ export default function App() {
       ? legacy.scheduledFixtures
       : [];
   }
+
+  const effectivePlayerPhotosByName = useMemo(
+    () => ({
+      ...(playerPhotosByName || {}),
+      ...(preloadedPlayerPhotosByName || {}),
+    }),
+    [playerPhotosByName, preloadedPlayerPhotosByName]
+  );
 
   const captainRoleTeams = useMemo(
     () =>
@@ -5358,7 +5433,7 @@ export default function App() {
           activeSeasonId={activeSeasonId}
           activeClub={activeClub}
           activeClubId={activeClubId}
-          playerPhotosByName={playerPhotosByName}
+          playerPhotosByName={effectivePlayerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
         />
@@ -5414,7 +5489,9 @@ export default function App() {
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
-          playerPhotosByName={playerPhotosByName}
+          playerPhotosByName={effectivePlayerPhotosByName}
+          activeClubId={activeClubId}
+          activeClub={activeClub}
           onConfirmPreMatchLineups={handleConfirmPreMatchLineups}
           onCancelPreMatchLineups={handleCancelPreMatchLineups}
           onAddEvent={handleAddEvent}
@@ -5459,7 +5536,7 @@ export default function App() {
           members={members}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           seasons={USE_V2 ? safeV2ForStats?.seasons || [] : []}
-          playerPhotosByName={playerPhotosByName}
+          playerPhotosByName={effectivePlayerPhotosByName}
           matchDayHistory={matchDayHistory || []}
           friendlyMatchDayHistory={friendlyMatchDayHistory || []}
           onDeleteSavedMatch={handleDeleteSavedMatch}
@@ -5535,7 +5612,7 @@ export default function App() {
           currentResults={results}
           currentEvents={currentEvents}
           matchDayHistory={matchDayHistory}
-          playerPhotosByName={playerPhotosByName}
+          playerPhotosByName={effectivePlayerPhotosByName}
           identity={pageIdentity}
           yearEndAttendance={yearEndAttendance}
           onUpdateYearEndAttendance={(nextList) =>
@@ -5569,7 +5646,7 @@ export default function App() {
               : []
           }
           peerRatingsByPlayer={peerRatingsByPlayer}
-          playerPhotosByName={playerPhotosByName}
+          playerPhotosByName={effectivePlayerPhotosByName}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           activeMatchType={matchType}
           matchType={matchType}
@@ -5602,7 +5679,7 @@ export default function App() {
       {page === PAGE_PEER_REVIEW && (
         <PeerReviewPage
           teams={teams}
-          playerPhotosByName={playerPhotosByName}
+          playerPhotosByName={effectivePlayerPhotosByName}
           identity={pageIdentity}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           activeClub={activeClub}
@@ -5643,7 +5720,7 @@ export default function App() {
           allEvents={allEvents}
           results={results}
           friendlyMatchDayHistory={friendlyMatchDayHistory || []}
-          playerPhotosByName={playerPhotosByName}
+          playerPhotosByName={effectivePlayerPhotosByName}
           identity={pageIdentity}
           activeClub={activeClub}
           activeClubId={activeClubId}

@@ -1778,6 +1778,14 @@ export function FriendlyLiveMatchPage({
   }, [playerPhotosByName]);
 
   useEffect(() => {
+    const alreadyLoaded =
+      playerPhotosByName &&
+      Object.keys(playerPhotosByName).length > 20;
+
+    if (alreadyLoaded) {
+      return;
+    }
+
     let cancelled = false;
 
     async function loadPhotos() {

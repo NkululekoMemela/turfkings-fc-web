@@ -1422,11 +1422,15 @@ export function PlayerCardPage({
         setParticipationLoaded(false);
         setBaselineLoaded(false);
 
+        const alreadyLoaded =
+          playerPhotosByName &&
+          Object.keys(playerPhotosByName).length > 20;
+
         const [playersSnap, mainSnap, baselinesSnap, photosSnap] = await Promise.all([
           getDocs(getPlayersCollection(db, safeActiveClubId)),
           getDoc(getClubStateDoc(db, safeActiveClubId)),
           getDocs(getPeerRatingBaselinesCollection(db, safeActiveClubId)),
-          getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
+          alreadyLoaded ? Promise.resolve(null) : getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
         ]);
 
         if (!isMounted) return;
@@ -1447,7 +1451,7 @@ export function PlayerCardPage({
           baselinesSnap,
           mapNameToCanon
         );
-        const cloudPhotos = buildCloudPhotosIndex(photosSnap);
+        const cloudPhotos = photosSnap ? buildCloudPhotosIndex(photosSnap) : {};
 
         const mainData = mainSnap.exists() ? mainSnap.data() || {} : {};
         const seasons = Array.isArray(mainData?.state?.seasons)

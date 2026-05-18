@@ -344,15 +344,19 @@ export function NewsPage({
 
     async function loadPlayerPhotoData() {
       try {
-        const [playersSnap, photosSnap] = await Promise.all([
-          getDocs(getPlayersCollection(db, safeActiveClubId)),
-          getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
-        ]);
+        const alreadyLoaded =
+          playerPhotosByName &&
+          Object.keys(playerPhotosByName).length > 20;
+
+        const playersSnap = await getDocs(getPlayersCollection(db, safeActiveClubId));
+        const photosSnap = alreadyLoaded
+          ? null
+          : await getDocs(getPlayerPhotosCollection(db, safeActiveClubId));
 
         if (!isMounted) return;
 
         setPlayerCanonicalMap(buildPlayersRegistry(playersSnap));
-        setCloudPhotosIndex(buildCloudPhotosIndex(photosSnap));
+        setCloudPhotosIndex(photosSnap ? buildCloudPhotosIndex(photosSnap) : {});
       } catch (error) {
         console.error("[NewsPage] failed to load player photo helpers:", error);
         if (!isMounted) return;
@@ -366,7 +370,7 @@ export function NewsPage({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [safeActiveClubId, playerPhotosByName]);
 
   useEffect(() => {
     const ref = getClubStateDoc(db, safeActiveClubId);

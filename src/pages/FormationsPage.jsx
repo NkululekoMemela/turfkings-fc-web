@@ -1227,6 +1227,14 @@ export function FormationsPage({
   }, [playerPhotosByName]);
 
   useEffect(() => {
+    const alreadyLoaded =
+      playerPhotosByName &&
+      Object.keys(playerPhotosByName).length > 20;
+
+    if (alreadyLoaded) {
+      return;
+    }
+
     async function loadPhotos() {
       try {
         const snap = await getDocs(getPlayerPhotosCollection(db, activeClubId));

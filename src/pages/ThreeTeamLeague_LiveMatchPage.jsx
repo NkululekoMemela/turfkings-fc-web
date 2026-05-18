@@ -1553,6 +1553,8 @@ export function ThreeTeamLeagueLiveMatchPage({
   confirmedLineupSnapshot = null,
   confirmedLineupsByMatchNo = {},
   playerPhotosByName = {},
+  activeClubId = "turf-kings",
+  activeClub = null,
   onConfirmPreMatchLineups,
   onCancelPreMatchLineups,
   onAddEvent,
@@ -1746,6 +1748,14 @@ export function ThreeTeamLeagueLiveMatchPage({
   }, [playerPhotosByName]);
 
   useEffect(() => {
+    const alreadyLoaded =
+      playerPhotosByName &&
+      Object.keys(playerPhotosByName).length > 20;
+
+    if (alreadyLoaded) {
+      return;
+    }
+
     let cancelled = false;
 
     async function loadPhotos() {
@@ -1795,7 +1805,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     return () => {
       cancelled = true;
     };
-  }, [canonicalName, displayCompactPlayerName]);
+  }, [activeClubId]);
 
   const getPlayerPhoto = useMemo(() => {
     return (playerName = "") => {

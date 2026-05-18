@@ -193,10 +193,14 @@ export function PeerReviewPage({
 
     async function loadMembersAndPhotos() {
       try {
-        const [membersSnap, photosSnap] = await Promise.all([
-          getDocs(getMembersCollection(db, safeActiveClubId)),
-          getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
-        ]);
+        const alreadyLoaded =
+          playerPhotosByName &&
+          Object.keys(playerPhotosByName).length > 20;
+
+        const membersSnap = await getDocs(getMembersCollection(db, safeActiveClubId));
+        const photosSnap = alreadyLoaded
+          ? null
+          : await getDocs(getPlayerPhotosCollection(db, safeActiveClubId));
 
         if (cancelled) return;
 
@@ -249,7 +253,7 @@ export function PeerReviewPage({
           });
         });
 
-        photosSnap.forEach((docSnap) => {
+        if (photosSnap) photosSnap.forEach((docSnap) => {
           const data = docSnap.data() || {};
           const photoData = data.photoData || "";
           const rawName = toTitleCase(data.name || docSnap.id || "");
