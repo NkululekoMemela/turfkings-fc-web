@@ -698,6 +698,7 @@ function ensureSeasonSchedulingShape(season) {
     scheduledFixtures: Array.isArray(season?.scheduledFixtures)
       ? season.scheduledFixtures
       : [],
+    liveMatchDraft: season?.liveMatchDraft || null,
   };
 }
 
@@ -1832,6 +1833,79 @@ function getMatchSecondsForType(matchSecondsByType, rawMatchType) {
   return normalizeMatchSecondsValue(matchSecondsByType?.[safeMatchType], defaults);
 }
 
+function secondsLeftFromExpectedEnd(expectedEndAtISO) {
+  const endMs = new Date(expectedEndAtISO || "").getTime();
+  if (!Number.isFinite(endMs)) return null;
+  return Math.max(0, Math.ceil((endMs - Date.now()) / 1000));
+}
+
+function addSecondsToISO(startISO, seconds) {
+  const startMs = new Date(startISO || Date.now()).getTime();
+  const safeStart = Number.isFinite(startMs) ? startMs : Date.now();
+  return new Date(safeStart + Math.max(0, Number(seconds || 0)) * 1000).toISOString();
+}
+
+function touchLiveMatchDraft(draft, patch = {}) {
+  if (!draft || typeof draft !== "object") return draft || null;
+  const secondsLeft = secondsLeftFromExpectedEnd(draft.expectedEndAtISO);
+  return {
+    ...draft,
+    ...patch,
+    lastKnownSecondsLeft: Number.isFinite(Number(secondsLeft))
+      ? secondsLeft
+      : Number(draft.lastKnownSecondsLeft || 0),
+    lastSavedAtISO: new Date().toISOString(),
+  };
+}
+
+function buildPendingContextFromLiveDraft(draft) {
+  if (!draft || typeof draft !== "object") return null;
+  return {
+    matchNo: Number(draft.matchNo || 1),
+    createdAt: draft.startedAtISO || new Date().toISOString(),
+    currentMatch: draft.currentMatch || null,
+    teams: Array.isArray(draft.teams) ? draft.teams : [],
+    fiveVFiveTeams: Array.isArray(draft.fiveVFiveTeams) ? draft.fiveVFiveTeams : [],
+    identity: draft.startedBy || null,
+    matchType: normalizeMatchMode(draft.matchType, MATCH_TYPE.FRIENDLY),
+    gameFormat: normalizeGameFormat(draft.gameFormat, GAME_FORMAT.FIVE_V_FIVE),
+    activeTeamIds: Array.isArray(draft.activeTeamIds) ? draft.activeTeamIds : [],
+    matchMode: draft.matchMode || "round_robin",
+    scheduledTarget: draft.scheduledTarget ?? null,
+    recoveredFromDraft: true,
+  };
+}
+
+function buildRecoveredSummaryFromLiveDraft(draft) {
+  if (!draft || typeof draft !== "object") return null;
+  const currentMatch = draft.currentMatch || {};
+  const teamAId = currentMatch.teamAId || null;
+  const teamBId = currentMatch.teamBId || null;
+  if (!teamAId || !teamBId) return null;
+
+  const teams = Array.isArray(draft.teams) && draft.teams.length
+    ? draft.teams
+    : Array.isArray(draft.fiveVFiveTeams)
+      ? draft.fiveVFiveTeams
+      : [];
+
+  const teamA = teams.find((team) => team?.id === teamAId) || null;
+  const teamB = teams.find((team) => team?.id === teamBId) || null;
+  const events = Array.isArray(draft.currentEvents) ? draft.currentEvents : [];
+
+  return {
+    teamAId,
+    teamBId,
+    standbyId: currentMatch.standbyId || null,
+    goalsA: events.filter((e) => e?.type === "goal" && e?.teamId === teamAId).length,
+    goalsB: events.filter((e) => e?.type === "goal" && e?.teamId === teamBId).length,
+    teamALabel: teamA?.label || teamAId || "Team A",
+    teamBLabel: teamB?.label || teamBId || "Team B",
+    teamASnapshot: teamA,
+    teamBSnapshot: teamB,
+  };
+}
+
 export default function App() {
   const [entryPageIntent, setEntryPageIntent] = useState(null);
   const [page, setPage] = useState(PAGE_HOME);
@@ -1997,6 +2071,8 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [timeUp, setTimeUp] = useState(false);
   const [hasLiveMatch, setHasLiveMatch] = useState(false);
+  const [showLiveMatchRecoveryModal, setShowLiveMatchRecoveryModal] = useState(false);
+  const [liveDraftRecoveryKey, setLiveDraftRecoveryKey] = useState("");
 
   const handleUpdateMatchSeconds = (nextSeconds, nextMatchType = matchType) => {
     if (running || hasLiveMatch) {
@@ -2292,7 +2368,8 @@ export default function App() {
     matchDayHistory,
     friendlyMatchDayHistory,
     playerPhotosByName,
-    yearEndAttendance;
+    yearEndAttendance,
+    liveMatchDraft;
 
   let safeV2ForStats = null;
   let activeSeasonNo = 1;
@@ -2304,6 +2381,7 @@ export default function App() {
   let matchMode = "round_robin";
   let scheduledTarget = null;
   let scheduledFixtures = [];
+  liveMatchDraft = null;
 
   if (USE_V2) {
     const { safeV2, activeSeason } = getActiveSeasonFromV2State(state);
@@ -2334,6 +2412,7 @@ export default function App() {
     scheduledFixtures = Array.isArray(s?.scheduledFixtures)
       ? s.scheduledFixtures
       : [];
+    liveMatchDraft = s?.liveMatchDraft || null;
 
     playerPhotosByName = safeV2.playerPhotosByName || {};
     yearEndAttendance = safeV2.yearEndAttendance || [];
@@ -2779,19 +2858,22 @@ export default function App() {
 
     const id = window.setInterval(() => {
       setSecondsLeft((prev) => {
-        if (prev <= 1) {
+        const draftSeconds = secondsLeftFromExpectedEnd(liveMatchDraft?.expectedEndAtISO);
+        const next = Number.isFinite(Number(draftSeconds)) ? Number(draftSeconds) : prev - 1;
+
+        if (next <= 0) {
           window.clearInterval(id);
           setRunning(false);
           setTimeUp(true);
           return 0;
         }
 
-        return prev - 1;
+        return next;
       });
     }, 1000);
 
     return () => window.clearInterval(id);
-  }, [running]);
+  }, [running, liveMatchDraft?.expectedEndAtISO]);
 
   const handleGoToStats = (fromPage) => {
     setStatsReturnPage(fromPage);
@@ -2801,6 +2883,75 @@ export default function App() {
   const handleBackToLanding = () => setPage(PAGE_LANDING);
   const handleBackToLive = () => setPage(PAGE_LIVE);
   const handleGoToViewHighlights = () => setPage(PAGE_VIEW_HIGHLIGHTS);
+
+  const applyRecoveredLiveDraftToControls = (draft) => {
+    if (!draft) return;
+    const recoveredSeconds = secondsLeftFromExpectedEnd(draft.expectedEndAtISO);
+    const safeSeconds = Number.isFinite(Number(recoveredSeconds))
+      ? Number(recoveredSeconds)
+      : Number(draft.lastKnownSecondsLeft || draft.matchSeconds || matchSeconds || 0);
+
+    setPendingMatchStartContext(buildPendingContextFromLiveDraft(draft));
+    setCurrentConfirmedLineupSnapshot(draft.confirmedLineupSnapshot || null);
+    setSecondsLeft(Math.max(0, safeSeconds));
+    setTimeUp(safeSeconds <= 0);
+    setRunning(safeSeconds > 0);
+    setHasLiveMatch(true);
+    setPage(PAGE_LIVE);
+  };
+
+  const handleResumeRecoveredLiveMatch = () => {
+    applyRecoveredLiveDraftToControls(liveMatchDraft);
+    setShowLiveMatchRecoveryModal(false);
+  };
+
+  const handleDiscardRecoveredLiveMatch = () => {
+    setShowLiveMatchRecoveryModal(false);
+    setRunning(false);
+    setTimeUp(false);
+    setSecondsLeft(matchSeconds);
+    setHasLiveMatch(false);
+    setPendingMatchStartContext(null);
+    setCurrentConfirmedLineupSnapshot(null);
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        currentEvents: [],
+        liveMatchDraft: prevSeason.liveMatchDraft
+          ? {
+              ...prevSeason.liveMatchDraft,
+              status: "cancelled",
+              cancelledAtISO: new Date().toISOString(),
+            }
+          : null,
+      }));
+    }
+  };
+
+  const handleConfirmRecoveredLiveMatch = async () => {
+    const summary = buildRecoveredSummaryFromLiveDraft(liveMatchDraft);
+    if (!summary) {
+      window.alert("Could not build a result from this recovered match. Resume it first.");
+      return;
+    }
+
+    setShowLiveMatchRecoveryModal(false);
+    await handleConfirmEndMatch(summary);
+  };
+
+  useEffect(() => {
+    if (!canStartMatch) return;
+    if (!liveMatchDraft || liveMatchDraft.status !== "running") return;
+    if (hasLiveMatch || running) return;
+
+    const draftKey = liveMatchDraft.id || liveMatchDraft.startedAtISO || "live-draft";
+    if (liveDraftRecoveryKey === draftKey) return;
+
+    setLiveDraftRecoveryKey(draftKey);
+    applyRecoveredLiveDraftToControls(liveMatchDraft);
+    setShowLiveMatchRecoveryModal(true);
+  }, [canStartMatch, liveMatchDraft, hasLiveMatch, running, liveDraftRecoveryKey]);
 
   const canAccessMatchSignup = isAdmin || isCaptain || isPlayer;
 
@@ -3210,6 +3361,43 @@ export default function App() {
       scheduledTarget,
     };
 
+    const liveDraft = {
+      id: `live-${activeSeasonId || "season"}-${activeMatchNo}-${Date.now()}`,
+      status: "running",
+      activeSeasonId,
+      activeClubId,
+      matchNo: activeMatchNo,
+      currentMatch: safeStartMatch,
+      teams: startContext.teams,
+      fiveVFiveTeams: startContext.fiveVFiveTeams,
+      identity: pageIdentity,
+      matchType,
+      gameFormat,
+      activeTeamIds: normalizedActiveTeamIds,
+      matchMode,
+      scheduledTarget,
+      startedAtISO: startContext.createdAt,
+      expectedEndAtISO: addSecondsToISO(startContext.createdAt, matchSeconds),
+      matchSeconds,
+      currentEvents: [],
+      confirmedLineupSnapshot: null,
+      startedBy: {
+        name: pageIdentity?.shortName || pageIdentity?.displayName || pageIdentity?.fullName || "Unknown",
+        role: pageIdentity?.actingRole || pageIdentity?.role || "unknown",
+        email: pageIdentity?.email || null,
+      },
+      lastKnownSecondsLeft: matchSeconds,
+      lastSavedAtISO: new Date().toISOString(),
+    };
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        currentEvents: [],
+        liveMatchDraft: liveDraft,
+      }));
+    }
+
     setPendingMatchStartContext(startContext);
     setSecondsLeft(matchSeconds);
     setTimeUp(false);
@@ -3229,6 +3417,15 @@ export default function App() {
       }));
     }
 
+    if (USE_V2 && safeSnapshot) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+          confirmedLineupSnapshot: safeSnapshot,
+        }),
+      }));
+    }
+
     setPendingMatchStartContext(null);
   };
 
@@ -3244,6 +3441,18 @@ export default function App() {
       writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
         console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
       });
+
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        currentEvents: [],
+        liveMatchDraft: prevSeason.liveMatchDraft
+          ? {
+              ...prevSeason.liveMatchDraft,
+              status: "cancelled",
+              cancelledAtISO: new Date().toISOString(),
+            }
+          : null,
+      }));
     }
 
     setPage(PAGE_LANDING);
@@ -3272,12 +3481,15 @@ export default function App() {
           matchMode: prevSeason?.matchMode || matchMode,
         });
 
+        const nextEvent = { ...event, ...eventMeta };
+        const nextEvents = [...(prevSeason.currentEvents || []), nextEvent];
+
         return {
           ...prevSeason,
-          currentEvents: [
-            ...(prevSeason.currentEvents || []),
-            { ...event, ...eventMeta },
-          ],
+          currentEvents: nextEvents,
+          liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+            currentEvents: nextEvents,
+          }),
         };
       });
       return;
@@ -3296,7 +3508,13 @@ export default function App() {
       updateActiveSeason((prevSeason) => {
         const copy = [...(prevSeason.currentEvents || [])];
         copy.splice(index, 1);
-        return { ...prevSeason, currentEvents: copy };
+        return {
+          ...prevSeason,
+          currentEvents: copy,
+          liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+            currentEvents: copy,
+          }),
+        };
       });
       return;
     }
@@ -3315,7 +3533,13 @@ export default function App() {
         if (ev.length === 0) return prevSeason;
         const copy = [...ev];
         copy.pop();
-        return { ...prevSeason, currentEvents: copy };
+        return {
+          ...prevSeason,
+          currentEvents: copy,
+          liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+            currentEvents: copy,
+          }),
+        };
       });
       return;
     }
@@ -3497,6 +3721,13 @@ export default function App() {
             currentMatch: nextCurrentMatch,
             streaks: rotationResult.updatedStreaks,
             currentEvents: [],
+            liveMatchDraft: prevSeason.liveMatchDraft
+              ? {
+                  ...prevSeason.liveMatchDraft,
+                  status: "completed",
+                  completedAtISO: new Date().toISOString(),
+                }
+              : null,
             allEvents: [],
             results: [],
             friendlyMatchDayHistory: [
@@ -3513,6 +3744,13 @@ export default function App() {
           currentMatch: nextCurrentMatch,
           streaks: rotationResult.updatedStreaks,
           currentEvents: [],
+          liveMatchDraft: prevSeason.liveMatchDraft
+            ? {
+                ...prevSeason.liveMatchDraft,
+                status: "completed",
+                completedAtISO: new Date().toISOString(),
+              }
+            : null,
           allEvents: [...(prevSeason.allEvents || []), ...allCommittedEvents],
           results: [...(prevSeason.results || []), newResult],
           scheduledFixtures: nextScheduledFixtures,
@@ -3696,6 +3934,13 @@ export default function App() {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
         currentEvents: [],
+        liveMatchDraft: prevSeason.liveMatchDraft
+          ? {
+              ...prevSeason.liveMatchDraft,
+              status: "cancelled",
+              cancelledAtISO: new Date().toISOString(),
+            }
+          : null,
       }));
 
       writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
@@ -4345,6 +4590,13 @@ export default function App() {
                 )
               : {},
             currentEvents: [],
+            liveMatchDraft: prevSeason.liveMatchDraft
+              ? {
+                  ...prevSeason.liveMatchDraft,
+                  status: "completed",
+                  completedAtISO: new Date().toISOString(),
+                }
+              : null,
             allEvents: [],
             results: [],
             matchMode: "round_robin",
@@ -4978,6 +5230,69 @@ export default function App() {
         >
           <span className="tk-live-dot" /> Live
         </button>
+      )}
+
+      {showLiveMatchRecoveryModal && liveMatchDraft && (
+        <div className="tk-referee-lock-backdrop" onClick={() => setShowLiveMatchRecoveryModal(false)}>
+          <div className="tk-referee-lock-modal" onClick={(e) => e.stopPropagation()}>
+            {(() => {
+              const summary = buildRecoveredSummaryFromLiveDraft(liveMatchDraft);
+              const startedAt = liveMatchDraft?.startedAtISO
+                ? new Date(liveMatchDraft.startedAtISO)
+                : null;
+              const lastSavedAt = liveMatchDraft?.lastSavedAtISO
+                ? new Date(liveMatchDraft.lastSavedAtISO)
+                : null;
+              const remaining = secondsLeftFromExpectedEnd(liveMatchDraft?.expectedEndAtISO);
+              const mins = Math.floor((remaining || 0) / 60);
+              const secs = Math.floor((remaining || 0) % 60);
+
+              return (
+                <>
+                  <div className="tk-referee-lock-kicker">
+                    <span className="tk-live-dot" /> Match recovery
+                  </div>
+                  <h2>Unfinished match found</h2>
+                  <div style={{ display: "grid", gap: "0.45rem", marginBottom: "1rem", textAlign: "left" }}>
+                    <div style={{ fontWeight: 900, fontSize: "1rem" }}>
+                      {summary?.teamALabel || "Team A"} vs {summary?.teamBLabel || "Team B"}
+                    </div>
+                    <div style={{ opacity: 0.82 }}>
+                      {String(liveMatchDraft?.matchType || "Friendly").replace("_", " ").toUpperCase()} • {String(liveMatchDraft?.gameFormat || "5v5").replaceAll("_", " ")}
+                    </div>
+                    <div>Saved score: <strong>{summary?.goalsA ?? 0}–{summary?.goalsB ?? 0}</strong></div>
+                    {startedAt && (
+                      <div>Started: <strong>{startedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong></div>
+                    )}
+                    {lastSavedAt && (
+                      <div>Last saved: <strong>{lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong></div>
+                    )}
+                    <div>Time left: <strong>{mins}:{String(secs).padStart(2, "0")}</strong></div>
+                    {liveMatchDraft?.startedBy?.name && (
+                      <div>Started by: <strong>{liveMatchDraft.startedBy.name}</strong></div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+            <div style={{ display: "grid", gap: "0.55rem" }}>
+              <button type="button" className="primary-btn" onClick={handleResumeRecoveredLiveMatch}>
+                Resume / edit match
+              </button>
+              <button type="button" className="secondary-btn" onClick={handleConfirmRecoveredLiveMatch}>
+                Save current result
+              </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                style={{ borderColor: "rgba(248,113,113,0.55)", color: "#fecaca" }}
+                onClick={handleDiscardRecoveredLiveMatch}
+              >
+                Discard match
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showRefereeLockModal && (
