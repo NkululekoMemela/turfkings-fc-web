@@ -18,17 +18,13 @@ function getV2LocalKey(clubId = DEFAULT_CLUB_ID) {
 export function createDefaultState() {
   const teams = TEAMS;
 
-  const teamEnoch = teams.find((t) => t.id === "team-enoch");
-  const teamMdu = teams.find((t) => t.id === "team-mdu");
-  const teamNK = teams.find((t) => t.id === "team-nk");
-
   return {
     teams,
     currentMatchNo: 1,
     currentMatch: {
-      teamAId: teamEnoch?.id || "team-enoch",
-      teamBId: teamMdu?.id || "team-mdu",
-      standbyId: teamNK?.id || "team-nk",
+      teamAId: teams?.[0]?.id || null,
+      teamBId: teams?.[1]?.id || null,
+      standbyId: teams?.[2]?.id || null,
     },
     streaks: createInitialStreaks(teams),
     currentEvents: [],
@@ -41,29 +37,19 @@ export function loadState() {
   const raw = loadRawState();
   if (!raw) return createDefaultState();
 
-  const mergedTeams = TEAMS.map((base) => {
-    const existing = raw.teams?.find((t) => t.id === base.id) || {};
-    return {
-      ...existing,
-      ...base,
-    };
-  });
-
-  raw.teams = mergedTeams;
+  if (!Array.isArray(raw.teams)) {
+    raw.teams = [];
+  }
 
   if (!raw.streaks) {
     raw.streaks = createInitialStreaks(raw.teams);
   }
 
   if (!raw.currentMatch) {
-    const teamEnoch = raw.teams.find((t) => t.id === "team-enoch");
-    const teamMdu = raw.teams.find((t) => t.id === "team-mdu");
-    const teamNK = raw.teams.find((t) => t.id === "team-nk");
-
     raw.currentMatch = {
-      teamAId: teamEnoch?.id || "team-enoch",
-      teamBId: teamMdu?.id || "team-mdu",
-      standbyId: teamNK?.id || "team-nk",
+      teamAId: raw.teams?.[0]?.id || null,
+      teamBId: raw.teams?.[1]?.id || null,
+      standbyId: raw.teams?.[2]?.id || null,
     };
   }
 
@@ -137,15 +123,9 @@ export function createDefaultStateV2() {
 }
 
 function migrateTeamsLatest(incomingTeams) {
-  const list = Array.isArray(incomingTeams) ? incomingTeams : [];
-
-  return TEAMS.map((base) => {
-    const existing = list.find((t) => t.id === base.id) || {};
-    return {
-      ...existing,
-      ...base,
-    };
-  });
+  return Array.isArray(incomingTeams)
+    ? incomingTeams
+    : [];
 }
 
 function ensureSeasonFields(season, idx) {
@@ -161,14 +141,10 @@ function ensureSeasonFields(season, idx) {
   }
 
   if (!s.currentMatch) {
-    const teamEnoch = s.teams.find((t) => t.id === "team-enoch");
-    const teamMdu = s.teams.find((t) => t.id === "team-mdu");
-    const teamNK = s.teams.find((t) => t.id === "team-nk");
-
     s.currentMatch = {
-      teamAId: teamEnoch?.id || "team-enoch",
-      teamBId: teamMdu?.id || "team-mdu",
-      standbyId: teamNK?.id || "team-nk",
+      teamAId: s.teams?.[0]?.id || null,
+      teamBId: s.teams?.[1]?.id || null,
+      standbyId: s.teams?.[2]?.id || null,
     };
   }
 

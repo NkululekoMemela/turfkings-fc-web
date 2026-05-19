@@ -702,6 +702,9 @@ function ensureSeasonSchedulingShape(season) {
   };
 }
 
+window.__TEST_NORMALIZE__ = ensureSeasonSchedulingShape;
+
+
 function ensureV2StateShape(s) {
   const fallback = createDefaultStateV2();
   if (!s || typeof s !== "object") return fallback;
@@ -2011,7 +2014,7 @@ export default function App() {
   };
 
   const [state, setState] = useState(() =>
-    USE_V2 ? loadStateV2(activeClubId) : loadState()
+    USE_V2 ? createDefaultStateV2() : loadState()
   );
 
   const activeSeasonIdForPeerRatings = USE_V2
@@ -2228,9 +2231,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (USE_V2) {
-      setState(ensureV2StateShape(loadStateV2(activeClubId)));
-    }
+    // Disabled localStorage bootstrap for V2.
 
     const unsubscribe = USE_V2
       ? subscribeToStateV2(
@@ -2391,6 +2392,13 @@ export default function App() {
       safeV2?.seasons?.[0] || createDefaultStateV2().seasons[0];
     activeSeasonId = safeV2?.activeSeasonId || fallbackSeason?.seasonId || null;
     const s = ensureSeasonSchedulingShape(activeSeason || fallbackSeason);
+    console.log("[APP ACTIVE SEASON DEBUG]", {
+      activeSeasonId,
+      pickedSeasonId: s?.seasonId,
+      pickedTeams: (s?.teams || []).map((t) => t?.label),
+      currentMatch: s?.currentMatch,
+      activeTeamIds: s?.activeTeamIds,
+    });
 
     teams = s?.teams || [];
     currentMatchNo = s?.currentMatchNo || 1;
@@ -4807,12 +4815,12 @@ export default function App() {
       const defaultLeagueColours = ["Blue", "White", "Black"];
 
       const newSeasonTeams = (baseTeams && baseTeams.length ? baseTeams : [
-        { id: "team-a" },
-        { id: "team-b" },
-        { id: "team-c" },
+        {},
+        {},
+        {},
       ]).slice(0, 3).map((team, index) => ({
         ...team,
-        id: team?.id || `team-${index + 1}`,
+        id: `${seasonId}-team-${index + 1}`,
         label: defaultLeagueNames[index] || `Team ${index + 1}`,
         abbrev: ["TMA", "TMB", "TMC"][index] || `TM${index + 1}`,
         teamColorName: defaultLeagueColours[index] || "Blue",

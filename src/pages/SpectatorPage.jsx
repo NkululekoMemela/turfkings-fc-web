@@ -19,9 +19,9 @@ function formatSeconds(s) {
 function getShortName(label) {
   if (!label) return "";
   const map = {
-    Barcelona: "BAR",
+    
     Madrid: "MAD",
-    Liverpool: "LIV",
+    
   };
   if (map[label]) return map[label];
 

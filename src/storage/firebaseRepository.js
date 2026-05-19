@@ -95,6 +95,12 @@ export async function saveStateToFirebaseV2(state, clubId = DEFAULT_CLUB_ID) {
     const ref = getClubStateDoc(db, clubId);
     const cleanedState = stripUndefinedDeep(state);
 
+    console.log("[FIREBASE SAVE V2] attempting", {
+      clubId,
+      activeSeasonId: cleanedState?.activeSeasonId,
+      seasonsCount: cleanedState?.seasons?.length || 0,
+    });
+
     await setDoc(
       ref,
       {
@@ -104,8 +110,12 @@ export async function saveStateToFirebaseV2(state, clubId = DEFAULT_CLUB_ID) {
       },
       { merge: true }
     );
+
+    console.log("[FIREBASE SAVE V2] success");
   } catch (err) {
-    console.error("Failed to save state to Firebase (V2):", err);
+    console.error("[FIREBASE SAVE V2] FAILED:", err);
+    window.alert(`Firebase save failed: ${err?.code || ""} ${err?.message || err}`);
+    throw err;
   }
 }
 
