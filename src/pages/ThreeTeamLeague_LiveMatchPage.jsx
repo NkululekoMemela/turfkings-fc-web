@@ -1890,6 +1890,11 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   const alarmLoopRef = useRef(null);
+
+  const wakeLockRef = useRef(null);
+  const idleTimerRef = useRef(null);
+  const [screenDimmed, setScreenDimmed] = useState(false);
+
   const savedLineups = useMemo(() => loadSavedLineups(), []);
 
   const defaultTeamALineup = useMemo(() => {
@@ -2132,6 +2137,84 @@ export function ThreeTeamLeagueLiveMatchPage({
       stopAlarmLoop(alarmLoopRef);
     };
   }, [timeUp]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return undefined;
+    }
+
+    async function requestScreenWakeLock() {
+      try {
+        if (!("wakeLock" in navigator)) return;
+        if (wakeLockRef.current) return;
+
+        const lock = await navigator.wakeLock.request("screen");
+
+        if (!mounted) {
+          lock.release?.().catch(() => {});
+          return;
+        }
+
+        wakeLockRef.current = lock;
+
+        lock.addEventListener?.("release", () => {
+          if (mounted) wakeLockRef.current = null;
+        });
+      } catch (err) {
+        console.warn("Screen wake lock unavailable:", err);
+      }
+    }
+
+    function resetIdleTimer() {
+      if (!mounted) return;
+
+      setScreenDimmed(false);
+
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+
+      idleTimerRef.current = setTimeout(() => {
+        if (mounted) setScreenDimmed(true);
+      }, 10000);
+    }
+
+    async function handleVisibilityChange() {
+      if (document.hidden) return;
+      await requestScreenWakeLock();
+      resetIdleTimer();
+    }
+
+    requestScreenWakeLock();
+    resetIdleTimer();
+
+    const activityEvents = ["pointerdown", "touchstart", "mousemove", "keydown", "scroll"];
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, resetIdleTimer, { passive: true });
+    });
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      mounted = false;
+
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, resetIdleTimer);
+      });
+
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release?.().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!canControlMatch) return;
@@ -2609,7 +2692,13 @@ export function ThreeTeamLeagueLiveMatchPage({
   const displayNameB = isMobile ? getShortName(teamB?.label) : teamB?.label;
 
   return (
-    <div className="page live-page">
+    <div
+      className="page live-page"
+      style={{
+        opacity: screenDimmed ? 0.42 : 1,
+        transition: "opacity 0.8s ease",
+      }}
+    >
       <header className="header">
         <h1>Match #{currentMatchNo}</h1>
 

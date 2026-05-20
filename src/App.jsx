@@ -3572,6 +3572,8 @@ export default function App() {
       matchSeconds,
       currentEvents: [],
       confirmedLineupSnapshot: null,
+      controller: buildCurrentRefereeController(),
+
       startedBy: {
         name: pageIdentity?.shortName || pageIdentity?.displayName || pageIdentity?.fullName || "Unknown",
         role: pageIdentity?.actingRole || pageIdentity?.role || "unknown",
