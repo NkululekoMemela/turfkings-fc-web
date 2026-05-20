@@ -1578,6 +1578,14 @@ export function FriendlyLiveMatchPage({
   isAdmin = false,
   isCaptain = false,
   canControlMatch = false,
+  refereeDeviceId = null,
+  liveMatchController = null,
+  liveMatchTakeoverRequest = null,
+  canControlCurrentLiveMatch = false,
+  onTakeOverLiveMatch,
+  onRequestTakeOverLiveMatch,
+  onAcceptTakeoverRequest,
+  onRejectTakeoverRequest,
   pendingMatchStartContext = null,
   gameFormat = "5_V_5",
   onUpdateMatchSeconds = null,
@@ -1601,6 +1609,20 @@ export function FriendlyLiveMatchPage({
   const role = String(activeRole || "spectator").trim().toLowerCase();
   const isControllerSession =
     Boolean(pendingMatchStartContext) && canControlMatch;
+
+  const controllerName =
+    liveMatchController?.name ||
+    liveMatchController?.email ||
+    "Current referee";
+
+  const takeoverRequesterName =
+    liveMatchTakeoverRequest?.requester?.name ||
+    liveMatchTakeoverRequest?.requester?.email ||
+    "Another referee";
+
+  const hasPendingTakeoverRequest =
+    liveMatchTakeoverRequest?.status === "pending";
+
   const friendlyFormat = getFriendlyFormationTools(gameFormat);
   const {
     playersPerSide,
@@ -3125,6 +3147,32 @@ export function FriendlyLiveMatchPage({
           {isAdmin ? " 🛠️" : ""}
         </p>
       </header>
+
+      <section className="card" style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
+          <div><strong>🎮 Match Referee:</strong> {controllerName}</div>
+
+          {!canControlCurrentLiveMatch ? (
+            <button className="secondary-btn" type="button" onClick={onRequestTakeOverLiveMatch}>
+              🥷 Request Takeover
+            </button>
+          ) : (
+            <span className="muted small">You control this live match</span>
+          )}
+        </div>
+
+        {hasPendingTakeoverRequest && canControlCurrentLiveMatch && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.35)" }}>
+            <p style={{ marginBottom: 10 }}>
+              <strong>{takeoverRequesterName}</strong> wants to take over officiating.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="primary-btn" type="button" onClick={onAcceptTakeoverRequest}>✅ Approve</button>
+              <button className="secondary-btn" type="button" onClick={onRejectTakeoverRequest}>❌ Reject</button>
+            </div>
+          </div>
+        )}
+      </section>
 
       <section className="card">
         <div className="timer-row">
