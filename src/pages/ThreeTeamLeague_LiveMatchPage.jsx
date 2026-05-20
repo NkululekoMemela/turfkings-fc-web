@@ -1546,6 +1546,14 @@ export function ThreeTeamLeagueLiveMatchPage({
   isAdmin = false,
   isCaptain = false,
   canControlMatch = false,
+  refereeDeviceId = null,
+  liveMatchController = null,
+  liveMatchTakeoverRequest = null,
+  canControlCurrentLiveMatch = false,
+  onTakeOverLiveMatch,
+  onRequestTakeOverLiveMatch,
+  onAcceptTakeoverRequest,
+  onRejectTakeoverRequest,
   pendingMatchStartContext = null,
   matchType = "LEAGUE",
   gameFormat = GAME_FORMAT.FIVE_V_FIVE,
@@ -1615,6 +1623,19 @@ export function ThreeTeamLeagueLiveMatchPage({
   const liveDefaultFormationId = getLiveDefaultFormationId(liveGameFormat);
   const isControllerSession =
     Boolean(pendingMatchStartContext) && canControlMatch;
+
+  const controllerName =
+    liveMatchController?.name ||
+    liveMatchController?.email ||
+    "Current referee";
+
+  const takeoverRequesterName =
+    liveMatchTakeoverRequest?.requester?.name ||
+    liveMatchTakeoverRequest?.requester?.email ||
+    "Another referee";
+
+  const hasPendingTakeoverRequest =
+    liveMatchTakeoverRequest?.status === "pending";
 
   const [players, setPlayers] = useState([]);
   const [playersLoading, setPlayersLoading] = useState(true);
@@ -2591,16 +2612,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     <div className="page live-page">
       <header className="header">
         <h1>Match #{currentMatchNo}</h1>
-        <p>
-          On-field: <TeamColorBadge team={teamA} /> (c:{" "}
-          {displayCompactPlayerName(teamA?.captain)}) vs{" "}
-          <TeamColorBadge team={teamB} /> (c:{" "}
-          {displayCompactPlayerName(teamB?.captain)})
-        </p>
-        <p>
-          Standby: <TeamColorBadge team={standbyTeam} /> (c:{" "}
-          {displayCompactPlayerName(standbyTeam?.captain)})
-        </p>
+
         <p className="muted small">
           Signed in as <strong>{getIdentityDisplayName(identity)}</strong> •{" "}
           <strong>{role}</strong>
@@ -2608,6 +2620,71 @@ export function ThreeTeamLeagueLiveMatchPage({
           {isAdmin ? " 🛠️" : ""}
         </p>
       </header>
+
+      <section className="card" style={{ marginBottom: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <strong>🎮 Match Referee:</strong> {controllerName}
+          </div>
+
+          {!canControlCurrentLiveMatch ? (
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={onRequestTakeOverLiveMatch}
+            >
+              🥷 Request Takeover
+            </button>
+          ) : (
+            <span className="muted small">
+              You control this live match
+            </span>
+          )}
+        </div>
+
+        {hasPendingTakeoverRequest && canControlCurrentLiveMatch && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 12,
+              background: "rgba(245, 158, 11, 0.12)",
+              border: "1px solid rgba(245, 158, 11, 0.35)",
+            }}
+          >
+            <p style={{ marginBottom: 10 }}>
+              <strong>{takeoverRequesterName}</strong> wants to take over
+              officiating.
+            </p>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={onAcceptTakeoverRequest}
+              >
+                ✅ Approve
+              </button>
+
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={onRejectTakeoverRequest}
+              >
+                ❌ Reject
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
 
       <section className="card">
         <div className="timer-row">

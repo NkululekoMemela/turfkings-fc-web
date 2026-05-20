@@ -111,6 +111,31 @@ function getIdentityStorageKey(clubId = DEFAULT_CLUB_ID) {
   return buildClubStorageKey("identity_v1", clubId);
 }
 
+function getRefereeDeviceStorageKey(clubId = DEFAULT_CLUB_ID) {
+  return buildClubStorageKey("referee_device_id_v1", clubId);
+}
+
+function getOrCreateRefereeDeviceId(clubId = DEFAULT_CLUB_ID) {
+  if (typeof window === "undefined") return "server-device";
+
+  const key = getRefereeDeviceStorageKey(clubId);
+
+  try {
+    const existing = window.localStorage.getItem(key);
+
+    if (existing) return existing;
+
+    const created =
+      `device-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    window.localStorage.setItem(key, created);
+
+    return created;
+  } catch {
+    return `device-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
 function getSmartOffsetStorageKey(clubId = DEFAULT_CLUB_ID) {
   return buildClubStorageKey("smart_offset_v1", clubId);
 }
@@ -2052,6 +2077,10 @@ export default function App() {
   });
 
   useEffect(() => {
+    setRefereeDeviceId(getOrCreateRefereeDeviceId(activeClubId));
+  }, [activeClubId]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     try {
@@ -2074,7 +2103,11 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [timeUp, setTimeUp] = useState(false);
   const [hasLiveMatch, setHasLiveMatch] = useState(false);
+  const [refereeDeviceId, setRefereeDeviceId] = useState(() =>
+    getOrCreateRefereeDeviceId(DEFAULT_CLUB_ID)
+  );
   const [showLiveMatchRecoveryModal, setShowLiveMatchRecoveryModal] = useState(false);
+  const [showTakeoverModal, setShowTakeoverModal] = useState(false);
   const [liveDraftRecoveryKey, setLiveDraftRecoveryKey] = useState("");
 
   const handleUpdateMatchSeconds = (nextSeconds, nextMatchType = matchType) => {
@@ -2499,6 +2532,15 @@ export default function App() {
   const isSpectator = activeRole === "spectator";
 
   const canStartMatch = isAdmin || isCaptain;
+
+  const activeLiveController = liveMatchDraft?.controller || null;
+  const liveMatchHasController = Boolean(activeLiveController?.deviceId);
+  const isLiveMatchController =
+    !liveMatchHasController ||
+    String(activeLiveController?.deviceId || "") === String(refereeDeviceId || "");
+
+  const canControlCurrentLiveMatch = Boolean(canStartMatch && isLiveMatchController);
+
   const canManageSquads = isAdmin || isCaptain;
   const canPreviewPreviousSeasonUI = IS_STAGING && isAdmin;
   const normalizedActiveTeamIds = useMemo(() => {
@@ -2907,6 +2949,147 @@ export default function App() {
     setHasLiveMatch(true);
     setPage(PAGE_LIVE);
   };
+
+
+  const buildCurrentRefereeController = () => ({
+    deviceId: refereeDeviceId,
+    name:
+      pageIdentity?.shortName ||
+      pageIdentity?.displayName ||
+      pageIdentity?.fullName ||
+      "Unknown",
+    role: pageIdentity?.actingRole || pageIdentity?.role || "unknown",
+    email: pageIdentity?.email || null,
+    acquiredAtISO: new Date().toISOString(),
+  });
+
+  const buildCurrentTakeoverRequest = () => ({
+    id: `takeover-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    status: "pending",
+    requestedAtISO: new Date().toISOString(),
+    expiresAtISO: new Date(Date.now() + 15000).toISOString(),
+    requester: buildCurrentRefereeController(),
+    currentController: liveMatchDraft?.controller || null,
+  });
+
+  const handleTakeOverLiveMatch = () => {
+    const nextController = buildCurrentRefereeController();
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+          controller: nextController,
+          takeoverRequest: null,
+          takeoverAtISO: new Date().toISOString(),
+          takeoverBy: nextController,
+        }),
+      }));
+    }
+
+    setShowTakeoverModal(false);
+
+    if (liveMatchDraft) {
+      applyRecoveredLiveDraftToControls({
+        ...liveMatchDraft,
+        controller: nextController,
+        takeoverRequest: null,
+      });
+    } else {
+      setPage(PAGE_LIVE);
+    }
+  };
+
+  const handleRequestTakeOverLiveMatch = () => {
+    if (canControlCurrentLiveMatch) {
+      setShowTakeoverModal(false);
+      return;
+    }
+
+    const request = buildCurrentTakeoverRequest();
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+          takeoverRequest: request,
+        }),
+      }));
+    }
+  };
+
+  const handleAcceptTakeoverRequest = () => {
+    const request = liveMatchDraft?.takeoverRequest;
+    const nextController = request?.requester;
+
+    if (!nextController?.deviceId) return;
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+          controller: {
+            ...nextController,
+            acquiredAtISO: new Date().toISOString(),
+          },
+          takeoverRequest: null,
+          takeoverAtISO: new Date().toISOString(),
+          takeoverBy: nextController,
+        }),
+      }));
+    }
+  };
+
+  const handleRejectTakeoverRequest = () => {
+    const request = liveMatchDraft?.takeoverRequest;
+    if (!request) return;
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+          takeoverRequest: {
+            ...request,
+            status: "rejected",
+            rejectedAtISO: new Date().toISOString(),
+            rejectedBy: buildCurrentRefereeController(),
+          },
+        }),
+      }));
+    }
+  };
+
+  useEffect(() => {
+    const request = liveMatchDraft?.takeoverRequest;
+
+    if (!request || request.status !== "pending") return undefined;
+    if (canControlCurrentLiveMatch) return undefined;
+
+    if (
+      String(request?.requester?.deviceId || "") !==
+      String(refereeDeviceId || "")
+    ) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      const expiresAt = new Date(request.expiresAtISO || "").getTime();
+
+      if (!Number.isFinite(expiresAt)) return;
+
+      if (Date.now() >= expiresAt) {
+        window.clearInterval(interval);
+        handleTakeOverLiveMatch();
+      }
+    }, 500);
+
+    return () => window.clearInterval(interval);
+  }, [
+    liveMatchDraft?.takeoverRequest?.id,
+    liveMatchDraft?.takeoverRequest?.status,
+    canControlCurrentLiveMatch,
+    refereeDeviceId,
+  ]);
 
   const handleResumeRecoveredLiveMatch = () => {
     applyRecoveredLiveDraftToControls(liveMatchDraft);
@@ -5957,7 +6140,15 @@ export default function App() {
           activeRole={activeRole}
           isAdmin={isAdmin}
           isCaptain={isCaptain}
-          canControlMatch={canStartMatch}
+          canControlMatch={canControlCurrentLiveMatch}
+          refereeDeviceId={refereeDeviceId}
+          liveMatchController={activeLiveController}
+          liveMatchTakeoverRequest={liveMatchDraft?.takeoverRequest || null}
+          canControlCurrentLiveMatch={canControlCurrentLiveMatch}
+          onTakeOverLiveMatch={handleTakeOverLiveMatch}
+          onRequestTakeOverLiveMatch={handleRequestTakeOverLiveMatch}
+          onAcceptTakeoverRequest={handleAcceptTakeoverRequest}
+          onRejectTakeoverRequest={handleRejectTakeoverRequest}
           pendingMatchStartContext={pendingMatchStartContext}
           matchType={pendingMatchStartContext?.matchType || matchType}
           gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
