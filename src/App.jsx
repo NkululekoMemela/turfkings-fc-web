@@ -3097,7 +3097,20 @@ export default function App() {
   };
 
   const handleDiscardRecoveredLiveMatch = () => {
+    try {
+      const draftKey = liveMatchDraft?.id || liveMatchDraft?.startedAtISO || "";
+      if (draftKey) {
+        window.localStorage.setItem(
+          `tk_suppressed_live_recovery_${activeClubId}`,
+          draftKey
+        );
+      }
+    } catch (_) {
+      // ignore localStorage failures
+    }
+
     setShowLiveMatchRecoveryModal(false);
+    setLiveDraftRecoveryKey("");
     setRunning(false);
     setTimeUp(false);
     setSecondsLeft(matchSeconds);
@@ -3109,13 +3122,7 @@ export default function App() {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
         currentEvents: [],
-        liveMatchDraft: prevSeason.liveMatchDraft
-          ? {
-              ...prevSeason.liveMatchDraft,
-              status: "cancelled",
-              cancelledAtISO: new Date().toISOString(),
-            }
-          : null,
+        liveMatchDraft: null,
       }));
     }
   };
@@ -3137,6 +3144,16 @@ export default function App() {
     if (hasLiveMatch || running) return;
 
     const draftKey = liveMatchDraft.id || liveMatchDraft.startedAtISO || "live-draft";
+
+    try {
+      const suppressedKey = window.localStorage.getItem(
+        `tk_suppressed_live_recovery_${activeClubId}`
+      );
+      if (suppressedKey === draftKey) return;
+    } catch (_) {
+      // ignore localStorage failures
+    }
+
     if (liveDraftRecoveryKey === draftKey) return;
 
     setLiveDraftRecoveryKey(draftKey);
@@ -3638,16 +3655,12 @@ export default function App() {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
         currentEvents: [],
-        liveMatchDraft: prevSeason.liveMatchDraft
-          ? {
-              ...prevSeason.liveMatchDraft,
-              status: "cancelled",
-              cancelledAtISO: new Date().toISOString(),
-            }
-          : null,
+        liveMatchDraft: null,
       }));
     }
 
+    setShowLiveMatchRecoveryModal(false);
+    setLiveDraftRecoveryKey("");
     setPage(PAGE_LANDING);
   };
 
@@ -4113,6 +4126,21 @@ export default function App() {
   };
 
   const handleDiscardMatchAndBack = async () => {
+    try {
+      const draftKey = liveMatchDraft?.id || liveMatchDraft?.startedAtISO || "";
+
+      if (draftKey) {
+        window.localStorage.setItem(
+          `tk_suppressed_live_recovery_${activeClubId}`,
+          draftKey
+        );
+      }
+    } catch (_) {
+      // ignore localStorage failures
+    }
+
+    setShowLiveMatchRecoveryModal(false);
+    setLiveDraftRecoveryKey("");
     setRunning(false);
     setTimeUp(false);
     setSecondsLeft(matchSeconds);
@@ -4127,13 +4155,7 @@ export default function App() {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
         currentEvents: [],
-        liveMatchDraft: prevSeason.liveMatchDraft
-          ? {
-              ...prevSeason.liveMatchDraft,
-              status: "cancelled",
-              cancelledAtISO: new Date().toISOString(),
-            }
-          : null,
+        liveMatchDraft: null,
       }));
 
       writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
@@ -5479,9 +5501,29 @@ export default function App() {
                 type="button"
                 className="secondary-btn"
                 style={{ borderColor: "rgba(248,113,113,0.55)", color: "#fecaca" }}
-                onClick={handleDiscardRecoveredLiveMatch}
+                onClick={() => {
+                  try {
+                    const draftKey = liveMatchDraft?.id || liveMatchDraft?.startedAtISO || "";
+
+                    if (draftKey) {
+                      window.localStorage.setItem(
+                        `tk_suppressed_live_recovery_${activeClubId}`,
+                        draftKey
+                      );
+                    }
+                  } catch (_) {
+                    // ignore localStorage failures
+                  }
+
+                  setShowLiveMatchRecoveryModal(false);
+                  setLiveDraftRecoveryKey("");
+                  setRunning(false);
+                  setHasLiveMatch(false);
+                  setPendingMatchStartContext(null);
+                  setPage(PAGE_LANDING);
+                }}
               >
-                Discard match
+                Ignore recovery
               </button>
             </div>
           </div>
