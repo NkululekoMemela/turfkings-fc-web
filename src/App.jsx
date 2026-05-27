@@ -1951,11 +1951,13 @@ function parseClubWeeklyWindow(text) {
   };
 
   const dayKey = Object.keys(dayMap).find((key) => raw.includes(key));
-  const timeMatch = raw.match(/(\d{1,2})[:h](\d{2})\s*[–-]\s*(\d{1,2})[:h](\d{2})/);
+  const timeMatch = raw.match(/(\d{1,2})[:h](\d{2})(?:\s*[–-]\s*(\d{1,2})[:h](\d{2}))?/);
 
   if (!dayKey || !timeMatch) return null;
 
-  const [, sh, sm, eh, em] = timeMatch;
+  const [, sh, sm, rawEh, rawEm] = timeMatch;
+  const eh = rawEh || String(Number(sh) + 2);
+  const em = rawEm || sm;
   return {
     day: dayMap[dayKey],
     startMinutes: Number(sh) * 60 + Number(sm),
@@ -1965,7 +1967,7 @@ function parseClubWeeklyWindow(text) {
 
 function isInsideClubWeeklyWindow(weeklyPlayTime, now = new Date()) {
   const windowInfo = parseClubWeeklyWindow(weeklyPlayTime);
-  if (!windowInfo) return true;
+  if (!windowInfo) return false;
 
   const currentDay = now.getDay();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -6447,6 +6449,21 @@ export default function App() {
               <button
                 type="button"
                 onClick={async () => {
+                  const weeklyPlayTime =
+                    activeClubIdentity?.weeklyPlayTime ||
+                    activeClubIdentity?.schedule?.weeklyPlayTime ||
+                    activeClubIdentity?.schedule?.playTime ||
+                    activeClubIdentity?.playTime ||
+                    "Wednesdays, 17:30–19:00";
+
+                  if (isInsideClubWeeklyWindow(weeklyPlayTime)) {
+                    setOfficialStartWarning({
+                      weeklyPlayTime,
+                      mode: "practice-during-official",
+                    });
+                    return;
+                  }
+
                   const nextPracticeClubId = `${activeClubId}-practice`;
 
                   try {
