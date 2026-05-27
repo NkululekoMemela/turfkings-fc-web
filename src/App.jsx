@@ -1940,6 +1940,9 @@ export default function App() {
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
+  const [sessionMode, setSessionMode] = useState("official");
+  const [showSessionSelector, setShowSessionSelector] = useState(false);
+
   const [identity, setIdentity] = useState(() => {
     if (typeof window === "undefined") return null;
     try {
@@ -2035,6 +2038,7 @@ export default function App() {
       }
     }
 
+    setShowSessionSelector(true);
     setPage(PAGE_LANDING);
   };
 
@@ -6069,6 +6073,166 @@ export default function App() {
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}
           onGoHome={() => setPage(PAGE_HOME)}
         />
+      )}
+      {showSessionSelector && page === PAGE_LANDING && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            background:
+              "radial-gradient(circle at top, rgba(30, 144, 255, 0.18), rgba(2, 6, 23, 0.88) 55%, rgba(0,0,0,0.94))",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <div
+            style={{
+              width: "min(920px, 96vw)",
+              maxHeight: "92vh",
+              overflowY: "auto",
+              border: "1px solid rgba(147, 197, 253, 0.55)",
+              borderRadius: "28px",
+              padding: "1.5rem",
+              background:
+                "linear-gradient(145deg, rgba(2, 8, 23, 0.98), rgba(7, 18, 38, 0.96))",
+              boxShadow:
+                "0 0 50px rgba(14, 165, 233, 0.25), 0 0 90px rgba(168, 85, 247, 0.18)",
+              color: "white",
+              position: "relative",
+            }}
+          >
+            <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+              <div style={{ fontSize: "3rem", filter: "drop-shadow(0 0 18px rgba(251,191,36,0.8))" }}>
+                👑
+              </div>
+              <h1 style={{ fontSize: "clamp(2rem, 6vw, 3.4rem)", margin: 0 }}>
+                Choose Session
+              </h1>
+              <p style={{ color: "#dbeafe", fontSize: "1.1rem", marginTop: "0.5rem" }}>
+                Choose how you want to enter the platform.
+              </p>
+              <div
+                style={{
+                  width: 110,
+                  height: 5,
+                  margin: "1rem auto 0",
+                  borderRadius: 999,
+                  background: "linear-gradient(90deg, #0ea5e9, #d946ef)",
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: "1.3rem",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setSessionMode("official");
+                  setShowSessionSelector(false);
+                }}
+                style={{
+                  border: "1px solid #0ea5e9",
+                  borderRadius: "24px",
+                  padding: "1.35rem",
+                  background:
+                    "linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.96)), url('/session/official-session-bg.png'), radial-gradient(circle at top, rgba(14,165,233,0.42), rgba(2,6,23,0.96) 58%)",
+                  backgroundSize: "cover, cover, cover",
+                  backgroundPosition: "center, center, center",
+                  backgroundRepeat: "no-repeat",
+                  color: "white",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  boxShadow: "0 0 35px rgba(14,165,233,0.35)",
+                }}
+              >
+                <div style={{ textAlign: "center", fontSize: "4rem", marginBottom: "0.7rem" }}>🏃‍♂️⚽</div>
+                <h2 style={{ fontSize: "2rem", textAlign: "center", margin: 0 }}>Official<br />Session</h2>
+                <hr style={{ borderColor: "rgba(14,165,233,0.55)", margin: "1rem 0" }} />
+                <p>📊 Real standings & records</p>
+                <p>🎥 Videos & highlights enabled</p>
+                <p>🏅 Official stats & club history</p>
+                <p>🔒 Permanent club impact</p>
+                <div
+                  style={{
+                    marginTop: "1rem",
+                    padding: "0.9rem",
+                    borderRadius: "14px",
+                    textAlign: "center",
+                    background: "linear-gradient(90deg, #0f52ba, #0284c7)",
+                    fontWeight: 800,
+                  }}
+                >
+                  Continue Officially ›
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSessionMode("practice");
+                  setShowSessionSelector(false);
+                }}
+                style={{
+                  border: "1px solid #d946ef",
+                  borderRadius: "24px",
+                  padding: "1.35rem",
+                  background:
+                    "linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.96)), url('/session/practice-session-bg.png'), radial-gradient(circle at top, rgba(168,85,247,0.48), rgba(2,6,23,0.96) 58%)",
+                  backgroundSize: "cover, cover, cover",
+                  backgroundPosition: "center, center, center",
+                  backgroundRepeat: "no-repeat",
+                  color: "white",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  boxShadow: "0 0 35px rgba(217,70,239,0.35)",
+                }}
+              >
+                <div style={{ textAlign: "center", fontSize: "4rem", marginBottom: "0.7rem" }}>🎮</div>
+                <h2 style={{ fontSize: "2rem", textAlign: "center", margin: 0 }}>Practice<br />Session</h2>
+                <hr style={{ borderColor: "rgba(217,70,239,0.55)", margin: "1rem 0" }} />
+                <p>🎯 Learn the full workflow safely</p>
+                <p>🧱 Isolated practice database</p>
+                <p>🛡️ Never affects official club records</p>
+                <p>↩️ Reset anytime, no risk</p>
+                <div
+                  style={{
+                    marginTop: "1rem",
+                    padding: "0.9rem",
+                    borderRadius: "14px",
+                    textAlign: "center",
+                    background: "linear-gradient(90deg, #7e22ce, #c026d3)",
+                    fontWeight: 800,
+                  }}
+                >
+                  Enter Practice Mode ›
+                </div>
+              </button>
+            </div>
+
+            <div
+              style={{
+                marginTop: "1.25rem",
+                padding: "1rem",
+                border: "1px solid rgba(148,163,184,0.35)",
+                borderRadius: "18px",
+                background: "rgba(15,23,42,0.72)",
+                color: "#e5e7eb",
+                textAlign: "center",
+              }}
+            >
+              🛡️ Practice records stay isolated and never affect official club history.
+            </div>
+          </div>
+        </div>
       )}
 
       {page === PAGE_LANDING && (
