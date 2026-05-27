@@ -43,6 +43,7 @@ import {
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
 import { useMembers } from "./hooks/useMembers.js";
 import { buildCleanSheetEventsForMatch } from "./core/lineups.js";
+import { ensurePracticeSessionSeed, buildPracticeState } from "./core/practiceSessionSeed.js";
 
 import {
   buildCurrentMatchFromFixture,
@@ -2281,6 +2282,25 @@ export default function App() {
       return { ...safePrev, seasons, updatedAt: new Date().toISOString() };
     });
   };
+
+  useEffect(() => {
+    if (!USE_V2) return;
+
+    if (!sessionScopedClubId?.endsWith("-practice")) {
+      return;
+    }
+
+    ensurePracticeSessionSeed(
+      db,
+      sessionScopedClubId,
+      activeClubIdentity
+    ).catch((err) => {
+      console.error("[PRACTICE SEED ERROR]", err);
+    });
+  }, [
+    sessionScopedClubId,
+    activeClubIdentity,
+  ]);
 
   useEffect(() => {
     // Disabled localStorage bootstrap for V2.
@@ -6295,7 +6315,40 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
+                  const nextPracticeClubId = `${activeClubId}-practice`;
+
+                  try {
+                    await ensurePracticeSessionSeed(
+                      db,
+                      nextPracticeClubId,
+                      activeClubIdentity
+                    );
+                  } catch (err) {
+                    console.error("[PRACTICE SEED ERROR]", err);
+                  }
+
+                  setCurrentConfirmedLineupSnapshot(null);
+                  setConfirmedLineupsByMatchNo({});
+
+                  const practiceState = buildPracticeState();
+
+                  if (Array.isArray(practiceState?.seasons)) {
+                    practiceState.seasons = practiceState.seasons.map((season) => ({
+                      ...season,
+                      teams: Array.isArray(season?.teams)
+                        ? season.teams.map((team) => ({
+                            ...team,
+                            players: [],
+                            captain: "",
+                            captainId: null,
+                          }))
+                        : [],
+                    }));
+                  }
+
+                  setState(practiceState);
+
                   setSessionMode("practice");
                   setShowSessionSelector(false);
                 }}
