@@ -1942,6 +1942,15 @@ export default function App() {
 
   const [sessionMode, setSessionMode] = useState("official");
   const [showSessionSelector, setShowSessionSelector] = useState(false);
+  const [practiceRestrictionModal, setPracticeRestrictionModal] = useState(null);
+
+  const isPracticeMode = sessionMode === "practice";
+
+  const showPracticeRestriction = (title, message, icon = "🔒") => {
+    setPracticeRestrictionModal({ title, message, icon });
+  };
+
+  const closePracticeRestriction = () => setPracticeRestrictionModal(null);
 
   const [identity, setIdentity] = useState(() => {
     if (typeof window === "undefined") return null;
@@ -1980,6 +1989,12 @@ export default function App() {
   ]);
 
   const activeClubId = activeClubIdentity.id;
+
+  const sessionScopedClubId =
+    sessionMode === "practice"
+      ? `${activeClubId}-practice`
+      : activeClubId;
+
   const activeClub = activeClubIdentity;
   const activeClubName = activeClubIdentity.name;
 
@@ -2245,7 +2260,7 @@ export default function App() {
       const next = typeof updater === "function" ? updater(prev) : updater;
       if (USE_V2) {
         const safe = ensureV2StateShape(next);
-        saveStateV2(safe, activeClubId);
+        saveStateV2(safe, sessionScopedClubId);
         return safe;
       }
       saveState(next);
@@ -2288,7 +2303,7 @@ export default function App() {
               return nextCloudState;
             });
           },
-          activeClubId
+          sessionScopedClubId
         )
       : subscribeToState((cloudState) => {
           if (!cloudState) return;
@@ -2296,7 +2311,7 @@ export default function App() {
         });
 
     return () => unsubscribe && unsubscribe();
-  }, [activeClubId]);
+  }, [sessionScopedClubId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2936,7 +2951,18 @@ export default function App() {
 
   const handleBackToLanding = () => setPage(PAGE_LANDING);
   const handleBackToLive = () => setPage(PAGE_LIVE);
-  const handleGoToViewHighlights = () => setPage(PAGE_VIEW_HIGHLIGHTS);
+  const handleGoToViewHighlights = () => {
+    if (isPracticeMode) {
+      showPracticeRestriction(
+        "Highlights are for Official Sessions",
+        "Video highlights, uploads and voting are official club features. Click Change Profile and enter an Official Session to use them.",
+        "🎥"
+      );
+      return;
+    }
+
+    setPage(PAGE_VIEW_HIGHLIGHTS);
+  };
 
   const applyRecoveredLiveDraftToControls = (draft) => {
     if (!draft) return;
@@ -3168,6 +3194,15 @@ export default function App() {
   const canAccessMatchSignup = isAdmin || isCaptain || isPlayer;
 
   const handleGoToMatchSignup = () => {
+    if (isPracticeMode) {
+      showPracticeRestriction(
+        "Payments are for Official Sessions",
+        "Practice Session assumes players are already available for training. Click Change Profile and enter an Official Session to use Match Signup and payments.",
+        "💳"
+      );
+      return;
+    }
+
     if (!canAccessMatchSignup) {
       window.alert(
         "Please sign in as a club player before using payments. This prevents untracked payments."
@@ -5093,6 +5128,15 @@ export default function App() {
   };
 
   const handleProceedToPayment = (payload) => {
+    if (isPracticeMode) {
+      showPracticeRestriction(
+        "Payments are for Official Sessions",
+        "Practice Session does not process real payments. Click Change Profile and enter an Official Session to continue with payments.",
+        "💳"
+      );
+      return;
+    }
+
     const safePayload = payload || {};
     console.log("[TK PAYMENTS] proceed to payment payload:", safePayload);
     setPaymentContext(safePayload);
@@ -5132,6 +5176,15 @@ export default function App() {
   };
 
   const handleOpenHighlightsCamera = () => {
+    if (isPracticeMode) {
+      showPracticeRestriction(
+        "Camera uploads are for Official Sessions",
+        "Practice Session keeps testing safe and isolated, so highlight recording and upload flows are blocked. Click Change Profile and enter an Official Session to use the camera.",
+        "📸"
+      );
+      return;
+    }
+
     if (typeof window === "undefined") return;
 
     const isAndroid = /Android/i.test(window.navigator.userAgent || "");
@@ -5411,7 +5464,7 @@ export default function App() {
     }
 
     if (targetPage === PAGE_VIEW_HIGHLIGHTS) {
-      setPage(PAGE_VIEW_HIGHLIGHTS);
+      handleGoToViewHighlights();
       return;
     }
 
@@ -6074,6 +6127,71 @@ export default function App() {
           onGoHome={() => setPage(PAGE_HOME)}
         />
       )}
+      {practiceRestrictionModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            background: "rgba(2, 6, 23, 0.78)",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <div
+            style={{
+              width: "min(520px, 94vw)",
+              borderRadius: "26px",
+              border: "1px solid rgba(217,70,239,0.55)",
+              background:
+                "linear-gradient(145deg, rgba(15,23,42,0.98), rgba(30,16,58,0.96))",
+              boxShadow:
+                "0 0 45px rgba(217,70,239,0.25), 0 0 80px rgba(14,165,233,0.16)",
+              color: "white",
+              padding: "1.35rem",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: "3rem", marginBottom: "0.5rem" }}>
+              {practiceRestrictionModal.icon}
+            </div>
+
+            <h2 style={{ margin: 0, fontSize: "1.65rem" }}>
+              {practiceRestrictionModal.title}
+            </h2>
+
+            <p style={{ color: "#e5e7eb", lineHeight: 1.55, marginTop: "0.75rem" }}>
+              {practiceRestrictionModal.message}
+            </p>
+
+            <div style={{ display: "grid", gap: "0.7rem", marginTop: "1.1rem" }}>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  closePracticeRestriction();
+                  setShowSessionSelector(true);
+                  setPage(PAGE_LANDING);
+                }}
+              >
+                Change Profile
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={closePracticeRestriction}
+              >
+                Stay in Practice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSessionSelector && page === PAGE_LANDING && (
         <div
           style={{
@@ -6364,7 +6482,7 @@ export default function App() {
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={effectivePlayerPhotosByName}
-          activeClubId={activeClubId}
+          activeClubId={sessionScopedClubId}
           activeClub={activeClub}
           onConfirmPreMatchLineups={handleConfirmPreMatchLineups}
           onCancelPreMatchLineups={handleCancelPreMatchLineups}
@@ -6439,7 +6557,7 @@ export default function App() {
       {page === PAGE_VIEW_HIGHLIGHTS && (
         <VideoHighlightsPage
           matchId={currentVideoHighlightsMatchId}
-          activeClubId={activeClubId}
+          activeClubId={sessionScopedClubId}
           identity={pageIdentity}
           activeRole={activeRole}
           isAdmin={isAdmin}
@@ -6514,7 +6632,7 @@ export default function App() {
           onBack={handleBackToLanding}
           members={members}
           activeClub={activeClub}
-          activeClubId={activeClubId}
+          activeClubId={sessionScopedClubId}
         />
       )}
 
@@ -6539,7 +6657,7 @@ export default function App() {
           gameFormat={gameFormat}
           activeSeasonNo={USE_V2 ? activeSeasonNo : null}
           activeClub={activeClub}
-          activeClubId={activeClubId}
+          activeClubId={sessionScopedClubId}
           finalPlayerCardSnapshot={
             USE_V2
               ? (() => {
@@ -6569,7 +6687,7 @@ export default function App() {
           identity={pageIdentity}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           activeClub={activeClub}
-          activeClubId={activeClubId}
+          activeClubId={sessionScopedClubId}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
@@ -6587,7 +6705,7 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           activeClub={activeClub}
-          activeClubId={activeClubId}
+          activeClubId={sessionScopedClubId}
           activeTeamIds={normalizedActiveTeamIds}
           onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
@@ -6609,7 +6727,7 @@ export default function App() {
           playerPhotosByName={effectivePlayerPhotosByName}
           identity={pageIdentity}
           activeClub={activeClub}
-          activeClubId={activeClubId}
+          activeClubId={sessionScopedClubId}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
           matchType={matchType}
