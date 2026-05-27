@@ -1211,7 +1211,41 @@ export function SquadsPage({
   }, [signupRecords]);
 
   const paidTeamSheetPlayers = useMemo(() => {
-    if (!nextTeamsheetWeekId) return [];
+    if (!nextTeamsheetWeekId) {
+      return signupRecords
+        .map((record) => {
+          const playerId = String(
+            record.beneficiaryPlayerId ||
+            record.playerId ||
+            record.userId ||
+            record.docId ||
+            ""
+          ).trim();
+
+          const playerName = toTitleCase(
+            record.beneficiaryName ||
+            record.playerName ||
+            record.displayName ||
+            record.shortName ||
+            playerId
+          );
+
+          const resolvedId =
+            playersById.has(playerId)
+              ? playerId
+              : resolvePlayerIdFromString(allPlayers, playerName) || playerId;
+
+          if (!resolvedId) return null;
+
+          return {
+            id: resolvedId,
+            fullName: playerName || displayNameOf(resolvedId),
+            paymentStatus: "practice",
+            weekId: "practice",
+          };
+        })
+        .filter(Boolean);
+    }
 
     const byId = new Map();
 
