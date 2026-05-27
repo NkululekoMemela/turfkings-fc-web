@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { LiveMatchPage } from "./pages/LiveMatchPage.jsx";
@@ -1935,6 +1935,50 @@ function buildRecoveredSummaryFromLiveDraft(draft) {
   };
 }
 
+
+function parseClubWeeklyWindow(text) {
+  const raw = String(text || "").trim().toLowerCase();
+  if (!raw) return null;
+
+  const dayMap = {
+    sunday: 0, sundays: 0,
+    monday: 1, mondays: 1,
+    tuesday: 2, tuesdays: 2,
+    wednesday: 3, wednesdays: 3,
+    thursday: 4, thursdays: 4,
+    friday: 5, fridays: 5,
+    saturday: 6, saturdays: 6,
+  };
+
+  const dayKey = Object.keys(dayMap).find((key) => raw.includes(key));
+  const timeMatch = raw.match(/(\d{1,2})[:h](\d{2})\s*[–-]\s*(\d{1,2})[:h](\d{2})/);
+
+  if (!dayKey || !timeMatch) return null;
+
+  const [, sh, sm, eh, em] = timeMatch;
+  return {
+    day: dayMap[dayKey],
+    startMinutes: Number(sh) * 60 + Number(sm),
+    endMinutes: Number(eh) * 60 + Number(em),
+  };
+}
+
+function isInsideClubWeeklyWindow(weeklyPlayTime, now = new Date()) {
+  const windowInfo = parseClubWeeklyWindow(weeklyPlayTime);
+  if (!windowInfo) return true;
+
+  const currentDay = now.getDay();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  // 30-minute grace before and after the official window.
+  return (
+    currentDay === windowInfo.day &&
+    currentMinutes >= windowInfo.startMinutes - 30 &&
+    currentMinutes <= windowInfo.endMinutes + 30
+  );
+}
+
+
 export default function App() {
   const [entryPageIntent, setEntryPageIntent] = useState(null);
   const [page, setPage] = useState(PAGE_HOME);
@@ -1944,6 +1988,8 @@ export default function App() {
   const [sessionMode, setSessionMode] = useState("official");
   const [showSessionSelector, setShowSessionSelector] = useState(false);
   const [practiceRestrictionModal, setPracticeRestrictionModal] = useState(null);
+  const [officialStartWarning, setOfficialStartWarning] = useState(null);
+  const officialStartOverrideRef = useRef(false);
 
   const isPracticeMode = sessionMode === "practice";
 
@@ -3590,6 +3636,26 @@ export default function App() {
       window.alert("Only captains or admin can start a match.");
       return;
     }
+
+    const weeklyPlayTime =
+      activeClubIdentity?.weeklyPlayTime ||
+      activeClubIdentity?.schedule?.weeklyPlayTime ||
+      activeClubIdentity?.schedule?.playTime ||
+      activeClubIdentity?.playTime ||
+      "Wednesdays, 17:30–19:00";
+
+    if (
+      !isPracticeMode &&
+      !officialStartOverrideRef.current &&
+      !isInsideClubWeeklyWindow(weeklyPlayTime)
+    ) {
+      setOfficialStartWarning({
+        weeklyPlayTime,
+      });
+      return;
+    }
+
+    officialStartOverrideRef.current = false;
 
     if (shouldLockFurtherFixtures) {
       setShowSeasonCompleteModal(true);
@@ -5513,6 +5579,71 @@ export default function App() {
         page === PAGE_LANDING ? "app-root--landing" : ""
       }`}
     >
+      {officialStartWarning && (
+        <div className="tk-referee-lock-backdrop" onClick={() => setOfficialStartWarning(null)}>
+          <div className="tk-referee-lock-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="tk-referee-lock-kicker">
+              <span className="tk-live-dot" /> Official record protection
+            </div>
+
+            <h2>Outside official match time</h2>
+
+            <p style={{ lineHeight: 1.55, marginBottom: "0.85rem" }}>
+              This does not look like your club’s normal match window.
+              Starting an Official Session now may affect real standings,
+              player stats, attendance and match history.
+            </p>
+
+            {officialStartWarning.weeklyPlayTime && (
+              <div
+                style={{
+                  padding: "0.8rem",
+                  borderRadius: "1rem",
+                  border: "1px solid rgba(148,163,184,0.28)",
+                  background: "rgba(15,23,42,0.72)",
+                  marginBottom: "1rem",
+                }}
+              >
+                Normal club time: <strong>{officialStartWarning.weeklyPlayTime}</strong>
+              </div>
+            )}
+
+            <div style={{ display: "grid", gap: "0.55rem" }}>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setOfficialStartWarning(null);
+                  setShowSessionSelector(true);
+                }}
+              >
+                Go to Practice Session
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  officialStartOverrideRef.current = true;
+                  setOfficialStartWarning(null);
+                  setTimeout(() => handleStartMatch(), 0);
+                }}
+              >
+                Continue Officially for now
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setOfficialStartWarning(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isLiveMatchControlLocked && (
         <button
           type="button"
