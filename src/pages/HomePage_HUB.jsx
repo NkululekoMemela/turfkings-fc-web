@@ -1,6 +1,9 @@
 // src/pages/HomePage_HUB.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
@@ -17,6 +20,62 @@ const HOME_TOP_LOGO = "/HomePage_Hub/5_AsidesNearMe_light_logo.png";
 const HOME_FALLBACK_LOGO = "/HomePage/Logo_icon.jpeg";
 const SUPER_ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
 const CLUB_CACHE_KEY = "fanm_homepage_hub_clubs_v1";
+
+const CAPE_TOWN_PLACEHOLDER_COORDS = {
+  cbd: { latitude: -33.9249, longitude: 18.4241 },
+  "cape town": { latitude: -33.9249, longitude: 18.4241 },
+  claremont: { latitude: -33.9806, longitude: 18.4655 },
+  wynberg: { latitude: -34.0046, longitude: 18.4680 },
+  observatory: { latitude: -33.9408, longitude: 18.4666 },
+  "sea point": { latitude: -33.9155, longitude: 18.3872 },
+  bellville: { latitude: -33.9045, longitude: 18.6290 },
+  "mitchells plain": { latitude: -34.0486, longitude: 18.6187 },
+  khayelitsha: { latitude: -34.0390, longitude: 18.6770 },
+  durbanville: { latitude: -33.8320, longitude: 18.6470 },
+  rondebosch: { latitude: -33.9636, longitude: 18.4760 },
+};
+
+function getPlaceholderCoordsForClub(club = {}) {
+  const text = [
+    club?.mapLabel,
+    club?.location,
+    club?.area,
+    club?.locationDetails?.displayLocation,
+    club?.locationDetails?.fullAddress,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const match = Object.entries(CAPE_TOWN_PLACEHOLDER_COORDS).find(([key]) =>
+    text.includes(key)
+  );
+
+  if (match) return match[1];
+
+  const fallbackKeys = Object.keys(CAPE_TOWN_PLACEHOLDER_COORDS);
+
+  const randomKey =
+    fallbackKeys[
+      Math.floor(Math.random() * fallbackKeys.length)
+    ];
+
+  return CAPE_TOWN_PLACEHOLDER_COORDS[randomKey];
+}
+
+function getClubMarkerIcon(club = {}) {
+  const label = String(club?.logoText || club?.shortName || club?.name || "FC")
+    .trim()
+    .slice(0, 2)
+    .toUpperCase();
+
+  return L.divIcon({
+    className: "hub-leaflet-marker",
+    html: `<span>${label}</span>`,
+    iconSize: [42, 42],
+    iconAnchor: [21, 21],
+    popupAnchor: [0, -18],
+  });
+}
 
 const FALLBACK_CLUBS = [
   {
@@ -165,7 +224,9 @@ function getClubLatLng(club = {}) {
   const latitude = Number(lat);
   const longitude = Number(lng);
 
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return getPlaceholderCoordsForClub(club);
+  }
 
   return { latitude, longitude };
 }
@@ -851,30 +912,46 @@ export default function HomePage_HUB({
         </div>
 
         <div className="hub-map-card">
-          <div className="hub-map-surface">
-            <span className="hub-map-road hub-map-road--one" />
-            <span className="hub-map-road hub-map-road--two" />
-            <span className="hub-map-road hub-map-road--three" />
+          <div className="hub-map-surface hub-map-surface--leaflet">
+            <MapContainer
+              center={[-33.9608, 18.4860]}
+              zoom={10}
+              scrollWheelZoom={false}
+              className="hub-leaflet-map"
+            >
+              <TileLayer
+                attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
 
-            {visibleClubs.slice(0, 8).map((club, index) => {
-              const isSelected = selectedMapClub?.id === club.id;
+              {visibleClubs.map((club) => {
+                const point = getClubLatLng(club);
+                if (!point) return null;
 
-              return (
-                <button
-                  type="button"
-                  key={club.id}
-                  className={`hub-map-pin${isSelected ? " hub-map-pin--active" : ""}`}
-                  style={{
-                    ...getMapPinStyle(club, index, visibleClubs),
-                    "--hub-map-accent": club.accent || "#16a34a",
-                  }}
-                  onClick={() => setActiveMapClub(club)}
-                  title={club.name}
-                >
-                  <span>{club.logoText || String(club.name || "FC").slice(0, 2)}</span>
-                </button>
-              );
-            })}
+                return (
+                  <Marker
+                    key={club.id}
+                    position={[point.latitude, point.longitude]}
+                    icon={L.divIcon({
+                      className: "hub-leaflet-marker",
+                      html: `
+                        <div class="hub-leaflet-marker-inner">
+                          <img src="${club.logoUrl || HOME_FALLBACK_LOGO}" />
+                        </div>
+                      `,
+                      iconSize: [52, 52],
+                      iconAnchor: [26, 52],
+                      popupAnchor: [0, -42],
+                    })}
+                    eventHandlers={{
+                      click: () => setActiveMapClub(club),
+                    }}
+                  >
+                    
+                  </Marker>
+                );
+              })}
+            </MapContainer>
           </div>
           {selectedMapClub ? (
             <aside className="hub-map-selected-card hub-map-selected-card--floating" onClick={(event) => event.stopPropagation()}>

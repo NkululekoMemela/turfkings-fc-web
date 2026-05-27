@@ -5860,3 +5860,297 @@
   image-rendering: auto !important;
   backface-visibility: hidden;
 }
+
+/* Real Leaflet map preview */
+.hub-map-surface--leaflet {
+  position: relative;
+  overflow: hidden;
+  min-height: 420px;
+  height: 420px;
+  border-radius: 28px;
+  background: #07111f;
+}
+
+.hub-leaflet-map {
+  width: 100%;
+  height: 420px;
+  min-height: 420px;
+  border-radius: 28px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.hub-map-card .leaflet-container {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border-radius: 28px;
+  font-family: inherit;
+}
+
+.hub-leaflet-marker {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  border: 3px solid #ffffff;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+  color: #ffffff;
+  font-weight: 950;
+}
+
+.hub-leaflet-marker span {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.78rem;
+}
+
+.hub-map-card .leaflet-popup-content-wrapper {
+  border-radius: 16px;
+}
+
+.hub-map-card .leaflet-popup-content {
+  font-family: inherit;
+  font-weight: 750;
+  color: #0f172a;
+}
+
+
+/* ---------- Premium floating selected club card ---------- */
+
+.hub-map-selected-card--floating {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  width: 260px;
+  z-index: 1000;
+
+  background: linear-gradient(
+    180deg,
+    rgba(3, 18, 43, 0.96),
+    rgba(6, 28, 66, 0.96)
+  );
+
+  border: 1px solid rgba(255,255,255,0.08);
+
+  border-radius: 24px;
+
+  padding: 18px;
+
+  box-shadow:
+    0 20px 45px rgba(0,0,0,0.38),
+    0 0 0 1px rgba(255,255,255,0.03);
+
+  backdrop-filter: blur(14px);
+
+  color: #ffffff;
+}
+
+.hub-map-selected-card--floating strong {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.hub-map-selected-card--floating p {
+  color: rgba(255,255,255,0.78);
+  line-height: 1.45;
+}
+
+.hub-map-selected-card__kicker {
+  display: inline-block;
+  margin-bottom: 10px;
+
+  color: #7CFF92;
+
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hub-map-selected-card small {
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(255,255,255,0.82);
+  font-weight: 700;
+}
+
+.hub-map-selected-card__actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.hub-map-selected-card__actions button {
+  border: none;
+  border-radius: 999px;
+
+  min-height: 46px;
+
+  background: linear-gradient(
+    135deg,
+    #34d399,
+    #65d60f
+  );
+
+  color: #04111f;
+
+  font-weight: 900;
+  font-size: 0.95rem;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.hub-map-selected-card__actions button:hover {
+  transform: translateY(-2px);
+  opacity: 0.94;
+}
+
+.hub-map-selected-card__close {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+
+  width: 32px;
+  height: 32px;
+
+  border: none;
+  border-radius: 999px;
+
+  background: rgba(255,255,255,0.08);
+
+  color: #ffffff;
+
+  font-size: 1rem;
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+/* ---------- Real club logo map markers ---------- */
+
+.hub-leaflet-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.hub-leaflet-marker-inner {
+  width: 52px;
+  height: 52px;
+
+  border-radius: 999px;
+
+  overflow: hidden;
+
+  background: white;
+
+  border: 4px solid #16a34a;
+
+  box-shadow:
+    0 12px 28px rgba(0,0,0,0.35),
+    0 0 0 4px rgba(22,163,74,0.18);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hub-leaflet-marker-inner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+
+/* ===== CLEAN PREMIUM MAP EXPERIENCE ===== */
+
+.hub-map-card {
+  overflow: hidden;
+}
+
+.hub-map-surface--leaflet {
+  overflow: hidden;
+  border-radius: 28px;
+}
+
+.hub-map-selected-card--floating {
+  max-width: 240px;
+  right: 14px;
+  top: 14px;
+  bottom: 14px;
+
+  overflow-y: auto;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+/* Prevent buttons from overflowing outside card */
+.hub-map-selected-card__actions {
+  width: 100%;
+}
+
+.hub-map-selected-card__actions button {
+  width: 100%;
+  min-height: 44px;
+}
+
+/* REMOVE ugly default leaflet popup */
+.leaflet-popup {
+  display: none !important;
+}
+
+/* Better map marker appearance */
+.hub-leaflet-marker-inner {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.hub-leaflet-marker-inner:hover {
+  transform: scale(1.08);
+
+  box-shadow:
+    0 16px 32px rgba(0,0,0,0.42),
+    0 0 0 5px rgba(34,197,94,0.24);
+}
+
+/* Mobile cleanup */
+@media (max-width: 640px) {
+
+  .hub-map-card {
+    min-height: 640px;
+  }
+
+  .hub-map-surface--leaflet {
+    min-height: 640px;
+  }
+
+  .hub-leaflet-map {
+    min-height: 640px;
+  }
+
+  .hub-map-selected-card--floating {
+    position: absolute;
+
+    left: 14px;
+    right: 14px;
+    top: auto;
+    bottom: 14px;
+
+    width: auto;
+    max-width: none;
+  }
+}
