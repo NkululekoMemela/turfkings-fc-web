@@ -282,6 +282,16 @@ function getMissingClubRequirements(club = {}) {
   return missing;
 }
 
+function getClubAdminUids(club = {}) {
+  return [
+    club?.createdByUid,
+    club?.ownerUid,
+    ...(Array.isArray(club?.adminUids) ? club.adminUids : []),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
 function getClubAdminEmails(club = {}) {
   return [
     club?.createdBy,

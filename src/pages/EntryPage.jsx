@@ -544,13 +544,27 @@ export function EntryPage({
 
   const isAdminViewer = (() => {
     const email = String(currentUser?.email || "").trim().toLowerCase();
-    if (!email) return false;
+    const uid = String(currentUser?.uid || "").trim();
+
+    if (!email && !uid) return false;
+
+    const clubAdminUids = [
+      activeClub?.createdByUid,
+      activeClub?.ownerUid,
+      ...(Array.isArray(activeClub?.adminUids) ? activeClub.adminUids : []),
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    if (uid && clubAdminUids.includes(uid)) return true;
 
     const clubAdminEmails = [
       activeClub?.adminEmail,
       activeClub?.ownerEmail,
       activeClub?.captainEmail,
       activeClub?.createdByEmail,
+      activeClub?.createdBy,
+      activeClub?.captain?.email,
       ...(Array.isArray(activeClub?.adminEmails) ? activeClub.adminEmails : []),
       ...(Array.isArray(activeClub?.captainEmails) ? activeClub.captainEmails : []),
     ]
