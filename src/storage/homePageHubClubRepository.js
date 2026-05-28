@@ -7,7 +7,7 @@ import {
   ref,
   uploadBytes,
 } from "firebase/storage";
-import { db } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 
 function cleanText(value) {
   return String(value || "").trim();
@@ -162,6 +162,10 @@ export async function createHomePageHubClub({
   const uploadedLogoUrl =
     uploadedLogoUrlFromFile || cleanText(logoDraft.uploadedLogoUrl);
 
+  const creatorUser = auth.currentUser || null;
+  const creatorUid = creatorUser?.uid || "";
+  const creatorEmail = cleanEmail(creatorUser?.email || captainEmail);
+
   const selectedGeneratedLogo = cleanText(logoDraft.selectedGeneratedLogoId);
   const generatedLogoPrompt = cleanText(logoDraft.generatedLogoPrompt);
   const locationDisplay = buildDisplayLocation(clubDraft);
@@ -263,7 +267,13 @@ export async function createHomePageHubClub({
     },
 
     description: "",
-    createdBy: captainEmail,
+    createdBy: creatorEmail,
+    createdByEmail: creatorEmail,
+    createdByUid: creatorUid,
+    ownerUid: creatorUid,
+    ownerEmail: creatorEmail,
+    adminUids: creatorUid ? [creatorUid] : [],
+    adminEmails: creatorEmail ? [creatorEmail] : [captainEmail],
     createdAt: now,
     captain: captainName || captainEmail ? {
       name: captainName,
@@ -300,6 +310,7 @@ export async function createHomePageHubClub({
       phoneNumber: captainWhatsApp,
       role: "admin",
       status: "active",
+      uid: creatorUid,
       playerId: captainPlayerId,
       createdAt: now,
       updatedAt: now,
@@ -323,6 +334,7 @@ export async function createHomePageHubClub({
         admin: true,
       },
       status: "active",
+      uid: creatorUid,
       sourceMemberId: captainPlayerId,
       createdAt: now,
       updatedAt: now,
