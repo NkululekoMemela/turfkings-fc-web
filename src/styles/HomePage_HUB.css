@@ -6618,3 +6618,43 @@
     0 20px 48px rgba(2, 6, 23, 0.34),
     inset 0 1px 0 rgba(255,255,255,0.03) !important;
 }
+/* HOME HUB — signed-in user avatar */
+.hub-user-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex: 0 0 auto;
+
+  background:
+    radial-gradient(circle at 30% 20%, rgba(56,189,248,0.32), transparent 42%),
+    linear-gradient(135deg, rgba(15,23,42,0.98), rgba(2,6,23,0.96));
+
+  border: 1px solid rgba(56,189,248,0.28);
+  box-shadow:
+    0 10px 24px rgba(2,6,23,0.32),
+    0 0 18px rgba(34,211,238,0.12),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.hub-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hub-user-avatar strong {
+  color: #e0f2fe;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+@media (max-width: 640px) {
+  .hub-user-avatar {
+    width: 34px;
+    height: 34px;
+  }
+}

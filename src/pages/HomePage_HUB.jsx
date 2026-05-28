@@ -796,8 +796,25 @@ export default function HomePage_HUB({
         <nav className="hub-nav">
           {currentUser ? (
             <>
-              <span className="hub-nav__signed-in">
-                Signed in
+              <span
+                className="hub-user-avatar"
+                title={currentUser?.displayName || currentUser?.email || "Signed in"}
+                aria-label={currentUser?.displayName || currentUser?.email || "Signed in"}
+              >
+                {currentUser?.photoURL ? (
+                  <img
+                    src={currentUser.photoURL}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <strong>
+                    {String(currentUser?.displayName || currentUser?.email || "U")
+                      .trim()
+                      .charAt(0)
+                      .toUpperCase()}
+                  </strong>
+                )}
               </span>
 
               <button
