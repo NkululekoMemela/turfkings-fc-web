@@ -5,35 +5,86 @@ import HomePage_HUB_ClubRegisterForm from "./HomePage_HUB_ClubRegisterForm";
 import HomePage_HUB_LogoGenerator from "./HomePage_HUB_LogoGenerator";
 import { updateHomePageHubClub } from "../../storage/homePageHubClubRepository";
 
-function getDraftFromClub(club = {}) {
+function parseWeeklyPlayTime(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return { playDay: "", playTime: "" };
+
+  const dayMatch = text.match(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)s?\b/i);
+  const timeMatch = text.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/);
+
   return {
-    clubName: club.name || "",
-    clubId: club.id || "",
-    venueName: club?.locationDetails?.venueName || "",
-    address: club?.locationDetails?.address || "",
-    suburb: club?.locationDetails?.suburb || club.area || "",
-    city: club?.locationDetails?.city || "",
-    province: club?.locationDetails?.province || "",
-    country: club?.locationDetails?.country || "South Africa",
-    playDay: club?.schedule?.playDay || "",
-    playTime: club?.schedule?.playTime || "",
-    weeklyPlayTime: club?.weeklyPlayTime || club?.schedule?.weeklyPlayTime || "",
-    timezone: club?.schedule?.timezone || "Africa/Johannesburg",
-    captainName: club?.captain?.name || "",
-    captainEmail: club?.captain?.email || "",
-    accent: club.accent || "#16a34a",
-    logoText: club.logoText || "FC",
+    playDay: dayMatch
+      ? dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1).toLowerCase()
+      : "",
+    playTime: timeMatch ? timeMatch[0] : "",
+  };
+}
+
+function getDraftFromClub(club = {}, adminIdentity = {}) {
+  const source = club?.raw || club || {};
+  const admin = adminIdentity || {};
+  const weeklyPlayTime =
+    source?.weeklyPlayTime ||
+    source?.schedule?.weeklyPlayTime ||
+    club.weeklyPlayTime ||
+    "";
+
+  const parsedWeekly = parseWeeklyPlayTime(weeklyPlayTime);
+
+  const captainName =
+    source?.captain?.name ||
+    source.captainName ||
+    admin.fullName ||
+    admin.displayName ||
+    "";
+  const captainParts = String(captainName || "").trim().split(/\s+/).filter(Boolean);
+  const city = source?.locationDetails?.city || source.city || "";
+  const province =
+    source?.locationDetails?.province ||
+    source.province ||
+    (String(city).trim().toLowerCase() === "cape town" ? "Western Cape" : "");
+
+  return {
+    clubName: source.name || source.clubName || club.name || "",
+    clubId: source.id || source.clubId || club.id || "",
+    venueName: source?.locationDetails?.venueName || source.venueName || "",
+    address: source?.locationDetails?.address || source.address || "",
+    suburb: source?.locationDetails?.suburb || source.area || source.suburb || club.area || "",
+    city,
+    province,
+    country: source?.locationDetails?.country || source.country || "South Africa",
+    playDay: source?.schedule?.playDay || source.playDay || parsedWeekly.playDay,
+    playTime: source?.schedule?.playTime || source.playTime || parsedWeekly.playTime,
+    weeklyPlayTime,
+    timezone: source?.schedule?.timezone || source.timezone || "Africa/Johannesburg",
+    captainName,
+    founderFirstName: source.founderFirstName || admin.firstName || admin.shortName || captainParts[0] || "",
+    founderSurname: source.founderSurname || admin.surname || admin.lastName || captainParts.slice(1).join(" ") || "",
+    captainEmail: source?.captain?.email || source.captainEmail || admin.email || "",
+    captainWhatsApp:
+      source?.captain?.whatsappNumber ||
+      source?.captain?.phoneNumber ||
+      source.captainWhatsApp ||
+      admin.whatsappNumber ||
+      admin.phoneNumber ||
+      "",
+    accent: source.accent || club.accent || "#16a34a",
+    logoText: source.logoText || club.logoText || "FC",
   };
 }
 
 function getLogoDraftFromClub(club = {}) {
+  const source = club?.raw || club || {};
+
   return {
     logoFile: null,
     uploadedLogoUrl:
+      source.logoUrl ||
+      source.image ||
+      source?.branding?.uploadedLogoUrl ||
+      source?.media?.logoOriginalUrl ||
       club.logoUrl ||
       club.image ||
-      club?.branding?.uploadedLogoUrl ||
-      club?.media?.logoOriginalUrl ||
       "",
     selectedGeneratedLogo: club?.branding?.selectedGeneratedLogo || "",
     generatedLogoPrompt: club?.branding?.generatedLogoPrompt || "",
@@ -48,10 +99,11 @@ export default function HomePage_HUB_ClubProfileEditorModal({
   isOpen,
   onClose,
   onSaved,
+  adminIdentity = {},
 }) {
   const [step, setStep] = useState(1);
   const [clubDraft, setClubDraft] = useState(() =>
-    getDraftFromClub(club || {})
+    getDraftFromClub(club || {}, adminIdentity)
   );
 
   const [logoDraft, setLogoDraft] = useState(() =>
@@ -65,11 +117,11 @@ export default function HomePage_HUB_ClubProfileEditorModal({
   useEffect(() => {
     if (!isOpen || !club?.id) return;
 
-    setClubDraft(getDraftFromClub(club));
+    setClubDraft(getDraftFromClub(club, adminIdentity));
     setLogoDraft(getLogoDraftFromClub(club));
     setStep(1);
     setErrorText("");
-  }, [isOpen, club?.id]);
+  }, [isOpen, club?.id, adminIdentity?.email, adminIdentity?.fullName, adminIdentity?.whatsappNumber]);
 
   if (!isOpen || !club?.id) return null;
 

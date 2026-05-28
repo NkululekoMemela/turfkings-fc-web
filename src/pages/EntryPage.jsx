@@ -500,6 +500,7 @@ export function EntryPage({
   onComplete,
   onDevSkipToLanding,
   onGoHome,
+  onClubUpdated,
 }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [clubHeroOverride, setClubHeroOverride] = useState("");
@@ -534,6 +535,32 @@ export function EntryPage({
     (isTurfKingsClub ? TeamPhoto : "");
 
   const canEditClubHero = false;
+
+  useEffect(() => {
+    if (!activeClubId) return;
+
+    const unsub = onSnapshot(
+      doc(db, "clubs", activeClubId),
+      (snap) => {
+        if (!snap.exists()) return;
+
+        const freshClub = {
+          id: snap.id,
+          ...(snap.data() || {}),
+        };
+
+        setEntryClubProfileOverride((current) => ({
+          ...(current || {}),
+          ...freshClub,
+        }));
+      },
+      (error) => {
+        console.error("[EntryPage] Could not load latest club profile:", error);
+      }
+    );
+
+    return () => unsub();
+  }, [activeClubId]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -2727,12 +2754,22 @@ export function EntryPage({
       <HomePage_HUB_ClubProfileEditorModal
         isOpen={showEntryClubEditor}
         club={activeClub}
+        adminIdentity={{
+          ...(identity || {}),
+          ...(selectedMember || {}),
+          email: currentUser?.email || selectedMember?.email || identity?.email || "",
+        }}
         onClose={() => setShowEntryClubEditor(false)}
         onSaved={(updatedClub) => {
           setEntryClubProfileOverride((current) => ({
             ...(current || {}),
             ...(updatedClub || {}),
           }));
+
+          if (typeof onClubUpdated === "function") {
+            onClubUpdated(updatedClub);
+          }
+
           setShowEntryClubEditor(false);
         }}
       />

@@ -6278,6 +6278,18 @@ export default function App() {
           onComplete={handleEntryComplete}
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}
           onGoHome={() => setPage(PAGE_HOME)}
+          onClubUpdated={(updatedClub) => {
+            if (!updatedClub?.id) return;
+
+            setSelectedHomeClub((prev) => {
+              const merged = {
+                ...(prev || {}),
+                ...updatedClub,
+              };
+
+              return buildClubIdentity(merged);
+            });
+          }}
         />
       )}
       {practiceRestrictionModal && (
