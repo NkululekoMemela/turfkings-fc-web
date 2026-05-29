@@ -1,16 +1,23 @@
 {
   "projects": {
-    "default": "turfkings-fc",
+    "default": "five-asides-near-me",
+    "fanm": "five-asides-near-me",
+    "production": "five-asides-near-me",
+    "legacy": "turfkings-fc",
     "staging": "turfkings-staging"
   },
   "targets": {
-    "turfkings-fc": {
+    "five-asides-near-me": {
       "hosting": {
         "production": [
-          "turfkings-fc"
-        ],
+          "five-asides-near-me"
+        ]
+      }
+    },
+    "turfkings-staging": {
+      "hosting": {
         "staging": [
-          "turfkings-staging-app"
+          "turfkings-staging"
         ]
       }
     }

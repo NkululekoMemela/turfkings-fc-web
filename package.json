@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "debug:history": "node src/scripts/debugMatchDayHistory.js",
     "inspect:appearances": "node src/scripts/inspectSeasonAppearances.js",
-    "backfill:participation": "node src/scripts/backfillHistoricalParticipation.js"
+    "backfill:participation": "node src/scripts/backfillHistoricalParticipation.js",
+    "dev:production": "vite --mode production",
+    "build:production": "vite build --mode production"
   },
   "dependencies": {
     "dotenv": "^17.3.1",

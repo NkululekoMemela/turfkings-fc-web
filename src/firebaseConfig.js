@@ -14,13 +14,13 @@ import {
 import { getStorage } from "firebase/storage";
 
 const productionConfig = {
-  apiKey: "AIzaSyCRzc7SfwgSnTeuYdoZMlXydBwwEoIozZE",
-  authDomain: "turfkings-fc.firebaseapp.com",
-  projectId: "turfkings-fc",
-  storageBucket: "turfkings-fc.firebasestorage.app",
-  messagingSenderId: "221145711848",
-  appId: "1:221145711848:web:4102a693f2634128e0755d",
-  measurementId: "G-T1R4WCY56V",
+  apiKey: "AIzaSyAZrrpMFISsCGOf9d-LXbFm4Yxr7CxdLx8",
+  authDomain: "five-asides-near-me.firebaseapp.com",
+  projectId: "five-asides-near-me",
+  storageBucket: "five-asides-near-me.firebasestorage.app",
+  messagingSenderId: "476068979586",
+  appId: "1:476068979586:web:597442dfeef28212ece59b",
+  measurementId: "G-9SK24PYCX1",
 };
 
 const stagingConfig = {
