@@ -733,6 +733,7 @@ export function SquadsPage({
   gameFormat = GAME_FORMAT.FIVE_V_FIVE,
   activeClubId = "turf-kings",
   activeClub = null,
+  isPracticeMode = false,
   activeSeasonId = null,
   seasonNo = null,
   matchDayHistory = [],
@@ -907,7 +908,7 @@ export function SquadsPage({
     );
 
     return () => unsub();
-  }, [activeClubId]);
+  }, [activeClubId, isPracticeMode]);
 
   const handleToggleCaptainEditLock = async () => {
     if (!isAdmin || !activeClubId) return;
@@ -1083,6 +1084,13 @@ export function SquadsPage({
 
 
   useEffect(() => {
+    if (isPracticeMode) {
+      setAllPlayers([]);
+      setPlayersLoading(false);
+      setPlayersError("");
+      return undefined;
+    }
+
     setPlayersLoading(true);
     setPlayersError("");
     const colRef = getPlayersCollection(db, activeClubId);
@@ -1122,6 +1130,11 @@ export function SquadsPage({
 
 
   useEffect(() => {
+    if (isPracticeMode) {
+      setSignupRecords([]);
+      return undefined;
+    }
+
     if (!activeClubId) {
       setSignupRecords([]);
       return undefined;
@@ -1181,7 +1194,7 @@ export function SquadsPage({
       unsubPending();
       unsubPaid();
     };
-  }, [activeClubId]);
+  }, [activeClubId, isPracticeMode]);
 
   const nextTeamsheetWeekId = useMemo(() => {
     const today = new Date();

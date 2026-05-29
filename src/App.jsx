@@ -2039,10 +2039,9 @@ export default function App() {
 
   const activeClubId = activeClubIdentity.id;
 
-  const sessionScopedClubId =
-    sessionMode === "practice"
-      ? `${activeClubId}-practice`
-      : activeClubId;
+  // Practice mode must stay inside the selected club.
+  // Do not create derived club IDs like "turf-kings-practice".
+  const sessionScopedClubId = activeClubId;
 
   const activeClub = activeClubIdentity;
   const activeClubName = activeClubIdentity.name;
@@ -2334,9 +2333,13 @@ export default function App() {
   useEffect(() => {
     if (!USE_V2) return;
 
-    if (!sessionScopedClubId?.endsWith("-practice")) {
+    // Practice mode is local/sandboxed in React state.
+    // Do not seed or create separate practice clubs in Firestore.
+    if (!isPracticeMode) {
       return;
     }
+
+    return; // intentionally no Firestore practice seed
 
     ensurePracticeSessionSeed(
       db,
@@ -6476,17 +6479,8 @@ export default function App() {
                     return;
                   }
 
-                  const nextPracticeClubId = `${activeClubId}-practice`;
-
-                  try {
-                    await ensurePracticeSessionSeed(
-                      db,
-                      nextPracticeClubId,
-                      activeClubIdentity
-                    );
-                  } catch (err) {
-                    console.error("[PRACTICE SEED ERROR]", err);
-                  }
+                  // Practice mode must not create or seed derived club IDs.
+                  // It uses local sandbox state only, inside the real selected club context.
 
                   setCurrentConfirmedLineupSnapshot(null);
                   setConfirmedLineupsByMatchNo({});
@@ -6919,6 +6913,7 @@ export default function App() {
           gameFormat={gameFormat}
           activeClub={activeClub}
           activeClubId={sessionScopedClubId}
+          isPracticeMode={isPracticeMode}
           activeTeamIds={normalizedActiveTeamIds}
           onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
