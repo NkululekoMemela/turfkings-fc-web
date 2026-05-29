@@ -23,6 +23,8 @@ jobs:
 
       - name: Build 5 Asides Near Me
         run: npm run build:production
+        env:
+          VITE_FIREBASE_ENV: production
 
       - name: Deploy to Firebase 5 Asides Near Me
         run: |
