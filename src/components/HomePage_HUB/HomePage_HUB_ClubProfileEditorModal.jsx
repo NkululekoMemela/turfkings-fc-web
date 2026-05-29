@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import HomePage_HUB_ClubRegisterForm from "./HomePage_HUB_ClubRegisterForm";
 import HomePage_HUB_LogoGenerator from "./HomePage_HUB_LogoGenerator";
+import HomePage_HUB_BankingForm from "./HomePage_HUB_BankingForm";
 import { updateHomePageHubClub } from "../../storage/homePageHubClubRepository";
 
 function parseWeeklyPlayTime(value = "") {
@@ -73,6 +74,19 @@ function getDraftFromClub(club = {}, adminIdentity = {}) {
   };
 }
 
+
+function getBankingDraftFromClub(club = {}) {
+  const source = club?.raw || club || {};
+  return {
+    bankName: source?.banking?.bankName || "",
+    accountHolder: source?.banking?.accountHolder || "",
+    accountNumber: source?.banking?.accountNumber || "",
+    branchCode: source?.banking?.branchCode || "",
+    paymentReference: source?.banking?.paymentReference || "",
+    normalMatchFee: source?.banking?.normalMatchFee || source?.payments?.normalMatchFee || "",
+  };
+}
+
 function getLogoDraftFromClub(club = {}) {
   const source = club?.raw || club || {};
 
@@ -109,6 +123,11 @@ export default function HomePage_HUB_ClubProfileEditorModal({
   const [logoDraft, setLogoDraft] = useState(() =>
     getLogoDraftFromClub(club || {})
   );
+
+  const [bankingDraft, setBankingDraft] = useState(() =>
+    getBankingDraftFromClub(club || {})
+  );
+
   const [saving, setSaving] = useState(false);
   const [errorText, setErrorText] = useState("");
 
@@ -119,6 +138,7 @@ export default function HomePage_HUB_ClubProfileEditorModal({
 
     setClubDraft(getDraftFromClub(club, adminIdentity));
     setLogoDraft(getLogoDraftFromClub(club));
+    setBankingDraft(getBankingDraftFromClub(club));
     setStep(1);
     setErrorText("");
   }, [isOpen, club?.id, adminIdentity?.email, adminIdentity?.fullName, adminIdentity?.whatsappNumber]);
@@ -135,6 +155,7 @@ export default function HomePage_HUB_ClubProfileEditorModal({
         clubId,
         clubDraft,
         logoDraft,
+        bankingDraft,
       });
 
       onSaved?.({
@@ -182,7 +203,7 @@ export default function HomePage_HUB_ClubProfileEditorModal({
         </header>
 
         <div className="hub-stepper" aria-label="Club profile editor steps">
-          {[1, 2].map((item) => (
+          {[1, 2, 3].map((item) => (
             <button
               key={item}
               type="button"
@@ -210,6 +231,13 @@ export default function HomePage_HUB_ClubProfileEditorModal({
           />
         ) : null}
 
+        {step === 3 ? (
+          <HomePage_HUB_BankingForm
+            bankingDraft={bankingDraft}
+            onChange={setBankingDraft}
+          />
+        ) : null}
+
         {errorText ? <div className="hub-error-box">{errorText}</div> : null}
 
         <footer className="hub-modal__footer">
@@ -217,17 +245,17 @@ export default function HomePage_HUB_ClubProfileEditorModal({
             type="button"
             className="hub-secondary-button"
             disabled={saving}
-            onClick={() => (step === 1 ? onClose?.() : setStep(1))}
+            onClick={() => (step === 1 ? onClose?.() : setStep((current) => Math.max(1, current - 1)))}
           >
             {step === 1 ? "Cancel" : "Back"}
           </button>
 
-          {step === 1 ? (
+          {step < 3 ? (
             <button
               type="button"
               className="hub-primary-button"
               disabled={saving}
-              onClick={() => setStep(2)}
+              onClick={() => setStep((current) => Math.min(3, current + 1))}
             >
               Continue
             </button>

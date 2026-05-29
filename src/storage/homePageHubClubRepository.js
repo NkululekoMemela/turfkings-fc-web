@@ -80,12 +80,23 @@ function buildFullAddress(clubDraft = {}) {
 }
 
 function cleanBankingDraft(bankingDraft = {}) {
+  const normalMatchFee = Number(bankingDraft.normalMatchFee || 0);
+  const platformContributionPerPlayer = 7.5;
+  const playerCharge = normalMatchFee > 0
+    ? normalMatchFee + platformContributionPerPlayer
+    : 0;
+
   return {
     bankName: cleanText(bankingDraft.bankName),
     accountHolder: cleanText(bankingDraft.accountHolder),
     accountNumber: cleanText(bankingDraft.accountNumber),
     branchCode: cleanText(bankingDraft.branchCode),
     paymentReference: cleanText(bankingDraft.paymentReference),
+    normalMatchFee,
+    platformContributionPerPlayer,
+    playerCharge,
+    currency: "ZAR",
+    paymentProvider: "peach_payments_pending",
   };
 }
 
@@ -440,6 +451,7 @@ export async function updateHomePageHubClub({
   clubId,
   clubDraft = {},
   logoDraft = {},
+  bankingDraft = {},
 }) {
   const safeClubId = cleanText(clubId);
 
@@ -554,6 +566,8 @@ export async function updateHomePageHubClub({
             ? "prepared_ai_prompt"
             : "external_url",
     };
+
+    payload.banking = cleanBankingDraft(bankingDraft);
 
     payload.media = {
       logoOriginalUrl: uploadedLogoUrl,

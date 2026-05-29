@@ -100,6 +100,7 @@ export default function HomePage_HUB_ClubRegisterForm({
 
         <label className="hub-field hub-field--wide">
           <span>Venue name</span>
+          <small className="hub-field-hint">Start with the venue name. Google venue search will plug in here.</small>
 
           <input
             value={clubDraft?.venueName || ""}
@@ -112,28 +113,7 @@ export default function HomePage_HUB_ClubRegisterForm({
             placeholder="Wynberg Military Base 5s"
           />
         </label>
-
-        <label className="hub-field hub-field--wide">
-          <span>Full venue address</span>
-
-          <input
-            value={clubDraft?.address || ""}
-            onChange={(event) =>
-              updateField(
-                "address",
-                event.target.value
-              )
-            }
-            placeholder="Start typing the venue address"
-            maxLength={90}
-          />
-
-          <small className="hub-field__hint">
-            Tip: enter the venue name, suburb and city. Smart autofill will help with province and country.
-          </small>
-        </label>
-
-        <label className="hub-field">
+<label className="hub-field">
           <span>Suburb</span>
 
           <input
@@ -160,21 +140,6 @@ export default function HomePage_HUB_ClubRegisterForm({
               )
             }
             placeholder="Cape Town"
-          />
-        </label>
-
-        <label className="hub-field">
-          <span>Province</span>
-
-          <input
-            value={clubDraft?.province || ""}
-            onChange={(event) =>
-              updateField(
-                "province",
-                event.target.value
-              )
-            }
-            placeholder="Western Cape"
           />
         </label>
 
