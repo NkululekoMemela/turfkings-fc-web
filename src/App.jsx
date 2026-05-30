@@ -2039,10 +2039,13 @@ export default function App() {
 
   const activeClubId = activeClubIdentity.id;
 
+  const normalizedBaseClubId = String(activeClubId || "")
+    .replace(/-practice$/i, "");
+
   const sessionScopedClubId =
     sessionMode === "practice"
-      ? `${activeClubId}-practice`
-      : activeClubId;
+      ? `${normalizedBaseClubId}-practice`
+      : normalizedBaseClubId;
 
   const activeClub = activeClubIdentity;
   const activeClubName = activeClubIdentity.name;
