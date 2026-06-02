@@ -2433,15 +2433,14 @@ export function SquadsPage({
     setLocalLeagueTeams(outgoingLeagueTeams);
     setLocalFiveVFiveTeams(outgoingFiveVFiveTeams);
 
-    const activeOutgoingTeams =
-      isPracticeMode
-        ? outgoingLeagueTeams
-        : (isFiveVFive ? outgoingFiveVFiveTeams : outgoingLeagueTeams);
+    const activeOutgoingTeams = isFiveVFive
+      ? outgoingFiveVFiveTeams
+      : outgoingLeagueTeams;
 
-    if (isPracticeMode) {
-      onUpdateTeams?.(outgoingLeagueTeams);
-    } else {
+    if (isFiveVFive) {
       onUpdateFiveVFiveTeams?.(outgoingFiveVFiveTeams);
+    } else {
+      onUpdateTeams?.(outgoingLeagueTeams);
     }
 
     handleCancelSave();

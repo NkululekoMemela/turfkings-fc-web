@@ -6783,11 +6783,7 @@ export default function App() {
           timeUp={timeUp}
           running={running}
           teams={pendingMatchStartContext?.teams || teams}
-          fiveVFiveTeams={
-            isPracticeMode
-              ? teams
-              : (pendingMatchStartContext?.fiveVFiveTeams || getActiveFriendlyTeams(fiveVFiveTeams))
-          }
+          fiveVFiveTeams={pendingMatchStartContext?.fiveVFiveTeams || getActiveFriendlyTeams(fiveVFiveTeams)}
           currentMatchNo={pendingMatchStartContext?.matchNo || activeMatchNo}
           currentMatch={pendingMatchStartContext?.currentMatch || effectiveLiveMatch}
           currentEvents={currentEvents}
@@ -6842,9 +6838,7 @@ export default function App() {
           friendlyTeams={
             isPracticeMode ? teams : getActiveFriendlyTeams(fiveVFiveTeams)
           }
-          fiveVFiveTeams={
-            isPracticeMode ? teams : getActiveFriendlyTeams(fiveVFiveTeams)
-          }
+          fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
           gameFormat={gameFormat}
           results={results}
           allEvents={allEvents}
@@ -7030,11 +7024,7 @@ export default function App() {
       {page === PAGE_SQUADS && (
         <SquadsPage
           teams={teams}
-          fiveVFiveTeams={
-            isPracticeMode
-              ? teams
-              : ensureFiveVFiveTeamsShape(fiveVFiveTeams)
-          }
+          fiveVFiveTeams={ensureFiveVFiveTeamsShape(fiveVFiveTeams)}
           onUpdateTeams={handleUpdateTeams}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
@@ -7058,9 +7048,7 @@ export default function App() {
       {page === PAGE_FORMATIONS && (
         <FormationsPage
           teams={teams}
-          fiveVFiveTeams={
-            isPracticeMode ? teams : getActiveFriendlyTeams(fiveVFiveTeams)
-          }
+          fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
           currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
           allEvents={allEvents}
