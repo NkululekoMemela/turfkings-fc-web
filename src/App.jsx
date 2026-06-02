@@ -715,7 +715,10 @@ function ensureSeasonSchedulingShape(season) {
       normalizedActiveTeamIds.length >= 2
         ? normalizedActiveTeamIds
         : teamIds.slice(0, 2),
-    fiveVFiveTeams: ensureFiveVFiveTeamsShape(season?.fiveVFiveTeams),
+    fiveVFiveTeams:
+      season?.isPracticeSeason || String(season?.seasonId || "").startsWith("practice")
+        ? normalizeFiveVFiveTeams(season?.fiveVFiveTeams)
+        : ensureFiveVFiveTeamsShape(season?.fiveVFiveTeams),
     matchMode: season?.matchMode || "round_robin",
     scheduledTarget:
       Number.isInteger(Number(season?.scheduledTarget))
@@ -2328,7 +2331,25 @@ export default function App() {
         if (s.seasonId !== safePrev.activeSeasonId) return s;
         const updated =
           typeof seasonUpdater === "function" ? seasonUpdater(s) : seasonUpdater;
-        return { ...s, ...updated, updatedAt: new Date().toISOString() };
+
+        const nextSeason = { ...s, ...updated, updatedAt: new Date().toISOString() };
+
+        if (
+          String(sessionScopedClubId || "").endsWith("-practice") &&
+          s?.matchType !== nextSeason?.matchType
+        ) {
+          console.warn("[PRACTICE MATCHTYPE WRITER TRACE]", {
+            page,
+            from: s?.matchType,
+            to: nextSeason?.matchType,
+            seasonId: s?.seasonId,
+            gameFormatBefore: s?.gameFormat,
+            gameFormatAfter: nextSeason?.gameFormat,
+            stack: new Error().stack,
+          });
+        }
+
+        return nextSeason;
       });
       return { ...safePrev, seasons, updatedAt: new Date().toISOString() };
     });
@@ -2362,6 +2383,25 @@ export default function App() {
             if (!cloudState) return;
 
             const nextCloudState = ensureV2StateShape(cloudState);
+
+            const cloudActiveSeason =
+              nextCloudState?.seasons?.find((season) => season?.seasonId === nextCloudState?.activeSeasonId) ||
+              nextCloudState?.seasons?.[0] ||
+              null;
+
+            console.warn("[CLOUD STATE DEBUG]", {
+              sessionScopedClubId,
+              activeSeasonId: nextCloudState?.activeSeasonId,
+              cloudMatchType: cloudActiveSeason?.matchType,
+              cloudGameFormat: cloudActiveSeason?.gameFormat,
+              cloudTeams: Array.isArray(cloudActiveSeason?.teams)
+                ? cloudActiveSeason.teams.map((team) => ({
+                    id: team?.id,
+                    label: team?.label,
+                    playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+                  }))
+                : [],
+            });
             setState((prev) => {
               try {
                 if (JSON.stringify(prev) === JSON.stringify(nextCloudState)) {
@@ -2536,7 +2576,10 @@ export default function App() {
     matchType = normalizeMatchMode(s?.matchType || s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
     gameFormat = normalizeGameFormat(s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
     activeTeamIds = Array.isArray(s?.activeTeamIds) ? s.activeTeamIds : [];
-    fiveVFiveTeams = ensureFiveVFiveTeamsShape(s?.fiveVFiveTeams);
+    fiveVFiveTeams =
+      isPracticeMode || s?.isPracticeSeason || String(s?.seasonId || "").startsWith("practice")
+        ? normalizeFiveVFiveTeams(s?.fiveVFiveTeams)
+        : ensureFiveVFiveTeamsShape(s?.fiveVFiveTeams);
     matchMode = s?.matchMode || "round_robin";
     scheduledTarget =
       Number.isInteger(Number(s?.scheduledTarget)) ? Number(s.scheduledTarget) : null;
@@ -3335,6 +3378,16 @@ export default function App() {
         ? MATCH_TYPE.LEAGUE
         : MATCH_TYPE.FRIENDLY;
 
+    console.warn("[MATCH TYPE CHANGE DEBUG] requested", {
+      isPracticeMode,
+      nextMatchType,
+      safeMatchType,
+      activeSeasonId,
+      currentMatchType: matchType,
+      currentGameFormat: gameFormat,
+      sessionScopedClubId,
+    });
+
     if (USE_V2) {
       updateActiveSeason((prevSeason) => {
         const nextSeason = {
@@ -3351,7 +3404,11 @@ export default function App() {
                   .map((team) => team?.id)
                   .filter(Boolean)
                   .slice(0, 2),
-          fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
+          fiveVFiveTeams:
+            prevSeason?.isPracticeSeason ||
+            String(prevSeason?.seasonId || "").startsWith("practice")
+              ? normalizeFiveVFiveTeams(prevSeason?.fiveVFiveTeams)
+              : ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
         };
 
         if (safeMatchType === MATCH_TYPE.FRIENDLY) {
@@ -4557,6 +4614,16 @@ export default function App() {
     }
 
     const safeUpdatedTeams = Array.isArray(updatedTeams) ? updatedTeams : [];
+    console.log("[APP TEAMS SAVE DEBUG]", {
+      isPracticeMode,
+      count: safeUpdatedTeams.length,
+      teams: safeUpdatedTeams.map((team) => ({
+        id: team?.id,
+        label: team?.label,
+        playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+        players: Array.isArray(team?.players) ? team.players : [],
+      })),
+    });
     const nextTeamIds = safeUpdatedTeams.map((team) => team?.id).filter(Boolean);
     const nextActiveTeamIds = Array.from(
       new Set(normalizedActiveTeamIds.filter((teamId) => nextTeamIds.includes(teamId)))
@@ -4615,7 +4682,9 @@ export default function App() {
 
     console.log("[APP SAVE DEBUG] received fiveVFiveTeams", updatedTeams);
 
-    const safeTeams = ensureFiveVFiveTeamsShape(updatedTeams);
+    const safeTeams = isPracticeMode
+      ? (Array.isArray(updatedTeams) ? updatedTeams : [])
+      : ensureFiveVFiveTeamsShape(updatedTeams);
 
     console.log("[APP SAVE DEBUG] safe fiveVFiveTeams", safeTeams);
 
@@ -5472,6 +5541,62 @@ export default function App() {
       setSquadsAdminPreviewOpen(false);
     }
   }, [page]);
+
+  const lastPracticeTeamSnapshotRef = useRef("");
+
+  useEffect(() => {
+    if (!isPracticeMode) return;
+
+    const snapshot = JSON.stringify(
+      (Array.isArray(teams) ? teams : []).map((team) => ({
+        id: team?.id,
+        label: team?.label,
+        players: Array.isArray(team?.players) ? team.players : [],
+      }))
+    );
+
+    if (snapshot !== lastPracticeTeamSnapshotRef.current) {
+      console.warn("[PRACTICE TEAMS CHANGED]", {
+        page,
+        activeSeasonId,
+        teams: (Array.isArray(teams) ? teams : []).map((team) => ({
+          id: team?.id,
+          label: team?.label,
+          playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+          players: Array.isArray(team?.players) ? team.players : [],
+        })),
+      });
+      lastPracticeTeamSnapshotRef.current = snapshot;
+    }
+  }, [isPracticeMode, page, activeSeasonId, teams]);
+
+  useEffect(() => {
+    if (!isPracticeMode) return;
+
+    console.log("[PRACTICE PAGE STATE DEBUG]", {
+      page,
+      activeSeasonId,
+      matchType,
+      teamsCount: Array.isArray(teams) ? teams.length : 0,
+      teams: Array.isArray(teams)
+        ? teams.map((team) => ({
+            id: team?.id,
+            label: team?.label,
+            playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+            players: Array.isArray(team?.players) ? team.players : [],
+          }))
+        : [],
+      fiveVFiveTeamsCount: Array.isArray(fiveVFiveTeams) ? fiveVFiveTeams.length : 0,
+      fiveVFiveTeams: Array.isArray(fiveVFiveTeams)
+        ? fiveVFiveTeams.map((team) => ({
+            id: team?.id,
+            label: team?.label,
+            playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+            players: Array.isArray(team?.players) ? team.players : [],
+          }))
+        : [],
+    });
+  }, [page, isPracticeMode, activeSeasonId, matchType, teams, fiveVFiveTeams]);
 
   const pagesWithBottomNav = new Set([
     PAGE_LANDING,
@@ -6494,24 +6619,8 @@ export default function App() {
                   setCurrentConfirmedLineupSnapshot(null);
                   setConfirmedLineupsByMatchNo({});
 
-                  const practiceState = buildPracticeState();
-
-                  if (Array.isArray(practiceState?.seasons)) {
-                    practiceState.seasons = practiceState.seasons.map((season) => ({
-                      ...season,
-                      teams: Array.isArray(season?.teams)
-                        ? season.teams.map((team) => ({
-                            ...team,
-                            players: [],
-                            captain: "",
-                            captainId: null,
-                          }))
-                        : [],
-                    }));
-                  }
-
-                  setState(practiceState);
-
+                  // Practice state is seeded in Firebase and then loaded by subscribeToStateV2().
+                  // Do not rebuild/reset it here, otherwise saved practice squads are wiped on entry.
                   setSessionMode("practice");
                   setShowSessionSelector(false);
                 }}
@@ -6674,7 +6783,11 @@ export default function App() {
           timeUp={timeUp}
           running={running}
           teams={pendingMatchStartContext?.teams || teams}
-          fiveVFiveTeams={pendingMatchStartContext?.fiveVFiveTeams || getActiveFriendlyTeams(fiveVFiveTeams)}
+          fiveVFiveTeams={
+            isPracticeMode
+              ? teams
+              : (pendingMatchStartContext?.fiveVFiveTeams || getActiveFriendlyTeams(fiveVFiveTeams))
+          }
           currentMatchNo={pendingMatchStartContext?.matchNo || activeMatchNo}
           currentMatch={pendingMatchStartContext?.currentMatch || effectiveLiveMatch}
           currentEvents={currentEvents}
@@ -6726,8 +6839,12 @@ export default function App() {
       {page === PAGE_STATS && (
         <StatsPage
           teams={teams}
-          friendlyTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
-          fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
+          friendlyTeams={
+            isPracticeMode ? teams : getActiveFriendlyTeams(fiveVFiveTeams)
+          }
+          fiveVFiveTeams={
+            isPracticeMode ? teams : getActiveFriendlyTeams(fiveVFiveTeams)
+          }
           gameFormat={gameFormat}
           results={results}
           allEvents={allEvents}
@@ -6781,7 +6898,9 @@ export default function App() {
           isPlayer={isPlayer}
           members={members}
           teams={matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
-          friendlyTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
+          friendlyTeams={
+            isPracticeMode ? teams : getActiveFriendlyTeams(fiveVFiveTeams)
+          }
           currentMatch={effectiveLiveMatch}
           matchType={matchType}
           gameFormat={gameFormat}
@@ -6911,7 +7030,11 @@ export default function App() {
       {page === PAGE_SQUADS && (
         <SquadsPage
           teams={teams}
-          fiveVFiveTeams={ensureFiveVFiveTeamsShape(fiveVFiveTeams)}
+          fiveVFiveTeams={
+            isPracticeMode
+              ? teams
+              : ensureFiveVFiveTeamsShape(fiveVFiveTeams)
+          }
           onUpdateTeams={handleUpdateTeams}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
@@ -6922,6 +7045,7 @@ export default function App() {
           gameFormat={gameFormat}
           activeClub={activeClub}
           activeClubId={sessionScopedClubId}
+          isPracticeMode={isPracticeMode}
           activeTeamIds={normalizedActiveTeamIds}
           onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
@@ -6934,7 +7058,9 @@ export default function App() {
       {page === PAGE_FORMATIONS && (
         <FormationsPage
           teams={teams}
-          fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
+          fiveVFiveTeams={
+            isPracticeMode ? teams : getActiveFriendlyTeams(fiveVFiveTeams)
+          }
           currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
           allEvents={allEvents}

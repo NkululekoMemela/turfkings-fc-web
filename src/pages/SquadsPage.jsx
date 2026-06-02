@@ -31,6 +31,7 @@ import {
   normalizeMatchMode,
   normalizeGameFormat,
 } from "../core/matchConfig.js";
+import { buildPracticePlayers } from "../core/practiceSessionSeed.js";
 import {
   isCaptainCode,
   isAdminCode,
@@ -733,6 +734,7 @@ export function SquadsPage({
   gameFormat = GAME_FORMAT.FIVE_V_FIVE,
   activeClubId = "turf-kings",
   activeClub = null,
+  isPracticeMode = false,
   activeSeasonId = null,
   seasonNo = null,
   matchDayHistory = [],
@@ -777,6 +779,11 @@ export function SquadsPage({
   );
   const [localFiveVFiveTeams, setLocalFiveVFiveTeams] = useState(() => {
     const normalized = normalizeIncomingTeams(fiveVFiveTeams);
+
+    if (isPracticeMode && normalized.length >= 2) {
+      return normalized;
+    }
+
     return normalized.length === 2 ? normalized : buildDefaultFiveVFiveTeams();
   });
 
@@ -951,8 +958,13 @@ export function SquadsPage({
   }, [onBack]);
 
   useEffect(() => {
+    // Practice squads are local-first after save.
+    // Avoid immediately overwriting freshly saved local squads
+    // with transient subscription refresh state.
+    if (isPracticeMode) return;
+
     setLocalLeagueTeams(normalizeIncomingTeams(teams));
-  }, [teams]);
+  }, [teams, isPracticeMode]);
 
   // IMPORTANT:
   // Friendly squad editing is now fully local-first.
@@ -1211,40 +1223,17 @@ export function SquadsPage({
   }, [signupRecords]);
 
   const paidTeamSheetPlayers = useMemo(() => {
+    if (isPracticeMode) {
+      return buildPracticePlayers().map((player) => ({
+        id: player.id,
+        fullName: player.fullName || player.displayName || player.name || player.id,
+        paymentStatus: "practice",
+        weekId: "practice",
+      }));
+    }
+
     if (!nextTeamsheetWeekId) {
-      return signupRecords
-        .map((record) => {
-          const playerId = String(
-            record.beneficiaryPlayerId ||
-            record.playerId ||
-            record.userId ||
-            record.docId ||
-            ""
-          ).trim();
-
-          const playerName = toTitleCase(
-            record.beneficiaryName ||
-            record.playerName ||
-            record.displayName ||
-            record.shortName ||
-            playerId
-          );
-
-          const resolvedId =
-            playersById.has(playerId)
-              ? playerId
-              : resolvePlayerIdFromString(allPlayers, playerName) || playerId;
-
-          if (!resolvedId) return null;
-
-          return {
-            id: resolvedId,
-            fullName: playerName || displayNameOf(resolvedId),
-            paymentStatus: "practice",
-            weekId: "practice",
-          };
-        })
-        .filter(Boolean);
+      return [];
     }
 
     const byId = new Map();
@@ -1293,7 +1282,7 @@ export function SquadsPage({
     return Array.from(byId.values()).sort((a, b) =>
       String(a.fullName || "").localeCompare(String(b.fullName || ""))
     );
-  }, [signupRecords, nextTeamsheetWeekId, playersById, allPlayers]);
+  }, [isPracticeMode, signupRecords, nextTeamsheetWeekId, playersById, allPlayers]);
 
 
   const activePlayers = useMemo(
@@ -1425,8 +1414,13 @@ export function SquadsPage({
 
   const baseFriendlyTeams = useMemo(() => {
     const normalized = normalizeIncomingTeams(localFiveVFiveTeams);
+
+    if (isPracticeMode) {
+      return normalized;
+    }
+
     return normalized.length === 2 ? normalized : buildDefaultFiveVFiveTeams();
-  }, [localFiveVFiveTeams]);
+  }, [localFiveVFiveTeams, isPracticeMode]);
 
   useEffect(() => {
     // Challenge squads are intentionally isolated from normal friendly squads.
@@ -2422,6 +2416,14 @@ export function SquadsPage({
 
     setLocalFiveVFiveTeams(outgoingFiveVFiveTeams);
 
+    console.log("[SQUADS SAVE DEBUG] mode", {
+      isPracticeMode,
+      isFiveVFive,
+      resolvedMatchType,
+      resolvedGameFormat,
+    });
+    console.log("[SQUADS SAVE DEBUG] cleanedLeagueTeams", cleanedLeagueTeams);
+    console.log("[SQUADS SAVE DEBUG] cleanedFiveVFiveTeams", cleanedFiveVFiveTeams);
     console.log("[SQUADS SAVE DEBUG] outgoingFiveVFiveTeams", outgoingFiveVFiveTeams);
     const outgoingLeagueTeams = cleanedLeagueTeams.map((t) => ({
       ...t,
@@ -2431,10 +2433,16 @@ export function SquadsPage({
     setLocalLeagueTeams(outgoingLeagueTeams);
     setLocalFiveVFiveTeams(outgoingFiveVFiveTeams);
 
-    const activeOutgoingTeams = isFiveVFive ? outgoingFiveVFiveTeams : outgoingLeagueTeams;
+    const activeOutgoingTeams =
+      isPracticeMode
+        ? outgoingLeagueTeams
+        : (isFiveVFive ? outgoingFiveVFiveTeams : outgoingLeagueTeams);
 
-
-    onUpdateFiveVFiveTeams?.(outgoingFiveVFiveTeams);
+    if (isPracticeMode) {
+      onUpdateTeams?.(outgoingLeagueTeams);
+    } else {
+      onUpdateFiveVFiveTeams?.(outgoingFiveVFiveTeams);
+    }
 
     handleCancelSave();
   };
@@ -2709,6 +2717,72 @@ export function SquadsPage({
   };
 
 
+  const handleAutoFillSquads = () => {
+    if (!canEdit) return;
+
+    const eligibleIds = Array.from(
+      new Set(
+        paidTeamSheetPlayers
+          .map((p) => String(p?.id || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (!eligibleIds.length) {
+      window.alert(
+        isPracticeMode
+          ? "No practice players are available for auto fill."
+          : "No paid players are available for the upcoming game yet."
+      );
+      return;
+    }
+
+    setSourceTeams((prevTeams) => {
+      let cursor = 0;
+
+      return (prevTeams || []).map((team) => {
+        const existing = Array.isArray(team.players) ? team.players.filter(Boolean) : [];
+        const keep = existing.filter((pid) => eligibleIds.includes(pid)).slice(0, playersPerSide);
+
+        const nextPlayers = [...keep];
+
+        while (nextPlayers.length < playersPerSide && cursor < eligibleIds.length) {
+          const candidate = eligibleIds[cursor];
+          cursor += 1;
+
+          const alreadyUsed = (prevTeams || []).some((t) =>
+            Array.isArray(t.players) && t.players.includes(candidate)
+          );
+
+          if (nextPlayers.includes(candidate)) continue;
+          if (alreadyUsed && !existing.includes(candidate)) continue;
+
+          nextPlayers.push(candidate);
+        }
+
+        return {
+          ...team,
+          players: nextPlayers,
+          captainId: nextPlayers.includes(team.captainId) ? team.captainId : null,
+        };
+      });
+    });
+  };
+
+  const handleClearSquads = () => {
+    if (!canEdit) return;
+
+    setSourceTeams((prevTeams) =>
+      (prevTeams || []).map((team) => ({
+        ...team,
+        players: [],
+        captainId: null,
+        captain: "",
+      }))
+    );
+  };
+
+
 
   const isActiveGuestChallenge = Boolean(guestOpponentEnabled && activeChallengeFixture);
 
@@ -2885,7 +2959,28 @@ export function SquadsPage({
   const renderAvailablePaidPlayersCard = () => {
     const remainingPaidPlayers = paidTeamSheetPlayers.filter((p) => !assignedIds.has(p.id));
 
-    if (!remainingPaidPlayers.length) return null;
+    if (!remainingPaidPlayers.length) {
+      return (
+        <div className="teamsheet-export-wrap available-paid-card-wrap">
+          <div className="teamsheet-card available-paid-card">
+            <div className="teamsheet-card-head">
+              <div className="teamsheet-card-club">
+                <img src={activeClub?.logoUrl || TURF_KINGS_LOGO_URL} alt="" />
+                <div>
+                  <span>{activeClubName || "Club"}</span>
+                  <small>Available paid players</small>
+                </div>
+              </div>
+            </div>
+
+            <p className="muted small" style={{ margin: 0 }}>
+              No paid players found for the upcoming game yet.
+              Players must appear here after paying or being verified on Match Signup.
+            </p>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="teamsheet-export-wrap available-paid-card-wrap">
@@ -3780,6 +3875,20 @@ export function SquadsPage({
                   onClick={() => setShowSquadPreview(false)}
                 >
                   View teamsheet
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={
+                    sourceTeams.some((team) => Array.isArray(team.players) && team.players.length > 0)
+                      ? handleClearSquads
+                      : handleAutoFillSquads
+                  }
+                >
+                  {sourceTeams.some((team) => Array.isArray(team.players) && team.players.length > 0)
+                    ? "Clear squads"
+                    : "Auto fill squads"}
                 </button>
 <button
                   type="button"

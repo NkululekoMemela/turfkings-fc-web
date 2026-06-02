@@ -996,6 +996,7 @@ export function FormationsPage({
   activeClub = null,
   teams = [],
   fiveVFiveTeams = [],
+
   currentMatch,
   currentEvents = [],
   allEvents = [],
@@ -1032,6 +1033,35 @@ export function FormationsPage({
       ? fiveVFiveTeams
       : [];
   }, [isFriendlyMatch, teams, fiveVFiveTeams]);
+
+  console.log("[FORMATIONS SOURCE TEAMS DEBUG]", {
+    matchType,
+    isFriendlyMatch,
+    teams: Array.isArray(teams)
+      ? teams.map((t) => ({
+          id: t?.id,
+          label: t?.label,
+          playersCount: Array.isArray(t?.players) ? t.players.length : 0,
+          players: Array.isArray(t?.players) ? t.players : [],
+        }))
+      : [],
+    fiveVFiveTeams: Array.isArray(fiveVFiveTeams)
+      ? fiveVFiveTeams.map((t) => ({
+          id: t?.id,
+          label: t?.label,
+          playersCount: Array.isArray(t?.players) ? t.players.length : 0,
+          players: Array.isArray(t?.players) ? t.players : [],
+        }))
+      : [],
+    sourceTeams: Array.isArray(sourceTeams)
+      ? sourceTeams.map((t) => ({
+          id: t?.id,
+          label: t?.label,
+          playersCount: Array.isArray(t?.players) ? t.players.length : 0,
+          players: Array.isArray(t?.players) ? t.players : [],
+        }))
+      : [],
+  });
 
   const initialTeamId =
     currentMatch?.teamAId || (sourceTeams[0] ? sourceTeams[0].id : null);
@@ -1510,6 +1540,18 @@ export function FormationsPage({
 
     const targetPlayerPool =
       targetGameType === GAME_TYPE_11 ? clubPlayers : targetTeam?.players || [];
+
+    console.log("[FORMATIONS LINEUP DEBUG]", {
+      matchType,
+      gameFormat,
+      selectedTeamId: teamId,
+      targetTeamId: targetTeam?.id,
+      targetTeamLabel: targetTeam?.label,
+      targetPlayersCount: Array.isArray(targetTeam?.players) ? targetTeam.players.length : 0,
+      targetPlayers: Array.isArray(targetTeam?.players) ? targetTeam.players : [],
+      targetPlayerPoolCount: Array.isArray(targetPlayerPool) ? targetPlayerPool.length : 0,
+      hasSavedLineup: Boolean(lineupsByTeam?.[targetTeam?.id]),
+    });
 
     const next = resolveLatestPreferredTeamLineup(
       targetTeam,

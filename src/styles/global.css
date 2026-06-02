@@ -4746,7 +4746,7 @@
     rgba(14, 165, 233, 0.5)
   );
 }
-<<<<<<< HEAD
+
 /* =========================================
    SQUADS PAGE — LAUNCH WIDTH FIX
    ========================================= */
@@ -7101,7 +7101,7 @@ body.squad-preview-is-open.admin-squad-preview nav[aria-label="Bottom navigation
 .live-verify-modal .live-bench-title {
   margin-bottom: 0.45rem !important;
 }
-=======
+
 /* Hide bottom navigation completely on the Live Match page only */
 body:has(.live-page) .tk-bottom-nav-flat {
   display: none !important;
@@ -7111,4 +7111,3 @@ body:has(.live-page) .tk-bottom-nav-flat {
 body:has(.live-page) .app-root {
   padding-bottom: 0 !important;
 }
->>>>>>> origin/main
