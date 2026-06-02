@@ -7,7 +7,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 
-const PRACTICE_PLAYER_NAMES = [
+export const PRACTICE_PLAYER_NAMES = [
   "Sipho Dlamini",
   "Thabo Mokoena",
   "Lerato Khumalo",
@@ -68,6 +68,11 @@ function buildPracticePlayer(name, index) {
   };
 }
 
+
+export function buildPracticePlayers() {
+  return PRACTICE_PLAYER_NAMES.map(buildPracticePlayer);
+}
+
 export function buildPracticeState() {
   const now = new Date().toISOString();
 
@@ -121,19 +126,27 @@ export function buildPracticeState() {
 
   return {
     activeSeasonId,
+    isPracticeState: true,
+    sessionMode: "practice",
+    matchType: "FRIENDLY",
+    gameFormat: "5_V_5",
     seasons: [
       {
         seasonId: activeSeasonId,
         seasonNo: 1,
+        isPracticeSeason: true,
+        sessionMode: "practice",
+        matchType: "FRIENDLY",
+        gameFormat: "5_V_5",
         createdAt: now,
         updatedAt: now,
         teams: leagueTeams,
         fiveVFiveTeams: friendlyTeams,
         currentMatchNo: 1,
         currentMatch: {
-          teamAId: leagueTeams[0].id,
-          teamBId: leagueTeams[1].id,
-          standbyId: leagueTeams[2].id,
+          teamAId: friendlyTeams[0].id,
+          teamBId: friendlyTeams[1].id,
+          standbyId: null,
         },
         currentEvents: [],
         allEvents: [],
@@ -170,7 +183,7 @@ export async function ensurePracticeSessionSeed(
 
   const seededSnap = await getDoc(seededRef);
 
-  if (seededSnap.exists() && seededSnap.data()?.seedVersion === 1) {
+  if (seededSnap.exists() && seededSnap.data()?.seedVersion === 2) {
     return { seeded: false, reason: "already-seeded" };
   }
 
@@ -193,7 +206,48 @@ export async function ensurePracticeSessionSeed(
     { merge: true }
   );
 
-  batch.set(stateRef, buildPracticeState(), { merge: true });
+  const existingStateSnap = await getDoc(stateRef);
+  const existingState = existingStateSnap.exists() ? existingStateSnap.data() || {} : {};
+  const seededState = buildPracticeState();
+
+  const existingSeasons = Array.isArray(existingState.seasons) ? existingState.seasons : [];
+  const seededSeason = seededState.seasons[0];
+
+  const nextSeasons = existingSeasons.length
+    ? existingSeasons.map((season, index) => {
+        if (index !== 0) return season;
+
+        return {
+          ...season,
+          isPracticeSeason: true,
+          sessionMode: "practice",
+          matchType: season?.matchType || "FRIENDLY",
+          gameFormat: season?.gameFormat || "5_V_5",
+          teams: Array.isArray(season?.teams) && season.teams.length ? season.teams : seededSeason.teams,
+          fiveVFiveTeams:
+            Array.isArray(season?.fiveVFiveTeams) && season.fiveVFiveTeams.length
+              ? season.fiveVFiveTeams
+              : seededSeason.fiveVFiveTeams,
+          currentMatch: season?.currentMatch || seededSeason.currentMatch,
+          currentMatchNo: season?.currentMatchNo || 1,
+        };
+      })
+    : seededState.seasons;
+
+  batch.set(
+    stateRef,
+    {
+      ...seededState,
+      ...existingState,
+      isPracticeState: true,
+      sessionMode: "practice",
+      matchType: existingState.matchType || "FRIENDLY",
+      gameFormat: existingState.gameFormat || "5_V_5",
+      seasons: nextSeasons,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   players.forEach((player, index) => {
     const playerRef = doc(
@@ -275,7 +329,7 @@ export async function ensurePracticeSessionSeed(
   batch.set(
     seededRef,
     {
-      seedVersion: 1,
+      seedVersion: 2,
       playerCount: players.length,
       weekId,
       seededAt: serverTimestamp(),
