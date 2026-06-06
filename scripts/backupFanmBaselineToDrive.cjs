@@ -139,6 +139,28 @@ function zipDir(sourceDir, zipPath) {
   });
 }
 
+async function pruneOldBackups(drive, folderId, keepCount = 3) {
+  const res = await drive.files.list({
+    q: `'${folderId}' in parents and name contains 'fanm_baseline_' and name contains '.zip' and trashed=false`,
+    fields: "files(id,name,createdTime)",
+    orderBy: "createdTime desc",
+    pageSize: 100,
+  });
+
+  const files = res.data.files || [];
+  const oldFiles = files.slice(keepCount);
+
+  console.log(`Backup retention: found ${files.length}, keeping ${Math.min(files.length, keepCount)}, deleting ${oldFiles.length}`);
+
+  for (const file of oldFiles) {
+    await drive.files.update({
+      fileId: file.id,
+      requestBody: { trashed: true },
+    });
+    console.log(`Trashed old backup: ${file.name}`);
+  }
+}
+
 async function uploadToDrive(zipPath) {
   const drive = driveClient();
   const folder = await findOrCreateFolder(drive, DRIVE_ROOT_FOLDER_NAME);
@@ -155,6 +177,8 @@ async function uploadToDrive(zipPath) {
     },
     fields: "id,name,webViewLink",
   });
+
+  await pruneOldBackups(drive, folder.id, 3);
 
   return upload.data;
 }
