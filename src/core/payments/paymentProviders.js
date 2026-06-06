@@ -45,6 +45,11 @@ export function getDefaultClubPaymentSettings() {
     collectionMethod: PAYMENT_COLLECTION_METHODS.EXTERNAL,
     provider: null,
     preferredProvider: PAYMENT_PROVIDERS.PEACH,
+    availableProviders: [
+      PAYMENT_PROVIDERS.PEACH,
+      PAYMENT_PROVIDERS.STRIPE,
+      PAYMENT_PROVIDERS.PAYSTACK,
+    ],
     onboardingStatus: PAYMENT_ONBOARDING_STATUSES.NOT_STARTED,
     payoutStatus: PAYOUT_STATUSES.NOT_ENABLED,
     commissionModel: {
