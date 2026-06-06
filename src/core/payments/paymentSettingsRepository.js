@@ -1,5 +1,5 @@
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { db } from "../../firebase.js";
+import { db } from "../../firebaseConfig";
 import {
   PAYMENT_COLLECTION_METHODS,
   PAYMENT_PROVIDERS,
