@@ -11,6 +11,12 @@ import { db } from "../firebaseConfig";
 
 import { getClubDoc } from "../core/clubFirestorePaths";
 import { CLUB_COLLECTIONS } from "../core/clubPaths";
+import { getClubPaymentSettings } from "../core/payments/paymentSettingsRepository";
+import {
+  canUseExternalPayments,
+  canUsePlatformPayments,
+  resolveClubPaymentSettings,
+} from "../core/payments/paymentProviders";
 
 const PAYMENT_METHOD_LABEL = "Yoco";
 const COST_PER_GAME_DEFAULT = 65;
@@ -148,6 +154,14 @@ export default function PaymentPage({
     identity?.email ||
     "Player";
 
+  const activeClubId =
+    String(
+      paymentContext?.activeClubId ||
+        paymentContext?.clubId ||
+        identity?.clubId ||
+        "turf-kings"
+    ).trim() || "turf-kings";
+
   const rawPrimarySelectedWeeks = paymentContext?.selectedWeeks || [];
   const rawSecondSelectedWeeks =
     paymentContext?.secondSelectedWeeks ||
@@ -272,6 +286,9 @@ export default function PaymentPage({
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [error, setError] = useState("");
   const [slowPaymentMessage, setSlowPaymentMessage] = useState("");
+  const [clubPaymentSettings, setClubPaymentSettings] = useState(() =>
+    resolveClubPaymentSettings({})
+  );
 
   const [adminAmountPaid, setAdminAmountPaid] = useState("");
   const [adminStatus, setAdminStatus] = useState("pending");
@@ -282,6 +299,36 @@ export default function PaymentPage({
     isCaptain ||
     activeRole === "admin" ||
     activeRole === "captain";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getClubPaymentSettings(activeClubId)
+      .then((settings) => {
+        if (!cancelled) {
+          setClubPaymentSettings(settings);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load club payment settings:", err);
+        if (!cancelled) {
+          setClubPaymentSettings(resolveClubPaymentSettings({}));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeClubId]);
+
+  const clubCanUsePlatformPayments = canUsePlatformPayments(clubPaymentSettings);
+  const clubCanUseExternalPayments = canUseExternalPayments(clubPaymentSettings);
+
+  const clubPaymentModeLabel = clubCanUsePlatformPayments
+    ? `Online payments via ${String(clubPaymentSettings.provider || "platform")}`
+    : clubCanUseExternalPayments
+      ? "External collection by club/captain"
+      : "Payments not active";
 
   useEffect(() => {
     if (!signupDocId) {
@@ -609,6 +656,9 @@ export default function PaymentPage({
                   </h3>
                   <p className="muted small">
                     Reference: {buildReferenceLabel(primaryDisplayName)}
+                  </p>
+                  <p className="muted small">
+                    Payment mode: {clubPaymentModeLabel}
                   </p>
                 </div>
 
