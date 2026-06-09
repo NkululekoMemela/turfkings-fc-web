@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import "../styles/HomePage_HUB.css";
@@ -433,6 +433,7 @@ export default function HomePage_HUB({
   const [challengeStatus, setChallengeStatus] = useState("");
   const [challengeError, setChallengeError] = useState("");
   const [isSubmittingChallenge, setIsSubmittingChallenge] = useState(false);
+  const [deletingClubId, setDeletingClubId] = useState("");
   const [hubInfoModal, setHubInfoModal] = useState(null);
   const [hubContactModal, setHubContactModal] = useState(null);
   const [hubContactSubject, setHubContactSubject] = useState("");
@@ -472,7 +473,12 @@ export default function HomePage_HUB({
         setLoadingClubs(true);
 
         const snap = await getDocs(collection(db, "clubs"));
-        const firebaseClubsRaw = snap.docs.map(normalizeClub);
+        const firebaseClubsRaw = snap.docs
+          .map(normalizeClub)
+          .filter((club) => {
+            const status = String(club?.status || "").trim().toLowerCase();
+            return status !== "deleted" && club?.deleted !== true;
+          });
         const firebaseClubs = firebaseClubsRaw.map((club) => hydrateClubHubStats(club));
 
         if (!cancelled) {
@@ -597,6 +603,59 @@ export default function HomePage_HUB({
     setChallengeMessage("");
     setChallengeStatus("");
     setChallengeError("");
+  }
+
+  async function handleDeleteClub(club) {
+    const clubId = String(club?.id || club?.clubId || "").trim();
+
+    if (!isSuperAdmin(currentUser)) {
+      window.alert("Only the super admin can delete clubs.");
+      return;
+    }
+
+    if (!clubId) {
+      window.alert("Could not identify this club.");
+      return;
+    }
+
+    const clubName = club?.name || clubId;
+    const typed = window.prompt(
+      `Type DELETE to remove ${clubName} from the public hub. This will hide the club but keep a record for audit purposes.`
+    );
+
+    if (typed !== "DELETE") return;
+
+    try {
+      setDeletingClubId(clubId);
+
+      await updateDoc(doc(db, "clubs", clubId), {
+        status: "deleted",
+        deleted: true,
+        deletedAt: serverTimestamp(),
+        deletedByEmail: currentUser?.email || "",
+        deletedByUid: currentUser?.uid || "",
+      });
+
+      setClubs((current) => {
+        const next = current.filter((item) => String(item?.id || item?.clubId || "") !== clubId);
+
+        try {
+          window.localStorage.setItem(CLUB_CACHE_KEY, JSON.stringify(next));
+        } catch {
+          // Ignore cache failures.
+        }
+
+        return next;
+      });
+
+      setActiveClub(null);
+      setActiveMapClub(null);
+    } catch (error) {
+      console.error("[HomePage_HUB] Could not delete club:", error);
+      window.alert("Could not delete this club. Please try again.");
+    } finally {
+      setDeletingClubId("");
+    }
   }
 
   async function submitChallengeRequest() {
@@ -1327,6 +1386,17 @@ export default function HomePage_HUB({
               >
                 Challenge
               </button>
+
+              {isSuperAdmin(currentUser) ? (
+                <button
+                  type="button"
+                  className="hub-danger-button"
+                  disabled={deletingClubId === String(activeClub?.id || activeClub?.clubId || "")}
+                  onClick={() => handleDeleteClub(activeClub)}
+                >
+                  {deletingClubId === String(activeClub?.id || activeClub?.clubId || "") ? "Deleting..." : "Delete Club"}
+                </button>
+              ) : null}
 
               {canCurrentUserManageClub(currentUser, activeClub) ? (
                 <button

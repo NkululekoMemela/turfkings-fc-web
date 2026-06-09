@@ -7109,3 +7109,15 @@
 .hub-contact-field textarea {
   resize: vertical;
 }
+
+.hub-danger-button {
+  border-color: rgba(239, 68, 68, 0.34) !important;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(185, 28, 28, 0.95)) !important;
+  color: #fff !important;
+  box-shadow: 0 14px 24px rgba(239, 68, 68, 0.22) !important;
+}
+
+.hub-danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
