@@ -24,7 +24,9 @@ const FUNCTIONS_REGION = "us-central1";
 
 function formatCurrency(value) {
   const amount = Number(value || 0);
-  return `R${amount.toFixed(0)}`;
+  const rounded = Math.round(amount);
+  const hasCents = Math.abs(amount - rounded) >= 0.005;
+  return `R${hasCents ? amount.toFixed(2) : rounded.toFixed(0)}`;
 }
 
 function firstNameOf(value) {
@@ -245,16 +247,6 @@ export default function PaymentPage({
     paymentContext?.additionalPlayerEmail ||
     "";
 
-  const costPerGame = Number(paymentContext?.costPerGame || COST_PER_GAME_DEFAULT);
-
-  const contextGamesSelected =
-    primarySelectedWeeks.length + secondSelectedWeeks.length;
-
-  const fallbackAmountDue = contextGamesSelected * costPerGame;
-  const contextAmountDue = Number(
-    paymentContext?.totalAmount || paymentContext?.amountDue || fallbackAmountDue || 0
-  );
-
   const initialReference =
     paymentContext?.paymentReference || buildReferenceLabel(primaryDisplayName);
 
@@ -288,6 +280,30 @@ export default function PaymentPage({
   const [slowPaymentMessage, setSlowPaymentMessage] = useState("");
   const [clubPaymentSettings, setClubPaymentSettings] = useState(() =>
     resolveClubPaymentSettings({})
+  );
+
+  const captainContributionPerGame = Number(
+    paymentContext?.captainContributionPerGame ||
+      paymentContext?.fieldContributionPerGame ||
+      paymentContext?.captainRequiredContribution ||
+      paymentContext?.baseCostPerGame ||
+      paymentContext?.costPerGame ||
+      COST_PER_GAME_DEFAULT
+  );
+
+  const platformUpliftPerGame = Number(
+    clubPaymentSettings?.pricingModel?.serviceFeePerPlayer || 7.5
+  );
+
+  const playerChargePerGame = captainContributionPerGame + platformUpliftPerGame;
+  const costPerGame = playerChargePerGame;
+
+  const contextGamesSelected =
+    primarySelectedWeeks.length + secondSelectedWeeks.length;
+
+  const fallbackAmountDue = contextGamesSelected * costPerGame;
+  const contextAmountDue = Number(
+    paymentContext?.totalAmount || paymentContext?.amountDue || fallbackAmountDue || 0
   );
 
   const [adminAmountPaid, setAdminAmountPaid] = useState("");
@@ -426,6 +442,9 @@ export default function PaymentPage({
       : Number(signup?.amountDue ?? contextAmountDue ?? 0);
 
   const amountToPayNow = unpaidTotalGames * costPerGame;
+  const captainContributionToPayNow = unpaidTotalGames * captainContributionPerGame;
+  const platformUpliftToPayNow = unpaidTotalGames * platformUpliftPerGame;
+  const fanmBookingFee = platformUpliftToPayNow;
   const isFullyPaid = effectiveTotalGamesSelected > 0 && amountToPayNow === 0;
 
   const effectiveMode =
@@ -682,15 +701,19 @@ export default function PaymentPage({
                   <strong>{effectiveTotalGamesSelected}</strong>
                 </div>
                 <div className="summary-row">
-                  <span>Cost per game</span>
-                  <strong>{formatCurrency(costPerGame)}</strong>
+                  <span>Field contribution</span>
+                  <strong>{formatCurrency(captainContributionToPayNow)}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>FANM booking fee</span>
+                  <strong>{formatCurrency(fanmBookingFee)}</strong>
                 </div>
                 <div className="summary-row">
                   <span>Paid so far</span>
                   <strong>{formatCurrency(amountPaid)}</strong>
                 </div>
                 <div className="summary-row total-row">
-                  <span>Balance</span>
+                  <span>Total to pay</span>
                   <strong>{formatCurrency(amountToPayNow)}</strong>
                 </div>
               </div>

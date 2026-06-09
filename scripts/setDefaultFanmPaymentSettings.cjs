@@ -25,9 +25,9 @@ async function main() {
     availableProviders: ["peach", "stripe", "paystack"],
     onboardingStatus: "not_started",
     payoutStatus: "not_enabled",
-    commissionModel: {
-      type: "split",
-      platformPercent: 10,
+    pricingModel: {
+      type: "fixed_service_fee",
+      serviceFeePerPlayer: 7.5,
     },
     allowedActions: {
       canCollectExternal: true,

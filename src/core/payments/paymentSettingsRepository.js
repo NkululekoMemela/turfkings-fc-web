@@ -38,9 +38,9 @@ export async function saveClubPaymentSettings(clubId, paymentSettingsPatch = {})
     paymentSettings: {
       ...current,
       ...paymentSettingsPatch,
-      commissionModel: {
-        ...(current.commissionModel || {}),
-        ...(paymentSettingsPatch.commissionModel || {}),
+      pricingModel: {
+        ...(current.pricingModel || {}),
+        ...(paymentSettingsPatch.pricingModel || {}),
       },
       allowedActions: {
         ...(current.allowedActions || {}),

@@ -52,9 +52,9 @@ export function getDefaultClubPaymentSettings() {
     ],
     onboardingStatus: PAYMENT_ONBOARDING_STATUSES.NOT_STARTED,
     payoutStatus: PAYOUT_STATUSES.NOT_ENABLED,
-    commissionModel: {
-      type: "split",
-      platformPercent: 10,
+    pricingModel: {
+      type: "fixed_service_fee",
+      serviceFeePerPlayer: 7.5,
     },
     allowedActions: {
       canCollectExternal: true,
@@ -71,9 +71,9 @@ export function resolveClubPaymentSettings(club = {}) {
   return {
     ...getDefaultClubPaymentSettings(),
     ...existing,
-    commissionModel: {
-      ...getDefaultClubPaymentSettings().commissionModel,
-      ...(existing.commissionModel || {}),
+    pricingModel: {
+      ...getDefaultClubPaymentSettings().pricingModel,
+      ...(existing.pricingModel || existing.commissionModel || {}),
     },
     allowedActions: {
       ...getDefaultClubPaymentSettings().allowedActions,
