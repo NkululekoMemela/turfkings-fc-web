@@ -1112,7 +1112,7 @@ export function LandingPage({
               </span>
             </span>
 
-            {currentUser && resolvedRole !== "spectator" && (
+            {currentUser && (
               <div
                 className="muted small"
                 style={{
