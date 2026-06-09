@@ -2108,7 +2108,11 @@ export default function App() {
       }
     }
 
-    setShowSessionSelector(true);
+    const nextRole = String(
+      safePayload?.actingRole || safePayload?.role || safePayload?.realRole || ""
+    ).trim().toLowerCase();
+
+    setShowSessionSelector(["admin", "captain"].includes(nextRole));
     setPage(PAGE_LANDING);
   };
 
@@ -2661,6 +2665,7 @@ export default function App() {
 
   const isAdmin = activeRole === "admin";
   const isCaptain = activeRole === "captain";
+  const canChooseSessionMode = isAdmin || isCaptain;
   const isPlayer = activeRole === "player";
   const isSpectator = activeRole === "spectator";
 
@@ -5744,7 +5749,7 @@ export default function App() {
                 className="primary-btn"
                 onClick={() => {
                   setOfficialStartWarning(null);
-                  setShowSessionSelector(true);
+                  if (canChooseSessionMode) setShowSessionSelector(true);
                 }}
               >
                 Go to Practice Session
@@ -6466,7 +6471,7 @@ export default function App() {
                 className="primary-btn"
                 onClick={() => {
                   closePracticeRestriction();
-                  setShowSessionSelector(true);
+                  if (canChooseSessionMode) setShowSessionSelector(true);
                   setPage(PAGE_LANDING);
                 }}
               >
@@ -6485,7 +6490,7 @@ export default function App() {
         </div>
       )}
 
-      {showSessionSelector && page === PAGE_LANDING && (
+      {showSessionSelector && canChooseSessionMode && page === PAGE_LANDING && (
         <div
           style={{
             position: "fixed",
