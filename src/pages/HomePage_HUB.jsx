@@ -319,6 +319,61 @@ function canCurrentUserManageClub(currentUser, club = {}) {
 }
 
 
+
+const HUB_INFO_CONTENT = {
+  joinClub: {
+    title: "How do I join a club?",
+    body: [
+      "Browse clubs using the rotating club cards or the interactive map.",
+      "Select a club, open its club page, then choose Join Club.",
+      "Complete the sign-up form with your name, surname, Gmail address and contact number.",
+      "Once registered, you can sign up for upcoming match days inside that club.",
+    ],
+  },
+  payments: {
+    title: "How do payments work?",
+    body: [
+      "Payments are made to your club captain after you sign up as a player.",
+      "Depending on the club setup, you may pay with Apple Pay, Google Pay or card payment to book your spot.",
+      "Player contributions help the captain book the field and manage club running costs.",
+      "Only pay through the official payment options shown inside the club.",
+    ],
+  },
+  challengeClub: {
+    title: "How do I challenge another club?",
+    body: [
+      "Club challenges are started by captains.",
+      "Captains can use the Challenge option on another club's card or profile.",
+      "If your team wants a challenge match, ask your captain to submit the challenge request on behalf of your club.",
+      "The receiving captain can review, accept or decline the challenge.",
+    ],
+  },
+  terms: {
+    title: "Terms & Privacy",
+    body: [
+      "5 Asides Near Me is a football discovery, club management and match coordination platform.",
+      "Players and captains must provide honest and accurate information when joining or creating clubs.",
+      "Captains confirm that they are authorised to manage the club they create and must not create fake clubs, impersonate other clubs or collect money dishonestly.",
+      "Captains are responsible for using player contributions for legitimate football-related club costs, including field bookings and agreed club expenses.",
+      "The platform must not be used for fraud, money laundering, unlawful fundraising, fake club creation or any illegal financial activity.",
+      "5 Asides Near Me may suspend, hide, investigate or remove clubs that appear fraudulent, misleading, abusive or unlawful.",
+      "User information is used to operate the platform, manage club membership, support match coordination and communicate important club or support updates.",
+      "This is a starter platform policy and should be reviewed by a qualified legal professional before full commercial launch.",
+    ],
+  },
+};
+
+function buildMailUrl({ subject = "5 Asides Near Me Support", body = "" } = {}) {
+  const to = "support@5asidesnearme.com";
+  const params = new URLSearchParams({
+    to,
+    su: subject,
+    body,
+  });
+  return `https://mail.google.com/mail/?view=cm&fs=1&${params.toString()}`;
+}
+
+
 function uniqueSafeStrings(values = []) {
   return Array.from(
     new Set(
@@ -378,6 +433,28 @@ export default function HomePage_HUB({
   const [challengeStatus, setChallengeStatus] = useState("");
   const [challengeError, setChallengeError] = useState("");
   const [isSubmittingChallenge, setIsSubmittingChallenge] = useState(false);
+  const [hubInfoModal, setHubInfoModal] = useState(null);
+  const [hubContactModal, setHubContactModal] = useState(null);
+  const [hubContactSubject, setHubContactSubject] = useState("");
+  const [hubContactMessage, setHubContactMessage] = useState("");
+
+  function openHubInfoModal(key) {
+    setHubInfoModal(HUB_INFO_CONTENT[key] || null);
+  }
+
+  function openHubContactModal(type) {
+    const isFeedback = type === "feedback";
+    setHubContactModal(isFeedback ? "feedback" : "support");
+    setHubContactSubject(isFeedback ? "5 Asides Near Me Feedback" : "5 Asides Near Me Support");
+    setHubContactMessage("");
+  }
+
+  function sendHubContactMessage() {
+    const subject = hubContactSubject || "5 Asides Near Me Support";
+    const body = hubContactMessage || "";
+    window.open(buildMailUrl({ subject, body }), "_blank", "noopener,noreferrer");
+  }
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -965,16 +1042,152 @@ export default function HomePage_HUB({
             </button>
           </div>
 
-          <div className="hub-support-card" aria-label="5 Asides Near Me support contact details">
-            <strong>Need help?</strong>
-            <a href="mailto:support@5asidesnearme.com">support@5asidesnearme.com</a>
-            <a href="https://wa.me/27762849740" target="_blank" rel="noreferrer">
-              WhatsApp: +27 76 284 9740
-            </a>
-            <span>Mon–Fri: 08:00–18:00 SAST</span>
-          </div>
         </section>
+
+        <div className="hub-premium-footer-panels" aria-label="5 Asides Near Me support, FAQs and quick links">
+          <section className="hub-premium-footer-card">
+            <h3>Need help? <span>🎧</span></h3>
+
+            <a className="hub-premium-footer-row" href="mailto:support@5asidesnearme.com">
+              <span className="hub-premium-footer-icon">✉️</span>
+              <span>
+                <strong>Email us</strong>
+                <small>support@5asidesnearme.com</small>
+              </span>
+              <em>›</em>
+            </a>
+
+            <a className="hub-premium-footer-row" href="https://wa.me/27762849740" target="_blank" rel="noreferrer">
+              <span className="hub-premium-footer-icon">💬</span>
+              <span>
+                <strong>Chat on WhatsApp</strong>
+                <small>We’re here to help</small>
+              </span>
+              <em>›</em>
+            </a>
+
+            <div className="hub-premium-footer-row hub-premium-footer-row--static">
+              <span className="hub-premium-footer-icon">🕒</span>
+              <span>
+                <strong>Support hours</strong>
+                <small>Mon–Fri: 08:00–18:00 SAST</small>
+              </span>
+            </div>
+          </section>
+
+          <section className="hub-premium-footer-card">
+            <h3>FAQs <span>❔</span></h3>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("joinClub")}>
+              <span><strong>How do I join a club?</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("payments")}>
+              <span><strong>How do payments work?</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("challengeClub")}>
+              <span><strong>How do I challenge another club?</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-view-all" onClick={() => openHubInfoModal("joinClub")}>
+              View FAQs <span>›</span>
+            </button>
+          </section>
+
+          <section className="hub-premium-footer-card">
+            <h3>Quick links <span>🔗</span></h3>
+            <button type="button" className="hub-premium-footer-row">
+              <span className="hub-premium-footer-icon">👥</span>
+              <span><strong>About 5 Asides Near Me</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("terms")}>
+              <span className="hub-premium-footer-icon">📄</span>
+              <span><strong>Terms & Privacy</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubContactModal("feedback")}>
+              <span className="hub-premium-footer-icon">💬</span>
+              <span><strong>Send feedback</strong></span>
+              <em>›</em>
+            </button>
+          </section>
+        </div>
+
+        <details className="hub-mobile-help-accordion">
+          <summary>Help? <span>🎧</span></summary>
+
+          <details className="hub-mobile-help-group">
+            <summary>✉️ Need help?</summary>
+            <a href="mailto:support@5asidesnearme.com">Email support</a>
+            <a href="https://wa.me/27762849740" target="_blank" rel="noreferrer">Chat on WhatsApp</a>
+            <span>Mon–Fri: 08:00–18:00 SAST</span>
+          </details>
+
+          <details className="hub-mobile-help-group">
+            <summary>❔ FAQs</summary>
+            <button type="button" onClick={() => openHubInfoModal("joinClub")}>How do I join a club?</button>
+            <button type="button" onClick={() => openHubInfoModal("payments")}>How do payments work?</button>
+            <button type="button" onClick={() => openHubInfoModal("challengeClub")}>How do I challenge another club?</button>
+          </details>
+
+          <details className="hub-mobile-help-group">
+            <summary>🔗 Quick links</summary>
+            <button type="button">About 5 Asides Near Me</button>
+            <button type="button" onClick={() => openHubInfoModal("terms")}>Terms & Privacy</button>
+            <button type="button" onClick={() => openHubContactModal("feedback")}>Send feedback</button>
+          </details>
+        </details>
+
       </footer>
+
+
+      {hubInfoModal ? (
+        <div className="hub-action-sheet-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setHubInfoModal(null);
+        }}>
+          <section className="hub-info-modal" aria-label={hubInfoModal.title}>
+            <button type="button" className="hub-action-sheet__close" onClick={() => setHubInfoModal(null)}>
+              ×
+            </button>
+            <span className="hub-kicker">5 Asides Near Me</span>
+            <h2>{hubInfoModal.title}</h2>
+            <div className="hub-info-modal__body">
+              {hubInfoModal.body.map((item, index) => (
+                <p key={index}>{item}</p>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {hubContactModal ? (
+        <div className="hub-action-sheet-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setHubContactModal(null);
+        }}>
+          <section className="hub-info-modal" aria-label="Contact 5 Asides Near Me">
+            <button type="button" className="hub-action-sheet__close" onClick={() => setHubContactModal(null)}>
+              ×
+            </button>
+            <span className="hub-kicker">{hubContactModal === "feedback" ? "Feedback" : "Support"}</span>
+            <h2>{hubContactModal === "feedback" ? "Send feedback" : "Email us"}</h2>
+
+            <label className="hub-contact-field">
+              <span>Subject</span>
+              <input value={hubContactSubject} onChange={(event) => setHubContactSubject(event.target.value)} />
+            </label>
+
+            <label className="hub-contact-field">
+              <span>Message</span>
+              <textarea value={hubContactMessage} onChange={(event) => setHubContactMessage(event.target.value)} rows={6} placeholder="Write your message here..." />
+            </label>
+
+            <button type="button" className="hub-primary-button" onClick={sendHubContactMessage}>
+              Open Gmail to send
+            </button>
+          </section>
+        </div>
+      ) : null}
 
       {completionPromptClub ? (
         <div
