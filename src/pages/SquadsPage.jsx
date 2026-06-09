@@ -1079,7 +1079,15 @@ export function SquadsPage({
               ...data,
             };
           })
-          .filter((item) => item.fixtureStatus === "awaiting_fixture_creation");
+          .filter((item) => {
+            const status = String(item.fixtureStatus || "").trim().toLowerCase();
+            const hasFixture = Boolean(item.fixtureId);
+
+            return (
+              status === "awaiting_fixture_creation" ||
+              (!hasFixture && status === "accepted")
+            );
+          });
 
         setAcceptedChallengeCandidates(list);
         setAcceptedChallengesError("");
@@ -3502,33 +3510,26 @@ export function SquadsPage({
       )}
 
       <section className="card">
-        {false && isFiveVFive && guestOpponentEnabled && (
-          <div
-            style={{
-              marginBottom: "1rem",
-              padding: "0.8rem",
-              borderRadius: "16px",
-              border: guestOpponentEnabled
-                ? "1px solid rgba(34,197,94,0.32)"
-                : "1px solid rgba(255,255,255,0.08)",
-              background: guestOpponentEnabled
-                ? "transparent"
-                : "rgba(15,23,42,0.45)",
-              display: "grid",
-              gap: "0.75rem",
-            }}
-          >
+        {isFiveVFive && (guestOpponentEnabled || activeChallengeFixture) && (
+          <details className="challenge-fixture-tools">
+            <summary>
+              <span>🏆 Club challenge fixture tools</span>
+              <small>
+"Open advert, fixture and opponent controls when needed."
+              </small>
+            </summary>
+
+            <div className="challenge-fixture-tools__body">
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "0.75rem",
-                flexWrap: "wrap",
+                display: "grid",
+                gridTemplateColumns: window.innerWidth < 900 ? "1fr" : "1fr 420px",
+                gap: "1.5rem",
+                alignItems: "start",
               }}
             >
               <div className="muted small" style={{ fontWeight: 800 }}>
-                Guest challenge
+                External Club Challenge
               </div>
 
               {isAdmin && !guestOpponentEnabled && (
@@ -3537,7 +3538,7 @@ export function SquadsPage({
                   className="secondary-btn"
                   onClick={handleTurnChallengeOn}
                 >
-                  Enable external opponent
+                  🔥 Challenge On
                 </button>
               )}
 
@@ -3586,7 +3587,7 @@ export function SquadsPage({
                       borderColor: "rgba(254,202,202,0.45)",
                     }}
                   >
-                    Cancel challenge
+                    ✕ Cancel Challenge
                   </button>
                 </div>
               )}
@@ -3658,7 +3659,7 @@ export function SquadsPage({
             )}
 
 
-            {guestOpponentEnabled && (
+            {(guestOpponentEnabled || activeChallengeFixture) && (
               <>
                 {isAdmin && (
                   <div
@@ -3711,8 +3712,14 @@ export function SquadsPage({
                   </div>
                 )}
 
-                <div
-                  ref={challengeAdvertRef}
+                <details className="challenge-advert-details">
+                  <summary>
+                    <span>📣 Challenge advert / poster</span>
+                    <small>Preview and save the club-vs-club match poster</small>
+                  </summary>
+
+                  <div
+                    ref={challengeAdvertRef}
                   style={{
                     borderRadius: "20px",
                     overflow: "hidden",
@@ -3834,19 +3841,21 @@ export function SquadsPage({
                   </div>
                 </div>
 
-                {isAdmin && (
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={handleSaveChallengeAdvert}
-                    style={{ width: "100%" }}
-                  >
-                    Save advert
-                  </button>
-                )}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={handleSaveChallengeAdvert}
+                      style={{ width: "100%" }}
+                    >
+                      Save advert
+                    </button>
+                  )}
+                </details>
               </>
             )}
-          </div>
+            </div>
+          </details>
         )}
 
         {renderTeamsheetCard()}
