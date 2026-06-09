@@ -977,7 +977,13 @@ export default function HomePage_HUB({
                   ...club,
                   featuredVideoUrl,
                 }}
-                onOpenClubActions={openClubActions}
+                onViewClub={handleViewClub}
+                onJoinClub={handleJoinExistingClub}
+                onChallengeClub={openChallengeRequest}
+                onDeleteClub={handleDeleteClub}
+                canJoin={!isUsersOwnClub(club)}
+                canChallenge={canCurrentUserSendChallenge() && !isUsersOwnClub(club)}
+                canDelete={isSuperAdmin(currentUser)}
               />
             );
           })}

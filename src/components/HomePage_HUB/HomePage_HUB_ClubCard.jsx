@@ -28,9 +28,20 @@ function getClubVideoUrl(club) {
   );
 }
 
-export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
+export default function HomePage_HUB_ClubCard({
+  club,
+  onOpenClubActions,
+  onViewClub,
+  onJoinClub,
+  onChallengeClub,
+  onDeleteClub,
+  canJoin = true,
+  canChallenge = false,
+  canDelete = false,
+}) {
   const [faceIndex, setFaceIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const initials = useMemo(() => getClubInitials(club?.name), [club?.name]);
 
@@ -64,13 +75,13 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
     <article
       className="hub-club-card"
       style={{ "--hub-club-accent": accent }}
-      onClick={() => onOpenClubActions?.(club)}
+      onClick={() => onViewClub?.(club)}
       role="button"
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onOpenClubActions?.(club);
+          onViewClub?.(club);
         }
       }}
       onMouseDown={() => setIsPaused(true)}
@@ -80,6 +91,62 @@ export default function HomePage_HUB_ClubCard({ club, onOpenClubActions }) {
       onTouchEnd={() => setIsPaused(false)}
       aria-label={`Open ${club.name || "club"}`}
     >
+      <div className="hub-club-card__menu-wrap" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          className="hub-club-card__menu-button"
+          aria-label={`Open ${club.name || "club"} actions`}
+          aria-expanded={actionsOpen}
+          onClick={() => setActionsOpen((current) => !current)}
+        >
+          ⋯
+        </button>
+
+        {actionsOpen ? (
+          <div className="hub-club-card__menu" role="menu">
+            {canJoin ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setActionsOpen(false);
+                  onJoinClub?.(club);
+                }}
+              >
+                Join Club
+              </button>
+            ) : null}
+
+            {canChallenge ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setActionsOpen(false);
+                  onChallengeClub?.(club);
+                }}
+              >
+                Challenge Club
+              </button>
+            ) : null}
+
+            {canDelete ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="hub-club-card__menu-danger"
+                onClick={() => {
+                  setActionsOpen(false);
+                  onDeleteClub?.(club);
+                }}
+              >
+                Delete Club
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
 <div className={`hub-club-card__cube hub-club-card__cube--face-${faceIndex}`}>
         <section className="hub-club-card__face hub-club-card__face--logo">
           <div className="hub-club-card__logo-ring">
