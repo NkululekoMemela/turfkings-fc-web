@@ -329,58 +329,13 @@ function uniqueSafeStrings(values = []) {
   );
 }
 
-async function hydrateClubHubStats(club) {
+function hydrateClubHubStats(club) {
   if (!club?.id) return club;
-
-  let playerCount = Number.isFinite(Number(club.playerCount))
-    ? Number(club.playerCount)
-    : null;
-
-  let activityCount = Number.isFinite(Number(club.activityCount))
-    ? Number(club.activityCount)
-    : null;
-
-  try {
-    const playersSnap = await getDocs(collection(db, "clubs", club.id, "players"));
-
-    const activePlayers = playersSnap.docs.filter((docSnap) => {
-      const data = docSnap.data() || {};
-      const status = String(data.status || "active").trim().toLowerCase();
-      return status !== "inactive" && status !== "archived" && status !== "deleted";
-    });
-
-    playerCount = activePlayers.length;
-  } catch (error) {
-    console.warn("[HomePage_HUB] Could not load player count for:", club.id, error);
-  }
-
-  try {
-    const [pendingSnap, matchSnap] = await Promise.all([
-      getDocs(collection(db, "clubs", club.id, "pendingSignups")),
-      getDocs(collection(db, "clubs", club.id, "matchSignups")),
-    ]);
-
-    const weekIds = new Set();
-
-    [...pendingSnap.docs, ...matchSnap.docs].forEach((docSnap) => {
-      const data = docSnap.data() || {};
-
-      uniqueSafeStrings([
-        ...(Array.isArray(data.paidWeeks) ? data.paidWeeks : []),
-        ...(Array.isArray(data.primaryPaidWeeks) ? data.primaryPaidWeeks : []),
-        ...(Array.isArray(data.selectedWeeks) ? data.selectedWeeks : []),
-      ]).forEach((weekId) => weekIds.add(weekId));
-    });
-
-    activityCount = weekIds.size;
-  } catch (error) {
-    console.warn("[HomePage_HUB] Could not load activity count for:", club.id, error);
-  }
 
   return {
     ...club,
-    playerCount: playerCount ?? club.playerCount ?? 0,
-    activityCount: activityCount ?? club.activityCount ?? 0,
+    playerCount: Number.isFinite(Number(club.playerCount)) ? Number(club.playerCount) : 0,
+    activityCount: Number.isFinite(Number(club.activityCount)) ? Number(club.activityCount) : 0,
   };
 }
 
@@ -441,9 +396,7 @@ export default function HomePage_HUB({
 
         const snap = await getDocs(collection(db, "clubs"));
         const firebaseClubsRaw = snap.docs.map(normalizeClub);
-        const firebaseClubs = await Promise.all(
-          firebaseClubsRaw.map((club) => hydrateClubHubStats(club))
-        );
+        const firebaseClubs = firebaseClubsRaw.map((club) => hydrateClubHubStats(club));
 
         if (!cancelled) {
           const nextClubs = firebaseClubs.length ? firebaseClubs : FALLBACK_CLUBS;
@@ -693,39 +646,6 @@ export default function HomePage_HUB({
     : [];
 
   const selectedMapClub = activeMapClub || null;
-
-
-  useEffect(() => {
-    async function debugTurfKingsVideoPaths() {
-      const clubId = "turf-kings";
-      const paths = [
-        ["clubs", clubId, "videoHighlights"],
-        ["clubs", clubId, "friendlyVideoHighlights"],
-        ["clubs", clubId, "matchVideos"],
-        ["clubs", clubId, "highlights"],
-        ["clubs", clubId, "friendlyHighlights"],
-        ["video_highlights"],
-        ["videoHighlights"],
-      ];
-
-      console.log("[HOME HUB VIDEO DEBUG] Starting client-side audit");
-
-      for (const parts of paths) {
-        try {
-          const snap = await getDocs(collection(db, ...parts));
-          console.log("[HOME HUB VIDEO DEBUG]", parts.join("/"), "docs:", snap.size);
-
-          snap.docs.slice(0, 5).forEach((docSnap) => {
-            console.log("[HOME HUB VIDEO DEBUG DOC]", parts.join("/"), docSnap.id, docSnap.data());
-          });
-        } catch (error) {
-          console.warn("[HOME HUB VIDEO DEBUG FAILED]", parts.join("/"), error);
-        }
-      }
-    }
-
-    debugTurfKingsVideoPaths();
-  }, []);
 
 
   useEffect(() => {
@@ -1043,6 +963,15 @@ export default function HomePage_HUB({
             >
               Take the tour
             </button>
+          </div>
+
+          <div className="hub-support-card" aria-label="5 Asides Near Me support contact details">
+            <strong>Need help?</strong>
+            <a href="mailto:support@5asidesnearme.com">support@5asidesnearme.com</a>
+            <a href="https://wa.me/27762849740" target="_blank" rel="noreferrer">
+              WhatsApp: +27 76 284 9740
+            </a>
+            <span>Mon–Fri: 08:00–18:00 SAST</span>
           </div>
         </section>
       </footer>

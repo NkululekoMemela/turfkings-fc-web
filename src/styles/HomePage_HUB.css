@@ -6753,3 +6753,34 @@
     radial-gradient(circle at top left, rgba(245, 158, 11, 0.10), transparent 34%),
     rgba(255, 251, 235, 0.82) !important;
 }
+
+.hub-support-card {
+  margin-top: 18px;
+  display: grid;
+  gap: 8px;
+  max-width: 390px;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(22, 163, 74, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.hub-support-card strong {
+  color: #06152b;
+  font-size: 1rem;
+  font-weight: 1000;
+}
+
+.hub-support-card a,
+.hub-support-card span {
+  color: #334155;
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.hub-support-card a:hover {
+  color: #16a34a;
+  text-decoration: underline;
+}
