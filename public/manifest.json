@@ -1,6 +1,6 @@
 {
   "name": "5 Asides Near Me",
-  "short_name": "5 Asides",
+  "short_name": "5 Asides Near Me",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
