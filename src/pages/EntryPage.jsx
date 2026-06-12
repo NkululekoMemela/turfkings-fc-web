@@ -1,5 +1,5 @@
 // src/pages/EntryPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 
@@ -610,6 +610,22 @@ export function EntryPage({
   const [challengeNoticeAlerts, setChallengeNoticeAlerts] = useState([]);
   const [fixtureAlternativeModal, setFixtureAlternativeModal] = useState(null);
   const [fixtureAlternativeMessage, setFixtureAlternativeMessage] = useState("");
+  const [fixtureDiscussionModal, setFixtureDiscussionModal] = useState(null);
+  const [fixtureDiscussionMessages, setFixtureDiscussionMessages] = useState([]);
+  const [fixtureDiscussionDraft, setFixtureDiscussionDraft] = useState("");
+
+  const [clubChatMessages, setClubChatMessages] = useState([]);
+  const [clubChatDraft, setClubChatDraft] = useState("");
+  const [clubChatOpen, setClubChatOpen] = useState(false);
+  const [clubChatEmojiOpen, setClubChatEmojiOpen] = useState(false);
+  const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(() => {
+    try {
+      return Number(window.localStorage.getItem(`fanm_club_chat_seen_${activeClubId}`) || 0);
+    } catch {
+      return 0;
+    }
+  });
+  const clubChatEndRef = useRef(null);
   const [isAdminNoticePanelOpen, setIsAdminNoticePanelOpen] = useState(false);
   const [activeAdminNoticeIndex, setActiveAdminNoticeIndex] = useState(0);
   const [dismissedPendingNoticeIds, setDismissedPendingNoticeIds] = useState(() => {
@@ -1586,6 +1602,230 @@ export function EntryPage({
     }
   };
 
+  useEffect(() => {
+    if (!activeClubId) {
+      setClubChatMessages([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "clubs", activeClubId, "chatMessages"),
+      orderBy("createdAtMs", "asc"),
+      limit(80)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      setClubChatMessages(
+        snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() || {}),
+        }))
+      );
+    });
+
+    return () => unsub();
+  }, [activeClubId]);
+
+  useEffect(() => {
+    clubChatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [clubChatMessages.length]);
+
+  const canSendClubChat =
+    Boolean(currentUser) &&
+    Boolean(activeClubId) &&
+    (Boolean(selectedMember?.id) || Boolean(isAdminViewer));
+
+  const addClubChatEmoji = (emoji) => {
+    setClubChatDraft((current) => `${current || ""}${emoji}`);
+  };
+
+  const handleSendClubChatMessage = async () => {
+    const text = String(clubChatDraft || "").trim();
+    if (!text || !canSendClubChat) return;
+
+    const senderName =
+      selectedMember?.fullName ||
+      selectedMember?.shortName ||
+      currentUser?.displayName ||
+      currentUser?.email?.split("@")[0] ||
+      "Club member";
+
+    const senderRole = isAdminViewer
+      ? "admin"
+      : selectedMember?.role || identity?.role || "player";
+
+    try {
+      await addDoc(collection(db, "clubs", activeClubId, "chatMessages"), {
+        text,
+        senderName,
+        senderRole,
+        senderEmail: currentUser?.email || selectedMember?.email || identity?.email || "",
+        senderUid: currentUser?.uid || "",
+        clubId: activeClubId,
+        clubName: activeClubName,
+        createdAt: serverTimestamp(),
+        createdAtMs: Date.now(),
+      });
+
+      setClubChatDraft("");
+      setClubChatEmojiOpen(false);
+    } catch (err) {
+      console.error("[EntryPage] Failed sending club chat message:", err);
+      window.alert("Could not send this club chat message just now.");
+    }
+  };
+
+  const clubChatLatestMessageMs = clubChatMessages.reduce(
+    (latest, message) => Math.max(latest, Number(message.createdAtMs || 0)),
+    0
+  );
+
+  const clubChatUnreadCount = clubChatMessages.filter(
+    (message) =>
+      Number(message.createdAtMs || 0) > Number(clubChatLastSeenMs || 0) &&
+      String(message.senderUid || "") !== String(currentUser?.uid || "")
+  ).length;
+
+  useEffect(() => {
+    if (!clubChatOpen || !activeClubId || !clubChatLatestMessageMs) return;
+
+    try {
+      window.localStorage.setItem(
+        `fanm_club_chat_seen_${activeClubId}`,
+        String(clubChatLatestMessageMs)
+      );
+    } catch {
+      // localStorage is optional
+    }
+
+    setClubChatLastSeenMs(clubChatLatestMessageMs);
+  }, [clubChatOpen, activeClubId, clubChatLatestMessageMs]);
+
+  const renderClubChatCard = () => (
+    <section className={`card fanm-club-chat-card ${clubChatOpen ? "is-open" : "is-collapsed"}`} style={premiumPanelStyle}>
+      <button
+        type="button"
+        className="fanm-club-chat-launcher"
+        onClick={() => setClubChatOpen((current) => !current)}
+      >
+        <span className="fanm-club-chat-launcher-icon">💬</span>
+
+        <span className="fanm-club-chat-launcher-text">
+          <strong>{activeClubName} Chat</strong>
+          <small>
+            {clubChatMessages.length
+              ? `${clubChatMessages.length} club message${clubChatMessages.length === 1 ? "" : "s"}`
+              : "Private club room"}
+          </small>
+        </span>
+
+        {clubChatUnreadCount > 0 ? (
+          <span className="fanm-club-chat-unread">{clubChatUnreadCount}</span>
+        ) : (
+          <span className="fanm-club-chat-live-pill">Live</span>
+        )}
+      </button>
+
+      {clubChatOpen && (
+        <>
+          <div className="fanm-club-chat-head">
+            <div>
+              <p className="fanm-club-chat-kicker">Club room</p>
+              <h2>{activeClubName} Chat</h2>
+              <p className="muted small">
+                Private messages for approved club members, captains and admins.
+              </p>
+            </div>
+          </div>
+
+          <div className="fanm-club-chat-messages">
+            {clubChatMessages.length ? (
+              clubChatMessages.map((message) => {
+                const mine =
+                  currentUser?.uid &&
+                  message.senderUid &&
+                  String(currentUser.uid) === String(message.senderUid);
+
+                const isAdminMessage =
+                  String(message.senderRole || "").toLowerCase().includes("admin") ||
+                  String(message.senderRole || "").toLowerCase().includes("captain");
+
+                return (
+                  <div
+                    key={message.id}
+                    className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""}`}
+                  >
+                    <div className="fanm-club-chat-message-meta">
+                      <strong>{message.senderName || "Club member"}</strong>
+                      {isAdminMessage ? <span>Captain/Admin</span> : null}
+                    </div>
+                    <p>{message.text}</p>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="fanm-club-chat-empty">
+                No messages yet. Start the club conversation.
+              </div>
+            )}
+
+            <div ref={clubChatEndRef} />
+          </div>
+
+          <div className="fanm-club-chat-compose">
+            <div className="fanm-club-chat-input-wrap">
+              <textarea
+                className="text-input"
+                rows={3}
+                value={clubChatDraft}
+                onChange={(event) => setClubChatDraft(event.target.value)}
+                placeholder={
+                  canSendClubChat
+                    ? "Message your club..."
+                    : "Select your name and sign in to chat."
+                }
+                disabled={!canSendClubChat}
+              />
+
+              <button
+                type="button"
+                className="fanm-club-chat-emoji-btn"
+                disabled={!canSendClubChat}
+                onClick={() => setClubChatEmojiOpen((current) => !current)}
+                title="Add emoji"
+              >
+                😀
+              </button>
+            </div>
+
+            {clubChatEmojiOpen && (
+              <div className="fanm-club-chat-emoji-tray">
+                {["😀", "😂", "🤣", "😎", "😭", "😡", "❤️", "🔥", "⚽", "🥅", "🏆", "💪", "👏", "🙌", "👌", "👀"].map((emoji) => (
+                  <button
+                    type="button"
+                    key={`club-chat-emoji-${emoji}`}
+                    onClick={() => addClubChatEmoji(emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={!canSendClubChat || !String(clubChatDraft || "").trim()}
+              onClick={handleSendClubChatMessage}
+            >
+              Send
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+
   const handleContinueAsSpectator = () => {
     onComplete({
       clubId: activeClubId,
@@ -1673,6 +1913,60 @@ export function EntryPage({
     setChallengeNoticeAlerts((prev) =>
       prev.filter((item) => item.noticeDocId !== noticeId)
     );
+  };
+
+  useEffect(() => {
+    if (!fixtureDiscussionModal?.fixtureId) {
+      setFixtureDiscussionMessages([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "clubChallengeFixtures", fixtureDiscussionModal.fixtureId, "messages"),
+      orderBy("createdAtMs", "asc"),
+      limit(80)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      setFixtureDiscussionMessages(
+        snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() || {}),
+        }))
+      );
+    });
+
+    return () => unsub();
+  }, [fixtureDiscussionModal?.fixtureId]);
+
+  const openFixtureDiscussion = (noticePayload) => {
+    if (!noticePayload?.fixtureId) return;
+    setFixtureDiscussionModal(noticePayload);
+    setFixtureDiscussionDraft("");
+  };
+
+  const handleSendFixtureDiscussionMessage = async () => {
+    const text = String(fixtureDiscussionDraft || "").trim();
+    if (!text || !fixtureDiscussionModal?.fixtureId) return;
+
+    try {
+      await addDoc(
+        collection(db, "clubChallengeFixtures", fixtureDiscussionModal.fixtureId, "messages"),
+        {
+          type: "discussion",
+          text,
+          fromClubId: activeClubId,
+          fromClubName: activeClubName,
+          createdAt: serverTimestamp(),
+          createdAtMs: Date.now(),
+        }
+      );
+
+      setFixtureDiscussionDraft("");
+    } catch (err) {
+      console.error("[EntryPage] Failed sending fixture discussion message:", err);
+      window.alert("Could not send this discussion message just now.");
+    }
   };
 
   const handleAcceptFixtureAlternative = async (noticePayload) => {
@@ -2402,6 +2696,8 @@ export function EntryPage({
         </div>
       </section>
 
+      {renderClubChatCard()}
+
       {mode === "player" && (
         <section className="card" style={{ ...premiumPanelStyle, overflow: "hidden" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem", alignItems: "center" }}>
@@ -2979,6 +3275,74 @@ export function EntryPage({
         }}
       />
 
+      {fixtureDiscussionModal && (
+        <div className="modal-backdrop">
+          <div className="modal fixture-discussion-modal">
+            <div className="fixture-discussion-head">
+              <div>
+                <h3>Fixture discussion</h3>
+                <p className="muted small">
+                  {fixtureDiscussionModal.homeClubName || "Home Club"} vs{" "}
+                  {fixtureDiscussionModal.awayClubName || "Away Club"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setFixtureDiscussionModal(null);
+                  setFixtureDiscussionDraft("");
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="fixture-discussion-messages">
+              {fixtureDiscussionMessages.length ? (
+                fixtureDiscussionMessages.map((message) => {
+                  const isMine = String(message.fromClubId || "") === String(activeClubId || "");
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={`fixture-discussion-message ${isMine ? "is-mine" : ""}`}
+                    >
+                      <strong>{message.fromClubName || "Club"}</strong>
+                      <p>{message.text || message.message || ""}</p>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="fixture-discussion-empty">
+                  No discussion yet. Start the conversation below.
+                </div>
+              )}
+            </div>
+
+            <div className="fixture-discussion-compose">
+              <textarea
+                className="text-input"
+                rows={3}
+                value={fixtureDiscussionDraft}
+                onChange={(event) => setFixtureDiscussionDraft(event.target.value)}
+                placeholder="Type a fixture message..."
+              />
+
+              <button
+                type="button"
+                className="primary-btn"
+                disabled={!String(fixtureDiscussionDraft || "").trim()}
+                onClick={handleSendFixtureDiscussionMessage}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {fixtureAlternativeModal && (
         <div className="modal-backdrop">
           <div className="modal fixture-alternative-modal">
@@ -3131,8 +3495,7 @@ export function EntryPage({
                     <button
                       type="button"
                       className="tk-admin-notification-nav-btn"
-                      disabled
-                      title="Fixture discussion thread coming soon"
+                      onClick={() => openFixtureDiscussion(activeAdminNotice.payload)}
                     >
                       Open discussion
                     </button>
