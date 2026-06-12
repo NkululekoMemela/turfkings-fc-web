@@ -1932,8 +1932,24 @@ export function SquadsPage({
     );
   };
 
+  const isLockedClubChallengeTeam = (teamId, teamsList = sourceTeams) => {
+    if (!activeChallengeFixture) return false;
+
+    const activeId = String(activeClubId || "").trim();
+    const homeId = String(activeChallengeFixture?.homeClubId || "").trim();
+    const awayId = String(activeChallengeFixture?.awayClubId || "").trim();
+
+    const index = (teamsList || []).findIndex(
+      (team) => String(team?.id || "") === String(teamId || "")
+    );
+
+    const teamClubId = index === 0 ? homeId : index === 1 ? awayId : "";
+
+    return Boolean(activeId && teamClubId && activeId !== teamClubId);
+  };
+
   const handleTeamColorNameChange = (teamId, value) => {
-    if (!canEdit) return;
+    if (!canEdit || isLockedClubChallengeTeam(teamId)) return;
     if (!confirmLeagueIdentityChange(teamId, "team colour")) return;
 
     const cleanValue = toTitleCase(value || "");
@@ -1981,7 +1997,7 @@ export function SquadsPage({
   };
 
   const handleCaptainChange = (teamId, captainId) => {
-    if (!canEdit) return;
+    if (!canEdit || isLockedClubChallengeTeam(teamId)) return;
     if (!confirmLeagueIdentityChange(teamId, "team captain")) return;
     setSourceTeams((prev) =>
       prev.map((t) => {
@@ -2646,7 +2662,7 @@ export function SquadsPage({
 
 
   const handlePreviewSlotClick = (teamId, slotIndex) => {
-    if (!canEdit) return;
+    if (!canEdit || isLockedClubChallengeTeam(teamId)) return;
     setPreviewPickTarget({ teamId, slotIndex });
   };
 
@@ -2654,9 +2670,12 @@ export function SquadsPage({
     if (!canEdit || !previewPickTarget || !playersById.has(playerId)) return;
 
     const { teamId, slotIndex } = previewPickTarget;
+    if (isLockedClubChallengeTeam(teamId)) return;
 
     setSourceTeams((prev) =>
       prev.map((team) => {
+        if (isLockedClubChallengeTeam(team.id, prev)) return team;
+
         const withoutPicked = (team.players || []).filter((pid) => pid !== playerId);
 
         if (team.id !== teamId) {
@@ -2682,7 +2701,7 @@ export function SquadsPage({
 
 
   const handlePreviewRemovePlayer = (teamId, playerId) => {
-    if (!canEdit || !playersById.has(playerId)) return;
+    if (!canEdit || !playersById.has(playerId) || isLockedClubChallengeTeam(teamId)) return;
 
     setSourceTeams((prev) =>
       prev.map((team) =>
@@ -3165,17 +3184,50 @@ export function SquadsPage({
 
   const renderSquadShapePreview = () => {
     const slots = getSquadPreviewSlots();
+    const isClubChallengePreview = Boolean(activeChallengeFixture);
+
+    const getChallengePreviewMeta = (team) => {
+      const originalIndex = sourceTeams.findIndex(
+        (item) => String(item?.id || "") === String(team?.id || "")
+      );
+
+      if (originalIndex === 0) {
+        return {
+          clubId: activeChallengeFixture?.homeClubId || "",
+          clubName: resolvedHomeClubName,
+          clubLogo: resolvedHomeClubLogo,
+        };
+      }
+
+      return {
+        clubId: activeChallengeFixture?.awayClubId || "",
+        clubName: resolvedAwayClubName,
+        clubLogo: resolvedAwayClubLogo,
+      };
+    };
+
+    const previewTeams = isClubChallengePreview
+      ? [...sourceTeams].sort((a, b) => {
+          const aLocked = isLockedClubChallengeTeam(a.id) ? 1 : 0;
+          const bLocked = isLockedClubChallengeTeam(b.id) ? 1 : 0;
+          return aLocked - bLocked;
+        })
+      : sourceTeams;
 
     return (
       <div className="squad-preview-grid">
-        {sourceTeams.map((team) => {
+        {previewTeams.map((team) => {
           const theme = getTeamTheme(team);
           const players = Array.isArray(team.players) ? team.players : [];
+          const challengeMeta = getChallengePreviewMeta(team);
+          const challengeClubName = challengeMeta.clubName;
+          const challengeClubLogo = challengeMeta.clubLogo;
+          const isLockedOpponentPreview = isLockedClubChallengeTeam(team.id);
 
           return (
             <div
               key={`preview-${team.id}`}
-              className="squad-preview-pitch-card"
+              className={`squad-preview-pitch-card${isLockedOpponentPreview ? " squad-preview-pitch-card--locked-opponent" : ""}`}
               style={{
                 "--team-accent": theme.accent,
                 "--team-accent-soft": theme.accentSoft,
@@ -3195,7 +3247,20 @@ export function SquadsPage({
                   }}
                 >
                   <div>
-                    {canEdit ? (
+                    {isClubChallengePreview ? (
+                      <div className="squad-preview-club-challenge-title">
+                        {challengeClubLogo ? (
+                          <img
+                            src={challengeClubLogo}
+                            alt=""
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : null}
+                        <h4>{challengeClubName || getPreviewTeamName(team)}</h4>
+                      </div>
+                    ) : canEdit ? (
                       <input
                         className="text-input"
                         value={team.label || ""}
@@ -3233,7 +3298,7 @@ export function SquadsPage({
                         onChange={(event) =>
                           handleCaptainChange(team.id, event.target.value)
                         }
-                        disabled={captainOptionsForTeam(team).length === 0}
+                        disabled={isLockedOpponentPreview || captainOptionsForTeam(team).length === 0}
                         title="Select captain"
                         style={{ width: "100%", boxSizing: "border-box" }}
                       >
@@ -3249,6 +3314,7 @@ export function SquadsPage({
                         className="text-input"
                         value={team.teamColorName || (team.id === TURF_KINGS_SLOT_ID ? "Black" : "White")}
                         onChange={(event) => handleTeamColorNameChange(team.id, event.target.value)}
+                        disabled={isLockedOpponentPreview}
                         title="Wear colour"
                         style={{ width: "100%", boxSizing: "border-box" }}
                       >
@@ -3292,7 +3358,13 @@ export function SquadsPage({
                       className={`squad-preview-position ${pid ? "has-player" : "is-empty"}`}
                       style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                       onClick={() => handlePreviewSlotClick(team.id, index)}
-                      title={canEdit ? "Tap to assign player" : "Read-only preview"}
+                      title={
+                        isLockedOpponentPreview
+                          ? "Opponent lineup is controlled by the other club"
+                          : canEdit
+                            ? "Tap to assign player"
+                            : "Read-only preview"
+                      }
                     >
                       <div className="squad-preview-shirt">
                         {pid ? String(label || "?").charAt(0).toUpperCase() : "+"}
@@ -3302,7 +3374,7 @@ export function SquadsPage({
                         <span>{slot.label}</span>
                       </div>
 
-                      {canEdit && pid ? (
+                      {canEdit && pid && !isLockedOpponentPreview ? (
                         <div className="squad-preview-mini-actions">
                           <span
                             role="button"
@@ -3330,6 +3402,7 @@ export function SquadsPage({
                         key={`preview-extra-${team.id}-${pid}-${extraIndex}`}
                         className="squad-preview-extra-player"
                         onClick={() => handlePreviewSlotClick(team.id, slots.length + extraIndex)}
+                        disabled={isLockedOpponentPreview}
                       >
                         {String(displayShortOf(pid) || displayNameOf(pid) || '').split(' ')[0]}
                       </button>

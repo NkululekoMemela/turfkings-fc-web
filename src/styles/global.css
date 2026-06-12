@@ -7345,3 +7345,65 @@ body:has(.live-page) .app-root {
     height: 3rem;
   }
 }
+
+/* Club-vs-club challenge preview only */
+.squad-preview-club-challenge-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.squad-preview-club-challenge-title img {
+  width: 2.65rem;
+  height: 2.65rem;
+  object-fit: contain;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.94);
+  padding: 0.22rem;
+  flex: 0 0 auto;
+}
+
+.squad-preview-club-challenge-title h4 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+/* Club-vs-club preview: premium locked opponent side only */
+.squad-preview-pitch-card--locked-opponent {
+  opacity: 0.78;
+  filter: saturate(0.82);
+  background:
+    radial-gradient(circle at top right, rgba(148, 163, 184, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.74)) !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
+}
+
+.squad-preview-pitch-card--locked-opponent::after {
+  content: "Opponent lineup";
+  position: absolute;
+  right: 1rem;
+  bottom: 0.85rem;
+  padding: 0.28rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.72);
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.squad-preview-pitch-card--locked-opponent .squad-preview-position {
+  cursor: default;
+}
+
+.squad-preview-pitch-card--locked-opponent select,
+.squad-preview-pitch-card--locked-opponent input {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
