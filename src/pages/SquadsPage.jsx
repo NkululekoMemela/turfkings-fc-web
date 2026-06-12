@@ -3045,6 +3045,20 @@ export function SquadsPage({
 
   const renderTeamsheetCard = () => {
     const matchTeams = isLeague ? sourceTeams.slice(0, 3) : sourceTeams.slice(0, 2);
+    const isClubChallengeTeamsheet = Boolean(activeChallengeFixture);
+
+    const getChallengeTeamLogo = (team, index) => {
+      if (!isClubChallengeTeamsheet) return "";
+
+      const name = String(getPreviewTeamName(team) || "").trim().toLowerCase();
+      const homeName = String(resolvedHomeClubName || "").trim().toLowerCase();
+      const awayName = String(resolvedAwayClubName || "").trim().toLowerCase();
+
+      if (name && homeName && name === homeName) return resolvedHomeClubLogo || "";
+      if (name && awayName && name === awayName) return resolvedAwayClubLogo || "";
+
+      return index === 0 ? resolvedHomeClubLogo || "" : resolvedAwayClubLogo || "";
+    };
 
     return (
       <div className="teamsheet-export-wrap">
@@ -3065,19 +3079,22 @@ export function SquadsPage({
           </button>
         </div>
 
-        <div ref={teamsheetCardRef} className="teamsheet-card">
+        <div
+          ref={teamsheetCardRef}
+          className={`teamsheet-card${activeChallengeFixture ? " teamsheet-card--club-challenge" : ""}`}
+        >
           <div className="teamsheet-card-head">
             <div className="teamsheet-card-club">
               <img
-                src={activeClub?.logoUrl || TURF_KINGS_LOGO_URL}
+                src={activeChallengeFixture ? "/pwa/icon-192.png" : activeClub?.logoUrl || TURF_KINGS_LOGO_URL}
                 alt=""
                 onError={(event) => {
                   event.currentTarget.style.display = "none";
                 }}
               />
               <div>
-                <span>{activeClubName || "Club"}</span>
-                <small>5 Asides Near Me</small>
+                <span>{activeChallengeFixture ? "5 Asides Near Me" : activeClubName || "Club"}</span>
+                <small>{activeChallengeFixture ? "Exhibition Fixture Only" : "5 Asides Near Me"}</small>
               </div>
             </div>
 
@@ -3090,9 +3107,10 @@ export function SquadsPage({
           </div>
 
           <div className="teamsheet-card-grid">
-            {matchTeams.map((team) => {
+            {matchTeams.map((team, index) => {
               const theme = getTeamTheme(team);
               const players = Array.isArray(team.players) ? team.players : [];
+              const challengeLogo = getChallengeTeamLogo(team, index);
 
               return (
                 <div
@@ -3104,11 +3122,23 @@ export function SquadsPage({
                   }}
                 >
                   <div className="teamsheet-card-team-head">
-                    <div>
-                      <h4>{getPreviewTeamName(team)}</h4>
-                      <p>
-                        Wear: <strong>{team.teamColorName || theme.colorName || "Team colour"}</strong>
-                      </p>
+                    <div className="teamsheet-card-team-title">
+                      {challengeLogo ? (
+                        <img
+                          src={challengeLogo}
+                          alt=""
+                          className="teamsheet-card-team-logo"
+                          onError={(event) => {
+                            event.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : null}
+                      <div>
+                        <h4>{getPreviewTeamName(team)}</h4>
+                        <p>
+                          Wear: <strong>{team.teamColorName || theme.colorName || "Team colour"}</strong>
+                        </p>
+                      </div>
                     </div>
                     <span>{team.abbrev || ""}</span>
                   </div>
@@ -3510,352 +3540,174 @@ export function SquadsPage({
       )}
 
       <section className="card">
-        {isFiveVFive && (guestOpponentEnabled || activeChallengeFixture) && (
-          <details className="challenge-fixture-tools">
-            <summary>
-              <span>🏆 Club challenge fixture tools</span>
-              <small>
-"Open advert, fixture and opponent controls when needed."
-              </small>
-            </summary>
-
-            <div className="challenge-fixture-tools__body">
+        {isFiveVFive && activeChallengeFixture && (
+          <div
+            className="closed-club-challenge-card"
+            style={{
+              marginBottom: "1.25rem",
+              borderRadius: "24px",
+              border: "1px solid rgba(250, 204, 21, 0.38)",
+              background:
+                "radial-gradient(circle at top left, rgba(250,204,21,0.20), transparent 34%), radial-gradient(circle at bottom right, rgba(34,197,94,0.18), transparent 35%), linear-gradient(135deg, rgba(15,23,42,0.98), rgba(30,41,59,0.94))",
+              boxShadow:
+                "0 22px 60px rgba(0,0,0,0.28), 0 0 44px rgba(250,204,21,0.12)",
+              padding: "1.15rem",
+              overflow: "hidden",
+            }}
+          >
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: window.innerWidth < 900 ? "1fr" : "1fr 420px",
-                gap: "1.5rem",
-                alignItems: "start",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "1rem",
+                alignItems: "center",
+                flexWrap: "wrap",
+                marginBottom: "1rem",
               }}
             >
-              <div className="muted small" style={{ fontWeight: 800 }}>
-                External Club Challenge
-              </div>
-
-              {isAdmin && !guestOpponentEnabled && (
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={handleTurnChallengeOn}
-                >
-                  🔥 Challenge On
-                </button>
-              )}
-
-              {isAdmin && guestOpponentEnabled && (
+              <div>
                 <div
                   style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    alignItems: "center",
-                    flexWrap: "wrap",
+                    color: "#FDE68A",
+                    fontWeight: 1000,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    fontSize: "0.78rem",
                   }}
                 >
-                  <span
-                    className="primary-btn"
-                    style={{
-                      pointerEvents: "none",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    Challenge on
-                  </span>
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={handleTakeChallengeDown}
-                    title="Minimize challenge panel"
-                    style={{
-                      width: "2.4rem",
-                      height: "2.4rem",
-                      padding: 0,
-                      borderRadius: "999px",
-                    }}
-                  >
-                    ˄
-                  </button>
-
-                  <button
-                    type="button"
-                    className="primary-btn"
-                    onClick={handleCancelChallenge}
-                    style={{
-                      background: "linear-gradient(135deg, #dc2626, #991b1b)",
-                      color: "#fff",
-                      borderColor: "rgba(254,202,202,0.45)",
-                    }}
-                  >
-                    ✕ Cancel Challenge
-                  </button>
+                  🏆 External Club Challenge
                 </div>
-              )}
+                <div className="muted small">
+                  Closed FANM fixture. Only registered clubs can appear here.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleSaveChallengeAdvert}
+              >
+                Save advert
+              </button>
             </div>
 
-
-            {isAdmin && acceptedChallengeCandidates.length > 0 && !guestOpponentEnabled && (
+            <div
+              ref={challengeAdvertRef}
+              className="closed-club-challenge-poster"
+              style={{
+                borderRadius: "22px",
+                border: "1px solid rgba(255,255,255,0.14)",
+                background:
+                  "radial-gradient(circle at 16% 18%, rgba(250,204,21,0.20), transparent 28%), radial-gradient(circle at 86% 82%, rgba(34,197,94,0.20), transparent 30%), linear-gradient(135deg, #06122A, #0F172A 58%, #14532D)",
+                padding: "1.25rem",
+                display: "grid",
+                gap: "1rem",
+              }}
+            >
               <div
                 style={{
-                  borderRadius: "18px",
-                  border: "1px solid rgba(34,197,94,0.22)",
-                  background:
-                    "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(15,23,42,0.38))",
-                  padding: "0.85rem",
-                  display: "grid",
-                  gap: "0.65rem",
+                  textAlign: "center",
+                  color: "#BBF7D0",
+                  fontSize: "0.82rem",
+                  fontWeight: 1000,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-                  <div>
-                    <div style={{ color: "#BBF7D0", fontWeight: 950, letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.72rem" }}>
-                      Accepted challenge ready
-                    </div>
-                    <div className="muted small">
-                      Create a guest fixture here, then build both team sheets.
-                    </div>
-                  </div>
+                FANM Club Challenge Match
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto 1fr",
+                  gap: "1rem",
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ textAlign: "center", display: "grid", gap: "0.5rem" }}>
+                  {resolvedHomeClubLogo ? (
+                    <img
+                      src={resolvedHomeClubLogo}
+                      alt={`${resolvedHomeClubName} logo`}
+                      style={{
+                        width: "5rem",
+                        height: "5rem",
+                        objectFit: "contain",
+                        margin: "0 auto",
+                        borderRadius: "20px",
+                        background: "rgba(255,255,255,0.94)",
+                        padding: "0.4rem",
+                      }}
+                    />
+                  ) : (
+                    <GeneratedOpponentCrest
+                      name={resolvedHomeClubName || "Home Club"}
+                      theme={getTeamTheme(turfKingsChallengeTeam)}
+                    />
+                  )}
+                  <strong style={{ color: "#F8FAFC", fontSize: "1.05rem" }}>
+                    {resolvedHomeClubName || "Home Club"}
+                  </strong>
                 </div>
 
-                {acceptedChallengeCandidates.slice(0, 3).map((challenge) => {
-                  const opponentName = getOpponentNameFromAcceptedChallenge(challenge);
-                  return (
-                    <div
-                      key={challenge.acceptedChallengeDocId}
-                      style={{
-                        borderRadius: "16px",
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(2,6,23,0.48)",
-                        padding: "0.75rem",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "0.75rem",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div>
-                        <strong style={{ color: "#F8FAFC" }}>{opponentName}</strong>
-                        <div className="muted small">
-                          {(challenge.format || "5v5").toUpperCase()} • {challenge.proposedDate || "Date TBC"} • {challenge.proposedKickoff || "Kickoff TBC"}
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="primary-btn"
-                        onClick={() => handleCreateSquadsFixtureFromChallenge(challenge)}
-                      >
-                        Create fixture
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {acceptedChallengesError && (
-              <p className="error-text small">{acceptedChallengesError}</p>
-            )}
-
-
-            {(guestOpponentEnabled || activeChallengeFixture) && (
-              <>
-                {isAdmin && (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr",
-                      gap: "0.65rem",
-                      minWidth: 0,
-                      width: "100%",
-                    }}
-                  >
-                    <input
-                      className="text-input"
-                      value={guestOpponentName}
-                      onChange={(e) => setGuestOpponentName(e.target.value)}
-                      onBlur={() => persistSlotChallengeState({ nextGuestName: guestOpponentName })}
-                      disabled={!canEdit}
-                      placeholder="Opponent name"
-                      style={{ width: "100%", boxSizing: "border-box", minWidth: 0 }}
-                    />
-                    <input
-                      type="text"
-                      className="text-input"
-                      value={challengeDate}
-                      onChange={(e) => setChallengeDate(e.target.value)}
-                      onBlur={() => persistSlotChallengeState({ nextChallengeDate: challengeDate })}
-                      disabled={!canEdit}
-                      placeholder="17 May 2026"
-                      title="Use a date like 17 May 2026"
-                      style={{ width: "100%", boxSizing: "border-box", minWidth: 0 }}
-                    />
-                    <input
-                      type="time"
-                      className="text-input"
-                      value={challengeKickoff}
-                      onChange={(e) => setChallengeKickoff(e.target.value)}
-                      onBlur={() => persistSlotChallengeState({ nextChallengeKickoff: challengeKickoff })}
-                      disabled={!canEdit}
-                      style={{ width: "100%", boxSizing: "border-box", minWidth: 0 }}
-                    />
-                    <input
-                      className="text-input"
-                      value={challengeVenue}
-                      onChange={(e) => setChallengeVenue(e.target.value)}
-                      onBlur={() => persistSlotChallengeState({ nextChallengeVenue: challengeVenue })}
-                      disabled={!canEdit}
-                      placeholder="Venue"
-                      style={{ width: "100%", boxSizing: "border-box", minWidth: 0 }}
-                    />
-                  </div>
-                )}
-
-                <details className="challenge-advert-details">
-                  <summary>
-                    <span>📣 Challenge advert / poster</span>
-                    <small>Preview and save the club-vs-club match poster</small>
-                  </summary>
-
-                  <div
-                    ref={challengeAdvertRef}
+                <div
                   style={{
-                    borderRadius: "20px",
-                    overflow: "hidden",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background:
-                      `radial-gradient(circle at top left, ${getTeamTheme(turfKingsChallengeTeam).glow}, transparent 35%), radial-gradient(circle at bottom right, ${getTeamTheme(guestOpponentTeam).glow}, transparent 38%), linear-gradient(135deg, #06122A, #0F172A 55%, #14532D)`,
-                    padding: "1rem",
-                    display: "grid",
-                    gap: "0.8rem",
+                    color: "#FDE68A",
+                    fontSize: "2rem",
+                    fontWeight: 1000,
+                    textShadow: "0 0 22px rgba(250,204,21,0.35)",
                   }}
                 >
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontWeight: 900,
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                      color: "#BBF7D0",
-                      fontSize: "0.82rem",
-                    }}
-                  >
-                    Friendly Challenge Match
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto 1fr",
-                      gap: "0.75rem",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ textAlign: "center", display: "grid", gap: "0.45rem" }}>
-                      <div
-                        style={{
-                          width: "74px",
-                          height: "74px",
-                          borderRadius: "22px",
-                          margin: "0 auto",
-                          background: "rgba(255,255,255,0.08)",
-                          border: "1px solid rgba(255,255,255,0.18)",
-                          display: "grid",
-                          placeItems: "center",
-                          overflow: "hidden",
-                        }}
-                      >
-                        <img
-                          src={TURF_KINGS_LOGO_URL}
-                          alt={activeClubName}
-                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                        />
-                      </div>
-                      <strong style={{ color: "#F8FAFC" }}>{activeClubName}</strong>
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: "1.7rem",
-                        fontWeight: 950,
-                        color: "#FDE68A",
-                      }}
-                    >
-                      VS
-                    </div>
-
-                    <div style={{ textAlign: "center", display: "grid", gap: "0.45rem" }}>
-                      {resolvedAwayClubLogo ? (
-                        <img
-                          src={resolvedAwayClubLogo}
-                          alt={`${resolvedAwayClubName || "Opponent"} logo`}
-                          style={{
-                            width: "4.2rem",
-                            height: "4.2rem",
-                            objectFit: "contain",
-                            display: "block",
-                            margin: "0 auto",
-                            borderRadius: "18px",
-                            background: "rgba(255,255,255,0.92)",
-                            padding: "0.35rem",
-                            boxShadow: "0 14px 34px rgba(0,0,0,0.28)",
-                          }}
-                        />
-                      ) : (
-                        <GeneratedOpponentCrest
-                          name={resolvedAwayClubName || "Opponent"}
-                          theme={getTeamTheme(guestOpponentTeam)}
-                        />
-                      )}
-                      <strong style={{ color: "#F8FAFC" }}>
-                        {resolvedAwayClubName || "Opponent"}
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      textAlign: "center",
-                      color: "#CBD5E1",
-                      fontWeight: 700,
-                      fontSize: "0.92rem",
-                    }}
-                  >
-                    <div>{gameFormatLabel} • One-off Friendly</div>
-                    <div style={{ color: "#FDE68A", fontSize: "1rem", marginTop: "0.25rem" }}>
-                      {formattedChallengeDate}
-                    </div>
-                    <div style={{ fontSize: "0.88rem", marginTop: "0.2rem" }}>
-                      Kick Off: {
-                        activeChallengeFixture?.proposedKickoff ||
-                        challengeKickoff ||
-                        "18:30"
-                      }
-                      • Venue: {
-                        activeChallengeFixture?.venue ||
-                        challengeVenue ||
-                        "Venue TBD"
-                      }
-                    </div>
-                  </div>
+                  VS
                 </div>
 
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={handleSaveChallengeAdvert}
-                      style={{ width: "100%" }}
-                    >
-                      Save advert
-                    </button>
+                <div style={{ textAlign: "center", display: "grid", gap: "0.5rem" }}>
+                  {resolvedAwayClubLogo ? (
+                    <img
+                      src={resolvedAwayClubLogo}
+                      alt={`${resolvedAwayClubName} logo`}
+                      style={{
+                        width: "5rem",
+                        height: "5rem",
+                        objectFit: "contain",
+                        margin: "0 auto",
+                        borderRadius: "20px",
+                        background: "rgba(255,255,255,0.94)",
+                        padding: "0.4rem",
+                      }}
+                    />
+                  ) : (
+                    <GeneratedOpponentCrest
+                      name={resolvedAwayClubName || "Away Club"}
+                      theme={getTeamTheme(guestOpponentTeam)}
+                    />
                   )}
-                </details>
-              </>
-            )}
+                  <strong style={{ color: "#F8FAFC", fontSize: "1.05rem" }}>
+                    {resolvedAwayClubName || "Away Club"}
+                  </strong>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  textAlign: "center",
+                  color: "#CBD5E1",
+                  fontWeight: 800,
+                  lineHeight: 1.55,
+                }}
+              >
+                <div>{String(activeChallengeFixture?.format || "5v5").toUpperCase()} • Club-vs-club fixture</div>
+                <div style={{ color: "#FDE68A", fontSize: "1.05rem", marginTop: "0.25rem" }}>
+                  {formattedChallengeDate}
+                </div>
+                <div>
+                  Kick Off: {activeChallengeFixture?.proposedKickoff || "Kickoff TBC"}
+                  {" "}• Venue: {activeChallengeFixture?.venue || "Venue TBC"}
+                </div>
+              </div>
             </div>
-          </details>
+          </div>
         )}
 
         {renderTeamsheetCard()}

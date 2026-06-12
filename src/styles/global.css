@@ -7109,3 +7109,239 @@ body:has(.live-page) .tk-bottom-nav-flat {
 body:has(.live-page) .app-root {
   padding-bottom: 0 !important;
 }
+
+/* FANM closed club-vs-club challenge only */
+.closed-club-challenge-card {
+  width: min(100%, 900px) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  border-color: rgba(255, 72, 24, 0.9) !important;
+  background:
+    radial-gradient(circle at top left, rgba(255, 80, 20, 0.22), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(255, 42, 0, 0.20), transparent 32%),
+    linear-gradient(135deg, rgba(10, 8, 14, 0.98), rgba(20, 10, 14, 0.96)) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 160, 64, 0.25),
+    0 0 34px rgba(255, 64, 20, 0.42),
+    0 0 90px rgba(255, 38, 0, 0.25),
+    0 24px 70px rgba(0,0,0,0.34) !important;
+}
+
+.closed-club-challenge-poster {
+  position: relative !important;
+  overflow: hidden !important;
+  min-height: 270px;
+  border-color: rgba(255, 72, 24, 0.75) !important;
+  background:
+    radial-gradient(circle at 8% 78%, rgba(255, 72, 10, 0.38), transparent 24%),
+    radial-gradient(circle at 92% 78%, rgba(255, 45, 8, 0.38), transparent 24%),
+    radial-gradient(circle at 50% 48%, rgba(255, 95, 20, 0.10), transparent 34%),
+    linear-gradient(135deg, rgba(8, 7, 12, 0.98), rgba(15, 18, 30, 0.97) 58%, rgba(18, 70, 38, 0.92)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 80, 28, 0.42),
+    inset 0 -24px 56px rgba(255, 55, 10, 0.16),
+    0 0 28px rgba(255, 64, 20, 0.25) !important;
+}
+
+.closed-club-challenge-poster::before,
+.closed-club-challenge-poster::after {
+  content: "";
+  position: absolute;
+  top: 6%;
+  bottom: 0;
+  width: 25%;
+  pointer-events: none;
+  opacity: 0.8;
+  background:
+    radial-gradient(ellipse at 50% 92%, rgba(255, 206, 80, 0.7), transparent 16%),
+    radial-gradient(ellipse at 44% 76%, rgba(255, 90, 16, 0.72), transparent 24%),
+    radial-gradient(ellipse at 58% 55%, rgba(255, 30, 8, 0.58), transparent 26%),
+    radial-gradient(ellipse at 42% 35%, rgba(255, 116, 20, 0.38), transparent 30%);
+  filter: blur(1px);
+  mix-blend-mode: screen;
+}
+
+.closed-club-challenge-poster::before {
+  left: -6%;
+}
+
+.closed-club-challenge-poster::after {
+  right: -6%;
+  transform: scaleX(-1);
+}
+
+.closed-club-challenge-poster > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 760px) {
+  .closed-club-challenge-card {
+    width: 100% !important;
+  }
+
+  .closed-club-challenge-poster {
+    min-height: auto;
+  }
+}
+
+/* Fix closed club challenge poster layout without touching normal team-vs-team squads */
+.closed-club-challenge-card {
+  box-sizing: border-box;
+  max-width: min(900px, calc(100vw - 24px)) !important;
+}
+
+.closed-club-challenge-poster {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* The club/logo row inside the challenge poster */
+.closed-club-challenge-poster > div:nth-of-type(2) {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 1.25rem !important;
+}
+
+/* Keep each club name locked under its own crest */
+.closed-club-challenge-poster > div:nth-of-type(2) > div:first-child,
+.closed-club-challenge-poster > div:nth-of-type(2) > div:last-child {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  text-align: center !important;
+  min-width: 0 !important;
+}
+
+.closed-club-challenge-poster > div:nth-of-type(2) img {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.closed-club-challenge-poster > div:nth-of-type(2) strong {
+  display: block !important;
+  width: 100% !important;
+  text-align: center !important;
+  white-space: normal !important;
+}
+
+/* Mobile: keep the card contained and stop overlap */
+@media (max-width: 640px) {
+  .closed-club-challenge-card {
+    max-width: calc(100vw - 18px) !important;
+    padding: 0.85rem !important;
+  }
+
+  .closed-club-challenge-poster {
+    padding: 1rem !important;
+  }
+
+  .closed-club-challenge-poster > div:nth-of-type(2) {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) !important;
+    gap: 0.45rem !important;
+  }
+
+  .closed-club-challenge-poster > div:nth-of-type(2) img {
+    width: 3.6rem !important;
+    height: 3.6rem !important;
+    border-radius: 16px !important;
+  }
+
+  .closed-club-challenge-poster > div:nth-of-type(2) strong {
+    font-size: 0.82rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .closed-club-challenge-poster > div:nth-of-type(2) > div:nth-child(2) {
+    font-size: 1.35rem !important;
+  }
+}
+
+/* Premium closed club challenge sizing polish */
+.closed-club-challenge-poster > div:nth-of-type(2) img {
+  width: 4.8rem !important;
+  height: 4.8rem !important;
+
+.closed-club-challenge-poster > div:nth-of-type(2) > div:nth-child(2) {
+  color: #ffd166 !important;
+  text-shadow:
+    0 0 10px rgba(255, 209, 102, 0.75),
+    0 0 24px rgba(255, 72, 20, 0.55);
+}
+
+@media (max-width: 640px) {
+  .closed-club-challenge-poster > div:nth-of-type(2) img {
+    width: 4.25rem !important;
+    height: 4.25rem !important;
+  }
+}
+
+/* Club-vs-club teamsheet only */
+.teamsheet-card--club-challenge .teamsheet-card-club small {
+  color: #22c55e;
+  font-weight: 900;
+}
+
+.teamsheet-card--club-challenge .teamsheet-card-team-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.teamsheet-card--club-challenge .teamsheet-card-team-logo {
+  width: 3.6rem;
+  height: 3.6rem;
+  object-fit: contain;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.94);
+  padding: 0.25rem;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .teamsheet-card--club-challenge .teamsheet-card-team-title {
+    align-items: flex-start;
+  }
+
+  .teamsheet-card--club-challenge .teamsheet-card-team-logo {
+    width: 3rem;
+    height: 3rem;
+  }
+}
+}
+
+/* Club-vs-club teamsheet only */
+.teamsheet-card--club-challenge .teamsheet-card-club small {
+  color: #22c55e;
+  font-weight: 900;
+}
+
+.teamsheet-card--club-challenge .teamsheet-card-team-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.teamsheet-card--club-challenge .teamsheet-card-team-logo {
+  width: 3.6rem;
+  height: 3.6rem;
+  object-fit: contain;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.94);
+  padding: 0.25rem;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .teamsheet-card--club-challenge .teamsheet-card-team-title {
+    align-items: flex-start;
+  }
+
+  .teamsheet-card--club-challenge .teamsheet-card-team-logo {
+    width: 3rem;
+    height: 3rem;
+  }
+}
