@@ -7407,3 +7407,441 @@ body:has(.live-page) .app-root {
   opacity: 0.72;
   cursor: not-allowed;
 }
+
+/* Club challenge fixture controls only */
+.club-challenge-fixture-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.club-challenge-fixture-actions .secondary-btn {
+  min-height: 36px;
+}
+
+.club-challenge-edit-btn {
+  border-color: rgba(56, 189, 248, 0.42) !important;
+}
+
+.club-challenge-cancel-btn {
+  border-color: rgba(248, 113, 113, 0.5) !important;
+  color: #fecaca !important;
+}
+
+@media (max-width: 640px) {
+  .club-challenge-fixture-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .club-challenge-fixture-actions .secondary-btn {
+    flex: 1 1 100%;
+  }
+}
+
+/* Club challenge make-changes modal */
+.challenge-change-modal {
+  max-width: 560px;
+}
+
+.challenge-change-modal textarea.text-input {
+  min-height: 110px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+/* Mobile polish for club challenge make-changes modal */
+@media (max-width: 640px) {
+  .challenge-change-modal {
+    width: min(94vw, 420px);
+    max-height: 88vh;
+    overflow-y: auto;
+    padding: 1.05rem !important;
+    border-radius: 20px !important;
+  }
+
+  .challenge-change-modal h3 {
+    font-size: 1.15rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .challenge-change-modal .field-row {
+    gap: 0.28rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .challenge-change-modal .text-input {
+    min-height: 40px;
+    padding: 0.62rem 0.75rem;
+  }
+
+  .challenge-change-modal textarea.text-input {
+    min-height: 82px;
+  }
+
+  .challenge-change-modal .actions-row {
+    padding: 0.75rem;
+    border-radius: 22px;
+    gap: 0.55rem;
+  }
+
+  .challenge-change-modal .actions-row button {
+    width: 100%;
+  }
+}
+
+/* Compact fixture edit modal */
+
+.club-challenge-edit-modal {
+  width: min(92vw, 420px) !important;
+  max-height: 88vh !important;
+  overflow-y: auto;
+
+  padding: 1rem 1rem 1.15rem !important;
+  border-radius: 20px !important;
+}
+
+.fixture-edit-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.fixture-edit-form label {
+  margin-bottom: 0.15rem;
+}
+
+.fixture-edit-form .text-input,
+.fixture-edit-form select,
+.fixture-edit-form input[type="date"],
+.fixture-edit-form input[type="time"] {
+  min-height: 42px !important;
+  height: 42px !important;
+
+  padding: 0 0.8rem !important;
+  font-size: 0.92rem !important;
+}
+
+.fixture-edit-form textarea {
+  min-height: 88px !important;
+  resize: vertical;
+  padding: 0.8rem !important;
+}
+
+.fixture-edit-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.fixture-edit-actions button {
+  flex: 1;
+  min-height: 42px !important;
+}
+
+@media (max-width: 480px) {
+  .club-challenge-edit-modal {
+    width: min(94vw, 360px) !important;
+    padding: 0.9rem !important;
+  }
+
+  .fixture-edit-form {
+    gap: 0.5rem;
+  }
+
+  .fixture-edit-form textarea {
+    min-height: 72px !important;
+  }
+}
+
+
+/* Compact challenge edit modal */
+
+.challenge-change-modal {
+  width: min(92vw, 420px) !important;
+  max-height: 85vh !important;
+  overflow-y: auto;
+
+  padding: 1rem !important;
+  border-radius: 20px !important;
+}
+
+.challenge-change-modal h3 {
+  margin-bottom: 0.35rem !important;
+}
+
+.challenge-change-modal .field-row {
+  margin-bottom: 0.55rem !important;
+}
+
+.challenge-change-modal label {
+  margin-bottom: 0.2rem !important;
+  display: block;
+}
+
+.challenge-change-modal .text-input,
+.challenge-change-modal select,
+.challenge-change-modal input[type="date"],
+.challenge-change-modal input[type="time"] {
+  min-height: 42px !important;
+  height: 42px !important;
+  padding: 0 0.8rem !important;
+}
+
+.challenge-change-modal textarea {
+  min-height: 78px !important;
+  padding: 0.75rem !important;
+}
+
+.challenge-change-modal .actions-row {
+  margin-top: 0.8rem !important;
+}
+
+.challenge-change-modal .actions-row button {
+  min-height: 42px !important;
+}
+
+@media (max-width: 640px) {
+  .challenge-change-modal {
+    width: min(94vw, 380px) !important;
+    padding: 0.9rem !important;
+  }
+
+  .challenge-change-modal textarea {
+    min-height: 68px !important;
+  }
+}
+
+
+/* Premium spacing polish for fixture edit modal */
+
+.club-challenge-edit-modal .field-row {
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
+.club-challenge-edit-modal .text-input,
+.club-challenge-edit-modal select,
+.club-challenge-edit-modal textarea,
+.club-challenge-edit-modal input[type="date"],
+.club-challenge-edit-modal input[type="time"] {
+  width: calc(100% - 1rem);
+  margin: 0 auto;
+  display: block;
+}
+
+
+
+/* Premium fixture edit modal */
+
+.club-challenge-edit-modal {
+  width: min(92vw, 400px) !important;
+}
+
+.club-challenge-edit-modal .field-row {
+  padding-inline: 0.8rem;
+}
+
+.club-challenge-edit-modal .text-input,
+.club-challenge-edit-modal select,
+.club-challenge-edit-modal textarea,
+.club-challenge-edit-modal input[type="date"],
+.club-challenge-edit-modal input[type="time"] {
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+
+  min-height: 44px;
+
+  border-radius: 14px;
+}
+
+.club-challenge-edit-modal textarea {
+  min-height: 80px;
+}
+
+.club-challenge-edit-modal .actions-row {
+  padding-inline: 0.8rem;
+}
+
+
+
+/* FINAL premium fixture edit modal spacing */
+
+.challenge-change-modal .field-row {
+  padding-inline: 0.9rem !important;
+}
+
+.challenge-change-modal .text-input,
+.challenge-change-modal select,
+.challenge-change-modal input[type="date"],
+.challenge-change-modal input[type="time"],
+.challenge-change-modal textarea {
+  width: calc(100% - 1.8rem) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  display: block !important;
+  box-sizing: border-box !important;
+}
+
+.challenge-change-modal textarea {
+  min-height: 72px !important;
+}
+
+
+/* Premium fixture validation modal */
+
+.challenge-validation-modal {
+  max-width: 380px;
+  text-align: center;
+}
+
+.challenge-validation-icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+  filter: drop-shadow(0 0 14px rgba(245,158,11,0.45));
+}
+
+.challenge-validation-modal h3 {
+  margin-bottom: 0.5rem;
+}
+
+.challenge-validation-modal p {
+  line-height: 1.55;
+}
+
+.challenge-validation-modal .primary-btn {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+
+/* Premium fixture alternative modal */
+.fixture-alternative-modal {
+  width: min(92vw, 390px) !important;
+  padding: 1.1rem !important;
+  text-align: left;
+}
+
+.fixture-alternative-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  margin-bottom: 0.75rem;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(34,211,238,0.35), transparent 45%),
+    rgba(15,23,42,0.9);
+  border: 1px solid rgba(56,189,248,0.35);
+  box-shadow: 0 0 24px rgba(56,189,248,0.2);
+  font-size: 1.25rem;
+}
+
+.fixture-alternative-modal h3 {
+  margin-bottom: 0.45rem;
+}
+
+.fixture-alternative-modal textarea.text-input {
+  width: calc(100% - 1rem) !important;
+  min-height: 96px !important;
+  margin: 0.85rem auto 0;
+  display: block;
+  resize: vertical;
+  border-radius: 16px;
+  line-height: 1.45;
+}
+
+.fixture-alternative-actions {
+  display: flex;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+}
+
+.fixture-alternative-actions button {
+  flex: 1;
+  min-height: 42px;
+}
+
+.fixture-alternative-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 520px) {
+  .fixture-alternative-modal {
+    width: min(94vw, 360px) !important;
+  }
+
+  .fixture-alternative-actions {
+    flex-direction: column;
+  }
+}
+
+/* Premium nested popup behaviour */
+.modal-backdrop--nested-dim {
+  filter: brightness(0.72);
+}
+
+.modal--under-nested-popup {
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.modal-backdrop--nested-popup {
+  background: rgba(2, 6, 23, 0.42);
+  backdrop-filter: blur(3px);
+  z-index: 80;
+}
+
+.fixture-success-modal {
+  width: min(90vw, 360px) !important;
+  text-align: center;
+  padding: 1.15rem !important;
+}
+
+.fixture-success-icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+  filter: drop-shadow(0 0 16px rgba(34, 197, 94, 0.48));
+}
+
+.fixture-success-modal h3 {
+  margin-bottom: 0.45rem;
+}
+
+.fixture-success-modal p {
+  line-height: 1.55;
+}
+
+.fixture-success-modal .primary-btn {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+/* Reusable premium alert modal */
+.premium-alert-modal {
+  width: min(90vw, 360px) !important;
+  text-align: center;
+  padding: 1.15rem !important;
+}
+
+.premium-alert-icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+  filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.36));
+}
+
+.premium-alert-modal h3 {
+  margin-bottom: 0.45rem;
+}
+
+.premium-alert-modal p {
+  line-height: 1.55;
+}
+
+.premium-alert-modal .primary-btn {
+  width: 100%;
+  margin-top: 1rem;
+}

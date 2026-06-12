@@ -819,6 +819,14 @@ export function SquadsPage({
   const [signupRecords, setSignupRecords] = useState([]);
 
   const [activeChallengeFixture, setActiveChallengeFixture] = useState(null);
+  const [challengeChangeModalOpen, setChallengeChangeModalOpen] = useState(false);
+  const [challengeChangeDraft, setChallengeChangeDraft] = useState({
+    proposedDate: "",
+    proposedKickoff: "",
+    venue: "",
+    format: "5v5",
+    reason: "",
+  });
 
   const existingGuestTeam = useMemo(
     () =>
@@ -884,6 +892,13 @@ export function SquadsPage({
   );
 
   const [savingCardId, setSavingCardId] = useState("");
+  const [showFixtureChangeValidation, setShowFixtureChangeValidation] = useState(false);
+  const [showFixtureChangeSuccess, setShowFixtureChangeSuccess] = useState(false);
+  const [premiumAlert, setPremiumAlert] = useState(null);
+
+  const showPremiumAlert = ({ title = "Notice", message = "", icon = "ℹ️" }) => {
+    setPremiumAlert({ title, message, icon });
+  };
   const cardRefs = useRef({});
   const challengeAdvertRef = useRef(null);
   const teamsheetCardRef = useRef(null);
@@ -943,7 +958,7 @@ export function SquadsPage({
     } catch (err) {
       console.error("[Squads] Failed to update captain lock:", err);
       setCaptainEditLocked(!nextLocked);
-      window.alert("Could not update captain editing control.");
+      showPremiumAlert({ title: "Could not update control", message: "Captain editing control could not be updated right now.", icon: "⚠️" });
     }
   };
 
@@ -1731,7 +1746,7 @@ export function SquadsPage({
       await batch.commit();
     } catch (err) {
       console.error("[Squads] Could not create shared challenge fixture:", err);
-      window.alert("Fixture was created visually, but could not be saved to Firebase.");
+      showPremiumAlert({ title: "Fixture not fully saved", message: "The fixture appeared on screen, but could not be saved to the database.", icon: "⚠️" });
     }
   };
 
@@ -1752,6 +1767,125 @@ export function SquadsPage({
     const normalTeams = restoreNormalFriendlyTeamsFromSlots(localFiveVFiveTeams);
     setLocalFiveVFiveTeams(normalTeams);
     onUpdateFiveVFiveTeams?.(normalTeams);
+  };
+
+  const openChallengeChangeModal = () => {
+    if (!canEdit || !activeChallengeFixture?.fixtureId) return;
+
+    setChallengeChangeDraft({
+      proposedDate: activeChallengeFixture.proposedDate || "",
+      proposedKickoff: activeChallengeFixture.proposedKickoff || "",
+      venue: activeChallengeFixture.venue || "",
+      format: activeChallengeFixture.format || "5v5",
+      reason: "",
+    });
+
+    setChallengeChangeModalOpen(true);
+  };
+
+  const handleSubmitChallengeChangeRequest = async () => {
+    if (!canEdit || !activeChallengeFixture?.fixtureId) return;
+
+    const nextDate = String(challengeChangeDraft.proposedDate || "").trim();
+    const nextKickoff = String(challengeChangeDraft.proposedKickoff || "").trim();
+    const nextVenue = String(challengeChangeDraft.venue || "").trim();
+    const nextFormat = String(challengeChangeDraft.format || "5v5").trim();
+    const cleanReason = String(challengeChangeDraft.reason || "").trim();
+
+    if (!nextDate || !nextKickoff || !nextVenue || !nextFormat) {
+      showPremiumAlert({ title: "Fixture details needed", message: "Please complete the date, kickoff time, venue and game format before sending the update.", icon: "📝" });
+      return;
+    }
+
+    if (!cleanReason) {
+      setShowFixtureChangeValidation(true);
+      return;
+    }
+
+    try {
+      const fixtureId = activeChallengeFixture.fixtureId;
+      const participatingClubIds = Array.from(
+        new Set(
+          [
+            activeChallengeFixture.homeClubId,
+            activeChallengeFixture.awayClubId,
+            activeClubId,
+            ...(activeChallengeFixture.participatingClubIds || []),
+          ].map((value) => String(value || "").trim()).filter(Boolean)
+        )
+      );
+
+      const opponentClubId = participatingClubIds.find(
+        (clubId) => String(clubId) !== String(activeClubId)
+      );
+
+      const noticeId = `change_request_${fixtureId}_${Date.now()}`;
+
+      const fixturePatch = {
+        status: "change_requested",
+        proposedDate: nextDate,
+        proposedKickoff: nextKickoff,
+        venue: nextVenue,
+        format: nextFormat,
+        changeRequestedByClubId: activeClubId,
+        changeRequestedByClubName: activeClubName,
+        changeReason: cleanReason,
+        changeNoticeId: noticeId,
+        changeRequestedAt: serverTimestamp(),
+        changeRequestedAtMs: Date.now(),
+        updatedAt: serverTimestamp(),
+        updatedAtMs: Date.now(),
+      };
+
+      const noticePayload = {
+        noticeId,
+        type: "challenge_change_requested",
+        fixtureId,
+        challengeId: activeChallengeFixture.challengeId || "",
+        fromClubId: activeClubId,
+        fromClubName: activeClubName,
+        toClubId: opponentClubId || "",
+        homeClubId: activeChallengeFixture.homeClubId || "",
+        homeClubName: resolvedHomeClubName,
+        awayClubId: activeChallengeFixture.awayClubId || "",
+        awayClubName: resolvedAwayClubName,
+        proposedDate: nextDate,
+        proposedKickoff: nextKickoff,
+        venue: nextVenue,
+        format: nextFormat,
+        reason: cleanReason,
+        status: "open",
+        createdAt: serverTimestamp(),
+        createdAtMs: Date.now(),
+      };
+
+      const batch = writeBatch(db);
+
+      batch.set(doc(db, "clubChallengeFixtures", fixtureId), fixturePatch, { merge: true });
+
+      participatingClubIds.forEach((clubId) => {
+        batch.set(doc(db, "clubs", clubId, "fixtures", fixtureId), fixturePatch, { merge: true });
+      });
+
+      if (opponentClubId) {
+        batch.set(
+          doc(db, "clubs", opponentClubId, "challengeNotices", noticeId),
+          noticePayload,
+          { merge: true }
+        );
+      }
+
+      await batch.commit();
+
+      setActiveChallengeFixture((current) =>
+        current ? { ...current, ...fixturePatch } : current
+      );
+
+      setShowFixtureChangeSuccess(true);
+    } catch (err) {
+      console.error("[Squads] Could not request fixture change:", err);
+      showPremiumAlert({ title: "Update request failed", message: "Could not send this fixture update request right now.", icon: "⚠️" });
+    }
   };
 
   const handleCancelChallenge = async () => {
@@ -1830,7 +1964,7 @@ export function SquadsPage({
       onUpdateFiveVFiveTeams?.(normalTeams);
     } catch (err) {
       console.error("[Squads] Could not cancel challenge:", err);
-      window.alert("Could not cancel this challenge.");
+      showPremiumAlert({ title: "Cancellation failed", message: "Could not cancel this club challenge right now.", icon: "⚠️" });
     }
   };
 
@@ -2218,7 +2352,7 @@ export function SquadsPage({
     if (!playersById.has(playerId)) return;
 
     if (currentViewerPlayerIds.has(String(playerId || "").trim().toLowerCase())) {
-      window.alert("You cannot terminate your own membership from this page.");
+      showPremiumAlert({ title: "Action blocked", message: "You cannot terminate your own club membership from this page.", icon: "🛡️" });
       return;
     }
 
@@ -2492,7 +2626,7 @@ export function SquadsPage({
     } catch (err) {
       console.error("[Squads] Failed to save squad card image:", err);
       if (typeof window !== "undefined") {
-        window.alert("Could not save this squad card as an image.");
+        showPremiumAlert({ title: "Image save failed", message: "Could not save this squad card as an image.", icon: "⚠️" });
       }
     } finally {
       setSavingCardId("");
@@ -2517,7 +2651,7 @@ export function SquadsPage({
     } catch (err) {
       console.error("[Squads] Failed to save challenge advert:", err);
       if (typeof window !== "undefined") {
-        window.alert("Could not save the challenge advert.");
+        showPremiumAlert({ title: "Advert save failed", message: "Could not save the challenge advert image.", icon: "⚠️" });
       }
     }
   };
@@ -2888,7 +3022,7 @@ export function SquadsPage({
       link.click();
     } catch (err) {
       console.error("[Squads] Failed to save teamsheet image:", err);
-      window.alert("Could not save the teamsheet card as an image.");
+      showPremiumAlert({ title: "Teamsheet save failed", message: "Could not save the teamsheet card as an image.", icon: "⚠️" });
     }
   };
 
@@ -2914,7 +3048,7 @@ export function SquadsPage({
       link.click();
     } catch (err) {
       console.error("[Squads] Failed to save available players card:", err);
-      window.alert("Could not save the available paid players card as an image.");
+      showPremiumAlert({ title: "Paid players card save failed", message: "Could not save the available paid players card as an image.", icon: "⚠️" });
     }
   };
 
@@ -3655,13 +3789,35 @@ export function SquadsPage({
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={handleSaveChallengeAdvert}
-              >
-                Save advert
-              </button>
+              <div className="club-challenge-fixture-actions">
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={handleSaveChallengeAdvert}
+                >
+                  Save advert
+                </button>
+
+                {canEdit && (
+                  <>
+                    <button
+                      type="button"
+                      className="secondary-btn club-challenge-edit-btn"
+                      onClick={openChallengeChangeModal}
+                    >
+                      Request change
+                    </button>
+
+                    <button
+                      type="button"
+                      className="secondary-btn club-challenge-cancel-btn"
+                      onClick={handleCancelChallenge}
+                    >
+                      Request cancellation
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             <div
@@ -3883,6 +4039,219 @@ export function SquadsPage({
           </div>
         </div>
       )}
+
+      {challengeChangeModalOpen && (
+        <div className={`modal-backdrop ${showFixtureChangeSuccess ? "modal-backdrop--nested-dim" : ""}`}>
+          <div className={`modal challenge-change-modal ${showFixtureChangeSuccess ? "modal--under-nested-popup" : ""}`}>
+            <h3>Make fixture changes</h3>
+            <p className="muted small">
+              Update the fixture details below. The game against{" "}
+              <span
+                style={{
+                  color: "#F59E0B",
+                  fontWeight: 800,
+                }}
+              >
+                {(() => {
+                  const clubName =
+                    activeClubId === activeChallengeFixture?.homeClubId
+                      ? resolvedAwayClubName
+                      : resolvedHomeClubName;
+
+                  return /\bfc\b/i.test(clubName || "")
+                    ? clubName
+                    : `${clubName} FC`;
+                })()}
+              </span>{" "}
+              will be notified and can respond.
+            </p>
+
+            <div className="field-row">
+              <label>Date</label>
+              <input
+                type="date"
+                className="text-input"
+                value={challengeChangeDraft.proposedDate}
+                onChange={(event) =>
+                  setChallengeChangeDraft((current) => ({
+                    ...current,
+                    proposedDate: event.target.value,
+                  }))
+                }
+                placeholder="12 June 2026"
+              />
+            </div>
+
+            <div className="field-row">
+              <label>Kickoff time</label>
+              <input
+                type="time"
+                className="text-input"
+                value={challengeChangeDraft.proposedKickoff}
+                onChange={(event) =>
+                  setChallengeChangeDraft((current) => ({
+                    ...current,
+                    proposedKickoff: event.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <div className="field-row">
+              <label>Venue</label>
+              <input
+                className="text-input"
+                value={challengeChangeDraft.venue}
+                onChange={(event) =>
+                  setChallengeChangeDraft((current) => ({
+                    ...current,
+                    venue: event.target.value,
+                  }))
+                }
+                placeholder="Venue"
+              />
+            </div>
+
+            <div className="field-row">
+              <label>Game format</label>
+              <select
+                className="text-input"
+                value={challengeChangeDraft.format}
+                onChange={(event) =>
+                  setChallengeChangeDraft((current) => ({
+                    ...current,
+                    format: event.target.value,
+                  }))
+                }
+              >
+                <option value="5v5">5 v 5</option>
+                <option value="6v6">6 v 6</option>
+                <option value="7v7">7 v 7</option>
+                <option value="11aside">11 aside</option>
+              </select>
+            </div>
+
+            <div className="field-row">
+              <label>Message to opponent</label>
+              <textarea
+                className="text-input"
+                value={challengeChangeDraft.reason}
+                onChange={(event) =>
+                  setChallengeChangeDraft((current) => ({
+                    ...current,
+                    reason: event.target.value,
+                  }))
+                }
+                placeholder="Explain why these changes are needed."
+                rows={3}
+              />
+            </div>
+
+            <div className="actions-row">
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setChallengeChangeModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handleSubmitChallengeChangeRequest}
+              >
+                Update fixture info
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFixtureChangeSuccess && (
+        <div className="modal-backdrop modal-backdrop--nested-popup">
+          <div className="modal fixture-success-modal">
+            <div className="fixture-success-icon">✅</div>
+
+            <h3>Fixture update sent</h3>
+
+            <p className="muted small">
+              Your fixture update request has been sent to{" "}
+              <strong>
+                {activeClubId === activeChallengeFixture?.homeClubId
+                  ? resolvedAwayClubName
+                  : resolvedHomeClubName}
+              </strong>
+              . They will be notified and can respond.
+            </p>
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => {
+                setShowFixtureChangeSuccess(false);
+                setChallengeChangeModalOpen(false);
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {premiumAlert && (
+        <div className="modal-backdrop modal-backdrop--nested-popup">
+          <div className="modal premium-alert-modal">
+            <div className="premium-alert-icon">{premiumAlert.icon || "ℹ️"}</div>
+
+            <h3>{premiumAlert.title}</h3>
+
+            <p className="muted small">
+              {premiumAlert.message}
+            </p>
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => setPremiumAlert(null)}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showFixtureChangeValidation && (
+        <div className="modal-backdrop">
+          <div className="modal challenge-validation-modal">
+            <div className="challenge-validation-icon">⚠️</div>
+
+            <h3>Message Required</h3>
+
+            <p>
+              <strong>
+                {activeClubId === activeChallengeFixture?.homeClubId
+                  ? `${resolvedAwayClubName || "Opponent Club"} FC`
+                  : `${resolvedHomeClubName || "Opponent Club"} FC`}
+              </strong>{" "}
+              needs a short explanation for the fixture update.
+            </p>
+
+            <p className="muted small">
+              Example: Venue changed due to maintenance, weather concerns,
+              scheduling conflict or player availability.
+            </p>
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => setShowFixtureChangeValidation(false)}
+            >
+              Continue Editing
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {isAdmin && pendingDeletePlayerId && (
         <div className="modal-backdrop">

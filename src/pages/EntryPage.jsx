@@ -608,6 +608,8 @@ export function EntryPage({
   const [memberDepartureAlerts, setMemberDepartureAlerts] = useState([]);
   const [incomingChallengeAlerts, setIncomingChallengeAlerts] = useState([]);
   const [challengeNoticeAlerts, setChallengeNoticeAlerts] = useState([]);
+  const [fixtureAlternativeModal, setFixtureAlternativeModal] = useState(null);
+  const [fixtureAlternativeMessage, setFixtureAlternativeMessage] = useState("");
   const [isAdminNoticePanelOpen, setIsAdminNoticePanelOpen] = useState(false);
   const [activeAdminNoticeIndex, setActiveAdminNoticeIndex] = useState(0);
   const [dismissedPendingNoticeIds, setDismissedPendingNoticeIds] = useState(() => {
@@ -899,27 +901,64 @@ export function EntryPage({
     });
 
     challengeNoticeAlerts.forEach((notice) => {
-      if (notice.type !== "challenge_cancelled") return;
+      if (notice.type === "challenge_cancelled") {
+        notices.push({
+          id: `challenge-notice-${notice.noticeDocId}`,
+          type: "challenge_cancelled",
+          title: "Fixture cancelled",
+          tag: "Club Challenge",
+          icon: "⚠️",
+          message: (
+            <>
+              <strong>{notice.fromClubName || "A club"}</strong> cancelled the challenge between{" "}
+              <strong>{notice.homeClubName || "Home club"}</strong> and{" "}
+              <strong>{notice.awayClubName || "Away club"}</strong>.
+            </>
+          ),
+          helper:
+            notice.reason
+              ? `Reason: ${notice.reason}`
+              : "No cancellation reason was provided.",
+          payload: notice,
+        });
+        return;
+      }
 
-      notices.push({
-        id: `challenge-notice-${notice.noticeDocId}`,
-        type: "challenge_cancelled",
-        title: "Challenge cancelled",
-        tag: "Fixture update",
-        icon: "⚠️",
-        message: (
-          <>
-            <strong>{notice.fromClubName || "A club"}</strong> cancelled the challenge between{" "}
-            <strong>{notice.homeClubName || "Home club"}</strong> and{" "}
-            <strong>{notice.awayClubName || "Away club"}</strong>.
-          </>
-        ),
-        helper:
-          notice.reason
-            ? `Reason: ${notice.reason}`
-            : "No cancellation reason was provided.",
-        payload: notice,
-      });
+      if (notice.type === "challenge_change_requested") {
+        notices.push({
+          id: `challenge-change-${notice.noticeDocId}`,
+          type: "challenge_change_requested",
+          title: "Fixture update requested",
+          tag: "Club Challenge",
+          icon: "📝",
+          message: (
+            <>
+              <strong>{notice.fromClubName || "A club"}</strong> wants to update the fixture details.
+            </>
+          ),
+          helper:
+            `${notice.proposedDate || "No date"} · ${notice.proposedKickoff || "No kickoff"} · ${notice.venue || "No venue"} · ${(notice.format || "5v5").toUpperCase()}${notice.reason ? ` · ${notice.reason}` : ""}`,
+          payload: notice,
+        });
+        return;
+      }
+
+      if (notice.type === "challenge_change_reply") {
+        notices.push({
+          id: `challenge-reply-${notice.noticeDocId}`,
+          type: "challenge_change_reply",
+          title: "Alternative proposed",
+          tag: "Club Challenge",
+          icon: "💬",
+          message: (
+            <>
+              <strong>{notice.fromClubName || "A club"}</strong> replied with an alternative proposal.
+            </>
+          ),
+          helper: notice.message || "No message was included.",
+          payload: notice,
+        });
+      }
     });
 
 
@@ -1615,6 +1654,172 @@ export function EntryPage({
     } catch (err) {
       console.error("[EntryPage] Failed acknowledging departure notice:", err);
       window.alert("Could not close this departure notice just now. Please try again.");
+    }
+  };
+
+  const markChallengeNoticeAcknowledged = async (noticePayload) => {
+    const noticeId = noticePayload?.noticeDocId || noticePayload?.noticeId;
+    if (!noticeId) return;
+
+    await updateDoc(
+      doc(db, "clubs", activeClubId, "challengeNotices", noticeId),
+      {
+        status: "acknowledged",
+        acknowledgedAt: serverTimestamp(),
+        acknowledgedAtMs: Date.now(),
+      }
+    );
+
+    setChallengeNoticeAlerts((prev) =>
+      prev.filter((item) => item.noticeDocId !== noticeId)
+    );
+  };
+
+  const handleAcceptFixtureAlternative = async (noticePayload) => {
+    if (!noticePayload?.fixtureId) return;
+
+    try {
+      const fixtureId = noticePayload.fixtureId;
+      const participatingClubIds = Array.from(
+        new Set(
+          [
+            noticePayload.homeClubId,
+            noticePayload.awayClubId,
+            activeClubId,
+          ]
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
+
+      const patch = {
+        status: "alternative_accepted",
+        alternativeAcceptedByClubId: activeClubId,
+        alternativeAcceptedByClubName: activeClubName,
+        alternativeMessage: noticePayload.message || "",
+        alternativeAcceptedAt: serverTimestamp(),
+        alternativeAcceptedAtMs: Date.now(),
+        updatedAt: serverTimestamp(),
+        updatedAtMs: Date.now(),
+      };
+
+      const batch = writeBatch(db);
+
+      batch.set(doc(db, "clubChallengeFixtures", fixtureId), patch, { merge: true });
+
+      participatingClubIds.forEach((clubId) => {
+        batch.set(doc(db, "clubs", clubId, "fixtures", fixtureId), patch, { merge: true });
+      });
+
+      await batch.commit();
+      await markChallengeNoticeAcknowledged(noticePayload);
+    } catch (err) {
+      console.error("[EntryPage] Failed accepting fixture alternative:", err);
+      window.alert("Could not accept this alternative just now.");
+    }
+  };
+
+  const handleContinueOriginalFixtureRequest = async (noticePayload) => {
+    if (!noticePayload?.fixtureId) return;
+
+    try {
+      await markChallengeNoticeAcknowledged(noticePayload);
+    } catch (err) {
+      console.error("[EntryPage] Failed continuing fixture request:", err);
+      window.alert("Could not close this alternative just now.");
+    }
+  };
+
+  const handleAcceptFixtureChange = async (noticePayload) => {
+    if (!noticePayload?.fixtureId) return;
+
+    try {
+      const fixtureId = noticePayload.fixtureId;
+      const participatingClubIds = Array.from(
+        new Set(
+          [
+            noticePayload.homeClubId,
+            noticePayload.awayClubId,
+            activeClubId,
+          ]
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
+
+      const patch = {
+        status: "change_accepted",
+        proposedDate: noticePayload.proposedDate || "",
+        proposedKickoff: noticePayload.proposedKickoff || "",
+        venue: noticePayload.venue || "",
+        format: noticePayload.format || "5v5",
+        changeAcceptedByClubId: activeClubId,
+        changeAcceptedByClubName: activeClubName,
+        changeAcceptedAt: serverTimestamp(),
+        changeAcceptedAtMs: Date.now(),
+        updatedAt: serverTimestamp(),
+        updatedAtMs: Date.now(),
+      };
+
+      const batch = writeBatch(db);
+
+      batch.set(doc(db, "clubChallengeFixtures", fixtureId), patch, { merge: true });
+
+      participatingClubIds.forEach((clubId) => {
+        batch.set(doc(db, "clubs", clubId, "fixtures", fixtureId), patch, { merge: true });
+      });
+
+      await batch.commit();
+      await markChallengeNoticeAcknowledged(noticePayload);
+    } catch (err) {
+      console.error("[EntryPage] Failed accepting fixture change:", err);
+      window.alert("Could not accept this fixture update just now.");
+    }
+  };
+
+  const openFixtureAlternativeModal = (noticePayload) => {
+    if (!noticePayload?.fixtureId) return;
+    setFixtureAlternativeModal(noticePayload);
+    setFixtureAlternativeMessage("");
+  };
+
+  const handleSubmitFixtureAlternative = async () => {
+    const noticePayload = fixtureAlternativeModal;
+    if (!noticePayload?.fixtureId) return;
+
+    const cleanMessage = String(fixtureAlternativeMessage || "").trim();
+    if (!cleanMessage) return;
+
+    try {
+      const targetClubId = noticePayload.fromClubId || "";
+      const noticeId = `change_reply_${noticePayload.fixtureId}_${Date.now()}`;
+
+      if (targetClubId) {
+        await addDoc(collection(db, "clubs", targetClubId, "challengeNotices"), {
+          noticeId,
+          type: "challenge_change_reply",
+          fixtureId: noticePayload.fixtureId,
+          challengeId: noticePayload.challengeId || "",
+          fromClubId: activeClubId,
+          fromClubName: activeClubName,
+          toClubId: targetClubId,
+          homeClubId: noticePayload.homeClubId || "",
+          homeClubName: noticePayload.homeClubName || "",
+          awayClubId: noticePayload.awayClubId || "",
+          awayClubName: noticePayload.awayClubName || "",
+          message: cleanMessage,
+          status: "open",
+          createdAt: serverTimestamp(),
+          createdAtMs: Date.now(),
+        });
+      }
+
+      await markChallengeNoticeAcknowledged(noticePayload);
+      setFixtureAlternativeModal(null);
+      setFixtureAlternativeMessage("");
+    } catch (err) {
+      console.error("[EntryPage] Failed sending alternative fixture suggestion:", err);
+      window.alert("Could not send your alternative suggestion just now.");
     }
   };
 
@@ -2774,6 +2979,54 @@ export function EntryPage({
         }}
       />
 
+      {fixtureAlternativeModal && (
+        <div className="modal-backdrop">
+          <div className="modal fixture-alternative-modal">
+            <div className="fixture-alternative-icon">💬</div>
+
+            <h3>Suggest an alternative</h3>
+
+            <p className="muted small">
+              Send a clear alternative to{" "}
+              <strong>
+                {fixtureAlternativeModal.fromClubName || "the other club"}
+              </strong>
+              . They will receive your proposal as a fixture notification.
+            </p>
+
+            <textarea
+              className="text-input"
+              rows={4}
+              value={fixtureAlternativeMessage}
+              onChange={(event) => setFixtureAlternativeMessage(event.target.value)}
+              placeholder="Example: Can we move this to Sunday 18:00 at UCT Turf Sports Fields?"
+            />
+
+            <div className="fixture-alternative-actions">
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setFixtureAlternativeModal(null);
+                  setFixtureAlternativeMessage("");
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="primary-btn"
+                disabled={!String(fixtureAlternativeMessage || "").trim()}
+                onClick={handleSubmitFixtureAlternative}
+              >
+                Send alternative
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isAdminViewer && notificationCount > 0 && (
         <div className="tk-admin-notification-dock" aria-live="polite">
           {!isAdminNoticePanelOpen ? (
@@ -2837,6 +3090,51 @@ export function EntryPage({
                       title="Club chat coming soon"
                     >
                       Discuss
+                    </button>
+                  </div>
+                ) : activeAdminNotice.type === "challenge_change_requested" ? (
+                  <div className="tk-admin-notification-actions">
+                    <button
+                      type="button"
+                      className="tk-admin-notification-primary"
+                      onClick={() => handleAcceptFixtureChange(activeAdminNotice.payload)}
+                    >
+                      Accept update
+                    </button>
+
+                    <button
+                      type="button"
+                      className="tk-admin-notification-secondary"
+                      onClick={() => openFixtureAlternativeModal(activeAdminNotice.payload)}
+                    >
+                      Suggest alternative
+                    </button>
+                  </div>
+                ) : activeAdminNotice.type === "challenge_change_reply" ? (
+                  <div className="tk-admin-notification-actions">
+                    <button
+                      type="button"
+                      className="tk-admin-notification-primary"
+                      onClick={() => handleAcceptFixtureAlternative(activeAdminNotice.payload)}
+                    >
+                      Accept alternative
+                    </button>
+
+                    <button
+                      type="button"
+                      className="tk-admin-notification-secondary"
+                      onClick={() => handleContinueOriginalFixtureRequest(activeAdminNotice.payload)}
+                    >
+                      Continue request
+                    </button>
+
+                    <button
+                      type="button"
+                      className="tk-admin-notification-nav-btn"
+                      disabled
+                      title="Fixture discussion thread coming soon"
+                    >
+                      Open discussion
                     </button>
                   </div>
                 ) : activeAdminNotice.type === "new_player" ? (
