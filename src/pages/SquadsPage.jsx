@@ -895,6 +895,8 @@ export function SquadsPage({
   const [showFixtureChangeValidation, setShowFixtureChangeValidation] = useState(false);
   const [showFixtureChangeSuccess, setShowFixtureChangeSuccess] = useState(false);
   const [premiumAlert, setPremiumAlert] = useState(null);
+  const [cancelChallengeModalOpen, setCancelChallengeModalOpen] = useState(false);
+  const [cancelChallengeReason, setCancelChallengeReason] = useState("");
 
   const showPremiumAlert = ({ title = "Notice", message = "", icon = "ℹ️" }) => {
     setPremiumAlert({ title, message, icon });
@@ -1891,21 +1893,16 @@ export function SquadsPage({
   const handleCancelChallenge = async () => {
     if (!canEdit || !activeChallengeFixture?.fixtureId) return;
 
-    const ok =
-      typeof window !== "undefined"
-        ? window.confirm(
-            `Cancel the challenge between ${resolvedHomeClubName} and ${resolvedAwayClubName}? The opponent club will be notified.`
-          )
-        : true;
+    const reason = String(cancelChallengeReason || "").trim();
 
-    if (!ok) return;
-
-    const reason =
-      typeof window !== "undefined"
-        ? window.prompt("Reason for cancelling the challenge:", "")
-        : "";
-
-    if (reason === null) return;
+    if (!reason) {
+      showPremiumAlert({
+        title: "Reason required",
+        message: "Please give the other club a short reason before requesting cancellation.",
+        icon: "📝",
+      });
+      return;
+    }
 
     try {
       const fixtureId = activeChallengeFixture.fixtureId;
@@ -1956,6 +1953,8 @@ export function SquadsPage({
 
       await batch.commit();
 
+      setCancelChallengeModalOpen(false);
+      setCancelChallengeReason("");
       setActiveChallengeFixture(null);
       setGuestOpponentEnabled(false);
 
@@ -3811,7 +3810,7 @@ export function SquadsPage({
                     <button
                       type="button"
                       className="secondary-btn club-challenge-cancel-btn"
-                      onClick={handleCancelChallenge}
+                      onClick={() => { setCancelChallengeReason(""); setCancelChallengeModalOpen(true); }}
                     >
                       Request cancellation
                     </button>
@@ -4194,6 +4193,52 @@ export function SquadsPage({
             >
               Done
             </button>
+          </div>
+        </div>
+      )}
+
+      {cancelChallengeModalOpen && (
+        <div className="modal-backdrop">
+          <div className="modal challenge-cancel-modal">
+            <div className="challenge-cancel-icon">⚠️</div>
+
+            <h3>Request fixture cancellation</h3>
+
+            <p className="muted small">
+              You are asking to cancel the fixture between{" "}
+              <strong>{resolvedHomeClubName}</strong> and{" "}
+              <strong>{resolvedAwayClubName}</strong>. The other club will be notified
+              and may suggest one alternative before final cancellation.
+            </p>
+
+            <textarea
+              className="text-input"
+              rows={4}
+              value={cancelChallengeReason}
+              onChange={(event) => setCancelChallengeReason(event.target.value)}
+              placeholder="Example: We no longer have enough players available for this fixture."
+            />
+
+            <div className="challenge-cancel-actions">
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setCancelChallengeModalOpen(false);
+                  setCancelChallengeReason("");
+                }}
+              >
+                Keep fixture
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn challenge-cancel-danger-btn"
+                onClick={handleCancelChallenge}
+              >
+                Send cancellation request
+              </button>
+            </div>
           </div>
         </div>
       )}

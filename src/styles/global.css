@@ -7845,3 +7845,61 @@ body:has(.live-page) .app-root {
   width: 100%;
   margin-top: 1rem;
 }
+
+/* Premium challenge cancellation modal */
+.challenge-cancel-modal {
+  width: min(92vw, 390px) !important;
+  padding: 1.1rem !important;
+  text-align: left;
+}
+
+.challenge-cancel-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  margin-bottom: 0.75rem;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(248,113,113,0.42), transparent 45%),
+    rgba(15,23,42,0.9);
+  border: 1px solid rgba(248,113,113,0.4);
+  box-shadow: 0 0 26px rgba(248,113,113,0.22);
+  font-size: 1.25rem;
+}
+
+.challenge-cancel-modal textarea.text-input {
+  width: calc(100% - 1rem) !important;
+  min-height: 92px !important;
+  margin: 0.85rem auto 0;
+  display: block;
+  resize: vertical;
+  border-radius: 16px;
+  line-height: 1.45;
+}
+
+.challenge-cancel-actions {
+  display: flex;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+}
+
+.challenge-cancel-actions button {
+  flex: 1;
+  min-height: 42px;
+}
+
+.challenge-cancel-danger-btn {
+  border-color: rgba(248,113,113,0.55) !important;
+  color: #fecaca !important;
+}
+
+@media (max-width: 520px) {
+  .challenge-cancel-modal {
+    width: min(94vw, 360px) !important;
+  }
+
+  .challenge-cancel-actions {
+    flex-direction: column;
+  }
+}
