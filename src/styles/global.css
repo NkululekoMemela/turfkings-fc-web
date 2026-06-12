@@ -8308,3 +8308,412 @@ body:has(.live-page) .app-root {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* FANM Challenger Chat inside Club Chat */
+.fanm-challenger-chat-button {
+  width: calc(100% - 1rem);
+  margin: 0 auto 0.85rem;
+  border: 1px solid rgba(245,158,11,0.35);
+  border-radius: 18px;
+  padding: 0.75rem 0.85rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: center;
+  text-align: left;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(245,158,11,0.18), transparent 35%),
+    rgba(15,23,42,0.86);
+  color: #f8fafc;
+  cursor: pointer;
+  box-shadow: 0 18px 36px rgba(0,0,0,0.16);
+}
+
+.fanm-challenger-chat-button > span {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(245,158,11,0.14);
+  border: 1px solid rgba(245,158,11,0.28);
+}
+
+.fanm-challenger-chat-button strong {
+  display: block;
+  margin-bottom: 0.12rem;
+}
+
+.fanm-challenger-chat-button small {
+  display: block;
+  color: rgba(226,232,240,0.66);
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fanm-challenger-chat-modal {
+  width: min(94vw, 540px) !important;
+  max-height: 86vh;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.fanm-challenger-chat-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.fanm-challenger-chat-head h3 {
+  margin-bottom: 0.2rem;
+}
+
+.fanm-challenger-chat-messages {
+  max-height: 42vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border-radius: 20px;
+  background: rgba(15,23,42,0.72);
+  border: 1px solid rgba(148,163,184,0.16);
+}
+
+.fanm-challenger-chat-message {
+  max-width: 86%;
+  padding: 0.72rem 0.82rem;
+  border-radius: 17px;
+  background: rgba(30,41,59,0.92);
+  border: 1px solid rgba(148,163,184,0.16);
+  box-shadow: 0 14px 28px rgba(0,0,0,0.16);
+}
+
+.fanm-challenger-chat-message.is-mine {
+  justify-self: end;
+  background: linear-gradient(135deg, rgba(217,119,6,0.95), rgba(180,83,9,0.95));
+  border-color: rgba(245,158,11,0.38);
+}
+
+.fanm-challenger-chat-message-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.25rem;
+}
+
+.fanm-challenger-chat-message-meta strong {
+  color: #f8fafc;
+  font-size: 0.78rem;
+}
+
+.fanm-challenger-chat-message-meta span {
+  border-radius: 999px;
+  padding: 0.14rem 0.38rem;
+  background: rgba(15,23,42,0.42);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fde68a;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.fanm-challenger-chat-message p {
+  margin: 0;
+  line-height: 1.42;
+}
+
+.fanm-challenger-chat-empty {
+  text-align: center;
+  color: rgba(226,232,240,0.58);
+  font-size: 0.85rem;
+  padding: 1rem;
+}
+
+.fanm-challenger-chat-compose {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.fanm-challenger-chat-input-wrap {
+  position: relative;
+}
+
+.fanm-challenger-chat-compose textarea.text-input {
+  width: calc(100% - 1rem) !important;
+  margin-inline: auto;
+  display: block;
+  min-height: 76px;
+  resize: vertical;
+  border-radius: 16px;
+  padding-right: 3rem !important;
+  box-sizing: border-box;
+}
+
+.fanm-challenger-chat-emoji-btn {
+  position: absolute;
+  right: 0.95rem;
+  bottom: 0.75rem;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.24);
+  background: rgba(15,23,42,0.82);
+  color: #f8fafc;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(0,0,0,0.22);
+}
+
+.fanm-challenger-chat-emoji-tray {
+  width: calc(100% - 1rem);
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.55rem;
+  border-radius: 18px;
+  background: rgba(15,23,42,0.94);
+  border: 1px solid rgba(148,163,184,0.18);
+}
+
+.fanm-challenger-chat-emoji-tray button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(30,41,59,0.78);
+  cursor: pointer;
+  font-size: 1.05rem;
+}
+
+.fanm-challenger-chat-compose .primary-btn {
+  width: calc(100% - 1rem);
+  margin-inline: auto;
+}
+
+.fanm-challenger-chat-compose .primary-btn:disabled,
+.fanm-challenger-chat-emoji-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+  .fanm-challenger-chat-modal {
+    width: min(94vw, 380px) !important;
+  }
+
+  .fanm-challenger-chat-head {
+    flex-direction: column;
+  }
+
+  .fanm-challenger-chat-message {
+    max-width: 94%;
+  }
+}
+
+@media (max-width: 420px) {
+  .fanm-challenger-chat-emoji-tray {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* FANM chat room switcher */
+.fanm-chat-room-switcher {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.85rem 0 0.85rem;
+}
+
+.fanm-chat-room-tab {
+  width: calc(100% - 1rem);
+  margin-inline: auto;
+  border: 1px solid rgba(34,197,94,0.22);
+  border-radius: 18px;
+  padding: 0.68rem 0.78rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  text-align: left;
+  background: rgba(15,23,42,0.72);
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.fanm-chat-room-tab.is-active {
+  background:
+    radial-gradient(circle at 12% 20%, rgba(34,197,94,0.2), transparent 35%),
+    rgba(15,23,42,0.92);
+  border-color: rgba(34,197,94,0.44);
+  box-shadow: 0 18px 36px rgba(0,0,0,0.16);
+}
+
+.fanm-chat-room-tab--challenger {
+  border-color: rgba(245,158,11,0.28);
+}
+
+.fanm-chat-room-tab--challenger.is-active {
+  background:
+    radial-gradient(circle at 12% 20%, rgba(245,158,11,0.18), transparent 35%),
+    rgba(15,23,42,0.92);
+  border-color: rgba(245,158,11,0.42);
+}
+
+.fanm-chat-room-tab > span {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(34,197,94,0.12);
+  border: 1px solid rgba(34,197,94,0.2);
+}
+
+.fanm-chat-room-tab--challenger > span {
+  background: rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.22);
+}
+
+.fanm-chat-room-tab strong {
+  display: block;
+}
+
+.fanm-chat-room-tab small {
+  display: block;
+  color: rgba(226,232,240,0.64);
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fanm-chat-room-tab em {
+  min-width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f97316, #ef4444);
+  color: #fff;
+  font-style: normal;
+  font-weight: 1000;
+}
+
+.fanm-chat-room-content {
+  margin-top: 0;
+}
+
+/* Clear selected state for FANM chat rooms */
+.fanm-chat-room-switcher::before {
+  content: "Choose chat room";
+  color: rgba(226,232,240,0.52);
+  font-size: 0.68rem;
+  font-weight: 1000;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-left: 0.55rem;
+}
+
+.fanm-chat-room-tab {
+  opacity: 0.58;
+  transform: scale(0.985);
+}
+
+.fanm-chat-room-tab.is-active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.fanm-chat-room-tab.is-active::after {
+  content: "OPEN";
+  border-radius: 999px;
+  padding: 0.18rem 0.42rem;
+  background: rgba(34,197,94,0.18);
+  border: 1px solid rgba(34,197,94,0.32);
+  color: #bbf7d0;
+  font-size: 0.62rem;
+  font-weight: 1000;
+}
+
+.fanm-chat-room-tab--challenger.is-active::after {
+  background: rgba(245,158,11,0.18);
+  border-color: rgba(245,158,11,0.36);
+  color: #fde68a;
+}
+
+.fanm-chat-room-tab:not(.is-active):hover {
+  opacity: 0.82;
+}
+
+/* Stronger active/inactive chat-room clarity */
+.fanm-chat-room-tab:not(.is-active) {
+  opacity: 0.38;
+  filter: grayscale(0.65);
+  background: rgba(15,23,42,0.42);
+  border-color: rgba(148,163,184,0.12);
+}
+
+.fanm-chat-room-tab:not(.is-active) > span,
+.fanm-chat-room-tab:not(.is-active) strong,
+.fanm-chat-room-tab:not(.is-active) small {
+  opacity: 0.72;
+}
+
+.fanm-chat-room-tab:not(.is-active)::after {
+  content: "Tap to open";
+  border-radius: 999px;
+  padding: 0.18rem 0.42rem;
+  background: rgba(148,163,184,0.08);
+  border: 1px solid rgba(148,163,184,0.12);
+  color: rgba(226,232,240,0.5);
+  font-size: 0.62rem;
+  font-weight: 1000;
+  white-space: nowrap;
+}
+
+.fanm-chat-room-switcher {
+  margin-bottom: 1rem;
+}
+
+.fanm-club-chat-messages,
+.fanm-challenger-chat-messages {
+  position: relative;
+}
+
+.fanm-club-chat-messages::before {
+  content: "Currently viewing: Club Chat";
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  width: fit-content;
+  margin-bottom: 0.55rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(34,197,94,0.14);
+  border: 1px solid rgba(34,197,94,0.26);
+  color: #bbf7d0;
+  font-size: 0.62rem;
+  font-weight: 1000;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fanm-challenger-chat-messages::before {
+  content: "Currently viewing: Challenger Chat";
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  width: fit-content;
+  margin-bottom: 0.55rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(245,158,11,0.14);
+  border: 1px solid rgba(245,158,11,0.28);
+  color: #fde68a;
+  font-size: 0.62rem;
+  font-weight: 1000;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
