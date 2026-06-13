@@ -624,6 +624,7 @@ export function EntryPage({
   const [clubChatMessages, setClubChatMessages] = useState([]);
   const [clubChatDraft, setClubChatDraft] = useState("");
   const [clubChatOpen, setClubChatOpen] = useState(false);
+  const [clubChatTeaseOpen, setClubChatTeaseOpen] = useState(false);
   const [clubChatEmojiOpen, setClubChatEmojiOpen] = useState(false);
   const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(() => {
     try {
@@ -1880,8 +1881,47 @@ export function EntryPage({
     setClubChatLastSeenMs(clubChatLatestMessageMs);
   }, [clubChatOpen, activeClubId, clubChatLatestMessageMs]);
 
+  useEffect(() => {
+    if (clubChatOpen) {
+      setClubChatTeaseOpen(false);
+      return;
+    }
+
+    let idleTimer;
+    let shrinkTimer;
+
+    const startIdleTimer = () => {
+      setClubChatTeaseOpen(false);
+      window.clearTimeout(idleTimer);
+      window.clearTimeout(shrinkTimer);
+
+      idleTimer = window.setTimeout(() => {
+        setClubChatTeaseOpen(true);
+
+        shrinkTimer = window.setTimeout(() => {
+          setClubChatTeaseOpen(false);
+        }, 2000);
+      }, 7000);
+    };
+
+    startIdleTimer();
+
+    const activityEvents = ["click", "keydown", "mousemove", "touchstart", "scroll"];
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, startIdleTimer, { passive: true });
+    });
+
+    return () => {
+      window.clearTimeout(idleTimer);
+      window.clearTimeout(shrinkTimer);
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, startIdleTimer);
+      });
+    };
+  }, [clubChatOpen]);
+
   const renderClubChatCard = () => (
-    <section className={`card fanm-club-chat-card ${clubChatOpen ? "is-open" : "is-collapsed"}`} style={premiumPanelStyle}>
+    <section className={`card fanm-club-chat-card ${clubChatOpen ? "is-open" : "is-collapsed"} ${!clubChatOpen && clubChatTeaseOpen ? "is-teasing" : ""}`} style={premiumPanelStyle}>
       <button
         type="button"
         className="fanm-club-chat-launcher"
