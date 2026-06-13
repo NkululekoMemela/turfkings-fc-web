@@ -8969,3 +8969,109 @@ body:has(.live-page) .app-root {
   font-weight: 800;
 }
 
+
+/* FANM Club Chat tagged highlight attachments */
+.fanm-club-chat-attach-btn {
+  position: absolute;
+  right: 3.3rem;
+  bottom: 0.75rem;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.24);
+  background: rgba(15,23,42,0.82);
+  color: #f8fafc;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(0,0,0,0.22);
+}
+
+.fanm-chat-highlight-picker,
+.fanm-chat-selected-highlight {
+  width: calc(100% - 1rem);
+  margin: 0.65rem auto;
+  border-radius: 18px;
+  border: 1px solid rgba(34,197,94,0.24);
+  background: rgba(15,23,42,0.9);
+  padding: 0.65rem;
+  color: #f8fafc;
+}
+
+.fanm-chat-highlight-picker {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.fanm-chat-highlight-picker > button,
+.fanm-chat-selected-highlight,
+.fanm-chat-highlight-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.fanm-chat-highlight-picker > button {
+  border: 1px solid rgba(148,163,184,0.18);
+  border-radius: 14px;
+  padding: 0.55rem;
+  background: rgba(30,41,59,0.74);
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fanm-chat-highlight-picker span,
+.fanm-chat-selected-highlight > span,
+.fanm-chat-highlight-card > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: rgba(34,197,94,0.14);
+  border: 1px solid rgba(34,197,94,0.22);
+}
+
+.fanm-chat-highlight-picker small,
+.fanm-chat-highlight-card small {
+  display: block;
+  color: rgba(226,232,240,0.68);
+  font-weight: 800;
+}
+
+.fanm-chat-selected-highlight button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  background: rgba(239,68,68,0.16);
+  color: #fecaca;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.fanm-chat-highlight-card {
+  margin-top: 0.45rem;
+  margin-bottom: 0.45rem;
+  padding: 0.6rem;
+  border-radius: 16px;
+  border: 1px solid rgba(34,197,94,0.22);
+  background: rgba(2,6,23,0.5);
+}
+
+
+/* FANM Club Chat compact room switcher */
+.fanm-chat-room-switcher--compact {
+  margin-top: 0.75rem;
+  margin-bottom: 0.7rem;
+}
+
+.fanm-chat-room-switcher--compact .fanm-chat-room-tab {
+  padding: 0.55rem 0.65rem;
+}
+
+.fanm-chat-room-switcher--compact .fanm-chat-room-tab span {
+  width: 32px;
+  height: 32px;
+}

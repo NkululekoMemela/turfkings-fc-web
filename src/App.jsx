@@ -8116,6 +8116,10 @@ export default function App() {
           } : null}
           identity={identity}
           isAdminViewer={isAdmin}
+          activeSeasonId={activeSeasonId}
+          currentMatchNo={currentMatchNo}
+          matchType={matchType}
+          gameFormat={gameFormat}
           variant="launcher"
         />
       ) : null}

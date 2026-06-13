@@ -1,6 +1,7 @@
 // src/components/ClubChat/ClubChatWidget.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { db } from "../../firebaseConfig";
+import VideoHighlightsRepository from "../../storage/VideoHighlightsRepository.js";
 import {
   addDoc,
   collection,
@@ -42,6 +43,10 @@ export function ClubChatWidget({
   identity,
   isAdminViewer,
   premiumPanelStyle,
+  activeSeasonId = null,
+  currentMatchNo = 1,
+  matchType = "FRIENDLY",
+  gameFormat = "5_V_5",
   variant = "inline",
   onOpenFullChat,
 }) {
@@ -59,6 +64,9 @@ export function ClubChatWidget({
   const [clubChatOpen, setClubChatOpen] = useState(isPageMode);
   const [clubChatTeaseOpen, setClubChatTeaseOpen] = useState(false);
   const [clubChatEmojiOpen, setClubChatEmojiOpen] = useState(false);
+  const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
+  const [availableHighlights, setAvailableHighlights] = useState([]);
+  const [selectedHighlight, setSelectedHighlight] = useState(null);
   const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(0);
   const [launcherBottom, setLauncherBottom] = useState(() => {
     try {
@@ -87,6 +95,64 @@ export function ClubChatWidget({
       setClubChatLastSeenMs(0);
     }
   }, [activeClubId]);
+  const buildChatHighlightMatchId = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const type = String(matchType || "").toLowerCase().includes("league") ? "league" : "friendly";
+    const format = String(gameFormat || "5_V_5").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    const baseMatchId =
+      type === "league"
+        ? `league_${String(activeSeasonId || "season").trim() || "season"}_${today}_m${Number(currentMatchNo || 1)}`
+        : `friendly_${format}_${today}`;
+
+    const clubId = String(activeClubId || "").trim().toLowerCase();
+
+    if (!clubId || clubId === "turf-kings") return baseMatchId;
+    return `${clubId}__${baseMatchId}`;
+  };
+
+  const getHighlightTitleForChat = (highlight = {}) => {
+    return (
+      highlight.title ||
+      highlight.clipTitle ||
+      highlight.tag ||
+      highlight.type ||
+      highlight.playerName ||
+      "Club highlight"
+    );
+  };
+
+  const loadChatHighlights = async () => {
+    const matchId = buildChatHighlightMatchId();
+    if (!matchId) return;
+
+    try {
+      const [raw, archived] = await Promise.all([
+        VideoHighlightsRepository.loadRawHighlightsFromFirebase(matchId),
+        typeof VideoHighlightsRepository.loadArchivedHighlightsFromFirebase === "function"
+          ? VideoHighlightsRepository.loadArchivedHighlightsFromFirebase(matchId)
+          : Promise.resolve([]),
+      ]);
+
+      const merged = [...(archived || []), ...(raw || [])]
+        .filter(Boolean)
+        .slice(0, 12)
+        .map((highlight, index) => ({
+          id: highlight.id || highlight.clipId || highlight.highlightId || `highlight-${index}`,
+          title: getHighlightTitleForChat(highlight),
+          playerName: highlight.playerName || highlight.goalScorer || highlight.scorer || "",
+          matchDayId: highlight.matchDayId || highlight.matchdayId || highlight.archiveMatchDayId || matchId,
+          mediaUrl: highlight.mediaUrl || highlight.videoUrl || highlight.downloadUrl || highlight.fileUrl || "",
+          type: highlight.type || highlight.tag || "highlight",
+        }));
+
+      setAvailableHighlights(merged);
+    } catch (err) {
+      console.error("[ClubChatWidget] Failed loading highlights for chat attach:", err);
+      setAvailableHighlights([]);
+    }
+  };
+
+
   useEffect(() => {
     if (!isLauncherOnly || clubChatOpen) return;
 
@@ -351,11 +417,22 @@ export function ClubChatWidget({
         senderUid: currentUser?.uid || "",
         clubId: activeClubId,
         clubName: activeClubName,
+        ...(selectedHighlight ? {
+          attachmentType: "highlight",
+          highlightId: selectedHighlight.id,
+          highlightTitle: selectedHighlight.title,
+          highlightPlayerName: selectedHighlight.playerName || "",
+          highlightMatchDayId: selectedHighlight.matchDayId || "",
+          highlightMediaUrl: selectedHighlight.mediaUrl || "",
+          highlightType: selectedHighlight.type || "highlight",
+        } : {}),
         createdAt: serverTimestamp(),
         createdAtMs: Date.now(),
       });
 
       setClubChatDraft("");
+      setSelectedHighlight(null);
+      setHighlightPickerOpen(false);
       setClubChatEmojiOpen(false);
     } catch (err) {
       console.error("[ClubChatWidget] Failed sending club chat message:", err);
@@ -635,38 +712,40 @@ export function ClubChatWidget({
             </div>
           </div>
 
-          <div className="fanm-chat-room-switcher">
-            <button
-              type="button"
-              className={`fanm-chat-room-tab ${activeChatRoom === "club" ? "is-active" : ""}`}
-              onClick={() => setActiveChatRoom("club")}
-            >
-              <span>💬</span>
-              <div>
-                <strong>Club Chat</strong>
-                <small>Private club room</small>
-              </div>
-              {clubChatUnreadCount > 0 ? <em>{clubChatUnreadCount}</em> : null}
-            </button>
-
-            {challengerChatFixture?.fixtureId && (
-              <button
-                type="button"
-                className={`fanm-chat-room-tab fanm-chat-room-tab--challenger ${activeChatRoom === "challenger" ? "is-active" : ""}`}
-                onClick={() => setActiveChatRoom("challenger")}
-              >
-                <span>💬</span>
-                <div>
-                  <strong>Challenger Chat</strong>
-                  <small>
-                    vs {challengerChatOpponentName} · {challengerChatFixture.proposedDate || "Date TBC"}{" "}
-                    {challengerChatFixture.proposedKickoff || ""}
-                  </small>
-                </div>
-                {challengerChatUnreadCount > 0 ? <em>{challengerChatUnreadCount}</em> : null}
-              </button>
-            )}
-          </div>
+          {challengerChatFixture?.fixtureId ? (
+            <div className="fanm-chat-room-switcher fanm-chat-room-switcher--compact">
+              {activeChatRoom === "club" ? (
+                <button
+                  type="button"
+                  className="fanm-chat-room-tab fanm-chat-room-tab--challenger"
+                  onClick={() => setActiveChatRoom("challenger")}
+                >
+                  <span>💬</span>
+                  <div>
+                    <strong>Challenger Chat</strong>
+                    <small>
+                      vs {challengerChatOpponentName} · {challengerChatFixture.proposedDate || "Date TBC"}{" "}
+                      {challengerChatFixture.proposedKickoff || ""}
+                    </small>
+                  </div>
+                  {challengerChatUnreadCount > 0 ? <em>{challengerChatUnreadCount}</em> : null}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="fanm-chat-room-tab"
+                  onClick={() => setActiveChatRoom("club")}
+                >
+                  <span>💬</span>
+                  <div>
+                    <strong>Club Chat</strong>
+                    <small>Back to private club room</small>
+                  </div>
+                  {clubChatUnreadCount > 0 ? <em>{clubChatUnreadCount}</em> : null}
+                </button>
+              )}
+            </div>
+          ) : null}
 
           {activeChatRoom === "club" ? (
             <div className="fanm-club-chat-messages">
@@ -690,6 +769,15 @@ export function ClubChatWidget({
                         <strong>{message.senderName || "Club member"}</strong>
                         {isAdminMessage ? <span>Captain/Admin</span> : null}
                       </div>
+                      {message.attachmentType === "highlight" ? (
+                        <div className="fanm-chat-highlight-card">
+                          <span>⚽</span>
+                          <div>
+                            <strong>{message.highlightTitle || "Club highlight"}</strong>
+                            <small>{message.highlightPlayerName || "Tap Videos to view highlight"}</small>
+                          </div>
+                        </div>
+                      ) : null}
                       <p>{message.text}</p>
                     </div>
                   );
@@ -759,7 +847,53 @@ export function ClubChatWidget({
                 >
                   😀
                 </button>
+                <button
+                  type="button"
+                  className="fanm-club-chat-attach-btn"
+                  disabled={!canSendClubChat}
+                  onClick={() => {
+                    setHighlightPickerOpen((current) => !current);
+                    if (!availableHighlights.length) loadChatHighlights();
+                  }}
+                  title="Attach highlight"
+                >
+                  📎
+                </button>
               </div>
+
+              {selectedHighlight ? (
+                <div className="fanm-chat-selected-highlight">
+                  <span>⚽</span>
+                  <strong>{selectedHighlight.title}</strong>
+                  <button type="button" onClick={() => setSelectedHighlight(null)}>Remove</button>
+                </div>
+              ) : null}
+
+              {highlightPickerOpen && (
+                <div className="fanm-chat-highlight-picker">
+                  <strong>Attach highlight</strong>
+                  {availableHighlights.length ? (
+                    availableHighlights.map((highlight) => (
+                      <button
+                        type="button"
+                        key={highlight.id}
+                        onClick={() => {
+                          setSelectedHighlight(highlight);
+                          setHighlightPickerOpen(false);
+                        }}
+                      >
+                        <span>⚽</span>
+                        <div>
+                          <strong>{highlight.title}</strong>
+                          <small>{highlight.playerName || "Club highlight"}</small>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <p>No highlights found for the current match yet.</p>
+                  )}
+                </div>
+              )}
 
               {clubChatEmojiOpen && (
                 <div className="fanm-club-chat-emoji-tray">
