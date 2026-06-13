@@ -1,6 +1,7 @@
 // src/App.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
+import { ClubChatPage } from "./pages/ClubChat/ClubChatPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { LiveMatchPage } from "./pages/LiveMatchPage.jsx";
 import { StatsPage } from "./pages/StatsPage.jsx";
@@ -62,6 +63,7 @@ import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, 
 const PAGE_HOME = "home";
 const PAGE_ENTRY = "entry";
 const PAGE_LANDING = "landing";
+const PAGE_CLUB_CHAT = "club-chat";
 const PAGE_LIVE = "live";
 const PAGE_STATS = "stats";
 const PAGE_SQUADS = "squads";
@@ -6400,6 +6402,18 @@ export default function App() {
         />
       )}
 
+      {page === PAGE_CLUB_CHAT && (
+        <ClubChatPage
+          onBack={() => setPage(PAGE_ENTRY)}
+          activeClubId={activeClubId}
+          activeClubName={activeClub?.name || activeClubIdentity?.name || "Club"}
+          currentUser={null}
+          selectedMember={null}
+          identity={identity}
+          isAdminViewer={isAdmin}
+        />
+      )}
+
       {page === PAGE_ENTRY && (
         <EntryPage
           identity={identity}
@@ -6411,6 +6425,7 @@ export default function App() {
           onComplete={handleEntryComplete}
           onDevSkipToLanding={() => setPage(PAGE_LANDING)}
           onGoHome={() => setPage(PAGE_HOME)}
+          onOpenClubChat={() => setPage(PAGE_CLUB_CHAT)}
           onClubUpdated={(updatedClub) => {
             if (!updatedClub?.id) return;
 

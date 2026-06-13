@@ -25,6 +25,7 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
+import { ClubChatWidget } from "../components/ClubChat/ClubChatWidget.jsx";
 
 const MEMBERS_COLLECTION = "members";
 const PLAYERS_COLLECTION = "players";
@@ -501,6 +502,7 @@ export function EntryPage({
   onDevSkipToLanding,
   onGoHome,
   onClubUpdated,
+  onOpenClubChat,
 }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [clubHeroOverride, setClubHeroOverride] = useState("");
@@ -1920,256 +1922,6 @@ export function EntryPage({
     };
   }, [clubChatOpen]);
 
-  const renderClubChatCard = () => (
-    <section className={`card fanm-club-chat-card ${clubChatOpen ? "is-open" : "is-collapsed"} ${!clubChatOpen && clubChatTeaseOpen ? "is-teasing" : ""}`} style={premiumPanelStyle}>
-      <button
-        type="button"
-        className="fanm-club-chat-launcher"
-        onClick={() => setClubChatOpen((current) => !current)}
-      >
-        <span className="fanm-club-chat-launcher-icon">💬</span>
-
-        <span className="fanm-club-chat-launcher-text">
-          <strong>{activeClubName} Chat</strong>
-          <small>
-            {clubChatMessages.length
-              ? `${clubChatMessages.length} club message${clubChatMessages.length === 1 ? "" : "s"}`
-              : "Private club room"}
-          </small>
-        </span>
-
-        {clubChatUnreadCount > 0 ? (
-          <span className="fanm-club-chat-unread">{clubChatUnreadCount}</span>
-        ) : (
-          <span className="fanm-club-chat-live-pill">Live</span>
-        )}
-      </button>
-
-      {clubChatOpen && (
-        <>
-          <div className="fanm-club-chat-head">
-            <div>
-              <p className="fanm-club-chat-kicker">
-                {activeChatRoom === "challenger" ? "Temporary fixture room" : "Club room"}
-              </p>
-              <h2>
-                {activeChatRoom === "challenger"
-                  ? "Challenger Chat"
-                  : `${activeClubName} Chat`}
-              </h2>
-              <p className="muted small">
-                {activeChatRoom === "challenger"
-                  ? `Match chat with ${challengerChatOpponentName}. This room is available only while the fixture is active.`
-                  : "Private messages for approved club members, captains and admins."}
-              </p>
-            </div>
-          </div>
-
-          <div className="fanm-chat-room-switcher">
-            <button
-              type="button"
-              className={`fanm-chat-room-tab ${activeChatRoom === "club" ? "is-active" : ""}`}
-              onClick={() => setActiveChatRoom("club")}
-            >
-              <span>💬</span>
-              <div>
-                <strong>Club Chat</strong>
-                <small>Private club room</small>
-              </div>
-              {clubChatUnreadCount > 0 ? <em>{clubChatUnreadCount}</em> : null}
-            </button>
-
-            {challengerChatFixture?.fixtureId && (
-              <button
-                type="button"
-                className={`fanm-chat-room-tab fanm-chat-room-tab--challenger ${activeChatRoom === "challenger" ? "is-active" : ""}`}
-                onClick={() => setActiveChatRoom("challenger")}
-              >
-                <span>💬</span>
-                <div>
-                  <strong>Challenger Chat</strong>
-                  <small>
-                    vs {challengerChatOpponentName} · {challengerChatFixture.proposedDate || "Date TBC"}{" "}
-                    {challengerChatFixture.proposedKickoff || ""}
-                  </small>
-                </div>
-                {challengerChatUnreadCount > 0 ? <em>{challengerChatUnreadCount}</em> : null}
-              </button>
-            )}
-          </div>
-
-          {activeChatRoom === "club" ? (
-            <div className="fanm-club-chat-messages">
-              {clubChatMessages.length ? (
-                clubChatMessages.map((message) => {
-                  const mine =
-                    currentUser?.uid &&
-                    message.senderUid &&
-                    String(currentUser.uid) === String(message.senderUid);
-
-                  const isAdminMessage =
-                    String(message.senderRole || "").toLowerCase().includes("admin") ||
-                    String(message.senderRole || "").toLowerCase().includes("captain");
-
-                  return (
-                    <div
-                      key={message.id}
-                      className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""}`}
-                    >
-                      <div className="fanm-club-chat-message-meta">
-                        <strong>{message.senderName || "Club member"}</strong>
-                        {isAdminMessage ? <span>Captain/Admin</span> : null}
-                      </div>
-                      <p>{message.text}</p>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="fanm-club-chat-empty">
-                  No messages yet. Start the club conversation.
-                </div>
-              )}
-
-              <div ref={clubChatEndRef} />
-            </div>
-          ) : (
-            <div className="fanm-challenger-chat-messages fanm-chat-room-content">
-              {challengerChatMessages.length ? (
-                challengerChatMessages.map((message) => {
-                  const mine =
-                    currentUser?.uid &&
-                    message.senderUid &&
-                    String(currentUser.uid) === String(message.senderUid);
-
-                  return (
-                    <div
-                      key={message.id}
-                      className={`fanm-challenger-chat-message ${mine ? "is-mine" : ""}`}
-                    >
-                      <div className="fanm-challenger-chat-message-meta">
-                        <strong>{message.fromClubName || "Club"}</strong>
-                        {message.senderName ? <span>{message.senderName}</span> : null}
-                      </div>
-                      <p>{message.text || message.message || ""}</p>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="fanm-challenger-chat-empty">
-                  This temporary room is open for the scheduled fixture only.
-                </div>
-              )}
-
-              <div ref={challengerChatEndRef} />
-            </div>
-          )}
-
-          {activeChatRoom === "club" ? (
-            <div className="fanm-club-chat-compose">
-              <div className="fanm-club-chat-input-wrap">
-                <textarea
-                  className="text-input"
-                  rows={3}
-                  value={clubChatDraft}
-                  onChange={(event) => setClubChatDraft(event.target.value)}
-                  placeholder={
-                    canSendClubChat
-                      ? "Message your club..."
-                      : "Select your name and sign in to chat."
-                  }
-                  disabled={!canSendClubChat}
-                />
-
-                <button
-                  type="button"
-                  className="fanm-club-chat-emoji-btn"
-                  disabled={!canSendClubChat}
-                  onClick={() => setClubChatEmojiOpen((current) => !current)}
-                  title="Add emoji"
-                >
-                  😀
-                </button>
-              </div>
-
-              {clubChatEmojiOpen && (
-                <div className="fanm-club-chat-emoji-tray">
-                  {["😀", "😂", "🤣", "😎", "😭", "😡", "❤️", "🔥", "⚽", "🥅", "🏆", "💪", "👏", "🙌", "👌", "👀"].map((emoji) => (
-                    <button
-                      type="button"
-                      key={`club-chat-emoji-${emoji}`}
-                      onClick={() => addClubChatEmoji(emoji)}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <button
-                type="button"
-                className="primary-btn"
-                disabled={!canSendClubChat || !String(clubChatDraft || "").trim()}
-                onClick={handleSendClubChatMessage}
-              >
-                Send
-              </button>
-            </div>
-          ) : (
-            <div className="fanm-challenger-chat-compose">
-              <div className="fanm-challenger-chat-input-wrap">
-                <textarea
-                  className="text-input"
-                  rows={3}
-                  value={challengerChatDraft}
-                  onChange={(event) => setChallengerChatDraft(event.target.value)}
-                  placeholder={
-                    canSendChallengerChat
-                      ? "Message the other club..."
-                      : "Select your name and sign in to chat."
-                  }
-                  disabled={!canSendChallengerChat}
-                />
-
-                <button
-                  type="button"
-                  className="fanm-challenger-chat-emoji-btn"
-                  disabled={!canSendChallengerChat}
-                  onClick={() => setChallengerChatEmojiOpen((current) => !current)}
-                  title="Add emoji"
-                >
-                  😀
-                </button>
-              </div>
-
-              {challengerChatEmojiOpen && (
-                <div className="fanm-challenger-chat-emoji-tray">
-                  {["😀", "😂", "🤣", "😎", "😭", "😡", "❤️", "🔥", "⚽", "🥅", "🏆", "💪", "👏", "🙌", "👌", "👀"].map((emoji) => (
-                    <button
-                      type="button"
-                      key={`challenger-chat-emoji-${emoji}`}
-                      onClick={() => addChallengerChatEmoji(emoji)}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <button
-                type="button"
-                className="primary-btn"
-                disabled={!canSendChallengerChat || !String(challengerChatDraft || "").trim()}
-                onClick={handleSendChallengerChatMessage}
-              >
-                Send
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  );
-
   const handleContinueAsSpectator = () => {
     onComplete({
       clubId: activeClubId,
@@ -3040,7 +2792,16 @@ export function EntryPage({
         </div>
       </section>
 
-      {renderClubChatCard()}
+      <ClubChatWidget
+        activeClubId={activeClubId}
+        activeClubName={activeClubName}
+        currentUser={currentUser}
+        selectedMember={selectedMember}
+        identity={identity}
+        isAdminViewer={isAdminViewer}
+        premiumPanelStyle={premiumPanelStyle}
+        variant="launcher"
+      />
 
       {mode === "player" && (
         <section className="card" style={{ ...premiumPanelStyle, overflow: "hidden" }}>

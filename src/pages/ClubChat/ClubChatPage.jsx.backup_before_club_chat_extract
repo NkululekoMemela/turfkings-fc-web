@@ -1,0 +1,19 @@
+// src/pages/ClubChat/ClubChatPage.jsx
+import React from "react";
+
+export function ClubChatPage({ onBack }) {
+  return (
+    <main className="page-shell">
+      <section className="card">
+        <button type="button" className="secondary-btn" onClick={onBack}>
+          ← Back
+        </button>
+
+        <h1>Club Chat</h1>
+        <p className="muted small">
+          Club Chat will live here as its own page. Next we will move the existing chat code here without changing its design.
+        </p>
+      </section>
+    </main>
+  );
+}

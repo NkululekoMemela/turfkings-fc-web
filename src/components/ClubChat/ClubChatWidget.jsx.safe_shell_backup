@@ -1,0 +1,6 @@
+// src/components/ClubChat/ClubChatWidget.jsx
+import React from "react";
+
+export function ClubChatWidget() {
+  return null;
+}
