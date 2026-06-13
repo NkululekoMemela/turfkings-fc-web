@@ -8120,6 +8120,7 @@ export default function App() {
           currentMatchNo={currentMatchNo}
           matchType={matchType}
           gameFormat={gameFormat}
+          onOpenHighlight={() => setPage(PAGE_VIEW_HIGHLIGHTS)}
           variant="launcher"
         />
       ) : null}

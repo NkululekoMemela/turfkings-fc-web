@@ -8682,41 +8682,7 @@ body:has(.live-page) .app-root {
   position: relative;
 }
 
-.fanm-club-chat-messages::before {
-  content: "Currently viewing: Club Chat";
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  width: fit-content;
-  margin-bottom: 0.55rem;
-  padding: 0.18rem 0.5rem;
-  border-radius: 999px;
-  background: rgba(34,197,94,0.14);
-  border: 1px solid rgba(34,197,94,0.26);
-  color: #bbf7d0;
-  font-size: 0.62rem;
-  font-weight: 1000;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
 
-.fanm-challenger-chat-messages::before {
-  content: "Currently viewing: Challenger Chat";
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  width: fit-content;
-  margin-bottom: 0.55rem;
-  padding: 0.18rem 0.5rem;
-  border-radius: 999px;
-  background: rgba(245,158,11,0.14);
-  border: 1px solid rgba(245,158,11,0.28);
-  color: #fde68a;
-  font-size: 0.62rem;
-  font-weight: 1000;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
 
 /* FANM Club Chat horizontal collapse */
 .fanm-club-chat-card.is-collapsed {
@@ -9075,3 +9041,60 @@ body:has(.live-page) .app-root {
   width: 32px;
   height: 32px;
 }
+
+/* FANM Club Chat WhatsApp-inspired bubble polish */
+.fanm-club-chat-message {
+  border: 0 !important;
+  padding: 0.62rem 0.78rem !important;
+  margin-bottom: 0.55rem !important;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(34,197,94,0.18), transparent 42%),
+    rgba(10, 72, 45, 0.88) !important;
+  box-shadow: 0 8px 18px rgba(0,0,0,0.18) !important;
+}
+
+.fanm-club-chat-message.is-admin {
+  border: 0 !important;
+}
+
+.fanm-club-chat-message-meta {
+  margin-bottom: 0.25rem !important;
+}
+
+.fanm-club-chat-message p {
+  margin: 0 !important;
+  line-height: 1.35 !important;
+}
+
+
+/* FANM Club Chat clickable highlight card */
+button.fanm-chat-highlight-card {
+  width: 100%;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.fanm-chat-highlight-card:hover {
+  border-color: rgba(34,197,94,0.42);
+  background: rgba(15,23,42,0.72);
+}
+
+/* Bright Club Chat */
+.fanm-chat-room-tab {
+  background:
+    radial-gradient(circle at 15% 0%, rgba(34,197,94,0.40), transparent 45%),
+    linear-gradient(135deg, rgba(22,163,74,0.98), rgba(21,128,61,0.95)) !important;
+  border: 1px solid rgba(74,222,128,0.75) !important;
+  box-shadow: 0 0 24px rgba(34,197,94,0.20) !important;
+}
+
+/* Bright Challenger Chat */
+.fanm-chat-room-tab--challenger {
+  background:
+    radial-gradient(circle at 15% 0%, rgba(56,189,248,0.40), transparent 45%),
+    linear-gradient(135deg, rgba(14,116,144,0.98), rgba(37,99,235,0.95)) !important;
+  border: 1px solid rgba(125,211,252,0.75) !important;
+  box-shadow: 0 0 24px rgba(56,189,248,0.20) !important;
+}
+

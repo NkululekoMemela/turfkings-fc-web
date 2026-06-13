@@ -49,6 +49,7 @@ export function ClubChatWidget({
   gameFormat = "5_V_5",
   variant = "inline",
   onOpenFullChat,
+  onOpenHighlight,
 }) {
   const isLauncherOnly = variant === "launcher";
   const isPageMode = variant === "page";
@@ -696,9 +697,6 @@ export function ClubChatWidget({
         <>
           <div className="fanm-club-chat-head">
             <div>
-              <p className="fanm-club-chat-kicker">
-                {activeChatRoom === "challenger" ? "Temporary fixture room" : "Club room"}
-              </p>
               <h2>
                 {activeChatRoom === "challenger"
                   ? "Challenger Chat"
@@ -770,13 +768,26 @@ export function ClubChatWidget({
                         {isAdminMessage ? <span>Captain/Admin</span> : null}
                       </div>
                       {message.attachmentType === "highlight" ? (
-                        <div className="fanm-chat-highlight-card">
+                        <button
+                          type="button"
+                          className="fanm-chat-highlight-card"
+                          onClick={() => {
+                            onOpenHighlight?.({
+                              highlightId: message.highlightId,
+                              title: message.highlightTitle,
+                              matchDayId: message.highlightMatchDayId,
+                              mediaUrl: message.highlightMediaUrl,
+                              type: message.highlightType,
+                            });
+                            setClubChatOpen(false);
+                          }}
+                        >
                           <span>⚽</span>
                           <div>
                             <strong>{message.highlightTitle || "Club highlight"}</strong>
-                            <small>{message.highlightPlayerName || "Tap Videos to view highlight"}</small>
+                            <small>{message.highlightPlayerName || "Tap to open Videos"}</small>
                           </div>
-                        </div>
+                        </button>
                       ) : null}
                       <p>{message.text}</p>
                     </div>
