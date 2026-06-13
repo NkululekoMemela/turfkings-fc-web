@@ -646,6 +646,7 @@ function HighlightCard({
   onReject,
   onDelete,
   onIdentifyPlayer,
+  onAttachToClubChat,
 }) {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const isSelectedVote = userVoteForType === highlight.id;
@@ -818,6 +819,16 @@ function HighlightCard({
             </button>
           )}
 
+        {onAttachToClubChat && (
+          <button
+            type="button"
+            className="tkh-btn"
+            onClick={() => onAttachToClubChat?.(highlight)}
+          >
+            Attach to Chat
+          </button>
+        )}
+
         {highlight.mediaUrl && (
           <div style={{ position: "relative" }}>
             <button
@@ -920,6 +931,7 @@ export function VideoHighlightsPage({
   onApproveHighlight,
   onRejectHighlight,
   onDeleteHighlight,
+  onAttachHighlightToClubChat,
   onBack,
 }) {
   const fileInputRef = useRef(null);
@@ -2957,6 +2969,7 @@ export function VideoHighlightsPage({
                     onReject={handleReject}
                     onDelete={handleDelete}
                     onIdentifyPlayer={openIdentifyPlayer}
+                    onAttachToClubChat={onAttachHighlightToClubChat}
                   />
                     </React.Fragment>
                   );
@@ -3005,6 +3018,7 @@ export function VideoHighlightsPage({
                             onReject={handleReject}
                             onDelete={handleDelete}
                             onIdentifyPlayer={openIdentifyPlayer}
+                            onAttachToClubChat={onAttachHighlightToClubChat}
                           />
                         </div>
                       ))}

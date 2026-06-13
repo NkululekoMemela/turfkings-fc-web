@@ -6954,6 +6954,21 @@ export default function App() {
           }}
           onHighlightsSelectionChange={setHighlightArchiveSelection}
           onBack={handleBackToLanding}
+          onAttachHighlightToClubChat={(highlight) => {
+            try {
+              window.localStorage.setItem("fanm_pending_chat_highlight", JSON.stringify({
+                id: highlight.id || highlight.clipId || highlight.highlightId || "",
+                title: highlight.title || "Club highlight",
+                playerName: highlight.playerName || highlight.goalScorer || highlight.scorer || "",
+                matchDayId: highlight.matchDayId || highlight.matchdayId || "",
+                mediaUrl: highlight.mediaUrl || highlight.videoUrl || highlight.downloadUrl || highlight.fileUrl || "",
+                type: highlight.type || highlight.tag || "highlight",
+              }));
+            } catch {
+              // localStorage is optional
+            }
+            setPage(PAGE_LANDING);
+          }}
         />
       )}
 

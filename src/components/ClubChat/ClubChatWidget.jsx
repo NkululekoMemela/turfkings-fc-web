@@ -96,6 +96,23 @@ export function ClubChatWidget({
       setClubChatLastSeenMs(0);
     }
   }, [activeClubId]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("fanm_pending_chat_highlight");
+      if (!raw) return;
+
+      const highlight = JSON.parse(raw);
+      if (!highlight?.id) return;
+
+      setSelectedHighlight(highlight);
+      setClubChatOpen(true);
+      setActiveChatRoom("club");
+      window.localStorage.removeItem("fanm_pending_chat_highlight");
+    } catch {
+      // localStorage is optional
+    }
+  }, [activeClubId]);
   const buildChatHighlightMatchId = () => {
     const today = new Date().toISOString().slice(0, 10);
     const type = String(matchType || "").toLowerCase().includes("league") ? "league" : "friendly";
@@ -863,8 +880,8 @@ export function ClubChatWidget({
                   className="fanm-club-chat-attach-btn"
                   disabled={!canSendClubChat}
                   onClick={() => {
-                    setHighlightPickerOpen((current) => !current);
-                    if (!availableHighlights.length) loadChatHighlights();
+                    onOpenHighlight?.({ mode: "attach" });
+                    setClubChatOpen(false);
                   }}
                   title="Attach highlight"
                 >
