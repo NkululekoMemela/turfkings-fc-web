@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { ClubChatPage } from "./pages/ClubChat/ClubChatPage.jsx";
+import { ClubChatWidget } from "./components/ClubChat/ClubChatWidget.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { LiveMatchPage } from "./pages/LiveMatchPage.jsx";
 import { StatsPage } from "./pages/StatsPage.jsx";
@@ -8080,6 +8081,44 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {[
+        PAGE_LANDING,
+        PAGE_MATCH_SIGNUP,
+        PAGE_PAYMENT,
+        PAGE_LIVE,
+        PAGE_STATS,
+        PAGE_VIEW_HIGHLIGHTS,
+        PAGE_NEWS,
+        PAGE_PLAYER_CARDS,
+        PAGE_PEER_REVIEW,
+        PAGE_SQUADS,
+        PAGE_FORMATIONS,
+      ].includes(page) && (
+        isAdmin ||
+        isCaptain ||
+        Boolean(identity?.memberId || identity?.playerId)
+      ) ? (
+        <ClubChatWidget
+          activeClubId={activeClubId}
+          activeClubName={activeClubName}
+          currentUser={{
+            uid: identity?.uid || identity?.email || "",
+            email: identity?.email || "",
+            displayName: identity?.fullName || identity?.shortName || "",
+          }}
+          selectedMember={identity?.memberId ? {
+            id: identity.memberId,
+            fullName: identity.fullName || "",
+            shortName: identity.shortName || "",
+            email: identity.email || "",
+            role: identity.role || identity.actingRole || "player",
+          } : null}
+          identity={identity}
+          isAdminViewer={isAdmin}
+          variant="launcher"
+        />
+      ) : null}
 
       {showBottomNav && !showBackupModal ? (
         <BottomNav
