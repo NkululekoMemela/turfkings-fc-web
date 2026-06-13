@@ -8616,15 +8616,7 @@ body:has(.live-page) .app-root {
   margin-left: 0.55rem;
 }
 
-.fanm-chat-room-tab {
-  opacity: 0.58;
-  transform: scale(0.985);
-}
 
-.fanm-chat-room-tab.is-active {
-  opacity: 1;
-  transform: scale(1);
-}
 
 .fanm-chat-room-tab.is-active::after {
   content: "OPEN";
@@ -8648,18 +8640,7 @@ body:has(.live-page) .app-root {
 }
 
 /* Stronger active/inactive chat-room clarity */
-.fanm-chat-room-tab:not(.is-active) {
-  opacity: 0.38;
-  filter: grayscale(0.65);
-  background: rgba(15,23,42,0.42);
-  border-color: rgba(148,163,184,0.12);
-}
 
-.fanm-chat-room-tab:not(.is-active) > span,
-.fanm-chat-room-tab:not(.is-active) strong,
-.fanm-chat-room-tab:not(.is-active) small {
-  opacity: 0.72;
-}
 
 .fanm-chat-room-tab:not(.is-active)::after {
   content: "Tap to open";
@@ -9206,5 +9187,42 @@ button.fanm-chat-highlight-card:hover {
   background: rgba(255,255,255,0.15) !important;
   color: #ffffff !important;
   opacity: 1 !important;
+}
+
+
+/* FANM room switcher - dark icon bubble */
+.fanm-chat-room-tab > span,
+.fanm-chat-room-tab--challenger > span {
+  background: rgba(2, 6, 23, 0.78) !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  color: #ffffff !important;
+}
+
+/* FANM room switcher - dark Tap to open pill */
+.fanm-chat-room-tab::after,
+.fanm-chat-room-tab--challenger::after {
+  background: rgba(2, 6, 23, 0.78) !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  color: rgba(255,255,255,0.92) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Club chat keeps green card */
+.fanm-chat-room-tab:not(.fanm-chat-room-tab--challenger) {
+  background: linear-gradient(
+    135deg,
+    #22c55e,
+    #16a34a
+  ) !important;
+}
+
+/* Challenger chat keeps blue card */
+.fanm-chat-room-tab--challenger {
+  background: linear-gradient(
+    135deg,
+    #3b82f6,
+    #2563eb
+  ) !important;
 }
 
