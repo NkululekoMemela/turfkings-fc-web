@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isVideo() {
+      return request.resource.contentType.matches('video/.*');
+    }
+
+    function isReasonableSize() {
+      return request.resource.size < 60 * 1024 * 1024;
+    }
+
+    match /video_highlights/{matchId}/raw/{source}/{fileName} {
+      allow read: if signedIn();
+      allow write: if signedIn() && isVideo() && isReasonableSize();
+    }
+
+    match /video_highlights/{matchId}/{allPaths=**} {
+      allow read: if signedIn();
+    }
+  }
+}
