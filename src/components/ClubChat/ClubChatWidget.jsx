@@ -60,6 +60,17 @@ export function ClubChatWidget({
   const [clubChatTeaseOpen, setClubChatTeaseOpen] = useState(false);
   const [clubChatEmojiOpen, setClubChatEmojiOpen] = useState(false);
   const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(0);
+  const [launcherBottom, setLauncherBottom] = useState(() => {
+    try {
+      return Number(window.localStorage.getItem("fanm_chat_launcher_bottom") || 88);
+    } catch {
+      return 88;
+    }
+  });
+  const [launcherIsDragging, setLauncherIsDragging] = useState(false);
+  const [launcherIsIdle, setLauncherIsIdle] = useState(false);
+  const dragStartRef = useRef({ y: 0, bottom: 88 });
+  const idleTimerRef = useRef(null);
   const clubChatEndRef = useRef(null);
 
   const [challengerChatLastSeenMs, setChallengerChatLastSeenMs] = useState(0);
@@ -73,6 +84,77 @@ export function ClubChatWidget({
       setClubChatLastSeenMs(0);
     }
   }, [activeClubId]);
+  useEffect(() => {
+    if (!isLauncherOnly || clubChatOpen) return;
+
+    const resetIdle = () => {
+      setLauncherIsIdle(false);
+      window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = window.setTimeout(() => {
+        setLauncherIsIdle(true);
+      }, 10000);
+    };
+
+    resetIdle();
+
+    const events = ["mousemove", "touchstart", "keydown", "scroll", "click"];
+    events.forEach((eventName) => window.addEventListener(eventName, resetIdle, { passive: true }));
+
+    return () => {
+      window.clearTimeout(idleTimerRef.current);
+      events.forEach((eventName) => window.removeEventListener(eventName, resetIdle));
+    };
+  }, [isLauncherOnly, clubChatOpen]);
+
+  const clampLauncherBottom = (value) => {
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 720;
+    const minBottom = 72;
+    const maxBottom = Math.max(120, viewportHeight - 120);
+    return Math.min(Math.max(Number(value) || 88, minBottom), maxBottom);
+  };
+
+  const startLauncherDrag = (event) => {
+    if (!isLauncherOnly || clubChatOpen) return;
+
+    const point = event.touches?.[0] || event;
+    dragStartRef.current = { y: point.clientY, bottom: launcherBottom };
+    setLauncherIsDragging(true);
+    setLauncherIsIdle(false);
+  };
+
+  useEffect(() => {
+    if (!launcherIsDragging) return;
+
+    const move = (event) => {
+      const point = event.touches?.[0] || event;
+      const deltaY = dragStartRef.current.y - point.clientY;
+      setLauncherBottom(clampLauncherBottom(dragStartRef.current.bottom + deltaY));
+    };
+
+    const stop = () => {
+      setLauncherIsDragging(false);
+      const safeBottom = clampLauncherBottom(launcherBottom);
+      setLauncherBottom(safeBottom);
+      try {
+        window.localStorage.setItem("fanm_chat_launcher_bottom", String(safeBottom));
+      } catch {
+        // localStorage is optional
+      }
+    };
+
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+    window.addEventListener("touchmove", move, { passive: true });
+    window.addEventListener("touchend", stop);
+
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", stop);
+    };
+  }, [launcherIsDragging, launcherBottom]);
+
 
   useEffect(() => {
     if (!activeClubId) {
@@ -383,14 +465,19 @@ export function ClubChatWidget({
       )}
 
       <section
-      className={`card fanm-club-chat-card ${clubChatOpen ? "is-open" : "is-collapsed"} ${isLauncherOnly && clubChatOpen ? "is-modal-open" : ""} ${
+      className={`card fanm-club-chat-card ${clubChatOpen ? "is-open" : "is-collapsed"} ${isLauncherOnly && clubChatOpen ? "is-modal-open" : ""} ${isLauncherOnly && !clubChatOpen && launcherIsIdle ? "is-idle" : ""} ${isLauncherOnly && launcherIsDragging ? "is-dragging" : ""} ${
         !clubChatOpen && clubChatTeaseOpen ? "is-teasing" : ""
       }`}
-      style={premiumPanelStyle}
+      style={{
+        ...premiumPanelStyle,
+        ...(isLauncherOnly && !clubChatOpen ? { bottom: `${launcherBottom}px` } : {}),
+      }}
     >
       <button
         type="button"
         className="fanm-club-chat-launcher"
+        onMouseDown={startLauncherDrag}
+        onTouchStart={startLauncherDrag}
         onClick={() => {
           if (isLauncherOnly) {
             setClubChatOpen(true);

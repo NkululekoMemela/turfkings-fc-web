@@ -8873,3 +8873,52 @@ body:has(.live-page) .app-root {
   border-radius: 14px;
 }
 
+
+/* FANM Club Chat draggable launcher polish */
+.fanm-club-chat-card.is-collapsed.is-dragging {
+  cursor: grabbing;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.fanm-club-chat-card.is-collapsed.is-idle:not(.is-teasing):not(.is-modal-open) {
+  opacity: 0.48;
+}
+
+.fanm-club-chat-card.is-collapsed.is-idle:not(.is-teasing):not(.is-modal-open):hover,
+.fanm-club-chat-card.is-collapsed.is-dragging {
+  opacity: 1;
+}
+
+.fanm-club-chat-card.is-collapsed .fanm-club-chat-launcher {
+  touch-action: none;
+}
+
+
+/* FANM Club Chat unread badge visibility on launcher */
+.fanm-club-chat-card.is-collapsed:not(.is-modal-open) .fanm-club-chat-unread {
+  position: absolute;
+  top: -0.35rem;
+  left: -0.45rem;
+  right: auto;
+  min-width: 28px;
+  height: 28px;
+  border: 2px solid rgba(2,6,23,0.95);
+  font-size: 0.82rem;
+  z-index: 1001;
+}
+
+
+/* FANM Club Chat overlay must sit above bottom navigation */
+.fanm-club-chat-modal-backdrop {
+  z-index: 20000 !important;
+}
+
+.fanm-club-chat-card.is-modal-open {
+  z-index: 20001 !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-launcher,
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-header-actions {
+  z-index: 20002;
+}
+
