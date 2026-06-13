@@ -74,6 +74,9 @@ export function ClubChatWidget({
   const clubChatEndRef = useRef(null);
 
   const [challengerChatLastSeenMs, setChallengerChatLastSeenMs] = useState(0);
+  const [chatToast, setChatToast] = useState(null);
+  const toastTimerRef = useRef(null);
+  const latestNotifiedRef = useRef({ club: 0, challenger: 0 });
 
   useEffect(() => {
     try {
@@ -383,6 +386,83 @@ export function ClubChatWidget({
   ).length;
 
   const totalChatUnreadCount = clubChatUnreadCount + challengerChatUnreadCount;
+  const showChatToast = ({ room, senderName, text }) => {
+    if (!isLauncherOnly || clubChatOpen) return;
+
+    window.clearTimeout(toastTimerRef.current);
+
+    setChatToast({
+      room,
+      senderName: senderName || "Club member",
+      text: text || "New chat message",
+    });
+
+    try {
+      navigator.vibrate?.(120);
+    } catch {
+      // Vibration is optional.
+    }
+
+    toastTimerRef.current = window.setTimeout(() => {
+      setChatToast(null);
+    }, 4200);
+  };
+
+  useEffect(() => {
+    if (!clubChatMessages.length) return;
+
+    const latestMessage = clubChatMessages[clubChatMessages.length - 1];
+    const latestMs = Number(latestMessage?.createdAtMs || 0);
+
+    if (!latestMs) return;
+
+    if (!latestNotifiedRef.current.club) {
+      latestNotifiedRef.current.club = latestMs;
+      return;
+    }
+
+    if (
+      latestMs > latestNotifiedRef.current.club &&
+      String(latestMessage?.senderUid || "") !== String(currentUser?.uid || "")
+    ) {
+      showChatToast({
+        room: "club",
+        senderName: latestMessage?.senderName,
+        text: latestMessage?.text,
+      });
+    }
+
+    latestNotifiedRef.current.club = latestMs;
+  }, [clubChatMessages.length, currentUser?.uid, clubChatOpen, isLauncherOnly]);
+
+  useEffect(() => {
+    if (!challengerChatMessages.length) return;
+
+    const latestMessage = challengerChatMessages[challengerChatMessages.length - 1];
+    const latestMs = Number(latestMessage?.createdAtMs || 0);
+
+    if (!latestMs) return;
+
+    if (!latestNotifiedRef.current.challenger) {
+      latestNotifiedRef.current.challenger = latestMs;
+      return;
+    }
+
+    if (
+      latestMs > latestNotifiedRef.current.challenger &&
+      String(latestMessage?.senderUid || "") !== String(currentUser?.uid || "")
+    ) {
+      showChatToast({
+        room: "challenger",
+        senderName: latestMessage?.senderName || latestMessage?.fromClubName,
+        text: latestMessage?.text || latestMessage?.message,
+      });
+    }
+
+    latestNotifiedRef.current.challenger = latestMs;
+  }, [challengerChatMessages.length, currentUser?.uid, clubChatOpen, isLauncherOnly]);
+
+
 
   useEffect(() => {
     if (activeChatRoom !== "challenger" || !challengerChatFixture?.fixtureId || !challengerChatLatestMessageMs) return;
@@ -455,6 +535,22 @@ export function ClubChatWidget({
 
   return (
     <>
+      {chatToast && !clubChatOpen && (
+        <button
+          type="button"
+          className="fanm-club-chat-toast"
+          onClick={() => {
+            setActiveChatRoom(chatToast.room || "club");
+            setClubChatOpen(true);
+            setChatToast(null);
+          }}
+        >
+          <span>💬</span>
+          <strong>{chatToast.senderName}</strong>
+          <small>{chatToast.text}</small>
+        </button>
+      )}
+
       {isLauncherOnly && clubChatOpen && (
         <button
           type="button"
