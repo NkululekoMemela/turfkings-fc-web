@@ -136,7 +136,7 @@ export function ClubChatWidget({
     const q = query(
       collection(db, "clubChallengeFixtures", challengerChatFixture.fixtureId, "messages"),
       orderBy("createdAtMs", "asc"),
-      limit(80)
+      limit(30)
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -160,7 +160,7 @@ export function ClubChatWidget({
     const q = query(
       collection(db, "clubs", activeClubId, "chatMessages"),
       orderBy("createdAtMs", "asc"),
-      limit(80)
+      limit(30)
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -300,6 +300,8 @@ export function ClubChatWidget({
       String(message.senderUid || "") !== String(currentUser?.uid || "")
   ).length;
 
+  const totalChatUnreadCount = clubChatUnreadCount + challengerChatUnreadCount;
+
   useEffect(() => {
     if (activeChatRoom !== "challenger" || !challengerChatFixture?.fixtureId || !challengerChatLatestMessageMs) return;
 
@@ -409,8 +411,8 @@ export function ClubChatWidget({
         </span>
 
         <span className="fanm-club-chat-header-actions">
-          {clubChatUnreadCount > 0 ? (
-            <span className="fanm-club-chat-unread">{clubChatUnreadCount}</span>
+          {totalChatUnreadCount > 0 ? (
+            <span className="fanm-club-chat-unread">{totalChatUnreadCount}</span>
           ) : (
             <span className="fanm-club-chat-live-pill">Live</span>
           )}
