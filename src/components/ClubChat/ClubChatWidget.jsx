@@ -10,6 +10,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  doc,
+  updateDoc,
 } from "firebase/firestore";
 
 function isChallengerChatActive(fixture = {}) {
@@ -73,6 +75,7 @@ export function ClubChatWidget({
   const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState(null);
   const [previewHighlight, setPreviewHighlight] = useState(null);
+  const [activeReactionPickerMessageId, setActiveReactionPickerMessageId] = useState(null);
   const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(0);
   const [launcherBottom, setLauncherBottom] = useState(() => {
     try {
@@ -91,6 +94,60 @@ export function ClubChatWidget({
   const [chatToast, setChatToast] = useState(null);
   const toastTimerRef = useRef(null);
   const latestNotifiedRef = useRef({ club: 0, challenger: 0 });
+
+  const chatReactionOptions = ["⚽", "🔥", "🧤", "👏", "😂", "❤️", "👍", "👎", "😩", "🤯"];
+
+  const getCurrentReactorKey = () =>
+    String(
+      currentUser?.uid ||
+      currentUser?.email ||
+      selectedMember?.id ||
+      selectedMember?.email ||
+      identity?.email ||
+      identity?.memberId ||
+      identity?.playerId ||
+      "anonymous"
+    ).trim();
+
+  const getReactionUsers = (message, emoji) => {
+    const raw = message?.reactions?.[emoji];
+    return Array.isArray(raw) ? raw.map((x) => String(x || "")) : [];
+  };
+
+  const getVisibleReactions = (message) =>
+    chatReactionOptions
+      .filter((emoji) => getReactionUsers(message, emoji).length > 0)
+      .sort((a, b) => getReactionUsers(message, b).length - getReactionUsers(message, a).length)
+      .slice(0, 3);
+
+  const userReacted = (message, emoji) => {
+    const key = getCurrentReactorKey();
+    return getReactionUsers(message, emoji).includes(key);
+  };
+
+  const toggleClubChatReaction = async (message, emoji) => {
+    if (!message?.id || !activeClubId) return;
+
+    const key = getCurrentReactorKey();
+    if (!key) return;
+
+    const updates = {};
+    const alreadySelected = getReactionUsers(message, emoji).includes(key);
+
+    chatReactionOptions.forEach((option) => {
+      const users = getReactionUsers(message, option).filter((x) => x !== key);
+      updates[`reactions.${option}`] =
+        option === emoji && !alreadySelected ? [...users, key] : users;
+    });
+
+    try {
+      await updateDoc(doc(db, "clubs", activeClubId, "chatMessages", message.id), updates);
+      setActiveReactionPickerMessageId(null);
+    } catch (err) {
+      console.error("[ClubChatWidget] Failed updating reaction:", err);
+      window.alert("Could not update reaction just now.");
+    }
+  };
 
   useEffect(() => {
     try {
@@ -870,6 +927,7 @@ export function ClubChatWidget({
                           className="fanm-chat-highlight-card"
                           onClick={() => {
                             setPreviewHighlight({
+                              messageId: message.id,
                               id: message.highlightId,
                               title: message.highlightLabel || message.highlightTitle || "Goal clip",
                               scorer: message.highlightScorerName || message.highlightPlayerName || "",
@@ -893,6 +951,53 @@ export function ClubChatWidget({
                         </button>
                       ) : null}
                       <p>{message.text}</p>
+                      <div className="fanm-chat-reaction-row">
+                        {getVisibleReactions(message)
+                          .map((emoji) => {
+                            const count = getReactionUsers(message, emoji).length;
+                            return (
+                              <button
+                                type="button"
+                                key={`${message.id}-${emoji}`}
+                                className={userReacted(message, emoji) ? "is-selected" : ""}
+                                onClick={() => toggleClubChatReaction(message, emoji)}
+                                title={`React ${emoji}`}
+                              >
+                                <span>{emoji}</span>
+                                <em>{count}</em>
+                              </button>
+                            );
+                          })}
+
+                        <button
+                          type="button"
+                          className="fanm-chat-add-reaction"
+                          onClick={() =>
+                            setActiveReactionPickerMessageId((current) =>
+                              current === message.id ? null : message.id
+                            )
+                          }
+                          title="Add reaction"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      {activeReactionPickerMessageId === message.id ? (
+                        <div className="fanm-chat-reaction-picker">
+                          {chatReactionOptions.map((emoji) => (
+                            <button
+                              type="button"
+                              key={`pick-${message.id}-${emoji}`}
+                              className={userReacted(message, emoji) ? "is-selected" : ""}
+                              onClick={() => toggleClubChatReaction(message, emoji)}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+
                       <button
                         type="button"
                         className="fanm-chat-reply-btn"
@@ -1187,12 +1292,56 @@ export function ClubChatWidget({
             )}
 
             <div className="fanm-highlight-reactions">
-              <button type="button">⚽</button>
-              <button type="button">🔥</button>
-              <button type="button">🧤</button>
-              <button type="button">👏</button>
-              <button type="button">😂</button>
-              <button type="button">❤️</button>
+              {(() => {
+                const sourceMessage = clubChatMessages.find((msg) => msg.id === previewHighlight.messageId);
+                if (!sourceMessage) return null;
+
+                return (
+                  <>
+                    {getVisibleReactions(sourceMessage).map((emoji) => {
+                      const count = getReactionUsers(sourceMessage, emoji).length;
+                      return (
+                        <button
+                          type="button"
+                          key={`preview-count-${emoji}`}
+                          className={userReacted(sourceMessage, emoji) ? "is-selected" : ""}
+                          onClick={() => toggleClubChatReaction(sourceMessage, emoji)}
+                        >
+                          <span>{emoji}</span>
+                          <em>{count}</em>
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      type="button"
+                      className="fanm-chat-add-reaction"
+                      onClick={() =>
+                        setActiveReactionPickerMessageId((current) =>
+                          current === sourceMessage.id ? null : sourceMessage.id
+                        )
+                      }
+                    >
+                      +
+                    </button>
+
+                    {activeReactionPickerMessageId === sourceMessage.id ? (
+                      <div className="fanm-chat-reaction-picker fanm-chat-reaction-picker--preview">
+                        {chatReactionOptions.map((emoji) => (
+                          <button
+                            type="button"
+                            key={`preview-pick-${emoji}`}
+                            className={userReacted(sourceMessage, emoji) ? "is-selected" : ""}
+                            onClick={() => toggleClubChatReaction(sourceMessage, emoji)}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

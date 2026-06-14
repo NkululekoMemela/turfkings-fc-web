@@ -9420,3 +9420,164 @@ button.fanm-chat-highlight-card:hover {
 
 
 
+
+/* FANM chat reaction counters */
+.fanm-chat-reaction-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  margin-top: 0.45rem;
+}
+
+.fanm-chat-reaction-row button,
+.fanm-highlight-reactions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(2,6,23,0.42);
+  color: #f8fafc;
+  border-radius: 999px;
+  padding: 0.22rem 0.45rem;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.fanm-chat-reaction-row button.is-selected,
+.fanm-highlight-reactions button.is-selected {
+  background: rgba(34,197,94,0.26);
+  border-color: rgba(134,239,172,0.72);
+}
+
+.fanm-chat-reaction-row em,
+.fanm-highlight-reactions em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: #dcfce7;
+}
+
+
+/* FANM video viewer must sit above the open chat modal */
+.fanm-highlight-preview-overlay {
+  z-index: 40000 !important;
+  background: rgba(2, 6, 23, 0.86) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.fanm-highlight-preview-modal {
+  position: relative;
+  z-index: 40001 !important;
+}
+
+
+
+/* FANM video viewer focus mode */
+.fanm-chat-hidden-behind-video {
+  opacity: 0.15;
+  pointer-events: none;
+  filter: blur(4px);
+}
+
+.fanm-highlight-preview-overlay {
+  background: rgba(2, 6, 23, 0.97) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* Cleaner reaction display */
+.fanm-chat-add-reaction {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(2,6,23,0.42);
+  color: #f8fafc;
+  border-radius: 999px;
+  padding: 0.22rem 0.45rem;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+/* FANM compact professional reactions */
+.fanm-chat-reaction-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 0.25rem !important;
+  margin-top: 0.42rem !important;
+  align-items: center !important;
+}
+
+.fanm-chat-reaction-row button,
+.fanm-chat-add-reaction,
+.fanm-highlight-reactions button {
+  min-height: 24px !important;
+  border-radius: 999px !important;
+  padding: 0.12rem 0.38rem !important;
+  font-size: 0.72rem !important;
+  line-height: 1 !important;
+  border: 1px solid rgba(148,163,184,0.18) !important;
+  background: rgba(2,6,23,0.46) !important;
+  color: #f8fafc !important;
+  box-shadow: none !important;
+}
+
+.fanm-chat-reaction-row button.is-selected,
+.fanm-highlight-reactions button.is-selected,
+.fanm-chat-reaction-picker button.is-selected {
+  background: rgba(34,197,94,0.28) !important;
+  border-color: rgba(134,239,172,0.75) !important;
+}
+
+.fanm-chat-reaction-row em,
+.fanm-highlight-reactions em {
+  font-style: normal !important;
+  font-size: 0.66rem !important;
+  margin-left: 0.12rem !important;
+  color: #dcfce7 !important;
+}
+
+.fanm-chat-add-reaction {
+  width: 24px !important;
+  padding: 0 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  opacity: 0.82 !important;
+}
+
+.fanm-chat-reaction-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  margin-top: 0.35rem;
+  padding: 0.35rem;
+  border-radius: 14px;
+  background: rgba(2,6,23,0.58);
+  border: 1px solid rgba(148,163,184,0.14);
+}
+
+.fanm-chat-reaction-picker button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(148,163,184,0.18);
+  border-radius: 999px;
+  background: rgba(15,23,42,0.9);
+  cursor: pointer;
+}
+
+.fanm-highlight-reactions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  gap: 0.28rem !important;
+  margin-top: 0.75rem !important;
+}
+
+.fanm-highlight-reaction-divider {
+  width: 100%;
+  text-align: center;
+  color: rgba(226,232,240,0.7);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 0.15rem;
+}
+
