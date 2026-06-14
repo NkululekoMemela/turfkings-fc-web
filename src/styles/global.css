@@ -9581,3 +9581,91 @@ button.fanm-chat-highlight-card:hover {
   margin-top: 0.15rem;
 }
 
+
+.fanm-chat-add-reaction {
+  width: 26px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  font-size: 0.9rem !important;
+  border-radius: 999px !important;
+  opacity: 0.88 !important;
+}
+
+
+.fanm-chat-message-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.fanm-chat-message-actions .fanm-chat-add-reaction {
+  width: 24px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  font-size: 0.8rem !important;
+}
+
+
+.fanm-chat-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+.fanm-chat-reply-btn {
+  margin: 0 !important;
+}
+
+.fanm-chat-add-reaction {
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+  min-height: 22px !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  border-radius: 50% !important;
+
+  font-size: 0.72rem !important;
+  line-height: 1 !important;
+
+  padding: 0 !important;
+
+  background: rgba(255,255,255,0.08) !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+
+  transition: all 0.15s ease;
+}
+
+.fanm-chat-add-reaction:hover {
+  background: rgba(255,255,255,0.14) !important;
+  transform: scale(1.05);
+}
+
+
+.fanm-chat-react-btn {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  padding: 0.25rem 0.55rem !important;
+  background: rgba(2,6,23,0.38) !important;
+  color: rgba(219,234,254,0.88) !important;
+  font-size: 0.72rem !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+}
+
+.fanm-chat-message-actions {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+  margin-top: 0.35rem !important;
+}
+

@@ -100,18 +100,30 @@ export function ClubChatWidget({
   const getCurrentReactorKey = () =>
     String(
       currentUser?.uid ||
-      currentUser?.email ||
       selectedMember?.id ||
-      selectedMember?.email ||
-      identity?.email ||
       identity?.memberId ||
       identity?.playerId ||
+      currentUser?.email ||
+      selectedMember?.email ||
+      identity?.email ||
       "anonymous"
-    ).trim();
+    )
+      .trim()
+      .replace(/[^A-Za-z0-9_-]/g, "_");
 
   const getReactionUsers = (message, emoji) => {
-    const raw = message?.reactions?.[emoji];
-    return Array.isArray(raw) ? raw.map((x) => String(x || "")) : [];
+    const reactionsByUser = message?.reactionsByUser || {};
+    return Object.entries(reactionsByUser)
+      .filter(([, selectedEmoji]) => selectedEmoji === emoji)
+      .map(([reactorKey]) => reactorKey);
+  };
+
+  const getMyReaction = (message) => {
+    const key = getCurrentReactorKey();
+    const direct = message?.reactionsByUser?.[key] || "";
+    if (direct) return direct;
+
+    return chatReactionOptions.find((emoji) => getReactionUsers(message, emoji).includes(key)) || "";
   };
 
   const getVisibleReactions = (message) =>
@@ -131,17 +143,13 @@ export function ClubChatWidget({
     const key = getCurrentReactorKey();
     if (!key) return;
 
-    const updates = {};
-    const alreadySelected = getReactionUsers(message, emoji).includes(key);
-
-    chatReactionOptions.forEach((option) => {
-      const users = getReactionUsers(message, option).filter((x) => x !== key);
-      updates[`reactions.${option}`] =
-        option === emoji && !alreadySelected ? [...users, key] : users;
-    });
+    const currentEmoji = message?.reactionsByUser?.[key] || "";
+    const nextEmoji = currentEmoji === emoji ? "" : emoji;
 
     try {
-      await updateDoc(doc(db, "clubs", activeClubId, "chatMessages", message.id), updates);
+      await updateDoc(doc(db, "clubs", activeClubId, "chatMessages", message.id), {
+        [`reactionsByUser.${key}`]: nextEmoji,
+      });
       setActiveReactionPickerMessageId(null);
     } catch (err) {
       console.error("[ClubChatWidget] Failed updating reaction:", err);
@@ -969,18 +977,7 @@ export function ClubChatWidget({
                             );
                           })}
 
-                        <button
-                          type="button"
-                          className="fanm-chat-add-reaction"
-                          onClick={() =>
-                            setActiveReactionPickerMessageId((current) =>
-                              current === message.id ? null : message.id
-                            )
-                          }
-                          title="Add reaction"
-                        >
-                          +
-                        </button>
+
                       </div>
 
                       {activeReactionPickerMessageId === message.id ? (
@@ -998,17 +995,34 @@ export function ClubChatWidget({
                         </div>
                       ) : null}
 
-                      <button
-                        type="button"
-                        className="fanm-chat-reply-btn"
-                        onClick={() => setReplyTarget({
-                          id: message.id,
-                          senderName: message.senderName || "Club member",
-                          text: message.text || message.highlightTitle || "Attachment",
-                        })}
-                      >
-                        Reply
-                      </button>
+                      <div className="fanm-chat-message-actions">
+                        <button
+                          type="button"
+                          className="fanm-chat-reply-btn"
+                          onClick={() => setReplyTarget({
+                            id: message.id,
+                            senderName: message.senderName || "Club member",
+                            text: message.text || message.highlightTitle || "Attachment",
+                          })}
+                        >
+                          Reply
+                        </button>
+
+                        {!getMyReaction(message) ? (
+                          <button
+                            type="button"
+                            className="fanm-chat-react-btn"
+                            onClick={() =>
+                              setActiveReactionPickerMessageId((current) =>
+                                current === message.id ? null : message.id
+                              )
+                            }
+                            title="Add reaction"
+                          >
+                            React 😊
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })
@@ -1313,17 +1327,20 @@ export function ClubChatWidget({
                       );
                     })}
 
-                    <button
-                      type="button"
-                      className="fanm-chat-add-reaction"
-                      onClick={() =>
-                        setActiveReactionPickerMessageId((current) =>
-                          current === sourceMessage.id ? null : sourceMessage.id
-                        )
-                      }
-                    >
-                      +
-                    </button>
+                    {!getMyReaction(sourceMessage) ? (
+                      <button
+                        type="button"
+                        className="fanm-chat-add-reaction"
+                        onClick={() =>
+                          setActiveReactionPickerMessageId((current) =>
+                            current === sourceMessage.id ? null : sourceMessage.id
+                          )
+                        }
+                        title="Add reaction"
+                      >
+                        ☺
+                      </button>
+                    ) : null}
 
                     {activeReactionPickerMessageId === sourceMessage.id ? (
                       <div className="fanm-chat-reaction-picker fanm-chat-reaction-picker--preview">
