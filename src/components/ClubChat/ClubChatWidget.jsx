@@ -98,21 +98,22 @@ export function ClubChatWidget({
   }, [activeClubId]);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("fanm_pending_chat_highlight");
-      if (!raw) return;
-
-      const highlight = JSON.parse(raw);
+    const handleAttachHighlightToChat = (event) => {
+      const highlight = event?.detail || {};
       if (!highlight?.id) return;
 
       setSelectedHighlight(highlight);
       setClubChatOpen(true);
       setActiveChatRoom("club");
-      window.localStorage.removeItem("fanm_pending_chat_highlight");
-    } catch {
-      // localStorage is optional
-    }
-  }, [activeClubId]);
+      setHighlightPickerOpen(false);
+    };
+
+    window.addEventListener("fanm_attach_highlight_to_chat", handleAttachHighlightToChat);
+
+    return () => {
+      window.removeEventListener("fanm_attach_highlight_to_chat", handleAttachHighlightToChat);
+    };
+  }, []);
   const buildChatHighlightMatchId = () => {
     const today = new Date().toISOString().slice(0, 10);
     const type = String(matchType || "").toLowerCase().includes("league") ? "league" : "friendly";
@@ -394,7 +395,7 @@ export function ClubChatWidget({
     try {
       await addDoc(collection(db, "clubChallengeFixtures", challengerChatFixture.fixtureId, "messages"), {
         type: "challenger_chat",
-        text,
+        text: text || "Shared a club highlight",
         fromClubId: activeClubId,
         fromClubName: activeClubName,
         senderName,
@@ -413,7 +414,7 @@ export function ClubChatWidget({
 
   const handleSendClubChatMessage = async () => {
     const text = String(clubChatDraft || "").trim();
-    if (!text || !canSendClubChat) return;
+    if ((!text && !selectedHighlight) || !canSendClubChat) return;
 
     const senderName =
       selectedMember?.fullName ||
@@ -428,7 +429,7 @@ export function ClubChatWidget({
 
     try {
       await addDoc(collection(db, "clubs", activeClubId, "chatMessages"), {
-        text,
+        text: text || "Shared a club highlight",
         senderName,
         senderRole,
         senderEmail: currentUser?.email || selectedMember?.email || identity?.email || "",
@@ -891,8 +892,21 @@ export function ClubChatWidget({
 
               {selectedHighlight ? (
                 <div className="fanm-chat-selected-highlight">
-                  <span>⚽</span>
-                  <strong>{selectedHighlight.title}</strong>
+                  {selectedHighlight.mediaUrl ? (
+                    <video
+                      className="fanm-chat-selected-highlight-video"
+                      src={selectedHighlight.mediaUrl}
+                      controls
+                      preload="metadata"
+                      playsInline
+                    />
+                  ) : (
+                    <span>⚽</span>
+                  )}
+                  <div>
+                    <strong>{selectedHighlight.title || "Club highlight"}</strong>
+                    <small>{selectedHighlight.playerName || "Attached highlight"}</small>
+                  </div>
                   <button type="button" onClick={() => setSelectedHighlight(null)}>Remove</button>
                 </div>
               ) : null}
@@ -940,7 +954,7 @@ export function ClubChatWidget({
               <button
                 type="button"
                 className="primary-btn"
-                disabled={!canSendClubChat || !String(clubChatDraft || "").trim()}
+                disabled={!canSendClubChat || (!String(clubChatDraft || "").trim() && !selectedHighlight)}
                 onClick={handleSendClubChatMessage}
               >
                 Send

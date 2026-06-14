@@ -9226,3 +9226,51 @@ button.fanm-chat-highlight-card:hover {
   ) !important;
 }
 
+
+/* FANM chat selected video attachment */
+.fanm-chat-selected-highlight {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.55rem;
+}
+
+.fanm-chat-selected-highlight-video {
+  width: 84px;
+  height: 58px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #020617;
+  border: 1px solid rgba(148,163,184,0.22);
+}
+
+.fanm-chat-selected-highlight div {
+  min-width: 0;
+}
+
+.fanm-chat-selected-highlight strong,
+.fanm-chat-selected-highlight small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fanm-chat-selected-highlight small {
+  color: rgba(226,232,240,0.72);
+  font-size: 0.74rem;
+  margin-top: 0.12rem;
+}
+
+@media (max-width: 520px) {
+  .fanm-chat-selected-highlight {
+    grid-template-columns: 74px minmax(0, 1fr) auto;
+  }
+
+  .fanm-chat-selected-highlight-video {
+    width: 74px;
+    height: 52px;
+  }
+}
+
