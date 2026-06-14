@@ -9274,3 +9274,149 @@ button.fanm-chat-highlight-card:hover {
   }
 }
 
+
+.fanm-chat-highlight-card-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(2,6,23,0.72);
+  border: 1px solid rgba(148,163,184,0.22);
+}
+
+.fanm-chat-mention-picker {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.45rem 0;
+  padding: 0.45rem;
+  border-radius: 14px;
+  background: rgba(2,6,23,0.84);
+  border: 1px solid rgba(56,189,248,0.28);
+}
+
+.fanm-chat-mention-picker button {
+  border: 0;
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  background: rgba(15,23,42,0.92);
+  color: #e0f2fe;
+  text-align: left;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+
+.fanm-chat-reply-btn {
+  margin-top: 0.35rem;
+  border: 0;
+  background: rgba(2,6,23,0.38);
+  color: rgba(219,234,254,0.88);
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.fanm-chat-reply-quote,
+.fanm-chat-replying-box {
+  border-left: 3px solid rgba(56,189,248,0.8);
+  background: rgba(2,6,23,0.38);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  margin-bottom: 0.45rem;
+}
+
+.fanm-chat-reply-quote strong,
+.fanm-chat-replying-box strong {
+  display: block;
+  color: #bfdbfe;
+  font-size: 0.74rem;
+}
+
+.fanm-chat-reply-quote small,
+.fanm-chat-replying-box small {
+  display: block;
+  color: rgba(226,232,240,0.75);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fanm-chat-replying-box {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.fanm-chat-replying-box button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  background: rgba(239,68,68,0.20);
+  color: #fecaca;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+
+.fanm-highlight-preview-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.78);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
+}
+
+.fanm-highlight-preview-modal{
+  width:min(92vw,700px);
+  background:#020617;
+  border-radius:20px;
+  padding:1rem;
+  border:1px solid rgba(148,163,184,.25);
+  box-shadow:0 30px 80px rgba(0,0,0,.6);
+}
+
+.fanm-highlight-preview-close{
+  float:right;
+  border:none;
+  background:none;
+  color:white;
+  font-size:1.2rem;
+  cursor:pointer;
+}
+
+.fanm-highlight-preview-meta{
+  color:#cbd5e1;
+  margin-top:.35rem;
+}
+
+.fanm-highlight-reactions{
+  display:flex;
+  justify-content:center;
+  gap:.5rem;
+  margin-top:1rem;
+}
+
+.fanm-highlight-reactions button{
+  border:none;
+  border-radius:999px;
+  padding:.55rem .8rem;
+  cursor:pointer;
+}
+
+
+.fanm-highlight-preview-video {
+  width: 100%;
+  max-height: 68vh;
+  border-radius: 14px;
+  margin-top: 0.75rem;
+  background: #020617;
+}
+
+
+

@@ -47,6 +47,7 @@ export function ClubChatWidget({
   currentMatchNo = 1,
   matchType = "FRIENDLY",
   gameFormat = "5_V_5",
+  members = [],
   variant = "inline",
   onOpenFullChat,
   onOpenHighlight,
@@ -68,6 +69,10 @@ export function ClubChatWidget({
   const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
   const [availableHighlights, setAvailableHighlights] = useState([]);
   const [selectedHighlight, setSelectedHighlight] = useState(null);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
+  const [replyTarget, setReplyTarget] = useState(null);
+  const [previewHighlight, setPreviewHighlight] = useState(null);
   const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(0);
   const [launcherBottom, setLauncherBottom] = useState(() => {
     try {
@@ -102,7 +107,12 @@ export function ClubChatWidget({
       const highlight = event?.detail || {};
       if (!highlight?.id) return;
 
-      setSelectedHighlight(highlight);
+      setSelectedHighlight({
+        ...highlight,
+        scorerName: highlight.scorerName || highlight.playerName || "",
+        teamName: highlight.teamName || "",
+        label: highlight.label || highlight.title || "Goal clip",
+      });
       setClubChatOpen(true);
       setActiveChatRoom("club");
       setHighlightPickerOpen(false);
@@ -127,6 +137,58 @@ export function ClubChatWidget({
 
     if (!clubId || clubId === "turf-kings") return baseMatchId;
     return `${clubId}__${baseMatchId}`;
+  };
+
+  const getMentionDisplayName = (member = {}) => {
+    const shortName = String(member.shortName || "").trim();
+    if (shortName) return shortName;
+
+    const rawName = String(
+      member.fullName ||
+      member.displayName ||
+      member.name ||
+      ""
+    ).trim();
+
+    return rawName.split(/\s+/)[0] || "";
+  };
+
+  const mentionOptions = (Array.isArray(members) ? members : [])
+    .map((member) => ({
+      id: member.id || member.memberId || member.email || member.fullName || member.shortName,
+      name: getMentionDisplayName(member),
+    }))
+    .filter((member) => member.name)
+    .filter((member, index, arr) => arr.findIndex((x) => x.name === member.name) === index)
+    .filter((member) => {
+      if (!mentionPickerOpen && !mentionQuery) return false;
+      if (!mentionQuery) return true;
+      return member.name.toLowerCase().includes(mentionQuery.toLowerCase());
+    })
+    .slice(0, 6);
+
+  const handleClubChatDraftChange = (value) => {
+    setClubChatDraft(value);
+
+    const match = value.match(/@([A-Za-zÀ-ÿ'-]{0,30})$/);
+    setMentionQuery(match ? match[1].trim() : "");
+    setMentionPickerOpen(Boolean(match));
+  };
+
+  const insertMention = (name) => {
+    const safeName = String(name || "").trim();
+    if (!safeName) return;
+
+    setClubChatDraft((current) => {
+      const base = String(current || "");
+      if (/@([A-Za-zÀ-ÿ'-]{0,30})$/.test(base)) {
+        return base.replace(/@([A-Za-zÀ-ÿ'-]{0,30})$/, `@${safeName} `);
+      }
+      return `${base}${base.endsWith(" ") || !base ? "" : " "}@${safeName} `;
+    });
+
+    setMentionQuery("");
+    setMentionPickerOpen(false);
   };
 
   const getHighlightTitleForChat = (highlight = {}) => {
@@ -436,6 +498,12 @@ export function ClubChatWidget({
         senderUid: currentUser?.uid || "",
         clubId: activeClubId,
         clubName: activeClubName,
+        mentions: Array.from(String(text || "").matchAll(/@([A-Za-zÀ-ÿ'-]+)/g)).map((m) => m[1].trim()).filter(Boolean),
+        ...(replyTarget ? {
+          replyToId: replyTarget.id || "",
+          replyToSenderName: replyTarget.senderName || "Club member",
+          replyToText: replyTarget.text || "Attachment",
+        } : {}),
         ...(selectedHighlight ? {
           attachmentType: "highlight",
           highlightId: selectedHighlight.id,
@@ -444,6 +512,9 @@ export function ClubChatWidget({
           highlightMatchDayId: selectedHighlight.matchDayId || "",
           highlightMediaUrl: selectedHighlight.mediaUrl || "",
           highlightType: selectedHighlight.type || "highlight",
+          highlightScorerName: selectedHighlight.scorerName || selectedHighlight.playerName || "",
+          highlightTeamName: selectedHighlight.teamName || "",
+          highlightLabel: selectedHighlight.label || selectedHighlight.title || "Goal clip",
         } : {}),
         createdAt: serverTimestamp(),
         createdAtMs: Date.now(),
@@ -451,6 +522,7 @@ export function ClubChatWidget({
 
       setClubChatDraft("");
       setSelectedHighlight(null);
+      setReplyTarget(null);
       setHighlightPickerOpen(false);
       setClubChatEmojiOpen(false);
     } catch (err) {
@@ -785,29 +857,53 @@ export function ClubChatWidget({
                         <strong>{message.senderName || "Club member"}</strong>
                         {isAdminMessage ? <span>Captain/Admin</span> : null}
                       </div>
+                      {message.replyToId ? (
+                        <div className="fanm-chat-reply-quote">
+                          <strong>Replying to {message.replyToSenderName || "Club member"}</strong>
+                          <small>{message.replyToText || "Message"}</small>
+                        </div>
+                      ) : null}
+
                       {message.attachmentType === "highlight" ? (
                         <button
                           type="button"
                           className="fanm-chat-highlight-card"
                           onClick={() => {
-                            onOpenHighlight?.({
-                              highlightId: message.highlightId,
-                              title: message.highlightTitle,
-                              matchDayId: message.highlightMatchDayId,
-                              mediaUrl: message.highlightMediaUrl,
-                              type: message.highlightType,
+                            setPreviewHighlight({
+                              id: message.highlightId,
+                              title: message.highlightLabel || message.highlightTitle || "Goal clip",
+                              scorer: message.highlightScorerName || message.highlightPlayerName || "",
+                              team: message.highlightTeamName || "",
+                              mediaUrl: message.highlightMediaUrl || "",
+                              type: message.highlightType || "highlight",
                             });
-                            setClubChatOpen(false);
                           }}
                         >
-                          <span>⚽</span>
+                          <span className="fanm-chat-highlight-card-icon">🎥</span>
                           <div>
-                            <strong>{message.highlightTitle || "Club highlight"}</strong>
-                            <small>{message.highlightPlayerName || "Tap to open Videos"}</small>
+                            <strong>{message.highlightLabel || message.highlightTitle || "Goal clip"}</strong>
+                            <small>
+                              {[
+                                message.highlightType ? String(message.highlightType).replace(/_/g, " ") : "",
+                                message.highlightScorerName || message.highlightPlayerName ? `Scorer: ${message.highlightScorerName || message.highlightPlayerName}` : "",
+                                message.highlightTeamName || "",
+                              ].filter(Boolean).join(" • ") || "Tap to open video"}
+                            </small>
                           </div>
                         </button>
                       ) : null}
                       <p>{message.text}</p>
+                      <button
+                        type="button"
+                        className="fanm-chat-reply-btn"
+                        onClick={() => setReplyTarget({
+                          id: message.id,
+                          senderName: message.senderName || "Club member",
+                          text: message.text || message.highlightTitle || "Attachment",
+                        })}
+                      >
+                        Reply
+                      </button>
                     </div>
                   );
                 })
@@ -858,7 +954,7 @@ export function ClubChatWidget({
                   className="text-input"
                   rows={3}
                   value={clubChatDraft}
-                  onChange={(event) => setClubChatDraft(event.target.value)}
+                  onChange={(event) => handleClubChatDraftChange(event.target.value)}
                   placeholder={
                     canSendClubChat
                       ? "Message your club..."
@@ -881,6 +977,19 @@ export function ClubChatWidget({
                   className="fanm-club-chat-attach-btn"
                   disabled={!canSendClubChat}
                   onClick={() => {
+                    setMentionPickerOpen((current) => !current);
+                    setMentionQuery("");
+                  }}
+                  title="Tag player"
+                >
+                  @
+                </button>
+
+                <button
+                  type="button"
+                  className="fanm-club-chat-attach-btn"
+                  disabled={!canSendClubChat}
+                  onClick={() => {
                     onOpenHighlight?.({ mode: "attach" });
                     setClubChatOpen(false);
                   }}
@@ -889,6 +998,30 @@ export function ClubChatWidget({
                   📎
                 </button>
               </div>
+
+              {(mentionPickerOpen || mentionQuery !== "") && mentionOptions.length ? (
+                <div className="fanm-chat-mention-picker">
+                  {mentionOptions.map((member) => (
+                    <button
+                      type="button"
+                      key={member.id || member.name}
+                      onClick={() => insertMention(member.name)}
+                    >
+                      @{member.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {replyTarget ? (
+                <div className="fanm-chat-replying-box">
+                  <div>
+                    <strong>Replying to {replyTarget.senderName}</strong>
+                    <small>{replyTarget.text}</small>
+                  </div>
+                  <button type="button" onClick={() => setReplyTarget(null)}>Cancel</button>
+                </div>
+              ) : null}
 
               {selectedHighlight ? (
                 <div className="fanm-chat-selected-highlight">
@@ -904,8 +1037,14 @@ export function ClubChatWidget({
                     <span>⚽</span>
                   )}
                   <div>
-                    <strong>{selectedHighlight.title || "Club highlight"}</strong>
-                    <small>{selectedHighlight.playerName || "Attached highlight"}</small>
+                    <strong>{selectedHighlight.label || selectedHighlight.title || "Goal clip"}</strong>
+                    <small>
+                      {[
+                        selectedHighlight.type ? String(selectedHighlight.type).replace(/_/g, " ") : "",
+                        selectedHighlight.scorerName || selectedHighlight.playerName ? `Scorer: ${selectedHighlight.scorerName || selectedHighlight.playerName}` : "",
+                        selectedHighlight.teamName || "",
+                      ].filter(Boolean).join(" • ") || "Attached video highlight"}
+                    </small>
                   </div>
                   <button type="button" onClick={() => setSelectedHighlight(null)}>Remove</button>
                 </div>
@@ -1014,6 +1153,50 @@ export function ClubChatWidget({
         </>
       )}
       </section>
+
+      {previewHighlight ? (
+        <div className="fanm-highlight-preview-overlay">
+          <div className="fanm-highlight-preview-modal">
+            <button
+              type="button"
+              className="fanm-highlight-preview-close"
+              onClick={() => setPreviewHighlight(null)}
+            >
+              ✕
+            </button>
+
+            <h3>{previewHighlight.title || "Goal clip"}</h3>
+
+            <div className="fanm-highlight-preview-meta">
+              🎥 {String(previewHighlight.type || "highlight").replace(/_/g, " ")}
+              {previewHighlight.scorer ? ` • Scorer: ${previewHighlight.scorer}` : ""}
+              {previewHighlight.team ? ` • ${previewHighlight.team}` : ""}
+            </div>
+
+            {previewHighlight.mediaUrl ? (
+              <video
+                src={previewHighlight.mediaUrl}
+                controls
+                autoPlay
+                playsInline
+                preload="metadata"
+                className="fanm-highlight-preview-video"
+              />
+            ) : (
+              <p className="muted small">This clip has no playable video URL.</p>
+            )}
+
+            <div className="fanm-highlight-reactions">
+              <button type="button">⚽</button>
+              <button type="button">🔥</button>
+              <button type="button">🧤</button>
+              <button type="button">👏</button>
+              <button type="button">😂</button>
+              <button type="button">❤️</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

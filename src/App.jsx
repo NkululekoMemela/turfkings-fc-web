@@ -6959,10 +6959,13 @@ export default function App() {
               detail: {
                 id: highlight.id || highlight.clipId || highlight.highlightId || "",
                 title: highlight.title || "Club highlight",
+                label: highlight.label || highlight.title || "Goal clip",
                 playerName: highlight.playerName || highlight.goalScorer || highlight.scorer || "",
+                scorerName: highlight.scorerName || highlight.playerName || highlight.goalScorer || highlight.scorer || "",
+                teamName: highlight.teamName || "",
                 matchDayId: highlight.matchDayId || highlight.matchdayId || "",
                 mediaUrl: highlight.mediaUrl || highlight.videoUrl || highlight.downloadUrl || highlight.fileUrl || "",
-                type: highlight.type || highlight.tag || "highlight",
+                type: highlight.normalizedType || highlight.type || highlight.tag || "highlight",
               },
             }));
           }}
@@ -8132,6 +8135,7 @@ export default function App() {
           currentMatchNo={currentMatchNo}
           matchType={matchType}
           gameFormat={gameFormat}
+          members={members}
           onOpenHighlight={() => setPage(PAGE_VIEW_HIGHLIGHTS)}
           variant="launcher"
         />
