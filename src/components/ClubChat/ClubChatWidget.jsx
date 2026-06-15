@@ -73,6 +73,7 @@ export function ClubChatWidget({
   const [selectedHighlight, setSelectedHighlight] = useState(null);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
+  const [selectedMentions, setSelectedMentions] = useState([]);
   const [replyTarget, setReplyTarget] = useState(null);
   const [previewHighlight, setPreviewHighlight] = useState(null);
   const [activeReactionPickerMessageId, setActiveReactionPickerMessageId] = useState(null);
@@ -218,30 +219,80 @@ export function ClubChatWidget({
     return rawName.split(/\s+/)[0] || "";
   };
 
-  const mentionOptions = (Array.isArray(members) ? members : [])
+  if (typeof window !== "undefined") {
+    console.log("[ClubChat mention debug]", {
+      membersCount: Array.isArray(members) ? members.length : 0,
+      sampleMember: Array.isArray(members) ? members[0] : null,
+      mentionQuery,
+      mentionPickerOpen,
+    });
+  }
+
+  const mentionCandidates = (Array.isArray(members) ? members : [])
+    .map((member) => {
+      const raw =
+        typeof member === "string"
+          ? { fullName: member, name: member }
+          : member || {};
+
+      const fullName = String(
+        raw.fullName ||
+        raw.displayName ||
+        raw.playerName ||
+        raw.name ||
+        [raw.firstName, raw.surname || raw.lastName].filter(Boolean).join(" ") ||
+        raw.shortName ||
+        ""
+      ).trim();
+
+      const name = getMentionDisplayName(raw) || fullName.split(/\s+/)[0] || "";
+      const parts = fullName.split(/\s+/).filter(Boolean);
+      const surnameInitial = parts.length > 1 ? parts[parts.length - 1][0] : "";
+      const id = raw.id || raw.memberId || raw.playerId || raw.uid || raw.email || fullName || name;
+
+      return {
+        id,
+        name,
+        fullName,
+        label: name && surnameInitial ? `${name} ${surnameInitial}` : name,
+      };
+    })
+    .filter((member) => member.name);
+
+  const duplicateMentionNames = mentionCandidates.reduce((acc, member) => {
+    acc[member.name] = (acc[member.name] || 0) + 1;
+    return acc;
+  }, {});
+
+  const mentionOptions = mentionCandidates
     .map((member) => ({
-      id: member.id || member.memberId || member.email || member.fullName || member.shortName,
-      name: getMentionDisplayName(member),
+      ...member,
+      label: duplicateMentionNames[member.name] > 1 ? member.label : member.name,
     }))
-    .filter((member) => member.name)
-    .filter((member, index, arr) => arr.findIndex((x) => x.name === member.name) === index)
     .filter((member) => {
       if (!mentionPickerOpen && !mentionQuery) return false;
       if (!mentionQuery) return true;
-      return member.name.toLowerCase().includes(mentionQuery.toLowerCase());
+      return (
+        member.name.toLowerCase().includes(mentionQuery.toLowerCase()) ||
+        member.label.toLowerCase().includes(mentionQuery.toLowerCase()) ||
+        member.fullName.toLowerCase().includes(mentionQuery.toLowerCase())
+      );
     })
     .slice(0, 6);
 
   const handleClubChatDraftChange = (value) => {
     setClubChatDraft(value);
 
-    const match = value.match(/@([A-Za-zÀ-ÿ'-]{0,30})$/);
-    setMentionQuery(match ? match[1].trim() : "");
+    const beforeCursor = String(value || "");
+    const match = beforeCursor.match(/(^|\s)@([A-Za-zÀ-ÿ'-]{0,30})$/);
+
+    setMentionQuery(match ? match[2].trim() : "");
     setMentionPickerOpen(Boolean(match));
   };
 
-  const insertMention = (name) => {
-    const safeName = String(name || "").trim();
+  const insertMention = (member) => {
+    const mention = typeof member === "string" ? { name: member, label: member, id: member } : member;
+    const safeName = String(mention?.name || "").trim();
     if (!safeName) return;
 
     setClubChatDraft((current) => {
@@ -252,8 +303,35 @@ export function ClubChatWidget({
       return `${base}${base.endsWith(" ") || !base ? "" : " "}@${safeName} `;
     });
 
+    setSelectedMentions((current) => {
+      const next = current.filter((item) => String(item.id) !== String(mention.id));
+      return [
+        ...next,
+        {
+          id: mention.id || safeName,
+          name: safeName,
+          label: mention.label || safeName,
+          fullName: mention.fullName || "",
+        },
+      ];
+    });
+
     setMentionQuery("");
     setMentionPickerOpen(false);
+  };
+
+  const renderMessageTextWithMentions = (text = "") => {
+    const parts = String(text || "").split(/(@[A-Za-zÀ-ÿ'-]+)/g);
+
+    return parts.map((part, index) => {
+      if (!part.startsWith("@")) return part;
+
+      return (
+        <span key={`mention-${index}`} className="fanm-chat-mention-token">
+          {part}
+        </span>
+      );
+    });
   };
 
   const getHighlightTitleForChat = (highlight = {}) => {
@@ -563,7 +641,9 @@ export function ClubChatWidget({
         senderUid: currentUser?.uid || "",
         clubId: activeClubId,
         clubName: activeClubName,
-        mentions: Array.from(String(text || "").matchAll(/@([A-Za-zÀ-ÿ'-]+)/g)).map((m) => m[1].trim()).filter(Boolean),
+        mentions: selectedMentions.filter((mention) =>
+          String(text || "").includes(`@${mention.name}`)
+        ),
         ...(replyTarget ? {
           replyToId: replyTarget.id || "",
           replyToSenderName: replyTarget.senderName || "Club member",
@@ -586,6 +666,7 @@ export function ClubChatWidget({
       });
 
       setClubChatDraft("");
+      setSelectedMentions([]);
       setSelectedHighlight(null);
       setReplyTarget(null);
       setHighlightPickerOpen(false);
@@ -958,7 +1039,7 @@ export function ClubChatWidget({
                           </div>
                         </button>
                       ) : null}
-                      <p>{message.text}</p>
+                      <p>{renderMessageTextWithMentions(message.text)}</p>
                       <div className="fanm-chat-reaction-row">
                         {getVisibleReactions(message)
                           .map((emoji) => {
@@ -1124,9 +1205,9 @@ export function ClubChatWidget({
                     <button
                       type="button"
                       key={member.id || member.name}
-                      onClick={() => insertMention(member.name)}
+                      onClick={() => insertMention(member)}
                     >
-                      @{member.name}
+                      @{member.label}
                     </button>
                   ))}
                 </div>

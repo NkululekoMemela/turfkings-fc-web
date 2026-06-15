@@ -9776,3 +9776,111 @@ button.fanm-chat-highlight-card:hover {
   overflow-y: auto !important;
 }
 
+
+.fanm-chat-mention-token {
+  color: #60a5fa;
+  font-weight: 1000;
+}
+
+
+/* FANM cleaner chat interaction: actions appear only on hover / press */
+.fanm-club-chat-message .fanm-chat-message-actions {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition: opacity 0.16s ease, max-height 0.16s ease, transform 0.16s ease;
+  margin-top: 0 !important;
+}
+
+.fanm-club-chat-message:hover .fanm-chat-message-actions,
+.fanm-club-chat-message:focus-within .fanm-chat-message-actions,
+.fanm-club-chat-message:active .fanm-chat-message-actions {
+  opacity: 1;
+  max-height: 32px;
+  pointer-events: auto;
+  transform: translateY(0);
+  margin-top: 0.35rem !important;
+}
+
+/* Keep visible if the reaction picker is open */
+.fanm-club-chat-message:has(.fanm-chat-reaction-picker) .fanm-chat-message-actions {
+  opacity: 1;
+  max-height: 32px;
+  pointer-events: auto;
+  margin-top: 0.35rem !important;
+}
+
+/* Subtle FANM football-pattern feel behind messages */
+.fanm-club-chat-card .fanm-club-chat-messages,
+.fanm-club-chat-card .fanm-chat-room-content.fanm-club-chat-messages {
+  background-color: #12264a !important;
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(255,255,255,0.045) 0 1px, transparent 2px),
+    radial-gradient(circle at 76% 28%, rgba(255,255,255,0.035) 0 1px, transparent 2px),
+    radial-gradient(circle at 32% 72%, rgba(255,255,255,0.035) 0 1px, transparent 2px),
+    linear-gradient(135deg, rgba(255,255,255,0.025) 25%, transparent 25%),
+    linear-gradient(225deg, rgba(255,255,255,0.018) 25%, transparent 25%) !important;
+  background-size: 42px 42px, 58px 58px, 64px 64px, 46px 46px, 46px 46px !important;
+}
+
+/* Messages get more breathing room now that actions are hidden by default */
+.fanm-club-chat-message p {
+  margin-bottom: 0.15rem;
+}
+
+
+/* FANM final hide/show message actions */
+.fanm-club-chat-message > .fanm-chat-message-actions {
+  display: flex !important;
+  opacity: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  margin-top: 0 !important;
+  transform: translateY(-3px);
+  transition: opacity 0.16s ease, max-height 0.16s ease, transform 0.16s ease;
+}
+
+.fanm-club-chat-message:hover > .fanm-chat-message-actions,
+.fanm-club-chat-message:focus-within > .fanm-chat-message-actions,
+.fanm-club-chat-message:active > .fanm-chat-message-actions {
+  opacity: 1 !important;
+  max-height: 34px !important;
+  pointer-events: auto !important;
+  margin-top: 0.35rem !important;
+  transform: translateY(0);
+}
+
+.fanm-club-chat-message:has(.fanm-chat-reaction-picker) > .fanm-chat-message-actions {
+  opacity: 1 !important;
+  max-height: 34px !important;
+  pointer-events: auto !important;
+  margin-top: 0.35rem !important;
+}
+
+
+/* FANM stronger football-style message canvas pattern */
+.fanm-club-chat-card .fanm-club-chat-messages,
+.fanm-club-chat-card .fanm-chat-room-content.fanm-club-chat-messages {
+  background-color: #12264a !important;
+  background-image:
+    radial-gradient(circle at 10% 20%, rgba(255,255,255,0.08) 0 1px, transparent 2px),
+    radial-gradient(circle at 80% 35%, rgba(255,255,255,0.07) 0 1px, transparent 2px),
+    linear-gradient(45deg, rgba(255,255,255,0.045) 12%, transparent 12%, transparent 88%, rgba(255,255,255,0.035) 88%),
+    linear-gradient(135deg, rgba(255,255,255,0.035) 12%, transparent 12%, transparent 88%, rgba(255,255,255,0.03) 88%) !important;
+  background-size: 34px 34px, 46px 46px, 42px 42px, 42px 42px !important;
+}
+
+/* Do not waste bubble space when there are no reactions */
+.fanm-chat-reaction-row:empty {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.fanm-chat-reaction-row {
+  min-height: 0 !important;
+}
+
