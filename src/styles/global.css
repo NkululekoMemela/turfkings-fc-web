@@ -9669,3 +9669,110 @@ button.fanm-chat-highlight-card:hover {
   margin-top: 0.35rem !important;
 }
 
+
+/* FANM chat contrast polish */
+.fanm-club-chat-messages {
+  background: #0d1b34 !important;
+}
+
+.fanm-club-chat-input-wrap textarea.text-input {
+  background: #0d1b34 !important;
+  border-color: rgba(255,255,255,0.12) !important;
+}
+
+
+/* FANM chat charcoal message canvas and composer - stronger override */
+.fanm-club-chat-card .fanm-club-chat-messages,
+.fanm-club-chat-card .fanm-chat-room-content.fanm-club-chat-messages {
+  background: #0d1b34 !important;
+  background-color: #0d1b34 !important;
+}
+
+.fanm-club-chat-card .fanm-club-chat-input-wrap textarea.text-input,
+.fanm-club-chat-card .fanm-club-chat-compose textarea.text-input {
+  background: #0d1b34 !important;
+  background-color: #0d1b34 !important;
+  border-color: rgba(255,255,255,0.14) !important;
+}
+
+/* FANM force club chat composer to charcoal */
+.fanm-club-chat-card .fanm-club-chat-input-wrap,
+.fanm-club-chat-card .fanm-club-chat-input-wrap textarea.text-input {
+  background: #0d1b34 !important;
+  background-color: #0d1b34 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.fanm-club-chat-card .fanm-club-chat-input-wrap {
+  border-radius: 16px;
+}
+
+
+/* FANM chat pale navy contrast layer */
+.fanm-club-chat-card .fanm-club-chat-messages,
+.fanm-club-chat-card .fanm-chat-room-content.fanm-club-chat-messages {
+  background: #12264a !important;
+  background-color: #12264a !important;
+}
+
+.fanm-club-chat-card .fanm-club-chat-input-wrap {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.fanm-club-chat-card .fanm-club-chat-input-wrap textarea.text-input,
+.fanm-club-chat-card .fanm-club-chat-compose textarea.text-input {
+  background: #12264a !important;
+  background-color: #12264a !important;
+  background-image: none !important;
+  border-color: rgba(148,163,184,0.28) !important;
+}
+
+/* FANM chat final polish: more space, no input spill, sticky close */
+.fanm-club-chat-head p {
+  display: none !important;
+}
+
+.fanm-club-chat-card .fanm-club-chat-input-wrap {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.fanm-club-chat-card .fanm-club-chat-input-wrap textarea.text-input,
+.fanm-club-chat-card .fanm-club-chat-compose textarea.text-input {
+  background: #12264a !important;
+  background-color: #12264a !important;
+  background-image: none !important;
+  border: 1px solid rgba(148,163,184,0.35) !important;
+  box-shadow: none !important;
+  border-radius: 16px !important;
+  color: #e2e8f0 !important;
+}
+
+.fanm-club-chat-card textarea.text-input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: rgba(148,163,184,0.45) !important;
+}
+
+.fanm-club-chat-head {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 30 !important;
+  background: linear-gradient(180deg, rgba(4,19,40,0.98), rgba(4,19,40,0.92)) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
+.fanm-club-chat-card.is-modal-open {
+  overflow-y: auto !important;
+}
+
