@@ -264,6 +264,14 @@ export function ClubChatWidget({
     return acc;
   }, {});
 
+  console.log("[FANM mention debug]", {
+    membersCount: Array.isArray(members) ? members.length : 0,
+    firstMember: Array.isArray(members) ? members[0] : null,
+    mentionQuery,
+    mentionPickerOpen,
+    mentionCandidatesCount: mentionCandidates.length,
+  });
+
   const mentionOptions = mentionCandidates
     .map((member) => ({
       ...member,
@@ -281,13 +289,19 @@ export function ClubChatWidget({
     .slice(0, 6);
 
   const handleClubChatDraftChange = (value) => {
-    setClubChatDraft(value);
+    const nextValue = String(value || "");
+    setClubChatDraft(nextValue);
 
-    const beforeCursor = String(value || "");
-    const match = beforeCursor.match(/(^|\s)@([A-Za-zÀ-ÿ'-]{0,30})$/);
+    const atIndex = nextValue.lastIndexOf("@");
+    const afterAt = atIndex >= 0 ? nextValue.slice(atIndex + 1) : "";
 
-    setMentionQuery(match ? match[2].trim() : "");
-    setMentionPickerOpen(Boolean(match));
+    const isActiveMention =
+      atIndex >= 0 &&
+      !/\s/.test(afterAt) &&
+      afterAt.length <= 30;
+
+    setMentionQuery(isActiveMention ? afterAt.trim() : "");
+    setMentionPickerOpen(isActiveMention);
   };
 
   const insertMention = (member) => {
@@ -1199,9 +1213,9 @@ export function ClubChatWidget({
                 </button>
               </div>
 
-              {(mentionPickerOpen || mentionQuery !== "") && mentionOptions.length ? (
+              {(mentionPickerOpen || mentionQuery !== "") ? (
                 <div className="fanm-chat-mention-picker">
-                  {mentionOptions.map((member) => (
+                  {(mentionOptions.length ? mentionOptions : mentionCandidates.slice(0, 6)).map((member) => (
                     <button
                       type="button"
                       key={member.id || member.name}
@@ -1210,6 +1224,9 @@ export function ClubChatWidget({
                       @{member.label}
                     </button>
                   ))}
+                  {!mentionOptions.length && !mentionCandidates.length ? (
+                    <span className="fanm-chat-mention-empty">No club players found</span>
+                  ) : null}
                 </div>
               ) : null}
 
