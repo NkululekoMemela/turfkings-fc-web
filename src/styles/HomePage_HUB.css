@@ -7210,3 +7210,112 @@
     min-width: 158px;
   }
 }
+
+.hub-map-surface--google {
+  overflow: hidden;
+  position: relative;
+}
+
+.hub-google-map {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  border-radius: inherit;
+}
+
+.hub-google-marker {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.95);
+  background: rgba(5, 10, 20, 0.95);
+  box-shadow: 0 18px 35px rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.hub-google-marker img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hub-map-missing-key {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 0.35rem;
+  padding: 2rem;
+  color: white;
+}
+
+.hub-map-missing-key {
+  min-height: 420px !important;
+  border-radius: 28px;
+  background: radial-gradient(circle at top left, rgba(34, 197, 94, 0.22), transparent 36%),
+    linear-gradient(135deg, rgba(2, 6, 23, 0.96), rgba(15, 23, 42, 0.94));
+  border: 1px dashed rgba(134, 239, 172, 0.65);
+  display: flex !important;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: #f8fafc !important;
+  text-align: center;
+}
+
+.hub-map-missing-key strong {
+  color: #86efac !important;
+  font-size: 1.2rem;
+}
+
+.hub-map-missing-key span {
+  color: #e2e8f0 !important;
+  font-weight: 800;
+}
+
+.hub-map-surface--google::before,
+.hub-map-surface--google::after {
+  display: none !important;
+}
+
+.hub-map-surface--google {
+  min-height: 420px;
+}
+
+.hub-map-surface--google .hub-google-map {
+  min-height: 420px;
+}
+
+.hub-map-surface--google {
+  background: transparent !important;
+  isolation: isolate;
+}
+
+.hub-map-surface--google > * {
+  position: relative;
+  z-index: 5;
+}
+
+.hub-map-surface--google .hub-google-map,
+.hub-map-surface--google .hub-google-map > div {
+  width: 100% !important;
+  height: 420px !important;
+  min-height: 420px !important;
+}
+
+.hub-google-map-shell {
+  width: 100%;
+  height: 420px;
+  min-height: 420px;
+  border-radius: 28px;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.hub-google-map-shell > div {
+  width: 100%;
+  height: 100%;
+}

@@ -1,9 +1,6 @@
 // src/pages/HomePage_HUB.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { addDoc, collection, doc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
@@ -12,6 +9,7 @@ import HomePage_HUB_ClubCard from "../components/HomePage_HUB/HomePage_HUB_ClubC
 import { getClubFeaturedHighlight } from "../storage/VideoHighlightsRepository.js";
 import HomePage_HUB_SignupModal from "../components/HomePage_HUB/HomePage_HUB_SignupModal.jsx";
 import HomePage_HUB_ClubProfileEditorModal from "../components/HomePage_HUB/HomePage_HUB_ClubProfileEditorModal.jsx";
+import HomePage_HUB_ClubGoogleMap from "../components/HomePage_HUB/HomePage_HUB_ClubGoogleMap.jsx";
 import HOME_FOOTER_LOGO_LIGHT from "../assets/branding/logo-main-light.jpeg";
 import HOME_FOOTER_LOGO_DAY from "../assets/branding/logo-main-day.jpeg";
 import HOME_FOOTER_LOGO_DARK from "../assets/branding/logo-main-dark.jpeg";
@@ -20,6 +18,10 @@ const HOME_TOP_LOGO = "/HomePage_Hub/5_AsidesNearMe_light_logo.png";
 const HOME_FALLBACK_LOGO = "/HomePage/Logo_icon.jpeg";
 const SUPER_ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
 const CLUB_CACHE_KEY = "fanm_homepage_hub_clubs_v1";
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+const HAS_GOOGLE_MAPS_API_KEY =
+  GOOGLE_MAPS_API_KEY &&
+  GOOGLE_MAPS_API_KEY !== "PASTE_YOUR_GOOGLE_MAPS_API_KEY_HERE";
 
 const CAPE_TOWN_PLACEHOLDER_COORDS = {
   cbd: { latitude: -33.9249, longitude: 18.4241 },
@@ -60,21 +62,6 @@ function getPlaceholderCoordsForClub(club = {}) {
     ];
 
   return CAPE_TOWN_PLACEHOLDER_COORDS[randomKey];
-}
-
-function getClubMarkerIcon(club = {}) {
-  const label = String(club?.logoText || club?.shortName || club?.name || "FC")
-    .trim()
-    .slice(0, 2)
-    .toUpperCase();
-
-  return L.divIcon({
-    className: "hub-leaflet-marker",
-    html: `<span>${label}</span>`,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
-    popupAnchor: [0, -18],
-  });
 }
 
 const FALLBACK_CLUBS = [
@@ -1001,46 +988,12 @@ export default function HomePage_HUB({
         </div>
 
         <div className="hub-map-card">
-          <div className="hub-map-surface hub-map-surface--leaflet">
-            <MapContainer
-              center={[-33.9608, 18.4860]}
-              zoom={10}
-              scrollWheelZoom={false}
-              className="hub-leaflet-map"
-            >
-              <TileLayer
-                attribution='&copy; OpenStreetMap contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-
-              {visibleClubs.map((club) => {
-                const point = getClubLatLng(club);
-                if (!point) return null;
-
-                return (
-                  <Marker
-                    key={club.id}
-                    position={[point.latitude, point.longitude]}
-                    icon={L.divIcon({
-                      className: "hub-leaflet-marker",
-                      html: `
-                        <div class="hub-leaflet-marker-inner">
-                          <img src="${club.logoUrl || HOME_FALLBACK_LOGO}" />
-                        </div>
-                      `,
-                      iconSize: [52, 52],
-                      iconAnchor: [26, 52],
-                      popupAnchor: [0, -42],
-                    })}
-                    eventHandlers={{
-                      click: () => setActiveMapClub(club),
-                    }}
-                  >
-                    
-                  </Marker>
-                );
-              })}
-            </MapContainer>
+          <div className="hub-map-surface hub-map-surface--google">
+            <HomePage_HUB_ClubGoogleMap
+              apiKey={HAS_GOOGLE_MAPS_API_KEY ? GOOGLE_MAPS_API_KEY : ""}
+              clubs={visibleClubs}
+              onSelectClub={setActiveMapClub}
+            />
           </div>
           {selectedMapClub ? (
             <aside className="hub-map-selected-card hub-map-selected-card--floating" onClick={(event) => event.stopPropagation()}>

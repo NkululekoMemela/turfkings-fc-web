@@ -17,6 +17,7 @@
     "build:production": "vite build --mode production"
   },
   "dependencies": {
+    "@vis.gl/react-google-maps": "^1.8.3",
     "archiver": "^8.0.0",
     "dotenv": "^17.3.1",
     "firebase": "^12.6.0",
