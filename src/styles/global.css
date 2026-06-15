@@ -9904,3 +9904,69 @@ button.fanm-chat-highlight-card:hover {
   padding: 0.45rem;
 }
 
+
+/* FANM make delete visible inside hover action row */
+.fanm-club-chat-message:hover > .fanm-chat-message-actions,
+.fanm-club-chat-message:focus-within > .fanm-chat-message-actions,
+.fanm-club-chat-message:active > .fanm-chat-message-actions,
+.fanm-club-chat-message:has(.fanm-chat-reaction-picker) > .fanm-chat-message-actions {
+  max-height: 42px !important;
+  overflow: visible !important;
+}
+
+.fanm-chat-message-actions {
+  flex-wrap: wrap !important;
+  gap: 0.3rem !important;
+}
+
+.fanm-chat-delete-btn {
+  padding: 0.25rem 0.48rem !important;
+  font-size: 0.68rem !important;
+  line-height: 1 !important;
+}
+
+/* FANM delete action button polish */
+.fanm-chat-message-actions .fanm-chat-delete-btn {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  padding: 0.25rem 0.55rem !important;
+  background: rgba(127,29,29,0.72) !important;
+  color: #fecaca !important;
+  font-size: 0.72rem !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+}
+
+.fanm-chat-message-actions .fanm-chat-delete-btn:hover {
+  background: rgba(185,28,28,0.82) !important;
+}
+
+/* FANM WhatsApp-style delete placement */
+.fanm-chat-message-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+}
+
+.fanm-chat-delete-btn {
+  margin-left: auto !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  padding: 0.25rem 0.6rem !important;
+  background: rgba(127,29,29,0.55) !important;
+  color: #fecaca !important;
+  font-size: 0.72rem !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+}
+
+.fanm-chat-delete-btn:hover {
+  background: rgba(185,28,28,0.75) !important;
+}

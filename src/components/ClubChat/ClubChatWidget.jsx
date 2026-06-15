@@ -12,6 +12,7 @@ import {
   serverTimestamp,
   doc,
   updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 
 function isChallengerChatActive(fixture = {}) {
@@ -264,13 +265,7 @@ export function ClubChatWidget({
     return acc;
   }, {});
 
-  console.log("[FANM mention debug]", {
-    membersCount: Array.isArray(members) ? members.length : 0,
-    firstMember: Array.isArray(members) ? members[0] : null,
-    mentionQuery,
-    mentionPickerOpen,
-    mentionCandidatesCount: mentionCandidates.length,
-  });
+  const normalizedMentionQuery = mentionQuery.toLowerCase();
 
   const mentionOptions = mentionCandidates
     .map((member) => ({
@@ -279,12 +274,24 @@ export function ClubChatWidget({
     }))
     .filter((member) => {
       if (!mentionPickerOpen && !mentionQuery) return false;
-      if (!mentionQuery) return true;
+      if (!normalizedMentionQuery) return true;
+
       return (
-        member.name.toLowerCase().includes(mentionQuery.toLowerCase()) ||
-        member.label.toLowerCase().includes(mentionQuery.toLowerCase()) ||
-        member.fullName.toLowerCase().includes(mentionQuery.toLowerCase())
+        member.name.toLowerCase().startsWith(normalizedMentionQuery) ||
+        member.label.toLowerCase().startsWith(normalizedMentionQuery) ||
+        member.fullName.toLowerCase().startsWith(normalizedMentionQuery)
       );
+    })
+    .sort((a, b) => {
+      if (!normalizedMentionQuery) return a.label.localeCompare(b.label);
+
+      const aName = a.name.toLowerCase();
+      const bName = b.name.toLowerCase();
+
+      if (aName.startsWith(normalizedMentionQuery) && !bName.startsWith(normalizedMentionQuery)) return -1;
+      if (!aName.startsWith(normalizedMentionQuery) && bName.startsWith(normalizedMentionQuery)) return 1;
+
+      return a.label.localeCompare(b.label);
     })
     .slice(0, 6);
 
@@ -588,6 +595,35 @@ export function ClubChatWidget({
     Boolean(currentUser) &&
     Boolean(activeClubId) &&
     (Boolean(selectedMember?.id) || Boolean(isAdminViewer));
+
+  const getCurrentChatActorName = () =>
+    selectedMember?.fullName ||
+    selectedMember?.shortName ||
+    currentUser?.displayName ||
+    currentUser?.email?.split("@")[0] ||
+    identity?.fullName ||
+    identity?.shortName ||
+    "Club admin";
+
+  const handleDeleteClubChatMessage = async (message) => {
+    if (!message?.id || !activeClubId) return;
+
+    const isOwnMessage =
+      currentUser?.uid &&
+      message.senderUid &&
+      String(message.senderUid) === String(currentUser.uid);
+
+    const canAdminDelete = Boolean(isAdminViewer) && !isOwnMessage;
+
+    if (!isOwnMessage && !canAdminDelete) return;
+
+    try {
+      await deleteDoc(doc(db, "clubs", activeClubId, "chatMessages", message.id));
+    } catch (err) {
+      console.error("[ClubChatWidget] Failed deleting chat message:", err);
+      window.alert("Could not delete this message just now.");
+    }
+  };
 
   const addChallengerChatEmoji = (emoji) => {
     setChallengerChatDraft((current) => `${current || ""}${emoji}`);
@@ -1117,6 +1153,17 @@ export function ClubChatWidget({
                             React 😊
                           </button>
                         ) : null}
+
+                        {(mine || isAdminViewer) && !message.deleted ? (
+                          <button
+                            type="button"
+                            className="fanm-chat-delete-btn"
+                            onClick={() => handleDeleteClubChatMessage(message)}
+                            title={mine ? "Delete your message" : "Delete as admin"}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -1215,7 +1262,7 @@ export function ClubChatWidget({
 
               {(mentionPickerOpen || mentionQuery !== "") ? (
                 <div className="fanm-chat-mention-picker">
-                  {(mentionOptions.length ? mentionOptions : mentionCandidates.slice(0, 6)).map((member) => (
+                  {(mentionOptions.length ? mentionOptions : (!mentionQuery ? mentionCandidates.slice(0, 6) : [])).map((member) => (
                     <button
                       type="button"
                       key={member.id || member.name}
