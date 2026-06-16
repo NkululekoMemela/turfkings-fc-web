@@ -58,6 +58,9 @@ export default function HomePage_HUB_ClubCard({
     "Play time to be confirmed";
   const highlightPreview = getHighlightPreview(club);
   const videoUrl = getClubVideoUrl(club);
+  const playerCount = club?.playerCount ?? club?.memberCount ?? club?.playersCount ?? 0;
+  const distanceValue = club?.distanceKm ? `${club.distanceKm.toFixed(club.distanceKm < 10 ? 1 : 0)} km` : "Nearby";
+  const gamesPlayed = club?.gamesPlayed ?? club?.matchesPlayed ?? club?.completedMatchesCount ?? club?.matchCount ?? 0;
 
   useEffect(() => {
     if (isPaused) return undefined;
@@ -182,26 +185,25 @@ export default function HomePage_HUB_ClubCard({
 
             <h3>{club.name || "Football Club"}</h3>
 
-            <div className="tk-trust-face__stats">
-              <div className="tk-trust-face__stat">
+            <div className="tk-trust-face__stats tk-trust-face__stats--hero">
+              <div className="tk-trust-face__stat tk-trust-face__stat--players">
                 <svg className="tk-trust-face__icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M8.2 11.1a3.1 3.1 0 1 0 0-6.2 3.1 3.1 0 0 0 0 6.2Z" />
                   <path d="M15.8 11.1a3.1 3.1 0 1 0 0-6.2 3.1 3.1 0 0 0 0 6.2Z" />
                   <path d="M3.4 19.2c.4-3.1 2.4-5.1 4.8-5.1s4.4 2 4.8 5.1" />
                   <path d="M11 19.2c.4-3.1 2.4-5.1 4.8-5.1s4.4 2 4.8 5.1" />
                 </svg>
-                <b>{club?.playerCount ?? club?.memberCount ?? club?.playersCount ?? 0}</b>
+                <b>{playerCount}</b>
                 <small>Players</small>
               </div>
 
-              <div className="tk-trust-face__stat">
-                <svg className="tk-trust-face__icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="12" cy="12" r="8.4" />
-                  <path d="m12 7.6 3 2.2-1.1 3.5h-3.8L9 9.8l3-2.2Z" />
-                  <path d="M12 7.6V3.9M15 9.8l3.5-1M13.9 13.3l2.2 3M10.1 13.3l-2.2 3M9 9.8l-3.5-1" />
+              <div className="tk-trust-face__stat tk-trust-face__stat--distance">
+                <svg className="tk-trust-face__icon tk-trust-face__icon--pin" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 21s6.8-6 6.8-12.1A6.8 6.8 0 0 0 5.2 8.9C5.2 15 12 21 12 21Z" />
+                  <circle cx="12" cy="8.9" r="2.45" />
                 </svg>
-                <b>{club?.activityCount ?? club?.signupActivityCount ?? club?.activeWeeksCount ?? 0}</b>
-                <small>Activity</small>
+                <b>{distanceValue}</b>
+                <small>Away</small>
               </div>
             </div>
 
@@ -221,18 +223,16 @@ export default function HomePage_HUB_ClubCard({
                 </svg>
                 <span>{playTime}</span>
               </p>
+
+              <p>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8.5" />
+                  <path d="m12 3.5 2.6 5.2 5.7.8-4.1 4 1 5.6L12 16.5 6.9 19.1l1-5.6-4.1-4 5.7-.8L12 3.5Z" />
+                </svg>
+                <span>{gamesPlayed > 0 ? `${gamesPlayed} games played` : "New club"}</span>
+              </p>
             </div>
 
-            <div className="tk-trust-face__footer">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M8 4h8v3.5a4 4 0 0 1-8 0V4Z" />
-                <path d="M8 6H5.5a2.5 2.5 0 0 0 2.9 3.4M16 6h2.5a2.5 2.5 0 0 1-2.9 3.4M12 12v4M8.5 20h7M10 16h4" />
-              </svg>
-              <div>
-                <strong>Active Club</strong>
-                <small>Weekly match nights</small>
-              </div>
-            </div>
           </div>
         </section>
 

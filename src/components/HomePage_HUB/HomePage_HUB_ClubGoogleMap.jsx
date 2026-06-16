@@ -55,7 +55,7 @@ export default function HomePage_HUB_ClubGoogleMap({
 
   return (
     <div className="hub-google-map-shell">
-      <APIProvider apiKey={apiKey}>
+      <APIProvider apiKey={apiKey} libraries={["places"]}>
         <Map
           defaultCenter={center}
           defaultZoom={10}

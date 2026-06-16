@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-const GOOGLE_PLACES_API_KEY = import.meta.env.VITE_GOOGLE_PLACES_API_KEY || "";
+const GOOGLE_PLACES_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
 let googlePlacesPromise = null;
 
@@ -82,6 +82,10 @@ export default function HomePage_HUB_GoogleVenueInput({
         getAddressPart(place, "sublocality_level_1") ||
         getAddressPart(place, "neighborhood");
 
+      const province =
+        getAddressPart(place, "administrative_area_level_1") ||
+        getAddressPart(place, "administrative_area_level_2");
+
       const country = getAddressPart(place, "country");
 
       onPlaceSelected?.({
@@ -89,6 +93,7 @@ export default function HomePage_HUB_GoogleVenueInput({
         address: place?.formatted_address || "",
         suburb,
         city,
+        province,
         country,
         placeId: place?.place_id || "",
         latitude: place?.geometry?.location?.lat?.() || null,

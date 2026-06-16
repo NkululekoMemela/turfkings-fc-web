@@ -1,6 +1,7 @@
 // src/components/HomePage_HUB/HomePage_HUB_ClubRegisterForm.jsx
 
 import React, { useMemo } from "react";
+import HomePage_HUB_GoogleVenueInput from "./HomePage_HUB_GoogleVenueInput";
 import {
   getClubInitials,
   slugifyClubName,
@@ -29,6 +30,40 @@ export default function HomePage_HUB_ClubRegisterForm({
     () => getClubInitials(clubDraft?.clubName),
     [clubDraft?.clubName]
   );
+
+  function handleVenueSelected(place) {
+    const nextDraft = {
+      ...(clubDraft || {}),
+      venueName: place?.venueName || clubDraft?.venueName || "",
+      address: place?.address || "",
+      suburb: place?.suburb || "",
+      city: place?.city || "",
+      province: place?.province || clubDraft?.province || "",
+      country: place?.country || "South Africa",
+      latitude: place?.latitude || null,
+      longitude: place?.longitude || null,
+      googlePlaceId: place?.placeId || "",
+      locationDetails: {
+        venueName: place?.venueName || clubDraft?.venueName || "",
+        address: place?.address || "",
+        fullAddress: place?.address || "",
+        displayLocation:
+          [place?.suburb, place?.city].filter(Boolean).join(", ") ||
+          place?.address ||
+          place?.venueName ||
+          "",
+        suburb: place?.suburb || "",
+        city: place?.city || "",
+        province: place?.province || clubDraft?.province || "",
+        country: place?.country || "South Africa",
+        latitude: place?.latitude || null,
+        longitude: place?.longitude || null,
+        placeId: place?.placeId || "",
+      },
+    };
+
+    onChange?.(nextDraft);
+  }
 
   function updateField(field, value) {
     const cleanValue =
@@ -102,16 +137,21 @@ export default function HomePage_HUB_ClubRegisterForm({
           <span>Venue name</span>
           <small className="hub-field-hint">Start with the venue name. Google venue search will plug in here.</small>
 
-          <input
+          <HomePage_HUB_GoogleVenueInput
             value={clubDraft?.venueName || ""}
-            onChange={(event) =>
-              updateField(
-                "venueName",
-                event.target.value
-              )
-            }
-            placeholder="Wynberg Military Base 5s"
+            onTextChange={(value) => updateField("venueName", value)}
+            onPlaceSelected={handleVenueSelected}
           />
+
+          {clubDraft?.latitude && clubDraft?.longitude ? (
+            <small className="hub-venue-verification-note hub-venue-verification-note--good">
+              Location captured from Google. Please confirm this is the exact pitch or venue where your club plays.
+            </small>
+          ) : (
+            <small className="hub-venue-verification-note">
+              Select the closest Google venue result so FANM can save the exact address and map coordinates.
+            </small>
+          )}
         </label>
 <label className="hub-field">
           <span>Suburb</span>

@@ -301,6 +301,10 @@ export async function createHomePageHubClub({
       province: cleanText(clubDraft.province),
       country: cleanText(clubDraft.country) || "South Africa",
       displayLocation: locationDisplay,
+      latitude: Number.isFinite(Number(clubDraft.latitude)) ? Number(clubDraft.latitude) : null,
+      longitude: Number.isFinite(Number(clubDraft.longitude)) ? Number(clubDraft.longitude) : null,
+      placeId: cleanText(clubDraft.googlePlaceId || clubDraft.placeId),
+      verificationStatus: cleanText(clubDraft.venueVerificationStatus) || "captain_confirmed_pending_review",
     },
 
     schedule: {
@@ -522,6 +526,10 @@ export async function updateHomePageHubClub({
       province: cleanText(clubDraft.province),
       country: cleanText(clubDraft.country) || "South Africa",
       displayLocation: locationDisplay,
+      latitude: Number.isFinite(Number(clubDraft.latitude)) ? Number(clubDraft.latitude) : null,
+      longitude: Number.isFinite(Number(clubDraft.longitude)) ? Number(clubDraft.longitude) : null,
+      placeId: cleanText(clubDraft.googlePlaceId || clubDraft.placeId),
+      verificationStatus: cleanText(clubDraft.venueVerificationStatus) || "captain_confirmed_pending_review",
     },
 
     schedule: {

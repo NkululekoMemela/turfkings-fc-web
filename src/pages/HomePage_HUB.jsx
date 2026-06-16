@@ -188,6 +188,31 @@ function normalizeClub(docSnap) {
   };
 }
 
+function getDistanceKm(pointA, pointB) {
+  if (!pointA || !pointB) return null;
+
+  const toRad = (value) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+
+  const dLat = toRad(pointB.latitude - pointA.latitude);
+  const dLng = toRad(pointB.longitude - pointA.longitude);
+
+  const lat1 = toRad(pointA.latitude);
+  const lat2 = toRad(pointB.latitude);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistanceKm(distanceKm) {
+  if (!Number.isFinite(distanceKm)) return "";
+  if (distanceKm < 1) return `${Math.round(distanceKm * 1000)} m away`;
+  return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`;
+}
+
 function getClubLatLng(club = {}) {
   const lat =
     club?.locationDetails?.latitude ??
@@ -411,6 +436,8 @@ export default function HomePage_HUB({
   const [profileEditorClub, setProfileEditorClub] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [activeMapClub, setActiveMapClub] = useState(null);
+  const [userMapLocation, setUserMapLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState("idle");
   const [clubSearchQuery, setClubSearchQuery] = useState("");
   const [challengeClub, setChallengeClub] = useState(null);
   const [challengeFormat, setChallengeFormat] = useState("5v5");
@@ -496,12 +523,35 @@ export default function HomePage_HUB({
   const visibleClubs = useMemo(() => {
     const safeClubs = clubs.length ? clubs : FALLBACK_CLUBS;
 
-    return safeClubs.slice().sort((a, b) => {
-      if (a.id === "turf-kings") return -1;
-      if (b.id === "turf-kings") return 1;
-      return String(a.name || "").localeCompare(String(b.name || ""));
-    });
-  }, [clubs]);
+    return safeClubs
+      .map((club) => {
+        const clubPoint = getClubLatLng(club);
+        const distanceKm = userMapLocation
+          ? getDistanceKm(userMapLocation, clubPoint)
+          : null;
+
+        return {
+          ...club,
+          distanceKm,
+          distanceLabel: formatDistanceKm(distanceKm),
+        };
+      })
+      .sort((a, b) => {
+        const aHasDistance = Number.isFinite(a.distanceKm);
+        const bHasDistance = Number.isFinite(b.distanceKm);
+
+        if (aHasDistance && bHasDistance) {
+          return a.distanceKm - b.distanceKm;
+        }
+
+        if (aHasDistance) return -1;
+        if (bHasDistance) return 1;
+
+        if (a.id === "turf-kings") return -1;
+        if (b.id === "turf-kings") return 1;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+  }, [clubs, userMapLocation]);
 
   const filteredVisibleClubs = useMemo(() => {
     const query = String(clubSearchQuery || "").trim().toLowerCase();
@@ -815,6 +865,33 @@ export default function HomePage_HUB({
       cancelled = true;
     };
   }, [visibleClubs]);
+
+  useEffect(() => {
+    if (!navigator?.geolocation) {
+      setLocationStatus("unsupported");
+      return;
+    }
+
+    setLocationStatus("loading");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserMapLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setLocationStatus("granted");
+      },
+      () => {
+        setLocationStatus("denied");
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 8000,
+        maximumAge: 1000 * 60 * 10,
+      }
+    );
+  }, []);
 
   const footerLogoRotation = useMemo(() => {
     const logos = [

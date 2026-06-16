@@ -7319,3 +7319,375 @@
   width: 100%;
   height: 100%;
 }
+
+.hub-venue-verification-note {
+  display: block;
+  margin-top: 0.45rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.055);
+  color: #475569;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.hub-venue-verification-note--good {
+  background: rgba(34, 197, 94, 0.11);
+  color: #166534;
+}
+
+@media (max-width: 720px) {
+  .hub-modal {
+    width: min(96vw, 560px) !important;
+    max-width: 96vw !important;
+    max-height: 88vh !important;
+    overflow-y: auto !important;
+    border-radius: 24px !important;
+  }
+
+  .hub-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .hub-field,
+  .hub-field--wide {
+    grid-column: 1 / -1 !important;
+    min-width: 0;
+  }
+
+  .hub-modal__header h2 {
+    font-size: clamp(1.8rem, 8vw, 2.6rem) !important;
+    line-height: 0.95;
+  }
+}
+
+.tk-trust-face__info {
+  margin-top: 0.55rem !important;
+  gap: 0.42rem !important;
+}
+
+.tk-trust-face__info p {
+  min-height: 25px !important;
+  padding: 0.34rem 0.52rem !important;
+}
+
+.tk-trust-face__footer {
+  display: none !important;
+}
+
+.tk-trust-face__info {
+  margin-top: 0.8rem !important;
+  gap: 0.62rem !important;
+}
+
+.tk-trust-face__info p {
+  min-height: 32px !important;
+  padding: 0.48rem 0.7rem !important;
+  border-radius: 14px !important;
+  font-size: 0.78rem !important;
+  letter-spacing: 0.01em;
+}
+
+.tk-trust-face__info p span {
+  font-size: 0.78rem !important;
+  font-weight: 950 !important;
+  line-height: 1.1 !important;
+}
+
+.tk-trust-face__info svg {
+  width: 15px !important;
+  height: 15px !important;
+  flex: 0 0 15px !important;
+}
+
+.tk-trust-face__info {
+  margin-top: 0.8rem !important;
+  gap: 0.62rem !important;
+}
+
+.tk-trust-face__info p {
+  min-height: 32px !important;
+  padding: 0.48rem 0.7rem !important;
+  border-radius: 14px !important;
+  font-size: 0.78rem !important;
+  letter-spacing: 0.01em;
+}
+
+.tk-trust-face__info p span {
+  font-size: 0.78rem !important;
+  font-weight: 950 !important;
+  line-height: 1.1 !important;
+}
+
+.tk-trust-face__info svg {
+  width: 15px !important;
+  height: 15px !important;
+  flex: 0 0 15px !important;
+}
+
+.tk-trust-face__stats--hero {
+  gap: 0.75rem !important;
+  margin-top: 0.55rem !important;
+}
+
+.tk-trust-face__stats--hero .tk-trust-face__stat {
+  min-height: 92px !important;
+  border-radius: 18px !important;
+  padding: 0.65rem 0.5rem !important;
+}
+
+.tk-trust-face__stats--hero .tk-trust-face__stat b {
+  font-size: 1.72rem !important;
+  line-height: 1 !important;
+  letter-spacing: -0.04em;
+}
+
+.tk-trust-face__stats--hero .tk-trust-face__stat small {
+  font-size: 0.58rem !important;
+  letter-spacing: 0.12em !important;
+}
+
+.tk-trust-face__stat--distance {
+  border-color: rgba(34, 197, 94, 0.6) !important;
+  background:
+    radial-gradient(circle at top, rgba(34, 197, 94, 0.18), transparent 58%),
+    rgba(15, 23, 42, 0.78) !important;
+}
+
+.tk-trust-face__icon--pin {
+  width: 23px !important;
+  height: 23px !important;
+  color: #22c55e !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 1.9 !important;
+}
+
+.tk-trust-face__info {
+  margin-top: 0.7rem !important;
+  gap: 0.48rem !important;
+}
+
+.tk-trust-face__info p {
+  min-height: 29px !important;
+  padding: 0.42rem 0.62rem !important;
+  font-size: 0.75rem !important;
+}
+
+.tk-trust-face__info p span {
+  font-size: 0.75rem !important;
+  font-weight: 950 !important;
+}
+
+@media (max-width: 720px) {
+  .hub-modal-backdrop {
+    align-items: flex-start !important;
+    justify-content: center !important;
+    padding: 10px 8px !important;
+    overflow-y: auto !important;
+  }
+
+  .hub-modal {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    height: calc(100dvh - 20px) !important;
+    max-height: calc(100dvh - 20px) !important;
+    margin: 0 auto !important;
+    border-radius: 22px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  .hub-modal__header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 20 !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    backdrop-filter: blur(16px) !important;
+    padding: 16px 16px 10px !important;
+  }
+
+  .hub-modal__header h2 {
+    font-size: clamp(1.55rem, 8vw, 2.25rem) !important;
+    line-height: 0.98 !important;
+    word-break: normal !important;
+  }
+
+  .hub-stepper {
+    padding: 0 16px !important;
+  }
+
+  .hub-form-panel {
+    padding: 10px 16px 96px !important;
+  }
+
+  .hub-form-panel__head h3 {
+    font-size: 1.45rem !important;
+  }
+
+  .hub-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .hub-field,
+  .hub-field--wide {
+    grid-column: 1 / -1 !important;
+    min-width: 0 !important;
+  }
+
+  .hub-field input,
+  .hub-field select,
+  .hub-field textarea {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .hub-modal__footer {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 30 !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    backdrop-filter: blur(16px) !important;
+    padding: 10px 16px 14px !important;
+  }
+
+  .pac-container {
+    z-index: 999999 !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+}
+
+/* ===== CLUB CARD CLEANUP ===== */
+
+.tk-trust-face__stats--hero .tk-trust-face__stat {
+  height: 92px !important;
+  min-height: 92px !important;
+  max-height: 92px !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+}
+
+.tk-trust-face__info {
+  margin-top: 10px !important;
+}
+
+.tk-trust-face__info p:last-child svg {
+  color: #22c55e !important;
+}
+
+/* ===== MOBILE MODAL FIX ===== */
+
+@media (max-width: 720px) {
+
+  .hub-modal,
+  .hub-profile-modal,
+  .hub-club-profile-modal {
+    width: 96vw !important;
+    max-width: 96vw !important;
+    min-width: 96vw !important;
+
+    height: calc(100dvh - 12px) !important;
+    max-height: calc(100dvh - 12px) !important;
+
+    margin: 6px auto !important;
+    left: auto !important;
+    transform: none !important;
+
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+
+    box-sizing: border-box !important;
+  }
+
+  .hub-form-panel,
+  .hub-form-grid,
+  .hub-modal__content {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  .hub-field,
+  .hub-field--wide {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+
+    grid-column: 1 / -1 !important;
+  }
+
+  .hub-field input,
+  .hub-field select,
+  .hub-field textarea {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+
+    box-sizing: border-box !important;
+  }
+
+  .pac-container {
+    z-index: 999999 !important;
+    max-width: 94vw !important;
+  }
+}
+
+/* ===== FINAL CLUB TRUST FACE SPACING FIX ===== */
+
+.tk-trust-face__stats--hero {
+  margin-top: 0.35rem !important;
+  gap: 0.55rem !important;
+}
+
+.tk-trust-face__stats--hero .tk-trust-face__stat {
+  height: 76px !important;
+  min-height: 76px !important;
+  max-height: 76px !important;
+  padding: 0.42rem 0.45rem !important;
+  border-radius: 15px !important;
+}
+
+.tk-trust-face__stats--hero .tk-trust-face__stat b {
+  font-size: 1.35rem !important;
+  line-height: 1 !important;
+}
+
+.tk-trust-face__stats--hero .tk-trust-face__stat small {
+  font-size: 0.52rem !important;
+}
+
+.tk-trust-face__stats--hero .tk-trust-face__icon {
+  width: 15px !important;
+  height: 15px !important;
+  margin-bottom: 0.15rem !important;
+}
+
+.tk-trust-face__stats--hero .tk-trust-face__icon--pin {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.tk-trust-face__info {
+  margin-top: 0.55rem !important;
+  gap: 0.36rem !important;
+}
+
+.tk-trust-face__info p {
+  min-height: 25px !important;
+  padding: 0.32rem 0.55rem !important;
+  border-radius: 12px !important;
+}
+
+.tk-trust-face__info p span {
+  font-size: 0.68rem !important;
+  line-height: 1.05 !important;
+}
