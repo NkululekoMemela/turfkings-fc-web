@@ -7782,3 +7782,192 @@
     flex: 0 0 11px !important;
   }
 }
+
+/* ===== MOBILE CLUB CARD REDESIGN ===== */
+@media (max-width: 720px) {
+  .tk-trust-face {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    padding: 0.7rem !important;
+    gap: 0.45rem !important;
+  }
+
+  .tk-trust-face__header,
+  .tk-trust-face__shield {
+    display: none !important;
+  }
+
+  .tk-trust-face h3 {
+    font-size: 1rem !important;
+    line-height: 1.05 !important;
+    margin: 0 !important;
+  }
+
+  .tk-trust-face__stats--hero {
+    grid-template-columns: 0.75fr 1fr !important;
+    gap: 0.45rem !important;
+    margin: 0 !important;
+  }
+
+  .tk-trust-face__stats--hero .tk-trust-face__stat {
+    height: 64px !important;
+    min-height: 64px !important;
+    max-height: 64px !important;
+    padding: 0.32rem !important;
+  }
+
+  .tk-trust-face__stat--distance b {
+    font-size: 0.9rem !important;
+    line-height: 0.95 !important;
+  }
+
+  .tk-trust-face__info {
+    margin-top: 0 !important;
+    gap: 0.26rem !important;
+  }
+
+  .tk-trust-face__info p {
+    min-height: 24px !important;
+    padding: 0.24rem 0.45rem !important;
+  }
+
+  .tk-trust-face__info p span {
+    font-size: 0.6rem !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.05 !important;
+  }
+}
+
+/* ===== VERIFIED CLUB BADGE STATES ===== */
+.tk-trust-face--new .tk-trust-face__header strong {
+  color: #d7f7ff !important;
+}
+
+.tk-trust-face--verified .tk-trust-face__header strong {
+  color: #66ffb0 !important;
+}
+
+.tk-trust-face--community .tk-trust-face__header strong {
+  color: #8ee7ff !important;
+}
+
+.tk-trust-face--trusted .tk-trust-face__header strong {
+  color: #ffd166 !important;
+}
+
+.tk-trust-face--new .tk-trust-face__shield {
+  opacity: 0.7 !important;
+}
+
+.tk-trust-face--verified .tk-trust-face__shield,
+.tk-trust-face--community .tk-trust-face__shield,
+.tk-trust-face--trusted .tk-trust-face__shield {
+  opacity: 1 !important;
+}
+
+/* ===== MOBILE CARD PREMIUM BALANCE FIX ===== */
+@media (max-width: 720px) {
+  .tk-trust-face__stats--hero {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.45rem !important;
+    width: 100% !important;
+  }
+
+  .tk-trust-face__stats--hero .tk-trust-face__stat {
+    width: 100% !important;
+    height: 70px !important;
+    min-height: 70px !important;
+    max-height: 70px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .tk-trust-face__stats--hero .tk-trust-face__stat b {
+    font-size: 1rem !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  .tk-trust-face__stat--distance b {
+    font-size: 0.92rem !important;
+  }
+
+  .tk-trust-face__info p {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .tk-trust-face__info p span {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* ===== FANM FINAL MOBILE TRUST CARD LOCK ===== */
+@media (max-width: 720px) {
+  .hub-club-card__face--trust .tk-trust-face {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .hub-club-card__face--trust .tk-trust-face__stats--hero {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .hub-club-card__face--trust .tk-trust-face__stat,
+  .hub-club-card__face--trust .tk-trust-face__stat--players,
+  .hub-club-card__face--trust .tk-trust-face__stat--distance {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 68px !important;
+    min-height: 68px !important;
+    max-height: 68px !important;
+    padding: 6px 4px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .hub-club-card__face--trust .tk-trust-face__stat b {
+    display: block !important;
+    max-width: 100% !important;
+    font-size: 0.95rem !important;
+    line-height: 1 !important;
+    letter-spacing: -0.04em !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+  }
+
+  .hub-club-card__face--trust .tk-trust-face__stat--distance b {
+    font-size: 0.86rem !important;
+  }
+
+  .hub-club-card__face--trust .tk-trust-face__stat small {
+    font-size: 0.43rem !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* Final distance text fit */
+@media (max-width: 720px) {
+  .hub-club-card__face--trust .tk-trust-face__stat--distance b {
+    font-size: 0.78rem !important;
+    letter-spacing: -0.06em !important;
+  }
+}

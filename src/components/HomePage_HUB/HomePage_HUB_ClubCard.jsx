@@ -28,6 +28,24 @@ function getClubVideoUrl(club) {
   );
 }
 
+function getVerificationBadge(club = {}) {
+  const level = Number(club.verificationLevel ?? club.trustLevel ?? 0);
+
+  if (level >= 3) {
+    return { label: "Trusted Organizer", className: "tk-trust-face--trusted" };
+  }
+
+  if (level >= 2) {
+    return { label: "Community Verified", className: "tk-trust-face--community" };
+  }
+
+  if (level >= 1 || club.verified === true) {
+    return { label: "Verified Club", className: "tk-trust-face--verified" };
+  }
+
+  return { label: "New Club", className: "tk-trust-face--new" };
+}
+
 export default function HomePage_HUB_ClubCard({
   club,
   onOpenClubActions,
@@ -47,9 +65,11 @@ export default function HomePage_HUB_ClubCard({
 
   const accent = club?.accent || "#16a34a";
   const location =
-    club?.location ||
-    club?.locationDetails?.displayLocation ||
+    club?.locationDetails?.suburb ||
+    club?.suburb ||
     club?.area ||
+    club?.locationDetails?.city ||
+    club?.city ||
     "Location to be confirmed";
   const playTime =
     club?.weeklyPlayTime ||
@@ -59,8 +79,11 @@ export default function HomePage_HUB_ClubCard({
   const highlightPreview = getHighlightPreview(club);
   const videoUrl = getClubVideoUrl(club);
   const playerCount = club?.playerCount ?? club?.memberCount ?? club?.playersCount ?? 0;
-  const distanceValue = club?.distanceKm ? `${club.distanceKm.toFixed(club.distanceKm < 10 ? 1 : 0)} km` : "Nearby";
-  const gamesPlayed = club?.gamesPlayed ?? club?.matchesPlayed ?? club?.completedMatchesCount ?? club?.matchCount ?? 0;
+  const distanceValue = Number.isFinite(Number(club?.distanceKm))
+    ? `${Number(club.distanceKm).toFixed(Number(club.distanceKm) < 10 ? 1 : 0)} km`
+    : "Near you";
+  const gamesPlayed =
+    Number(club?.weeksPlayed ?? club?.matchWeeksPlayed ?? club?.hostedWeeksCount ?? club?.gamesPlayed ?? club?.matchesPlayed ?? club?.completedMatchesCount ?? club?.matchCount ?? 0);
 
   useEffect(() => {
     if (isPaused) return undefined;
@@ -171,10 +194,10 @@ export default function HomePage_HUB_ClubCard({
         </section>
 
         <section className="hub-club-card__face hub-club-card__face--details hub-club-card__face--trust">
-          <div className="tk-trust-face">
+          <div className={`tk-trust-face ${getVerificationBadge(club).className}`}>
             <div className="tk-trust-face__header">
               <span />
-              <strong>Club Trust</strong>
+              <strong>{getVerificationBadge(club).label}</strong>
               <span />
             </div>
 

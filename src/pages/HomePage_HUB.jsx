@@ -396,13 +396,28 @@ function uniqueSafeStrings(values = []) {
   );
 }
 
+function getHostedWeeksCount(club = {}) {
+  const seasons = Array.isArray(club?.state?.seasons) ? club.state.seasons : [];
+
+  return seasons.reduce((total, season) => {
+    const history = Array.isArray(season?.matchDayHistory)
+      ? season.matchDayHistory
+      : [];
+
+    return total + history.length;
+  }, 0);
+}
+
 function hydrateClubHubStats(club) {
   if (!club?.id) return club;
+
+  const hostedWeeksCount = getHostedWeeksCount(club);
 
   return {
     ...club,
     playerCount: Number.isFinite(Number(club.playerCount)) ? Number(club.playerCount) : 0,
     activityCount: Number.isFinite(Number(club.activityCount)) ? Number(club.activityCount) : 0,
+    hostedWeeksCount,
   };
 }
 
@@ -493,7 +508,25 @@ export default function HomePage_HUB({
             const status = String(club?.status || "").trim().toLowerCase();
             return status !== "deleted" && club?.deleted !== true;
           });
-        const firebaseClubs = firebaseClubsRaw.map((club) => hydrateClubHubStats(club));
+        const firebaseClubs = await Promise.all(
+          firebaseClubsRaw.map(async (club) => {
+            const hydratedClub = hydrateClubHubStats(club);
+            const clubId = String(hydratedClub?.id || hydratedClub?.clubId || "").trim();
+
+            if (!clubId) return hydratedClub;
+
+            try {
+              const membersSnap = await getDocs(collection(db, "clubs", clubId, "members"));
+              return {
+                ...hydratedClub,
+                playerCount: membersSnap.size,
+              };
+            } catch (error) {
+              console.warn("[HomePage_HUB] Could not count club members:", clubId, error);
+              return hydratedClub;
+            }
+          })
+        );
 
         if (!cancelled) {
           const nextClubs = firebaseClubs.length ? firebaseClubs : FALLBACK_CLUBS;
@@ -539,6 +572,12 @@ export default function HomePage_HUB({
       .sort((a, b) => {
         const aHasDistance = Number.isFinite(a.distanceKm);
         const bHasDistance = Number.isFinite(b.distanceKm);
+
+        const aIsOwnClub = isUsersOwnClub(a);
+        const bIsOwnClub = isUsersOwnClub(b);
+
+        if (aIsOwnClub && !bIsOwnClub) return -1;
+        if (bIsOwnClub && !aIsOwnClub) return 1;
 
         if (aHasDistance && bHasDistance) {
           return a.distanceKm - b.distanceKm;
