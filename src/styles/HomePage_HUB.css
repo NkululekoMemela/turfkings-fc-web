@@ -7971,3 +7971,65 @@
     letter-spacing: -0.06em !important;
   }
 }
+
+/* Header app logo should be circular avatar */
+.home-hub-topbar img,
+.hub-topbar img,
+.hub-home-topbar img,
+.hub-shell-header img,
+.hub-header img {
+  border-radius: 999px !important;
+  aspect-ratio: 1 / 1 !important;
+  object-fit: cover !important;
+  overflow: hidden !important;
+}
+
+/* Mobile trust card compact play time */
+@media (max-width: 720px) {
+  .hub-club-card__face--trust .tk-trust-face__info p span {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+}
+
+/* Force FANM header logo to render like circular avatar */
+.hub-top-logo,
+.hub-home-logo,
+.hub-brand-logo,
+.hub-header-logo,
+.home-hub-logo,
+.home-hub-top-logo {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  min-height: 42px !important;
+  max-width: 42px !important;
+  max-height: 42px !important;
+  border-radius: 999px !important;
+  object-fit: cover !important;
+  aspect-ratio: 1 / 1 !important;
+  overflow: hidden !important;
+  background: #ffffff !important;
+}
+
+/* FANM header logo = circular avatar */
+.hub-brand span {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  border-radius: 999px !important;
+  overflow: hidden !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.hub-brand span img {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 999px !important;
+  object-fit: cover !important;
+  display: block !important;
+}
+

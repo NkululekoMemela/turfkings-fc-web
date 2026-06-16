@@ -28,6 +28,20 @@ function getClubVideoUrl(club) {
   );
 }
 
+
+function compactPlayTime(value = "") {
+  return String(value || "")
+    .replace(/Mondays?/gi, "Mon")
+    .replace(/Tuesdays?/gi, "Tue")
+    .replace(/Wednesdays?/gi, "Wed")
+    .replace(/Thursdays?/gi, "Thu")
+    .replace(/Fridays?/gi, "Fri")
+    .replace(/Saturdays?/gi, "Sat")
+    .replace(/Sundays?/gi, "Sun")
+    .replace(/\s*[·-]\s*/g, " ")
+    .trim();
+}
+
 function getVerificationBadge(club = {}) {
   const level = Number(club.verificationLevel ?? club.trustLevel ?? 0);
 
@@ -244,7 +258,7 @@ export default function HomePage_HUB_ClubCard({
                   <circle cx="12" cy="12" r="8" />
                   <path d="M12 7.8v4.7l3.1 1.8" />
                 </svg>
-                <span>{playTime}</span>
+                <span>{compactPlayTime(playTime)}</span>
               </p>
 
               <p>
