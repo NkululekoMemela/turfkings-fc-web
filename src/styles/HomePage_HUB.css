@@ -7691,3 +7691,16 @@
   font-size: 0.68rem !important;
   line-height: 1.05 !important;
 }
+
+.tk-trust-face__stat--distance b {
+  font-size: 1.22rem !important;
+  white-space: nowrap !important;
+}
+
+.tk-trust-face__stat--distance b::first-letter {
+  font-size: inherit;
+}
+
+.tk-trust-face__stat--distance small {
+  margin-top: 0.15rem !important;
+}

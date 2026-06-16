@@ -25,6 +25,7 @@ jobs:
         run: npm run build:production
         env:
           VITE_FIREBASE_ENV: production
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
 
       - name: Deploy to Firebase 5 Asides Near Me
         run: |
