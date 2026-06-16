@@ -96,8 +96,23 @@ export default function HomePage_HUB_ClubCard({
   const distanceValue = Number.isFinite(Number(club?.distanceKm))
     ? `${Number(club.distanceKm).toFixed(Number(club.distanceKm) < 10 ? 1 : 0)} km`
     : "Near you";
-  const gamesPlayed =
-    Number(club?.weeksPlayed ?? club?.matchWeeksPlayed ?? club?.hostedWeeksCount ?? club?.gamesPlayed ?? club?.matchesPlayed ?? club?.completedMatchesCount ?? club?.matchCount ?? 0);
+  const gamesPlayed = Number(
+    club?.weeksPlayed ??
+      club?.matchWeeksPlayed ??
+      club?.hostedWeeksCount ??
+      club?.gamesPlayed ??
+      club?.matchesPlayed ??
+      club?.completedMatchesCount ??
+      club?.matchCount ??
+      0
+  );
+
+  const clubActivityLabel =
+    gamesPlayed > 0
+      ? `${gamesPlayed} game${gamesPlayed === 1 ? "" : "s"} played`
+      : Number(playerCount) > 0
+        ? "Active club"
+        : "New club";
 
   useEffect(() => {
     if (isPaused) return undefined;
@@ -266,7 +281,7 @@ export default function HomePage_HUB_ClubCard({
                   <circle cx="12" cy="12" r="8.5" />
                   <path d="m12 3.5 2.6 5.2 5.7.8-4.1 4 1 5.6L12 16.5 6.9 19.1l1-5.6-4.1-4 5.7-.8L12 3.5Z" />
                 </svg>
-                <span>{gamesPlayed > 0 ? `${gamesPlayed} games played` : "New club"}</span>
+                <span>{clubActivityLabel}</span>
               </p>
             </div>
 

@@ -454,6 +454,7 @@ export default function HomePage_HUB({
   const [userMapLocation, setUserMapLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState("idle");
   const [clubSearchQuery, setClubSearchQuery] = useState("");
+  const [clubFilter, setClubFilter] = useState("all");
   const [challengeClub, setChallengeClub] = useState(null);
   const [challengeFormat, setChallengeFormat] = useState("5v5");
   const [challengeDate, setChallengeDate] = useState("");
@@ -595,22 +596,70 @@ export default function HomePage_HUB({
   const filteredVisibleClubs = useMemo(() => {
     const query = String(clubSearchQuery || "").trim().toLowerCase();
 
-    if (!query) return visibleClubs;
+    let nextClubs = [...visibleClubs];
 
-    return visibleClubs.filter((club) => {
+    if (clubFilter === "mine") {
+      nextClubs = nextClubs.filter((club) => isUsersOwnClub(club));
+    }
+
+    if (clubFilter === "nearby") {
+      const isAdminViewer = isSuperAdmin(currentUser);
+
+      nextClubs = nextClubs.filter((club) => {
+        const distanceKm = Number(club.distanceKm);
+
+        if (!Number.isFinite(distanceKm)) return false;
+
+        return isAdminViewer || distanceKm <= 20;
+      });
+    }
+
+    if (clubFilter === "new") {
+      nextClubs = nextClubs.filter((club) => {
+        const activity = Number(
+          club?.hostedWeeksCount ??
+            club?.gamesPlayed ??
+            club?.matchesPlayed ??
+            club?.completedMatchesCount ??
+            club?.matchCount ??
+            0
+        );
+
+        return activity <= 0;
+      });
+    }
+
+    if (!query) return nextClubs;
+
+    return nextClubs.filter((club) => {
       const haystack = [
         club?.name,
         club?.shortName,
+        club?.clubName,
         club?.location,
         club?.area,
+        club?.suburb,
+        club?.city,
+        club?.venueName,
+        club?.locationDetails?.venueName,
+        club?.locationDetails?.displayLocation,
+        club?.locationDetails?.fullAddress,
+        club?.locationDetails?.suburb,
         club?.weeklyPlayTime,
         club?.schedule?.weeklyPlayTime,
+        club?.captainName,
+        club?.captainFirstName,
+        club?.captainSurname,
+        club?.contactName,
+        club?.contactEmail,
+        club?.captainEmail,
+        club?.adminEmail,
         club?.description,
       ].join(" ").toLowerCase();
 
       return haystack.includes(query);
     });
-  }, [visibleClubs, clubSearchQuery]);
+  }, [visibleClubs, clubSearchQuery, clubFilter, identity]);
 
   function normalizeNewClubForHome(club) {
     const fakeDocSnap = {
@@ -1012,6 +1061,18 @@ export default function HomePage_HUB({
         <div className="hub-section-head hub-section-head--clubs-first">
           <div>
             <span className="hub-kicker">Discover clubs near you</span>
+            {isSuperAdmin(currentUser) ? (
+              <button
+                type="button"
+                className="hub-platform-view-button"
+                onClick={() => {
+                  setClubFilter("all");
+                  setClubSearchQuery("");
+                }}
+              >
+                Platform view
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -1019,39 +1080,47 @@ export default function HomePage_HUB({
           <div className="hub-club-filter-ribbon__scroll">
             <button
               type="button"
-              className="hub-club-filter-ribbon__pill hub-club-filter-ribbon__pill--active"
+              className={`hub-club-filter-ribbon__pill ${clubFilter === "all" ? "hub-club-filter-ribbon__pill--active" : ""}`}
+              onClick={() => setClubFilter("all")}
             >
               All
             </button>
 
             <button
               type="button"
-              className="hub-club-filter-ribbon__pill"
+              className={`hub-club-filter-ribbon__pill ${clubFilter === "mine" ? "hub-club-filter-ribbon__pill--active" : ""}`}
+              onClick={() => setClubFilter("mine")}
             >
               My clubs
             </button>
 
             <button
               type="button"
-              className="hub-club-filter-ribbon__pill"
+              className={`hub-club-filter-ribbon__pill ${clubFilter === "nearby" ? "hub-club-filter-ribbon__pill--active" : ""}`}
+              onClick={() => setClubFilter("nearby")}
             >
               Nearby
             </button>
 
             <button
               type="button"
-              className="hub-club-filter-ribbon__pill"
+              className={`hub-club-filter-ribbon__pill ${clubFilter === "new" ? "hub-club-filter-ribbon__pill--active" : ""}`}
+              onClick={() => setClubFilter("new")}
             >
               New
             </button>
           </div>
 
-          <button
-            type="button"
-            className="hub-club-filter-ribbon__search"
-          >
-            Search 🔎
-          </button>
+          <label className="hub-club-filter-ribbon__search">
+            <input
+              type="search"
+              value={clubSearchQuery}
+              onChange={(event) => setClubSearchQuery(event.target.value)}
+              placeholder="Search club, venue or captain"
+              aria-label="Search clubs"
+            />
+            <span>🔎</span>
+          </label>
         </div>
 
         {loadingClubs && !clubs.length ? (
@@ -1069,7 +1138,7 @@ export default function HomePage_HUB({
             <small>Free setup for captains</small>
           </button>
 
-          {visibleClubs.map((club) => {
+          {filteredVisibleClubs.map((club) => {
             const clubId = club?.id || club?.clubId || club?.slug;
             const featuredVideoUrl = clubFeaturedVideos[clubId] || "";
 
