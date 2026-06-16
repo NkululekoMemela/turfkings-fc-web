@@ -614,6 +614,10 @@ export default function HomePage_HUB({
       });
     }
 
+    if (clubFilter === "admin") {
+      nextClubs = [...visibleClubs];
+    }
+
     if (clubFilter === "new") {
       nextClubs = nextClubs.filter((club) => {
         const activity = Number(
@@ -1064,13 +1068,13 @@ export default function HomePage_HUB({
             {isSuperAdmin(currentUser) ? (
               <button
                 type="button"
-                className="hub-platform-view-button"
+                className={`hub-platform-view-button ${clubFilter === "admin" ? "hub-platform-view-button--active" : ""}`}
                 onClick={() => {
-                  setClubFilter("all");
+                  setClubFilter((current) => current === "admin" ? "all" : "admin");
                   setClubSearchQuery("");
                 }}
               >
-                Platform view
+                Admin
               </button>
             ) : null}
           </div>
@@ -1176,7 +1180,7 @@ export default function HomePage_HUB({
           <div className="hub-map-surface hub-map-surface--google">
             <HomePage_HUB_ClubGoogleMap
               apiKey={HAS_GOOGLE_MAPS_API_KEY ? GOOGLE_MAPS_API_KEY : ""}
-              clubs={visibleClubs}
+              clubs={clubFilter === "admin" ? visibleClubs : filteredVisibleClubs}
               onSelectClub={setActiveMapClub}
             />
           </div>

@@ -8097,3 +8097,123 @@
     color: transparent;
   }
 }
+
+/* Compact admin pill and visible active search state */
+.hub-platform-view-button {
+  padding: 0.36rem 0.65rem !important;
+  min-height: auto !important;
+  font-size: 0.64rem !important;
+  line-height: 1 !important;
+  letter-spacing: 0.12em !important;
+}
+
+.hub-club-filter-ribbon__search:focus-within,
+.hub-club-filter-ribbon__search:has(input:not(:placeholder-shown)) {
+  border-color: rgba(52, 211, 153, 0.7) !important;
+  background: rgba(16, 185, 129, 0.12) !important;
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.26), 0 0 18px rgba(16, 185, 129, 0.16) !important;
+}
+
+.hub-club-filter-ribbon__search:focus-within input,
+.hub-club-filter-ribbon__search:has(input:not(:placeholder-shown)) input {
+  color: #bbf7d0 !important;
+}
+
+/* Admin pill alignment and inactive/active state */
+.hub-section-head--clubs-first > div {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 1rem !important;
+}
+
+.hub-platform-view-button {
+  margin-left: auto !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  background: rgba(15, 23, 42, 0.38) !important;
+  color: rgba(226, 232, 240, 0.86) !important;
+  border-radius: 999px !important;
+  padding: 0.42rem 0.75rem !important;
+  font-size: 0.62rem !important;
+  line-height: 1 !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+}
+
+.hub-platform-view-button--active {
+  border-color: rgba(52, 211, 153, 0.65) !important;
+  background: rgba(16, 185, 129, 0.16) !important;
+  color: #8fffd0 !important;
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.18), 0 0 18px rgba(16, 185, 129, 0.16) !important;
+}
+
+@media (max-width: 720px) {
+  .hub-platform-view-button {
+    padding: 0.38rem 0.65rem !important;
+    font-size: 0.56rem !important;
+  }
+}
+
+/* FANM Admin pill */
+.hub-section-head--clubs-first {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.hub-platform-view-button {
+  padding: 0.22rem 0.65rem !important;
+  min-height: auto !important;
+  font-size: 0.62rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+
+  border-radius: 999px !important;
+
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  color: rgba(255,255,255,0.72) !important;
+
+  box-shadow: none !important;
+}
+
+.hub-platform-view-button--active {
+  background: rgba(16,185,129,0.18) !important;
+  border-color: rgba(16,185,129,0.55) !important;
+  color: #8fffd0 !important;
+}
+
+/* Final Admin pill integration */
+.hub-section-head--clubs-first > div {
+  width: 100% !important;
+  display: grid !important;
+  grid-template-columns: auto auto !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.hub-platform-view-button {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 0.72rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0.58rem !important;
+  line-height: 1 !important;
+  transform: translateY(0) !important;
+}
+
+@media (max-width: 720px) {
+  .hub-platform-view-button {
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 0.62rem !important;
+    font-size: 0.54rem !important;
+  }
+}
