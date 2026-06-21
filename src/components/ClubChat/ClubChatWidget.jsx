@@ -1051,6 +1051,14 @@ export function ClubChatWidget({
                     >
                       <div className="fanm-club-chat-message-meta">
                         <strong>{message.senderName || "Club member"}</strong>
+                        <small className="fanm-club-chat-time">
+                          {message.createdAtMs
+                            ? new Date(message.createdAtMs).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : ""}
+                        </small>
                         {isAdminMessage ? <span>Captain/Admin</span> : null}
                       </div>
                       {message.replyToId ? (

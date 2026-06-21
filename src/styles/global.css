@@ -8750,11 +8750,16 @@ body:has(.live-page) .app-root {
   right: auto;
   bottom: auto;
   transform: translate(-50%, -50%);
-  width: min(92vw, 440px);
-  max-height: 86vh;
-  overflow-y: auto;
+  width: min(96vw, 1100px);
+  height: 92vh;
+  max-height: 92vh;
+  overflow: hidden;
   z-index: 999;
-  border-radius: 28px;
+  border-radius: 24px;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-messages {
+  max-height: calc(92vh - 260px);
 }
 
 .fanm-club-chat-modal-close {
@@ -9969,4 +9974,26 @@ button.fanm-chat-highlight-card:hover {
 
 .fanm-chat-delete-btn:hover {
   background: rgba(185,28,28,0.75) !important;
+}
+
+
+/* FANM Club Chat timestamps */
+.fanm-club-chat-time {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: rgba(226,232,240,0.65);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* FANM chat fullscreen trial - final override */
+.fanm-club-chat-card.is-modal-open {
+  width: min(96vw, 1100px) !important;
+  height: 92vh !important;
+  max-height: 92vh !important;
+  overflow: hidden !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-messages {
+  max-height: calc(92vh - 260px) !important;
 }
