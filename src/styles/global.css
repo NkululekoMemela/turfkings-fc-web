@@ -10025,3 +10025,18 @@ button.fanm-chat-highlight-card {
     height: 52px;
   }
 }
+
+
+/* WhatsApp-style message timestamp */
+.fanm-club-chat-message-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.3rem;
+}
+
+.fanm-club-chat-message-footer .fanm-club-chat-time {
+  margin-left: 0;
+  font-size: 0.68rem;
+  color: rgba(226,232,240,0.62);
+  font-weight: 700;
+}

@@ -1051,14 +1051,6 @@ export function ClubChatWidget({
                     >
                       <div className="fanm-club-chat-message-meta">
                         <strong>{message.senderName || "Club member"}</strong>
-                        <small className="fanm-club-chat-time">
-                          {message.createdAtMs
-                            ? new Date(message.createdAtMs).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })
-                            : ""}
-                        </small>
                         {isAdminMessage ? <span>Captain/Admin</span> : null}
                       </div>
                       {message.replyToId ? (
@@ -1108,6 +1100,17 @@ export function ClubChatWidget({
                         </button>
                       ) : null}
                       <p>{renderMessageTextWithMentions(message.text)}</p>
+
+                      <div className="fanm-club-chat-message-footer">
+                        <small className="fanm-club-chat-time">
+                          {message.createdAtMs
+                            ? new Date(message.createdAtMs).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : ""}
+                        </small>
+                      </div>
                       <div className="fanm-chat-reaction-row">
                         {getVisibleReactions(message)
                           .map((emoji) => {
