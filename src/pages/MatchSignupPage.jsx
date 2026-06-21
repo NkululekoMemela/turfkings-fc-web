@@ -1994,12 +1994,15 @@ export default function MatchSignupPage({
   }, [selectedWeeks, weekById, matchSignupSettings]);
 
   const weeksToPayNow = useMemo(
-    () => selectedWeeks.filter((weekId) => !effectivePaidWeekSet.has(weekId)),
-    [selectedWeeks, effectivePaidWeekSet]
+    () => effectiveSelectedWeeks.filter((weekId) => !effectivePaidWeekSet.has(weekId)),
+    [effectiveSelectedWeeks, effectivePaidWeekSet]
   );
 
   const isFullyPaidSelection =
     effectiveSelectedWeeks.length > 0 && weeksToPayNow.length === 0;
+
+  const paymentSelectedWeeks =
+    effectiveSelectedWeeks.length > 0 ? effectiveSelectedWeeks : selectedWeeks;
 
   const getPlayerPhoto = useMemo(() => {
     return (playerName = "") => {
@@ -2717,7 +2720,7 @@ export default function MatchSignupPage({
           beneficiaryName: beneficiary.fullName,
           beneficiaryShortName: beneficiary.shortName,
           beneficiaryStableKey: beneficiary.stableKey,
-          selectedWeeks,
+          selectedWeeks: paymentSelectedWeeks,
           paidWeeks,
           primaryPaidWeeks: paidWeeks,
           unpaidWeeks: weeksToPayNow,
@@ -2755,7 +2758,7 @@ export default function MatchSignupPage({
       onProceedToPayment?.({
         signupDocId: pendingId,
         sourcePendingSignupId: pendingId,
-        selectedWeeks,
+        selectedWeeks: paymentSelectedWeeks,
         paidWeeks,
         primaryPaidWeeks: paidWeeks,
         weeksToPayNow,
@@ -2832,7 +2835,7 @@ export default function MatchSignupPage({
         effectiveWhatsappNumber: effectiveWhatsappNumber || "",
         whatsappVerificationStatus:
           whatsAppVerificationStatus || "manual_admin_verified",
-        selectedWeeks,
+        selectedWeeks: paymentSelectedWeeks,
         paidWeeks,
         unpaidWeeks: weeksToPayNow,
         weeksToPayNow,
@@ -3540,7 +3543,10 @@ export default function MatchSignupPage({
 
   const contentMaxWidth = isMobile ? "100%" : "1180px";
 
-  const historicalViewMode = weeksToPayNow.length === 0;
+  const historicalViewMode =
+    effectiveSelectedWeeks.length > 0 &&
+    effectivePaidWeeks.length > 0 &&
+    weeksToPayNow.length === 0;
 
 const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
   if (!week?.isChallenge) return base;
