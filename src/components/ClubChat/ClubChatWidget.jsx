@@ -1084,7 +1084,17 @@ export function ClubChatWidget({
                             });
                           }}
                         >
-                          <span className="fanm-chat-highlight-card-icon">🎥</span>
+                          {message.highlightMediaUrl ? (
+                            <video
+                              src={message.highlightMediaUrl}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="fanm-chat-highlight-card-video"
+                            />
+                          ) : (
+                            <span className="fanm-chat-highlight-card-icon">🎥</span>
+                          )}
                           <div>
                             <strong>{message.highlightLabel || message.highlightTitle || "Goal clip"}</strong>
                             <small>
