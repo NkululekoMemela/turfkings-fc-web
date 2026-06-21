@@ -10040,3 +10040,18 @@ button.fanm-chat-highlight-card {
   color: rgba(226,232,240,0.62);
   font-weight: 700;
 }
+
+/* FANM chat: separate my messages from others */
+.fanm-club-chat-message:not(.is-mine) {
+  justify-self: start !important;
+  background: rgba(30,41,59,0.94) !important;
+}
+
+.fanm-club-chat-message.is-mine {
+  justify-self: end !important;
+  background: linear-gradient(135deg, #16a34a, #15803d) !important;
+}
+
+.fanm-club-chat-message.is-mine .fanm-club-chat-message-footer .fanm-club-chat-time {
+  color: rgba(240,253,244,0.72) !important;
+}

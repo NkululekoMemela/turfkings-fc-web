@@ -1035,10 +1035,29 @@ export function ClubChatWidget({
             <div className="fanm-club-chat-messages">
               {clubChatMessages.length ? (
                 clubChatMessages.map((message) => {
-                  const mine =
-                    currentUser?.uid &&
-                    message.senderUid &&
-                    String(currentUser.uid) === String(message.senderUid);
+                  const currentViewerKeys = [
+                    currentUser?.uid,
+                    currentUser?.email,
+                    selectedMember?.email,
+                    identity?.email,
+                    selectedMember?.fullName,
+                    selectedMember?.shortName,
+                    identity?.fullName,
+                    identity?.shortName,
+                    currentUser?.displayName,
+                  ]
+                    .map((value) => String(value || "").trim().toLowerCase())
+                    .filter(Boolean);
+
+                  const messageSenderKeys = [
+                    message.senderUid,
+                    message.senderEmail,
+                    message.senderName,
+                  ]
+                    .map((value) => String(value || "").trim().toLowerCase())
+                    .filter(Boolean);
+
+                  const mine = messageSenderKeys.some((key) => currentViewerKeys.includes(key));
 
                   const isAdminMessage =
                     String(message.senderRole || "").toLowerCase().includes("admin") ||
