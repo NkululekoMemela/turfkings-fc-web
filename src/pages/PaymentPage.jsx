@@ -705,7 +705,7 @@ export default function PaymentPage({
                   <strong>{formatCurrency(captainContributionToPayNow)}</strong>
                 </div>
                 <div className="summary-row">
-                  <span>FANM booking fee</span>
+                  <span>Service fee</span>
                   <strong>{formatCurrency(fanmBookingFee)}</strong>
                 </div>
                 <div className="summary-row">

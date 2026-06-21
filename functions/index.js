@@ -545,14 +545,25 @@ function computeSignupPaymentState({
   const unpaidTotalGames =
     unpaidPrimaryWeeks.length + unpaidSecondWeeks.length;
 
-  const fullAmount = totalGamesSelected * costPerGame;
-  const outstandingAmount = unpaidTotalGames * costPerGame;
+  const serviceFeePerGame = Number(
+    requestBody.serviceFeePerGame ||
+    requestBody.fanmBookingFeePerGame ||
+    requestBody.platformFeePerGame ||
+    7.5
+  );
+
+  const pricePerGame = costPerGame + serviceFeePerGame;
+
+  const fullAmount = totalGamesSelected * pricePerGame;
+  const outstandingAmount = unpaidTotalGames * pricePerGame;
 
   const amountPaidFromWeeks =
-    (primaryPaidWeeks.length + secondPaidWeeks.length) * costPerGame;
+    (primaryPaidWeeks.length + secondPaidWeeks.length) * pricePerGame;
 
   return {
     costPerGame,
+    serviceFeePerGame,
+    pricePerGame,
     primarySelectedWeeks,
     secondSelectedWeeks,
     primaryPaidWeeks,
