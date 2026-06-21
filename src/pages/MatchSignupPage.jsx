@@ -5084,6 +5084,10 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               <p className="muted small" style={{ marginTop: 10 }}>
                 All selected weeks are already paid.
               </p>
+            ) : selectedWeeks.length > 0 ? (
+              <p className="muted small" style={{ marginTop: 10 }}>
+                Payment is still required. You can continue to payment or change your selected weeks.
+              </p>
             ) : null}
           </>
         )}

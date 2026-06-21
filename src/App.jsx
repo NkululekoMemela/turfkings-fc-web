@@ -6789,7 +6789,7 @@ export default function App() {
           isAdmin={isAdmin}
           isCaptain={isCaptain}
           onBack={handleBackFromPayment}
-          onDone={() => setPage(PAGE_LANDING)}
+          onDone={() => setPage(PAGE_MATCH_SIGNUP)}
         />
       )}
 
