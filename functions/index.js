@@ -131,6 +131,32 @@ const hasYocoConfig =
   Boolean(YOCO_BASE_URL);
 
 // -----------------------------------------------------------------------------
+// Paystack config
+// -----------------------------------------------------------------------------
+const PAYSTACK_SECRET_KEY =
+  process.env.PAYSTACK_SECRET_KEY ||
+  "";
+
+const PAYSTACK_PUBLIC_KEY =
+  process.env.PAYSTACK_PUBLIC_KEY ||
+  "";
+
+const PAYSTACK_BASE_URL =
+  process.env.PAYSTACK_BASE_URL ||
+  "https://api.paystack.co";
+
+const PAYSTACK_CURRENCY =
+  process.env.PAYSTACK_CURRENCY ||
+  "ZAR";
+
+const PAYSTACK_AMOUNT_MULTIPLIER =
+  Number(process.env.PAYSTACK_AMOUNT_MULTIPLIER || 100);
+
+const hasPaystackConfig =
+  Boolean(PAYSTACK_SECRET_KEY) &&
+  Boolean(PAYSTACK_BASE_URL);
+
+// -----------------------------------------------------------------------------
 // helpers
 // -----------------------------------------------------------------------------
 function setCors(res) {
@@ -691,6 +717,82 @@ function buildYocoCheckoutPayload({
   return payload;
 }
 
+function buildPaystackCheckoutPayload({
+  paymentRecordId,
+  amountInBaseUnits,
+  referenceLabel,
+  email,
+  callbackUrl,
+  metadata = {},
+}) {
+  const payload = {
+    amount: amountInBaseUnits,
+    currency: PAYSTACK_CURRENCY,
+    reference: paymentRecordId,
+    email: email || "admin@5asidenearme.com",
+    metadata: {
+      ...metadata,
+      paymentRecordId,
+      referenceLabel,
+    },
+  };
+
+  if (callbackUrl) payload.callback_url = callbackUrl;
+
+  return payload;
+}
+
+function verifyPaystackWebhookSignature(req) {
+  const signature = safeString(req.headers["x-paystack-signature"]);
+  const rawBody = req.rawBody;
+
+  if (!PAYSTACK_SECRET_KEY || !signature || !rawBody) {
+    return false;
+  }
+
+  const expected = crypto
+    .createHmac("sha512", PAYSTACK_SECRET_KEY)
+    .update(rawBody)
+    .digest("hex");
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expected),
+      Buffer.from(signature)
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
+function derivePaystackEventStatus(payload = {}) {
+  const event = safeString(payload.event || "").toLowerCase();
+  const status = safeString(
+    payload.data?.status ||
+    payload.status ||
+    ""
+  ).toLowerCase();
+
+  if (
+    event.includes("charge.success") ||
+    status === "success" ||
+    status === "successful"
+  ) {
+    return "paid";
+  }
+
+  if (
+    status === "failed" ||
+    status === "abandoned" ||
+    status === "cancelled" ||
+    status === "canceled"
+  ) {
+    return "failed";
+  }
+
+  return "pending";
+}
+
 async function settleVerifiedPayment({
   paymentRef,
   paymentData,
@@ -1201,6 +1303,304 @@ exports.createYocoCheckout = onRequest(
   }
 );
 
+
+// -----------------------------------------------------------------------------
+// create checkout session with Paystack
+// -----------------------------------------------------------------------------
+exports.createPaystackCheckout = onRequest(
+  {
+    region: REGION,
+    invoker: "public",
+    secrets: ["PAYSTACK_SECRET_KEY"],
+  },
+  async (req, res) => {
+    if (handleOptions(req, res)) return;
+    setCors(res);
+
+    if (req.method !== "POST") {
+      return res.status(405).json({
+        ok: false,
+        error: "Method not allowed. Use POST.",
+      });
+    }
+
+    if (!hasPaystackConfig) {
+      return res.status(500).json({
+        ok: false,
+        error: "Paystack configuration is missing on the server.",
+      });
+    }
+
+    const t0 = Date.now();
+
+    try {
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const signupDocId = deriveSignupDocIdFromBody(body);
+
+      if (!signupDocId) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing signupDocId.",
+        });
+      }
+
+      const activeClubId = safeString(body.activeClubId || body.clubId || "turf-kings");
+      const signupRef = db.collection("clubs").doc(activeClubId).collection("matchSignups").doc(signupDocId);
+
+      const signupSnap = await signupRef.get();
+      const signupData = signupSnap.exists ? (signupSnap.data() || {}) : {};
+
+      const paymentState = computeSignupPaymentState({
+        signup: signupData,
+        requestBody: body,
+      });
+
+      if (paymentState.outstandingAmount <= 0) {
+        return res.status(200).json({
+          ok: true,
+          alreadyPaid: true,
+          redirectUrl: "",
+          amount: 0,
+          signupDocId,
+          outstandingGames: 0,
+        });
+      }
+
+      const displayName = safeString(
+        signupData.displayName ||
+        body.displayName ||
+        "Player"
+      );
+
+      const secondDisplayName = safeString(
+        signupData.secondDisplayName ||
+        body.secondDisplayName ||
+        ""
+      );
+
+      const activeSeasonId = safeString(
+        signupData.activeSeasonId ||
+        body.activeSeasonId ||
+        ""
+      );
+
+      const paymentForMode = safeString(
+        signupData.paymentForMode ||
+        body.paymentForMode ||
+        body.mode ||
+        (paymentState.secondSelectedWeeks.length > 0 ? "both" : "self")
+      );
+
+      const referenceLabel = safeString(
+        signupData.paymentReference ||
+        body.paymentReference ||
+        buildReferenceLabel(displayName)
+      );
+
+      const paymentsRef = db.collection("payments").doc();
+      const resolvedUrls = resolveCheckoutUrlSet(body, paymentsRef.id);
+
+      const amountInBaseUnits = Math.round(
+        paymentState.outstandingAmount * PAYSTACK_AMOUNT_MULTIPLIER
+      );
+
+      const payerEmail = safeString(
+        signupData.email ||
+        body.email ||
+        signupData.secondEmail ||
+        body.secondEmail ||
+        "admin@5asidenearme.com"
+      );
+
+      const metadata = {
+        paymentRecordId: paymentsRef.id,
+        signupDocId,
+        activeSeasonId,
+        activeClubId,
+        displayName,
+        secondDisplayName,
+        paymentForMode,
+        outstandingGames: paymentState.unpaidTotalGames,
+        referenceLabel,
+      };
+
+      const paystackPayload = buildPaystackCheckoutPayload({
+        paymentRecordId: paymentsRef.id,
+        amountInBaseUnits,
+        referenceLabel,
+        email: payerEmail,
+        callbackUrl: resolvedUrls.successUrl,
+        metadata,
+      });
+
+      const paystackResponse = await fetchJson(
+        `${PAYSTACK_BASE_URL.replace(/\/$/, "")}/transaction/initialize`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${PAYSTACK_SECRET_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(paystackPayload),
+        },
+        15000
+      );
+
+      if (!paystackResponse.ok || paystackResponse.data?.status === false) {
+        console.error("[PAYSTACK] checkout create failed status:", paystackResponse.status);
+        console.error("[PAYSTACK] checkout create failed data:", JSON.stringify(paystackResponse.data || {}));
+
+        await paymentsRef.set({
+          provider: "paystack",
+          status: "create_failed",
+          signupDocId,
+          activeSeasonId,
+          activeClubId,
+          displayName,
+          secondDisplayName,
+          playerId: safeString(signupData.playerId || body.playerId || ""),
+          secondPlayerId: safeString(signupData.secondPlayerId || body.secondPlayerId || ""),
+          secondEmail: safeString(signupData.secondEmail || body.secondEmail || ""),
+          userId: safeString(body.userId || body.identityUserId || signupData.userId || ""),
+          paymentForMode,
+          selectedWeeks: paymentState.primarySelectedWeeks,
+          secondSelectedWeeks: paymentState.secondSelectedWeeks,
+          primaryPaidWeeks: paymentState.primaryPaidWeeks,
+          secondPaidWeeks: paymentState.secondPaidWeeks,
+          unpaidPrimaryWeeks: paymentState.unpaidPrimaryWeeks,
+          unpaidSecondWeeks: paymentState.unpaidSecondWeeks,
+          totalGamesSelected: paymentState.totalGamesSelected,
+          outstandingGames: paymentState.unpaidTotalGames,
+          costPerGame: paymentState.costPerGame,
+          amountRequested: paymentState.outstandingAmount,
+          amountRequestedBaseUnits: amountInBaseUnits,
+          currency: PAYSTACK_CURRENCY,
+          paymentReference: referenceLabel,
+          source: "fanm_paystack_checkout_api",
+          requestedSuccessUrl: resolvedUrls.successUrl,
+          requestedCancelUrl: resolvedUrls.cancelUrl,
+          requestedFailureUrl: resolvedUrls.failureUrl,
+          paystackError: paystackResponse.data,
+          paystackErrorText: paystackResponse.text || "",
+          paystackStatusCode: paystackResponse.status,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+
+        return res.status(502).json({
+          ok: false,
+          error: "Paystack checkout creation failed.",
+          details: paystackResponse.data || paystackResponse.text || "Unknown Paystack error",
+          statusCode: paystackResponse.status,
+        });
+      }
+
+      const paystackData = paystackResponse.data?.data || {};
+      const redirectUrl = safeString(paystackData.authorization_url || paystackData.authorizationUrl || "");
+      const paystackAccessCode = safeString(paystackData.access_code || "");
+      const paystackReference = safeString(paystackData.reference || paymentsRef.id);
+
+      if (!redirectUrl) {
+        return res.status(502).json({
+          ok: false,
+          error: "Paystack checkout did not return a redirect URL.",
+        });
+      }
+
+      const paymentRecord = {
+        provider: "paystack",
+        status: "checkout_created",
+        signupDocId,
+        activeSeasonId,
+        activeClubId,
+        displayName,
+        secondDisplayName,
+        playerId: safeString(signupData.playerId || body.playerId || ""),
+        secondPlayerId: safeString(signupData.secondPlayerId || body.secondPlayerId || ""),
+        secondEmail: safeString(signupData.secondEmail || body.secondEmail || ""),
+        userId: safeString(body.userId || body.identityUserId || signupData.userId || ""),
+        paymentForMode,
+        selectedWeeks: paymentState.primarySelectedWeeks,
+        secondSelectedWeeks: paymentState.secondSelectedWeeks,
+        primaryPaidWeeks: paymentState.primaryPaidWeeks,
+        secondPaidWeeks: paymentState.secondPaidWeeks,
+        unpaidPrimaryWeeks: paymentState.unpaidPrimaryWeeks,
+        unpaidSecondWeeks: paymentState.unpaidSecondWeeks,
+        totalGamesSelected: paymentState.totalGamesSelected,
+        outstandingGames: paymentState.unpaidTotalGames,
+        costPerGame: paymentState.costPerGame,
+        amountRequested: paymentState.outstandingAmount,
+        amountRequestedBaseUnits: amountInBaseUnits,
+        currency: PAYSTACK_CURRENCY,
+        paymentReference: referenceLabel,
+        source: "fanm_paystack_checkout_api",
+        requestedSuccessUrl: resolvedUrls.successUrl,
+        requestedCancelUrl: resolvedUrls.cancelUrl,
+        requestedFailureUrl: resolvedUrls.failureUrl,
+        paystackReference,
+        paystackAccessCode,
+        paystackResponse: paystackData,
+        redirectUrl,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      await Promise.all([
+        paymentsRef.set(paymentRecord, {merge: true}),
+        signupRef.set({
+          paymentRecordId: paymentsRef.id,
+          paymentLinkUrl: redirectUrl,
+          paymentStatus: "pending",
+          paymentSubmittedAt: FieldValue.serverTimestamp(),
+          unpaidPrimaryWeeks: paymentState.unpaidPrimaryWeeks,
+          unpaidSecondWeeks: paymentState.unpaidSecondWeeks,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true}),
+      ]);
+
+      res.status(200).json({
+        ok: true,
+        paymentRecordId: paymentsRef.id,
+        signupDocId,
+        amount: paymentState.outstandingAmount,
+        outstandingGames: paymentState.unpaidTotalGames,
+        redirectUrl,
+        paystackReference,
+      });
+
+      Promise.resolve().then(async () => {
+        try {
+          await notifyAdminOnWhatsApp(
+            `🧾 5 Asides Near Me payment started.\n` +
+            `${displayName}` +
+            (secondDisplayName ? ` + ${secondDisplayName}` : "") +
+            `\nAmount: ${formatCurrency(paymentState.outstandingAmount)}` +
+            `\nSignup: ${signupDocId}`
+          );
+        } catch (notifyError) {
+          console.error("Admin WhatsApp notify failed:", notifyError);
+        }
+      });
+
+      console.log("[createPaystackCheckout] total ms before response:", Date.now() - t0);
+    } catch (error) {
+      const isAbort =
+        error &&
+        (error.name === "AbortError" ||
+          String(error.message || "").toLowerCase().includes("aborted"));
+
+      console.error("createPaystackCheckout failed:", error);
+
+      return res.status(isAbort ? 504 : 500).json({
+        ok: false,
+        error: isAbort ?
+          "Paystack request timed out. Please try again." :
+          (error.message || "Unknown server error"),
+      });
+    }
+  }
+);
+
 // -----------------------------------------------------------------------------
 // handle Yoco webhook
 // -----------------------------------------------------------------------------
@@ -1386,6 +1786,107 @@ exports.handleYocoWebhook = onRequest(
       return res.status(200).send("OK");
     } catch (error) {
       console.error("handleYocoWebhook failed:", error);
+      return res.status(500).send("ERROR");
+    }
+  }
+);
+
+
+// -----------------------------------------------------------------------------
+// handle Paystack webhook
+// -----------------------------------------------------------------------------
+exports.handlePaystackWebhook = onRequest(
+  {
+    region: REGION,
+    invoker: "public",
+    secrets: ["PAYSTACK_SECRET_KEY"],
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      return res.status(405).send("Method not allowed");
+    }
+
+    if (!verifyPaystackWebhookSignature(req)) {
+      console.error("Paystack webhook verification failed.");
+      return res.status(403).send("Invalid signature");
+    }
+
+    let payload = {};
+    try {
+      payload = req.body && typeof req.body === "object" ?
+        req.body :
+        JSON.parse(req.rawBody.toString("utf8"));
+    } catch (error) {
+      console.error("Could not parse Paystack webhook body:", error);
+      return res.status(400).send("Invalid body");
+    }
+
+    try {
+      const reference = safeString(
+        payload.data?.reference ||
+        payload.reference ||
+        payload.metadata?.paymentRecordId ||
+        ""
+      );
+
+      if (!reference) {
+        console.error("Paystack webhook missing reference.", payload);
+        return res.status(200).send("No reference");
+      }
+
+      const paymentRef = db.collection("payments").doc(reference);
+      const paymentSnap = await paymentRef.get();
+
+      if (!paymentSnap.exists) {
+        console.error("Could not match Paystack webhook to payment record.", {
+          reference,
+        });
+        return res.status(200).send("No matching payment record");
+      }
+
+      const paymentData = paymentSnap.data() || {};
+      const eventStatus = derivePaystackEventStatus(payload);
+
+      const receivedAmountBaseUnits = Number(payload.data?.amount || 0);
+      const amountReceived = receivedAmountBaseUnits > 0 ?
+        receivedAmountBaseUnits / PAYSTACK_AMOUNT_MULTIPLIER :
+        Number(paymentData.amountRequested || 0);
+
+      await paymentRef.set({
+        paystackReference: reference,
+        amountReceived,
+        webhookPayload: payload,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      if (eventStatus === "paid") {
+        await settleVerifiedPayment({
+          paymentRef,
+          paymentData: {
+            ...paymentData,
+            paystackReference: reference,
+            amountReceived,
+          },
+          yocoPayload: payload,
+        });
+      } else if (eventStatus === "failed") {
+        await markPaymentFailed({
+          paymentRef,
+          paymentData,
+          yocoPayload: payload,
+          nextStatus: "failed",
+        });
+      } else {
+        await paymentRef.set({
+          status: "pending",
+          updatedAt: FieldValue.serverTimestamp(),
+          webhookPayload: payload,
+        }, {merge: true});
+      }
+
+      return res.status(200).send("OK");
+    } catch (error) {
+      console.error("handlePaystackWebhook failed:", error);
       return res.status(500).send("ERROR");
     }
   }

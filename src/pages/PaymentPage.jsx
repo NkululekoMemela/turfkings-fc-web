@@ -18,7 +18,7 @@ import {
   resolveClubPaymentSettings,
 } from "../core/payments/paymentProviders";
 
-const PAYMENT_METHOD_LABEL = "Yoco";
+const PAYMENT_METHOD_LABEL = "Paystack";
 const COST_PER_GAME_DEFAULT = 65;
 const FUNCTIONS_REGION = "us-central1";
 
@@ -498,7 +498,7 @@ export default function PaymentPage({
           : "";
 
       const { ok, data } = await postJson(
-        `${functionsBaseUrl}/createYocoCheckout`,
+        `${functionsBaseUrl}/createPaystackCheckout`,
         {
           signupDocId,
           activeSeasonId: String(activeSeasonId || "").trim(),
@@ -531,7 +531,7 @@ export default function PaymentPage({
       );
 
       if (!ok) {
-        throw new Error(data?.error || "Could not create Yoco checkout.");
+        throw new Error(data?.error || "Could not create Paystack checkout.");
       }
 
       if (data?.alreadyPaid) {
@@ -542,7 +542,7 @@ export default function PaymentPage({
 
       const redirectUrl = String(data?.redirectUrl || "").trim();
       if (!redirectUrl) {
-        throw new Error("Yoco checkout did not return a redirect URL.");
+        throw new Error("Paystack checkout did not return a redirect URL.");
       }
 
       const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
@@ -643,7 +643,7 @@ export default function PaymentPage({
         <div className="payment-hero-top">
           <div>
             <h2>Payment</h2>
-            <p className="muted">Pay securely with Yoco.</p>
+            <p className="muted">Pay securely with Paystack.</p>
           </div>
 
           <button type="button" className="secondary-btn" onClick={onBack}>
@@ -738,7 +738,7 @@ export default function PaymentPage({
               <p className="muted small payment-help-text">
                 {isFullyPaid
                   ? "No further payment is needed for the currently selected weeks."
-                  : "You will be redirected to Yoco’s secure payment page in the same tab."}
+                  : "You will be redirected to Paystack’s secure payment page in the same tab."}
               </p>
 
               {slowPaymentMessage ? (
