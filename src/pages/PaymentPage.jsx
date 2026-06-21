@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   doc,
+  getDoc,
   onSnapshot,
   serverTimestamp,
   setDoc,
@@ -278,9 +279,11 @@ export default function PaymentPage({
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [error, setError] = useState("");
   const [slowPaymentMessage, setSlowPaymentMessage] = useState("");
+  const [showPaymentBreakdown, setShowPaymentBreakdown] = useState(false);
   const [clubPaymentSettings, setClubPaymentSettings] = useState(() =>
     resolveClubPaymentSettings({})
   );
+  const [clubProfile, setClubProfile] = useState(null);
 
   const captainContributionPerGame = Number(
     paymentContext?.captainContributionPerGame ||
@@ -325,6 +328,16 @@ export default function PaymentPage({
           setClubPaymentSettings(settings);
         }
       })
+
+    getDoc(doc(db, "clubs", activeClubId))
+      .then((snap) => {
+        if (!cancelled && snap.exists()) {
+          setClubProfile(snap.data() || {});
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load club profile for payment page:", err);
+      })
       .catch((err) => {
         console.warn("Failed to load club payment settings:", err);
         if (!cancelled) {
@@ -345,6 +358,27 @@ export default function PaymentPage({
     : clubCanUseExternalPayments
       ? "External collection by club/captain"
       : "Payments not active";
+
+  const clubDisplayName =
+    paymentContext?.clubName ||
+    paymentContext?.activeClubName ||
+    clubProfile?.name ||
+    clubProfile?.clubName ||
+    clubPaymentSettings?.clubName ||
+    "your club";
+
+  const captainPaymentName =
+    paymentContext?.captainName ||
+    paymentContext?.captainDisplayName ||
+    paymentContext?.clubCaptainName ||
+    clubProfile?.captainName ||
+    clubProfile?.captain?.name ||
+    clubProfile?.captain?.fullName ||
+    clubProfile?.adminName ||
+    clubProfile?.ownerName ||
+    clubPaymentSettings?.captainName ||
+    clubPaymentSettings?.captainDisplayName ||
+    `${clubDisplayName} captain`;
 
   useEffect(() => {
     if (!signupDocId) {
@@ -677,7 +711,10 @@ export default function PaymentPage({
                     Reference: {buildReferenceLabel(primaryDisplayName)}
                   </p>
                   <p className="muted small">
-                    Payment mode: {clubPaymentModeLabel}
+                    Your payment will be sent to {captainPaymentName}, captain of {clubDisplayName}, for field booking.
+                  </p>
+                  <p className="muted small">
+                    5 Asides Near Me securely processes this payment and provides player management services.
                   </p>
                 </div>
 
@@ -695,28 +732,39 @@ export default function PaymentPage({
                 </strong>
               </div>
 
-              <div className="payment-summary-simple">
-                <div className="summary-row">
-                  <span>Games selected</span>
-                  <strong>{effectiveTotalGamesSelected}</strong>
+              <button
+                type="button"
+                className="secondary-btn payment-breakdown-toggle"
+                onClick={() => setShowPaymentBreakdown((value) => !value)}
+                style={{ width: "100%", marginTop: 18, marginBottom: 18 }}
+              >
+                {showPaymentBreakdown ? "Hide payment breakdown" : "View payment breakdown"}
+              </button>
+
+              {showPaymentBreakdown ? (
+                <div className="payment-summary-simple">
+                  <div className="summary-row">
+                    <span>Games selected</span>
+                    <strong>{effectiveTotalGamesSelected}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Field contribution</span>
+                    <strong>{formatCurrency(captainContributionToPayNow)}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Service fee</span>
+                    <strong>{formatCurrency(fanmBookingFee)}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Paid so far</span>
+                    <strong>{formatCurrency(amountPaid)}</strong>
+                  </div>
+                  <div className="summary-row total-row">
+                    <span>Total to pay</span>
+                    <strong>{formatCurrency(amountToPayNow)}</strong>
+                  </div>
                 </div>
-                <div className="summary-row">
-                  <span>Field contribution</span>
-                  <strong>{formatCurrency(captainContributionToPayNow)}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Service fee</span>
-                  <strong>{formatCurrency(fanmBookingFee)}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Paid so far</span>
-                  <strong>{formatCurrency(amountPaid)}</strong>
-                </div>
-                <div className="summary-row total-row">
-                  <span>Total to pay</span>
-                  <strong>{formatCurrency(amountToPayNow)}</strong>
-                </div>
-              </div>
+              ) : null}
 
               {!isFullyPaid ? (
                 <button

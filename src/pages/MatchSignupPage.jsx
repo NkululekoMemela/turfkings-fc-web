@@ -1994,8 +1994,8 @@ export default function MatchSignupPage({
   }, [selectedWeeks, weekById, matchSignupSettings]);
 
   const weeksToPayNow = useMemo(
-    () => selectedWeeks.filter((weekId) => !effectivePaidWeekSet.has(weekId)),
-    [selectedWeeks, effectivePaidWeekSet]
+    () => effectiveSelectedWeeks.filter((weekId) => !effectivePaidWeekSet.has(weekId)),
+    [effectiveSelectedWeeks, effectivePaidWeekSet]
   );
 
   const isFullyPaidSelection =
@@ -2259,14 +2259,47 @@ export default function MatchSignupPage({
     hasInitialScrollRef.current = true;
   }, [displayRows]);
 
-  const toggleWeek = (week) => {
+  const toggleWeek = async (week) => {
     if (effectivePaidWeekSet.has(week.id)) return;
 
     const meta = weekMeta.find((w) => w.id === week.id);
-    const isSelected = selectedWeeks.includes(week.id);
+    const isSelected = effectiveSelectedWeeks.includes(week.id);
 
     if (isSelected) {
-      setSelectedWeeks((prev) => prev.filter((id) => id !== week.id));
+      const nextSelectedWeeks = effectiveSelectedWeeks.filter((id) => id !== week.id);
+      const nextPaidWeeks = effectivePaidWeeks.filter((id) => id !== week.id);
+      const nextUnpaidWeeks = nextSelectedWeeks.filter(
+        (id) => !nextPaidWeeks.includes(id)
+      );
+      const nextPaymentStatus = statusFromWeekState(nextSelectedWeeks, nextPaidWeeks);
+
+      setSelectedWeeks(nextSelectedWeeks);
+      setPaidWeeks(nextPaidWeeks);
+
+      const patch = {
+        selectedWeeks: nextSelectedWeeks,
+        paidWeeks: nextPaidWeeks,
+        primaryPaidWeeks: nextPaidWeeks,
+        unpaidWeeks: nextUnpaidWeeks,
+        unpaidPrimaryWeeks: nextUnpaidWeeks,
+        weeksToPayNow: nextUnpaidWeeks,
+        totalAmount: sumWeekCosts(nextUnpaidWeeks),
+        amountDueNow: sumWeekCosts(nextUnpaidWeeks),
+        amountPaidTotal: sumWeekCosts(nextPaidWeeks),
+        paymentStatus: nextPaymentStatus,
+        isUnpaid: nextUnpaidWeeks.length > 0,
+        updatedAt: serverTimestamp(),
+      };
+
+      try {
+        await Promise.all([
+          setDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId, activeClubId), patch, { merge: true }),
+          setDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, pendingId, activeClubId), patch, { merge: true }),
+        ]);
+      } catch (error) {
+        console.error("Failed to remove unpaid week selection:", error);
+      }
+
       return;
     }
 
@@ -2274,7 +2307,10 @@ export default function MatchSignupPage({
     setSelectedWeeks((prev) => uniqueWeekIds([...prev, week.id]));
   };
 
-  const totalAmount = sumWeekCosts(weeksToPayNow);
+  const fieldContributionDueNow = sumWeekCosts(weeksToPayNow);
+  const serviceFeePerGame = 7.5;
+  const serviceFeeDueNow = weeksToPayNow.length * serviceFeePerGame;
+  const totalAmount = fieldContributionDueNow + serviceFeeDueNow;
   const selectedCount = selectedWeeks.length;
 
   const signupStatusText = isFullyPaidSelection
@@ -3678,15 +3714,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                 />
               </svg>
             </button>
-
-            <button
-              type="button"
-              className="secondary-btn signup-back-btn"
-              onClick={handleAttemptBack}
-              style={{ touchAction: "manipulation" }}
-            >
-              ← Back
-            </button>
           </div>
         </div>
       </section>
@@ -5043,17 +5070,9 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
 
               <div className="summary-row">
                 <span>New to charge</span>
-                <strong>{weeksToPayNow.length}</strong>
-              </div>
-
-              <div className="summary-row">
-                <span>Cost per game</span>
-                <strong>From R{matchSignupSettings.weeklyPrice || COST_PER_GAME}</strong>
-              </div>
-
-              <div className="summary-row">
-                <span>Unpaid players this month</span>
-                <strong>{unpaidPlayersCount}</strong>
+                <strong>
+                  {weeksToPayNow.length} match day{weeksToPayNow.length === 1 ? "" : "s"}
+                </strong>
               </div>
 
               <div className="summary-row total">
