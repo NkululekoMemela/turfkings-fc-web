@@ -10163,3 +10163,463 @@ button.fanm-chat-highlight-card {
   line-height: 1;
   flex: 0 0 auto;
 }
+
+.goal-scorer-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.goal-scorer-team-card {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.58);
+  padding: 0.75rem;
+}
+
+.goal-scorer-team-head {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.55rem;
+}
+
+@media (max-width: 680px) {
+  .goal-scorer-two-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Premium goal recorder scorer/assist modal */
+.goal-scorer-team-card {
+  padding: 0.95rem !important;
+  border-radius: 20px !important;
+  background:
+    radial-gradient(circle at top left, rgba(34,197,94,0.08), transparent 34%),
+    rgba(2, 6, 23, 0.72) !important;
+}
+
+.goal-scorer-team-card .player-choice-grid,
+.goal-scorer-team-card .player-picker-grid,
+.goal-scorer-team-card .choice-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0.65rem !important;
+}
+
+.goal-scorer-team-card button {
+  min-height: 58px !important;
+  justify-content: flex-start !important;
+  border-radius: 14px !important;
+  padding: 0.55rem 0.7rem !important;
+  background:
+    linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,23,42,0.72)) !important;
+  border: 1px solid rgba(148,163,184,0.34) !important;
+  color: #f8fafc !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+
+.goal-scorer-team-card button:hover {
+  border-color: rgba(34,211,238,0.55) !important;
+  transform: translateY(-1px);
+}
+
+.goal-scorer-team-card button.selected,
+.goal-scorer-team-card button.active,
+.goal-scorer-team-card button[aria-pressed="true"] {
+  border-color: rgba(34,197,94,0.95) !important;
+  background:
+    linear-gradient(135deg, rgba(21,128,61,0.45), rgba(15,23,42,0.82)) !important;
+  box-shadow: 0 0 0 1px rgba(34,197,94,0.42), 0 10px 24px rgba(34,197,94,0.18) !important;
+}
+
+.goal-scorer-team-card img {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 999px !important;
+  object-fit: cover !important;
+  flex: 0 0 42px !important;
+}
+
+.goal-scorer-team-card .position-tag,
+.goal-scorer-team-card [class*="position"] {
+  margin-left: auto;
+}
+
+@media (max-width: 680px) {
+  .goal-scorer-team-card .player-choice-grid,
+  .goal-scorer-team-card .player-picker-grid,
+  .goal-scorer-team-card .choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .goal-scorer-team-card button {
+    min-height: 54px !important;
+    padding: 0.48rem 0.55rem !important;
+  }
+
+  .goal-scorer-team-card img {
+    width: 36px !important;
+    height: 36px !important;
+    flex-basis: 36px !important;
+  }
+}
+
+/* Goal recorder premium player cards */
+.goal-scorer-two-column {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 1rem !important;
+
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+}
+
+.goal-scorer-team-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+
+  padding: 1rem !important;
+  border-radius: 22px !important;
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.08), transparent 34%),
+    rgba(2, 6, 23, 0.78) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+}
+
+.goal-scorer-team-card .field-row {
+  width: 100% !important;
+  display: block !important;
+}
+
+.goal-scorer-team-card .live-player-choice-grid {
+  width: 100% !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0.7rem !important;
+}
+
+.goal-scorer-team-card .live-bench-chip {
+  width: 100% !important;
+  min-height: 72px !important;
+  display: grid !important;
+  grid-template-columns: 46px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 0.7rem !important;
+  padding: 0.65rem 0.75rem !important;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, rgba(15,23,42,0.98), rgba(15,23,42,0.74)) !important;
+  border: 1px solid rgba(148,163,184,0.36) !important;
+  color: #f8fafc !important;
+  text-align: left !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+
+.goal-scorer-team-card .live-bench-chip:hover {
+  border-color: rgba(34, 211, 238, 0.58) !important;
+  transform: translateY(-1px);
+}
+
+.goal-scorer-team-card .live-bench-chip.selected,
+.goal-scorer-team-card .live-bench-chip.active,
+.goal-scorer-team-card .live-bench-chip[aria-pressed="true"] {
+  border-color: rgba(34,197,94,0.95) !important;
+  background: linear-gradient(135deg, rgba(21,128,61,0.52), rgba(15,23,42,0.82)) !important;
+  box-shadow: 0 0 0 1px rgba(34,197,94,0.45), 0 12px 26px rgba(34,197,94,0.18) !important;
+}
+
+.goal-scorer-team-card .live-bench-chip img,
+.goal-scorer-team-card .live-bench-chip .player-avatar,
+.goal-scorer-team-card .live-bench-chip [class*="avatar"] {
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 999px !important;
+  object-fit: cover !important;
+}
+
+.goal-scorer-team-card .live-bench-chip .position-tag {
+  margin-left: auto !important;
+  justify-self: end !important;
+}
+
+@media (max-width: 680px) {
+  .goal-scorer-team-card .live-player-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .goal-scorer-team-card .live-bench-chip {
+    min-height: 64px !important;
+    grid-template-columns: 40px minmax(0, 1fr) auto !important;
+    gap: 0.55rem !important;
+  }
+
+  .goal-scorer-team-card .live-bench-chip img,
+  .goal-scorer-team-card .live-bench-chip .player-avatar,
+  .goal-scorer-team-card .live-bench-chip [class*="avatar"] {
+    width: 40px !important;
+    height: 40px !important;
+  }
+}
+
+
+.goal-scorer-team-card .live-player-choice-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0.75rem !important;
+}
+
+.goal-scorer-team-card .live-bench-chip {
+  width: 100% !important;
+  min-height: 64px !important;
+  box-sizing: border-box !important;
+}
+
+.premium-goal-event {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.65rem !important;
+  padding: 0.55rem 0.65rem !important;
+  margin: 0.45rem 0 !important;
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+  border-radius: 14px !important;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(2, 6, 23, 0.62)) !important;
+}
+
+.premium-goal-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.premium-goal-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  flex: 0 0 auto;
+}
+
+.premium-goal-text {
+  min-width: 0;
+  line-height: 1.12;
+}
+
+.premium-goal-topline {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 0.74rem;
+  color: #94a3b8;
+}
+
+.premium-goal-team {
+  color: #f8fafc;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+}
+
+.premium-goal-scorer {
+  margin-top: 0.1rem;
+  color: #ffffff;
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
+.premium-goal-assist {
+  margin-top: 0.08rem;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.premium-goal-delete {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  color: #f87171 !important;
+  font-size: 1.2rem;
+  text-decoration: none !important;
+}
+
+.event-log ul {
+  max-height: 15.5rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.event-log ul::-webkit-scrollbar {
+  width: 6px;
+}
+
+.event-log ul::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+}
+
+.live-timer-status-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.live-add-time-btn {
+  padding: 0.38rem 0.75rem !important;
+  border-radius: 999px !important;
+  font-size: 0.82rem !important;
+  font-weight: 800 !important;
+}
+
+.live-add-time-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.live-add-time-options button {
+  min-height: 4rem;
+  border-radius: 16px !important;
+  font-weight: 900 !important;
+}
+
+.premium-goal-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.premium-goal-edit {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  color: #60a5fa !important;
+  font-size: 1.1rem;
+  text-decoration: none !important;
+}
+
+.live-timer-main-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.live-add-time-btn.is-locked {
+  opacity: 0.42 !important;
+  filter: grayscale(0.75);
+  cursor: not-allowed !important;
+}
+
+.live-add-time-btn.is-ready {
+  border-color: rgba(34,197,94,0.75) !important;
+  color: #f8fafc !important;
+  box-shadow: 0 0 18px rgba(34,197,94,0.22);
+}
+
+.live-inline-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0.65rem !important;
+}
+
+.live-inline-actions > button {
+  width: 100% !important;
+  justify-content: center !important;
+}
+
+@media (max-width: 520px) {
+  .live-inline-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+.premium-goal-event {
+  background:
+    linear-gradient(135deg, var(--goal-team-soft, rgba(15,23,42,0.82)), rgba(2,6,23,0.68)) !important;
+  border-color: var(--goal-team-border, rgba(148,163,184,0.18)) !important;
+}
+
+.premium-goal-icon {
+  background: var(--goal-team-soft, rgba(34,197,94,0.14)) !important;
+  border-color: var(--goal-team-border, rgba(34,197,94,0.28)) !important;
+}
+
+.premium-goal-abbrev {
+  color: #cbd5e1;
+  font-size: 0.76em;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+/* Friendly live match polish */
+.live-timer-main-row {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.65rem !important;
+  flex-wrap: wrap !important;
+}
+
+.live-add-time-btn {
+  padding: 0.38rem 0.75rem !important;
+  border-radius: 999px !important;
+  font-size: 0.82rem !important;
+  font-weight: 900 !important;
+}
+
+.live-add-time-btn.is-locked {
+  opacity: 0.38 !important;
+  filter: grayscale(0.85);
+  cursor: not-allowed !important;
+}
+
+.live-add-time-btn.is-ready {
+  border-color: rgba(250, 204, 21, 0.85) !important;
+  color: #fef9c3 !important;
+  box-shadow: 0 0 18px rgba(250, 204, 21, 0.24) !important;
+}
+
+.event-input .live-inline-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0.65rem !important;
+}
+
+.event-input .live-inline-actions > button {
+  width: 100% !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+}
+
+.modal {
+  background:
+    radial-gradient(circle at top left, rgba(34,197,94,0.08), transparent 34%),
+    rgba(2, 6, 23, 0.96) !important;
+  border: 1px solid rgba(148,163,184,0.36) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.55) !important;
+}
+
+.live-add-time-modal .live-add-time-options {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.75rem !important;
+}

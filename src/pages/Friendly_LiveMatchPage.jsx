@@ -1654,6 +1654,8 @@ export function FriendlyLiveMatchPage({
   const [playersLoading, setPlayersLoading] = useState(true);
 
   const [showGoalRecorder, setShowGoalRecorder] = useState(false);
+  const [showAdditionalTimeModal, setShowAdditionalTimeModal] = useState(false);
+  const [pendingAdditionalTimeSeconds, setPendingAdditionalTimeSeconds] = useState(0);
   const [goalStep, setGoalStep] = useState("team");
   const [scoringTeamId, setScoringTeamId] = useState("");
   const [scorerName, setScorerName] = useState("");
@@ -2405,6 +2407,16 @@ export function FriendlyLiveMatchPage({
     return goalRecorderChoices.filter((entry) => entry.name !== scorerName);
   }, [goalRecorderChoices, scorerName]);
 
+  const goalRecorderChoicesForTeam = (teamId) =>
+    buildGoalRecorderChoices({
+      snapshot: teamId === teamAId ? verifiedLineupA : verifiedLineupB,
+      fallbackPlayers: teamId === teamAId ? teamA?.players || [] : teamB?.players || [],
+      canonicalName,
+      playerKeyFor,
+      formationMap,
+      defaultFormationId,
+    });
+
   const victimOptions = useMemo(() => {
     return shiboboChoices.filter((entry) => entry.name !== shiboboPlayerName);
   }, [shiboboChoices, shiboboPlayerName]);
@@ -2531,7 +2543,7 @@ export function FriendlyLiveMatchPage({
 
   const closeGoalRecorderCleanly = ({ clearCapture = false } = {}) => {
     setShowGoalRecorder(false);
-    setGoalStep("team");
+    setGoalStep("scorer");
     setScoringTeamId("");
     setScorerName("");
     setAssistName("");
@@ -2640,6 +2652,29 @@ export function FriendlyLiveMatchPage({
     return optimisticRequest;
   };
 
+  const addAdditionalTime = (seconds) => {
+    const extra = Number(seconds || 0);
+    if (!extra || typeof onUpdateMatchSeconds !== "function") return;
+
+    if (timeUp || displaySeconds <= 0) {
+      onUpdateMatchSeconds(Number(matchSeconds || 0) + extra);
+      setPendingAdditionalTimeSeconds(0);
+    } else {
+      setPendingAdditionalTimeSeconds(extra);
+    }
+
+    setShowAdditionalTimeModal(false);
+  };
+
+  useEffect(() => {
+    if (!pendingAdditionalTimeSeconds) return;
+    if (!timeUp && displaySeconds > 0) return;
+    if (typeof onUpdateMatchSeconds !== "function") return;
+
+    onUpdateMatchSeconds(Number(matchSeconds || 0) + Number(pendingAdditionalTimeSeconds || 0));
+    setPendingAdditionalTimeSeconds(0);
+  }, [timeUp, displaySeconds, pendingAdditionalTimeSeconds, matchSeconds, onUpdateMatchSeconds]);
+
   const handleStartGoalRecord = () => {
     if (!canControlMatch) {
       window.alert("Only captains or admin can record goals.");
@@ -2653,7 +2688,7 @@ export function FriendlyLiveMatchPage({
     createImmediateGoalCaptureRequest();
 
     setShowGoalRecorder(true);
-    setGoalStep("team");
+    setGoalStep("scorer");
     setScoringTeamId("");
     setScorerName("");
     setAssistName("");
@@ -3195,6 +3230,17 @@ export function FriendlyLiveMatchPage({
         <div className="timer-row">
           <div style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem" }}>
             <div className="timer-display">{formattedTime}</div>
+            {canControlMatch && typeof onUpdateMatchSeconds === "function" ? (
+              <button
+                type="button"
+                className={`secondary-btn live-add-time-btn ${displaySeconds <= 120 || timeUp ? "is-ready" : "is-locked"}`}
+                onClick={() => setShowAdditionalTimeModal(true)}
+                disabled={displaySeconds > 120 && !timeUp}
+                title={displaySeconds > 120 && !timeUp ? "Additional time opens in the final 2 minutes" : "Add additional time"}
+              >
+                ⏳ Add time
+              </button>
+            ) : null}
             {isAdmin && typeof onUpdateMatchSeconds === "function" && (
               <button
                 type="button"
@@ -3213,13 +3259,15 @@ export function FriendlyLiveMatchPage({
               </button>
             )}
           </div>
-          {running ? (
-            <span className="muted small">Live timer running</span>
-          ) : timeUp ? (
-            <span className="timer-warning">⏱️ Time is up – end match!</span>
-          ) : (
-            <span className="muted small">Match not running yet</span>
-          )}
+          <div className="live-timer-status-row">
+            {running ? (
+              <span className="muted small">Live timer running</span>
+            ) : timeUp ? (
+              <span className="timer-warning">⏱️ Time is up – end match!</span>
+            ) : (
+              <span className="muted small">Match not running yet</span>
+            )}
+          </div>
         </div>
 
         <div
@@ -3267,10 +3315,13 @@ export function FriendlyLiveMatchPage({
             <button
               className="secondary-btn"
               type="button"
-              onClick={handleUndoClick}
-              disabled={!canControlMatch || currentEvents.length === 0}
+              onClick={() => {
+                if (!playersReady) return;
+                setShowVerifyModal(true);
+              }}
+              disabled={!playersReady}
             >
-              Undo last
+              🧑 Edit Lineups
             </button>
           </div>
         </div>
@@ -3278,19 +3329,6 @@ export function FriendlyLiveMatchPage({
         <div className="event-log">
           <div className="event-log-header">
             <h3>Live Event Feed</h3>
-            {canControlMatch && (
-              <button
-                className="secondary-btn"
-                type="button"
-                onClick={() => {
-                  if (!playersReady) return;
-                  setShowVerifyModal(true);
-                }}
-                disabled={!playersReady}
-              >
-                🧩 Lineups
-              </button>
-            )}
           </div>
 
           {currentEvents.length === 0 && (
@@ -3300,25 +3338,58 @@ export function FriendlyLiveMatchPage({
           <ul>
             {currentEvents.map((e, idx) => {
               if (e.type === "goal") {
+                const teamForEvent =
+                  e.teamId === teamAId ? teamA : e.teamId === teamBId ? teamB : null;
                 const label = eventLabel(e.teamId, teamAId, teamBId, teamA, teamB);
+                const teamAbbrev =
+                  teamForEvent?.teamIdentity?.abbr || teamForEvent?.abbrev || label;
+                const goalTheme = getTeamAccent(teamForEvent || {});
                 return (
-                  <li key={e.id || idx} className="event-item">
-                    <span>
-                      [{formatEventClock(matchSeconds, displaySeconds, e.timeSeconds)}]{" "}
-                      <strong>{label}</strong> – Goal:{" "}
-                      {displayCompactPlayerName(e.scorer)}
-                      {e.assist
-                        ? ` (assist: ${displayCompactPlayerName(e.assist)})`
-                        : ""}
-                    </span>
+                  <li
+                    key={e.id || idx}
+                    className="event-item premium-goal-event"
+                    style={{
+                      "--goal-team-soft": goalTheme.soft,
+                      "--goal-team-border": goalTheme.border,
+                      "--goal-team-dot": goalTheme.dot,
+                    }}
+                  >
+                    <div className="premium-goal-main">
+                      <span className="premium-goal-icon">⚽</span>
+                      <div className="premium-goal-text">
+                        <div className="premium-goal-topline">
+                          <span className="premium-goal-clock">
+                            {formatEventClock(matchSeconds, displaySeconds, e.timeSeconds)}
+                          </span>
+                        </div>
+                        <div className="premium-goal-scorer">
+                          {displayCompactPlayerName(e.scorer)} <span className="premium-goal-abbrev">({teamAbbrev})</span>
+                        </div>
+                        {e.assist ? (
+                          <div className="premium-goal-assist">
+                            Assist: {displayCompactPlayerName(e.assist)}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
                     {canControlMatch && (
-                      <div className="event-actions">
+                      <div className="event-actions premium-goal-actions">
                         <button
-                          className="link-btn"
+                          className="link-btn premium-goal-edit"
+                          type="button"
+                          onClick={() => window.alert("Goal editing is next. For now, delete and re-record if needed.")}
+                          title="Edit goal"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          className="link-btn premium-goal-delete"
                           type="button"
                           onClick={() => handleRequestDelete(idx)}
+                          title="Delete goal"
                         >
-                          ❌ delete
+                          ✕
                         </button>
                       </div>
                     )}
@@ -3438,30 +3509,95 @@ export function FriendlyLiveMatchPage({
         </div>
       )}
 
+      {showAdditionalTimeModal && (
+        <div className="modal-backdrop">
+          <div className="modal live-add-time-modal">
+            <h3>Additional Time</h3>
+            <p className="muted small">
+              Choose how much time to add to this friendly match.
+            </p>
+
+            <div className="live-add-time-options">
+              <button className="secondary-btn" type="button" onClick={() => addAdditionalTime(60)}>
+                +1 min
+              </button>
+              <button className="primary-btn" type="button" onClick={() => addAdditionalTime(180)}>
+                +3 min
+              </button>
+              <button className="secondary-btn" type="button" onClick={() => addAdditionalTime(300)}>
+                +5 min
+              </button>
+            </div>
+
+            <div className="actions-row">
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={() => setShowAdditionalTimeModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showGoalRecorder && (
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Record Goal</h3>
 
-            {goalStep === "team" && (
+            {goalStep === "scorer" && (
               <>
-                <div className="field-row">
-                  <label>Step 1 — Which side scored?</label>
-                  <div className="team-toggle">
-                    <button
-                      className="toggle-btn tk-team-color-btn"
-                      type="button"
-                      onClick={() => handleChooseScoringTeam(teamAId)}
-                    >
+                <p className="muted small" style={{ marginTop: "-0.25rem" }}>
+                  Pick the player who scored. Both squads are shown together.
+                </p>
+
+                <div className="goal-scorer-two-column">
+                  <div className="goal-scorer-team-card">
+                    <div className="goal-scorer-team-head">
                       <TeamColorBadge team={teamA} fallback="DARK" />
-                    </button>
-                    <button
-                      className="toggle-btn tk-team-color-btn"
-                      type="button"
-                      onClick={() => handleChooseScoringTeam(teamBId)}
-                    >
+                    </div>
+                    <PlayerChoiceGrid
+                      title="Scorer"
+                      players={goalRecorderChoicesForTeam(teamAId)}
+                      selectedName={scorerName}
+                      onSelect={(name) => {
+                        setScoringTeamId(teamAId);
+                        setScorerName(name);
+                        setAssistName("");
+                        if (name) setGoalStep("assist");
+                      }}
+                      displayCompactPlayerName={displayCompactPlayerName}
+                      getPlayerPhoto={getPlayerPhoto}
+                      guestSnapshotChecker={(name) =>
+                        isGuestPlayerInSnapshot(verifiedLineupA, name)
+                      }
+                      disabled={!hasVerifiedLineups}
+                    />
+                  </div>
+
+                  <div className="goal-scorer-team-card">
+                    <div className="goal-scorer-team-head">
                       <TeamColorBadge team={teamB} fallback="LIGHT" />
-                    </button>
+                    </div>
+                    <PlayerChoiceGrid
+                      title="Scorer"
+                      players={goalRecorderChoicesForTeam(teamBId)}
+                      selectedName={scorerName}
+                      onSelect={(name) => {
+                        setScoringTeamId(teamBId);
+                        setScorerName(name);
+                        setAssistName("");
+                        if (name) setGoalStep("assist");
+                      }}
+                      displayCompactPlayerName={displayCompactPlayerName}
+                      getPlayerPhoto={getPlayerPhoto}
+                      guestSnapshotChecker={(name) =>
+                        isGuestPlayerInSnapshot(verifiedLineupB, name)
+                      }
+                      disabled={!hasVerifiedLineups}
+                    />
                   </div>
                 </div>
 
@@ -3477,63 +3613,50 @@ export function FriendlyLiveMatchPage({
               </>
             )}
 
-            {goalStep === "scorer" && (
-              <>
-                <PlayerChoiceGrid
-                  title="Scorer"
-                  players={goalRecorderChoices}
-                  selectedName={scorerName}
-                  onSelect={(name) => {
-                    setScorerName(name);
-                    setAssistName("");
-                    if (name) setGoalStep("assist");
-                  }}
-                  displayCompactPlayerName={displayCompactPlayerName}
-                  getPlayerPhoto={getPlayerPhoto}
-                  guestSnapshotChecker={(name) =>
-                    isGuestPlayerInSnapshot(selectedSnapshot, name)
-                  }
-                  disabled={!hasVerifiedLineups}
-                />
-
-                <div className="actions-row">
-                  <button
-                    className="secondary-btn"
-                    type="button"
-                    onClick={() => {
-                      setGoalStep("team");
-                      setScoringTeamId("");
-                      setScorerName("");
-                      setAssistName("");
-                    }}
-                  >
-                    ← Back
-                  </button>
-                  <button
-                    className="secondary-btn"
-                    type="button"
-                    onClick={handleCancelGoalRecord}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
-
             {goalStep === "assist" && (
               <>
-                <PlayerChoiceGrid
-                  title="Assist (optional)"
-                  players={assistOptions}
-                  selectedName={assistName}
-                  onSelect={(name) => setAssistName(name)}
-                  displayCompactPlayerName={displayCompactPlayerName}
-                  getPlayerPhoto={getPlayerPhoto}
-                  guestSnapshotChecker={(name) =>
-                    isGuestPlayerInSnapshot(selectedSnapshot, name)
-                  }
-                  disabled={!hasVerifiedLineups}
-                />
+                <p className="muted small" style={{ marginTop: "-0.25rem" }}>
+                  Assist provider (optional)
+                </p>
+
+                <div className="goal-scorer-team-card">
+                  <div className="goal-scorer-team-head">
+                    <strong>
+                      ⚽ Scorer: {displayCompactPlayerName(scorerName)}
+                    </strong>
+                  </div>
+
+                  <div className="live-player-choice-grid">
+                    {assistOptions.map((entry) => {
+                      const rawName =
+                        typeof entry === "string"
+                          ? entry
+                          : entry?.name || "";
+
+                      const roleTag =
+                        typeof entry === "string"
+                          ? ""
+                          : String(entry?.roleTag || "");
+
+                      const photoData = getPlayerPhoto(rawName);
+
+                      return (
+                        <PlayerBenchChip
+                          key={rawName}
+                          name={displayCompactPlayerName(rawName)}
+                          isSelected={assistName === rawName}
+                          onClick={() =>
+                            setAssistName(
+                              assistName === rawName ? "" : rawName
+                            )
+                          }
+                          photoData={photoData}
+                          roleTag={roleTag}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <div className="actions-row">
                   <button
@@ -3546,6 +3669,7 @@ export function FriendlyLiveMatchPage({
                   >
                     ← Back
                   </button>
+
                   <button
                     className="primary-btn"
                     type="button"
@@ -3554,6 +3678,7 @@ export function FriendlyLiveMatchPage({
                   >
                     Save Goal
                   </button>
+
                   <button
                     className="secondary-btn"
                     type="button"
