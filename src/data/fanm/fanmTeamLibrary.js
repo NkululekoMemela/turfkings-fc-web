@@ -44,9 +44,6 @@ export const FANM_PRO_CLUBS = [
   { type: "club", abbr: "AJA", name: "Ajax", leagueGroup: "Europe", logo32: "/fanm-assets/pro-clubs/32/AJA.webp" },
   { type: "club", abbr: "PSV", name: "PSV Eindhoven", leagueGroup: "Europe", logo32: "/fanm-assets/pro-clubs/32/PSV.webp" },
   { type: "club", abbr: "MAR", name: "Marseille", leagueGroup: "Europe", logo32: "/fanm-assets/pro-clubs/32/MAR.webp" },
-  { type: "club", abbr: "KCH", name: "Kaizer Chiefs", leagueGroup: "PSL", logo32: "/fanm-assets/pro-clubs/32/KCH.webp" },
-  { type: "club", abbr: "OPI", name: "Orlando Pirates", leagueGroup: "PSL", logo32: "/fanm-assets/pro-clubs/32/OPI.webp" },
-  { type: "club", abbr: "MSD", name: "Mamelodi Sundowns", leagueGroup: "PSL", logo32: "/fanm-assets/pro-clubs/32/MSD.webp" },
 ];
 
 export const groupBy = (items, key) =>
