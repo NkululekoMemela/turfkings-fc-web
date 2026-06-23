@@ -10623,3 +10623,47 @@ button.fanm-chat-highlight-card {
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   gap: 0.75rem !important;
 }
+
+.live-goal-recorder-modal {
+  width: min(720px, calc(100vw - 1.5rem)) !important;
+}
+
+.live-goal-recorder-modal .live-goal-recorder-panel {
+  margin-top: 0.75rem;
+}
+
+.event-log .premium-goal-event {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.fanm-live-team-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.16rem 0.5rem;
+  border-radius: 999px;
+  background: var(--team-badge-bg, rgba(15, 23, 42, 0.75));
+  border: 1px solid var(--team-badge-border, rgba(148, 163, 184, 0.35));
+  color: var(--team-badge-text, #e5e7eb);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.fanm-live-team-logo {
+  width: 1.05rem;
+  height: 1.05rem;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.fanm-live-team-flag {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.fanm-live-team-badge[style*="rgba(15, 23, 42"],
+.fanm-live-team-badge[style*="#0F172A"],
+.fanm-live-team-badge[style*="#000"] {
+  border-color: rgba(255, 255, 255, 0.55) !important;
+}

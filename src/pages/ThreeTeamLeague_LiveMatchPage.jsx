@@ -1,5 +1,9 @@
 // src/pages/ThreeTeamLeague_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  FANM_NATIONAL_TEAMS,
+  FANM_PRO_CLUBS,
+} from "../data/fanm/fanmTeamLibrary.js";
 import { getTeamById } from "../core/teams.js";
 import { db } from "../firebaseConfig.js";
 import {
@@ -813,40 +817,84 @@ function getTeamAccent(team = {}) {
   };
 }
 
+
+function normalizeIdentityLookup(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+const FANM_TEAM_IDENTITY_LOOKUP = [
+  ...(Array.isArray(FANM_NATIONAL_TEAMS) ? FANM_NATIONAL_TEAMS : []),
+  ...(Array.isArray(FANM_PRO_CLUBS) ? FANM_PRO_CLUBS : []),
+];
+
+function resolveLiveTeamIdentity(team = {}) {
+  if (team?.teamIdentity) return team.teamIdentity;
+
+  const keys = [
+    team?.abbr,
+    team?.label,
+    team?.name,
+    team?.title,
+  ]
+    .map(normalizeIdentityLookup)
+    .filter(Boolean);
+
+  return (
+    FANM_TEAM_IDENTITY_LOOKUP.find((identity) => {
+      const identityKeys = [
+        identity?.abbr,
+        identity?.name,
+      ]
+        .map(normalizeIdentityLookup)
+        .filter(Boolean);
+
+      return keys.some((key) => identityKeys.includes(key));
+    }) || null
+  );
+}
+
+function getLiveTeamLabel(team = {}, short = false) {
+  const identity = resolveLiveTeamIdentity(team);
+  if (short && identity?.abbr) return identity.abbr;
+  if (identity?.name) return identity.name;
+  if (short) return team?.abbrev || getShortName(team?.label);
+  return team?.label || team?.name || team?.title || "Team";
+}
+
+function getLiveTeamAbbrev(team = {}) {
+  const identity = resolveLiveTeamIdentity(team);
+  return identity?.abbr || team?.abbrev || getShortName(team?.label) || "TEAM";
+}
+
 function TeamColorBadge({ team, short = false }) {
   const accent = getTeamAccent(team);
-  const label = short ? getShortName(team?.label) : team?.label;
+  const identity = resolveLiveTeamIdentity(team);
+  const label = short ? getLiveTeamAbbrev(team) : getLiveTeamLabel(team, false);
 
   return (
     <span
+      className="fanm-live-team-badge"
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.42rem",
-        padding: "0.16rem 0.5rem",
-        borderRadius: "999px",
-        background: accent.soft,
-        border: `1px solid ${accent.border}`,
-        color: accent.text,
-        fontWeight: 700,
-        whiteSpace: "nowrap",
+        "--team-badge-bg": accent.soft,
+        "--team-badge-border": accent.border,
+        "--team-badge-text": accent.text,
       }}
     >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-        style={{ flexShrink: 0 }}
-      >
-        <path
-          d="M9 4 12 6 15 4l4 2 2 5-3 2v7a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-7l-3-2 2-5 4-2Z"
-          fill={accent.dot}
-          stroke="rgba(255,255,255,0.7)"
-          strokeWidth="1.4"
-          strokeLinejoin="round"
+      {identity?.type === "national" && identity.flag ? (
+        <span className="fanm-live-team-flag">{identity.flag}</span>
+      ) : identity?.logo32 ? (
+        <img
+          src={identity.logo32}
+          alt=""
+          className="fanm-live-team-logo"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
         />
-      </svg>
+      ) : null}
       <span>{label}</span>
     </span>
   );
@@ -1572,6 +1620,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   onBackToLanding,
   onGoToStats,
   onOpenHighlightsCamera,
+  onUpdateMatchSeconds,
 }) {
   const liveTeams =
     Array.isArray(pendingMatchStartContext?.teams) &&
@@ -1868,7 +1917,13 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [scoringTeamId, setScoringTeamId] = useState("");
   const [scorerName, setScorerName] = useState("");
   const [assistName, setAssistName] = useState("");
+  const [editingGoalIndex, setEditingGoalIndex] = useState(null);
   const [showGoalRecorder, setShowGoalRecorder] = useState(false);
+  const [showAdditionalTimeModal, setShowAdditionalTimeModal] = useState(false);
+  const [pendingAdditionalTimeSeconds, setPendingAdditionalTimeSeconds] = useState(0);
+  const [additionalTimeTotalSeconds, setAdditionalTimeTotalSeconds] = useState(0);
+  const [additionalTimeSecondsLeft, setAdditionalTimeSecondsLeft] = useState(0);
+  const [additionalTimeRunning, setAdditionalTimeRunning] = useState(false);
   const [goalStep, setGoalStep] = useState("team");
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -2284,6 +2339,14 @@ export function ThreeTeamLeagueLiveMatchPage({
     return `${m}:${s}`;
   }, [displaySeconds]);
 
+  const liveFormattedTime = useMemo(() => {
+    if (additionalTimeRunning || additionalTimeSecondsLeft > 0) {
+      return formatSeconds(additionalTimeSecondsLeft);
+    }
+
+    return formattedTime;
+  }, [additionalTimeRunning, additionalTimeSecondsLeft, formattedTime]);
+
   const goalsA = currentEvents.filter(
     (e) => e.teamId === teamAId && e.type === "goal"
   ).length;
@@ -2338,6 +2401,16 @@ export function ThreeTeamLeagueLiveMatchPage({
   const assistOptions = useMemo(() => {
     return goalRecorderChoices.filter((entry) => entry.name !== scorerName);
   }, [goalRecorderChoices, scorerName]);
+
+  const goalRecorderChoicesForTeam = (teamId) =>
+    buildGoalRecorderChoices({
+      snapshot: teamId === teamAId ? verifiedLineupA : verifiedLineupB,
+      fallbackPlayers: teamId === teamAId ? teamA?.players || [] : teamB?.players || [],
+      canonicalName,
+      playerKeyFor,
+      formationMap: liveFormationsMap,
+      defaultFormationId: liveDefaultFormationId,
+    });
 
   const basicSummary = {
     matchNumber: currentMatchNo,
@@ -2413,6 +2486,47 @@ export function ThreeTeamLeagueLiveMatchPage({
     setShowVerifyModal(false);
   };
 
+  const addAdditionalTime = (seconds) => {
+    const extra = Number(seconds || 0);
+    if (!extra) return;
+
+    setAdditionalTimeTotalSeconds(extra);
+
+    if (timeUp || displaySeconds <= 0) {
+      setAdditionalTimeSecondsLeft(extra);
+      setAdditionalTimeRunning(true);
+      setPendingAdditionalTimeSeconds(0);
+    } else {
+      setPendingAdditionalTimeSeconds(extra);
+    }
+
+    setShowAdditionalTimeModal(false);
+  };
+
+  useEffect(() => {
+    if (!pendingAdditionalTimeSeconds) return;
+    if (!timeUp && displaySeconds > 0) return;
+
+    setAdditionalTimeTotalSeconds(pendingAdditionalTimeSeconds);
+    setAdditionalTimeSecondsLeft(pendingAdditionalTimeSeconds);
+    setAdditionalTimeRunning(true);
+    setPendingAdditionalTimeSeconds(0);
+  }, [timeUp, displaySeconds, pendingAdditionalTimeSeconds]);
+
+  useEffect(() => {
+    if (!additionalTimeRunning) return;
+    if (additionalTimeSecondsLeft <= 0) {
+      setAdditionalTimeRunning(false);
+      return;
+    }
+
+    const id = setInterval(() => {
+      setAdditionalTimeSecondsLeft((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+
+    return () => clearInterval(id);
+  }, [additionalTimeRunning, additionalTimeSecondsLeft]);
+
   const handleStartGoalRecord = () => {
     if (!canControlMatch) {
       window.alert("Only captains or admin can record goals.");
@@ -2423,8 +2537,9 @@ export function ThreeTeamLeagueLiveMatchPage({
       return;
     }
 
+    setEditingGoalIndex(null);
     setShowGoalRecorder(true);
-    setGoalStep("team");
+    setGoalStep("scorer");
     setScoringTeamId("");
     setScorerName("");
     setAssistName("");
@@ -2439,7 +2554,8 @@ export function ThreeTeamLeagueLiveMatchPage({
 
   const handleCancelGoalRecord = () => {
     setShowGoalRecorder(false);
-    setGoalStep("team");
+    setEditingGoalIndex(null);
+    setGoalStep("scorer");
     setScoringTeamId("");
     setScorerName("");
     setAssistName("");
@@ -2494,6 +2610,68 @@ export function ThreeTeamLeagueLiveMatchPage({
     setGoalStep("team");
 
     appendEventToFirestore(event, basicSummary, displaySeconds, matchSeconds);
+  };
+
+  const handleEditGoal = (index) => {
+    if (!canControlMatch) return;
+
+    const event = currentEvents[index];
+    if (!event || event.type !== "goal") return;
+
+    setEditingGoalIndex(index);
+    setScoringTeamId(event.teamId || "");
+    setScorerName(event.scorer || "");
+    setAssistName(event.assist || "");
+    setGoalStep("scorer");
+    setShowGoalRecorder(true);
+  };
+
+  const handleSaveEditedGoal = async () => {
+    if (!canControlMatch || editingGoalIndex === null) return;
+    if (!scoringTeamId || !scorerName) return;
+
+    const originalEvent = currentEvents[editingGoalIndex];
+    if (!originalEvent || originalEvent.type !== "goal") return;
+
+    const relevantSnapshot =
+      scoringTeamId === teamAId ? verifiedLineupA : verifiedLineupB;
+
+    const scorerIsGuest = isGuestPlayerInSnapshot(relevantSnapshot, scorerName);
+    const assistIsGuest = assistName
+      ? isGuestPlayerInSnapshot(relevantSnapshot, assistName)
+      : false;
+
+    const updatedEvent = {
+      ...originalEvent,
+      teamId: scoringTeamId,
+      scorer: scorerName,
+      assist: assistName || null,
+      scorerType: scorerIsGuest ? "guest" : "registered",
+      assistType: assistName
+        ? assistIsGuest
+          ? "guest"
+          : "registered"
+        : null,
+      editedAt: new Date().toISOString(),
+    };
+
+    const updatedEvents = currentEvents.map((event, index) =>
+      index === editingGoalIndex ? updatedEvent : event
+    );
+
+    overwriteEventsInFirestore(
+      updatedEvents,
+      basicSummary,
+      displaySeconds,
+      matchSeconds
+    );
+
+    setEditingGoalIndex(null);
+    setScoringTeamId("");
+    setScorerName("");
+    setAssistName("");
+    setShowGoalRecorder(false);
+    setGoalStep("scorer");
   };
 
   const handleEndMatchClick = () => {
@@ -2777,9 +2955,28 @@ export function ThreeTeamLeagueLiveMatchPage({
 
       <section className="card">
         <div className="timer-row">
-          <div className="timer-display">{formattedTime}</div>
+          <div className="live-timer-main-row">
+            <div className="timer-display">{liveFormattedTime}</div>
+            {canControlMatch ? (
+              <button
+                type="button"
+                className={`secondary-btn live-add-time-btn ${displaySeconds <= 120 || timeUp ? "is-ready" : "is-locked"}`}
+                onClick={() => setShowAdditionalTimeModal(true)}
+                disabled={displaySeconds > 120 && !timeUp}
+                title={displaySeconds > 120 && !timeUp ? "Additional time opens in the final 2 minutes" : "Add additional time"}
+              >
+                ⏳ Add time
+              </button>
+            ) : null}
+          </div>
           {running ? (
-            <span className="muted small">Live timer running</span>
+            <span className="muted small">
+              {additionalTimeRunning
+                ? "Additional time running"
+                : pendingAdditionalTimeSeconds
+                ? `+${formatSeconds(pendingAdditionalTimeSeconds)} queued after full-time`
+                : "Live timer running"}
+            </span>
           ) : timeUp ? (
             <span className="timer-warning">⏱️ Time is up – end match!</span>
           ) : (
@@ -2813,167 +3010,28 @@ export function ThreeTeamLeagueLiveMatchPage({
           )}
 
           {canControlMatch ? (
-            !showGoalRecorder ? (
-              <div className="live-inline-actions">
-                <button
-                  className="primary-btn"
-                  type="button"
-                  onClick={handleStartGoalRecord}
-                  disabled={!hasVerifiedLineups}
-                >
-                  ⚽ Record Goal
-                </button>
-              </div>
-            ) : (
-              <div className="live-goal-recorder-panel">
-                {goalStep === "team" && (
-                  <div className="field-row">
-                    <label>Step 1 — Which team scored?</label>
-                    <div className="team-toggle">
-                      <button
-                        className="toggle-btn tk-team-color-btn"
-                        type="button"
-                        onClick={() => handleChooseScoringTeam(teamAId)}
-                        disabled={!hasVerifiedLineups}
-                        style={{
-                          borderColor: teamAAccent.border,
-                          background: teamAAccent.soft,
-                          color: teamAAccent.text,
-                        }}
-                      >
-                        <span
-                          className="tk-team-dot"
-                          style={{ background: teamAAccent.dot }}
-                        />
-                        <TeamColorBadge team={teamA} />
-                      </button>
-                      <button
-                        className="toggle-btn tk-team-color-btn"
-                        type="button"
-                        onClick={() => handleChooseScoringTeam(teamBId)}
-                        disabled={!hasVerifiedLineups}
-                        style={{
-                          borderColor: teamBAccent.border,
-                          background: teamBAccent.soft,
-                          color: teamBAccent.text,
-                        }}
-                      >
-                        <span
-                          className="tk-team-dot"
-                          style={{ background: teamBAccent.dot }}
-                        />
-                        <TeamColorBadge team={teamB} />
-                      </button>
-                    </div>
-                  </div>
-                )}
+            <div className="live-inline-actions">
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={handleStartGoalRecord}
+                disabled={!hasVerifiedLineups}
+              >
+                ⚽ Record Goal
+              </button>
 
-                {goalStep === "scorer" && (
-                  <>
-                    <div className="field-row">
-                      <label>
-                        Step 2 — Pick scorer from{" "}
-                        <strong>
-                          {scoringTeamId === teamAId ? teamA?.label : teamB?.label}
-                        </strong>
-                      </label>
-                    </div>
-
-                    <PlayerChoiceGrid
-                      title="Scorer"
-                      players={goalRecorderChoices}
-                      selectedName={scorerName}
-                      onSelect={(name) => {
-                        setScorerName(name);
-                        setAssistName("");
-                        if (name) setGoalStep("assist");
-                      }}
-                      displayCompactPlayerName={displayCompactPlayerName}
-                      getPlayerPhoto={getPlayerPhoto}
-                      guestSnapshotChecker={(name) =>
-                        isGuestPlayerInSnapshot(selectedSnapshot, name)
-                      }
-                      disabled={!hasVerifiedLineups}
-                    />
-
-                    <div className="live-inline-actions">
-                      <button
-                        className="secondary-btn"
-                        type="button"
-                        onClick={() => {
-                          setGoalStep("team");
-                          setScoringTeamId("");
-                          setScorerName("");
-                          setAssistName("");
-                        }}
-                      >
-                        ← Back
-                      </button>
-                      <button
-                        className="secondary-btn"
-                        type="button"
-                        onClick={handleCancelGoalRecord}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {goalStep === "assist" && (
-                  <>
-                    <div className="field-row">
-                      <label>
-                        Step 3 — Assist for{" "}
-                        <strong>{displayCompactPlayerName(scorerName)}</strong>{" "}
-                        (optional)
-                      </label>
-                    </div>
-
-                    <PlayerChoiceGrid
-                      title="Assist (optional)"
-                      players={assistOptions}
-                      selectedName={assistName}
-                      onSelect={(name) => setAssistName(name)}
-                      displayCompactPlayerName={displayCompactPlayerName}
-                      getPlayerPhoto={getPlayerPhoto}
-                      guestSnapshotChecker={(name) =>
-                        isGuestPlayerInSnapshot(selectedSnapshot, name)
-                      }
-                      disabled={!hasVerifiedLineups}
-                    />
-
-                    <div className="live-inline-actions">
-                      <button
-                        className="secondary-btn"
-                        type="button"
-                        onClick={() => {
-                          setGoalStep("scorer");
-                          setAssistName("");
-                        }}
-                      >
-                        ← Back
-                      </button>
-                      <button
-                        className="primary-btn"
-                        type="button"
-                        onClick={handleAddEvent}
-                        disabled={!hasVerifiedLineups || !scorerName}
-                      >
-                        ✍🏻 Save Goal
-                      </button>
-                      <button
-                        className="secondary-btn"
-                        type="button"
-                        onClick={handleCancelGoalRecord}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={() => {
+                  if (!playersReady) return;
+                  setShowVerifyModal(true);
+                }}
+                disabled={!playersReady}
+              >
+                🧑 Edit Lineups
+              </button>
+            </div>
           ) : (
             <p className="muted stats-season-range">
               This is a live view only. Goal recording is controlled by
@@ -2985,16 +3043,6 @@ export function ThreeTeamLeagueLiveMatchPage({
         <div className="event-log">
           <div className="event-log-header">
             <h3>Current Match Goals</h3>
-            {canControlMatch && (
-              <button
-                className="secondary-btn"
-                type="button"
-                onClick={handleUndoClick}
-                disabled={currentEvents.length === 0}
-              >
-                Undo last
-              </button>
-            )}
           </div>
 
           {currentEvents.length === 0 && <p className="muted">No goals yet.</p>}
@@ -3008,50 +3056,65 @@ export function ThreeTeamLeagueLiveMatchPage({
                   ? teamB
                   : null;
 
-              return (
-                <li key={e.id} className="event-item">
-                  <span>
-                    [{formatSeconds(e.timeSeconds)}] <TeamColorBadge team={team} /> –{" "}
-                    <strong>Goal:</strong> {displayCompactPlayerName(e.scorer)}
-                    {e.scorerType === "guest" ? " (Guest)" : ""}
-                    {e.assist
-                      ? ` (assist: ${displayCompactPlayerName(e.assist)}${
-                          e.assistType === "guest" ? " - Guest" : ""
-                        })`
-                      : ""}
-                  </span>
+              const teamAbbrev = getLiveTeamAbbrev(team);
+              const goalTheme = getTeamAccent(team || {});
 
-                  {canControlMatch && (
-                    <div className="event-actions">
-                      <button
-                        className="link-btn"
-                        type="button"
-                        onClick={() => handleRequestDelete(idx)}
-                      >
-                        ❌ delete
-                      </button>
+              return (
+                <li
+                    key={e.id}
+                    className="event-item premium-goal-event"
+                    style={{
+                      "--goal-team-soft": goalTheme.soft,
+                      "--goal-team-border": goalTheme.border,
+                      "--goal-team-dot": goalTheme.dot,
+                    }}
+                  >
+                    <div className="premium-goal-main">
+                      <span className="premium-goal-icon">⚽</span>
+                      <div className="premium-goal-text">
+                        <div className="premium-goal-topline">
+                          <span className="premium-goal-clock">
+                            {formatSeconds(e.timeSeconds)}
+                          </span>
+                        </div>
+                        <div className="premium-goal-scorer">
+                          {displayCompactPlayerName(e.scorer)} <span className="premium-goal-abbrev">({teamAbbrev})</span>
+                        </div>
+                        {e.assist ? (
+                          <div className="premium-goal-assist">
+                            Assist: {displayCompactPlayerName(e.assist)}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                  )}
-                </li>
+
+                    {canControlMatch && (
+                      <div className="event-actions premium-goal-actions">
+                        <button
+                          className="link-btn premium-goal-edit"
+                          type="button"
+                          onClick={() => handleEditGoal(idx)}
+                          title="Edit goal"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          className="link-btn premium-goal-delete"
+                          type="button"
+                          onClick={() => handleRequestDelete(idx)}
+                          title="Delete goal"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                  </li>
               );
             })}
           </ul>
         </div>
 
         <div className="actions-row">
-          {canControlMatch && (
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={() => {
-                if (!playersReady) return;
-                setShowVerifyModal(true);
-              }}
-              disabled={!playersReady}
-            >
-              🧩 Verify Lineups
-            </button>
-          )}
 
           <button
             className="secondary-btn"
@@ -3080,6 +3143,189 @@ export function ThreeTeamLeagueLiveMatchPage({
           )}
         </div>
       </section>
+
+      {showAdditionalTimeModal && (
+        <div className="modal-backdrop" style={{ zIndex: 12000 }}>
+          <div className="modal live-add-time-modal">
+            <h3>Additional Time</h3>
+            <p className="muted small">
+              Choose league stoppage time. This starts after full-time.
+            </p>
+
+            <div className="live-add-time-options">
+              <button className="secondary-btn" type="button" onClick={() => addAdditionalTime(30)}>
+                +30 sec
+              </button>
+              <button className="primary-btn" type="button" onClick={() => addAdditionalTime(60)}>
+                +1 min
+              </button>
+              <button className="secondary-btn" type="button" onClick={() => addAdditionalTime(90)}>
+                +1.5 min
+              </button>
+            </div>
+
+            <div className="actions-row">
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={() => setShowAdditionalTimeModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGoalRecorder && (
+        <div className="modal-backdrop" style={{ zIndex: 12000 }}>
+          <div className="modal live-goal-recorder-modal">
+            <h3>{editingGoalIndex !== null ? "Edit Goal" : "Record Goal"}</h3>
+              <div className="live-goal-recorder-panel">
+                {goalStep === "scorer" && (
+                  <>
+                    <p className="muted small" style={{ marginTop: "-0.25rem" }}>
+                      Pick the player who scored. Both squads are shown together.
+                    </p>
+
+                    <div className="goal-scorer-two-column">
+                      <div className="goal-scorer-team-card">
+                        <div className="goal-scorer-team-head">
+                          <TeamColorBadge team={teamA} />
+                        </div>
+                        <PlayerChoiceGrid
+                          title="Scorer"
+                          players={goalRecorderChoicesForTeam(teamAId)}
+                          selectedName={scorerName}
+                          onSelect={(name) => {
+                            setScoringTeamId(teamAId);
+                            setScorerName(name);
+                            setAssistName("");
+                            if (name) setGoalStep("assist");
+                          }}
+                          displayCompactPlayerName={displayCompactPlayerName}
+                          getPlayerPhoto={getPlayerPhoto}
+                          guestSnapshotChecker={(name) =>
+                            isGuestPlayerInSnapshot(verifiedLineupA, name)
+                          }
+                          disabled={!hasVerifiedLineups}
+                        />
+                      </div>
+
+                      <div className="goal-scorer-team-card">
+                        <div className="goal-scorer-team-head">
+                          <TeamColorBadge team={teamB} />
+                        </div>
+                        <PlayerChoiceGrid
+                          title="Scorer"
+                          players={goalRecorderChoicesForTeam(teamBId)}
+                          selectedName={scorerName}
+                          onSelect={(name) => {
+                            setScoringTeamId(teamBId);
+                            setScorerName(name);
+                            setAssistName("");
+                            if (name) setGoalStep("assist");
+                          }}
+                          displayCompactPlayerName={displayCompactPlayerName}
+                          getPlayerPhoto={getPlayerPhoto}
+                          guestSnapshotChecker={(name) =>
+                            isGuestPlayerInSnapshot(verifiedLineupB, name)
+                          }
+                          disabled={!hasVerifiedLineups}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="live-inline-actions">
+                      <button
+                        className="secondary-btn"
+                        type="button"
+                        onClick={handleCancelGoalRecord}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {goalStep === "assist" && (
+                  <>
+                    <p className="muted small" style={{ marginTop: "-0.25rem" }}>
+                      Assist provider (optional)
+                    </p>
+
+                    <div className="goal-scorer-team-card">
+                      <div className="goal-scorer-team-head">
+                        <strong>
+                          ⚽ Scorer: {displayCompactPlayerName(scorerName)}
+                        </strong>
+                      </div>
+
+                      <div className="live-player-choice-grid">
+                        {assistOptions.map((entry) => {
+                          const rawName =
+                            typeof entry === "string"
+                              ? entry
+                              : entry?.name || "";
+
+                          const roleTag =
+                            typeof entry === "string"
+                              ? ""
+                              : String(entry?.roleTag || "");
+
+                          const photoData = getPlayerPhoto(rawName);
+
+                          return (
+                            <PlayerBenchChip
+                              key={rawName}
+                              name={displayCompactPlayerName(rawName)}
+                              isSelected={assistName === rawName}
+                              onClick={() =>
+                                setAssistName(
+                                  assistName === rawName ? "" : rawName
+                                )
+                              }
+                              photoData={photoData}
+                              roleTag={roleTag}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="live-inline-actions">
+                      <button
+                        className="secondary-btn"
+                        type="button"
+                        onClick={() => {
+                          setGoalStep("scorer");
+                          setAssistName("");
+                        }}
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        className="primary-btn"
+                        type="button"
+                        onClick={editingGoalIndex !== null ? handleSaveEditedGoal : handleAddEvent}
+                        disabled={!hasVerifiedLineups || !scorerName}
+                      >
+                        {editingGoalIndex !== null ? "Save Changes" : "Save Goal"}
+                      </button>
+                      <button
+                        className="secondary-btn"
+                        type="button"
+                        onClick={handleCancelGoalRecord}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+          </div>
+        </div>
+      )}
 
       {showVerifyModal && (
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>

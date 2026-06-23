@@ -1656,10 +1656,14 @@ export function FriendlyLiveMatchPage({
   const [showGoalRecorder, setShowGoalRecorder] = useState(false);
   const [showAdditionalTimeModal, setShowAdditionalTimeModal] = useState(false);
   const [pendingAdditionalTimeSeconds, setPendingAdditionalTimeSeconds] = useState(0);
+  const [additionalTimeTotalSeconds, setAdditionalTimeTotalSeconds] = useState(0);
+  const [additionalTimeSecondsLeft, setAdditionalTimeSecondsLeft] = useState(0);
+  const [additionalTimeRunning, setAdditionalTimeRunning] = useState(false);
   const [goalStep, setGoalStep] = useState("team");
   const [scoringTeamId, setScoringTeamId] = useState("");
   const [scorerName, setScorerName] = useState("");
   const [assistName, setAssistName] = useState("");
+  const [editingGoalIndex, setEditingGoalIndex] = useState(null);
 
   const [showShiboboRecorder, setShowShiboboRecorder] = useState(false);
   const [shiboboTeamId, setShiboboTeamId] = useState("");
@@ -2304,6 +2308,14 @@ export function FriendlyLiveMatchPage({
     return `${m}:${s}`;
   }, [displaySeconds]);
 
+  const liveFormattedTime = useMemo(() => {
+    if (additionalTimeRunning || additionalTimeSecondsLeft > 0) {
+      return formatSeconds(additionalTimeSecondsLeft);
+    }
+
+    return formattedTime;
+  }, [additionalTimeRunning, additionalTimeSecondsLeft, formattedTime]);
+
   const goalsA = currentEvents.filter(
     (e) => e.teamId === teamAId && e.type === "goal"
   ).length;
@@ -2654,10 +2666,13 @@ export function FriendlyLiveMatchPage({
 
   const addAdditionalTime = (seconds) => {
     const extra = Number(seconds || 0);
-    if (!extra || typeof onUpdateMatchSeconds !== "function") return;
+    if (!extra) return;
+
+    setAdditionalTimeTotalSeconds(extra);
 
     if (timeUp || displaySeconds <= 0) {
-      onUpdateMatchSeconds(Number(matchSeconds || 0) + extra);
+      setAdditionalTimeSecondsLeft(extra);
+      setAdditionalTimeRunning(true);
       setPendingAdditionalTimeSeconds(0);
     } else {
       setPendingAdditionalTimeSeconds(extra);
@@ -2669,11 +2684,26 @@ export function FriendlyLiveMatchPage({
   useEffect(() => {
     if (!pendingAdditionalTimeSeconds) return;
     if (!timeUp && displaySeconds > 0) return;
-    if (typeof onUpdateMatchSeconds !== "function") return;
 
-    onUpdateMatchSeconds(Number(matchSeconds || 0) + Number(pendingAdditionalTimeSeconds || 0));
+    setAdditionalTimeTotalSeconds(pendingAdditionalTimeSeconds);
+    setAdditionalTimeSecondsLeft(pendingAdditionalTimeSeconds);
+    setAdditionalTimeRunning(true);
     setPendingAdditionalTimeSeconds(0);
-  }, [timeUp, displaySeconds, pendingAdditionalTimeSeconds, matchSeconds, onUpdateMatchSeconds]);
+  }, [timeUp, displaySeconds, pendingAdditionalTimeSeconds]);
+
+  useEffect(() => {
+    if (!additionalTimeRunning) return;
+    if (additionalTimeSecondsLeft <= 0) {
+      setAdditionalTimeRunning(false);
+      return;
+    }
+
+    const id = setInterval(() => {
+      setAdditionalTimeSecondsLeft((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+
+    return () => clearInterval(id);
+  }, [additionalTimeRunning, additionalTimeSecondsLeft]);
 
   const handleStartGoalRecord = () => {
     if (!canControlMatch) {
@@ -2707,6 +2737,7 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
+    setEditingGoalIndex(null);
     closeGoalRecorderCleanly({ clearCapture: true });
   };
 
@@ -2872,6 +2903,7 @@ export function FriendlyLiveMatchPage({
     setScorerName("");
     setAssistName("");
     setShowGoalRecorder(false);
+    setEditingGoalIndex(null);
     setGoalStep("team");
 
     appendEventToFirestore(event, basicSummary, displaySeconds, matchSeconds);
@@ -3014,6 +3046,72 @@ export function FriendlyLiveMatchPage({
       displaySeconds,
       matchSeconds
     );
+  };
+
+  const handleEditGoal = (index) => {
+    if (!canControlMatch) return;
+
+    const event = currentEvents[index];
+    if (!event || event.type !== "goal") return;
+
+    setEditingGoalIndex(index);
+    setScoringTeamId(event.teamId || "");
+    setScorerName(event.scorer || "");
+    setAssistName(event.assist || "");
+    setGoalStep("scorer");
+    setShowGoalRecorder(true);
+  };
+
+  const handleSaveEditedGoal = async () => {
+    if (!canControlMatch || editingGoalIndex === null) return;
+    if (!scoringTeamId || !scorerName) return;
+
+    const originalEvent = currentEvents[editingGoalIndex];
+    if (!originalEvent || originalEvent.type !== "goal") return;
+
+    const relevantSnapshot =
+      scoringTeamId === teamAId ? verifiedLineupA : verifiedLineupB;
+
+    const scorerIsGuest = isGuestPlayerInSnapshot(relevantSnapshot, scorerName);
+    const assistIsGuest = assistName
+      ? isGuestPlayerInSnapshot(relevantSnapshot, assistName)
+      : false;
+
+    const updatedEvent = {
+      ...originalEvent,
+      teamId: scoringTeamId,
+      teamLabel:
+        scoringTeamId === teamAId
+          ? getTeamDisplayName(teamA, "Turf Kings")
+          : getTeamDisplayName(teamB, "Opponent"),
+      scorer: scorerName,
+      assist: assistName || null,
+      scorerType: scorerIsGuest ? "guest" : "registered",
+      assistType: assistName
+        ? assistIsGuest
+          ? "guest"
+          : "registered"
+        : null,
+      editedAt: new Date().toISOString(),
+    };
+
+    const updatedEvents = currentEvents.map((event, index) =>
+      index === editingGoalIndex ? updatedEvent : event
+    );
+
+    overwriteEventsInFirestore(
+      updatedEvents,
+      basicSummary,
+      displaySeconds,
+      matchSeconds
+    );
+
+    setEditingGoalIndex(null);
+    setScoringTeamId("");
+    setScorerName("");
+    setAssistName("");
+    setShowGoalRecorder(false);
+    setGoalStep("scorer");
   };
 
   const handleRequestDelete = (index) => {
@@ -3229,7 +3327,7 @@ export function FriendlyLiveMatchPage({
       <section className="card">
         <div className="timer-row">
           <div style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem" }}>
-            <div className="timer-display">{formattedTime}</div>
+            <div className="timer-display">{liveFormattedTime}</div>
             {canControlMatch && typeof onUpdateMatchSeconds === "function" ? (
               <button
                 type="button"
@@ -3261,7 +3359,13 @@ export function FriendlyLiveMatchPage({
           </div>
           <div className="live-timer-status-row">
             {running ? (
-              <span className="muted small">Live timer running</span>
+              <span className="muted small">
+              {additionalTimeRunning
+                ? "Additional time running"
+                : pendingAdditionalTimeSeconds
+                ? `+${formatSeconds(pendingAdditionalTimeSeconds)} queued after full-time`
+                : "Live timer running"}
+            </span>
             ) : timeUp ? (
               <span className="timer-warning">⏱️ Time is up – end match!</span>
             ) : (
@@ -3378,7 +3482,7 @@ export function FriendlyLiveMatchPage({
                         <button
                           className="link-btn premium-goal-edit"
                           type="button"
-                          onClick={() => window.alert("Goal editing is next. For now, delete and re-record if needed.")}
+                          onClick={() => handleEditGoal(idx)}
                           title="Edit goal"
                         >
                           ✎
@@ -3545,7 +3649,7 @@ export function FriendlyLiveMatchPage({
       {showGoalRecorder && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>Record Goal</h3>
+            <h3>{editingGoalIndex !== null ? "Edit Goal" : "Record Goal"}</h3>
 
             {goalStep === "scorer" && (
               <>
@@ -3673,10 +3777,10 @@ export function FriendlyLiveMatchPage({
                   <button
                     className="primary-btn"
                     type="button"
-                    onClick={handleAddGoalEvent}
+                    onClick={editingGoalIndex !== null ? handleSaveEditedGoal : handleAddGoalEvent}
                     disabled={!hasVerifiedLineups || !scorerName}
                   >
-                    Save Goal
+                    {editingGoalIndex !== null ? "Save Changes" : "Save Goal"}
                   </button>
 
                   <button
