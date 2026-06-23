@@ -1413,6 +1413,26 @@ function LineupBoard({
       return;
     }
 
+    const knownClubPlayer = canonicalName(clean);
+
+    const registeredMatch = allRegistered.find(
+      (p) => playerKeyFor(p) === playerKeyFor(clean)
+    );
+
+    if (registeredMatch) {
+      setLineup((prev) => ({
+        ...prev,
+        benchSnapshot: movePlayerToFront(
+          prev?.benchSnapshot || [],
+          registeredMatch,
+          canonicalName,
+          playerKeyFor
+        ),
+      }));
+      setGuestName("");
+      return;
+    }
+
     setLineup((prev) => ({
       ...prev,
       guestPlayers: uniquePlayersNormalized(
@@ -1924,6 +1944,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [additionalTimeTotalSeconds, setAdditionalTimeTotalSeconds] = useState(0);
   const [additionalTimeSecondsLeft, setAdditionalTimeSecondsLeft] = useState(0);
   const [additionalTimeRunning, setAdditionalTimeRunning] = useState(false);
+  const [additionalTimeFinished, setAdditionalTimeFinished] = useState(false);
   const [goalStep, setGoalStep] = useState("team");
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -2159,7 +2180,11 @@ export function ThreeTeamLeagueLiveMatchPage({
   }, []);
 
   useEffect(() => {
-    if (!timeUp) {
+    const shouldSoundFinalWhistle =
+      additionalTimeFinished ||
+      (timeUp && !pendingAdditionalTimeSeconds && !additionalTimeRunning);
+
+    if (!shouldSoundFinalWhistle) {
       stopAlarmLoop(alarmLoopRef);
       return;
     }
@@ -2176,22 +2201,20 @@ export function ThreeTeamLeagueLiveMatchPage({
       }
     })();
 
-    alarmLoopRef.current = setInterval(async () => {
-      try {
-        if (matchEndSound) {
-          matchEndSound.currentTime = 0;
-          await matchEndSound.play();
-        }
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-      } catch (_) {
-        // ignore
-      }
+    const stopId = setTimeout(() => {
+      stopAlarmLoop(alarmLoopRef);
     }, 10000);
 
     return () => {
+      clearTimeout(stopId);
       stopAlarmLoop(alarmLoopRef);
     };
-  }, [timeUp]);
+  }, [
+    timeUp,
+    pendingAdditionalTimeSeconds,
+    additionalTimeRunning,
+    additionalTimeFinished,
+  ]);
 
   useEffect(() => {
     let mounted = true;
@@ -2491,6 +2514,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     if (!extra) return;
 
     setAdditionalTimeTotalSeconds(extra);
+    setAdditionalTimeFinished(false);
 
     if (timeUp || displaySeconds <= 0) {
       setAdditionalTimeSecondsLeft(extra);
@@ -2510,6 +2534,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     setAdditionalTimeTotalSeconds(pendingAdditionalTimeSeconds);
     setAdditionalTimeSecondsLeft(pendingAdditionalTimeSeconds);
     setAdditionalTimeRunning(true);
+    setAdditionalTimeFinished(false);
     setPendingAdditionalTimeSeconds(0);
   }, [timeUp, displaySeconds, pendingAdditionalTimeSeconds]);
 
@@ -2517,6 +2542,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     if (!additionalTimeRunning) return;
     if (additionalTimeSecondsLeft <= 0) {
       setAdditionalTimeRunning(false);
+      setAdditionalTimeFinished(true);
       return;
     }
 
@@ -2956,16 +2982,23 @@ export function ThreeTeamLeagueLiveMatchPage({
       <section className="card">
         <div className="timer-row">
           <div className="live-timer-main-row">
-            <div className="timer-display">{liveFormattedTime}</div>
+            <div className={`timer-display ${additionalTimeRunning ? "timer-display-added-time" : ""}`}>
+              {liveFormattedTime}
+              {additionalTimeRunning ? (
+                <span className="added-time-sup">
+                  +ADDED TIME
+                </span>
+              ) : null}
+            </div>
             {canControlMatch ? (
               <button
                 type="button"
-                className={`secondary-btn live-add-time-btn ${displaySeconds <= 120 || timeUp ? "is-ready" : "is-locked"}`}
+                className={`secondary-btn live-add-time-btn ${(displaySeconds <= 120 || timeUp) && !additionalTimeTotalSeconds ? "is-ready" : "is-locked"}`}
                 onClick={() => setShowAdditionalTimeModal(true)}
-                disabled={displaySeconds > 120 && !timeUp}
-                title={displaySeconds > 120 && !timeUp ? "Additional time opens in the final 2 minutes" : "Add additional time"}
+                disabled={(displaySeconds > 120 && !timeUp) || Boolean(additionalTimeTotalSeconds)}
+                title={additionalTimeTotalSeconds ? "Additional time already selected" : displaySeconds > 120 && !timeUp ? "Additional time opens in the final 2 minutes" : "Add additional time"}
               >
-                ⏳ Add time
+                {additionalTimeTotalSeconds ? "✅ Time added" : "⏳ Add time"}
               </button>
             ) : null}
           </div>
@@ -2973,12 +3006,18 @@ export function ThreeTeamLeagueLiveMatchPage({
             <span className="muted small">
               {additionalTimeRunning
                 ? "Additional time running"
+                : additionalTimeFinished
+                ? "Additional time complete – final whistle ready"
                 : pendingAdditionalTimeSeconds
                 ? `+${formatSeconds(pendingAdditionalTimeSeconds)} queued after full-time`
                 : "Live timer running"}
             </span>
           ) : timeUp ? (
-            <span className="timer-warning">⏱️ Time is up – end match!</span>
+            <span className="timer-warning">
+              {additionalTimeFinished
+                ? "🏁 Final whistle – close match"
+                : "⏱️ Time is up – end match!"}
+            </span>
           ) : (
             <span className="muted small">Match not running yet</span>
           )}
@@ -3330,7 +3369,7 @@ export function ThreeTeamLeagueLiveMatchPage({
       {showVerifyModal && (
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal live-verify-modal">
-            <h3 className="live-lineups-title">Lineups</h3>
+            <h3 className="live-lineups-title">Edit lineup positions</h3>
             <p className="muted live-verify-note live-verify-note-compact">
               {teamA?.label || "Team A"} vs {teamB?.label || "Team B"}
             </p>
