@@ -1,0 +1,142 @@
+.fanm-team-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(2, 6, 23, 0.76);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.fanm-team-picker-sheet {
+  width: min(780px, 100%);
+  max-height: min(82vh, 760px);
+  overflow: hidden;
+  border-radius: 24px 24px 18px 18px;
+  background: #07111f;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
+  color: #f8fafc;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+}
+
+.fanm-team-picker-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.fanm-team-picker-head strong {
+  display: block;
+  font-size: 1.08rem;
+}
+
+.fanm-team-picker-head span {
+  display: block;
+  margin-top: 0.18rem;
+  color: #94a3b8;
+  font-size: 0.82rem;
+}
+
+.fanm-team-picker-head button {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255,255,255,0.1);
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.fanm-team-picker-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0 1rem 0.75rem;
+}
+
+.fanm-team-picker-tabs button {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.85);
+  color: #cbd5e1;
+  border-radius: 999px;
+  padding: 0.75rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.fanm-team-picker-tabs button.active {
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #052e16;
+}
+
+.fanm-team-picker-search {
+  margin: 0 1rem 0.75rem;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.9);
+  color: white;
+  padding: 0.85rem 1rem;
+  font-weight: 800;
+}
+
+.fanm-team-picker-list {
+  overflow: auto;
+  padding: 0 1rem 1rem;
+}
+
+.fanm-team-picker-list h4 {
+  margin: 1rem 0 0.5rem;
+  color: #86efac;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.fanm-team-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 0.55rem;
+}
+
+.fanm-team-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 54px;
+  padding: 0.65rem;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.78);
+  color: white;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fanm-team-picker-option img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.fanm-team-picker-flag {
+  font-size: 1.65rem;
+  width: 32px;
+  text-align: center;
+}
+
+.fanm-team-picker-option strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.fanm-team-picker-option em {
+  display: block;
+  font-style: normal;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+}

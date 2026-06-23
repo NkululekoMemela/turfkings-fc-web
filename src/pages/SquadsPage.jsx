@@ -41,6 +41,7 @@ import {
   FANM_NATIONAL_TEAMS,
   FANM_PRO_CLUBS,
 } from "../data/fanm/fanmTeamLibrary.js";
+import TeamIdentityPicker from "../components/TeamIdentityPicker/TeamIdentityPicker.jsx";
 
 
 const MASTER_CODE = "3333"; // Platform admin fallback
@@ -4399,6 +4400,15 @@ export function SquadsPage({
           </div>
         </div>
       )}
+
+      <TeamIdentityPicker
+        open={Boolean(teamIdentityTarget)}
+        onClose={() => setTeamIdentityTarget(null)}
+        onSelect={(identity) => {
+          applyTeamIdentity(teamIdentityTarget, identity);
+          setTeamIdentityTarget(null);
+        }}
+      />
 
       {canEdit && showSaveModal && (
         <div className="modal-backdrop">
