@@ -4403,6 +4403,7 @@ export function SquadsPage({
 
       <TeamIdentityPicker
         open={Boolean(teamIdentityTarget)}
+        selectedIdentity={sourceTeams.find((t) => t.id === teamIdentityTarget)?.teamIdentity}
         onClose={() => setTeamIdentityTarget(null)}
         onSelect={(identity) => {
           applyTeamIdentity(teamIdentityTarget, identity);

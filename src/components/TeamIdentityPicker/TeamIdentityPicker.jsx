@@ -6,7 +6,7 @@ import {
 } from "../../data/fanm/fanmTeamLibrary.js";
 import "./TeamIdentityPicker.css";
 
-export default function TeamIdentityPicker({ open, onClose, onSelect }) {
+export default function TeamIdentityPicker({ open, onClose, onSelect, selectedIdentity }) {
   const [tab, setTab] = useState("national");
   const [search, setSearch] = useState("");
 
@@ -72,24 +72,35 @@ export default function TeamIdentityPicker({ open, onClose, onSelect }) {
             <section key={group}>
               <h4>{group}</h4>
               <div className="fanm-team-picker-grid">
-                {teams.map((team) => (
-                  <button
-                    type="button"
-                    key={`${team.type}-${team.abbr}`}
-                    className="fanm-team-picker-option"
-                    onClick={() => onSelect(team)}
-                  >
-                    {team.type === "club" ? (
-                      <img src={team.logo32} alt="" />
-                    ) : (
-                      <span className="fanm-team-picker-flag">{team.flag}</span>
-                    )}
-                    <span>
-                      <strong>{team.abbr}</strong>
-                      <em>{team.name}</em>
-                    </span>
-                  </button>
-                ))}
+                {teams.map((team) => {
+                  const isSelected =
+                    selectedIdentity?.type === team.type &&
+                    selectedIdentity?.abbr === team.abbr;
+
+                  return (
+                    <button
+                      type="button"
+                      key={`${team.type}-${team.abbr}`}
+                      className={`fanm-team-picker-option${isSelected ? " is-selected" : ""}`}
+                      onClick={() => onSelect(team)}
+                    >
+                      <span className="fanm-team-picker-badge">
+                        {team.type === "club" ? (
+                          <img src={team.logo32} alt="" />
+                        ) : (
+                          <span className="fanm-team-picker-flag">{team.flag}</span>
+                        )}
+                      </span>
+
+                      <span className="fanm-team-picker-copy">
+                        <strong>{team.abbr}</strong>
+                        <em>{team.name}</em>
+                      </span>
+
+                      {isSelected ? <span className="fanm-team-picker-check">✓</span> : null}
+                    </button>
+                  );
+                })}
               </div>
             </section>
           ))}
