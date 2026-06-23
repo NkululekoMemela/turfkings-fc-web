@@ -37,6 +37,12 @@ import {
   isAdminCode,
 } from "../core/accessCodes.js";
 
+import {
+  FANM_NATIONAL_TEAMS,
+  FANM_PRO_CLUBS,
+} from "../data/fanm/fanmTeamLibrary.js";
+
+
 const MASTER_CODE = "3333"; // Platform admin fallback
 const UNSEEDED_ID = "__unseeded__";
 const GUEST_OPPONENT_ID = "guest_opponent";
@@ -458,6 +464,7 @@ function normalizeIncomingTeams(teams = []) {
     abbrev: normalizeAbbrev(t.abbrev || ""),
     teamColorHex: normalizeHexColor(t.teamColorHex || t.colorHex || ""),
     teamColorName: toTitleCase(t.teamColorName || t.colorName || ""),
+    teamIdentity: t.teamIdentity || null,
     players: [...(t.players || [])],
     captainId: t.captainId || null,
     captain: t.captain || "",
@@ -795,6 +802,8 @@ export function SquadsPage({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showSquadPreview, setShowSquadPreview] = useState(() => Boolean(isAdmin));
   const [previewPickTarget, setPreviewPickTarget] = useState(null);
+  const [teamIdentityTarget, setTeamIdentityTarget] = useState(null);
+
   const [saveCode, setSaveCode] = useState("");
   const [saveError, setSaveError] = useState("");
 
@@ -1009,10 +1018,24 @@ export function SquadsPage({
           id: d.id,
           ...(d.data() || {}),
         }))
-        .filter(
-          (fixture) =>
-            fixture?.source === "club_challenge"
-        );
+        .filter((fixture) => {
+          const status = String(
+            fixture?.fixtureStatus ||
+              fixture?.status ||
+              fixture?.challengeStatus ||
+              ""
+          ).trim().toLowerCase();
+
+          const isClosed =
+            status.includes("cancel") ||
+            status.includes("closed") ||
+            status.includes("declined") ||
+            status.includes("rejected") ||
+            status.includes("complete") ||
+            status.includes("completed");
+
+          return fixture?.source === "club_challenge" && !isClosed;
+        });
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -1029,10 +1052,7 @@ export function SquadsPage({
         sortedFixtures.find((fixture) => {
           const fixtureDate = new Date(`${fixture.proposedDate}T12:00:00`);
           return !Number.isNaN(fixtureDate.getTime()) && fixtureDate >= today;
-        }) ||
-        sortedFixtures[0] ||
-        fixtures[0] ||
-        null;
+        }) || null;
 
       
       let hydratedFixture = upcomingFixture;
@@ -2038,6 +2058,44 @@ export function SquadsPage({
       .filter((value) => value.length >= 3 && value.length <= 4);
 
     return candidates.find((candidate) => candidate && !taken.has(candidate)) || preferred;
+  };
+
+  const applyTeamIdentity = (teamId, identity) => {
+    if (!canEdit || !identity) return;
+    if (!confirmLeagueIdentityChange(teamId, "team identity")) return;
+
+    setSourceTeams((prev) =>
+      prev.map((team) =>
+        team.id === teamId
+          ? {
+              ...team,
+              label: identity.name,
+              abbrev: identity.abbr,
+              teamIdentity: identity,
+            }
+          : team
+      )
+    );
+  };
+
+  const getTeamIdentityVisual = (team) => {
+    const identity = team?.teamIdentity;
+    if (!identity) return null;
+
+    if (identity.type === "national") {
+      return <span className="squad-team-identity-flag">{identity.flag}</span>;
+    }
+
+    return (
+      <img
+        src={identity.logo32}
+        alt=""
+        className="squad-team-identity-logo"
+        onError={(event) => {
+          event.currentTarget.style.display = "none";
+        }}
+      />
+    );
   };
 
   const handleTeamLabelChange = (teamId, value) => {
@@ -3197,7 +3255,7 @@ export function SquadsPage({
 
   const renderTeamsheetCard = () => {
     const matchTeams = isLeague ? sourceTeams.slice(0, 3) : sourceTeams.slice(0, 2);
-    const isClubChallengeTeamsheet = Boolean(activeChallengeFixture);
+    const isClubChallengeTeamsheet = Boolean(guestOpponentEnabled && activeChallengeFixture);
 
     const getChallengeTeamLogo = (team, index) => {
       if (!isClubChallengeTeamsheet) return "";
@@ -3233,20 +3291,20 @@ export function SquadsPage({
 
         <div
           ref={teamsheetCardRef}
-          className={`teamsheet-card${activeChallengeFixture ? " teamsheet-card--club-challenge" : ""}`}
+          className={`teamsheet-card${isClubChallengeTeamsheet ? " teamsheet-card--club-challenge" : ""}`}
         >
           <div className="teamsheet-card-head">
             <div className="teamsheet-card-club">
               <img
-                src={activeChallengeFixture ? "/pwa/icon-192.png" : activeClub?.logoUrl || TURF_KINGS_LOGO_URL}
+                src={isClubChallengeTeamsheet ? "/pwa/icon-192.png" : activeClub?.logoUrl || TURF_KINGS_LOGO_URL}
                 alt=""
                 onError={(event) => {
                   event.currentTarget.style.display = "none";
                 }}
               />
               <div>
-                <span>{activeChallengeFixture ? "5 Asides Near Me" : activeClubName || "Club"}</span>
-                <small>{activeChallengeFixture ? "Exhibition Fixture Only" : "5 Asides Near Me"}</small>
+                <span>{isClubChallengeTeamsheet ? "5 Asides Near Me" : activeClubName || "Club"}</span>
+                <small>{isClubChallengeTeamsheet ? "Exhibition Fixture Only" : "5 Asides Near Me"}</small>
               </div>
             </div>
 
@@ -3394,22 +3452,15 @@ export function SquadsPage({
                         <h4>{challengeClubName || getPreviewTeamName(team)}</h4>
                       </div>
                     ) : canEdit ? (
-                      <input
-                        className="text-input"
-                        value={team.label || ""}
-                        placeholder="Team name"
-                        onChange={(event) => {
-                          const nextValue = event.target.value;
-                          handleTeamLabelChange(team.id, nextValue);
-
-                        }}
+                      <button
+                        type="button"
+                        className="text-input squad-team-identity-button"
+                        onClick={() => setTeamIdentityTarget(team.id)}
                         disabled={isCurrentGuestOpponentTeam(team)}
-                        style={{
-                          width: "100%",
-                          boxSizing: "border-box",
-                          fontWeight: 900,
-                        }}
-                      />
+                      >
+                        {getTeamIdentityVisual(team)}
+                        <span>{team.label || "Choose team"}</span>
+                      </button>
                     ) : (
                       <h4>{getPreviewTeamName(team)}</h4>
                     )}
