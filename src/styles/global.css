@@ -10143,3 +10143,23 @@ button.fanm-chat-highlight-card {
   padding: 0.2rem 0.5rem;
   font-weight: 900;
 }
+
+.fanm-inline-team-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.fanm-inline-team-logo {
+  width: 1.15em;
+  height: 1.15em;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.fanm-inline-team-flag {
+  font-size: 1.05em;
+  line-height: 1;
+  flex: 0 0 auto;
+}

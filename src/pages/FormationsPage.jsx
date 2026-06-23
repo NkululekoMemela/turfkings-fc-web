@@ -2080,6 +2080,22 @@ export function FormationsPage({
     </>
   );
 
+  const renderTeamIdentityLabel = (team, fallback = "Team") => {
+    const identity = team?.teamIdentity || null;
+    const label = team?.label || team?.name || fallback;
+
+    return (
+      <span className="fanm-inline-team-identity">
+        {identity?.type === "national" && identity.flag ? (
+          <span className="fanm-inline-team-flag">{identity.flag}</span>
+        ) : identity?.logo32 ? (
+          <img src={identity.logo32} alt="" className="fanm-inline-team-logo" />
+        ) : null}
+        <span>{label}</span>
+      </span>
+    );
+  };
+
   if (!selectedTeamCanonical) {
     return (
       <div className="page lineups-page">
@@ -2138,7 +2154,7 @@ export function FormationsPage({
                     className={`team-pill-btn ${t.id === selectedTeamCanonical.id ? "active" : ""}`}
                     onClick={() => handleTeamClick(t.id)}
                   >
-                    {t.label}
+                    {renderTeamIdentityLabel(t, t.label)}
                   </button>
                 ))}
               </div>
@@ -2203,7 +2219,7 @@ export function FormationsPage({
                   boxShadow: "0 6px 14px rgba(2, 6, 23, 0.18)",
                 }}
               >
-                {isSmallSidedGameType(gameType) ? selectedTeamCanonical?.label || getGameTypeLabel(gameType) : activeClubName}
+                {isSmallSidedGameType(gameType) ? renderTeamIdentityLabel(selectedTeamCanonical, getGameTypeLabel(gameType)) : activeClubName}
               </div>
 
               {formation.positions.map((pos) => {

@@ -815,9 +815,34 @@ function getTeamDisplayName(team = {}, fallback = "TEAM") {
   return String(team?.label || team?.name || team?.title || fallback || "TEAM").trim();
 }
 
-function TeamColorBadge({ team, fallback = "LIGHT" }) {
+function TeamColorBadge({ team, fallback = "LIGHT", iconPosition = "before", compact = false }) {
   const accent = getTeamAccent(team);
-  const label = getShortLabel(team, fallback);
+  const label = compact
+    ? String(team?.teamIdentity?.abbr || team?.abbrev || getShortLabel(team, fallback)).toUpperCase()
+    : getShortLabel(team, fallback);
+  const identity = team?.teamIdentity || null;
+
+  const identityIcon =
+    identity?.type === "national" && identity.flag ? (
+      <span style={{ fontSize: "1.05em", lineHeight: 1 }}>{identity.flag}</span>
+    ) : identity?.logo32 ? (
+      <img
+        src={identity.logo32}
+        alt=""
+        style={{ width: "1.15em", height: "1.15em", objectFit: "contain", flexShrink: 0 }}
+      />
+    ) : (
+      <span
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: "999px",
+          background: accent.dot,
+          display: "inline-block",
+          flexShrink: 0,
+        }}
+      />
+    );
 
   return (
     <span
@@ -834,17 +859,9 @@ function TeamColorBadge({ team, fallback = "LIGHT" }) {
         whiteSpace: "nowrap",
       }}
     >
-      <span
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: "999px",
-          background: accent.dot,
-          display: "inline-block",
-          flexShrink: 0,
-        }}
-      />
+      {iconPosition === "before" ? identityIcon : null}
       <span>{label}</span>
+      {iconPosition === "after" ? identityIcon : null}
     </span>
   );
 }
@@ -3137,8 +3154,8 @@ export function FriendlyLiveMatchPage({
       <header className="header">
         <h1>Friendly {formatLabel}</h1>
         <p>
-          <TeamColorBadge team={teamA} fallback="DARK" /> vs{" "}
-          <TeamColorBadge team={teamB} fallback="LIGHT" />
+          <TeamColorBadge team={teamA} fallback="DARK" iconPosition="after" compact /> vs{" "}
+          <TeamColorBadge team={teamB} fallback="LIGHT" iconPosition="before" compact />
         </p>
         <p className="muted small">
           Signed in as <strong>{getIdentityDisplayName(identity)}</strong> •{" "}
