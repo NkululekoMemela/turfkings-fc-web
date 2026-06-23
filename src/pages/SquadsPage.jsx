@@ -2547,7 +2547,8 @@ export function SquadsPage({
     const cleanOne = (list) =>
       list.map((t) => {
         const label = String(t.label || "").trim();
-        const smartAbbrev = makeUniqueTeamAbbrev(t.id, label || t.label, list);
+        const identityAbbrev = normalizeAbbrev(t.teamIdentity?.abbr || "");
+        const smartAbbrev = identityAbbrev || makeUniqueTeamAbbrev(t.id, label || t.label, list);
         const abbrev = normalizeAbbrev(smartAbbrev || t.abbrev || "");
         const teamColorName = toTitleCase(t.teamColorName || "");
         const typedHex = normalizeHexColor(t.teamColorHex || "");
@@ -3345,13 +3346,19 @@ export function SquadsPage({
                         />
                       ) : null}
                       <div>
-                        <h4>{getPreviewTeamName(team)}</h4>
+                        <h4 className="teamsheet-card-team-name-with-identity">
+                          {getTeamIdentityVisual(team)}
+                          <span className="teamsheet-card-team-name-stack">
+                            <span>{getPreviewTeamName(team)}</span>
+                            {team.teamIdentity ? <small>Fantasy 5s</small> : null}
+                          </span>
+                        </h4>
                         <p>
                           Wear: <strong>{team.teamColorName || theme.colorName || "Team colour"}</strong>
                         </p>
                       </div>
                     </div>
-                    <span>{team.abbrev || ""}</span>
+                    <span className="teamsheet-card-team-abbrev">{team.teamIdentity?.abbr || team.abbrev || ""}</span>
                   </div>
 
                   <ol>

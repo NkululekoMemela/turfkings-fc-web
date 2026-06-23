@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FANM_NATIONAL_TEAMS,
   FANM_PRO_CLUBS,
@@ -25,6 +25,16 @@ export default function TeamIdentityPicker({ open, onClose, onSelect, selectedId
 
     return groupBy(filtered, groupKey);
   }, [source, groupKey, search]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    FANM_PRO_CLUBS.forEach((team) => {
+      if (!team.logo32) return;
+      const img = new Image();
+      img.src = team.logo32;
+    });
+  }, [open]);
 
   if (!open) return null;
 

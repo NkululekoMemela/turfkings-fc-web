@@ -10085,3 +10085,61 @@ button.fanm-chat-highlight-card {
   font-size: 1.05rem;
   line-height: 1;
 }
+
+.teamsheet-card-team-name-with-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.teamsheet-card-team-name-with-identity .squad-team-identity-logo {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+}
+
+.teamsheet-card-team-name-with-identity .squad-team-identity-flag {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  font-size: 1.25rem;
+}
+
+.teamsheet-card-team-name-with-identity {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.teamsheet-card-team-name-stack {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  line-height: 1.02;
+}
+
+.teamsheet-card-team-name-stack small {
+  display: block;
+  color: rgba(203, 213, 225, 0.82);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.teamsheet-card-team-head .teamsheet-card-team-name-with-identity span,
+.teamsheet-card-team-head .teamsheet-card-team-name-with-identity small {
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.teamsheet-card-team-abbrev {
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  font-weight: 900;
+}
