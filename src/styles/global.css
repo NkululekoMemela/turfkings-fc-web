@@ -10984,3 +10984,156 @@ button.fanm-chat-highlight-card {
   color: #475569;
   line-height: 1.55;
 }
+
+
+/* FANM club identity signup step */
+.hub-or-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: #64748b;
+  font-weight: 900;
+  font-size: .8rem;
+}
+
+.hub-or-divider::before,
+.hub-or-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.hub-or-divider span {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.hub-badge-upload-card {
+  margin-top: 12px;
+}
+
+.hub-identity-ai-card {
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(22, 163, 74, 0.22);
+  background:
+    radial-gradient(circle at top left, rgba(34,197,94,.14), transparent 36%),
+    linear-gradient(135deg, rgba(255,255,255,.96), rgba(236,253,245,.82));
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08);
+}
+
+.hub-identity-ai-card span {
+  display: inline-flex;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(22, 163, 74, 0.12);
+  color: #166534;
+  font-weight: 900;
+  font-size: .76rem;
+}
+
+.hub-identity-ai-card strong {
+  display: block;
+  font-size: 1.12rem;
+  margin-bottom: 8px;
+}
+
+.hub-identity-ai-card p {
+  margin: 0 0 14px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.hub-starter-toggle-card {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 20px;
+  background: rgba(255,255,255,.86);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hub-starter-toggle-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.05);
+  font-size: 1.3rem;
+  flex: 0 0 auto;
+}
+
+.hub-starter-toggle-card strong {
+  display: block;
+  color: #0f172a;
+}
+
+.hub-starter-toggle-card small {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+}
+
+.hub-starter-toggle-card em {
+  margin-left: auto;
+  font-style: normal;
+  font-weight: 900;
+  color: #475569;
+}
+
+.hub-badge-preview-card {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 22px;
+  text-align: center;
+  background: linear-gradient(135deg, #0f172a, #14532d);
+  color: white;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.18);
+}
+
+.hub-badge-preview-card > span {
+  display: block;
+  margin-bottom: 12px;
+  color: rgba(255,255,255,.72);
+  font-size: .78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.hub-badge-preview-mark {
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.hub-badge-preview-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.hub-badge-preview-mark strong {
+  font-size: 1.6rem;
+}
