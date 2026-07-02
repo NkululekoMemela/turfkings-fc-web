@@ -10861,3 +10861,90 @@ button.fanm-chat-highlight-card {
     font-size: 0.95rem !important;
   }
 }
+
+
+
+/* FANM captain verification step */
+
+.hub-captain-verify-card{
+  padding:16px;
+  border:1px solid rgba(22,163,74,.22);
+  border-radius:18px;
+  background:
+    radial-gradient(circle at top left,rgba(34,197,94,.10),transparent 35%),
+    linear-gradient(135deg,#ffffff,#eefbf5);
+}
+
+.hub-captain-verify-card strong{
+  display:block;
+  margin-bottom:6px;
+}
+
+.hub-captain-verify-card p{
+  margin:0;
+  color:#475569;
+  line-height:1.45;
+}
+
+.hub-captain-verify-button{
+  width:auto;
+  min-width:170px;
+  max-width:190px;
+  height:42px;
+  margin:16px auto 0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-decoration:none;
+  white-space:nowrap;
+  font-size:.82rem;
+  font-weight:700;
+  padding:0 18px;
+}
+
+.hub-captain-return-panel{
+  margin-top:18px;
+  text-align:center;
+}
+
+.hub-captain-return-panel small{
+  display:block;
+  margin-bottom:12px;
+  color:#64748b;
+  font-size:.82rem;
+}
+
+.hub-return-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  min-width:180px;
+  height:44px;
+
+  padding:0 30px;
+
+  border:none;
+  border-radius:999px;
+
+  background:#f1f5f9;
+
+  color:#0f172a;
+
+  font-weight:700;
+  font-size:.95rem;
+
+  cursor:pointer;
+
+  transition:.25s ease;
+}
+
+.hub-return-button:hover{
+  transform:translateY(-1px);
+}
+
+.hub-return-button.is-confirmed{
+  background:linear-gradient(135deg,#22c55e,#16a34a);
+  color:white;
+  box-shadow:0 8px 24px rgba(22,163,74,.28);
+}

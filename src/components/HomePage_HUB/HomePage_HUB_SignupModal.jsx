@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import HomePage_HUB_ClubRegisterForm from "./HomePage_HUB_ClubRegisterForm";
 import HomePage_HUB_LogoGenerator from "./HomePage_HUB_LogoGenerator";
+import HomePage_HUB_CaptainVerification from "./HomePage_HUB_CaptainVerification";
 import HomePage_HUB_BankingForm from "./HomePage_HUB_BankingForm";
 import { slugifyClubName } from "../../core/homePageHubLogoUtils";
 import { createHomePageHubClub } from "../../storage/homePageHubClubRepository";
@@ -43,6 +44,7 @@ export default function HomePage_HUB_SignupModal({
   const [step, setStep] = useState(1);
   const [clubDraft, setClubDraft] = useState(INITIAL_CLUB_DRAFT);
   const [logoDraft, setLogoDraft] = useState({});
+  const [captainVerificationConfirmed, setCaptainVerificationConfirmed] = useState(false);
   const [bankingDraft, setBankingDraft] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState("");
@@ -59,6 +61,7 @@ export default function HomePage_HUB_SignupModal({
     setStep(1);
     setErrorText("");
     setSubmitting(false);
+    setCaptainVerificationConfirmed(false);
     onClose?.();
   }
 
@@ -104,6 +107,13 @@ export default function HomePage_HUB_SignupModal({
         clubDraft: {
           ...clubDraft,
           captainName: founderName,
+          captainVerificationStatus: captainVerificationConfirmed
+            ? "pending_whatsapp_admin_review"
+            : "not_started",
+          captainVerificationMethod: "whatsapp_business_manual",
+          captainVerificationRequestedAtClient: captainVerificationConfirmed
+            ? new Date().toISOString()
+            : "",
         },
         logoDraft,
         bankingDraft,
@@ -175,7 +185,7 @@ export default function HomePage_HUB_SignupModal({
         {mode === "register" ? (
           <>
             <div className="hub-stepper" aria-label="Club registration steps">
-              {[1, 2, 3].map((item) => (
+              {[1, 2, 3, 4].map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -196,6 +206,15 @@ export default function HomePage_HUB_SignupModal({
             ) : null}
 
             {step === 2 ? (
+              <HomePage_HUB_CaptainVerification
+                clubDraft={clubDraft}
+                onClubDraftChange={setClubDraft}
+                verificationConfirmed={captainVerificationConfirmed}
+                onVerificationConfirmed={setCaptainVerificationConfirmed}
+              />
+            ) : null}
+
+            {step === 3 ? (
               <HomePage_HUB_LogoGenerator
                 clubDraft={{ ...clubDraft, clubId }}
                 logoDraft={logoDraft}
@@ -203,7 +222,7 @@ export default function HomePage_HUB_SignupModal({
               />
             ) : null}
 
-            {step === 3 ? (
+            {step === 4 ? (
               <HomePage_HUB_BankingForm
                 bankingDraft={bankingDraft}
                 onChange={setBankingDraft}
@@ -226,12 +245,12 @@ export default function HomePage_HUB_SignupModal({
                 Back
               </button>
 
-              {step < 3 ? (
+              {step < 4 ? (
                 <button
                   type="button"
                   className="hub-primary-button"
                   disabled={submitting}
-                  onClick={() => setStep((current) => Math.min(3, current + 1))}
+                  onClick={() => setStep((current) => Math.min(4, current + 1))}
                 >
                   Continue
                 </button>
