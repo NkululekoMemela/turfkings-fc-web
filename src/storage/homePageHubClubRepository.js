@@ -1,6 +1,6 @@
 // src/storage/homePageHubClubRepository.js
 
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import {
   getDownloadURL,
   getStorage,
@@ -32,6 +32,22 @@ function slugFromName(name) {
     .toLowerCase()
     .replace(/\s+/g, "_")
     .replace(/[^a-z0-9_]/g, "");
+}
+
+async function buildUniqueClubPersonId(clubId, preferredId) {
+  const baseId = slugFromName(preferredId) || "player";
+  let candidate = baseId;
+  let suffix = 2;
+
+  while (true) {
+    const memberSnap = await getDoc(doc(db, "clubs", clubId, "members", candidate));
+    const playerSnap = await getDoc(doc(db, "clubs", clubId, "players", candidate));
+
+    if (!memberSnap.exists() && !playerSnap.exists()) return candidate;
+
+    candidate = `${baseId}_${suffix}`;
+    suffix += 1;
+  }
 }
 
 function safeFileName(name = "file") {
@@ -229,7 +245,7 @@ export async function createHomePageHubClub({
   const clubName = cleanText(clubDraft.clubName);
   const captainName = toTitleCase(cleanText(clubDraft.captainName));
   const captainEmail = cleanEmail(clubDraft.captainEmail);
-  const captainWhatsApp = cleanText(clubDraft.captainWhatsApp);
+  const captainWhatsApp = cleanText(clubDraft.captainWhatsAppNormalised || clubDraft.captainWhatsApp);
 
   if (!safeClubId) throw new Error("Club ID is required.");
   if (!clubName) throw new Error("Club name is required.");
@@ -280,8 +296,9 @@ export async function createHomePageHubClub({
 
   const captainShortName =
     captainName.split(/\s+/).filter(Boolean)[0] || captainName;
-  const captainPlayerId = slugFromName(
-    captainName || captainShortName || captainEmail
+  const captainPlayerId = await buildUniqueClubPersonId(
+    safeClubId,
+    creatorUid || captainEmail || captainName || captainShortName
   );
 
   const clubPayload = {
@@ -504,11 +521,11 @@ export async function updateHomePageHubClub({
     `${cleanText(clubDraft.founderFirstName)} ${cleanText(clubDraft.founderSurname)}`.trim()
   );
   const captainEmail = cleanEmail(clubDraft.captainEmail);
-  const captainWhatsApp = cleanText(clubDraft.captainWhatsApp);
+  const captainWhatsApp = cleanText(clubDraft.captainWhatsAppNormalised || clubDraft.captainWhatsApp);
   const captainShortName =
     captainName.split(/\s+/).filter(Boolean)[0] || captainName;
   const captainPlayerId = slugFromName(
-    captainName || captainShortName || captainEmail
+    creatorUid || captainEmail || captainName || captainShortName
   );
 
   const payload = {

@@ -116,7 +116,11 @@ export default function HomePage_HUB_SignupModal({
             : "",
         },
         logoDraft,
-        bankingDraft,
+        bankingDraft: {
+          ...bankingDraft,
+          founderProgrammeActive: true,
+          paymentCollectionMode: "founder_programme_free",
+        },
       });
 
       onClubCreated?.(createdClub);
