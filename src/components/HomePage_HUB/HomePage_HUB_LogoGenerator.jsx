@@ -80,13 +80,13 @@ export default function HomePage_HUB_LogoGenerator({ clubDraft, logoDraft, onCha
 
       <div className="hub-form-panel__head">
         <span>Step 3</span>
-        <h3>Club identity</h3>
-        <p>Create a badge your players will proudly recognise.</p>
+        <h3>Club logo</h3>
+        <p>Create a logo your players will proudly recognise.</p>
       </div>
 
       <label className="hub-file-drop hub-badge-upload-card">
-        <span>⬆️ Upload your own badge</span>
-        <strong>{logoDraft?.logoFile?.name || "Choose badge image"}</strong>
+        <span>⬆️ ⬆️ Upload your own logo</span>
+        <strong>{logoDraft?.logoFile?.name || "Choose logo image"}</strong>
         <small>PNG, JPG or WebP.</small>
         <input
           type="file"
@@ -99,16 +99,16 @@ export default function HomePage_HUB_LogoGenerator({ clubDraft, logoDraft, onCha
 
       <div className="hub-identity-ai-card">
         <span>✨ Most Popular</span>
-        <strong>✨ Create Premium Badge (on ChatGPT)</strong>
+        <strong>✨ Create Premium Logo (on ChatGPT)</strong>
         <p>
-          Design a professional badge with a prepared 5 Asides Near Me prompt in under a minute.
+          Design a professional logo with a prepared AI prompt in under a minute.
         </p>
         <button
           type="button"
           className="hub-primary-button"
           onClick={() => setShowAiCreator(true)}
         >
-          ✨ Create Premium Badge
+          ✨ Create Premium Logo
         </button>
       </div>
 
@@ -121,7 +121,7 @@ export default function HomePage_HUB_LogoGenerator({ clubDraft, logoDraft, onCha
       >
         <span className="hub-starter-toggle-icon">🎨</span>
         <span>
-          <strong>Choose a free starter badge</strong>
+          <strong>Choose a free starter logo</strong>
           <small>Pick a style that matches your club. You can change it anytime.</small>
         </span>
         <em>{showStarterBadges ? "⌃" : "⌄"}</em>
@@ -131,8 +131,8 @@ export default function HomePage_HUB_LogoGenerator({ clubDraft, logoDraft, onCha
         <>
           <div className="hub-badge-toolbar">
             <div>
-              <strong>Starter badges</strong>
-              <span>Choose a free starter badge based on your club name.</span>
+              <strong>Starter logos</strong>
+              <span>Choose a free starter logo based on your club name.</span>
             </div>
 
             <button
@@ -175,10 +175,10 @@ export default function HomePage_HUB_LogoGenerator({ clubDraft, logoDraft, onCha
       ) : null}
 
       <div className="hub-badge-preview-card">
-        <span>Badge preview</span>
+        <span>Logo preview</span>
         <div className="hub-badge-preview-mark">
           {activeBadgeUrl ? (
-            <img src={activeBadgeUrl} alt="Club badge preview" />
+            <img src={activeBadgeUrl} alt="Club logo preview" />
           ) : (
             <strong>{clubDraft?.logoText || "FC"}</strong>
           )}

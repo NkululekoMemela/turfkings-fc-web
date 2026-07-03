@@ -11137,3 +11137,20 @@ button.fanm-chat-highlight-card {
 .hub-badge-preview-mark strong {
   font-size: 1.6rem;
 }
+
+
+/* Step 3 logo option polish */
+.hub-badge-upload-card,
+.hub-identity-ai-card,
+.hub-starter-toggle-card {
+  border: 1.5px solid rgba(15, 23, 42, 0.82) !important;
+  background: rgba(248, 250, 252, 0.72) !important;
+}
+
+.hub-identity-ai-card {
+  box-shadow: none !important;
+}
+
+.hub-badge-preview-card {
+  background: linear-gradient(135deg, #0f172a, #064e3b) !important;
+}

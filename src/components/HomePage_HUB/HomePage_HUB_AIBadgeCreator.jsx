@@ -7,13 +7,13 @@ export default function HomePage_HUB_AIBadgeCreator({ clubDraft, onClose }) {
   const [description, setDescription] = useState("");
 
   const prompt = useMemo(() => {
-    return `Create a premium football club badge.
+    return `Create a premium football club logo.
 
 Club name: ${clubDraft?.clubName || "My Football Club"}
 
 Style: ${style}
 
-Badge idea: ${description || "Professional 5-a-side football club badge"}
+Logo idea: ${description || "Professional 5-a-side football club logo"}
 
 Use a clean football identity suitable for an amateur football club profile.
 Use green, white and black unless the badge idea says otherwise.
@@ -26,7 +26,7 @@ Avoid copyrighted club logos, real team badges, complex tiny details, and unread
   async function copyPrompt() {
     try {
       await navigator.clipboard.writeText(prompt);
-      window.alert("Prompt copied. Paste it into ChatGPT to create your badge.");
+      window.alert("Prompt copied. Paste it into ChatGPT to create your logo.");
     } catch {
       window.alert("Copy the prompt manually, then paste it into ChatGPT.");
     }
@@ -43,8 +43,8 @@ Avoid copyrighted club logos, real team badges, complex tiny details, and unread
         <button type="button" className="hub-ai-badge-close" onClick={onClose}>×</button>
 
         <span className="hub-ai-badge-kicker">5 Asides Near Me</span>
-        <h3>✨ AI Badge Creator</h3>
-        <p>Prepare a premium badge prompt, then generate it on ChatGPT.</p>
+        <h3>✨ AI Logo Creator</h3>
+        <p>Prepare a premium logo prompt, then generate it on ChatGPT.</p>
 
         <label className="hub-field hub-field--wide">
           <span>Club name</span>

@@ -24,7 +24,7 @@ export default function HomePage_HUB_BankingForm({ bankingDraft, onChange }) {
         <span>Step 4</span>
         <h3>Founder Launch Offer</h3>
         <p>
-          Set your club&apos;s normal match fee. FANM platform fees are R0.00 during the launch offer.
+          Set your club&apos;s normal match fee. Platform fees are R0.00 during the launch offer.
         </p>
       </div>
 
@@ -33,7 +33,9 @@ export default function HomePage_HUB_BankingForm({ bankingDraft, onChange }) {
         <strong>Platform Fee: R0.00</strong>
         <small>
           As one of our founding clubs, you&apos;ll enjoy 3 months of free access,
-          which could be extended while we grow the FANM community together.
+          which may be extended as we continue growing the 5 Asides Near Me community.
+          Future platform fees will help cover secure data storage, cloud hosting,
+          and continued improvements to the app.
         </small>
       </div>
 
@@ -55,10 +57,10 @@ export default function HomePage_HUB_BankingForm({ bankingDraft, onChange }) {
       </div>
 
       <div className="hub-payment-total-card">
-        <span>Your team match fee</span>
+        <span>Your team match fee per player per player</span>
         <strong>{money(normalMatchFee)}</strong>
         <small>
-          FANM platform fee remains R0.00 during the Founder Launch Offer.
+          The platform fee remains R0.00 during the Founder Launch Offer.
         </small>
       </div>
     </div>

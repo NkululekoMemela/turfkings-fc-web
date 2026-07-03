@@ -44,7 +44,7 @@ export default function HomePage_HUB_CaptainVerification({
   }
 
   const whatsappMessage = encodeURIComponent(
-`⚽ FANM Captain Verification
+`⚽ the app Captain Verification
 
 Club: ${clubDraft?.clubName || ""}
 
@@ -108,7 +108,7 @@ I confirm that I am the captain or authorised organiser of this club.`
               }
               onClick={() => onVerificationConfirmed?.(!verificationConfirmed)}
             >
-              {verificationConfirmed ? "✓ Returned to FANM" : "I'm back"}
+              {verificationConfirmed ? "✓ Message sent" : "Message sent"}
             </button>
           </div>
         </div>

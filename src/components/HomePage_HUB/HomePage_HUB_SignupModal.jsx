@@ -65,23 +65,66 @@ export default function HomePage_HUB_SignupModal({
     onClose?.();
   }
 
-  function validateBeforeSubmit() {
-    if (!clubDraft.clubName.trim()) return "Club name is required.";
-    if (clubDraft.clubName.trim().length > 16) return "Club name must be 16 characters or less.";
-    if (!clubId) return "Club ID could not be created from the club name.";
+  function validateStep(stepNumber) {
+    if (stepNumber === 1) {
+      if (!clubDraft.clubName.trim()) return "Club name is required.";
+      if (clubDraft.clubName.trim().length > 16) return "Club name must be 16 characters or less.";
+      if (!clubId) return "Club ID could not be created from the club name.";
 
-    if (!clubDraft.founderFirstName?.trim()) return "First name is required.";
-    if (clubDraft.founderFirstName.trim().length > 20) return "First name must be 20 characters or less.";
+      if (!clubDraft.venueName?.trim()) return "Venue name is required.";
+      if (!clubDraft.city?.trim()) return "City is required.";
+      if (!clubDraft.country?.trim()) return "Country is required.";
+      if (!clubDraft.playDay?.trim()) return "Playing day is required.";
+      if (!clubDraft.playTime?.trim()) return "Playing time is required.";
 
-    if (!clubDraft.founderSurname?.trim()) return "Surname is required.";
-    if (clubDraft.founderSurname.trim().length > 24) return "Surname must be 24 characters or less.";
+      if (!clubDraft.founderFirstName?.trim()) return "First name is required.";
+      if (clubDraft.founderFirstName.trim().length > 20) return "First name must be 20 characters or less.";
 
-    if (!clubDraft.captainEmail.trim()) return "Email is required.";
-    if (!isValidEmail(clubDraft.captainEmail)) return "Email is not valid.";
+      if (!clubDraft.founderSurname?.trim()) return "Surname is required.";
+      if (clubDraft.founderSurname.trim().length > 24) return "Surname must be 24 characters or less.";
 
-    if (!clubDraft.captainWhatsApp?.trim()) return "WhatsApp number is required.";
-    if (clubDraft.captainWhatsApp.trim().length > 20) return "WhatsApp number must be 20 characters or less.";
+      if (!clubDraft.captainEmail.trim()) return "Email is required.";
+      if (!isValidEmail(clubDraft.captainEmail)) return "Email is not valid.";
+
+      if (!clubDraft.captainWhatsApp?.trim()) return "WhatsApp number is required.";
+      if (clubDraft.captainWhatsApp.trim().length > 20) return "WhatsApp number must be 20 characters or less.";
+    }
+
+    if (stepNumber === 3) {
+      if (
+        !logoDraft?.logoFile &&
+        !logoDraft?.selectedGeneratedLogoId &&
+        !logoDraft?.generatedLogoDataUrl
+      ) {
+        return "Please upload a badge or choose a starter badge before continuing.";
+      }
+    }
+
     return "";
+  }
+
+  function validateBeforeSubmit() {
+    return validateStep(1) || validateStep(3);
+  }
+
+  function goToStep(nextStep) {
+    if (nextStep <= step) {
+      setErrorText("");
+      setStep(nextStep);
+      return;
+    }
+
+    for (let item = step; item < nextStep; item += 1) {
+      const stepError = validateStep(item);
+      if (stepError) {
+        setErrorText(stepError);
+        setStep(item);
+        return;
+      }
+    }
+
+    setErrorText("");
+    setStep(nextStep);
   }
 
   async function createClub() {
@@ -194,7 +237,7 @@ export default function HomePage_HUB_SignupModal({
                   key={item}
                   type="button"
                   className={step === item ? "is-active" : ""}
-                  onClick={() => setStep(item)}
+                  onClick={() => goToStep(item)}
                   disabled={submitting}
                 >
                   {item}
@@ -254,7 +297,7 @@ export default function HomePage_HUB_SignupModal({
                   type="button"
                   className="hub-primary-button"
                   disabled={submitting}
-                  onClick={() => setStep((current) => Math.min(4, current + 1))}
+                  onClick={() => goToStep(Math.min(4, step + 1))}
                 >
                   Continue
                 </button>
