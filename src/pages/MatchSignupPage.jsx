@@ -22,6 +22,7 @@ import {
   getMatchSignupsCollection,
 } from "../core/clubFirestorePaths";
 import { CLUB_COLLECTIONS } from "../core/clubPaths";
+import { showPremiumConfirm } from "../components/UI/PremiumConfirm";
 
 const MIN_PLAYERS = 10;
 const MAX_PLAYERS = 25;
@@ -842,6 +843,7 @@ export default function MatchSignupPage({
 
   const [signupForMode, setSignupForMode] = useState("self");
   const [existingPlayerTargetId, setExistingPlayerTargetId] = useState("");
+  const [existingPlayerSearch, setExistingPlayerSearch] = useState("");
   const [guestPlayerName, setGuestPlayerName] = useState("");
 
   const [selectedWeeks, setSelectedWeeks] = useState([]);
@@ -3125,11 +3127,14 @@ export default function MatchSignupPage({
     );
     if (!target) return;
 
-    const confirmed = window.confirm(
-      `Add ${addWeeks.length} missing paid fixture${
-        addWeeks.length === 1 ? "" : "s"
-      } for ${target.fullName}? Use this only after you have received the payment.`
-    );
+    const confirmed = await showPremiumConfirm({
+      icon: "📅",
+      title: `Add ${addWeeks.length} missing paid fixture${addWeeks.length === 1 ? "" : "s"} for ${target.fullName}?`,
+      message: "Use this only after you have received the payment.",
+      detail: "This will add the selected booking and mark it as paid immediately.",
+      confirmText: "Yes, add and mark as paid",
+      variant: "success",
+    });
     if (!confirmed) return;
 
     setAdminVerifyBusy(true);
@@ -3248,9 +3253,14 @@ export default function MatchSignupPage({
     );
     if (!target) return;
 
-    const confirmed = window.confirm(
-      `Clear all unpaid weeks for ${target.fullName}? Paid weeks, if any, will remain.`
-    );
+    const confirmed = await showPremiumConfirm({
+      icon: "🧹",
+      title: `Remove unpaid bookings for ${target.fullName}?`,
+      message: "Paid bookings will remain.",
+      detail: "This only clears unpaid bookings. It will not remove bookings already marked as paid.",
+      confirmText: "Remove unpaid bookings",
+      variant: "warning",
+    });
     if (!confirmed) return;
 
     setAdminCleanupBusy(true);
@@ -3332,13 +3342,17 @@ export default function MatchSignupPage({
       0
     );
 
-    const confirmed = window.confirm(
-      totalPaidWeeks > 0
-        ? `Remove ${target.fullName} from this month completely? This will remove all monthly records found for this player, including ${totalPaidWeeks} week${
-            totalPaidWeeks === 1 ? "" : "s"
-          } already marked as paid. Use this only for mistakes, tests, or records you intentionally want gone.`
-        : `Remove ${target.fullName} from this month completely? This will remove all monthly records found for this player.`
-    );
+    const confirmed = await showPremiumConfirm({
+      icon: "🗑️",
+      title: `Remove ${target.fullName} from this month?`,
+      message:
+        totalPaidWeeks > 0
+          ? `This will remove all monthly records found for this player, including ${totalPaidWeeks} paid week${totalPaidWeeks === 1 ? "" : "s"}.`
+          : "This will remove all monthly records found for this player.",
+      detail: "Use this only for mistakes, tests, or records you intentionally want gone.",
+      confirmText: "Yes, remove player",
+      variant: "danger",
+    });
     if (!confirmed) return;
 
     setAdminCleanupBusy(true);
@@ -3389,11 +3403,14 @@ export default function MatchSignupPage({
     );
     if (!removeWeeks.length) return;
 
-    const confirmed = window.confirm(
-      `Remove ${removeWeeks.length} paid week${
-        removeWeeks.length === 1 ? "" : "s"
-      } from ${target.fullName}? This is intended for mistakes or test payments.`
-    );
+    const confirmed = await showPremiumConfirm({
+      icon: "↩️",
+      title: `Undo ${removeWeeks.length} paid booking${removeWeeks.length === 1 ? "" : "s"} for ${target.fullName}?`,
+      message: "This is intended for mistakes or test payments.",
+      detail: "The selected paid booking(s) will be removed from this month.",
+      confirmText: "Undo paid booking",
+      variant: "warning",
+    });
     if (!confirmed) return;
 
     setAdminCleanupBusy(true);
@@ -3507,9 +3524,14 @@ export default function MatchSignupPage({
   };
 
   const handleClearSelections = async () => {
-    const confirmed = window.confirm(
-      "Are you sure you want to clear all selected weeks?"
-    );
+    const confirmed = await showPremiumConfirm({
+      icon: "🧽",
+      title: "Clear selected bookings?",
+      message: "This will remove your current unpaid selections.",
+      detail: "Paid bookings will not be removed.",
+      confirmText: "Clear selected bookings",
+      variant: "warning",
+    });
     if (!confirmed) return;
 
     try {
@@ -3718,44 +3740,97 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
         </div>
       </section>
 
-      <section className="card signup-summary-card">
-        <div className="signup-reminder-choice signup-reminder-inline">
-          <label htmlFor="signupForMode">Who are you paying for?</label>
-          <select
-            id="signupForMode"
-            value={signupForMode}
-            onChange={(e) => {
-              setSignupForMode(e.target.value);
+      <section className="card signup-summary-card tk-booking-for-card">
+        <div className="tk-booking-for-head">
+          <div>
+            <span>Booking owner</span>
+            <h2>Who are you booking for?</h2>
+          </div>
+          <p>Choose yourself or book on behalf of another club player.</p>
+        </div>
+
+        <div className="tk-booking-for-options">
+          <button
+            type="button"
+            className={`tk-booking-for-option ${signupForMode === "self" ? "is-active" : ""}`}
+            onClick={() => {
+              setSignupForMode("self");
+              setExistingPlayerSearch("");
               setSelectedWeeks([]);
               setPaidWeeks([]);
               setSelectionHydrated(false);
             }}
           >
-            <option value="self">Myself</option>
-            <option value="existing_player">Another ${activeClubName} player</option>
-          </select>
+            <span className="tk-booking-for-icon">👤</span>
+            <div>
+              <strong>Myself</strong>
+              <small>Book your own upcoming games.</small>
+            </div>
+            <em>{signupForMode === "self" ? "✓" : ""}</em>
+          </button>
+
+          <button
+            type="button"
+            className={`tk-booking-for-option ${signupForMode === "existing_player" ? "is-active" : ""}`}
+            onClick={() => {
+              setSignupForMode("existing_player");
+              setSelectedWeeks([]);
+              setPaidWeeks([]);
+              setSelectionHydrated(false);
+            }}
+          >
+            <span className="tk-booking-for-icon">👥</span>
+            <div>
+              <strong>{`Another ${activeClubName} player`}</strong>
+              <small>Book and pay on their behalf.</small>
+            </div>
+            <em>{signupForMode === "existing_player" ? "✓" : ""}</em>
+          </button>
         </div>
 
         {signupForMode === "existing_player" ? (
-          <div className="signup-reminder-choice signup-reminder-inline">
-            <select
-              id="existingPlayerTargetId"
-              value={existingPlayerTargetId}
-              onChange={(e) => {
-                setExistingPlayerTargetId(e.target.value);
-                setSelectedWeeks([]);
-                setPaidWeeks([]);
-                setSelectionHydrated(false);
-              }}
-              
-            >
-              <option value="">Select player</option>
-              {existingPlayerOptions.map((player, index) => (
-                <option key={player.id} value={player.id}>
-                  {`${index + 1}. ${player.fullName}`}
-                </option>
-              ))}
-            </select>
+          <div className="tk-player-picker">
+            <label htmlFor="existingPlayerSearch">Choose player</label>
+            <input
+              id="existingPlayerSearch"
+              className="text-input"
+              type="search"
+              placeholder="Search player name..."
+              value={existingPlayerSearch}
+              onChange={(e) => setExistingPlayerSearch(e.target.value)}
+            />
+
+            <div className="tk-player-picker-list">
+              {existingPlayerOptions
+                .filter((player) =>
+                  !existingPlayerSearch.trim() ||
+                  String(player.fullName || "")
+                    .toLowerCase()
+                    .includes(existingPlayerSearch.trim().toLowerCase())
+                )
+                .slice(0, 12)
+                .map((player) => {
+                  const picked = String(existingPlayerTargetId) === String(player.id);
+                  return (
+                    <button
+                      key={player.id}
+                      type="button"
+                      className={`tk-player-picker-option ${picked ? "is-active" : ""}`}
+                      onClick={() => {
+                        setExistingPlayerTargetId(player.id);
+                        setExistingPlayerSearch(player.fullName || "");
+                        setSelectedWeeks([]);
+                        setPaidWeeks([]);
+                        setSelectionHydrated(false);
+                      }}
+                    >
+                      <span>{String(player.fullName || "P").slice(0, 1).toUpperCase()}</span>
+                      <strong>{player.fullName}</strong>
+                      <em>{picked ? "✓" : ""}</em>
+                    </button>
+                  );
+                })}
+            </div>
           </div>
         ) : null}
       </section>
@@ -4505,7 +4580,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             </div>
 
             <p className="muted small signup-calendar-note">
-              Add your WhatsApp number so ${activeClubName} can send football-related
+              {`Add your WhatsApp number so ${activeClubName} can send football-related`}
               reminders like weather reschedules, payment confirmations, and match
               updates.
             </p>

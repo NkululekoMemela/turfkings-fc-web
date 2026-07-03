@@ -1,0 +1,197 @@
+.premium-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background:
+    radial-gradient(circle at top, rgba(34, 197, 94, 0.16), transparent 42%),
+    rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(16px);
+}
+
+.premium-confirm {
+  position: relative;
+  width: min(620px, 100%);
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background:
+    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.96)),
+    rgba(15, 23, 42, 0.96);
+  box-shadow:
+    0 32px 90px rgba(0, 0, 0, 0.58),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  text-align: center;
+  animation: premiumConfirmIn 180ms ease-out;
+}
+
+.premium-confirm::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.2);
+}
+
+.premium-confirm__close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.premium-confirm__icon {
+  width: 96px;
+  height: 96px;
+  margin: 34px auto 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 2px solid rgba(34, 197, 94, 0.72);
+  background: rgba(34, 197, 94, 0.1);
+  box-shadow: 0 0 34px rgba(34, 197, 94, 0.28);
+  font-size: 42px;
+}
+
+.premium-confirm h2 {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 0 26px;
+  font-size: clamp(1.45rem, 4vw, 2.35rem);
+  line-height: 1.15;
+}
+
+.premium-confirm__message {
+  max-width: 500px;
+  margin: 22px auto 0;
+  padding: 0 26px;
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 1.02rem;
+  line-height: 1.55;
+}
+
+.premium-confirm__detail {
+  max-width: 500px;
+  margin: 24px auto 0;
+  display: grid;
+  gap: 6px;
+  padding: 18px 20px;
+  border-left: 3px solid #22c55e;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.7);
+  text-align: left;
+}
+
+.premium-confirm__detail strong {
+  color: #fff;
+}
+
+.premium-confirm__detail span {
+  color: rgba(226, 232, 240, 0.78);
+  line-height: 1.45;
+}
+
+.premium-confirm__actions {
+  margin-top: 30px;
+  padding: 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.premium-confirm__actions button {
+  min-height: 54px;
+  border-radius: 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.premium-confirm__cancel {
+  border: 1px solid rgba(148, 163, 184, 0.46);
+  background: rgba(15, 23, 42, 0.82);
+  color: rgba(226, 232, 240, 0.84);
+}
+
+.premium-confirm__confirm {
+  border: 1px solid rgba(134, 239, 172, 0.82);
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: white;
+  box-shadow: 0 18px 34px rgba(34, 197, 94, 0.26);
+}
+
+.premium-confirm--danger::before {
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.28);
+}
+
+.premium-confirm--danger .premium-confirm__icon {
+  border-color: rgba(248, 113, 113, 0.8);
+  background: rgba(248, 113, 113, 0.1);
+  box-shadow: 0 0 34px rgba(248, 113, 113, 0.24);
+}
+
+.premium-confirm--danger .premium-confirm__detail {
+  border-left-color: #f87171;
+}
+
+.premium-confirm--danger .premium-confirm__confirm {
+  border-color: rgba(248, 113, 113, 0.82);
+  background: linear-gradient(135deg, #dc2626, #f97316);
+  box-shadow: 0 18px 34px rgba(248, 113, 113, 0.2);
+}
+
+.premium-confirm--warning .premium-confirm__icon {
+  border-color: rgba(251, 191, 36, 0.82);
+  background: rgba(251, 191, 36, 0.1);
+  box-shadow: 0 0 34px rgba(251, 191, 36, 0.22);
+}
+
+.premium-confirm--warning .premium-confirm__detail {
+  border-left-color: #fbbf24;
+}
+
+.premium-confirm--warning .premium-confirm__confirm {
+  border-color: rgba(251, 191, 36, 0.82);
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+}
+
+@keyframes premiumConfirmIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .premium-confirm {
+    border-radius: 24px;
+  }
+
+  .premium-confirm__icon {
+    width: 78px;
+    height: 78px;
+    margin-top: 28px;
+    font-size: 34px;
+  }
+
+  .premium-confirm__actions {
+    grid-template-columns: 1fr;
+  }
+}
