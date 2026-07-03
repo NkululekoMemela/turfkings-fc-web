@@ -4,7 +4,6 @@ import React, { useMemo, useState } from "react";
 import HomePage_HUB_ClubRegisterForm from "./HomePage_HUB_ClubRegisterForm";
 import HomePage_HUB_LogoGenerator from "./HomePage_HUB_LogoGenerator";
 import HomePage_HUB_CaptainVerification from "./HomePage_HUB_CaptainVerification";
-import HomePage_HUB_BankingForm from "./HomePage_HUB_BankingForm";
 import { slugifyClubName } from "../../core/homePageHubLogoUtils";
 import { createHomePageHubClub } from "../../storage/homePageHubClubRepository";
 
@@ -223,7 +222,7 @@ export default function HomePage_HUB_SignupModal({
               <span>🏟️</span>
               <strong>Create your own club</strong>
               <small>
-                Launch a premium club page with branding, scheduling and payments.
+                Launch your club, customise your badge and start inviting players.
               </small>
             </button>
           </div>
@@ -232,7 +231,7 @@ export default function HomePage_HUB_SignupModal({
         {mode === "register" ? (
           <>
             <div className="hub-stepper" aria-label="Club registration steps">
-              {[1, 2, 3, 4].map((item) => (
+              {[1, 2, 3].map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -269,13 +268,6 @@ export default function HomePage_HUB_SignupModal({
               />
             ) : null}
 
-            {step === 4 ? (
-              <HomePage_HUB_BankingForm
-                bankingDraft={bankingDraft}
-                onChange={setBankingDraft}
-              />
-            ) : null}
-
             {errorText ? <div className="hub-error-box">{errorText}</div> : null}
 
             <footer className="hub-modal__footer">
@@ -292,12 +284,12 @@ export default function HomePage_HUB_SignupModal({
                 Back
               </button>
 
-              {step < 4 ? (
+              {step < 3 ? (
                 <button
                   type="button"
                   className="hub-primary-button"
                   disabled={submitting}
-                  onClick={() => goToStep(Math.min(4, step + 1))}
+                  onClick={() => goToStep(Math.min(3, step + 1))}
                 >
                   Continue
                 </button>

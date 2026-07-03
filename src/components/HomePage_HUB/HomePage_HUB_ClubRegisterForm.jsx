@@ -149,7 +149,7 @@ export default function HomePage_HUB_ClubRegisterForm({
             </small>
           ) : (
             <small className="hub-venue-verification-note">
-              Select the closest Google venue result so FANM can save the exact address and map coordinates.
+              Select the closest Google venue result so we can save the exact address and map coordinates.
             </small>
           )}
         </label>

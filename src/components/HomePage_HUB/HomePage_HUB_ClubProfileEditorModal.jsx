@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import HomePage_HUB_ClubRegisterForm from "./HomePage_HUB_ClubRegisterForm";
 import HomePage_HUB_LogoGenerator from "./HomePage_HUB_LogoGenerator";
-import HomePage_HUB_BankingForm from "./HomePage_HUB_BankingForm";
+import HomePage_HUB_CaptainVerification from "./HomePage_HUB_CaptainVerification";
 import { updateHomePageHubClub } from "../../storage/homePageHubClubRepository";
 
 function parseWeeklyPlayTime(value = "") {
@@ -128,6 +128,8 @@ export default function HomePage_HUB_ClubProfileEditorModal({
     getLogoDraftFromClub(club || {})
   );
 
+  const [captainVerificationConfirmed, setCaptainVerificationConfirmed] = useState(false);
+
   const [bankingDraft, setBankingDraft] = useState(() =>
     getBankingDraftFromClub(club || {})
   );
@@ -207,7 +209,7 @@ export default function HomePage_HUB_ClubProfileEditorModal({
         </header>
 
         <div className="hub-stepper" aria-label="Club profile editor steps">
-          {[1, 2, 3].map((item) => (
+          {[1, 2, 3, 4].map((item) => (
             <button
               key={item}
               type="button"
@@ -228,6 +230,15 @@ export default function HomePage_HUB_ClubProfileEditorModal({
         ) : null}
 
         {step === 2 ? (
+          <HomePage_HUB_CaptainVerification
+            clubDraft={clubDraft}
+            onClubDraftChange={setClubDraft}
+            verificationConfirmed={captainVerificationConfirmed}
+            onVerificationConfirmed={setCaptainVerificationConfirmed}
+          />
+        ) : null}
+
+        {step === 3 ? (
           <HomePage_HUB_LogoGenerator
             clubDraft={{ ...clubDraft, clubId }}
             logoDraft={logoDraft}
@@ -235,11 +246,32 @@ export default function HomePage_HUB_ClubProfileEditorModal({
           />
         ) : null}
 
-        {step === 3 ? (
-          <HomePage_HUB_BankingForm
-            bankingDraft={bankingDraft}
-            onChange={setBankingDraft}
-          />
+        {step === 4 ? (
+          <div className="hub-form-section">
+            <h3>Review and save</h3>
+            <p className="hub-muted">
+              Check your club details, captain WhatsApp confirmation and badge before saving.
+            </p>
+
+            <div className="hub-review-list">
+              <div>
+                <strong>Club</strong>
+                <span>{clubDraft.clubName || "Not set"}</span>
+              </div>
+              <div>
+                <strong>Venue</strong>
+                <span>{clubDraft.venueName || clubDraft.city || "Not set"}</span>
+              </div>
+              <div>
+                <strong>Captain</strong>
+                <span>{clubDraft.founderFirstName} {clubDraft.founderSurname}</span>
+              </div>
+              <div>
+                <strong>WhatsApp</strong>
+                <span>{clubDraft.captainWhatsApp || "Not set"}</span>
+              </div>
+            </div>
+          </div>
         ) : null}
 
         {errorText ? <div className="hub-error-box">{errorText}</div> : null}
@@ -254,12 +286,12 @@ export default function HomePage_HUB_ClubProfileEditorModal({
             {step === 1 ? "Cancel" : "Back"}
           </button>
 
-          {step < 3 ? (
+          {step < 4 ? (
             <button
               type="button"
               className="hub-primary-button"
               disabled={saving}
-              onClick={() => setStep((current) => Math.min(3, current + 1))}
+              onClick={() => setStep((current) => Math.min(4, current + 1))}
             >
               Continue
             </button>
