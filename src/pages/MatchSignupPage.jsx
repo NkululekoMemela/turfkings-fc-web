@@ -869,12 +869,6 @@ export default function MatchSignupPage({
   const [adminAddPaidWeeks, setAdminAddPaidWeeks] = useState([]);
   const [adminVerifyBusy, setAdminVerifyBusy] = useState(false);
   const [showAdminCleanupPanel, setShowAdminCleanupPanel] = useState(false);
-  const [showAdminSettingsModal, setShowAdminSettingsModal] = useState(false);
-  const [adminSettingsUnlocked, setAdminSettingsUnlocked] = useState(false);
-  const [adminSettingsCodeInput, setAdminSettingsCodeInput] = useState("");
-  const [adminSettingsError, setAdminSettingsError] = useState("");
-  const [adminSettingsMessage, setAdminSettingsMessage] = useState("");
-  const [adminSettingsSaving, setAdminSettingsSaving] = useState(false);
   const [matchSignupSettings, setMatchSignupSettings] = useState(DEFAULT_MATCH_SIGNUP_SETTINGS);
   const [sharedChallengeFixtures, setSharedChallengeFixtures] = useState([]);
   const [selectionHydrated, setSelectionHydrated] = useState(false);
@@ -1271,12 +1265,21 @@ export default function MatchSignupPage({
 
           nextPlayers.push({
             id: playerId,
+            docId: docSnap.id,
             fullName,
             shortName: toTitleCaseLoose(
               data?.shortName || firstNameOf(fullName) || fullName
             ),
           });
         });
+
+        console.table(
+          nextPlayers.map((p) => ({
+            id: p.id,
+            fullName: p.fullName,
+            shortName: p.shortName,
+          }))
+        );
 
         setDirectoryPlayers(nextPlayers);
       } catch (error) {
@@ -1332,16 +1335,6 @@ export default function MatchSignupPage({
       a.fullName.localeCompare(b.fullName)
     );
   }, [directoryPlayers, payerUserId, displayName, shortName]);
-
-  useEffect(() => {
-    if (signupForMode !== "existing_player") return;
-    if (existingPlayerTargetId) return;
-
-    const selfOption = existingPlayerOptions.find(
-      (item) => normKey(item.id) === normKey(payerUserId)
-    );
-    if (selfOption) setExistingPlayerTargetId(selfOption.id);
-  }, [signupForMode, existingPlayerTargetId, existingPlayerOptions, payerUserId]);
 
   useEffect(() => {
     if (signupForMode === "guest") {
@@ -2674,48 +2667,6 @@ export default function MatchSignupPage({
   const matrixViewportHeight =
     headerHeight + visibleRowsInViewport * rowHeight + 10;
 
-  const handleAdminSettingsUnlock = () => {
-    if (String(adminSettingsCodeInput || "").trim() !== ADMIN_SETTINGS_CODE) {
-      setAdminSettingsError("Incorrect admin code.");
-      return;
-    }
-    setAdminSettingsUnlocked(true);
-    setAdminSettingsError("");
-  };
-
-  const handleSaveAdminSettings = async () => {
-    if (!canManageSignupsAsAdmin || !adminSettingsUnlocked) return;
-
-    const cleaned = mergeMatchSignupSettings(matchSignupSettings);
-    setAdminSettingsSaving(true);
-    setAdminSettingsError("");
-    setAdminSettingsMessage("");
-
-    try {
-      await setDoc(
-        getClubDoc(db, "state", "matchSignupSettings", activeClubId),
-        {
-          ...cleaned,
-          updatedAt: serverTimestamp(),
-          updatedBy:
-            identity?.email ||
-            currentUser?.email ||
-            identity?.displayName ||
-            identity?.shortName ||
-            DEFAULT_ADMIN_NAME,
-        },
-        { merge: true }
-      );
-      setMatchSignupSettings(cleaned);
-      setAdminSettingsMessage("Match signup settings saved.");
-    } catch (error) {
-      console.error("Failed to save match signup settings:", error);
-      setAdminSettingsError("Could not save settings. Please try again.");
-    } finally {
-      setAdminSettingsSaving(false);
-    }
-  };
-
   const handleAttemptBack = () => {
     if (selectedWeeks.length === 0 || isFullyPaidSelection) {
       onBack?.();
@@ -3676,19 +3627,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               flexWrap: "wrap",
             }}
           >
-            {canManageSignupsAsAdmin ? (
-              <button
-                type="button"
-                className="secondary-btn signup-calendar-btn"
-                onClick={() => setShowAdminSettingsModal(true)}
-                aria-label="Open match signup settings"
-                title="Match signup settings"
-                style={{ touchAction: "manipulation" }}
-              >
-                ⚙
-              </button>
-            ) : null}
-
             <button
               type="button"
               className="secondary-btn signup-calendar-btn"
@@ -3774,6 +3712,8 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             className={`tk-booking-for-option ${signupForMode === "existing_player" ? "is-active" : ""}`}
             onClick={() => {
               setSignupForMode("existing_player");
+              setExistingPlayerTargetId("");
+              setExistingPlayerSearch("");
               setSelectedWeeks([]);
               setPaidWeeks([]);
               setSelectionHydrated(false);
@@ -3808,7 +3748,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                     .toLowerCase()
                     .includes(existingPlayerSearch.trim().toLowerCase())
                 )
-                .slice(0, 12)
                 .map((player) => {
                   const picked = String(existingPlayerTargetId) === String(player.id);
                   return (
@@ -3830,6 +3769,16 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                     </button>
                   );
                 })}
+              {existingPlayerOptions.filter((player) =>
+                !existingPlayerSearch.trim() ||
+                String(player.fullName || "")
+                  .toLowerCase()
+                  .includes(existingPlayerSearch.trim().toLowerCase())
+              ).length === 0 ? (
+                <p className="muted small" style={{ margin: "8px 2px 0" }}>
+                  No matching player found. Typing here only searches existing players.
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -4091,291 +4040,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             </p>
           ) : null}
         </section>
-      ) : null}
-
-      {showAdminSettingsModal && canManageSignupsAsAdmin ? (
-        <div
-          className="modal-backdrop"
-          onClick={() => setShowAdminSettingsModal(false)}
-        >
-          <div
-            className="modal signup-leave-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="signup-calendar-modal-header">
-              <h3>Match signup settings</h3>
-              <button
-                type="button"
-                className="secondary-btn signup-calendar-close-btn"
-                onClick={() => setShowAdminSettingsModal(false)}
-                style={{ touchAction: "manipulation" }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {!adminSettingsUnlocked ? (
-              <>
-                <p className="muted small signup-calendar-note">
-                  Enter the admin code to edit weekly match settings and the Challenge fixture.
-                </p>
-                <div className="signup-reminder-choice">
-                  <label htmlFor="adminSettingsCodeInput">Admin code</label>
-                  <input
-                    id="adminSettingsCodeInput"
-                    type="password"
-                    value={adminSettingsCodeInput}
-                    onChange={(e) => setAdminSettingsCodeInput(e.target.value)}
-                    placeholder="Enter admin code"
-                  />
-                </div>
-                {adminSettingsError ? (
-                  <p className="muted small" style={{ color: "#ff9b9b" }}>
-                    {adminSettingsError}
-                  </p>
-                ) : null}
-                <button
-                  type="button"
-                  className="primary-btn"
-                  onClick={handleAdminSettingsUnlock}
-                  style={{ touchAction: "manipulation", marginTop: 10 }}
-                >
-                  Unlock settings
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="muted small signup-calendar-note">
-                  Normal weekly games stay active, and the special Challenge appears as a highlighted one-off fixture unless you disable it.
-                </p>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 12,
-                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                  }}
-                >
-                  <div className="signup-reminder-choice">
-                    <label htmlFor="weeklyDay">Weekly match day</label>
-                    <select
-                      id="weeklyDay"
-                      value={matchSignupSettings.weeklyDay}
-                      onChange={(e) =>
-                        setMatchSignupSettings((prev) =>
-                          mergeMatchSignupSettings({
-                            ...prev,
-                            weeklyDay: Number(e.target.value),
-                          })
-                        )
-                      }
-                    >
-                      {WEEKDAY_OPTIONS.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="signup-reminder-choice">
-                    <label htmlFor="weeklyPrice">Weekly game price</label>
-                    <input
-                      id="weeklyPrice"
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={matchSignupSettings.weeklyPrice}
-                      onChange={(e) =>
-                        setMatchSignupSettings((prev) =>
-                          mergeMatchSignupSettings({
-                            ...prev,
-                            weeklyPrice: Number(e.target.value),
-                          })
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: 12,
-                    border: "1px solid rgba(251, 191, 36, 0.35)",
-                    borderRadius: 16,
-                    background: "rgba(245, 158, 11, 0.08)",
-                  }}
-                >
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      marginBottom: 12,
-                      fontWeight: 800,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={Boolean(matchSignupSettings.challenge.enabled)}
-                      onChange={(e) =>
-                        setMatchSignupSettings((prev) =>
-                          mergeMatchSignupSettings({
-                            ...prev,
-                            challenge: {
-                              ...prev.challenge,
-                              enabled: e.target.checked,
-                            },
-                          })
-                        )
-                      }
-                    />
-                    Show Challenge fixture
-                  </label>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 12,
-                      gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                    }}
-                  >
-                    <div className="signup-reminder-choice">
-                      <label htmlFor="challengeDate">Challenge date</label>
-                      <input
-                        id="challengeDate"
-                        type="date"
-                        value={matchSignupSettings.challenge.date}
-                        onChange={(e) =>
-                          setMatchSignupSettings((prev) =>
-                            mergeMatchSignupSettings({
-                              ...prev,
-                              challenge: {
-                                ...prev.challenge,
-                                date: e.target.value,
-                              },
-                            })
-                          )
-                        }
-                      />
-                    </div>
-
-                    <div className="signup-reminder-choice">
-                      <label htmlFor="challengePrice">Challenge price</label>
-                      <input
-                        id="challengePrice"
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={matchSignupSettings.challenge.price}
-                        onChange={(e) =>
-                          setMatchSignupSettings((prev) =>
-                            mergeMatchSignupSettings({
-                              ...prev,
-                              challenge: {
-                                ...prev.challenge,
-                                price: Number(e.target.value),
-                              },
-                            })
-                          )
-                        }
-                      />
-                    </div>
-
-                    <div className="signup-reminder-choice">
-                      <label htmlFor="challengeMaxPlayers">Challenge player limit</label>
-                      <select
-                        id="challengeMaxPlayers"
-                        value={matchSignupSettings.challenge.maxPlayers}
-                        onChange={(e) =>
-                          setMatchSignupSettings((prev) =>
-                            mergeMatchSignupSettings({
-                              ...prev,
-                              challenge: {
-                                ...prev.challenge,
-                                maxPlayers: Number(e.target.value),
-                              },
-                            })
-                          )
-                        }
-                      >
-                        {CHALLENGE_PLAYER_LIMIT_OPTIONS.map((limit) => (
-                          <option key={limit} value={limit}>
-                            {limit} players
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="signup-reminder-choice">
-                      <label htmlFor="challengeTitle">Fixture name</label>
-                      <input
-                        id="challengeTitle"
-                        type="text"
-                        value={matchSignupSettings.challenge.title}
-                        onChange={(e) =>
-                          setMatchSignupSettings((prev) =>
-                            mergeMatchSignupSettings({
-                              ...prev,
-                              challenge: {
-                                ...prev.challenge,
-                                title: e.target.value || "Challenge",
-                              },
-                            })
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {adminSettingsError ? (
-                  <p className="muted small" style={{ color: "#ff9b9b", marginTop: 10 }}>
-                    {adminSettingsError}
-                  </p>
-                ) : null}
-
-                {adminSettingsMessage ? (
-                  <p className="muted small" style={{ color: "#9ef0b2", marginTop: 10 }}>
-                    {adminSettingsMessage}
-                  </p>
-                ) : null}
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 10,
-                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                    marginTop: 14,
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="primary-btn"
-                    disabled={adminSettingsSaving}
-                    onClick={handleSaveAdminSettings}
-                    style={{ touchAction: "manipulation" }}
-                  >
-                    {adminSettingsSaving ? "Saving..." : "Save settings"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => {
-                      setMatchSignupSettings(DEFAULT_MATCH_SIGNUP_SETTINGS);
-                      setAdminSettingsMessage("Defaults restored. Press Save settings to publish them.");
-                    }}
-                    style={{ touchAction: "manipulation" }}
-                  >
-                    Restore defaults
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
       ) : null}
 
       {showCalendarPopup && (

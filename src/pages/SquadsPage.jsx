@@ -2208,34 +2208,6 @@ export function SquadsPage({
     );
   };
 
-  const ensurePlayerInDb = async (canonicalFullNameOrName) => {
-    const fullName = toTitleCase(canonicalFullNameOrName);
-    if (!fullName) return null;
-
-    const existing = allPlayers.find((p) => {
-      const candidates = buildIdentityStrings({ ...p, id: p.id });
-      return candidates.includes(fullName.toLowerCase());
-    });
-    if (existing) return existing.id;
-
-    const newId = slugFromName(fullName);
-    await setDoc(
-      getPlayerDoc(db, newId, activeClubId),
-      {
-        fullName,
-        name: fullName.split(" ")[0] || fullName,
-        shortName: fullName.split(" ")[0] || fullName,
-        aliases: [fullName],
-        status: "active",
-        roles: { player: true, captain: false, admin: false, coach: false },
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-    return newId;
-  };
-
   const handleAddPlayer = async (id) => {
     if (!canEdit) return;
     const raw = pendingNames[id] || "";
@@ -2273,9 +2245,11 @@ export function SquadsPage({
       if (resolved) {
         chosenId = resolved;
       } else {
-        const createdId = await ensurePlayerInDb(chosenId);
-        if (!createdId) return;
-        chosenId = createdId;
+        setAddErrors((prev) => ({
+          ...prev,
+          [id]: "Select an existing club player. New players must join the club first.",
+        }));
+        return;
       }
     }
 
@@ -2362,9 +2336,6 @@ export function SquadsPage({
       return;
     }
 
-    const legacyLabel = toTitleCase(playerIdOrLegacy);
-    const createdId = await ensurePlayerInDb(legacyLabel);
-
     setSourceTeams((prev) =>
       prev.map((t) => {
         if (t.id !== teamId) return t;
@@ -2372,10 +2343,6 @@ export function SquadsPage({
         return { ...t, players: nextPlayers };
       })
     );
-
-    if (!createdId) {
-      console.warn("[Squads] Could not create player doc for:", legacyLabel);
-    }
   };
 
   const currentViewerPlayerIds = useMemo(() => {
