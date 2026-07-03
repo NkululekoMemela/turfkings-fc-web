@@ -11154,3 +11154,145 @@ button.fanm-chat-highlight-card {
 .hub-badge-preview-card {
   background: linear-gradient(135deg, #0f172a, #064e3b) !important;
 }
+
+/* Premium captain manage-player panel */
+.tk-manage-player-panel {
+  margin-top: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.tk-manage-player-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.16), rgba(15, 23, 42, 0.42));
+}
+
+.tk-manage-player-status span {
+  display: block;
+  font-size: 0.74rem;
+  opacity: 0.72;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tk-manage-player-status strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 1rem;
+}
+
+.tk-manage-player-counts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tk-manage-player-counts em {
+  font-style: normal;
+  font-size: 0.78rem;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tk-manage-section {
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+}
+
+.tk-manage-section-head,
+.tk-manage-advanced summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.tk-manage-section-head > span,
+.tk-manage-advanced summary > span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tk-manage-section h3,
+.tk-manage-advanced h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.tk-manage-section p,
+.tk-manage-advanced p {
+  margin: 3px 0 0;
+  font-size: 0.82rem;
+  opacity: 0.72;
+}
+
+.tk-manage-main-action {
+  width: 100%;
+}
+
+.tk-manage-subsection {
+  margin-top: 14px;
+}
+
+.tk-manage-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.tk-manage-chip-row button {
+  min-width: 0;
+  width: auto;
+  padding: 10px 14px;
+}
+
+.tk-manage-action-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tk-manage-advanced summary {
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 0;
+}
+
+.tk-manage-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.tk-manage-advanced[open] summary {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 640px) {
+  .tk-manage-player-status,
+  .tk-manage-action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tk-manage-player-status {
+    display: grid;
+  }
+
+  .tk-manage-player-counts {
+    justify-content: flex-start;
+  }
+}

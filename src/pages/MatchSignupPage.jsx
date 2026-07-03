@@ -3769,7 +3769,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               onClick={() => setShowAdminCleanupPanel((prev) => !prev)}
               style={{ touchAction: "manipulation" }}
             >
-              {showAdminCleanupPanel ? "Hide admin cleanup" : "Show admin cleanup"}
+              {showAdminCleanupPanel ? "Hide manage player" : "Show manage player"}
             </button>
           </div>
         </section>
@@ -3778,7 +3778,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
       {canManageSignupsAsAdmin && showAdminCleanupPanel ? (
         <section className="card signup-summary-card">
           <div className="signup-reminder-choice">
-            <label htmlFor="adminCleanupTargetId">Admin cleanup</label>
+            <label htmlFor="adminCleanupTargetId">Manage player</label>
             <select
               id="adminCleanupTargetId"
               value={adminCleanupTargetId}
@@ -3795,154 +3795,73 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               ))}
             </select>
             <p className="muted small">
-              Use this to remove fake test signups, verify paid weeks quickly, or clear very old unpaid records so real players can use the slots.
+              Select a player, then manage their bookings and payments.
             </p>
           </div>
 
           {adminSelectedTarget ? (
-            <div style={{ marginTop: 10 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gap: 10,
-                  gridTemplateColumns: isMobile
-                    ? "1fr"
-                    : "repeat(2, minmax(0, 1fr))",
-                }}
-              >
+            <div className="tk-manage-player-panel">
+              <div className="tk-manage-player-status">
+                <div>
+                  <span>Selected player</span>
+                  <strong>{adminSelectedTarget.fullName || "Player"}</strong>
+                </div>
+                <div className="tk-manage-player-counts">
+                  <em>{adminTargetUnpaidWeeks.length} unpaid</em>
+                  <em>{adminTargetPaidWeeks.length} paid</em>
+                </div>
+              </div>
+
+              <div className="tk-manage-section">
+                <div className="tk-manage-section-head">
+                  <span>💳</span>
+                  <div>
+                    <h3>Payments</h3>
+                    <p>Confirm player payments.</p>
+                  </div>
+                </div>
+
                 <button
                   type="button"
-                  className="primary-btn"
+                  className="primary-btn tk-manage-main-action"
                   disabled={adminVerifyBusy || !adminTargetUnpaidWeeks.length}
                   onClick={handleAdminVerifyAllUnpaidWeeks}
                   style={{ touchAction: "manipulation" }}
                 >
-                  {adminVerifyBusy ? "Working..." : "Verify all unpaid weeks"}
+                  {adminVerifyBusy ? "Working..." : "Confirm all unpaid bookings"}
                 </button>
 
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  disabled={adminCleanupBusy || !adminCleanupTargetId}
-                  onClick={handleAdminClearUnpaidWeeks}
-                  style={{ touchAction: "manipulation" }}
-                >
-                  {adminCleanupBusy ? "Working..." : "Clear unpaid weeks"}
-                </button>
-              </div>
+                <div className="tk-manage-subsection">
+                  <p>Choose specific bookings</p>
 
-              <div style={{ marginTop: 12 }}>
-                <p className="muted small" style={{ marginBottom: 8 }}>
-                  Need finer control? Pick only the weeks the player paid for.
-                </p>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    marginBottom: 10,
-                  }}
-                >
-                  {adminTargetUnpaidWeeks.length > 0 ? (
-                    adminTargetUnpaidWeeks.map((weekId) => {
-                      const weekObj = weeks.find((w) => w.id === weekId);
-                      const picked = adminVerifyWeeks.includes(weekId);
-                      return (
-                        <button
-                          key={weekId}
-                          type="button"
-                          className={picked ? "primary-btn" : "secondary-btn"}
-                          onClick={() =>
-                            setAdminVerifyWeeks((prev) =>
-                              prev.includes(weekId)
-                                ? prev.filter((id) => id !== weekId)
-                                : uniqueWeekIds([...prev, weekId])
-                            )
-                          }
-                          style={{
-                            minWidth: 0,
-                            width: "auto",
-                            padding: "10px 14px",
-                            touchAction: "manipulation",
-                          }}
-                        >
-                          {weekObj?.shortLabel || weekId}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="muted small">No unpaid weeks to verify.</p>
-                  )}
-                </div>
-
-                <div style={{ marginTop: 14 }}>
-                  <p className="muted small" style={{ marginBottom: 8 }}>
-                    Player paid but did not tick the fixture? Add the missing paid fixture below.
-                  </p>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      flexWrap: "wrap",
-                      marginBottom: 10,
-                    }}
-                  >
-                    {adminTargetAvailableWeeksToAdd.length > 0 ? (
-                      adminTargetAvailableWeeksToAdd.map((weekId) => {
+                  <div className="tk-manage-chip-row">
+                    {adminTargetUnpaidWeeks.length > 0 ? (
+                      adminTargetUnpaidWeeks.map((weekId) => {
                         const weekObj = weeks.find((w) => w.id === weekId);
-                        const picked = adminAddPaidWeeks.includes(weekId);
+                        const picked = adminVerifyWeeks.includes(weekId);
                         return (
                           <button
-                            key={`add-paid-${weekId}`}
+                            key={weekId}
                             type="button"
                             className={picked ? "primary-btn" : "secondary-btn"}
                             onClick={() =>
-                              setAdminAddPaidWeeks((prev) =>
+                              setAdminVerifyWeeks((prev) =>
                                 prev.includes(weekId)
                                   ? prev.filter((id) => id !== weekId)
                                   : uniqueWeekIds([...prev, weekId])
                               )
                             }
-                            style={{
-                              minWidth: 0,
-                              width: "auto",
-                              padding: "10px 14px",
-                              touchAction: "manipulation",
-                            }}
+                            style={{ touchAction: "manipulation" }}
                           >
                             {weekObj?.shortLabel || weekId}
                           </button>
                         );
                       })
                     ) : (
-                      <p className="muted small">
-                        No missing visible fixtures are available to add.
-                      </p>
+                      <p className="muted small">No unpaid bookings to confirm.</p>
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    disabled={adminVerifyBusy || !adminAddPaidWeeks.length}
-                    onClick={() => handleAdminAddMissingPaidWeeks(adminAddPaidWeeks)}
-                    style={{ touchAction: "manipulation", marginBottom: 12 }}
-                  >
-                    {adminVerifyBusy ? "Working..." : "Add selected fixture as paid"}
-                  </button>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 10,
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(2, minmax(0, 1fr))",
-                  }}
-                >
                   <button
                     type="button"
                     className="secondary-btn"
@@ -3950,7 +3869,77 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                     onClick={() => handleAdminVerifyWeeks(adminVerifyWeeks)}
                     style={{ touchAction: "manipulation" }}
                   >
-                    {adminVerifyBusy ? "Working..." : "Verify selected weeks paid"}
+                    {adminVerifyBusy ? "Working..." : "Confirm selected bookings"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="tk-manage-section">
+                <div className="tk-manage-section-head">
+                  <span>📅</span>
+                  <div>
+                    <h3>Bookings</h3>
+                    <p>Add a booking when the player paid but forgot to select the match.</p>
+                  </div>
+                </div>
+
+                <div className="tk-manage-chip-row">
+                  {adminTargetAvailableWeeksToAdd.length > 0 ? (
+                    adminTargetAvailableWeeksToAdd.map((weekId) => {
+                      const weekObj = weeks.find((w) => w.id === weekId);
+                      const picked = adminAddPaidWeeks.includes(weekId);
+                      return (
+                        <button
+                          key={`add-paid-${weekId}`}
+                          type="button"
+                          className={picked ? "primary-btn" : "secondary-btn"}
+                          onClick={() =>
+                            setAdminAddPaidWeeks((prev) =>
+                              prev.includes(weekId)
+                                ? prev.filter((id) => id !== weekId)
+                                : uniqueWeekIds([...prev, weekId])
+                            )
+                          }
+                          style={{ touchAction: "manipulation" }}
+                        >
+                          {weekObj?.shortLabel || weekId}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="muted small">No additional bookings can be added.</p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  disabled={adminVerifyBusy || !adminAddPaidWeeks.length}
+                  onClick={() => handleAdminAddMissingPaidWeeks(adminAddPaidWeeks)}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  {adminVerifyBusy ? "Working..." : "Add booking as paid"}
+                </button>
+              </div>
+
+              <div className="tk-manage-section">
+                <div className="tk-manage-section-head">
+                  <span>🧹</span>
+                  <div>
+                    <h3>Remove</h3>
+                    <p>Remove unpaid bookings or remove the player from this month.</p>
+                  </div>
+                </div>
+
+                <div className="tk-manage-action-grid">
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={adminCleanupBusy || !adminCleanupTargetId}
+                    onClick={handleAdminClearUnpaidWeeks}
+                    style={{ touchAction: "manipulation" }}
+                  >
+                    {adminCleanupBusy ? "Working..." : "Remove unpaid bookings"}
                   </button>
 
                   <button
@@ -3960,66 +3949,58 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                     onClick={handleAdminRemoveTarget}
                     style={{ touchAction: "manipulation" }}
                   >
-                    Remove player from month
-                  </button>
-                </div>
-
-                <div style={{ marginTop: 14 }}>
-                  <p className="muted small" style={{ marginBottom: 8 }}>
-                    Need to reverse a paid week by admin? Pick the paid weeks below.
-                  </p>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      flexWrap: "wrap",
-                      marginBottom: 10,
-                    }}
-                  >
-                    {adminTargetPaidWeeks.length > 0 ? (
-                      adminTargetPaidWeeks.map((weekId) => {
-                        const weekObj = weeks.find((w) => w.id === weekId);
-                        const picked = adminRemovePaidWeeks.includes(weekId);
-                        return (
-                          <button
-                            key={`remove-paid-${weekId}`}
-                            type="button"
-                            className={picked ? "primary-btn" : "secondary-btn"}
-                            onClick={() =>
-                              setAdminRemovePaidWeeks((prev) =>
-                                prev.includes(weekId)
-                                  ? prev.filter((id) => id !== weekId)
-                                  : uniqueWeekIds([...prev, weekId])
-                              )
-                            }
-                            style={{
-                              minWidth: 0,
-                              width: "auto",
-                              padding: "10px 14px",
-                              touchAction: "manipulation",
-                            }}
-                          >
-                            {weekObj?.shortLabel || weekId}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <p className="muted small">No paid weeks available to remove.</p>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    disabled={adminCleanupBusy || !adminRemovePaidWeeks.length}
-                    onClick={() => handleAdminRemovePaidWeeks(adminRemovePaidWeeks)}
-                    style={{ touchAction: "manipulation" }}
-                  >
-                    {adminCleanupBusy ? "Working..." : "Remove selected paid weeks"}
+                    Remove player
                   </button>
                 </div>
               </div>
+
+              <details className="tk-manage-section tk-manage-advanced">
+                <summary>
+                  <span>⚙️</span>
+                  <div>
+                    <h3>Advanced</h3>
+                    <p>Undo an incorrect payment confirmation.</p>
+                  </div>
+                </summary>
+
+                <div className="tk-manage-chip-row">
+                  {adminTargetPaidWeeks.length > 0 ? (
+                    adminTargetPaidWeeks.map((weekId) => {
+                      const weekObj = weeks.find((w) => w.id === weekId);
+                      const picked = adminRemovePaidWeeks.includes(weekId);
+                      return (
+                        <button
+                          key={`remove-paid-${weekId}`}
+                          type="button"
+                          className={picked ? "primary-btn" : "secondary-btn"}
+                          onClick={() =>
+                            setAdminRemovePaidWeeks((prev) =>
+                              prev.includes(weekId)
+                                ? prev.filter((id) => id !== weekId)
+                                : uniqueWeekIds([...prev, weekId])
+                            )
+                          }
+                          style={{ touchAction: "manipulation" }}
+                        >
+                          {weekObj?.shortLabel || weekId}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="muted small">No paid bookings available to undo.</p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  disabled={adminCleanupBusy || !adminRemovePaidWeeks.length}
+                  onClick={() => handleAdminRemovePaidWeeks(adminRemovePaidWeeks)}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  {adminCleanupBusy ? "Working..." : "Undo paid booking"}
+                </button>
+              </details>
             </div>
           ) : null}
 

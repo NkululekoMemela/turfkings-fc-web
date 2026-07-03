@@ -2198,7 +2198,7 @@ export function LandingPage({
               >
                 💳
               </span>
-              <span>Pay for next month games</span>
+              <span>Book your next games</span>
             </span>
           </button>
 
