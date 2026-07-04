@@ -605,6 +605,41 @@ export function ClubChatWidget({
     identity?.shortName ||
     "Club admin";
 
+
+  const getChatDateLabel = (createdAtMs) => {
+    const ms = Number(createdAtMs || 0);
+    if (!ms) return "";
+    const date = new Date(ms);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const sameDay = (a, b) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+
+    if (sameDay(date, today)) return "Today";
+    if (sameDay(date, yesterday)) return "Yesterday";
+
+    return date.toLocaleDateString([], {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const getChatTimeLabel = (createdAtMs) => {
+    const ms = Number(createdAtMs || 0);
+    if (!ms) return "";
+    return new Date(ms).toLocaleString([], {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   const handleDeleteClubChatMessage = async (message) => {
     if (!message?.id || !activeClubId) return;
 
@@ -1034,7 +1069,12 @@ export function ClubChatWidget({
           {activeChatRoom === "club" ? (
             <div className="fanm-club-chat-messages">
               {clubChatMessages.length ? (
-                clubChatMessages.map((message) => {
+                clubChatMessages.map((message, index) => {
+                  const previousMessage = clubChatMessages[index - 1];
+                  const currentDateLabel = getChatDateLabel(message.createdAtMs);
+                  const previousDateLabel = getChatDateLabel(previousMessage?.createdAtMs);
+                  const showDateChip = currentDateLabel && currentDateLabel !== previousDateLabel;
+
                   const currentViewerKeys = [
                     currentUser?.uid,
                     currentUser?.email,
@@ -1064,10 +1104,14 @@ export function ClubChatWidget({
                     String(message.senderRole || "").toLowerCase().includes("captain");
 
                   return (
-                    <div
-                      key={message.id}
-                      className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""}`}
-                    >
+                    <React.Fragment key={message.id}>
+                      {showDateChip ? (
+                        <div className="fanm-chat-date-chip">{currentDateLabel}</div>
+                      ) : null}
+
+                      <div
+                        className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""}`}
+                      >
                       <div className="fanm-club-chat-message-meta">
                         <strong>{message.senderName || "Club member"}</strong>
                         {isAdminMessage ? <span>Captain/Admin</span> : null}
@@ -1120,17 +1164,8 @@ export function ClubChatWidget({
                       ) : null}
                       <p>{renderMessageTextWithMentions(message.text)}</p>
 
-                      <div className="fanm-club-chat-message-footer">
-                        <small className="fanm-club-chat-time">
-                          {message.createdAtMs
-                            ? new Date(message.createdAtMs).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })
-                            : ""}
-                        </small>
-                      </div>
-                      <div className="fanm-chat-reaction-row">
+                      <div className="fanm-club-chat-message-footer fanm-club-chat-message-footer--compact">
+                        <div className="fanm-chat-reaction-row">
                         {getVisibleReactions(message)
                           .map((emoji) => {
                             const count = getReactionUsers(message, emoji).length;
@@ -1149,6 +1184,11 @@ export function ClubChatWidget({
                           })}
 
 
+                        </div>
+
+                        <small className="fanm-club-chat-time">
+                          {getChatTimeLabel(message.createdAtMs)}
+                        </small>
                       </div>
 
                       {activeReactionPickerMessageId === message.id ? (
@@ -1205,7 +1245,8 @@ export function ClubChatWidget({
                           </button>
                         ) : null}
                       </div>
-                    </div>
+                      </div>
+                    </React.Fragment>
                   );
                 })
               ) : (
@@ -1253,12 +1294,12 @@ export function ClubChatWidget({
               <div className="fanm-club-chat-input-wrap">
                 <textarea
                   className="text-input"
-                  rows={3}
+                  rows={1}
                   value={clubChatDraft}
                   onChange={(event) => handleClubChatDraftChange(event.target.value)}
                   placeholder={
                     canSendClubChat
-                      ? "Message your club..."
+                      ? "Message"
                       : "Select your name and sign in to chat."
                   }
                   disabled={!canSendClubChat}
@@ -1396,11 +1437,11 @@ export function ClubChatWidget({
 
               <button
                 type="button"
-                className="primary-btn"
+                className="primary-btn fanm-premium-send-btn"
                 disabled={!canSendClubChat || (!String(clubChatDraft || "").trim() && !selectedHighlight)}
                 onClick={handleSendClubChatMessage}
               >
-                Send
+                ➤
               </button>
             </div>
           ) : (
