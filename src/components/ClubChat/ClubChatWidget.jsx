@@ -894,6 +894,30 @@ export function ClubChatWidget({
   }, [clubChatOpen, activeClubId, clubChatLatestMessageMs]);
 
   useEffect(() => {
+    if (!isLauncherOnly || !clubChatOpen) return;
+
+    try {
+      window.history.pushState(
+        { ...(window.history.state || {}), fanmClubChatOpen: true },
+        "",
+        window.location.href
+      );
+    } catch {
+      // Browser history is optional.
+    }
+
+    const handlePhoneBack = () => {
+      setClubChatOpen(false);
+    };
+
+    window.addEventListener("popstate", handlePhoneBack);
+
+    return () => {
+      window.removeEventListener("popstate", handlePhoneBack);
+    };
+  }, [isLauncherOnly, clubChatOpen]);
+
+  useEffect(() => {
     if (clubChatOpen) {
       setClubChatTeaseOpen(false);
       return;

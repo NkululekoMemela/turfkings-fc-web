@@ -11879,3 +11879,99 @@ button.fanm-chat-highlight-card {
   padding-bottom: 88px !important;
 }
 
+
+/* FANM chat final polish: remove hard tails and improve subtle football pattern */
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-message::before,
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-message::after {
+  display: none !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-messages::before {
+  content: "⚽   🏆   🥅   🏃   👟   👕";
+  opacity: 0.13 !important;
+  font-size: 32px !important;
+  line-height: 2.15 !important;
+  letter-spacing: 18px !important;
+  word-spacing: 28px !important;
+}
+
+/* ============================================================
+   FANM Premium Chat - Reply composer + clean reactions/background
+   ============================================================ */
+
+/* Hide empty reaction placeholders */
+.fanm-club-chat-card.is-modal-open .fanm-chat-reaction-row:empty {
+  display: none !important;
+}
+
+/* Make reply preview sit above the composer, WhatsApp-style */
+.fanm-club-chat-card.is-modal-open .fanm-chat-replying-box {
+  grid-column: 1 / -1 !important;
+  order: -1 !important;
+  width: 100% !important;
+  margin: 0 0 8px 0 !important;
+  padding: 10px 12px !important;
+  border-radius: 18px !important;
+  background: rgba(15, 23, 42, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-left: 4px solid #ff4f9f !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32) !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-chat-replying-box div {
+  min-width: 0 !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-chat-replying-box strong {
+  color: #ff7ab8 !important;
+  font-size: 0.82rem !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-chat-replying-box small {
+  display: block !important;
+  max-width: 100% !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-chat-replying-box button {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+  font-size: 0 !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-chat-replying-box button::before {
+  content: "×";
+  font-size: 1.25rem;
+}
+
+/* Cleaner premium football pattern */
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-messages::before {
+  content: "⚽        🥅        🏆        👟        🏃        ☆";
+  opacity: 0.17 !important;
+  color: #ff4f9f !important;
+  font-size: 34px !important;
+  line-height: 2.25 !important;
+  letter-spacing: 20px !important;
+  word-spacing: 34px !important;
+  transform: rotate(-10deg) scale(1.08) !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-messages {
+  background:
+    radial-gradient(circle at 18% 10%, rgba(14, 165, 233, 0.14), transparent 30%),
+    radial-gradient(circle at 88% 34%, rgba(255, 45, 126, 0.14), transparent 34%),
+    radial-gradient(circle at 78% 90%, rgba(255, 45, 126, 0.10), transparent 32%),
+    linear-gradient(145deg, #031026, #060816 55%, #020617) !important;
+}
+
+/* Keep composer clean when reply preview is open */
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-compose {
+  align-items: end !important;
+}
