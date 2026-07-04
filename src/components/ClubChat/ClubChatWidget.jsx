@@ -1127,6 +1127,32 @@ export function ClubChatWidget({
                     String(message.senderRole || "").toLowerCase().includes("admin") ||
                     String(message.senderRole || "").toLowerCase().includes("captain");
 
+                  const previousSenderKeys = [
+                    previousMessage?.senderUid,
+                    previousMessage?.senderEmail,
+                    previousMessage?.senderName,
+                  ]
+                    .map((value) => String(value || "").trim().toLowerCase())
+                    .filter(Boolean);
+
+                  const sameSenderAsPrevious =
+                    previousSenderKeys.length > 0 &&
+                    messageSenderKeys.some((key) => previousSenderKeys.includes(key));
+
+                  const minutesSincePrevious =
+                    previousMessage?.createdAtMs && message.createdAtMs
+                      ? Math.abs(Number(message.createdAtMs) - Number(previousMessage.createdAtMs)) / 60000
+                      : 999;
+
+                  const groupedWithPrevious =
+                    !showDateChip &&
+                    sameSenderAsPrevious &&
+                    minutesSincePrevious <= 5 &&
+                    !message.replyToId &&
+                    !previousMessage?.replyToId &&
+                    !message.attachmentType &&
+                    !previousMessage?.attachmentType;
+
                   return (
                     <React.Fragment key={message.id}>
                       {showDateChip ? (
@@ -1134,12 +1160,14 @@ export function ClubChatWidget({
                       ) : null}
 
                       <div
-                        className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""}`}
+                        className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""} ${groupedWithPrevious ? "is-grouped" : ""}`}
                       >
-                      <div className="fanm-club-chat-message-meta">
-                        <strong>{message.senderName || "Club member"}</strong>
-                        {isAdminMessage ? <span>Captain/Admin</span> : null}
-                      </div>
+                      {!groupedWithPrevious ? (
+                        <div className="fanm-club-chat-message-meta">
+                          <strong>{message.senderName || "Club member"}</strong>
+                          {isAdminMessage ? <span>Captain/Admin</span> : null}
+                        </div>
+                      ) : null}
                       {message.replyToId ? (
                         <div className="fanm-chat-reply-quote">
                           <strong>Replying to {message.replyToSenderName || "Club member"}</strong>

@@ -11975,3 +11975,13 @@ button.fanm-chat-highlight-card {
 .fanm-club-chat-card.is-modal-open .fanm-club-chat-compose {
   align-items: end !important;
 }
+
+/* FANM chat message grouping */
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-message.is-grouped {
+  margin-top: 4px !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-message.is-grouped p {
+  margin-top: 0 !important;
+}
+
