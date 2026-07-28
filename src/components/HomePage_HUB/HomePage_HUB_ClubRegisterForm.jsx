@@ -20,6 +20,7 @@ const PLAY_DAYS = [
 export default function HomePage_HUB_ClubRegisterForm({
   clubDraft,
   onChange,
+  onQuickFill,
 }) {
   const clubId = useMemo(
     () => slugifyClubName(clubDraft?.clubName),
@@ -114,6 +115,22 @@ export default function HomePage_HUB_ClubRegisterForm({
         <p>
           Add the venue location and playing time.
         </p>
+
+        {typeof window !== "undefined" &&
+        ["localhost", "127.0.0.1"].includes(window.location.hostname) ? (
+          <button
+            type="button"
+            className="hub-secondary-button hub-signup-autofill-button"
+            onClick={onQuickFill}
+            style={{
+              marginTop: "0.75rem",
+              width: "100%",
+              justifyContent: "center",
+            }}
+          >
+            ⚡ Autofill test details
+          </button>
+        ) : null}
       </div>
 
       <div className="hub-form-grid">

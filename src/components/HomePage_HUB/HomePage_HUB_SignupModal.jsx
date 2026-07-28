@@ -5,7 +5,11 @@ import HomePage_HUB_ClubRegisterForm from "./HomePage_HUB_ClubRegisterForm";
 import HomePage_HUB_LogoGenerator from "./HomePage_HUB_LogoGenerator";
 import HomePage_HUB_CaptainVerification from "./HomePage_HUB_CaptainVerification";
 import { slugifyClubName } from "../../core/homePageHubLogoUtils";
-import { createHomePageHubClub } from "../../storage/homePageHubClubRepository";
+import { auth } from "../../firebaseConfig";
+import {
+  createHomePageHubClub,
+  updateHomePageHubClub,
+} from "../../storage/homePageHubClubRepository";
 
 const INITIAL_CLUB_DRAFT = {
   clubName: "",
@@ -47,11 +51,50 @@ export default function HomePage_HUB_SignupModal({
   const [bankingDraft, setBankingDraft] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState("");
+  const [pendingCreatedClubId, setPendingCreatedClubId] = useState("");
+  const [mediaSetupPending, setMediaSetupPending] = useState(false);
 
   const clubId = useMemo(
     () => slugifyClubName(clubDraft.clubId || clubDraft.clubName),
     [clubDraft.clubId, clubDraft.clubName]
   );
+
+  const showLocalQuickFill =
+    typeof window !== "undefined" &&
+    ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+  function quickFillTestData() {
+    const testNumber = String(Date.now()).slice(-5);
+    const testClubName = `Test FC ${testNumber}`;
+
+    setClubDraft({
+      ...INITIAL_CLUB_DRAFT,
+      clubName: testClubName,
+      clubId: slugifyClubName(testClubName),
+      venueName: "Wynberg Sports Club",
+      address: "Wynberg, Cape Town",
+      suburb: "Wynberg",
+      city: "Cape Town",
+      province: "Western Cape",
+      country: "South Africa",
+      latitude: -34.0048,
+      longitude: 18.4681,
+      playDay: "Wednesday",
+      playTime: "19:00",
+      weeklyPlayTime: "Wednesdays · 19:00",
+      timezone: "Africa/Johannesburg",
+      founderFirstName: "Nkululeko",
+      founderSurname: "Memela",
+      captainName: "Nkululeko Memela",
+      captainEmail: auth.currentUser?.email || "nkululeko.memela+test@gmail.com",
+      captainWhatsApp: "+27 76 284 9740",
+      accent: "#16a34a",
+      logoText: "TF",
+    });
+
+    setCaptainVerificationConfirmed(true);
+    setErrorText("");
+  }
 
   if (!isOpen) return null;
 
@@ -61,6 +104,8 @@ export default function HomePage_HUB_SignupModal({
     setErrorText("");
     setSubmitting(false);
     setCaptainVerificationConfirmed(false);
+    setPendingCreatedClubId("");
+    setMediaSetupPending(false);
     onClose?.();
   }
 
@@ -144,34 +189,69 @@ export default function HomePage_HUB_SignupModal({
         .replace(/\s+/g, " ")
         .trim();
 
+      const preparedClubDraft = {
+        ...clubDraft,
+        captainName: founderName,
+        captainVerificationStatus: captainVerificationConfirmed
+          ? "pending_whatsapp_admin_review"
+          : "not_started",
+        captainVerificationMethod: "whatsapp_business_manual",
+        captainVerificationRequestedAtClient: captainVerificationConfirmed
+          ? new Date().toISOString()
+          : "",
+      };
+
+      const preparedBankingDraft = {
+        ...bankingDraft,
+        founderProgrammeActive: true,
+        paymentCollectionMode: "founder_programme_free",
+      };
+
+      if (mediaSetupPending && pendingCreatedClubId) {
+        const completedClub = await updateHomePageHubClub({
+          clubId: pendingCreatedClubId,
+          clubDraft: preparedClubDraft,
+          logoDraft,
+          bankingDraft: preparedBankingDraft,
+        });
+
+        onClubCreated?.(completedClub);
+        resetAndClose();
+        return;
+      }
+
       const createdClub = await createHomePageHubClub({
         clubId,
-        clubDraft: {
-          ...clubDraft,
-          captainName: founderName,
-          captainVerificationStatus: captainVerificationConfirmed
-            ? "pending_whatsapp_admin_review"
-            : "not_started",
-          captainVerificationMethod: "whatsapp_business_manual",
-          captainVerificationRequestedAtClient: captainVerificationConfirmed
-            ? new Date().toISOString()
-            : "",
-        },
+        clubDraft: preparedClubDraft,
         logoDraft,
-        bankingDraft: {
-          ...bankingDraft,
-          founderProgrammeActive: true,
-          paymentCollectionMode: "founder_programme_free",
-        },
+        bankingDraft: preparedBankingDraft,
       });
+
+      if (createdClub?.mediaSetupPending) {
+        setPendingCreatedClubId(createdClub.id || clubId);
+        setMediaSetupPending(true);
+        setStep(3);
+        setErrorText(
+          "Your club was created successfully, but we could not finish saving the badge. Select Finish club setup to try again."
+        );
+        return;
+      }
 
       onClubCreated?.(createdClub);
       resetAndClose();
     } catch (error) {
-      console.error("[HomePage_HUB] Failed to create club:", error);
+      console.error(
+        mediaSetupPending
+          ? "[HomePage_HUB] Failed to finish club setup:"
+          : "[HomePage_HUB] Failed to create club:",
+        error
+      );
+
       setErrorText(
-        error?.message ||
-          "Failed to create club. Check Firebase permissions and try again."
+        mediaSetupPending
+          ? "Your club is safe, but the badge still could not be saved. Please try again."
+          : error?.message ||
+              "Failed to create club. Check Firebase permissions and try again."
       );
     } finally {
       setSubmitting(false);
@@ -248,6 +328,7 @@ export default function HomePage_HUB_SignupModal({
               <HomePage_HUB_ClubRegisterForm
                 clubDraft={clubDraft}
                 onChange={setClubDraft}
+                onQuickFill={quickFillTestData}
               />
             ) : null}
 
@@ -274,7 +355,7 @@ export default function HomePage_HUB_SignupModal({
               <button
                 type="button"
                 className="hub-secondary-button"
-                disabled={submitting}
+                disabled={submitting || mediaSetupPending}
                 onClick={() =>
                   step === 1
                     ? setMode("choice")

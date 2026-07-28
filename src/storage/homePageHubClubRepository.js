@@ -254,30 +254,14 @@ export async function createHomePageHubClub({
 
   const now = serverTimestamp();
 
-  const uploadedLogoUrlFromFile = await uploadFileToStorage({
-    clubId: safeClubId,
-    file: logoDraft.logoFile,
-    folder: "branding",
-    prefix: "logo",
-  });
-
-  const uploadedTransparentLogoUrlFromFile = logoDraft.logoFile
-    ? await uploadBlobToStorage({
-        clubId: safeClubId,
-        blob: await makeTransparentLogoBlob(logoDraft.logoFile),
-        folder: "branding",
-        prefix: "logo_transparent",
-        fileName: "logo-transparent.png",
-      })
-    : "";
-
-  const uploadedGallery = await uploadGalleryFiles({
-    clubId: safeClubId,
-    files: logoDraft.galleryFiles,
-  });
-
-  const uploadedLogoUrl =
-    uploadedLogoUrlFromFile || cleanText(logoDraft.uploadedLogoUrl);
+  /*
+   * Create the Firestore club records first.
+   * Branding is saved afterwards through updateHomePageHubClub().
+   */
+  const uploadedLogoUrlFromFile = "";
+  const uploadedTransparentLogoUrlFromFile = "";
+  const uploadedGallery = [];
+  const uploadedLogoUrl = "";
 
   const creatorUser = auth.currentUser || null;
   const creatorUid = creatorUser?.uid || "";
@@ -382,10 +366,14 @@ export async function createHomePageHubClub({
       logoTransparentUrl: uploadedTransparentLogoUrlFromFile || uploadedLogoUrl,
     },
 
+    status: "setup_pending",
+    onboardingComplete: false,
+    onboardingStep: "badge",
+
     visibility: {
-      listedOnHomePage: true,
-      acceptingPlayers: true,
-      acceptingChallenges: true,
+      listedOnHomePage: false,
+      acceptingPlayers: false,
+      acceptingChallenges: false,
     },
 
     description: "",
@@ -414,7 +402,7 @@ export async function createHomePageHubClub({
     doc(db, "clubs", safeClubId, "state", "main"),
     {
       activeMatch: null,
-      signupOpen: true,
+      signupOpen: false,
       seasonStatus: "setup",
       createdAt: now,
       updatedAt: now,
@@ -465,7 +453,53 @@ export async function createHomePageHubClub({
     { merge: true }
   );
 
-  return clubPayload;
+  console.log("[Repository] About to enter badge update phase");
+
+  try {
+    console.log("[Repository] Calling updateHomePageHubClub()");
+
+    const completedClub = await updateHomePageHubClub({
+      clubId: safeClubId,
+      clubDraft: {
+        ...clubDraft,
+        captainName,
+      },
+      logoDraft,
+      bankingDraft,
+    });
+
+    await setDoc(
+      doc(db, "clubs", safeClubId, "state", "main"),
+      {
+        signupOpen: true,
+        seasonStatus: "setup",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    console.log("[Repository] Badge update completed successfully");
+
+    return {
+      ...clubPayload,
+      ...completedClub,
+      id: safeClubId,
+      mediaSetupPending: false,
+    };
+  } catch (mediaError) {
+    console.error("[Repository] Badge update failed but should recover", mediaError);
+    console.warn(
+      `Club ${safeClubId} was created, but its badge could not be saved.`,
+      mediaError
+    );
+
+    return {
+      ...clubPayload,
+      id: safeClubId,
+      mediaSetupPending: true,
+      mediaSetupErrorCode: cleanText(mediaError?.code),
+    };
+  }
 }
 
 export async function updateHomePageHubClub({
@@ -479,6 +513,9 @@ export async function updateHomePageHubClub({
   if (!safeClubId) throw new Error("Club ID is required.");
 
   const now = serverTimestamp();
+
+  const creatorUser = auth.currentUser || null;
+  const creatorUid = creatorUser?.uid || "";
 
   const uploadedLogoUrlFromFile = await uploadFileToStorage({
     clubId: safeClubId,
@@ -572,9 +609,26 @@ export async function updateHomePageHubClub({
     updatedAt: now,
   };
 
-  if (uploadedLogoUrl) {
-    payload.image = uploadedLogoUrl;
-    payload.logoUrl = uploadedLogoUrl;
+  const hasSavedBadge = Boolean(
+    uploadedLogoUrl || selectedGeneratedLogo
+  );
+
+  if (hasSavedBadge) {
+    if (uploadedLogoUrl) {
+      payload.image = uploadedLogoUrl;
+      payload.logoUrl = uploadedLogoUrl;
+    }
+
+    payload.status = "active";
+    payload.onboardingComplete = true;
+    payload.onboardingStep = "complete";
+
+    payload.visibility = {
+      listedOnHomePage: true,
+      acceptingPlayers: true,
+      acceptingChallenges: true,
+    };
+
     payload.branding = {
       uploadedLogoUrl,
       selectedGeneratedLogo,
@@ -594,16 +648,23 @@ export async function updateHomePageHubClub({
 
     payload.banking = cleanBankingDraft(bankingDraft);
 
-    payload.media = {
-      logoOriginalUrl: uploadedLogoUrl,
-      logoTransparentUrl: uploadedTransparentLogoUrlFromFile || uploadedLogoUrl,
-      ...(uploadedGallery.length
-        ? {
-            coverImageUrl: uploadedGallery[0]?.url || "",
-            gallery: uploadedGallery,
-          }
-        : {}),
-    };
+    if (uploadedLogoUrl || uploadedGallery.length) {
+      payload.media = {
+        ...(uploadedLogoUrl
+          ? {
+              logoOriginalUrl: uploadedLogoUrl,
+              logoTransparentUrl:
+                uploadedTransparentLogoUrlFromFile || uploadedLogoUrl,
+            }
+          : {}),
+        ...(uploadedGallery.length
+          ? {
+              coverImageUrl: uploadedGallery[0]?.url || "",
+              gallery: uploadedGallery,
+            }
+          : {}),
+      };
+    }
   } else if (uploadedGallery.length) {
     payload.media = {
       coverImageUrl: uploadedGallery[0]?.url || "",
