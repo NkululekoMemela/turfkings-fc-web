@@ -2126,9 +2126,6 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
-    if (!mustVerifyBeforePlay) {
-      setShowVerifyModal(false);
-    }
   }, [
     mustVerifyBeforePlay,
     hasVerifiedLineups,
@@ -3487,7 +3484,11 @@ export function FriendlyLiveMatchPage({
         >
           <div className="score-team">
             <strong className="score-team-name">
-              <TeamColorBadge team={teamA} fallback="DARK" />
+              <TeamColorBadge
+                team={teamA}
+                fallback="DARK"
+                compact
+              />
             </strong>
             <div className="score-number">{goalsA}</div>
           </div>
@@ -3496,7 +3497,11 @@ export function FriendlyLiveMatchPage({
 
           <div className="score-team">
             <strong className="score-team-name">
-              <TeamColorBadge team={teamB} fallback="LIGHT" />
+              <TeamColorBadge
+                team={teamB}
+                fallback="LIGHT"
+                compact
+              />
             </strong>
             <div className="score-number">{goalsB}</div>
           </div>
