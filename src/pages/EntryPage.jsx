@@ -26,6 +26,9 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
 import { ClubChatWidget } from "../components/ClubChat/ClubChatWidget.jsx";
+import {
+  findCandidatePlatformIdentity,
+} from "../storage/platformIdentityRepository.js";
 
 const MEMBERS_COLLECTION = "members";
 const PLAYERS_COLLECTION = "players";
@@ -395,6 +398,22 @@ async function upsertPlayerFromMember(member, clubId = DEFAULT_CLUB_ID) {
         fullName: fullName || displayName,
         shortName: shortName || displayName,
         email: member.email || "",
+        whatsappNumber: member.whatsappNumber || "",
+        phoneNumber:
+          member.phoneNumber ||
+          member.whatsappNumber ||
+          "",
+        photoUrl: member.photoUrl || "",
+        platformIdentityUid:
+          member.platformIdentityUid ||
+          member.uid ||
+          "",
+        platformIdentityConfirmed:
+          member.platformIdentityConfirmed === true,
+        platformIdentitySourceClubId:
+          member.platformIdentitySourceClubId || "",
+        platformIdentitySourceMemberId:
+          member.platformIdentitySourceMemberId || "",
         roles: {
           player: true,
           captain: member.role === "captain",
@@ -841,6 +860,22 @@ export function EntryPage({
               "Player",
             email: data.email || "",
             whatsappNumber: data.whatsappNumber || "",
+            phoneNumber: data.phoneNumber || "",
+            photoUrl:
+              data.photoUrl ||
+              data.profilePhotoUrl ||
+              "",
+            uid: data.uid || "",
+            platformIdentityUid:
+              data.platformIdentityUid ||
+              data.uid ||
+              "",
+            platformIdentityConfirmed:
+              data.platformIdentityConfirmed === true,
+            platformIdentitySourceClubId:
+              data.platformIdentitySourceClubId || "",
+            platformIdentitySourceMemberId:
+              data.platformIdentitySourceMemberId || "",
             role: data.role || "player",
             status: data.status || "active",
             createdAt: data.createdAt || null,
@@ -1073,6 +1108,9 @@ export function EntryPage({
   const [newPhotoPreview, setNewPhotoPreview] = useState("");
   const [newPhotoStatus, setNewPhotoStatus] = useState("");
   const [newWhatsApp, setNewWhatsApp] = useState("");
+  const [joinIdentityCandidate, setJoinIdentityCandidate] = useState(null);
+  const [joinIdentityLookupPending, setJoinIdentityLookupPending] =
+    useState(false);
 
   const [showPhotoReminderModal, setShowPhotoReminderModal] = useState(false);
   const [photoReminderContext, setPhotoReminderContext] = useState(null);
@@ -1222,13 +1260,34 @@ export function EntryPage({
     }
   };
 
-  const handleSubmitNewPlayer = async () => {
+  const submitNewPlayerRequest = async (
+    confirmedIdentity = null
+  ) => {
     setNewReqError("");
     setNewReqStatus("");
     setNewPhotoStatus("");
 
     const fullName = newFullName.trim();
     const email = newEmail.trim();
+
+    const inheritedWhatsApp =
+      confirmedIdentity?.whatsappNumber ||
+      confirmedIdentity?.phoneNumber ||
+      "";
+
+    const resolvedWhatsApp = normalizeWhatsAppNumber(
+      newWhatsApp || inheritedWhatsApp
+    );
+
+    const platformIdentityUid =
+      confirmedIdentity?.platformIdentityUid ||
+      confirmedIdentity?.uid ||
+      "";
+
+    const inheritedPhoto =
+      confirmedIdentity?.photoData ||
+      confirmedIdentity?.photoUrl ||
+      "";
 
     if (!fullName) {
       setNewReqError("Please enter your full name.");
@@ -1258,15 +1317,25 @@ export function EntryPage({
             fullName,
             shortName,
             email,
-            whatsappNumber: normalizeWhatsAppNumber(newWhatsApp),
+            whatsappNumber: resolvedWhatsApp,
+            phoneNumber: resolvedWhatsApp,
+            platformIdentityUid,
+            platformIdentityConfirmed: Boolean(confirmedIdentity),
+            platformIdentitySourceClubId:
+              confirmedIdentity?.clubId || "",
+            platformIdentitySourceMemberId:
+              confirmedIdentity?.memberId || "",
             role: "player",
             status: "pending",
             rejoinRequestedAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
 
-          if (newPhotoFile) {
-            const portraitData = await makePortraitPhotoDataUrl(newPhotoFile);
+          if (newPhotoFile || inheritedPhoto) {
+            const portraitData = newPhotoFile
+              ? await makePortraitPhotoDataUrl(newPhotoFile)
+              : inheritedPhoto;
+
             await savePlayerPhotoForIdentity({
               clubId: activeClubId,
               fullName,
@@ -1281,7 +1350,7 @@ export function EntryPage({
           }
 
           setNewReqStatus(
-            newPhotoFile
+            newPhotoFile || inheritedPhoto
               ? "Rejoin request captured and your profile photo has been saved for admin review."
               : "Rejoin request captured. An admin will approve you again."
           );
@@ -1311,14 +1380,24 @@ export function EntryPage({
         fullName,
         shortName,
         email,
-        whatsappNumber: normalizeWhatsAppNumber(newWhatsApp),
+        whatsappNumber: resolvedWhatsApp,
+        phoneNumber: resolvedWhatsApp,
+        platformIdentityUid,
+        platformIdentityConfirmed: Boolean(confirmedIdentity),
+        platformIdentitySourceClubId:
+          confirmedIdentity?.clubId || "",
+        platformIdentitySourceMemberId:
+          confirmedIdentity?.memberId || "",
         role: "player",
         status: "pending",
         createdAt: serverTimestamp(),
       });
 
-      if (newPhotoFile) {
-        const portraitData = await makePortraitPhotoDataUrl(newPhotoFile);
+      if (newPhotoFile || inheritedPhoto) {
+        const portraitData = newPhotoFile
+          ? await makePortraitPhotoDataUrl(newPhotoFile)
+          : inheritedPhoto;
+
         await savePlayerPhotoForIdentity({
           clubId: activeClubId,
           fullName,
@@ -1333,8 +1412,8 @@ export function EntryPage({
       }
 
       setNewReqStatus(
-        newPhotoFile
-          ? "Request captured and your profile photo has been saved for admin review."
+        newPhotoFile || inheritedPhoto
+          ? "Request captured and your profile photo has been copied into this club for admin review."
           : "Request captured. An admin will approve you and you’ll appear on the list."
       );
       setNewFullName("");
@@ -1346,6 +1425,112 @@ export function EntryPage({
       console.error("Error creating new member:", err);
       setNewReqError("Could not send request. Please try again.");
     }
+  };
+
+  const handleSubmitNewPlayer = async () => {
+    setNewReqError("");
+    setNewReqStatus("");
+
+    const fullName = newFullName.trim();
+    const email = newEmail.trim().toLowerCase();
+
+    if (!fullName) {
+      setNewReqError("Please enter your full name.");
+      return;
+    }
+
+    if (!email || !email.includes("@")) {
+      setNewReqError("Please enter a valid email address.");
+      return;
+    }
+
+    const nameParts = fullName
+      .replace(/\s+/g, " ")
+      .split(" ")
+      .filter(Boolean);
+
+    if (nameParts.length < 2) {
+      setNewReqError(
+        "Please enter your first name and surname."
+      );
+      return;
+    }
+
+    setJoinIdentityLookupPending(true);
+
+    try {
+      const candidates = await findCandidatePlatformIdentity({
+        firstName: nameParts[0],
+        surname: nameParts.slice(1).join(" "),
+        email,
+      });
+
+      const candidate = candidates.find(
+        (item) => item.clubId !== activeClubId
+      );
+
+      if (candidate) {
+        setJoinIdentityCandidate(candidate);
+        return;
+      }
+
+      await submitNewPlayerRequest(null);
+    } catch (error) {
+      console.warn(
+        "[EntryPage] Existing player lookup could not be completed:",
+        error
+      );
+
+      /*
+       * A lookup failure must not prevent a legitimate join request.
+       */
+      await submitNewPlayerRequest(null);
+    } finally {
+      setJoinIdentityLookupPending(false);
+    }
+  };
+
+  const acceptJoinIdentityCandidate = async () => {
+    if (!joinIdentityCandidate) return;
+
+    const candidate = joinIdentityCandidate;
+
+    setNewFullName(
+      candidate.fullName ||
+      [candidate.firstName, candidate.surname]
+        .filter(Boolean)
+        .join(" ")
+    );
+
+    if (
+      !newWhatsApp.trim() &&
+      (candidate.whatsappNumber || candidate.phoneNumber)
+    ) {
+      setNewWhatsApp(
+        candidate.whatsappNumber ||
+        candidate.phoneNumber
+      );
+    }
+
+    const existingProfilePhoto =
+      candidate.photoData ||
+      candidate.photoUrl ||
+      "";
+
+    if (!newPhotoPreview && existingProfilePhoto) {
+      setNewPhotoPreview(existingProfilePhoto);
+      setNewPhotoStatus(
+        "Your existing profile photo will be copied into this club."
+      );
+    }
+
+    setJoinIdentityCandidate(null);
+    await submitNewPlayerRequest(candidate);
+  };
+
+  const declineJoinIdentityCandidate = async () => {
+    setJoinIdentityCandidate(null);
+    await submitNewPlayerRequest(null);
   };
 
   const handleVerifyPlayer = async () => {
@@ -1400,20 +1585,33 @@ export function EntryPage({
       return;
     }
 
-    if (!memberEmail) {
-      try {
-        await updateDoc(memberDocRef(activeClubId, selectedMember.id), {
+    try {
+      await updateDoc(
+        memberDocRef(activeClubId, selectedMember.id),
+        {
           email: googleEmail,
-        });
-      } catch (err) {
-        console.error("Failed to update member email:", err);
-      }
+          uid: u.uid,
+          platformIdentityUid:
+            selectedMember.platformIdentityUid ||
+            u.uid,
+          updatedAt: serverTimestamp(),
+        }
+      );
+    } catch (err) {
+      console.error(
+        "Failed to update verified member identity:",
+        err
+      );
     }
 
     const playerId = await upsertPlayerFromMember({
       ...selectedMember,
       id: selectedMember.id,
       email: googleEmail,
+      uid: u.uid,
+      platformIdentityUid:
+        selectedMember.platformIdentityUid ||
+        u.uid,
     }, activeClubId);
 
     const resolvedRole = await resolveSignedInRoleFromPlayerDoc(
@@ -1460,8 +1658,118 @@ export function EntryPage({
       status: selectedMember.status || "active",
     };
 
+    /*
+     * Existing members may have joined this club before cross-club profile
+     * migration existed. In that case, recover the matching source profile
+     * once during sign-in, then copy confirmed details into this club.
+     */
+    const destinationExistingPhoto =
+      await findExistingPhotoDataByIdentity(
+        {
+          fullName: selectedMember.fullName,
+          shortName: selectedMember.shortName,
+          playerId: playerId || "",
+        },
+        activeClubId
+      );
+
+    let sourceIdentityCandidate = null;
+
+    if (
+      !destinationExistingPhoto ||
+      !normalizeWhatsAppNumber(memberData.whatsappNumber || "")
+    ) {
+      const identityNameParts = String(
+        selectedMember.fullName || ""
+      )
+        .trim()
+        .replace(/\s+/g, " ")
+        .split(" ")
+        .filter(Boolean);
+
+      if (identityNameParts.length >= 2) {
+        try {
+          const candidates =
+            await findCandidatePlatformIdentity({
+              firstName: identityNameParts[0],
+              surname: identityNameParts.slice(1).join(" "),
+              email: googleEmail,
+            });
+
+          sourceIdentityCandidate =
+            candidates.find(
+              (candidate) =>
+                candidate.clubId &&
+                candidate.clubId !== activeClubId
+            ) || null;
+        } catch (error) {
+          console.warn(
+            "[EntryPage] Could not recover an existing cross-club profile:",
+            error
+          );
+        }
+      }
+    }
+
+    /*
+     * The platform identity lookup may find the correct member while failing
+     * to attach the separately stored playerPhotos document. Before showing
+     * the reminder, directly recover the photo from the confirmed source club.
+     */
+    if (
+      sourceIdentityCandidate?.clubId &&
+      !sourceIdentityCandidate.photoData &&
+      !sourceIdentityCandidate.photoUrl
+    ) {
+      try {
+        const recoveredSourcePhoto =
+          await findExistingPhotoDataByIdentity(
+            {
+              fullName:
+                sourceIdentityCandidate.fullName ||
+                selectedMember.fullName,
+              shortName:
+                sourceIdentityCandidate.shortName ||
+                selectedMember.shortName,
+              playerId:
+                sourceIdentityCandidate.playerId ||
+                "",
+            },
+            sourceIdentityCandidate.clubId
+          );
+
+        if (recoveredSourcePhoto?.photoData) {
+          sourceIdentityCandidate = {
+            ...sourceIdentityCandidate,
+            photoData: recoveredSourcePhoto.photoData,
+            photoUrl: recoveredSourcePhoto.photoData,
+          };
+
+          console.log(
+            "[EntryPage] Recovered source profile photo:",
+            sourceIdentityCandidate.clubId,
+            recoveredSourcePhoto.id
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "[EntryPage] Could not directly recover source profile photo:",
+          error
+        );
+      }
+    }
+
+    const inheritedWhatsApp =
+      sourceIdentityCandidate?.whatsappNumber ||
+      sourceIdentityCandidate?.phoneNumber ||
+      "";
+
     const continueToApp = () => {
-      const savedWhatsApp = normalizeWhatsAppNumber(memberData.whatsappNumber || "");
+      const savedWhatsApp = normalizeWhatsAppNumber(
+        memberData.whatsappNumber ||
+        inheritedWhatsApp ||
+        ""
+      );
       if (!savedWhatsApp) {
         setWhatsAppReminderContext({
           ...completionPayload,
@@ -1470,9 +1778,13 @@ export function EntryPage({
             whatsappNumber: normalizeWhatsAppNumber(whatsAppInput || savedWhatsApp || ""),
           }),
         });
-        setWhatsAppInput("");
+        setWhatsAppInput(savedWhatsApp);
         setWhatsAppReminderError("");
-        setWhatsAppReminderStatus("");
+        setWhatsAppReminderStatus(
+          inheritedWhatsApp
+            ? "We found this number on your existing profile. Confirm it to copy it into this club."
+            : ""
+        );
         setShowWhatsAppReminderModal(true);
         return;
       }
@@ -1480,20 +1792,33 @@ export function EntryPage({
       onComplete(completionPayload);
     };
 
-    const existingPhoto = await findExistingPhotoDataByIdentity({
-      fullName: selectedMember.fullName,
-      shortName: selectedMember.shortName,
-      playerId: playerId || "",
-    }, activeClubId);
+    const existingPhoto = destinationExistingPhoto;
 
     if (!existingPhoto) {
+      const inheritedPhoto =
+        sourceIdentityCandidate?.photoData ||
+        sourceIdentityCandidate?.photoUrl ||
+        "";
+
       setPhotoReminderContext({
         ...completionPayload,
+        inheritedProfile: Boolean(inheritedPhoto),
+        sourceClubName:
+          sourceIdentityCandidate?.clubName || "",
         onContinue: continueToApp,
       });
-      setPhotoReminderPreview("");
+
+      setPhotoReminderPreview(inheritedPhoto);
       setPhotoReminderFile(null);
-      setPhotoReminderStatus("");
+      setPhotoReminderStatus(
+        inheritedPhoto
+          ? `We found your existing profile photo${
+              sourceIdentityCandidate?.clubName
+                ? ` from ${sourceIdentityCandidate.clubName}`
+                : ""
+            }. Confirm it to copy it into ${activeClubName}.`
+          : ""
+      );
       setPhotoReminderError("");
       setShowPhotoReminderModal(true);
       return;
@@ -1556,10 +1881,32 @@ export function EntryPage({
     setWhatsAppReminderStatus("");
 
     try {
-      await updateDoc(memberDocRef(activeClubId, whatsAppReminderContext.memberId), {
-        whatsappNumber: normalized,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(
+        memberDocRef(
+          activeClubId,
+          whatsAppReminderContext.memberId
+        ),
+        {
+          whatsappNumber: normalized,
+          phoneNumber: normalized,
+          updatedAt: serverTimestamp(),
+        }
+      );
+
+      if (whatsAppReminderContext.playerId) {
+        await setDoc(
+          playerDocRef(
+            activeClubId,
+            whatsAppReminderContext.playerId
+          ),
+          {
+            whatsappNumber: normalized,
+            phoneNumber: normalized,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
 
       handleCloseWhatsAppReminder(true);
     } catch (err) {
@@ -3051,14 +3398,134 @@ export function EntryPage({
                 ) : null}
               </div>
 
-              <button
-                type="button"
-                className="primary-btn"
-                style={{ marginTop: "0.75rem" }}
-                onClick={handleSubmitNewPlayer}
-              >
-                Request to join player list
-              </button>
+              {joinIdentityCandidate ? (
+                <div
+                  style={{
+                    marginTop: "0.9rem",
+                    padding: "1rem",
+                    borderRadius: "16px",
+                    border:
+                      "1px solid rgba(45,212,191,0.38)",
+                    background:
+                      "linear-gradient(180deg, rgba(16,185,129,0.13), rgba(15,23,42,0.08))",
+                  }}
+                >
+                  <span style={rejoiningBadgeStyle}>
+                    Existing player found
+                  </span>
+
+                  <h3 style={{ margin: "0.75rem 0 0.35rem" }}>
+                    Is this your profile?
+                  </h3>
+
+                  <p
+                    className="muted small"
+                    style={{ marginTop: 0 }}
+                  >
+                    We found a matching profile from{" "}
+                    <strong>
+                      {joinIdentityCandidate.clubName ||
+                        joinIdentityCandidate.clubId}
+                    </strong>
+                    .
+                  </p>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.8rem",
+                      marginTop: "0.8rem",
+                    }}
+                  >
+                    {(
+                      joinIdentityCandidate.photoData ||
+                      joinIdentityCandidate.photoUrl
+                    ) ? (
+                      <img
+                        src={
+                          joinIdentityCandidate.photoData ||
+                          joinIdentityCandidate.photoUrl
+                        }
+                        alt=""
+                        style={{
+                          width: "62px",
+                          height: "72px",
+                          borderRadius: "12px",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : null}
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: "0.2rem",
+                      }}
+                    >
+                      <strong>
+                        {joinIdentityCandidate.fullName}
+                      </strong>
+                      <small>
+                        {joinIdentityCandidate.email}
+                      </small>
+                      <small>
+                        {joinIdentityCandidate.whatsappNumber ||
+                          joinIdentityCandidate.phoneNumber ||
+                          "No WhatsApp number saved"}
+                      </small>
+                    </div>
+                  </div>
+
+                  <p
+                    className="muted small"
+                    style={{ marginTop: "0.8rem" }}
+                  >
+                    Your contact details and profile photo can be
+                    reused. Statistics, roles, payments and match
+                    history remain separate for each club.
+                  </p>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.6rem",
+                      marginTop: "0.85rem",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={declineJoinIdentityCandidate}
+                    >
+                      No, create this request
+                    </button>
+
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      onClick={acceptJoinIdentityCandidate}
+                    >
+                      Yes, use my profile
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {!joinIdentityCandidate ? (
+                <button
+                  type="button"
+                  className="primary-btn"
+                  style={{ marginTop: "0.75rem" }}
+                  onClick={handleSubmitNewPlayer}
+                  disabled={joinIdentityLookupPending}
+                >
+                  {joinIdentityLookupPending
+                    ? "Checking existing profiles..."
+                    : "Request to join player list"}
+                </button>
+              ) : null}
 
               {newReqError && (
                 <p className="error-text" style={{ marginTop: "0.5rem" }}>
@@ -3251,10 +3718,29 @@ export function EntryPage({
       {showPhotoReminderModal && photoReminderContext && (
         <div className="modal-backdrop">
           <div className="modal" style={{ maxWidth: "560px" }}>
-            <h3>Add your profile photo</h3>
+            <h3>
+              {photoReminderContext.inheritedProfile
+                ? "Use your existing profile photo?"
+                : "Add your profile photo"}
+            </h3>
             <p className="muted small" style={{ marginTop: "0.35rem" }}>
-              You are already on the {activeClubName} system, but you do not have a player photo yet.
-              This is optional, but it helps with player cards and match pages.
+              {photoReminderContext.inheritedProfile ? (
+                <>
+                  We found a more complete player profile
+                  {photoReminderContext.sourceClubName
+                    ? ` in ${photoReminderContext.sourceClubName}`
+                    : ""}
+                  , including your existing profile photo.
+                  <br /><br />
+                  Press <strong>Save photo & continue</strong> to copy that profile photo into this club,
+                  or upload a different one if you would prefer to replace it.
+                </>
+              ) : (
+                <>
+                  You are already on the {activeClubName} system, but you do not have a player photo yet.
+                  This is optional, but it helps with player cards and match pages.
+                </>
+              )}
             </p>
 
             <div

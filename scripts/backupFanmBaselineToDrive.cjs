@@ -2,8 +2,6 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const archiverModule = require("archiver");
-const archiver = archiverModule.default || archiverModule;
 const { google } = require("googleapis");
 const admin = require("firebase-admin");
 

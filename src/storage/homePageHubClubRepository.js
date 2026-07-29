@@ -246,6 +246,8 @@ export async function createHomePageHubClub({
   const captainName = toTitleCase(cleanText(clubDraft.captainName));
   const captainEmail = cleanEmail(clubDraft.captainEmail);
   const captainWhatsApp = cleanText(clubDraft.captainWhatsAppNormalised || clubDraft.captainWhatsApp);
+  const captainPhotoUrl = cleanText(clubDraft.captainPhotoUrl);
+  const platformIdentityUid = cleanText(clubDraft.platformIdentityUid);
 
   if (!safeClubId) throw new Error("Club ID is required.");
   if (!clubName) throw new Error("Club name is required.");
@@ -418,6 +420,10 @@ export async function createHomePageHubClub({
       email: captainEmail,
       whatsappNumber: captainWhatsApp,
       phoneNumber: captainWhatsApp,
+      photoUrl: captainPhotoUrl,
+      platformIdentityUid: platformIdentityUid || creatorUid,
+      platformIdentityConfirmed:
+        clubDraft.platformIdentityConfirmed === true,
       role: "admin",
       status: "active",
       uid: creatorUid,
@@ -438,6 +444,10 @@ export async function createHomePageHubClub({
       email: captainEmail,
       whatsappNumber: captainWhatsApp,
       phoneNumber: captainWhatsApp,
+      photoUrl: captainPhotoUrl,
+      platformIdentityUid: platformIdentityUid || creatorUid,
+      platformIdentityConfirmed:
+        clubDraft.platformIdentityConfirmed === true,
       roles: {
         player: true,
         captain: true,

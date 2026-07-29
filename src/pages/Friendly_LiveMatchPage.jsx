@@ -27,12 +27,63 @@ import {
 } from "../core/lineups.js";
 import { getGameFormatConfig } from "../core/matchConfig.js";
 import VideoHighlightsRepository from "../storage/VideoHighlightsRepository.js";
+import {
+  FANM_NATIONAL_TEAMS,
+  FANM_PRO_CLUBS,
+} from "../data/fanm/fanmTeamLibrary.js";
 
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 const PLAYERS_COLLECTION = "players";
 const ROTATION_INTERVAL_SECONDS = 5 * 60;
+
+const FANM_TEAM_LIBRARY = [
+  ...FANM_NATIONAL_TEAMS,
+  ...FANM_PRO_CLUBS,
+];
+
+function normalizeTeamLibraryKey(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function resolveFanmTeamIdentity(team = {}) {
+  if (team?.teamIdentity?.abbr) {
+    return team.teamIdentity;
+  }
+
+  const candidates = [
+    team?.abbr,
+    team?.abbrev,
+    team?.label,
+    team?.name,
+    team?.title,
+    team?.teamName,
+    team?.teamIdentity?.abbr,
+    team?.teamIdentity?.name,
+  ]
+    .map(normalizeTeamLibraryKey)
+    .filter(Boolean);
+
+  return (
+    FANM_TEAM_LIBRARY.find((entry) => {
+      const libraryKeys = [
+        entry?.abbr,
+        entry?.name,
+      ]
+        .map(normalizeTeamLibraryKey)
+        .filter(Boolean);
+
+      return candidates.some((candidate) =>
+        libraryKeys.includes(candidate)
+      );
+    }) || team?.teamIdentity || null
+  );
+}
 
 
 const FORMATIONS_6_FRIENDLY = {
@@ -1100,10 +1151,6 @@ function PlayerChoiceGrid({
   guestSnapshotChecker = null,
   disabled = false,
 }) {
-  const firstSubIndex = players.findIndex(
-    (entry) => typeof entry !== "string" && Boolean(entry?.isSub)
-  );
-
   return (
     <div className="field-row">
       <label>{title}</label>
@@ -1127,23 +1174,11 @@ function PlayerChoiceGrid({
               : false;
             const photoData = getPlayerPhoto(rawName);
 
-            const showDivider = firstSubIndex > 0 && idx === firstSubIndex;
-
             return (
-              <React.Fragment
+              <PlayerBenchChip
                 key={`${rawName}-${isSub ? "sub" : "field"}-${
                   roleTag || "norole"
                 }`}
-              >
-                {showDivider && (
-                  <div
-                    aria-hidden="true"
-                    className="live-sub-divider"
-                    title="Divider between on-field players and subs"
-                  />
-                )}
-
-                <PlayerBenchChip
                   name={displayCompactPlayerName(rawName)}
                   isSelected={isSelected}
                   onClick={() => {
@@ -1154,9 +1189,8 @@ function PlayerChoiceGrid({
                   disabled={isEntryDisabled}
                   suffix={isGuest ? " (Guest)" : ""}
                   isSub={isSub}
-                  roleTag={roleTag}
-                />
-              </React.Fragment>
+                roleTag={roleTag}
+              />
             );
           })}
         </div>
@@ -1847,6 +1881,7 @@ export function FriendlyLiveMatchPage({
 
     return safeTeams.map((t) => ({
       ...t,
+      teamIdentity: resolveFanmTeamIdentity(t),
       playerIds: (t.players || [])
         .map((p) => (typeof p === "string" ? p : p?.id || ""))
         .filter(Boolean),
@@ -3726,7 +3761,7 @@ export function FriendlyLiveMatchPage({
 
       {showGoalRecorder && (
         <div className="modal-backdrop">
-          <div className="modal">
+          <div className="modal live-goal-recorder-modal">
             <h3>{editingGoalIndex !== null ? "Edit Goal" : "Record Goal"}</h3>
 
             {goalStep === "scorer" && (

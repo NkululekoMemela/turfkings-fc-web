@@ -203,7 +203,7 @@ async function main() {
     batchCount++;
     written++;
 
-    if (batchCount >= 100) {
+    if (batchCount >= 20) {
       await batch.commit();
       console.log(`Committed ${written}/${mapped.length}`);
       batch = db.batch();
