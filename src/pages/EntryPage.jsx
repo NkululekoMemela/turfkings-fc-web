@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
+import { buildClubIdentity } from "../core/clubIdentity.js";
 
 const FANM_HOME_LOGO = "/HomePage/Logo_icon.jpeg";
 
@@ -544,11 +545,16 @@ export function EntryPage({
       : baseClub;
   }, [selectedClub, entryClubProfileOverride]);
 
-  const activeClubId = safeClubIdFromSelectedClub(activeClub);
-  const activeClubName = safeClubNameFromSelectedClub(activeClub);
-  const activeClubShortName = String(activeClub?.shortName || activeClubName).trim();
-  const isTurfKingsClub = activeClubId === DEFAULT_CLUB_ID;
-  const activeClubLogoSrc = activeClub?.logoUrl || activeClub?.logo || activeClub?.image || (isTurfKingsClub ? TurfKingsLogo : FANM_HOME_LOGO);
+  const activeClubIdentity = useMemo(
+    () => buildClubIdentity(activeClub),
+    [activeClub]
+  );
+
+  const activeClubId = activeClubIdentity.id;
+  const activeClubName = activeClubIdentity.name;
+  const activeClubShortName = activeClubIdentity.shortName;
+  const isTurfKingsClub = activeClubIdentity.isTurfKings;
+  const activeClubLogoSrc = activeClubIdentity.logoUrl;
   const activeClubHeroImage =
     clubHeroOverride ||
     activeClub?.heroImage ||
