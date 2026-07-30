@@ -13,6 +13,7 @@ import HomePage_HUB_ClubGoogleMap from "../components/HomePage_HUB/HomePage_HUB_
 import HOME_FOOTER_LOGO_LIGHT from "../assets/branding/logo-main-light.jpeg";
 import HOME_FOOTER_LOGO_DAY from "../assets/branding/logo-main-day.jpeg";
 import HOME_FOOTER_LOGO_DARK from "../assets/branding/logo-main-dark.jpeg";
+import { buildClubIdentity } from "../core/clubIdentity.js";
 
 const HOME_TOP_LOGO = "/HomePage_Hub/5_AsidesNearMe_light_logo.png";
 const HOME_FALLBACK_LOGO = "/HomePage/Logo_icon.jpeg";
@@ -135,14 +136,19 @@ function normalizeClub(docSnap) {
     Boolean(data?.schedule?.playDay) ||
     Boolean(data?.schedule?.playTime);
 
+  const identity = buildClubIdentity({
+    id: docSnap.id,
+    ...data,
+  });
+
   return {
     id: docSnap.id,
     ...data,
 
-    name: data.name || docSnap.id,
+    name: identity.name,
 
-    logoUrl: uploadedLogo,
-    image: uploadedLogo,
+    logoUrl: identity.logoUrl,
+    image: identity.logoUrl,
 
     heroImage: coverPhoto,
     heroImages: gallery,

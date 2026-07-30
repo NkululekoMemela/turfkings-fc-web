@@ -1,6 +1,8 @@
 // src/core/clubIdentity.js
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TurfKingsTransparentLogo from "../assets/TurfKings_logo_transparent.png";
+import TurfLegendsLogo from "../assets/TurfLegends_logo.jpeg";
+import TurfLegendsTransparentLogo from "../assets/TurfLegends_logo_transparent.png";
 import TurfKingsHero from "../assets/TurfKings.jpg";
 import TurfKingsHero2 from "../assets/TurfKings2.jpeg";
 import TurfKingsHero3 from "../assets/TurfKings3.jpeg";
@@ -8,7 +10,23 @@ import TurfKingsHero3 from "../assets/TurfKings3.jpeg";
 export const DEFAULT_CLUB_ID = "turf-kings";
 export const DEFAULT_CLUB_NAME = "Turf Kings FC";
 export const DEFAULT_CLUB_SHORT_NAME = "Turf Kings";
+export const TURF_LEGENDS_CLUB_ID = "turf-dribblers";
 export const DEFAULT_PLATFORM_LOGO = "/HomePage/Logo_icon.jpeg";
+
+const BUILT_IN_CLUBS = {
+  [DEFAULT_CLUB_ID]: {
+    name: DEFAULT_CLUB_NAME,
+    shortName: DEFAULT_CLUB_SHORT_NAME,
+    logo: TurfKingsLogo,
+    transparentLogo: TurfKingsTransparentLogo,
+  },
+  [TURF_LEGENDS_CLUB_ID]: {
+    name: "Turf Legends",
+    shortName: "Turf Legends",
+    logo: TurfLegendsLogo,
+    transparentLogo: TurfLegendsTransparentLogo,
+  },
+};
 
 function cleanString(value, fallback = "") {
   const text = String(value || "").trim();
@@ -41,15 +59,17 @@ export function isTurfKingsClub(clubOrId) {
 
 export function buildClubIdentity(club = {}) {
   const id = normalizeClubId(club?.id || club?.clubId || DEFAULT_CLUB_ID);
+  const builtInClub = BUILT_IN_CLUBS[id] || null;
   const turfKings = id === DEFAULT_CLUB_ID;
+  const turfLegends = id === TURF_LEGENDS_CLUB_ID;
 
-  const name = turfKings
-    ? DEFAULT_CLUB_NAME
-    : cleanString(club?.name || club?.clubName, "Unnamed Club");
+  const name =
+    builtInClub?.name ||
+    cleanString(club?.name || club?.clubName, "Unnamed Club");
 
-  const shortName = turfKings
-    ? DEFAULT_CLUB_SHORT_NAME
-    : cleanString(club?.shortName || club?.displayName || name, name);
+  const shortName =
+    builtInClub?.shortName ||
+    cleanString(club?.shortName || club?.displayName || name, name);
 
   const uploadedLogo = firstAvailable(
     club?.logoUrl,
@@ -63,7 +83,7 @@ export function buildClubIdentity(club = {}) {
     club?.image
   );
 
-  const logo = turfKings ? TurfKingsLogo : uploadedLogo || DEFAULT_PLATFORM_LOGO;
+  const logo = builtInClub?.logo || uploadedLogo || DEFAULT_PLATFORM_LOGO;
 
   const uploadedHero = firstAvailable(
     club?.media?.coverImageUrl,
@@ -102,12 +122,18 @@ export function buildClubIdentity(club = {}) {
     shortName,
     displayName: shortName || name,
     isTurfKings: turfKings,
+    isTurfLegends: turfLegends,
+    isBuiltInClub: Boolean(builtInClub),
 
     logo,
     logoUrl: logo,
-    transparentLogoUrl: turfKings
-      ? TurfKingsTransparentLogo
-      : firstAvailable(club?.media?.logoTransparentUrl, club?.branding?.transparentLogoUrl, logo),
+    transparentLogoUrl:
+      builtInClub?.transparentLogo ||
+      firstAvailable(
+        club?.media?.logoTransparentUrl,
+        club?.branding?.transparentLogoUrl,
+        logo
+      ),
 
     heroImage,
     heroImages: heroImages.length ? heroImages : [DEFAULT_PLATFORM_LOGO],
