@@ -1880,6 +1880,27 @@ function addSecondsToISO(startISO, seconds) {
   return new Date(safeStart + Math.max(0, Number(seconds || 0)) * 1000).toISOString();
 }
 
+function buildClubScheduledFinishISO(playTime, startISO, fallbackSeconds) {
+  const start = new Date(startISO || Date.now());
+  const match = String(playTime || "").match(/(?:^|\D)([01]?\d|2[0-3]):([0-5]\d)(?:\D|$)/);
+
+  if (!match || !Number.isFinite(start.getTime())) {
+    return addSecondsToISO(startISO, fallbackSeconds);
+  }
+
+  const finish = new Date(start);
+  finish.setHours(Number(match[1]), Number(match[2]), 0, 0);
+  finish.setMinutes(finish.getMinutes() + 60);
+
+  // If today's scheduled session has already finished, retain the
+  // normal-duration fallback rather than starting immediately at zero.
+  if (finish.getTime() <= start.getTime()) {
+    return addSecondsToISO(startISO, fallbackSeconds);
+  }
+
+  return finish.toISOString();
+}
+
 function touchLiveMatchDraft(draft, patch = {}) {
   if (!draft || typeof draft !== "object") return draft || null;
   const secondsLeft = secondsLeftFromExpectedEnd(draft.expectedEndAtISO);
@@ -2210,6 +2231,50 @@ export default function App() {
       setSecondsLeft(safeSeconds);
       setTimeUp(false);
     }
+  };
+
+  const handleUpdateLiveFinishTime = (nextFinishTime) => {
+    if (!canControlCurrentLiveMatch || !liveMatchDraft) {
+      window.alert("Only the current match referee can adjust the finish time.");
+      return;
+    }
+
+    const match = String(nextFinishTime || "").trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+
+    if (!match) {
+      window.alert("Please choose a valid finish time.");
+      return;
+    }
+
+    const currentEnd = new Date(liveMatchDraft.expectedEndAtISO || Date.now());
+    const nextEnd = new Date(currentEnd);
+
+    nextEnd.setHours(Number(match[1]), Number(match[2]), 0, 0);
+
+    if (nextEnd.getTime() <= Date.now()) {
+      window.alert("The finish time must be later than the current time.");
+      return;
+    }
+
+    const nextExpectedEndAtISO = nextEnd.toISOString();
+    const nextSecondsLeft =
+      secondsLeftFromExpectedEnd(nextExpectedEndAtISO) ?? secondsLeft;
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+          expectedEndAtISO: nextExpectedEndAtISO,
+          scheduledFinishSource: "referee_adjusted",
+          finishTimeAdjustedAtISO: new Date().toISOString(),
+          finishTimeAdjustedBy: buildCurrentRefereeController(),
+        }),
+      }));
+    }
+
+    setSecondsLeft(Math.max(0, nextSecondsLeft));
+    setTimeUp(nextSecondsLeft <= 0);
+    setRunning(nextSecondsLeft > 0);
   };
 
   const [pendingMatchStartContext, setPendingMatchStartContext] = useState(
@@ -3764,6 +3829,22 @@ export default function App() {
       scheduledTarget,
     };
 
+    const clubPlayTime =
+      activeClubIdentity?.schedule?.playTime ||
+      activeClubIdentity?.playTime ||
+      activeClubIdentity?.schedule?.weeklyPlayTime ||
+      activeClubIdentity?.weeklyPlayTime ||
+      "";
+
+    const expectedEndAtISO = buildClubScheduledFinishISO(
+      clubPlayTime,
+      startContext.createdAt,
+      matchSeconds
+    );
+
+    const initialSecondsLeft =
+      secondsLeftFromExpectedEnd(expectedEndAtISO) ?? matchSeconds;
+
     const liveDraft = {
       id: `live-${activeSeasonId || "season"}-${activeMatchNo}-${Date.now()}`,
       status: "running",
@@ -3780,7 +3861,8 @@ export default function App() {
       matchMode,
       scheduledTarget,
       startedAtISO: startContext.createdAt,
-      expectedEndAtISO: addSecondsToISO(startContext.createdAt, matchSeconds),
+      expectedEndAtISO,
+      scheduledFinishSource: clubPlayTime ? "club_play_time_plus_60" : "match_duration",
       matchSeconds,
       currentEvents: [],
       confirmedLineupSnapshot: null,
@@ -3791,7 +3873,7 @@ export default function App() {
         role: pageIdentity?.actingRole || pageIdentity?.role || "unknown",
         email: pageIdentity?.email || null,
       },
-      lastKnownSecondsLeft: matchSeconds,
+      lastKnownSecondsLeft: initialSecondsLeft,
       lastSavedAtISO: new Date().toISOString(),
     };
 
@@ -3804,8 +3886,8 @@ export default function App() {
     }
 
     setPendingMatchStartContext(startContext);
-    setSecondsLeft(matchSeconds);
-    setTimeUp(false);
+    setSecondsLeft(initialSecondsLeft);
+    setTimeUp(initialSecondsLeft <= 0);
     setRunning(true);
     setHasLiveMatch(true);
     setPage(PAGE_LIVE);
@@ -6825,6 +6907,8 @@ export default function App() {
           matchType={pendingMatchStartContext?.matchType || matchType}
           gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
+          expectedEndAtISO={liveMatchDraft?.expectedEndAtISO || null}
+          onUpdateExpectedEndTime={handleUpdateLiveFinishTime}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={effectivePlayerPhotosByName}

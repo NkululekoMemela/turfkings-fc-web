@@ -681,7 +681,7 @@ function buildGoalRecorderChoices({
     ...bench.map((name) => ({
       name,
       isSub: true,
-      disabled: true,
+      disabled: false,
       roleTag: roleTagMap[playerKeyFor(name)] || "",
     })),
   ];
@@ -1693,6 +1693,8 @@ export function FriendlyLiveMatchPage({
   pendingMatchStartContext = null,
   gameFormat = "5_V_5",
   onUpdateMatchSeconds = null,
+  expectedEndAtISO = null,
+  onUpdateExpectedEndTime = null,
   confirmedLineupSnapshot = null,
   confirmedLineupsByMatchNo = {},
   playerPhotosByName = {},
@@ -3351,20 +3353,76 @@ export function FriendlyLiveMatchPage({
     setUndoError("");
   };
 
-  const handleSubtleDurationEdit = () => {
-    if (!isAdmin || typeof onUpdateMatchSeconds !== "function") return;
+  const [showFinishTimeModal, setShowFinishTimeModal] = useState(false);
+  const [selectedFinishTime, setSelectedFinishTime] = useState("");
+  const [customFinishTime, setCustomFinishTime] = useState("");
 
-    const currentMinutes = Math.round(Number(matchSeconds || 0) / 60) || 60;
-    const raw = window.prompt("Match length in minutes", String(currentMinutes));
-    if (raw == null) return;
+  const formatClockTime = (value) => {
+    const date = value instanceof Date ? value : new Date(value || "");
+    if (!Number.isFinite(date.getTime())) return "";
+    return `${String(date.getHours()).padStart(2, "0")}:${String(
+      date.getMinutes()
+    ).padStart(2, "0")}`;
+  };
 
-    const minutes = Number(String(raw).trim());
-    if (!Number.isFinite(minutes) || minutes < 10 || minutes > 180) {
-      window.alert("Please choose a match length between 10 and 180 minutes.");
+  const addMinutesToClock = (value, minutes) => {
+    const date = new Date(value || Date.now());
+    if (!Number.isFinite(date.getTime())) return "";
+    date.setMinutes(date.getMinutes() + minutes);
+    return formatClockTime(date);
+  };
+
+  const currentScheduledFinish =
+    formatClockTime(expectedEndAtISO) || formatClockTime(new Date());
+
+  const scheduledFinishDate = expectedEndAtISO
+    ? new Date(expectedEndAtISO)
+    : new Date();
+
+  const scheduledStartDate = new Date(scheduledFinishDate);
+  scheduledStartDate.setHours(
+    scheduledFinishDate.getHours() - 1,
+    scheduledFinishDate.getMinutes(),
+    0,
+    0
+  );
+
+  const scheduledSessionLabel =
+    `${formatClockTime(scheduledStartDate)} → ${currentScheduledFinish}`;
+
+  const finishTimeOptions = Array.from(
+    new Set([
+      addMinutesToClock(expectedEndAtISO, -30),
+      currentScheduledFinish,
+      addMinutesToClock(expectedEndAtISO, 30),
+    ].filter(Boolean))
+  );
+
+  const openFinishTimeModal = () => {
+    if (!isAdmin || typeof onUpdateExpectedEndTime !== "function") return;
+    setSelectedFinishTime(currentScheduledFinish);
+    setCustomFinishTime("");
+    setShowFinishTimeModal(true);
+  };
+
+  const closeFinishTimeModal = () => {
+    setShowFinishTimeModal(false);
+    setCustomFinishTime("");
+  };
+
+  const handleSaveFinishTime = () => {
+    const nextFinishTime =
+      selectedFinishTime === "custom"
+        ? String(customFinishTime || "").trim()
+        : selectedFinishTime;
+
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(nextFinishTime || "")) {
+      window.alert("Please choose a valid finish time.");
       return;
     }
 
-    onUpdateMatchSeconds(Math.round(minutes * 60));
+    onUpdateExpectedEndTime(nextFinishTime);
+    closeFinishTimeModal();
   };
 
   return (
@@ -3375,6 +3433,122 @@ export function FriendlyLiveMatchPage({
         transition: "opacity 0.8s ease",
       }}
     >
+      {showFinishTimeModal && (
+        <div
+          className="fanm-finish-time-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeFinishTimeModal();
+          }}
+        >
+          <section
+            className="fanm-finish-time-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="finish-time-modal-title"
+          >
+            <button
+              type="button"
+              className="fanm-finish-time-close"
+              onClick={closeFinishTimeModal}
+              aria-label="Close finish time settings"
+            >
+              ×
+            </button>
+
+            <div className="fanm-finish-time-heading">
+              <span className="fanm-finish-time-icon">◷</span>
+              <div>
+                <h2 id="finish-time-modal-title">Finish time</h2>
+                <p>Choose when this match should end.</p>
+              </div>
+            </div>
+
+            <div className="fanm-finish-time-current">
+              <span>Scheduled session</span>
+
+              <strong>{scheduledSessionLabel}</strong>
+            </div>
+
+            <div className="fanm-finish-time-options">
+              {finishTimeOptions.map((option) => {
+                const selected = selectedFinishTime === option;
+
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    className={`fanm-finish-time-option ${
+                      selected ? "is-selected" : ""
+                    }`}
+                    onClick={() => {
+                      setSelectedFinishTime(option);
+                      setCustomFinishTime("");
+                    }}
+                  >
+                    <span
+                      className="fanm-finish-time-radio"
+                      aria-hidden="true"
+                    />
+                    <strong>{option}</strong>
+
+                    {option === currentScheduledFinish ? (
+                      <small>Default</small>
+                    ) : null}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                className={`fanm-finish-time-option ${
+                  selectedFinishTime === "custom" ? "is-selected" : ""
+                }`}
+                onClick={() => setSelectedFinishTime("custom")}
+              >
+                <span
+                  className="fanm-finish-time-radio"
+                  aria-hidden="true"
+                />
+                <strong>Custom…</strong>
+              </button>
+            </div>
+
+            {selectedFinishTime === "custom" && (
+              <label className="fanm-finish-time-custom">
+                <span>Custom finish time</span>
+                <input
+                  type="time"
+                  value={customFinishTime}
+                  onChange={(event) =>
+                    setCustomFinishTime(event.target.value)
+                  }
+                  autoFocus
+                />
+              </label>
+            )}
+
+            <div className="fanm-finish-time-actions">
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={closeFinishTimeModal}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handleSaveFinishTime}
+              >
+                Save finish time
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       <header className="header">
         <h1>Friendly {formatLabel}</h1>
         <p>
@@ -3437,13 +3611,13 @@ export function FriendlyLiveMatchPage({
                 {additionalTimeTotalSeconds ? "✅ Time added" : "⏳ Add time"}
               </button>
             ) : null}
-            {isAdmin && typeof onUpdateMatchSeconds === "function" && (
+            {isAdmin && typeof onUpdateExpectedEndTime === "function" && (
               <button
                 type="button"
                 className="link-btn"
-                onClick={handleSubtleDurationEdit}
-                title="Adjust match length"
-                aria-label="Adjust match length"
+                onClick={openFinishTimeModal}
+                title="Adjust scheduled finish time"
+                aria-label="Adjust scheduled finish time"
                 style={{
                   opacity: 0.56,
                   fontSize: "0.92rem",
