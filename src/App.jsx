@@ -8281,7 +8281,13 @@ export default function App() {
         PAGE_PEER_REVIEW,
         PAGE_SQUADS,
         PAGE_FORMATIONS,
-      ].includes(page) && (
+      ].includes(page) &&
+      !(
+        page === PAGE_LIVE &&
+        normalizeMatchMode(matchType, MATCH_TYPE.FRIENDLY) ===
+          MATCH_TYPE.FRIENDLY
+      ) &&
+      (
         isAdmin ||
         isCaptain ||
         Boolean(identity?.memberId || identity?.playerId)

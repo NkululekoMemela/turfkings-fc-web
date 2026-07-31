@@ -3768,7 +3768,7 @@ export function FriendlyLiveMatchPage({
             {canControlMatch && typeof onUpdateExpectedEndTime === "function" && (
               <button
                 type="button"
-                className="link-btn"
+                className="link-btn live-finish-time-settings-btn"
                 onClick={openFinishTimeModal}
                 title="Adjust scheduled finish time"
                 aria-label="Adjust scheduled finish time"
