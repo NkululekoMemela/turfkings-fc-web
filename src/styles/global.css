@@ -12570,3 +12570,191 @@ button.fanm-chat-highlight-card {
     min-height: 32px !important;
   }
 }
+
+
+/* Friendly premium Rotation reminder */
+.fanm-rotation-due-notice {
+  position: fixed;
+  z-index: 22020;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.7rem;
+  box-sizing: border-box;
+  border: 1px solid rgba(96, 165, 250, 0.58);
+  border-radius: 18px;
+  background:
+    radial-gradient(
+      circle at 10% 0%,
+      rgba(59, 130, 246, 0.22),
+      transparent 42%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(15, 30, 55, 0.985),
+      rgba(8, 19, 36, 0.985)
+    );
+  color: #f8fafc;
+  box-shadow:
+    0 24px 65px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(59, 130, 246, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.fanm-rotation-due-notice.is-toast {
+  top: max(1rem, env(safe-area-inset-top));
+  left: 50%;
+  width: min(430px, calc(100vw - 1.5rem));
+  padding: 0.8rem;
+  transform: translateX(-50%);
+  animation: fanmRotationToastIn 220ms ease-out;
+}
+
+.fanm-rotation-due-notice.is-pill {
+  right: 0.75rem;
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  width: min(390px, calc(100vw - 1.5rem));
+  padding: 0.65rem;
+  animation: fanmRotationPillIn 220ms ease-out;
+}
+
+.fanm-rotation-due-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(96, 165, 250, 0.66);
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, #3b82f6, #1d4ed8);
+  color: #ffffff;
+  font-size: 1.15rem;
+  box-shadow:
+    0 9px 24px rgba(37, 99, 235, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.fanm-rotation-due-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.14rem;
+}
+
+.fanm-rotation-due-copy strong {
+  color: #ffffff;
+  font-size: 0.95rem;
+  line-height: 1.15;
+}
+
+.fanm-rotation-due-copy small {
+  overflow: hidden;
+  color: #aebbd0;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fanm-rotation-due-action {
+  appearance: none;
+  min-height: 34px;
+  padding: 0.42rem 0.65rem;
+  border: 1px solid rgba(96, 165, 250, 0.54);
+  border-radius: 11px;
+  background: rgba(30, 64, 175, 0.34);
+  color: #eff6ff;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fanm-rotation-due-action:hover {
+  border-color: rgba(147, 197, 253, 0.86);
+  background: rgba(37, 99, 235, 0.5);
+}
+
+.fanm-rotation-due-close {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(248, 113, 113, 0.7);
+  border-radius: 50%;
+  background: rgba(127, 29, 29, 0.38);
+  color: #fecaca;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fanm-rotation-due-close:hover {
+  border-color: #f87171;
+  background: rgba(220, 38, 38, 0.48);
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
+@keyframes fanmRotationToastIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -14px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes fanmRotationPillIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 520px) {
+  .fanm-rotation-due-notice.is-toast {
+    top: max(0.6rem, env(safe-area-inset-top));
+    width: calc(100vw - 1rem);
+  }
+
+  .fanm-rotation-due-notice.is-pill {
+    right: 0.5rem;
+    bottom: max(0.65rem, env(safe-area-inset-bottom));
+    width: calc(100vw - 1rem);
+  }
+
+  .fanm-rotation-due-notice {
+    gap: 0.48rem;
+  }
+
+  .fanm-rotation-due-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  .fanm-rotation-due-action {
+    padding-inline: 0.48rem;
+    font-size: 0.68rem;
+  }
+
+  .fanm-rotation-due-close {
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+  }
+}

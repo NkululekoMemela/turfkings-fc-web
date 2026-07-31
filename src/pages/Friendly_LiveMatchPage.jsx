@@ -35,8 +35,14 @@ import {
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
+const ROTATION_SOUND_URL = `${import.meta.env.BASE_URL}Player_Change.mp4`;
 const PLAYERS_COLLECTION = "players";
 const ROTATION_INTERVAL_SECONDS = 5 * 60;
+
+function normalizeRotationReminderMode(value) {
+  const mode = String(value || "").trim().toLowerCase();
+  return ["time", "goals"].includes(mode) ? mode : "off";
+}
 
 const FANM_TEAM_LIBRARY = [
   ...FANM_NATIONAL_TEAMS,
@@ -183,6 +189,15 @@ function getFriendlyFormationTools(gameFormat) {
 
 const matchEndSound =
   typeof Audio !== "undefined" ? new Audio(SOUND_URL) : null;
+
+const rotationAlertSound =
+  typeof Audio !== "undefined" ? new Audio(ROTATION_SOUND_URL) : null;
+
+if (rotationAlertSound) {
+  rotationAlertSound.preload = "auto";
+  rotationAlertSound.loop = false;
+  rotationAlertSound.volume = 1;
+}
 
 if (matchEndSound) {
   matchEndSound.preload = "auto";
@@ -1758,6 +1773,14 @@ export function FriendlyLiveMatchPage({
   const [assistName, setAssistName] = useState("");
   const [editingGoalIndex, setEditingGoalIndex] = useState(null);
 
+  const [rotationDue, setRotationDue] = useState(null);
+  const [rotationToastVisible, setRotationToastVisible] = useState(false);
+
+  const rotationToastTimerRef = useRef(null);
+  const rotationDueTimerRef = useRef(null);
+  const lastRotationTimeBucketRef = useRef(0);
+  const lastRotationGoalBucketRef = useRef(0);
+
   const [showShiboboRecorder, setShowShiboboRecorder] = useState(false);
   const [shiboboTeamId, setShiboboTeamId] = useState("");
   const [shiboboPlayerName, setShiboboPlayerName] = useState("");
@@ -2419,6 +2442,217 @@ export function FriendlyLiveMatchPage({
 
   const verifiedLineupA = sanitizedConfirmedSnapshots?.[teamAId] || null;
   const verifiedLineupB = sanitizedConfirmedSnapshots?.[teamBId] || null;
+
+  const normalizedActiveRotationMode =
+    normalizeRotationReminderMode(rotationReminderMode);
+
+  const totalGoals = goalsA + goalsB;
+
+  const hasRotationBench = [verifiedLineupA, verifiedLineupB].some(
+    (snapshot) =>
+      Array.isArray(snapshot?.benchSnapshot) &&
+      snapshot.benchSnapshot.length > 0
+  );
+
+  const clearRotationReminder = () => {
+    setRotationToastVisible(false);
+    setRotationDue(null);
+
+    if (rotationToastTimerRef.current) {
+      window.clearTimeout(rotationToastTimerRef.current);
+      rotationToastTimerRef.current = null;
+    }
+
+    if (rotationDueTimerRef.current) {
+      window.clearTimeout(rotationDueTimerRef.current);
+      rotationDueTimerRef.current = null;
+    }
+  };
+
+  const openLiveLineupEditor = () => {
+    if (!playersReady) return;
+
+    if (sanitizedConfirmedSnapshots?.[teamAId]) {
+      setVerifyTeamALineup(sanitizedConfirmedSnapshots[teamAId]);
+    }
+
+    if (sanitizedConfirmedSnapshots?.[teamBId]) {
+      setVerifyTeamBLineup(sanitizedConfirmedSnapshots[teamBId]);
+    }
+
+    clearRotationReminder();
+    setShowVerifyModal(true);
+  };
+
+  const triggerRotationReminder = (reason) => {
+    if (!canControlMatch || !hasRotationBench) return;
+
+    if (rotationToastTimerRef.current) {
+      window.clearTimeout(rotationToastTimerRef.current);
+    }
+
+    if (rotationDueTimerRef.current) {
+      window.clearTimeout(rotationDueTimerRef.current);
+    }
+
+    setRotationDue({
+      reason,
+      triggeredAt: Date.now(),
+    });
+    setRotationToastVisible(true);
+
+    if (rotationAlertSound) {
+      try {
+        rotationAlertSound.pause();
+        rotationAlertSound.currentTime = 0;
+
+        const playPromise = rotationAlertSound.play();
+
+        if (playPromise?.catch) {
+          playPromise.catch((error) => {
+            console.warn(
+              "Rotation alert sound could not play:",
+              error?.message || error
+            );
+          });
+        }
+      } catch (error) {
+        console.warn(
+          "Rotation alert sound failed:",
+          error?.message || error
+        );
+      }
+    }
+
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.vibrate === "function"
+    ) {
+      navigator.vibrate([180, 100, 180]);
+    }
+
+    rotationToastTimerRef.current = window.setTimeout(() => {
+      setRotationToastVisible(false);
+      rotationToastTimerRef.current = null;
+
+      rotationDueTimerRef.current = window.setTimeout(() => {
+        setRotationDue(null);
+        rotationDueTimerRef.current = null;
+      }, 20000);
+    }, 8000);
+  };
+
+  useEffect(() => {
+    const elapsedSeconds = Math.max(
+      0,
+      Number(matchSeconds || 0) - Number(displaySeconds || 0)
+    );
+
+    lastRotationTimeBucketRef.current = Math.floor(
+      elapsedSeconds / ROTATION_INTERVAL_SECONDS
+    );
+
+    lastRotationGoalBucketRef.current = Math.floor(totalGoals / 2);
+
+    if (
+      normalizedActiveRotationMode === "off" ||
+      !canControlMatch ||
+      !hasRotationBench
+    ) {
+      clearRotationReminder();
+    }
+  }, [
+    normalizedActiveRotationMode,
+    canControlMatch,
+    hasRotationBench,
+  ]);
+
+  useEffect(() => {
+    if (
+      normalizedActiveRotationMode !== "time" ||
+      !running ||
+      !canControlMatch ||
+      !hasRotationBench
+    ) {
+      return;
+    }
+
+    const elapsedSeconds = Math.max(
+      0,
+      Number(matchSeconds || 0) - Number(displaySeconds || 0)
+    );
+
+    const currentBucket = Math.floor(
+      elapsedSeconds / ROTATION_INTERVAL_SECONDS
+    );
+
+    if (
+      currentBucket > 0 &&
+      currentBucket > lastRotationTimeBucketRef.current
+    ) {
+      lastRotationTimeBucketRef.current = currentBucket;
+
+      triggerRotationReminder(
+        `${currentBucket * 5}-minute rotation point`
+      );
+    }
+  }, [
+    displaySeconds,
+    matchSeconds,
+    running,
+    normalizedActiveRotationMode,
+    canControlMatch,
+    hasRotationBench,
+  ]);
+
+  useEffect(() => {
+    if (
+      normalizedActiveRotationMode !== "goals" ||
+      !canControlMatch ||
+      !hasRotationBench
+    ) {
+      return;
+    }
+
+    const currentGoalBucket = Math.floor(totalGoals / 2);
+
+    if (
+      currentGoalBucket > 0 &&
+      currentGoalBucket > lastRotationGoalBucketRef.current
+    ) {
+      lastRotationGoalBucketRef.current = currentGoalBucket;
+
+      triggerRotationReminder(
+        `${currentGoalBucket * 2} total goals reached`
+      );
+    }
+  }, [
+    totalGoals,
+    normalizedActiveRotationMode,
+    canControlMatch,
+    hasRotationBench,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (rotationToastTimerRef.current) {
+        window.clearTimeout(rotationToastTimerRef.current);
+      }
+
+      if (rotationDueTimerRef.current) {
+        window.clearTimeout(rotationDueTimerRef.current);
+      }
+
+      if (rotationAlertSound) {
+        try {
+          rotationAlertSound.pause();
+          rotationAlertSound.currentTime = 0;
+        } catch {
+          // Ignore media cleanup errors.
+        }
+      }
+    };
+  }, []);
 
   const selectedSnapshot =
     scoringTeamId === teamAId
@@ -3360,11 +3594,6 @@ export function FriendlyLiveMatchPage({
   const [selectedFinishTime, setSelectedFinishTime] = useState("");
   const [customFinishTime, setCustomFinishTime] = useState("");
 
-  const normalizeRotationReminderMode = (value) => {
-    const mode = String(value || "").trim().toLowerCase();
-    return ["time", "goals"].includes(mode) ? mode : "off";
-  };
-
   const [showRotationModal, setShowRotationModal] = useState(false);
   const [selectedRotationMode, setSelectedRotationMode] = useState(
     normalizeRotationReminderMode(rotationReminderMode)
@@ -3703,6 +3932,49 @@ export function FriendlyLiveMatchPage({
         </div>
       )}
 
+      {rotationDue ? (
+        <div
+          className={`fanm-rotation-due-notice ${
+            rotationToastVisible ? "is-toast" : "is-pill"
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="fanm-rotation-due-icon" aria-hidden="true">
+            🔄
+          </span>
+
+          <span className="fanm-rotation-due-copy">
+            <strong>Rotation due</strong>
+            <small>
+              {rotationToastVisible
+                ? rotationDue.reason
+                : "Substitution or keeper change"}
+            </small>
+          </span>
+
+          <button
+            type="button"
+            className="fanm-rotation-due-action"
+            onClick={openLiveLineupEditor}
+          >
+            Edit lineups
+          </button>
+
+          {!rotationToastVisible ? (
+            <button
+              type="button"
+              className="fanm-rotation-due-close"
+              onClick={clearRotationReminder}
+              aria-label="Dismiss rotation reminder"
+              title="Dismiss"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <header className="header">
         <h1>Friendly {formatLabel}</h1>
         <p>
@@ -3792,6 +4064,7 @@ export function FriendlyLiveMatchPage({
                     ? "is-active"
                     : ""
                 }`}
+                style={{ marginLeft: "0.18rem" }}
                 onClick={openRotationModal}
                 title="Set substitution and goalkeeper rotation reminders"
                 aria-label="Set rotation reminders"
@@ -3876,16 +4149,7 @@ export function FriendlyLiveMatchPage({
             <button
               className="secondary-btn"
               type="button"
-              onClick={() => {
-                if (!playersReady) return;
-                if (sanitizedConfirmedSnapshots?.[teamAId]) {
-                  setVerifyTeamALineup(sanitizedConfirmedSnapshots[teamAId]);
-                }
-                if (sanitizedConfirmedSnapshots?.[teamBId]) {
-                  setVerifyTeamBLineup(sanitizedConfirmedSnapshots[teamBId]);
-                }
-                setShowVerifyModal(true);
-              }}
+              onClick={openLiveLineupEditor}
               disabled={!playersReady}
             >
               🧑 Edit Lineups
