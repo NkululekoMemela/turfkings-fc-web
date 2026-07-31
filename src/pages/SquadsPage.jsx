@@ -32,6 +32,7 @@ import {
   normalizeGameFormat,
 } from "../core/matchConfig.js";
 import { buildPracticePlayers } from "../core/practiceSessionSeed.js";
+import { buildClubIdentity } from "../core/clubIdentity.js";
 import {
   isCaptainCode,
   isAdminCode,
@@ -747,7 +748,23 @@ export function SquadsPage({
   seasonNo = null,
   matchDayHistory = [],
 }) {
-  const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
+  const resolvedActiveClubIdentity = useMemo(
+    () =>
+      buildClubIdentity({
+        id: activeClub?.id || activeClub?.clubId || activeClubId,
+        ...(activeClub || {}),
+      }),
+    [activeClub, activeClubId]
+  );
+
+  const activeClubName = String(
+    resolvedActiveClubIdentity.shortName ||
+      resolvedActiveClubIdentity.name ||
+      "This club"
+  ).trim();
+
+  const activeClubLogo = resolvedActiveClubIdentity.logoUrl;
+
   const effectiveRole = String(
     activeRole || identity?.actingRole || identity?.role || ""
   )
@@ -3151,7 +3168,7 @@ export function SquadsPage({
           <div className="teamsheet-card available-paid-card">
             <div className="teamsheet-card-head">
               <div className="teamsheet-card-club">
-                <img src={activeClub?.logoUrl || TURF_KINGS_LOGO_URL} alt="" />
+                <img src={activeClubLogo || TURF_KINGS_LOGO_URL} alt="" />
                 <div>
                   <span>{activeClubName || "Club"}</span>
                   <small>Available paid players</small>
@@ -3193,7 +3210,7 @@ export function SquadsPage({
         >
           <div className="teamsheet-card-head">
             <div className="teamsheet-card-club">
-              <img src={activeClub?.logoUrl || TURF_KINGS_LOGO_URL} alt="" />
+              <img src={activeClubLogo || TURF_KINGS_LOGO_URL} alt="" />
               <div>
                 <span>{activeClubName || "Club"}</span>
                 <small>Available paid players</small>
@@ -3265,7 +3282,7 @@ export function SquadsPage({
           <div className="teamsheet-card-head">
             <div className="teamsheet-card-club">
               <img
-                src={isClubChallengeTeamsheet ? "/pwa/icon-192.png" : activeClub?.logoUrl || TURF_KINGS_LOGO_URL}
+                src={isClubChallengeTeamsheet ? "/pwa/icon-192.png" : activeClubLogo || TURF_KINGS_LOGO_URL}
                 alt=""
                 onError={(event) => {
                   event.currentTarget.style.display = "none";

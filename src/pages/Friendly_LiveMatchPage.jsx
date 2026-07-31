@@ -1694,6 +1694,7 @@ export function FriendlyLiveMatchPage({
   gameFormat = "5_V_5",
   onUpdateMatchSeconds = null,
   expectedEndAtISO = null,
+  scheduledFinishAtISO = null,
   onUpdateExpectedEndTime = null,
   confirmedLineupSnapshot = null,
   confirmedLineupsByMatchNo = {},
@@ -3372,35 +3373,40 @@ export function FriendlyLiveMatchPage({
     return formatClockTime(date);
   };
 
-  const currentScheduledFinish =
+  const recommendedFinish =
     formatClockTime(expectedEndAtISO) || formatClockTime(new Date());
 
-  const scheduledFinishDate = expectedEndAtISO
-    ? new Date(expectedEndAtISO)
-    : new Date();
+  const officialScheduledFinish =
+    formatClockTime(scheduledFinishAtISO) || recommendedFinish;
 
-  const scheduledStartDate = new Date(scheduledFinishDate);
-  scheduledStartDate.setHours(
-    scheduledFinishDate.getHours() - 1,
-    scheduledFinishDate.getMinutes(),
-    0,
-    0
-  );
+  const displayedScheduledFinishDate = scheduledFinishAtISO
+    ? new Date(scheduledFinishAtISO)
+    : expectedEndAtISO
+      ? new Date(expectedEndAtISO)
+      : new Date();
+
+  const scheduledStartDate = new Date(displayedScheduledFinishDate);
+  scheduledStartDate.setMinutes(scheduledStartDate.getMinutes() - 60);
 
   const scheduledSessionLabel =
-    `${formatClockTime(scheduledStartDate)} → ${currentScheduledFinish}`;
+    `${formatClockTime(scheduledStartDate)} → ${officialScheduledFinish}`;
+
+  const recommendationDiffersFromSchedule =
+    Boolean(officialScheduledFinish) &&
+    officialScheduledFinish !== recommendedFinish;
 
   const finishTimeOptions = Array.from(
     new Set([
-      addMinutesToClock(expectedEndAtISO, -30),
-      currentScheduledFinish,
-      addMinutesToClock(expectedEndAtISO, 30),
+      addMinutesToClock(expectedEndAtISO, -15),
+      recommendedFinish,
+      addMinutesToClock(expectedEndAtISO, 15),
+      officialScheduledFinish,
     ].filter(Boolean))
   );
 
   const openFinishTimeModal = () => {
-    if (!isAdmin || typeof onUpdateExpectedEndTime !== "function") return;
-    setSelectedFinishTime(currentScheduledFinish);
+    if (!canControlMatch || typeof onUpdateExpectedEndTime !== "function") return;
+    setSelectedFinishTime(recommendedFinish);
     setCustomFinishTime("");
     setShowFinishTimeModal(true);
   };
@@ -3492,8 +3498,14 @@ export function FriendlyLiveMatchPage({
                     />
                     <strong>{option}</strong>
 
-                    {option === currentScheduledFinish ? (
-                      <small>Default</small>
+                    {option === recommendedFinish ? (
+                      <small>
+                        {recommendationDiffersFromSchedule
+                          ? "Recommended"
+                          : "Default"}
+                      </small>
+                    ) : option === officialScheduledFinish ? (
+                      <small>Scheduled session</small>
                     ) : null}
                   </button>
                 );
@@ -3517,14 +3529,26 @@ export function FriendlyLiveMatchPage({
             {selectedFinishTime === "custom" && (
               <label className="fanm-finish-time-custom">
                 <span>Custom finish time</span>
-                <input
-                  type="time"
-                  value={customFinishTime}
-                  onChange={(event) =>
-                    setCustomFinishTime(event.target.value)
-                  }
-                  autoFocus
-                />
+
+                <span className="fanm-finish-time-custom-picker">
+                  <span
+                    className="fanm-finish-time-custom-picker-display"
+                    aria-hidden="true"
+                  >
+                    <span className="fanm-finish-time-custom-clock">◷</span>
+                    <strong>{customFinishTime || "Choose a time"}</strong>
+                  </span>
+
+                  <input
+                    type="time"
+                    value={customFinishTime}
+                    onChange={(event) =>
+                      setCustomFinishTime(event.target.value)
+                    }
+                    aria-label="Choose a custom finish time"
+                    autoFocus
+                  />
+                </span>
               </label>
             )}
 
@@ -3611,7 +3635,7 @@ export function FriendlyLiveMatchPage({
                 {additionalTimeTotalSeconds ? "✅ Time added" : "⏳ Add time"}
               </button>
             ) : null}
-            {isAdmin && typeof onUpdateExpectedEndTime === "function" && (
+            {canControlMatch && typeof onUpdateExpectedEndTime === "function" && (
               <button
                 type="button"
                 className="link-btn"

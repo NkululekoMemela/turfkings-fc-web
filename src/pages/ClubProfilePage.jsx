@@ -1,5 +1,6 @@
 // src/pages/ClubProfilePage.jsx
 import React from "react";
+import { buildClubIdentity } from "../core/clubIdentity.js";
 
 const DEFAULT_LOGO = "/HomePage/Logo_icon.jpeg";
 
@@ -11,15 +12,16 @@ export default function ClubProfilePage({
   onChallengeClub,
 }) {
   const safeClub = club || {};
+  const clubIdentity = buildClubIdentity(safeClub);
 
-  const clubName = safeClub.name || "New Club";
+  const clubName = clubIdentity.name || "New Club";
   const clubLocation = safeClub.location || safeClub.area || "Location not set";
   const clubDescription =
     safeClub.description ||
     "This club page has been created, but the captain has not added full details yet.";
 
   const shortCount = Number(safeClub.helpNeeded || 0);
-  const logoSrc = safeClub.image || safeClub.logoUrl || "";
+  const logoSrc = clubIdentity.logoUrl || "";
   const accent = safeClub.accent || "#22c55e";
 
   return (

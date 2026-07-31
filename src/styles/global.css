@@ -12215,16 +12215,57 @@ button.fanm-chat-highlight-card {
   font-weight: 700;
 }
 
-.fanm-finish-time-custom input {
+.fanm-finish-time-custom-picker {
+  position: relative;
+  display: grid;
   width: 100%;
-  min-height: 3rem;
-  padding: 0.65rem 0.8rem;
-  border: 1px solid rgba(96, 165, 250, 0.44);
-  border-radius: 13px;
-  color: #f8fafc;
+  min-height: 3.9rem;
+  overflow: hidden;
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  border-radius: 14px;
   background: rgba(15, 23, 42, 0.94);
-  font: inherit;
+  cursor: pointer;
+}
+
+.fanm-finish-time-custom-picker:hover {
+  border-color: rgba(96, 165, 250, 0.86);
+  background: rgba(20, 31, 52, 0.98);
+}
+
+.fanm-finish-time-custom-picker-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  min-height: 3.9rem;
+  padding: 0.75rem 1rem;
+  color: #f8fafc;
+  pointer-events: none;
+}
+
+.fanm-finish-time-custom-clock {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(96, 165, 250, 0.58);
+  border-radius: 50%;
+  color: #93c5fd;
+  font-size: 1.2rem;
+}
+
+.fanm-finish-time-custom-picker-display strong {
   font-size: 1.05rem;
+}
+
+.fanm-finish-time-custom-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0.01;
+  cursor: pointer;
   color-scheme: dark;
 }
 

@@ -1880,25 +1880,76 @@ function addSecondsToISO(startISO, seconds) {
   return new Date(safeStart + Math.max(0, Number(seconds || 0)) * 1000).toISOString();
 }
 
+function roundDateToNearestQuarterHour(value) {
+  const date = new Date(value || Date.now());
+  if (!Number.isFinite(date.getTime())) return null;
+
+  const rounded = new Date(date);
+  rounded.setSeconds(0, 0);
+  rounded.setMinutes(Math.round(rounded.getMinutes() / 15) * 15);
+
+  return rounded;
+}
+
+function buildClubOfficialScheduledFinishISO(playTime, startISO) {
+  const start = new Date(startISO || Date.now());
+  const match = String(playTime || "").match(
+    /(?:^|\D)([01]?\d|2[0-3]):([0-5]\d)(?:\D|$)/
+  );
+
+  if (!match || !Number.isFinite(start.getTime())) return null;
+
+  const scheduledStart = new Date(start);
+  scheduledStart.setHours(Number(match[1]), Number(match[2]), 0, 0);
+
+  const scheduledFinish = new Date(scheduledStart);
+  scheduledFinish.setMinutes(scheduledFinish.getMinutes() + 60);
+
+  return scheduledFinish.toISOString();
+}
+
 function buildClubScheduledFinishISO(playTime, startISO, fallbackSeconds) {
   const start = new Date(startISO || Date.now());
-  const match = String(playTime || "").match(/(?:^|\D)([01]?\d|2[0-3]):([0-5]\d)(?:\D|$)/);
 
-  if (!match || !Number.isFinite(start.getTime())) {
+  if (!Number.isFinite(start.getTime())) {
     return addSecondsToISO(startISO, fallbackSeconds);
   }
 
-  const finish = new Date(start);
-  finish.setHours(Number(match[1]), Number(match[2]), 0, 0);
-  finish.setMinutes(finish.getMinutes() + 60);
+  const officialFinishISO = buildClubOfficialScheduledFinishISO(
+    playTime,
+    startISO
+  );
 
-  // If today's scheduled session has already finished, retain the
-  // normal-duration fallback rather than starting immediately at zero.
-  if (finish.getTime() <= start.getTime()) {
-    return addSecondsToISO(startISO, fallbackSeconds);
+  if (!officialFinishISO) {
+    const recommended = roundDateToNearestQuarterHour(
+      new Date(start.getTime() + Math.max(0, Number(fallbackSeconds || 3600)) * 1000)
+    );
+
+    return recommended?.toISOString() || addSecondsToISO(startISO, fallbackSeconds);
   }
 
-  return finish.toISOString();
+  const officialFinish = new Date(officialFinishISO);
+  const scheduledStart = new Date(officialFinish);
+  scheduledStart.setMinutes(scheduledStart.getMinutes() - 60);
+
+  // Treat kickoff as part of the scheduled session when it begins
+  // no more than 30 minutes before the scheduled start and no more
+  // than 30 minutes after it.
+  const earliestScheduledKickoff = scheduledStart.getTime() - 30 * 60 * 1000;
+  const latestScheduledKickoff = scheduledStart.getTime() + 30 * 60 * 1000;
+  const kickoffIsNearSchedule =
+    start.getTime() >= earliestScheduledKickoff &&
+    start.getTime() <= latestScheduledKickoff;
+
+  if (kickoffIsNearSchedule && officialFinish.getTime() > start.getTime()) {
+    return officialFinish.toISOString();
+  }
+
+  const recommended = roundDateToNearestQuarterHour(
+    new Date(start.getTime() + 60 * 60 * 1000)
+  );
+
+  return recommended?.toISOString() || addSecondsToISO(startISO, fallbackSeconds);
 }
 
 function touchLiveMatchDraft(draft, patch = {}) {
@@ -3836,6 +3887,11 @@ export default function App() {
       activeClubIdentity?.weeklyPlayTime ||
       "";
 
+    const scheduledFinishAtISO = buildClubOfficialScheduledFinishISO(
+      clubPlayTime,
+      startContext.createdAt
+    );
+
     const expectedEndAtISO = buildClubScheduledFinishISO(
       clubPlayTime,
       startContext.createdAt,
@@ -3862,7 +3918,10 @@ export default function App() {
       scheduledTarget,
       startedAtISO: startContext.createdAt,
       expectedEndAtISO,
-      scheduledFinishSource: clubPlayTime ? "club_play_time_plus_60" : "match_duration",
+      scheduledFinishAtISO,
+      scheduledFinishSource: clubPlayTime
+        ? "smart_club_schedule"
+        : "match_duration",
       matchSeconds,
       currentEvents: [],
       confirmedLineupSnapshot: null,
@@ -6908,6 +6967,7 @@ export default function App() {
           gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
           expectedEndAtISO={liveMatchDraft?.expectedEndAtISO || null}
+          scheduledFinishAtISO={liveMatchDraft?.scheduledFinishAtISO || null}
           onUpdateExpectedEndTime={handleUpdateLiveFinishTime}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
