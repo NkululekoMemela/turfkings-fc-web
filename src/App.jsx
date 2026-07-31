@@ -2328,6 +2328,32 @@ export default function App() {
     setRunning(nextSecondsLeft > 0);
   };
 
+  const handleUpdateRotationReminder = (nextMode) => {
+    if (!canControlCurrentLiveMatch || !liveMatchDraft) {
+      window.alert(
+        "Only the current match referee can adjust rotation reminders."
+      );
+      return;
+    }
+
+    const normalizedMode = ["time", "goals"].includes(
+      String(nextMode || "").trim().toLowerCase()
+    )
+      ? String(nextMode).trim().toLowerCase()
+      : "off";
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
+          rotationReminderMode: normalizedMode,
+          rotationReminderUpdatedAtISO: new Date().toISOString(),
+          rotationReminderUpdatedBy: buildCurrentRefereeController(),
+        }),
+      }));
+    }
+  };
+
   const [pendingMatchStartContext, setPendingMatchStartContext] = useState(
     null
   );
@@ -2944,7 +2970,7 @@ export default function App() {
       cancelled = true;
     };
   }, [currentCameraLiveContext]);
-  
+
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
 
@@ -6969,6 +6995,8 @@ export default function App() {
           expectedEndAtISO={liveMatchDraft?.expectedEndAtISO || null}
           scheduledFinishAtISO={liveMatchDraft?.scheduledFinishAtISO || null}
           onUpdateExpectedEndTime={handleUpdateLiveFinishTime}
+          rotationReminderMode={liveMatchDraft?.rotationReminderMode || "off"}
+          onUpdateRotationReminder={handleUpdateRotationReminder}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={effectivePlayerPhotosByName}

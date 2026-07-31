@@ -1696,6 +1696,8 @@ export function FriendlyLiveMatchPage({
   expectedEndAtISO = null,
   scheduledFinishAtISO = null,
   onUpdateExpectedEndTime = null,
+  rotationReminderMode = "off",
+  onUpdateRotationReminder = null,
   confirmedLineupSnapshot = null,
   confirmedLineupsByMatchNo = {},
   playerPhotosByName = {},
@@ -3358,6 +3360,49 @@ export function FriendlyLiveMatchPage({
   const [selectedFinishTime, setSelectedFinishTime] = useState("");
   const [customFinishTime, setCustomFinishTime] = useState("");
 
+  const normalizeRotationReminderMode = (value) => {
+    const mode = String(value || "").trim().toLowerCase();
+    return ["time", "goals"].includes(mode) ? mode : "off";
+  };
+
+  const [showRotationModal, setShowRotationModal] = useState(false);
+  const [selectedRotationMode, setSelectedRotationMode] = useState(
+    normalizeRotationReminderMode(rotationReminderMode)
+  );
+
+  useEffect(() => {
+    setSelectedRotationMode(
+      normalizeRotationReminderMode(rotationReminderMode)
+    );
+  }, [rotationReminderMode]);
+
+  const openRotationModal = () => {
+    if (
+      !canControlMatch ||
+      typeof onUpdateRotationReminder !== "function"
+    ) {
+      return;
+    }
+
+    setSelectedRotationMode(
+      normalizeRotationReminderMode(rotationReminderMode)
+    );
+    setShowRotationModal(true);
+  };
+
+  const closeRotationModal = () => {
+    setShowRotationModal(false);
+  };
+
+  const handleSaveRotation = () => {
+    if (typeof onUpdateRotationReminder !== "function") return;
+
+    onUpdateRotationReminder(
+      normalizeRotationReminderMode(selectedRotationMode)
+    );
+    closeRotationModal();
+  };
+
   const formatClockTime = (value) => {
     const date = value instanceof Date ? value : new Date(value || "");
     if (!Number.isFinite(date.getTime())) return "";
@@ -3439,6 +3484,91 @@ export function FriendlyLiveMatchPage({
         transition: "opacity 0.8s ease",
       }}
     >
+      {showRotationModal && (
+        <div
+          className="fanm-finish-time-backdrop fanm-rotation-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeRotationModal();
+          }}
+        >
+          <section
+            className="fanm-finish-time-modal fanm-rotation-modal fanm-friendly-control-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rotation-modal-title"
+          >
+            <button
+              type="button"
+              className="fanm-finish-time-close"
+              onClick={closeRotationModal}
+              aria-label="Close rotation settings"
+            >
+              ×
+            </button>
+
+            <div className="fanm-finish-time-heading fanm-rotation-heading">
+              <span
+                className="fanm-finish-time-icon fanm-rotation-heading-icon"
+                aria-hidden="true"
+              >
+                🔄
+              </span>
+
+              <div>
+                <h2 id="rotation-modal-title">Set Rotation</h2>
+                <p>Substitution alert &amp; keeper change:</p>
+              </div>
+            </div>
+
+            <div className="fanm-finish-time-options fanm-rotation-options">
+              {[
+                { value: "time", icon: "◷", label: "Every 5 min" },
+                { value: "goals", icon: "⚽", label: "Every 2 goals" },
+                { value: "off", icon: "🔕", label: "Off" },
+              ].map((option) => {
+                const selected = selectedRotationMode === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`fanm-finish-time-option fanm-rotation-option ${
+                      selected ? "is-selected" : ""
+                    }`}
+                    onClick={() => setSelectedRotationMode(option.value)}
+                  >
+                    <span
+                      className="fanm-finish-time-radio"
+                      aria-hidden="true"
+                    />
+
+                    <span
+                      className="fanm-rotation-option-icon"
+                      aria-hidden="true"
+                    >
+                      {option.icon}
+                    </span>
+
+                    <strong>{option.label}</strong>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="fanm-finish-time-actions fanm-rotation-actions">
+              <button
+                type="button"
+                className="primary-btn fanm-rotation-save-btn"
+                onClick={handleSaveRotation}
+              >
+                Save
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {showFinishTimeModal && (
         <div
           className="fanm-finish-time-backdrop"
@@ -3448,7 +3578,7 @@ export function FriendlyLiveMatchPage({
           }}
         >
           <section
-            className="fanm-finish-time-modal"
+            className="fanm-finish-time-modal fanm-friendly-control-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="finish-time-modal-title"
@@ -3652,6 +3782,23 @@ export function FriendlyLiveMatchPage({
                 ⚙
               </button>
             )}
+
+            {canControlMatch &&
+            typeof onUpdateRotationReminder === "function" ? (
+              <button
+                type="button"
+                className={`secondary-btn live-rotation-settings-btn ${
+                  normalizeRotationReminderMode(rotationReminderMode) !== "off"
+                    ? "is-active"
+                    : ""
+                }`}
+                onClick={openRotationModal}
+                title="Set substitution and goalkeeper rotation reminders"
+                aria-label="Set rotation reminders"
+              >
+                <span aria-hidden="true">🔄</span>
+              </button>
+            ) : null}
           </div>
           <div className="live-timer-status-row">
             {running ? (
