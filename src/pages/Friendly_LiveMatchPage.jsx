@@ -1761,6 +1761,8 @@ export function FriendlyLiveMatchPage({
   const [playersLoading, setPlayersLoading] = useState(true);
 
   const [showGoalRecorder, setShowGoalRecorder] = useState(false);
+  const [showCardRecorder, setShowCardRecorder] = useState(false);
+  const [selectedDisciplinePlayer, setSelectedDisciplinePlayer] = useState(null);
   const [showAdditionalTimeModal, setShowAdditionalTimeModal] = useState(false);
   const [pendingAdditionalTimeSeconds, setPendingAdditionalTimeSeconds] = useState(0);
   const [additionalTimeTotalSeconds, setAdditionalTimeTotalSeconds] = useState(0);
@@ -2442,6 +2444,415 @@ export function FriendlyLiveMatchPage({
 
   const verifiedLineupA = sanitizedConfirmedSnapshots?.[teamAId] || null;
   const verifiedLineupB = sanitizedConfirmedSnapshots?.[teamBId] || null;
+
+  const buildDisciplinePlayers = (teamId, snapshot) => {
+    if (!snapshot) {
+      return {
+        onField: [],
+        substitutes: [],
+      };
+    }
+
+    const onField = Object.entries(snapshot.positions || {})
+      .map(([positionId, rawName]) => ({
+        teamId,
+        name: canonicalName(rawName),
+        positionId,
+        roleLabel: roleTagFromPosition(positionId) || "On field",
+        isSubstitute: false,
+      }))
+      .filter((player) => Boolean(player.name));
+
+    const onFieldKeys = new Set(
+      onField.map((player) => playerKeyFor(player.name))
+    );
+
+    const substitutes = uniquePlayersNormalized(
+      snapshot.benchSnapshot || [],
+      canonicalName,
+      playerKeyFor
+    )
+      .filter((name) => !onFieldKeys.has(playerKeyFor(name)))
+      .map((name) => ({
+        teamId,
+        name: canonicalName(name),
+        positionId: null,
+        roleLabel: "Substitute",
+        isSubstitute: true,
+      }))
+      .filter((player) => Boolean(player.name));
+
+    return {
+      onField,
+      substitutes,
+    };
+  };
+
+  const disciplinePlayersA = buildDisciplinePlayers(
+    teamAId,
+    verifiedLineupA
+  );
+
+  const disciplinePlayersB = buildDisciplinePlayers(
+    teamBId,
+    verifiedLineupB
+  );
+
+  const disciplinePlayerKey = (player) =>
+    `${String(player?.teamId || "")}::${playerKeyFor(player?.name)}`;
+
+  const disciplineCardEvents = currentEvents.filter(
+    (event) =>
+      event?.type === "yellow_card" ||
+      event?.type === "red_card"
+  );
+
+  const getDisciplineStatus = (player) => {
+    const playerKey = disciplinePlayerKey(player);
+
+    const matchingEvents = disciplineCardEvents
+      .map((event) => ({
+        ...event,
+        eventIndex: currentEvents.findIndex(
+          (currentEvent) =>
+            currentEvent?.id === event?.id
+        ),
+      }))
+      .filter(
+        (event) =>
+          `${String(event?.teamId || "")}::${playerKeyFor(
+            event?.playerName
+          )}` === playerKey
+      );
+
+    return {
+      yellowEvents: matchingEvents.filter(
+        (event) => event.type === "yellow_card"
+      ),
+      redEvents: matchingEvents.filter(
+        (event) => event.type === "red_card"
+      ),
+    };
+  };
+
+  const persistDisciplineLineups = (nextSnapshots) => {
+    setLocalConfirmedSnapshots(nextSnapshots);
+
+    if (nextSnapshots?.[teamAId]) {
+      setVerifyTeamALineup(nextSnapshots[teamAId]);
+    }
+
+    if (nextSnapshots?.[teamBId]) {
+      setVerifyTeamBLineup(nextSnapshots[teamBId]);
+    }
+
+    onConfirmPreMatchLineups?.(nextSnapshots);
+  };
+
+  const removeDismissedPlayerFromLineup = (player) => {
+    const teamId = player?.teamId;
+    const playerName = canonicalName(player?.name);
+
+    if (!teamId || !playerName) {
+      return {
+        removedPositionId: null,
+        wasSubstitute: Boolean(player?.isSubstitute),
+      };
+    }
+
+    const currentSnapshots = {
+      ...(sanitizedConfirmedSnapshots || {}),
+    };
+
+    const currentSnapshot = currentSnapshots?.[teamId];
+
+    if (!currentSnapshot) {
+      return {
+        removedPositionId: player?.positionId || null,
+        wasSubstitute: Boolean(player?.isSubstitute),
+      };
+    }
+
+    const targetKey = playerKeyFor(playerName);
+    const nextPositions = {
+      ...(currentSnapshot.positions || {}),
+    };
+
+    let removedPositionId = null;
+
+    Object.entries(nextPositions).forEach(
+      ([positionId, assignedName]) => {
+        if (
+          assignedName &&
+          playerKeyFor(assignedName) === targetKey
+        ) {
+          removedPositionId = positionId;
+          nextPositions[positionId] = null;
+        }
+      }
+    );
+
+    const currentBench = Array.isArray(
+      currentSnapshot.benchSnapshot
+    )
+      ? currentSnapshot.benchSnapshot
+      : [];
+
+    const wasSubstitute = currentBench.some(
+      (name) => playerKeyFor(name) === targetKey
+    );
+
+    const nextBench = currentBench.filter(
+      (name) => playerKeyFor(name) !== targetKey
+    );
+
+    const nextSnapshots = {
+      ...currentSnapshots,
+      [teamId]: {
+        ...currentSnapshot,
+        positions: nextPositions,
+        benchSnapshot: nextBench,
+        onFieldPlayerCount: Object.values(
+          nextPositions
+        ).filter(Boolean).length,
+      },
+    };
+
+    persistDisciplineLineups(nextSnapshots);
+
+    return {
+      removedPositionId:
+        removedPositionId || player?.positionId || null,
+      wasSubstitute:
+        wasSubstitute || Boolean(player?.isSubstitute),
+    };
+  };
+
+  const restoreDismissedPlayerToLineup = (cardEvent) => {
+    const teamId = cardEvent?.teamId;
+    const playerName = canonicalName(
+      cardEvent?.playerName
+    );
+
+    if (!teamId || !playerName) return;
+
+    const currentSnapshots = {
+      ...(sanitizedConfirmedSnapshots || {}),
+    };
+
+    const currentSnapshot = currentSnapshots?.[teamId];
+
+    if (!currentSnapshot) return;
+
+    const nextPositions = {
+      ...(currentSnapshot.positions || {}),
+    };
+
+    const nextBench = Array.isArray(
+      currentSnapshot.benchSnapshot
+    )
+      ? [...currentSnapshot.benchSnapshot]
+      : [];
+
+    const targetKey = playerKeyFor(playerName);
+
+    const alreadyOnField = Object.values(
+      nextPositions
+    ).some(
+      (name) =>
+        name && playerKeyFor(name) === targetKey
+    );
+
+    const alreadyOnBench = nextBench.some(
+      (name) => playerKeyFor(name) === targetKey
+    );
+
+    if (alreadyOnField || alreadyOnBench) return;
+
+    const formerPositionId =
+      cardEvent?.removedPositionId || null;
+
+    if (
+      formerPositionId &&
+      !nextPositions[formerPositionId]
+    ) {
+      nextPositions[formerPositionId] = playerName;
+    } else {
+      nextBench.unshift(playerName);
+    }
+
+    const nextSnapshots = {
+      ...currentSnapshots,
+      [teamId]: {
+        ...currentSnapshot,
+        positions: nextPositions,
+        benchSnapshot: uniquePlayersNormalized(
+          nextBench,
+          canonicalName,
+          playerKeyFor
+        ),
+        onFieldPlayerCount: Object.values(
+          nextPositions
+        ).filter(Boolean).length,
+      },
+    };
+
+    persistDisciplineLineups(nextSnapshots);
+  };
+
+  const issueDisciplineCard = (cardType, player) => {
+    if (!canControlMatch || !player?.name || !player?.teamId) {
+      return;
+    }
+
+    const normalizedType =
+      cardType === "red_card"
+        ? "red_card"
+        : "yellow_card";
+
+    const status = getDisciplineStatus(player);
+
+    if (
+      normalizedType === "yellow_card" &&
+      status.yellowEvents.length > 0
+    ) {
+      return;
+    }
+
+    if (
+      normalizedType === "red_card" &&
+      status.redEvents.length > 0
+    ) {
+      return;
+    }
+
+    const cardTeam =
+      player.teamId === teamAId ? teamA : teamB;
+
+    let dismissalDetails = {
+      removedPositionId: null,
+      wasSubstitute: Boolean(player.isSubstitute),
+    };
+
+    if (normalizedType === "red_card") {
+      dismissalDetails =
+        removeDismissedPlayerFromLineup(player);
+    }
+
+    const event = {
+      id: `discipline-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+      type: normalizedType,
+      teamId: player.teamId,
+      teamLabel: getTeamDisplayName(
+        cardTeam,
+        player.teamId === teamAId
+          ? "TEAM A"
+          : "TEAM B"
+      ),
+      playerName: canonicalName(player.name),
+      playerType: isGuestPlayerInSnapshot(
+        player.teamId === teamAId
+          ? verifiedLineupA
+          : verifiedLineupB,
+        player.name
+      )
+        ? "guest"
+        : "registered",
+      positionId: player.positionId || null,
+      removedPositionId:
+        dismissalDetails.removedPositionId || null,
+      wasSubstitute:
+        dismissalDetails.wasSubstitute,
+      timeSeconds: Math.max(
+        Number(matchSeconds || 0) -
+          Number(displaySeconds || 0),
+        0
+      ),
+      issuedBy:
+        getIdentityDisplayName(identity),
+      issuedById:
+        getIdentityKey(identity) || null,
+    };
+
+    onAddEvent?.(event);
+    setSelectedDisciplinePlayer(null);
+  };
+
+  const reverseDisciplineCard = (cardEvent) => {
+    if (
+      !canControlMatch ||
+      typeof cardEvent?.eventIndex !== "number" ||
+      cardEvent.eventIndex < 0
+    ) {
+      return;
+    }
+
+    if (cardEvent?.type === "red_card") {
+      restoreDismissedPlayerToLineup(cardEvent);
+    }
+
+    onDeleteEvent?.(cardEvent.eventIndex);
+    setSelectedDisciplinePlayer(null);
+  };
+
+  const dismissedPlayersForTeam = (teamId) => {
+    const seen = new Set();
+
+    return disciplineCardEvents
+      .filter(
+        (event) =>
+          event?.type === "red_card" &&
+          event?.teamId === teamId
+      )
+      .map((event) => {
+        const name = canonicalName(
+          event?.playerName
+        );
+
+        if (!name) return null;
+
+        const key = playerKeyFor(name);
+
+        if (seen.has(key)) return null;
+        seen.add(key);
+
+        return {
+          teamId,
+          name,
+          positionId:
+            event?.removedPositionId ||
+            event?.positionId ||
+            null,
+          roleLabel: "Dismissed",
+          isSubstitute:
+            Boolean(event?.wasSubstitute),
+          isDismissed: true,
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const dismissedPlayersA =
+    dismissedPlayersForTeam(teamAId);
+
+  const dismissedPlayersB =
+    dismissedPlayersForTeam(teamBId);
+
+  const toggleDisciplinePlayer = (player) => {
+    const nextKey = disciplinePlayerKey(player);
+    const currentKey = disciplinePlayerKey(selectedDisciplinePlayer);
+
+    setSelectedDisciplinePlayer(
+      currentKey === nextKey ? null : player
+    );
+  };
+
+  const closeCardRecorder = () => {
+    setSelectedDisciplinePlayer(null);
+    setShowCardRecorder(false);
+  };
 
   const normalizedActiveRotationMode =
     normalizeRotationReminderMode(rotationReminderMode);
@@ -4072,6 +4483,18 @@ export function FriendlyLiveMatchPage({
                 <span aria-hidden="true">🔄</span>
               </button>
             ) : null}
+
+            {canControlMatch ? (
+              <button
+                type="button"
+                className="secondary-btn live-card-settings-btn"
+                onClick={() => setShowCardRecorder(true)}
+                title="Open match discipline"
+                aria-label="Open match discipline"
+              >
+                <span aria-hidden="true">🟨</span>
+              </button>
+            ) : null}
           </div>
           <div className="live-timer-status-row">
             {running ? (
@@ -4168,6 +4591,61 @@ export function FriendlyLiveMatchPage({
 
           <ul>
             {currentEvents.map((e, idx) => {
+              if (
+                e.type === "yellow_card" ||
+                e.type === "red_card"
+              ) {
+                const isRed =
+                  e.type === "red_card";
+
+                return (
+                  <li
+                    key={e.id || idx}
+                    className={`event-item fanm-discipline-event ${
+                      isRed
+                        ? "is-red"
+                        : "is-yellow"
+                    }`}
+                  >
+                    <span
+                      className="fanm-discipline-event-card"
+                      aria-hidden="true"
+                    >
+                      {isRed ? "🟥" : "🟨"}
+                    </span>
+
+                    <span className="fanm-discipline-event-copy">
+                      <strong>
+                        {e.playerName ||
+                          "Unknown player"}
+                      </strong>
+
+                      <small>
+                        {formatSeconds(
+                          Number(e.timeSeconds || 0)
+                        )}{" "}
+                        · {e.teamLabel || "TEAM"}
+                      </small>
+                    </span>
+
+                    {canControlMatch ? (
+                      <button
+                        type="button"
+                        className="fanm-discipline-event-undo"
+                        onClick={() =>
+                          reverseDisciplineCard({
+                            ...e,
+                            eventIndex: idx,
+                          })
+                        }
+                      >
+                        Undo
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              }
+
               if (e.type === "goal") {
                 const teamForEvent =
                   e.teamId === teamAId ? teamA : e.teamId === teamBId ? teamB : null;
@@ -4261,6 +4739,304 @@ export function FriendlyLiveMatchPage({
           )}
         </div>
       </section>
+
+      {showCardRecorder && (
+        <div
+          className="modal-backdrop fanm-discipline-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeCardRecorder();
+            }
+          }}
+        >
+          <section
+            className="modal fanm-discipline-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="match-discipline-title"
+          >
+            <button
+              type="button"
+              className="fanm-card-placeholder-close"
+              onClick={closeCardRecorder}
+              aria-label="Close match discipline"
+            >
+              ×
+            </button>
+
+            <div className="fanm-card-placeholder-heading fanm-discipline-heading">
+              <span aria-hidden="true">🟨</span>
+
+              <div>
+                <h2 id="match-discipline-title">Match Discipline</h2>
+                <p>Select a player to issue a caution or dismissal.</p>
+              </div>
+            </div>
+
+            <div className="fanm-discipline-teams">
+              {[
+                {
+                  teamId: teamAId,
+                  team: teamA,
+                  fallback: "TEAM A",
+                  groups: disciplinePlayersA,
+                  dismissed: dismissedPlayersA,
+                },
+                {
+                  teamId: teamBId,
+                  team: teamB,
+                  fallback: "TEAM B",
+                  groups: disciplinePlayersB,
+                  dismissed: dismissedPlayersB,
+                },
+              ].map(
+                ({
+                  teamId,
+                  team,
+                  fallback,
+                  groups,
+                  dismissed,
+                }) => (
+                <section
+                  key={teamId || fallback}
+                  className="fanm-discipline-team"
+                >
+                  <div className="fanm-discipline-team-heading">
+                    <TeamColorBadge
+                      team={team}
+                      fallback={fallback}
+                    />
+                  </div>
+
+                  {[
+                    {
+                      label: "On field",
+                      players: groups.onField,
+                    },
+                    {
+                      label: "Substitutes",
+                      players: groups.substitutes,
+                    },
+                    {
+                      label: "Dismissed",
+                      players: dismissed || [],
+                    },
+                  ].map((group) => (
+                    <div
+                      key={group.label}
+                      className="fanm-discipline-group"
+                    >
+                      <h3>{group.label}</h3>
+
+                      {group.players.length === 0 ? (
+                        <p className="muted small fanm-discipline-empty">
+                          No players available
+                        </p>
+                      ) : (
+                        <div className="fanm-discipline-player-list">
+                          {group.players.map((player) => {
+                            const selected =
+                              disciplinePlayerKey(selectedDisciplinePlayer) ===
+                              disciplinePlayerKey(player);
+
+                            const cardStatus =
+                              getDisciplineStatus(player);
+
+                            const yellowEvent =
+                              cardStatus.yellowEvents[
+                                cardStatus.yellowEvents.length - 1
+                              ] || null;
+
+                            const redEvent =
+                              cardStatus.redEvents[
+                                cardStatus.redEvents.length - 1
+                              ] || null;
+
+                            const initials = String(player.name || "?")
+                              .trim()
+                              .split(/\s+/)
+                              .slice(0, 2)
+                              .map((part) => part.charAt(0).toUpperCase())
+                              .join("");
+
+                            const playerPhoto = getPlayerPhoto(player.name);
+
+                            return (
+                              <article
+                                key={`${teamId}-${player.positionId || "bench"}-${playerKeyFor(player.name)}`}
+                                className={`fanm-discipline-player ${
+                                  selected ? "is-selected" : ""
+                                } ${
+                                  player.isDismissed
+                                    ? "is-dismissed"
+                                    : ""
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  className="fanm-discipline-player-main"
+                                  onClick={() => toggleDisciplinePlayer(player)}
+                                  aria-expanded={selected}
+                                >
+                                  <span
+                                    className={`fanm-discipline-player-avatar ${
+                                      playerPhoto ? "has-photo" : ""
+                                    }`}
+                                    aria-hidden="true"
+                                  >
+                                    {playerPhoto ? (
+                                      <img
+                                        src={playerPhoto}
+                                        alt=""
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      initials || "?"
+                                    )}
+                                  </span>
+
+                                  <span className="fanm-discipline-player-copy">
+                                    <strong>{player.name}</strong>
+                                    <small>{player.roleLabel}</small>
+                                  </span>
+
+                                  <span className="fanm-discipline-booking-status">
+                                    {yellowEvent ? (
+                                      <span
+                                        className="is-yellow"
+                                        title="Yellow card"
+                                      >
+                                        🟨{" "}
+                                        {Math.max(
+                                          1,
+                                          Math.ceil(
+                                            Number(
+                                              yellowEvent.timeSeconds || 0
+                                            ) / 60
+                                          )
+                                        )}
+                                        '
+                                      </span>
+                                    ) : null}
+
+                                    {redEvent ? (
+                                      <span
+                                        className="is-red"
+                                        title="Red card"
+                                      >
+                                        🟥{" "}
+                                        {Math.max(
+                                          1,
+                                          Math.ceil(
+                                            Number(
+                                              redEvent.timeSeconds || 0
+                                            ) / 60
+                                          )
+                                        )}
+                                        '
+                                      </span>
+                                    ) : null}
+                                  </span>
+
+                                  <span
+                                    className="fanm-discipline-player-chevron"
+                                    aria-hidden="true"
+                                  >
+                                    {selected ? "⌃" : "›"}
+                                  </span>
+                                </button>
+
+                                {selected ? (
+                                  <div className="fanm-discipline-actions">
+                                    {!yellowEvent && !redEvent ? (
+                                      <button
+                                        type="button"
+                                        className="fanm-discipline-yellow"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          issueDisciplineCard(
+                                            "yellow_card",
+                                            player
+                                          );
+                                        }}
+                                      >
+                                        <span aria-hidden="true">🟨</span>
+                                        Yellow card
+                                      </button>
+                                    ) : null}
+
+                                    {!redEvent ? (
+                                      <button
+                                        type="button"
+                                        className="fanm-discipline-red"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          issueDisciplineCard(
+                                            "red_card",
+                                            player
+                                          );
+                                        }}
+                                      >
+                                        <span aria-hidden="true">🟥</span>
+                                        Red card
+                                      </button>
+                                    ) : null}
+
+                                    {yellowEvent ? (
+                                      <button
+                                        type="button"
+                                        className="fanm-discipline-undo"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          reverseDisciplineCard(
+                                            yellowEvent
+                                          );
+                                        }}
+                                      >
+                                        Undo 🟨
+                                      </button>
+                                    ) : null}
+
+                                    {redEvent ? (
+                                      <button
+                                        type="button"
+                                        className="fanm-discipline-undo"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          reverseDisciplineCard(
+                                            redEvent
+                                          );
+                                        }}
+                                      >
+                                        Undo 🟥
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </article>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </section>
+                )
+              )}
+            </div>
+
+            <div className="fanm-discipline-note">
+              <span aria-hidden="true">ⓘ</span>
+              <p>
+                <strong>Yellow card</strong> means caution.
+                <span aria-hidden="true"> · </span>
+                <strong>Red card</strong> means dismissal.
+              </p>
+            </div>
+          </section>
+        </div>
+      )}
 
       {showVerifyModal && (
         <div className="modal-backdrop">
