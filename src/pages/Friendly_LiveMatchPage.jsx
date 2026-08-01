@@ -412,8 +412,11 @@ function sanitizeLiveLineupToRegisteredPlayers(
   canonicalName,
   playerKeyFor,
   formationMap = FORMATIONS_5,
-  defaultFormationId = DEFAULT_FORMATION_ID_5
+  defaultFormationId = DEFAULT_FORMATION_ID_5,
+  options = {}
 ) {
+  const preservePositions =
+    Boolean(options?.preservePositions);
   const formation =
     formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
@@ -444,26 +447,69 @@ function sanitizeLiveLineupToRegisteredPlayers(
     (name) => !usedKeys.has(playerKeyFor(name))
   );
 
-  (formation.positions || []).forEach((pos) => {
-    if (!cleanPositions[pos.id] && remainingRegistered.length > 0) {
-      const next = remainingRegistered.shift();
-      cleanPositions[pos.id] = next;
-      usedKeys.add(playerKeyFor(next));
-    }
-  });
+  if (!preservePositions) {
+    (formation.positions || []).forEach((pos) => {
+      if (
+        !cleanPositions[pos.id] &&
+        remainingRegistered.length > 0
+      ) {
+        const next = remainingRegistered.shift();
+        cleanPositions[pos.id] = next;
+        usedKeys.add(playerKeyFor(next));
+      }
+    });
+  }
 
   const cleanGuests = uniquePlayersNormalized(
     lineup?.guestPlayers || [],
     canonicalName,
     playerKeyFor
-  ).filter((name) => !usedKeys.has(playerKeyFor(name)));
+  ).filter(
+    (name) => !usedKeys.has(playerKeyFor(name))
+  );
+
+  const preservedBench = uniquePlayersNormalized(
+    lineup?.benchSnapshot || [],
+    canonicalName,
+    playerKeyFor
+  ).filter(
+    (name) =>
+      validKeys.has(playerKeyFor(name)) &&
+      !usedKeys.has(playerKeyFor(name))
+  );
+
+  const preservedBenchKeys = new Set(
+    preservedBench.map((name) =>
+      playerKeyFor(name)
+    )
+  );
+
+  const missingRegisteredBench =
+    remainingRegistered.filter(
+      (name) =>
+        !preservedBenchKeys.has(
+          playerKeyFor(name)
+        )
+    );
 
   return {
     ...lineup,
     formationId: formation.id,
     positions: cleanPositions,
     guestPlayers: cleanGuests,
-    benchSnapshot: remainingRegistered,
+    benchSnapshot: preservePositions
+      ? uniquePlayersNormalized(
+          [
+            ...preservedBench,
+            ...missingRegisteredBench,
+          ],
+          canonicalName,
+          playerKeyFor
+        ).filter(
+          (name) =>
+            !usedKeys.has(playerKeyFor(name))
+        )
+      : remainingRegistered,
     registeredPlayers: validRegistered,
   };
 }
@@ -544,7 +590,10 @@ function getOnFieldPlayersFromSnapshot(
     canonicalName,
     playerKeyFor,
     formationMap,
-    defaultFormationId
+    defaultFormationId,
+    {
+      preservePositions: true,
+    }
   );
 
   return uniqueNames(
@@ -568,7 +617,10 @@ function getBenchPlayersFromSnapshot(
     canonicalName,
     playerKeyFor,
     formationMap,
-    defaultFormationId
+    defaultFormationId,
+    {
+      preservePositions: true,
+    }
   );
 
   const assignedKeys = new Set(
@@ -1283,6 +1335,7 @@ function LineupBoard({
   getPlayerPhoto,
   formationMap = FORMATIONS_5,
   defaultFormationId = DEFAULT_FORMATION_ID_5,
+  protectedVacancies = {},
   disabled = false,
 }) {
   const formation =
@@ -1301,59 +1354,148 @@ function LineupBoard({
     playerKeyFor
   );
 
-  const sanitizedLineup = useMemo(
-    () =>
+  const sanitizedLineup = useMemo(() => {
+    const nextLineup =
       sanitizeLiveLineupToRegisteredPlayers(
         lineup,
         allRegistered,
         canonicalName,
         playerKeyFor,
         formationMap,
-        defaultFormationId
-      ),
-    [lineup, allRegistered, canonicalName, playerKeyFor, formationMap, defaultFormationId]
+        defaultFormationId,
+        {
+          preservePositions: true,
+        }
+      );
+
+    /*
+     * The sanitizer may clean player and bench data, but it must
+     * never decide who enters the pitch during a live match.
+     *
+     * Preserve the referee's exact position assignments, including
+     * deliberately empty positions.
+     */
+    const allowedPlayerKeys = new Set(
+      [
+        ...(allRegistered || []),
+        ...(lineup?.guestPlayers || []),
+      ]
+        .map((name) => canonicalName(name))
+        .filter(Boolean)
+        .map((name) => playerKeyFor(name))
+    );
+
+    const nextPositions = {};
+
+    formation.positions.forEach((position) => {
+      const rawAssignedName = canonicalName(
+        lineup?.positions?.[position.id] || ""
+      );
+
+      nextPositions[position.id] =
+        rawAssignedName &&
+        allowedPlayerKeys.has(
+          playerKeyFor(rawAssignedName)
+        )
+          ? rawAssignedName
+          : null;
+    });
+
+    Object.entries(protectedVacancies || {}).forEach(
+      ([positionId, vacancy]) => {
+        const manuallyAssignedName =
+          canonicalName(
+            lineup?.positions?.[positionId] || ""
+          );
+
+        /*
+         * Permanent and active temporary vacancies stay locked.
+         *
+         * An expired temporary vacancy stays empty until the referee
+         * manually selects a bench player and taps that green slot.
+         */
+        if (
+          vacancy?.locked ||
+          (
+            vacancy?.replacementAllowed &&
+            !manuallyAssignedName
+          )
+        ) {
+          nextPositions[positionId] = null;
+        }
+      }
+    );
+
+    const assignedKeys = new Set(
+      Object.values(nextPositions)
+        .filter(Boolean)
+        .map((name) => playerKeyFor(name))
+    );
+
+    const nextBenchSnapshot =
+      uniquePlayersNormalized(
+        [
+          ...(lineup?.benchSnapshot || []),
+          ...(nextLineup?.benchSnapshot || []),
+        ],
+        canonicalName,
+        playerKeyFor
+      ).filter(
+        (name) =>
+          !assignedKeys.has(playerKeyFor(name))
+      );
+
+    return {
+      ...nextLineup,
+      positions: nextPositions,
+      benchSnapshot: nextBenchSnapshot,
+      onFieldPlayerCount: Object.values(
+        nextPositions
+      ).filter(Boolean).length,
+    };
+  }, [
+    lineup,
+    allRegistered,
+    canonicalName,
+    playerKeyFor,
+    formation,
+    formationMap,
+    defaultFormationId,
+    protectedVacancies,
+  ]);
+
+
+  const lineupLoadKey = useMemo(
+    () =>
+      JSON.stringify({
+        formationId: sanitizedLineup?.formationId || "",
+        registeredPlayers:
+          sanitizedLineup?.registeredPlayers || [],
+      }),
+    [
+      sanitizedLineup?.formationId,
+      sanitizedLineup?.registeredPlayers,
+    ]
   );
 
   useEffect(() => {
-    const signature = JSON.stringify({
-      formationId: sanitizedLineup?.formationId || "",
-      positions: sanitizedLineup?.positions || {},
-      guestPlayers: sanitizedLineup?.guestPlayers || [],
-      benchSnapshot: sanitizedLineup?.benchSnapshot || [],
-      registeredPlayers: sanitizedLineup?.registeredPlayers || [],
-    });
+    if (
+      lastSanitizedSignatureRef.current === lineupLoadKey
+    ) {
+      return;
+    }
 
-    if (lastSanitizedSignatureRef.current === signature) return;
+    lastSanitizedSignatureRef.current = lineupLoadKey;
 
-    setLineup((prev) => {
-      if (
-        liveLineupStateEquals(
-          prev,
-          sanitizedLineup,
-          canonicalName,
-          playerKeyFor,
-          formationMap,
-          defaultFormationId
-        )
-      ) {
-        lastSanitizedSignatureRef.current = signature;
-        return prev;
-      }
-
-      lastSanitizedSignatureRef.current = signature;
-      return {
-        ...prev,
-        ...sanitizedLineup,
-      };
+    setLineup({
+      ...sanitizedLineup,
     });
   }, [
+    lineupLoadKey,
     sanitizedLineup,
     setLineup,
-    canonicalName,
-    playerKeyFor,
-    formationMap,
-    defaultFormationId,
   ]);
+
 
   const assignedNames = Object.values(sanitizedLineup?.positions || {})
     .map((name) => canonicalName(name))
@@ -1403,7 +1545,16 @@ function LineupBoard({
   const handlePitchClick = (posId) => {
     if (disabled) return;
 
-    const currentAtPos = sanitizedLineup?.positions?.[posId] || null;
+    const vacancy =
+      protectedVacancies?.[posId] || null;
+
+    if (vacancy?.locked) {
+      setSelectedPlayer(null);
+      return;
+    }
+
+    const currentAtPos =
+      sanitizedLineup?.positions?.[posId] || null;
 
     if (!selectedPlayer) {
       if (!currentAtPos) return;
@@ -1559,7 +1710,21 @@ function LineupBoard({
           <div className="pitch-box pitch-box-bottom" />
 
           {formation.positions.map((pos) => {
-            const name = sanitizedLineup?.positions?.[pos.id] || "";
+            const name =
+              sanitizedLineup?.positions?.[pos.id] || "";
+
+            const vacancy =
+              protectedVacancies?.[pos.id] || null;
+
+            const isLockedVacancy =
+              Boolean(vacancy?.locked);
+
+            const isReplacementReady =
+              Boolean(
+                vacancy?.replacementAllowed &&
+                !name
+              );
+
             const isSelected =
               selectedPlayer &&
               selectedPlayer.from === "pitch" &&
@@ -1570,25 +1735,116 @@ function LineupBoard({
             return (
               <div
                 key={pos.id}
-                className={`pitch-position ${name ? "has-player" : ""} ${
+                className={`pitch-position ${
+                  name ? "has-player" : ""
+                } ${
                   isSelected ? "selected" : ""
+                } ${
+                  isLockedVacancy
+                    ? "is-protected-vacancy"
+                    : ""
+                } ${
+                  isReplacementReady
+                    ? "is-replacement-ready"
+                    : ""
                 }`}
-                style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-                onClick={() => handlePitchClick(pos.id)}
+                style={{
+                  left: `${pos.x}%`,
+                  top: `${pos.y}%`,
+                }}
+                onClick={() =>
+                  handlePitchClick(pos.id)
+                }
+                title={
+                  isLockedVacancy
+                    ? vacancy?.dismissalRule ===
+                      "permanent"
+                      ? "Permanent dismissal — this position remains empty"
+                      : `Two-minute penalty — ${
+                          vacancy?.remainingLabel ||
+                          "team must play short"
+                        }`
+                    : isReplacementReady
+                    ? "Select a substitute and then tap this position"
+                    : undefined
+                }
               >
                 <div className="player-token">
-                  <div
-                    className={`player-shirt ${photoData ? "with-photo" : ""}`}
-                    style={
-                      photoData ? { backgroundImage: `url(${photoData})` } : {}
-                    }
-                  />
-                  <div className="live-player-meta">
-                    <span className="player-name">
-                      {name ? displayCompactPlayerName(name) : "Empty"}
-                    </span>
-                    <span className="position-tag">{pos.label}</span>
-                  </div>
+                  {isLockedVacancy ? (
+                    <>
+                      <div
+                        className="fanm-vacancy-token is-red-card"
+                        aria-hidden="true"
+                      >
+                        🟥
+                      </div>
+
+                      <div className="live-player-meta">
+                        <span className="player-name">
+                          Sent off
+                        </span>
+
+                        <span className="position-tag">
+                          {vacancy?.dismissalRule ===
+                          "permanent"
+                            ? "Permanent"
+                            : vacancy?.remainingLabel ||
+                              "Penalty active"}
+                        </span>
+                      </div>
+                    </>
+                  ) : isReplacementReady ? (
+                    <>
+                      <div
+                        className="fanm-vacancy-token is-ready"
+                        aria-hidden="true"
+                      >
+                        ✓
+                      </div>
+
+                      <div className="live-player-meta">
+                        <span className="player-name">
+                          Replacement
+                        </span>
+
+                        <span className="position-tag">
+                          Select substitute
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className={`player-shirt ${
+                          photoData
+                            ? "with-photo"
+                            : ""
+                        }`}
+                        style={
+                          photoData
+                            ? {
+                                backgroundImage:
+                                  `url(${photoData})`,
+                              }
+                            : {}
+                        }
+                      />
+
+                      <div className="live-player-meta">
+                        <span className="player-name">
+                          {name
+                            ? displayCompactPlayerName(
+                                name
+                              )
+                            : "Empty"}
+                        </span>
+
+                        <span className="position-tag">
+                          {pos.label}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -2286,7 +2542,10 @@ export function FriendlyLiveMatchPage({
               canonicalName,
               playerKeyFor,
               formationMap,
-              defaultFormationId
+              defaultFormationId,
+              {
+                preservePositions: true,
+              }
             ),
           }
         : {}),
@@ -2298,7 +2557,10 @@ export function FriendlyLiveMatchPage({
               canonicalName,
               playerKeyFor,
               formationMap,
-              defaultFormationId
+              defaultFormationId,
+              {
+                preservePositions: true,
+              }
             ),
           }
         : {}),
@@ -3025,6 +3287,109 @@ export function FriendlyLiveMatchPage({
 
   const dismissedPlayersB =
     dismissedPlayersForTeam(teamBId);
+
+  const currentDisciplineMatchSeconds = Math.max(
+    Number(matchSeconds || 0) -
+      Number(displaySeconds || 0),
+    0
+  );
+
+  const protectedVacanciesForTeam = (teamId) => {
+    const vacancies = {};
+
+    disciplineCardEvents
+      .filter(
+        (event) =>
+          event?.type === "red_card" &&
+          event?.teamId === teamId
+      )
+      .forEach((event) => {
+        const positionId =
+          event?.removedPositionId ||
+          event?.positionId ||
+          null;
+
+        /*
+         * A bench player can be dismissed without creating
+         * an empty pitch position.
+         */
+        if (!positionId || event?.wasSubstitute) {
+          return;
+        }
+
+        const isTwoMinuteRule =
+          event?.dismissalRule ===
+          "two_minute";
+
+        const penaltySeconds = Math.max(
+          Number(
+            event?.teamPenaltySeconds ||
+            (isTwoMinuteRule ? 120 : 0)
+          ),
+          0
+        );
+
+        const startedAtSeconds = Math.max(
+          Number(event?.timeSeconds || 0),
+          0
+        );
+
+        const elapsedSinceCard = Math.max(
+          currentDisciplineMatchSeconds -
+            startedAtSeconds,
+          0
+        );
+
+        const remainingSeconds =
+          isTwoMinuteRule
+            ? Math.max(
+                penaltySeconds -
+                  elapsedSinceCard,
+                0
+              )
+            : null;
+
+        const expired =
+          isTwoMinuteRule &&
+          remainingSeconds <= 0;
+
+        vacancies[positionId] = {
+          eventId: event?.id || null,
+          reason: "red_card",
+          playerName:
+            event?.playerName ||
+            "Sent-off player",
+          dismissalRule:
+            isTwoMinuteRule
+              ? "two_minute"
+              : "permanent",
+          locked:
+            !isTwoMinuteRule ||
+            !expired,
+          replacementAllowed:
+            isTwoMinuteRule &&
+            expired,
+          remainingSeconds,
+          remainingLabel:
+            isTwoMinuteRule &&
+            !expired
+              ? `${formatSeconds(
+                  remainingSeconds
+                )} remaining`
+              : isTwoMinuteRule
+              ? "Replacement allowed"
+              : "Permanent",
+        };
+      });
+
+    return vacancies;
+  };
+
+  const protectedVacanciesA =
+    protectedVacanciesForTeam(teamAId);
+
+  const protectedVacanciesB =
+    protectedVacanciesForTeam(teamBId);
 
   const dismissedPlayerKeysForTeam = (teamId) =>
     new Set(
@@ -5565,6 +5930,9 @@ export function FriendlyLiveMatchPage({
                     team={effectiveTeamA}
                     lineup={verifyTeamALineup}
                     setLineup={setVerifyTeamALineup}
+                    protectedVacancies={
+                      protectedVacanciesA
+                    }
                     registeredPlayers={eligibleTeamAPlayers}
                     canonicalName={canonicalName}
                     displayCompactPlayerName={displayCompactPlayerName}
@@ -5580,6 +5948,9 @@ export function FriendlyLiveMatchPage({
                     team={effectiveTeamB}
                     lineup={verifyTeamBLineup}
                     setLineup={setVerifyTeamBLineup}
+                    protectedVacancies={
+                      protectedVacanciesB
+                    }
                     registeredPlayers={eligibleTeamBPlayers}
                     canonicalName={canonicalName}
                     displayCompactPlayerName={displayCompactPlayerName}

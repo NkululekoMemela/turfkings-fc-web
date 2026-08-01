@@ -14851,3 +14851,141 @@ button.fanm-chat-highlight-card {
 .score-number{
   margin-top:0.1rem;
 }
+
+
+/* Protected live-lineup vacancies */
+.pitch-position.is-protected-vacancy {
+  z-index: 8;
+  cursor: not-allowed !important;
+}
+
+.pitch-position.is-protected-vacancy
+  .player-token {
+  min-width: 74px;
+  padding: 0.28rem 0.34rem;
+  border: 1px solid rgba(248, 113, 113, 0.76);
+  border-radius: 14px;
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(239, 68, 68, 0.26),
+      transparent 62%
+    ),
+    rgba(69, 10, 10, 0.88);
+  box-shadow:
+    0 0 0 2px rgba(127, 29, 29, 0.27),
+    0 8px 22px rgba(69, 10, 10, 0.38);
+}
+
+.fanm-vacancy-token {
+  display: grid;
+  place-items: center;
+  width: 35px;
+  min-width: 35px;
+  height: 35px;
+  margin: 0 auto 0.12rem;
+  border-radius: 11px;
+}
+
+.fanm-vacancy-token.is-red-card {
+  border: 1px solid rgba(254, 202, 202, 0.62);
+  background:
+    linear-gradient(
+      145deg,
+      rgba(239, 68, 68, 0.38),
+      rgba(69, 10, 10, 0.94)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 6px 16px rgba(127, 29, 29, 0.38);
+}
+
+.pitch-position.is-protected-vacancy
+  .player-name {
+  color: #fee2e2 !important;
+  font-weight: 900 !important;
+}
+
+.pitch-position.is-protected-vacancy
+  .position-tag {
+  color: #fca5a5 !important;
+  font-size: 0.52rem !important;
+  font-weight: 850 !important;
+}
+
+/* Penalty expired: referee may manually add a substitute */
+.pitch-position.is-replacement-ready {
+  z-index: 8;
+  cursor: pointer !important;
+}
+
+.pitch-position.is-replacement-ready
+  .player-token {
+  min-width: 74px;
+  padding: 0.28rem 0.34rem;
+  border: 1px solid rgba(74, 222, 128, 0.72);
+  border-radius: 14px;
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(34, 197, 94, 0.24),
+      transparent 62%
+    ),
+    rgba(5, 46, 22, 0.86);
+  box-shadow:
+    0 0 0 2px rgba(21, 128, 61, 0.22),
+    0 8px 22px rgba(5, 46, 22, 0.34);
+}
+
+.fanm-vacancy-token.is-ready {
+  border: 1px solid rgba(187, 247, 208, 0.68);
+  background:
+    linear-gradient(
+      145deg,
+      rgba(34, 197, 94, 0.64),
+      rgba(20, 83, 45, 0.96)
+    );
+  color: #ffffff;
+  font-weight: 1000;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 6px 16px rgba(21, 128, 61, 0.34);
+}
+
+.pitch-position.is-replacement-ready
+  .player-name {
+  color: #dcfce7 !important;
+  font-weight: 900 !important;
+}
+
+.pitch-position.is-replacement-ready
+  .position-tag {
+  color: #86efac !important;
+  font-size: 0.52rem !important;
+  font-weight: 850 !important;
+}
+
+/*
+ * Future injury handling will reuse this protected-vacancy
+ * model with reason: "injury" and the 🤕 symbol.
+ */
+
+
+/* Friendly lineup editor — compact pitch headings */
+
+/*
+ * Team identities are already displayed in the Match Colours panel
+ * directly above these same columns. Hide only the pitch-board heading;
+ * keep the Bench / Subs heading visible.
+ */
+.fanm-colour-coded-lineups
+  > .live-lineup-column
+  > h3.live-bench-title {
+  display: none !important;
+}
+
+.fanm-colour-coded-lineups
+  > .live-lineup-column
+  > .pitch-wrapper {
+  margin-top: 0 !important;
+}
