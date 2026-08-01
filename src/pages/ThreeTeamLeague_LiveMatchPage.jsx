@@ -192,9 +192,9 @@ function stopAlarmLoop(alarmLoopRef) {
 function getShortName(label) {
   if (!label) return "";
   const map = {
-    
+
     Madrid: "MAD",
-    
+
   };
   if (map[label]) return map[label];
 
@@ -1641,6 +1641,9 @@ export function ThreeTeamLeagueLiveMatchPage({
   onGoToStats,
   onOpenHighlightsCamera,
   onUpdateMatchSeconds,
+  matchTeamColorOverrides = {},
+  onUpdateMatchTeamColorOverride = null,
+  onResetMatchTeamColorOverrides = null,
 }) {
   const liveTeams =
     Array.isArray(pendingMatchStartContext?.teams) &&
@@ -1825,6 +1828,129 @@ export function ThreeTeamLeagueLiveMatchPage({
   const teamA = getTeamById(canonicalTeams, teamAId);
   const teamB = getTeamById(canonicalTeams, teamBId);
   const standbyTeam = getTeamById(canonicalTeams, standbyId);
+
+  /*
+   * Match-day colour overrides persist in liveMatchDraft.
+   * They apply to each team across all Three Team League fixtures
+   * until changed by the referee or reset to squad defaults.
+   */
+  const [
+    localMatchTeamColorOverrides,
+    setLocalMatchTeamColorOverrides,
+  ] = useState(matchTeamColorOverrides || {});
+
+  useEffect(() => {
+    setLocalMatchTeamColorOverrides(
+      matchTeamColorOverrides || {}
+    );
+  }, [matchTeamColorOverrides]);
+
+  const applyMatchTeamColorOverride = (
+    teamId,
+    nextColour
+  ) => {
+    if (!teamId || !nextColour) return;
+
+    const safeColour = {
+      teamColorName: String(
+        nextColour.teamColorName ||
+        nextColour.colorName ||
+        ""
+      ).trim(),
+      colorName: String(
+        nextColour.colorName ||
+        nextColour.teamColorName ||
+        ""
+      ).trim(),
+      teamColorHex: String(
+        nextColour.teamColorHex ||
+        nextColour.colorHex ||
+        ""
+      ).trim(),
+      colorHex: String(
+        nextColour.colorHex ||
+        nextColour.teamColorHex ||
+        ""
+      ).trim(),
+    };
+
+    setLocalMatchTeamColorOverrides((prev) => ({
+      ...(prev || {}),
+      [teamId]: safeColour,
+    }));
+
+    onUpdateMatchTeamColorOverride?.(
+      teamId,
+      safeColour
+    );
+  };
+
+  const resetMatchTeamColourOverrides = () => {
+    setLocalMatchTeamColorOverrides({});
+    onResetMatchTeamColorOverrides?.();
+  };
+
+  const buildEffectiveMatchTeam = (team, teamId) => {
+    if (!team) return team;
+
+    const override =
+      localMatchTeamColorOverrides?.[teamId] || null;
+
+    if (!override) return team;
+
+    const overrideName = String(
+      override.teamColorName ||
+      override.colorName ||
+      ""
+    ).trim();
+
+    const overrideHex = String(
+      override.teamColorHex ||
+      override.colorHex ||
+      ""
+    ).trim();
+
+    return {
+      ...team,
+      teamColorName:
+        overrideName ||
+        team.teamColorName ||
+        team.colorName ||
+        "",
+      colorName:
+        overrideName ||
+        team.colorName ||
+        team.teamColorName ||
+        "",
+      teamColorHex:
+        overrideHex ||
+        team.teamColorHex ||
+        team.colorHex ||
+        "",
+      colorHex:
+        overrideHex ||
+        team.colorHex ||
+        team.teamColorHex ||
+        "",
+      matchColorOverride: override,
+      hasMatchColorOverride: true,
+    };
+  };
+
+  const effectiveTeamA = buildEffectiveMatchTeam(
+    teamA,
+    teamAId
+  );
+
+  const effectiveTeamB = buildEffectiveMatchTeam(
+    teamB,
+    teamBId
+  );
+
+  const effectiveStandby = buildEffectiveMatchTeam(
+    standbyTeam,
+    standbyId
+  );
 
   const [mergedPlayerPhotos, setMergedPlayerPhotos] = useState(
     playerPhotosByName || {}
