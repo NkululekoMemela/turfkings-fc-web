@@ -1342,7 +1342,6 @@ function LineupBoard({
     formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [guestName, setGuestName] = useState("");
-  const lastSanitizedSignatureRef = useRef("");
 
   useEffect(() => {
     setSelectedPlayer(null);
@@ -1465,52 +1464,20 @@ function LineupBoard({
   ]);
 
 
-  const lineupLoadKey = useMemo(
-    () =>
-      JSON.stringify({
-        formationId: sanitizedLineup?.formationId || "",
-        registeredPlayers:
-          sanitizedLineup?.registeredPlayers || [],
-      }),
-    [
-      sanitizedLineup?.formationId,
-      sanitizedLineup?.registeredPlayers,
-    ]
-  );
-
-  useEffect(() => {
-    if (
-      lastSanitizedSignatureRef.current === lineupLoadKey
-    ) {
-      return;
-    }
-
-    lastSanitizedSignatureRef.current = lineupLoadKey;
-
-    setLineup({
-      ...sanitizedLineup,
-    });
-  }, [
-    lineupLoadKey,
-    sanitizedLineup,
-    setLineup,
-  ]);
-
-
-  const assignedNames = Object.values(sanitizedLineup?.positions || {})
+  const assignedNames = Object.values(lineup?.positions || {})
     .map((name) => canonicalName(name))
     .filter(Boolean);
 
   const assignedKeys = new Set(assignedNames.map((name) => playerKeyFor(name)));
 
   const guestPlayers = uniquePlayersNormalized(
-    sanitizedLineup?.guestPlayers || [],
+    lineup?.guestPlayers || [],
     canonicalName,
     playerKeyFor
   );
 
   const sanitizedBenchRegistered = uniquePlayersNormalized(
-    sanitizedLineup?.benchSnapshot || [],
+    lineup?.benchSnapshot || [],
     canonicalName,
     playerKeyFor
   ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
@@ -1554,7 +1521,7 @@ function LineupBoard({
     }
 
     const currentAtPos =
-      sanitizedLineup?.positions?.[posId] || null;
+      lineup?.positions?.[posId] || null;
 
     if (!selectedPlayer) {
       if (!currentAtPos) return;
@@ -1562,7 +1529,7 @@ function LineupBoard({
       return;
     }
 
-    const newPositions = { ...(sanitizedLineup?.positions || {}) };
+    const newPositions = { ...(lineup?.positions || {}) };
     let nextBenchSnapshot = [...sanitizedBenchRegistered];
 
     if (selectedPlayer.from === "bench") {
@@ -1711,7 +1678,7 @@ function LineupBoard({
 
           {formation.positions.map((pos) => {
             const name =
-              sanitizedLineup?.positions?.[pos.id] || "";
+              lineup?.positions?.[pos.id] || "";
 
             const vacancy =
               protectedVacancies?.[pos.id] || null;
@@ -2515,14 +2482,6 @@ export function FriendlyLiveMatchPage({
     useState(defaultTeamBLineup);
   const [localConfirmedSnapshots, setLocalConfirmedSnapshots] = useState(null);
 
-  useEffect(() => {
-    setVerifyTeamALineup(defaultTeamALineup);
-  }, [defaultTeamALineup]);
-
-  useEffect(() => {
-    setVerifyTeamBLineup(defaultTeamBLineup);
-  }, [defaultTeamBLineup]);
-
   const existingConfirmedFromApp =
     localConfirmedSnapshots ||
     confirmedLineupSnapshot ||
@@ -2580,6 +2539,42 @@ export function FriendlyLiveMatchPage({
   const hasVerifiedLineups = Boolean(
     sanitizedConfirmedSnapshots?.[teamAId] && sanitizedConfirmedSnapshots?.[teamBId]
   );
+
+  const lineupEditorMatchKey = [
+    currentMatchNo,
+    teamAId || "",
+    teamBId || "",
+  ].join("::");
+
+  const lastLoadedLineupMatchKeyRef = useRef("");
+
+  useEffect(() => {
+    if (
+      !teamAId ||
+      !teamBId ||
+      lastLoadedLineupMatchKeyRef.current ===
+        lineupEditorMatchKey
+    ) {
+      return;
+    }
+
+    lastLoadedLineupMatchKeyRef.current =
+      lineupEditorMatchKey;
+
+    setVerifyTeamALineup(
+      sanitizedConfirmedSnapshots?.[teamAId] ||
+        defaultTeamALineup
+    );
+
+    setVerifyTeamBLineup(
+      sanitizedConfirmedSnapshots?.[teamBId] ||
+        defaultTeamBLineup
+    );
+  }, [
+    lineupEditorMatchKey,
+    teamAId,
+    teamBId,
+  ]);
 
   const mustVerifyBeforePlay = isControllerSession;
 
@@ -3470,12 +3465,21 @@ export function FriendlyLiveMatchPage({
   const openLiveLineupEditor = () => {
     if (!playersReady) return;
 
+    /*
+     * Reopening after confirmation loads the latest confirmed
+     * referee snapshot. During an unconfirmed editing session,
+     * preserve the current working lineup exactly as it is.
+     */
     if (sanitizedConfirmedSnapshots?.[teamAId]) {
-      setVerifyTeamALineup(sanitizedConfirmedSnapshots[teamAId]);
+      setVerifyTeamALineup(
+        sanitizedConfirmedSnapshots[teamAId]
+      );
     }
 
     if (sanitizedConfirmedSnapshots?.[teamBId]) {
-      setVerifyTeamBLineup(sanitizedConfirmedSnapshots[teamBId]);
+      setVerifyTeamBLineup(
+        sanitizedConfirmedSnapshots[teamBId]
+      );
     }
 
     clearRotationReminder();
