@@ -14814,3 +14814,40 @@ button.fanm-chat-highlight-card {
     padding: 0.38rem 0.58rem;
   }
 }
+
+
+/* Premium live scoreline team badges */
+
+.score-team{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:0.55rem;
+}
+
+.score-team > div:first-child{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:34px;
+}
+
+.score-team .team-colour-badge,
+.score-team .team-color-badge,
+.score-team [class*="team-color-badge"],
+.score-team [class*="team-colour-badge"]{
+  transform:scale(1.08);
+}
+
+.score-team .team-colour-badge span,
+.score-team .team-color-badge span,
+.score-team [class*="team-color-badge"] span,
+.score-team [class*="team-colour-badge"] span{
+  font-weight:900;
+  letter-spacing:.04em;
+}
+
+.score-number{
+  margin-top:0.1rem;
+}

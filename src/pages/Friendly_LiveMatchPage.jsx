@@ -4805,7 +4805,7 @@ export function FriendlyLiveMatchPage({
           <div className="score-team">
             <strong className="score-team-name">
               <TeamColorBadge
-                team={teamA}
+                team={effectiveTeamA}
                 fallback="DARK"
                 compact
               />
@@ -4818,7 +4818,7 @@ export function FriendlyLiveMatchPage({
           <div className="score-team">
             <strong className="score-team-name">
               <TeamColorBadge
-                team={teamB}
+                team={effectiveTeamB}
                 fallback="LIGHT"
                 compact
               />
