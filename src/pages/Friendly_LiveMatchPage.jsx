@@ -27,6 +27,7 @@ import {
 } from "../core/lineups.js";
 import { getGameFormatConfig } from "../core/matchConfig.js";
 import VideoHighlightsRepository from "../storage/VideoHighlightsRepository.js";
+import TeamIdentityEditor from "../components/TeamIdentityEditor";
 import {
   FANM_NATIONAL_TEAMS,
   FANM_PRO_CLUBS,
@@ -922,12 +923,29 @@ function TeamColorBadge({ team, fallback = "LIGHT", iconPosition = "before", com
         display: "inline-flex",
         alignItems: "center",
         gap: "0.42rem",
-        padding: "0.16rem 0.5rem",
+        padding: compact
+          ? "0.2rem 0.58rem"
+          : "0.16rem 0.5rem",
         borderRadius: "999px",
-        background: accent.soft,
-        border: `1px solid ${accent.border}`,
+        background: compact
+          ? `linear-gradient(
+              135deg,
+              ${hexToRgba(accent.dot, 0.26)},
+              ${hexToRgba(accent.dot, 0.12)}
+            )`
+          : accent.soft,
+        border: compact
+          ? `1.5px solid ${hexToRgba(accent.dot, 0.72)}`
+          : `1px solid ${accent.border}`,
         color: accent.text,
-        fontWeight: 700,
+        boxShadow: compact
+          ? `
+              inset 0 1px 0 rgba(255, 255, 255, 0.1),
+              0 0 0 1px ${hexToRgba(accent.dot, 0.08)},
+              0 6px 18px ${hexToRgba(accent.dot, 0.18)}
+            `
+          : "none",
+        fontWeight: compact ? 900 : 800,
         whiteSpace: "nowrap",
       }}
     >
@@ -1113,8 +1131,23 @@ function PlayerBenchChip({
       }`}
       onClick={onClick}
       disabled={disabled}
-      title={isSub ? "This player is currently a sub and cannot be selected." : ""}
+      aria-pressed={Boolean(isSelected)}
+      title={
+        isSelected
+          ? `${name} selected`
+          : isSub
+          ? "This player is currently a sub and cannot be selected."
+          : `Select ${name}`
+      }
     >
+      {isSelected ? (
+        <span
+          className="live-chip-selected-badge"
+          aria-hidden="true"
+        >
+          ✓
+        </span>
+      ) : null}
       {isSub && (
         <span className="live-chip-corner-badge right sub">Sub</span>
       )}
@@ -1169,11 +1202,29 @@ function PlayerChoiceGrid({
   onSelect,
   displayCompactPlayerName,
   getPlayerPhoto,
+  team = null,
   guestSnapshotChecker = null,
   disabled = false,
 }) {
+
+  const accent = team ? getTeamAccent(team) : null;
+
   return (
-    <div className="field-row">
+    <div
+      className={`field-row ${
+        accent ? "fanm-team-player-choice" : ""
+      }`}
+      style={
+        accent
+          ? {
+              "--player-team-color": accent.dot,
+              "--player-team-soft": accent.soft,
+              "--player-team-border": accent.border,
+              "--player-team-text": accent.text,
+            }
+          : undefined
+      }
+    >
       <label>{title}</label>
       {players.length === 0 ? (
         <p className="muted small">No players available.</p>
@@ -1721,6 +1772,9 @@ export function FriendlyLiveMatchPage({
   onUpdateRotationReminder = null,
   redCardRule = "permanent",
   onUpdateRedCardRule = null,
+  matchTeamColorOverrides = {},
+  onUpdateMatchTeamColorOverride = null,
+  onResetMatchTeamColorOverrides = null,
   confirmedLineupSnapshot = null,
   confirmedLineupsByMatchNo = {},
   playerPhotosByName = {},
@@ -1937,6 +1991,119 @@ export function FriendlyLiveMatchPage({
 
   const teamA = getTeamById(canonicalTeams, teamAId);
   const teamB = getTeamById(canonicalTeams, teamBId);
+
+  const [
+    localMatchTeamColorOverrides,
+    setLocalMatchTeamColorOverrides,
+  ] = useState(matchTeamColorOverrides || {});
+
+  useEffect(() => {
+    setLocalMatchTeamColorOverrides(
+      matchTeamColorOverrides || {}
+    );
+  }, [matchTeamColorOverrides]);
+
+  const applyMatchTeamColorOverride = (
+    teamId,
+    nextColour
+  ) => {
+    if (!teamId || !nextColour) return;
+
+    const safeColour = {
+      teamColorName: String(
+        nextColour.teamColorName ||
+        nextColour.colorName ||
+        ""
+      ).trim(),
+      colorName: String(
+        nextColour.colorName ||
+        nextColour.teamColorName ||
+        ""
+      ).trim(),
+      teamColorHex: String(
+        nextColour.teamColorHex ||
+        nextColour.colorHex ||
+        ""
+      ).trim(),
+      colorHex: String(
+        nextColour.colorHex ||
+        nextColour.teamColorHex ||
+        ""
+      ).trim(),
+    };
+
+    setLocalMatchTeamColorOverrides((previous) => ({
+      ...(previous || {}),
+      [teamId]: safeColour,
+    }));
+
+    onUpdateMatchTeamColorOverride?.(
+      teamId,
+      safeColour
+    );
+  };
+
+  const resetMatchTeamColourOverrides = () => {
+    setLocalMatchTeamColorOverrides({});
+    onResetMatchTeamColorOverrides?.();
+  };
+
+  const buildEffectiveMatchTeam = (team, teamId) => {
+    if (!team) return team;
+
+    const override =
+      localMatchTeamColorOverrides?.[teamId] || null;
+
+    if (!override) return team;
+
+    const overrideName = String(
+      override.teamColorName ||
+      override.colorName ||
+      ""
+    ).trim();
+
+    const overrideHex = String(
+      override.teamColorHex ||
+      override.colorHex ||
+      ""
+    ).trim();
+
+    return {
+      ...team,
+      teamColorName:
+        overrideName ||
+        team.teamColorName ||
+        team.colorName ||
+        "",
+      colorName:
+        overrideName ||
+        team.colorName ||
+        team.teamColorName ||
+        "",
+      teamColorHex:
+        overrideHex ||
+        team.teamColorHex ||
+        team.colorHex ||
+        "",
+      colorHex:
+        overrideHex ||
+        team.colorHex ||
+        team.teamColorHex ||
+        "",
+      matchColorOverride: override,
+      hasMatchColorOverride: true,
+    };
+  };
+
+  const effectiveTeamA = buildEffectiveMatchTeam(
+    teamA,
+    teamAId
+  );
+
+  const effectiveTeamB = buildEffectiveMatchTeam(
+    teamB,
+    teamBId
+  );
 
   const [mergedPlayerPhotos, setMergedPlayerPhotos] = useState(
     playerPhotosByName || {}
@@ -2402,8 +2569,8 @@ export function FriendlyLiveMatchPage({
         teamBId,
         teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
         teamBLabel: getTeamDisplayName(teamB, "Opponent"),
-        teamAColorName: teamA?.teamColorName || teamA?.colorName || "",
-        teamBColorName: teamB?.teamColorName || teamB?.colorName || "",
+        teamAColorName: effectiveTeamA?.teamColorName || effectiveTeamA?.colorName || "",
+        teamBColorName: effectiveTeamB?.teamColorName || effectiveTeamB?.colorName || "",
       },
       matchSeconds
     );
@@ -2735,7 +2902,9 @@ export function FriendlyLiveMatchPage({
     }
 
     const cardTeam =
-      player.teamId === teamAId ? teamA : teamB;
+      player.teamId === teamAId
+        ? effectiveTeamA
+        : effectiveTeamB;
 
     let dismissalDetails = {
       removedPositionId: null,
@@ -3252,8 +3421,8 @@ export function FriendlyLiveMatchPage({
     teamBId,
     teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
     teamBLabel: getTeamDisplayName(teamB, "Opponent"),
-    teamAColorName: teamA?.teamColorName || teamA?.colorName || "",
-    teamBColorName: teamB?.teamColorName || teamB?.colorName || "",
+    teamAColorName: effectiveTeamA?.teamColorName || effectiveTeamA?.colorName || "",
+    teamBColorName: effectiveTeamB?.teamColorName || effectiveTeamB?.colorName || "",
   };
 
 
@@ -3312,14 +3481,14 @@ export function FriendlyLiveMatchPage({
 
     if (lineupHasEmptyPositions(verifyTeamALineup, formationMap, defaultFormationId)) {
       window.alert(
-        `${getShortLabel(teamA, "Team A")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
+        `${getShortLabel(effectiveTeamA, "Team A")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
       );
       return;
     }
 
     if (lineupHasEmptyPositions(verifyTeamBLineup, formationMap, defaultFormationId)) {
       window.alert(
-        `${getShortLabel(teamB, "Team B")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
+        `${getShortLabel(effectiveTeamB, "Team B")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
       );
       return;
     }
@@ -3851,8 +4020,8 @@ export function FriendlyLiveMatchPage({
       teamBId,
       teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
       teamBLabel: getTeamDisplayName(teamB, "Opponent"),
-      teamAColorName: teamA?.teamColorName || teamA?.colorName || "",
-      teamBColorName: teamB?.teamColorName || teamB?.colorName || "",
+      teamAColorName: effectiveTeamA?.teamColorName || effectiveTeamA?.colorName || "",
+      teamBColorName: effectiveTeamB?.teamColorName || effectiveTeamB?.colorName || "",
       teamASnapshot: teamA || null,
       teamBSnapshot: teamB || null,
       goalsA,
@@ -4499,8 +4668,8 @@ export function FriendlyLiveMatchPage({
       <header className="header">
         <h1>Friendly {formatLabel}</h1>
         <p>
-          <TeamColorBadge team={teamA} fallback="DARK" iconPosition="after" compact /> vs{" "}
-          <TeamColorBadge team={teamB} fallback="LIGHT" iconPosition="before" compact />
+          <TeamColorBadge team={effectiveTeamA} fallback="DARK" iconPosition="after" compact /> vs{" "}
+          <TeamColorBadge team={effectiveTeamB} fallback="LIGHT" iconPosition="before" compact />
         </p>
         <p className="muted small">
           Signed in as <strong>{getIdentityDisplayName(identity)}</strong> •{" "}
@@ -4758,7 +4927,11 @@ export function FriendlyLiveMatchPage({
 
               if (e.type === "goal") {
                 const teamForEvent =
-                  e.teamId === teamAId ? teamA : e.teamId === teamBId ? teamB : null;
+                  e.teamId === teamAId
+                    ? effectiveTeamA
+                    : e.teamId === teamBId
+                    ? effectiveTeamB
+                    : null;
                 const label = eventLabel(e.teamId, teamAId, teamBId, teamA, teamB);
                 const teamAbbrev =
                   teamForEvent?.teamIdentity?.abbr || teamForEvent?.abbrev || label;
@@ -4957,14 +5130,14 @@ export function FriendlyLiveMatchPage({
               {[
                 {
                   teamId: teamAId,
-                  team: teamA,
+                  team: effectiveTeamA,
                   fallback: "TEAM A",
                   groups: disciplinePlayersA,
                   dismissed: dismissedPlayersA,
                 },
                 {
                   teamId: teamBId,
-                  team: teamB,
+                  team: effectiveTeamB,
                   fallback: "TEAM B",
                   groups: disciplinePlayersB,
                   dismissed: dismissedPlayersB,
@@ -5240,11 +5413,11 @@ export function FriendlyLiveMatchPage({
                   {[
                     ...dismissedPlayersA.map((player) => ({
                       ...player,
-                      teamLabel: getShortLabel(teamA, "TEAM A"),
+                      teamLabel: getShortLabel(effectiveTeamA, "TEAM A"),
                     })),
                     ...dismissedPlayersB.map((player) => ({
                       ...player,
-                      teamLabel: getShortLabel(teamB, "TEAM B"),
+                      teamLabel: getShortLabel(effectiveTeamB, "TEAM B"),
                     })),
                   ].map((player) => (
                     <span
@@ -5260,7 +5433,127 @@ export function FriendlyLiveMatchPage({
               </div>
             )}
 
-            <div className="live-lineup-columns">
+            <section className="fanm-match-colours-panel">
+              <div className="fanm-match-colours-heading">
+                <div>
+                  <span aria-hidden="true">🎨</span>
+                  <div>
+                    <strong>Match Colours</strong>
+                    <small>
+                      Override squad colours for this match only
+                    </small>
+                  </div>
+                </div>
+
+                {Object.keys(localMatchTeamColorOverrides || {}).length > 0 ? (
+                  <button
+                    type="button"
+                    className="fanm-match-colours-reset"
+                    onClick={resetMatchTeamColourOverrides}
+                  >
+                    Reset to squad colours
+                  </button>
+                ) : (
+                  <span className="fanm-match-colours-default">
+                    Using squad defaults
+                  </span>
+                )}
+              </div>
+
+              <div className="fanm-match-colours-grid">
+                {[
+                  {
+                    teamId: teamAId,
+                    team: teamA,
+                    effectiveTeam: effectiveTeamA,
+                    fallback: "TEAM A",
+                  },
+                  {
+                    teamId: teamBId,
+                    team: teamB,
+                    effectiveTeam: effectiveTeamB,
+                    fallback: "TEAM B",
+                  },
+                ].map(
+                  ({
+                    teamId,
+                    team,
+                    effectiveTeam,
+                    fallback,
+                  }) => {
+                    const hasOverride = Boolean(
+                      localMatchTeamColorOverrides?.[teamId]
+                    );
+
+                    return (
+                      <article
+                        key={teamId || fallback}
+                        className="fanm-match-colour-card"
+                        style={{
+                          "--match-colour-accent":
+                            getTeamAccent(
+                              effectiveTeam || team || {}
+                            ).dot,
+                          "--match-colour-soft":
+                            getTeamAccent(
+                              effectiveTeam || team || {}
+                            ).soft,
+                          "--match-colour-border":
+                            getTeamAccent(
+                              effectiveTeam || team || {}
+                            ).border,
+                        }}
+                      >
+                        <div className="fanm-match-colour-card-head">
+                          <TeamColorBadge
+                            team={effectiveTeam || team}
+                            fallback={fallback}
+                          />
+
+                          <span
+                            className={`fanm-match-colour-source ${
+                              hasOverride
+                                ? "is-override"
+                                : ""
+                            }`}
+                          >
+                            {hasOverride
+                              ? "Match override"
+                              : "Squad default"}
+                          </span>
+                        </div>
+
+                        <TeamIdentityEditor
+                          team={effectiveTeam || team}
+                          colourName={
+                            effectiveTeam?.teamColorName ||
+                            effectiveTeam?.colorName ||
+                            ""
+                          }
+                          showName={false}
+                          showAbbreviation={false}
+                          showColour
+                          compact
+                          disabled={
+                            !canControlMatch ||
+                            typeof onUpdateMatchTeamColorOverride !==
+                              "function"
+                          }
+                          onColourChange={(nextColour) =>
+                            applyMatchTeamColorOverride(
+                              teamId,
+                              nextColour
+                            )
+                          }
+                        />
+                      </article>
+                    );
+                  }
+                )}
+              </div>
+            </section>
+
+            <div className="live-lineup-columns fanm-colour-coded-lineups">
               {!playersReady ? (
                 <div className="live-empty-full">
                   <p className="muted">Loading verified lineups…</p>
@@ -5268,8 +5561,8 @@ export function FriendlyLiveMatchPage({
               ) : (
                 <>
                   <LineupBoard
-                    title={getShortLabel(teamA, "TEAM A")}
-                    team={teamA}
+                    title={getShortLabel(effectiveTeamA, "TEAM A")}
+                    team={effectiveTeamA}
                     lineup={verifyTeamALineup}
                     setLineup={setVerifyTeamALineup}
                     registeredPlayers={eligibleTeamAPlayers}
@@ -5283,8 +5576,8 @@ export function FriendlyLiveMatchPage({
                   />
 
                   <LineupBoard
-                    title={getShortLabel(teamB, "OTHER TEAM")}
-                    team={teamB}
+                    title={getShortLabel(effectiveTeamB, "OTHER TEAM")}
+                    team={effectiveTeamB}
                     lineup={verifyTeamBLineup}
                     setLineup={setVerifyTeamBLineup}
                     registeredPlayers={eligibleTeamBPlayers}
@@ -5379,11 +5672,12 @@ export function FriendlyLiveMatchPage({
                 <div className="goal-scorer-two-column">
                   <div className="goal-scorer-team-card">
                     <div className="goal-scorer-team-head">
-                      <TeamColorBadge team={teamA} fallback="DARK" />
+                      <TeamColorBadge team={effectiveTeamA} fallback="DARK" />
                     </div>
                     <PlayerChoiceGrid
                       title="Scorer"
                       players={goalRecorderChoicesForTeam(teamAId)}
+                      team={effectiveTeamA}
                       selectedName={scorerName}
                       onSelect={(name) => {
                         setScoringTeamId(teamAId);
@@ -5402,11 +5696,12 @@ export function FriendlyLiveMatchPage({
 
                   <div className="goal-scorer-team-card">
                     <div className="goal-scorer-team-head">
-                      <TeamColorBadge team={teamB} fallback="LIGHT" />
+                      <TeamColorBadge team={effectiveTeamB} fallback="LIGHT" />
                     </div>
                     <PlayerChoiceGrid
                       title="Scorer"
                       players={goalRecorderChoicesForTeam(teamBId)}
+                      team={effectiveTeamB}
                       selectedName={scorerName}
                       onSelect={(name) => {
                         setScoringTeamId(teamBId);
@@ -5449,36 +5744,59 @@ export function FriendlyLiveMatchPage({
                     </strong>
                   </div>
 
-                  <div className="live-player-choice-grid">
-                    {assistOptions.map((entry) => {
-                      const rawName =
-                        typeof entry === "string"
-                          ? entry
-                          : entry?.name || "";
+                  <PlayerChoiceGrid
+                    title="Assist"
+                    players={assistOptions}
+                    team={
+                      scoringTeamId === teamAId
+                        ? effectiveTeamA
+                        : scoringTeamId === teamBId
+                        ? effectiveTeamB
+                        : null
+                    }
+                    selectedName={assistName}
+                    onSelect={(name) =>
+                      setAssistName(
+                        assistName === name ? "" : name
+                      )
+                    }
+                    displayCompactPlayerName={
+                      displayCompactPlayerName
+                    }
+                    getPlayerPhoto={getPlayerPhoto}
+                    guestSnapshotChecker={(name) =>
+                      isGuestPlayerInSnapshot(
+                        scoringTeamId === teamAId
+                          ? verifiedLineupA
+                          : verifiedLineupB,
+                        name
+                      )
+                    }
+                    disabled={!hasVerifiedLineups}
+                  />
+                </div>
 
-                      const roleTag =
-                        typeof entry === "string"
-                          ? ""
-                          : String(entry?.roleTag || "");
-
-                      const photoData = getPlayerPhoto(rawName);
-
-                      return (
-                        <PlayerBenchChip
-                          key={rawName}
-                          name={displayCompactPlayerName(rawName)}
-                          isSelected={assistName === rawName}
-                          onClick={() =>
-                            setAssistName(
-                              assistName === rawName ? "" : rawName
-                            )
-                          }
-                          photoData={photoData}
-                          roleTag={roleTag}
-                        />
-                      );
-                    })}
-                  </div>
+                <div
+                  className={`fanm-assist-selection-status ${
+                    assistName ? "has-selection" : ""
+                  }`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {assistName ? (
+                    <>
+                      <span aria-hidden="true">✓</span>
+                      <strong>
+                        Assist selected:{" "}
+                        {displayCompactPlayerName(assistName)}
+                      </strong>
+                    </>
+                  ) : (
+                    <span>
+                      No assist selected — saving will record the goal
+                      without an assist.
+                    </span>
+                  )}
                 </div>
 
                 <div className="actions-row">
@@ -5556,8 +5874,8 @@ export function FriendlyLiveMatchPage({
           <div className="modal">
             <h3>Confirm End of {formatLabel} Match</h3>
             <p>
-              <TeamColorBadge team={teamA} fallback="DARK" /> {goalsA} – {goalsB}{" "}
-              <TeamColorBadge team={teamB} fallback="LIGHT" />
+              <TeamColorBadge team={effectiveTeamA} fallback="DARK" /> {goalsA} – {goalsB}{" "}
+              <TeamColorBadge team={effectiveTeamB} fallback="LIGHT" />
             </p>
             <p>
               Are you sure everything is correct? You have{" "}

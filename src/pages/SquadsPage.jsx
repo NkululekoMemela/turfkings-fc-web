@@ -45,6 +45,7 @@ import {
 import TeamIdentityPicker from "../components/TeamIdentityPicker/TeamIdentityPicker.jsx";
 
 
+import TeamIdentityEditor from "../components/TeamIdentityEditor";
 const MASTER_CODE = "3333"; // Platform admin fallback
 const UNSEEDED_ID = "__unseeded__";
 const GUEST_OPPONENT_ID = "guest_opponent";
@@ -1072,7 +1073,7 @@ export function SquadsPage({
           return !Number.isNaN(fixtureDate.getTime()) && fixtureDate >= today;
         }) || null;
 
-      
+
       let hydratedFixture = upcomingFixture;
 
       if (hydratedFixture) {
@@ -3486,22 +3487,26 @@ export function SquadsPage({
                         ))}
                       </select>
 
-                      <select
-                        className="text-input"
-                        value={team.teamColorName || (team.id === TURF_KINGS_SLOT_ID ? "Black" : "White")}
-                        onChange={(event) => handleTeamColorNameChange(team.id, event.target.value)}
+                      <TeamIdentityEditor
+                        team={team}
+                        colourName={
+                          team.teamColorName ||
+                          (team.id === TURF_KINGS_SLOT_ID
+                            ? "Black"
+                            : "White")
+                        }
+                        showName={false}
+                        showAbbreviation={false}
+                        showColour
+                        compact
                         disabled={isLockedOpponentPreview}
-                        title="Wear colour"
-                        style={{ width: "100%", boxSizing: "border-box" }}
-                      >
-                        <option value="Black">Wear black ⚫</option>
-                        <option value="White">Wear white ⚪</option>
-                        <option value="Red">Wear red 🔴</option>
-                        <option value="Blue">Wear blue 🔵</option>
-                        <option value="Green">Wear green 🟢</option>
-                        <option value="Yellow">Wear yellow 🟡</option>
-                        <option value="Purple">Wear purple 🟣</option>
-                      </select>
+                        onColourChange={(nextColour) =>
+                          handleTeamColorNameChange(
+                            team.id,
+                            nextColour.teamColorName
+                          )
+                        }
+                      />
                     </div>
                   ) : null}
                 </div>
@@ -3571,7 +3576,7 @@ export function SquadsPage({
 
                 {players.length > slots.length && (
                   <div className="squad-preview-extra-list">
-                    
+
                     {players.slice(slots.length).map((pid, extraIndex) => (
                       <button
                         type="button"

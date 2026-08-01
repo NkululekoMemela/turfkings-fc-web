@@ -2328,6 +2328,96 @@ export default function App() {
     setRunning(nextSecondsLeft > 0);
   };
 
+  const handleUpdateMatchTeamColorOverride = (
+    teamId,
+    nextColor
+  ) => {
+    if (
+      !canControlCurrentLiveMatch ||
+      !liveMatchDraft ||
+      !teamId
+    ) {
+      window.alert(
+        "Only the current match referee can change match colours."
+      );
+      return;
+    }
+
+    const safeColor = {
+      teamColorName: String(
+        nextColor?.teamColorName ||
+        nextColor?.colorName ||
+        ""
+      ).trim(),
+      colorName: String(
+        nextColor?.colorName ||
+        nextColor?.teamColorName ||
+        ""
+      ).trim(),
+      teamColorHex: String(
+        nextColor?.teamColorHex ||
+        nextColor?.colorHex ||
+        ""
+      ).trim(),
+      colorHex: String(
+        nextColor?.colorHex ||
+        nextColor?.teamColorHex ||
+        ""
+      ).trim(),
+      updatedAtISO: new Date().toISOString(),
+      updatedBy: buildCurrentRefereeController(),
+    };
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => {
+        const existingOverrides =
+          prevSeason?.liveMatchDraft
+            ?.matchTeamColorOverrides || {};
+
+        return {
+          ...prevSeason,
+          liveMatchDraft: touchLiveMatchDraft(
+            prevSeason.liveMatchDraft,
+            {
+              matchTeamColorOverrides: {
+                ...existingOverrides,
+                [teamId]: safeColor,
+              },
+            }
+          ),
+        };
+      });
+    }
+  };
+
+  const handleResetMatchTeamColorOverrides = () => {
+    if (
+      !canControlCurrentLiveMatch ||
+      !liveMatchDraft
+    ) {
+      window.alert(
+        "Only the current match referee can reset match colours."
+      );
+      return;
+    }
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        liveMatchDraft: touchLiveMatchDraft(
+          prevSeason.liveMatchDraft,
+          {
+            matchTeamColorOverrides: {},
+            matchTeamColorsResetAtISO:
+              new Date().toISOString(),
+            matchTeamColorsResetBy:
+              buildCurrentRefereeController(),
+          }
+        ),
+      }));
+    }
+  };
+
   const handleUpdateRedCardRule = (nextRule) => {
     if (!canControlCurrentLiveMatch || !liveMatchDraft) {
       window.alert(
@@ -7028,6 +7118,15 @@ export default function App() {
           onUpdateRotationReminder={handleUpdateRotationReminder}
           redCardRule={liveMatchDraft?.redCardRule || "permanent"}
           onUpdateRedCardRule={handleUpdateRedCardRule}
+          matchTeamColorOverrides={
+            liveMatchDraft?.matchTeamColorOverrides || {}
+          }
+          onUpdateMatchTeamColorOverride={
+            handleUpdateMatchTeamColorOverride
+          }
+          onResetMatchTeamColorOverrides={
+            handleResetMatchTeamColorOverrides
+          }
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={effectivePlayerPhotosByName}
