@@ -32,6 +32,7 @@
 .hub-topbar,
 .hub-clubs-section,
 .hub-map-section,
+.hub-challenge-centre,
 .hub-footer-brand {
   width: min(1180px, 100%);
   margin-inline: auto;
@@ -150,6 +151,7 @@
 
 .hub-clubs-section,
 .hub-map-section,
+.hub-challenge-centre,
 .hub-footer-brand {
   border: 1px solid rgba(6, 21, 43, 0.16);
   border-radius: 34px;
@@ -990,6 +992,7 @@
 
 @media (max-width: 900px) {
   .hub-map-section,
+  .hub-challenge-centre,
   .hub-footer-brand {
     grid-template-columns: 1fr;
   }
@@ -1016,6 +1019,7 @@
   .hub-topbar,
   .hub-clubs-section,
   .hub-map-section,
+  .hub-challenge-centre,
   .hub-footer-brand,
   .hub-modal,
   .hub-action-sheet {
@@ -1024,6 +1028,7 @@
 
   .hub-clubs-section,
   .hub-map-section,
+  .hub-challenge-centre,
   .hub-footer-brand {
     padding-left: 14px !important;
     padding-right: 14px !important;
@@ -1834,6 +1839,7 @@
   .hub-topbar,
   .hub-clubs-section,
   .hub-map-section,
+  .hub-challenge-centre,
   .hub-footer-brand,
   .hub-modal,
   .hub-action-sheet {
@@ -1842,6 +1848,7 @@
 
   .hub-clubs-section,
   .hub-map-section,
+  .hub-challenge-centre,
   .hub-footer-brand {
     padding-left: 14px !important;
     padding-right: 14px !important;
@@ -5658,6 +5665,7 @@
   .hub-topbar,
   .hub-clubs-section,
   .hub-map-section,
+  .hub-challenge-centre,
   .hub-footer-brand {
     width: min(100%, 376px) !important;
     margin-left: auto !important;
@@ -5666,6 +5674,7 @@
 
   .hub-clubs-section,
   .hub-map-section,
+  .hub-challenge-centre,
   .hub-footer-brand {
     padding-left: 12px !important;
     padding-right: 12px !important;
@@ -6594,6 +6603,7 @@
 .hub-topbar,
 .hub-clubs-section,
 .hub-map-section,
+.hub-challenge-centre,
 .hub-footer-brand {
   background:
     radial-gradient(

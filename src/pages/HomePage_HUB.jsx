@@ -428,6 +428,138 @@ function hydrateClubHubStats(club) {
 }
 
 
+
+/* FANM GLOBAL CHALLENGE CENTRE HELPERS */
+
+function challengeFixtureTimestamp(fixture = {}) {
+  const date = String(
+    fixture?.confirmedDate ||
+    fixture?.proposedDate ||
+    fixture?.matchDate ||
+    ""
+  ).trim();
+
+  const kickoff = String(
+    fixture?.confirmedKickoff ||
+    fixture?.proposedKickoff ||
+    fixture?.kickoff ||
+    "00:00"
+  ).trim();
+
+  if (!date) {
+    return Number(fixture?.createdAtMs || fixture?.updatedAtMs || 0);
+  }
+
+  const parsed = new Date(`${date}T${kickoff || "00:00"}`);
+
+  return Number.isNaN(parsed.getTime())
+    ? Number(fixture?.createdAtMs || fixture?.updatedAtMs || 0)
+    : parsed.getTime();
+}
+
+function formatChallengeFixtureDate(fixture = {}) {
+  const date = String(
+    fixture?.confirmedDate ||
+    fixture?.proposedDate ||
+    fixture?.matchDate ||
+    ""
+  ).trim();
+
+  if (!date) return "Date to be confirmed";
+
+  const parsed = new Date(`${date}T12:00:00`);
+
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  return parsed.toLocaleDateString("en-ZA", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatChallengeFixtureTime(fixture = {}) {
+  const kickoff = String(
+    fixture?.confirmedKickoff ||
+    fixture?.proposedKickoff ||
+    fixture?.kickoff ||
+    ""
+  ).trim();
+
+  return kickoff || "Kickoff to be confirmed";
+}
+
+function challengeFixtureStatusKey(fixture = {}) {
+  return String(
+    fixture?.matchStatus ||
+    fixture?.status ||
+    fixture?.fixtureStatus ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function challengeFixtureIsComplete(fixture = {}) {
+  const status = challengeFixtureStatusKey(fixture);
+
+  return (
+    ["completed", "complete", "finished", "full_time", "full-time", "final"].includes(status) ||
+    Boolean(fixture?.finishedAt || fixture?.completedAt) ||
+    (
+      Number.isFinite(Number(fixture?.homeScore)) &&
+      Number.isFinite(Number(fixture?.awayScore)) &&
+      status === "result_recorded"
+    )
+  );
+}
+
+function challengeFixtureIsLive(fixture = {}) {
+  const status = challengeFixtureStatusKey(fixture);
+
+  return ["live", "in_progress", "in-progress", "started"].includes(status);
+}
+
+function challengeFixtureIsRequest(fixture = {}) {
+  const status = challengeFixtureStatusKey(fixture);
+
+  return [
+    "pending",
+    "change_requested",
+    "change-requested",
+    "awaiting_confirmation",
+    "awaiting-confirmation",
+  ].includes(status);
+}
+
+function getChallengeFixtureFormatLabel(value = "") {
+  const format = String(value || "5v5").trim().toLowerCase();
+
+  const labels = {
+    "5v5": "5-a-side",
+    "6v6": "6-a-side",
+    "7v7": "7-a-side",
+    "11v11": "11-a-side",
+  };
+
+  return labels[format] || String(value || "5-a-side");
+}
+
+function getChallengeClubInitials(name = "") {
+  const parts = String(name || "Club")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!parts.length) return "FC";
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
 export default function HomePage_HUB({
 
   identity = null,
@@ -438,6 +570,7 @@ export default function HomePage_HUB({
   onJoinClub,
   onChallengeClub,
   onNavigateToEntryPage,
+  onOpenChallengeCentre,
 }) {
   const [showTour, setShowTour] = React.useState(false);
   const [clubFeaturedVideos, setClubFeaturedVideos] = useState({});
@@ -474,6 +607,13 @@ export default function HomePage_HUB({
   const [hubContactModal, setHubContactModal] = useState(null);
   const [hubContactSubject, setHubContactSubject] = useState("");
   const [hubContactMessage, setHubContactMessage] = useState("");
+
+  /* FANM GLOBAL CHALLENGE CENTRE STATE */
+  const [challengeFixtures, setChallengeFixtures] = useState([]);
+  const [challengeFixturesLoading, setChallengeFixturesLoading] = useState(true);
+  const [challengeFixturesError, setChallengeFixturesError] = useState("");
+  const [challengeCentreTab, setChallengeCentreTab] = useState("upcoming");
+
 
   function openHubInfoModal(key) {
     setHubInfoModal(HUB_INFO_CONTENT[key] || null);
@@ -991,6 +1131,189 @@ export default function HomePage_HUB({
     );
   }, []);
 
+
+  /* FANM GLOBAL CHALLENGE CENTRE DATA */
+  const challengeManagedClubIds = useMemo(() => {
+    const ids = new Set();
+
+    const identityClubId = String(identity?.clubId || identity?.homeClubId || "").trim();
+    if (identityClubId) ids.add(identityClubId);
+
+    clubs.forEach((club) => {
+      if (canCurrentUserManageClub(currentUser, club)) {
+        const clubId = String(club?.id || club?.clubId || "").trim();
+        if (clubId) ids.add(clubId);
+      }
+    });
+
+    return Array.from(ids);
+  }, [
+    clubs,
+    currentUser?.email,
+    currentUser?.uid,
+    identity?.clubId,
+    identity?.homeClubId,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadChallengeFixtures() {
+      if (!currentUser) {
+        setChallengeFixtures([]);
+        setChallengeFixturesLoading(false);
+        setChallengeFixturesError("");
+        return;
+      }
+
+      if (!challengeManagedClubIds.length) {
+        setChallengeFixtures([]);
+        setChallengeFixturesLoading(false);
+        setChallengeFixturesError("");
+        return;
+      }
+
+      try {
+        setChallengeFixturesLoading(true);
+        setChallengeFixturesError("");
+
+        const fixtureSnap = await getDocs(collection(db, "clubChallengeFixtures"));
+        const managedIds = new Set(challengeManagedClubIds.map(String));
+
+        const fixtures = fixtureSnap.docs
+          .map((fixtureDoc) => ({
+            id: fixtureDoc.id,
+            ...fixtureDoc.data(),
+          }))
+          .filter((fixture) => {
+            const participatingIds = [
+              fixture?.homeClubId,
+              fixture?.awayClubId,
+              ...(Array.isArray(fixture?.participatingClubIds)
+                ? fixture.participatingClubIds
+                : []),
+            ]
+              .map((value) => String(value || "").trim())
+              .filter(Boolean);
+
+            return participatingIds.some((clubId) => managedIds.has(clubId));
+          });
+
+        if (!cancelled) {
+          setChallengeFixtures(fixtures);
+        }
+      } catch (error) {
+        console.error("[HomePage_HUB] Could not load club challenge fixtures:", error);
+
+        if (!cancelled) {
+          setChallengeFixtures([]);
+          setChallengeFixturesError(
+            "Your challenge fixtures could not be loaded right now."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setChallengeFixturesLoading(false);
+        }
+      }
+    }
+
+    loadChallengeFixtures();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentUser?.uid,
+    currentUser?.email,
+    challengeManagedClubIds.join("|"),
+  ]);
+
+  const challengeCentreCounts = useMemo(() => {
+    return challengeFixtures.reduce(
+      (counts, fixture) => {
+        if (challengeFixtureIsComplete(fixture)) {
+          counts.results += 1;
+        } else if (challengeFixtureIsRequest(fixture)) {
+          counts.requests += 1;
+        } else {
+          counts.upcoming += 1;
+        }
+
+        return counts;
+      },
+      {
+        upcoming: 0,
+        results: 0,
+        requests: 0,
+      }
+    );
+  }, [challengeFixtures]);
+
+  const visibleChallengeFixtures = useMemo(() => {
+    const now = Date.now();
+
+    return challengeFixtures
+      .filter((fixture) => {
+        if (challengeCentreTab === "results") {
+          return challengeFixtureIsComplete(fixture);
+        }
+
+        if (challengeCentreTab === "requests") {
+          return challengeFixtureIsRequest(fixture);
+        }
+
+        return (
+          !challengeFixtureIsComplete(fixture) &&
+          !challengeFixtureIsRequest(fixture)
+        );
+      })
+      .sort((fixtureA, fixtureB) => {
+        const timeA = challengeFixtureTimestamp(fixtureA);
+        const timeB = challengeFixtureTimestamp(fixtureB);
+
+        if (challengeCentreTab === "results") {
+          return timeB - timeA;
+        }
+
+        const futureA = timeA >= now ? 0 : 1;
+        const futureB = timeB >= now ? 0 : 1;
+
+        if (futureA !== futureB) return futureA - futureB;
+        return timeA - timeB;
+      });
+  }, [challengeFixtures, challengeCentreTab]);
+
+
+  /* FANM FEATURED CHALLENGE FIXTURE */
+  const featuredChallengeFixture = useMemo(() => {
+    const now = Date.now();
+
+    return (
+      [...challengeFixtures]
+        .filter(
+          (fixture) =>
+            !challengeFixtureIsComplete(fixture) &&
+            !challengeFixtureIsRequest(fixture)
+        )
+        .sort((fixtureA, fixtureB) => {
+          const timeA = challengeFixtureTimestamp(fixtureA);
+          const timeB = challengeFixtureTimestamp(fixtureB);
+
+          const futureA = timeA >= now ? 0 : 1;
+          const futureB = timeB >= now ? 0 : 1;
+
+          if (futureA !== futureB) return futureA - futureB;
+          return timeA - timeB;
+        })[0] || null
+    );
+  }, [challengeFixtures]);
+
+  const liveChallengeCount = useMemo(
+    () => challengeFixtures.filter(challengeFixtureIsLive).length,
+    [challengeFixtures]
+  );
+
   const footerLogoRotation = useMemo(() => {
     const logos = [
       { src: HOME_FOOTER_LOGO_LIGHT, label: "light" },
@@ -1221,6 +1544,238 @@ export default function HomePage_HUB({
             </aside>
           ) : null}
         </div>
+      </section>
+
+
+      {/* FANM GLOBAL CHALLENGE CENTRE */}
+      <section
+        className="hub-challenge-centre hub-challenge-centre--preview"
+        aria-labelledby="hub-challenge-centre-title"
+      >
+        <div className="hub-challenge-centre__glow hub-challenge-centre__glow--one" />
+        <div className="hub-challenge-centre__glow hub-challenge-centre__glow--two" />
+
+        <div className="hub-challenge-centre__header">
+          <div className="hub-challenge-centre__heading">
+            <span className="hub-kicker">Interclub football</span>
+            <h2 id="hub-challenge-centre-title">Club Challenges</h2>
+            <p>Your next fixture and recent activity.</p>
+          </div>
+
+          <button
+            type="button"
+            className="hub-challenge-centre__identity hub-challenge-centre__identity--button"
+            onClick={() => onOpenChallengeCentre?.()}
+          >
+            <span className="hub-challenge-centre__identity-icon">⚔</span>
+            <span>
+              <strong>Challenge Centre</strong>
+              <small>
+                {currentUser
+                  ? `${challengeManagedClubIds.length} managed ${
+                      challengeManagedClubIds.length === 1 ? "club" : "clubs"
+                    }`
+                  : "Sign in to continue"}
+              </small>
+            </span>
+            <em>→</em>
+          </button>
+        </div>
+
+        <div className="hub-challenge-preview-card">
+          {!currentUser ? (
+            <div className="hub-challenge-preview-card__empty">
+              <span>🔐</span>
+              <div>
+                <strong>Sign in to view club challenges</strong>
+                <p>Your next interclub fixture will appear here.</p>
+              </div>
+            </div>
+          ) : challengeFixturesLoading ? (
+            <div className="hub-challenge-preview-card__loading">
+              <span />
+              <span />
+              <span />
+              <p>Loading your next fixture...</p>
+            </div>
+          ) : challengeFixturesError ? (
+            <div className="hub-challenge-preview-card__empty">
+              <span>⚠</span>
+              <div>
+                <strong>Fixtures temporarily unavailable</strong>
+                <p>{challengeFixturesError}</p>
+              </div>
+            </div>
+          ) : featuredChallengeFixture ? (() => {
+            const fixture = featuredChallengeFixture;
+
+            const homeName =
+              fixture?.homeClubName ||
+              fixture?.challengerClubName ||
+              "Home Club";
+
+            const awayName =
+              fixture?.awayClubName ||
+              fixture?.targetClubName ||
+              "Away Club";
+
+            const homeLogo =
+              fixture?.homeClubLogo ||
+              fixture?.challengerClubLogo ||
+              fixture?.homeClubBadge ||
+              fixture?.challengerClubBadge ||
+              fixture?.homeLogo ||
+              fixture?.homeClub?.logoUrl ||
+              fixture?.homeClub?.clubLogoUrl ||
+              fixture?.homeClub?.branding?.uploadedLogoUrl ||
+              fixture?.homeClub?.media?.logoTransparentUrl ||
+              fixture?.homeClub?.media?.logoOriginalUrl ||
+              "";
+
+            const awayLogo =
+              fixture?.awayClubLogo ||
+              fixture?.targetClubLogo ||
+              fixture?.awayClubBadge ||
+              fixture?.targetClubBadge ||
+              fixture?.awayLogo ||
+              fixture?.awayClub?.logoUrl ||
+              fixture?.awayClub?.clubLogoUrl ||
+              fixture?.awayClub?.branding?.uploadedLogoUrl ||
+              fixture?.awayClub?.media?.logoTransparentUrl ||
+              fixture?.awayClub?.media?.logoOriginalUrl ||
+              "";
+
+            const isLive = challengeFixtureIsLive(fixture);
+            const isComplete = challengeFixtureIsComplete(fixture);
+
+            const homeScore = Number.isFinite(Number(fixture?.homeScore))
+              ? Number(fixture.homeScore)
+              : 0;
+
+            const awayScore = Number.isFinite(Number(fixture?.awayScore))
+              ? Number(fixture.awayScore)
+              : 0;
+
+            return (
+              <>
+                <div className="hub-challenge-preview-card__match">
+                  <div className="hub-challenge-preview-card__clubs">
+                    <div className="hub-challenge-preview-card__club">
+                      <span className="hub-challenge-preview-card__badge">
+                        {homeLogo ? (
+                          <img src={homeLogo} alt="" />
+                        ) : (
+                          <strong>{getChallengeClubInitials(homeName)}</strong>
+                        )}
+                      </span>
+                      <strong>{homeName}</strong>
+                    </div>
+
+                    <div className="hub-challenge-preview-card__score">
+                      {isLive || isComplete ? (
+                        <>
+                          <strong>{homeScore}</strong>
+                          <span>–</span>
+                          <strong>{awayScore}</strong>
+                        </>
+                      ) : (
+                        <span>VS</span>
+                      )}
+                    </div>
+
+                    <div className="hub-challenge-preview-card__club">
+                      <span className="hub-challenge-preview-card__badge">
+                        {awayLogo ? (
+                          <img src={awayLogo} alt="" />
+                        ) : (
+                          <strong>{getChallengeClubInitials(awayName)}</strong>
+                        )}
+                      </span>
+                      <strong>{awayName}</strong>
+                    </div>
+                  </div>
+
+                </div>
+
+                <div className="hub-challenge-preview-card__fixture-actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOpenChallengeCentre?.(fixture)
+                    }
+                  >
+                    Fixture details <span>→</span>
+                  </button>
+
+                  {isLive ? (
+                    <button
+                      type="button"
+                      className="is-primary"
+                      onClick={() => {
+                        console.log(
+                          "[HomePage_HUB] Open live match control",
+                          fixture
+                        );
+                      }}
+                    >
+                      Open Match Control →
+                    </button>
+                  ) : null}
+
+                  {isComplete ? (
+                    <button
+                      type="button"
+                      className="is-primary"
+                      onClick={() => {
+                        console.log(
+                          "[HomePage_HUB] Open match report",
+                          fixture
+                        );
+                      }}
+                    >
+                      View Match Report →
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            );
+          })() : (
+            <div className="hub-challenge-preview-card__empty">
+              <span>⚽</span>
+              <div>
+                <strong>No upcoming challenge fixtures</strong>
+                <p>
+                  Accepted interclub matches will appear here automatically.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="hub-challenge-preview-summary">
+          <span>
+            <small>Pending requests</small>
+            <strong>{challengeCentreCounts.requests}</strong>
+          </span>
+
+          <span>
+            <small>Completed results</small>
+            <strong>{challengeCentreCounts.results}</strong>
+          </span>
+
+          <span>
+            <small>Live now</small>
+            <strong>{liveChallengeCount}</strong>
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="hub-challenge-preview-open"
+          onClick={() => onOpenChallengeCentre?.()}
+        >
+          Open Challenge Centre <span>→</span>
+        </button>
       </section>
 
       <footer className="hub-footer-brand">

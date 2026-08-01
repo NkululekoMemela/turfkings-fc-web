@@ -17,6 +17,8 @@ import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import VideoHighlightsPage from "./pages/VideoHighlightsPage.jsx";
 import HomePage_HUB from "./pages/HomePage_HUB.jsx";
+import ChallengeCentrePage from "./pages/ChallengeCentrePage.jsx";
+import ClubChallenge_LiveMatchPage from "./pages/ClubChallenge_LiveMatchPage.jsx";
 import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
 import BottomNav from "./components/BottomNav.jsx";
 import { buildClubIdentity, DEFAULT_CLUB_ID } from "./core/clubIdentity.js";
@@ -62,6 +64,8 @@ import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, 
 
 // Page constants
 const PAGE_HOME = "home";
+const PAGE_CHALLENGE_CENTRE = "challenge-centre";
+const PAGE_CLUB_CHALLENGE_LIVE_MATCH = "club-challenge-live-match";
 const PAGE_ENTRY = "entry";
 const PAGE_LANDING = "landing";
 const PAGE_CLUB_CHAT = "club-chat";
@@ -2060,6 +2064,11 @@ function isInsideClubWeeklyWindow(weeklyPlayTime, now = new Date()) {
 
 
 export default function App() {
+  const [
+    challengeFixtureForGlobalLiveMatch,
+    setChallengeFixtureForGlobalLiveMatch,
+  ] = useState(null);
+
   const [entryPageIntent, setEntryPageIntent] = useState(null);
   const [page, setPage] = useState(PAGE_HOME);
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
@@ -6685,6 +6694,31 @@ export default function App() {
             setSelectedHomeClub(buildClubIdentity(club || { id: DEFAULT_CLUB_ID }));
             setEntryPageIntent(payload?.intent || null);
             setPage(PAGE_ENTRY);
+          }}
+          onOpenChallengeCentre={() => setPage(PAGE_CHALLENGE_CENTRE)}
+        />
+      )}
+
+      {page === PAGE_CLUB_CHALLENGE_LIVE_MATCH && (
+        <ClubChallenge_LiveMatchPage
+          fixture={challengeFixtureForGlobalLiveMatch}
+          onBack={() => setPage(PAGE_CHALLENGE_CENTRE)}
+        />
+      )}
+
+      {page === PAGE_CHALLENGE_CENTRE && (
+        <ChallengeCentrePage
+          identity={identity}
+          onBack={() => setPage(PAGE_HOME)}
+          onOpenFixture={(fixture) => {
+            console.log("[App] Open challenge fixture", fixture);
+          }}
+          onOpenMatchControl={(fixture) => {
+            setChallengeFixtureForGlobalLiveMatch(fixture);
+            setPage(PAGE_CLUB_CHALLENGE_LIVE_MATCH);
+          }}
+          onOpenMatchReport={(fixture) => {
+            console.log("[App] Open challenge match report", fixture);
           }}
         />
       )}

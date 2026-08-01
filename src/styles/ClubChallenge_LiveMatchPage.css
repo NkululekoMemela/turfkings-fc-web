@@ -1,0 +1,411 @@
+.club-challenge-live-page {
+  min-height: 100vh;
+  padding: clamp(14px, 3vw, 34px);
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(41, 98, 255, 0.48),
+      transparent 38%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      rgba(22, 197, 94, 0.55),
+      transparent 42%
+    ),
+    linear-gradient(135deg, #061127, #101334 58%, #08291f);
+  color: #f8fafc;
+}
+
+.club-challenge-live-shell {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.club-challenge-live__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.club-challenge-live__topbar button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  background: rgba(2, 8, 23, 0.64);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.club-challenge-live__topbar > span {
+  color: #dbeafe;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.club-challenge-live__hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: clamp(24px, 4vw, 44px);
+  border: 1px solid rgba(83, 232, 170, 0.18);
+  border-radius: 28px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(36, 220, 151, 0.13),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(7, 20, 46, 0.96),
+      rgba(17, 24, 58, 0.94)
+    );
+  box-shadow:
+    0 28px 80px rgba(0, 3, 18, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.club-challenge-live__kicker {
+  display: inline-flex;
+  color: #63e6aa;
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.club-challenge-live__hero h1 {
+  margin: 12px 0 8px;
+  color: #ffffff;
+  font-size: clamp(2.5rem, 6vw, 5rem);
+  line-height: 0.94;
+  letter-spacing: -0.06em;
+}
+
+.club-challenge-live__hero p {
+  max-width: 650px;
+  margin: 0;
+  color: #aebbd0;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  font-weight: 650;
+}
+
+.club-challenge-live__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid rgba(74, 222, 128, 0.22);
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.11);
+  color: #7bf2ae;
+  font-size: 0.72rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.club-challenge-live__matchup {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto
+    minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(16px, 5vw, 58px);
+  margin-top: 18px;
+  padding: clamp(24px, 5vw, 54px);
+  border: 1px solid rgba(203, 213, 225, 0.4);
+  border-radius: 28px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(255, 255, 255, 1),
+      transparent 36%
+    ),
+    linear-gradient(145deg, #f8fafc, #e7edf6);
+  color: #0f172a;
+  box-shadow: 0 25px 70px rgba(2, 6, 23, 0.28);
+}
+
+.club-challenge-live__club {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  min-width: 0;
+  text-align: center;
+}
+
+.club-challenge-live__side {
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.club-challenge-live__badge {
+  display: grid;
+  place-items: center;
+  width: clamp(116px, 17vw, 190px);
+  height: clamp(116px, 17vw, 190px);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: clamp(26px, 4vw, 42px);
+  background: #ffffff;
+  box-shadow:
+    0 22px 46px rgba(15, 23, 42, 0.13),
+    inset 0 1px 0 #ffffff;
+}
+
+.club-challenge-live__badge img {
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  object-fit: contain;
+}
+
+.club-challenge-live__badge strong {
+  color: #166534;
+  font-size: 2rem;
+  font-weight: 1000;
+}
+
+.club-challenge-live__club h2 {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: clamp(1rem, 2.5vw, 1.6rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.club-challenge-live__versus {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.club-challenge-live__versus span {
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 0.65rem;
+  font-weight: 950;
+}
+
+.club-challenge-live__versus strong {
+  color: #0f172a;
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 1;
+}
+
+.club-challenge-live__fixture-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 20px;
+  background: rgba(3, 12, 31, 0.77);
+  overflow: hidden;
+}
+
+.club-challenge-live__fixture-strip > span {
+  display: grid;
+  gap: 5px;
+  padding: 18px;
+  border-right: 1px solid rgba(148, 163, 184, 0.13);
+}
+
+.club-challenge-live__fixture-strip > span:last-child {
+  border-right: 0;
+}
+
+.club-challenge-live__fixture-strip small {
+  color: #73839e;
+  font-size: 0.62rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.club-challenge-live__fixture-strip strong {
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.club-challenge-live__control-stage {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto
+    minmax(180px, 0.34fr);
+  align-items: center;
+  gap: 28px;
+  margin-top: 18px;
+  padding: clamp(24px, 4vw, 38px);
+  border: 1px solid rgba(203, 213, 225, 0.38);
+  border-radius: 28px;
+  background: linear-gradient(145deg, #f8fafc, #e8eef7);
+  color: #0f172a;
+}
+
+.club-challenge-live__control-heading > span {
+  color: #15803d;
+  font-size: 0.65rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.club-challenge-live__control-heading h2 {
+  margin: 7px 0;
+  font-size: clamp(1.6rem, 3vw, 2.5rem);
+}
+
+.club-challenge-live__control-heading p {
+  max-width: 600px;
+  margin: 0;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.club-challenge-live__scoreboard {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.club-challenge-live__scoreboard article {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.club-challenge-live__scoreboard small {
+  max-width: 130px;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.club-challenge-live__scoreboard strong {
+  color: #0f172a;
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.club-challenge-live__scoreboard > span {
+  color: #94a3b8;
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+
+.club-challenge-live__kickoff {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 54px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #29d994, #70eb69);
+  color: #05291c;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 1000;
+  cursor: pointer;
+  box-shadow: 0 15px 34px rgba(34, 197, 94, 0.22);
+}
+
+.club-challenge-live__missing {
+  width: min(560px, 100%);
+  margin: 12vh auto 0;
+  padding: 38px;
+  border-radius: 26px;
+  background: #ffffff;
+  color: #0f172a;
+  text-align: center;
+}
+
+.club-challenge-live__missing > span {
+  font-size: 2rem;
+}
+
+.club-challenge-live__missing h1 {
+  margin: 13px 0 8px;
+}
+
+.club-challenge-live__missing p {
+  color: #64748b;
+}
+
+.club-challenge-live__missing button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 13px;
+  background: #0f172a;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .club-challenge-live__hero {
+    display: grid;
+    align-items: start;
+  }
+
+  .club-challenge-live__matchup {
+    gap: 8px;
+    padding: 24px 12px;
+  }
+
+  .club-challenge-live__badge {
+    width: 90px;
+    height: 90px;
+    border-radius: 23px;
+  }
+
+  .club-challenge-live__club h2 {
+    font-size: 0.78rem;
+  }
+
+  .club-challenge-live__fixture-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .club-challenge-live__fixture-strip > span:nth-child(2) {
+    border-right: 0;
+  }
+
+  .club-challenge-live__fixture-strip > span:nth-child(-n + 2) {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.13);
+  }
+
+  .club-challenge-live__control-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .club-challenge-live__scoreboard {
+    justify-content: center;
+  }
+}

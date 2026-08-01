@@ -23,6 +23,7 @@ import {
   limit,
   deleteField,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
@@ -814,6 +815,7 @@ export function EntryPage({
           const data = d.data() || {};
 
           return {
+              ...data,
             challengeId: d.id,
             challengerClubId: data.challengerClubId || "",
             challengerClubName: data.challengerClubName || "Unknown club",
@@ -926,6 +928,151 @@ export function EntryPage({
     [members]
   );
 
+
+  /* FANM PLATFORM PAIRING POPUP HELPERS */
+
+  const isPlatformPairingChallenge = (challenge = {}) =>
+    challenge?.source === "platform_pairing" ||
+    Boolean(challenge?.platformPairingId) ||
+    challenge?.platformInstigated === true;
+
+  const getIncomingChallengeOpponentName = (
+    challenge = {}
+  ) => {
+    if (challenge?.opponentClubName) {
+      return challenge.opponentClubName;
+    }
+
+    const activeId = String(activeClubId || "").trim();
+
+    if (
+      activeId &&
+      String(challenge?.homeClubId || "").trim() === activeId
+    ) {
+      return (
+        challenge?.awayClubName ||
+        challenge?.targetClubName ||
+        "Opponent Club"
+      );
+    }
+
+    if (
+      activeId &&
+      String(challenge?.awayClubId || "").trim() === activeId
+    ) {
+      return (
+        challenge?.homeClubName ||
+        challenge?.challengerClubName ||
+        "Opponent Club"
+      );
+    }
+
+    return (
+      challenge?.challengerClubName ||
+      challenge?.targetClubName ||
+      "Opponent Club"
+    );
+  };
+
+  const getIncomingChallengePopupCopy = (
+    challenge = {}
+  ) => {
+    const opponentName =
+      getIncomingChallengeOpponentName(challenge);
+
+    if (isPlatformPairingChallenge(challenge)) {
+      return {
+        tag: "Platform Club Challenge",
+        title: "5 Asides Near Me paired your club",
+        message:
+          `Your club has been paired with ${opponentName}. ` +
+          `Accept to continue preparing the shared fixture.`,
+      };
+    }
+
+    return {
+      tag: isPlatformPairingChallenge(challenge)
+          ? "Platform Club Challenge"
+          : "Club Challenge",
+      title: `${challenge?.challengerClubName || "A club"} challenged you`,
+      message:
+        `${challenge?.challengerClubName || "A club"} ` +
+        `challenged ${activeClubName}.`,
+    };
+  };
+
+
+  /* FANM PREMIUM PLATFORM PAIRING DISPLAY HELPERS */
+
+  const formatPlatformPairingDate = (challenge = {}) => {
+    const rawDate = String(
+      challenge?.confirmedDate ||
+        challenge?.proposedDate ||
+        challenge?.matchDate ||
+        ""
+    ).trim();
+
+    if (!rawDate) return "Date to be confirmed";
+
+    const parsed = new Date(`${rawDate}T12:00:00`);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return rawDate;
+    }
+
+    return parsed.toLocaleDateString("en-ZA", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const getPlatformPairingKickoff = (challenge = {}) =>
+    String(
+      challenge?.confirmedKickoff ||
+        challenge?.proposedKickoff ||
+        challenge?.kickoff ||
+        "Time to be confirmed"
+    ).trim();
+
+  const getPlatformPairingVenue = (challenge = {}) =>
+    String(
+      challenge?.venue ||
+        challenge?.proposedVenue ||
+        "Venue to be confirmed"
+    ).trim();
+
+  const formatPlatformPairingGameFormat = (challenge = {}) => {
+    const rawFormat = String(
+      challenge?.format ||
+        challenge?.gameFormat ||
+        "5v5"
+    )
+      .trim()
+      .toUpperCase();
+
+    if (rawFormat.includes("11")) return "11 v 11";
+    if (rawFormat.includes("7")) return "7 v 7";
+    if (rawFormat.includes("6")) return "6 v 6";
+
+    return "5 v 5";
+  };
+
+  const getPlatformPairingHomeName = (challenge = {}) =>
+    String(
+      challenge?.homeClubName ||
+        challenge?.challengerClubName ||
+        "Home Club"
+    ).trim();
+
+  const getPlatformPairingAwayName = (challenge = {}) =>
+    String(
+      challenge?.awayClubName ||
+        challenge?.targetClubName ||
+        "Away Club"
+    ).trim();
+
   const adminNotices = useMemo(() => {
     if (!isAdminViewer) return [];
 
@@ -950,19 +1097,99 @@ export function EntryPage({
     });
 
     incomingChallengeAlerts.forEach((challenge) => {
+      const platformPairing =
+        isPlatformPairingChallenge(challenge);
+
+      const opponentName =
+        getIncomingChallengeOpponentName(challenge);
+
       notices.push({
         id: `challenge-${challenge.challengeId}`,
         type: "club_challenge",
-        title: "Incoming challenge",
-        tag: challenge.format.toUpperCase(),
-        icon: "⚔️",
-        message: (
+
+        title: platformPairing
+          ? "Official fixture invitation"
+          : "Incoming challenge",
+
+        tag: platformPairing
+          ? "5 Asides Near Me"
+          : String(challenge.format || "5v5").toUpperCase(),
+
+        icon: platformPairing ? "🏟️" : "⚔️",
+
+        message: platformPairing ? (
+          <div className="tk-platform-invite">
+            <div className="tk-platform-invite__brand">
+              <span className="tk-platform-invite__mark">5</span>
+
+              <span>
+                <strong>5 Asides Near Me</strong>
+                <small>Interclub fixture invitation</small>
+              </span>
+            </div>
+
+            <div className="tk-platform-invite__statement">
+              <small>Your club has been paired with</small>
+              <strong>{opponentName}</strong>
+            </div>
+
+            <div className="tk-platform-invite__matchup">
+              <span>
+                {getPlatformPairingHomeName(challenge)}
+              </span>
+
+              <em>VS</em>
+
+              <span>
+                {getPlatformPairingAwayName(challenge)}
+              </span>
+            </div>
+
+            <div className="tk-platform-invite__summary">
+              <span>
+                📅 {formatPlatformPairingDate(challenge)}
+              </span>
+
+              <span>
+                🕒 {getPlatformPairingKickoff(challenge)}
+              </span>
+
+              <span>
+                ⚽ {formatPlatformPairingGameFormat(challenge)}
+              </span>
+
+              <span>
+                📍 {getPlatformPairingVenue(challenge)}
+              </span>
+            </div>
+
+            {String(challenge?.message || "").trim() ? (
+              <p className="tk-platform-invite__message">
+                {challenge.message}
+              </p>
+            ) : null}
+
+            <p className="tk-platform-invite__prompt">
+              Accept this invitation to continue preparing the match.
+            </p>
+          </div>
+        ) : (
           <>
-            <strong>{challenge.challengerClubName}</strong> challenged {activeClubName}.
+            <strong>{challenge.challengerClubName}</strong>{" "}
+            challenged {activeClubName}.
           </>
         ),
-        helper:
-          `${challenge.proposedDate || "No date"} · ${challenge.proposedKickoff || "No kickoff"}${challenge.message ? ` · ${challenge.message}` : ""}`,
+
+        helper: platformPairing
+          ? "The fixture becomes official after both clubs accept."
+          : `${challenge.proposedDate || "No date"} · ${
+              challenge.proposedKickoff || "No kickoff"
+            }${
+              challenge.message
+                ? ` · ${challenge.message}`
+                : ""
+            }`,
+
         payload: challenge,
       });
     });
@@ -2604,9 +2831,410 @@ export function EntryPage({
     }
   };
 
+  /* FANM PLATFORM PAIRING ACCEPTANCE */
+
+  const acceptPlatformPairingChallenge = async (challenge) => {
+    const pairingId = String(
+      challenge?.platformPairingId ||
+      challenge?.challengeId ||
+      ""
+    ).trim();
+
+    if (!pairingId || !activeClubId) return;
+
+    const centralRef = doc(db, "clubChallenges", pairingId);
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const centralSnap = await transaction.get(centralRef);
+
+        const pairing = {
+          ...(challenge || {}),
+          ...(centralSnap.exists()
+            ? centralSnap.data()
+            : {}),
+        };
+
+        const homeClubId = String(
+          pairing?.homeClubId ||
+          pairing?.challengerClubId ||
+          ""
+        ).trim();
+
+        const awayClubId = String(
+          pairing?.awayClubId ||
+          pairing?.targetClubId ||
+          ""
+        ).trim();
+
+        if (
+          !homeClubId ||
+          !awayClubId ||
+          ![homeClubId, awayClubId].includes(activeClubId)
+        ) {
+          throw new Error(
+            "Current club is not part of this platform pairing."
+          );
+        }
+
+        const homeClubName =
+          pairing?.homeClubName ||
+          pairing?.challengerClubName ||
+          "Home Club";
+
+        const awayClubName =
+          pairing?.awayClubName ||
+          pairing?.targetClubName ||
+          "Away Club";
+
+        const previousResponses = {
+          ...(pairing?.responses || {}),
+        };
+
+        const nextResponses = {
+          ...previousResponses,
+          [activeClubId]: "accepted",
+        };
+
+        const homeAccepted =
+          nextResponses[homeClubId] === "accepted";
+
+        const awayAccepted =
+          nextResponses[awayClubId] === "accepted";
+
+        const acceptedClubIds = [
+          homeAccepted ? homeClubId : "",
+          awayAccepted ? awayClubId : "",
+        ].filter(Boolean);
+
+        const bothAccepted =
+          homeAccepted && awayAccepted;
+
+        const fixtureId = `challenge_${pairingId}`;
+        const nowMs = Date.now();
+
+        const responsePatch = {
+          responses: nextResponses,
+          acceptedClubIds,
+          homeAccepted,
+          awayAccepted,
+
+          status: bothAccepted
+            ? "accepted"
+            : "awaiting_other_club",
+
+          fixtureStatus: bothAccepted
+            ? "fixture_created_automatically"
+            : "awaiting_both_clubs",
+
+          updatedAt: serverTimestamp(),
+          updatedAtMs: nowMs,
+
+          ...(bothAccepted ? { fixtureId } : {}),
+        };
+
+        transaction.set(
+          centralRef,
+          responsePatch,
+          { merge: true }
+        );
+
+        transaction.set(
+          doc(
+            db,
+            "clubs",
+            activeClubId,
+            "incomingChallenges",
+            pairingId
+          ),
+          {
+            ...responsePatch,
+            respondedAt: serverTimestamp(),
+            respondedAtMs: nowMs,
+          },
+          { merge: true }
+        );
+
+        if (!bothAccepted) {
+          return;
+        }
+
+        const participatingClubIds = [
+          homeClubId,
+          awayClubId,
+        ];
+
+        const fixturePayload = {
+          fixtureId,
+
+          source: "platform_pairing",
+          challengeId: pairingId,
+          platformPairingId: pairingId,
+          platformInstigated: true,
+
+          status: "confirmed",
+          signupStatus: "open",
+
+          homeClubId,
+          homeClubName,
+          homeClubLogo:
+            pairing?.homeClubLogo ||
+            pairing?.challengerClubLogo ||
+            "",
+
+          awayClubId,
+          awayClubName,
+          awayClubLogo:
+            pairing?.awayClubLogo ||
+            pairing?.targetClubLogo ||
+            "",
+
+          participatingClubIds,
+
+          format: pairing?.format || "5v5",
+
+          proposedDate:
+            pairing?.proposedDate || "",
+
+          proposedKickoff:
+            pairing?.proposedKickoff || "18:30",
+
+          venue:
+            pairing?.venue ||
+            pairing?.proposedVenue ||
+            "Venue to be confirmed",
+
+          message: pairing?.message || "",
+
+          homeAccepted: true,
+          awayAccepted: true,
+          acceptedClubIds: participatingClubIds,
+
+          responses: {
+            [homeClubId]: "accepted",
+            [awayClubId]: "accepted",
+          },
+
+          createdAt: serverTimestamp(),
+          createdAtMs:
+            Number(pairing?.createdAtMs) || nowMs,
+
+          acceptedAt: serverTimestamp(),
+          acceptedAtMs: nowMs,
+
+          updatedAt: serverTimestamp(),
+          updatedAtMs: nowMs,
+        };
+
+        const acceptedPayload = {
+          ...pairing,
+          ...fixturePayload,
+
+          status: "accepted",
+          fixtureStatus:
+            "fixture_created_automatically",
+
+          acceptedAt: serverTimestamp(),
+          acceptedAtMs: nowMs,
+        };
+
+        transaction.set(
+          doc(
+            db,
+            "acceptedClubChallenges",
+            pairingId
+          ),
+          acceptedPayload,
+          { merge: true }
+        );
+
+        participatingClubIds.forEach((clubId) => {
+          const acceptedDocId =
+            `${pairingId}_${clubId}`;
+
+          transaction.set(
+            doc(
+              db,
+              "clubs",
+              clubId,
+              "acceptedChallenges",
+              acceptedDocId
+            ),
+            {
+              ...acceptedPayload,
+              acceptedChallengeDocId:
+                acceptedDocId,
+            },
+            { merge: true }
+          );
+
+          transaction.set(
+            doc(
+              db,
+              "clubs",
+              clubId,
+              "fixtures",
+              fixtureId
+            ),
+            fixturePayload,
+            { merge: true }
+          );
+
+          transaction.set(
+            doc(
+              db,
+              "clubs",
+              clubId,
+              "incomingChallenges",
+              pairingId
+            ),
+            {
+              status: "accepted",
+              fixtureId,
+              fixtureStatus:
+                "fixture_created_automatically",
+
+              responses: {
+                [homeClubId]: "accepted",
+                [awayClubId]: "accepted",
+              },
+
+              homeAccepted: true,
+              awayAccepted: true,
+              acceptedClubIds:
+                participatingClubIds,
+
+              respondedAt:
+                serverTimestamp(),
+              respondedAtMs: nowMs,
+            },
+            { merge: true }
+          );
+        });
+
+        transaction.set(
+          doc(
+            db,
+            "clubChallengeFixtures",
+            fixtureId
+          ),
+          fixturePayload,
+          { merge: true }
+        );
+      });
+    } catch (err) {
+      console.error(
+        "[EntryPage] Failed accepting platform pairing:",
+        err
+      );
+
+      window.alert(
+        "Could not accept this platform challenge."
+      );
+    }
+  };
+
+  const rejectPlatformPairingChallenge = async (challenge) => {
+    const pairingId = String(
+      challenge?.platformPairingId ||
+      challenge?.challengeId ||
+      ""
+    ).trim();
+
+    if (!pairingId || !activeClubId) return;
+
+    const homeClubId = String(
+      challenge?.homeClubId ||
+      challenge?.challengerClubId ||
+      ""
+    ).trim();
+
+    const awayClubId = String(
+      challenge?.awayClubId ||
+      challenge?.targetClubId ||
+      ""
+    ).trim();
+
+    const participatingClubIds = [
+      homeClubId,
+      awayClubId,
+    ].filter(Boolean);
+
+    try {
+      const batch = writeBatch(db);
+      const nowMs = Date.now();
+
+      batch.set(
+        doc(db, "clubChallenges", pairingId),
+        {
+          status: "rejected",
+          rejectedByClubId: activeClubId,
+          rejectedByClubName: activeClubName,
+
+          responses: {
+            ...(challenge?.responses || {}),
+            [activeClubId]: "rejected",
+          },
+
+          rejectedAt: serverTimestamp(),
+          rejectedAtMs: nowMs,
+
+          updatedAt: serverTimestamp(),
+          updatedAtMs: nowMs,
+        },
+        { merge: true }
+      );
+
+      participatingClubIds.forEach((clubId) => {
+        batch.set(
+          doc(
+            db,
+            "clubs",
+            clubId,
+            "incomingChallenges",
+            pairingId
+          ),
+          {
+            status: "rejected",
+            rejectedByClubId: activeClubId,
+            rejectedByClubName: activeClubName,
+
+            respondedAt: serverTimestamp(),
+            respondedAtMs: nowMs,
+
+            updatedAt: serverTimestamp(),
+            updatedAtMs: nowMs,
+          },
+          { merge: true }
+        );
+      });
+
+      await batch.commit();
+    } catch (err) {
+      console.error(
+        "[EntryPage] Failed rejecting platform pairing:",
+        err
+      );
+
+      window.alert(
+        "Could not reject this platform challenge."
+      );
+    }
+  };
+
+
+
 
 
   const handleAcceptChallenge = async (challenge) => {
+    if (
+      challenge?.source === "platform_pairing" ||
+      challenge?.platformPairingId
+    ) {
+      await acceptPlatformPairingChallenge(challenge);
+      return;
+    }
+
     if (!challenge?.challengeId) return;
 
     try {
@@ -2768,6 +3396,14 @@ export function EntryPage({
   };
 
   const handleRejectChallenge = async (challenge) => {
+    if (
+      challenge?.source === "platform_pairing" ||
+      challenge?.platformPairingId
+    ) {
+      await rejectPlatformPairingChallenge(challenge);
+      return;
+    }
+
     if (!challenge?.challengeId) return;
 
     try {
@@ -4018,9 +4654,9 @@ export function EntryPage({
               </div>
 
               <div className="tk-admin-notification-body">
-                <p className="tk-admin-notification-message">
+                <div className="tk-admin-notification-message">
                   {activeAdminNotice.message}
-                </p>
+                </div>
 
                 <p className="tk-admin-notification-helper">
                   {activeAdminNotice.helper}
