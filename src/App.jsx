@@ -2328,6 +2328,35 @@ export default function App() {
     setRunning(nextSecondsLeft > 0);
   };
 
+  const handleUpdateRedCardRule = (nextRule) => {
+    if (!canControlCurrentLiveMatch || !liveMatchDraft) {
+      window.alert(
+        "Only the current match referee can change discipline rules."
+      );
+      return;
+    }
+
+    const normalizedRule =
+      String(nextRule || "").trim().toLowerCase() === "two_minute"
+        ? "two_minute"
+        : "permanent";
+
+    if (USE_V2) {
+      updateActiveSeason((prevSeason) => ({
+        ...prevSeason,
+        liveMatchDraft: touchLiveMatchDraft(
+          prevSeason.liveMatchDraft,
+          {
+            redCardRule: normalizedRule,
+            redCardRuleUpdatedAtISO: new Date().toISOString(),
+            redCardRuleUpdatedBy:
+              buildCurrentRefereeController(),
+          }
+        ),
+      }));
+    }
+  };
+
   const handleUpdateRotationReminder = (nextMode) => {
     if (!canControlCurrentLiveMatch || !liveMatchDraft) {
       window.alert(
@@ -6997,6 +7026,8 @@ export default function App() {
           onUpdateExpectedEndTime={handleUpdateLiveFinishTime}
           rotationReminderMode={liveMatchDraft?.rotationReminderMode || "off"}
           onUpdateRotationReminder={handleUpdateRotationReminder}
+          redCardRule={liveMatchDraft?.redCardRule || "permanent"}
+          onUpdateRedCardRule={handleUpdateRedCardRule}
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={effectivePlayerPhotosByName}

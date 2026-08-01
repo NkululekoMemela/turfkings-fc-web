@@ -44,6 +44,12 @@ function normalizeRotationReminderMode(value) {
   return ["time", "goals"].includes(mode) ? mode : "off";
 }
 
+function normalizeRedCardRule(value) {
+  return String(value || "").trim().toLowerCase() === "two_minute"
+    ? "two_minute"
+    : "permanent";
+}
+
 const FANM_TEAM_LIBRARY = [
   ...FANM_NATIONAL_TEAMS,
   ...FANM_PRO_CLUBS,
@@ -1713,6 +1719,8 @@ export function FriendlyLiveMatchPage({
   onUpdateExpectedEndTime = null,
   rotationReminderMode = "off",
   onUpdateRotationReminder = null,
+  redCardRule = "permanent",
+  onUpdateRedCardRule = null,
   confirmedLineupSnapshot = null,
   confirmedLineupsByMatchNo = {},
   playerPhotosByName = {},
@@ -2774,6 +2782,15 @@ export function FriendlyLiveMatchPage({
         getIdentityDisplayName(identity),
       issuedById:
         getIdentityKey(identity) || null,
+      dismissalRule:
+        normalizedType === "red_card"
+          ? normalizedActiveRedCardRule
+          : null,
+      teamPenaltySeconds:
+        normalizedType === "red_card" &&
+        normalizedActiveRedCardRule === "two_minute"
+          ? 2 * 60
+          : null,
     };
 
     onAddEvent?.(event);
@@ -2840,6 +2857,26 @@ export function FriendlyLiveMatchPage({
   const dismissedPlayersB =
     dismissedPlayersForTeam(teamBId);
 
+  const dismissedPlayerKeysForTeam = (teamId) =>
+    new Set(
+      dismissedPlayersForTeam(teamId).map((player) =>
+        playerKeyFor(player?.name)
+      )
+    );
+
+  const isDismissedPlayer = (teamId, playerName) =>
+    dismissedPlayerKeysForTeam(teamId).has(
+      playerKeyFor(playerName)
+    );
+
+  const eligibleTeamAPlayers = (teamA?.players || []).filter(
+    (name) => !isDismissedPlayer(teamAId, name)
+  );
+
+  const eligibleTeamBPlayers = (teamB?.players || []).filter(
+    (name) => !isDismissedPlayer(teamBId, name)
+  );
+
   const toggleDisciplinePlayer = (player) => {
     const nextKey = disciplinePlayerKey(player);
     const currentKey = disciplinePlayerKey(selectedDisciplinePlayer);
@@ -2856,6 +2893,22 @@ export function FriendlyLiveMatchPage({
 
   const normalizedActiveRotationMode =
     normalizeRotationReminderMode(rotationReminderMode);
+
+  const normalizedActiveRedCardRule =
+    normalizeRedCardRule(redCardRule);
+
+  const handleSelectRedCardRule = (nextRule) => {
+    if (
+      !canControlMatch ||
+      typeof onUpdateRedCardRule !== "function"
+    ) {
+      return;
+    }
+
+    onUpdateRedCardRule(
+      normalizeRedCardRule(nextRule)
+    );
+  };
 
   const totalGoals = goalsA + goalsB;
 
@@ -3154,18 +3207,37 @@ export function FriendlyLiveMatchPage({
   ]);
 
   const assistOptions = useMemo(() => {
-    return goalRecorderChoices.filter((entry) => entry.name !== scorerName);
-  }, [goalRecorderChoices, scorerName]);
+    const dismissedKeys =
+      dismissedPlayerKeysForTeam(scoringTeamId);
 
-  const goalRecorderChoicesForTeam = (teamId) =>
-    buildGoalRecorderChoices({
+    return goalRecorderChoices.filter(
+      (entry) =>
+        entry.name !== scorerName &&
+        !dismissedKeys.has(playerKeyFor(entry.name))
+    );
+  }, [
+    goalRecorderChoices,
+    scorerName,
+    scoringTeamId,
+    currentEvents,
+  ]);
+
+  const goalRecorderChoicesForTeam = (teamId) => {
+    const dismissed = new Set(
+      dismissedPlayersForTeam(teamId).map((p) => playerKeyFor(p.name))
+    );
+
+    return buildGoalRecorderChoices({
       snapshot: teamId === teamAId ? verifiedLineupA : verifiedLineupB,
       fallbackPlayers: teamId === teamAId ? teamA?.players || [] : teamB?.players || [],
       canonicalName,
       playerKeyFor,
       formationMap,
       defaultFormationId,
-    });
+    }).filter(
+      (player) => !dismissed.has(playerKeyFor(player.name))
+    );
+  };
 
   const victimOptions = useMemo(() => {
     return shiboboChoices.filter((entry) => entry.name !== shiboboPlayerName);
@@ -3567,6 +3639,26 @@ export function FriendlyLiveMatchPage({
 
     if (!scorerName) return;
 
+    if (isDismissedPlayer(scoringTeamId, scorerName)) {
+      window.alert(
+        "This player has been sent off and cannot score."
+      );
+      setScorerName("");
+      setAssistName("");
+      return;
+    }
+
+    if (
+      assistName &&
+      isDismissedPlayer(scoringTeamId, assistName)
+    ) {
+      window.alert(
+        "This player has been sent off and cannot provide an assist."
+      );
+      setAssistName("");
+      return;
+    }
+
     const relevantSnapshot =
       scoringTeamId === teamAId ? verifiedLineupA : verifiedLineupB;
 
@@ -3809,6 +3901,24 @@ export function FriendlyLiveMatchPage({
 
     const originalEvent = currentEvents[editingGoalIndex];
     if (!originalEvent || originalEvent.type !== "goal") return;
+
+    if (isDismissedPlayer(scoringTeamId, scorerName)) {
+      window.alert(
+        "This player has been sent off and cannot score."
+      );
+      return;
+    }
+
+    if (
+      assistName &&
+      isDismissedPlayer(scoringTeamId, assistName)
+    ) {
+      window.alert(
+        "This player has been sent off and cannot provide an assist."
+      );
+      setAssistName("");
+      return;
+    }
 
     const relevantSnapshot =
       scoringTeamId === teamAId ? verifiedLineupA : verifiedLineupB;
@@ -4774,6 +4884,75 @@ export function FriendlyLiveMatchPage({
               </div>
             </div>
 
+            <section className="fanm-discipline-rules">
+              <div className="fanm-discipline-rules-heading">
+                <span aria-hidden="true">⚖️</span>
+                <div>
+                  <strong>Competition Rules</strong>
+                  <small>Red-card consequence for this match</small>
+                </div>
+              </div>
+
+              <div className="fanm-discipline-rule-options">
+                <button
+                  type="button"
+                  className={`fanm-discipline-rule-option ${
+                    normalizedActiveRedCardRule === "permanent"
+                      ? "is-selected"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    handleSelectRedCardRule("permanent")
+                  }
+                  disabled={
+                    typeof onUpdateRedCardRule !== "function"
+                  }
+                >
+                  <span
+                    className="fanm-discipline-rule-radio"
+                    aria-hidden="true"
+                  />
+                  <span aria-hidden="true">🚫</span>
+                  <span>
+                    <strong>Send off for remainder of match</strong>
+                    <small>Player cannot return and the team stays short.</small>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`fanm-discipline-rule-option ${
+                    normalizedActiveRedCardRule === "two_minute"
+                      ? "is-selected"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    handleSelectRedCardRule("two_minute")
+                  }
+                  disabled={
+                    typeof onUpdateRedCardRule !== "function"
+                  }
+                >
+                  <span
+                    className="fanm-discipline-rule-radio"
+                    aria-hidden="true"
+                  />
+                  <span aria-hidden="true">⏱️</span>
+                  <span>
+                    <strong>Team plays short for 2 minutes</strong>
+                    <small>
+                      Sent-off player cannot return, but another substitute may
+                      restore the team after the penalty.
+                    </small>
+                  </span>
+                </button>
+              </div>
+
+              <p className="fanm-discipline-rules-default">
+                Permanent dismissal is the default unless changed.
+              </p>
+            </section>
+
             <div className="fanm-discipline-teams">
               {[
                 {
@@ -5044,6 +5223,43 @@ export function FriendlyLiveMatchPage({
             <h3>Edit lineup positions</h3>
             <p className="muted live-verify-note">______________________</p>
 
+            {(dismissedPlayersA.length > 0 ||
+              dismissedPlayersB.length > 0) && (
+              <div className="fanm-dismissed-lineup-locks">
+                <div className="fanm-dismissed-lineup-locks-heading">
+                  <span aria-hidden="true">🟥</span>
+                  <div>
+                    <strong>Sent-off players</strong>
+                    <small>
+                      Locked out and unavailable for lineup selection
+                    </small>
+                  </div>
+                </div>
+
+                <div className="fanm-dismissed-lineup-lock-list">
+                  {[
+                    ...dismissedPlayersA.map((player) => ({
+                      ...player,
+                      teamLabel: getShortLabel(teamA, "TEAM A"),
+                    })),
+                    ...dismissedPlayersB.map((player) => ({
+                      ...player,
+                      teamLabel: getShortLabel(teamB, "TEAM B"),
+                    })),
+                  ].map((player) => (
+                    <span
+                      key={`${player.teamId}-${playerKeyFor(player.name)}`}
+                      className="fanm-dismissed-lineup-lock"
+                    >
+                      <span aria-hidden="true">🟥</span>
+                      <strong>{player.name}</strong>
+                      <small>{player.teamLabel} · Sent off</small>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="live-lineup-columns">
               {!playersReady ? (
                 <div className="live-empty-full">
@@ -5056,7 +5272,7 @@ export function FriendlyLiveMatchPage({
                     team={teamA}
                     lineup={verifyTeamALineup}
                     setLineup={setVerifyTeamALineup}
-                    registeredPlayers={teamA?.players || []}
+                    registeredPlayers={eligibleTeamAPlayers}
                     canonicalName={canonicalName}
                     displayCompactPlayerName={displayCompactPlayerName}
                     playerKeyFor={playerKeyFor}
@@ -5071,7 +5287,7 @@ export function FriendlyLiveMatchPage({
                     team={teamB}
                     lineup={verifyTeamBLineup}
                     setLineup={setVerifyTeamBLineup}
-                    registeredPlayers={teamB?.players || []}
+                    registeredPlayers={eligibleTeamBPlayers}
                     canonicalName={canonicalName}
                     displayCompactPlayerName={displayCompactPlayerName}
                     playerKeyFor={playerKeyFor}
