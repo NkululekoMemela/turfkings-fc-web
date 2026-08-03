@@ -14989,3 +14989,14 @@ button.fanm-chat-highlight-card {
   > .pitch-wrapper {
   margin-top: 0 !important;
 }
+
+/* SQUADS PAGE — restore compact colour dropdown */
+.squads-page .squad-preview-colour-select,
+.squads-page select.squad-preview-colour-select,
+.squads-page .squad-preview-colour-select select {
+  width: 118px !important;
+  min-width: 118px !important;
+  max-width: 118px !important;
+  flex: 0 0 118px !important;
+  align-self: flex-start !important;
+}
