@@ -15000,3 +15000,72 @@ button.fanm-chat-highlight-card {
   flex: 0 0 118px !important;
   align-self: flex-start !important;
 }
+
+
+/* FANM TESTING BRANCH — global environment badge */
+.fanm-testing-site-badge {
+  position: fixed;
+  top: max(0.7rem, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 20000;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.48rem;
+  padding: 0.42rem 0.72rem;
+  border: 1px solid rgba(250, 204, 21, 0.62);
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(120, 53, 15, 0.96),
+      rgba(69, 26, 3, 0.97)
+    );
+  color: #fef3c7;
+  box-shadow:
+    0 12px 32px rgba(2, 6, 23, 0.42),
+    0 0 0 1px rgba(250, 204, 21, 0.08);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.fanm-testing-site-badge__icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.fanm-testing-site-badge__copy {
+  display: grid;
+  line-height: 1.02;
+}
+
+.fanm-testing-site-badge__copy strong {
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+}
+
+.fanm-testing-site-badge__copy small {
+  margin-top: 0.16rem;
+  color: rgba(254, 243, 199, 0.76);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 520px) {
+  .fanm-testing-site-badge {
+    top: max(0.42rem, env(safe-area-inset-top));
+    padding: 0.36rem 0.62rem;
+  }
+
+  .fanm-testing-site-badge__copy strong {
+    font-size: 0.66rem;
+  }
+
+  .fanm-testing-site-badge__copy small {
+    font-size: 0.54rem;
+  }
+}

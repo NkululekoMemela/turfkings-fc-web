@@ -2059,7 +2059,33 @@ function isInsideClubWeeklyWindow(weeklyPlayTime, now = new Date()) {
 }
 
 
+const FANM_TESTING_DEPLOYMENT = true;
+
 export default function App() {
+  useEffect(() => {
+    if (!FANM_TESTING_DEPLOYMENT || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const badge = document.createElement("div");
+    badge.className = "fanm-testing-site-badge";
+    badge.setAttribute("role", "status");
+    badge.setAttribute("aria-label", "Testing site");
+    badge.innerHTML = `
+      <span class="fanm-testing-site-badge__icon" aria-hidden="true">🧪</span>
+      <span class="fanm-testing-site-badge__copy">
+        <strong>TESTING SITE</strong>
+        <small>fanm-testing</small>
+      </span>
+    `;
+
+    document.body.appendChild(badge);
+
+    return () => {
+      badge.remove();
+    };
+  }, []);
+
   const [entryPageIntent, setEntryPageIntent] = useState(null);
   const [page, setPage] = useState(PAGE_HOME);
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
