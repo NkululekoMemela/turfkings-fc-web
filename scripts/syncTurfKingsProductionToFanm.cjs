@@ -5,6 +5,13 @@ const path = require("path");
 const os = require("os");
 const admin = require("firebase-admin");
 
+const SERVICE_ACCOUNT_KEY = path.join(
+  os.homedir(),
+  "Projects",
+  "FANM_SECRETS",
+  "fanm-backup-bot.json"
+);
+
 const TARGET_PROJECT_ID = process.env.TARGET_PROJECT_ID || "five-asides-near-me";
 const CLUB_ID = process.env.CLUB_ID || "turf-kings";
 const EXECUTE = process.argv.includes("--execute");
@@ -176,7 +183,7 @@ async function main() {
   }
 
   admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
+    credential: admin.credential.cert(require(SERVICE_ACCOUNT_KEY)),
     projectId: TARGET_PROJECT_ID,
   });
 
