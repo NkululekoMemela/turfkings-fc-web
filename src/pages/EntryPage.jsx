@@ -1154,6 +1154,7 @@ export function EntryPage({
   const [adminPrivilegesError, setAdminPrivilegesError] = useState("");
   const [adminPrivilegesStatus, setAdminPrivilegesStatus] = useState("");
 
+  const [terminationMemberId, setTerminationMemberId] = useState("");
   const [terminationMember, setTerminationMember] = useState(null);
   const [terminationConfirmation, setTerminationConfirmation] = useState("");
   const [terminationSaving, setTerminationSaving] = useState(false);
@@ -1169,6 +1170,13 @@ export function EntryPage({
       members.find((member) => member.id === adminPrivilegesMemberId) ||
       null,
     [members, adminPrivilegesMemberId]
+  );
+
+  const terminationCandidate = useMemo(
+    () =>
+      members.find((member) => member.id === terminationMemberId) ||
+      null,
+    [members, terminationMemberId]
   );
 
   const protectedMainAdminEmail = String(
@@ -1272,7 +1280,7 @@ export function EntryPage({
     let cancelled = false;
 
     async function runIdentitySafetyAudit() {
-      const member = adminPrivilegesMember;
+      const member = terminationCandidate;
 
       setIdentitySafetyAudit(null);
       setIdentitySafetyAuditError("");
@@ -1546,7 +1554,7 @@ export function EntryPage({
       cancelled = true;
     };
   }, [
-    adminPrivilegesMember,
+    terminationCandidate,
     activeClubId,
     members,
     currentUser?.email,
@@ -1554,10 +1562,10 @@ export function EntryPage({
     protectedMainAdminEmail,
   ]);
 
-  const selectedMemberPassedIdentitySafetyAudit = Boolean(
+  const selectedTerminationMemberPassedIdentitySafetyAudit = Boolean(
     identitySafetyAudit?.safe &&
       identitySafetyAudit?.memberId &&
-      identitySafetyAudit.memberId === adminPrivilegesMember?.id
+      identitySafetyAudit.memberId === terminationCandidate?.id
   );
 
   const terminationMemberPassedIdentitySafetyAudit = Boolean(
@@ -3896,8 +3904,10 @@ export function EntryPage({
                 title="Manage club administrators"
                 onClick={() => {
                   setAdminPrivilegesMemberId("");
+                  setTerminationMemberId("");
                   setAdminPrivilegesError("");
                   setAdminPrivilegesStatus("");
+                  setTerminationError("");
                   setIdentitySafetyAudit(null);
                   setIdentitySafetyAuditError("");
                   setShowAdminPrivilegesModal(true);
@@ -4955,11 +4965,12 @@ export function EntryPage({
             className="modal"
             role="dialog"
             aria-modal="true"
-            aria-label="Club administrator privileges"
+            aria-label="Club management"
             style={{
-              width: "min(92vw, 520px)",
-              maxHeight: "88vh",
+              width: "min(94vw, 620px)",
+              maxHeight: "90vh",
               overflowY: "auto",
+              padding: "1rem",
             }}
           >
             <div
@@ -4971,13 +4982,20 @@ export function EntryPage({
               }}
             >
               <div>
-                <span style={labelCapsuleStyle}>Club access</span>
-                <h3 style={{ marginTop: "0.8rem", marginBottom: "0.35rem" }}>
-                  Club Administrator Privileges
+                <span style={labelCapsuleStyle}>Club controls</span>
+
+                <h3
+                  style={{
+                    marginTop: "0.8rem",
+                    marginBottom: "0.35rem",
+                  }}
+                >
+                  Club Management
                 </h3>
+
                 <p className="muted small" style={{ marginTop: 0 }}>
-                  Promote an existing member to permanent club administrator,
-                  or remove privileges from an additional administrator.
+                  Administrator privileges and permanent membership cleanup
+                  are separate club-management tools.
                 </p>
               </div>
 
@@ -4994,515 +5012,729 @@ export function EntryPage({
                   fontSize: "1.25rem",
                   lineHeight: 1,
                 }}
-                aria-label="Close"
+                aria-label="Close Club Management"
               >
                 ×
               </button>
             </div>
 
-            <div
+            {/* ======================================================
+                ADMINISTRATOR MANAGEMENT
+            ====================================================== */}
+            <section
+              aria-labelledby="administrator-management-title"
               style={{
                 marginTop: "1rem",
-                padding: "0.9rem",
-                borderRadius: "18px",
-                border: "1px solid rgba(148,163,184,0.18)",
-                background: "rgba(15,23,42,0.18)",
+                padding: "1rem",
+                borderRadius: "22px",
+                border: "1px solid rgba(56,189,248,0.28)",
+                background:
+                  "linear-gradient(180deg, rgba(14,165,233,0.09), rgba(15,23,42,0.18))",
+                boxShadow: "0 16px 38px rgba(2,6,23,0.18)",
               }}
             >
-              <strong style={{ display: "block", marginBottom: "0.65rem" }}>
-                Current club administrators
-              </strong>
-
-              {currentClubAdministrators.length ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gap: "0.5rem",
-                  }}
-                >
-                  {currentClubAdministrators.map((administrator) => (
-                    <div
-                      key={administrator.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "0.75rem",
-                        padding: "0.62rem 0.7rem",
-                        borderRadius: "14px",
-                        border: administrator.isMainAdmin
-                          ? "1px solid rgba(250,204,21,0.28)"
-                          : "1px solid rgba(56,189,248,0.16)",
-                        background: administrator.isMainAdmin
-                          ? "rgba(250,204,21,0.07)"
-                          : "rgba(56,189,248,0.05)",
-                      }}
-                    >
-                      <span
-                        style={{
-                          minWidth: 0,
-                          fontWeight: 850,
-                        }}
-                      >
-                        {administrator.isMainAdmin ? "★ " : "◆ "}
-                        {administrator.fullName}
-                      </span>
-
-                      <span
-                        style={{
-                          flex: "0 0 auto",
-                          borderRadius: "999px",
-                          padding: "0.24rem 0.52rem",
-                          fontSize: "0.68rem",
-                          fontWeight: 900,
-                          border: "1px solid rgba(148,163,184,0.2)",
-                          background: "rgba(15,23,42,0.3)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {administrator.isMainAdmin
-                          ? "Main admin · Protected"
-                          : "Club admin"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="muted small" style={{ margin: 0 }}>
-                  No administrator profiles could be matched to the active
-                  member list.
-                </p>
-              )}
-
-              <p
-                className="muted small"
-                style={{ marginBottom: 0, marginTop: "0.65rem" }}
-              >
-                Private email addresses and account identifiers are not shown.
-              </p>
-            </div>
-
-            <div className="field-column" style={{ marginTop: "1rem" }}>
-              <label>Select club member</label>
-              <select
-                className="text-input"
-                value={adminPrivilegesMemberId}
-                onChange={(event) => {
-                  setAdminPrivilegesMemberId(event.target.value);
-                  setAdminPrivilegesError("");
-                  setAdminPrivilegesStatus("");
-                }}
-              >
-                <option value="">Select a member...</option>
-                {activeMembers.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.fullName}
-                    {member.role === "admin" ? " — Club administrator" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {adminPrivilegesMember && (
               <div
                 style={{
-                  marginTop: "1rem",
-                  padding: "0.95rem",
-                  borderRadius: "18px",
-                  border: adminPrivilegesMemberIsProtected
-                    ? "1px solid rgba(250,204,21,0.34)"
-                    : "1px solid rgba(56,189,248,0.2)",
-                  background: adminPrivilegesMemberIsProtected
-                    ? "linear-gradient(180deg, rgba(250,204,21,0.1), rgba(15,23,42,0.08))"
-                    : "linear-gradient(180deg, rgba(56,189,248,0.08), rgba(15,23,42,0.04))",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  flexWrap: "wrap",
                 }}
               >
-                <strong style={{ display: "block" }}>
-                  {adminPrivilegesMember.fullName}
-                </strong>
-
-                <span
-                  className="muted small"
-                  style={{ display: "block", marginTop: "0.25rem" }}
-                >
-                  {adminPrivilegesMemberEmail ||
-                    "No verified Gmail address"}
-                </span>
-
-                <div
-                  style={{
-                    marginTop: "0.75rem",
-                    display: "flex",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "0.7rem",
-                  }}
-                >
+                <div>
                   <span
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      borderRadius: "999px",
-                      padding: "0.3rem 0.65rem",
-                      fontSize: "0.76rem",
-                      fontWeight: 900,
-                      border: "1px solid rgba(148,163,184,0.2)",
-                      background: "rgba(15,23,42,0.3)",
+                      ...labelCapsuleStyle,
+                      color: "#bae6fd",
+                      border: "1px solid rgba(56,189,248,0.32)",
+                      background: "rgba(14,165,233,0.1)",
+                    }}
+                  >
+                    Administrator management
+                  </span>
+
+                  <h4
+                    id="administrator-management-title"
+                    style={{
+                      marginTop: "0.7rem",
+                      marginBottom: "0.25rem",
+                    }}
+                  >
+                    Manage club administrators
+                  </h4>
+
+                  <p
+                    className="muted small"
+                    style={{ marginTop: 0, marginBottom: 0 }}
+                  >
+                    Promote an active club member or remove privileges from an
+                    additional administrator.
+                  </p>
+                </div>
+
+                <span
+                  style={{
+                    flex: "0 0 auto",
+                    padding: "0.3rem 0.58rem",
+                    borderRadius: "999px",
+                    border: "1px solid rgba(56,189,248,0.2)",
+                    background: "rgba(15,23,42,0.28)",
+                    color: "#bae6fd",
+                    fontSize: "0.69rem",
+                    fontWeight: 900,
+                  }}
+                >
+                  Access control
+                </span>
+              </div>
+
+              <div
+                style={{
+                  marginTop: "0.9rem",
+                  padding: "0.85rem",
+                  borderRadius: "17px",
+                  border: "1px solid rgba(148,163,184,0.16)",
+                  background: "rgba(2,6,23,0.2)",
+                }}
+              >
+                <strong
+                  style={{
+                    display: "block",
+                    marginBottom: "0.6rem",
+                  }}
+                >
+                  Current club administrators
+                </strong>
+
+                {currentClubAdministrators.length ? (
+                  <div style={{ display: "grid", gap: "0.5rem" }}>
+                    {currentClubAdministrators.map((administrator) => (
+                      <div
+                        key={administrator.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "0.7rem",
+                          padding: "0.62rem 0.68rem",
+                          borderRadius: "14px",
+                          border: administrator.isMainAdmin
+                            ? "1px solid rgba(250,204,21,0.3)"
+                            : "1px solid rgba(56,189,248,0.18)",
+                          background: administrator.isMainAdmin
+                            ? "rgba(250,204,21,0.07)"
+                            : "rgba(56,189,248,0.05)",
+                        }}
+                      >
+                        <strong
+                          style={{
+                            minWidth: 0,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {administrator.isMainAdmin ? "★ " : "◆ "}
+                          {administrator.fullName}
+                        </strong>
+
+                        <span
+                          style={{
+                            flex: "0 0 auto",
+                            borderRadius: "999px",
+                            padding: "0.24rem 0.5rem",
+                            fontSize: "0.67rem",
+                            fontWeight: 900,
+                            border: "1px solid rgba(148,163,184,0.2)",
+                            background: "rgba(15,23,42,0.3)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {administrator.isMainAdmin
+                            ? "Main admin · Protected"
+                            : "Club admin"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted small" style={{ margin: 0 }}>
+                    No administrator profiles were matched to the active
+                    membership list.
+                  </p>
+                )}
+
+                <p
+                  className="muted small"
+                  style={{
+                    marginBottom: 0,
+                    marginTop: "0.65rem",
+                  }}
+                >
+                  Private emails, account UIDs and contact details are hidden.
+                </p>
+              </div>
+
+              <div
+                className="field-column"
+                style={{ marginTop: "0.9rem" }}
+              >
+                <label htmlFor="administrator-member-selector">
+                  Select member for administrator privileges
+                </label>
+
+                <select
+                  id="administrator-member-selector"
+                  className="text-input"
+                  value={adminPrivilegesMemberId}
+                  onChange={(event) => {
+                    setAdminPrivilegesMemberId(event.target.value);
+                    setAdminPrivilegesError("");
+                    setAdminPrivilegesStatus("");
+                  }}
+                >
+                  <option value="">Select a member...</option>
+
+                  {activeMembers.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.fullName}
+                      {member.role === "admin"
+                        ? " — Club administrator"
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {adminPrivilegesMember && (
+                <div
+                  style={{
+                    marginTop: "0.8rem",
+                    padding: "0.8rem",
+                    borderRadius: "16px",
+                    border: adminPrivilegesMemberIsProtected
+                      ? "1px solid rgba(250,204,21,0.3)"
+                      : "1px solid rgba(56,189,248,0.2)",
+                    background: adminPrivilegesMemberIsProtected
+                      ? "rgba(250,204,21,0.07)"
+                      : "rgba(14,165,233,0.06)",
+                  }}
+                >
+                  <strong style={{ display: "block" }}>
+                    {adminPrivilegesMember.fullName}
+                  </strong>
+
+                  <span
+                    className="muted small"
+                    style={{
+                      display: "block",
+                      marginTop: "0.25rem",
                     }}
                   >
                     {adminPrivilegesMemberIsProtected
                       ? "Main club administrator · Protected"
                       : adminPrivilegesMemberIsAdmin
-                        ? "Club administrator"
-                        : "Player"}
+                        ? "Current club administrator"
+                        : "Current club member"}
                   </span>
+
+                  {adminPrivilegesMemberIsProtected && (
+                    <p
+                      className="muted small"
+                      style={{
+                        marginBottom: 0,
+                        marginTop: "0.55rem",
+                      }}
+                    >
+                      The protected main administrator cannot be demoted.
+                    </p>
+                  )}
                 </div>
+              )}
 
-                {adminPrivilegesMemberIsProtected && (
-                  <p
-                    className="muted small"
-                    style={{ marginBottom: 0, marginTop: "0.75rem" }}
-                  >
-                    The main club administrator cannot be demoted by another
-                    club administrator.
-                  </p>
-                )}
-              </div>
-            )}
+              {adminPrivilegesError && (
+                <p
+                  className="error-text"
+                  style={{ marginTop: "0.75rem" }}
+                >
+                  {adminPrivilegesError}
+                </p>
+              )}
 
-            {adminPrivilegesMember && (
+              {adminPrivilegesStatus && (
+                <p
+                  className="success-text"
+                  style={{ marginTop: "0.75rem" }}
+                >
+                  {adminPrivilegesStatus}
+                </p>
+              )}
+
               <div
                 style={{
-                  marginTop: "1rem",
-                  padding: "0.95rem",
-                  borderRadius: "18px",
-                  border:
-                    identitySafetyAudit?.status === "safe"
-                      ? "1px solid rgba(52,211,153,0.28)"
-                      : identitySafetyAudit?.status === "attention"
-                        ? "1px solid rgba(250,204,21,0.3)"
-                        : identitySafetyAudit?.status === "unsafe"
-                          ? "1px solid rgba(248,113,113,0.34)"
-                          : "1px solid rgba(148,163,184,0.18)",
-                  background:
-                    identitySafetyAudit?.status === "safe"
-                      ? "rgba(16,185,129,0.07)"
-                      : identitySafetyAudit?.status === "attention"
-                        ? "rgba(250,204,21,0.07)"
-                        : identitySafetyAudit?.status === "unsafe"
-                          ? "rgba(127,29,29,0.12)"
-                          : "rgba(15,23,42,0.18)",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginTop: "0.85rem",
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "0.75rem",
-                  }}
+                <button
+                  type="button"
+                  className="primary-btn"
+                  disabled={
+                    !adminPrivilegesMember ||
+                    adminPrivilegesSaving ||
+                    (
+                      adminPrivilegesMemberIsAdmin &&
+                      adminPrivilegesMemberIsProtected
+                    )
+                  }
+                  onClick={() =>
+                    handleSetClubAdminPrivilege(
+                      !adminPrivilegesMemberIsAdmin
+                    )
+                  }
+                  style={
+                    adminPrivilegesMemberIsAdmin
+                      ? {
+                          background:
+                            "linear-gradient(180deg, rgba(220,38,38,0.96), rgba(127,29,29,0.98))",
+                          borderColor: "rgba(248,113,113,0.65)",
+                        }
+                      : brightPrimaryStyle
+                  }
                 >
-                  <strong>Identity Safety Audit</strong>
+                  {adminPrivilegesSaving
+                    ? "Saving..."
+                    : adminPrivilegesMemberIsAdmin
+                      ? "Remove Admin Privileges"
+                      : "Promote to Club Admin"}
+                </button>
+              </div>
+            </section>
 
+            {/* ======================================================
+                MEMBERSHIP TERMINATION
+            ====================================================== */}
+            <section
+              aria-labelledby="membership-termination-title"
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                borderRadius: "22px",
+                border: "1px solid rgba(248,113,113,0.34)",
+                background:
+                  "linear-gradient(180deg, rgba(127,29,29,0.14), rgba(15,23,42,0.18))",
+                boxShadow: "0 16px 38px rgba(2,6,23,0.18)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
                   <span
                     style={{
-                      borderRadius: "999px",
-                      padding: "0.25rem 0.55rem",
-                      fontSize: "0.7rem",
-                      fontWeight: 900,
-                      border: "1px solid rgba(148,163,184,0.2)",
-                      background: "rgba(15,23,42,0.28)",
-                      whiteSpace: "nowrap",
+                      ...labelCapsuleStyle,
+                      color: "#fecaca",
+                      border: "1px solid rgba(248,113,113,0.32)",
+                      background: "rgba(127,29,29,0.16)",
                     }}
                   >
-                    {identitySafetyAuditLoading
-                      ? "Checking..."
-                      : identitySafetyAudit?.status === "safe"
-                        ? "Safe"
-                        : identitySafetyAudit?.status === "attention"
-                          ? "Safe · Attention"
-                          : identitySafetyAudit?.status === "unsafe"
-                            ? "Unsafe"
-                            : "Pending"}
+                    Membership termination
                   </span>
-                </div>
 
-                {identitySafetyAuditLoading && (
+                  <h4
+                    id="membership-termination-title"
+                    style={{
+                      marginTop: "0.7rem",
+                      marginBottom: "0.25rem",
+                    }}
+                  >
+                    Permanently remove a club member
+                  </h4>
+
                   <p
                     className="muted small"
-                    style={{ marginBottom: 0, marginTop: "0.65rem" }}
+                    style={{ marginTop: 0, marginBottom: 0 }}
                   >
-                    Checking member, player, account and active club records…
+                    This is a permanent database-cleanup action. It is not
+                    related to administrator promotion or demotion.
                   </p>
-                )}
+                </div>
 
-                {identitySafetyAuditError && (
-                  <p
-                    className="error-text"
-                    style={{ marginBottom: 0, marginTop: "0.65rem" }}
-                  >
-                    {identitySafetyAuditError}
-                  </p>
-                )}
+                <span
+                  style={{
+                    flex: "0 0 auto",
+                    padding: "0.3rem 0.58rem",
+                    borderRadius: "999px",
+                    border: "1px solid rgba(248,113,113,0.24)",
+                    background: "rgba(15,23,42,0.28)",
+                    color: "#fecaca",
+                    fontSize: "0.69rem",
+                    fontWeight: 900,
+                  }}
+                >
+                  Permanent action
+                </span>
+              </div>
 
-                {identitySafetyAudit && (
+              <div
+                style={{
+                  marginTop: "0.85rem",
+                  padding: "0.8rem",
+                  borderRadius: "16px",
+                  border: "1px solid rgba(52,211,153,0.18)",
+                  background: "rgba(16,185,129,0.05)",
+                }}
+              >
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: "0.83rem",
+                  }}
+                >
+                  Historical football records remain
+                </strong>
+
+                <p
+                  className="muted small"
+                  style={{
+                    marginTop: "0.35rem",
+                    marginBottom: 0,
+                  }}
+                >
+                  Completed matches, scorelines, goals, assists, cards,
+                  tables and historical statistics will not be deleted.
+                </p>
+              </div>
+
+              <div
+                className="field-column"
+                style={{ marginTop: "0.9rem" }}
+              >
+                <label htmlFor="termination-member-selector">
+                  Select member to terminate
+                </label>
+
+                <select
+                  id="termination-member-selector"
+                  className="text-input"
+                  value={terminationMemberId}
+                  onChange={(event) => {
+                    setTerminationMemberId(event.target.value);
+                    setTerminationMember(null);
+                    setTerminationConfirmation("");
+                    setTerminationError("");
+                    setIdentitySafetyAudit(null);
+                    setIdentitySafetyAuditError("");
+                  }}
+                >
+                  <option value="">Select a different member...</option>
+
+                  {activeMembers.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {terminationCandidate && (
+                <div
+                  style={{
+                    marginTop: "0.85rem",
+                    padding: "0.9rem",
+                    borderRadius: "17px",
+                    border:
+                      identitySafetyAudit?.status === "safe"
+                        ? "1px solid rgba(52,211,153,0.3)"
+                        : identitySafetyAudit?.status === "attention"
+                          ? "1px solid rgba(250,204,21,0.3)"
+                          : identitySafetyAudit?.status === "unsafe"
+                            ? "1px solid rgba(248,113,113,0.36)"
+                            : "1px solid rgba(148,163,184,0.18)",
+                    background:
+                      identitySafetyAudit?.status === "safe"
+                        ? "rgba(16,185,129,0.07)"
+                        : identitySafetyAudit?.status === "attention"
+                          ? "rgba(250,204,21,0.07)"
+                          : identitySafetyAudit?.status === "unsafe"
+                            ? "rgba(127,29,29,0.14)"
+                            : "rgba(2,6,23,0.2)",
+                  }}
+                >
                   <div
                     style={{
-                      display: "grid",
-                      gap: "0.48rem",
-                      marginTop: "0.75rem",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "0.7rem",
                     }}
                   >
-                    <div className="muted small">
-                      {identitySafetyAudit.duplicateEmailMembers.length
-                        ? "⚠"
-                        : "✓"}{" "}
-                      Email identity:{" "}
-                      {identitySafetyAudit.duplicateEmailMembers.length
-                        ? `shared with ${identitySafetyAudit.duplicateEmailMembers.length} other member`
-                        : "unique or unshared"}
-                    </div>
+                    <strong>Identity Safety Audit</strong>
 
-                    <div className="muted small">
-                      {identitySafetyAudit.duplicateUidMembers.length ||
-                      identitySafetyAudit.duplicatePlatformIdentityMembers.length
-                        ? "⚠"
-                        : "✓"}{" "}
-                      Platform account:{" "}
-                      {identitySafetyAudit.duplicateUidMembers.length ||
-                      identitySafetyAudit.duplicatePlatformIdentityMembers.length
-                        ? "shared with another member"
-                        : "unique or unshared"}
-                    </div>
-
-                    <div className="muted small">
-                      {identitySafetyAudit.duplicatePlayerIdMembers.length
-                        ? "⚠"
-                        : "✓"}{" "}
-                      Player identifier:{" "}
-                      {identitySafetyAudit.duplicatePlayerIdMembers.length
-                        ? "shared with another member"
-                        : "unique"}
-                    </div>
-
-                    <div className="muted small">
-                      {identitySafetyAudit.playerProfileExists ? "✓" : "•"}{" "}
-                      Active player profile:{" "}
-                      {identitySafetyAudit.playerProfileExists
-                        ? "found"
-                        : "not found"}
-                    </div>
-
-                    <div className="muted small">
-                      • Profile photos linked:{" "}
-                      {identitySafetyAudit.photoCount}
-                    </div>
-
-                    <div className="muted small">
-                      • Active signups linked:{" "}
-                      {identitySafetyAudit.signupCount}
-                    </div>
-
-                    <div className="muted small">
-                      • Pending signups linked:{" "}
-                      {identitySafetyAudit.pendingSignupCount}
-                    </div>
-
-                    {identitySafetyAudit.blockers.length > 0 && (
-                      <div
-                        style={{
-                          marginTop: "0.3rem",
-                          padding: "0.7rem",
-                          borderRadius: "14px",
-                          border: "1px solid rgba(248,113,113,0.24)",
-                          background: "rgba(127,29,29,0.12)",
-                        }}
-                      >
-                        <strong
-                          style={{
-                            display: "block",
-                            fontSize: "0.82rem",
-                          }}
-                        >
-                          Termination blocked
-                        </strong>
-
-                        {identitySafetyAudit.blockers.map(
-                          (message, index) => (
-                            <div
-                              key={`${message}-${index}`}
-                              className="muted small"
-                              style={{ marginTop: "0.35rem" }}
-                            >
-                              • {message}
-                            </div>
-                          )
-                        )}
-                      </div>
-                    )}
-
-                    {identitySafetyAudit.warnings.length > 0 && (
-                      <div
-                        style={{
-                          marginTop: "0.3rem",
-                          padding: "0.7rem",
-                          borderRadius: "14px",
-                          border: "1px solid rgba(250,204,21,0.22)",
-                          background: "rgba(250,204,21,0.06)",
-                        }}
-                      >
-                        <strong
-                          style={{
-                            display: "block",
-                            fontSize: "0.82rem",
-                          }}
-                        >
-                          Attention
-                        </strong>
-
-                        {identitySafetyAudit.warnings.map(
-                          (message, index) => (
-                            <div
-                              key={`${message}-${index}`}
-                              className="muted small"
-                              style={{ marginTop: "0.35rem" }}
-                            >
-                              • {message}
-                            </div>
-                          )
-                        )}
-                      </div>
-                    )}
+                    <span
+                      style={{
+                        borderRadius: "999px",
+                        padding: "0.25rem 0.55rem",
+                        border: "1px solid rgba(148,163,184,0.2)",
+                        background: "rgba(15,23,42,0.3)",
+                        fontSize: "0.69rem",
+                        fontWeight: 900,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {identitySafetyAuditLoading
+                        ? "Checking..."
+                        : identitySafetyAudit?.status === "safe"
+                          ? "Safe"
+                          : identitySafetyAudit?.status === "attention"
+                            ? "Safe · Attention"
+                            : identitySafetyAudit?.status === "unsafe"
+                              ? "Unsafe"
+                              : "Pending"}
+                    </span>
                   </div>
-                )}
+
+                  <strong
+                    style={{
+                      display: "block",
+                      marginTop: "0.7rem",
+                    }}
+                  >
+                    {terminationCandidate.fullName}
+                  </strong>
+
+                  {identitySafetyAuditLoading && (
+                    <p
+                      className="muted small"
+                      style={{
+                        marginTop: "0.45rem",
+                        marginBottom: 0,
+                      }}
+                    >
+                      Checking account identity and active club records…
+                    </p>
+                  )}
+
+                  {identitySafetyAuditError && (
+                    <p
+                      className="error-text"
+                      style={{
+                        marginTop: "0.55rem",
+                        marginBottom: 0,
+                      }}
+                    >
+                      {identitySafetyAuditError}
+                    </p>
+                  )}
+
+                  {identitySafetyAudit && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: "0.42rem",
+                        marginTop: "0.7rem",
+                      }}
+                    >
+                      <div className="muted small">
+                        {identitySafetyAudit.duplicateEmailMembers.length
+                          ? "⚠"
+                          : "✓"}{" "}
+                        Email identity:{" "}
+                        {identitySafetyAudit.duplicateEmailMembers.length
+                          ? `shared with ${identitySafetyAudit.duplicateEmailMembers.length} other member record`
+                          : "unique or unshared"}
+                      </div>
+
+                      <div className="muted small">
+                        {identitySafetyAudit.duplicateUidMembers.length ||
+                        identitySafetyAudit
+                          .duplicatePlatformIdentityMembers.length
+                          ? "⚠"
+                          : "✓"}{" "}
+                        Platform account:{" "}
+                        {identitySafetyAudit.duplicateUidMembers.length ||
+                        identitySafetyAudit
+                          .duplicatePlatformIdentityMembers.length
+                          ? "shared with another member"
+                          : "unique or unshared"}
+                      </div>
+
+                      <div className="muted small">
+                        {identitySafetyAudit.duplicatePlayerIdMembers.length
+                          ? "⚠"
+                          : "✓"}{" "}
+                        Player identifier:{" "}
+                        {identitySafetyAudit.duplicatePlayerIdMembers.length
+                          ? "shared with another member"
+                          : "unique"}
+                      </div>
+
+                      <div className="muted small">
+                        {identitySafetyAudit.playerProfileExists
+                          ? "✓"
+                          : "•"}{" "}
+                        Active player profile:{" "}
+                        {identitySafetyAudit.playerProfileExists
+                          ? "found"
+                          : "not found"}
+                      </div>
+
+                      <div className="muted small">
+                        • Linked profile photos:{" "}
+                        {identitySafetyAudit.photoCount}
+                      </div>
+
+                      <div className="muted small">
+                        • Active signups:{" "}
+                        {identitySafetyAudit.signupCount}
+                      </div>
+
+                      <div className="muted small">
+                        • Pending signups:{" "}
+                        {identitySafetyAudit.pendingSignupCount}
+                      </div>
+
+                      {identitySafetyAudit.blockers.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: "0.3rem",
+                            padding: "0.7rem",
+                            borderRadius: "14px",
+                            border:
+                              "1px solid rgba(248,113,113,0.26)",
+                            background: "rgba(127,29,29,0.14)",
+                          }}
+                        >
+                          <strong
+                            style={{
+                              display: "block",
+                              fontSize: "0.82rem",
+                            }}
+                          >
+                            Termination blocked
+                          </strong>
+
+                          {identitySafetyAudit.blockers.map(
+                            (message, index) => (
+                              <div
+                                key={`${message}-${index}`}
+                                className="muted small"
+                                style={{ marginTop: "0.35rem" }}
+                              >
+                                • {message}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+
+                      {identitySafetyAudit.warnings.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: "0.3rem",
+                            padding: "0.7rem",
+                            borderRadius: "14px",
+                            border:
+                              "1px solid rgba(250,204,21,0.22)",
+                            background: "rgba(250,204,21,0.06)",
+                          }}
+                        >
+                          <strong
+                            style={{
+                              display: "block",
+                              fontSize: "0.82rem",
+                            }}
+                          >
+                            Attention
+                          </strong>
+
+                          {identitySafetyAudit.warnings.map(
+                            (message, index) => (
+                              <div
+                                key={`${message}-${index}`}
+                                className="muted small"
+                                style={{ marginTop: "0.35rem" }}
+                              >
+                                • {message}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {terminationError && (
+                <p
+                  className="error-text"
+                  style={{ marginTop: "0.75rem" }}
+                >
+                  {terminationError}
+                </p>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginTop: "0.85rem",
+                }}
+              >
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  disabled={
+                    !terminationCandidate ||
+                    identitySafetyAuditLoading ||
+                    !selectedTerminationMemberPassedIdentitySafetyAudit
+                  }
+                  onClick={() => {
+                    if (
+                      !selectedTerminationMemberPassedIdentitySafetyAudit
+                    ) {
+                      setTerminationError(
+                        "Termination remains blocked until this member passes the Identity Safety Audit."
+                      );
+                      return;
+                    }
+
+                    setTerminationError("");
+                    setTerminationConfirmation("");
+                    setTerminationMember(terminationCandidate);
+                  }}
+                  style={{
+                    color: "#fecaca",
+                    borderColor: "rgba(248,113,113,0.42)",
+                    background: "rgba(127,29,29,0.18)",
+                  }}
+                >
+                  Terminate Selected Membership
+                </button>
               </div>
-            )}
+            </section>
 
-            {adminPrivilegesError && (
-              <p className="error-text" style={{ marginTop: "0.85rem" }}>
-                {adminPrivilegesError}
-              </p>
-            )}
-
-            {adminPrivilegesStatus && (
-              <p className="success-text" style={{ marginTop: "0.85rem" }}>
-                {adminPrivilegesStatus}
-              </p>
-            )}
-
-            <div className="actions-row" style={{ marginTop: "1rem" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginTop: "1rem",
+              }}
+            >
               <button
                 type="button"
                 className="secondary-btn"
                 onClick={() => setShowAdminPrivilegesModal(false)}
-                disabled={adminPrivilegesSaving}
               >
-                Close
+                Close Club Management
               </button>
-
-              <button
-                type="button"
-                className="primary-btn"
-                style={
-                  adminPrivilegesMemberIsAdmin
-                    ? {
-                        background:
-                          "linear-gradient(180deg, rgba(220,38,38,0.96), rgba(127,29,29,0.98))",
-                        borderColor: "rgba(248,113,113,0.65)",
-                      }
-                    : brightPrimaryStyle
-                }
-                disabled={
-                  !adminPrivilegesMember ||
-                  adminPrivilegesSaving ||
-                  (
-                    adminPrivilegesMemberIsAdmin &&
-                    adminPrivilegesMemberIsProtected
-                  )
-                }
-                onClick={() =>
-                  handleSetClubAdminPrivilege(
-                    !adminPrivilegesMemberIsAdmin
-                  )
-                }
-              >
-                {adminPrivilegesSaving
-                  ? "Saving..."
-                  : adminPrivilegesMemberIsAdmin
-                    ? "Remove Admin Privileges"
-                    : "Promote to Club Admin"}
-              </button>
-            </div>
-
-            <div
-              style={{
-                marginTop: "1.15rem",
-                paddingTop: "1rem",
-                borderTop: "1px solid rgba(148,163,184,0.16)",
-              }}
-            >
-              <span
-                style={{
-                  ...labelCapsuleStyle,
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(248,113,113,0.2)",
-                  color: "#fecaca",
-                }}
-              >
-                Membership cleanup
-              </span>
-
-              <h4 style={{ marginTop: "0.75rem", marginBottom: "0.3rem" }}>
-                Permanently terminate membership
-              </h4>
-
-              <p className="muted small" style={{ marginTop: 0 }}>
-                Removes the selected member from the active member list,
-                player pool, profile photos and current or future signup
-                records. Completed match history, goals, assists, cards and
-                statistics remain unchanged.
-              </p>
-
-              <button
-                type="button"
-                className="secondary-btn"
-                disabled={
-                  !adminPrivilegesMember ||
-                  adminPrivilegesMemberIsProtected ||
-                  identitySafetyAuditLoading ||
-                  !selectedMemberPassedIdentitySafetyAudit
-                }
-                onClick={() => {
-                  if (!selectedMemberPassedIdentitySafetyAudit) {
-                    setAdminPrivilegesError(
-                      "Termination is blocked until this member passes the Identity Safety Audit."
-                    );
-                    return;
-                  }
-
-                  setTerminationError("");
-                  setTerminationConfirmation("");
-                  setTerminationMember(adminPrivilegesMember);
-                }}
-                style={{
-                  marginTop: "0.35rem",
-                  color: "#fecaca",
-                  borderColor: "rgba(248,113,113,0.38)",
-                  background: "rgba(127,29,29,0.16)",
-                }}
-              >
-                Terminate Selected Membership
-              </button>
-
-              {adminPrivilegesMemberIsProtected && (
-                <p
-                  className="muted small"
-                  style={{ marginBottom: 0, marginTop: "0.55rem" }}
-                >
-                  The protected main administrator cannot be terminated.
-                </p>
-              )}
             </div>
           </div>
         </div>
