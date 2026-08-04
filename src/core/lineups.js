@@ -256,6 +256,98 @@ export function saveLineups(data) {
   }
 }
 
+function deletedPlayerKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+export function removePlayerFromSavedLineups({
+  activeClubId = "turf-kings",
+  playerId = "",
+  names = [],
+} = {}) {
+  const saved = loadSavedLineups(activeClubId);
+
+  const deletedKeys = new Set(
+    [playerId, ...(Array.isArray(names) ? names : [])]
+      .map(deletedPlayerKey)
+      .filter(Boolean)
+  );
+
+  if (!deletedKeys.size || !saved || typeof saved !== "object") {
+    return saved || {};
+  }
+
+  const isDeletedPlayer = (value) =>
+    deletedKeys.has(deletedPlayerKey(value));
+
+  const cleanLineup = (lineup) => {
+    if (!lineup || typeof lineup !== "object") return lineup;
+
+    return {
+      ...lineup,
+      positions: Object.fromEntries(
+        Object.entries(lineup.positions || {}).map(([slotId, value]) => [
+          slotId,
+          value && isDeletedPlayer(value) ? null : value,
+        ])
+      ),
+      benchSnapshot: (lineup.benchSnapshot || []).filter(
+        (value) => !isDeletedPlayer(value)
+      ),
+      guestPlayers: (lineup.guestPlayers || []).filter(
+        (value) => !isDeletedPlayer(value)
+      ),
+    };
+  };
+
+  const cleanTeamEntry = (entry) => {
+    if (!entry || typeof entry !== "object") return entry;
+
+    // Legacy direct-lineup shape.
+    if (entry.formationId || entry.positions) {
+      return cleanLineup(entry);
+    }
+
+    return Object.fromEntries(
+      Object.entries(entry).map(([gameType, gameEntry]) => {
+        if (!gameEntry || typeof gameEntry !== "object") {
+          return [gameType, gameEntry];
+        }
+
+        const variants = Object.fromEntries(
+          Object.entries(gameEntry.variants || {}).map(([role, lineup]) => [
+            role,
+            cleanLineup(lineup),
+          ])
+        );
+
+        return [
+          gameType,
+          {
+            ...gameEntry,
+            variants,
+            default: cleanLineup(gameEntry.default),
+          },
+        ];
+      })
+    );
+  };
+
+  const cleaned = Object.fromEntries(
+    Object.entries(saved).map(([teamId, entry]) => [
+      teamId,
+      cleanTeamEntry(entry),
+    ])
+  );
+
+  saveLineups(cleaned);
+  return cleaned;
+}
+
 // ---------------- PLAYER PHOTO HELPERS ----------------
 // These helpers let future UI files use the same lookup logic and stop us
 // from re-solving photo naming every time.

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 import { buildClubIdentity } from "../core/clubIdentity.js";
+import { removePlayerFromSavedLineups } from "../core/lineups.js";
 
 const FANM_HOME_LOGO = "/HomePage/Logo_icon.jpeg";
 
@@ -3269,12 +3270,25 @@ export function EntryPage({
         ],
       });
 
+      const memberFullName = String(
+        member.fullName || member.shortName || ""
+      ).trim();
+
       const signupRefs = await collectMatchingDocumentRefs({
         collectionName: "matchSignups",
         matches: [
           ["memberId", member.id],
+          ["sourceMemberId", member.id],
           ["playerId", playerId],
+          ["beneficiaryPlayerId", playerId],
+          ["userId", playerId],
           ["email", memberEmail],
+          ["beneficiaryEmail", memberEmail],
+          ["playerEmail", memberEmail],
+          ["playerName", memberFullName],
+          ["beneficiaryName", memberFullName],
+          ["displayName", memberFullName],
+          ["shortName", member.shortName],
         ],
       });
 
@@ -3282,8 +3296,17 @@ export function EntryPage({
         collectionName: "pendingSignups",
         matches: [
           ["memberId", member.id],
+          ["sourceMemberId", member.id],
           ["playerId", playerId],
+          ["beneficiaryPlayerId", playerId],
+          ["userId", playerId],
           ["email", memberEmail],
+          ["beneficiaryEmail", memberEmail],
+          ["playerEmail", memberEmail],
+          ["playerName", memberFullName],
+          ["beneficiaryName", memberFullName],
+          ["displayName", memberFullName],
+          ["shortName", member.shortName],
         ],
       });
 
@@ -3320,6 +3343,42 @@ export function EntryPage({
       );
 
       await batch.commit();
+
+      const deletedPlayerNames = Array.from(
+        new Set(
+          [
+            member.fullName,
+            member.shortName,
+            member.displayName,
+            member.name,
+            playerId,
+          ]
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
+
+      removePlayerFromSavedLineups({
+        activeClubId,
+        playerId,
+        names: deletedPlayerNames,
+      });
+
+      try {
+        window.localStorage.setItem(
+          `fanm_deleted_player_cleanup_${activeClubId}`,
+          JSON.stringify({
+            playerId,
+            names: deletedPlayerNames,
+            deletedAtMs: Date.now(),
+          })
+        );
+      } catch (cleanupStorageError) {
+        console.warn(
+          "[EntryPage] Could not queue squad cleanup:",
+          cleanupStorageError
+        );
+      }
 
       setAdminPrivilegesMemberId("");
       setTerminationMember(null);
