@@ -2809,12 +2809,56 @@ export function EntryPage({
         { merge: true }
       );
 
+      const administratorName = String(
+        adminPrivilegesMember.fullName ||
+        adminPrivilegesMember.shortName ||
+        ""
+      ).trim();
+
       const clubPatch = {
         adminEmails: shouldBeAdmin
           ? arrayUnion(adminPrivilegesMemberEmail)
           : arrayRemove(adminPrivilegesMemberEmail),
         updatedAt: serverTimestamp(),
       };
+
+      if (administratorName) {
+        clubPatch.adminNames = shouldBeAdmin
+          ? arrayUnion(administratorName)
+          : arrayRemove(administratorName);
+      }
+
+      const platformSuperAdminEmail = "nkululekolerato@gmail.com";
+      const promotedAdminEmail = String(
+        adminPrivilegesMemberEmail || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const isPlatformSuperAdminAccount =
+        promotedAdminEmail === platformSuperAdminEmail;
+
+      if (
+        shouldBeAdmin &&
+        administratorName &&
+        !isPlatformSuperAdminAccount
+      ) {
+        clubPatch.delegatedAdminName = administratorName;
+        clubPatch.delegatedAdminEmail = promotedAdminEmail;
+        clubPatch.delegatedAdminUid =
+          adminPrivilegesMemberUid || "";
+      }
+
+      if (
+        !shouldBeAdmin &&
+        String(activeClub?.delegatedAdminEmail || "")
+          .trim()
+          .toLowerCase() === promotedAdminEmail
+      ) {
+        clubPatch.delegatedAdminName = deleteField();
+        clubPatch.delegatedAdminEmail = deleteField();
+        clubPatch.delegatedAdminUid = deleteField();
+      }
 
       if (adminPrivilegesMemberUid) {
         clubPatch.adminUids = shouldBeAdmin

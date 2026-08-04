@@ -29,6 +29,34 @@ function getClubVideoUrl(club) {
 }
 
 
+function getClubLeaderFirstName(club = {}) {
+  const adminNames = Array.isArray(club?.adminNames)
+    ? club.adminNames
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    : [];
+
+  const leaderName =
+    club?.displayLeaderName ||
+    club?.delegatedAdminName ||
+    club?.mainAdminName ||
+    club?.ownerName ||
+    club?.owner?.name ||
+    club?.captain?.name ||
+    club?.captainName ||
+    club?.captainFirstName ||
+    club?.contactName ||
+    adminNames[0] ||
+    "";
+
+  return (
+    String(leaderName || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)[0] || ""
+  );
+}
+
 function compactPlayTime(value = "") {
   return String(value || "")
     .replace(/Mondays?/gi, "Mon")
@@ -107,12 +135,11 @@ export default function HomePage_HUB_ClubCard({
       0
   );
 
-  const clubActivityLabel =
-    gamesPlayed > 0
-      ? `${gamesPlayed} game${gamesPlayed === 1 ? "" : "s"} played`
-      : Number(playerCount) > 0
-        ? "Active club"
-        : "New club";
+  const clubLeaderFirstName = getClubLeaderFirstName(club);
+
+  const clubActivityLabel = clubLeaderFirstName
+    ? `${clubLeaderFirstName}'s Club`
+    : "Local Club";
 
   useEffect(() => {
     if (isPaused) return undefined;
