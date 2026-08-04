@@ -15069,3 +15069,157 @@ button.fanm-chat-highlight-card {
     font-size: 0.54rem;
   }
 }
+
+
+/* ENTRY PAGE — animated join-club button */
+.join-club-flip-button {
+  position: relative;
+  min-width: 218px;
+  min-height: 44px;
+  overflow: hidden;
+  border-color: rgba(56, 189, 248, 0.36) !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(14, 165, 233, 0.12),
+      rgba(15, 23, 42, 0.2)
+    ) !important;
+  box-shadow:
+    0 10px 26px rgba(2, 6, 23, 0.18),
+    0 0 0 1px rgba(56, 189, 248, 0.04);
+}
+
+.join-club-flip-button:not(.join-club-flip-button--open) {
+  animation: join-club-button-pulse 3.8s ease-in-out infinite;
+}
+
+.join-club-flip-button__stage {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 1.25rem;
+  transform-style: preserve-3d;
+  animation: join-club-button-flip 6s ease-in-out infinite;
+}
+
+.join-club-flip-button__face {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.join-club-flip-button__face--back {
+  color: #7dd3fc;
+  transform: rotateX(180deg);
+  letter-spacing: 0.025em;
+}
+
+.join-club-flip-button__close {
+  font-weight: 800;
+}
+
+@keyframes join-club-button-flip {
+  0%,
+  38% {
+    transform: rotateX(0deg);
+  }
+
+  46%,
+  84% {
+    transform: rotateX(180deg);
+  }
+
+  92%,
+  100% {
+    transform: rotateX(360deg);
+  }
+}
+
+@keyframes join-club-button-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 10px 26px rgba(2, 6, 23, 0.18),
+      0 0 0 1px rgba(56, 189, 248, 0.04);
+  }
+
+  50% {
+    border-color: rgba(56, 189, 248, 0.7) !important;
+    box-shadow:
+      0 12px 30px rgba(2, 6, 23, 0.24),
+      0 0 20px rgba(56, 189, 248, 0.16);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .join-club-flip-button,
+  .join-club-flip-button__stage {
+    animation: none !important;
+  }
+
+  .join-club-flip-button__face--back {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .join-club-flip-button {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+
+/* ENTRY PAGE — compact join CTA and integrated form */
+.join-club-flip-button {
+  width: auto !important;
+  min-width: 174px !important;
+  max-width: 210px;
+  padding-left: 0.9rem !important;
+  padding-right: 0.9rem !important;
+  flex: 0 0 auto;
+}
+
+.entry-join-request-panel {
+  scroll-margin-top: 5rem;
+  margin-top: 0.65rem !important;
+  border-top: 3px solid rgba(56, 189, 248, 0.52) !important;
+  box-shadow:
+    0 -8px 24px rgba(56, 189, 248, 0.07),
+    0 18px 42px rgba(2, 6, 23, 0.2);
+}
+
+.entry-join-request-close {
+  min-width: 74px !important;
+  padding: 0.48rem 0.8rem !important;
+  border-color: rgba(56, 189, 248, 0.3) !important;
+}
+
+@media (max-width: 520px) {
+  .join-club-flip-button {
+    width: auto !important;
+    min-width: 168px !important;
+    max-width: 100%;
+  }
+
+  .entry-join-request-panel {
+    scroll-margin-top: 4rem;
+  }
+}
+
+/* ENTRY PAGE — prevent join CTA text clipping */
+.join-club-flip-button {
+  min-width: 192px !important;
+  max-width: 224px;
+}
+
+@media (max-width: 520px) {
+  .join-club-flip-button {
+    min-width: 190px !important;
+  }
+}

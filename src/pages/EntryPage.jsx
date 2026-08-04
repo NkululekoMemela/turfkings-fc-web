@@ -4065,19 +4065,35 @@ export function EntryPage({
               Sign in with Gmail
             </button>
 
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => {
-                setShowNewPlayerForm((prev) => !prev);
-                setNewReqError("");
-                setNewReqStatus("");
-              }}
-            >
-              {showNewPlayerForm
-                ? "Close new player request"
-                : "My name is not on the list"}
-            </button>
+            {!showNewPlayerForm && (
+              <button
+                type="button"
+                className="secondary-btn join-club-flip-button"
+                onClick={() => {
+                  setShowNewPlayerForm(true);
+                  setNewReqError("");
+                  setNewReqStatus("");
+
+                  window.setTimeout(() => {
+                    document
+                      .getElementById("entry-join-request-panel")
+                      ?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                  }, 80);
+                }}
+              >
+                <span className="join-club-flip-button__stage">
+                  <span className="join-club-flip-button__face join-club-flip-button__face--front">
+                    My name is not on the list
+                  </span>
+                  <span className="join-club-flip-button__face join-club-flip-button__face--back">
+                    Click to join
+                  </span>
+                </span>
+              </button>
+            )}
           </div>
 
           {verifyError && (
@@ -4105,9 +4121,33 @@ export function EntryPage({
           )}
 
           {showNewPlayerForm && (
-            <div style={joinPanelStyle}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.55rem", alignItems: "center" }}>
+            <div
+              id="entry-join-request-panel"
+              className="entry-join-request-panel"
+              style={joinPanelStyle}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.55rem",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <span style={labelCapsuleStyle}>Join request</span>
+
+                <button
+                  type="button"
+                  className="secondary-btn entry-join-request-close"
+                  onClick={() => {
+                    setShowNewPlayerForm(false);
+                    setNewReqError("");
+                    setNewReqStatus("");
+                  }}
+                >
+                  Close
+                </button>
               </div>
               <h3 style={{ marginBottom: "0.4rem", marginTop: "0.85rem" }}>
                 Request to join player list
