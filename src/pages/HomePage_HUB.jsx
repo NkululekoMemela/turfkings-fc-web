@@ -523,13 +523,73 @@ export default function HomePage_HUB({
             if (!clubId) return hydratedClub;
 
             try {
-              const membersSnap = await getDocs(collection(db, "clubs", clubId, "members"));
+              const membersSnap = await getDocs(
+                collection(db, "clubs", clubId, "members")
+              );
+
+              const platformSuperAdminEmail =
+                "nkululekolerato@gmail.com";
+
+              const activeAdministrators = membersSnap.docs
+                .map((memberDoc) => ({
+                  id: memberDoc.id,
+                  ...(memberDoc.data() || {}),
+                }))
+                .filter((member) => {
+                  const role = String(member?.role || "")
+                    .trim()
+                    .toLowerCase();
+
+                  const status = String(member?.status || "active")
+                    .trim()
+                    .toLowerCase();
+
+                  return (
+                    role === "admin" &&
+                    !["deleted", "withdrawn", "terminated"].includes(status)
+                  );
+                });
+
+              const delegatedAdministrator =
+                activeAdministrators.find((member) => {
+                  const email = String(member?.email || "")
+                    .trim()
+                    .toLowerCase();
+
+                  return (
+                    email &&
+                    email !== platformSuperAdminEmail
+                  );
+                }) || null;
+
+              const fallbackAdministrator =
+                activeAdministrators[0] || null;
+
+              const recognisedAdministrator =
+                delegatedAdministrator || fallbackAdministrator;
+
+              const displayLeaderName = String(
+                recognisedAdministrator?.fullName ||
+                recognisedAdministrator?.shortName ||
+                recognisedAdministrator?.name ||
+                hydratedClub?.captain?.name ||
+                hydratedClub?.captainName ||
+                hydratedClub?.captainFirstName ||
+                ""
+              ).trim();
+
               return {
                 ...hydratedClub,
                 playerCount: membersSnap.size,
+                displayLeaderName,
               };
             } catch (error) {
-              console.warn("[HomePage_HUB] Could not count club members:", clubId, error);
+              console.warn(
+                "[HomePage_HUB] Could not load club members:",
+                clubId,
+                error
+              );
+
               return hydratedClub;
             }
           })
