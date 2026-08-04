@@ -11,6 +11,9 @@
       "hosting": {
         "production": [
           "five-asides-near-me"
+        ],
+        "testing": [
+          "five-asides-near-me-testing"
         ]
       }
     },

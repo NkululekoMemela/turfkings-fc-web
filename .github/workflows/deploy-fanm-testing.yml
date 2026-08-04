@@ -1,0 +1,39 @@
+name: Deploy 5 Asides Near Me Testing
+
+on:
+  push:
+    branches:
+      - fanm-testing
+  workflow_dispatch:
+
+concurrency:
+  group: fanm-testing-deployment
+  cancel-in-progress: true
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fanm-testing
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build testing site
+        run: npm run build:production
+        env:
+          VITE_FIREBASE_ENV: production
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+
+      - name: Deploy FANM testing site
+        run: |
+          npm install -g firebase-tools
+          firebase deploy --only hosting:testing --project five-asides-near-me --token "${{ secrets.FIREBASE_TOKEN }}"

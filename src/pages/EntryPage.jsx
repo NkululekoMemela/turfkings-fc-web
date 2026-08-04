@@ -16,6 +16,8 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  where,
   serverTimestamp,
   setDoc,
   query,
@@ -23,6 +25,8 @@ import {
   limit,
   deleteField,
   writeBatch,
+  arrayUnion,
+  arrayRemove,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
@@ -882,7 +886,18 @@ export function EntryPage({
               data.platformIdentitySourceClubId || "",
             platformIdentitySourceMemberId:
               data.platformIdentitySourceMemberId || "",
+            playerId:
+              data.playerId ||
+              slugFromName(
+                data.shortName ||
+                data.fullName ||
+                data.displayName ||
+                data.name ||
+                ""
+              ),
             role: data.role || "player",
+            previousRoleBeforeAdmin:
+              data.previousRoleBeforeAdmin || "",
             status: data.status || "active",
             createdAt: data.createdAt || null,
             rejoinRequestedAt: data.rejoinRequestedAt || null,
@@ -1132,6 +1147,433 @@ export function EntryPage({
 
   const [adminPreviewRole, setAdminPreviewRole] = useState("admin");
   const [showAdminPreviewControls, setShowAdminPreviewControls] = useState(false);
+
+  const [showAdminPrivilegesModal, setShowAdminPrivilegesModal] = useState(false);
+  const [clubManagementSection, setClubManagementSection] = useState(null);
+  const [adminPrivilegesMemberId, setAdminPrivilegesMemberId] = useState("");
+  const [adminPrivilegesSaving, setAdminPrivilegesSaving] = useState(false);
+  const [adminPrivilegesError, setAdminPrivilegesError] = useState("");
+  const [adminPrivilegesStatus, setAdminPrivilegesStatus] = useState("");
+
+  const [terminationMemberId, setTerminationMemberId] = useState("");
+  const [terminationMember, setTerminationMember] = useState(null);
+  const [terminationConfirmation, setTerminationConfirmation] = useState("");
+  const [terminationSaving, setTerminationSaving] = useState(false);
+  const [terminationError, setTerminationError] = useState("");
+
+  const [identitySafetyAudit, setIdentitySafetyAudit] = useState(null);
+  const [identitySafetyAuditLoading, setIdentitySafetyAuditLoading] =
+    useState(false);
+  const [identitySafetyAuditError, setIdentitySafetyAuditError] = useState("");
+
+  const adminPrivilegesMember = useMemo(
+    () =>
+      members.find((member) => member.id === adminPrivilegesMemberId) ||
+      null,
+    [members, adminPrivilegesMemberId]
+  );
+
+  const terminationCandidate = useMemo(
+    () =>
+      members.find((member) => member.id === terminationMemberId) ||
+      null,
+    [members, terminationMemberId]
+  );
+
+  const protectedMainAdminEmail = String(
+    activeClub?.captain?.email ||
+    activeClub?.captainEmail ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const adminPrivilegesMemberEmail = String(
+    adminPrivilegesMember?.email || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const adminPrivilegesMemberUid = String(
+    adminPrivilegesMember?.uid ||
+    adminPrivilegesMember?.platformIdentityUid ||
+    ""
+  ).trim();
+
+  const currentClubAdminEmails = (
+    Array.isArray(activeClub?.adminEmails)
+      ? activeClub.adminEmails
+      : []
+  )
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  const currentClubAdminUids = (
+    Array.isArray(activeClub?.adminUids)
+      ? activeClub.adminUids
+      : []
+  )
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  const adminPrivilegesMemberIsAdmin = Boolean(
+    adminPrivilegesMember &&
+    (
+      adminPrivilegesMember.role === "admin" ||
+      (
+        adminPrivilegesMemberEmail &&
+        currentClubAdminEmails.includes(adminPrivilegesMemberEmail)
+      ) ||
+      (
+        adminPrivilegesMemberUid &&
+        currentClubAdminUids.includes(adminPrivilegesMemberUid)
+      )
+    )
+  );
+
+  const adminPrivilegesMemberIsProtected = Boolean(
+    adminPrivilegesMemberEmail &&
+    protectedMainAdminEmail &&
+    adminPrivilegesMemberEmail === protectedMainAdminEmail
+  );
+
+  const currentClubAdministrators = useMemo(() => {
+    return members
+      .filter((member) => {
+        const email = String(member?.email || "").trim().toLowerCase();
+        const uid = String(
+          member?.uid || member?.platformIdentityUid || ""
+        ).trim();
+
+        return (
+          member?.role === "admin" ||
+          (email && currentClubAdminEmails.includes(email)) ||
+          (uid && currentClubAdminUids.includes(uid))
+        );
+      })
+      .map((member) => {
+        const email = String(member?.email || "").trim().toLowerCase();
+
+        return {
+          ...member,
+          isMainAdmin: Boolean(
+            email &&
+            protectedMainAdminEmail &&
+            email === protectedMainAdminEmail
+          ),
+        };
+      })
+      .sort((a, b) => {
+        if (a.isMainAdmin && !b.isMainAdmin) return -1;
+        if (!a.isMainAdmin && b.isMainAdmin) return 1;
+        return String(a.fullName || "").localeCompare(
+          String(b.fullName || "")
+        );
+      });
+  }, [
+    members,
+    currentClubAdminEmails,
+    currentClubAdminUids,
+    protectedMainAdminEmail,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function runIdentitySafetyAudit() {
+      const member = terminationCandidate;
+
+      setIdentitySafetyAudit(null);
+      setIdentitySafetyAuditError("");
+
+      if (!member?.id) {
+        setIdentitySafetyAuditLoading(false);
+        return;
+      }
+
+      setIdentitySafetyAuditLoading(true);
+
+      try {
+        const memberEmail = String(member.email || "")
+          .trim()
+          .toLowerCase();
+
+        const memberUid = String(member.uid || "").trim();
+
+        const platformIdentityUid = String(
+          member.platformIdentityUid || memberUid || ""
+        ).trim();
+
+        const playerId =
+          String(member.playerId || "").trim() ||
+          slugFromName(member.shortName || member.fullName || "");
+
+        const selectedMemberKey = String(member.id || "");
+
+        const duplicateEmailMembers = memberEmail
+          ? members.filter((candidate) => {
+              if (String(candidate.id || "") === selectedMemberKey) return false;
+
+              return (
+                String(candidate.email || "").trim().toLowerCase() ===
+                memberEmail
+              );
+            })
+          : [];
+
+        const duplicateUidMembers = memberUid
+          ? members.filter((candidate) => {
+              if (String(candidate.id || "") === selectedMemberKey) return false;
+
+              return String(candidate.uid || "").trim() === memberUid;
+            })
+          : [];
+
+        const duplicatePlatformIdentityMembers = platformIdentityUid
+          ? members.filter((candidate) => {
+              if (String(candidate.id || "") === selectedMemberKey) return false;
+
+              return (
+                String(
+                  candidate.platformIdentityUid ||
+                    candidate.uid ||
+                    ""
+                ).trim() === platformIdentityUid
+              );
+            })
+          : [];
+
+        const duplicatePlayerIdMembers = playerId
+          ? members.filter((candidate) => {
+              if (String(candidate.id || "") === selectedMemberKey) return false;
+
+              const candidatePlayerId =
+                String(candidate.playerId || "").trim() ||
+                slugFromName(
+                  candidate.shortName ||
+                    candidate.fullName ||
+                    ""
+                );
+
+              return candidatePlayerId === playerId;
+            })
+          : [];
+
+        let playerProfileExists = false;
+
+        if (playerId) {
+          try {
+            const playerSnap = await getDoc(
+              playerDocRef(activeClubId, playerId)
+            );
+            playerProfileExists = playerSnap.exists();
+          } catch (error) {
+            console.warn(
+              "[EntryPage] Identity audit could not read player profile:",
+              error
+            );
+          }
+        }
+
+        async function countMatchingDocuments(collectionName, matches) {
+          const paths = new Set();
+
+          for (const [fieldName, fieldValue] of matches) {
+            const cleanValue = String(fieldValue || "").trim();
+            if (!cleanValue) continue;
+
+            try {
+              const snap = await getDocs(
+                query(
+                  clubCollectionRef(activeClubId, collectionName),
+                  where(fieldName, "==", cleanValue)
+                )
+              );
+
+              snap.docs.forEach((document) => {
+                paths.add(document.ref.path);
+              });
+            } catch (error) {
+              console.warn(
+                `[EntryPage] Identity audit could not query ${collectionName}.${fieldName}:`,
+                error
+              );
+            }
+          }
+
+          return paths.size;
+        }
+
+        const [photoCount, signupCount, pendingSignupCount] =
+          await Promise.all([
+            countMatchingDocuments(PLAYER_PHOTOS_COLLECTION, [
+              ["sourceMemberId", member.id],
+              ["memberId", member.id],
+              ["playerId", playerId],
+              ["email", memberEmail],
+            ]),
+            countMatchingDocuments("matchSignups", [
+              ["memberId", member.id],
+              ["playerId", playerId],
+              ["email", memberEmail],
+            ]),
+            countMatchingDocuments("pendingSignups", [
+              ["memberId", member.id],
+              ["playerId", playerId],
+              ["email", memberEmail],
+            ]),
+          ]);
+
+        const currentEmail = String(currentUser?.email || "")
+          .trim()
+          .toLowerCase();
+
+        const currentUid = String(currentUser?.uid || "").trim();
+
+        const isSelf = Boolean(
+          (memberEmail &&
+            currentEmail &&
+            memberEmail === currentEmail) ||
+            (memberUid &&
+              currentUid &&
+              memberUid === currentUid) ||
+            (platformIdentityUid &&
+              currentUid &&
+              platformIdentityUid === currentUid)
+        );
+
+        const isProtectedMainAdmin = Boolean(
+          memberEmail &&
+            protectedMainAdminEmail &&
+            memberEmail === protectedMainAdminEmail
+        );
+
+        const blockers = [];
+        const warnings = [];
+
+        if (isProtectedMainAdmin) {
+          blockers.push(
+            "This is the protected main club administrator."
+          );
+        }
+
+        if (isSelf) {
+          blockers.push(
+            "This member shares the currently signed-in administrator account."
+          );
+        }
+
+        if (duplicateEmailMembers.length) {
+          blockers.push(
+            `Email is shared with ${duplicateEmailMembers.length} other member record${duplicateEmailMembers.length === 1 ? "" : "s"}.`
+          );
+        }
+
+        if (duplicateUidMembers.length) {
+          blockers.push(
+            `Firebase UID is shared with ${duplicateUidMembers.length} other member record${duplicateUidMembers.length === 1 ? "" : "s"}.`
+          );
+        }
+
+        if (duplicatePlatformIdentityMembers.length) {
+          blockers.push(
+            `Platform identity is shared with ${duplicatePlatformIdentityMembers.length} other member record${duplicatePlatformIdentityMembers.length === 1 ? "" : "s"}.`
+          );
+        }
+
+        if (duplicatePlayerIdMembers.length) {
+          blockers.push(
+            `Player profile identifier is shared with ${duplicatePlayerIdMembers.length} other member record${duplicatePlayerIdMembers.length === 1 ? "" : "s"}.`
+          );
+        }
+
+        if (!memberEmail) {
+          warnings.push("No verified email is stored for this member.");
+        }
+
+        if (!memberUid && !platformIdentityUid) {
+          warnings.push(
+            "No Firebase or platform identity UID is stored."
+          );
+        }
+
+        if (!playerProfileExists) {
+          warnings.push(
+            "No matching active player profile was found."
+          );
+        }
+
+        const safe = blockers.length === 0;
+
+        if (!cancelled) {
+          setIdentitySafetyAudit({
+            memberId: member.id,
+            memberName: member.fullName || member.shortName || "Member",
+            safe,
+            status: safe
+              ? warnings.length
+                ? "attention"
+                : "safe"
+              : "unsafe",
+            blockers,
+            warnings,
+            duplicateEmailMembers,
+            duplicateUidMembers,
+            duplicatePlatformIdentityMembers,
+            duplicatePlayerIdMembers,
+            playerId,
+            playerProfileExists,
+            photoCount,
+            signupCount,
+            pendingSignupCount,
+            isSelf,
+            isProtectedMainAdmin,
+          });
+        }
+      } catch (error) {
+        console.error(
+          "[EntryPage] Identity Safety Audit failed:",
+          error
+        );
+
+        if (!cancelled) {
+          setIdentitySafetyAuditError(
+            "The identity safety audit could not be completed. Termination has been blocked."
+          );
+          setIdentitySafetyAudit(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIdentitySafetyAuditLoading(false);
+        }
+      }
+    }
+
+    runIdentitySafetyAudit();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    terminationCandidate,
+    activeClubId,
+    members,
+    currentUser?.email,
+    currentUser?.uid,
+    protectedMainAdminEmail,
+  ]);
+
+  const selectedTerminationMemberPassedIdentitySafetyAudit = Boolean(
+    identitySafetyAudit?.safe &&
+      identitySafetyAudit?.memberId &&
+      identitySafetyAudit.memberId === terminationCandidate?.id
+  );
+
+  const terminationMemberPassedIdentitySafetyAudit = Boolean(
+    identitySafetyAudit?.safe &&
+      identitySafetyAudit?.memberId &&
+      identitySafetyAudit.memberId === terminationMember?.id
+  );
 
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [withdrawReason, setWithdrawReason] = useState("");
@@ -2311,6 +2753,293 @@ export function EntryPage({
     }
   };
 
+  const handleSetClubAdminPrivilege = async (shouldBeAdmin) => {
+    if (!isAdminViewer) {
+      setAdminPrivilegesError(
+        "Only an existing club administrator can change administrator privileges."
+      );
+      return;
+    }
+
+    if (!adminPrivilegesMember?.id) {
+      setAdminPrivilegesError("Select a club member first.");
+      return;
+    }
+
+    if (!adminPrivilegesMemberEmail) {
+      setAdminPrivilegesError(
+        "This member needs a verified Gmail address before administrator privileges can be assigned."
+      );
+      return;
+    }
+
+    if (!shouldBeAdmin && adminPrivilegesMemberIsProtected) {
+      setAdminPrivilegesError(
+        "The main club administrator is protected and cannot be demoted."
+      );
+      return;
+    }
+
+    setAdminPrivilegesSaving(true);
+    setAdminPrivilegesError("");
+    setAdminPrivilegesStatus("");
+
+    try {
+      const batch = writeBatch(db);
+
+      const memberPatch = {
+        role: shouldBeAdmin
+          ? "admin"
+          : adminPrivilegesMember.previousRoleBeforeAdmin || "player",
+        updatedAt: serverTimestamp(),
+      };
+
+      if (shouldBeAdmin && adminPrivilegesMember.role !== "admin") {
+        memberPatch.previousRoleBeforeAdmin =
+          adminPrivilegesMember.role || "player";
+      }
+
+      if (!shouldBeAdmin) {
+        memberPatch.previousRoleBeforeAdmin = deleteField();
+      }
+
+      batch.set(
+        memberDocRef(activeClubId, adminPrivilegesMember.id),
+        memberPatch,
+        { merge: true }
+      );
+
+      const clubPatch = {
+        adminEmails: shouldBeAdmin
+          ? arrayUnion(adminPrivilegesMemberEmail)
+          : arrayRemove(adminPrivilegesMemberEmail),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (adminPrivilegesMemberUid) {
+        clubPatch.adminUids = shouldBeAdmin
+          ? arrayUnion(adminPrivilegesMemberUid)
+          : arrayRemove(adminPrivilegesMemberUid);
+      }
+
+      batch.set(
+        clubRootDocRef(activeClubId),
+        clubPatch,
+        { merge: true }
+      );
+
+      await batch.commit();
+
+      setAdminPrivilegesStatus(
+        shouldBeAdmin
+          ? `${adminPrivilegesMember.fullName} is now a club administrator.`
+          : `${adminPrivilegesMember.fullName} is no longer a club administrator.`
+      );
+    } catch (error) {
+      console.error(
+        "[EntryPage] Failed updating club administrator privilege:",
+        error
+      );
+      setAdminPrivilegesError(
+        "Could not update administrator privileges just now. Please try again."
+      );
+    } finally {
+      setAdminPrivilegesSaving(false);
+    }
+  };
+
+  const collectMatchingDocumentRefs = async ({
+    collectionName,
+    matches = [],
+  }) => {
+    const refs = new Map();
+
+    for (const [fieldName, fieldValue] of matches) {
+      const cleanValue = String(fieldValue || "").trim();
+      if (!cleanValue) continue;
+
+      try {
+        const snap = await getDocs(
+          query(
+            clubCollectionRef(activeClubId, collectionName),
+            where(fieldName, "==", cleanValue)
+          )
+        );
+
+        snap.docs.forEach((document) => {
+          refs.set(document.ref.path, document.ref);
+        });
+      } catch (error) {
+        console.warn(
+          `[EntryPage] Could not query ${collectionName}.${fieldName}:`,
+          error
+        );
+      }
+    }
+
+    return Array.from(refs.values());
+  };
+
+  const handleTerminateClubMembership = async () => {
+    const member = terminationMember;
+
+    if (!isAdminViewer) {
+      setTerminationError(
+        "Only an existing club administrator can terminate membership."
+      );
+      return;
+    }
+
+    if (!member?.id) {
+      setTerminationError("No club member was selected.");
+      return;
+    }
+
+    if (
+      !identitySafetyAudit?.safe ||
+      identitySafetyAudit?.memberId !== member.id
+    ) {
+      setTerminationError(
+        "Termination is blocked because this member has not passed the Identity Safety Audit."
+      );
+      return;
+    }
+
+    const memberEmail = String(member.email || "").trim().toLowerCase();
+    const memberUid = String(
+      member.uid || member.platformIdentityUid || ""
+    ).trim();
+
+    const isProtectedMainAdmin = Boolean(
+      memberEmail &&
+      protectedMainAdminEmail &&
+      memberEmail === protectedMainAdminEmail
+    );
+
+    if (isProtectedMainAdmin) {
+      setTerminationError(
+        "The main club administrator is protected and cannot be terminated."
+      );
+      return;
+    }
+
+    const currentEmail = String(currentUser?.email || "")
+      .trim()
+      .toLowerCase();
+    const currentUid = String(currentUser?.uid || "").trim();
+
+    if (
+      (memberEmail && currentEmail && memberEmail === currentEmail) ||
+      (memberUid && currentUid && memberUid === currentUid)
+    ) {
+      setTerminationError(
+        "You cannot terminate your own membership while signed in as administrator."
+      );
+      return;
+    }
+
+    const expectedConfirmation = String(member.fullName || "").trim();
+
+    if (
+      String(terminationConfirmation || "").trim().toLowerCase() !==
+      expectedConfirmation.toLowerCase()
+    ) {
+      setTerminationError(
+        `Type ${expectedConfirmation} exactly to confirm termination.`
+      );
+      return;
+    }
+
+    setTerminationSaving(true);
+    setTerminationError("");
+
+    try {
+      const playerId =
+        String(member.playerId || "").trim() ||
+        slugFromName(member.shortName || member.fullName || "");
+
+      const photoRefs = await collectMatchingDocumentRefs({
+        collectionName: PLAYER_PHOTOS_COLLECTION,
+        matches: [
+          ["sourceMemberId", member.id],
+          ["memberId", member.id],
+          ["playerId", playerId],
+          ["email", memberEmail],
+        ],
+      });
+
+      const signupRefs = await collectMatchingDocumentRefs({
+        collectionName: "matchSignups",
+        matches: [
+          ["memberId", member.id],
+          ["playerId", playerId],
+          ["email", memberEmail],
+        ],
+      });
+
+      const pendingSignupRefs = await collectMatchingDocumentRefs({
+        collectionName: "pendingSignups",
+        matches: [
+          ["memberId", member.id],
+          ["playerId", playerId],
+          ["email", memberEmail],
+        ],
+      });
+
+      const batch = writeBatch(db);
+
+      // Remove the active club identity.
+      batch.delete(memberDocRef(activeClubId, member.id));
+
+      if (playerId) {
+        batch.delete(playerDocRef(activeClubId, playerId));
+      }
+
+      photoRefs.forEach((ref) => batch.delete(ref));
+      signupRefs.forEach((ref) => batch.delete(ref));
+      pendingSignupRefs.forEach((ref) => batch.delete(ref));
+
+      // Remove stale administrator access if this was an additional admin.
+      const clubPatch = {
+        updatedAt: serverTimestamp(),
+      };
+
+      if (memberEmail) {
+        clubPatch.adminEmails = arrayRemove(memberEmail);
+      }
+
+      if (memberUid) {
+        clubPatch.adminUids = arrayRemove(memberUid);
+      }
+
+      batch.set(
+        clubRootDocRef(activeClubId),
+        clubPatch,
+        { merge: true }
+      );
+
+      await batch.commit();
+
+      setAdminPrivilegesMemberId("");
+      setTerminationMember(null);
+      setTerminationConfirmation("");
+      setTerminationError("");
+      setAdminPrivilegesStatus(
+        `${member.fullName} has been permanently removed from the active club database. Historical matches and statistics were preserved.`
+      );
+    } catch (error) {
+      console.error(
+        "[EntryPage] Failed terminating club membership:",
+        error
+      );
+      setTerminationError(
+        "Could not terminate this membership just now. No further action should be taken until the database is checked."
+      );
+    } finally {
+      setTerminationSaving(false);
+    }
+  };
+
   const handleCloseDepartureNotice = async (departureNotice) => {
     const departure = departureNotice?.payload || departureNotice;
 
@@ -3158,8 +3887,64 @@ export function EntryPage({
 
       {mode === "player" && (
         <section className="card" style={{ ...premiumPanelStyle, overflow: "hidden" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.6rem",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
             <span style={labelCapsuleStyle}>Player entry</span>
+
+            {isAdminViewer && (
+              <button
+                type="button"
+                aria-label="Manage club administrator privileges"
+                title="Manage club administrators"
+                onClick={() => {
+                  setClubManagementSection(null);
+                  setAdminPrivilegesMemberId("");
+                  setTerminationMemberId("");
+                  setAdminPrivilegesError("");
+                  setAdminPrivilegesStatus("");
+                  setTerminationError("");
+                  setIdentitySafetyAudit(null);
+                  setIdentitySafetyAuditError("");
+                  setShowAdminPrivilegesModal(true);
+                }}
+                style={{
+                  width: "2.35rem",
+                  height: "2.35rem",
+                  marginLeft: "auto",
+                  display: "inline-grid",
+                  placeItems: "center",
+                  borderRadius: "999px",
+                  border: "1px solid rgba(56,189,248,0.28)",
+                  background:
+                    "linear-gradient(180deg, rgba(56,189,248,0.13), rgba(15,23,42,0.18))",
+                  color: "#bae6fd",
+                  cursor: "pointer",
+                  boxShadow: "0 8px 22px rgba(2,6,23,0.18)",
+                }}
+              >
+                <svg
+                  width="19"
+                  height="19"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.36.36.68.64.94.29.26.67.4 1.06.4H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.66Z" />
+                </svg>
+              </button>
+            )}
           </div>
           <h2 style={{ marginTop: "0.85rem", marginBottom: "0.35rem" }}>
             Confirm your player identity
@@ -3280,19 +4065,35 @@ export function EntryPage({
               Sign in with Gmail
             </button>
 
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => {
-                setShowNewPlayerForm((prev) => !prev);
-                setNewReqError("");
-                setNewReqStatus("");
-              }}
-            >
-              {showNewPlayerForm
-                ? "Close new player request"
-                : "My name is not on the list"}
-            </button>
+            {!showNewPlayerForm && (
+              <button
+                type="button"
+                className="secondary-btn join-club-flip-button"
+                onClick={() => {
+                  setShowNewPlayerForm(true);
+                  setNewReqError("");
+                  setNewReqStatus("");
+
+                  window.setTimeout(() => {
+                    document
+                      .getElementById("entry-join-request-panel")
+                      ?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                  }, 80);
+                }}
+              >
+                <span className="join-club-flip-button__stage">
+                  <span className="join-club-flip-button__face join-club-flip-button__face--front">
+                    My name is not on the list
+                  </span>
+                  <span className="join-club-flip-button__face join-club-flip-button__face--back">
+                    Click to join
+                  </span>
+                </span>
+              </button>
+            )}
           </div>
 
           {verifyError && (
@@ -3320,9 +4121,33 @@ export function EntryPage({
           )}
 
           {showNewPlayerForm && (
-            <div style={joinPanelStyle}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.55rem", alignItems: "center" }}>
+            <div
+              id="entry-join-request-panel"
+              className="entry-join-request-panel"
+              style={joinPanelStyle}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.55rem",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <span style={labelCapsuleStyle}>Join request</span>
+
+                <button
+                  type="button"
+                  className="secondary-btn entry-join-request-close"
+                  onClick={() => {
+                    setShowNewPlayerForm(false);
+                    setNewReqError("");
+                    setNewReqStatus("");
+                  }}
+                >
+                  Close
+                </button>
               </div>
               <h3 style={{ marginBottom: "0.4rem", marginTop: "0.85rem" }}>
                 Request to join player list
@@ -4173,6 +4998,725 @@ export function EntryPage({
               </div>
             </div>
           ) : null}
+        </div>
+      )}
+
+      {isAdminViewer && showAdminPrivilegesModal && (
+        <div className="modal-backdrop">
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Club management"
+            style={{
+              width: "min(94vw, 620px)",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              padding: "1rem",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "1rem",
+              }}
+            >
+              <div>
+                <span style={labelCapsuleStyle}>Club controls</span>
+                <h3 style={{ margin: "0.75rem 0 0.25rem" }}>
+                  Club Management
+                </h3>
+                <p className="muted small" style={{ margin: 0 }}>
+                  Manage your club.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                aria-label="Close Club Management"
+                onClick={() => {
+                  setClubManagementSection(null);
+                  setShowAdminPrivilegesModal(false);
+                }}
+                style={{
+                  width: "2.35rem",
+                  minWidth: "2.35rem",
+                  height: "2.35rem",
+                  padding: 0,
+                  borderRadius: "999px",
+                  fontSize: "1.25rem",
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Administrator Management */}
+            <section
+              style={{
+                marginTop: "1rem",
+                borderRadius: "20px",
+                border: "1px solid rgba(56,189,248,0.3)",
+                background:
+                  "linear-gradient(180deg, rgba(14,165,233,0.1), rgba(15,23,42,0.18))",
+                overflow: "hidden",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setClubManagementSection((current) =>
+                    current === "admins" ? null : "admins"
+                  )
+                }
+                aria-expanded={clubManagementSection === "admins"}
+                style={{
+                  width: "100%",
+                  border: 0,
+                  padding: "0.95rem 1rem",
+                  background: "transparent",
+                  color: "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.8rem",
+                  textAlign: "left",
+                }}
+              >
+                <span>
+                  <strong style={{ display: "block" }}>
+                    Administrator Management
+                  </strong>
+                  <span className="muted small">
+                    Manage administrators.
+                  </span>
+                </span>
+
+                <span
+                  aria-hidden="true"
+                  style={{
+                    color: "#7dd3fc",
+                    fontSize: "1.15rem",
+                    transform:
+                      clubManagementSection === "admins"
+                        ? "rotate(90deg)"
+                        : "rotate(0deg)",
+                    transition: "transform 180ms ease",
+                  }}
+                >
+                  ›
+                </span>
+              </button>
+
+              {clubManagementSection === "admins" && (
+                <div
+                  style={{
+                    padding: "0 1rem 1rem",
+                    borderTop: "1px solid rgba(56,189,248,0.16)",
+                  }}
+                >
+                  <div
+                    style={{
+                      marginTop: "0.9rem",
+                      padding: "0.85rem",
+                      borderRadius: "16px",
+                      border: "1px solid rgba(148,163,184,0.16)",
+                      background: "rgba(2,6,23,0.2)",
+                    }}
+                  >
+                    <strong style={{ display: "block", marginBottom: "0.6rem" }}>
+                      Current administrators
+                    </strong>
+
+                    <div style={{ display: "grid", gap: "0.5rem" }}>
+                      {currentClubAdministrators.map((administrator) => (
+                        <div
+                          key={administrator.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "0.7rem",
+                            padding: "0.62rem 0.68rem",
+                            borderRadius: "14px",
+                            border: administrator.isMainAdmin
+                              ? "1px solid rgba(250,204,21,0.3)"
+                              : "1px solid rgba(56,189,248,0.18)",
+                            background: administrator.isMainAdmin
+                              ? "rgba(250,204,21,0.07)"
+                              : "rgba(56,189,248,0.05)",
+                          }}
+                        >
+                          <strong style={{ overflowWrap: "anywhere" }}>
+                            {administrator.isMainAdmin ? "★ " : "◆ "}
+                            {administrator.fullName}
+                          </strong>
+
+                          <span
+                            style={{
+                              flex: "0 0 auto",
+                              padding: "0.24rem 0.5rem",
+                              borderRadius: "999px",
+                              border: "1px solid rgba(148,163,184,0.2)",
+                              background: "rgba(15,23,42,0.3)",
+                              fontSize: "0.67rem",
+                              fontWeight: 900,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {administrator.isMainAdmin
+                              ? "Main admin · Protected"
+                              : "Club admin"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="field-column" style={{ marginTop: "0.9rem" }}>
+                    <label>Select member</label>
+                    <select
+                      className="text-input"
+                      value={adminPrivilegesMemberId}
+                      onChange={(event) => {
+                        setAdminPrivilegesMemberId(event.target.value);
+                        setAdminPrivilegesError("");
+                        setAdminPrivilegesStatus("");
+                      }}
+                    >
+                      <option value="">Select a member...</option>
+                      {activeMembers.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.fullName}
+                          {member.role === "admin"
+                            ? " — Club administrator"
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {adminPrivilegesMember && (
+                    <div
+                      style={{
+                        marginTop: "0.8rem",
+                        padding: "0.8rem",
+                        borderRadius: "16px",
+                        border: adminPrivilegesMemberIsProtected
+                          ? "1px solid rgba(250,204,21,0.3)"
+                          : "1px solid rgba(56,189,248,0.2)",
+                        background: adminPrivilegesMemberIsProtected
+                          ? "rgba(250,204,21,0.07)"
+                          : "rgba(14,165,233,0.06)",
+                      }}
+                    >
+                      <strong>{adminPrivilegesMember.fullName}</strong>
+                      <span
+                        className="muted small"
+                        style={{ display: "block", marginTop: "0.25rem" }}
+                      >
+                        {adminPrivilegesMemberIsProtected
+                          ? "Main administrator · Protected"
+                          : adminPrivilegesMemberIsAdmin
+                            ? "Club administrator"
+                            : "Club member"}
+                      </span>
+                    </div>
+                  )}
+
+                  {adminPrivilegesError && (
+                    <p className="error-text">{adminPrivilegesError}</p>
+                  )}
+
+                  {adminPrivilegesStatus && (
+                    <p className="success-text">{adminPrivilegesStatus}</p>
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      marginTop: "0.85rem",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      disabled={
+                        !adminPrivilegesMember ||
+                        adminPrivilegesSaving ||
+                        (
+                          adminPrivilegesMemberIsAdmin &&
+                          adminPrivilegesMemberIsProtected
+                        )
+                      }
+                      onClick={() =>
+                        handleSetClubAdminPrivilege(
+                          !adminPrivilegesMemberIsAdmin
+                        )
+                      }
+                      style={
+                        adminPrivilegesMemberIsAdmin
+                          ? {
+                              background:
+                                "linear-gradient(180deg, rgba(220,38,38,0.96), rgba(127,29,29,0.98))",
+                              borderColor: "rgba(248,113,113,0.65)",
+                            }
+                          : brightPrimaryStyle
+                      }
+                    >
+                      {adminPrivilegesSaving
+                        ? "Saving..."
+                        : adminPrivilegesMemberIsAdmin
+                          ? "Remove Admin Privileges"
+                          : "Promote to Club Admin"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* Player-list Cleanup */}
+            <section
+              style={{
+                marginTop: "0.8rem",
+                borderRadius: "20px",
+                border: "1px solid rgba(248,113,113,0.34)",
+                background:
+                  "linear-gradient(180deg, rgba(127,29,29,0.14), rgba(15,23,42,0.18))",
+                overflow: "hidden",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setClubManagementSection((current) =>
+                    current === "cleanup" ? null : "cleanup"
+                  )
+                }
+                aria-expanded={clubManagementSection === "cleanup"}
+                style={{
+                  width: "100%",
+                  border: 0,
+                  padding: "0.95rem 1rem",
+                  background: "transparent",
+                  color: "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.8rem",
+                  textAlign: "left",
+                }}
+              >
+                <span>
+                  <strong style={{ display: "block" }}>
+                    Player-list Cleanup
+                  </strong>
+                  <span className="muted small">
+                    Remove inactive players.
+                  </span>
+                </span>
+
+                <span
+                  aria-hidden="true"
+                  style={{
+                    color: "#fca5a5",
+                    fontSize: "1.15rem",
+                    transform:
+                      clubManagementSection === "cleanup"
+                        ? "rotate(90deg)"
+                        : "rotate(0deg)",
+                    transition: "transform 180ms ease",
+                  }}
+                >
+                  ›
+                </span>
+              </button>
+
+              {clubManagementSection === "cleanup" && (
+                <div
+                  style={{
+                    padding: "0 1rem 1rem",
+                    borderTop: "1px solid rgba(248,113,113,0.16)",
+                  }}
+                >
+                  <div
+                    style={{
+                      marginTop: "0.9rem",
+                      padding: "0.8rem",
+                      borderRadius: "16px",
+                      border: "1px solid rgba(52,211,153,0.18)",
+                      background: "rgba(16,185,129,0.05)",
+                    }}
+                  >
+                    <strong style={{ display: "block", fontSize: "0.83rem" }}>
+                      Match history remains
+                    </strong>
+                    <span
+                      className="muted small"
+                      style={{ display: "block", marginTop: "0.3rem" }}
+                    >
+                      Results, goals, assists, cards and statistics stay.
+                    </span>
+                  </div>
+
+                  <div className="field-column" style={{ marginTop: "0.9rem" }}>
+                    <label>Select player</label>
+                    <select
+                      className="text-input"
+                      value={terminationMemberId}
+                      onChange={(event) => {
+                        setTerminationMemberId(event.target.value);
+                        setTerminationMember(null);
+                        setTerminationConfirmation("");
+                        setTerminationError("");
+                        setIdentitySafetyAudit(null);
+                        setIdentitySafetyAuditError("");
+                      }}
+                    >
+                      <option value="">Select a player...</option>
+                      {activeMembers.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {terminationCandidate && (
+                    <div
+                      style={{
+                        marginTop: "0.85rem",
+                        padding: "0.9rem",
+                        borderRadius: "17px",
+                        border:
+                          identitySafetyAudit?.status === "safe"
+                            ? "1px solid rgba(52,211,153,0.3)"
+                            : identitySafetyAudit?.status === "attention"
+                              ? "1px solid rgba(250,204,21,0.3)"
+                              : identitySafetyAudit?.status === "unsafe"
+                                ? "1px solid rgba(248,113,113,0.36)"
+                                : "1px solid rgba(148,163,184,0.18)",
+                        background:
+                          identitySafetyAudit?.status === "safe"
+                            ? "rgba(16,185,129,0.07)"
+                            : identitySafetyAudit?.status === "attention"
+                              ? "rgba(250,204,21,0.07)"
+                              : identitySafetyAudit?.status === "unsafe"
+                                ? "rgba(127,29,29,0.14)"
+                                : "rgba(2,6,23,0.2)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "0.7rem",
+                        }}
+                      >
+                        <strong>Identity Safety Audit</strong>
+                        <span
+                          style={{
+                            padding: "0.25rem 0.55rem",
+                            borderRadius: "999px",
+                            border: "1px solid rgba(148,163,184,0.2)",
+                            background: "rgba(15,23,42,0.3)",
+                            fontSize: "0.69rem",
+                            fontWeight: 900,
+                          }}
+                        >
+                          {identitySafetyAuditLoading
+                            ? "Checking..."
+                            : identitySafetyAudit?.status === "safe"
+                              ? "Safe"
+                              : identitySafetyAudit?.status === "attention"
+                                ? "Safe · Attention"
+                                : identitySafetyAudit?.status === "unsafe"
+                                  ? "Unsafe"
+                                  : "Pending"}
+                        </span>
+                      </div>
+
+                      <strong
+                        style={{ display: "block", marginTop: "0.7rem" }}
+                      >
+                        {terminationCandidate.fullName}
+                      </strong>
+
+                      {identitySafetyAuditLoading && (
+                        <p className="muted small">Checking records…</p>
+                      )}
+
+                      {identitySafetyAuditError && (
+                        <p className="error-text">
+                          {identitySafetyAuditError}
+                        </p>
+                      )}
+
+                      {identitySafetyAudit && (
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: "0.42rem",
+                            marginTop: "0.7rem",
+                          }}
+                        >
+                          <div className="muted small">
+                            {identitySafetyAudit.duplicateEmailMembers.length
+                              ? "⚠ Shared email"
+                              : "✓ Email unshared"}
+                          </div>
+
+                          <div className="muted small">
+                            {identitySafetyAudit.duplicateUidMembers.length ||
+                            identitySafetyAudit
+                              .duplicatePlatformIdentityMembers.length
+                              ? "⚠ Shared account"
+                              : "✓ Account unshared"}
+                          </div>
+
+                          <div className="muted small">
+                            {identitySafetyAudit
+                              .duplicatePlayerIdMembers.length
+                              ? "⚠ Shared player ID"
+                              : "✓ Player ID unique"}
+                          </div>
+
+                          <div className="muted small">
+                            {identitySafetyAudit.playerProfileExists
+                              ? "✓ Player profile found"
+                              : "• Player profile not found"}
+                          </div>
+
+                          <div className="muted small">
+                            • Photos: {identitySafetyAudit.photoCount}
+                          </div>
+
+                          <div className="muted small">
+                            • Signups: {identitySafetyAudit.signupCount}
+                          </div>
+
+                          {identitySafetyAudit.blockers.length > 0 && (
+                            <div
+                              style={{
+                                marginTop: "0.3rem",
+                                padding: "0.7rem",
+                                borderRadius: "14px",
+                                border:
+                                  "1px solid rgba(248,113,113,0.26)",
+                                background: "rgba(127,29,29,0.14)",
+                              }}
+                            >
+                              <strong>Removal blocked</strong>
+                              {identitySafetyAudit.blockers.map(
+                                (message, index) => (
+                                  <div
+                                    key={`${message}-${index}`}
+                                    className="muted small"
+                                    style={{ marginTop: "0.35rem" }}
+                                  >
+                                    • {message}
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {terminationError && (
+                    <p className="error-text">{terminationError}</p>
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      marginTop: "0.85rem",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      disabled={
+                        !terminationCandidate ||
+                        identitySafetyAuditLoading ||
+                        !selectedTerminationMemberPassedIdentitySafetyAudit
+                      }
+                      onClick={() => {
+                        if (
+                          !selectedTerminationMemberPassedIdentitySafetyAudit
+                        ) {
+                          setTerminationError(
+                            "Removal is blocked until the safety audit passes."
+                          );
+                          return;
+                        }
+
+                        setTerminationError("");
+                        setTerminationConfirmation("");
+                        setTerminationMember(terminationCandidate);
+                      }}
+                      style={{
+                        color: "#fecaca",
+                        borderColor: "rgba(248,113,113,0.42)",
+                        background: "rgba(127,29,29,0.18)",
+                      }}
+                    >
+                      Remove from Player List
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginTop: "1rem",
+              }}
+            >
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setClubManagementSection(null);
+                  setShowAdminPrivilegesModal(false);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAdminViewer && terminationMember && (
+        <div className="modal-backdrop modal-backdrop--nested-popup">
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Terminate club membership"
+            style={{
+              width: "min(92vw, 520px)",
+              maxHeight: "88vh",
+              overflowY: "auto",
+            }}
+          >
+            <span
+              style={{
+                ...labelCapsuleStyle,
+                background: "rgba(239,68,68,0.1)",
+                border: "1px solid rgba(248,113,113,0.24)",
+                color: "#fecaca",
+              }}
+            >
+              Permanent action
+            </span>
+
+            <h3 style={{ marginTop: "0.85rem", marginBottom: "0.4rem" }}>
+              Terminate {terminationMember.fullName}?
+            </h3>
+
+            <p className="muted small">
+              This permanently removes the member’s active club identity,
+              football profile, club photo and current or future signup
+              records.
+            </p>
+
+            <div
+              style={{
+                marginTop: "0.85rem",
+                padding: "0.85rem",
+                borderRadius: "16px",
+                border: "1px solid rgba(52,211,153,0.2)",
+                background: "rgba(16,185,129,0.06)",
+              }}
+            >
+              <strong style={{ display: "block" }}>
+                Historical football records will remain
+              </strong>
+              <span
+                className="muted small"
+                style={{ display: "block", marginTop: "0.3rem" }}
+              >
+                Completed matches, scorelines, goals, assists, cards, league
+                records and statistics will not be deleted.
+              </span>
+            </div>
+
+            <div className="field-column" style={{ marginTop: "1rem" }}>
+              <label>
+                Type <strong>{terminationMember.fullName}</strong> to confirm
+              </label>
+              <input
+                type="text"
+                className="text-input"
+                value={terminationConfirmation}
+                onChange={(event) => {
+                  setTerminationConfirmation(event.target.value);
+                  setTerminationError("");
+                }}
+                placeholder={terminationMember.fullName}
+                autoComplete="off"
+              />
+            </div>
+
+            {terminationError && (
+              <p className="error-text" style={{ marginTop: "0.7rem" }}>
+                {terminationError}
+              </p>
+            )}
+
+            <div className="actions-row" style={{ marginTop: "1rem" }}>
+              <button
+                type="button"
+                className="secondary-btn"
+                disabled={terminationSaving}
+                onClick={() => {
+                  setTerminationMember(null);
+                  setTerminationConfirmation("");
+                  setTerminationError("");
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="primary-btn"
+                disabled={
+                  terminationSaving ||
+                  !terminationMemberPassedIdentitySafetyAudit ||
+                  String(terminationConfirmation || "")
+                    .trim()
+                    .toLowerCase() !==
+                    String(terminationMember.fullName || "")
+                      .trim()
+                      .toLowerCase()
+                }
+                onClick={handleTerminateClubMembership}
+                style={{
+                  background:
+                    "linear-gradient(180deg, rgba(220,38,38,0.98), rgba(127,29,29,0.98))",
+                  borderColor: "rgba(248,113,113,0.68)",
+                }}
+              >
+                {terminationSaving
+                  ? "Terminating..."
+                  : "Permanently Terminate Membership"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
