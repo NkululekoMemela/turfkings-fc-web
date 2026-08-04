@@ -15013,15 +15013,15 @@ button.fanm-chat-highlight-card {
   align-items: center;
   gap: 0.48rem;
   padding: 0.42rem 0.72rem;
-  border: 1px solid rgba(250, 204, 21, 0.62);
+  border: 1px solid rgba(248, 113, 113, 0.82);
   border-radius: 999px;
   background:
     linear-gradient(
       135deg,
-      rgba(120, 53, 15, 0.96),
-      rgba(69, 26, 3, 0.97)
+      rgba(220, 38, 38, 0.98),
+      rgba(127, 29, 29, 0.98)
     );
-  color: #fef3c7;
+  color: #ffffff;
   box-shadow:
     0 12px 32px rgba(2, 6, 23, 0.42),
     0 0 0 1px rgba(250, 204, 21, 0.08);
@@ -15049,7 +15049,7 @@ button.fanm-chat-highlight-card {
 
 .fanm-testing-site-badge__copy small {
   margin-top: 0.16rem;
-  color: rgba(254, 243, 199, 0.76);
+  color: rgba(254, 226, 226, 0.88);
   font-size: 0.58rem;
   font-weight: 800;
   letter-spacing: 0.04em;
