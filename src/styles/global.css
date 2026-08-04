@@ -15263,3 +15263,43 @@ button.fanm-chat-highlight-card {
   align-self: stretch !important;
   transform: none !important;
 }
+
+
+/* CLUB MANAGEMENT — desktop polish */
+@media (min-width: 760px) {
+  .entry-page .modal[aria-label="Club Management"],
+  .entry-page .modal[aria-label="Club management"] {
+    width: min(92vw, 620px) !important;
+    padding: 1.2rem !important;
+  }
+
+  .entry-page .modal[aria-label="Club Management"] > h2,
+  .entry-page .modal[aria-label="Club management"] > h2 {
+    font-size: 1.45rem !important;
+    margin-bottom: 0.35rem !important;
+  }
+
+  .entry-page .modal[aria-label="Club Management"] section > button,
+  .entry-page .modal[aria-label="Club management"] section > button {
+    padding: 1.05rem 1.15rem !important;
+    min-height: 72px;
+  }
+
+  .entry-page .modal[aria-label="Club Management"] section > button strong,
+  .entry-page .modal[aria-label="Club management"] section > button strong {
+    font-size: 1rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .entry-page .modal[aria-label="Club Management"] section > button .muted,
+  .entry-page .modal[aria-label="Club management"] section > button .muted {
+    font-size: 0.8rem !important;
+    line-height: 1.35 !important;
+    margin-top: 0.15rem;
+  }
+
+  .entry-page .modal[aria-label="Club Management"] section,
+  .entry-page .modal[aria-label="Club management"] section {
+    margin-top: 0.9rem !important;
+  }
+}

@@ -1150,6 +1150,17 @@ export function EntryPage({
 
   const [showAdminPrivilegesModal, setShowAdminPrivilegesModal] = useState(false);
   const [clubManagementSection, setClubManagementSection] = useState(null);
+
+  const [profileMemberId, setProfileMemberId] = useState("");
+  const [profileDraft, setProfileDraft] = useState({
+    fullName: "",
+    email: "",
+    whatsappNumber: "",
+    photoData: "",
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileStatus, setProfileStatus] = useState("");
   const [adminPrivilegesMemberId, setAdminPrivilegesMemberId] = useState("");
   const [adminPrivilegesSaving, setAdminPrivilegesSaving] = useState(false);
   const [adminPrivilegesError, setAdminPrivilegesError] = useState("");
@@ -1178,6 +1189,66 @@ export function EntryPage({
       members.find((member) => member.id === terminationMemberId) ||
       null,
     [members, terminationMemberId]
+  );
+
+  const signedInMember = useMemo(() => {
+    const identityMemberId = String(
+      identity?.memberId ||
+      identity?.sourceMemberId ||
+      ""
+    ).trim();
+
+    const identityPlayerId = String(
+      identity?.playerId || ""
+    ).trim();
+
+    const signedInEmail = String(
+      currentUser?.email ||
+      identity?.email ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+    return (
+      members.find((member) => {
+        const memberEmail = String(member?.email || "")
+          .trim()
+          .toLowerCase();
+
+        return (
+          (identityMemberId && String(member?.id || "") === identityMemberId) ||
+          (
+            identityPlayerId &&
+            String(member?.playerId || "") === identityPlayerId
+          ) ||
+          (
+            signedInEmail &&
+            memberEmail &&
+            memberEmail === signedInEmail
+          )
+        );
+      }) || null
+    );
+  }, [members, identity, currentUser]);
+
+  const profileMember = useMemo(
+    () =>
+      members.find((member) => member.id === profileMemberId) ||
+      null,
+    [members, profileMemberId]
+  );
+
+  const canOpenClubManagement = Boolean(
+    isAdminViewer || signedInMember
+  );
+
+  const canEditSelectedProfile = Boolean(
+    profileMember &&
+    (
+      isAdminViewer ||
+      profileMember.id === signedInMember?.id
+    )
   );
 
   const protectedMainAdminEmail = String(
@@ -1276,6 +1347,192 @@ export function EntryPage({
     currentClubAdminUids,
     protectedMainAdminEmail,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfileDraft() {
+      setProfileError("");
+      setProfileStatus("");
+
+      if (!profileMember?.id) {
+        setProfileDraft({
+          fullName: "",
+          email: "",
+          whatsappNumber: "",
+          photoData: "",
+        });
+        return;
+      }
+
+      const existingPhoto = await findExistingPhotoDataByIdentity(
+        profileMember,
+        activeClubId
+      );
+
+      if (cancelled) return;
+
+      setProfileDraft({
+        fullName: toTitleCase(
+          profileMember.fullName ||
+          profileMember.shortName ||
+          ""
+        ),
+        email: String(profileMember.email || "").trim(),
+        whatsappNumber: String(
+          profileMember.whatsappNumber ||
+          profileMember.phoneNumber ||
+          ""
+        ).trim(),
+        photoData:
+          existingPhoto?.photoData ||
+          profileMember.photoData ||
+          profileMember.photoUrl ||
+          "",
+      });
+    }
+
+    loadProfileDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profileMember, activeClubId]);
+
+  const handleProfilePhotoChange = async (event) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) return;
+
+    setProfileError("");
+    setProfileStatus("");
+
+    try {
+      const photoData = await makePortraitPhotoDataUrl(file);
+      setProfileDraft((current) => ({
+        ...current,
+        photoData,
+      }));
+    } catch (error) {
+      console.error("[EntryPage] Could not prepare profile photo:", error);
+      setProfileError("Could not prepare this photo.");
+    }
+  };
+
+  const handleSavePlayerProfile = async () => {
+    if (!canEditSelectedProfile || !profileMember?.id) {
+      setProfileError("You cannot edit this profile.");
+      return;
+    }
+
+    const fullName = toTitleCase(profileDraft.fullName);
+    const email = String(profileDraft.email || "")
+      .trim()
+      .toLowerCase();
+    const whatsappNumber = normalizeWhatsAppNumber(
+      profileDraft.whatsappNumber
+    );
+
+    if (!fullName) {
+      setProfileError("Enter the player's full name.");
+      return;
+    }
+
+    if (email && !email.includes("@")) {
+      setProfileError("Enter a valid email address.");
+      return;
+    }
+
+    if (
+      whatsappNumber &&
+      !looksLikeWhatsAppNumber(whatsappNumber)
+    ) {
+      setProfileError("Enter a valid WhatsApp number.");
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileError("");
+    setProfileStatus("");
+
+    try {
+      const existingPlayerId =
+        String(profileMember.playerId || "").trim() ||
+        slugFromName(
+          profileMember.shortName ||
+          profileMember.fullName ||
+          fullName
+        );
+
+      const memberPatch = {
+        fullName,
+        shortName: fullName,
+        email,
+        whatsappNumber,
+        phoneNumber: whatsappNumber,
+        profileUpdatedAt: serverTimestamp(),
+        profileUpdatedByUid: currentUser?.uid || "",
+        profileUpdatedByRole: isAdminViewer ? "admin" : "player",
+        updatedAt: serverTimestamp(),
+      };
+
+      if (profileDraft.photoData) {
+        memberPatch.photoData = profileDraft.photoData;
+        memberPatch.photoUrl = profileDraft.photoData;
+      }
+
+      const batch = writeBatch(db);
+
+      batch.set(
+        memberDocRef(activeClubId, profileMember.id),
+        memberPatch,
+        { merge: true }
+      );
+
+      if (existingPlayerId) {
+        batch.set(
+          playerDocRef(activeClubId, existingPlayerId),
+          {
+            name: fullName,
+            fullName,
+            shortName: fullName,
+            email,
+            whatsappNumber,
+            phoneNumber: whatsappNumber,
+            photoUrl:
+              profileDraft.photoData ||
+              profileMember.photoUrl ||
+              "",
+            sourceMemberId: profileMember.id,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      await batch.commit();
+
+      if (profileDraft.photoData) {
+        await savePlayerPhotoForIdentity({
+          clubId: activeClubId,
+          fullName,
+          shortName: fullName,
+          playerId: existingPlayerId,
+          email,
+          role: profileMember.role || "player",
+          status: profileMember.status || "active",
+          sourceMemberId: profileMember.id,
+          photoData: profileDraft.photoData,
+        });
+      }
+
+      setProfileStatus("Profile updated.");
+    } catch (error) {
+      console.error("[EntryPage] Could not update profile:", error);
+      setProfileError("Could not save these profile changes.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -3942,13 +4199,18 @@ export function EntryPage({
           >
             <span style={labelCapsuleStyle}>Player entry</span>
 
-            {isAdminViewer && (
+            {canOpenClubManagement && (
               <button
                 type="button"
                 aria-label="Manage club administrator privileges"
                 title="Manage club administrators"
                 onClick={() => {
                   setClubManagementSection(null);
+                  setProfileMemberId(
+                    isAdminViewer ? "" : signedInMember?.id || ""
+                  );
+                  setProfileError("");
+                  setProfileStatus("");
                   setAdminPrivilegesMemberId("");
                   setTerminationMemberId("");
                   setAdminPrivilegesError("");
@@ -5045,7 +5307,7 @@ export function EntryPage({
         </div>
       )}
 
-      {isAdminViewer && showAdminPrivilegesModal && (
+      {canOpenClubManagement && showAdminPrivilegesModal && (
         <div className="modal-backdrop">
           <div
             className="modal"
@@ -5098,8 +5360,283 @@ export function EntryPage({
               </button>
             </div>
 
-            {/* Administrator Management */}
+            {/* Player Profiles */}
             <section
+              style={{
+                marginTop: "1rem",
+                borderRadius: "20px",
+                border: "1px solid rgba(167,139,250,0.34)",
+                background:
+                  "linear-gradient(180deg, rgba(124,58,237,0.13), rgba(15,23,42,0.18))",
+                overflow: "hidden",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setClubManagementSection((current) =>
+                    current === "profiles" ? null : "profiles"
+                  )
+                }
+                aria-expanded={clubManagementSection === "profiles"}
+                style={{
+                  width: "100%",
+                  border: 0,
+                  padding: "0.95rem 1rem",
+                  background: "transparent",
+                  color: "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.8rem",
+                  textAlign: "left",
+                }}
+              >
+                <span>
+                  <strong style={{ display: "block" }}>
+                    {isAdminViewer
+                      ? "👤 Player Profiles"
+                      : "👤 Player Profile"}
+                  </strong>
+                  <span className="muted small">
+                    {isAdminViewer
+                      ? "Update player details."
+                      : "Update your details."}
+                  </span>
+                </span>
+
+                <span
+                  aria-hidden="true"
+                  style={{
+                    color: "#c4b5fd",
+                    fontSize: "1.15rem",
+                    transform:
+                      clubManagementSection === "profiles"
+                        ? "rotate(90deg)"
+                        : "rotate(0deg)",
+                    transition: "transform 180ms ease",
+                  }}
+                >
+                  ›
+                </span>
+              </button>
+
+              {clubManagementSection === "profiles" && (
+                <div
+                  style={{
+                    padding: "0 1rem 1rem",
+                    borderTop: "1px solid rgba(167,139,250,0.18)",
+                  }}
+                >
+                  {isAdminViewer ? (
+                    <div
+                      className="field-column"
+                      style={{ marginTop: "0.9rem" }}
+                    >
+                      <label>Select player</label>
+
+                      <select
+                        className="text-input"
+                        value={profileMemberId}
+                        onChange={(event) => {
+                          setProfileMemberId(event.target.value);
+                          setProfileError("");
+                          setProfileStatus("");
+                        }}
+                      >
+                        <option value="">Select a player...</option>
+
+                        {activeMembers.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.fullName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+
+                  {!profileMember ? (
+                    <p
+                      className="muted small"
+                      style={{ marginTop: "0.9rem", marginBottom: 0 }}
+                    >
+                      {isAdminViewer
+                        ? "Select a player."
+                        : "Your member profile could not be matched."}
+                    </p>
+                  ) : (
+                    <>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.8rem",
+                          marginTop: "0.9rem",
+                          padding: "0.8rem",
+                          borderRadius: "16px",
+                          border: "1px solid rgba(167,139,250,0.2)",
+                          background: "rgba(124,58,237,0.07)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "64px",
+                            height: "64px",
+                            flex: "0 0 64px",
+                            overflow: "hidden",
+                            borderRadius: "18px",
+                            border: "1px solid rgba(255,255,255,0.16)",
+                            background: "rgba(15,23,42,0.45)",
+                            display: "grid",
+                            placeItems: "center",
+                          }}
+                        >
+                          {profileDraft.photoData ? (
+                            <img
+                              src={profileDraft.photoData}
+                              alt=""
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: "1.6rem" }}>👤</span>
+                          )}
+                        </div>
+
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ display: "block" }}>
+                            {toTitleCase(
+                              profileDraft.fullName ||
+                              profileMember.fullName ||
+                              profileMember.shortName ||
+                              "Player"
+                            )}
+                          </strong>
+                          <span className="muted small">
+                            {profileMember.role === "admin"
+                              ? "Administrator"
+                              : profileMember.role === "captain"
+                                ? "Captain"
+                                : "Player"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        className="field-column"
+                        style={{ marginTop: "0.9rem" }}
+                      >
+                        <label>Profile photo</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="text-input"
+                          style={compactFileInputStyle}
+                          onChange={handleProfilePhotoChange}
+                        />
+                      </div>
+
+                      <div
+                        className="field-column"
+                        style={{ marginTop: "0.8rem" }}
+                      >
+                        <label>Full name</label>
+                        <input
+                          type="text"
+                          className="text-input"
+                          value={profileDraft.fullName}
+                          onChange={(event) =>
+                            setProfileDraft((current) => ({
+                              ...current,
+                              fullName: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div
+                        className="field-column"
+                        style={{ marginTop: "0.8rem" }}
+                      >
+                        <label>Email</label>
+                        <input
+                          type="email"
+                          className="text-input"
+                          value={profileDraft.email}
+                          onChange={(event) =>
+                            setProfileDraft((current) => ({
+                              ...current,
+                              email: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div
+                        className="field-column"
+                        style={{ marginTop: "0.8rem" }}
+                      >
+                        <label>WhatsApp</label>
+                        <input
+                          type="tel"
+                          className="text-input"
+                          value={profileDraft.whatsappNumber}
+                          onChange={(event) =>
+                            setProfileDraft((current) => ({
+                              ...current,
+                              whatsappNumber: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      {profileError && (
+                        <p className="error-text">{profileError}</p>
+                      )}
+
+                      {profileStatus && (
+                        <p className="success-text">{profileStatus}</p>
+                      )}
+
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          marginTop: "0.9rem",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="primary-btn"
+                          style={{
+                            background:
+                              "linear-gradient(180deg, rgba(124,58,237,0.98), rgba(76,29,149,0.98))",
+                            borderColor: "rgba(196,181,253,0.55)",
+                          }}
+                          disabled={
+                            profileSaving || !canEditSelectedProfile
+                          }
+                          onClick={handleSavePlayerProfile}
+                        >
+                          {profileSaving
+                            ? "Saving..."
+                            : "Save Profile"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {isAdminViewer && (
+              <>
+                {/* Administrator Management */}
+                <section
               style={{
                 marginTop: "1rem",
                 borderRadius: "20px",
@@ -5133,7 +5670,7 @@ export function EntryPage({
               >
                 <span>
                   <strong style={{ display: "block" }}>
-                    Administrator Management
+                    👑 Administrators
                   </strong>
                   <span className="muted small">
                     Manage administrators.
@@ -5324,8 +5861,13 @@ export function EntryPage({
               )}
             </section>
 
-            {/* Player-list Cleanup */}
-            <section
+              </>
+            )}
+
+            {isAdminViewer && (
+              <>
+                {/* Player-list Cleanup */}
+                <section
               style={{
                 marginTop: "0.8rem",
                 borderRadius: "20px",
@@ -5359,7 +5901,7 @@ export function EntryPage({
               >
                 <span>
                   <strong style={{ display: "block" }}>
-                    Player-list Cleanup
+                    🧹 Player-list Cleanup
                   </strong>
                   <span className="muted small">
                     Remove inactive players.
@@ -5621,24 +6163,10 @@ export function EntryPage({
               )}
             </section>
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                marginTop: "1rem",
-              }}
-            >
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => {
-                  setClubManagementSection(null);
-                  setShowAdminPrivilegesModal(false);
-                }}
-              >
-                Close
-              </button>
-            </div>
+              </>
+            )}
+
+
           </div>
         </div>
       )}
