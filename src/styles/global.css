@@ -15223,3 +15223,43 @@ button.fanm-chat-highlight-card {
     min-width: 190px !important;
   }
 }
+
+/* SQUADS PAGE — colour dropdown matches captain dropdown */
+.squads-page .squad-preview-team-head .team-identity-editor,
+.squads-page .squad-preview-team-head .team-identity-editor-field,
+.squads-page .squad-preview-team-head .team-identity-editor-colour,
+.squads-page .squad-preview-team-head .team-identity-editor-colour-control {
+  position: static !important;
+  inset: auto !important;
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+
+.squads-page .squad-preview-team-head .team-identity-editor-swatch {
+  display: none !important;
+}
+
+.squads-page .squad-preview-team-head .squad-preview-colour-select {
+  position: static !important;
+  inset: auto !important;
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: auto !important;
+  min-height: 42px !important;
+  margin: 0 !important;
+  padding: 0.65rem 2.25rem 0.65rem 0.8rem !important;
+  border-radius: 14px !important;
+  box-sizing: border-box !important;
+  font-size: inherit !important;
+  line-height: 1.2 !important;
+  flex: 1 1 auto !important;
+  align-self: stretch !important;
+  transform: none !important;
+}
