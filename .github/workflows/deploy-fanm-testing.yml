@@ -31,6 +31,7 @@ jobs:
         run: npm run build:production
         env:
           VITE_FIREBASE_ENV: production
+          VITE_FANM_TESTING_SITE: "true"
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
 
       - name: Deploy FANM testing site

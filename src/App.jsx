@@ -2059,7 +2059,8 @@ function isInsideClubWeeklyWindow(weeklyPlayTime, now = new Date()) {
 }
 
 
-const FANM_TESTING_DEPLOYMENT = true;
+const FANM_TESTING_DEPLOYMENT =
+  import.meta.env.VITE_FANM_TESTING_SITE === "true";
 
 export default function App() {
   useEffect(() => {
