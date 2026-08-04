@@ -1331,9 +1331,11 @@ export function SquadsPage({
       const resolvedId =
         playersById.has(playerId)
           ? playerId
-          : resolvePlayerIdFromString(allPlayers, playerName) || playerId;
+          : resolvePlayerIdFromString(allPlayers, playerName);
 
-      if (!resolvedId) return;
+      // Never expose orphaned signup document IDs such as
+      // General___player___082026 as selectable footballers.
+      if (!resolvedId || !playersById.has(resolvedId)) return;
 
       byId.set(resolvedId, {
         id: resolvedId,
@@ -1560,6 +1562,71 @@ export function SquadsPage({
     localFiveVFiveTeams,
     localLeagueTeams,
   ]);
+
+  useEffect(() => {
+    if (!activeClubId) return;
+
+    const cleanupKey =
+      `fanm_deleted_player_cleanup_${activeClubId}`;
+
+    let cleanup = null;
+
+    try {
+      const raw = window.localStorage.getItem(cleanupKey);
+      cleanup = raw ? JSON.parse(raw) : null;
+    } catch {
+      cleanup = null;
+    }
+
+    const deletedPlayerId = String(
+      cleanup?.playerId || ""
+    ).trim();
+
+    if (!deletedPlayerId) return;
+
+    const scrubTeams = (teams = []) =>
+      (Array.isArray(teams) ? teams : []).map((team) => ({
+        ...team,
+        players: (Array.isArray(team?.players) ? team.players : [])
+          .filter(
+            (id) =>
+              String(id || "").trim() !== deletedPlayerId
+          ),
+        captainId:
+          String(team?.captainId || "").trim() === deletedPlayerId
+            ? ""
+            : team?.captainId,
+      }));
+
+    const cleanedLeagueTeams = scrubTeams(localLeagueTeams);
+    const cleanedFiveVFiveTeams = scrubTeams(localFiveVFiveTeams);
+
+    setLocalLeagueTeams(cleanedLeagueTeams);
+    setLocalFiveVFiveTeams(cleanedFiveVFiveTeams);
+
+    onUpdateLeagueTeams?.(cleanedLeagueTeams);
+    onUpdateFiveVFiveTeams?.(cleanedFiveVFiveTeams);
+
+    setTurfKingsChallengePlayers((current) =>
+      (Array.isArray(current) ? current : []).filter(
+        (id) => String(id || "").trim() !== deletedPlayerId
+      )
+    );
+
+    setGuestOpponentPlayers((current) =>
+      (Array.isArray(current) ? current : []).filter(
+        (id) => String(id || "").trim() !== deletedPlayerId
+      )
+    );
+
+    setPreviewPickTarget(null);
+
+    try {
+      window.localStorage.removeItem(cleanupKey);
+    } catch {
+      // The repaired squads are already in state.
+    }
+  }, [activeClubId]);
 
   const setSourceTeams = (updater) => {
     if (hasActiveGuestChallenge) {

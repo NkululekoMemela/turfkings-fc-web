@@ -1,7 +1,15 @@
 // src/pages/HomePage_HUB.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import "../styles/HomePage_HUB.css";
@@ -86,6 +94,28 @@ function safeText(value) {
 
 function normalizeEmail(value) {
   return safeText(value).toLowerCase();
+}
+
+function makeHomepagePhotoCandidateIds(member = {}) {
+  const slugFromName = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "");
+
+  return Array.from(
+    new Set(
+      [
+        member?.playerId,
+        slugFromName(member?.fullName),
+        slugFromName(member?.shortName),
+        slugFromName(member?.name),
+      ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 function normalizeClub(docSnap) {
@@ -456,6 +486,8 @@ export default function HomePage_HUB({
   const [completionPromptClub, setCompletionPromptClub] = useState(null);
   const [profileEditorClub, setProfileEditorClub] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [homepagePlayerPortrait, setHomepagePlayerPortrait] = useState("");
+  const [homepagePlayerName, setHomepagePlayerName] = useState("");
   const [activeMapClub, setActiveMapClub] = useState(null);
   const [userMapLocation, setUserMapLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState("idle");
@@ -500,6 +532,136 @@ export default function HomePage_HUB({
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHomepagePlayerPortrait() {
+      setHomepagePlayerPortrait("");
+      setHomepagePlayerName("");
+
+      const signedInEmail = normalizeEmail(currentUser?.email);
+      const signedInUid = safeText(currentUser?.uid);
+
+      if ((!signedInEmail && !signedInUid) || !clubs.length) {
+        return;
+      }
+
+      for (const club of clubs) {
+        const clubId = safeText(
+          club?.id ||
+          club?.clubId ||
+          club?.slug
+        );
+
+        if (!clubId) continue;
+
+        try {
+          const membersSnap = await getDocs(
+            collection(db, "clubs", clubId, "members")
+          );
+
+          const matchedMemberDoc = membersSnap.docs.find((memberDoc) => {
+            const member = memberDoc.data() || {};
+
+            const memberEmails = [
+              member?.email,
+              member?.gmail,
+              member?.contactEmail,
+            ]
+              .map(normalizeEmail)
+              .filter(Boolean);
+
+            const memberUids = [
+              member?.uid,
+              member?.platformIdentityUid,
+              member?.authUid,
+            ]
+              .map(safeText)
+              .filter(Boolean);
+
+            return (
+              (signedInUid && memberUids.includes(signedInUid)) ||
+              (signedInEmail && memberEmails.includes(signedInEmail))
+            );
+          });
+
+          if (!matchedMemberDoc) continue;
+
+          const member = {
+            id: matchedMemberDoc.id,
+            ...(matchedMemberDoc.data() || {}),
+          };
+
+          const memberName = safeText(
+            member?.fullName ||
+            member?.displayName ||
+            member?.name ||
+            member?.shortName
+          );
+
+          const directPhoto = safeText(
+            member?.photoData ||
+            member?.photoUrl ||
+            member?.profilePhotoUrl
+          );
+
+          if (directPhoto) {
+            if (!cancelled) {
+              setHomepagePlayerPortrait(directPhoto);
+              setHomepagePlayerName(memberName);
+            }
+            return;
+          }
+
+          const candidateIds = makeHomepagePhotoCandidateIds(member);
+
+          for (const photoId of candidateIds) {
+            const photoSnap = await getDoc(
+              doc(db, "clubs", clubId, "playerPhotos", photoId)
+            );
+
+            if (!photoSnap.exists()) continue;
+
+            const photoData = photoSnap.data() || {};
+            const savedPhoto = safeText(
+              photoData?.photoData ||
+              photoData?.photoUrl ||
+              photoData?.profilePhotoUrl
+            );
+
+            if (!savedPhoto) continue;
+
+            if (!cancelled) {
+              setHomepagePlayerPortrait(savedPhoto);
+              setHomepagePlayerName(
+                memberName ||
+                safeText(photoData?.name || photoData?.shortName)
+              );
+            }
+
+            return;
+          }
+        } catch (error) {
+          console.warn(
+            "[HomePage_HUB] Could not resolve signed-in player portrait:",
+            clubId,
+            error
+          );
+        }
+      }
+    }
+
+    loadHomepagePlayerPortrait();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentUser?.uid,
+    currentUser?.email,
+    clubs,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1086,18 +1248,36 @@ export default function HomePage_HUB({
             <>
               <span
                 className="hub-user-avatar"
-                title={currentUser?.displayName || currentUser?.email || "Signed in"}
-                aria-label={currentUser?.displayName || currentUser?.email || "Signed in"}
+                title={
+                  homepagePlayerName ||
+                  currentUser?.displayName ||
+                  currentUser?.email ||
+                  "Signed in"
+                }
+                aria-label={
+                  homepagePlayerName ||
+                  currentUser?.displayName ||
+                  currentUser?.email ||
+                  "Signed in"
+                }
               >
-                {currentUser?.photoURL ? (
+                {homepagePlayerPortrait || currentUser?.photoURL ? (
                   <img
-                    src={currentUser.photoURL}
+                    src={
+                      homepagePlayerPortrait ||
+                      currentUser.photoURL
+                    }
                     alt=""
                     referrerPolicy="no-referrer"
                   />
                 ) : (
                   <strong>
-                    {String(currentUser?.displayName || currentUser?.email || "U")
+                    {String(
+                      homepagePlayerName ||
+                      currentUser?.displayName ||
+                      currentUser?.email ||
+                      "U"
+                    )
                       .trim()
                       .charAt(0)
                       .toUpperCase()}
