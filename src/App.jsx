@@ -2145,9 +2145,10 @@ function touchLiveMatchDraft(draft, patch = {}) {
   return {
     ...draft,
     ...patch,
-    lastKnownSecondsLeft: Number.isFinite(Number(secondsLeft))
-      ? secondsLeft
-      : Number(draft.lastKnownSecondsLeft || 0),
+    lastKnownSecondsLeft:
+      secondsLeft != null && Number.isFinite(Number(secondsLeft))
+        ? Number(secondsLeft)
+        : Number(draft.lastKnownSecondsLeft || draft.matchSeconds || 0),
     lastSavedAtISO: new Date().toISOString(),
   };
 }
@@ -2499,6 +2500,15 @@ export default function App() {
   };
 
   const handleUpdateLiveFinishTime = (nextFinishTime) => {
+    const draftMatchType = normalizeMatchMode(
+      liveMatchDraft?.matchType || matchType,
+      MATCH_TYPE.FRIENDLY
+    );
+
+    if (draftMatchType !== MATCH_TYPE.FRIENDLY) {
+      return;
+    }
+
     if (!canControlCurrentLiveMatch || !liveMatchDraft) {
       window.alert("Only the current match referee can adjust the finish time.");
       return;
@@ -3574,10 +3584,46 @@ export default function App() {
   useEffect(() => {
     if (!running) return undefined;
 
+    const activeTimerMatchType = normalizeMatchMode(
+      pendingMatchStartContext?.matchType ||
+      liveMatchDraft?.matchType ||
+      matchType,
+      MATCH_TYPE.FRIENDLY
+    );
+
     const id = window.setInterval(() => {
       setSecondsLeft((prev) => {
-        const draftSeconds = secondsLeftFromExpectedEnd(liveMatchDraft?.expectedEndAtISO);
-        const next = Number.isFinite(Number(draftSeconds)) ? Number(draftSeconds) : prev - 1;
+        /*
+          Preserve the proven Turf Kings / older FANM League timer:
+          decrement the configured duration by one second per tick.
+          It must never use the Friendly nearest-hour calculation.
+        */
+        if (activeTimerMatchType === MATCH_TYPE.LEAGUE) {
+          if (prev <= 1) {
+            window.clearInterval(id);
+            setRunning(false);
+            setTimeUp(true);
+            return 0;
+          }
+
+          return prev - 1;
+        }
+        const draftMatchType = normalizeMatchMode(
+          liveMatchDraft?.matchType || matchType,
+          MATCH_TYPE.FRIENDLY
+        );
+
+        const draftSeconds =
+          draftMatchType === MATCH_TYPE.FRIENDLY
+            ? secondsLeftFromExpectedEnd(
+                liveMatchDraft?.expectedEndAtISO
+              )
+            : null;
+
+        const next =
+          draftSeconds != null && Number.isFinite(Number(draftSeconds))
+            ? Number(draftSeconds)
+            : prev - 1;
 
         if (next <= 0) {
           window.clearInterval(id);
@@ -3591,7 +3637,13 @@ export default function App() {
     }, 1000);
 
     return () => window.clearInterval(id);
-  }, [running, liveMatchDraft?.expectedEndAtISO]);
+  }, [
+    running,
+    matchType,
+    pendingMatchStartContext?.matchType,
+    liveMatchDraft?.matchType,
+    liveMatchDraft?.expectedEndAtISO,
+  ]);
 
   const handleGoToStats = (fromPage) => {
     setStatsReturnPage(fromPage);
@@ -3615,10 +3667,27 @@ export default function App() {
 
   const applyRecoveredLiveDraftToControls = (draft) => {
     if (!draft) return;
-    const recoveredSeconds = secondsLeftFromExpectedEnd(draft.expectedEndAtISO);
-    const safeSeconds = Number.isFinite(Number(recoveredSeconds))
-      ? Number(recoveredSeconds)
-      : Number(draft.lastKnownSecondsLeft || draft.matchSeconds || matchSeconds || 0);
+
+    const draftMatchType = normalizeMatchMode(
+      draft?.matchType || matchType,
+      MATCH_TYPE.FRIENDLY
+    );
+
+    const recoveredSeconds =
+      draftMatchType === MATCH_TYPE.FRIENDLY
+        ? secondsLeftFromExpectedEnd(draft.expectedEndAtISO)
+        : null;
+
+    const safeSeconds =
+      recoveredSeconds != null &&
+      Number.isFinite(Number(recoveredSeconds))
+        ? Number(recoveredSeconds)
+        : Number(
+            draft.lastKnownSecondsLeft ||
+            draft.matchSeconds ||
+            matchSeconds ||
+            0
+          );
 
     setPendingMatchStartContext(buildPendingContextFromLiveDraft(draft));
     setCurrentConfirmedLineupSnapshot(draft.confirmedLineupSnapshot || null);
@@ -4298,19 +4367,37 @@ export default function App() {
       activeClubIdentity?.weeklyPlayTime ||
       "";
 
-    const scheduledFinishAtISO = buildClubOfficialScheduledFinishISO(
-      clubPlayTime,
-      startContext.createdAt
-    );
+    const usesScheduledFinish =
+      matchType === MATCH_TYPE.FRIENDLY;
 
-    const expectedEndAtISO = buildClubScheduledFinishISO(
-      clubPlayTime,
-      startContext.createdAt,
-      matchSeconds
-    );
+    const scheduledFinishAtISO = usesScheduledFinish
+      ? buildClubOfficialScheduledFinishISO(
+          clubPlayTime,
+          startContext.createdAt
+        )
+      : null;
 
-    const initialSecondsLeft =
-      secondsLeftFromExpectedEnd(expectedEndAtISO) ?? matchSeconds;
+    /*
+      Friendly may play until the club's smart scheduled finish.
+
+      Three-Team League always uses its configured match duration.
+      Its expected end remains kickoff + matchSeconds so recovery
+      remains compatible with the proven older FANM implementation.
+    */
+    const expectedEndAtISO = usesScheduledFinish
+      ? buildClubScheduledFinishISO(
+          clubPlayTime,
+          startContext.createdAt,
+          matchSeconds
+        )
+      : addSecondsToISO(
+          startContext.createdAt,
+          matchSeconds
+        );
+
+    const initialSecondsLeft = usesScheduledFinish
+      ? secondsLeftFromExpectedEnd(expectedEndAtISO) ?? matchSeconds
+      : matchSeconds;
 
     const liveDraft = {
       id: `live-${activeSeasonId || "season"}-${activeMatchNo}-${Date.now()}`,
@@ -4330,9 +4417,11 @@ export default function App() {
       startedAtISO: startContext.createdAt,
       expectedEndAtISO,
       scheduledFinishAtISO,
-      scheduledFinishSource: clubPlayTime
-        ? "smart_club_schedule"
-        : "match_duration",
+      scheduledFinishSource: usesScheduledFinish
+        ? clubPlayTime
+          ? "smart_club_schedule"
+          : "match_duration"
+        : null,
       matchSeconds,
       currentEvents: [],
       confirmedLineupSnapshot: null,
@@ -7390,9 +7479,24 @@ export default function App() {
           matchType={pendingMatchStartContext?.matchType || matchType}
           gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
-          expectedEndAtISO={liveMatchDraft?.expectedEndAtISO || null}
-          scheduledFinishAtISO={liveMatchDraft?.scheduledFinishAtISO || null}
-          onUpdateExpectedEndTime={handleUpdateLiveFinishTime}
+          expectedEndAtISO={
+            (pendingMatchStartContext?.matchType || matchType) ===
+            MATCH_TYPE.FRIENDLY
+              ? liveMatchDraft?.expectedEndAtISO || null
+              : null
+          }
+          scheduledFinishAtISO={
+            (pendingMatchStartContext?.matchType || matchType) ===
+            MATCH_TYPE.FRIENDLY
+              ? liveMatchDraft?.scheduledFinishAtISO || null
+              : null
+          }
+          onUpdateExpectedEndTime={
+            (pendingMatchStartContext?.matchType || matchType) ===
+            MATCH_TYPE.FRIENDLY
+              ? handleUpdateLiveFinishTime
+              : null
+          }
           rotationReminderMode={liveMatchDraft?.rotationReminderMode || "off"}
           onUpdateRotationReminder={handleUpdateRotationReminder}
           redCardRule={liveMatchDraft?.redCardRule || "permanent"}
