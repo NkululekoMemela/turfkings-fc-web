@@ -461,13 +461,56 @@ export function PeerReviewPage({
     return ["ALL", ...Array.from(labels).sort()];
   }, [teams]);
 
+  useEffect(() => {
+    if (teamsForFilter.includes(filterTeam)) return;
+
+    setFilterTeam("ALL");
+    setActiveTarget(null);
+  }, [teamsForFilter, filterTeam]);
+
   const candidateTargets = useMemo(() => {
+    if (!baselineLoaded) return [];
+
     return allPlayers.filter((p) => {
-      if (selectedRater && normaliseName(p.name) === normaliseName(selectedRater)) return false;
-      if (filterTeam !== "ALL" && p.teamLabel !== filterTeam) return false;
-      return true;
+      if (
+        selectedRater &&
+        normaliseName(p.name) ===
+          normaliseName(selectedRater)
+      ) {
+        return false;
+      }
+
+      if (
+        filterTeam !== "ALL" &&
+        p.teamLabel !== filterTeam
+      ) {
+        return false;
+      }
+
+      const canonicalName =
+        resolveCanonicalName(p.name);
+
+      const existingBaseline =
+        baselineMap[safeLower(canonicalName)] ||
+        baselineMap[safeLower(p.name)] ||
+        null;
+
+      const hasBaseline =
+        Number(existingBaseline?.attack || 0) > 0 ||
+        Number(existingBaseline?.defence || 0) > 0 ||
+        Number(existingBaseline?.playmaking || 0) > 0 ||
+        Number(existingBaseline?.gk || 0) > 0;
+
+      return hasBaseline;
     });
-  }, [allPlayers, selectedRater, filterTeam]);
+  }, [
+    allPlayers,
+    selectedRater,
+    filterTeam,
+    baselineLoaded,
+    baselineMap,
+    memberCanonicalMap,
+  ]);
 
   const baselineTargets = useMemo(() => {
     return baselinePlayerPool.filter((p) => {

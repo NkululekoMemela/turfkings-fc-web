@@ -1060,6 +1060,156 @@ function buildDefaultParticipationEntries({
 }
 
 
+
+function getPeerReviewSessionTimestamp(session = {}) {
+  const values = [
+    session?.completedAtISO,
+    session?.createdAtISO,
+    session?.createdAt,
+    session?.date,
+    session?.matchDayId,
+    session?.id,
+  ];
+
+  for (const value of values) {
+    if (value?.toDate && typeof value.toDate === "function") {
+      const timestamp = value.toDate().getTime();
+      if (Number.isFinite(timestamp)) return timestamp;
+    }
+
+    const timestamp = new Date(value || "").getTime();
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+
+  return 0;
+}
+
+function buildPeerReviewTeamsFromCompletedSession(session = null) {
+  if (!session || typeof session !== "object") return [];
+
+  const appearances = Array.isArray(session?.playerAppearances)
+    ? session.playerAppearances
+    : [];
+
+  if (appearances.length > 0) {
+    const teamsByKey = new Map();
+
+    appearances.forEach((entry, index) => {
+      const playerName = toTitleCaseLoose(
+        entry?.playerName ||
+        entry?.fullName ||
+        entry?.displayName ||
+        entry?.shortName ||
+        entry?.name ||
+        ""
+      );
+
+      if (!playerName) return;
+
+      const rawTeamId = String(
+        entry?.teamId ||
+        entry?.teamName ||
+        entry?.teamLabel ||
+        `team-${index + 1}`
+      ).trim();
+
+      const teamLabel = toTitleCaseLoose(
+        entry?.teamName ||
+        entry?.teamLabel ||
+        entry?.teamId ||
+        `Team ${index + 1}`
+      );
+
+      const teamKey = rawTeamId || teamLabel;
+      if (!teamKey) return;
+
+      if (!teamsByKey.has(teamKey)) {
+        teamsByKey.set(teamKey, {
+          id: rawTeamId || teamKey,
+          label: teamLabel || rawTeamId || "Team",
+          players: [],
+        });
+      }
+
+      const team = teamsByKey.get(teamKey);
+
+      const playerKey = String(
+        entry?.playerId ||
+        entry?.memberId ||
+        playerName
+      )
+        .trim()
+        .toLowerCase();
+
+      const alreadyPresent = team.players.some((player) => {
+        const existingKey = String(
+          player?.playerId ||
+          player?.id ||
+          player?.name ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+        return existingKey === playerKey;
+      });
+
+      if (alreadyPresent) return;
+
+      team.players.push({
+        id:
+          String(entry?.playerId || entry?.memberId || "").trim() ||
+          playerKey,
+        playerId:
+          String(entry?.playerId || "").trim() ||
+          playerKey,
+        memberId: entry?.memberId || null,
+        name: playerName,
+        displayName: playerName,
+        fullName: playerName,
+        shortName:
+          toTitleCaseLoose(entry?.shortName || "") ||
+          playerName.split(/\s+/)[0] ||
+          playerName,
+      });
+    });
+
+    return Array.from(teamsByKey.values()).filter(
+      (team) =>
+        Array.isArray(team?.players) &&
+        team.players.length > 0
+    );
+  }
+
+  /*
+    Compatibility with older archives:
+    Friendly already saved full team snapshots even when
+    playerAppearances was empty.
+  */
+  const archivedTeams = Array.isArray(session?.teams)
+    ? session.teams
+    : [];
+
+  return archivedTeams
+    .map((team, index) => ({
+      ...team,
+      id:
+        String(team?.id || "").trim() ||
+        `team-${index + 1}`,
+      label:
+        String(team?.label || team?.name || "").trim() ||
+        `Team ${index + 1}`,
+      players: Array.isArray(team?.players)
+        ? team.players
+        : [],
+    }))
+    .filter(
+      (team) =>
+        Array.isArray(team.players) &&
+        team.players.length > 0
+    );
+}
+
 function readRenderedPlayerCardSnapshotFromLocalStorage(seasonId, clubId = DEFAULT_CLUB_ID) {
   if (typeof window === "undefined") return null;
 
@@ -2985,6 +3135,58 @@ export default function App() {
     return chosen.length >= 2 ? chosen : teamIds.slice(0, 2);
   }, [teams, activeTeamIds]);
 
+  const peerReviewTeams = useMemo(() => {
+    const completedSessions = [
+      ...(Array.isArray(matchDayHistory)
+        ? matchDayHistory
+        : []),
+      ...(Array.isArray(friendlyMatchDayHistory)
+        ? friendlyMatchDayHistory
+        : []),
+    ]
+      .filter(
+        (session) =>
+          session &&
+          typeof session === "object"
+      )
+      .sort(
+        (left, right) =>
+          getPeerReviewSessionTimestamp(right) -
+          getPeerReviewSessionTimestamp(left)
+      );
+
+    for (const session of completedSessions) {
+      const archivedTeams =
+        buildPeerReviewTeamsFromCompletedSession(session);
+
+      if (archivedTeams.length > 0) {
+        return archivedTeams;
+      }
+    }
+
+    /*
+      No usable completed-session archive yet.
+
+      Friendly:
+      use the two squads currently selected in Manage Squads.
+
+      League:
+      retain every League team so a three-team match day shows
+      all three teams, not only the current two-team fixture.
+    */
+    if (matchType === MATCH_TYPE.FRIENDLY) {
+      return getActiveFriendlyTeams(fiveVFiveTeams);
+    }
+
+    return Array.isArray(teams) ? teams : [];
+  }, [
+    matchDayHistory,
+    friendlyMatchDayHistory,
+    matchType,
+    fiveVFiveTeams,
+    teams,
+  ]);
+
   const effectiveLiveMatch = useMemo(() => {
     if (matchType === MATCH_TYPE.FRIENDLY) {
       const activeFriendlyTeams = getActiveFriendlyTeams(fiveVFiveTeams);
@@ -4426,7 +4628,11 @@ export default function App() {
             results: [newResult],
             allEvents: allCommittedEvents,
             teams: friendlyTeamsSnapshot,
-            playerAppearances: [],
+            playerAppearances: buildDefaultParticipationEntries({
+              teams: friendlyTeamsSnapshot,
+              results: [newResult],
+              members,
+            }),
           };
 
           return {
@@ -4585,7 +4791,11 @@ export default function App() {
           results: [newResult],
           allEvents: allCommittedEvents,
           teams: friendlyTeamsSnapshot,
-          playerAppearances: [],
+          playerAppearances: buildDefaultParticipationEntries({
+            teams: friendlyTeamsSnapshot,
+            results: [newResult],
+            members,
+          }),
         };
 
         return {
@@ -5029,8 +5239,13 @@ export default function App() {
       return;
     }
 
+    const participationTeams =
+      matchType === MATCH_TYPE.FRIENDLY
+        ? getActiveFriendlyTeams(fiveVFiveTeams)
+        : teams;
+
     const defaults = buildDefaultParticipationEntries({
-      teams,
+      teams: participationTeams,
       results,
       members,
     });
@@ -5293,7 +5508,7 @@ export default function App() {
                   results: splitResults.friendly,
                   allEvents: splitEvents.friendly,
                   teams: getActiveFriendlyTeams(prevSeason?.fiveVFiveTeams),
-                  playerAppearances: [],
+                  playerAppearances: safeParticipationEntries,
                 }
               : null;
 
@@ -5391,7 +5606,7 @@ export default function App() {
                 results: splitResults.friendly,
                 allEvents: splitEvents.friendly,
                 teams: getActiveFriendlyTeams(prev?.fiveVFiveTeams),
-                playerAppearances: [],
+                playerAppearances: pendingParticipationEntries || [],
               }
             : null;
 
@@ -7376,7 +7591,7 @@ export default function App() {
 
       {page === PAGE_PEER_REVIEW && (
         <PeerReviewPage
-          teams={teams}
+          teams={peerReviewTeams}
           playerPhotosByName={effectivePlayerPhotosByName}
           identity={pageIdentity}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
