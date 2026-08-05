@@ -39,6 +39,9 @@ function normalizeHighlightType(type) {
   if (key.includes("goal")) return "goal";
   if (key.includes("save")) return "save";
   if (key.includes("skill")) return "skill";
+  if (key.includes("momish") || key.includes("mom-ish") || key.includes("funny")) {
+    return "momish";
+  }
   return "other";
 }
 
@@ -278,9 +281,17 @@ function getVoteBuckets(votesByUser, highlights) {
   return buckets;
 }
 
-function buildArchiveSelection(highlights, votesByUser) {
+function buildArchiveSelection(
+  highlights,
+  votesByUser,
+  directLikeCounts = null
+) {
   const safeHighlights = Array.isArray(highlights) ? highlights : [];
-  const voteCounts = getVoteBuckets(votesByUser, safeHighlights);
+
+  const voteCounts =
+    directLikeCounts && typeof directLikeCounts === "object"
+      ? directLikeCounts
+      : getVoteBuckets(votesByUser, safeHighlights);
 
   const approved = safeHighlights
     .map((item, index) => normalizeHighlight(item, index))
@@ -636,20 +647,20 @@ function HighlightCard({
   highlight,
   teams = [],
   matchType = "FRIENDLY",
-  voteCount = 0,
+  likeCount = 0,
   isModerator = false,
-  canVote = false,
-  userVoteForType = null,
+  canLike = false,
+  isLiked = false,
   currentUserKey = "",
-  onVote,
+  onLike,
   onApprove,
   onReject,
   onDelete,
+  onEdit,
   onIdentifyPlayer,
   onAttachToClubChat,
 }) {
   const [showShareMenu, setShowShareMenu] = useState(false);
-  const isSelectedVote = userVoteForType === highlight.id;
   const missingBadges = getMissingBadges(highlight);
   const matchupLabel = getMatchupLabel(highlight, teams, matchType);
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
@@ -757,6 +768,25 @@ function HighlightCard({
 
       <div className="tkh-badge-row">
         <span className="tkh-type-badge">{typeBadgeLabel(highlight.normalizedType)}</span>
+
+        {isModerator && (
+          <button
+            type="button"
+            className="tkh-btn"
+            onClick={() => onEdit?.(highlight)}
+            title="Edit highlight"
+            style={{
+              marginLeft: "0.45rem",
+              padding: "0.18rem 0.48rem",
+              minHeight: "unset",
+              fontSize: "0.72rem",
+              lineHeight: 1,
+            }}
+          >
+            ✏️
+          </button>
+        )}
+
         {missingBadges.map((badge) => (
           <span key={badge} className="tkh-missing-badge">{badge}</span>
         ))}
@@ -784,7 +814,10 @@ function HighlightCard({
         <span className="tkh-matchup-label">{matchupLabel}</span>
         <span>{highlight.teamName}</span>
         <span>{highlight.durationSeconds ? formatSeconds(highlight.durationSeconds) : "Clip"}</span>
-        <span>{voteCount} vote{voteCount === 1 ? "" : "s"}</span>
+        <span>
+          {Number(likeCount || 0)} like
+          {Number(likeCount || 0) === 1 ? "" : "s"}
+        </span>
       </div>
 
       {highlight.assist && (
@@ -798,24 +831,36 @@ function HighlightCard({
 </div>
       )}
 
-      <div className="tkh-soft-line">
-        Uploaded {formatDate(highlight.createdAt)}
-        {highlight.createdByName
-  ? ` by ${String(highlight.createdByName).trim().split(" ")[0]}`
-  : ""}
-      </div>
+      {isModerator && (
+        <div className="tkh-soft-line">
+          Uploaded {formatDate(highlight.createdAt)}
+          {highlight.createdByName
+            ? ` by ${String(highlight.createdByName)
+                .trim()
+                .split(" ")[0]}`
+            : ""}
+        </div>
+      )}
 
       <div className="tkh-card-actions">
         {highlight.status === "approved" &&
-          canVote &&
+          canLike &&
           !(highlight.highlightEra === "throwback" || highlight.isThrowback) &&
-          ["goal", "save", "skill"].includes(highlight.normalizedType) && (
+          ["goal", "save", "skill", "momish"].includes(
+            highlight.normalizedType
+          ) && (
             <button
               type="button"
-              className={`tkh-btn tkh-btn-vote ${isSelectedVote ? "is-selected" : ""}`}
-              onClick={() => onVote?.(highlight.normalizedType, highlight.id)}
+              className={`tkh-btn tkh-btn-vote ${
+                isLiked ? "is-selected" : ""
+              }`}
+              onClick={() => onLike?.(highlight)}
+              aria-pressed={isLiked}
             >
-              {isSelectedVote ? "Selected" : "Vote"}
+              {isLiked ? "❤️ Liked" : "♡ Like"}
+              {Number(likeCount || 0) > 0
+                ? ` · ${Number(likeCount || 0)}`
+                : ""}
             </button>
           )}
 
@@ -830,7 +875,10 @@ function HighlightCard({
         )}
 
         {highlight.mediaUrl && (
-          <div style={{ position: "relative" }}>
+          <div
+            className="tkh-share-action"
+            style={{ position: "relative" }}
+          >
             <button
               type="button"
               className="tkh-btn"
@@ -903,7 +951,7 @@ function HighlightCard({
         )}
 
         {canDeleteHighlight && (
-          <button type="button" className="tkh-btn tkh-btn-danger" onClick={() => onDelete?.(highlight)}>
+          <button type="button" className="tkh-btn tkh-btn-danger tkh-delete-action" onClick={() => onDelete?.(highlight)}>
             Delete
           </button>
         )}
@@ -954,6 +1002,9 @@ export function VideoHighlightsPage({
   const [archivedHighlights, setArchivedHighlights] = useState([]);
   const [localHighlights, setLocalHighlights] = useState([]);
   const [localVotesByUser, setLocalVotesByUser] = useState(votesByUser || {});
+  const [likeCountsByClip, setLikeCountsByClip] = useState({});
+  const [likedClipIds, setLikedClipIds] = useState(() => new Set());
+  const [likesLoading, setLikesLoading] = useState(false);
   const [mainTab, setMainTab] = useState("currentWeek");
   const [selectedTab, setSelectedTab] = useState("approved");
   const [selectedFilter, setSelectedFilter] = useState("all");
@@ -970,6 +1021,18 @@ export function VideoHighlightsPage({
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [identifyTarget, setIdentifyTarget] = useState(null);
   const [identifyPlayerName, setIdentifyPlayerName] = useState("");
+
+  const [editTarget, setEditTarget] = useState(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editPlayerName, setEditPlayerName] = useState("");
+  const [editAssistName, setEditAssistName] = useState("");
+  const [editClipType, setEditClipType] = useState("goal");
+  const [editTeamAName, setEditTeamAName] = useState("");
+  const [editTeamBName, setEditTeamBName] = useState("");
+  const [editPlayerTeamName, setEditPlayerTeamName] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+
   const [shareMenuClipId, setShareMenuClipId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -1000,7 +1063,25 @@ export function VideoHighlightsPage({
   const canUpload = isLoggedIn && ["admin", "captain", "player"].includes(role);
   const isLeagueMode = safeLower(matchType).includes("league");
   const teamContextText = useMemo(() => getTeamContextText(teams, matchType), [teams, matchType]);
-  const featuredTeamNames = useMemo(() => getFeaturedTeamNames(teams, matchType), [teams, matchType]);
+  const featuredTeamNames = useMemo(
+    () => getFeaturedTeamNames(teams, matchType),
+    [teams, matchType]
+  );
+
+  const metadataTeamOptions = useMemo(() => {
+    const names = (Array.isArray(teams) ? teams : [])
+      .map((team) =>
+        String(
+          team?.label ||
+          team?.teamName ||
+          team?.name ||
+          ""
+        ).trim()
+      )
+      .filter(Boolean);
+
+    return [...new Set(names)];
+  }, [teams]);
   const votingDeadline = useMemo(() => getCurrentWeekVotingDeadline(nowTick), [nowTick]);
   const votingDeadlineLabel = useMemo(() => formatVotingDeadline(votingDeadline), [votingDeadline]);
   const votingWindowClosed = nowTick > votingDeadline.getTime();
@@ -1023,14 +1104,52 @@ export function VideoHighlightsPage({
     try {
       setLoadingHighlights(true);
       setLoadError("");
-      const [loaded, archived] = await Promise.all([
-        VideoHighlightsRepository.loadRawHighlightsFromFirebase(resolvedMatchId),
-        typeof VideoHighlightsRepository.loadArchivedHighlightsFromFirebase === "function"
-          ? VideoHighlightsRepository.loadArchivedHighlightsFromFirebase(resolvedMatchId)
-          : Promise.resolve([]),
-      ]);
-      setFirebaseHighlights(Array.isArray(loaded) ? loaded : []);
-      setArchivedHighlights(Array.isArray(archived) ? archived : []);
+      const [loaded, archived, recentClubClips] =
+        await Promise.all([
+          VideoHighlightsRepository.loadRawHighlightsFromFirebase(
+            resolvedMatchId
+          ),
+          typeof VideoHighlightsRepository
+            .loadArchivedHighlightsFromFirebase === "function"
+            ? VideoHighlightsRepository
+                .loadArchivedHighlightsFromFirebase(resolvedMatchId)
+            : Promise.resolve([]),
+          typeof VideoHighlightsRepository
+            .loadRecentClubHighlightsFromFirebase === "function"
+            ? VideoHighlightsRepository
+                .loadRecentClubHighlightsFromFirebase(
+                  activeClubId,
+                  { visibilityDays: 5 }
+                )
+            : Promise.resolve([]),
+        ]);
+
+      const combinedRaw = [
+        ...(Array.isArray(loaded) ? loaded : []),
+        ...(Array.isArray(recentClubClips)
+          ? recentClubClips
+          : []),
+      ];
+
+      const seen = new Set();
+
+      setFirebaseHighlights(
+        combinedRaw.filter((clip) => {
+          const key = String(
+            clip?.clipId || clip?.id || ""
+          ).trim();
+
+          if (!key) return true;
+          if (seen.has(key)) return false;
+
+          seen.add(key);
+          return true;
+        })
+      );
+
+      setArchivedHighlights(
+        Array.isArray(archived) ? archived : []
+      );
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Failed to load highlights:", error);
       setLoadError(error?.message || "Could not load highlights from the server.");
@@ -1046,7 +1165,7 @@ export function VideoHighlightsPage({
   useEffect(() => {
     loadHighlights();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedMatchId]);
+  }, [resolvedMatchId, activeClubId]);
 
   useEffect(() => {
     return () => {
@@ -1074,6 +1193,86 @@ export function VideoHighlightsPage({
       })
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }, [currentMatchDayHighlights, firebaseHighlights, localHighlights]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadClubFeedLikes = async () => {
+      const matchIds = [
+        ...new Set(
+          allHighlights
+            .map((clip) =>
+              String(
+                clip?.matchId ||
+                resolvedMatchId ||
+                ""
+              ).trim()
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+      if (!matchIds.length) {
+        if (!cancelled) {
+          setLikeCountsByClip({});
+          setLikedClipIds(new Set());
+        }
+        return;
+      }
+
+      try {
+        setLikesLoading(true);
+
+        const result =
+          await VideoHighlightsRepository
+            .loadHighlightLikesForMatchesFromFirebase(
+              matchIds
+            );
+
+        if (cancelled) return;
+
+        setLikeCountsByClip(
+          result?.countsByClip || {}
+        );
+
+        const myLikedClipIds =
+          result?.likedClipIdsByUser?.[identityKey] ||
+          [];
+
+        setLikedClipIds(
+          new Set(
+            (Array.isArray(myLikedClipIds)
+              ? myLikedClipIds
+              : []
+            )
+              .map((value) =>
+                String(value || "").trim()
+              )
+              .filter(Boolean)
+          )
+        );
+      } catch (error) {
+        console.error(
+          "[TK HIGHLIGHTS] Failed to load likes:",
+          error
+        );
+      } finally {
+        if (!cancelled) {
+          setLikesLoading(false);
+        }
+      }
+    };
+
+    void loadClubFeedLikes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    allHighlights,
+    identityKey,
+    resolvedMatchId,
+  ]);
 
   const playerOptions = useMemo(
     () => buildPlayerOptions({ members, teams, highlights: allHighlights }),
@@ -1163,8 +1362,17 @@ export function VideoHighlightsPage({
   const userVotes = localVotesByUser[identityKey] || {};
 
   const archiveSelection = useMemo(
-    () => buildArchiveSelection(approvedHighlights, localVotesByUser),
-    [approvedHighlights, localVotesByUser]
+    () =>
+      buildArchiveSelection(
+        approvedHighlights,
+        localVotesByUser,
+        likeCountsByClip
+      ),
+    [
+      approvedHighlights,
+      localVotesByUser,
+      likeCountsByClip,
+    ]
   );
 
   const currentTopVotedClips = useMemo(
@@ -1172,8 +1380,14 @@ export function VideoHighlightsPage({
       ...archiveSelection.topGoals,
       archiveSelection.bestSave,
       archiveSelection.bestSkill,
+      archiveSelection.bestMomish,
     ].filter(Boolean),
-    [archiveSelection.topGoals, archiveSelection.bestSave, archiveSelection.bestSkill]
+    [
+      archiveSelection.topGoals,
+      archiveSelection.bestSave,
+      archiveSelection.bestSkill,
+      archiveSelection.bestMomish,
+    ]
   );
 
   const currentTopVotedClipNames = useMemo(
@@ -1187,8 +1401,15 @@ export function VideoHighlightsPage({
 
   const topVotedClipGroups = useMemo(() => {
     const source = archivedHighlights.length ? archivedHighlights : currentTopVotedClips;
-    return groupTopVotedClipsByMatchDay(source, voteCounts);
-  }, [archivedHighlights, currentTopVotedClips, voteCounts]);
+    return groupTopVotedClipsByMatchDay(
+      source,
+      likeCountsByClip
+    );
+  }, [
+    archivedHighlights,
+    currentTopVotedClips,
+    likeCountsByClip,
+  ]);
 
   useEffect(() => {
     if (votingWindowClosed) {
@@ -1373,6 +1594,10 @@ export function VideoHighlightsPage({
           ? cleanPlayerName === PENDING_PLAYER ? "Save clip" : `Save by ${cleanPlayerName}`
           : normalizedType === "skill"
           ? cleanPlayerName === PENDING_PLAYER ? "Skill clip" : `Skill by ${cleanPlayerName}`
+          : normalizedType === "momish"
+          ? cleanPlayerName === PENDING_PLAYER
+            ? "MOM-ish moment"
+            : `MOM-ish moment by ${cleanPlayerName}`
           : cleanPlayerName === PENDING_PLAYER ? "Match clip" : `Highlight by ${cleanPlayerName}`,
       metadataComplete: cleanPlayerName !== PENDING_PLAYER && cleanTeamName !== PENDING_TEAM,
       needsPlayer: cleanPlayerName === PENDING_PLAYER,
@@ -1574,6 +1799,212 @@ export function VideoHighlightsPage({
     }
   };
 
+  const openMetadataEditor = (highlight) => {
+    if (!isModerator || !highlight) return;
+
+    const existingMatchup = getMatchupLabel(
+      highlight,
+      teams,
+      matchType
+    );
+
+    const matchupParts = String(existingMatchup || "")
+      .split(/\s+vs\s+/i)
+      .map((value) => value.trim());
+
+    setEditTarget(highlight);
+    setEditTitle(String(highlight?.title || ""));
+    setEditPlayerName(
+      String(highlight?.playerName || "")
+    );
+    setEditAssistName(
+      String(highlight?.assist || highlight?.assistName || "")
+    );
+    setEditClipType(
+      normalizeHighlightType(
+        highlight?.type ||
+        highlight?.tag ||
+        highlight?.normalizedType ||
+        "other"
+      )
+    );
+    setEditTeamAName(
+      String(
+        highlight?.homeTeamName ||
+        highlight?.teamAName ||
+        matchupParts[0] ||
+        ""
+      )
+    );
+    setEditTeamBName(
+      String(
+        highlight?.awayTeamName ||
+        highlight?.teamBName ||
+        matchupParts[1] ||
+        ""
+      )
+    );
+    setEditPlayerTeamName(
+      String(highlight?.teamName || "")
+    );
+    setEditError("");
+  };
+
+  const closeMetadataEditor = () => {
+    if (editSaving) return;
+    setEditTarget(null);
+    setEditError("");
+  };
+
+  const handleSaveMetadataEdit = async () => {
+    if (!isModerator || !editTarget) return;
+
+    const cleanTeamA = String(editTeamAName || "").trim();
+    const cleanTeamB = String(editTeamBName || "").trim();
+
+    if (
+      safeLower(matchType).includes("league") &&
+      (!cleanTeamA || !cleanTeamB)
+    ) {
+      setEditError(
+        "Choose both League teams for this clip."
+      );
+      return;
+    }
+
+    if (
+      cleanTeamA &&
+      cleanTeamB &&
+      safeLower(cleanTeamA) === safeLower(cleanTeamB)
+    ) {
+      setEditError(
+        "Team A and Team B must be different."
+      );
+      return;
+    }
+
+    const clipMatchId = String(
+      editTarget?.matchId ||
+      resolvedMatchId ||
+      ""
+    ).trim();
+
+    const clipId = String(
+      editTarget?.clipId ||
+      editTarget?.id ||
+      ""
+    ).trim();
+
+    if (!clipMatchId || !clipId) {
+      setEditError(
+        "This clip is missing its Firebase match identity."
+      );
+      return;
+    }
+
+    const normalizedType =
+      normalizeHighlightType(editClipType);
+
+    const cleanPlayer =
+      toTitleCaseLoose(editPlayerName) ||
+      PENDING_PLAYER;
+
+    const cleanAssist =
+      toTitleCaseLoose(editAssistName);
+
+    const cleanPlayerTeam =
+      String(editPlayerTeamName || "").trim();
+
+    const matchup =
+      cleanTeamA && cleanTeamB
+        ? `${cleanTeamA} vs ${cleanTeamB}`
+        : String(editTarget?.matchup || "");
+
+    const defaultTitle =
+      normalizedType === "goal"
+        ? `Goal by ${cleanPlayer}`
+        : normalizedType === "save"
+          ? `Save by ${cleanPlayer}`
+          : normalizedType === "skill"
+            ? `Skill by ${cleanPlayer}`
+            : normalizedType === "momish"
+              ? `MOM-ish moment by ${cleanPlayer}`
+              : `Highlight by ${cleanPlayer}`;
+
+    const updated = normalizeHighlight({
+      ...editTarget,
+      clipId,
+      matchId: clipMatchId,
+
+      title:
+        String(editTitle || "").trim() ||
+        defaultTitle,
+
+      playerName: cleanPlayer,
+      assist: cleanAssist || "",
+      assistName: cleanAssist || "",
+
+      type: normalizedType,
+      tag: normalizedType,
+      normalizedType,
+
+      teamName:
+        cleanPlayerTeam ||
+        editTarget?.teamName ||
+        "",
+
+      matchup,
+      fixtureLabel: matchup,
+      matchLabel: matchup,
+
+      homeTeamName: cleanTeamA,
+      awayTeamName: cleanTeamB,
+      teamAName: cleanTeamA,
+      teamBName: cleanTeamB,
+      homeTeam: cleanTeamA,
+      awayTeam: cleanTeamB,
+      teamA: cleanTeamA,
+      teamB: cleanTeamB,
+
+      metadataEditedAtISO:
+        new Date().toISOString(),
+      metadataEditedBy:
+        identityName || identityKey || "Moderator",
+      updatedAt:
+        new Date().toISOString(),
+    });
+
+    try {
+      setEditSaving(true);
+      setEditError("");
+
+      /*
+        Save against the clip's own match bucket, not whichever
+        match is currently open on the page.
+      */
+      await saveRawHighlightDoc({
+        matchId: clipMatchId,
+        highlight: updated,
+      });
+
+      upsertLocalHighlight(updated);
+      setEditTarget(null);
+      await loadHighlights();
+    } catch (error) {
+      console.error(
+        "[TK HIGHLIGHTS] Metadata edit failed:",
+        error
+      );
+
+      setEditError(
+        error?.message ||
+        "Could not save the clip changes."
+      );
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const openIdentifyPlayer = (highlight) => {
     setIdentifyTarget(highlight || null);
     setIdentifyPlayerName("");
@@ -1718,30 +2149,101 @@ export function VideoHighlightsPage({
     }
   };
 
-  const castVote = async (category, highlightId) => {
-    if (!isLoggedIn) return;
+  const toggleLike = async (highlight) => {
+    if (!isLoggedIn || !highlight) return;
 
-    const next = {
-      ...localVotesByUser,
-      [identityKey]: {
-        ...(localVotesByUser[identityKey] || {}),
-        [category]: highlightId,
-      },
-    };
+    const clipId = String(
+      highlight.clipId ||
+      highlight.id ||
+      highlight.highlightId ||
+      ""
+    ).trim();
 
-    setLocalVotesByUser(next);
+    const clipMatchId = String(
+      highlight.matchId ||
+      resolvedMatchId ||
+      ""
+    ).trim();
+
+    if (!clipId || !clipMatchId) {
+      window.alert(
+        "This clip is missing its match identity and cannot be liked yet."
+      );
+      return;
+    }
+
+    const wasLiked = likedClipIds.has(clipId);
+
+    // Optimistic heart response.
+    setLikedClipIds((previous) => {
+      const next = new Set(previous);
+
+      if (wasLiked) next.delete(clipId);
+      else next.add(clipId);
+
+      return next;
+    });
+
+    setLikeCountsByClip((previous) => ({
+      ...previous,
+      [clipId]: Math.max(
+        0,
+        Number(previous?.[clipId] || 0) +
+          (wasLiked ? -1 : 1)
+      ),
+    }));
 
     try {
-      if (resolvedMatchId) {
-        await VideoHighlightsRepository.saveHighlightVotesToFirebase({
-          matchId: resolvedMatchId,
-          userId: identityKey,
-          votes: next[identityKey],
-        });
-      }
-      await onVotesChange?.(next);
+      const result =
+        await VideoHighlightsRepository
+          .toggleHighlightLike({
+            matchId: clipMatchId,
+            clipId,
+            userId: identityKey,
+            clubId: activeClubId,
+            category:
+              highlight.normalizedType ||
+              highlight.type ||
+              "",
+          });
+
+      setLikedClipIds((previous) => {
+        const next = new Set(previous);
+
+        if (result?.liked) next.add(clipId);
+        else next.delete(clipId);
+
+        return next;
+      });
     } catch (error) {
-      console.error("[TK HIGHLIGHTS] Vote save failed:", error);
+      console.error(
+        "[TK HIGHLIGHTS] Like toggle failed:",
+        error
+      );
+
+      // Roll back optimistic state.
+      setLikedClipIds((previous) => {
+        const next = new Set(previous);
+
+        if (wasLiked) next.add(clipId);
+        else next.delete(clipId);
+
+        return next;
+      });
+
+      setLikeCountsByClip((previous) => ({
+        ...previous,
+        [clipId]: Math.max(
+          0,
+          Number(previous?.[clipId] || 0) +
+            (wasLiked ? 1 : -1)
+        ),
+      }));
+
+      window.alert(
+        error?.message ||
+        "Could not update this like."
+      );
     }
   };
 
@@ -2959,15 +3461,30 @@ export function VideoHighlightsPage({
                     highlight={highlight}
                     teams={teams}
                     matchType={matchType}
-                    voteCount={voteCounts[highlight.id] || 0}
+                    likeCount={
+                      likeCountsByClip[
+                        highlight.clipId ||
+                        highlight.id
+                      ] || 0
+                    }
                     isModerator={isModerator}
-                    canVote={isLoggedIn}
+                    canLike={
+                      isLoggedIn &&
+                      !likesLoading
+                    }
+                    isLiked={likedClipIds.has(
+                      String(
+                        highlight.clipId ||
+                        highlight.id ||
+                        ""
+                      )
+                    )}
                     currentUserKey={identityKey}
-                    userVoteForType={userVotes[highlight.normalizedType] || null}
-                    onVote={castVote}
+                    onLike={toggleLike}
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onDelete={handleDelete}
+                    onEdit={openMetadataEditor}
                     onIdentifyPlayer={openIdentifyPlayer}
                     onAttachToClubChat={onAttachHighlightToClubChat}
                   />
@@ -3008,15 +3525,35 @@ export function VideoHighlightsPage({
                             highlight={clip}
                             teams={teams}
                             matchType={matchType}
-                            voteCount={voteCounts[clip.id] || Number(clip.votes || 0)}
+                            likeCount={
+                              likeCountsByClip[
+                                clip.clipId ||
+                                clip.id
+                              ] ||
+                              Number(
+                                clip.likeCount ||
+                                clip.votes ||
+                                0
+                              )
+                            }
                             isModerator={isModerator}
-                            canVote={isLoggedIn}
+                            canLike={
+                              isLoggedIn &&
+                              !likesLoading
+                            }
+                            isLiked={likedClipIds.has(
+                              String(
+                                clip.clipId ||
+                                clip.id ||
+                                ""
+                              )
+                            )}
                             currentUserKey={identityKey}
-                            userVoteForType={userVotes[clip.normalizedType] || null}
-                            onVote={castVote}
+                            onLike={toggleLike}
                             onApprove={handleApprove}
                             onReject={handleReject}
                             onDelete={handleDelete}
+                            onEdit={openMetadataEditor}
                             onIdentifyPlayer={openIdentifyPlayer}
                             onAttachToClubChat={onAttachHighlightToClubChat}
                           />
@@ -3101,6 +3638,246 @@ export function VideoHighlightsPage({
                 disabled={!toTitleCaseLoose(identifyPlayerName)}
               >
                 Save player
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editTarget && isModerator && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeMetadataEditor();
+            }
+          }}
+        >
+          <div
+            className="modal"
+            style={{
+              width: "min(540px, calc(100vw - 1.25rem))",
+              maxHeight: "calc(100vh - 1.25rem)",
+              overflowY: "auto",
+              borderRadius: "22px",
+              padding: "1rem",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "1rem",
+                marginBottom: "0.8rem",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  ✏️ Edit highlight
+                </h3>
+                <p
+                  className="tkh-help"
+                  style={{ margin: "0.3rem 0 0" }}
+                >
+                  Correct the clip details and its actual match.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="tkh-btn"
+                onClick={closeMetadataEditor}
+                disabled={editSaving}
+                aria-label="Close editor"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(2, minmax(0, 1fr))",
+                gap: "0.75rem",
+              }}
+            >
+              <label
+                className="tkh-field"
+                style={{ gridColumn: "1 / -1" }}
+              >
+                <span>Title</span>
+                <input
+                  className="tkh-input"
+                  value={editTitle}
+                  onChange={(event) =>
+                    setEditTitle(event.target.value)
+                  }
+                  disabled={editSaving}
+                />
+              </label>
+
+              <label className="tkh-field">
+                <span>Clip type</span>
+                <select
+                  className="tkh-select"
+                  value={editClipType}
+                  onChange={(event) =>
+                    setEditClipType(event.target.value)
+                  }
+                  disabled={editSaving}
+                >
+                  <option value="goal">⚽ Goal</option>
+                  <option value="save">🧤 Save</option>
+                  <option value="skill">✨ Skill</option>
+                  <option value="momish">😂 MOM-ish</option>
+                  <option value="other">🎥 Other</option>
+                </select>
+              </label>
+
+              <label className="tkh-field">
+                <span>Player/scorer</span>
+                <input
+                  className="tkh-input"
+                  list="tkh-edit-player-options"
+                  value={editPlayerName}
+                  onChange={(event) =>
+                    setEditPlayerName(event.target.value)
+                  }
+                  disabled={editSaving}
+                />
+              </label>
+
+              <label className="tkh-field">
+                <span>Assist</span>
+                <input
+                  className="tkh-input"
+                  list="tkh-edit-player-options"
+                  value={editAssistName}
+                  onChange={(event) =>
+                    setEditAssistName(event.target.value)
+                  }
+                  disabled={editSaving}
+                  placeholder="No assist"
+                />
+              </label>
+
+              <label className="tkh-field">
+                <span>Player's team</span>
+                <select
+                  className="tkh-select"
+                  value={editPlayerTeamName}
+                  onChange={(event) =>
+                    setEditPlayerTeamName(
+                      event.target.value
+                    )
+                  }
+                  disabled={editSaving}
+                >
+                  <option value="">Not specified</option>
+                  {metadataTeamOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="tkh-field">
+                <span>
+                  {isLeagueMode
+                    ? "League Team A"
+                    : "Match Team A"}
+                </span>
+                <select
+                  className="tkh-select"
+                  value={editTeamAName}
+                  onChange={(event) =>
+                    setEditTeamAName(event.target.value)
+                  }
+                  disabled={editSaving}
+                >
+                  <option value="">Choose team</option>
+                  {metadataTeamOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="tkh-field">
+                <span>
+                  {isLeagueMode
+                    ? "League Team B"
+                    : "Match Team B"}
+                </span>
+                <select
+                  className="tkh-select"
+                  value={editTeamBName}
+                  onChange={(event) =>
+                    setEditTeamBName(event.target.value)
+                  }
+                  disabled={editSaving}
+                >
+                  <option value="">Choose team</option>
+                  {metadataTeamOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <datalist id="tkh-edit-player-options">
+                {playerOptions.map((player) => {
+                  const name =
+                    typeof player === "string"
+                      ? player
+                      : player?.name ||
+                        player?.label ||
+                        player?.fullName ||
+                        "";
+
+                  return name ? (
+                    <option key={name} value={name} />
+                  ) : null;
+                })}
+              </datalist>
+            </div>
+
+            {editError && (
+              <p className="error-text">
+                {editError}
+              </p>
+            )}
+
+            <div
+              className="actions-row"
+              style={{
+                marginTop: "1rem",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                type="button"
+                className="tkh-btn"
+                onClick={closeMetadataEditor}
+                disabled={editSaving}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handleSaveMetadataEdit}
+                disabled={editSaving}
+              >
+                {editSaving
+                  ? "Saving…"
+                  : "Save changes"}
               </button>
             </div>
           </div>
@@ -3194,10 +3971,11 @@ export function VideoHighlightsPage({
               <div className="tkh-field">
                 <label>Type</label>
                 <select className="tkh-select" value={clipType} onChange={(e) => setClipType(e.target.value)} disabled={uploading}>
-                  <option value="goal">Goal</option>
-                  <option value="save">Save</option>
-                  <option value="skill">Skill</option>
-                  <option value="other">Other</option>
+                  <option value="goal">⚽ Goal</option>
+                  <option value="save">🧤 Save</option>
+                  <option value="skill">✨ Skill</option>
+                  <option value="momish">😂 MOM-ish</option>
+                  <option value="other">🎥 Other</option>
                 </select>
               </div>
 

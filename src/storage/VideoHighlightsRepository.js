@@ -12,6 +12,7 @@ import {
   limit,
   writeBatch,
   serverTimestamp,
+  getDoc,
 } from "firebase/firestore";
 
 import {
@@ -373,7 +374,190 @@ export async function loadVideoCleanupQueueFromFirebase(matchId) {
 }
 
 // ============================
-// VOTES
+// LIKES
+// ============================
+
+function highlightLikesRef(matchId) {
+  return collection(matchRef(matchId), "likes");
+}
+
+function highlightLikeDoc(matchId, clipId, userId) {
+  const safeClipId = safeId(clipId, "clip");
+  const safeUserId = safeId(userId, "user");
+
+  return doc(
+    highlightLikesRef(matchId),
+    `${safeClipId}__${safeUserId}`
+  );
+}
+
+/**
+ * Toggle one user's like for one clip.
+ *
+ * The document ID is deterministic, so the same user cannot create
+ * duplicate likes on the same clip. The user may still like any
+ * number of different clips.
+ */
+export async function toggleHighlightLike({
+  matchId,
+  clipId,
+  userId,
+  clubId = "",
+  category = "",
+} = {}) {
+  if (!matchId) throw new Error("Missing matchId.");
+  if (!clipId) throw new Error("Missing clipId.");
+  if (!userId) throw new Error("Missing userId.");
+
+  const target = highlightLikeDoc(matchId, clipId, userId);
+  const existing = await getDoc(target);
+
+  if (existing.exists()) {
+    await deleteDoc(target);
+
+    return {
+      matchId,
+      clipId,
+      userId,
+      liked: false,
+    };
+  }
+
+  const likedAtISO = new Date().toISOString();
+
+  const payload = {
+    matchId: String(matchId),
+    clipId: String(clipId),
+    userId: String(userId),
+    clubId: String(clubId || ""),
+    category: String(category || ""),
+    likedAtISO,
+    likedAtServer: serverTimestamp(),
+  };
+
+  await setDoc(target, cleanFirestorePayload(payload));
+
+  return {
+    ...payload,
+    liked: true,
+  };
+}
+
+/**
+ * Load likes from one match bucket.
+ *
+ * Returns both:
+ * - countsByClip: total unique likes per clip
+ * - likedClipIdsByUser: clips liked by each user
+ */
+export async function loadHighlightLikesFromFirebase(matchId) {
+  if (!matchId) {
+    return {
+      likes: [],
+      countsByClip: {},
+      likedClipIdsByUser: {},
+    };
+  }
+
+  const snap = await getDocs(highlightLikesRef(matchId));
+  const likes = [];
+  const countsByClip = {};
+  const likedClipIdsByUser = {};
+
+  snap.docs.forEach((likeSnap) => {
+    const data = likeSnap.data() || {};
+    const clipId = String(data.clipId || "").trim();
+    const userId = String(data.userId || "").trim();
+
+    if (!clipId || !userId) return;
+
+    likes.push({
+      id: likeSnap.id,
+      ...data,
+      clipId,
+      userId,
+      matchId: data.matchId || matchId,
+    });
+
+    countsByClip[clipId] =
+      Number(countsByClip[clipId] || 0) + 1;
+
+    if (!Array.isArray(likedClipIdsByUser[userId])) {
+      likedClipIdsByUser[userId] = [];
+    }
+
+    if (!likedClipIdsByUser[userId].includes(clipId)) {
+      likedClipIdsByUser[userId].push(clipId);
+    }
+  });
+
+  return {
+    likes,
+    countsByClip,
+    likedClipIdsByUser,
+  };
+}
+
+/**
+ * Load and merge likes for every match represented in the club feed.
+ */
+export async function loadHighlightLikesForMatchesFromFirebase(
+  matchIds = []
+) {
+  const uniqueMatchIds = [
+    ...new Set(
+      (Array.isArray(matchIds) ? matchIds : [matchIds])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  const results = await Promise.all(
+    uniqueMatchIds.map((matchId) =>
+      loadHighlightLikesFromFirebase(matchId)
+    )
+  );
+
+  const likes = [];
+  const countsByClip = {};
+  const likedClipIdsByUser = {};
+
+  results.forEach((result) => {
+    likes.push(...(Array.isArray(result?.likes) ? result.likes : []));
+
+    Object.entries(result?.countsByClip || {}).forEach(
+      ([clipId, count]) => {
+        countsByClip[clipId] =
+          Number(countsByClip[clipId] || 0) +
+          Number(count || 0);
+      }
+    );
+
+    Object.entries(result?.likedClipIdsByUser || {}).forEach(
+      ([userId, clipIds]) => {
+        const existing = new Set(
+          likedClipIdsByUser[userId] || []
+        );
+
+        (Array.isArray(clipIds) ? clipIds : []).forEach(
+          (clipId) => existing.add(clipId)
+        );
+
+        likedClipIdsByUser[userId] = [...existing];
+      }
+    );
+  });
+
+  return {
+    likes,
+    countsByClip,
+    likedClipIdsByUser,
+  };
+}
+
+
+// ============================
+// LEGACY VOTES
 // ============================
 
 export async function saveHighlightVotesToFirebase({
@@ -1064,6 +1248,216 @@ export async function clearRawHighlightsFromFirebase(matchId) {
 // CLUB FEATURED HIGHLIGHT
 // ============================
 
+export async function loadRecentClubHighlightsFromFirebase(
+  clubId,
+  { visibilityDays = 5 } = {}
+) {
+  const safeClubId =
+    String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
+    DEFAULT_CLUB_ID;
+
+  const safeDays = Math.max(1, Number(visibilityDays || 5));
+  const cutoffMs = Date.now() - safeDays * 24 * 60 * 60 * 1000;
+  const collected = [];
+
+  const getTimestampMs = (item = {}) => {
+    const firestoreValue =
+      item.createdAt ||
+      item.createdAtServer ||
+      item.uploadedAt ||
+      item.timestamp;
+
+    const firestoreMs =
+      firestoreValue?.toMillis?.() ||
+      firestoreValue?.toDate?.()?.getTime?.();
+
+    if (Number.isFinite(Number(firestoreMs))) {
+      return Number(firestoreMs);
+    }
+
+    const parsed = new Date(
+      item.matchDateISO ||
+      item.createdAtISO ||
+      item.createdAt ||
+      item.uploadedAtISO ||
+      item.uploadedAt ||
+      item.timestamp ||
+      ""
+    ).getTime();
+
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const getVotingCloseMs = (item = {}) => {
+    const explicit = new Date(
+      item.votingClosesAtISO ||
+      item.votingEndsAtISO ||
+      item.expiresAtISO ||
+      ""
+    ).getTime();
+
+    if (Number.isFinite(explicit)) return explicit;
+
+    const createdMs = getTimestampMs(item);
+    return createdMs > 0
+      ? createdMs + safeDays * 24 * 60 * 60 * 1000
+      : 0;
+  };
+
+  const belongsToClub = (item = {}, matchId = "") => {
+    const explicitClubId =
+      item.clubId ||
+      item.clubID ||
+      item.clubSlug ||
+      item.activeClubId ||
+      item.matchContext?.clubId ||
+      item.matchContext?.activeClubId ||
+      item.metadata?.clubId ||
+      item.metadata?.activeClubId ||
+      "";
+
+    if (explicitClubId) {
+      return (
+        String(explicitClubId).trim().toLowerCase() === safeClubId
+      );
+    }
+
+    const safeMatchId = String(matchId || item.matchId || "")
+      .trim()
+      .toLowerCase();
+
+    if (
+      safeClubId !== DEFAULT_CLUB_ID &&
+      safeMatchId.startsWith(`${safeClubId}__`)
+    ) {
+      return true;
+    }
+
+    const clubName =
+      item.clubName ||
+      item.uploaderClubName ||
+      item.activeClubName ||
+      item.matchContext?.clubName ||
+      item.metadata?.clubName ||
+      "";
+
+    if (
+      safeClubId === DEFAULT_CLUB_ID &&
+      String(clubName).trim().toLowerCase().includes("turf")
+    ) {
+      return true;
+    }
+
+    /*
+      Legacy untagged clips belong to Turf Kings only.
+      This prevents old clips leaking into newer clubs.
+    */
+    return (
+      safeClubId === DEFAULT_CLUB_ID &&
+      !explicitClubId &&
+      !safeMatchId.includes("__")
+    );
+  };
+
+  try {
+    /*
+      Collection-group lookup is required because Firestore allows
+      raw subcollections below parent match documents that do not
+      themselves exist as materialised documents.
+    */
+    const snap = await getDocs(
+      query(collectionGroup(db, "raw"), limit(250))
+    );
+
+    for (const clipDoc of snap.docs) {
+      const data = clipDoc.data() || {};
+      const parentMatchRef = clipDoc.ref.parent?.parent;
+      const matchId =
+        String(data.matchId || parentMatchRef?.id || "").trim();
+
+      if (!belongsToClub(data, matchId)) continue;
+
+      const votingCloseMs = getVotingCloseMs(data);
+      const createdMs = getTimestampMs(data);
+
+      const stillVisible =
+        votingCloseMs > Date.now() ||
+        (!votingCloseMs && createdMs >= cutoffMs);
+
+      if (!stillVisible) continue;
+
+      let resolvedUrl =
+        data.downloadUrl ||
+        data.videoUrl ||
+        data.mediaUrl ||
+        data.fileUrl ||
+        data.publicUrl ||
+        data.previewUrl ||
+        data.url ||
+        data.uri ||
+        "";
+
+      if (!resolvedUrl && data.storagePath) {
+        try {
+          resolvedUrl = await getDownloadURL(
+            ref(storage, data.storagePath)
+          );
+        } catch (error) {
+          console.warn(
+            "[TK HIGHLIGHTS] Could not resolve recent clip URL:",
+            data.storagePath,
+            error
+          );
+        }
+      }
+
+      collected.push({
+        id: clipDoc.id,
+        clipId: data.clipId || clipDoc.id,
+        ...data,
+        matchId,
+        videoUrl: data.videoUrl || resolvedUrl,
+        downloadUrl: data.downloadUrl || resolvedUrl,
+        mediaUrl: data.mediaUrl || resolvedUrl,
+        votingClosesAtISO:
+          data.votingClosesAtISO ||
+          data.votingEndsAtISO ||
+          (votingCloseMs
+            ? new Date(votingCloseMs).toISOString()
+            : null),
+        recentClubFeed: true,
+      });
+    }
+
+    const seen = new Set();
+
+    return collected
+      .filter((clip) => {
+        const key = String(
+          clip?.clipId || clip?.id || ""
+        ).trim();
+
+        if (!key) return true;
+        if (seen.has(key)) return false;
+
+        seen.add(key);
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          getTimestampMs(b) - getTimestampMs(a)
+      );
+  } catch (error) {
+    console.warn(
+      "[TK HIGHLIGHTS] Failed to load recent club clips:",
+      safeClubId,
+      error
+    );
+    return [];
+  }
+}
+
+
 export async function getClubFeaturedHighlight(clubId) {
   if (!clubId) return null;
 
@@ -1303,7 +1697,11 @@ const VideoHighlightsRepository = {
   saveRawHighlightDoc,
   loadRawHighlightsFromFirebase,
   loadArchivedHighlightsFromFirebase,
+  loadRecentClubHighlightsFromFirebase,
   loadVideoCleanupQueueFromFirebase,
+  toggleHighlightLike,
+  loadHighlightLikesFromFirebase,
+  loadHighlightLikesForMatchesFromFirebase,
   saveHighlightVotesToFirebase,
   loadHighlightVotesFromFirebase,
   registerRecordingDeviceSession,
