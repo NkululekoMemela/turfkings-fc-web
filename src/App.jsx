@@ -1060,6 +1060,193 @@ function buildDefaultParticipationEntries({
 }
 
 
+
+function getPeerReviewSessionTimestamp(session = {}) {
+  const values = [
+    session?.completedAtISO,
+    session?.createdAtISO,
+    session?.createdAt,
+    session?.date,
+    session?.matchDayId,
+    session?.id,
+  ];
+
+  for (const value of values) {
+    if (value?.toDate && typeof value.toDate === "function") {
+      const timestamp = value.toDate().getTime();
+      if (Number.isFinite(timestamp)) return timestamp;
+    }
+
+    const timestamp = new Date(value || "").getTime();
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+
+  return 0;
+}
+
+function buildPeerReviewTeamsFromCompletedSession(session = null) {
+  if (!session || typeof session !== "object") return [];
+
+  const appearances = Array.isArray(session?.playerAppearances)
+    ? session.playerAppearances
+    : [];
+
+  const archivedTeams = Array.isArray(session?.teams)
+    ? session.teams
+    : [];
+
+  const archivedTeamByKey = new Map();
+
+  archivedTeams.forEach((team) => {
+    const keys = [
+      team?.id,
+      team?.label,
+      team?.name,
+    ]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+
+    keys.forEach((key) => archivedTeamByKey.set(key, team));
+  });
+
+  if (appearances.length > 0) {
+    const teamsByKey = new Map();
+
+    appearances.forEach((entry, index) => {
+      const playerName = toTitleCaseLoose(
+        entry?.playerName ||
+        entry?.fullName ||
+        entry?.displayName ||
+        entry?.shortName ||
+        entry?.name ||
+        ""
+      );
+
+      if (!playerName) return;
+
+      const rawTeamId = String(
+        entry?.teamId ||
+        entry?.teamName ||
+        entry?.teamLabel ||
+        `team-${index + 1}`
+      ).trim();
+
+      const teamLabel = toTitleCaseLoose(
+        entry?.teamName ||
+        entry?.teamLabel ||
+        entry?.teamId ||
+        `Team ${index + 1}`
+      );
+
+      const teamKey = rawTeamId || teamLabel;
+      if (!teamKey) return;
+
+      const archivedTeam =
+        archivedTeamByKey.get(rawTeamId.toLowerCase()) ||
+        archivedTeamByKey.get(teamLabel.toLowerCase()) ||
+        null;
+
+      if (!teamsByKey.has(teamKey)) {
+        teamsByKey.set(teamKey, {
+          id: rawTeamId || teamKey,
+          label:
+            String(
+              archivedTeam?.label ||
+              archivedTeam?.name ||
+              teamLabel ||
+              rawTeamId ||
+              "Team"
+            ).trim(),
+          teamColorName: String(
+            archivedTeam?.teamColorName ||
+            archivedTeam?.colorName ||
+            ""
+          ).trim(),
+          teamColorHex: String(
+            archivedTeam?.teamColorHex ||
+            archivedTeam?.colorHex ||
+            archivedTeam?.teamColor ||
+            ""
+          ).trim(),
+          players: [],
+        });
+      }
+
+      const team = teamsByKey.get(teamKey);
+
+      const playerKey = String(
+        entry?.playerId ||
+        entry?.memberId ||
+        playerName
+      )
+        .trim()
+        .toLowerCase();
+
+      const alreadyPresent = team.players.some((player) => {
+        const existingKey = String(
+          player?.playerId ||
+          player?.id ||
+          player?.name ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+        return existingKey === playerKey;
+      });
+
+      if (alreadyPresent) return;
+
+      team.players.push({
+        id:
+          String(entry?.playerId || entry?.memberId || "").trim() ||
+          playerKey,
+        playerId:
+          String(entry?.playerId || "").trim() ||
+          playerKey,
+        memberId: entry?.memberId || null,
+        name: playerName,
+        displayName: playerName,
+        fullName: playerName,
+        shortName:
+          toTitleCaseLoose(entry?.shortName || "") ||
+          playerName.split(/\s+/)[0] ||
+          playerName,
+      });
+    });
+
+    return Array.from(teamsByKey.values()).filter(
+      (team) =>
+        Array.isArray(team?.players) &&
+        team.players.length > 0
+    );
+  }
+
+  /*
+    Compatibility with older archives:
+    Friendly already saved full team snapshots even when
+    playerAppearances was empty.
+  */
+  return archivedTeams
+    .map((team, index) => ({
+      ...team,
+      id:
+        String(team?.id || "").trim() ||
+        `team-${index + 1}`,
+      label:
+        String(team?.label || team?.name || "").trim() ||
+        `Team ${index + 1}`,
+      players: Array.isArray(team?.players)
+        ? team.players
+        : [],
+    }))
+    .filter(
+      (team) =>
+        Array.isArray(team.players) &&
+        team.players.length > 0
+    );
+}
+
 function readRenderedPlayerCardSnapshotFromLocalStorage(seasonId, clubId = DEFAULT_CLUB_ID) {
   if (typeof window === "undefined") return null;
 
@@ -1958,9 +2145,10 @@ function touchLiveMatchDraft(draft, patch = {}) {
   return {
     ...draft,
     ...patch,
-    lastKnownSecondsLeft: Number.isFinite(Number(secondsLeft))
-      ? secondsLeft
-      : Number(draft.lastKnownSecondsLeft || 0),
+    lastKnownSecondsLeft:
+      secondsLeft != null && Number.isFinite(Number(secondsLeft))
+        ? Number(secondsLeft)
+        : Number(draft.lastKnownSecondsLeft || draft.matchSeconds || 0),
     lastSavedAtISO: new Date().toISOString(),
   };
 }
@@ -2312,6 +2500,15 @@ export default function App() {
   };
 
   const handleUpdateLiveFinishTime = (nextFinishTime) => {
+    const draftMatchType = normalizeMatchMode(
+      liveMatchDraft?.matchType || matchType,
+      MATCH_TYPE.FRIENDLY
+    );
+
+    if (draftMatchType !== MATCH_TYPE.FRIENDLY) {
+      return;
+    }
+
     if (!canControlCurrentLiveMatch || !liveMatchDraft) {
       window.alert("Only the current match referee can adjust the finish time.");
       return;
@@ -2985,6 +3182,58 @@ export default function App() {
     return chosen.length >= 2 ? chosen : teamIds.slice(0, 2);
   }, [teams, activeTeamIds]);
 
+  const peerReviewTeams = useMemo(() => {
+    const completedSessions = [
+      ...(Array.isArray(matchDayHistory)
+        ? matchDayHistory
+        : []),
+      ...(Array.isArray(friendlyMatchDayHistory)
+        ? friendlyMatchDayHistory
+        : []),
+    ]
+      .filter(
+        (session) =>
+          session &&
+          typeof session === "object"
+      )
+      .sort(
+        (left, right) =>
+          getPeerReviewSessionTimestamp(right) -
+          getPeerReviewSessionTimestamp(left)
+      );
+
+    for (const session of completedSessions) {
+      const archivedTeams =
+        buildPeerReviewTeamsFromCompletedSession(session);
+
+      if (archivedTeams.length > 0) {
+        return archivedTeams;
+      }
+    }
+
+    /*
+      No usable completed-session archive yet.
+
+      Friendly:
+      use the two squads currently selected in Manage Squads.
+
+      League:
+      retain every League team so a three-team match day shows
+      all three teams, not only the current two-team fixture.
+    */
+    if (matchType === MATCH_TYPE.FRIENDLY) {
+      return getActiveFriendlyTeams(fiveVFiveTeams);
+    }
+
+    return Array.isArray(teams) ? teams : [];
+  }, [
+    matchDayHistory,
+    friendlyMatchDayHistory,
+    matchType,
+    fiveVFiveTeams,
+    teams,
+  ]);
+
   const effectiveLiveMatch = useMemo(() => {
     if (matchType === MATCH_TYPE.FRIENDLY) {
       const activeFriendlyTeams = getActiveFriendlyTeams(fiveVFiveTeams);
@@ -3335,10 +3584,46 @@ export default function App() {
   useEffect(() => {
     if (!running) return undefined;
 
+    const activeTimerMatchType = normalizeMatchMode(
+      pendingMatchStartContext?.matchType ||
+      liveMatchDraft?.matchType ||
+      matchType,
+      MATCH_TYPE.FRIENDLY
+    );
+
     const id = window.setInterval(() => {
       setSecondsLeft((prev) => {
-        const draftSeconds = secondsLeftFromExpectedEnd(liveMatchDraft?.expectedEndAtISO);
-        const next = Number.isFinite(Number(draftSeconds)) ? Number(draftSeconds) : prev - 1;
+        /*
+          Preserve the proven Turf Kings / older FANM League timer:
+          decrement the configured duration by one second per tick.
+          It must never use the Friendly nearest-hour calculation.
+        */
+        if (activeTimerMatchType === MATCH_TYPE.LEAGUE) {
+          if (prev <= 1) {
+            window.clearInterval(id);
+            setRunning(false);
+            setTimeUp(true);
+            return 0;
+          }
+
+          return prev - 1;
+        }
+        const draftMatchType = normalizeMatchMode(
+          liveMatchDraft?.matchType || matchType,
+          MATCH_TYPE.FRIENDLY
+        );
+
+        const draftSeconds =
+          draftMatchType === MATCH_TYPE.FRIENDLY
+            ? secondsLeftFromExpectedEnd(
+                liveMatchDraft?.expectedEndAtISO
+              )
+            : null;
+
+        const next =
+          draftSeconds != null && Number.isFinite(Number(draftSeconds))
+            ? Number(draftSeconds)
+            : prev - 1;
 
         if (next <= 0) {
           window.clearInterval(id);
@@ -3352,7 +3637,13 @@ export default function App() {
     }, 1000);
 
     return () => window.clearInterval(id);
-  }, [running, liveMatchDraft?.expectedEndAtISO]);
+  }, [
+    running,
+    matchType,
+    pendingMatchStartContext?.matchType,
+    liveMatchDraft?.matchType,
+    liveMatchDraft?.expectedEndAtISO,
+  ]);
 
   const handleGoToStats = (fromPage) => {
     setStatsReturnPage(fromPage);
@@ -3376,10 +3667,27 @@ export default function App() {
 
   const applyRecoveredLiveDraftToControls = (draft) => {
     if (!draft) return;
-    const recoveredSeconds = secondsLeftFromExpectedEnd(draft.expectedEndAtISO);
-    const safeSeconds = Number.isFinite(Number(recoveredSeconds))
-      ? Number(recoveredSeconds)
-      : Number(draft.lastKnownSecondsLeft || draft.matchSeconds || matchSeconds || 0);
+
+    const draftMatchType = normalizeMatchMode(
+      draft?.matchType || matchType,
+      MATCH_TYPE.FRIENDLY
+    );
+
+    const recoveredSeconds =
+      draftMatchType === MATCH_TYPE.FRIENDLY
+        ? secondsLeftFromExpectedEnd(draft.expectedEndAtISO)
+        : null;
+
+    const safeSeconds =
+      recoveredSeconds != null &&
+      Number.isFinite(Number(recoveredSeconds))
+        ? Number(recoveredSeconds)
+        : Number(
+            draft.lastKnownSecondsLeft ||
+            draft.matchSeconds ||
+            matchSeconds ||
+            0
+          );
 
     setPendingMatchStartContext(buildPendingContextFromLiveDraft(draft));
     setCurrentConfirmedLineupSnapshot(draft.confirmedLineupSnapshot || null);
@@ -4059,19 +4367,37 @@ export default function App() {
       activeClubIdentity?.weeklyPlayTime ||
       "";
 
-    const scheduledFinishAtISO = buildClubOfficialScheduledFinishISO(
-      clubPlayTime,
-      startContext.createdAt
-    );
+    const usesScheduledFinish =
+      matchType === MATCH_TYPE.FRIENDLY;
 
-    const expectedEndAtISO = buildClubScheduledFinishISO(
-      clubPlayTime,
-      startContext.createdAt,
-      matchSeconds
-    );
+    const scheduledFinishAtISO = usesScheduledFinish
+      ? buildClubOfficialScheduledFinishISO(
+          clubPlayTime,
+          startContext.createdAt
+        )
+      : null;
 
-    const initialSecondsLeft =
-      secondsLeftFromExpectedEnd(expectedEndAtISO) ?? matchSeconds;
+    /*
+      Friendly may play until the club's smart scheduled finish.
+
+      Three-Team League always uses its configured match duration.
+      Its expected end remains kickoff + matchSeconds so recovery
+      remains compatible with the proven older FANM implementation.
+    */
+    const expectedEndAtISO = usesScheduledFinish
+      ? buildClubScheduledFinishISO(
+          clubPlayTime,
+          startContext.createdAt,
+          matchSeconds
+        )
+      : addSecondsToISO(
+          startContext.createdAt,
+          matchSeconds
+        );
+
+    const initialSecondsLeft = usesScheduledFinish
+      ? secondsLeftFromExpectedEnd(expectedEndAtISO) ?? matchSeconds
+      : matchSeconds;
 
     const liveDraft = {
       id: `live-${activeSeasonId || "season"}-${activeMatchNo}-${Date.now()}`,
@@ -4091,9 +4417,11 @@ export default function App() {
       startedAtISO: startContext.createdAt,
       expectedEndAtISO,
       scheduledFinishAtISO,
-      scheduledFinishSource: clubPlayTime
-        ? "smart_club_schedule"
-        : "match_duration",
+      scheduledFinishSource: usesScheduledFinish
+        ? clubPlayTime
+          ? "smart_club_schedule"
+          : "match_duration"
+        : null,
       matchSeconds,
       currentEvents: [],
       confirmedLineupSnapshot: null,
@@ -4426,7 +4754,11 @@ export default function App() {
             results: [newResult],
             allEvents: allCommittedEvents,
             teams: friendlyTeamsSnapshot,
-            playerAppearances: [],
+            playerAppearances: buildDefaultParticipationEntries({
+              teams: friendlyTeamsSnapshot,
+              results: [newResult],
+              members,
+            }),
           };
 
           return {
@@ -4585,7 +4917,11 @@ export default function App() {
           results: [newResult],
           allEvents: allCommittedEvents,
           teams: friendlyTeamsSnapshot,
-          playerAppearances: [],
+          playerAppearances: buildDefaultParticipationEntries({
+            teams: friendlyTeamsSnapshot,
+            results: [newResult],
+            members,
+          }),
         };
 
         return {
@@ -5029,8 +5365,13 @@ export default function App() {
       return;
     }
 
+    const participationTeams =
+      matchType === MATCH_TYPE.FRIENDLY
+        ? getActiveFriendlyTeams(fiveVFiveTeams)
+        : teams;
+
     const defaults = buildDefaultParticipationEntries({
-      teams,
+      teams: participationTeams,
       results,
       members,
     });
@@ -5293,7 +5634,7 @@ export default function App() {
                   results: splitResults.friendly,
                   allEvents: splitEvents.friendly,
                   teams: getActiveFriendlyTeams(prevSeason?.fiveVFiveTeams),
-                  playerAppearances: [],
+                  playerAppearances: safeParticipationEntries,
                 }
               : null;
 
@@ -5391,7 +5732,7 @@ export default function App() {
                 results: splitResults.friendly,
                 allEvents: splitEvents.friendly,
                 teams: getActiveFriendlyTeams(prev?.fiveVFiveTeams),
-                playerAppearances: [],
+                playerAppearances: pendingParticipationEntries || [],
               }
             : null;
 
@@ -7138,9 +7479,24 @@ export default function App() {
           matchType={pendingMatchStartContext?.matchType || matchType}
           gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
-          expectedEndAtISO={liveMatchDraft?.expectedEndAtISO || null}
-          scheduledFinishAtISO={liveMatchDraft?.scheduledFinishAtISO || null}
-          onUpdateExpectedEndTime={handleUpdateLiveFinishTime}
+          expectedEndAtISO={
+            (pendingMatchStartContext?.matchType || matchType) ===
+            MATCH_TYPE.FRIENDLY
+              ? liveMatchDraft?.expectedEndAtISO || null
+              : null
+          }
+          scheduledFinishAtISO={
+            (pendingMatchStartContext?.matchType || matchType) ===
+            MATCH_TYPE.FRIENDLY
+              ? liveMatchDraft?.scheduledFinishAtISO || null
+              : null
+          }
+          onUpdateExpectedEndTime={
+            (pendingMatchStartContext?.matchType || matchType) ===
+            MATCH_TYPE.FRIENDLY
+              ? handleUpdateLiveFinishTime
+              : null
+          }
           rotationReminderMode={liveMatchDraft?.rotationReminderMode || "off"}
           onUpdateRotationReminder={handleUpdateRotationReminder}
           redCardRule={liveMatchDraft?.redCardRule || "permanent"}
@@ -7376,7 +7732,7 @@ export default function App() {
 
       {page === PAGE_PEER_REVIEW && (
         <PeerReviewPage
-          teams={teams}
+          teams={peerReviewTeams}
           playerPhotosByName={effectivePlayerPhotosByName}
           identity={pageIdentity}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
