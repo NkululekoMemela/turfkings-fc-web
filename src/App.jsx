@@ -1091,6 +1091,24 @@ function buildPeerReviewTeamsFromCompletedSession(session = null) {
     ? session.playerAppearances
     : [];
 
+  const archivedTeams = Array.isArray(session?.teams)
+    ? session.teams
+    : [];
+
+  const archivedTeamByKey = new Map();
+
+  archivedTeams.forEach((team) => {
+    const keys = [
+      team?.id,
+      team?.label,
+      team?.name,
+    ]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+
+    keys.forEach((key) => archivedTeamByKey.set(key, team));
+  });
+
   if (appearances.length > 0) {
     const teamsByKey = new Map();
 
@@ -1123,10 +1141,33 @@ function buildPeerReviewTeamsFromCompletedSession(session = null) {
       const teamKey = rawTeamId || teamLabel;
       if (!teamKey) return;
 
+      const archivedTeam =
+        archivedTeamByKey.get(rawTeamId.toLowerCase()) ||
+        archivedTeamByKey.get(teamLabel.toLowerCase()) ||
+        null;
+
       if (!teamsByKey.has(teamKey)) {
         teamsByKey.set(teamKey, {
           id: rawTeamId || teamKey,
-          label: teamLabel || rawTeamId || "Team",
+          label:
+            String(
+              archivedTeam?.label ||
+              archivedTeam?.name ||
+              teamLabel ||
+              rawTeamId ||
+              "Team"
+            ).trim(),
+          teamColorName: String(
+            archivedTeam?.teamColorName ||
+            archivedTeam?.colorName ||
+            ""
+          ).trim(),
+          teamColorHex: String(
+            archivedTeam?.teamColorHex ||
+            archivedTeam?.colorHex ||
+            archivedTeam?.teamColor ||
+            ""
+          ).trim(),
           players: [],
         });
       }
@@ -1186,10 +1227,6 @@ function buildPeerReviewTeamsFromCompletedSession(session = null) {
     Friendly already saved full team snapshots even when
     playerAppearances was empty.
   */
-  const archivedTeams = Array.isArray(session?.teams)
-    ? session.teams
-    : [];
-
   return archivedTeams
     .map((team, index) => ({
       ...team,

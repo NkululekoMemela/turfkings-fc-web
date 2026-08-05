@@ -121,6 +121,7 @@ export function PeerReviewPage({
   const [cloudPhotoIndex, setCloudPhotoIndex] = useState({});
   const [memberCanonicalMap, setMemberCanonicalMap] = useState({});
   const [memberPlayers, setMemberPlayers] = useState([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
   const [baselineMap, setBaselineMap] = useState({});
@@ -188,6 +189,7 @@ export function PeerReviewPage({
 
   useEffect(() => {
     let cancelled = false;
+    setMembersLoaded(false);
 
     async function loadMembersAndPhotos() {
       try {
@@ -286,14 +288,19 @@ export function PeerReviewPage({
         );
       } catch (err) {
         console.error("Failed to load PeerReviewPage members/photos:", err);
+      } finally {
+        if (!cancelled) {
+          setMembersLoaded(true);
+        }
       }
     }
 
     loadMembersAndPhotos();
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [safeActiveClubId]);
 
   const activeClubMemberNames = useMemo(() => {
     return new Set(
@@ -327,10 +334,25 @@ export function PeerReviewPage({
 
     if (isTurfKingsClub) return sorted;
 
+    /*
+      While Firestore membership is still loading, preserve the
+      completed-match participant snapshot. An empty lookup at this
+      stage means "not loaded yet", not "the club has no players".
+    */
+    if (!membersLoaded) return sorted;
+
     if (activeClubMemberNames.size === 0) return [];
 
-    return sorted.filter((p) => activeClubMemberNames.has(resolveCanonicalName(p.name)));
-  }, [teams, memberCanonicalMap, activeClubMemberNames, isTurfKingsClub]);
+    return sorted.filter((p) =>
+      activeClubMemberNames.has(resolveCanonicalName(p.name))
+    );
+  }, [
+    teams,
+    memberCanonicalMap,
+    activeClubMemberNames,
+    isTurfKingsClub,
+    membersLoaded,
+  ]);
 
   const baselinePlayerPool = useMemo(() => {
     const combined = [...(memberPlayers || []), ...(allPlayers || [])];
@@ -455,11 +477,95 @@ export function PeerReviewPage({
 
   const teamsForFilter = useMemo(() => {
     const labels = new Set();
-    (teams || []).forEach((t) => {
-      if (isUsefulTeamFilterLabel(t?.label)) labels.add(t.label);
+
+    (teams || []).forEach((team) => {
+      if (isUsefulTeamFilterLabel(team?.label)) {
+        labels.add(team.label);
+      }
     });
+
     return ["ALL", ...Array.from(labels).sort()];
   }, [teams]);
+
+  const teamFilterMetaByLabel = useMemo(() => {
+    const lookup = {};
+
+    (teams || []).forEach((team) => {
+      const label = String(
+        team?.label ||
+        team?.name ||
+        ""
+      ).trim();
+
+      if (!label) return;
+
+      lookup[label] = {
+        teamColorName: String(
+          team?.teamColorName ||
+          team?.colorName ||
+          ""
+        ).trim(),
+        teamColorHex: String(
+          team?.teamColorHex ||
+          team?.colorHex ||
+          team?.teamColor ||
+          ""
+        ).trim(),
+      };
+    });
+
+    return lookup;
+  }, [teams]);
+
+  const getTeamFilterButtonStyle = (label, isActive) => {
+    if (label === "ALL") return undefined;
+
+    const colour = String(
+      teamFilterMetaByLabel[label]?.teamColorHex || ""
+    ).trim();
+
+    const match = colour.match(
+      /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
+    );
+
+    if (!match) return undefined;
+
+    const normalized =
+      match[1].length === 3
+        ? `#${match[1]
+            .split("")
+            .map((character) => character + character)
+            .join("")}`
+        : `#${match[1]}`;
+
+    const red = parseInt(normalized.slice(1, 3), 16);
+    const green = parseInt(normalized.slice(3, 5), 16);
+    const blue = parseInt(normalized.slice(5, 7), 16);
+
+    const rgba = (alpha) =>
+      `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+
+    const luminance =
+      (0.2126 * red + 0.7152 * green + 0.0722 * blue) /
+      255;
+
+    if (isActive) {
+      return {
+        borderColor: normalized,
+        background: `linear-gradient(135deg, ${rgba(
+          0.82
+        )}, ${normalized})`,
+        color: luminance > 0.62 ? "#0b1220" : "#f8fafc",
+        boxShadow: `0 0 14px ${rgba(0.58)}`,
+      };
+    }
+
+    return {
+      borderColor: rgba(0.78),
+      background: rgba(0.14),
+      boxShadow: `inset 0 0 0 1px ${rgba(0.12)}`,
+    };
+  };
 
   useEffect(() => {
     if (teamsForFilter.includes(filterTeam)) return;
@@ -789,7 +895,14 @@ export function PeerReviewPage({
   };
 
   const missingBaselineCurrentWeekTargets = useMemo(() => {
-    if (!isAdmin || !baselineLoaded || !allPlayers.length) return [];
+    if (
+      !isAdmin ||
+      !membersLoaded ||
+      !baselineLoaded ||
+      !allPlayers.length
+    ) {
+      return [];
+    }
 
     return allPlayers.filter((p) => {
       const canonicalName = resolveCanonicalName(p.name);
@@ -806,7 +919,14 @@ export function PeerReviewPage({
 
       return !hasBaseline;
     });
-  }, [isAdmin, baselineLoaded, allPlayers, baselineMap, memberCanonicalMap]);
+  }, [
+    isAdmin,
+    membersLoaded,
+    baselineLoaded,
+    allPlayers,
+    baselineMap,
+    memberCanonicalMap,
+  ]);
 
   const adminReminderCount = missingBaselineCurrentWeekTargets.length;
 
@@ -957,9 +1077,15 @@ export function PeerReviewPage({
 
         .peer-reminder-popup {
           position: fixed;
-          top: 88px;
-          right: 18px;
-          width: min(380px, calc(100vw - 32px));
+          top: max(88px, calc(env(safe-area-inset-top, 0px) + 12px));
+          left: 50%;
+          right: auto;
+          transform: translateX(-50%);
+          width: min(420px, calc(100vw - 24px));
+          max-width: calc(100vw - 24px);
+          max-height: min(72vh, 620px);
+          box-sizing: border-box;
+          overflow: hidden;
           background:
             linear-gradient(
               180deg,
@@ -974,29 +1100,40 @@ export function PeerReviewPage({
             0 24px 80px rgba(0,0,0,.48),
             0 0 0 1px rgba(255,255,255,.04) inset;
           backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
         }
 
         .peer-reminder-popup-title {
           color: #ffffff;
           font-size: 1rem;
           font-weight: 900;
+          line-height: 1.25;
           margin-bottom: .55rem;
+          overflow-wrap: anywhere;
         }
 
         .peer-reminder-popup-text {
           color: #cbd5e1;
           font-size: .86rem;
           line-height: 1.45;
+          overflow-wrap: anywhere;
         }
 
         .peer-reminder-player-list {
           margin-top: .8rem;
           display: flex;
           flex-wrap: wrap;
+          align-content: flex-start;
           gap: .45rem;
+          max-height: min(190px, 28vh);
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          padding: .1rem .2rem .15rem 0;
+          scrollbar-width: thin;
         }
 
         .peer-reminder-player-pill {
+          max-width: 100%;
           padding: .42rem .7rem;
           border-radius: 999px;
           background: rgba(239,68,68,.12);
@@ -1004,12 +1141,59 @@ export function PeerReviewPage({
           color: #fecaca;
           font-size: .78rem;
           font-weight: 700;
+          line-height: 1.25;
+          overflow-wrap: anywhere;
         }
 
         .peer-reminder-actions {
           display: flex;
+          align-items: stretch;
           gap: .6rem;
           margin-top: 1rem;
+        }
+
+        .peer-reminder-actions > button {
+          min-width: 0;
+          flex: 1 1 0;
+          justify-content: center;
+          white-space: nowrap;
+        }
+
+        @media (max-width: 520px) {
+          .peer-reminder-popup {
+            top: max(72px, calc(env(safe-area-inset-top, 0px) + 10px));
+            width: calc(100vw - 20px);
+            max-width: calc(100vw - 20px);
+            max-height: calc(
+              100dvh -
+              max(72px, calc(env(safe-area-inset-top, 0px) + 10px)) -
+              76px
+            );
+            border-radius: 18px;
+            padding: .9rem;
+          }
+
+          .peer-reminder-popup-title {
+            font-size: .98rem;
+          }
+
+          .peer-reminder-popup-text {
+            font-size: .82rem;
+          }
+
+          .peer-reminder-player-list {
+            max-height: min(170px, 25dvh);
+          }
+        }
+
+        @media (max-width: 350px) {
+          .peer-reminder-actions {
+            flex-direction: column;
+          }
+
+          .peer-reminder-actions > button {
+            width: 100%;
+          }
         }
       `}</style>
       <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
@@ -1148,7 +1332,20 @@ export function PeerReviewPage({
                     <button
                       key={label}
                       type="button"
-                      className={`team-pill-btn ${filterTeam === label ? "active" : ""}`}
+                      className={`team-pill-btn ${
+                        filterTeam === label ? "active" : ""
+                      }`}
+                      style={getTeamFilterButtonStyle(
+                        label,
+                        filterTeam === label
+                      )}
+                      title={
+                        label === "ALL"
+                          ? "All teams"
+                          : teamFilterMetaByLabel[label]?.teamColorName
+                            ? `${label} · ${teamFilterMetaByLabel[label].teamColorName}`
+                            : label
+                      }
                       onClick={() => {
                         setFilterTeam(label);
                         setActiveTarget(null);
