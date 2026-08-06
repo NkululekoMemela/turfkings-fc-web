@@ -7,6 +7,7 @@ import {
   getPlayerPhotosCollection,
 } from "../core/clubFirestorePaths";
 
+import { buildPlayerEventStats } from "../core/playerEventStats.js";
 // ---------------- HELPERS ----------------
 function toTitleCase(name) {
   return String(name || "")
@@ -1477,62 +1478,65 @@ export function StatsPage({
     getPlayerPhotoLikeCards,
   ]);
 
+  const isFriendlyStatsView =
+    String(viewMode || "").toUpperCase().includes("FRIENDLY") ||
+    String(matchType || "").toUpperCase().includes("FRIENDLY");
+
   const playerStats = useMemo(() => {
-    const stats = {};
+    const rows = buildPlayerEventStats({
+      events: dedupeEvents(visibleEvents || []),
 
-    const getOrCreate = (playerName) => {
-      if (!playerName) return null;
-      if (!stats[playerName]) {
-        stats[playerName] = {
-          name: playerName,
-          displayName: getPreferredStatsDisplayName(playerName, resolveShortDisplay(playerName)),
-          goals: 0,
-          assists: 0,
-          cleanSheets: 0,
-          gkCleanSheets: 0,
-          defCleanSheets: 0,
-          total: 0,
-        };
-      }
-      return stats[playerName];
-    };
+      resolveCanonicalName,
 
-    dedupeEvents(visibleEvents || []).forEach((e) => {
-      if (!e) return;
+      resolveDisplayName: (playerName) =>
+        getPreferredStatsDisplayName(
+          playerName,
+          resolveShortDisplay(playerName)
+        ),
 
-      if (e.type === "clean_sheet") {
-        const cleanSheetHolder = resolveCanonicalName(
-          e.playerName || e.scorer || ""
-        );
-        const p = getOrCreate(cleanSheetHolder);
-        if (!p) return;
-
-        p.cleanSheets += 1;
-        if (e.role === "gk") p.gkCleanSheets += 1;
-        if (e.role === "def") p.defCleanSheets += 1;
-        return;
-      }
-
-      if (e.type === "goal" && e.scorer) {
-        const scorer = resolveCanonicalName(e.scorer);
-        const s = getOrCreate(scorer);
-        if (s) s.goals += 1;
-      }
-
-      if (e.assist) {
-        const assister = resolveCanonicalName(e.assist);
-        const a = getOrCreate(assister);
-        if (a) a.assists += 1;
-      }
+      resolveTeamName: (playerName) =>
+        playerTeamMap[playerName] || "—",
     });
 
-    Object.values(stats).forEach((p) => {
-      p.teamName = playerTeamMap[p.name] || "—";
-      p.total = p.goals + p.assists + p.cleanSheets;
-    });
+    /*
+     * Preserve the existing Stats table structure:
+     *
+     * League:
+     *   cleanSheets / gkCleanSheets / defCleanSheets
+     *
+     * Friendly:
+     *   defensiveBlocks / gkDefensiveBlocks / defDefensiveBlocks
+     *
+     * The Friendly values are mapped into the existing defensive
+     * table slots so the premium layout does not gain extra columns.
+     */
+    return rows.map((player) => {
+      if (!isFriendlyStatsView) return player;
 
-    return Object.values(stats);
-  }, [visibleEvents, playerTeamMap, resolveCanonicalName, resolveShortDisplay]);
+      const defensiveBlocks = Number(player.defensiveBlocks || 0);
+      const gkDefensiveBlocks = Number(player.gkDefensiveBlocks || 0);
+      const defDefensiveBlocks = Number(player.defDefensiveBlocks || 0);
+
+      return {
+        ...player,
+
+        cleanSheets: defensiveBlocks,
+        gkCleanSheets: gkDefensiveBlocks,
+        defCleanSheets: defDefensiveBlocks,
+
+        total:
+          Number(player.goals || 0) +
+          Number(player.assists || 0) +
+          defensiveBlocks,
+      };
+    });
+  }, [
+    visibleEvents,
+    playerTeamMap,
+    resolveCanonicalName,
+    resolveShortDisplay,
+    isFriendlyStatsView,
+  ]);
 
   const combinedLeaderboard = useMemo(() => {
     const arr = playerStats.filter((p) => (p.total || 0) > 0).slice();
@@ -2232,7 +2236,7 @@ export function StatsPage({
     if (activeTab === "teams") return "Team Standings";
     if (activeTab === "goals") return "Top Scorers";
     if (activeTab === "assists") return "Playmakers";
-    if (activeTab === "cleansheets") return "Clean Sheets";
+    if (activeTab === "cleansheets") return isFriendlyStatsView ? "5-min Defensive Blocks" : "Clean Sheets";
     if (activeTab === "matches") return "Match Results";
     if (activeTab === "combined") return "Summary Player Stats";
     return "Team Standings";
@@ -2653,7 +2657,7 @@ export function StatsPage({
                 }
                 onClick={() => setActiveTab("cleansheets")}
               >
-                Clean Sheets
+                {isFriendlyStatsView ? "5-min Defensive Blocks" : "Clean Sheets"}
               </button>
               <button
                 className={
@@ -2833,8 +2837,8 @@ export function StatsPage({
                   <th>Team</th>
                   <th>Goals</th>
                   <th>Assists</th>
-                  <th>CS</th>
-                  <th>G-A-CS</th>
+                  <th>{isFriendlyStatsView ? "5-min DB" : "CS"}</th>
+                  <th>{isFriendlyStatsView ? "G-A-5DB" : "G-A-CS"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -2965,8 +2969,8 @@ export function StatsPage({
                 : "Clean Sheets — Previous Season"
               : showFriendlyStats
                 ? viewMode === "season"
-                  ? "Clean Sheets — All Friendlies"
-                  : "Clean Sheets — Current Friendly Day"
+                  ? "5-min Defensive Blocks — All Friendlies"
+                  : "5-min Defensive Blocks — Current Friendly Day"
                 : viewMode === "season"
                   ? "Clean Sheets — Current Season"
                   : "Clean Sheets — Current Week"}
@@ -2978,16 +2982,24 @@ export function StatsPage({
                   <th>#</th>
                   <th>Player</th>
                   <th>Team</th>
-                  <th>Saves CS</th>
-                  <th>Defense CS</th>
-                  <th>Total CS</th>
+                  <th>
+                    {isFriendlyStatsView ? "GK 5-min DB" : "Saves CS"}
+                  </th>
+                  <th>
+                    {isFriendlyStatsView ? "DEF 5-min DB" : "Defense CS"}
+                  </th>
+                  <th>
+                    {isFriendlyStatsView ? "Total 5-min DB" : "Total CS"}
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {cleanSheetLeaderboard.length === 0 && (
                   <tr>
                     <td colSpan={6} className="muted">
-                      No clean sheets recorded yet.
+                      {isFriendlyStatsView
+                        ? "No 5-min Defensive Blocks recorded yet."
+                        : "No clean sheets recorded yet."}
                     </td>
                   </tr>
                 )}

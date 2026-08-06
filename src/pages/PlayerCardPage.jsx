@@ -12,6 +12,7 @@ import { useAuth } from "../auth/AuthContext.jsx";
 import { toPng } from "html-to-image";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 
+import { buildPlayerEventStats } from "../core/playerEventStats.js";
 // ---------------- HELPERS ----------------
 
 function toTitleCase(name) {
@@ -593,123 +594,125 @@ function buildLeagueStatsByPlayer(events, canonicalMap) {
 }
 
 function buildFriendlyStatsByPlayer(events, teams, canonicalMap) {
-  const stats = {};
+  const unique = dedupeEvents(events);
   const teamMetaByPlayer = buildTeamPlayerMeta(teams, canonicalMap);
+  const stats = {};
 
   const ensure = (canonName) => {
+    if (!canonName) return null;
+
     if (!stats[canonName]) {
       stats[canonName] = {
         goals: 0,
         assists: 0,
         shibobos: 0,
+
         cleanMinutes: 0,
         cleanSheetPm: 0,
-        defensive10MinBlocks: 0,
+
+        defensiveBlocks: 0,
+        gkDefensiveBlocks: 0,
+        defDefensiveBlocks: 0,
+
         defensive7MinSupportBlocks: 0,
         friendlyRatingPoints: 0,
         rawStatsScore: 0,
         minutesPlayed: 60,
+        points: 0,
       };
     }
+
     return stats[canonName];
   };
 
-  Object.keys(teamMetaByPlayer).forEach((canonName) => ensure(canonName));
+  Object.keys(teamMetaByPlayer).forEach((canonName) => {
+    ensure(canonName);
+  });
 
-  const unique = dedupeEvents(events);
-  const goalEvents = unique.filter((e) => e?.type === "goal");
-  const lastEventSeconds = unique.reduce((max, e) => {
-    return Math.max(max, getEventSeconds(e));
-  }, 0);
-  const matchDurationSeconds = Math.max(60 * 60, lastEventSeconds || 0);
-  const matchDurationMinutes = Math.max(1, matchDurationSeconds / 60);
+  /*
+   * Goals, assists and permanent Defensive Blocks now come from the
+   * same shared event pipeline used by StatsPage.
+   */
+  const sharedRows = buildPlayerEventStats({
+    events: unique,
 
-  goalEvents.forEach((e) => {
-    if (e.scorer) {
-      const scorer = resolveCanonicalNameFromMap(e.scorer, canonicalMap);
-      if (scorer) ensure(scorer).goals += 1;
-    }
+    resolveCanonicalName: (rawName) =>
+      resolveCanonicalNameFromMap(rawName, canonicalMap),
 
-    if (e.assist) {
-      const assister = resolveCanonicalNameFromMap(e.assist, canonicalMap);
-      if (assister) ensure(assister).assists += 1;
-    }
+    resolveTeamName: (canonName) =>
+      teamMetaByPlayer?.[canonName]?.teamId || "—",
+  });
+
+  sharedRows.forEach((row) => {
+    const canonName = resolveCanonicalNameFromMap(
+      row?.name || "",
+      canonicalMap
+    );
+
+    const player = ensure(canonName);
+    if (!player) return;
+
+    player.goals = Number(row.goals || 0);
+    player.assists = Number(row.assists || 0);
+
+    player.defensiveBlocks = Number(
+      row.defensiveBlocks || 0
+    );
+
+    player.gkDefensiveBlocks = Number(
+      row.gkDefensiveBlocks || 0
+    );
+
+    player.defDefensiveBlocks = Number(
+      row.defDefensiveBlocks || 0
+    );
+
+    player.cleanMinutes = player.defensiveBlocks * 5;
   });
 
   unique
-    .filter((e) => e?.type === "shibobo")
-    .forEach((e) => {
-      const playerName = e.playerName || e.scorer || "";
-      const canon = resolveCanonicalNameFromMap(playerName, canonicalMap);
-      if (canon) ensure(canon).shibobos += 1;
+    .filter((event) => event?.type === "shibobo")
+    .forEach((event) => {
+      const rawName =
+        event.playerName ||
+        event.scorer ||
+        "";
+
+      const canonName = resolveCanonicalNameFromMap(
+        rawName,
+        canonicalMap
+      );
+
+      const player = ensure(canonName);
+      if (player) player.shibobos += 1;
     });
 
-  const teamIds = new Set(
-    Object.values(teamMetaByPlayer)
-      .map((m) => String(m?.teamId || "").trim())
-      .filter(Boolean)
-  );
+  Object.entries(stats).forEach(([, player]) => {
+    /*
+     * Permanent defensive_block events are authoritative.
+     * Eligibility was already determined from the referee-confirmed
+     * lineup when the Friendly ended, so current formation metadata
+     * must never erase a previously earned Defensive Block.
+     */
+    /*
+     * Friendly rating rule:
+     * every permanent five-minute Defensive Block contributes
+     * exactly one rating point.
+     */
+    const defensiveBlockPoints = Number(
+      player.defensiveBlocks || 0
+    );
 
-  const cleanMinutesByTeam = {};
+    player.defensive7MinSupportBlocks = 0;
 
-  teamIds.forEach((teamId) => {
-    const concededTimes = goalEvents
-      .filter((e) => {
-        const scoringTeamId = getEventTeamId(e);
-        return scoringTeamId && scoringTeamId !== teamId;
-      })
-      .map(getEventSeconds)
-      .filter((seconds) => Number.isFinite(seconds))
-      .map((seconds) => clamp(0, seconds, matchDurationSeconds))
-      .sort((a, b) => a - b);
+    player.friendlyRatingPoints =
+      Number(player.goals || 0) +
+      Number(player.assists || 0) +
+      Number(player.shibobos || 0) * 0.25 +
+      defensiveBlockPoints;
 
-    const points = [0, ...concededTimes, matchDurationSeconds];
-    let cleanSeconds = 0;
-
-    for (let i = 0; i < points.length - 1; i += 1) {
-      cleanSeconds += Math.max(0, points[i + 1] - points[i]);
-    }
-
-    cleanMinutesByTeam[teamId] = cleanSeconds / 60;
-  });
-
-  Object.entries(teamMetaByPlayer).forEach(([canonName, meta]) => {
-    const s = ensure(canonName);
-    const teamCleanMinutes = valueOrZero(cleanMinutesByTeam[meta.teamId]);
-    const receivesDefensiveMinutes = Boolean(meta.isDefensive || meta.isGk);
-
-    s.minutesPlayed = matchDurationMinutes;
-    s.cleanMinutes = receivesDefensiveMinutes ? round1(teamCleanMinutes) : 0;
-    s.cleanSheetPm =
-      receivesDefensiveMinutes && matchDurationMinutes > 0
-        ? round1(s.cleanMinutes / matchDurationMinutes)
-        : 0;
-
-    // Rating-only friendly defensive support:
-    // - every 10 clean minutes = goal-equivalent rating point
-    // - every 7 clean minutes = assist-equivalent rating point
-    const defensiveGoalEquiv = receivesDefensiveMinutes
-      ? Math.floor(teamCleanMinutes / 10)
-      : 0;
-    const defensiveAssistEquiv = receivesDefensiveMinutes
-      ? Math.floor(teamCleanMinutes / 7)
-      : 0;
-
-    s.defensive10MinBlocks = defensiveGoalEquiv;
-    s.defensive7MinSupportBlocks = defensiveAssistEquiv;
-
-    s.friendlyRatingPoints =
-      s.goals +
-      s.assists +
-      s.shibobos * 0.25 +
-      defensiveGoalEquiv +
-      defensiveAssistEquiv;
-
-    s.rawStatsScore = s.friendlyRatingPoints;
-  });
-
-  Object.values(stats).forEach((s) => {
-    s.points = round1(s.friendlyRatingPoints || 0);
+    player.rawStatsScore = player.friendlyRatingPoints;
+    player.points = round1(player.friendlyRatingPoints);
   });
 
   return stats;
@@ -1756,7 +1759,7 @@ export function PlayerCardPage({
         shibobos: 0,
         cleanMinutes: 0,
         cleanSheetPm: 0,
-        defensive10MinBlocks: 0,
+        defensiveBlocks: 0,
         defensive7MinSupportBlocks: 0,
         friendlyRatingPoints: 0,
         minutesPlayed: 60,
@@ -1961,7 +1964,7 @@ export function PlayerCardPage({
             : displayDefCleanSheets,
         cleanMinutes: valueOrZero(visibleStats.cleanMinutes),
         cleanSheetPm: valueOrZero(visibleStats.cleanSheetPm),
-        defensive10MinBlocks: valueOrZero(visibleStats.defensive10MinBlocks),
+        defensiveBlocks: valueOrZero(visibleStats.defensiveBlocks),
         defensive7MinSupportBlocks: valueOrZero(visibleStats.defensive7MinSupportBlocks),
         friendlyMinutes: valueOrZero(visibleStats.minutesPlayed),
         shibobos: valueOrZero(visibleStats.shibobos),
@@ -2616,8 +2619,7 @@ export function PlayerCardPage({
                       <div className="fifa-bottom-stats">
                         <span>⚽ {p.goals} Goals</span>
                         <span>🎯 {p.assists} Assists</span>
-                        <span>🧱 {p.defensive10MinBlocks}× 10-min DEF blocks</span>
-                        <span>⏱️ {round1(p.friendlyMinutes)} min played</span>
+                        <span>🧱 {p.defensiveBlocks} 5-min Defensive Blocks</span>
                       </div>
                     ) : (
                       <div className="fifa-bottom-stats">
