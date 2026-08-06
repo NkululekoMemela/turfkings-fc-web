@@ -39,7 +39,7 @@ import { CLUB_COLLECTIONS, DEFAULT_CLUB_ID } from "../core/clubPaths.js";
 //    capture_requests/     goal/save/skill capture triggers for camera devices
 // ============================
 
-const DEFAULT_CLEANUP_GRACE_HOURS = 24;
+const DEFAULT_HIGHLIGHT_VISIBILITY_DAYS = 5;
 const RECORDING_DEVICE_ONLINE_WINDOW_SECONDS = 45;
 
 function matchRef(matchId, clubId = DEFAULT_CLUB_ID) {
@@ -993,7 +993,7 @@ export async function markVideoCleanupCandidatesForAdminReview({
   cleanupCandidates,
   curationRunId = "",
   curationMeta = {},
-  graceHours = DEFAULT_CLEANUP_GRACE_HOURS,
+  visibilityDays = DEFAULT_HIGHLIGHT_VISIBILITY_DAYS,
 }) {
   if (!matchId) throw new Error("Missing matchId.");
 
@@ -1003,7 +1003,11 @@ export async function markVideoCleanupCandidatesForAdminReview({
   const batch = writeBatch(db);
   const cleanupMarkedAt = new Date();
   const cleanupMarkedAtISO = cleanupMarkedAt.toISOString();
-  const cleanupEligibleAtISO = addHours(cleanupMarkedAt, graceHours).toISOString();
+  const cleanupEligibleAt = new Date(cleanupMarkedAt);
+  cleanupEligibleAt.setDate(
+    cleanupEligibleAt.getDate() + Number(visibilityDays || DEFAULT_HIGHLIGHT_VISIBILITY_DAYS)
+  );
+  const cleanupEligibleAtISO = cleanupEligibleAt.toISOString();
 
   safeCandidates.forEach((candidate) => {
     const safeCandidate = cleanFirestorePayload(candidate);
@@ -1015,8 +1019,10 @@ export async function markVideoCleanupCandidatesForAdminReview({
       clipId,
       id: safeCandidate.id || clipId,
       matchId,
-      cleanupStatus: "pending_admin_review",
+      cleanupStatus: "pending_cleanup",
+      lifecycleState: "PENDING_CLEANUP",
       cleanupReason: safeCandidate.cleanupReason || "Not selected for weekly winners",
+      lifecycleReason: safeCandidate.cleanupReason || "Not selected for weekly winners",
       curationRunId: curationRunId || safeCandidate.curationRunId || null,
       curationMeta: cleanFirestorePayload(curationMeta),
       cleanupMarkedAtISO,
@@ -1032,7 +1038,8 @@ export async function markVideoCleanupCandidatesForAdminReview({
 
   return safeCandidates.map((candidate) => ({
     ...candidate,
-    cleanupStatus: "pending_admin_review",
+    cleanupStatus: "pending_cleanup",
+      lifecycleState: "PENDING_CLEANUP",
     cleanupMarkedAtISO,
     cleanupEligibleAtISO,
     curationRunId: curationRunId || candidate?.curationRunId || null,
@@ -1045,7 +1052,7 @@ export async function runVideoHighlightCuration({
   votesByUser = null,
   limits,
   curationMeta = {},
-  graceHours = DEFAULT_CLEANUP_GRACE_HOURS,
+  visibilityDays = DEFAULT_HIGHLIGHT_VISIBILITY_DAYS,
   saveCleanupQueue = true,
 } = {}) {
   if (!matchId) throw new Error("Missing matchId.");
@@ -1082,7 +1089,7 @@ export async function runVideoHighlightCuration({
         cleanupCandidates,
         curationRunId,
         curationMeta,
-        graceHours,
+        visibilityDays,
       })
     : cleanupCandidates;
 
@@ -1094,9 +1101,10 @@ export async function runVideoHighlightCuration({
     winnerCount: winners.length,
     cleanupCandidateCount: queuedCleanupCandidates.length,
     ranAtISO: new Date().toISOString(),
-    cleanupGraceHours: Number(graceHours || DEFAULT_CLEANUP_GRACE_HOURS),
+    highlightVisibilityDays: Number(visibilityDays || DEFAULT_HIGHLIGHT_VISIBILITY_DAYS),
     archivedDuringCuration: false,
-    archiveTiming: "confirm_cleanup",
+    lifecycleEnabled: true,
+    archiveTiming: "automatic_lifecycle",
   };
 
   await setDoc(
@@ -1108,10 +1116,21 @@ export async function runVideoHighlightCuration({
     { merge: true }
   );
 
+  const lifecycleResult =
+    await confirmAndDeleteVideoCleanupCandidates({
+      matchId,
+      cleanupCandidates: queuedCleanupCandidates,
+      winners,
+      curationRunId,
+      curationMeta,
+      requireEligibleWindow: true,
+    });
+
   return {
     ...selection,
     winners,
     cleanupCandidates: queuedCleanupCandidates,
+    lifecycleResult,
     curationRunId,
     runSummary,
   };
