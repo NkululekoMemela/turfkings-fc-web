@@ -3,7 +3,9 @@
 const admin = require("firebase-admin");
 
 admin.initializeApp({
-  credential: admin.credential.applicationDefault(),
+  credential: admin.credential.cert(
+      require("/home/nc.memela/Projects/FANM_SECRETS/fanm-backup-bot.json")
+    ),
   projectId: "five-asides-near-me",
 });
 

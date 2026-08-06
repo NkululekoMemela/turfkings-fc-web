@@ -123,6 +123,18 @@ function loadMappedDocs() {
     }
 
     mapped.push({ from, to, data: doc.data || {} });
+
+    // FANM reads its live club state from clubs/turf-kings/state/main.
+    // Turf Kings production stores the authoritative equivalent at
+    // appState_v2/main, so mirror that document into both destinations.
+    if (from === "appState_v2/main") {
+      mapped.push({
+        from,
+        to: `clubs/${CLUB_ID}/state/main`,
+        data: doc.data || {},
+        mappingType: "production_state_to_fanm_operational_state",
+      });
+    }
   }
 
   return { backupFile, docs, mapped, skipped };

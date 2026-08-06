@@ -15303,3 +15303,28 @@ button.fanm-chat-highlight-card {
     margin-top: 0.9rem !important;
   }
 }
+
+
+/* VIDEO HIGHLIGHT ACTION PRIORITY */
+.tkh-card-actions .tkh-delete-action {
+  order: 30;
+}
+
+.tkh-card-actions .tkh-share-action {
+  order: 40;
+}
+
+@media (max-width: 620px) {
+  .tkh-card-actions .tkh-share-action {
+    flex: 1 1 100%;
+  }
+
+  .tkh-card-actions .tkh-share-action > button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .tkh-card-actions .tkh-delete-action {
+    flex: 0 0 auto;
+  }
+}
