@@ -1,6 +1,7 @@
 // src/pages/VideoHighlightsPage.jsx
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import VideoHighlightsRepository, {
   saveRawHighlightDoc,
 } from "../storage/VideoHighlightsRepository.js";
@@ -651,6 +652,7 @@ function HighlightCard({
   isModerator = false,
   canLike = false,
   isLiked = false,
+  showVoteLabel = false,
   currentUserKey = "",
   onLike,
   onApprove,
@@ -769,23 +771,49 @@ function HighlightCard({
       <div className="tkh-badge-row">
         <span className="tkh-type-badge">{typeBadgeLabel(highlight.normalizedType)}</span>
 
-        {isModerator && (
-          <button
-            type="button"
-            className="tkh-btn"
-            onClick={() => onEdit?.(highlight)}
-            title="Edit highlight"
-            style={{
-              marginLeft: "0.45rem",
-              padding: "0.18rem 0.48rem",
-              minHeight: "unset",
-              fontSize: "0.72rem",
-              lineHeight: 1,
-            }}
-          >
-            ✏️
-          </button>
-        )}
+        <div style={{ marginLeft: "auto", display: "flex", gap: "0.35rem" }}>
+          {isModerator && (
+            <>
+              <button
+                type="button"
+                className="tkh-btn"
+                title="Edit"
+                onClick={() => onEdit?.(highlight)}
+                style={{padding:"0.18rem 0.48rem",minHeight:"unset",fontSize:"0.72rem"}}
+              >
+                ✏️
+              </button>
+
+              {canDeleteHighlight && (
+                <button
+                  type="button"
+                  className="tkh-btn"
+                  title="Delete"
+                  onClick={() => onDelete?.(highlight)}
+                  style={{padding:"0.18rem 0.48rem",minHeight:"unset",fontSize:"0.72rem"}}
+                >
+                  🗑️
+                </button>
+              )}
+
+              {highlight.mediaUrl && (
+                <button
+                  type="button"
+                  className="tkh-btn"
+                  title="Share"
+                  onClick={() => setShowShareMenu((v) => !v)}
+                  style={{
+                    padding: "0.18rem 0.48rem",
+                    minHeight: "unset",
+                    fontSize: "0.72rem",
+                  }}
+                >
+                  ↗️
+                </button>
+              )}
+            </>
+          )}
+        </div>
 
         {missingBadges.map((badge) => (
           <span key={badge} className="tkh-missing-badge">{badge}</span>
@@ -857,7 +885,9 @@ function HighlightCard({
               onClick={() => onLike?.(highlight)}
               aria-pressed={isLiked}
             >
-              {isLiked ? "❤️ Liked" : "♡ Like"}
+              {isLiked
+                ? "❤️ Liked"
+                : (showVoteLabel ? "🗳️ Vote" : "♡ Like")}
               {Number(likeCount || 0) > 0
                 ? ` · ${Number(likeCount || 0)}`
                 : ""}
@@ -874,70 +904,7 @@ function HighlightCard({
           </button>
         )}
 
-        {highlight.mediaUrl && (
-          <div
-            className="tkh-share-action"
-            style={{ position: "relative" }}
-          >
-            <button
-              type="button"
-              className="tkh-btn"
-              onClick={() => setShowShareMenu((prev) => !prev)}
-            >
-              Share ▾
-            </button>
 
-            {showShareMenu && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: "115%",
-                  left: 0,
-                  minWidth: "180px",
-                  borderRadius: "1rem",
-                  overflow: "hidden",
-                  background:
-                    "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
-                  border: "1px solid rgba(148,163,184,0.20)",
-                  boxShadow: "0 18px 50px rgba(0,0,0,0.45)",
-                  zIndex: 80,
-                }}
-              >
-                {[
-                  ["copy", "Copy link"],
-                  ["download", "Download clip"],
-                  ["native", "Device share"],
-                  ["whatsapp", "WhatsApp"],
-                  ["facebook", "Facebook"],
-                  ["twitter", "X / Twitter"],
-                ].map(([type, label]) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => {
-                      handleShare(type);
-                      setShowShareMenu(false);
-                    }}
-                    style={{
-                      width: "100%",
-                      border: "none",
-                      borderBottom: "1px solid rgba(255,255,255,0.06)",
-                      background: "transparent",
-                      color: "#f8fafc",
-                      textAlign: "left",
-                      padding: "0.78rem 1rem",
-                      cursor: "pointer",
-                      fontSize: "0.82rem",
-                      fontWeight: 800,
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {isModerator && highlight.status === "pending" && (
           <>
@@ -950,11 +917,6 @@ function HighlightCard({
           </>
         )}
 
-        {canDeleteHighlight && (
-          <button type="button" className="tkh-btn tkh-btn-danger tkh-delete-action" onClick={() => onDelete?.(highlight)}>
-            Delete
-          </button>
-        )}
       </div>
     </article>
   );
@@ -1005,6 +967,7 @@ export function VideoHighlightsPage({
   const [likeCountsByClip, setLikeCountsByClip] = useState({});
   const [likedClipIds, setLikedClipIds] = useState(() => new Set());
   const [likesLoading, setLikesLoading] = useState(false);
+  const [showVoteLabel, setShowVoteLabel] = useState(false);
   const [mainTab, setMainTab] = useState("currentWeek");
   const [selectedTab, setSelectedTab] = useState("approved");
   const [selectedFilter, setSelectedFilter] = useState("all");
@@ -1097,6 +1060,16 @@ export function VideoHighlightsPage({
     const timer = window.setInterval(() => setNowTick(Date.now()), 60 * 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setShowVoteLabel(v => !v);
+    }, 10000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
 
   const loadHighlights = async () => {
     if (!resolvedMatchId) return;
@@ -3290,18 +3263,142 @@ export function VideoHighlightsPage({
             i
           </button>
 
-          {showVotingInfo && (
-            <div className="tkh-info-popover">
-              <strong>How weekly winners work</strong>
-              <div style={{ marginTop: "0.45rem" }}>
-                Current Week clips stay open for voting until Sunday night.
-                The top 2 goals, best save, and best skill are kept as Top Voted clips.
-              </div>
-              <div style={{ marginTop: "0.55rem", color: "#fde68a", fontWeight: 850 }}>
-                If no votes are submitted before the deadline, no weekly winners can be selected. Non-winning clips will be cleared after voting closes.
-              </div>
-            </div>
-          )}
+          {showVotingInfo &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <div
+                role="presentation"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) {
+                    setShowVotingInfo(false);
+                  }
+                }}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 10000,
+                  display: "grid",
+                  placeItems: "center",
+                  padding: "1rem",
+                  background: "rgba(2, 6, 23, 0.76)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                }}
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="weekly-winners-title"
+                  style={{
+                    position: "relative",
+                    width: "min(420px, calc(100vw - 2rem))",
+                    maxHeight: "calc(100dvh - 2rem)",
+                    overflowY: "auto",
+                    padding: "1.15rem",
+                    borderRadius: "24px",
+                    color: "#f8fafc",
+                    background:
+                      "linear-gradient(160deg, rgba(15,23,42,0.99), rgba(6,18,38,0.99))",
+                    border: "1px solid rgba(96,165,250,0.28)",
+                    boxShadow: "0 30px 90px rgba(0,0,0,0.62)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowVotingInfo(false)}
+                    aria-label="Close"
+                    style={{
+                      position: "absolute",
+                      top: "0.8rem",
+                      right: "0.8rem",
+                      width: "38px",
+                      height: "38px",
+                      borderRadius: "999px",
+                      border: "1px solid rgba(125,211,252,0.28)",
+                      background: "rgba(15,23,42,0.88)",
+                      color: "#bae6fd",
+                      fontSize: "1.25rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ×
+                  </button>
+
+                  <div style={{ fontSize: "1.45rem", marginBottom: "0.55rem" }}>
+                    🏆
+                  </div>
+
+                  <h2
+                    id="weekly-winners-title"
+                    style={{
+                      margin: 0,
+                      paddingRight: "2.8rem",
+                      fontSize: "1.2rem",
+                    }}
+                  >
+                    Weekly highlight voting
+                  </h2>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: "0.65rem",
+                      marginTop: "0.9rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "0.8rem",
+                        borderRadius: "15px",
+                        background: "rgba(30,41,59,0.72)",
+                      }}
+                    >
+                      🔐 Sign in to vote. Likes count as votes.
+                    </div>
+
+                    <div
+                      style={{
+                        padding: "0.8rem",
+                        borderRadius: "15px",
+                        background: "rgba(30,41,59,0.72)",
+                      }}
+                    >
+                      ⭐ Top goals, save, skill and MOM-ish clips become weekly
+                      winners.
+                    </div>
+
+                    <div
+                      style={{
+                        padding: "0.8rem",
+                        borderRadius: "15px",
+                        color: "#d1fae5",
+                        background: "rgba(16,185,129,0.13)",
+                        border: "1px solid rgba(52,211,153,0.22)",
+                      }}
+                    >
+                      ⏳ Non-winners remain visible for five days, then are
+                      permanently deleted.
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="tkh-btn tkh-btn-primary"
+                    onClick={() => setShowVotingInfo(false)}
+                    style={{
+                      width: "100%",
+                      marginTop: "0.9rem",
+                      minHeight: "44px",
+                      borderRadius: "14px",
+                    }}
+                  >
+                    Got it
+                  </button>
+                </div>
+              </div>,
+              document.body
+            )}
+
         </div>
 
         {(mainTab === "currentWeek" || mainTab === "throwback") && (
@@ -3479,6 +3576,7 @@ export function VideoHighlightsPage({
                         ""
                       )
                     )}
+                    showVoteLabel={showVoteLabel}
                     currentUserKey={identityKey}
                     onLike={toggleLike}
                     onApprove={handleApprove}
@@ -3548,6 +3646,7 @@ export function VideoHighlightsPage({
                                 ""
                               )
                             )}
+                            showVoteLabel={showVoteLabel}
                             currentUserKey={identityKey}
                             onLike={toggleLike}
                             onApprove={handleApprove}
