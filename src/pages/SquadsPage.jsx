@@ -3199,8 +3199,10 @@ export function SquadsPage({
       "";
 
     const cleanedTime = String(rawTime || "")
-      .replace(/^Wednesdays?\s*:?\s*/i, "")
-      .replace(/^Wednesday\s*:?\s*/i, "")
+      .replace(
+        /^(?:Monday|Mondays|Tuesday|Tuesdays|Wednesday|Wednesdays|Thursday|Thursdays|Friday|Fridays|Saturday|Saturdays|Sunday|Sundays)\s*:?\s*/i,
+        ""
+      )
       .trim();
 
     const prettyTime = cleanedTime.replace(/\b(\d{1,2}):(\d{2})\b/, (_, h, m) => {

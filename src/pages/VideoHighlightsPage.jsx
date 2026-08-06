@@ -653,6 +653,7 @@ function HighlightCard({
   canLike = false,
   isLiked = false,
   showVoteLabel = false,
+  canAttachToChat = false,
   currentUserKey = "",
   onLike,
   onApprove,
@@ -663,6 +664,11 @@ function HighlightCard({
   onAttachToClubChat,
 }) {
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [shareMenuPosition, setShareMenuPosition] = useState({
+    top: 0,
+    left: 0,
+  });
+  const shareButtonRef = useRef(null);
   const missingBadges = getMissingBadges(highlight);
   const matchupLabel = getMatchupLabel(highlight, teams, matchType);
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
@@ -671,6 +677,41 @@ function HighlightCard({
     (currentUserKey &&
       safeLower(highlight?.createdBy) &&
       safeLower(highlight?.createdBy) === safeLower(currentUserKey));
+
+  const toggleShareMenu = () => {
+    if (showShareMenu) {
+      setShowShareMenu(false);
+      return;
+    }
+
+    const rect = shareButtonRef.current?.getBoundingClientRect?.();
+
+    if (rect) {
+      const menuWidth = 190;
+      const estimatedMenuHeight = 290;
+      const gap = 8;
+
+      const left = Math.max(
+        8,
+        Math.min(
+          window.innerWidth - menuWidth - 8,
+          rect.right - menuWidth
+        )
+      );
+
+      const openAbove =
+        rect.bottom + estimatedMenuHeight + gap >
+        window.innerHeight;
+
+      const top = openAbove
+        ? Math.max(8, rect.top - estimatedMenuHeight - gap)
+        : rect.bottom + gap;
+
+      setShareMenuPosition({ top, left });
+    }
+
+    setShowShareMenu(true);
+  };
 
   const handleShare = async (shareType = "native") => {
     const url = getHighlightMediaUrl(highlight);
@@ -771,47 +812,145 @@ function HighlightCard({
       <div className="tkh-badge-row">
         <span className="tkh-type-badge">{typeBadgeLabel(highlight.normalizedType)}</span>
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: "0.35rem" }}>
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.35rem",
+          }}
+        >
           {isModerator && (
-            <>
+            <button
+              type="button"
+              className="tkh-btn"
+              title="Edit highlight"
+              aria-label="Edit highlight"
+              onClick={() => onEdit?.(highlight)}
+              style={{
+                padding: "0.18rem 0.48rem",
+                minHeight: "unset",
+                fontSize: "0.72rem",
+              }}
+            >
+              ✏️
+            </button>
+          )}
+
+          {isModerator && canDeleteHighlight && (
+            <button
+              type="button"
+              className="tkh-btn"
+              title="Delete highlight"
+              aria-label="Delete highlight"
+              onClick={() => onDelete?.(highlight)}
+              style={{
+                padding: "0.18rem 0.48rem",
+                minHeight: "unset",
+                fontSize: "0.72rem",
+              }}
+            >
+              🗑️
+            </button>
+          )}
+
+          {highlight.mediaUrl && (
+            <div
+              className="tkh-share-action"
+              style={{ position: "relative" }}
+            >
               <button
+                ref={shareButtonRef}
                 type="button"
                 className="tkh-btn"
-                title="Edit"
-                onClick={() => onEdit?.(highlight)}
-                style={{padding:"0.18rem 0.48rem",minHeight:"unset",fontSize:"0.72rem"}}
+                title="Share highlight"
+                aria-label="Share highlight"
+                aria-expanded={showShareMenu}
+                onClick={toggleShareMenu}
+                style={{
+                  padding: "0.18rem 0.48rem",
+                  minHeight: "unset",
+                  fontSize: "0.72rem",
+                }}
               >
-                ✏️
+                ↗️
               </button>
 
-              {canDeleteHighlight && (
-                <button
-                  type="button"
-                  className="tkh-btn"
-                  title="Delete"
-                  onClick={() => onDelete?.(highlight)}
-                  style={{padding:"0.18rem 0.48rem",minHeight:"unset",fontSize:"0.72rem"}}
-                >
-                  🗑️
-                </button>
-              )}
+              {showShareMenu &&
+                typeof document !== "undefined" &&
+                createPortal(
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Close share menu"
+                      onClick={() => setShowShareMenu(false)}
+                      style={{
+                        position: "fixed",
+                        inset: 0,
+                        zIndex: 11990,
+                        border: "none",
+                        padding: 0,
+                        background: "transparent",
+                        cursor: "default",
+                      }}
+                    />
 
-              {highlight.mediaUrl && (
-                <button
-                  type="button"
-                  className="tkh-btn"
-                  title="Share"
-                  onClick={() => setShowShareMenu((v) => !v)}
-                  style={{
-                    padding: "0.18rem 0.48rem",
-                    minHeight: "unset",
-                    fontSize: "0.72rem",
-                  }}
-                >
-                  ↗️
-                </button>
-              )}
-            </>
+                    <div
+                      role="menu"
+                      style={{
+                        position: "fixed",
+                        top: `${shareMenuPosition.top}px`,
+                        left: `${shareMenuPosition.left}px`,
+                        width: "190px",
+                        borderRadius: "1rem",
+                        overflow: "hidden",
+                        background:
+                          "linear-gradient(180deg, rgba(15,23,42,0.99), rgba(2,6,23,0.99))",
+                        border:
+                          "1px solid rgba(148,163,184,0.24)",
+                        boxShadow:
+                          "0 22px 60px rgba(0,0,0,0.58)",
+                        zIndex: 12000,
+                      }}
+                    >
+                      {[
+                        ["copy", "Copy link"],
+                        ["download", "Download clip"],
+                        ["native", "Device share"],
+                        ["whatsapp", "WhatsApp"],
+                        ["facebook", "Facebook"],
+                        ["twitter", "X / Twitter"],
+                      ].map(([type, label]) => (
+                        <button
+                          key={type}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            handleShare(type);
+                            setShowShareMenu(false);
+                          }}
+                          style={{
+                            width: "100%",
+                            border: "none",
+                            borderBottom:
+                              "1px solid rgba(255,255,255,0.06)",
+                            background: "transparent",
+                            color: "#f8fafc",
+                            textAlign: "left",
+                            padding: "0.78rem 1rem",
+                            cursor: "pointer",
+                            fontSize: "0.82rem",
+                            fontWeight: 800,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </>,
+                  document.body
+                )}
+            </div>
           )}
         </div>
 
@@ -894,7 +1033,26 @@ function HighlightCard({
             </button>
           )}
 
-        {onAttachToClubChat && (
+        {highlight.status === "approved" &&
+          !canLike &&
+          !(highlight.highlightEra === "throwback" || highlight.isThrowback) &&
+          ["goal", "save", "skill", "momish"].includes(
+            highlight.normalizedType
+          ) && (
+            <span
+              className="tkh-btn tkh-btn-vote"
+              title="Highlight votes"
+              aria-label={`${Number(likeCount || 0)} highlight votes`}
+              style={{
+                cursor: "default",
+                pointerEvents: "none",
+              }}
+            >
+              ❤️ {Number(likeCount || 0)}
+            </span>
+          )}
+
+        {canAttachToChat && (
           <button
             type="button"
             className="tkh-btn"
@@ -3577,6 +3735,10 @@ export function VideoHighlightsPage({
                       )
                     )}
                     showVoteLabel={showVoteLabel}
+                    canAttachToChat={
+                      ["player", "captain", "admin"].includes(role) &&
+                      typeof onAttachHighlightToClubChat === "function"
+                    }
                     currentUserKey={identityKey}
                     onLike={toggleLike}
                     onApprove={handleApprove}
@@ -3647,6 +3809,10 @@ export function VideoHighlightsPage({
                               )
                             )}
                             showVoteLabel={showVoteLabel}
+                            canAttachToChat={
+                              ["player", "captain", "admin"].includes(role) &&
+                              typeof onAttachHighlightToClubChat === "function"
+                            }
                             currentUserKey={identityKey}
                             onLike={toggleLike}
                             onApprove={handleApprove}

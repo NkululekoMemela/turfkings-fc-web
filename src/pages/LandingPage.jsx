@@ -1112,40 +1112,45 @@ export function LandingPage({
               </span>
             </span>
 
-            {currentUser && (
-              <div
-                className="muted small"
+            <div
+              className="muted small"
+              style={{
+                marginTop: "0.2rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                width: "100%",
+                flexWrap: "nowrap",
+              }}
+            >
+              <span>
+                {currentUser ? (
+                  <>
+                    Google account:{" "}
+                    <strong>{currentUser.displayName || currentUser.email}</strong>
+                  </>
+                ) : (
+                  <>Browse as a spectator</>
+                )}
+              </span>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => onGoToEntryDev?.()}
                 style={{
-                  marginTop: "0.2rem",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.75rem",
-                  width: "100%",
-                  flexWrap: "nowrap",
+                  minHeight: "30px",
+                  padding: "0.28rem 0.68rem",
+                  borderRadius: "999px",
+                  fontSize: "0.76rem",
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
                 }}
               >
-                <span>
-                  Google account:{" "}
-                  <strong>{currentUser.displayName || currentUser.email}</strong>
-                </span>
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={() => onGoToEntryDev?.()}
-                  style={{
-                    minHeight: "30px",
-                    padding: "0.28rem 0.68rem",
-                    borderRadius: "999px",
-                    fontSize: "0.76rem",
-                    fontWeight: 800,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Change Profile
-                </button>
-              </div>
-            )}
+                👤 Change Profile
+              </button>
+            </div>
           </div>
         </div>
       </header>
