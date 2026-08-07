@@ -1,5 +1,5 @@
 // src/components/ClubChat/ClubChatWidget.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "../../firebaseConfig";
 import VideoHighlightsRepository from "../../storage/VideoHighlightsRepository.js";
 import {
@@ -55,6 +55,40 @@ export function ClubChatWidget({
   onOpenFullChat,
   onOpenHighlight,
 }) {
+
+  /*
+   * Club Chat viewport behaviour:
+   * - opening the chat lands on the latest message;
+   * - incoming messages follow only while the reader is already
+   *   close to the bottom;
+   * - scrolling upward to read history is respected.
+   */
+  const clubChatMessagesRef = useRef(null);
+  const clubChatInitialScrollDoneRef = useRef(false);
+  const clubChatShouldFollowBottomRef = useRef(true);
+
+  const scrollClubChatToBottom = useCallback((behavior = "auto") => {
+    const node = clubChatMessagesRef.current;
+    if (!node) return;
+
+    node.scrollTo({
+      top: node.scrollHeight,
+      behavior,
+    });
+  }, []);
+
+  const handleClubChatMessagesScroll = useCallback(() => {
+    const node = clubChatMessagesRef.current;
+    if (!node) return;
+
+    const distanceFromBottom =
+      node.scrollHeight - node.scrollTop - node.clientHeight;
+
+    clubChatShouldFollowBottomRef.current =
+      distanceFromBottom <= 80;
+  }, []);
+
+
   const isLauncherOnly = variant === "launcher";
   const isPageMode = variant === "page";
   const [challengerChatFixture, setChallengerChatFixture] = useState(null);
@@ -191,6 +225,50 @@ export function ClubChatWidget({
       window.removeEventListener("fanm_attach_highlight_to_chat", handleAttachHighlightToChat);
     };
   }, []);
+
+  /*
+   * Opening Club Chat:
+   * land on the newest message once the message viewport exists.
+   */
+  useEffect(() => {
+    if (!clubChatOpen) {
+      clubChatInitialScrollDoneRef.current = false;
+      return;
+    }
+
+    if (clubChatInitialScrollDoneRef.current) return;
+
+    clubChatInitialScrollDoneRef.current = true;
+    clubChatShouldFollowBottomRef.current = true;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollClubChatToBottom("auto");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [clubChatOpen, scrollClubChatToBottom]);
+
+  /*
+   * New Club Chat messages:
+   * auto-follow only while the reader is already near the bottom.
+   * Someone reading older messages must not be pulled downward.
+   */
+  useEffect(() => {
+    if (!clubChatOpen) return;
+    if (!clubChatInitialScrollDoneRef.current) return;
+    if (!clubChatShouldFollowBottomRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollClubChatToBottom("smooth");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    clubChatOpen,
+    clubChatMessages.length,
+    scrollClubChatToBottom,
+  ]);
+
   const buildChatHighlightMatchId = () => {
     const today = new Date().toISOString().slice(0, 10);
     const type = String(matchType || "").toLowerCase().includes("league") ? "league" : "friendly";
@@ -1091,7 +1169,10 @@ export function ClubChatWidget({
           ) : null}
 
           {activeChatRoom === "club" ? (
-            <div className="fanm-club-chat-messages">
+            <div className="fanm-club-chat-messages"
+        ref={clubChatMessagesRef}
+        onScroll={handleClubChatMessagesScroll}
+      >
               {clubChatMessages.length ? (
                 clubChatMessages.map((message, index) => {
                   const previousMessage = clubChatMessages[index - 1];
@@ -1341,6 +1422,20 @@ export function ClubChatWidget({
             </div>
           )}
 
+          {activeChatRoom === "club" && clubChatEmojiOpen ? (
+            <div className="fanm-club-chat-emoji-tray">
+              {["😀", "😂", "🤣", "😎", "😭", "😡", "❤️", "🔥", "⚽", "🥅", "🏆", "💪", "👏", "🙌", "👌", "👀"].map((emoji) => (
+                <button
+                  type="button"
+                  key={`club-chat-emoji-${emoji}`}
+                  onClick={() => addClubChatEmoji(emoji)}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {activeChatRoom === "club" ? (
             <div className="fanm-club-chat-compose">
               <div className="fanm-club-chat-input-wrap">
@@ -1470,20 +1565,6 @@ export function ClubChatWidget({
                   ) : (
                     <p>No highlights found for the current match yet.</p>
                   )}
-                </div>
-              )}
-
-              {clubChatEmojiOpen && (
-                <div className="fanm-club-chat-emoji-tray">
-                  {["😀", "😂", "🤣", "😎", "😭", "😡", "❤️", "🔥", "⚽", "🥅", "🏆", "💪", "👏", "🙌", "👌", "👀"].map((emoji) => (
-                    <button
-                      type="button"
-                      key={`club-chat-emoji-${emoji}`}
-                      onClick={() => addClubChatEmoji(emoji)}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
                 </div>
               )}
 

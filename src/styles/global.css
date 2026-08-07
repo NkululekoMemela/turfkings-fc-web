@@ -15328,3 +15328,91 @@ button.fanm-chat-highlight-card {
     flex: 0 0 auto;
   }
 }
+
+
+/* ============================================================
+   FANM CLUB CHAT — MOBILE LAYOUT CONSOLIDATION
+   Final scoped rules for composer emoji trays.
+   Earlier Club Chat rules remain intentionally untouched.
+   ============================================================ */
+
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-compose,
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-input-wrap {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/*
+ * Emoji tray belongs to the normal document flow.
+ * It must never inherit the narrow width/position of the emoji
+ * launcher button or the floating chat edge control.
+ */
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-emoji-tray {
+  position: static !important;
+  inset: auto !important;
+  float: none !important;
+
+  width: calc(100% - 1rem) !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin: 0.55rem auto 0 !important;
+  box-sizing: border-box;
+
+  display: grid !important;
+  grid-template-columns: repeat(8, minmax(34px, 1fr)) !important;
+  align-items: center;
+  gap: 0.4rem !important;
+
+  padding: 0.55rem !important;
+  overflow: visible !important;
+}
+
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-emoji-tray button {
+  position: static !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 38px !important;
+  padding: 0.35rem !important;
+
+  display: grid !important;
+  place-items: center;
+
+  line-height: 1 !important;
+  font-size: 1.15rem !important;
+}
+
+/*
+ * The message viewport gets stable scrolling behaviour without
+ * affecting the overall modal or the page behind it.
+ */
+.fanm-club-chat-card.is-modal-open .fanm-club-chat-messages {
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  min-height: 0;
+}
+
+/* Phone layout: comfortable 4-column emoji tray. */
+@media (max-width: 560px) {
+  .fanm-club-chat-card.is-modal-open .fanm-club-chat-emoji-tray {
+    grid-template-columns: repeat(4, minmax(42px, 1fr)) !important;
+    gap: 0.45rem !important;
+    padding: 0.6rem !important;
+  }
+
+  .fanm-club-chat-card.is-modal-open .fanm-club-chat-emoji-tray button {
+    min-height: 42px !important;
+    font-size: 1.2rem !important;
+  }
+}
+
+/* Very narrow phones still retain four usable emoji columns. */
+@media (max-width: 350px) {
+  .fanm-club-chat-card.is-modal-open .fanm-club-chat-emoji-tray {
+    width: calc(100% - 0.5rem) !important;
+    grid-template-columns: repeat(4, minmax(36px, 1fr)) !important;
+    gap: 0.3rem !important;
+    padding: 0.45rem !important;
+  }
+}
