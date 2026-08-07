@@ -2619,7 +2619,7 @@ export function PlayerCardPage({
                       <div className="fifa-bottom-stats">
                         <span>⚽ {p.goals} Goals</span>
                         <span>🎯 {p.assists} Assists</span>
-                        <span>🧱 {p.defensiveBlocks} 5-min Defensive Blocks</span>
+                        <span>🧱 {p.defensiveBlocks}x 5-min Defensive Blocks</span>
                       </div>
                     ) : (
                       <div className="fifa-bottom-stats">
