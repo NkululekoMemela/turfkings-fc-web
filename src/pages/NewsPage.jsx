@@ -263,6 +263,7 @@ function makeVoterId(identity) {
 }
 
 export function NewsPage({
+  matchType = "LEAGUE",
   teams,
   results,
   allEvents,
@@ -1084,39 +1085,93 @@ This will remove it from live news and archives for everyone.`
 
   const tableLeader = teamStats[0] || null;
 
+  const newsMatchTypeForStats = String(
+    newsSeasonContext.shouldUsePreviousSeasonNews
+      ? newsSeasonContext.seasonForNews?.matchType || matchType
+      : matchType
+  )
+    .trim()
+    .toUpperCase();
+
+  const isFriendlyNewsStats =
+    newsMatchTypeForStats === "FRIENDLY";
+
   // ---------- PLAYER STATS (full tournament) ----------
   const playerStats = useMemo(() => {
     const stats = {};
+
     const getOrCreate = (rawName) => {
       const name = normalizeName(rawName);
       if (!name) return null;
+
       if (!stats[name]) {
-        stats[name] = { name, goals: 0, assists: 0, shibobos: 0 };
+        stats[name] = {
+          name,
+          goals: 0,
+          assists: 0,
+          cleanSheets: 0,
+          defensiveBlocks: 0,
+        };
       }
+
       return stats[name];
     };
 
     cleanTournamentEvents.forEach((e) => {
-      if (e.scorer) {
-        const s = getOrCreate(e.scorer);
-        if (s) {
-          if (e.type === "goal") s.goals += 1;
-          else if (e.type === "shibobo") s.shibobos += 1;
-        }
+      if (e?.type === "goal" && e?.scorer) {
+        const scorer = getOrCreate(e.scorer);
+        if (scorer) scorer.goals += 1;
       }
-      if (e.assist) {
-        const a = getOrCreate(e.assist);
-        if (a) a.assists += 1;
+
+      if (e?.assist) {
+        const assister = getOrCreate(e.assist);
+        if (assister) assister.assists += 1;
+      }
+
+      if (e?.type === "clean_sheet") {
+        const holder = getOrCreate(
+          e.playerName || e.scorer || ""
+        );
+        if (holder) holder.cleanSheets += 1;
+      }
+
+      if (e?.type === "defensive_block") {
+        const holder = getOrCreate(
+          e.playerName || e.scorer || ""
+        );
+
+        if (holder) {
+          const blockCount = Math.max(
+            1,
+            Number(e.blockCount || 1)
+          );
+          holder.defensiveBlocks += blockCount;
+        }
       }
     });
 
     const arr = Object.values(stats);
+
     arr.forEach((p) => {
       p.teamName = playerTeamMap[p.name] || "—";
-      p.total = p.goals + p.assists + p.shibobos;
+
+      const defensiveContribution = isFriendlyNewsStats
+        ? p.defensiveBlocks
+        : p.cleanSheets;
+
+      p.total =
+        p.goals +
+        p.assists +
+        defensiveContribution;
     });
+
     return arr;
-  }, [cleanTournamentEvents, playerTeamMap, normalizeName]);
+  }, [
+    cleanTournamentEvents,
+    playerTeamMap,
+    normalizeName,
+    isFriendlyNewsStats,
+  ]);
 
   const topScorer = useMemo(() => {
     let best = null;
@@ -1312,33 +1367,75 @@ This will remove it from live news and archives for everyone.`
         return String(x.name || "").localeCompare(String(y.name || ""));
       });
 
+      const seasonMatchType = String(
+        season?.matchType || "LEAGUE"
+      )
+        .trim()
+        .toUpperCase();
+
+      const seasonIsFriendly =
+        seasonMatchType === "FRIENDLY";
+
       const playerTotals = {};
+
       const ensurePlayer = (rawName) => {
         const name = normalizeName(rawName);
         if (!name) return null;
+
         if (!playerTotals[name]) {
-          playerTotals[name] = { name, goals: 0, assists: 0, shibobos: 0, total: 0 };
+          playerTotals[name] = {
+            name,
+            goals: 0,
+            assists: 0,
+            cleanSheets: 0,
+            defensiveBlocks: 0,
+            total: 0,
+          };
         }
+
         return playerTotals[name];
       };
 
       seasonEvents.forEach((event) => {
-        if (event?.scorer) {
-          const player = ensurePlayer(event.scorer);
-          if (player) {
-            if (event.type === "goal") player.goals += 1;
-            else if (event.type === "shibobo") player.shibobos += 1;
-          }
+        if (event?.type === "goal" && event?.scorer) {
+          const scorer = ensurePlayer(event.scorer);
+          if (scorer) scorer.goals += 1;
         }
+
         if (event?.assist) {
           const assister = ensurePlayer(event.assist);
           if (assister) assister.assists += 1;
+        }
+
+        if (event?.type === "clean_sheet") {
+          const holder = ensurePlayer(
+            event.playerName || event.scorer || ""
+          );
+          if (holder) holder.cleanSheets += 1;
+        }
+
+        if (event?.type === "defensive_block") {
+          const holder = ensurePlayer(
+            event.playerName || event.scorer || ""
+          );
+
+          if (holder) {
+            holder.defensiveBlocks += Math.max(
+              1,
+              Number(event.blockCount || 1)
+            );
+          }
         }
       });
 
       const players = Object.values(playerTotals).map((player) => ({
         ...player,
-        total: player.goals + player.assists + player.shibobos,
+        total:
+          player.goals +
+          player.assists +
+          (seasonIsFriendly
+            ? player.defensiveBlocks
+            : player.cleanSheets),
       }));
 
       const topGoals = players.slice().sort((a, b) => {
@@ -3267,7 +3364,9 @@ Votes for this poll will no longer be shown.`
           </div>
           <div className="mvp-stats">
             <div className="mvp-stat-pill">
-              <span>Total G+A+S</span>
+              <span>
+                {isFriendlyNewsStats ? "Total G+A+DB" : "Total G+A+CS"}
+              </span>
               <strong>{bestOverall.total}</strong>
             </div>
             <div className="mvp-stat-pill">
@@ -3279,8 +3378,16 @@ Votes for this poll will no longer be shown.`
               <strong>{bestOverall.assists}</strong>
             </div>
             <div className="mvp-stat-pill">
-              <span>Shibobos</span>
-              <strong>{bestOverall.shibobos}</strong>
+              <span>
+                {isFriendlyNewsStats
+                  ? "5-min Defensive Blocks"
+                  : "Clean Sheets"}
+              </span>
+              <strong>
+                {isFriendlyNewsStats
+                  ? bestOverall.defensiveBlocks
+                  : bestOverall.cleanSheets}
+              </strong>
             </div>
           </div>
         </section>

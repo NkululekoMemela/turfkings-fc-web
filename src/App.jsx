@@ -7703,6 +7703,7 @@ export default function App() {
 
       {page === PAGE_NEWS && (
         <NewsPage
+          matchType={matchType}
           teams={teams}
           results={fullResults}
           allEvents={fullEvents}
