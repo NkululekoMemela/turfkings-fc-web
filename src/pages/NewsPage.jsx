@@ -3856,7 +3856,7 @@ Votes for this poll will no longer be shown.`
                         }
                         style={{
                           flex:
-                            "0 0 min(86vw, 430px)",
+                            "0 0 min(calc(100% - 24px), 430px)",
                           scrollSnapAlign: "center",
                           overflow: "hidden",
                           boxSizing: "border-box",
@@ -3930,8 +3930,9 @@ Votes for this poll will no longer be shown.`
 
                         <div
                           style={{
-                            background: "#000",
+                            background: "transparent",
                             position: "relative",
+                            padding: "0 10px 10px",
                           }}
                         >
                           <video
@@ -3955,9 +3956,13 @@ Votes for this poll will no longer be shown.`
                             style={{
                               display: "block",
                               width: "100%",
+                              maxWidth: "100%",
                               aspectRatio: "16 / 9",
                               background: "#000",
                               objectFit: "cover",
+                              borderRadius: "14px",
+                              overflow: "hidden",
+                              boxSizing: "border-box",
                             }}
                           />
                         </div>
