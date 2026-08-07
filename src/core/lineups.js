@@ -789,3 +789,205 @@ export function buildCleanSheetEventsForMatch({
 
   return out;
 }
+
+// ---------------- FRIENDLY DEFENSIVE BLOCK EVENTS ----------------
+//
+// Friendly matches do not use traditional full-match clean sheets.
+//
+// A goalkeeper or defender earns one Defensive Block for every
+// completed fixed five-minute interval in which their team concedes
+// no valid goal.
+//
+// The final referee-confirmed lineup determines eligible players.
+// Guests do not receive permanent Defensive Block statistics.
+//
+export function buildFriendlyDefensiveBlockEvents({
+  matchNo,
+  matchKey = "",
+  teamAId,
+  teamBId,
+  events = [],
+  elapsedMatchSeconds = 0,
+  verifiedLineups,
+}) {
+  const out = [];
+
+  const intervalSeconds = 5 * 60;
+  const safeElapsedSeconds = Math.max(
+    0,
+    Number(elapsedMatchSeconds || 0)
+  );
+
+  const completedBlockCount = Math.floor(
+    safeElapsedSeconds / intervalSeconds
+  );
+
+  if (completedBlockCount <= 0) return out;
+
+  const completedDurationSeconds =
+    completedBlockCount * intervalSeconds;
+
+  const safeEvents = Array.isArray(events) ? events : [];
+
+  const safeMatchKey =
+    slugFromLooseName(matchKey) ||
+    `friendly-match-${matchNo || 1}`;
+
+  const getProtectedBlockIndexes = (defendingTeamId) => {
+    const concededBlockIndexes = new Set();
+
+    safeEvents
+      .filter((event) => event?.type === "goal")
+      .filter((event) => {
+        const scoringTeamId = String(
+          event?.teamId || ""
+        ).trim();
+
+        return (
+          scoringTeamId &&
+          scoringTeamId !== String(defendingTeamId || "")
+        );
+      })
+      .forEach((event) => {
+        const eventSeconds = Number(event?.timeSeconds);
+
+        if (
+          !Number.isFinite(eventSeconds) ||
+          eventSeconds < 0 ||
+          eventSeconds >= completedDurationSeconds
+        ) {
+          return;
+        }
+
+        /*
+         * A goal at exactly 5:00 belongs to the 5–10 block.
+         */
+        const blockIndex = Math.floor(
+          eventSeconds / intervalSeconds
+        );
+
+        if (
+          blockIndex >= 0 &&
+          blockIndex < completedBlockCount
+        ) {
+          concededBlockIndexes.add(blockIndex);
+        }
+      });
+
+    const protectedBlockIndexes = [];
+
+    for (
+      let blockIndex = 0;
+      blockIndex < completedBlockCount;
+      blockIndex += 1
+    ) {
+      if (!concededBlockIndexes.has(blockIndex)) {
+        protectedBlockIndexes.push(blockIndex);
+      }
+    }
+
+    return protectedBlockIndexes;
+  };
+
+  const addPlayerEvent = ({
+    playerName,
+    teamId,
+    role,
+    blockIndex,
+    snapshot,
+  }) => {
+    if (!playerName) return;
+    if (!Number.isInteger(blockIndex) || blockIndex < 0) return;
+    if (isGuestPlayerInSnapshot(snapshot, playerName)) return;
+
+    const normalizedName = normalizeLineupName(playerName);
+    const blockStartSeconds = blockIndex * intervalSeconds;
+    const blockEndSeconds = blockStartSeconds + intervalSeconds;
+
+    out.push({
+      id: [
+        "friendly-db",
+        safeMatchKey,
+        teamId,
+        role,
+        slugFromLooseName(normalizedName),
+        `block-${blockIndex + 1}`,
+      ]
+        .filter(Boolean)
+        .join("-"),
+
+      type: "defensive_block",
+      statType: "friendly_defensive_block",
+      matchType: "FRIENDLY",
+
+      matchNo,
+      teamId,
+
+      playerName: normalizedName,
+      scorer: normalizedName,
+      assist: null,
+
+      role,
+
+      /*
+       * One event equals one five-minute Defensive Block.
+       * blockCount remains explicitly 1 for backward-compatible
+       * consumers that already know how to sum this field.
+       */
+      blockCount: 1,
+      blockIndex,
+      blockNumber: blockIndex + 1,
+      intervalSeconds,
+      blockStartSeconds,
+      blockEndSeconds,
+      cleanMinutes: 5,
+
+      timeSeconds: blockEndSeconds,
+    });
+  };
+
+  const processTeam = (teamId) => {
+    const snapshot = verifiedLineups?.[teamId] || null;
+    if (!snapshot) return;
+
+    const protectedBlockIndexes =
+      getProtectedBlockIndexes(teamId);
+
+    if (!protectedBlockIndexes.length) return;
+
+    const goalkeeper = getGoalkeeperFromSnapshot(
+      snapshot,
+      FORMATIONS_5
+    );
+
+    const defenders = getDefensivePlayersFromSnapshot(
+      snapshot,
+      FORMATIONS_5
+    );
+
+    protectedBlockIndexes.forEach((blockIndex) => {
+      addPlayerEvent({
+        playerName: goalkeeper,
+        teamId,
+        role: "gk",
+        blockIndex,
+        snapshot,
+      });
+
+      defenders.forEach((playerName) => {
+        addPlayerEvent({
+          playerName,
+          teamId,
+          role: "def",
+          blockIndex,
+          snapshot,
+        });
+      });
+    });
+  };
+
+  processTeam(teamAId);
+  processTeam(teamBId);
+
+  return out;
+}

@@ -44,7 +44,10 @@ import {
 } from "./storage/firebaseRepository.js";
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
 import { useMembers } from "./hooks/useMembers.js";
-import { buildCleanSheetEventsForMatch } from "./core/lineups.js";
+import {
+  buildCleanSheetEventsForMatch,
+  buildFriendlyDefensiveBlockEvents,
+} from "./core/lineups.js";
 import { ensurePracticeSessionSeed, buildPracticeState } from "./core/practiceSessionSeed.js";
 
 import {
@@ -4632,16 +4635,36 @@ export default function App() {
           matchNo,
         }));
 
-        const cleanSheetEvents = buildCleanSheetEventsForMatch({
-          matchNo,
-          teamAId,
-          teamBId,
-          goalsA,
-          goalsB,
-          verifiedLineups,
-        }).map((e) => ({ ...e, ...matchMeta }));
+        const defensiveAwardEvents =
+          matchMeta.matchType === MATCH_TYPE.FRIENDLY
+            ? buildFriendlyDefensiveBlockEvents({
+                matchNo,
+                matchKey:
+                  prevSeason?.liveMatchDraft?.id ||
+                  `${activeSeasonId || "season"}-${matchNo}-${Date.now()}`,
+                teamAId,
+                teamBId,
+                events: committedEvents,
+                elapsedMatchSeconds: Math.max(
+                  0,
+                  Number(matchSeconds || 0) -
+                    Number(secondsLeft || 0)
+                ),
+                verifiedLineups,
+              }).map((event) => ({ ...event, ...matchMeta }))
+            : buildCleanSheetEventsForMatch({
+                matchNo,
+                teamAId,
+                teamBId,
+                goalsA,
+                goalsB,
+                verifiedLineups,
+              }).map((event) => ({ ...event, ...matchMeta }));
 
-        const allCommittedEvents = [...committedEvents, ...cleanSheetEvents];
+        const allCommittedEvents = [
+          ...committedEvents,
+          ...defensiveAwardEvents,
+        ];
 
         const isFriendlyResult = matchMeta.matchType === MATCH_TYPE.FRIENDLY;
 
@@ -4851,16 +4874,36 @@ export default function App() {
         matchNo,
       }));
 
-      const cleanSheetEvents = buildCleanSheetEventsForMatch({
-        matchNo,
-        teamAId,
-        teamBId,
-        goalsA,
-        goalsB,
-        verifiedLineups,
-      }).map((e) => ({ ...e, ...matchMeta }));
+      const defensiveAwardEvents =
+        matchMeta.matchType === MATCH_TYPE.FRIENDLY
+          ? buildFriendlyDefensiveBlockEvents({
+              matchNo,
+              matchKey:
+                prev?.liveMatchDraft?.id ||
+                `${activeSeasonId || "season"}-${matchNo}-${Date.now()}`,
+              teamAId,
+              teamBId,
+              events: committedEvents,
+              elapsedMatchSeconds: Math.max(
+                0,
+                Number(matchSeconds || 0) -
+                  Number(secondsLeft || 0)
+              ),
+              verifiedLineups,
+            }).map((event) => ({ ...event, ...matchMeta }))
+          : buildCleanSheetEventsForMatch({
+              matchNo,
+              teamAId,
+              teamBId,
+              goalsA,
+              goalsB,
+              verifiedLineups,
+            }).map((event) => ({ ...event, ...matchMeta }));
 
-      const allCommittedEvents = [...committedEvents, ...cleanSheetEvents];
+      const allCommittedEvents = [
+        ...committedEvents,
+        ...defensiveAwardEvents,
+      ];
 
       const rotationResult = computeNextFromResult(prev.streaks, {
         teamAId,
@@ -7660,6 +7703,7 @@ export default function App() {
 
       {page === PAGE_NEWS && (
         <NewsPage
+          matchType={matchType}
           teams={teams}
           results={fullResults}
           allEvents={fullEvents}

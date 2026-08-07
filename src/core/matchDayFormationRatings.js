@@ -151,6 +151,7 @@ function getFriendlyDefensiveBonusForTeam({
 
   let ratingBonusGoals = 0;
   let ratingBonusAssists = 0;
+  let defensiveBlocks = 0;
   const cleanWindows = [];
 
   for (let i = 0; i < checkpoints.length - 1; i += 1) {
@@ -160,9 +161,19 @@ function getFriendlyDefensiveBonusForTeam({
 
     if (cleanMinutes <= 0) continue;
 
+    /*
+     * Friendly-only Defensive Blocks:
+     * one block for each complete five-minute period without conceding.
+     *
+     * The existing goalEquivalent and assistEquivalent calculations are
+     * deliberately preserved for now so this refactor does not unexpectedly
+     * change existing player ratings.
+     */
+    const windowDefensiveBlocks = Math.floor(cleanMinutes / 5);
     const goalEquivalent = Math.floor(cleanMinutes / 10);
     const assistEquivalent = Math.floor(cleanMinutes / 7);
 
+    defensiveBlocks += windowDefensiveBlocks;
     ratingBonusGoals += goalEquivalent;
     ratingBonusAssists += assistEquivalent;
 
@@ -170,12 +181,14 @@ function getFriendlyDefensiveBonusForTeam({
       startMinute,
       endMinute,
       cleanMinutes,
+      defensiveBlocks: windowDefensiveBlocks,
       goalEquivalent,
       assistEquivalent,
     });
   }
 
   return {
+    defensiveBlocks,
     ratingBonusGoals,
     ratingBonusAssists,
     cleanWindows,
@@ -395,6 +408,9 @@ export function buildFormationDecorations({
 
         // Friendlies-only rating metadata.
         // These are deliberately separate from real goals/assists.
+        friendlyDefensiveBlocks: receivesFriendlyDefensiveBonus
+          ? Number(friendlyDefensiveTeamBonus.defensiveBlocks || 0)
+          : 0,
         friendlyRatingBonusGoals: Number(stats.friendlyRatingBonusGoals || 0),
         friendlyRatingBonusAssists: Number(stats.friendlyRatingBonusAssists || 0),
       },
