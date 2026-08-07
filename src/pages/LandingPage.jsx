@@ -194,6 +194,7 @@ export function LandingPage({
   onUpdatePairing,
   onStartMatch,
   onSetMatchType,
+  onForceSetMatchType,
   onSetGameFormat,
   onForceSetGameFormat,
   formatSwitchLocked = false,
@@ -708,6 +709,14 @@ export function LandingPage({
     if (!change?.kind || !change?.value) return;
 
     if (change.kind === "matchType") {
+      if (
+        isFormatLocked &&
+        typeof onForceSetMatchType === "function"
+      ) {
+        onForceSetMatchType(change.value);
+        return;
+      }
+
       if (typeof onSetMatchType === "function") {
         onSetMatchType(change.value);
         return;
