@@ -2869,7 +2869,7 @@ export function StatsPage({
                   <th>Team</th>
                   <th>Goals</th>
                   <th>Assists</th>
-                  <th>{isFriendlyStatsView ? "5-min DB" : "CS"}</th>
+                  <th>{isFriendlyStatsView ? "DB" : "CS"}</th>
                   <th>{isFriendlyStatsView ? "G-A-5DB" : "G-A-CS"}</th>
                 </tr>
               </thead>
@@ -3007,8 +3007,8 @@ export function StatsPage({
                   ? "Clean Sheets — Current Season"
                   : "Clean Sheets — Current Week"}
           </h2>
-          <div className="table-wrapper tk-scroll-table-wrapper tk-player-identity-table">
-            <table className="stats-table">
+          <div className="table-wrapper tk-scroll-table-wrapper tk-defensive-stats-table-wrap">
+            <table className="stats-table tk-defensive-stats-table">
               <thead>
                 <tr>
                   <th>#</th>

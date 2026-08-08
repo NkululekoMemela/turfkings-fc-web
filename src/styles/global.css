@@ -15533,3 +15533,257 @@ button.fanm-chat-highlight-card {
 .tk-expanded-assist em{
   color:#b8c2d1;
 }
+
+/* ============================================================
+   DEFENSIVE / CLEAN-SHEET TABLE — SINGLE SOURCE OF TRUTH
+   ============================================================ */
+
+.stats-page .tk-defensive-stats-table-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.stats-page .tk-defensive-stats-table {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  background: transparent !important;
+}
+
+.stats-page .tk-defensive-stats-table th,
+.stats-page .tk-defensive-stats-table td {
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+  vertical-align: middle !important;
+}
+
+
+/* ------------------------------------------------------------
+   DESKTOP / TABLET
+   Fill the COMPLETE table canvas.
+   Column percentages total exactly 100%.
+   ------------------------------------------------------------ */
+
+@media (min-width: 769px) {
+
+  .stats-page .tk-defensive-stats-table-wrap {
+    overflow-x: hidden !important;
+  }
+
+  .stats-page .tk-defensive-stats-table {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+  }
+
+  .stats-page .tk-defensive-stats-table th,
+  .stats-page .tk-defensive-stats-table td {
+    position: static !important;
+    left: auto !important;
+    right: auto !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* # */
+  .stats-page .tk-defensive-stats-table th:nth-child(1),
+  .stats-page .tk-defensive-stats-table td:nth-child(1) {
+    width: 4% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    text-align: center !important;
+  }
+
+  /* Player */
+  .stats-page .tk-defensive-stats-table th:nth-child(2),
+  .stats-page .tk-defensive-stats-table td:nth-child(2) {
+    width: 24% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    text-align: left !important;
+  }
+
+  /* Team */
+  .stats-page .tk-defensive-stats-table th:nth-child(3),
+  .stats-page .tk-defensive-stats-table td:nth-child(3) {
+    width: 22% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    text-align: left !important;
+  }
+
+  /* GK */
+  .stats-page .tk-defensive-stats-table th:nth-child(4),
+  .stats-page .tk-defensive-stats-table td:nth-child(4) {
+    width: 16% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    text-align: center !important;
+  }
+
+  /* DEF */
+  .stats-page .tk-defensive-stats-table th:nth-child(5),
+  .stats-page .tk-defensive-stats-table td:nth-child(5) {
+    width: 16% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    text-align: center !important;
+  }
+
+  /* Total */
+  .stats-page .tk-defensive-stats-table th:nth-child(6),
+  .stats-page .tk-defensive-stats-table td:nth-child(6) {
+    width: 18% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    text-align: center !important;
+  }
+}
+
+
+/* ------------------------------------------------------------
+   MOBILE
+   Compact sports-table dimensions.
+
+   Proven Summary Player Stats identity widths:
+      #      1.36rem
+      Player 5.35rem
+      Team   4rem
+
+   DB columns are only as wide as their headers require.
+   ------------------------------------------------------------ */
+
+@media (max-width: 768px) {
+
+  .stats-page .tk-defensive-stats-table-wrap {
+    position: relative;
+    width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  .stats-page .tk-defensive-stats-table {
+    width: 27.8rem !important;
+    min-width: 27.8rem !important;
+    max-width: 27.8rem !important;
+    table-layout: fixed !important;
+  }
+
+  .stats-page .tk-defensive-stats-table th,
+  .stats-page .tk-defensive-stats-table td {
+    padding: 0.38rem 0.24rem !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .stats-page .tk-defensive-stats-table th {
+    font-size: 0.62rem !important;
+    letter-spacing: -0.015em;
+  }
+
+  .stats-page .tk-defensive-stats-table td {
+    font-size: 0.70rem !important;
+  }
+
+  /* # — same compact width philosophy as Summary */
+  .stats-page .tk-defensive-stats-table th:nth-child(1),
+  .stats-page .tk-defensive-stats-table td:nth-child(1) {
+    position: sticky !important;
+    left: 0 !important;
+    z-index: 30 !important;
+
+    width: 1.36rem !important;
+    min-width: 1.36rem !important;
+    max-width: 1.36rem !important;
+
+    padding-left: 0.08rem !important;
+    padding-right: 0.08rem !important;
+
+    text-align: center !important;
+    background: #071833 !important;
+    background-clip: padding-box !important;
+  }
+
+  /* Player — use the proven Summary mobile width, NOT 8rem */
+  .stats-page .tk-defensive-stats-table th:nth-child(2),
+  .stats-page .tk-defensive-stats-table td:nth-child(2) {
+    position: sticky !important;
+    left: 1.36rem !important;
+    z-index: 29 !important;
+
+    width: 5.35rem !important;
+    min-width: 5.35rem !important;
+    max-width: 5.35rem !important;
+
+    text-align: left !important;
+    background: #071833 !important;
+    background-clip: padding-box !important;
+    box-shadow: 7px 0 11px rgba(2, 8, 23, 0.46);
+  }
+
+  /* Team — compact, like Summary */
+  .stats-page .tk-defensive-stats-table th:nth-child(3),
+  .stats-page .tk-defensive-stats-table td:nth-child(3) {
+    width: 4rem !important;
+    min-width: 4rem !important;
+    max-width: 4rem !important;
+    text-align: left !important;
+  }
+
+  /* GK 5-min DB — header-sized rather than oversized */
+  .stats-page .tk-defensive-stats-table th:nth-child(4),
+  .stats-page .tk-defensive-stats-table td:nth-child(4) {
+    width: 5.2rem !important;
+    min-width: 5.2rem !important;
+    max-width: 5.2rem !important;
+    text-align: center !important;
+  }
+
+  /* DEF 5-min DB */
+  .stats-page .tk-defensive-stats-table th:nth-child(5),
+  .stats-page .tk-defensive-stats-table td:nth-child(5) {
+    width: 5.35rem !important;
+    min-width: 5.35rem !important;
+    max-width: 5.35rem !important;
+    text-align: center !important;
+  }
+
+  /* Total 5-min DB */
+  .stats-page .tk-defensive-stats-table th:nth-child(6),
+  .stats-page .tk-defensive-stats-table td:nth-child(6) {
+    width: 6.54rem !important;
+    min-width: 6.54rem !important;
+    max-width: 6.54rem !important;
+    text-align: center !important;
+  }
+
+  /* Preserve row striping through the frozen identity cells */
+  .stats-page
+    .tk-defensive-stats-table
+    tbody
+    tr:nth-child(even)
+    td:nth-child(1),
+  .stats-page
+    .tk-defensive-stats-table
+    tbody
+    tr:nth-child(even)
+    td:nth-child(2) {
+    background: #08203f !important;
+  }
+
+  /* Frozen identity headers */
+  .stats-page .tk-defensive-stats-table thead th:nth-child(1),
+  .stats-page .tk-defensive-stats-table thead th:nth-child(2) {
+    z-index: 40 !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(17, 65, 120, 1),
+        rgba(10, 34, 72, 1)
+      ) !important;
+  }
+}
