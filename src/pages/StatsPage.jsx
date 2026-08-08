@@ -5739,6 +5739,127 @@ export function StatsPage({
         }
 
 
+        /*
+         * Defensive Blocks / Clean Sheets — desktop full-canvas correction.
+         *
+         * The generic Stats table system above intentionally uses width:auto
+         * for compact scrolling tables. Summary Player Stats already overrides
+         * that behaviour on desktop; this table now does the same.
+         *
+         * IMPORTANT: desktop only. The approved mobile layout is untouched.
+         */
+        @media (min-width: 769px) {
+          .stats-page .tk-defensive-stats-table-wrap {
+            display: block !important;
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+          }
+
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table.tk-defensive-stats-table {
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed !important;
+          }
+
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table.tk-defensive-stats-table
+            th,
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table.tk-defensive-stats-table
+            td {
+            min-width: 0 !important;
+            max-width: none !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+
+          /* # */
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(1),
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(1) {
+            width: 4% !important;
+            text-align: center !important;
+          }
+
+          /* Player */
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(2),
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(2) {
+            width: 24% !important;
+            text-align: left !important;
+          }
+
+          /* Team */
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(3),
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(3) {
+            width: 22% !important;
+            text-align: left !important;
+          }
+
+          /* GK 5-min DB / Saves CS */
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(4),
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(4) {
+            width: 16% !important;
+            text-align: center !important;
+          }
+
+          /* DEF 5-min DB / Defense CS */
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(5),
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(5) {
+            width: 16% !important;
+            text-align: center !important;
+          }
+
+          /* Total */
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(6),
+          .stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(6) {
+            width: 18% !important;
+            text-align: center !important;
+          }
+        }
+
+
         /* Compact admin tools for Perfect Table 1 expanded rows.
            Keeps table layout untouched while preventing admin controls from clipping. */
         .stats-page .tk-mini-admin-actions {
