@@ -132,6 +132,14 @@ function formatEventTypeLabel(type, role = "") {
   return "goal";
 }
 
+function formatFootballMinute(seconds) {
+  const safeSeconds = Math.max(0, Number(seconds || 0));
+
+  if (!Number.isFinite(safeSeconds)) return "";
+
+  return `${Math.floor(safeSeconds / 60)}'`;
+}
+
 function formatSecondsSafe(seconds) {
   const v = Number(seconds || 0);
   const safe = Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
@@ -3088,7 +3096,12 @@ export function StatsPage({
                     const teamBName = getTeamName(r.teamBId);
                     const mk = matchKeyOf(r);
                     const events = (eventsByMatchKey.get(mk) || [])
-                      .filter((e) => e?.type !== "clean_sheet")
+                      .filter(
+                        (e) =>
+                          String(e?.type || "")
+                            .trim()
+                            .toLowerCase() === "goal"
+                      )
                       .slice()
                       .sort(
                         (a, b) =>
@@ -3339,9 +3352,20 @@ export function StatsPage({
 
                   const events = eventsByMatchKey.get(mk) || [];
 
-                  const scoringEventsOnly = events.filter(
-                    (e) => e?.type !== "clean_sheet"
-                  );
+                  const scoringEventsOnly = events
+                    .filter((e) => {
+                      const type = String(e?.type || "")
+                        .trim()
+                        .toLowerCase();
+
+                      return type === "goal";
+                    })
+                    .slice()
+                    .sort(
+                      (a, b) =>
+                        Number(a?.timeSeconds || 0) -
+                        Number(b?.timeSeconds || 0)
+                    );
 
                   const teamAEvents = scoringEventsOnly.filter(
                     (e) => e.teamId === r.teamAId && e.scorer
@@ -3427,6 +3451,12 @@ export function StatsPage({
                                         <div className="tk-event-line">
                                           <div className="tk-event-line-text tk-expanded-goal-line">
                                             <span className="tk-expanded-scorer">
+                                              <span
+                                                className="tk-expanded-goal-minute"
+                                                aria-label={`Goal at ${formatFootballMinute(e.timeSeconds)}`}
+                                              >
+                                                {formatFootballMinute(e.timeSeconds)}
+                                              </span>
                                               {eventShortName(e.scorer)}
                                             </span>
                                             {e.assist ? (
@@ -3603,6 +3633,12 @@ export function StatsPage({
                                         <div className="tk-event-line">
                                           <div className="tk-event-line-text tk-expanded-goal-line">
                                             <span className="tk-expanded-scorer">
+                                              <span
+                                                className="tk-expanded-goal-minute"
+                                                aria-label={`Goal at ${formatFootballMinute(e.timeSeconds)}`}
+                                              >
+                                                {formatFootballMinute(e.timeSeconds)}
+                                              </span>
                                               {eventShortName(e.scorer)}
                                             </span>
                                             {e.assist ? (

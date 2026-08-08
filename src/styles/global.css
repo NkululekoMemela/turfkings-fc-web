@@ -15490,3 +15490,46 @@ button.fanm-chat-highlight-card {
     max-width: calc(100% - 40px);
   }
 }
+
+/* Match Results — compact football minute before scorer */
+.tk-expanded-goal-minute {
+  display: inline-block;
+  margin-right: 0.35rem;
+  color: #94a3b8;
+  font-size: 0.68em;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Premium Match Results goal layout ---------- */
+
+.tk-expanded-goal-row{
+  display:flex;
+  align-items:baseline;
+  gap:.55rem;
+}
+
+.tk-expanded-goal-minute{
+  flex:0 0 2.2em;
+  text-align:right;
+  color:#9ca3af;
+  font-size:.96em;
+  font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+
+.tk-expanded-scorer{
+  font-size:1em;
+  font-weight:700;
+  color:#fff;
+}
+
+.tk-expanded-assist{
+  padding-left:2.75em;
+}
+
+.tk-expanded-assist em{
+  color:#b8c2d1;
+}
