@@ -409,6 +409,7 @@ export async function toggleHighlightLike({
   matchId,
   clipId,
   userId,
+  userName = "",
   clubId = "",
   category = "",
 } = {}) {
@@ -436,6 +437,7 @@ export async function toggleHighlightLike({
     matchId: String(matchId),
     clipId: String(clipId),
     userId: String(userId),
+    userName: String(userName || ""),
     clubId: String(clubId || ""),
     category: String(category || ""),
     likedAtISO,

@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "../../firebaseConfig";
 import VideoHighlightsRepository from "../../storage/VideoHighlightsRepository.js";
+import ReactionUsersSheet from "../ReactionUsersSheet.jsx";
 import {
   addDoc,
   collection,
@@ -112,6 +113,8 @@ export function ClubChatWidget({
   const [replyTarget, setReplyTarget] = useState(null);
   const [previewHighlight, setPreviewHighlight] = useState(null);
   const [activeReactionPickerMessageId, setActiveReactionPickerMessageId] = useState(null);
+  const [reactionUsersViewer, setReactionUsersViewer] = useState(null);
+  const reactionLongPressTimerRef = useRef(null);
   const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(0);
   const [launcherBottom, setLauncherBottom] = useState(() => {
     try {
@@ -152,6 +155,114 @@ export function ClubChatWidget({
     return Object.entries(reactionsByUser)
       .filter(([, selectedEmoji]) => selectedEmoji === emoji)
       .map(([reactorKey]) => reactorKey);
+  };
+
+  const normalizeReactionIdentityKey = (value) =>
+    String(value || "")
+      .trim()
+      .replace(/[^A-Za-z0-9_-]/g, "_");
+
+  const resolveReactionUserName = (reactorKey) => {
+    const target = normalizeReactionIdentityKey(reactorKey);
+
+    const matchedMember = (Array.isArray(members) ? members : []).find((member) => {
+      const keys = [
+        member?.uid,
+        member?.id,
+        member?.memberId,
+        member?.playerId,
+        member?.email,
+        member?.fullName,
+        member?.shortName,
+        member?.displayName,
+        member?.name,
+      ]
+        .map(normalizeReactionIdentityKey)
+        .filter(Boolean);
+
+      return keys.includes(target);
+    });
+
+    if (matchedMember) {
+      return String(
+        matchedMember.shortName ||
+        matchedMember.fullName ||
+        matchedMember.displayName ||
+        matchedMember.name ||
+        matchedMember.email ||
+        "Club member"
+      );
+    }
+
+    const mine = [
+      currentUser?.uid,
+      selectedMember?.id,
+      identity?.memberId,
+      identity?.playerId,
+      currentUser?.email,
+      selectedMember?.email,
+      identity?.email,
+    ]
+      .map(normalizeReactionIdentityKey)
+      .filter(Boolean);
+
+    if (mine.includes(target)) {
+      return String(
+        selectedMember?.shortName ||
+        selectedMember?.fullName ||
+        currentUser?.displayName ||
+        identity?.shortName ||
+        identity?.fullName ||
+        "You"
+      );
+    }
+
+    return String(reactorKey || "Club member").replace(/_/g, " ");
+  };
+
+  const buildReactionViewerGroups = (message) =>
+    chatReactionOptions
+      .map((emoji) => ({
+        emoji,
+        users: getReactionUsers(message, emoji).map((reactorKey) => ({
+          key: reactorKey,
+          name: resolveReactionUserName(reactorKey),
+        })),
+      }))
+      .filter((group) => group.users.length > 0);
+
+  const openReactionUsersViewer = (message) => {
+    const groups = buildReactionViewerGroups(message);
+    if (!groups.length) return;
+
+    setReactionUsersViewer({
+      title: "Reactions",
+      groups,
+    });
+  };
+
+  const cancelReactionLongPress = () => {
+    if (reactionLongPressTimerRef.current) {
+      window.clearTimeout(reactionLongPressTimerRef.current);
+      reactionLongPressTimerRef.current = null;
+    }
+  };
+
+  const startReactionLongPress = (event, message) => {
+    if (
+      event?.target?.closest?.("button, a, video, input, textarea")
+    ) {
+      return;
+    }
+
+    if (!buildReactionViewerGroups(message).length) return;
+
+    cancelReactionLongPress();
+
+    reactionLongPressTimerRef.current = window.setTimeout(() => {
+      navigator.vibrate?.(35);
+      openReactionUsersViewer(message);
+    }, 450);
   };
 
   const getMyReaction = (message) => {
@@ -1242,6 +1353,18 @@ export function ClubChatWidget({
 
                       <div
                         className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""} ${groupedWithPrevious ? "is-grouped" : ""}`}
+                        onPointerDown={(event) =>
+                          startReactionLongPress(event, message)
+                        }
+                        onPointerUp={cancelReactionLongPress}
+                        onPointerCancel={cancelReactionLongPress}
+                        onPointerLeave={cancelReactionLongPress}
+                        onContextMenu={(event) => {
+                          if (buildReactionViewerGroups(message).length) {
+                            event.preventDefault();
+                            openReactionUsersViewer(message);
+                          }
+                        }}
                       >
                       {!groupedWithPrevious ? (
                         <div className="fanm-club-chat-message-meta">
@@ -1631,6 +1754,13 @@ export function ClubChatWidget({
         </>
       )}
       </section>
+
+      <ReactionUsersSheet
+        open={Boolean(reactionUsersViewer)}
+        title={reactionUsersViewer?.title || "Reactions"}
+        groups={reactionUsersViewer?.groups || []}
+        onClose={() => setReactionUsersViewer(null)}
+      />
 
       {previewHighlight ? (
         <div className="fanm-highlight-preview-overlay">
