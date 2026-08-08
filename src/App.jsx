@@ -2705,6 +2705,8 @@ export default function App() {
   );
   const [currentConfirmedLineupSnapshot, setCurrentConfirmedLineupSnapshot] =
     useState(null);
+  const [currentConfirmedLineupTimeline, setCurrentConfirmedLineupTimeline] =
+    useState([]);
   const [confirmedLineupsByMatchNo, setConfirmedLineupsByMatchNo] = useState(
     {}
   );
@@ -3868,6 +3870,7 @@ export default function App() {
     setHasLiveMatch(false);
     setPendingMatchStartContext(null);
     setCurrentConfirmedLineupSnapshot(null);
+    setCurrentConfirmedLineupTimeline([]);
 
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({
@@ -4464,15 +4467,87 @@ export default function App() {
         ...prev,
         [activeMatchNo]: safeSnapshot,
       }));
+
+      setCurrentConfirmedLineupTimeline((previous) => {
+        const safePrevious = Array.isArray(previous)
+          ? previous
+          : [];
+
+        const elapsedSeconds =
+          safePrevious.length === 0
+            ? 0
+            : Math.max(
+                0,
+                Number(matchSeconds || 0) -
+                  Number(secondsLeft || 0)
+              );
+
+        const entry = {
+          timeSeconds: elapsedSeconds,
+          snapshots: safeSnapshot,
+        };
+
+        const withoutSameTimestamp = safePrevious.filter(
+          (item) =>
+            Number(item?.timeSeconds) !==
+            Number(elapsedSeconds)
+        );
+
+        return [
+          ...withoutSameTimestamp,
+          entry,
+        ].sort(
+          (a, b) =>
+            Number(a?.timeSeconds || 0) -
+            Number(b?.timeSeconds || 0)
+        );
+      });
     }
 
     if (USE_V2 && safeSnapshot) {
-      updateActiveSeason((prevSeason) => ({
-        ...prevSeason,
-        liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
-          confirmedLineupSnapshot: safeSnapshot,
-        }),
-      }));
+      updateActiveSeason((prevSeason) => {
+        const existingTimeline = Array.isArray(
+          prevSeason?.liveMatchDraft?.lineupTimeline
+        )
+          ? prevSeason.liveMatchDraft.lineupTimeline
+          : [];
+
+        const elapsedSeconds =
+          existingTimeline.length === 0
+            ? 0
+            : Math.max(
+                0,
+                Number(matchSeconds || 0) -
+                  Number(secondsLeft || 0)
+              );
+
+        const nextTimeline = [
+          ...existingTimeline.filter(
+            (item) =>
+              Number(item?.timeSeconds) !==
+              Number(elapsedSeconds)
+          ),
+          {
+            timeSeconds: elapsedSeconds,
+            snapshots: safeSnapshot,
+          },
+        ].sort(
+          (a, b) =>
+            Number(a?.timeSeconds || 0) -
+            Number(b?.timeSeconds || 0)
+        );
+
+        return {
+          ...prevSeason,
+          liveMatchDraft: touchLiveMatchDraft(
+            prevSeason.liveMatchDraft,
+            {
+              confirmedLineupSnapshot: safeSnapshot,
+              lineupTimeline: nextTimeline,
+            }
+          ),
+        };
+      });
     }
 
     setPendingMatchStartContext(null);
@@ -4651,6 +4726,14 @@ export default function App() {
                     Number(secondsLeft || 0)
                 ),
                 verifiedLineups,
+                lineupTimeline:
+                  currentConfirmedLineupTimeline.length
+                    ? currentConfirmedLineupTimeline
+                    : Array.isArray(
+                        prevSeason?.liveMatchDraft?.lineupTimeline
+                      )
+                      ? prevSeason.liveMatchDraft.lineupTimeline
+                      : [],
               }).map((event) => ({ ...event, ...matchMeta }))
             : buildCleanSheetEventsForMatch({
                 matchNo,
@@ -4832,6 +4915,7 @@ export default function App() {
       setHasLiveMatch(false);
       setPendingMatchStartContext(null);
       setCurrentConfirmedLineupSnapshot(null);
+      setCurrentConfirmedLineupTimeline([]);
       writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
         console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
       });
@@ -4890,6 +4974,14 @@ export default function App() {
                   Number(secondsLeft || 0)
               ),
               verifiedLineups,
+              lineupTimeline:
+                currentConfirmedLineupTimeline.length
+                  ? currentConfirmedLineupTimeline
+                  : Array.isArray(
+                      prev?.liveMatchDraft?.lineupTimeline
+                    )
+                    ? prev.liveMatchDraft.lineupTimeline
+                    : [],
             }).map((event) => ({ ...event, ...matchMeta }))
           : buildCleanSheetEventsForMatch({
               matchNo,

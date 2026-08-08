@@ -798,7 +798,8 @@ export function buildCleanSheetEventsForMatch({
 // completed fixed five-minute interval in which their team concedes
 // no valid goal.
 //
-// The final referee-confirmed lineup determines eligible players.
+// The timestamped referee-confirmed lineup history determines
+// who actually occupied GK/DEF during each five-minute interval.
 // Guests do not receive permanent Defensive Block statistics.
 //
 export function buildFriendlyDefensiveBlockEvents({
@@ -809,6 +810,7 @@ export function buildFriendlyDefensiveBlockEvents({
   events = [],
   elapsedMatchSeconds = 0,
   verifiedLineups,
+  lineupTimeline = [],
 }) {
   const out = [];
 
@@ -946,26 +948,206 @@ export function buildFriendlyDefensiveBlockEvents({
     });
   };
 
-  const processTeam = (teamId) => {
-    const snapshot = verifiedLineups?.[teamId] || null;
-    if (!snapshot) return;
+  const safeLineupTimeline = (
+    Array.isArray(lineupTimeline) ? lineupTimeline : []
+  )
+    .filter((entry) => entry?.snapshots)
+    .map((entry) => ({
+      timeSeconds: Math.max(
+        0,
+        Number(entry?.timeSeconds || 0)
+      ),
+      snapshots: entry.snapshots,
+    }))
+    .sort(
+      (a, b) =>
+        Number(a.timeSeconds || 0) -
+        Number(b.timeSeconds || 0)
+    );
 
+  const getTimelineSnapshotAt = (teamId, timeSeconds) => {
+    const targetSeconds = Math.max(
+      0,
+      Number(timeSeconds || 0)
+    );
+
+    let activeEntry = null;
+
+    safeLineupTimeline.forEach((entry) => {
+      if (
+        Number(entry.timeSeconds || 0) <= targetSeconds
+      ) {
+        activeEntry = entry;
+      }
+    });
+
+    return (
+      activeEntry?.snapshots?.[teamId] ||
+      verifiedLineups?.[teamId] ||
+      null
+    );
+  };
+
+  const getDefensiveAssignmentForSnapshot = (
+    teamId,
+    snapshot
+  ) => {
+    if (!snapshot) {
+      return {
+        goalkeeper: "",
+        defenders: [],
+      };
+    }
+
+    return {
+      goalkeeper:
+        getGoalkeeperFromSnapshot(
+          snapshot,
+          FORMATIONS_5
+        ) || "",
+      defenders:
+        getDefensivePlayersFromSnapshot(
+          snapshot,
+          FORMATIONS_5
+        ) || [],
+    };
+  };
+
+  const getFullBlockDefensiveAssignments = (
+    teamId,
+    blockIndex
+  ) => {
+    const blockStartSeconds =
+      blockIndex * intervalSeconds;
+
+    const blockEndSeconds =
+      blockStartSeconds + intervalSeconds;
+
+    /*
+     * Start with the lineup active exactly at the beginning
+     * of the block.
+     */
+    const segmentSnapshots = [
+      getTimelineSnapshotAt(
+        teamId,
+        blockStartSeconds
+      ),
+    ];
+
+    /*
+     * Every lineup change strictly inside the block creates
+     * another defensive segment.
+     *
+     * A change at exactly blockEndSeconds belongs to the next
+     * block and must not affect this one.
+     */
+    safeLineupTimeline
+      .filter((entry) => {
+        const seconds = Number(
+          entry?.timeSeconds || 0
+        );
+
+        return (
+          seconds > blockStartSeconds &&
+          seconds < blockEndSeconds
+        );
+      })
+      .forEach((entry) => {
+        segmentSnapshots.push(
+          entry?.snapshots?.[teamId] ||
+          getTimelineSnapshotAt(
+            teamId,
+            entry.timeSeconds
+          )
+        );
+      });
+
+    const assignments = segmentSnapshots
+      .filter(Boolean)
+      .map((snapshot) => ({
+        snapshot,
+        ...getDefensiveAssignmentForSnapshot(
+          teamId,
+          snapshot
+        ),
+      }));
+
+    if (!assignments.length) {
+      return {
+        goalkeeper: "",
+        defenders: [],
+        snapshot:
+          getTimelineSnapshotAt(
+            teamId,
+            blockStartSeconds
+          ) || null,
+      };
+    }
+
+    /*
+     * GK must remain the same goalkeeper for every segment
+     * of the five-minute interval.
+     */
+    const firstGoalkeeper =
+      assignments[0].goalkeeper || "";
+
+    const goalkeeper =
+      firstGoalkeeper &&
+      assignments.every(
+        (assignment) =>
+          normalizeLineupName(
+            assignment.goalkeeper
+          ) ===
+          normalizeLineupName(
+            firstGoalkeeper
+          )
+      )
+        ? firstGoalkeeper
+        : "";
+
+    /*
+     * A defender receives the block only if they remain in
+     * a defensive position throughout every segment.
+     */
+    const firstDefenders =
+      assignments[0].defenders || [];
+
+    const defenders = firstDefenders.filter(
+      (playerName) =>
+        assignments.every((assignment) =>
+          (assignment.defenders || []).some(
+            (candidate) =>
+              normalizeLineupName(candidate) ===
+              normalizeLineupName(playerName)
+          )
+        )
+    );
+
+    return {
+      goalkeeper,
+      defenders,
+      snapshot: assignments[0].snapshot,
+    };
+  };
+
+  const processTeam = (teamId) => {
     const protectedBlockIndexes =
       getProtectedBlockIndexes(teamId);
 
     if (!protectedBlockIndexes.length) return;
 
-    const goalkeeper = getGoalkeeperFromSnapshot(
-      snapshot,
-      FORMATIONS_5
-    );
-
-    const defenders = getDefensivePlayersFromSnapshot(
-      snapshot,
-      FORMATIONS_5
-    );
-
     protectedBlockIndexes.forEach((blockIndex) => {
+      const {
+        goalkeeper,
+        defenders,
+        snapshot,
+      } = getFullBlockDefensiveAssignments(
+        teamId,
+        blockIndex
+      );
+
+      if (!snapshot) return;
+
       addPlayerEvent({
         playerName: goalkeeper,
         teamId,
