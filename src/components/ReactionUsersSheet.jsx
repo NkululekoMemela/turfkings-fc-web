@@ -43,6 +43,12 @@ export default function ReactionUsersSheet({
             user?.label ||
             "Club member"
           ),
+          photoUrl: String(
+            user?.photoUrl ||
+            user?.photoData ||
+            user?.profilePhotoUrl ||
+            ""
+          ).trim(),
         })),
     }))
     .filter((group) => group.users.length > 0);
@@ -99,10 +105,18 @@ export default function ReactionUsersSheet({
                       key={user.key}
                     >
                       <span className="fanm-reaction-users-avatar">
-                        {String(user.name || "?")
-                          .trim()
-                          .charAt(0)
-                          .toUpperCase() || "?"}
+                        {user.photoUrl ? (
+                          <img
+                            src={user.photoUrl}
+                            alt=""
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          String(user.name || "?")
+                            .trim()
+                            .charAt(0)
+                            .toUpperCase() || "?"
+                        )}
                       </span>
                       <strong>{user.name}</strong>
                     </div>

@@ -1,11 +1,13 @@
 // src/components/ClubChat/ClubChatWidget.jsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "../../firebaseConfig";
+import { getPlayerPhotosCollection } from "../../core/clubFirestorePaths.js";
 import VideoHighlightsRepository from "../../storage/VideoHighlightsRepository.js";
 import ReactionUsersSheet from "../ReactionUsersSheet.jsx";
 import {
   addDoc,
   collection,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -114,6 +116,7 @@ export function ClubChatWidget({
   const [previewHighlight, setPreviewHighlight] = useState(null);
   const [activeReactionPickerMessageId, setActiveReactionPickerMessageId] = useState(null);
   const [reactionUsersViewer, setReactionUsersViewer] = useState(null);
+  const [clubChatPhotoIndex, setClubChatPhotoIndex] = useState({});
   const reactionLongPressTimerRef = useRef(null);
   const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(0);
   const [launcherBottom, setLauncherBottom] = useState(() => {
@@ -135,6 +138,113 @@ export function ClubChatWidget({
   const latestNotifiedRef = useRef({ club: 0, challenger: 0 });
 
   const chatReactionOptions = ["⚽", "🔥", "🧤", "👏", "😂", "❤️", "👍", "👎", "😩", "🤯"];
+
+  const normalizeChatPhotoKey = (value) =>
+    String(value || "").trim().toLowerCase();
+
+  const slugChatPhotoKey = (value) =>
+    normalizeChatPhotoKey(value)
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "");
+
+  const getChatSenderPhoto = (message) => {
+    const candidates = [
+      message?.senderName,
+      message?.senderEmail,
+      message?.senderUid,
+      message?.senderId,
+      message?.memberId,
+    ]
+      .flatMap((value) => [
+        normalizeChatPhotoKey(value),
+        slugChatPhotoKey(value),
+        normalizeChatPhotoKey(
+          String(value || "").trim().split(/\s+/)[0]
+        ),
+      ])
+      .filter(Boolean);
+
+    for (const key of candidates) {
+      if (clubChatPhotoIndex[key]) {
+        return clubChatPhotoIndex[key];
+      }
+    }
+
+    return "";
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadClubChatPhotos() {
+      if (!activeClubId) {
+        setClubChatPhotoIndex({});
+        return;
+      }
+
+      try {
+        const snap = await getDocs(
+          getPlayerPhotosCollection(db, activeClubId)
+        );
+
+        if (cancelled) return;
+
+        const index = {};
+
+        const add = (key, photo) => {
+          const normalized = normalizeChatPhotoKey(key);
+          const slug = slugChatPhotoKey(key);
+
+          if (normalized && photo && !index[normalized]) {
+            index[normalized] = photo;
+          }
+
+          if (slug && photo && !index[slug]) {
+            index[slug] = photo;
+          }
+        };
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+
+          const photo =
+            data.photoData ||
+            data.photoUrl ||
+            data.profilePhotoUrl ||
+            "";
+
+          if (!photo) return;
+
+          const name =
+            data.name ||
+            data.fullName ||
+            data.shortName ||
+            data.displayName ||
+            "";
+
+          add(docSnap.id, photo);
+          add(name, photo);
+          add(String(name).trim().split(/\s+/)[0], photo);
+          add(data.email, photo);
+          add(data.playerId, photo);
+          add(data.memberId, photo);
+        });
+
+        setClubChatPhotoIndex(index);
+      } catch (err) {
+        console.warn(
+          "[ClubChatWidget] Could not load player photos:",
+          err
+        );
+      }
+    }
+
+    loadClubChatPhotos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeClubId]);
 
   const getCurrentReactorKey = () =>
     String(
@@ -1351,8 +1461,28 @@ export function ClubChatWidget({
                         <div className="fanm-chat-date-chip">{currentDateLabel}</div>
                       ) : null}
 
-                      <div
-                        className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""} ${groupedWithPrevious ? "is-grouped" : ""}`}
+                      <div className={`fanm-chat-message-row ${mine ? "is-mine" : ""}`}>
+                        {!groupedWithPrevious ? (
+                          <span className="fanm-chat-sender-avatar">
+                            {getChatSenderPhoto(message) ? (
+                              <img
+                                src={getChatSenderPhoto(message)}
+                                alt=""
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              String(message.senderName || "C")
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase()
+                            )}
+                          </span>
+                        ) : (
+                          <span className="fanm-chat-sender-avatar-spacer" />
+                        )}
+
+                        <div
+                          className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""} ${groupedWithPrevious ? "is-grouped" : ""}`}
                         onPointerDown={(event) =>
                           startReactionLongPress(event, message)
                         }
@@ -1500,6 +1630,7 @@ export function ClubChatWidget({
                             Delete
                           </button>
                         ) : null}
+                      </div>
                       </div>
                       </div>
                     </React.Fragment>
