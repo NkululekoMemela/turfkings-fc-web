@@ -5222,37 +5222,110 @@ export default function App() {
   const handleUpdateSavedEvent = (eventId, updatedFields) => {
     if (!USE_V2) return;
 
+    const safeEventId = String(eventId || "").trim();
+    if (!safeEventId) return;
+
     updateActiveSeason((prevSeason) => {
+      /*
+       * League events still live directly on season.allEvents.
+       */
       const safeAllEvents = Array.isArray(prevSeason?.allEvents)
         ? prevSeason.allEvents
         : [];
-      const targetEvent = safeAllEvents.find(
-        (e) => String(e?.id) === String(eventId)
-      );
-      if (!targetEvent) return prevSeason;
 
-      const nextAllEvents = safeAllEvents.map((e) =>
-        String(e?.id) === String(eventId)
-          ? {
-              ...e,
-              ...updatedFields,
-            }
-          : e
+      const leagueTargetEvent = safeAllEvents.find(
+        (e) => String(e?.id || "") === safeEventId
       );
 
-      const safeResults = Array.isArray(prevSeason?.results)
-        ? prevSeason.results
+      if (leagueTargetEvent) {
+        const nextAllEvents = safeAllEvents.map((e) =>
+          String(e?.id || "") === safeEventId
+            ? {
+                ...e,
+                ...updatedFields,
+              }
+            : e
+        );
+
+        const safeResults = Array.isArray(prevSeason?.results)
+          ? prevSeason.results
+          : [];
+
+        const nextResults = safeResults.map((r) =>
+          Number(r?.matchNo) === Number(leagueTargetEvent?.matchNo)
+            ? buildUpdatedResultFromEvents(r, nextAllEvents)
+            : r
+        );
+
+        return {
+          ...prevSeason,
+          allEvents: nextAllEvents,
+          results: nextResults,
+        };
+      }
+
+      /*
+       * Completed Friendly events live inside
+       * friendlyMatchDayHistory[].allEvents.
+       */
+      const safeFriendlyHistory = Array.isArray(
+        prevSeason?.friendlyMatchDayHistory
+      )
+        ? prevSeason.friendlyMatchDayHistory
         : [];
-      const nextResults = safeResults.map((r) =>
-        Number(r?.matchNo) === Number(targetEvent?.matchNo)
-          ? buildUpdatedResultFromEvents(r, nextAllEvents)
-          : r
-      );
+
+      let friendlyEventFound = false;
+
+      const nextFriendlyHistory = safeFriendlyHistory.map((day) => {
+        const dayEvents = Array.isArray(day?.allEvents)
+          ? day.allEvents
+          : [];
+
+        const targetEvent = dayEvents.find(
+          (e) => String(e?.id || "") === safeEventId
+        );
+
+        if (!targetEvent) return day;
+
+        friendlyEventFound = true;
+
+        const nextEvents = dayEvents.map((e) =>
+          String(e?.id || "") === safeEventId
+            ? {
+                ...e,
+                ...updatedFields,
+              }
+            : e
+        );
+
+        const dayResults = Array.isArray(day?.results)
+          ? day.results
+          : [];
+
+        const nextResults = dayResults.map((r) =>
+          Number(r?.matchNo) === Number(targetEvent?.matchNo)
+            ? buildUpdatedResultFromEvents(r, nextEvents)
+            : r
+        );
+
+        return {
+          ...day,
+          allEvents: nextEvents,
+          results: nextResults,
+        };
+      });
+
+      if (!friendlyEventFound) {
+        console.warn(
+          "[TK STATS EDIT] Saved event not found:",
+          safeEventId
+        );
+        return prevSeason;
+      }
 
       return {
         ...prevSeason,
-        allEvents: nextAllEvents,
-        results: nextResults,
+        friendlyMatchDayHistory: nextFriendlyHistory,
       };
     });
   };
@@ -5260,32 +5333,99 @@ export default function App() {
   const handleDeleteSavedEvent = (eventId) => {
     if (!USE_V2) return;
 
+    const safeEventId = String(eventId || "").trim();
+    if (!safeEventId) return;
+
     updateActiveSeason((prevSeason) => {
+      /*
+       * League event deletion.
+       */
       const safeAllEvents = Array.isArray(prevSeason?.allEvents)
         ? prevSeason.allEvents
         : [];
-      const targetEvent = safeAllEvents.find(
-        (e) => String(e?.id) === String(eventId)
-      );
-      if (!targetEvent) return prevSeason;
 
-      const nextAllEvents = safeAllEvents.filter(
-        (e) => String(e?.id) !== String(eventId)
+      const leagueTargetEvent = safeAllEvents.find(
+        (e) => String(e?.id || "") === safeEventId
       );
 
-      const safeResults = Array.isArray(prevSeason?.results)
-        ? prevSeason.results
+      if (leagueTargetEvent) {
+        const nextAllEvents = safeAllEvents.filter(
+          (e) => String(e?.id || "") !== safeEventId
+        );
+
+        const safeResults = Array.isArray(prevSeason?.results)
+          ? prevSeason.results
+          : [];
+
+        const nextResults = safeResults.map((r) =>
+          Number(r?.matchNo) === Number(leagueTargetEvent?.matchNo)
+            ? buildUpdatedResultFromEvents(r, nextAllEvents)
+            : r
+        );
+
+        return {
+          ...prevSeason,
+          allEvents: nextAllEvents,
+          results: nextResults,
+        };
+      }
+
+      /*
+       * Completed Friendly event deletion.
+       */
+      const safeFriendlyHistory = Array.isArray(
+        prevSeason?.friendlyMatchDayHistory
+      )
+        ? prevSeason.friendlyMatchDayHistory
         : [];
-      const nextResults = safeResults.map((r) =>
-        Number(r?.matchNo) === Number(targetEvent?.matchNo)
-          ? buildUpdatedResultFromEvents(r, nextAllEvents)
-          : r
-      );
+
+      let friendlyEventFound = false;
+
+      const nextFriendlyHistory = safeFriendlyHistory.map((day) => {
+        const dayEvents = Array.isArray(day?.allEvents)
+          ? day.allEvents
+          : [];
+
+        const targetEvent = dayEvents.find(
+          (e) => String(e?.id || "") === safeEventId
+        );
+
+        if (!targetEvent) return day;
+
+        friendlyEventFound = true;
+
+        const nextEvents = dayEvents.filter(
+          (e) => String(e?.id || "") !== safeEventId
+        );
+
+        const dayResults = Array.isArray(day?.results)
+          ? day.results
+          : [];
+
+        const nextResults = dayResults.map((r) =>
+          Number(r?.matchNo) === Number(targetEvent?.matchNo)
+            ? buildUpdatedResultFromEvents(r, nextEvents)
+            : r
+        );
+
+        return {
+          ...day,
+          allEvents: nextEvents,
+          results: nextResults,
+        };
+      });
+
+      if (!friendlyEventFound) {
+        console.warn(
+          "[TK STATS DELETE] Saved event not found:",
+          safeEventId
+        );
+        return prevSeason;
+      }
 
       return {
         ...prevSeason,
-        allEvents: nextAllEvents,
-        results: nextResults,
+        friendlyMatchDayHistory: nextFriendlyHistory,
       };
     });
   };
@@ -7717,7 +7857,11 @@ export default function App() {
           onAddSavedEvent={handleAddSavedEvent}
           onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
           canPreviewPreviousSeasonUI={canPreviewPreviousSeasonUI}
-          isAdmin={isAdmin}
+          isAdmin={Boolean(
+            isAdmin ||
+            realRole === "admin"
+          )}
+          identity={pageIdentity}
           matchType={matchType}
         />
       )}

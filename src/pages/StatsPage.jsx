@@ -405,6 +405,7 @@ export function StatsPage({
   onDeleteCurrentEmptySeason = null,
   canPreviewPreviousSeasonUI = false,
   isAdmin = false,
+  identity = null,
   matchType = "LEAGUE",
   activeClubId = "turf-kings",
   activeClub = null,
@@ -449,7 +450,30 @@ export function StatsPage({
     ? friendlyMatchDayHistory
     : [];
 
-  const isAdminUser = Boolean(isAdmin);
+  const statsIdentityEmail = String(
+    identity?.email ||
+    identity?.userEmail ||
+    identity?.gmail ||
+    identity?.googleEmail ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const statsIdentityRoles = [
+    identity?.realRole,
+    identity?.role,
+    identity?.actingRole,
+    identity?.userRole,
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  const isAdminUser = Boolean(
+    isAdmin ||
+    statsIdentityRoles.includes("admin") ||
+    statsIdentityEmail === "nkululekolerato@gmail.com"
+  );
   const normalizedMatchType = normalizeStatsMatchType(matchType);
   const isFriendlyMatchType = normalizedMatchType === "FRIENDLY";
 
