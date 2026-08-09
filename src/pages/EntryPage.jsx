@@ -48,6 +48,7 @@ import {
 import {
   coordinatePlatformPlayer,
 } from "../core/platformPlayer/platformPlayerCoordinator.js";
+import LoadingSplash from "../components/LoadingSplash/LoadingSplash.jsx";
 
 const GPI_PLATFORM_PLAYER_WRITE_ENABLED =
   import.meta.env.VITE_FANM_DEVELOPMENT_SITE === "true" &&
@@ -1198,9 +1199,20 @@ export function EntryPage({
     setSelectedMemberId(identity?.clubId === activeClubId && identity?.memberId ? identity.memberId : "");
     setVerifyError("");
     setVerifyStatus("");
+
   }, [activeClubId]);
   const [verifyError, setVerifyError] = useState("");
   const [verifyStatus, setVerifyStatus] = useState("");
+
+  const [showSigninLoading, setShowSigninLoading] =
+    useState(false);
+
+  const [signinProgress, setSigninProgress] =
+    useState(8);
+
+  const [signinStatus, setSigninStatus] =
+    useState("Preparing your football profile...");
+
 
   const selectedMember = useMemo(
     () => members.find((m) => m.id === selectedMemberId) || null,
@@ -2758,12 +2770,14 @@ export function EntryPage({
         "Google confirmation was cancelled or failed. Nothing was copied."
       );
     } finally {
+      setShowSigninLoading(false);
+      setSigninProgress(100);
       setExistingMemberGpiPending(false);
     }
   };
 
 
-  const handleVerifyPlayer = async () => {
+  const performVerifyPlayer = async () => {
     console.log("[GPI TRACE 1] handleVerifyPlayer entered", {
       activeClubId,
       selectedMemberId: selectedMember?.id || "",
@@ -2796,6 +2810,11 @@ export function EntryPage({
     setVerifyError("");
     setVerifyStatus("");
 
+    setSigninProgress(8);
+    setSigninStatus("Preparing your football profile...");
+    setShowSigninLoading(true);
+
+
     if (!selectedMember) {
       setVerifyError(`Please select your name on the ${activeClubName} list.`);
       return;
@@ -2822,6 +2841,9 @@ export function EntryPage({
         u = auth.currentUser;
 
         logGpiPerf("google-authentication");
+
+        setSigninProgress(35);
+        setSigninStatus("Google account verified...");
       } catch (err) {
         console.error("Sign in cancelled/failed:", err);
         setVerifyError("Sign-in was cancelled or failed. Please try again.");
@@ -2838,6 +2860,9 @@ export function EntryPage({
 
     if (auth.currentUser && gpiPerfMark === gpiPerfStartedAt) {
       logGpiPerf("google-already-authenticated");
+
+      setSigninProgress(35);
+      setSigninStatus("Google account verified...");
     }
 
     const googleEmail = u.email.toLowerCase().trim();
@@ -2904,6 +2929,9 @@ export function EntryPage({
 
     logGpiPerf("club-member-verification");
 
+    setSigninProgress(55);
+    setSigninStatus("Verifying your club membership...");
+
     const memberReadStartedAt =
       globalThis.performance?.now?.() ??
       Date.now();
@@ -2922,6 +2950,9 @@ export function EntryPage({
         memberReadStartedAt
       ),
     });
+
+    setSigninProgress(65);
+    setSigninStatus("Loading your football profile...");
 
     gpiPerfMark =
       globalThis.performance?.now?.() ??
@@ -2973,6 +3004,9 @@ export function EntryPage({
       ),
     });
 
+    setSigninProgress(74);
+    setSigninStatus("Preparing your player identity...");
+
     gpiPerfMark =
       globalThis.performance?.now?.() ??
       Date.now();
@@ -3009,6 +3043,9 @@ export function EntryPage({
         matchCount:
           gpiResolution.matchCount || 0,
       });
+
+      setSigninProgress(86);
+      setSigninStatus("Connecting your football identity...");
 
       gpiPerfMark =
         globalThis.performance?.now?.() ??
@@ -3156,6 +3193,9 @@ export function EntryPage({
       firestoreExecuted:
         platformPlayerResult.firestoreExecuted,
     });
+
+    setSigninProgress(96);
+    setSigninStatus("Preparing your session...");
 
     gpiPerfMark =
       globalThis.performance?.now?.() ??
@@ -3326,6 +3366,45 @@ export function EntryPage({
     }
 
     continueToApp();
+  };
+
+
+  const handleVerifyPlayer = async () => {
+    /*
+     * Do not launch the full-screen splash for instant validation
+     * errors. Let the existing handler show its normal error text.
+     */
+    if (
+      !selectedMember ||
+      selectedMember.status === "pending" ||
+      selectedMember.status === "rejected"
+    ) {
+      await performVerifyPlayer();
+      return;
+    }
+
+    setSigninProgress(8);
+    setSigninStatus("Connecting to Google...");
+    setShowSigninLoading(true);
+
+    /*
+     * Give React one paint before opening Google's authentication
+     * flow so the player sees immediate feedback.
+     */
+    await new Promise((resolve) =>
+      window.requestAnimationFrame(() => resolve())
+    );
+
+    try {
+      await performVerifyPlayer();
+    } finally {
+      setSigninProgress(100);
+      setSigninStatus("Ready. Entering your football world...");
+
+      window.setTimeout(() => {
+        setShowSigninLoading(false);
+      }, 320);
+    }
   };
 
   const handleSaveReminderPhoto = async () => {
@@ -4685,6 +4764,49 @@ export function EntryPage({
 
   return (
     <div className="page entry-page">
+      {showSigninLoading ? (
+        <LoadingSplash
+          progress={signinProgress}
+          message={signinStatus}
+          title="Signing you in..."
+          kicker="5 Asides Near Me"
+          image="/session/official-session-bg.png"
+          imageAlt="Official football session"
+          ariaLabel="Signing you into 5 Asides Near Me"
+          steps={[
+            {
+              icon: "👤",
+              label: "Connecting to Google",
+              state:
+                signinProgress >= 35
+                  ? "done"
+                  : "active",
+            },
+            {
+              icon: "⚽",
+              label: "Verifying your football identity",
+              state:
+                signinProgress >= 86
+                  ? "done"
+                  : signinProgress >= 35
+                    ? "active"
+                    : "",
+            },
+            {
+              icon: "🏟️",
+              label: "Preparing your session",
+              state:
+                signinProgress >= 100
+                  ? "done"
+                  : signinProgress >= 86
+                    ? "active"
+                    : "",
+            },
+          ]}
+          footerLead="Club-first football. Built for players."
+          footerStrong=" Powered by community."
+        />
+      ) : null}
       <style>{`
         @keyframes tkNoticeFloat { 0%, 100% { transform: translateY(0) scale(1); } 45% { transform: translateY(-5px) scale(1.035); } }
         @keyframes tkNoticePulse { 0% { box-shadow: 0 0 0 0 rgba(34,211,238,0.44), 0 18px 48px rgba(2,6,23,0.45); } 70% { box-shadow: 0 0 0 14px rgba(34,211,238,0), 0 18px 48px rgba(2,6,23,0.45); } 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0), 0 18px 48px rgba(2,6,23,0.45); } }
