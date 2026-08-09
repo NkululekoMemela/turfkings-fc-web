@@ -2253,21 +2253,42 @@ function isInsideClubWeeklyWindow(weeklyPlayTime, now = new Date()) {
 const FANM_TESTING_DEPLOYMENT =
   import.meta.env.VITE_FANM_TESTING_SITE === "true";
 
+const FANM_DEVELOPMENT_DEPLOYMENT =
+  import.meta.env.VITE_FANM_DEVELOPMENT_SITE === "true";
+
+const FANM_ENVIRONMENT_BADGE = FANM_DEVELOPMENT_DEPLOYMENT
+  ? {
+      className: "fanm-environment-badge fanm-environment-badge--development",
+      ariaLabel: "Development version",
+      icon: "🛠️",
+      title: "DEV VERSION",
+      subtitle: "fanm-development",
+    }
+  : FANM_TESTING_DEPLOYMENT
+    ? {
+        className: "fanm-environment-badge fanm-environment-badge--testing",
+        ariaLabel: "Testing site",
+        icon: "🧪",
+        title: "TESTING SITE",
+        subtitle: "fanm-testing",
+      }
+    : null;
+
 export default function App() {
   useEffect(() => {
-    if (!FANM_TESTING_DEPLOYMENT || typeof document === "undefined") {
+    if (!FANM_ENVIRONMENT_BADGE || typeof document === "undefined") {
       return undefined;
     }
 
     const badge = document.createElement("div");
-    badge.className = "fanm-testing-site-badge";
+    badge.className = FANM_ENVIRONMENT_BADGE.className;
     badge.setAttribute("role", "status");
-    badge.setAttribute("aria-label", "Testing site");
+    badge.setAttribute("aria-label", FANM_ENVIRONMENT_BADGE.ariaLabel);
     badge.innerHTML = `
-      <span class="fanm-testing-site-badge__icon" aria-hidden="true">🧪</span>
-      <span class="fanm-testing-site-badge__copy">
-        <strong>TESTING SITE</strong>
-        <small>fanm-testing</small>
+      <span class="fanm-environment-badge__icon" aria-hidden="true">${FANM_ENVIRONMENT_BADGE.icon}</span>
+      <span class="fanm-environment-badge__copy">
+        <strong>${FANM_ENVIRONMENT_BADGE.title}</strong>
+        <small>${FANM_ENVIRONMENT_BADGE.subtitle}</small>
       </span>
     `;
 

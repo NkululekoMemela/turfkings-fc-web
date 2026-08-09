@@ -15002,8 +15002,8 @@ button.fanm-chat-highlight-card {
 }
 
 
-/* FANM TESTING BRANCH — global environment badge */
-.fanm-testing-site-badge {
+/* FANM ENVIRONMENT — global deployment badge */
+.fanm-environment-badge {
   position: fixed;
   top: max(0.7rem, env(safe-area-inset-top));
   left: 50%;
@@ -15013,14 +15013,7 @@ button.fanm-chat-highlight-card {
   align-items: center;
   gap: 0.48rem;
   padding: 0.42rem 0.72rem;
-  border: 1px solid rgba(248, 113, 113, 0.82);
   border-radius: 999px;
-  background:
-    linear-gradient(
-      135deg,
-      rgba(220, 38, 38, 0.98),
-      rgba(127, 29, 29, 0.98)
-    );
   color: #ffffff;
   box-shadow:
     0 12px 32px rgba(2, 6, 23, 0.42),
@@ -15031,41 +15024,64 @@ button.fanm-chat-highlight-card {
   white-space: nowrap;
 }
 
-.fanm-testing-site-badge__icon {
+.fanm-environment-badge--testing {
+  border: 1px solid rgba(248, 113, 113, 0.82);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(220, 38, 38, 0.98),
+      rgba(127, 29, 29, 0.98)
+    );
+}
+
+.fanm-environment-badge--development {
+  border: 1px solid rgba(74, 222, 128, 0.86);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(22, 163, 74, 0.98),
+      rgba(20, 83, 45, 0.98)
+    );
+  box-shadow:
+    0 12px 32px rgba(2, 6, 23, 0.42),
+    0 0 24px rgba(34, 197, 94, 0.20);
+}
+
+.fanm-environment-badge__icon {
   font-size: 1rem;
   line-height: 1;
 }
 
-.fanm-testing-site-badge__copy {
+.fanm-environment-badge__copy {
   display: grid;
   line-height: 1.02;
 }
 
-.fanm-testing-site-badge__copy strong {
+.fanm-environment-badge__copy strong {
   font-size: 0.72rem;
   font-weight: 950;
   letter-spacing: 0.1em;
 }
 
-.fanm-testing-site-badge__copy small {
+.fanm-environment-badge__copy small {
   margin-top: 0.16rem;
-  color: rgba(254, 226, 226, 0.88);
+  color: rgba(255, 255, 255, 0.84);
   font-size: 0.58rem;
   font-weight: 800;
   letter-spacing: 0.04em;
 }
 
 @media (max-width: 520px) {
-  .fanm-testing-site-badge {
+  .fanm-environment-badge {
     top: max(0.42rem, env(safe-area-inset-top));
     padding: 0.36rem 0.62rem;
   }
 
-  .fanm-testing-site-badge__copy strong {
+  .fanm-environment-badge__copy strong {
     font-size: 0.66rem;
   }
 
-  .fanm-testing-site-badge__copy small {
+  .fanm-environment-badge__copy small {
     font-size: 0.54rem;
   }
 }
