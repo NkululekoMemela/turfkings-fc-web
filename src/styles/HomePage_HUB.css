@@ -8734,3 +8734,34 @@
     transition: none !important;
   }
 }
+
+/* ============================================================
+   Splash mobile viewport containment
+   Prevent right-edge clipping on narrow phones.
+   Visual design intentionally unchanged.
+   ============================================================ */
+
+.hub-startup-splash__panel,
+.hub-startup-splash__art-wrap,
+.hub-startup-splash__progress-shell,
+.hub-startup-splash__steps {
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .hub-startup-splash__panel {
+    width: min(100%, 470px);
+    max-width: 100%;
+  }
+
+  .hub-startup-splash__art-wrap {
+    width: min(100%, 430px);
+    max-width: 100%;
+  }
+
+  .hub-startup-splash__progress-shell,
+  .hub-startup-splash__steps {
+    width: 100%;
+    max-width: 100%;
+  }
+}
