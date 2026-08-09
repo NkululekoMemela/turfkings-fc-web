@@ -15803,3 +15803,67 @@ button.fanm-chat-highlight-card {
       ) !important;
   }
 }
+
+
+/* =========================================================
+   STATS — CONTENT-RESPONSIVE TEAM COLUMNS
+
+   Team width is determined by the actual team names present.
+   No fixed width is imposed.
+
+   Applies only to:
+   - Team Standings
+   - Player Rankings
+   - Top Scorers
+   - Playmakers
+   - Defensive Blocks / Clean Sheets
+
+   IMPORTANT:
+   Match Results is intentionally excluded and remains unchanged.
+   ========================================================= */
+
+@media (max-width: 768px) {
+
+  /* Team Standings — Team is column 2 */
+  .stats-page
+  .tk-team-identity-table:not(.tk-match-results-table)
+  .stats-table
+  th:nth-child(2),
+  .stats-page
+  .tk-team-identity-table:not(.tk-match-results-table)
+  .stats-table
+  td:nth-child(2) {
+    width: auto !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    white-space: nowrap !important;
+  }
+
+  /* Player Rankings / Top Scorers / Playmakers — Team is column 3 */
+  .stats-page
+  .tk-player-identity-table:not(.tk-match-results-table)
+  .stats-table
+  th:nth-child(3),
+  .stats-page
+  .tk-player-identity-table:not(.tk-match-results-table)
+  .stats-table
+  td:nth-child(3) {
+    width: auto !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    white-space: nowrap !important;
+  }
+
+  /* Defensive Blocks / Clean Sheets — Team is column 3 */
+  .stats-page
+  .tk-defensive-stats-table:not(.tk-match-results-table)
+  th:nth-child(3),
+  .stats-page
+  .tk-defensive-stats-table:not(.tk-match-results-table)
+  td:nth-child(3) {
+    width: auto !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    white-space: nowrap !important;
+  }
+}

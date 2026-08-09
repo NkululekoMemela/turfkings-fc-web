@@ -2539,7 +2539,7 @@ export function StatsPage({
 
           <div className="muted stats-context-line" style={{ marginBottom: "0.75rem" }}>
             <strong>{friendlyMonthContextLabel}</strong> •{" "}
-            <span>{viewMode === "current" && friendlyMonthScope === CURRENT_SCOPE ? "Current week" : "Full month"}</span>
+            <span>{viewMode === "current" && friendlyMonthScope === CURRENT_SCOPE ? "Current week" : "This Month"}</span>
           </div>
 
           <div className="stats-controls stats-controls-align-center">
@@ -2640,7 +2640,7 @@ export function StatsPage({
                     }
                     onClick={() => setViewMode("season")}
                   >
-                    {showFriendlyStats ? "Full month" : "Full season"}
+                    {showFriendlyStats ? "This Month" : "Full season"}
                   </button>
                 </div>
               </div>
@@ -2869,8 +2869,8 @@ export function StatsPage({
                   <th>Team</th>
                   <th>Goals</th>
                   <th>Assists</th>
-                  <th>{isFriendlyStatsView ? "DB" : "CS"}</th>
-                  <th>{isFriendlyStatsView ? "G-A-5DB" : "G-A-CS"}</th>
+                  <th>{isFriendlyStatsView ? "5-DB" : "CS"}</th>
+                  <th>{isFriendlyStatsView ? "Total" : "G-A-CS"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -3062,7 +3062,7 @@ export function StatsPage({
                 ? friendlyMonthScope === FRIENDLY_PREVIOUS_MONTH_SCOPE
                   ? "All Match Results — Previous Month"
                   : viewMode === "season"
-                    ? "All Match Results — Full Month"
+                    ? "All Match Results — This Month"
                     : "All Match Results — Current Week"
                 : viewMode === "season"
                   ? "All Match Results — Current Season"
