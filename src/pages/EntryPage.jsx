@@ -4768,7 +4768,21 @@ export function EntryPage({
         <LoadingSplash
           progress={signinProgress}
           message={signinStatus}
-          title="Signing you in..."
+          title={
+            <>
+              <span style={{ display: "block" }}>
+                Signing you in...
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  marginTop: "0.18rem",
+                }}
+              >
+                {activeClubName}
+              </span>
+            </>
+          }
           kicker="5 Asides Near Me"
           image="/session/official-session-bg.png"
           imageAlt="Official football session"
