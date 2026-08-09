@@ -1,0 +1,1480 @@
+
+================================================================================
+src/App.jsx
+================================================================================
+  452 | email                            |     identity.email,
+  524 | players                          |       players: [],
+  534 | players                          |       players: [],
+  549 | players                          |     players: Array.isArray(team?.players) ? [...team.players] : [],
+  618 | players                          |       players: Array.isArray(incomingTeam.players) ? [...incomingTeam.players] : [],
+  863 | uid                              |   const direct = entry.playerId || entry.memberId || entry.id || entry.uid || "";
+  870 | members                          | function buildMemberLookup(members = []) {
+  879 | members                          |   (Array.isArray(members) ? members : []).forEach((member) => {
+  889 | email                            |       member?.email,
+  922 | uid                              |       entry.uid,
+  948 | players                          |   const rawPlayers = Array.isArray(team?.players) ? team.players : [];
+ 1027 | members                          |   members = [],
+ 1031 | members                          |   const memberLookup = buildMemberLookup(members);
+ 1041 | players                          |     const players = normalizeTeamPlayersForParticipation(team, memberLookup);
+ 1042 | players                          |     const squadSize = players.length;
+ 1046 | players                          |     players.forEach((player) => {
+ 1174 | players                          |           players: [],
+ 1188 | players                          |       const alreadyPresent = team.players.some((player) => {
+ 1203 | players                          |       team.players.push({
+ 1223 | players                          |         Array.isArray(team?.players) &&
+ 1224 | players                          |         team.players.length > 0
+ 1242 | players                          |       players: Array.isArray(team?.players)
+ 1243 | players                          |         ? team.players
+ 1248 | players                          |         Array.isArray(team.players) &&
+ 1249 | players                          |         team.players.length > 0
+ 1266 | players                          |       if (!parsed.players || typeof parsed.players !== "object") continue;
+ 1290 | players                          |       players: {},
+ 1333 | players                          |     source: renderedPlayerCardSnapshot?.players
+ 1336 | players                          |     players: renderedPlayerCardSnapshot?.players || {},
+ 1577 | email                            |     identity?.email ||
+ 1806 | players                          |   (team?.players || []).forEach((entry) => {
+ 2391 | members                          |   const members = useMembers();
+ 2815 | email                            |               identity?.email ||
+ 2822 | email                            |               identity?.email ||
+ 2919 | players                          |                     playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+ 2978 | photoUrl                         |             data.photoUrl ||
+ 3736 | email                            |     email: pageIdentity?.email || null,
+ 3945 | players                          |         "Practice Session assumes players are already available for training. Click Change Profile and enter an Official Session to use Match Signup and payments.",
+ 4460 | email                            |         email: pageIdentity?.email || null,
+ 4887 | members                          |               members,
+ 5079 | members                          |             members,
+ 5576 | players                          |         playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+ 5577 | players                          |         players: Array.isArray(team?.players) ? team.players : [],
+ 5672 | members                          |       members,
+ 6192 | players                          |         players: [],
+ 6426 | uid                              |         installGuideUrl: CAMERA_APP_INSTALL_GUIDE_URL,
+ 6465 | email                            |           identity?.email ||
+ 6472 | email                            |           identity?.email ||
+ 6512 | players                          |         players: Array.isArray(team?.players) ? team.players : [],
+ 6523 | players                          |           playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+ 6524 | players                          |           players: Array.isArray(team?.players) ? team.players : [],
+ 6543 | players                          |             playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+ 6544 | players                          |             players: Array.isArray(team?.players) ? team.players : [],
+ 6552 | players                          |             playersCount: Array.isArray(team?.players) ? team.players.length : 0,
+ 6553 | players                          |             players: Array.isArray(team?.players) ? team.players : [],
+ 7371 | members                          |           members={members}
+ 7725 | members                          |           members={members}
+ 7869 | members                          |           members={members}
+ 7899 | members                          |           members={members}
+ 7919 | email                            |                   pageIdentity?.email ||
+ 7984 | members                          |           members={members}
+ 8366 | players                          |                         When teams have substitutes, the system assumes players shared game time fairly across the 5-minute matches.
+ 9113 | uid                              |             uid: identity?.uid || identity?.email || "",
+ 9113 | email                            |             uid: identity?.uid || identity?.email || "",
+ 9114 | email                            |             email: identity?.email || "",
+ 9121 | email                            |             email: identity.email || "",
+ 9130 | members                          |           members={members}
+
+================================================================================
+src/hooks/useWhatsAppProfilePrompt.js
+================================================================================
+   53 | phoneNumber                      |     identity?.phoneNumber ||
+   56 | phoneNumber                      |     currentUser?.phoneNumber ||
+   80 | uid                              |     currentUser?.uid,
+   81 | email                            |     currentUser?.email,
+   82 | email                            |     identity?.email,
+   92 | members                          |   ["members", "humanMembers", "players"].forEach((collectionName) => {
+   92 | players                          |   ["members", "humanMembers", "players"].forEach((collectionName) => {
+  133 | members                          |     collection: "members",
+  146 | phoneNumber                      |   const phoneNumber = useMemo(
+  152 | phoneNumber                      |   const [profileWhatsappNumber, setProfileWhatsappNumber] = useState(phoneNumber);
+  154 | phoneNumber                      |   const [whatsAppInput, setWhatsAppInput] = useState(phoneNumber);
+  180 | whatsappNumber                   |         resolved?.data?.whatsappNumber ||
+  182 | phoneNumber                      |           resolved?.data?.phoneNumber ||
+  183 | phoneNumber                      |           phoneNumber
+  191 | phoneNumber                      |       setWhatsAppInput(savedNumber || phoneNumber || "");
+  210 | phoneNumber                      |     phoneNumber,
+  241 | whatsappNumber                   |           whatsappNumber: normalized,
+  242 | phoneNumber                      |           phoneNumber: normalized,
+  243 | whatsappNumber                   |           whatsappNumberUpdatedAt: serverTimestamp(),
+  269 | phoneNumber                      |         profileWhatsappNumber || phoneNumber || whatsAppInput
+  271 | phoneNumber                      |     [profileWhatsappNumber, phoneNumber, whatsAppInput]
+  275 | phoneNumber                      |     phoneNumber,
+
+================================================================================
+src/hooks/usePlayerAttendanceBadge.js
+================================================================================
+   47 | email                            |     identity?.email,
+
+================================================================================
+src/hooks/useMembers.js
+================================================================================
+    8 | members                          |  * Live subscription to club-scoped Firestore members collection.
+   11 | members                          |   const [members, setMembers] = useState([]);
+   34 | members                          |   return members;
+
+================================================================================
+src/auth/AuthContext.jsx
+================================================================================
+   35 | email                            | // Special TurfKings emails that are at least captains
+   42 | email                            | // Your admin email (full powers)
+   62 | email                            |         const email = (firebaseUser.email || "").toLowerCase();
+   73 | email                            |         // 1) Try Firestore: members doc matching this email
+   73 | members                          |         // 1) Try Firestore: members doc matching this email
+   75 | members                          |           const membersRef = getMembersCollection(db);
+   76 | email                            |           const q = query(membersRef, where("email", "==", email));
+   76 | members                          |           const q = query(membersRef, where("email", "==", email));
+   88 | email                            |             // 2) Fallback: known captain emails
+   89 | email                            |             if (CAPTAIN_EMAILS.has(email)) {
+   94 | members                          |           console.error("[Auth] Failed to read members doc:", err);
+   95 | email                            |           if (CAPTAIN_EMAILS.has(email)) {
+  101 | email                            |         if (email === ADMIN_EMAIL) {
+  110 | uid                              |           uid: firebaseUser.uid,
+  111 | email                            |           email,
+
+================================================================================
+src/components/ReactionUsersSheet.jsx
+================================================================================
+   46 | photoUrl                         |           photoUrl: String(
+   47 | photoUrl                         |             user?.photoUrl ||
+   49 | profilePhotoUrl                  |             user?.profilePhotoUrl ||
+  108 | photoUrl                         |                         {user.photoUrl ? (
+  110 | photoUrl                         |                             src={user.photoUrl}
+
+================================================================================
+src/components/YearEndProgramModal.jsx
+================================================================================
+  136 | email                            |       (identity?.email || identity?.user?.email || "")
+  203 | players                          |         "Make the year-end program visible to ALL players and spectators?\n" +
+  207 | players                          |         "Hide the full program from ordinary players and show 'Program coming soon' again?\n" +
+  368 | players                          |                   players see “Program coming soon”.
+  379 | players                          |           // Ordinary players & spectators BEFORE publish
+  560 | players                          |                     <strong>Program visible to all players</strong>
+  563 | players                          |                       When turned on, ordinary players and spectators will see
+  636 | players                          |                 program, even before it is published to players.
+
+================================================================================
+src/components/RSVPModal.jsx
+================================================================================
+   36 | email                            |   const identityEmail = (identity?.email || identity?.user?.email || "")
+   70 | email                            |     identity?.email ||
+   73 | email                            |   const currentEmail = identity?.email || identity?.user?.email || null;
+  142 | email                            |         "No email on identity; calendar invite function will have nothing to send to."
+  181 | email                            |       email: currentEmail || "",
+  213 | email                            |           email: existing.email || currentEmail || "",
+  250 | email                            |         email: attendee.email || currentEmail || "",
+  318 | players                          |             people (players + friends)
+
+================================================================================
+src/pages/EntryPage.jsx
+================================================================================
+   40 | findCandidatePlatformIdentity    |   findCandidatePlatformIdentity,
+   41 | platformIdentity                 | } from "../storage/platformIdentityRepository.js";
+   43 | resolvePlayerIdentity            |   resolvePlayerIdentity,
+   49 | members                          | const MEMBERS_COLLECTION = "members";
+   50 | players                          | const PLAYERS_COLLECTION = "players";
+   77 | members                          | function membersCollectionRef(clubId) {
+   85 | players                          | function playersCollectionRef(clubId) {
+  228 | email                            |   const email = String(value || "").trim();
+  230 | email                            |   if (!email || !email.includes("@")) {
+  234 | email                            |   const [localPart, domain] = email.split("@");
+  391 | findExistingPhotoDataByIdentity  | async function findExistingPhotoDataByIdentity(identityLike, clubId = DEFAULT_CLUB_ID) {
+  420 | email                            |   email = "",
+  437 | email                            |       email: String(email || "").trim(),
+  471 | email                            |         email: member.email || "",
+  472 | whatsappNumber                   |         whatsappNumber: member.whatsappNumber || "",
+  473 | phoneNumber                      |         phoneNumber:
+  474 | phoneNumber                      |           member.phoneNumber ||
+  475 | whatsappNumber                   |           member.whatsappNumber ||
+  477 | photoUrl                         |         photoUrl: member.photoUrl || "",
+  478 | platformIdentityUid              |         platformIdentityUid:
+  478 | platformIdentity                 |         platformIdentityUid:
+  479 | platformIdentityUid              |           member.platformIdentityUid ||
+  479 | platformIdentity                 |           member.platformIdentityUid ||
+  480 | uid                              |           member.uid ||
+  482 | platformIdentity                 |         platformIdentityConfirmed:
+  483 | platformIdentity                 |           member.platformIdentityConfirmed === true,
+  484 | platformIdentity                 |         platformIdentitySourceClubId:
+  485 | platformIdentity                 |           member.platformIdentitySourceClubId || "",
+  486 | platformIdentity                 |         platformIdentitySourceMemberId:
+  487 | platformIdentity                 |           member.platformIdentitySourceMemberId || "",
+  503 | players                          |       "[EntryPage] Failed to sync member into players collection:",
+  510 | email                            | async function resolveSignedInRoleFromPlayerDoc(member, emailFromGoogle = "", clubId = DEFAULT_CLUB_ID) {
+  542 | email                            |   const email = String(emailFromGoogle || member?.email || "")
+  546 | email                            |   if (isCaptainEmail(email)) return "captain";
+  552 | email                            |     email: deleteField(),
+  553 | whatsappNumber                   |     whatsappNumber: deleteField(),
+  554 | phoneNumber                      |     phoneNumber: deleteField(),
+  555 | whatsappNumber                   |     whatsappNumberUpdatedAt: deleteField(),
+  670 | email                            |     const email = String(currentUser?.email || "").trim().toLowerCase();
+  671 | uid                              |     const uid = String(currentUser?.uid || "").trim();
+  673 | uid                              |     if (!email && !uid) return false;
+  673 | email                            |     if (!email && !uid) return false;
+  683 | uid                              |     if (uid && clubAdminUids.includes(uid)) return true;
+  691 | email                            |       activeClub?.captain?.email,
+  698 | email                            |     return isCaptainEmail(email) || clubAdminEmails.includes(email);
+  834 | members                          |   const [members, setMembers] = useState([]);
+  836 | members                          |   const [membersError, setMembersError] = useState("");
+  912 | members                          |     const colRef = membersCollectionRef(activeClubId);
+  926 | email                            |               data.email?.split("@")[0] ||
+  935 | email                            |               data.email?.split("@")[0] ||
+  937 | email                            |             email: data.email || "",
+  938 | whatsappNumber                   |             whatsappNumber: data.whatsappNumber || "",
+  939 | phoneNumber                      |             phoneNumber: data.phoneNumber || "",
+  940 | photoUrl                         |             photoUrl:
+  941 | photoUrl                         |               data.photoUrl ||
+  942 | profilePhotoUrl                  |               data.profilePhotoUrl ||
+  944 | uid                              |             uid: data.uid || "",
+  945 | platformIdentityUid              |             platformIdentityUid:
+  945 | platformIdentity                 |             platformIdentityUid:
+  946 | platformIdentityUid              |               data.platformIdentityUid ||
+  946 | platformIdentity                 |               data.platformIdentityUid ||
+  947 | uid                              |               data.uid ||
+  949 | platformIdentity                 |             platformIdentityConfirmed:
+  950 | platformIdentity                 |               data.platformIdentityConfirmed === true,
+  951 | platformIdentity                 |             platformIdentitySourceClubId:
+  952 | platformIdentity                 |               data.platformIdentitySourceClubId || "",
+  953 | platformIdentity                 |             platformIdentitySourceMemberId:
+  954 | platformIdentity                 |               data.platformIdentitySourceMemberId || "",
+  974 | members                          |           "[EntryPage] Loaded members for",
+  980 | email                            |             email: m.email,
+  991 | members                          |         console.error("Error loading members:", err);
+  992 | members                          |         setMembersError(`Could not load ${activeClubName} members.`);
+ 1001 | members                          |     () => members.filter((m) => m.status === "active"),
+ 1002 | members                          |     [members]
+ 1006 | members                          |     () => members.filter((m) => m.status === "pending"),
+ 1007 | members                          |     [members]
+ 1177 | members                          |     () => members.find((m) => m.id === selectedMemberId) || null,
+ 1178 | members                          |     [members, selectedMemberId]
+ 1231 | email                            |     email: "",
+ 1232 | whatsappNumber                   |     whatsappNumber: "",
+ 1256 | members                          |       members.find((member) => member.id === adminPrivilegesMemberId) ||
+ 1258 | members                          |     [members, adminPrivilegesMemberId]
+ 1263 | members                          |       members.find((member) => member.id === terminationMemberId) ||
+ 1265 | members                          |     [members, terminationMemberId]
+ 1280 | email                            |       currentUser?.email ||
+ 1281 | email                            |       identity?.email ||
+ 1288 | members                          |       members.find((member) => {
+ 1289 | email                            |         const memberEmail = String(member?.email || "")
+ 1307 | members                          |   }, [members, identity, currentUser]);
+ 1311 | members                          |       members.find((member) => member.id === profileMemberId) ||
+ 1313 | members                          |     [members, profileMemberId]
+ 1329 | email                            |     activeClub?.captain?.email ||
+ 1337 | email                            |     adminPrivilegesMember?.email || ""
+ 1343 | uid                              |     adminPrivilegesMember?.uid ||
+ 1344 | platformIdentityUid              |     adminPrivilegesMember?.platformIdentityUid ||
+ 1344 | platformIdentity                 |     adminPrivilegesMember?.platformIdentityUid ||
+ 1386 | members                          |     return members
+ 1388 | email                            |         const email = String(member?.email || "").trim().toLowerCase();
+ 1389 | uid                              |         const uid = String(
+ 1390 | platformIdentityUid              |           member?.uid || member?.platformIdentityUid || ""
+ 1390 | platformIdentity                 |           member?.uid || member?.platformIdentityUid || ""
+ 1390 | uid                              |           member?.uid || member?.platformIdentityUid || ""
+ 1395 | email                            |           (email && currentClubAdminEmails.includes(email)) ||
+ 1396 | uid                              |           (uid && currentClubAdminUids.includes(uid))
+ 1400 | email                            |         const email = String(member?.email || "").trim().toLowerCase();
+ 1405 | email                            |             email &&
+ 1407 | email                            |             email === protectedMainAdminEmail
+ 1419 | members                          |     members,
+ 1435 | email                            |           email: "",
+ 1436 | whatsappNumber                   |           whatsappNumber: "",
+ 1442 | findExistingPhotoDataByIdentity  |       const existingPhoto = await findExistingPhotoDataByIdentity(
+ 1455 | email                            |         email: String(profileMember.email || "").trim(),
+ 1456 | whatsappNumber                   |         whatsappNumber: String(
+ 1457 | whatsappNumber                   |           profileMember.whatsappNumber ||
+ 1458 | phoneNumber                      |           profileMember.phoneNumber ||
+ 1464 | photoUrl                         |           profileMember.photoUrl ||
+ 1502 | email                            |     const email = String(profileDraft.email || "")
+ 1505 | whatsappNumber                   |     const whatsappNumber = normalizeWhatsAppNumber(
+ 1506 | whatsappNumber                   |       profileDraft.whatsappNumber
+ 1514 | email                            |     if (email && !email.includes("@")) {
+ 1515 | email                            |       setProfileError("Enter a valid email address.");
+ 1520 | whatsappNumber                   |       whatsappNumber &&
+ 1521 | whatsappNumber                   |       !looksLikeWhatsAppNumber(whatsappNumber)
+ 1543 | email                            |         email,
+ 1544 | whatsappNumber                   |         whatsappNumber,
+ 1545 | whatsappNumber                   |         phoneNumber: whatsappNumber,
+ 1545 | phoneNumber                      |         phoneNumber: whatsappNumber,
+ 1547 | uid                              |         profileUpdatedByUid: currentUser?.uid || "",
+ 1554 | photoUrl                         |         memberPatch.photoUrl = profileDraft.photoData;
+ 1572 | email                            |             email,
+ 1573 | whatsappNumber                   |             whatsappNumber,
+ 1574 | whatsappNumber                   |             phoneNumber: whatsappNumber,
+ 1574 | phoneNumber                      |             phoneNumber: whatsappNumber,
+ 1575 | photoUrl                         |             photoUrl:
+ 1577 | photoUrl                         |               profileMember.photoUrl ||
+ 1594 | email                            |           email,
+ 1628 | email                            |         const memberEmail = String(member.email || "")
+ 1632 | uid                              |         const memberUid = String(member.uid || "").trim();
+ 1634 | platformIdentityUid              |         const platformIdentityUid = String(
+ 1634 | platformIdentity                 |         const platformIdentityUid = String(
+ 1635 | platformIdentityUid              |           member.platformIdentityUid || memberUid || ""
+ 1635 | platformIdentity                 |           member.platformIdentityUid || memberUid || ""
+ 1645 | members                          |           ? members.filter((candidate) => {
+ 1649 | email                            |                 String(candidate.email || "").trim().toLowerCase() ===
+ 1656 | members                          |           ? members.filter((candidate) => {
+ 1659 | uid                              |               return String(candidate.uid || "").trim() === memberUid;
+ 1663 | platformIdentityUid              |         const duplicatePlatformIdentityMembers = platformIdentityUid
+ 1663 | platformIdentity                 |         const duplicatePlatformIdentityMembers = platformIdentityUid
+ 1664 | members                          |           ? members.filter((candidate) => {
+ 1669 | platformIdentityUid              |                   candidate.platformIdentityUid ||
+ 1669 | platformIdentity                 |                   candidate.platformIdentityUid ||
+ 1670 | uid                              |                     candidate.uid ||
+ 1672 | platformIdentityUid              |                 ).trim() === platformIdentityUid
+ 1672 | platformIdentity                 |                 ).trim() === platformIdentityUid
+ 1678 | members                          |           ? members.filter((candidate) => {
+ 1744 | email                            |               ["email", memberEmail],
+ 1749 | email                            |               ["email", memberEmail],
+ 1754 | email                            |               ["email", memberEmail],
+ 1758 | email                            |         const currentEmail = String(currentUser?.email || "")
+ 1762 | uid                              |         const currentUid = String(currentUser?.uid || "").trim();
+ 1771 | platformIdentityUid              |             (platformIdentityUid &&
+ 1771 | platformIdentity                 |             (platformIdentityUid &&
+ 1773 | platformIdentityUid              |               platformIdentityUid === currentUid)
+ 1773 | platformIdentity                 |               platformIdentityUid === currentUid)
+ 1822 | email                            |           warnings.push("No verified email is stored for this member.");
+ 1825 | platformIdentityUid              |         if (!memberUid && !platformIdentityUid) {
+ 1825 | platformIdentity                 |         if (!memberUid && !platformIdentityUid) {
+ 1891 | members                          |     members,
+ 1892 | email                            |     currentUser?.email,
+ 1893 | uid                              |     currentUser?.uid,
+ 2050 | email                            |     const email = newEmail.trim();
+ 2053 | whatsappNumber                   |       confirmedIdentity?.whatsappNumber ||
+ 2054 | phoneNumber                      |       confirmedIdentity?.phoneNumber ||
+ 2061 | platformIdentityUid              |     const platformIdentityUid =
+ 2061 | platformIdentity                 |     const platformIdentityUid =
+ 2062 | platformIdentityUid              |       confirmedIdentity?.platformIdentityUid ||
+ 2062 | platformIdentity                 |       confirmedIdentity?.platformIdentityUid ||
+ 2063 | uid                              |       confirmedIdentity?.uid ||
+ 2068 | photoUrl                         |       confirmedIdentity?.photoUrl ||
+ 2075 | email                            |     if (!email || !email.includes("@")) {
+ 2076 | email                            |       setNewReqError("Please enter a valid email address.");
+ 2081 | email                            |     const normalizedEmail = email.toLowerCase();
+ 2085 | members                          |     const existingMember = members.find((m) => {
+ 2088 | email                            |         m.email && String(m.email || "").toLowerCase() === normalizedEmail;
+ 2098 | email                            |             email,
+ 2099 | whatsappNumber                   |             whatsappNumber: resolvedWhatsApp,
+ 2100 | phoneNumber                      |             phoneNumber: resolvedWhatsApp,
+ 2101 | platformIdentityUid              |             platformIdentityUid,
+ 2101 | platformIdentity                 |             platformIdentityUid,
+ 2102 | platformIdentity                 |             platformIdentityConfirmed: Boolean(confirmedIdentity),
+ 2103 | platformIdentity                 |             platformIdentitySourceClubId:
+ 2105 | platformIdentity                 |             platformIdentitySourceMemberId:
+ 2123 | email                            |               email,
+ 2152 | email                            |           : `This name or email already exists on the ${activeClubName} list.`
+ 2158 | members                          |       const requestRef = await addDoc(membersCollectionRef(activeClubId), {
+ 2161 | email                            |         email,
+ 2162 | whatsappNumber                   |         whatsappNumber: resolvedWhatsApp,
+ 2163 | phoneNumber                      |         phoneNumber: resolvedWhatsApp,
+ 2164 | platformIdentityUid              |         platformIdentityUid,
+ 2164 | platformIdentity                 |         platformIdentityUid,
+ 2165 | platformIdentity                 |         platformIdentityConfirmed: Boolean(confirmedIdentity),
+ 2166 | platformIdentity                 |         platformIdentitySourceClubId:
+ 2168 | platformIdentity                 |         platformIdentitySourceMemberId:
+ 2185 | email                            |           email,
+ 2214 | email                            |     const email = newEmail.trim().toLowerCase();
+ 2221 | email                            |     if (!email || !email.includes("@")) {
+ 2222 | email                            |       setNewReqError("Please enter a valid email address.");
+ 2249 | resolvePlayerIdentity            |       const gpiResolution = await resolvePlayerIdentity({
+ 2252 | email                            |         email,
+ 2259 | email                            |         email,
+ 2272 | email                            |           gpiExpectedEmail: email,
+ 2309 | email                            |       candidate.email ||
+ 2344 | email                            |       authenticatedUser?.email || ""
+ 2366 | members                          |      * creating the new club membership and copying reusable data.
+ 2370 | email                            |       email: authenticatedEmail,
+ 2371 | uid                              |       uid: authenticatedUser.uid || candidate.uid || "",
+ 2372 | platformIdentityUid              |       platformIdentityUid:
+ 2372 | platformIdentity                 |       platformIdentityUid:
+ 2373 | uid                              |         authenticatedUser.uid ||
+ 2374 | platformIdentityUid              |         candidate.platformIdentityUid ||
+ 2374 | platformIdentity                 |         candidate.platformIdentityUid ||
+ 2375 | uid                              |         candidate.uid ||
+ 2378 | email                            |       gpiVerifiedBy: "google_email_match",
+ 2395 | whatsappNumber                   |       confirmedCandidate.whatsappNumber ||
+ 2396 | phoneNumber                      |       confirmedCandidate.phoneNumber ||
+ 2405 | photoUrl                         |       confirmedCandidate.photoUrl ||
+ 2416 | email                            |       email: authenticatedEmail,
+ 2461 | email                            |           selectedMemberEmail: selectedMember?.email || "",
+ 2462 | email                            |           currentUserEmail: auth.currentUser?.email || "",
+ 2480 | email                            |       candidate.email ||
+ 2481 | email                            |       offer.completionPayload?.email ||
+ 2523 | email                            |         authenticatedUser?.email || ""
+ 2530 | email                            |           "Google did not return an email address."
+ 2569 | email                            |           email: authenticatedEmail,
+ 2593 | whatsappNumber                   |             whatsappNumber: inheritedPhone,
+ 2594 | phoneNumber                      |             phoneNumber: inheritedPhone,
+ 2606 | whatsappNumber                   |               whatsappNumber: inheritedPhone,
+ 2607 | phoneNumber                      |               phoneNumber: inheritedPhone,
+ 2618 | email                            |           email: authenticatedEmail,
+ 2644 | whatsappNumber                   |         whatsappNumber:
+ 2668 | email                            |       selectedMemberEmail: selectedMember?.email || "",
+ 2669 | email                            |       currentUserEmail: auth.currentUser?.email || "",
+ 2706 | email                            |     if (!u || !u.email) {
+ 2708 | email                            |         "Could not read your Google email. Please try again or contact admin."
+ 2713 | email                            |     const googleEmail = u.email.toLowerCase().trim();
+ 2714 | email                            |     const memberEmail = (selectedMember.email || "").toLowerCase().trim();
+ 2718 | email                            |         `This Google account’s email doesn’t match the one on record for ${selectedMember.fullName}.`
+ 2727 | email                            |           email: googleEmail,
+ 2728 | uid                              |           uid: u.uid,
+ 2729 | platformIdentityUid              |           platformIdentityUid:
+ 2729 | platformIdentity                 |           platformIdentityUid:
+ 2730 | platformIdentityUid              |             selectedMember.platformIdentityUid ||
+ 2730 | platformIdentity                 |             selectedMember.platformIdentityUid ||
+ 2731 | uid                              |             u.uid,
+ 2745 | email                            |       email: googleEmail,
+ 2746 | uid                              |       uid: u.uid,
+ 2747 | platformIdentityUid              |       platformIdentityUid:
+ 2747 | platformIdentity                 |       platformIdentityUid:
+ 2748 | platformIdentityUid              |         selectedMember.platformIdentityUid ||
+ 2748 | platformIdentity                 |         selectedMember.platformIdentityUid ||
+ 2749 | uid                              |         u.uid,
+ 2757 | email                            |         email: googleEmail,
+ 2772 | email                            |       `Welcome, ${selectedMember.shortName}! Your email has been verified.`
+ 2791 | email                            |       email: googleEmail,
+ 2792 | whatsappNumber                   |       whatsappNumber: memberData.whatsappNumber || "",
+ 2797 | members                          |      * Existing members may have joined this club before cross-club profile
+ 2802 | findExistingPhotoDataByIdentity  |       await findExistingPhotoDataByIdentity(
+ 2816 | whatsappNumber                   |         memberData.whatsappNumber || ""
+ 2821 | resolvePlayerIdentity            |           await resolvePlayerIdentity({
+ 2822 | email                            |             email: googleEmail,
+ 2838 | email                            |             email: googleEmail,
+ 2850 | photoUrl                         |               sourceIdentityCandidate?.photoUrl
+ 2853 | whatsappNumber                   |               sourceIdentityCandidate?.whatsappNumber ||
+ 2854 | phoneNumber                      |               sourceIdentityCandidate?.phoneNumber
+ 2867 | whatsappNumber                   |       sourceIdentityCandidate?.whatsappNumber ||
+ 2868 | phoneNumber                      |       sourceIdentityCandidate?.phoneNumber ||
+ 2873 | photoUrl                         |       sourceIdentityCandidate?.photoUrl ||
+ 2878 | whatsappNumber                   |         memberData.whatsappNumber || ""
+ 2900 | whatsappNumber                   |           memberData.whatsappNumber ||
+ 2910 | whatsappNumber                   |               whatsappNumber:
+ 2928 | whatsappNumber                   |         whatsappNumber:
+ 2936 | email                            |         email: googleEmail,
+ 2970 | whatsappNumber                   |           memberData.whatsappNumber || "",
+ 2999 | email                            |           selectedMemberEmail: selectedMember?.email || "",
+ 3000 | email                            |           currentUserEmail: auth.currentUser?.email || "",
+ 3031 | email                            |         email: photoReminderContext.email,
+ 3070 | whatsappNumber                   |           whatsappNumber: normalized,
+ 3071 | phoneNumber                      |           phoneNumber: normalized,
+ 3083 | whatsappNumber                   |             whatsappNumber: normalized,
+ 3084 | phoneNumber                      |             phoneNumber: normalized,
+ 3256 | email                            |       currentUser?.email?.split("@")[0] ||
+ 3266 | uid                              |         senderUid: currentUser?.uid || "",
+ 3325 | email                            |       currentUser?.email?.split("@")[0] ||
+ 3337 | email                            |         senderEmail: currentUser?.email || selectedMember?.email || identity?.email || "",
+ 3338 | uid                              |         senderUid: currentUser?.uid || "",
+ 3361 | uid                              |       String(message.senderUid || "") !== String(currentUser?.uid || "")
+ 3380 | uid                              |       String(message.senderUid || "") !== String(currentUser?.uid || "")
+ 3462 | email                            |       email: "",
+ 3468 | members                          |     const member = members.find((m) => m.id === memberId) || null;
+ 3664 | members                          |         "Only an existing club administrator can terminate membership."
+ 3684 | email                            |     const memberEmail = String(member.email || "").trim().toLowerCase();
+ 3686 | platformIdentityUid              |       member.uid || member.platformIdentityUid || ""
+ 3686 | platformIdentity                 |       member.uid || member.platformIdentityUid || ""
+ 3686 | uid                              |       member.uid || member.platformIdentityUid || ""
+ 3702 | email                            |     const currentEmail = String(currentUser?.email || "")
+ 3705 | uid                              |     const currentUid = String(currentUser?.uid || "").trim();
+ 3712 | members                          |         "You cannot terminate your own membership while signed in as administrator."
+ 3743 | email                            |           ["email", memberEmail],
+ 3759 | email                            |           ["email", memberEmail],
+ 3777 | email                            |           ["email", memberEmail],
+ 3866 | members                          |         "[EntryPage] Failed terminating club membership:",
+ 3870 | members                          |         "Could not terminate this membership just now. No further action should be taken until the database is checked."
+ 4481 | email                            |             Not signed in yet. We&apos;ll ask Google for your email when you
+ 4490 | email                            |               <strong>{currentUser.displayName || currentUser.email}</strong>.
+ 4798 | players                          |               There are {activeMembers.length} players on the list – scroll down.
+ 4950 | members                          |           {membersError && (
+ 4952 | members                          |               {membersError}
+ 4958 | players                          |               Loading players…
+ 4995 | players                          |                 New players can start here. Add your name, Gmail, and optional details in one clean step.
+ 5012 | email                            |                   type="email"
+ 5113 | photoUrl                         |                       joinIdentityCandidate.photoUrl
+ 5118 | photoUrl                         |                           joinIdentityCandidate.photoUrl
+ 5140 | email                            |                         {joinIdentityCandidate.email}
+ 5143 | whatsappNumber                   |                         {joinIdentityCandidate.whatsappNumber ||
+ 5144 | phoneNumber                      |                           joinIdentityCandidate.phoneNumber ||
+ 5250 | email                            |                   If your departure is processed, your private contact details like email and WhatsApp
+ 5352 | players                          |               You can skip this for now. We will only remind registered players who still have not added it.
+ 5482 | email                            |                       .candidate?.email || ""
+ 5718 | email                            |           email: currentUser?.email || selectedMember?.email || identity?.email || "",
+ 6296 | email                            |                           type="email"
+ 6298 | email                            |                           value={profileDraft.email}
+ 6302 | email                            |                               email: event.target.value,
+ 6316 | whatsappNumber                   |                           value={profileDraft.whatsappNumber}
+ 6320 | whatsappNumber                   |                               whatsappNumber: event.target.value,
+ 6636 | players                          |                     Remove inactive players.
+ 6786 | email                            |                               ? "⚠ Shared email"
+ 6909 | members                          |             aria-label="Terminate club membership"
+
+================================================================================
+src/pages/HomePage_HUB.jsx
+================================================================================
+  351 | email                            |     club?.captain?.email,
+  360 | email                            |   const email = normalizeEmail(currentUser?.email);
+  361 | email                            |   return SUPER_ADMIN_EMAILS.includes(email);
+  365 | email                            |   const email = normalizeEmail(currentUser?.email);
+  366 | email                            |   if (!email) return false;
+  367 | email                            |   return isSuperAdmin(currentUser) || getClubAdminEmails(club).includes(email);
+  409 | members                          |       "User information is used to operate the platform, manage club membership, support match coordination and communicate important club or support updates.",
+  564 | email                            |       const signedInEmail = normalizeEmail(currentUser?.email);
+  565 | uid                              |       const signedInUid = safeText(currentUser?.uid);
+  581 | members                          |           const membersSnap = await getDocs(
+  582 | members                          |             collection(db, "clubs", clubId, "members")
+  585 | members                          |           const matchedMemberDoc = membersSnap.docs.find((memberDoc) => {
+  589 | email                            |               member?.email,
+  597 | uid                              |               member?.uid,
+  598 | platformIdentityUid              |               member?.platformIdentityUid,
+  598 | platformIdentity                 |               member?.platformIdentityUid,
+  626 | photoUrl                         |             member?.photoUrl ||
+  627 | profilePhotoUrl                  |             member?.profilePhotoUrl
+  650 | photoUrl                         |               photoData?.photoUrl ||
+  651 | profilePhotoUrl                  |               photoData?.profilePhotoUrl
+  682 | uid                              |     currentUser?.uid,
+  683 | email                            |     currentUser?.email,
+  715 | members                          |               const membersSnap = await getDocs(
+  716 | members                          |                 collection(db, "clubs", clubId, "members")
+  722 | members                          |               const activeAdministrators = membersSnap.docs
+  744 | email                            |                   const email = String(member?.email || "")
+  749 | email                            |                     email &&
+  750 | email                            |                     email !== platformSuperAdminEmail
+  772 | members                          |                 playerCount: membersSnap.size,
+  777 | members                          |                 "[HomePage_HUB] Could not load club members:",
+ 1041 | email                            |     return Boolean(currentUser?.email) && ["admin", "captain"].includes(role);
+ 1083 | email                            |         deletedByEmail: currentUser?.email || "",
+ 1084 | uid                              |         deletedByUid: currentUser?.uid || "",
+ 1146 | email                            |         challengerAdminEmail: currentUser?.email || identity?.email || "",
+ 1355 | email                            |                   currentUser?.email ||
+ 1361 | email                            |                   currentUser?.email ||
+ 1379 | email                            |                       currentUser?.email ||
+ 1521 | players                          |             As more clubs join, players can quickly spot nearby match nights and
+ 1586 | players                          |             5 Asides Near Me connects players, captains, payments, highlights
+ 1776 | players                          |               Complete the items below so players can identify the club quickly
+ 2028 | uid                              |             <p className="hub-tour-modal-kicker">Choose your guide</p>
+ 2037 | uid                              |                 <span>Club leader guide</span>
+ 2038 | players                          |                 <small>Set up clubs, payments, players and match flow.</small>
+ 2046 | uid                              |                 <span>Player guide</span>
+
+================================================================================
+src/pages/LiveMatchPage.jsx
+================================================================================
+   48 | players                          |     playersPerSide: classification.playersPerSide,
+
+================================================================================
+src/pages/StatsPage.jsx
+================================================================================
+  206 | players                          | function buildPlayersRegistry(playersSnap) {
+  210 | players                          |   playersSnap.forEach((docSnap) => {
+  395 | members                          |   members = [],
+  414 | members                          |   const safeMembers = Array.isArray(members) ? members : [];
+  454 | email                            |     identity?.email ||
+  522 | players                          |         const playersSnap = await getDocs(getPlayersCollection(db, safeActiveClubId));
+  525 | players                          |         const { mapNameToCanon, mapCanonToShort } = buildPlayersRegistry(playersSnap);
+  530 | players                          |         console.error("Failed to load players registry for StatsPage:", err);
+ 1173 | players                          |     const addPlayersKey = (key, players) => {
+ 1176 | players                          |       out[raw] = players;
+ 1177 | players                          |       out[raw.toUpperCase()] = players;
+ 1178 | players                          |       out[raw.toLowerCase()] = players;
+ 1182 | players                          |       const rawPlayers = Array.isArray(t?.players) ? t.players : [];
+ 1231 | players                          |       (t?.players || []).forEach((p) => {
+ 1397 | players                          |       (t?.players || []).forEach((p) => {
+ 1400 | photoUrl                         |           if (nm && p.photoUrl) {
+ 1401 | photoUrl                         |             addPhotoKey(nm, p.photoUrl);
+ 1402 | photoUrl                         |             addPhotoKey(slugFromName(nm), p.photoUrl);
+ 1403 | photoUrl                         |             addPhotoKey(firstNameOf(nm), p.photoUrl);
+ 1454 | players                          |     const players = Array.isArray(teamObj?.players) ? teamObj.players : [];
+ 1456 | players                          |     const playerNames = players
+ 1463 | players                          |       players.find((p) => p?.isCaptain)?.name ||
+ 1464 | players                          |       players.find((p) => p?.role === "captain")?.name ||
+ 1475 | players                          |       const matchedPlayerObj = players.find((p) => {
+ 1483 | photoUrl                         |           matchedPlayerObj.photoUrl ||
+ 3078 | uid                              |             <div className="tk-friendly-admin-ethics-banner tk-friendly-admin-ethics-inline" aria-label="Friendly admin editing guidance">
+
+================================================================================
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx
+================================================================================
+   41 | players                          | const PLAYERS_COLLECTION = "players";
+  212 | email                            |     identity?.email ||
+  217 | players                          | function buildPlayerResolver(players = []) {
+  239 | players                          |   players.forEach((p) => {
+  392 | players                          |   // do not wipe the FormationPage lineup. Use the saved formation players
+ 1119 | players                          |   players,
+ 1127 | players                          |   const firstSubIndex = players.findIndex(
+ 1134 | players                          |       {players.length === 0 ? (
+ 1135 | players                          |         <p className="muted small">No players available.</p>
+ 1138 | players                          |           {players.map((entry, idx) => {
+ 1166 | players                          |                     title="Divider between on-field players and subs"
+ 1536 | players                          |           <p className="muted">No bench players available.</p>
+ 1628 | players                          |   playersPerSide = null,
+ 1691 | players                          |   const livePlayersPerSide = Number(playersPerSide || formatConfig.playersPerSide || 5);
+ 1701 | email                            |     liveMatchController?.email ||
+ 1706 | email                            |     liveMatchTakeoverRequest?.requester?.email ||
+ 1712 | players                          |   const [players, setPlayers] = useState([]);
+ 1713 | players                          |   const [playersLoading, setPlayersLoading] = useState(true);
+ 1776 | players                          |         console.error("Failed to load players in LiveMatchPage:", err);
+ 1791 | players                          |   const playersReady = !playersLoading;
+ 1793 | players                          |   const playerResolver = useMemo(() => buildPlayerResolver(players), [players]);
+ 1813 | players                          |       playerIds: (t.players || [])
+ 1816 | players                          |       players: (t.players || [])
+ 2109 | players                          |       teamA?.players || []
+ 2113 | players                          |       teamA?.players || [],
+ 2143 | players                          |       teamB?.players || []
+ 2147 | players                          |       teamB?.players || [],
+ 2200 | players                          |                 teamA?.players || [],
+ 2216 | players                          |                 teamB?.players || [],
+ 2248 | players                          |       if (!playersReady) return;
+ 2269 | players                          |     playersReady,
+ 2530 | players                          |       fallbackPlayers: fallbackTeam?.players || [],
+ 2557 | players                          |       fallbackPlayers: teamId === teamAId ? teamA?.players || [] : teamB?.players || [],
+ 2605 | players                          |         teamA?.players || [],
+ 2619 | players                          |         teamB?.players || [],
+ 3192 | players                          |                   if (!playersReady) return;
+ 3195 | players                          |                 disabled={!playersReady}
+ 3363 | players                          |                           players={goalRecorderChoicesForTeam(teamAId)}
+ 3386 | players                          |                           players={goalRecorderChoicesForTeam(teamBId)}
+ 3504 | players                          |               {!playersReady ? (
+ 3516 | players                          |                       teamA?.players || [],
+ 3535 | players                          |                       teamB?.players || [],
+ 3573 | players                          |                   disabled={!playersReady}
+
+================================================================================
+src/pages/VideoHighlightsPage.jsx
+================================================================================
+   53 | uid                              |     identity.uid ||
+   56 | email                            |       identity.email ||
+   73 | email                            |     identity.email ||
+  333 | members                          | function buildPlayerOptions({ members = [], teams = [], highlights = [] }) {
+  336 | members                          |   (Array.isArray(members) ? members : []).forEach((member) => {
+  342 | players                          |     (Array.isArray(team?.players) ? team.players : []).forEach((player) => {
+  384 | players                          |   return (Array.isArray(team.players) ? team.players : [])
+ 1151 | members                          |   members = [],
+ 1487 | members                          |       Array.isArray(members) ? members : []
+ 1490 | uid                              |         member?.uid,
+ 1494 | email                            |         member?.email,
+ 1512 | email                            |         matchedMember.email ||
+ 1568 | members                          |     () => buildPlayerOptions({ members, teams, highlights: allHighlights }),
+ 1569 | members                          |     [members, teams, allHighlights]
+ 1830 | players                          |       setUploadError("Only signed-in players, captains, or admin can upload clips.");
+ 3829 | players                          |                       : "Upload the best goals, saves, and skills from match day. Once clips are approved, players can vote for the week’s top moments."}
+
+================================================================================
+src/pages/LandingPage.jsx
+================================================================================
+   56 | email                            |     currentUser?.email ||
+ 1140 | email                            |                     <strong>{currentUser.displayName || currentUser.email}</strong>
+
+================================================================================
+src/pages/PlayerCardPage.jsx
+================================================================================
+  201 | players                          | function buildPlayersRegistry(playersSnap) {
+  205 | players                          |   playersSnap.forEach((docSnap) => {
+  362 | players                          |     (team?.players || []).forEach((playerLike) => {
+  847 | players                          | function buildExactRenderedSnapshotFromPlayers(players = [], activeSeasonId = null) {
+  850 | players                          |   (Array.isArray(players) ? players : []).forEach((p) => {
+  879 | players                          |     players: snapshotPlayers,
+  887 | players                          |     snapshot?.players || snapshot?.playerCards || {},
+ 1222 | players                          |     const players = Array.isArray(championTeam?.players)
+ 1223 | players                          |       ? championTeam.players
+ 1226 | players                          |     players.forEach((p) => {
+ 1251 | players                          | function buildTournamentAwardBadges(players = []) {
+ 1252 | players                          |   const safePlayers = Array.isArray(players) ? players : [];
+ 1380 | email                            |     const em = safeLower(user?.email || "");
+ 1391 | players                          |   const [playersLoaded, setPlayersLoaded] = useState(false);
+ 1432 | players                          |         const [playersSnap, mainSnap, baselinesSnap, photosSnap] = await Promise.all([
+ 1441 | players                          |         const { mapNameToCanon, mapCanonToShort } = buildPlayersRegistry(playersSnap);
+ 1581 | players                          |       (t?.players || []).forEach((p) => {
+ 1584 | photoUrl                         |           if (nm && p.photoUrl) {
+ 1585 | photoUrl                         |             addPhotoKey(nm, p.photoUrl);
+ 1586 | photoUrl                         |             addPhotoKey(slugFromName(nm), p.photoUrl);
+ 1587 | photoUrl                         |             addPhotoKey(firstNameOf(nm), p.photoUrl);
+ 1666 | players                          |       (t.players || []).forEach((p) => {
+ 1688 | players                          |   const playersWithRatings = useMemo(() => {
+ 1701 | players                          |       (t.players || []).forEach((p) => {
+ 1941 | photoUrl                         |       const photoUrl = getPlayerPhoto(canonName, shortName);
+ 1953 | photoUrl                         |         photoUrl,
+ 2037 | players                          |     if (!playersLoaded || !participationLoaded || !baselineLoaded) return;
+ 2039 | players                          |     if (!Array.isArray(playersWithRatings) || playersWithRatings.length === 0) return;
+ 2043 | players                          |         playersWithRatings,
+ 2061 | players                          |     playersLoaded,
+ 2064 | players                          |     playersWithRatings,
+ 2093 | players                          |     return playersWithRatings.filter((p) => {
+ 2106 | players                          |   }, [playersWithRatings, playerViewFilter, teamFilter, searchLower]);
+ 2273 | players                          |                 Active players
+ 2315 | players                          |         {!playersLoaded || !participationLoaded || !baselineLoaded ? (
+ 2320 | players                          |               ? "No unrated players found for this filter."
+ 2321 | players                          |               : "No active players found for this filter."}
+ 2470 | photoUrl                         |                         {p.photoUrl ? (
+ 2472 | photoUrl                         |                             src={p.photoUrl}
+
+================================================================================
+src/pages/NewsPage.jsx
+================================================================================
+  116 | players                          | function buildPlayersRegistry(playersSnap) {
+  133 | players                          |   playersSnap.forEach((docSnap) => {
+  259 | email                            |       identity?.email ||
+  279 | members                          |   members,
+  304 | members                          |   const { normalizeName } = useMemberNameMap(Array.isArray(members) ? members : []);
+  595 | members                          |     (Array.isArray(members) ? members : []).forEach((member) => {
+  609 | players                          |       (team?.players || []).forEach((player) => {
+  624 | members                          |   }, [members, teams, normalizeName]);
+  641 | players                          |         const playersSnap = await getDocs(getPlayersCollection(db, safeActiveClubId));
+  648 | players                          |         setPlayerCanonicalMap(buildPlayersRegistry(playersSnap));
+  798 | players                          |       (t.players || []).forEach((p) => {
+  854 | players                          |       (t.players || []).forEach((p) => {
+  856 | photoUrl                         |         const photoUrl = p.photoUrl || p.photo || p.image || "";
+  857 | photoUrl                         |         if (!photoUrl) return;
+  863 | photoUrl                         |             addPhotoKey(candidateName, photoUrl);
+  864 | photoUrl                         |             addPhotoKey(pretty, photoUrl);
+  865 | photoUrl                         |             addPhotoKey(slugFromName(candidateName), photoUrl);
+  866 | photoUrl                         |             addPhotoKey(slugFromName(pretty), photoUrl);
+  867 | photoUrl                         |             addPhotoKey(firstNameOf(candidateName), photoUrl);
+  868 | photoUrl                         |             addPhotoKey(firstNameOf(pretty), photoUrl);
+  942 | members                          |     (members || []).forEach((member) => {
+  957 | players                          |       (team?.players || []).forEach((player) => {
+  967 | members                          |   }, [members, effectiveTeams]);
+ 1720 | players                          |       const players = Object.values(playerTotals).map((player) => ({
+ 1730 | players                          |       const topGoals = players.slice().sort((a, b) => {
+ 1735 | players                          |       const mvp = players.slice().sort((a, b) => {
+ 4044 | players                          |             No streaks yet – once players start scoring and assisting in back-to-back games,
+
+================================================================================
+src/pages/PeerReviewPage.jsx
+================================================================================
+   74 | players                          |   if (key === "all" || key === "all players") return false;
+  124 | members                          |   const [membersLoaded, setMembersLoaded] = useState(false);
+  200 | members                          |         const membersSnap = await getDocs(getMembersCollection(db, safeActiveClubId));
+  223 | members                          |         membersSnap.forEach((docSnap) => {
+  230 | players                          |             ? (isUsefulTeamFilterLabel(rawTeam) ? rawTeam : "Other players")
+  290 | members                          |         console.error("Failed to load PeerReviewPage members/photos:", err);
+  317 | players                          |       (t.players || []).forEach((p) => {
+  338 | members                          |       While Firestore membership is still loading, preserve the
+  340 | players                          |       stage means "not loaded yet", not "the club has no players".
+  342 | members                          |     if (!membersLoaded) return sorted;
+  354 | members                          |     membersLoaded,
+  743 | players                          |       setStatusMsg(`Peer voting is reserved for ${activeClubName} players.`);
+  863 | email                            |       updatedByEmail: identity?.email || "",
+  900 | members                          |       !membersLoaded ||
+  924 | members                          |     membersLoaded,
+  933 | email                            |   const signedInName = selectedRater || identity?.fullName || identity?.shortName || identity?.email || null;
+  937 | photoUrl                         |     const photoUrl = getPhotoFor(p.name);
+  950 | photoUrl                         |             {photoUrl ? (
+  951 | photoUrl                         |               <img src={photoUrl} alt={p.name} className="peer-avatar-photo" loading="lazy" decoding="async" />
+ 1294 | players                          |                         <p className="muted small">No players here.</p>
+ 1301 | players                          |                       <h3 style={{ marginBottom: "0.55rem" }}>Other players / not in current week</h3>
+ 1303 | players                          |                         <p className="muted small">No players here.</p>
+ 1367 | photoUrl                         |                   const photoUrl = getPhotoFor(p.name);
+ 1374 | photoUrl                         |                           {photoUrl ? <img src={photoUrl} alt={p.name} className="peer-avatar-photo" loading="lazy" decoding="async" /> : <div className="peer-avatar-fallback">{initials}</div>}
+ 1429 | players                          |                 Some players who participated this week still need admin baseline ratings.
+
+================================================================================
+src/pages/FormationsPage.jsx
+================================================================================
+  519 | players                          |   const players = playerList || [];
+  523 | players                          |     positions[pos.id] = players[idx] || null;
+  695 | players                          |   const players = playerPool || [];
+  697 | players                          |     return buildDefaultLineupLocal(players, defaultFormationId, formationsMap);
+  702 | players                          |     return buildDefaultLineupLocal(players, defaultFormationId, formationsMap);
+  711 | players                          |         players
+  714 | players                          |     return buildDefaultLineupLocal(players, defaultFormationId, formationsMap);
+  725 | players                          |       players
+  729 | players                          |   return buildDefaultLineupLocal(players, defaultFormationId, formationsMap);
+  771 | email                            |       savedByEmail: String(authUser?.email || identity?.email || "").trim() || null,
+  785 | email                            |       savedByEmail: String(authUser?.email || identity?.email || "").trim() || null,
+  794 | email                            |       savedByEmail: String(authUser?.email || identity?.email || "").trim() || null,
+  802 | email                            |     savedByEmail: String(authUser?.email || identity?.email || "").trim() || null,
+  990 | players                          | const PLAYERS_COLLECTION = "players";
+ 1053 | players                          |   const [players, setPlayers] = useState([]);
+ 1127 | players                          |         console.error("Error loading players for formations:", err);
+ 1138 | players                          |     players.forEach((p) => {
+ 1195 | players                          |   }, [players]);
+ 1376 | email                            |           uploadedByEmail: authUser?.email || identity?.email || null,
+ 1403 | players                          |     return players
+ 1408 | players                          |   }, [players, playerResolver]);
+ 1417 | players                          |       players: (t.players || [])
+ 1440 | players                          |     return uniqueByLower(selectedTeamCanonical?.players || []);
+ 1512 | players                          |       targetGameType === GAME_TYPE_11 ? clubPlayers : targetTeam?.players || [];
+ 1679 | players                          |     // Use the whole selected team, not only the 5 players on the pitch,
+ 1681 | players                          |     const teamPlayers = selectedTeamCanonical?.players || [];
+ 1685 | players                          |       players: teamPlayers,
+ 1699 | players                          |     gameType === GAME_TYPE_11 ? clubPlayers : selectedTeamCanonical?.players || [];
+ 2166 | players                          |                 Using this club player pool <strong>({clubPlayers.length} players)</strong>.
+ 2425 | players                          |                         <option value="">No guest players yet</option>
+
+================================================================================
+src/pages/MatchSignupPage.jsx
+================================================================================
+  179 | uid                              |     currentUser?.uid,
+  180 | email                            |     currentUser?.email,
+  181 | email                            |     identity?.email,
+  191 | members                          |   ["members", "humanMembers", "players"].forEach((collectionName) => {
+  191 | players                          |   ["members", "humanMembers", "players"].forEach((collectionName) => {
+  233 | members                          |     collection: "members",
+  252 | phoneNumber                      |     identity?.phoneNumber ||
+  255 | phoneNumber                      |     currentUser?.phoneNumber ||
+  501 | players                          |   return { key: "low", label: "needs players", shortLabel: "not filled" };
+  513 | email                            |     identity?.email,
+  525 | uid                              |     player?.uid,
+  539 | players                          |     const players = Array.isArray(team?.players) ? team.players : [];
+  541 | players                          |     const found = players.some((entry) => {
+  549 | uid                              |               entry?.uid,
+  767 | uid                              |     return `uid:${normKey(targetId || targetName)}`;
+  925 | email                            |     currentUser?.email ||
+  934 | uid                              |     currentUser?.uid ||
+ 1083 | phoneNumber                      |   const phoneNumber = getPhoneFromIdentity(identity, currentUser);
+ 1085 | phoneNumber                      |     profileWhatsappNumber || phoneNumber || whatsAppInput
+ 1109 | whatsappNumber                   |         resolved?.data?.whatsappNumber ||
+ 1111 | phoneNumber                      |           resolved?.data?.phoneNumber ||
+ 1112 | phoneNumber                      |           phoneNumber
+ 1120 | phoneNumber                      |       setWhatsAppInput(savedNumber || phoneNumber || "");
+ 1139 | phoneNumber                      |     phoneNumber,
+ 1170 | whatsappNumber                   |           whatsappNumber: normalized,
+ 1171 | phoneNumber                      |           phoneNumber: normalized,
+ 1172 | whatsappNumber                   |           whatsappNumberUpdatedAt: serverTimestamp(),
+ 1258 | uid                              |               data?.uid ||
+ 1286 | players                          |         console.error("Failed to load players directory in MatchSignupPage:", error);
+ 1303 | uid                              |       const id = String(candidate?.id || candidate?.playerId || candidate?.memberId || candidate?.uid || "").trim();
+ 1724 | uid                              |               : `uid:${normKey(beneficiaryId || beneficiaryName)}`)
+ 2066 | uid                              |       uid: user.userId || "",
+ 2090 | uid                              |         uid: beneficiary.playerId || "",
+ 2734 | whatsappNumber                   |           whatsappNumber: profileWhatsappNumber || phoneNumber || "",
+ 2734 | phoneNumber                      |           whatsappNumber: profileWhatsappNumber || phoneNumber || "",
+ 2820 | whatsappNumber                   |         whatsappNumber: profileWhatsappNumber || phoneNumber || "",
+ 2820 | phoneNumber                      |         whatsappNumber: profileWhatsappNumber || phoneNumber || "",
+ 2975 | email                            |         identity?.email ||
+ 3127 | email                            |         identity?.email ||
+ 3526 | whatsappNumber                   |           whatsappNumber: profileWhatsappNumber || phoneNumber || "",
+ 3526 | phoneNumber                      |           whatsappNumber: profileWhatsappNumber || phoneNumber || "",
+ 3779 | players                          |                   No matching player found. Typing here only searches existing players.
+
+================================================================================
+src/pages/ClubProfilePage.jsx
+================================================================================
+  239 | players                          |           <EmptyPanel title="Players" value="0" copy="No approved players yet." />
+
+================================================================================
+src/pages/PaymentPage.jsx
+================================================================================
+  157 | email                            |     identity?.email ||
+  217 | uid                              |     identity?.uid ||
+  221 | uid                              |     identity?.uid ||
+  641 | email                            |       identity?.email ||
+
+================================================================================
+src/pages/MigrationPage.jsx
+================================================================================
+   12 | email                            |     const email = (user?.email || "").trim().toLowerCase();
+   13 | email                            |     if (!email) return false;
+   15 | email                            |       return isCaptainEmail(email);
+   85 | email                            |             Signed in as <strong>{user.displayName || user.email}</strong>
+
+================================================================================
+src/pages/SquadsPage.jsx
+================================================================================
+   57 | players                          | const PLAYERS_COLLECTION = "players";
+  107 | email                            |   const emailCandidates = [
+  108 | email                            |     identity.email,
+  116 | email                            |   if (emailCandidates.some((email) => ADMIN_EMAILS.includes(email))) {
+  471 | players                          |     players: [...(t.players || [])],
+  485 | players                          |       players: [],
+  495 | players                          |       players: [],
+  504 | players                          |   players = [],
+  517 | players                          |     players: Array.from(
+  519 | players                          |         (players || [])
+  535 | players                          | function buildTurfKingsChallengeTeam({ players = [], teamColorName = "Green" } = {}) {
+  542 | players                          |     players: Array.from(new Set((players || []).filter(Boolean))),
+  624 | players                          |     players: Array.from(new Set((turfKingsPlayers || []).filter(Boolean))),
+  643 | players                          |     players: Array.from(
+  708 | players                          |       players: Array.isArray(dark.players) ? dark.players : [],
+  723 | players                          |       players: Array.isArray(light.players) ? light.players : [],
+  792 | players                          |   const playersPerSide = Number(formatConfig?.playersPerSide || 5);
+  817 | players                          |   const [playersLoading, setPlayersLoading] = useState(true);
+  818 | players                          |   const [playersError, setPlayersError] = useState("");
+  899 | players                          |     Array.isArray(existingGuestTeam?.players) ? existingGuestTeam.players : []
+  917 | players                          |     Array.isArray(existingTurfKingsChallengeTeam?.players)
+  918 | players                          |       ? existingTurfKingsChallengeTeam.players
+  982 | email                            |             identity?.email ||
+ 1173 | players                          |         console.error("[Squads] Error loading players:", err);
+ 1174 | players                          |         setPlayersError("Could not load players from database.");
+ 1181 | players                          |   const playersById = useMemo(() => {
+ 1188 | players                          |     const p = playersById.get(playerIdOrLegacy);
+ 1194 | players                          |     const p = playersById.get(playerIdOrLegacy);
+ 1332 | players                          |         playersById.has(playerId)
+ 1338 | players                          |       if (!resolvedId || !playersById.has(resolvedId)) return;
+ 1351 | players                          |   }, [isPracticeMode, signupRecords, nextTeamsheetWeekId, playersById, allPlayers]);
+ 1389 | players                          |         const playerId = playersById.has(rawPlayer)
+ 1414 | players                          |   }, [isLeague, matchDayHistory, localLeagueTeams, playersById, allPlayers]);
+ 1423 | players                          |           Array.isArray(team?.players) ? team.players : []
+ 1427 | players                          |       const playersToRestore = Array.from(seasonPlayerTeamIdByPlayerId.entries())
+ 1428 | players                          |         .filter(([playerId]) => playersById.has(playerId) && !alreadyAssigned.has(playerId));
+ 1430 | players                          |       if (!playersToRestore.length) return prevTeams;
+ 1433 | players                          |         const addHere = playersToRestore
+ 1441 | players                          |           players: Array.from(new Set([...(team.players || []), ...addHere])),
+ 1445 | players                          |   }, [isLeague, seasonPlayerTeamIdByPlayerId, playersById]);
+ 1453 | players                          |         const nextPlayers = (t.players || []).map((entry) => {
+ 1454 | players                          |           if (playersById.has(entry)) return entry;
+ 1474 | players                          |         return { ...t, players: deduped, captainId };
+ 1479 | players                          |   }, [allPlayers, playersById]);
+ 1590 | players                          |         players: (Array.isArray(team?.players) ? team.players : [])
+ 1639 | players                          |         setTurfKingsChallengePlayers(Array.isArray(nextTurf.players) ? nextTurf.players : []);
+ 1645 | players                          |         setGuestOpponentPlayers(Array.isArray(nextGuest.players) ? nextGuest.players : []);
+ 1662 | players                          |       (t.players || []).forEach((pid) => {
+ 1663 | players                          |         if (playersById.has(pid)) s.add(pid);
+ 1667 | players                          |   }, [sourceTeams, playersById]);
+ 1685 | players                          |       (t.players || []).forEach((pid) => {
+ 1686 | players                          |         if (!playersById.has(pid)) return;
+ 1691 | players                          |   }, [sourceTeams, playersById]);
+ 2282 | players                          |         const nextPlayers = [...(t.players || [])];
+ 2283 | players                          |         if (captainId && playersById.has(captainId) && !nextPlayers.includes(captainId)) {
+ 2290 | players                          |           players: nextPlayers,
+ 2306 | players                          |       const selectedName = playersById.has(selectedId)
+ 2328 | players                          |     if (!playersById.has(chosenId)) {
+ 2335 | players                          |           [id]: "Select an existing club player. New players must join the club first.",
+ 2342 | players                          |       (t.players || []).some((pid) => pid === chosenId)
+ 2358 | players                          |           const nextPlayers = (t.players || []).filter((pid) => pid !== chosenId);
+ 2360 | players                          |           return { ...t, players: nextPlayers, captainId: nextCaptainId };
+ 2371 | players                          |       if ((targetTeam.players || []).includes(chosenId)) {
+ 2390 | players                          |           idx === targetIndex ? { ...t, players: [...(t.players || []), chosenId] } : t
+ 2412 | players                          |     if (playersById.has(playerIdOrLegacy)) {
+ 2416 | players                          |           const nextPlayers = (t.players || []).filter((pid) => pid !== playerIdOrLegacy);
+ 2418 | players                          |           return { ...t, players: nextPlayers, captainId: nextCaptainId };
+ 2427 | players                          |         const nextPlayers = (t.players || []).filter((pid) => pid !== playerIdOrLegacy);
+ 2428 | players                          |         return { ...t, players: nextPlayers };
+ 2438 | uid                              |       identity?.uid,
+ 2443 | email                            |       identity?.email,
+ 2462 | players                          |     if (!playersById.has(playerId)) return;
+ 2465 | members                          |       showPremiumAlert({ title: "Action blocked", message: "You cannot terminate your own club membership from this page.", icon: "🛡️" });
+ 2483 | players                          |     if (!playersById.has(pendingDeletePlayerId)) return;
+ 2486 | members                          |       setDeletePlayerError("You cannot terminate your own membership from this page.");
+ 2499 | members                          |       batch.delete(doc(db, "clubs", activeClubId, "members", pendingDeletePlayerId));
+ 2501 | members                          |       const membersByPlayerId = await getDocs(
+ 2503 | members                          |           collection(db, "clubs", activeClubId, "members"),
+ 2508 | members                          |       membersByPlayerId.forEach((memberDoc) => {
+ 2515 | members                          |       console.error("[Squads] Error terminating membership:", err);
+ 2517 | members                          |         "Could not terminate this membership. Please try again."
+ 2581 | email                            |       identity?.email ||
+ 2815 | players                          |     if (team.captainId && playersById.has(team.captainId)) {
+ 2822 | players                          |     const ids = (team.players || []).filter((pid) => playersById.has(pid));
+ 2829 | players                          |     if (!canEdit || !playersById.has(playerId)) return;
+ 2833 | players                          |         const withoutPlayer = (team.players || []).filter((pid) => pid !== playerId);
+ 2839 | players                          |           players: nextPlayers,
+ 2847 | players                          |     if (!canEdit || !playersById.has(playerId)) return;
+ 2852 | players                          |         players: (team.players || []).filter((pid) => pid !== playerId),
+ 2859 | players                          |     if (!canEdit || !playersById.has(playerId)) return;
+ 2876 | players                          |     if (playersPerSide === 7) {
+ 2888 | players                          |     if (playersPerSide === 6) {
+ 2915 | players                          |     if (!canEdit || !previewPickTarget || !playersById.has(playerId)) return;
+ 2924 | players                          |         const withoutPicked = (team.players || []).filter((pid) => pid !== playerId);
+ 2929 | players                          |             players: withoutPicked,
+ 2939 | players                          |           players: nextPlayers.filter(Boolean),
+ 2949 | players                          |     if (!canEdit || !playersById.has(playerId) || isLockedClubChallengeTeam(teamId)) return;
+ 2956 | players                          |               players: (team.players || []).filter((pid) => pid !== playerId),
+ 2965 | players                          |     if (!canEdit || !playersById.has(playerId)) return;
+ 2972 | players                          |         const withoutPlayer = (team.players || []).filter((pid) => pid !== playerId);
+ 2977 | players                          |             players: [...withoutPlayer, playerId],
+ 2983 | players                          |           players: withoutPlayer,
+ 3005 | players                          |           ? "No practice players are available for auto fill."
+ 3006 | players                          |           : "No paid players are available for the upcoming game yet."
+ 3015 | players                          |         const existing = Array.isArray(team.players) ? team.players.filter(Boolean) : [];
+ 3016 | players                          |         const keep = existing.filter((pid) => eligibleIds.includes(pid)).slice(0, playersPerSide);
+ 3020 | players                          |         while (nextPlayers.length < playersPerSide && cursor < eligibleIds.length) {
+ 3025 | players                          |             Array.isArray(t.players) && t.players.includes(candidate)
+ 3036 | players                          |           players: nextPlayers,
+ 3049 | players                          |         players: [],
+ 3092 | players                          |       const players = Array.isArray(team.players) ? team.players : [];
+ 3093 | players                          |       if (!players.length) {
+ 3094 | players                          |         lines.push("No players selected");
+ 3096 | players                          |         players.forEach((pid, index) => {
+ 3143 | players                          |     const node = cardRefs.current["available-paid-players-card"];
+ 3157 | players                          |       link.download = `available-paid-players-${nextTeamsheetWeekId || "upcoming-game"}.png`;
+ 3161 | players                          |       console.error("[Squads] Failed to save available players card:", err);
+ 3162 | players                          |       showPremiumAlert({ title: "Paid players card save failed", message: "Could not save the available paid players card as an image.", icon: "⚠️" });
+ 3244 | players                          |                   <small>Available paid players</small>
+ 3250 | players                          |               No paid players found for the upcoming game yet.
+ 3262 | players                          |             <h3>Available paid players</h3>
+ 3263 | players                          |             <p className="muted small">Paid players still available for team placement.</p>
+ 3277 | players                          |             cardRefs.current["available-paid-players-card"] = el;
+ 3286 | players                          |                 <small>Available paid players</small>
+ 3304 | players                          |               <li>All paid players have been placed into teams.</li>
+ 3378 | players                          |               const players = Array.isArray(team.players) ? team.players : [];
+ 3419 | players                          |                     {players.length ? (
+ 3420 | players                          |                       players.map((pid) => (
+ 3427 | players                          |                       <li className="muted">No players selected</li>
+ 3474 | players                          |           const players = Array.isArray(team.players) ? team.players : [];
+ 3531 | players                          |                       {players.length}/{playersPerSide} selected
+ 3540 | players                          |                           team.captainId && playersById.has(team.captainId)
+ 3591 | players                          |                   const pid = players[index];
+ 3601 | players                          |                     playersById.has(team.captainId) &&
+ 3646 | players                          |                 {players.length > slots.length && (
+ 3649 | players                          |                     {players.slice(slots.length).map((pid, extraIndex) => (
+ 3663 | players                          |                 {canEdit && players.length >= playersPerSide && (
+ 3667 | players                          |                     onClick={() => handlePreviewSlotClick(team.id, players.length)}
+ 4089 | players                          |                     sourceTeams.some((team) => Array.isArray(team.players) && team.players.length > 0)
+ 4094 | players                          |                   {sourceTeams.some((team) => Array.isArray(team.players) && team.players.length > 0)
+ 4141 | players                          |                       No paid players found for the next game yet. Players must appear here after paying/being verified on Match Signup.
+ 4336 | players                          |               placeholder="Example: We no longer have enough players available for this fixture."
+ 4421 | members                          |             <h3>Terminate club membership?</h3>
+ 4425 | members                          |               from the ${activeClubName} club membership list.
+ 4428 | members                          |               This will remove the player from the club player pool and club members list.
+ 4462 | members                          |                 Yes, terminate membership
+
+================================================================================
+src/pages/Friendly_LiveMatchPage.jsx
+================================================================================
+   40 | players                          | const PLAYERS_COLLECTION = "players";
+  163 | players                          |   const playersPerSide = getGameFormatConfig(gameFormat).playersPerSide;
+  165 | players                          |   if (playersPerSide === 7) {
+  167 | players                          |       playersPerSide,
+  176 | players                          |   if (playersPerSide === 6) {
+  178 | players                          |       playersPerSide,
+  188 | players                          |     playersPerSide: 5,
+  253 | email                            |     identity?.email ||
+  258 | players                          | function buildPlayerResolver(players = []) {
+  280 | players                          |   players.forEach((p) => {
+  786 | players                          |   playersPerSide = 5,
+  797 | players                          |     .slice(0, Number(playersPerSide || 5))
+  856 | players                          |     playersPerSide: Number(playersPerSide || positionIds.length || 5),
+ 1042 | players                          |         playersPerSide: summaryInfo.playersPerSide || 5,
+ 1078 | players                          |       playersPerSide: summaryInfo.playersPerSide || 5,
+ 1120 | players                          |         playersPerSide: summaryInfo.playersPerSide || 5,
+ 1149 | players                          |         playersPerSide: finalSummary?.playersPerSide || 5,
+ 1252 | players                          |   players,
+ 1281 | players                          |       {players.length === 0 ? (
+ 1282 | players                          |         <p className="muted small">No players available.</p>
+ 1285 | players                          |           {players.map((entry, idx) => {
+ 1826 | players                          |           <p className="muted">No bench players available.</p>
+ 1946 | uid                              |     identity?.uid ||
+ 1949 | email                            |       identity?.email ||
+ 2024 | email                            |     liveMatchController?.email ||
+ 2029 | email                            |     liveMatchTakeoverRequest?.requester?.email ||
+ 2037 | players                          |     playersPerSide,
+ 2045 | players                          |   const [players, setPlayers] = useState([]);
+ 2046 | players                          |   const [playersLoading, setPlayersLoading] = useState(true);
+ 2156 | players                          |         console.error("Failed to load players in 5v5LiveMatchPage:", err);
+ 2171 | players                          |   const playersReady = !playersLoading;
+ 2173 | players                          |   const playerResolver = useMemo(() => buildPlayerResolver(players), [players]);
+ 2200 | players                          |       playerIds: (t.players || [])
+ 2203 | players                          |       players: (t.players || [])
+ 2448 | players                          |           teamA?.players || []
+ 2450 | players                          |         teamA?.players || [],
+ 2468 | players                          |           teamB?.players || []
+ 2470 | players                          |         teamB?.players || [],
+ 2500 | players                          |               teamA?.players || [],
+ 2515 | players                          |               teamB?.players || [],
+ 2583 | players                          |       if (!playersReady) return;
+ 2599 | players                          |     playersReady,
+ 2823 | players                          |         playersPerSide,
+ 2843 | players                          |     playersPerSide,
+ 3401 | players                          |   const eligibleTeamAPlayers = (teamA?.players || []).filter(
+ 3405 | players                          |   const eligibleTeamBPlayers = (teamB?.players || []).filter(
+ 3466 | players                          |     if (!playersReady) return;
+ 3690 | players                          |       fallbackPlayers: fallbackTeam?.players || [],
+ 3727 | players                          |       fallbackPlayers: fallbackTeam?.players || [],
+ 3770 | players                          |       fallbackPlayers: teamId === teamAId ? teamA?.players || [] : teamB?.players || [],
+ 3787 | players                          |     playersPerSide,
+ 3812 | players                          |       teamA?.players || [],
+ 3830 | players                          |       teamB?.players || [],
+ 3853 | players                          |         `${getShortLabel(effectiveTeamA, "Team A")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
+ 3860 | players                          |         `${getShortLabel(effectiveTeamB, "Team B")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
+ 3873 | players                          |       registeredPlayers: teamA?.players || [],
+ 3876 | players                          |       playersPerSide,
+ 3886 | players                          |       registeredPlayers: teamB?.players || [],
+ 3889 | players                          |       playersPerSide,
+ 4400 | players                          |       playersPerSide,
+ 5224 | players                          |               disabled={!playersReady}
+ 5536 | players                          |                       players: groups.onField,
+ 5540 | players                          |                       players: groups.substitutes,
+ 5544 | players                          |                       players: dismissed || [],
+ 5553 | players                          |                       {group.players.length === 0 ? (
+ 5555 | players                          |                           No players available
+ 5559 | players                          |                           {group.players.map((player) => {
+ 5774 | players                          |                     <strong>Sent-off players</strong>
+ 5926 | players                          |               {!playersReady ? (
+ 5993 | players                          |                   disabled={!playersReady}
+ 6054 | players                          |                       players={goalRecorderChoicesForTeam(teamAId)}
+ 6078 | players                          |                       players={goalRecorderChoicesForTeam(teamBId)}
+ 6124 | players                          |                     players={assistOptions}
+
+================================================================================
+src/core/clubPaths.js
+================================================================================
+   22 | players                          |   players: "players",
+   23 | members                          |   members: "members",
+
+================================================================================
+src/core/teams.js
+================================================================================
+    9 | players                          |     players: [],
+   15 | players                          |     players: [],
+   21 | players                          |     players: [],
+
+================================================================================
+src/core/clubFirestorePaths.js
+================================================================================
+   35 | players                          |   return getClubCollection(db, CLUB_COLLECTIONS.players, clubId);
+   39 | players                          |   return getClubDoc(db, CLUB_COLLECTIONS.players, playerId, clubId);
+   43 | members                          |   return getClubCollection(db, CLUB_COLLECTIONS.members, clubId);
+
+================================================================================
+src/core/membersUtils.js
+================================================================================
+    1 | members                          | // src/core/membersUtils.js
+    8 | members                          |   // Build lookup maps from members collection
+    9 | members                          |   export function buildMemberMaps(members) {
+   15 | members                          |     (members || []).forEach((m) => {
+   17 | uid                              |       const id = m.id || m.uid || m.memberId; // adapt to your field
+   26 | email                            |       if (m.email) {
+   27 | email                            |         byEmail.set(normaliseName(m.email), m);
+
+================================================================================
+src/core/videoHighlightsUtils.js
+================================================================================
+  155 | players                          |     players:config.players||[],
+
+================================================================================
+src/core/nameMapping.js
+================================================================================
+    5 | members                          |  * Robust alias -> canonical mapping from Firestore `members`.
+   12 | email                            |  * - email
+   13 | email                            |  * - slug(fullName), slug(shortName), slug(email)
+   16 | members                          |  * First-name-only alias is added ONLY if that first name is UNIQUE across members.
+   20 | email                            |  * - aliasMap remains a Map(lowerAlias -> { displayName, fullName, shortName, email }).
+   42 | members                          | export function useMemberNameMap(members) {
+   51 | members                          |     const rows = (members || [])
+   56 | email                            |         const email = String(mem?.email || "").trim();
+   67 | email                            |         return { fullName, shortName, email, aliases, canonical };
+   80 | email                            |           email: meta.email || null,
+   88 | email                            |     rows.forEach(({ fullName, shortName, email, aliases, canonical }) => {
+   99 | email                            |       const meta = { fullName, shortName, email };
+  117 | email                            |       // email
+  118 | email                            |       if (email) {
+  119 | email                            |         addAlias(email, canonical, meta);
+  120 | email                            |         addAlias(slugFromName(email), canonical, meta);
+  141 | email                            |         addAlias(first, canonical, { fullName: canonical, shortName: first, email: null });
+  146 | members                          |   }, [members]);
+
+================================================================================
+src/core/matchDayFormationRatings.js
+================================================================================
+  289 | players                          |   players = [],
+  326 | players                          |   (players || []).forEach((playerEntry) => {
+
+================================================================================
+src/core/captainAuth.js
+================================================================================
+    3 | email                            | // Only these emails are allowed to act as Captains in the app.
+   16 | email                            |    * Returns true if this email is allowed to act as a Captain.
+   18 | email                            |   export function isCaptainEmail(email) {
+   19 | email                            |     if (!email || typeof email !== "string") return false;
+   20 | email                            |     return CAPTAIN_EMAILS.has(email.toLowerCase());
+
+================================================================================
+src/core/lineups.js
+================================================================================
+  384 | players                          |   const players = normalizeLineupNames(playerList || []);
+  388 | players                          |     positions[pos.id] = players[idx] || null;
+  485 | players                          |   const players = normalizeLineupNames(playerPool || []);
+  488 | players                          |     return buildDefaultLineup(players, defaultFormationId, formationsMap);
+  493 | players                          |     return buildDefaultLineup(players, defaultFormationId, formationsMap);
+  503 | players                          |         players
+  506 | players                          |     return buildDefaultLineup(players, defaultFormationId, formationsMap);
+  517 | players                          |       players
+  521 | players                          |   return buildDefaultLineup(players, defaultFormationId, formationsMap);
+
+================================================================================
+src/core/matchConfig.js
+================================================================================
+   20 | players                          |     playersPerSide: 5,
+   26 | players                          |     playersPerSide: 6,
+   32 | players                          |     playersPerSide: 7,
+   98 | players                          |   return getGameFormatConfig(rawFormat).playersPerSide;
+  129 | players                          |     playersPerSide: getPlayersPerSide(resolvedFormat),
+
+================================================================================
+src/core/practiceSessionSeed.js
+================================================================================
+   86 | players                          |       players: [],
+   94 | players                          |       players: [],
+  102 | players                          |       players: [],
+  113 | players                          |       players: [],
+  121 | players                          |       players: [],
+  190 | players                          |   const players = PRACTICE_PLAYER_NAMES.map(buildPracticePlayer);
+  252 | players                          |   players.forEach((player, index) => {
+  257 | players                          |       "players",
+  265 | members                          |       "members",
+  333 | players                          |       playerCount: players.length,
+  345 | players                          |     playerCount: players.length,
+
+================================================================================
+src/storage/VideoHighlightsRepository.js
+================================================================================
+    5 | collectionGroup                  |   collectionGroup,
+ 1619 | collectionGroup                  |       query(collectionGroup(db, "raw"), limit(250))
+ 1846 | collectionGroup                  |       const snap = await getDocs(query(collectionGroup(db, groupName), limit(50)));
+ 1856 | collectionGroup                  |           sourcePath: `collectionGroup/${groupName}`,
+
+================================================================================
+src/storage/homePageHubClubRepository.js
+================================================================================
+   43 | members                          |     const memberSnap = await getDoc(doc(db, "clubs", clubId, "members", candidate));
+   44 | players                          |     const playerSnap = await getDoc(doc(db, "clubs", clubId, "players", candidate));
+  250 | platformIdentityUid              |   const platformIdentityUid = cleanText(clubDraft.platformIdentityUid);
+  250 | platformIdentity                 |   const platformIdentityUid = cleanText(clubDraft.platformIdentityUid);
+  255 | email                            |   if (!captainEmail) throw new Error("Captain email is required.");
+  269 | uid                              |   const creatorUid = creatorUser?.uid || "";
+  270 | email                            |   const creatorEmail = cleanEmail(creatorUser?.email || captainEmail);
+  324 | members                          |     members: 1,
+  349 | email                            |       email: captainEmail,
+  350 | whatsappNumber                   |       whatsappNumber: captainWhatsApp,
+  351 | phoneNumber                      |       phoneNumber: captainWhatsApp,
+  392 | email                            |       email: captainEmail,
+  393 | whatsappNumber                   |       whatsappNumber: captainWhatsApp,
+  394 | phoneNumber                      |       phoneNumber: captainWhatsApp,
+  416 | members                          |     doc(db, "clubs", safeClubId, "members", captainPlayerId),
+  420 | email                            |       email: captainEmail,
+  421 | whatsappNumber                   |       whatsappNumber: captainWhatsApp,
+  422 | phoneNumber                      |       phoneNumber: captainWhatsApp,
+  423 | photoUrl                         |       photoUrl: captainPhotoUrl,
+  424 | platformIdentityUid              |       platformIdentityUid: platformIdentityUid || creatorUid,
+  424 | platformIdentity                 |       platformIdentityUid: platformIdentityUid || creatorUid,
+  425 | platformIdentity                 |       platformIdentityConfirmed:
+  426 | platformIdentity                 |         clubDraft.platformIdentityConfirmed === true,
+  429 | uid                              |       uid: creatorUid,
+  439 | players                          |     doc(db, "clubs", safeClubId, "players", captainPlayerId),
+  444 | email                            |       email: captainEmail,
+  445 | whatsappNumber                   |       whatsappNumber: captainWhatsApp,
+  446 | phoneNumber                      |       phoneNumber: captainWhatsApp,
+  447 | photoUrl                         |       photoUrl: captainPhotoUrl,
+  448 | platformIdentityUid              |       platformIdentityUid: platformIdentityUid || creatorUid,
+  448 | platformIdentity                 |       platformIdentityUid: platformIdentityUid || creatorUid,
+  449 | platformIdentity                 |       platformIdentityConfirmed:
+  450 | platformIdentity                 |         clubDraft.platformIdentityConfirmed === true,
+  457 | uid                              |       uid: creatorUid,
+  528 | uid                              |   const creatorUid = creatorUser?.uid || "";
+  613 | email                            |       email: captainEmail,
+  614 | whatsappNumber                   |       whatsappNumber: captainWhatsApp,
+  615 | phoneNumber                      |       phoneNumber: captainWhatsApp,
+
+================================================================================
+src/storage/platformIdentityRepository.js
+================================================================================
+    2 | collectionGroup                  |   collectionGroup,
+  110 | photoUrl                         |     candidate.photoUrl,
+  111 | whatsappNumber                   |     candidate.whatsappNumber,
+  112 | phoneNumber                      |     candidate.phoneNumber,
+  113 | uid                              |     candidate.uid,
+  135 | email                            |     normalizeEmail(candidate.email) &&
+  136 | email                            |     normalizeEmail(candidate.email) === normalizeEmail(identity.email)
+  145 | email                            | export async function findPlatformIdentitiesByEmail(emailValue = "") {
+  146 | email                            |   const email = normalizeEmail(emailValue);
+  148 | email                            |   if (!email) return [];
+  150 | email                            |   console.log("[GPI Repository] Looking up authenticated email:", email);
+  152 | members                          |   const membersSnap = await getDocs(
+  154 | members                          |       collectionGroup(db, "members"),
+  154 | collectionGroup                  |       collectionGroup(db, "members"),
+  155 | email                            |       where("email", "==", email)
+  161 | members                          |   membersSnap.forEach((memberSnap) => {
+  174 | email                            |       email: normalizeEmail(data.email),
+  175 | phoneNumber                      |       phoneNumber: String(data.phoneNumber || "").trim(),
+  176 | whatsappNumber                   |       whatsappNumber: String(data.whatsappNumber || "").trim(),
+  177 | photoUrl                         |       photoUrl: String(
+  178 | photoUrl                         |         data.photoUrl ||
+  179 | profilePhotoUrl                  |         data.profilePhotoUrl ||
+  180 | avatarUrl                        |         data.avatarUrl ||
+  183 | uid                              |       uid: String(data.uid || "").trim(),
+  184 | platformIdentityUid              |       platformIdentityUid: String(
+  184 | platformIdentity                 |       platformIdentityUid: String(
+  185 | platformIdentityUid              |         data.platformIdentityUid || ""
+  185 | platformIdentity                 |         data.platformIdentityUid || ""
+  224 | photoUrl                         |         photoUrl: candidate.photoUrl || photoData,
+  225 | email                            |         gpiIdentityMatch: "email",
+  230 | members                          |   console.log("[GPI Repository] Email memberships found:", {
+  231 | email                            |     email,
+  240 | findCandidatePlatformIdentity    | export async function findCandidatePlatformIdentity(identity = {}) {
+  241 | email                            |   const email = normalizeEmail(identity.email);
+  245 | email                            |   if (!email || !firstName || !surname) return [];
+  250 | email                            |     email,
+  253 | members                          |   const membersSnap = await getDocs(
+  255 | members                          |       collectionGroup(db, "members"),
+  255 | collectionGroup                  |       collectionGroup(db, "members"),
+  256 | email                            |       where("email", "==", email)
+  262 | members                          |     membersSnap.size
+  267 | members                          |   membersSnap.forEach((memberSnap) => {
+  279 | email                            |       storedEmail: data.email || "",
+  280 | whatsappNumber                   |       whatsappNumber: data.whatsappNumber || "",
+  281 | phoneNumber                      |       phoneNumber: data.phoneNumber || "",
+  282 | uid                              |       uid: data.uid || "",
+  283 | platformIdentityUid              |       platformIdentityUid: data.platformIdentityUid || "",
+  283 | platformIdentity                 |       platformIdentityUid: data.platformIdentityUid || "",
+  294 | email                            |       email: normalizeEmail(data.email),
+  295 | phoneNumber                      |       phoneNumber: String(data.phoneNumber || "").trim(),
+  296 | whatsappNumber                   |       whatsappNumber: String(data.whatsappNumber || "").trim(),
+  297 | photoUrl                         |       photoUrl: String(
+  298 | photoUrl                         |         data.photoUrl ||
+  299 | profilePhotoUrl                  |         data.profilePhotoUrl ||
+  300 | avatarUrl                        |         data.avatarUrl ||
+  303 | uid                              |       uid: String(data.uid || "").trim(),
+  352 | photoUrl                         |         photoUrl: candidate.photoUrl || photoData,
+
+================================================================================
+src/components/ClubChat/ClubChatWidget.jsx
+================================================================================
+   56 | members                          |   members = [],
+  212 | photoUrl                         |             data.photoUrl ||
+  213 | profilePhotoUrl                  |             data.profilePhotoUrl ||
+  228 | email                            |           add(data.email, photo);
+  251 | uid                              |       currentUser?.uid ||
+  255 | email                            |       currentUser?.email ||
+  256 | email                            |       selectedMember?.email ||
+  257 | email                            |       identity?.email ||
+  278 | members                          |     const matchedMember = (Array.isArray(members) ? members : []).find((member) => {
+  280 | uid                              |         member?.uid,
+  284 | email                            |         member?.email,
+  302 | email                            |         matchedMember.email ||
+  308 | uid                              |       currentUser?.uid,
+  312 | email                            |       currentUser?.email,
+  313 | email                            |       selectedMember?.email,
+  314 | email                            |       identity?.email,
+  524 | members                          |       membersCount: Array.isArray(members) ? members.length : 0,
+  525 | members                          |       sampleMember: Array.isArray(members) ? members[0] : null,
+  531 | members                          |   const mentionCandidates = (Array.isArray(members) ? members : [])
+  551 | uid                              |       const id = raw.id || raw.memberId || raw.playerId || raw.uid || raw.email || fullName || name;
+  551 | email                            |       const id = raw.id || raw.memberId || raw.playerId || raw.uid || raw.email || fullName || name;
+  902 | email                            |     currentUser?.email?.split("@")[0] ||
+  946 | uid                              |       currentUser?.uid &&
+  948 | uid                              |       String(message.senderUid) === String(currentUser.uid);
+  981 | email                            |       currentUser?.email?.split("@")[0] ||
+  991 | uid                              |         senderUid: currentUser?.uid || "",
+ 1012 | email                            |       currentUser?.email?.split("@")[0] ||
+ 1024 | email                            |         senderEmail: currentUser?.email || selectedMember?.email || identity?.email || "",
+ 1025 | uid                              |         senderUid: currentUser?.uid || "",
+ 1072 | uid                              |       String(message.senderUid || "") !== String(currentUser?.uid || "")
+ 1083 | uid                              |       String(message.senderUid || "") !== String(currentUser?.uid || "")
+ 1124 | uid                              |       String(latestMessage?.senderUid || "") !== String(currentUser?.uid || "")
+ 1134 | uid                              |   }, [clubChatMessages.length, currentUser?.uid, clubChatOpen, isLauncherOnly]);
+ 1151 | uid                              |       String(latestMessage?.senderUid || "") !== String(currentUser?.uid || "")
+ 1161 | uid                              |   }, [challengerChatMessages.length, currentUser?.uid, clubChatOpen, isLauncherOnly]);
+ 1352 | members                          |                   : "Private messages for approved club members, captains and admins."}
+ 1405 | uid                              |                     currentUser?.uid,
+ 1406 | email                            |                     currentUser?.email,
+ 1407 | email                            |                     selectedMember?.email,
+ 1408 | email                            |                     identity?.email,
+ 1652 | uid                              |                     currentUser?.uid &&
+ 1654 | uid                              |                     String(currentUser.uid) === String(message.senderUid);
+ 1757 | players                          |                     <span className="fanm-chat-mention-empty">No club players found</span>
+
+================================================================================
+src/components/HomePage_HUB/HomePage_HUB_ClubRegisterForm.jsx
+================================================================================
+  294 | email                            |             type="email"
+
+================================================================================
+src/components/HomePage_HUB/HomePage_HUB_StartupSplash.jsx
+================================================================================
+   91 | players                          |             Club-first football. Built for players.
+
+================================================================================
+src/components/HomePage_HUB/HomePage_HUB_ClubProfileEditorModal.jsx
+================================================================================
+   68 | email                            |     captainEmail: source?.captain?.email || source.captainEmail || admin.email || "",
+   70 | whatsappNumber                   |       source?.captain?.whatsappNumber ||
+   71 | phoneNumber                      |       source?.captain?.phoneNumber ||
+   73 | whatsappNumber                   |       admin.whatsappNumber ||
+   74 | phoneNumber                      |       admin.phoneNumber ||
+  150 | email                            |   }, [isOpen, club?.id, adminIdentity?.email, adminIdentity?.fullName, adminIdentity?.whatsappNumber]);
+  150 | whatsappNumber                   |   }, [isOpen, club?.id, adminIdentity?.email, adminIdentity?.fullName, adminIdentity?.whatsappNumber]);
+
+================================================================================
+src/components/HomePage_HUB/HomePage_HUB_LogoGenerator.jsx
+================================================================================
+   84 | players                          |         <p>Create a logo your players will proudly recognise.</p>
+
+================================================================================
+src/components/HomePage_HUB/HomePage_HUB_BankingForm.jsx
+================================================================================
+   54 | players                          |             This is the amount your players normally contribute to your club for each match.
+
+================================================================================
+src/components/HomePage_HUB/HomePage_HUB_CaptainVerification.jsx
+================================================================================
+   34 | whatsappNumber                   |   const whatsappNumber = clubDraft?.captainWhatsApp || "";
+   35 | whatsappNumber                   |   const phoneCheck = useMemo(() => normaliseSouthAfricanPhone(whatsappNumber), [whatsappNumber]);
+   53 | whatsappNumber                   | WhatsApp: ${phoneCheck.value || whatsappNumber}
+   72 | whatsappNumber                   |             value={whatsappNumber}
+
+================================================================================
+src/components/HomePage_HUB/HomePage_HUB_SignupModal.jsx
+================================================================================
+   89 | email                            |       captainEmail: auth.currentUser?.email || "nkululeko.memela+test@gmail.com",
+  305 | players                          |                 Launch your club, customise your badge and start inviting players.
+
+================================================================================
+src/components/HomePage_HUB/HomePage_HUB_ClubCard.jsx
+================================================================================
+  123 | players                          |   const playerCount = club?.playerCount ?? club?.memberCount ?? club?.playersCount ?? 0;
+  268 | players                          |               <div className="tk-trust-face__stat tk-trust-face__stat--players">
+
+================================================================================
+src/core/platformPlayer/platformPlayerRepository.js
+================================================================================
+   26 | uid                              |   uid = "",
+   27 | email                            |   email = "",
+   29 | photoUrl                         |   photoUrl = "",
+   30 | whatsappNumber                   |   whatsappNumber = "",
+   33 | uid                              |     uid: clean(uid),
+   34 | email                            |     email: clean(email).toLowerCase(),
+   36 | photoUrl                         |     photoUrl: clean(photoUrl),
+   37 | whatsappNumber                   |     whatsappNumber: clean(whatsappNumber),
+   43 | uid                              |     clean(player.uid) &&
+   44 | email                            |     clean(player.email) &&
+   51 | uid                              |     uid:
+   52 | uid                              |       clean(existing.uid) ||
+   53 | uid                              |       clean(incoming.uid),
+   55 | email                            |     email:
+   56 | email                            |       clean(existing.email) ||
+   57 | email                            |       clean(incoming.email),
+   63 | photoUrl                         |     photoUrl:
+   64 | photoUrl                         |       clean(existing.photoUrl) ||
+   65 | photoUrl                         |       clean(incoming.photoUrl),
+   67 | whatsappNumber                   |     whatsappNumber:
+   68 | whatsappNumber                   |       clean(existing.whatsappNumber) ||
+   69 | whatsappNumber                   |       clean(incoming.whatsappNumber),
+
+================================================================================
+src/core/gpi/profileRankingEngine.js
+================================================================================
+   18 | email                            |     email: clean(profile.email).toLowerCase(),
+   19 | whatsappNumber                   |     whatsappNumber: clean(
+   20 | whatsappNumber                   |       profile.whatsappNumber || profile.phoneNumber
+   20 | phoneNumber                      |       profile.whatsappNumber || profile.phoneNumber
+   22 | phoneNumber                      |     phoneNumber: clean(
+   23 | whatsappNumber                   |       profile.phoneNumber || profile.whatsappNumber
+   23 | phoneNumber                      |       profile.phoneNumber || profile.whatsappNumber
+   26 | photoUrl                         |     photoUrl: clean(
+   27 | photoUrl                         |       profile.photoUrl ||
+   28 | profilePhotoUrl                  |       profile.profilePhotoUrl ||
+   29 | avatarUrl                        |       profile.avatarUrl
+   31 | uid                              |     uid: clean(
+   32 | uid                              |       profile.uid ||
+   33 | platformIdentityUid              |       profile.platformIdentityUid
+   33 | platformIdentity                 |       profile.platformIdentityUid
+   41 | photoUrl                         |   const hasPhoto = Boolean(fields.photoData || fields.photoUrl);
+   43 | whatsappNumber                   |     fields.whatsappNumber || fields.phoneNumber
+   43 | phoneNumber                      |     fields.whatsappNumber || fields.phoneNumber
+   48 | email                            |     email: Boolean(fields.email),
+   51 | uid                              |     uid: Boolean(fields.uid),
+
+================================================================================
+src/core/gpi/identityResolver.js
+================================================================================
+    7 | email                            | // authenticated/claimed email is the primary platform identity key.
+   22 | resolvePlayerIdentity            | export function resolvePlayerIdentityFromCandidates({
+   23 | email                            |   email = "",
+   27 | email                            |   const normalizedEmail = normalizeGpiEmail(email);
+   35 | email                            |       source: "gpi-email-resolver",
+   39 | email                            |   const emailMatches = (Array.isArray(candidates) ? candidates : [])
+   42 | email                            |         normalizeGpiEmail(candidate?.email) === normalizedEmail
+   45 | email                            |   const rankedCandidates = rankReusableProfiles(emailMatches);
+   57 | email                            |     source: "gpi-email-resolver",
+   66 | resolvePlayerIdentity            | export async function resolvePlayerIdentity({
+   67 | email                            |   email = "",
+   70 | email                            |   const normalizedEmail = normalizeGpiEmail(email);
+   73 | resolvePlayerIdentity            |     return resolvePlayerIdentityFromCandidates({
+   74 | email                            |       email: "",
+   90 | platformIdentity                 |     "../../storage/platformIdentityRepository.js"
+   96 | resolvePlayerIdentity            |   const resolution = resolvePlayerIdentityFromCandidates({
+   97 | email                            |     email: normalizedEmail,
+  103 | email                            |     email: normalizedEmail,

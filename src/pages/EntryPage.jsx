@@ -45,6 +45,35 @@ import {
 import {
   evaluateProfileReuse,
 } from "../core/gpi/profileReuseDecision.js";
+import {
+  coordinatePlatformPlayer,
+} from "../core/platformPlayer/platformPlayerCoordinator.js";
+
+const GPI_PLATFORM_PLAYER_WRITE_ENABLED =
+  import.meta.env.VITE_FANM_DEVELOPMENT_SITE === "true" &&
+  import.meta.env.VITE_GPI_PLATFORM_PLAYER_WRITE === "true";
+
+const GPI_PLATFORM_PLAYER_WRITE_EMAIL =
+  String(
+    import.meta.env.VITE_GPI_PLATFORM_PLAYER_WRITE_EMAIL || ""
+  )
+    .trim()
+    .toLowerCase();
+
+function canPersistPlatformPlayerForCurrentUser() {
+  const authenticatedEmail =
+    String(auth.currentUser?.email || "")
+      .trim()
+      .toLowerCase();
+
+  return Boolean(
+    GPI_PLATFORM_PLAYER_WRITE_ENABLED &&
+    GPI_PLATFORM_PLAYER_WRITE_EMAIL &&
+    authenticatedEmail &&
+    authenticatedEmail ===
+      GPI_PLATFORM_PLAYER_WRITE_EMAIL
+  );
+}
 
 const MEMBERS_COLLECTION = "members";
 const PLAYERS_COLLECTION = "players";
@@ -2255,6 +2284,79 @@ export function EntryPage({
 
       const candidate = gpiResolution.bestProfile || null;
 
+      /*
+       * GPI Stage 2.3 — SHADOW MODE ONLY.
+       *
+       * Build the Platform Player that we WOULD create.
+       * Nothing is written to Firestore.
+       */
+      const platformPlayerShadow =
+        buildPlatformPlayerSnapshot({
+          authenticatedUser: auth.currentUser,
+          reusableProfile: candidate,
+          currentMember: null,
+        });
+
+      const platformPlayerShadowState =
+        evaluatePlatformPlayerState(
+          platformPlayerShadow
+        );
+
+
+      const platformPlayerWritePlan =
+        planPlatformPlayerWrite({
+          existingPlatformPlayer: null,
+          authenticatedUser: auth.currentUser,
+          reusableProfile: candidate,
+          currentMember: null,
+        });
+
+      console.log(
+        "[GPI Platform Player Plan][Fresh Join]",
+        {
+          action:
+            platformPlayerWritePlan.action,
+          documentId:
+            platformPlayerWritePlan.documentId ||
+            "",
+          safeToWrite:
+            platformPlayerWritePlan.safeToWrite,
+          reason:
+            platformPlayerWritePlan.reason,
+          payload:
+            platformPlayerWritePlan.payload,
+          candidate:
+            platformPlayerWritePlan.candidate,
+          sourceClubId:
+            candidate?.clubId || "",
+          firestoreExecuted: false,
+        }
+      );
+
+      console.log(
+        "[GPI Stage 2 Shadow][Fresh Join]",
+        {
+          uid:
+            platformPlayerShadow.uid || "",
+          emailPresent:
+            Boolean(platformPlayerShadow.email),
+          fullName:
+            platformPlayerShadow.fullName || "",
+          hasPhoto:
+            Boolean(platformPlayerShadow.photoUrl),
+          hasPhone:
+            Boolean(
+              platformPlayerShadow.whatsappNumber
+            ),
+          state:
+            platformPlayerShadowState,
+          sourceClubId:
+            candidate?.clubId || "",
+          firestoreWrite: false,
+        }
+      );
+
+
       console.log("[GPI][Fresh Join]", {
         email,
         activeClubId,
@@ -2669,6 +2771,28 @@ export function EntryPage({
       currentUserEmail: auth.currentUser?.email || "",
     });
 
+    const gpiPerfStartedAt =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
+    let gpiPerfMark = gpiPerfStartedAt;
+
+    const logGpiPerf = (step) => {
+      const now =
+        globalThis.performance?.now?.() ??
+        Date.now();
+
+      console.log("[GPI PERF]", {
+        step,
+        segmentMs:
+          Math.round(now - gpiPerfMark),
+        totalMs:
+          Math.round(now - gpiPerfStartedAt),
+      });
+
+      gpiPerfMark = now;
+    };
+
     setVerifyError("");
     setVerifyStatus("");
 
@@ -2696,6 +2820,8 @@ export function EntryPage({
       try {
         await signInWithGoogle();
         u = auth.currentUser;
+
+        logGpiPerf("google-authentication");
       } catch (err) {
         console.error("Sign in cancelled/failed:", err);
         setVerifyError("Sign-in was cancelled or failed. Please try again.");
@@ -2708,6 +2834,10 @@ export function EntryPage({
         "Could not read your Google email. Please try again or contact admin."
       );
       return;
+    }
+
+    if (auth.currentUser && gpiPerfMark === gpiPerfStartedAt) {
+      logGpiPerf("google-already-authenticated");
     }
 
     const googleEmail = u.email.toLowerCase().trim();
@@ -2772,7 +2902,30 @@ export function EntryPage({
       `Welcome, ${selectedMember.shortName}! Your email has been verified.`
     );
 
-    const memberSnap = await getDoc(memberDocRef(activeClubId, selectedMember.id));
+    logGpiPerf("club-member-verification");
+
+    const memberReadStartedAt =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
+    const memberSnap = await getDoc(
+      memberDocRef(
+        activeClubId,
+        selectedMember.id
+      )
+    );
+
+    console.log("[GPI PERF]", {
+      step: "member-document-read",
+      segmentMs: Math.round(
+        (globalThis.performance?.now?.() ?? Date.now()) -
+        memberReadStartedAt
+      ),
+    });
+
+    gpiPerfMark =
+      globalThis.performance?.now?.() ??
+      Date.now();
     const memberData = memberSnap.exists() ? memberSnap.data() || {} : {};
 
     const completionPayload = {
@@ -2798,6 +2951,10 @@ export function EntryPage({
      * migration existed. In that case, recover the matching source profile
      * once during sign-in, then copy confirmed details into this club.
      */
+    const destinationPhotoStartedAt =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
     const destinationExistingPhoto =
       await findExistingPhotoDataByIdentity(
         {
@@ -2808,60 +2965,224 @@ export function EntryPage({
         activeClubId
       );
 
+    console.log("[GPI PERF]", {
+      step: "destination-photo-lookup",
+      segmentMs: Math.round(
+        (globalThis.performance?.now?.() ?? Date.now()) -
+        destinationPhotoStartedAt
+      ),
+    });
+
+    gpiPerfMark =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
     let sourceIdentityCandidate = null;
+    let gpiResolution = null;
 
-    if (
-      !destinationExistingPhoto ||
-      !normalizeWhatsAppNumber(
-        memberData.whatsappNumber || ""
-      )
-    ) {
-      try {
-        const gpiResolution =
-          await resolvePlayerIdentity({
-            email: googleEmail,
-            excludeClubId: activeClubId,
-          });
+    /*
+     * Global identity discovery is independent of whether this particular
+     * club profile is complete.
+     *
+     * Identity is permanent; profile-completion prompts are club-specific.
+     */
+    try {
+      const identityResolutionStartedAt =
+        globalThis.performance?.now?.() ??
+        Date.now();
 
-        sourceIdentityCandidate =
-          gpiResolution.bestProfile || null;
-
-        console.log("[GPI TRACE 3] resolver result", {
-          googleEmail,
-          matchCount: gpiResolution.matchCount,
-          bestProfile: gpiResolution.bestProfile || null,
+      gpiResolution =
+        await resolvePlayerIdentity({
+          email: googleEmail,
+          excludeClubId: activeClubId,
         });
 
-        console.log(
-          "[GPI][Stage 1B Resolution]",
-          {
-            email: googleEmail,
-            activeClubId,
-            matchCount:
-              gpiResolution.matchCount,
-            sourceClubId:
-              sourceIdentityCandidate?.clubId ||
-              "",
-            sourceMemberId:
-              sourceIdentityCandidate?.memberId ||
-              "",
-            hasSourcePhoto: Boolean(
-              sourceIdentityCandidate?.photoData ||
-              sourceIdentityCandidate?.photoUrl
-            ),
-            hasSourcePhone: Boolean(
-              sourceIdentityCandidate?.whatsappNumber ||
-              sourceIdentityCandidate?.phoneNumber
-            ),
+      sourceIdentityCandidate =
+        gpiResolution.bestProfile || null;
+
+      console.log("[GPI PERF]", {
+        step: "cross-club-gpi-resolution",
+        segmentMs: Math.round(
+          (globalThis.performance?.now?.() ?? Date.now()) -
+          identityResolutionStartedAt
+        ),
+        matchCount:
+          gpiResolution.matchCount || 0,
+      });
+
+      gpiPerfMark =
+        globalThis.performance?.now?.() ??
+        Date.now();
+
+      /*
+       * Some historical profiles store the portrait separately from the
+       * member record. Recover it before deciding which identity is richest.
+       */
+      if (
+        sourceIdentityCandidate?.clubId &&
+        !sourceIdentityCandidate.photoData &&
+        !sourceIdentityCandidate.photoUrl
+      ) {
+        try {
+          const recoveredSourcePhoto =
+            await findExistingPhotoDataByIdentity(
+              {
+                fullName:
+                  sourceIdentityCandidate.fullName ||
+                  selectedMember.fullName,
+                shortName:
+                  sourceIdentityCandidate.shortName ||
+                  selectedMember.shortName,
+                playerId:
+                  sourceIdentityCandidate.playerId ||
+                  "",
+              },
+              sourceIdentityCandidate.clubId
+            );
+
+          const recoveredPhoto =
+            recoveredSourcePhoto?.photoData ||
+            recoveredSourcePhoto ||
+            "";
+
+          if (recoveredPhoto) {
+            sourceIdentityCandidate = {
+              ...sourceIdentityCandidate,
+              photoData: recoveredPhoto,
+              photoUrl: recoveredPhoto,
+            };
           }
-        );
-      } catch (error) {
-        console.warn(
-          "[GPI] Could not resolve existing cross-club profile:",
-          error
-        );
+        } catch (error) {
+          console.warn(
+            "[GPI] Could not recover source profile photo:",
+            error
+          );
+        }
       }
+
+      console.log(
+        "[GPI TRACE 3] resolver result",
+        {
+          googleEmail,
+          matchCount:
+            gpiResolution.matchCount,
+          bestProfile:
+            sourceIdentityCandidate,
+        }
+      );
+
+      console.log(
+        "[GPI][Stage 1B Resolution]",
+        {
+          email: googleEmail,
+          activeClubId,
+          matchCount:
+            gpiResolution.matchCount,
+          sourceClubId:
+            sourceIdentityCandidate?.clubId ||
+            "",
+          sourceMemberId:
+            sourceIdentityCandidate?.memberId ||
+            "",
+          hasSourcePhoto: Boolean(
+            sourceIdentityCandidate?.photoData ||
+            sourceIdentityCandidate?.photoUrl
+          ),
+          hasSourcePhone: Boolean(
+            sourceIdentityCandidate?.whatsappNumber ||
+            sourceIdentityCandidate?.phoneNumber
+          ),
+        }
+      );
+    } catch (error) {
+      console.warn(
+        "[GPI] Could not resolve existing cross-club profile:",
+        error
+      );
     }
+
+    /*
+     * Stage 2 permanent identity lifecycle.
+     *
+     * This runs for EVERY successfully authenticated member.
+     * It is deliberately independent of whether this club needs
+     * a photo or phone reminder.
+     */
+    const platformPlayerPersistenceAllowed =
+      canPersistPlatformPlayerForCurrentUser();
+
+    const platformPlayerStartedAt =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
+    const platformPlayerResult =
+      await coordinatePlatformPlayer({
+        authenticatedUser:
+          auth.currentUser,
+        reusableProfile:
+          sourceIdentityCandidate,
+        currentMember: {
+          ...selectedMember,
+          email: googleEmail,
+          uid: u.uid,
+          whatsappNumber:
+            memberData.whatsappNumber ||
+            selectedMember.whatsappNumber ||
+            "",
+          phoneNumber:
+            memberData.phoneNumber ||
+            selectedMember.phoneNumber ||
+            "",
+          photoUrl:
+            destinationExistingPhoto?.photoData ||
+            destinationExistingPhoto ||
+            selectedMember.photoUrl ||
+            "",
+        },
+        destinationClubId:
+          activeClubId,
+        persistenceAllowed:
+          platformPlayerPersistenceAllowed,
+      });
+
+    console.log("[GPI PERF]", {
+      step: "platform-player-coordinator",
+      segmentMs: Math.round(
+        (globalThis.performance?.now?.() ?? Date.now()) -
+        platformPlayerStartedAt
+      ),
+      action:
+        platformPlayerResult.plan.action,
+      firestoreExecuted:
+        platformPlayerResult.firestoreExecuted,
+    });
+
+    gpiPerfMark =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
+    console.log(
+      "[GPI Stage 2 Runtime]",
+      {
+        action:
+          platformPlayerResult.plan.action,
+        documentId:
+          platformPlayerResult.plan.documentId ||
+          "",
+        safeToWrite:
+          platformPlayerResult.plan.safeToWrite,
+        writeGateEnabled:
+          GPI_PLATFORM_PLAYER_WRITE_ENABLED,
+        singleUserAllowed:
+          platformPlayerPersistenceAllowed,
+        allowedEmailConfigured:
+          Boolean(
+            GPI_PLATFORM_PLAYER_WRITE_EMAIL
+          ),
+        firestoreExecuted:
+          platformPlayerResult.firestoreExecuted,
+      }
+    );
 
     const inheritedWhatsApp =
       sourceIdentityCandidate?.whatsappNumber ||
