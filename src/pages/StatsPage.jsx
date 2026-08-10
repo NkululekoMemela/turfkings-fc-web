@@ -4517,9 +4517,10 @@ export function StatsPage({
                                     ? "selected"
                                     : ""
                                 }
-                                onClick={() =>
-                                  setDbSourcePlayer(player.name)
-                                }
+                                onClick={() => {
+                                  setDbSourcePlayer(player.name);
+                                  setDbTargetPlayer("");
+                                }}
                               >
                                 <span>{player.displayName}</span>
                                 <strong>{player.count}</strong>
@@ -4566,23 +4567,28 @@ export function StatsPage({
                           </div>
 
                           <div className="tk-db-player-list">
-                            {dbWorkingDistribution.map((player) => (
-                              <button
-                                type="button"
-                                key={`db-target-${player.name}`}
-                                className={
-                                  dbTargetPlayer === player.name
-                                    ? "selected"
-                                    : ""
-                                }
-                                onClick={() =>
-                                  setDbTargetPlayer(player.name)
-                                }
-                              >
-                                <span>{player.displayName}</span>
-                                <strong>{player.count}</strong>
-                              </button>
-                            ))}
+                            {dbWorkingDistribution
+                              .filter(
+                                (player) =>
+                                  player.name !== dbSourcePlayer
+                              )
+                              .map((player) => (
+                                <button
+                                  type="button"
+                                  key={`db-target-${player.name}`}
+                                  className={
+                                    dbTargetPlayer === player.name
+                                      ? "selected"
+                                      : ""
+                                  }
+                                  onClick={() =>
+                                    setDbTargetPlayer(player.name)
+                                  }
+                                >
+                                  <span>{player.displayName}</span>
+                                  <strong>{player.count}</strong>
+                                </button>
+                              ))}
                           </div>
                         </div>
                       </div>
