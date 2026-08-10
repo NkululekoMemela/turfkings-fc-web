@@ -30,7 +30,7 @@ test("weekly entitlement path is club and week scoped", () => {
       "2026-08-10",
       "user-a"
     ),
-    "practiceControl/misfits-fc/weeks/2026-08-10/users/user-a"
+    "practiceControl/misfits-fc/weeks/2026-08-10/entitlements/user-a"
   );
 });
 

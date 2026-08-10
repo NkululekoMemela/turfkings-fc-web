@@ -41,7 +41,7 @@ export function practiceEntitlementsCollectionPath(
   clubId,
   weekKey
 ) {
-  return `${practiceControlWeekPath(clubId, weekKey)}/users`;
+  return `${practiceControlWeekPath(clubId, weekKey)}/entitlements`;
 }
 
 export function practiceEntitlementDocPath(

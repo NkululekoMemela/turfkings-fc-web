@@ -3,16 +3,105 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Temporary production bootstrap rule:
-    // Public can read platform/club discovery data.
-    match /clubs/{clubId}/{document=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // Allow signed-in users to use app data while we migrate.
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    function isCurrentUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ---------------------------------------------------------
+    // OFFICIAL CLUB DATA
+    //
+    // Preserve the existing temporary bootstrap behaviour.
+    // ---------------------------------------------------------
+    match /clubs/{clubId}/{document=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // ---------------------------------------------------------
+    // PRACTICE CONTROL PLANE
+    //
+    // Persistent entitlement/accounting records.
+    // Browser clients may read only their own entitlement.
+    // All writes are server-owned.
+    // ---------------------------------------------------------
+    match /practiceControl/{clubId}/weeks/{weekKey}/entitlements/{userId} {
+      allow read: if isCurrentUser(userId);
+      allow write: if false;
+    }
+
+    // Transfer ledger is server-owned.
+    match /practiceControl/{clubId}/weeks/{weekKey}/transfers/{transferId} {
+      allow read, write: if false;
+    }
+
+    // Deny any other direct client access beneath practiceControl.
+    match /practiceControl/{document=**} {
+      allow read, write: if false;
+    }
+
+    // ---------------------------------------------------------
+    // PRACTICE SESSION CONTROL RECORDS
+    //
+    // A user may inspect only their own authoritative session.
+    // Creation/update/deletion is server-owned.
+    // ---------------------------------------------------------
+    match /practiceSessions/{sessionId} {
+      allow read: if isSignedIn()
+                  && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ---------------------------------------------------------
+    // DISPOSABLE PRACTICE FOOTBALL DATA
+    //
+    // A Practice sandbox is usable only by the Firebase user who
+    // owns the authoritative, active, unexpired Practice session.
+    //
+    // All football records here are disposable. Deletes are hard
+    // deletes; no soft-delete lifecycle is required.
+    // ---------------------------------------------------------
+
+    function hasActivePracticeSession(clubId, sessionId) {
+      let sessionPath =
+        /databases/$(database)/documents/practiceSessions/$(sessionId);
+
+      return isSignedIn()
+             && exists(sessionPath)
+             && get(sessionPath).data.userId == request.auth.uid
+             && get(sessionPath).data.clubId == clubId
+             && get(sessionPath).data.status == "active"
+             && request.time < get(sessionPath).data.expiresAt;
+    }
+
+    match /sandboxes/practice/clubs/{clubId}/sessions/{sessionId}/{document=**} {
+      allow read, write:
+        if hasActivePracticeSession(clubId, sessionId);
+    }
+
+    // Everything else under sandboxes remains closed.
+    match /sandboxes/{document=**} {
+      allow read, write: if false;
+    }
+
+    // ---------------------------------------------------------
+    // TEMPORARY LEGACY BOOTSTRAP
+    //
+    // Preserve existing signed-in access for all non-Practice
+    // top-level namespaces while FANM continues its migration.
+    //
+    // IMPORTANT:
+    // Recursive wildcard matches are ORed with other matches.
+    // Therefore protected Practice roots are excluded here.
+    // ---------------------------------------------------------
+    match /{topLevel}/{document=**} {
+      allow read, write: if isSignedIn()
+                         && topLevel != "practiceControl"
+                         && topLevel != "practiceSessions"
+                         && topLevel != "sandboxes";
     }
   }
 }
