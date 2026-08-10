@@ -10,6 +10,65 @@ import {
   DEFAULT_CLUB_ID,
 } from "./clubPaths";
 
+import {
+  dataScopeCollectionPath,
+  dataScopeDocPath,
+  dataScopeStatePath,
+  normalizeDataScope,
+} from "./dataScope.js";
+
+
+/*
+ * ============================================================
+ * DATA-SCOPE-AWARE FIRESTORE REFERENCES
+ *
+ * These are the canonical references for code that may operate
+ * against either Official or Practice football data.
+ *
+ * Existing getClub* helpers below remain Official-only for
+ * backwards compatibility during the Practice v2 migration.
+ * ============================================================
+ */
+
+export function getScopedStateDoc(db, scope) {
+  const normalizedScope = normalizeDataScope(scope);
+  return doc(db, dataScopeStatePath(normalizedScope));
+}
+
+export function getScopedCollection(
+  db,
+  collectionName,
+  scope
+) {
+  const normalizedScope = normalizeDataScope(scope);
+
+  return collection(
+    db,
+    dataScopeCollectionPath(
+      collectionName,
+      normalizedScope
+    )
+  );
+}
+
+export function getScopedDoc(
+  db,
+  collectionName,
+  docId,
+  scope
+) {
+  const normalizedScope = normalizeDataScope(scope);
+
+  return doc(
+    db,
+    dataScopeDocPath(
+      collectionName,
+      docId,
+      normalizedScope
+    )
+  );
+}
+
 export function getClubStateDoc(db, clubId = DEFAULT_CLUB_ID) {
   return doc(db, clubStatePath(clubId));
 }

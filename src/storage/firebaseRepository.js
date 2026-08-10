@@ -14,12 +14,37 @@ import {
   orderBy,
 } from "firebase/firestore";
 
-import { getClubStateDoc, getPeerRatingsCollection } from "../core/clubFirestorePaths.js";
+import {
+  getClubStateDoc,
+  getPeerRatingsCollection,
+  getScopedStateDoc,
+} from "../core/clubFirestorePaths.js";
 
 const DEFAULT_CLUB_ID = "turf-kings";
 
 const STATE_COLLECTION = "appState";
 const STATE_DOC_ID = "main";
+
+/*
+ * Resolve the V2 football state document.
+ *
+ * Backwards compatibility is intentional:
+ * - Existing callers supplying only clubId remain Official.
+ * - Practice must explicitly supply a DataScope.
+ *
+ * This prevents an omitted scope from ever silently selecting
+ * Practice storage.
+ */
+function resolveV2StateDoc(
+  clubId = DEFAULT_CLUB_ID,
+  dataScope = null
+) {
+  if (dataScope) {
+    return getScopedStateDoc(db, dataScope);
+  }
+
+  return getClubStateDoc(db, clubId);
+}
 
 function stripUndefinedDeep(value) {
   if (value === undefined) return null;
@@ -90,13 +115,19 @@ export function subscribeToState(callback) {
   );
 }
 
-export async function saveStateToFirebaseV2(state, clubId = DEFAULT_CLUB_ID) {
+export async function saveStateToFirebaseV2(
+  state,
+  clubId = DEFAULT_CLUB_ID,
+  dataScope = null
+) {
   try {
-    const ref = getClubStateDoc(db, clubId);
+    const ref = resolveV2StateDoc(clubId, dataScope);
     const cleanedState = stripUndefinedDeep(state);
 
     console.log("[FIREBASE SAVE V2] attempting", {
       clubId,
+      dataEnvironment:
+        dataScope?.environment || "official",
       activeSeasonId: cleanedState?.activeSeasonId,
       seasonsCount: cleanedState?.seasons?.length || 0,
     });
@@ -119,9 +150,12 @@ export async function saveStateToFirebaseV2(state, clubId = DEFAULT_CLUB_ID) {
   }
 }
 
-export async function loadStateFromFirebaseV2(clubId = DEFAULT_CLUB_ID) {
+export async function loadStateFromFirebaseV2(
+  clubId = DEFAULT_CLUB_ID,
+  dataScope = null
+) {
   try {
-    const ref = getClubStateDoc(db, clubId);
+    const ref = resolveV2StateDoc(clubId, dataScope);
     const snap = await getDoc(ref);
 
     if (!snap.exists()) return null;
@@ -134,8 +168,12 @@ export async function loadStateFromFirebaseV2(clubId = DEFAULT_CLUB_ID) {
   }
 }
 
-export function subscribeToStateV2(callback, clubId = DEFAULT_CLUB_ID) {
-  const ref = getClubStateDoc(db, clubId);
+export function subscribeToStateV2(
+  callback,
+  clubId = DEFAULT_CLUB_ID,
+  dataScope = null
+) {
+  const ref = resolveV2StateDoc(clubId, dataScope);
 
   return onSnapshot(
     ref,

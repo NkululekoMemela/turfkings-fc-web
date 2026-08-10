@@ -21,6 +21,10 @@ const crypto = require("crypto");
 const {Buffer} = require("node:buffer");
 const fetch = require("node-fetch");
 
+const {
+  startPracticeSession: startPracticeSessionService,
+} = require("./practiceSessionService");
+
 admin.initializeApp();
 const db = getFirestore();
 
@@ -172,6 +176,37 @@ function handleOptions(req, res) {
     return true;
   }
   return false;
+}
+
+async function requireFirebaseUser(req) {
+  const authorization = safeString(
+    req.get("Authorization") || ""
+  );
+
+  const match = authorization.match(/^Bearer\\s+(.+)$/i);
+
+  if (!match) {
+    const error = new Error(
+      "Firebase authentication is required."
+    );
+    error.code = "practice/auth-required";
+    throw error;
+  }
+
+  try {
+    return await admin.auth().verifyIdToken(match[1]);
+  } catch (cause) {
+    console.error(
+      "Practice Firebase token verification failed:",
+      cause?.message || cause
+    );
+
+    const error = new Error(
+      "Firebase authentication is invalid or expired."
+    );
+    error.code = "practice/auth-invalid";
+    throw error;
+  }
 }
 
 function safeString(value = "") {
@@ -2419,6 +2454,104 @@ exports.twilioStatusCallback = onRequest(
     } catch (error) {
       console.error("twilioStatusCallback failed:", error);
       return res.status(500).send("ERROR");
+    }
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Practice v2 — authoritative session start
+// -----------------------------------------------------------------------------
+//
+// SECURITY:
+// - The caller's Firebase ID token establishes identity.
+// - UID/email/role/credits/week/timestamps are NOT trusted from request body.
+// - Club role is independently verified by practiceSessionService.
+// - Credit consumption + session creation happen in one Firestore transaction.
+//
+exports.startPracticeSession = onRequest(
+  {
+    region: REGION,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        error: "Method not allowed.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = safeString(
+        parseRequestValue(req, "clubId")
+      );
+
+      if (!clubId) {
+        res.status(400).json({
+          ok: false,
+          error: "clubId is required.",
+          code: "practice/club-required",
+        });
+        return;
+      }
+
+      const session = await startPracticeSessionService({
+        db,
+        authenticatedUser,
+        clubId,
+      });
+
+      res.status(200).json({
+        ok: true,
+        session: {
+          sessionId: session.sessionId,
+          clubId: session.clubId,
+          role: session.role,
+          weekKey: session.weekKey,
+          status: session.status,
+          durationSeconds: session.durationSeconds,
+          startedAt: session.startedAt.toDate().toISOString(),
+          expiresAt: session.expiresAt.toDate().toISOString(),
+          creditsRemaining: session.creditsRemaining,
+        },
+      });
+    } catch (error) {
+      const code = safeString(error?.code);
+
+      const status =
+        code === "practice/auth-required" ||
+        code === "practice/auth-invalid"
+          ? 401
+          : code === "practice/not-authorized"
+            ? 403
+            : code === "practice/club-not-found"
+              ? 404
+              : code === "practice/no-credits"
+                ? 409
+                : 500;
+
+      console.error(
+        "startPracticeSession failed:",
+        code || "unknown",
+        error?.message || error
+      );
+
+      res.status(status).json({
+        ok: false,
+        code: code || "practice/start-failed",
+        error:
+          status === 500
+            ? "Could not start Practice session."
+            : safeString(error?.message) ||
+              "Could not start Practice session.",
+      });
     }
   }
 );
