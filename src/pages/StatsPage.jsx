@@ -402,6 +402,7 @@ export function StatsPage({
   onUpdateSavedEvent = null,
   onDeleteSavedEvent = null,
   onAddSavedEvent = null,
+  onRedistributeFriendlyDefensiveBlocks = null,
   onDeleteCurrentEmptySeason = null,
   canPreviewPreviousSeasonUI = false,
   isAdmin = false,
@@ -1753,12 +1754,98 @@ export function StatsPage({
     viewMode === "current" &&
     !isViewingPreviousSeason;
 
+  /*
+   * TEMPORARY AUGUST 2026 FRIENDLY CORRECTION WINDOW
+   * ----------------------------------------------------------
+   * Permanent/default rule:
+   *   Friendly edits are current-week only.
+   *
+   * Temporary August 2026 exception:
+   *   Admins may also correct goal records belonging to the
+   *   latest Friendly DAY in the current month's history.
+   *
+   * This applies to Friendly mode only, for every club.
+   *
+   * As soon as a club plays on a newer Friendly day, its
+   * previous Friendly day locks again automatically.
+   *
+   * From 1 September 2026 this exception evaluates false and
+   * every club returns automatically to current-week-only edits.
+   */
+  const isAugust2026FriendlyEditExceptionActive = useMemo(() => {
+    const now = new Date();
+
+    return (
+      isAdminUser &&
+      showFriendlyStats &&
+      now.getFullYear() === 2026 &&
+      now.getMonth() === 7
+    );
+  }, [isAdminUser, showFriendlyStats]);
+
+  const latestAugustFriendlyDate = useMemo(() => {
+    if (!isAugust2026FriendlyEditExceptionActive) return "";
+
+    const augustDates = (seasonResults || [])
+      .map((record) => friendlyDateFromRecord(record))
+      .filter((iso) => /^2026-08-\d{2}$/.test(String(iso || "")))
+      .sort();
+
+    return augustDates.length
+      ? augustDates[augustDates.length - 1]
+      : "";
+  }, [
+    isAugust2026FriendlyEditExceptionActive,
+    seasonResults,
+  ]);
+
+  const isLatestAugustFriendlyRecord = useCallback(
+    (record = {}) => {
+      if (!isAugust2026FriendlyEditExceptionActive) return false;
+      if (!latestAugustFriendlyDate) return false;
+
+      return friendlyDateFromRecord(record) === latestAugustFriendlyDate;
+    },
+    [
+      isAugust2026FriendlyEditExceptionActive,
+      latestAugustFriendlyDate,
+    ]
+  );
+
+  const isAugust2026FriendlyMonthlyEditView =
+    isAugust2026FriendlyEditExceptionActive &&
+    friendlyMonthScope === CURRENT_SCOPE &&
+    viewMode === "season" &&
+    !isViewingPreviousSeason;
+
   const isEditableCurrentFriendlyWeekRecord = useCallback(
     (record = {}) => {
-      if (!isCurrentFriendlyWeekView) return false;
-      return isFriendlyRecordInWindow(record, "current");
+      /*
+       * Permanent path: normal current-week Friendly editing.
+       */
+      if (
+        isCurrentFriendlyWeekView &&
+        isFriendlyRecordInWindow(record, "current")
+      ) {
+        return true;
+      }
+
+      /*
+       * Temporary path: August 2026 only, latest Friendly day
+       * in This Month.
+       */
+      return (
+        isAugust2026FriendlyMonthlyEditView &&
+        isLatestAugustFriendlyRecord(record)
+      );
     },
-    [isCurrentFriendlyWeekView, friendlyDateWindow, friendlyMonthScope]
+    [
+      isCurrentFriendlyWeekView,
+      friendlyDateWindow,
+      friendlyMonthScope,
+      isAugust2026FriendlyMonthlyEditView,
+      isLatestAugustFriendlyRecord,
+    ]
   );
 
   const blockNonCurrentFriendlyEdit = useCallback(() => {
@@ -1771,12 +1858,377 @@ export function StatsPage({
 
   const friendlyAdminToolsActive =
     isAdminUser &&
-    isCurrentFriendlyWeekView &&
+    (
+      isCurrentFriendlyWeekView ||
+      isAugust2026FriendlyMonthlyEditView
+    ) &&
     isManagingFriendlyDay;
 
   const adminEditingToolsActive = showFriendlyStats
     ? friendlyAdminToolsActive
     : canAdminEditThisView;
+
+
+  // ============================================================
+  // FRIENDLY DEFENSIVE BLOCK TRANSFER STUDIO
+  //
+  // Manual dispute-resolution tool.
+  //
+  // IMPORTANT:
+  // - Friendly only.
+  // - Never creates a Defensive Block.
+  // - Never deletes a Defensive Block.
+  // - Every transfer is exactly one existing DB:
+  //       source -1 / recipient +1
+  // - Transfers stay inside one team.
+  // - Team total must remain invariant.
+  // ============================================================
+
+  const [showDbIntentPrompt, setShowDbIntentPrompt] = useState(false);
+  const [showDbTransferModal, setShowDbTransferModal] = useState(false);
+  const [dbCorrectionMatch, setDbCorrectionMatch] = useState(null);
+  const [dbSelectedTeamId, setDbSelectedTeamId] = useState("");
+  const [dbSourcePlayer, setDbSourcePlayer] = useState("");
+  const [dbTargetPlayer, setDbTargetPlayer] = useState("");
+  const [dbTransfers, setDbTransfers] = useState([]);
+  const [dbReviewMode, setDbReviewMode] = useState(false);
+
+  const closeDbTransferStudioCompletely = useCallback(() => {
+    setShowDbIntentPrompt(false);
+    setShowDbTransferModal(false);
+    setDbCorrectionMatch(null);
+    setDbSelectedTeamId("");
+    setDbSourcePlayer("");
+    setDbTargetPlayer("");
+    setDbTransfers([]);
+    setDbReviewMode(false);
+  }, []);
+
+  const dbCorrectionMatchKey = useMemo(() => {
+    if (!dbCorrectionMatch) return "";
+    return `${dbCorrectionMatch?._tkMatchDayId || "UNKNOWN"}::${Number(
+      dbCorrectionMatch?.matchNo || 0
+    )}`;
+  }, [dbCorrectionMatch]);
+
+  const dbCorrectionEvents = useMemo(() => {
+    if (!dbCorrectionMatchKey) return [];
+
+    return (eventsByMatchKey.get(dbCorrectionMatchKey) || []).filter(
+      (event) =>
+        String(event?.type || "").trim().toLowerCase() ===
+        "defensive_block"
+    );
+  }, [eventsByMatchKey, dbCorrectionMatchKey]);
+
+  const dbTeamOptions = useMemo(() => {
+    if (!dbCorrectionMatch) return [];
+
+    const options = [
+      {
+        id: dbCorrectionMatch?.teamAId || "",
+        label: getTeamName(dbCorrectionMatch?.teamAId),
+      },
+      {
+        id: dbCorrectionMatch?.teamBId || "",
+        label: getTeamName(dbCorrectionMatch?.teamBId),
+      },
+    ];
+
+    return options.filter((team) => team.id);
+  }, [dbCorrectionMatch, getTeamName]);
+
+  const dbOriginalDistribution = useMemo(() => {
+    if (!dbSelectedTeamId) return [];
+
+    const counts = new Map();
+
+    /*
+     * Include the current squad so a substitute with zero DB can
+     * still be selected as the rightful recipient.
+     */
+    getPlayersForTeam(dbSelectedTeamId).forEach((name) => {
+      const safeName = resolveCanonicalName(name);
+      if (safeName && !counts.has(safeName)) {
+        counts.set(safeName, 0);
+      }
+    });
+
+    dbCorrectionEvents
+      .filter(
+        (event) =>
+          String(event?.teamId || "") === String(dbSelectedTeamId)
+      )
+      .forEach((event) => {
+        const name = resolveCanonicalName(
+          event?.playerName || event?.scorer || ""
+        );
+
+        if (!name) return;
+
+        counts.set(name, Number(counts.get(name) || 0) + 1);
+      });
+
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({
+        name,
+        displayName: resolveShortDisplay(name),
+        count: Number(count || 0),
+      }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return String(a.displayName).localeCompare(String(b.displayName));
+      });
+  }, [
+    dbSelectedTeamId,
+    dbCorrectionEvents,
+    getPlayersForTeam,
+    resolveCanonicalName,
+    resolveShortDisplay,
+  ]);
+
+  const dbWorkingDistribution = useMemo(() => {
+    const counts = new Map(
+      dbOriginalDistribution.map((player) => [
+        player.name,
+        Number(player.count || 0),
+      ])
+    );
+
+    dbTransfers
+      .filter(
+        (transfer) =>
+          String(transfer?.teamId || "") ===
+          String(dbSelectedTeamId || "")
+      )
+      .forEach((transfer) => {
+        const from = resolveCanonicalName(transfer?.from || "");
+        const to = resolveCanonicalName(transfer?.to || "");
+
+        if (!from || !to || from === to) return;
+
+        counts.set(
+          from,
+          Math.max(0, Number(counts.get(from) || 0) - 1)
+        );
+
+        counts.set(
+          to,
+          Number(counts.get(to) || 0) + 1
+        );
+      });
+
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({
+        name,
+        displayName: resolveShortDisplay(name),
+        count: Number(count || 0),
+      }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return String(a.displayName).localeCompare(String(b.displayName));
+      });
+  }, [
+    dbOriginalDistribution,
+    dbTransfers,
+    dbSelectedTeamId,
+    resolveCanonicalName,
+    resolveShortDisplay,
+  ]);
+
+  const dbOriginalTotal = useMemo(
+    () =>
+      dbOriginalDistribution.reduce(
+        (sum, player) => sum + Number(player?.count || 0),
+        0
+      ),
+    [dbOriginalDistribution]
+  );
+
+  const dbCurrentTotal = useMemo(
+    () =>
+      dbWorkingDistribution.reduce(
+        (sum, player) => sum + Number(player?.count || 0),
+        0
+      ),
+    [dbWorkingDistribution]
+  );
+
+  const dbInvariantSafe =
+    dbOriginalTotal === dbCurrentTotal;
+
+  const dbSelectedTeamLabel =
+    dbTeamOptions.find(
+      (team) =>
+        String(team.id) === String(dbSelectedTeamId)
+    )?.label || "Team";
+
+  const getDbWorkingCount = useCallback(
+    (playerName) => {
+      const canonical = resolveCanonicalName(playerName);
+
+      return Number(
+        dbWorkingDistribution.find(
+          (player) => player.name === canonical
+        )?.count || 0
+      );
+    },
+    [dbWorkingDistribution, resolveCanonicalName]
+  );
+
+  const transferOneDefensiveBlock = useCallback(() => {
+    const from = resolveCanonicalName(dbSourcePlayer);
+    const to = resolveCanonicalName(dbTargetPlayer);
+
+    if (!dbSelectedTeamId) return;
+
+    if (!from || !to) {
+      window.alert(
+        "Select both the player giving up the Defensive Block and the player receiving it."
+      );
+      return;
+    }
+
+    if (from === to) {
+      window.alert(
+        "The source and recipient must be different players."
+      );
+      return;
+    }
+
+    const sourceCount = getDbWorkingCount(from);
+
+    if (sourceCount <= 0) {
+      window.alert(
+        `${resolveShortDisplay(from)} has no Defensive Blocks available to transfer.`
+      );
+      return;
+    }
+
+    setDbTransfers((prev) => [
+      ...prev,
+      {
+        id: `db-transfer-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 7)}`,
+        teamId: dbSelectedTeamId,
+        from,
+        to,
+      },
+    ]);
+  }, [
+    dbSelectedTeamId,
+    dbSourcePlayer,
+    dbTargetPlayer,
+    getDbWorkingCount,
+    resolveCanonicalName,
+    resolveShortDisplay,
+  ]);
+
+  const undoLastDbTransfer = useCallback(() => {
+    setDbTransfers((prev) => prev.slice(0, -1));
+  }, []);
+
+  const resetDbTransfers = useCallback(() => {
+    setDbTransfers([]);
+    setDbSourcePlayer("");
+    setDbTargetPlayer("");
+    setDbReviewMode(false);
+  }, []);
+
+  const requestCloseDbTransferStudio = useCallback(() => {
+    if (dbTransfers.length > 0) {
+      setDbReviewMode(true);
+      return;
+    }
+
+    closeDbTransferStudioCompletely();
+  }, [
+    dbTransfers.length,
+    closeDbTransferStudioCompletely,
+  ]);
+
+  const saveDbRedistributionAndClose = useCallback(() => {
+    if (!dbCorrectionMatch) return;
+
+    if (!dbInvariantSafe) {
+      window.alert(
+        "Save blocked: the team Defensive Block total changed. No correction has been saved."
+      );
+      return;
+    }
+
+    if (
+      typeof onRedistributeFriendlyDefensiveBlocks !==
+      "function"
+    ) {
+      window.alert(
+        "Defensive Block correction is not connected to the saved Friendly record."
+      );
+      return;
+    }
+
+    if (dbTransfers.length === 0) {
+      closeDbTransferStudioCompletely();
+      return;
+    }
+
+    onRedistributeFriendlyDefensiveBlocks({
+      matchDayId:
+        dbCorrectionMatch?._tkMatchDayId ||
+        friendlyDateFromRecord(dbCorrectionMatch) ||
+        "",
+      matchNo: Number(dbCorrectionMatch?.matchNo || 0),
+      matchType: "FRIENDLY",
+      transfers: dbTransfers.map((transfer) => ({
+        teamId: transfer.teamId,
+        from: transfer.from,
+        to: transfer.to,
+      })),
+    });
+
+    closeDbTransferStudioCompletely();
+  }, [
+    dbCorrectionMatch,
+    dbInvariantSafe,
+    dbTransfers,
+    onRedistributeFriendlyDefensiveBlocks,
+    closeDbTransferStudioCompletely,
+  ]);
+
+  const openDbTransferStudio = useCallback(() => {
+    /*
+     * The Friendly display is newest-first. The first record is
+     * therefore the latest editable Friendly match in this view.
+     */
+    const targetMatch = sortedResults?.[0] || null;
+
+    if (!targetMatch) {
+      window.alert(
+        "No Friendly match is available for Defensive Block correction."
+      );
+      return;
+    }
+
+    if (!isEditableCurrentFriendlyWeekRecord(targetMatch)) {
+      blockNonCurrentFriendlyEdit();
+      return;
+    }
+
+    setDbCorrectionMatch(targetMatch);
+    setDbSelectedTeamId("");
+    setDbSourcePlayer("");
+    setDbTargetPlayer("");
+    setDbTransfers([]);
+    setDbReviewMode(false);
+    setShowDbIntentPrompt(false);
+    setShowDbTransferModal(true);
+  }, [
+    sortedResults,
+    isEditableCurrentFriendlyWeekRecord,
+    blockNonCurrentFriendlyEdit,
+  ]);
+
 
   const [editingEventId, setEditingEventId] = useState(null);
   const [editingEventRecord, setEditingEventRecord] = useState(null);
@@ -2122,13 +2574,22 @@ export function StatsPage({
   useEffect(() => {
     if (
       !showFriendlyStats ||
-      viewMode !== "current" ||
       friendlyMonthScope !== CURRENT_SCOPE ||
-      activeTab !== "matches"
+      activeTab !== "matches" ||
+      (
+        viewMode !== "current" &&
+        !isAugust2026FriendlyMonthlyEditView
+      )
     ) {
       setIsManagingFriendlyDay(false);
     }
-  }, [showFriendlyStats, viewMode, friendlyMonthScope, activeTab]);
+  }, [
+    showFriendlyStats,
+    viewMode,
+    friendlyMonthScope,
+    activeTab,
+    isAugust2026FriendlyMonthlyEditView,
+  ]);
 
   useEffect(() => {
     if (showFriendlyStats && activeTab === "teams") {
@@ -2584,7 +3045,10 @@ export function StatsPage({
 
               {isAdminUser &&
                 friendlyMonthScope === CURRENT_SCOPE &&
-                viewMode === "current" &&
+                (
+                  viewMode === "current" ||
+                  isAugust2026FriendlyMonthlyEditView
+                ) &&
                 sortedResults.length > 0 && (
                 <button
                   type="button"
@@ -2596,13 +3060,25 @@ export function StatsPage({
                   onClick={() => {
                     if (isManagingFriendlyDay) {
                       setIsManagingFriendlyDay(false);
+                      closeDbTransferStudioCompletely();
                       return;
                     }
 
                     setFriendlyMonthScope(CURRENT_SCOPE);
-                    setViewMode("current");
+
+                    if (!isAugust2026FriendlyMonthlyEditView) {
+                      setViewMode("current");
+                    }
+
                     setActiveTab("matches");
                     setIsManagingFriendlyDay(true);
+
+                    /*
+                     * Keep the existing Edit Goal experience intact.
+                     * This premium prompt only asks whether DB
+                     * correction is also required.
+                     */
+                    setShowDbIntentPrompt(true);
                   }}
                 >
                   {isManagingFriendlyDay
@@ -3864,6 +4340,504 @@ export function StatsPage({
         </section>
       )}
 
+
+
+      {showDbIntentPrompt && (
+        <div
+          className="tk-db-modal-backdrop"
+          role="presentation"
+          onClick={() => setShowDbIntentPrompt(false)}
+        >
+          <div
+            className="tk-db-intent-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Defensive Block correction"
+            onClick={(evt) => evt.stopPropagation()}
+          >
+            <div className="tk-db-intent-icon">🧱</div>
+
+            <div className="tk-db-kicker">
+              Friendly admin correction
+            </div>
+
+            <h3>Correct Defensive Blocks too?</h3>
+
+            <p>
+              Use this only when real substitutions happened on the
+              field but were not captured in the app. Existing
+              Defensive Blocks can be reassigned between players;
+              no new DBs can be created.
+            </p>
+
+            <div className="tk-db-intent-actions">
+              <button
+                type="button"
+                className="tk-db-primary-btn"
+                onClick={openDbTransferStudio}
+              >
+                Yes — review DBs
+              </button>
+
+              <button
+                type="button"
+                className="tk-db-secondary-btn"
+                onClick={() => setShowDbIntentPrompt(false)}
+              >
+                No — edit goals only
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDbTransferModal && dbCorrectionMatch && (
+        <div
+          className="tk-db-modal-backdrop"
+          role="presentation"
+          onClick={requestCloseDbTransferStudio}
+        >
+          <div
+            className="tk-db-transfer-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Defensive Block Transfer Studio"
+            onClick={(evt) => evt.stopPropagation()}
+          >
+            <div className="tk-db-modal-head">
+              <div>
+                <div className="tk-db-kicker">
+                  🧱 Defensive Block correction
+                </div>
+
+                <h3>
+                  {dbReviewMode
+                    ? "Final DB Distribution"
+                    : "DB Transfer Studio"}
+                </h3>
+
+                <p>
+                  {friendlyDateFromRecord(dbCorrectionMatch) ||
+                    dbCorrectionMatch?._tkFriendlyDayLabel ||
+                    "Friendly match"}
+                  {" • "}
+                  {getTeamName(dbCorrectionMatch?.teamAId)}
+                  {" "}
+                  {dbCorrectionMatch?.goalsA ?? 0}
+                  {"–"}
+                  {dbCorrectionMatch?.goalsB ?? 0}
+                  {" "}
+                  {getTeamName(dbCorrectionMatch?.teamBId)}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="tk-db-close-btn"
+                onClick={requestCloseDbTransferStudio}
+                aria-label="Review and close Defensive Block correction"
+              >
+                ×
+              </button>
+            </div>
+
+            {!dbReviewMode ? (
+              <>
+                <div className="tk-db-rule-banner">
+                  <span>🔒</span>
+                  <div>
+                    <strong>Team total is locked.</strong>
+                    <small>
+                      Each click transfers exactly one existing
+                      5-minute Defensive Block.
+                    </small>
+                  </div>
+                </div>
+
+                <section className="tk-db-section">
+                  <div className="tk-db-section-title">
+                    <span>1</span>
+                    Select team
+                  </div>
+
+                  <div className="tk-db-team-switcher">
+                    {dbTeamOptions.map((team) => (
+                      <button
+                        type="button"
+                        key={`db-team-${team.id}`}
+                        className={
+                          String(dbSelectedTeamId) ===
+                          String(team.id)
+                            ? "active"
+                            : ""
+                        }
+                        onClick={() => {
+                          setDbSelectedTeamId(team.id);
+                          setDbSourcePlayer("");
+                          setDbTargetPlayer("");
+                        }}
+                      >
+                        <span>{team.label}</span>
+                        <strong>
+                          {dbCorrectionEvents.filter(
+                            (event) =>
+                              String(event?.teamId || "") ===
+                              String(team.id)
+                          ).length}{" "}
+                          DB
+                        </strong>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                {dbSelectedTeamId ? (
+                  <>
+                    <section className="tk-db-section">
+                      <div className="tk-db-section-title">
+                        <span>2</span>
+                        Transfer one DB
+                      </div>
+
+                      <div className="tk-db-transfer-grid">
+                        <div className="tk-db-player-panel source">
+                          <div className="tk-db-panel-label">
+                            FROM
+                            <small>Current holder</small>
+                          </div>
+
+                          <div className="tk-db-player-list">
+                            {dbWorkingDistribution.map((player) => (
+                              <button
+                                type="button"
+                                key={`db-source-${player.name}`}
+                                disabled={player.count <= 0}
+                                className={
+                                  dbSourcePlayer === player.name
+                                    ? "selected"
+                                    : ""
+                                }
+                                onClick={() =>
+                                  setDbSourcePlayer(player.name)
+                                }
+                              >
+                                <span>{player.displayName}</span>
+                                <strong>{player.count}</strong>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="tk-db-transfer-centre">
+                          <div className="tk-db-arrow">
+                            <span>
+                              {dbSourcePlayer
+                                ? resolveShortDisplay(dbSourcePlayer)
+                                : "Select"}
+                            </span>
+                            <b>→</b>
+                            <span>
+                              {dbTargetPlayer
+                                ? resolveShortDisplay(dbTargetPlayer)
+                                : "Select"}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="tk-db-transfer-one-btn"
+                            disabled={
+                              !dbSourcePlayer ||
+                              !dbTargetPlayer ||
+                              dbSourcePlayer === dbTargetPlayer ||
+                              getDbWorkingCount(dbSourcePlayer) <= 0
+                            }
+                            onClick={transferOneDefensiveBlock}
+                          >
+                            <span>Transfer</span>
+                            <strong>1 DB</strong>
+                          </button>
+                        </div>
+
+                        <div className="tk-db-player-panel target">
+                          <div className="tk-db-panel-label">
+                            TO
+                            <small>Rightful recipient</small>
+                          </div>
+
+                          <div className="tk-db-player-list">
+                            {dbWorkingDistribution.map((player) => (
+                              <button
+                                type="button"
+                                key={`db-target-${player.name}`}
+                                className={
+                                  dbTargetPlayer === player.name
+                                    ? "selected"
+                                    : ""
+                                }
+                                onClick={() =>
+                                  setDbTargetPlayer(player.name)
+                                }
+                              >
+                                <span>{player.displayName}</span>
+                                <strong>{player.count}</strong>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="tk-db-distribution-card">
+                      <div className="tk-db-distribution-head">
+                        <div>
+                          <span>Live team distribution</span>
+                          <strong>{dbSelectedTeamLabel}</strong>
+                        </div>
+
+                        <div
+                          className={
+                            dbInvariantSafe
+                              ? "tk-db-invariant good"
+                              : "tk-db-invariant bad"
+                          }
+                        >
+                          {dbCurrentTotal} / {dbOriginalTotal} DB allocated
+                        </div>
+                      </div>
+
+                      <div className="tk-db-distribution-grid">
+                        {dbWorkingDistribution.map((player) => (
+                          <div
+                            key={`db-summary-${player.name}`}
+                            className="tk-db-distribution-player"
+                          >
+                            <span>{player.displayName}</span>
+                            <strong>{player.count}</strong>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="tk-db-total-strip">
+                        <div>
+                          <small>Original total</small>
+                          <strong>{dbOriginalTotal}</strong>
+                        </div>
+
+                        <div>
+                          <small>Current total</small>
+                          <strong>{dbCurrentTotal}</strong>
+                        </div>
+
+                        <div>
+                          <small>Transfers</small>
+                          <strong>{dbTransfers.length}</strong>
+                        </div>
+                      </div>
+                    </section>
+
+                    <div className="tk-db-modal-actions">
+                      <button
+                        type="button"
+                        className="tk-db-secondary-btn"
+                        disabled={dbTransfers.length === 0}
+                        onClick={undoLastDbTransfer}
+                      >
+                        ↶ Undo last
+                      </button>
+
+                      <button
+                        type="button"
+                        className="tk-db-secondary-btn"
+                        disabled={dbTransfers.length === 0}
+                        onClick={resetDbTransfers}
+                      >
+                        Reset
+                      </button>
+
+                      <button
+                        type="button"
+                        className="tk-db-primary-btn"
+                        onClick={() => {
+                          if (dbTransfers.length === 0) {
+                            requestCloseDbTransferStudio();
+                            return;
+                          }
+
+                          setDbReviewMode(true);
+                        }}
+                      >
+                        Review final distribution
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="tk-db-empty-state">
+                    <div>⚽</div>
+                    <strong>Select a team to begin</strong>
+                    <span>
+                      You will then see every player and the DB
+                      allocation currently recorded for that team.
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="tk-db-review">
+                <div className="tk-db-review-shield">✓</div>
+
+                <h4>Confirm the final distribution</h4>
+
+                <p>
+                  Review where every Defensive Block will sit before
+                  closing this correction.
+                </p>
+
+                <div className="tk-db-review-team">
+                  {dbTeamOptions.map((team) => {
+                    const originalForTeam = (() => {
+                      const counts = new Map();
+
+                      getPlayersForTeam(team.id).forEach((name) => {
+                        const canonical = resolveCanonicalName(name);
+                        if (canonical && !counts.has(canonical)) {
+                          counts.set(canonical, 0);
+                        }
+                      });
+
+                      dbCorrectionEvents
+                        .filter(
+                          (event) =>
+                            String(event?.teamId || "") ===
+                            String(team.id)
+                        )
+                        .forEach((event) => {
+                          const name = resolveCanonicalName(
+                            event?.playerName ||
+                              event?.scorer ||
+                              ""
+                          );
+                          if (!name) return;
+                          counts.set(
+                            name,
+                            Number(counts.get(name) || 0) + 1
+                          );
+                        });
+
+                      return counts;
+                    })();
+
+                    dbTransfers
+                      .filter(
+                        (transfer) =>
+                          String(transfer.teamId) ===
+                          String(team.id)
+                      )
+                      .forEach((transfer) => {
+                        originalForTeam.set(
+                          transfer.from,
+                          Math.max(
+                            0,
+                            Number(
+                              originalForTeam.get(transfer.from) || 0
+                            ) - 1
+                          )
+                        );
+                        originalForTeam.set(
+                          transfer.to,
+                          Number(
+                            originalForTeam.get(transfer.to) || 0
+                          ) + 1
+                        );
+                      });
+
+                    const rows = Array.from(
+                      originalForTeam.entries()
+                    )
+                      .map(([name, count]) => ({
+                        name,
+                        displayName: resolveShortDisplay(name),
+                        count,
+                      }))
+                      .sort((a, b) => {
+                        if (b.count !== a.count) {
+                          return b.count - a.count;
+                        }
+                        return a.displayName.localeCompare(
+                          b.displayName
+                        );
+                      });
+
+                    const total = rows.reduce(
+                      (sum, player) =>
+                        sum + Number(player.count || 0),
+                      0
+                    );
+
+                    return (
+                      <div
+                        className="tk-db-review-team-card"
+                        key={`db-review-team-${team.id}`}
+                      >
+                        <div className="tk-db-review-team-head">
+                          <strong>{team.label}</strong>
+                          <span>{total} DB total</span>
+                        </div>
+
+                        <div className="tk-db-review-roster">
+                          {rows.map((player) => (
+                            <div
+                              key={`db-review-${team.id}-${player.name}`}
+                            >
+                              <span>{player.displayName}</span>
+                              <strong>{player.count}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="tk-db-review-warning">
+                  <strong>No Defensive Blocks will be created.</strong>
+                  <span>
+                    Saving only changes which player owns the existing
+                    block events.
+                  </span>
+                </div>
+
+                <div className="tk-db-modal-actions">
+                  <button
+                    type="button"
+                    className="tk-db-secondary-btn"
+                    onClick={() => setDbReviewMode(false)}
+                  >
+                    ← Keep editing
+                  </button>
+
+                  <button
+                    type="button"
+                    className="tk-db-danger-soft-btn"
+                    onClick={resetDbTransfers}
+                  >
+                    Discard changes
+                  </button>
+
+                  <button
+                    type="button"
+                    className="tk-db-primary-btn"
+                    disabled={!dbInvariantSafe}
+                    onClick={saveDbRedistributionAndClose}
+                  >
+                    Save distribution
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {editingEventId && editingEventRecord && (
         <div

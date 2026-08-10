@@ -5351,6 +5351,239 @@ export default function App() {
     });
   };
 
+
+  const handleRedistributeFriendlyDefensiveBlocks = ({
+    matchDayId = "",
+    matchNo = 0,
+    matchType: requestedMatchType = "FRIENDLY",
+    transfers = [],
+  } = {}) => {
+    if (!USE_V2) return;
+
+    if (
+      normalizeMatchMode(
+        requestedMatchType,
+        MATCH_TYPE.FRIENDLY
+      ) !== MATCH_TYPE.FRIENDLY
+    ) {
+      console.warn(
+        "[DB TRANSFER] Blocked non-Friendly redistribution request."
+      );
+      return;
+    }
+
+    const safeTransfers = (
+      Array.isArray(transfers) ? transfers : []
+    )
+      .map((transfer) => ({
+        teamId: String(transfer?.teamId || "").trim(),
+        from: String(transfer?.from || "").trim(),
+        to: String(transfer?.to || "").trim(),
+      }))
+      .filter(
+        (transfer) =>
+          transfer.teamId &&
+          transfer.from &&
+          transfer.to &&
+          transfer.from !== transfer.to
+      );
+
+    if (!safeTransfers.length) return;
+
+    const requestedDayId = String(matchDayId || "").trim();
+    const requestedMatchNo = Number(matchNo || 0);
+
+    const applyTransfersToEvents = (events = []) => {
+      let nextEvents = Array.isArray(events)
+        ? events.map((event) => ({ ...event }))
+        : [];
+
+      let appliedCount = 0;
+
+      safeTransfers.forEach((transfer) => {
+        const candidates = nextEvents
+          .map((event, index) => ({ event, index }))
+          .filter(({ event }) => {
+            const holder = String(
+              event?.playerName ||
+                event?.scorer ||
+                ""
+            ).trim();
+
+            return (
+              String(event?.type || "")
+                .trim()
+                .toLowerCase() === "defensive_block" &&
+              Number(event?.matchNo) ===
+                requestedMatchNo &&
+              String(event?.teamId || "") ===
+                transfer.teamId &&
+              holder === transfer.from
+            );
+          })
+          .sort((a, b) => {
+            const blockA = Number(
+              a.event?.blockIndex ??
+                a.event?.blockNumber ??
+                999999
+            );
+            const blockB = Number(
+              b.event?.blockIndex ??
+                b.event?.blockNumber ??
+                999999
+            );
+
+            if (blockA !== blockB) return blockA - blockB;
+
+            return (
+              Number(a.event?.timeSeconds || 0) -
+              Number(b.event?.timeSeconds || 0)
+            );
+          });
+
+        const candidate = candidates[0];
+
+        if (!candidate) {
+          return;
+        }
+
+        const oldEvent = nextEvents[candidate.index];
+
+        nextEvents[candidate.index] = {
+          ...oldEvent,
+
+          /*
+           * Preserve the original role, block number,
+           * time interval and team. Only ownership moves.
+           */
+          playerName: transfer.to,
+          scorer: transfer.to,
+
+          manualDbCorrection: true,
+          manualDbCorrectionLatestFrom: transfer.from,
+          manualDbCorrectionLatestTo: transfer.to,
+          manualDbCorrectionAt:
+            new Date().toISOString(),
+
+          manualDbTransferHistory: [
+            ...(
+              Array.isArray(
+                oldEvent?.manualDbTransferHistory
+              )
+                ? oldEvent.manualDbTransferHistory
+                : []
+            ),
+            {
+              from: transfer.from,
+              to: transfer.to,
+              at: new Date().toISOString(),
+            },
+          ],
+        };
+
+        appliedCount += 1;
+      });
+
+      return {
+        events: nextEvents,
+        appliedCount,
+      };
+    };
+
+    updateActiveSeason((prevSeason) => {
+      const safeFriendlyHistory = Array.isArray(
+        prevSeason?.friendlyMatchDayHistory
+      )
+        ? prevSeason.friendlyMatchDayHistory
+        : [];
+
+      let historyAppliedCount = 0;
+
+      const nextFriendlyHistory =
+        safeFriendlyHistory.map((day) => {
+          const dayId = String(
+            day?.id ||
+              day?.matchDayId ||
+              day?.date ||
+              ""
+          ).trim();
+
+          if (
+            requestedDayId &&
+            dayId &&
+            dayId !== requestedDayId
+          ) {
+            return day;
+          }
+
+          const result = applyTransfersToEvents(
+            day?.allEvents
+          );
+
+          if (!result.appliedCount) return day;
+
+          historyAppliedCount += result.appliedCount;
+
+          return {
+            ...day,
+            allEvents: result.events,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+      /*
+       * Archived Friendly history is the preferred target.
+       * If no archived event matched, fall back to the active
+       * allEvents collection for the current Friendly week.
+       */
+      if (historyAppliedCount > 0) {
+        if (
+          historyAppliedCount !== safeTransfers.length
+        ) {
+          console.warn(
+            "[DB TRANSFER] Not every requested archived transfer could be applied.",
+            {
+              requested: safeTransfers.length,
+              applied: historyAppliedCount,
+              matchDayId: requestedDayId,
+              matchNo: requestedMatchNo,
+            }
+          );
+        }
+
+        return {
+          ...prevSeason,
+          friendlyMatchDayHistory:
+            nextFriendlyHistory,
+        };
+      }
+
+      const currentResult = applyTransfersToEvents(
+        prevSeason?.allEvents
+      );
+
+      if (
+        currentResult.appliedCount !==
+        safeTransfers.length
+      ) {
+        console.warn(
+          "[DB TRANSFER] Not every requested current transfer could be applied.",
+          {
+            requested: safeTransfers.length,
+            applied: currentResult.appliedCount,
+            matchDayId: requestedDayId,
+            matchNo: requestedMatchNo,
+          }
+        );
+      }
+
+      return {
+        ...prevSeason,
+        allEvents: currentResult.events,
+      };
+    });
+  };
+
   const handleDeleteSavedEvent = (eventId) => {
     if (!USE_V2) return;
 
@@ -7876,6 +8109,9 @@ export default function App() {
           onUpdateSavedEvent={handleUpdateSavedEvent}
           onDeleteSavedEvent={handleDeleteSavedEvent}
           onAddSavedEvent={handleAddSavedEvent}
+          onRedistributeFriendlyDefensiveBlocks={
+            handleRedistributeFriendlyDefensiveBlocks
+          }
           onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
           canPreviewPreviousSeasonUI={canPreviewPreviousSeasonUI}
           isAdmin={Boolean(
