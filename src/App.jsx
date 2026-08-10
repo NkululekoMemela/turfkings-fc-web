@@ -49,6 +49,7 @@ import {
   buildFriendlyDefensiveBlockEvents,
 } from "./core/lineups.js";
 import { ensurePracticeSessionSeed, buildPracticeState } from "./core/practiceSessionSeed.js";
+import { createPracticeRuntime } from "./core/practiceRuntime.js";
 
 import {
   buildCurrentMatchFromFixture,
@@ -2305,6 +2306,7 @@ export default function App() {
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
   const [sessionMode, setSessionMode] = useState("official");
+  const [practiceRuntime, setPracticeRuntime] = useState(null);
   const [showSessionSelector, setShowSessionSelector] = useState(false);
   const [practiceRestrictionModal, setPracticeRestrictionModal] = useState(null);
   const [officialStartWarning, setOfficialStartWarning] = useState(null);
@@ -2363,6 +2365,17 @@ export default function App() {
     sessionMode === "practice"
       ? `${normalizedBaseClubId}-practice`
       : normalizedBaseClubId;
+
+  // Practice v2 central football-state persistence uses the real club
+  // identity plus an explicit disposable DataScope. The legacy
+  // sessionScopedClubId remains temporarily for page-level surfaces
+  // until each of those repositories is independently audited.
+  const footballStateClubId = normalizedBaseClubId;
+
+  const footballDataScope =
+    sessionMode === "practice"
+      ? practiceRuntime?.dataScope || null
+      : null;
 
   const activeClub = activeClubIdentity;
   const activeClubName = activeClubIdentity.name;
@@ -2833,7 +2846,11 @@ export default function App() {
       const next = typeof updater === "function" ? updater(prev) : updater;
       if (USE_V2) {
         const safe = ensureV2StateShape(next);
-        saveStateV2(safe, sessionScopedClubId);
+        saveStateV2(
+          safe,
+          footballStateClubId,
+          footballDataScope
+        );
         return safe;
       }
       saveState(next);
@@ -2872,25 +2889,6 @@ export default function App() {
       return { ...safePrev, seasons, updatedAt: new Date().toISOString() };
     });
   };
-
-  useEffect(() => {
-    if (!USE_V2) return;
-
-    if (!sessionScopedClubId?.endsWith("-practice")) {
-      return;
-    }
-
-    ensurePracticeSessionSeed(
-      db,
-      sessionScopedClubId,
-      activeClubIdentity
-    ).catch((err) => {
-      console.error("[PRACTICE SEED ERROR]", err);
-    });
-  }, [
-    sessionScopedClubId,
-    activeClubIdentity,
-  ]);
 
   useEffect(() => {
     // Disabled localStorage bootstrap for V2.
@@ -2932,7 +2930,8 @@ export default function App() {
               return nextCloudState;
             });
           },
-          sessionScopedClubId
+          footballStateClubId,
+          footballDataScope
         )
       : subscribeToState((cloudState) => {
           if (!cloudState) return;
@@ -2940,7 +2939,10 @@ export default function App() {
         });
 
     return () => unsubscribe && unsubscribe();
-  }, [sessionScopedClubId]);
+  }, [
+    footballStateClubId,
+    footballDataScope,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -7751,6 +7753,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
+                  setPracticeRuntime(null);
                   setSessionMode("official");
                   setShowSessionSelector(false);
                 }}
@@ -7808,25 +7811,27 @@ export default function App() {
                     return;
                   }
 
-                  const nextPracticeClubId = `${activeClubId}-practice`;
-
                   try {
-                    await ensurePracticeSessionSeed(
-                      db,
-                      nextPracticeClubId,
-                      activeClubIdentity
-                    );
+                    const runtime = await createPracticeRuntime({
+                      clubId: normalizedBaseClubId,
+                    });
+
+                    setCurrentConfirmedLineupSnapshot(null);
+                    setConfirmedLineupsByMatchNo({});
+
+                    // Practice v2:
+                    // authoritative session + real Official roster +
+                    // explicit disposable Practice DataScope.
+                    setPracticeRuntime(runtime);
+                    setSessionMode("practice");
+                    setShowSessionSelector(false);
                   } catch (err) {
-                    console.error("[PRACTICE SEED ERROR]", err);
+                    console.error("[PRACTICE V2 START ERROR]", err);
+                    window.alert(
+                      err?.message ||
+                        "Practice Session could not be started."
+                    );
                   }
-
-                  setCurrentConfirmedLineupSnapshot(null);
-                  setConfirmedLineupsByMatchNo({});
-
-                  // Practice state is seeded in Firebase and then loaded by subscribeToStateV2().
-                  // Do not rebuild/reset it here, otherwise saved practice squads are wiped on entry.
-                  setSessionMode("practice");
-                  setShowSessionSelector(false);
                 }}
                 style={{
                   border: "1px solid #d946ef",
@@ -8042,7 +8047,8 @@ export default function App() {
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={effectivePlayerPhotosByName}
-          activeClubId={sessionScopedClubId}
+          activeClubId={footballStateClubId}
+          dataScope={footballDataScope}
           activeClub={activeClub}
           onConfirmPreMatchLineups={handleConfirmPreMatchLineups}
           onCancelPreMatchLineups={handleCancelPreMatchLineups}

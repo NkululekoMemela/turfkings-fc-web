@@ -4,6 +4,7 @@ import { getTeamById } from "../core/teams.js";
 import { db } from "../firebaseConfig.js";
 import {
   getMatchDoc,
+  getScopedMatchDoc,
   getPlayerPhotosCollection,
 } from "../core/clubFirestorePaths";
 import {
@@ -35,6 +36,12 @@ import {
 
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
+
+function resolveLiveMatchDoc(dataScope = null) {
+  return dataScope
+    ? getScopedMatchDoc(db, MATCH_DOC_ID, dataScope)
+    : getMatchDoc(db, MATCH_DOC_ID);
+}
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 const ROTATION_SOUND_URL = `${import.meta.env.BASE_URL}Player_Change.mp4`;
 const PLAYERS_COLLECTION = "players";
@@ -1033,7 +1040,7 @@ function getRoleBadgeStyle(roleTag = "", isSub = false) {
 
 async function hardReset5v5MatchDoc(summaryInfo, matchSeconds) {
   try {
-    const ref = getMatchDoc(db, MATCH_DOC_ID);
+    const ref = resolveLiveMatchDoc(dataScope);
     await setDoc(
       ref,
       {
@@ -1069,7 +1076,7 @@ async function appendEventToFirestore(
   matchSeconds
 ) {
   try {
-    const ref = getMatchDoc(db, MATCH_DOC_ID);
+    const ref = resolveLiveMatchDoc(dataScope);
 
     const common = {
       ...summaryInfo,
@@ -1111,7 +1118,7 @@ async function overwriteEventsInFirestore(
   matchSeconds
 ) {
   try {
-    const ref = getMatchDoc(db, MATCH_DOC_ID);
+    const ref = resolveLiveMatchDoc(dataScope);
     await setDoc(
       ref,
       {
@@ -1140,7 +1147,7 @@ async function writeFinalSummaryToFirestore(
   matchSeconds
 ) {
   try {
-    const ref = getMatchDoc(db, MATCH_DOC_ID);
+    const ref = resolveLiveMatchDoc(dataScope);
     await setDoc(
       ref,
       {
@@ -1962,6 +1969,7 @@ function eventLabel(teamId, teamAId, teamBId, teamA, teamB) {
 
 export function FriendlyLiveMatchPage({
   activeClubId = "turf-kings",
+  dataScope = null,
   activeClub = null,
   matchSeconds,
   secondsLeft,
@@ -2674,7 +2682,7 @@ export function FriendlyLiveMatchPage({
 
     const pushTimer = async () => {
       try {
-        const ref = getMatchDoc(db, MATCH_DOC_ID);
+        const ref = resolveLiveMatchDoc(dataScope);
         await updateDoc(ref, {
           secondsLeft: Math.max(secondsLeft, 0),
           matchSeconds: matchSeconds ?? 0,

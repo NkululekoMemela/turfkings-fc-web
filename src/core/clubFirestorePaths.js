@@ -133,6 +133,44 @@ export function getMatchDoc(db, docId, clubId = DEFAULT_CLUB_ID) {
   return getClubDoc(db, CLUB_COLLECTIONS.matches, docId, clubId);
 }
 
+// ---------------------------------------------------------
+// DATASCOPE-AWARE MATCH HELPERS
+//
+// Official:
+//   clubs/{clubId}/matches/{docId}
+//
+// Practice:
+//   sandboxes/practice/clubs/{clubId}
+//     /sessions/{practiceSessionId}/matches/{docId}
+//
+// These helpers require an explicit DataScope and therefore never infer
+// Practice from club naming conventions.
+// ---------------------------------------------------------
+export function getScopedMatchesCollection(db, dataScope) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return collection(
+    db,
+    dataScopeCollectionPath(
+      CLUB_COLLECTIONS.matches,
+      normalizedScope
+    )
+  );
+}
+
+export function getScopedMatchDoc(db, docId, dataScope) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return doc(
+    db,
+    dataScopeDocPath(
+      CLUB_COLLECTIONS.matches,
+      docId,
+      normalizedScope
+    )
+  );
+}
+
 export function getNewsStoriesCollection(db, clubId = DEFAULT_CLUB_ID) {
   return getClubCollection(db, CLUB_COLLECTIONS.newsStories, clubId);
 }
