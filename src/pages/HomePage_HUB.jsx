@@ -18,6 +18,7 @@ import { getClubFeaturedHighlight } from "../storage/VideoHighlightsRepository.j
 import HomePage_HUB_SignupModal from "../components/HomePage_HUB/HomePage_HUB_SignupModal.jsx";
 import HomePage_HUB_ClubProfileEditorModal from "../components/HomePage_HUB/HomePage_HUB_ClubProfileEditorModal.jsx";
 import HomePage_HUB_ClubGoogleMap from "../components/HomePage_HUB/HomePage_HUB_ClubGoogleMap.jsx";
+import HomePage_HUB_StartupSplash from "../components/HomePage_HUB/HomePage_HUB_StartupSplash.jsx";
 import HOME_FOOTER_LOGO_LIGHT from "../assets/branding/logo-main-light.jpeg";
 import HOME_FOOTER_LOGO_DAY from "../assets/branding/logo-main-day.jpeg";
 import HOME_FOOTER_LOGO_DARK from "../assets/branding/logo-main-dark.jpeg";
@@ -480,7 +481,26 @@ export default function HomePage_HUB({
       return [];
     }
   });
-  const [loadingClubs, setLoadingClubs] = useState(true);
+  const [loadingClubs, setLoadingClubs] = useState(() => clubs.length === 0);
+
+  /*
+   * Premium homepage startup experience.
+   *
+   * Only a true cold homepage load needs the full launch screen.
+   * When cached clubs already exist we can render immediately and
+   * refresh Firestore silently in the background.
+   */
+  const [authReady, setAuthReady] = useState(false);
+  const [startupVisible, setStartupVisible] = useState(() => clubs.length === 0);
+  const [startupExiting, setStartupExiting] = useState(false);
+  const [startupProgress, setStartupProgress] = useState(() =>
+    clubs.length > 0 ? 100 : 12
+  );
+  const [startupMessage, setStartupMessage] = useState(
+    "Connecting to your football world..."
+  );
+  const [startupStartedAt] = useState(() => Date.now());
+
   const [signupOpen, setSignupOpen] = useState(false);
   const [activeClub, setActiveClub] = useState(null);
   const [completionPromptClub, setCompletionPromptClub] = useState(null);
@@ -528,6 +548,7 @@ export default function HomePage_HUB({
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user || null);
+      setAuthReady(true);
     });
 
     return () => unsubscribe();
@@ -668,7 +689,13 @@ export default function HomePage_HUB({
 
     async function loadClubs() {
       try {
-        setLoadingClubs(true);
+        /*
+         * With cached clubs already on screen this is a background refresh,
+         * not a blocking startup operation.
+         */
+        if (!clubs.length) {
+          setLoadingClubs(true);
+        }
 
         const snap = await getDocs(collection(db, "clubs"));
         const firebaseClubsRaw = snap.docs
@@ -781,6 +808,70 @@ export default function HomePage_HUB({
       cancelled = true;
     };
   }, []);
+
+  /*
+   * Launch-screen progress is deliberately capped below 100% until
+   * the two blocking startup signals are genuinely ready:
+   *
+   *   1. Firebase auth has resolved.
+   *   2. The initial clubs request has completed.
+   *
+   * The homepage is still mounted underneath the splash, allowing
+   * Google Maps and the rest of the UI to warm up before reveal.
+   */
+  useEffect(() => {
+    if (!startupVisible) return undefined;
+
+    if (authReady && !loadingClubs) {
+      const minimumSplashMs = 1100;
+      const elapsedMs = Date.now() - startupStartedAt;
+      const waitForMinimumMs = Math.max(0, minimumSplashMs - elapsedMs);
+
+      const readyTimer = window.setTimeout(() => {
+        setStartupProgress(100);
+        setStartupMessage("Your football world is ready.");
+
+        const fadeTimer = window.setTimeout(() => {
+          setStartupExiting(true);
+
+          const removeTimer = window.setTimeout(() => {
+            setStartupVisible(false);
+          }, 520);
+
+          return () => window.clearTimeout(removeTimer);
+        }, 260);
+
+        return () => window.clearTimeout(fadeTimer);
+      }, waitForMinimumMs);
+
+      return () => window.clearTimeout(readyTimer);
+    }
+
+    const progressTimer = window.setInterval(() => {
+      setStartupProgress((current) => {
+        const next = Math.min(88, current + Math.max(1, (88 - current) * 0.08));
+
+        if (next >= 68) {
+          setStartupMessage("Preparing nearby football...");
+        } else if (next >= 42) {
+          setStartupMessage("Loading clubs and venues...");
+        } else if (authReady) {
+          setStartupMessage("Connecting clubs to your account...");
+        } else {
+          setStartupMessage("Connecting to your football world...");
+        }
+
+        return next;
+      });
+    }, 180);
+
+    return () => window.clearInterval(progressTimer);
+  }, [
+    startupVisible,
+    authReady,
+    loadingClubs,
+    startupStartedAt,
+  ]);
 
   const visibleClubs = useMemo(() => {
     const safeClubs = clubs.length ? clubs : FALLBACK_CLUBS;
@@ -1225,6 +1316,16 @@ export default function HomePage_HUB({
 
   return (
     <main className="homepage-hub-shell homepage-hub-shell--clubs-first">
+      {startupVisible ? (
+        <HomePage_HUB_StartupSplash
+          progress={startupProgress}
+          message={startupMessage}
+          authReady={authReady}
+          clubsReady={!loadingClubs}
+          exiting={startupExiting}
+        />
+      ) : null}
+
       <header className="hub-topbar">
         <button
           type="button"

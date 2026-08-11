@@ -1,10 +1,13 @@
 // src/components/ClubChat/ClubChatWidget.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "../../firebaseConfig";
+import { getPlayerPhotosCollection } from "../../core/clubFirestorePaths.js";
 import VideoHighlightsRepository from "../../storage/VideoHighlightsRepository.js";
+import ReactionUsersSheet from "../ReactionUsersSheet.jsx";
 import {
   addDoc,
   collection,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -55,6 +58,40 @@ export function ClubChatWidget({
   onOpenFullChat,
   onOpenHighlight,
 }) {
+
+  /*
+   * Club Chat viewport behaviour:
+   * - opening the chat lands on the latest message;
+   * - incoming messages follow only while the reader is already
+   *   close to the bottom;
+   * - scrolling upward to read history is respected.
+   */
+  const clubChatMessagesRef = useRef(null);
+  const clubChatInitialScrollDoneRef = useRef(false);
+  const clubChatShouldFollowBottomRef = useRef(true);
+
+  const scrollClubChatToBottom = useCallback((behavior = "auto") => {
+    const node = clubChatMessagesRef.current;
+    if (!node) return;
+
+    node.scrollTo({
+      top: node.scrollHeight,
+      behavior,
+    });
+  }, []);
+
+  const handleClubChatMessagesScroll = useCallback(() => {
+    const node = clubChatMessagesRef.current;
+    if (!node) return;
+
+    const distanceFromBottom =
+      node.scrollHeight - node.scrollTop - node.clientHeight;
+
+    clubChatShouldFollowBottomRef.current =
+      distanceFromBottom <= 80;
+  }, []);
+
+
   const isLauncherOnly = variant === "launcher";
   const isPageMode = variant === "page";
   const [challengerChatFixture, setChallengerChatFixture] = useState(null);
@@ -78,6 +115,9 @@ export function ClubChatWidget({
   const [replyTarget, setReplyTarget] = useState(null);
   const [previewHighlight, setPreviewHighlight] = useState(null);
   const [activeReactionPickerMessageId, setActiveReactionPickerMessageId] = useState(null);
+  const [reactionUsersViewer, setReactionUsersViewer] = useState(null);
+  const [clubChatPhotoIndex, setClubChatPhotoIndex] = useState({});
+  const reactionLongPressTimerRef = useRef(null);
   const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(0);
   const [launcherBottom, setLauncherBottom] = useState(() => {
     try {
@@ -99,6 +139,113 @@ export function ClubChatWidget({
 
   const chatReactionOptions = ["⚽", "🔥", "🧤", "👏", "😂", "❤️", "👍", "👎", "😩", "🤯"];
 
+  const normalizeChatPhotoKey = (value) =>
+    String(value || "").trim().toLowerCase();
+
+  const slugChatPhotoKey = (value) =>
+    normalizeChatPhotoKey(value)
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "");
+
+  const getChatSenderPhoto = (message) => {
+    const candidates = [
+      message?.senderName,
+      message?.senderEmail,
+      message?.senderUid,
+      message?.senderId,
+      message?.memberId,
+    ]
+      .flatMap((value) => [
+        normalizeChatPhotoKey(value),
+        slugChatPhotoKey(value),
+        normalizeChatPhotoKey(
+          String(value || "").trim().split(/\s+/)[0]
+        ),
+      ])
+      .filter(Boolean);
+
+    for (const key of candidates) {
+      if (clubChatPhotoIndex[key]) {
+        return clubChatPhotoIndex[key];
+      }
+    }
+
+    return "";
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadClubChatPhotos() {
+      if (!activeClubId) {
+        setClubChatPhotoIndex({});
+        return;
+      }
+
+      try {
+        const snap = await getDocs(
+          getPlayerPhotosCollection(db, activeClubId)
+        );
+
+        if (cancelled) return;
+
+        const index = {};
+
+        const add = (key, photo) => {
+          const normalized = normalizeChatPhotoKey(key);
+          const slug = slugChatPhotoKey(key);
+
+          if (normalized && photo && !index[normalized]) {
+            index[normalized] = photo;
+          }
+
+          if (slug && photo && !index[slug]) {
+            index[slug] = photo;
+          }
+        };
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+
+          const photo =
+            data.photoData ||
+            data.photoUrl ||
+            data.profilePhotoUrl ||
+            "";
+
+          if (!photo) return;
+
+          const name =
+            data.name ||
+            data.fullName ||
+            data.shortName ||
+            data.displayName ||
+            "";
+
+          add(docSnap.id, photo);
+          add(name, photo);
+          add(String(name).trim().split(/\s+/)[0], photo);
+          add(data.email, photo);
+          add(data.playerId, photo);
+          add(data.memberId, photo);
+        });
+
+        setClubChatPhotoIndex(index);
+      } catch (err) {
+        console.warn(
+          "[ClubChatWidget] Could not load player photos:",
+          err
+        );
+      }
+    }
+
+    loadClubChatPhotos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeClubId]);
+
   const getCurrentReactorKey = () =>
     String(
       currentUser?.uid ||
@@ -118,6 +265,114 @@ export function ClubChatWidget({
     return Object.entries(reactionsByUser)
       .filter(([, selectedEmoji]) => selectedEmoji === emoji)
       .map(([reactorKey]) => reactorKey);
+  };
+
+  const normalizeReactionIdentityKey = (value) =>
+    String(value || "")
+      .trim()
+      .replace(/[^A-Za-z0-9_-]/g, "_");
+
+  const resolveReactionUserName = (reactorKey) => {
+    const target = normalizeReactionIdentityKey(reactorKey);
+
+    const matchedMember = (Array.isArray(members) ? members : []).find((member) => {
+      const keys = [
+        member?.uid,
+        member?.id,
+        member?.memberId,
+        member?.playerId,
+        member?.email,
+        member?.fullName,
+        member?.shortName,
+        member?.displayName,
+        member?.name,
+      ]
+        .map(normalizeReactionIdentityKey)
+        .filter(Boolean);
+
+      return keys.includes(target);
+    });
+
+    if (matchedMember) {
+      return String(
+        matchedMember.shortName ||
+        matchedMember.fullName ||
+        matchedMember.displayName ||
+        matchedMember.name ||
+        matchedMember.email ||
+        "Club member"
+      );
+    }
+
+    const mine = [
+      currentUser?.uid,
+      selectedMember?.id,
+      identity?.memberId,
+      identity?.playerId,
+      currentUser?.email,
+      selectedMember?.email,
+      identity?.email,
+    ]
+      .map(normalizeReactionIdentityKey)
+      .filter(Boolean);
+
+    if (mine.includes(target)) {
+      return String(
+        selectedMember?.shortName ||
+        selectedMember?.fullName ||
+        currentUser?.displayName ||
+        identity?.shortName ||
+        identity?.fullName ||
+        "You"
+      );
+    }
+
+    return String(reactorKey || "Club member").replace(/_/g, " ");
+  };
+
+  const buildReactionViewerGroups = (message) =>
+    chatReactionOptions
+      .map((emoji) => ({
+        emoji,
+        users: getReactionUsers(message, emoji).map((reactorKey) => ({
+          key: reactorKey,
+          name: resolveReactionUserName(reactorKey),
+        })),
+      }))
+      .filter((group) => group.users.length > 0);
+
+  const openReactionUsersViewer = (message) => {
+    const groups = buildReactionViewerGroups(message);
+    if (!groups.length) return;
+
+    setReactionUsersViewer({
+      title: "Reactions",
+      groups,
+    });
+  };
+
+  const cancelReactionLongPress = () => {
+    if (reactionLongPressTimerRef.current) {
+      window.clearTimeout(reactionLongPressTimerRef.current);
+      reactionLongPressTimerRef.current = null;
+    }
+  };
+
+  const startReactionLongPress = (event, message) => {
+    if (
+      event?.target?.closest?.("button, a, video, input, textarea")
+    ) {
+      return;
+    }
+
+    if (!buildReactionViewerGroups(message).length) return;
+
+    cancelReactionLongPress();
+
+    reactionLongPressTimerRef.current = window.setTimeout(() => {
+      navigator.vibrate?.(35);
+      openReactionUsersViewer(message);
+    }, 450);
   };
 
   const getMyReaction = (message) => {
@@ -191,6 +446,50 @@ export function ClubChatWidget({
       window.removeEventListener("fanm_attach_highlight_to_chat", handleAttachHighlightToChat);
     };
   }, []);
+
+  /*
+   * Opening Club Chat:
+   * land on the newest message once the message viewport exists.
+   */
+  useEffect(() => {
+    if (!clubChatOpen) {
+      clubChatInitialScrollDoneRef.current = false;
+      return;
+    }
+
+    if (clubChatInitialScrollDoneRef.current) return;
+
+    clubChatInitialScrollDoneRef.current = true;
+    clubChatShouldFollowBottomRef.current = true;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollClubChatToBottom("auto");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [clubChatOpen, scrollClubChatToBottom]);
+
+  /*
+   * New Club Chat messages:
+   * auto-follow only while the reader is already near the bottom.
+   * Someone reading older messages must not be pulled downward.
+   */
+  useEffect(() => {
+    if (!clubChatOpen) return;
+    if (!clubChatInitialScrollDoneRef.current) return;
+    if (!clubChatShouldFollowBottomRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollClubChatToBottom("smooth");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    clubChatOpen,
+    clubChatMessages.length,
+    scrollClubChatToBottom,
+  ]);
+
   const buildChatHighlightMatchId = () => {
     const today = new Date().toISOString().slice(0, 10);
     const type = String(matchType || "").toLowerCase().includes("league") ? "league" : "friendly";
@@ -1091,7 +1390,10 @@ export function ClubChatWidget({
           ) : null}
 
           {activeChatRoom === "club" ? (
-            <div className="fanm-club-chat-messages">
+            <div className="fanm-club-chat-messages"
+        ref={clubChatMessagesRef}
+        onScroll={handleClubChatMessagesScroll}
+      >
               {clubChatMessages.length ? (
                 clubChatMessages.map((message, index) => {
                   const previousMessage = clubChatMessages[index - 1];
@@ -1159,8 +1461,40 @@ export function ClubChatWidget({
                         <div className="fanm-chat-date-chip">{currentDateLabel}</div>
                       ) : null}
 
-                      <div
-                        className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""} ${groupedWithPrevious ? "is-grouped" : ""}`}
+                      <div className={`fanm-chat-message-row ${mine ? "is-mine" : ""}`}>
+                        {!groupedWithPrevious ? (
+                          <span className="fanm-chat-sender-avatar">
+                            {getChatSenderPhoto(message) ? (
+                              <img
+                                src={getChatSenderPhoto(message)}
+                                alt=""
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              String(message.senderName || "C")
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase()
+                            )}
+                          </span>
+                        ) : (
+                          <span className="fanm-chat-sender-avatar-spacer" />
+                        )}
+
+                        <div
+                          className={`fanm-club-chat-message ${mine ? "is-mine" : ""} ${isAdminMessage ? "is-admin" : ""} ${groupedWithPrevious ? "is-grouped" : ""}`}
+                        onPointerDown={(event) =>
+                          startReactionLongPress(event, message)
+                        }
+                        onPointerUp={cancelReactionLongPress}
+                        onPointerCancel={cancelReactionLongPress}
+                        onPointerLeave={cancelReactionLongPress}
+                        onContextMenu={(event) => {
+                          if (buildReactionViewerGroups(message).length) {
+                            event.preventDefault();
+                            openReactionUsersViewer(message);
+                          }
+                        }}
                       >
                       {!groupedWithPrevious ? (
                         <div className="fanm-club-chat-message-meta">
@@ -1298,6 +1632,7 @@ export function ClubChatWidget({
                         ) : null}
                       </div>
                       </div>
+                      </div>
                     </React.Fragment>
                   );
                 })
@@ -1340,6 +1675,20 @@ export function ClubChatWidget({
               <div ref={challengerChatEndRef} />
             </div>
           )}
+
+          {activeChatRoom === "club" && clubChatEmojiOpen ? (
+            <div className="fanm-club-chat-emoji-tray">
+              {["😀", "😂", "🤣", "😎", "😭", "😡", "❤️", "🔥", "⚽", "🥅", "🏆", "💪", "👏", "🙌", "👌", "👀"].map((emoji) => (
+                <button
+                  type="button"
+                  key={`club-chat-emoji-${emoji}`}
+                  onClick={() => addClubChatEmoji(emoji)}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {activeChatRoom === "club" ? (
             <div className="fanm-club-chat-compose">
@@ -1473,20 +1822,6 @@ export function ClubChatWidget({
                 </div>
               )}
 
-              {clubChatEmojiOpen && (
-                <div className="fanm-club-chat-emoji-tray">
-                  {["😀", "😂", "🤣", "😎", "😭", "😡", "❤️", "🔥", "⚽", "🥅", "🏆", "💪", "👏", "🙌", "👌", "👀"].map((emoji) => (
-                    <button
-                      type="button"
-                      key={`club-chat-emoji-${emoji}`}
-                      onClick={() => addClubChatEmoji(emoji)}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              )}
-
               <button
                 type="button"
                 className="primary-btn fanm-premium-send-btn"
@@ -1550,6 +1885,13 @@ export function ClubChatWidget({
         </>
       )}
       </section>
+
+      <ReactionUsersSheet
+        open={Boolean(reactionUsersViewer)}
+        title={reactionUsersViewer?.title || "Reactions"}
+        groups={reactionUsersViewer?.groups || []}
+        onClose={() => setReactionUsersViewer(null)}
+      />
 
       {previewHighlight ? (
         <div className="fanm-highlight-preview-overlay">

@@ -8353,3 +8353,415 @@
     width: 100%;
   }
 }
+
+/* FANM HOMEPAGE — PREMIUM STARTUP SPLASH */
+
+.hub-startup-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding: clamp(1rem, 4vw, 3rem);
+  overflow: hidden;
+  color: #f8fafc;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(14, 165, 233, 0.33), transparent 30%),
+    radial-gradient(circle at 18% 78%, rgba(34, 197, 94, 0.18), transparent 34%),
+    radial-gradient(circle at 85% 75%, rgba(30, 64, 175, 0.2), transparent 34%),
+    linear-gradient(180deg, #031326 0%, #031121 38%, #020916 100%);
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.5s ease,
+    visibility 0.5s ease;
+}
+
+.hub-startup-splash.is-exiting {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.hub-startup-splash__stadium-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.72;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(2, 6, 23, 0.05) 45%,
+      rgba(2, 6, 23, 0.74) 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 7%,
+      rgba(255, 255, 255, 0.012) 7.1% 7.2%
+    );
+}
+
+.hub-startup-splash__panel {
+  position: relative;
+  z-index: 2;
+  width: min(760px, 94vw);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1.15rem;
+}
+
+.hub-startup-splash__art-wrap {
+  width: min(560px, 88vw);
+  margin: 0 auto;
+  border-radius: clamp(22px, 4vw, 36px);
+  padding: 4px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(134, 239, 172, 0.7),
+      rgba(56, 189, 248, 0.62),
+      rgba(59, 130, 246, 0.15)
+    );
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.42),
+    0 0 48px rgba(34, 197, 94, 0.13),
+    0 0 70px rgba(14, 165, 233, 0.13);
+}
+
+.hub-startup-splash__art {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(34vh, 330px);
+  object-fit: cover;
+  border-radius: calc(clamp(22px, 4vw, 36px) - 4px);
+}
+
+.hub-startup-splash__copy {
+  text-align: center;
+}
+
+.hub-startup-splash__kicker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.42rem 0.8rem;
+  margin-bottom: 0.6rem;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 999px;
+  background: rgba(20, 83, 45, 0.22);
+  color: #86efac;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hub-startup-splash__copy h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  line-height: 1.03;
+  letter-spacing: -0.035em;
+}
+
+.hub-startup-splash__copy p {
+  margin: 0.6rem 0 0;
+  color: #cbd5e1;
+  font-size: clamp(0.9rem, 2.4vw, 1.05rem);
+  font-weight: 700;
+}
+
+.hub-startup-splash__progress-shell {
+  position: relative;
+  width: min(700px, 100%);
+  height: 32px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.67);
+  box-shadow:
+    inset 0 0 14px rgba(0, 0, 0, 0.34),
+    0 0 28px rgba(14, 165, 233, 0.08);
+}
+
+.hub-startup-splash__progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 7%;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      90deg,
+      #16a34a 0%,
+      #22c55e 32%,
+      #84cc16 68%,
+      #bef264 100%
+    );
+  box-shadow:
+    0 0 16px rgba(34, 197, 94, 0.78),
+    0 0 28px rgba(132, 204, 22, 0.5);
+  transition: width 0.25s ease-out;
+}
+
+.hub-startup-splash__progress-bar span {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      115deg,
+      transparent 28%,
+      rgba(255, 255, 255, 0.52) 46%,
+      transparent 62%
+    );
+  transform: translateX(-100%);
+  animation: hub-startup-progress-shine 1.45s linear infinite;
+}
+
+.hub-startup-splash__progress-shell > strong {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  padding-right: 0.8rem;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 1000;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.8);
+}
+
+@keyframes hub-startup-progress-shine {
+  to {
+    transform: translateX(125%);
+  }
+}
+
+.hub-startup-splash__steps {
+  width: min(620px, 100%);
+  margin: 0 auto;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 20px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(8, 29, 48, 0.8),
+      rgba(3, 17, 31, 0.82)
+    );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 22px 52px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.hub-startup-splash__step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 43px;
+  color: #94a3b8;
+  font-size: 0.91rem;
+  font-weight: 750;
+}
+
+.hub-startup-splash__step + .hub-startup-splash__step {
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.hub-startup-splash__step-icon {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(22, 101, 52, 0.26);
+  font-size: 0.8rem;
+}
+
+.hub-startup-splash__step strong {
+  min-width: 25px;
+  text-align: right;
+  color: #64748b;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+}
+
+.hub-startup-splash__step.is-active {
+  color: #e2e8f0;
+}
+
+.hub-startup-splash__step.is-active strong {
+  color: #38bdf8;
+  animation: hub-startup-pulse 0.9s ease-in-out infinite alternate;
+}
+
+.hub-startup-splash__step.is-done {
+  color: #f8fafc;
+}
+
+.hub-startup-splash__step.is-done .hub-startup-splash__step-icon {
+  background: rgba(22, 163, 74, 0.55);
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.22);
+}
+
+.hub-startup-splash__step.is-done strong {
+  color: #a3e635;
+  font-size: 1.25rem;
+}
+
+@keyframes hub-startup-pulse {
+  from {
+    opacity: 0.45;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.hub-startup-splash__footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.hub-startup-splash__footer > span:first-child {
+  color: #84cc16;
+  font-size: 1.25rem;
+}
+
+.hub-startup-splash__footer strong {
+  color: #a3e635;
+}
+
+@media (max-width: 640px) {
+  .hub-startup-splash {
+    padding: 0.8rem;
+  }
+
+  .hub-startup-splash__panel {
+    width: min(94vw, 470px);
+    gap: 0.78rem;
+  }
+
+  .hub-startup-splash__art-wrap {
+    width: min(88vw, 430px);
+    border-radius: 22px;
+  }
+
+  .hub-startup-splash__art {
+    max-height: 29vh;
+    border-radius: 18px;
+  }
+
+  .hub-startup-splash__kicker {
+    margin-bottom: 0.42rem;
+    padding: 0.34rem 0.65rem;
+    font-size: 0.62rem;
+  }
+
+  .hub-startup-splash__copy h1 {
+    font-size: clamp(1.55rem, 7vw, 2.05rem);
+  }
+
+  .hub-startup-splash__copy p {
+    margin-top: 0.4rem;
+    font-size: 0.83rem;
+  }
+
+  .hub-startup-splash__progress-shell {
+    height: 27px;
+  }
+
+  .hub-startup-splash__steps {
+    padding: 0.55rem 0.75rem;
+    border-radius: 17px;
+  }
+
+  .hub-startup-splash__step {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    min-height: 38px;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+  }
+
+  .hub-startup-splash__step-icon {
+    width: 25px;
+    height: 25px;
+    font-size: 0.7rem;
+  }
+
+  .hub-startup-splash__footer {
+    font-size: 0.66rem;
+  }
+}
+
+@media (max-height: 700px) {
+  .hub-startup-splash__art {
+    max-height: 24vh;
+  }
+
+  .hub-startup-splash__steps {
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+  }
+
+  .hub-startup-splash__step {
+    min-height: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-startup-splash,
+  .hub-startup-splash__progress-bar,
+  .hub-startup-splash__progress-bar span,
+  .hub-startup-splash__step.is-active strong {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============================================================
+   Splash mobile viewport containment
+   Prevent right-edge clipping on narrow phones.
+   Visual design intentionally unchanged.
+   ============================================================ */
+
+.hub-startup-splash__panel,
+.hub-startup-splash__art-wrap,
+.hub-startup-splash__progress-shell,
+.hub-startup-splash__steps {
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .hub-startup-splash__panel {
+    width: min(100%, 470px);
+    max-width: 100%;
+  }
+
+  .hub-startup-splash__art-wrap {
+    width: min(100%, 430px);
+    max-width: 100%;
+  }
+
+  .hub-startup-splash__progress-shell,
+  .hub-startup-splash__steps {
+    width: 100%;
+    max-width: 100%;
+  }
+}

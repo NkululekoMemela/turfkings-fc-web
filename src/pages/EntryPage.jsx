@@ -29,12 +29,52 @@ import {
   arrayUnion,
   arrayRemove,
 } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  reauthenticateWithPopup,
+} from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
 import { ClubChatWidget } from "../components/ClubChat/ClubChatWidget.jsx";
 import {
   findCandidatePlatformIdentity,
 } from "../storage/platformIdentityRepository.js";
+import {
+  resolvePlayerIdentity,
+} from "../core/gpi/identityResolver.js";
+import {
+  evaluateProfileReuse,
+} from "../core/gpi/profileReuseDecision.js";
+import {
+  coordinatePlatformPlayer,
+} from "../core/platformPlayer/platformPlayerCoordinator.js";
+import LoadingSplash from "../components/LoadingSplash/LoadingSplash.jsx";
+
+const GPI_PLATFORM_PLAYER_WRITE_ENABLED =
+  import.meta.env.VITE_FANM_DEVELOPMENT_SITE === "true" &&
+  import.meta.env.VITE_GPI_PLATFORM_PLAYER_WRITE === "true";
+
+const GPI_PLATFORM_PLAYER_WRITE_EMAIL =
+  String(
+    import.meta.env.VITE_GPI_PLATFORM_PLAYER_WRITE_EMAIL || ""
+  )
+    .trim()
+    .toLowerCase();
+
+function canPersistPlatformPlayerForCurrentUser() {
+  const authenticatedEmail =
+    String(auth.currentUser?.email || "")
+      .trim()
+      .toLowerCase();
+
+  return Boolean(
+    GPI_PLATFORM_PLAYER_WRITE_ENABLED &&
+    GPI_PLATFORM_PLAYER_WRITE_EMAIL &&
+    authenticatedEmail &&
+    authenticatedEmail ===
+      GPI_PLATFORM_PLAYER_WRITE_EMAIL
+  );
+}
 
 const MEMBERS_COLLECTION = "members";
 const PLAYERS_COLLECTION = "players";
@@ -210,6 +250,61 @@ function slugFromName(name) {
     .toLowerCase()
     .replace(/\s+/g, "_")
     .replace(/[^a-z0-9_]/g, "");
+}
+
+
+
+function maskGpiEmail(value = "") {
+  const email = String(value || "").trim();
+
+  if (!email || !email.includes("@")) {
+    return "";
+  }
+
+  const [localPart, domain] = email.split("@");
+
+  if (!localPart || !domain) {
+    return "";
+  }
+
+  const visibleStart =
+    localPart.length >= 2
+      ? localPart.slice(0, 2)
+      : localPart.slice(0, 1);
+
+  const hiddenLength = Math.max(
+    5,
+    localPart.length - visibleStart.length
+  );
+
+  return `${visibleStart}${"*".repeat(hiddenLength)}@${domain}`;
+}
+
+
+function maskGpiPhone(value = "") {
+  const raw = String(value || "").trim();
+
+  if (!raw) return "";
+
+  const digits = raw.replace(/\D/g, "");
+
+  if (!digits) return "";
+
+  const lastFour = digits.slice(-4);
+
+  let countryPrefix = "";
+
+  if (raw.startsWith("+")) {
+    if (digits.startsWith("27")) {
+      countryPrefix = "+27";
+    } else {
+      countryPrefix = `+${digits.slice(0, Math.min(3, Math.max(1, digits.length - 4)))}`;
+    }
+  }
+
+  return countryPrefix
+    ? `${countryPrefix} *** *** ${lastFour}`
+    : `*** *** ${lastFour}`;
 }
 
 
@@ -1104,9 +1199,20 @@ export function EntryPage({
     setSelectedMemberId(identity?.clubId === activeClubId && identity?.memberId ? identity.memberId : "");
     setVerifyError("");
     setVerifyStatus("");
+
   }, [activeClubId]);
   const [verifyError, setVerifyError] = useState("");
   const [verifyStatus, setVerifyStatus] = useState("");
+
+  const [showSigninLoading, setShowSigninLoading] =
+    useState(false);
+
+  const [signinProgress, setSigninProgress] =
+    useState(8);
+
+  const [signinStatus, setSigninStatus] =
+    useState("Preparing your football profile...");
+
 
   const selectedMember = useMemo(
     () => members.find((m) => m.id === selectedMemberId) || null,
@@ -1131,6 +1237,14 @@ export function EntryPage({
   const [newPhotoStatus, setNewPhotoStatus] = useState("");
   const [newWhatsApp, setNewWhatsApp] = useState("");
   const [joinIdentityCandidate, setJoinIdentityCandidate] = useState(null);
+
+  const [existingMemberGpiOffer, setExistingMemberGpiOffer] =
+    useState(null);
+  const [existingMemberGpiPending, setExistingMemberGpiPending] =
+    useState(false);
+  const [existingMemberGpiError, setExistingMemberGpiError] =
+    useState("");
+
   const [joinIdentityLookupPending, setJoinIdentityLookupPending] =
     useState(false);
 
@@ -2165,30 +2279,131 @@ export function EntryPage({
     setJoinIdentityLookupPending(true);
 
     try {
-      const candidates = await findCandidatePlatformIdentity({
+      /*
+       * GPI Stage 1 — fresh club join.
+       *
+       * The Gmail entered in the join form is the discovery key.
+       * No existing profile is copied yet. We first show the user
+       * the candidate and require Google authentication if they
+       * choose to reuse it.
+       */
+      const gpiResolution = await resolvePlayerIdentity({
         firstName: nameParts[0],
         surname: nameParts.slice(1).join(" "),
         email,
+        excludeClubId: activeClubId,
       });
 
-      const candidate = candidates.find(
-        (item) => item.clubId !== activeClubId
+      const candidate = gpiResolution.bestProfile || null;
+
+      /*
+       * GPI Stage 2.3 — SHADOW MODE ONLY.
+       *
+       * Build the Platform Player that we WOULD create.
+       * Nothing is written to Firestore.
+       */
+      const platformPlayerShadow =
+        buildPlatformPlayerSnapshot({
+          authenticatedUser: auth.currentUser,
+          reusableProfile: candidate,
+          currentMember: null,
+        });
+
+      const platformPlayerShadowState =
+        evaluatePlatformPlayerState(
+          platformPlayerShadow
+        );
+
+
+      const platformPlayerWritePlan =
+        planPlatformPlayerWrite({
+          existingPlatformPlayer: null,
+          authenticatedUser: auth.currentUser,
+          reusableProfile: candidate,
+          currentMember: null,
+        });
+
+      console.log(
+        "[GPI Platform Player Plan][Fresh Join]",
+        {
+          action:
+            platformPlayerWritePlan.action,
+          documentId:
+            platformPlayerWritePlan.documentId ||
+            "",
+          safeToWrite:
+            platformPlayerWritePlan.safeToWrite,
+          reason:
+            platformPlayerWritePlan.reason,
+          payload:
+            platformPlayerWritePlan.payload,
+          candidate:
+            platformPlayerWritePlan.candidate,
+          sourceClubId:
+            candidate?.clubId || "",
+          firestoreExecuted: false,
+        }
       );
 
+      console.log(
+        "[GPI Stage 2 Shadow][Fresh Join]",
+        {
+          uid:
+            platformPlayerShadow.uid || "",
+          emailPresent:
+            Boolean(platformPlayerShadow.email),
+          fullName:
+            platformPlayerShadow.fullName || "",
+          hasPhoto:
+            Boolean(platformPlayerShadow.photoUrl),
+          hasPhone:
+            Boolean(
+              platformPlayerShadow.whatsappNumber
+            ),
+          state:
+            platformPlayerShadowState,
+          sourceClubId:
+            candidate?.clubId || "",
+          firestoreWrite: false,
+        }
+      );
+
+
+      console.log("[GPI][Fresh Join]", {
+        email,
+        activeClubId,
+        matchCount: gpiResolution.matchCount,
+        candidateClubId: candidate?.clubId || "",
+        candidateMemberId: candidate?.memberId || "",
+        candidateCompleteness:
+          candidate?.gpiCompleteness?.score ?? null,
+      });
+
       if (candidate) {
-        setJoinIdentityCandidate(candidate);
+        setJoinIdentityCandidate({
+          ...candidate,
+          gpiFlow: "fresh_join",
+          gpiExpectedEmail: email,
+        });
+
+        setNewReqStatus(
+          `We found an existing 5 Asides Near Me profile${
+            candidate.clubName ? ` in ${candidate.clubName}` : ""
+          }. Confirm below if it is yours.`
+        );
         return;
       }
 
       await submitNewPlayerRequest(null);
     } catch (error) {
       console.warn(
-        "[EntryPage] Existing player lookup could not be completed:",
+        "[GPI] Existing player lookup could not be completed:",
         error
       );
 
       /*
-       * A lookup failure must not prevent a legitimate join request.
+       * GPI discovery must never prevent a legitimate new-player
+       * request when no safe reusable profile can be established.
        */
       await submitNewPlayerRequest(null);
     } finally {
@@ -2196,52 +2411,409 @@ export function EntryPage({
     }
   };
 
+
   const acceptJoinIdentityCandidate = async () => {
     if (!joinIdentityCandidate) return;
 
     const candidate = joinIdentityCandidate;
 
-    setNewFullName(
-      candidate.fullName ||
-      [candidate.firstName, candidate.surname]
-        .filter(Boolean)
-        .join(" ")
+    const expectedEmail = String(
+      candidate.gpiExpectedEmail ||
+      newEmail ||
+      candidate.email ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!expectedEmail) {
+      setNewReqError(
+        "We could not determine the Gmail address for this profile."
+      );
+      return;
+    }
+
+    setNewReqError("");
+    setNewReqStatus(
+      "Confirm this profile with the matching Google account."
     );
 
-    if (
-      !newWhatsApp.trim() &&
-      (candidate.whatsappNumber || candidate.phoneNumber)
-    ) {
-      setNewWhatsApp(
-        candidate.whatsappNumber ||
-        candidate.phoneNumber
+    /*
+     * Never ask for or handle a Gmail password inside FANM.
+     * Google performs the authentication using the existing
+     * sign-in flow already trusted by the application.
+     */
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      console.warn("[GPI] Google confirmation cancelled:", error);
+      setNewReqError(
+        "Google confirmation was cancelled or failed. Your join request has not been submitted yet."
       );
+      return;
     }
 
-    const existingProfilePhoto =
-      candidate.photoData ||
-      candidate.photoUrl ||
+    const authenticatedUser = auth.currentUser;
+    const authenticatedEmail = String(
+      authenticatedUser?.email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!authenticatedEmail) {
+      setNewReqError(
+        "We could not read the Gmail address from the Google account."
+      );
+      return;
+    }
+
+    if (authenticatedEmail !== expectedEmail) {
+      setNewReqError(
+        `That Google account does not match ${expectedEmail}. Please use the Gmail account attached to this player profile.`
+      );
+      return;
+    }
+
+    /*
+     * Ownership has now been confirmed.
+     * The existing join-request writer remains responsible for
+     * creating the new club membership and copying reusable data.
+     */
+    const confirmedCandidate = {
+      ...candidate,
+      email: authenticatedEmail,
+      uid: authenticatedUser.uid || candidate.uid || "",
+      platformIdentityUid:
+        authenticatedUser.uid ||
+        candidate.platformIdentityUid ||
+        candidate.uid ||
+        "",
+      gpiVerified: true,
+      gpiVerifiedBy: "google_email_match",
+    };
+
+    const candidateName =
+      confirmedCandidate.fullName ||
+      [
+        confirmedCandidate.firstName,
+        confirmedCandidate.surname,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+    if (candidateName) {
+      setNewFullName(candidateName);
+    }
+
+    const inheritedPhone =
+      confirmedCandidate.whatsappNumber ||
+      confirmedCandidate.phoneNumber ||
       "";
 
-    if (!newPhotoPreview && existingProfilePhoto) {
-      setNewPhotoPreview(existingProfilePhoto);
+    if (!newWhatsApp.trim() && inheritedPhone) {
+      setNewWhatsApp(inheritedPhone);
+    }
+
+    const inheritedPhoto =
+      confirmedCandidate.photoData ||
+      confirmedCandidate.photoUrl ||
+      "";
+
+    if (!newPhotoPreview && inheritedPhoto) {
+      setNewPhotoPreview(inheritedPhoto);
       setNewPhotoStatus(
-        "Your existing profile photo will be copied into this club."
+        "Your verified existing profile photo will be copied into this club."
       );
     }
 
+    console.log("[GPI][Fresh Join Verified]", {
+      email: authenticatedEmail,
+      sourceClubId: confirmedCandidate.clubId || "",
+      destinationClubId: activeClubId,
+      hasPhoto: Boolean(inheritedPhoto),
+      hasPhone: Boolean(inheritedPhone),
+    });
+
     setJoinIdentityCandidate(null);
-    await submitNewPlayerRequest(candidate);
+
+    await submitNewPlayerRequest(confirmedCandidate);
   };
+
 
   const declineJoinIdentityCandidate = async () => {
     setJoinIdentityCandidate(null);
     await submitNewPlayerRequest(null);
   };
 
-  const handleVerifyPlayer = async () => {
+  const declineExistingMemberGpiOffer = () => {
+    if (!existingMemberGpiOffer) return;
+
+    const offer = existingMemberGpiOffer;
+
+    setExistingMemberGpiOffer(null);
+    setExistingMemberGpiError("");
+
+    /*
+     * Player declined cross-club reuse.
+     * Return to the ordinary profile-completion flow.
+     */
+    if (!offer.destinationExistingPhoto) {
+      setPhotoReminderContext({
+        ...offer.completionPayload,
+        inheritedProfile: false,
+        sourceClubName: "",
+        onContinue: offer.continueToApp,
+      });
+
+      setPhotoReminderPreview("");
+      setPhotoReminderFile(null);
+      setPhotoReminderStatus("");
+      setPhotoReminderError("");
+      console.log("[GPI TRACE PHOTO MODAL] old photo reminder opened", {
+          activeClubId,
+          selectedMemberId: selectedMember?.id || "",
+          selectedMemberEmail: selectedMember?.email || "",
+          currentUserEmail: auth.currentUser?.email || "",
+          stack: new Error().stack,
+        });
+        setShowPhotoReminderModal(true);
+      return;
+    }
+
+    offer.continueToApp();
+  };
+
+
+  const acceptExistingMemberGpiOffer = async () => {
+    if (!existingMemberGpiOffer) return;
+
+    const offer = existingMemberGpiOffer;
+    const candidate = offer.candidate || {};
+
+    const expectedEmail = String(
+      candidate.email ||
+      offer.completionPayload?.email ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!expectedEmail) {
+      setExistingMemberGpiError(
+        "We could not determine the Gmail address attached to this profile."
+      );
+      return;
+    }
+
+    setExistingMemberGpiPending(true);
+    setExistingMemberGpiError("");
+
+    try {
+      let authenticatedUser = auth.currentUser;
+
+      /*
+       * FANM never sees or stores a Gmail password.
+       * Google itself performs the account confirmation.
+       */
+      if (authenticatedUser) {
+        const provider = new GoogleAuthProvider();
+
+        provider.setCustomParameters({
+          prompt: "select_account",
+        });
+
+        await reauthenticateWithPopup(
+          authenticatedUser,
+          provider
+        );
+
+        authenticatedUser = auth.currentUser;
+      } else {
+        await signInWithGoogle();
+        authenticatedUser = auth.currentUser;
+      }
+
+      const authenticatedEmail = String(
+        authenticatedUser?.email || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (!authenticatedEmail) {
+        setExistingMemberGpiError(
+          "Google did not return an email address."
+        );
+        return;
+      }
+
+      if (authenticatedEmail !== expectedEmail) {
+        setExistingMemberGpiError(
+          `That Google account does not match ${expectedEmail}. Please use the Gmail account attached to this player profile.`
+        );
+        return;
+      }
+
+      const inheritedPhoto =
+        offer.inheritedPhoto || "";
+
+      const inheritedPhone =
+        normalizeWhatsAppNumber(
+          offer.inheritedWhatsApp || ""
+        );
+
+      /*
+       * Destination only becomes richer.
+       * Existing current-club values are never overwritten.
+       */
+      if (
+        !offer.destinationExistingPhoto &&
+        inheritedPhoto
+      ) {
+        await savePlayerPhotoForIdentity({
+          clubId: activeClubId,
+          fullName:
+            offer.completionPayload.fullName ||
+            candidate.fullName ||
+            "",
+          shortName:
+            offer.completionPayload.shortName ||
+            candidate.shortName ||
+            "",
+          playerId: offer.playerId || "",
+          email: authenticatedEmail,
+          role:
+            offer.completionPayload.role ||
+            "player",
+          status:
+            offer.completionPayload.status ||
+            "active",
+          sourceMemberId: offer.memberId || "",
+          photoData: inheritedPhoto,
+        });
+      }
+
+      const currentPhone =
+        normalizeWhatsAppNumber(
+          offer.currentWhatsApp || ""
+        );
+
+      if (!currentPhone && inheritedPhone) {
+        await updateDoc(
+          memberDocRef(
+            activeClubId,
+            offer.memberId
+          ),
+          {
+            whatsappNumber: inheritedPhone,
+            phoneNumber: inheritedPhone,
+            updatedAt: serverTimestamp(),
+          }
+        );
+
+        if (offer.playerId) {
+          await setDoc(
+            playerDocRef(
+              activeClubId,
+              offer.playerId
+            ),
+            {
+              whatsappNumber: inheritedPhone,
+              phoneNumber: inheritedPhone,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+      }
+
+      console.log(
+        "[GPI][Stage 1B Reuse Success]",
+        {
+          email: authenticatedEmail,
+          sourceClubId:
+            candidate.clubId || "",
+          destinationClubId:
+            activeClubId,
+          copiedPhoto: Boolean(
+            !offer.destinationExistingPhoto &&
+            inheritedPhoto
+          ),
+          copiedPhone: Boolean(
+            !currentPhone &&
+            inheritedPhone
+          ),
+        }
+      );
+
+      setExistingMemberGpiOffer(null);
+      setExistingMemberGpiError("");
+
+      /*
+       * Reuse succeeded. Go straight into the application.
+       * Do not display missing-photo / missing-phone prompts
+       * for fields we have just populated.
+       */
+      onComplete({
+        ...offer.completionPayload,
+        whatsappNumber:
+          currentPhone ||
+          inheritedPhone ||
+          "",
+      });
+    } catch (error) {
+      console.warn(
+        "[GPI] Existing-member verification failed:",
+        error
+      );
+
+      setExistingMemberGpiError(
+        "Google confirmation was cancelled or failed. Nothing was copied."
+      );
+    } finally {
+      setShowSigninLoading(false);
+      setSigninProgress(100);
+      setExistingMemberGpiPending(false);
+    }
+  };
+
+
+  const performVerifyPlayer = async () => {
+    console.log("[GPI TRACE 1] handleVerifyPlayer entered", {
+      activeClubId,
+      selectedMemberId: selectedMember?.id || "",
+      selectedMemberEmail: selectedMember?.email || "",
+      currentUserEmail: auth.currentUser?.email || "",
+    });
+
+    const gpiPerfStartedAt =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
+    let gpiPerfMark = gpiPerfStartedAt;
+
+    const logGpiPerf = (step) => {
+      const now =
+        globalThis.performance?.now?.() ??
+        Date.now();
+
+      console.log("[GPI PERF]", {
+        step,
+        segmentMs:
+          Math.round(now - gpiPerfMark),
+        totalMs:
+          Math.round(now - gpiPerfStartedAt),
+      });
+
+      gpiPerfMark = now;
+    };
+
     setVerifyError("");
     setVerifyStatus("");
+
+    setSigninProgress(8);
+    setSigninStatus("Preparing your football profile...");
+    setShowSigninLoading(true);
+
 
     if (!selectedMember) {
       setVerifyError(`Please select your name on the ${activeClubName} list.`);
@@ -2267,6 +2839,11 @@ export function EntryPage({
       try {
         await signInWithGoogle();
         u = auth.currentUser;
+
+        logGpiPerf("google-authentication");
+
+        setSigninProgress(35);
+        setSigninStatus("Google account verified...");
       } catch (err) {
         console.error("Sign in cancelled/failed:", err);
         setVerifyError("Sign-in was cancelled or failed. Please try again.");
@@ -2279,6 +2856,13 @@ export function EntryPage({
         "Could not read your Google email. Please try again or contact admin."
       );
       return;
+    }
+
+    if (auth.currentUser && gpiPerfMark === gpiPerfStartedAt) {
+      logGpiPerf("google-already-authenticated");
+
+      setSigninProgress(35);
+      setSigninStatus("Google account verified...");
     }
 
     const googleEmail = u.email.toLowerCase().trim();
@@ -2343,7 +2927,36 @@ export function EntryPage({
       `Welcome, ${selectedMember.shortName}! Your email has been verified.`
     );
 
-    const memberSnap = await getDoc(memberDocRef(activeClubId, selectedMember.id));
+    logGpiPerf("club-member-verification");
+
+    setSigninProgress(55);
+    setSigninStatus("Verifying your club membership...");
+
+    const memberReadStartedAt =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
+    const memberSnap = await getDoc(
+      memberDocRef(
+        activeClubId,
+        selectedMember.id
+      )
+    );
+
+    console.log("[GPI PERF]", {
+      step: "member-document-read",
+      segmentMs: Math.round(
+        (globalThis.performance?.now?.() ?? Date.now()) -
+        memberReadStartedAt
+      ),
+    });
+
+    setSigninProgress(65);
+    setSigninStatus("Loading your football profile...");
+
+    gpiPerfMark =
+      globalThis.performance?.now?.() ??
+      Date.now();
     const memberData = memberSnap.exists() ? memberSnap.data() || {} : {};
 
     const completionPayload = {
@@ -2369,6 +2982,10 @@ export function EntryPage({
      * migration existed. In that case, recover the matching source profile
      * once during sign-in, then copy confirmed details into this club.
      */
+    const destinationPhotoStartedAt =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
     const destinationExistingPhoto =
       await findExistingPhotoDataByIdentity(
         {
@@ -2379,158 +2996,415 @@ export function EntryPage({
         activeClubId
       );
 
+    console.log("[GPI PERF]", {
+      step: "destination-photo-lookup",
+      segmentMs: Math.round(
+        (globalThis.performance?.now?.() ?? Date.now()) -
+        destinationPhotoStartedAt
+      ),
+    });
+
+    setSigninProgress(74);
+    setSigninStatus("Preparing your player identity...");
+
+    gpiPerfMark =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
     let sourceIdentityCandidate = null;
+    let gpiResolution = null;
 
-    if (
-      !destinationExistingPhoto ||
-      !normalizeWhatsAppNumber(memberData.whatsappNumber || "")
-    ) {
-      const identityNameParts = String(
-        selectedMember.fullName || ""
-      )
-        .trim()
-        .replace(/\s+/g, " ")
-        .split(" ")
-        .filter(Boolean);
+    /*
+     * Global identity discovery is independent of whether this particular
+     * club profile is complete.
+     *
+     * Identity is permanent; profile-completion prompts are club-specific.
+     */
+    try {
+      const identityResolutionStartedAt =
+        globalThis.performance?.now?.() ??
+        Date.now();
 
-      if (identityNameParts.length >= 2) {
+      gpiResolution =
+        await resolvePlayerIdentity({
+          email: googleEmail,
+          excludeClubId: activeClubId,
+        });
+
+      sourceIdentityCandidate =
+        gpiResolution.bestProfile || null;
+
+      console.log("[GPI PERF]", {
+        step: "cross-club-gpi-resolution",
+        segmentMs: Math.round(
+          (globalThis.performance?.now?.() ?? Date.now()) -
+          identityResolutionStartedAt
+        ),
+        matchCount:
+          gpiResolution.matchCount || 0,
+      });
+
+      setSigninProgress(86);
+      setSigninStatus("Connecting your football identity...");
+
+      gpiPerfMark =
+        globalThis.performance?.now?.() ??
+        Date.now();
+
+      /*
+       * Some historical profiles store the portrait separately from the
+       * member record. Recover it before deciding which identity is richest.
+       */
+      if (
+        sourceIdentityCandidate?.clubId &&
+        !sourceIdentityCandidate.photoData &&
+        !sourceIdentityCandidate.photoUrl
+      ) {
         try {
-          const candidates =
-            await findCandidatePlatformIdentity({
-              firstName: identityNameParts[0],
-              surname: identityNameParts.slice(1).join(" "),
-              email: googleEmail,
-            });
+          const recoveredSourcePhoto =
+            await findExistingPhotoDataByIdentity(
+              {
+                fullName:
+                  sourceIdentityCandidate.fullName ||
+                  selectedMember.fullName,
+                shortName:
+                  sourceIdentityCandidate.shortName ||
+                  selectedMember.shortName,
+                playerId:
+                  sourceIdentityCandidate.playerId ||
+                  "",
+              },
+              sourceIdentityCandidate.clubId
+            );
 
-          sourceIdentityCandidate =
-            candidates.find(
-              (candidate) =>
-                candidate.clubId &&
-                candidate.clubId !== activeClubId
-            ) || null;
+          const recoveredPhoto =
+            recoveredSourcePhoto?.photoData ||
+            recoveredSourcePhoto ||
+            "";
+
+          if (recoveredPhoto) {
+            sourceIdentityCandidate = {
+              ...sourceIdentityCandidate,
+              photoData: recoveredPhoto,
+              photoUrl: recoveredPhoto,
+            };
+          }
         } catch (error) {
           console.warn(
-            "[EntryPage] Could not recover an existing cross-club profile:",
+            "[GPI] Could not recover source profile photo:",
             error
           );
         }
       }
+
+      console.log(
+        "[GPI TRACE 3] resolver result",
+        {
+          googleEmail,
+          matchCount:
+            gpiResolution.matchCount,
+          bestProfile:
+            sourceIdentityCandidate,
+        }
+      );
+
+      console.log(
+        "[GPI][Stage 1B Resolution]",
+        {
+          email: googleEmail,
+          activeClubId,
+          matchCount:
+            gpiResolution.matchCount,
+          sourceClubId:
+            sourceIdentityCandidate?.clubId ||
+            "",
+          sourceMemberId:
+            sourceIdentityCandidate?.memberId ||
+            "",
+          hasSourcePhoto: Boolean(
+            sourceIdentityCandidate?.photoData ||
+            sourceIdentityCandidate?.photoUrl
+          ),
+          hasSourcePhone: Boolean(
+            sourceIdentityCandidate?.whatsappNumber ||
+            sourceIdentityCandidate?.phoneNumber
+          ),
+        }
+      );
+    } catch (error) {
+      console.warn(
+        "[GPI] Could not resolve existing cross-club profile:",
+        error
+      );
     }
 
     /*
-     * The platform identity lookup may find the correct member while failing
-     * to attach the separately stored playerPhotos document. Before showing
-     * the reminder, directly recover the photo from the confirmed source club.
+     * Stage 2 permanent identity lifecycle.
+     *
+     * This runs for EVERY successfully authenticated member.
+     * It is deliberately independent of whether this club needs
+     * a photo or phone reminder.
      */
-    if (
-      sourceIdentityCandidate?.clubId &&
-      !sourceIdentityCandidate.photoData &&
-      !sourceIdentityCandidate.photoUrl
-    ) {
-      try {
-        const recoveredSourcePhoto =
-          await findExistingPhotoDataByIdentity(
-            {
-              fullName:
-                sourceIdentityCandidate.fullName ||
-                selectedMember.fullName,
-              shortName:
-                sourceIdentityCandidate.shortName ||
-                selectedMember.shortName,
-              playerId:
-                sourceIdentityCandidate.playerId ||
-                "",
-            },
-            sourceIdentityCandidate.clubId
-          );
+    const platformPlayerPersistenceAllowed =
+      canPersistPlatformPlayerForCurrentUser();
 
-        if (recoveredSourcePhoto?.photoData) {
-          sourceIdentityCandidate = {
-            ...sourceIdentityCandidate,
-            photoData: recoveredSourcePhoto.photoData,
-            photoUrl: recoveredSourcePhoto.photoData,
-          };
+    const platformPlayerStartedAt =
+      globalThis.performance?.now?.() ??
+      Date.now();
 
-          console.log(
-            "[EntryPage] Recovered source profile photo:",
-            sourceIdentityCandidate.clubId,
-            recoveredSourcePhoto.id
-          );
-        }
-      } catch (error) {
-        console.warn(
-          "[EntryPage] Could not directly recover source profile photo:",
-          error
-        );
+    const platformPlayerResult =
+      await coordinatePlatformPlayer({
+        authenticatedUser:
+          auth.currentUser,
+        reusableProfile:
+          sourceIdentityCandidate,
+        currentMember: {
+          ...selectedMember,
+          email: googleEmail,
+          uid: u.uid,
+          whatsappNumber:
+            memberData.whatsappNumber ||
+            selectedMember.whatsappNumber ||
+            "",
+          phoneNumber:
+            memberData.phoneNumber ||
+            selectedMember.phoneNumber ||
+            "",
+          photoUrl:
+            destinationExistingPhoto?.photoData ||
+            destinationExistingPhoto ||
+            selectedMember.photoUrl ||
+            "",
+        },
+        destinationClubId:
+          activeClubId,
+        persistenceAllowed:
+          platformPlayerPersistenceAllowed,
+      });
+
+    console.log("[GPI PERF]", {
+      step: "platform-player-coordinator",
+      segmentMs: Math.round(
+        (globalThis.performance?.now?.() ?? Date.now()) -
+        platformPlayerStartedAt
+      ),
+      action:
+        platformPlayerResult.plan.action,
+      firestoreExecuted:
+        platformPlayerResult.firestoreExecuted,
+    });
+
+    setSigninProgress(96);
+    setSigninStatus("Preparing your session...");
+
+    gpiPerfMark =
+      globalThis.performance?.now?.() ??
+      Date.now();
+
+    console.log(
+      "[GPI Stage 2 Runtime]",
+      {
+        action:
+          platformPlayerResult.plan.action,
+        documentId:
+          platformPlayerResult.plan.documentId ||
+          "",
+        safeToWrite:
+          platformPlayerResult.plan.safeToWrite,
+        writeGateEnabled:
+          GPI_PLATFORM_PLAYER_WRITE_ENABLED,
+        singleUserAllowed:
+          platformPlayerPersistenceAllowed,
+        allowedEmailConfigured:
+          Boolean(
+            GPI_PLATFORM_PLAYER_WRITE_EMAIL
+          ),
+        firestoreExecuted:
+          platformPlayerResult.firestoreExecuted,
       }
-    }
+    );
 
     const inheritedWhatsApp =
       sourceIdentityCandidate?.whatsappNumber ||
       sourceIdentityCandidate?.phoneNumber ||
       "";
 
-    const continueToApp = () => {
-      const savedWhatsApp = normalizeWhatsAppNumber(
-        memberData.whatsappNumber ||
-        inheritedWhatsApp ||
-        ""
+    const inheritedPhoto =
+      sourceIdentityCandidate?.photoData ||
+      sourceIdentityCandidate?.photoUrl ||
+      "";
+
+    const currentWhatsApp =
+      normalizeWhatsAppNumber(
+        memberData.whatsappNumber || ""
       );
+
+    const reuseDecision =
+      evaluateProfileReuse({
+        destinationPhoto:
+          destinationExistingPhoto?.photoData ||
+          destinationExistingPhoto ||
+          "",
+        destinationPhone:
+          currentWhatsApp,
+        sourcePhoto:
+          inheritedPhoto,
+        sourcePhone:
+          inheritedWhatsApp,
+        sourceCandidate:
+          sourceIdentityCandidate,
+      });
+
+    const continueToApp = () => {
+      const savedWhatsApp =
+        normalizeWhatsAppNumber(
+          memberData.whatsappNumber ||
+          ""
+        );
+
       if (!savedWhatsApp) {
         setWhatsAppReminderContext({
           ...completionPayload,
-          onContinue: () => onComplete({
-            ...completionPayload,
-            whatsappNumber: normalizeWhatsAppNumber(whatsAppInput || savedWhatsApp || ""),
-          }),
+          onContinue: () =>
+            onComplete({
+              ...completionPayload,
+              whatsappNumber:
+                normalizeWhatsAppNumber(
+                  whatsAppInput ||
+                  savedWhatsApp ||
+                  ""
+                ),
+            }),
         });
+
         setWhatsAppInput(savedWhatsApp);
         setWhatsAppReminderError("");
-        setWhatsAppReminderStatus(
-          inheritedWhatsApp
-            ? "We found this number on your existing profile. Confirm it to copy it into this club."
-            : ""
-        );
+        setWhatsAppReminderStatus("");
         setShowWhatsAppReminderModal(true);
         return;
       }
 
-      onComplete(completionPayload);
+      onComplete({
+        ...completionPayload,
+        whatsappNumber:
+          savedWhatsApp,
+      });
     };
 
-    const existingPhoto = destinationExistingPhoto;
+    console.log(
+      "[GPI][Stage 1B Decision]",
+      {
+        email: googleEmail,
+        shouldOfferReuse:
+          reuseDecision.shouldOfferReuse,
+        canImprovePhoto:
+          reuseDecision.canImprovePhoto,
+        canImprovePhone:
+          reuseDecision.canImprovePhone,
+      }
+    );
 
-    if (!existingPhoto) {
-      const inheritedPhoto =
-        sourceIdentityCandidate?.photoData ||
-        sourceIdentityCandidate?.photoUrl ||
-        "";
+    console.log("[GPI TRACE 4] reuse decision reached", {
+      sourceIdentityCandidate,
+      destinationExistingPhoto,
+      currentWhatsApp,
+      inheritedPhoto: Boolean(inheritedPhoto),
+      inheritedWhatsApp: Boolean(inheritedWhatsApp),
+      reuseDecision,
+    });
 
+    if (reuseDecision.shouldOfferReuse) {
+      console.log("[GPI TRACE 5] GPI offer SHOULD OPEN");
+
+      setExistingMemberGpiError("");
+
+      setExistingMemberGpiOffer({
+        candidate:
+          sourceIdentityCandidate,
+        completionPayload,
+        memberId:
+          selectedMember.id,
+        playerId:
+          playerId || "",
+        destinationExistingPhoto,
+        currentWhatsApp:
+          memberData.whatsappNumber || "",
+        inheritedPhoto,
+        inheritedWhatsApp,
+        continueToApp,
+      });
+
+      /*
+       * CRITICAL:
+       * returning here prevents the old photo reminder
+       * from opening before GPI consent.
+       */
+      return;
+    }
+
+    if (!destinationExistingPhoto) {
       setPhotoReminderContext({
         ...completionPayload,
-        inheritedProfile: Boolean(inheritedPhoto),
-        sourceClubName:
-          sourceIdentityCandidate?.clubName || "",
+        inheritedProfile: false,
+        sourceClubName: "",
         onContinue: continueToApp,
       });
 
-      setPhotoReminderPreview(inheritedPhoto);
+      setPhotoReminderPreview("");
       setPhotoReminderFile(null);
-      setPhotoReminderStatus(
-        inheritedPhoto
-          ? `We found your existing profile photo${
-              sourceIdentityCandidate?.clubName
-                ? ` from ${sourceIdentityCandidate.clubName}`
-                : ""
-            }. Confirm it to copy it into ${activeClubName}.`
-          : ""
-      );
+      setPhotoReminderStatus("");
       setPhotoReminderError("");
-      setShowPhotoReminderModal(true);
+      console.log("[GPI TRACE PHOTO MODAL] old photo reminder opened", {
+          activeClubId,
+          selectedMemberId: selectedMember?.id || "",
+          selectedMemberEmail: selectedMember?.email || "",
+          currentUserEmail: auth.currentUser?.email || "",
+          stack: new Error().stack,
+        });
+        setShowPhotoReminderModal(true);
       return;
     }
 
     continueToApp();
+  };
+
+
+  const handleVerifyPlayer = async () => {
+    /*
+     * Do not launch the full-screen splash for instant validation
+     * errors. Let the existing handler show its normal error text.
+     */
+    if (
+      !selectedMember ||
+      selectedMember.status === "pending" ||
+      selectedMember.status === "rejected"
+    ) {
+      await performVerifyPlayer();
+      return;
+    }
+
+    setSigninProgress(8);
+    setSigninStatus("Connecting to Google...");
+    setShowSigninLoading(true);
+
+    /*
+     * Give React one paint before opening Google's authentication
+     * flow so the player sees immediate feedback.
+     */
+    await new Promise((resolve) =>
+      window.requestAnimationFrame(() => resolve())
+    );
+
+    try {
+      await performVerifyPlayer();
+    } finally {
+      setSigninProgress(100);
+      setSigninStatus("Ready. Entering your football world...");
+
+      window.setTimeout(() => {
+        setShowSigninLoading(false);
+      }, 320);
+    }
   };
 
   const handleSaveReminderPhoto = async () => {
@@ -3890,6 +4764,63 @@ export function EntryPage({
 
   return (
     <div className="page entry-page">
+      {showSigninLoading ? (
+        <LoadingSplash
+          progress={signinProgress}
+          message={signinStatus}
+          title={
+            <>
+              <span style={{ display: "block" }}>
+                Signing you in...
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  marginTop: "0.18rem",
+                }}
+              >
+                {activeClubName}
+              </span>
+            </>
+          }
+          kicker="5 Asides Near Me"
+          image="/session/official-session-bg.png"
+          imageAlt="Official football session"
+          ariaLabel="Signing you into 5 Asides Near Me"
+          steps={[
+            {
+              icon: "👤",
+              label: "Connecting to Google",
+              state:
+                signinProgress >= 35
+                  ? "done"
+                  : "active",
+            },
+            {
+              icon: "⚽",
+              label: "Verifying your football identity",
+              state:
+                signinProgress >= 86
+                  ? "done"
+                  : signinProgress >= 35
+                    ? "active"
+                    : "",
+            },
+            {
+              icon: "🏟️",
+              label: "Preparing your session",
+              state:
+                signinProgress >= 100
+                  ? "done"
+                  : signinProgress >= 86
+                    ? "active"
+                    : "",
+            },
+          ]}
+          footerLead="Club-first football. Built for players."
+          footerStrong=" Powered by community."
+        />
+      ) : null}
       <style>{`
         @keyframes tkNoticeFloat { 0%, 100% { transform: translateY(0) scale(1); } 45% { transform: translateY(-5px) scale(1.035); } }
         @keyframes tkNoticePulse { 0% { box-shadow: 0 0 0 0 rgba(34,211,238,0.44), 0 18px 48px rgba(2,6,23,0.45); } 70% { box-shadow: 0 0 0 14px rgba(34,211,238,0), 0 18px 48px rgba(2,6,23,0.45); } 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0), 0 18px 48px rgba(2,6,23,0.45); } }
@@ -4905,6 +5836,202 @@ export function EntryPage({
                 onClick={handleSaveWhatsAppReminder}
               >
                 Save number & continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {existingMemberGpiOffer && (
+        <div className="modal-backdrop">
+          <div
+            className="modal"
+            style={{ maxWidth: "540px" }}
+          >
+            <span style={rejoiningBadgeStyle}>
+              Existing profile found
+            </span>
+
+            <h3 style={{ marginTop: "0.8rem" }}>
+              Reuse your player profile?
+            </h3>
+
+            <p
+              className="muted small"
+              style={{ marginTop: "0.35rem" }}
+            >
+              Your profile in{" "}
+              <strong>
+                {existingMemberGpiOffer
+                  .candidate?.clubName ||
+                  existingMemberGpiOffer
+                    .candidate?.clubId ||
+                  "another club"}
+              </strong>{" "}
+              has information that is missing
+              from this club.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "1rem",
+                marginTop: "1rem",
+                padding: "0.85rem",
+                borderRadius: "16px",
+                background:
+                  "rgba(15,23,42,0.58)",
+                border:
+                  "1px solid rgba(45,212,191,0.28)",
+              }}
+            >
+              {existingMemberGpiOffer
+                .inheritedPhoto ? (
+                <img
+                  src={
+                    existingMemberGpiOffer
+                      .inheritedPhoto
+                  }
+                  alt="Existing player profile"
+                  style={{
+                    width: "78px",
+                    height: "90px",
+                    borderRadius: "14px",
+                    objectFit: "cover",
+                    flex: "0 0 auto",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "78px",
+                    height: "90px",
+                    borderRadius: "14px",
+                    display: "grid",
+                    placeItems: "center",
+                    background:
+                      "rgba(30,41,59,0.75)",
+                    fontSize: "1.7rem",
+                  }}
+                >
+                  👤
+                </div>
+              )}
+
+              <div
+                style={{
+                  minWidth: 0,
+                  display: "grid",
+                  gap: "0.22rem",
+                }}
+              >
+                <strong>
+                  {existingMemberGpiOffer
+                    .candidate?.fullName ||
+                    existingMemberGpiOffer
+                      .completionPayload?.fullName}
+                </strong>
+
+                <small>
+                  {maskGpiEmail(
+                    existingMemberGpiOffer
+                      .candidate?.email || ""
+                  )}
+                </small>
+
+                {existingMemberGpiOffer
+                  .inheritedWhatsApp ? (
+                  <small>
+                    Phone:{" "}
+                    {maskGpiPhone(
+                      existingMemberGpiOffer
+                        .inheritedWhatsApp
+                    )}
+                  </small>
+                ) : null}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gap: "0.4rem",
+                marginTop: "1rem",
+              }}
+            >
+              {!existingMemberGpiOffer
+                .destinationExistingPhoto &&
+              existingMemberGpiOffer
+                .inheritedPhoto ? (
+                <div className="success-text">
+                  ✓ Profile photo available
+                </div>
+              ) : null}
+
+              {!normalizeWhatsAppNumber(
+                existingMemberGpiOffer
+                  .currentWhatsApp || ""
+              ) &&
+              normalizeWhatsAppNumber(
+                existingMemberGpiOffer
+                  .inheritedWhatsApp || ""
+              ) ? (
+                <div className="success-text">
+                  ✓ Phone number available
+                </div>
+              ) : null}
+            </div>
+
+            <p
+              className="muted small"
+              style={{ marginTop: "0.9rem" }}
+            >
+              Google will confirm that you
+              control the Gmail account attached
+              to this player profile before
+              anything is copied.
+            </p>
+
+            {existingMemberGpiError ? (
+              <p
+                className="error-text"
+                style={{ marginTop: "0.65rem" }}
+              >
+                {existingMemberGpiError}
+              </p>
+            ) : null}
+
+            <div
+              className="actions-row"
+              style={{ marginTop: "1rem" }}
+            >
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={
+                  declineExistingMemberGpiOffer
+                }
+                disabled={
+                  existingMemberGpiPending
+                }
+              >
+                Not now
+              </button>
+
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={
+                  acceptExistingMemberGpiOffer
+                }
+                disabled={
+                  existingMemberGpiPending
+                }
+              >
+                {existingMemberGpiPending
+                  ? "Confirming with Google..."
+                  : "Yes, use my profile"}
               </button>
             </div>
           </div>

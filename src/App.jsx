@@ -2253,21 +2253,42 @@ function isInsideClubWeeklyWindow(weeklyPlayTime, now = new Date()) {
 const FANM_TESTING_DEPLOYMENT =
   import.meta.env.VITE_FANM_TESTING_SITE === "true";
 
+const FANM_DEVELOPMENT_DEPLOYMENT =
+  import.meta.env.VITE_FANM_DEVELOPMENT_SITE === "true";
+
+const FANM_ENVIRONMENT_BADGE = FANM_DEVELOPMENT_DEPLOYMENT
+  ? {
+      className: "fanm-environment-badge fanm-environment-badge--development",
+      ariaLabel: "Development version",
+      icon: "🛠️",
+      title: "DEV VERSION",
+      subtitle: "fanm-development",
+    }
+  : FANM_TESTING_DEPLOYMENT
+    ? {
+        className: "fanm-environment-badge fanm-environment-badge--testing",
+        ariaLabel: "Testing site",
+        icon: "🧪",
+        title: "TESTING SITE",
+        subtitle: "fanm-testing",
+      }
+    : null;
+
 export default function App() {
   useEffect(() => {
-    if (!FANM_TESTING_DEPLOYMENT || typeof document === "undefined") {
+    if (!FANM_ENVIRONMENT_BADGE || typeof document === "undefined") {
       return undefined;
     }
 
     const badge = document.createElement("div");
-    badge.className = "fanm-testing-site-badge";
+    badge.className = FANM_ENVIRONMENT_BADGE.className;
     badge.setAttribute("role", "status");
-    badge.setAttribute("aria-label", "Testing site");
+    badge.setAttribute("aria-label", FANM_ENVIRONMENT_BADGE.ariaLabel);
     badge.innerHTML = `
-      <span class="fanm-testing-site-badge__icon" aria-hidden="true">🧪</span>
-      <span class="fanm-testing-site-badge__copy">
-        <strong>TESTING SITE</strong>
-        <small>fanm-testing</small>
+      <span class="fanm-environment-badge__icon" aria-hidden="true">${FANM_ENVIRONMENT_BADGE.icon}</span>
+      <span class="fanm-environment-badge__copy">
+        <strong>${FANM_ENVIRONMENT_BADGE.title}</strong>
+        <small>${FANM_ENVIRONMENT_BADGE.subtitle}</small>
       </span>
     `;
 
@@ -2705,6 +2726,8 @@ export default function App() {
   );
   const [currentConfirmedLineupSnapshot, setCurrentConfirmedLineupSnapshot] =
     useState(null);
+  const [currentConfirmedLineupTimeline, setCurrentConfirmedLineupTimeline] =
+    useState([]);
   const [confirmedLineupsByMatchNo, setConfirmedLineupsByMatchNo] = useState(
     {}
   );
@@ -3868,6 +3891,7 @@ export default function App() {
     setHasLiveMatch(false);
     setPendingMatchStartContext(null);
     setCurrentConfirmedLineupSnapshot(null);
+    setCurrentConfirmedLineupTimeline([]);
 
     if (USE_V2) {
       updateActiveSeason((prevSeason) => ({
@@ -4464,15 +4488,87 @@ export default function App() {
         ...prev,
         [activeMatchNo]: safeSnapshot,
       }));
+
+      setCurrentConfirmedLineupTimeline((previous) => {
+        const safePrevious = Array.isArray(previous)
+          ? previous
+          : [];
+
+        const elapsedSeconds =
+          safePrevious.length === 0
+            ? 0
+            : Math.max(
+                0,
+                Number(matchSeconds || 0) -
+                  Number(secondsLeft || 0)
+              );
+
+        const entry = {
+          timeSeconds: elapsedSeconds,
+          snapshots: safeSnapshot,
+        };
+
+        const withoutSameTimestamp = safePrevious.filter(
+          (item) =>
+            Number(item?.timeSeconds) !==
+            Number(elapsedSeconds)
+        );
+
+        return [
+          ...withoutSameTimestamp,
+          entry,
+        ].sort(
+          (a, b) =>
+            Number(a?.timeSeconds || 0) -
+            Number(b?.timeSeconds || 0)
+        );
+      });
     }
 
     if (USE_V2 && safeSnapshot) {
-      updateActiveSeason((prevSeason) => ({
-        ...prevSeason,
-        liveMatchDraft: touchLiveMatchDraft(prevSeason.liveMatchDraft, {
-          confirmedLineupSnapshot: safeSnapshot,
-        }),
-      }));
+      updateActiveSeason((prevSeason) => {
+        const existingTimeline = Array.isArray(
+          prevSeason?.liveMatchDraft?.lineupTimeline
+        )
+          ? prevSeason.liveMatchDraft.lineupTimeline
+          : [];
+
+        const elapsedSeconds =
+          existingTimeline.length === 0
+            ? 0
+            : Math.max(
+                0,
+                Number(matchSeconds || 0) -
+                  Number(secondsLeft || 0)
+              );
+
+        const nextTimeline = [
+          ...existingTimeline.filter(
+            (item) =>
+              Number(item?.timeSeconds) !==
+              Number(elapsedSeconds)
+          ),
+          {
+            timeSeconds: elapsedSeconds,
+            snapshots: safeSnapshot,
+          },
+        ].sort(
+          (a, b) =>
+            Number(a?.timeSeconds || 0) -
+            Number(b?.timeSeconds || 0)
+        );
+
+        return {
+          ...prevSeason,
+          liveMatchDraft: touchLiveMatchDraft(
+            prevSeason.liveMatchDraft,
+            {
+              confirmedLineupSnapshot: safeSnapshot,
+              lineupTimeline: nextTimeline,
+            }
+          ),
+        };
+      });
     }
 
     setPendingMatchStartContext(null);
@@ -4651,6 +4747,14 @@ export default function App() {
                     Number(secondsLeft || 0)
                 ),
                 verifiedLineups,
+                lineupTimeline:
+                  currentConfirmedLineupTimeline.length
+                    ? currentConfirmedLineupTimeline
+                    : Array.isArray(
+                        prevSeason?.liveMatchDraft?.lineupTimeline
+                      )
+                      ? prevSeason.liveMatchDraft.lineupTimeline
+                      : [],
               }).map((event) => ({ ...event, ...matchMeta }))
             : buildCleanSheetEventsForMatch({
                 matchNo,
@@ -4832,6 +4936,7 @@ export default function App() {
       setHasLiveMatch(false);
       setPendingMatchStartContext(null);
       setCurrentConfirmedLineupSnapshot(null);
+      setCurrentConfirmedLineupTimeline([]);
       writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
         console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
       });
@@ -4890,6 +4995,14 @@ export default function App() {
                   Number(secondsLeft || 0)
               ),
               verifiedLineups,
+              lineupTimeline:
+                currentConfirmedLineupTimeline.length
+                  ? currentConfirmedLineupTimeline
+                  : Array.isArray(
+                      prev?.liveMatchDraft?.lineupTimeline
+                    )
+                    ? prev.liveMatchDraft.lineupTimeline
+                    : [],
             }).map((event) => ({ ...event, ...matchMeta }))
           : buildCleanSheetEventsForMatch({
               matchNo,
@@ -5130,37 +5243,343 @@ export default function App() {
   const handleUpdateSavedEvent = (eventId, updatedFields) => {
     if (!USE_V2) return;
 
+    const safeEventId = String(eventId || "").trim();
+    if (!safeEventId) return;
+
     updateActiveSeason((prevSeason) => {
+      /*
+       * League events still live directly on season.allEvents.
+       */
       const safeAllEvents = Array.isArray(prevSeason?.allEvents)
         ? prevSeason.allEvents
         : [];
-      const targetEvent = safeAllEvents.find(
-        (e) => String(e?.id) === String(eventId)
-      );
-      if (!targetEvent) return prevSeason;
 
-      const nextAllEvents = safeAllEvents.map((e) =>
-        String(e?.id) === String(eventId)
-          ? {
-              ...e,
-              ...updatedFields,
-            }
-          : e
+      const leagueTargetEvent = safeAllEvents.find(
+        (e) => String(e?.id || "") === safeEventId
       );
 
-      const safeResults = Array.isArray(prevSeason?.results)
-        ? prevSeason.results
+      if (leagueTargetEvent) {
+        const nextAllEvents = safeAllEvents.map((e) =>
+          String(e?.id || "") === safeEventId
+            ? {
+                ...e,
+                ...updatedFields,
+              }
+            : e
+        );
+
+        const safeResults = Array.isArray(prevSeason?.results)
+          ? prevSeason.results
+          : [];
+
+        const nextResults = safeResults.map((r) =>
+          Number(r?.matchNo) === Number(leagueTargetEvent?.matchNo)
+            ? buildUpdatedResultFromEvents(r, nextAllEvents)
+            : r
+        );
+
+        return {
+          ...prevSeason,
+          allEvents: nextAllEvents,
+          results: nextResults,
+        };
+      }
+
+      /*
+       * Completed Friendly events live inside
+       * friendlyMatchDayHistory[].allEvents.
+       */
+      const safeFriendlyHistory = Array.isArray(
+        prevSeason?.friendlyMatchDayHistory
+      )
+        ? prevSeason.friendlyMatchDayHistory
         : [];
-      const nextResults = safeResults.map((r) =>
-        Number(r?.matchNo) === Number(targetEvent?.matchNo)
-          ? buildUpdatedResultFromEvents(r, nextAllEvents)
-          : r
-      );
+
+      let friendlyEventFound = false;
+
+      const nextFriendlyHistory = safeFriendlyHistory.map((day) => {
+        const dayEvents = Array.isArray(day?.allEvents)
+          ? day.allEvents
+          : [];
+
+        const targetEvent = dayEvents.find(
+          (e) => String(e?.id || "") === safeEventId
+        );
+
+        if (!targetEvent) return day;
+
+        friendlyEventFound = true;
+
+        const nextEvents = dayEvents.map((e) =>
+          String(e?.id || "") === safeEventId
+            ? {
+                ...e,
+                ...updatedFields,
+              }
+            : e
+        );
+
+        const dayResults = Array.isArray(day?.results)
+          ? day.results
+          : [];
+
+        const nextResults = dayResults.map((r) =>
+          Number(r?.matchNo) === Number(targetEvent?.matchNo)
+            ? buildUpdatedResultFromEvents(r, nextEvents)
+            : r
+        );
+
+        return {
+          ...day,
+          allEvents: nextEvents,
+          results: nextResults,
+        };
+      });
+
+      if (!friendlyEventFound) {
+        console.warn(
+          "[TK STATS EDIT] Saved event not found:",
+          safeEventId
+        );
+        return prevSeason;
+      }
 
       return {
         ...prevSeason,
-        allEvents: nextAllEvents,
-        results: nextResults,
+        friendlyMatchDayHistory: nextFriendlyHistory,
+      };
+    });
+  };
+
+
+  const handleRedistributeFriendlyDefensiveBlocks = ({
+    matchDayId = "",
+    matchNo = 0,
+    matchType: requestedMatchType = "FRIENDLY",
+    transfers = [],
+  } = {}) => {
+    if (!USE_V2) return;
+
+    if (
+      normalizeMatchMode(
+        requestedMatchType,
+        MATCH_TYPE.FRIENDLY
+      ) !== MATCH_TYPE.FRIENDLY
+    ) {
+      console.warn(
+        "[DB TRANSFER] Blocked non-Friendly redistribution request."
+      );
+      return;
+    }
+
+    const safeTransfers = (
+      Array.isArray(transfers) ? transfers : []
+    )
+      .map((transfer) => ({
+        teamId: String(transfer?.teamId || "").trim(),
+        from: String(transfer?.from || "").trim(),
+        to: String(transfer?.to || "").trim(),
+      }))
+      .filter(
+        (transfer) =>
+          transfer.teamId &&
+          transfer.from &&
+          transfer.to &&
+          transfer.from !== transfer.to
+      );
+
+    if (!safeTransfers.length) return;
+
+    const requestedDayId = String(matchDayId || "").trim();
+    const requestedMatchNo = Number(matchNo || 0);
+
+    const applyTransfersToEvents = (events = []) => {
+      let nextEvents = Array.isArray(events)
+        ? events.map((event) => ({ ...event }))
+        : [];
+
+      let appliedCount = 0;
+
+      safeTransfers.forEach((transfer) => {
+        const candidates = nextEvents
+          .map((event, index) => ({ event, index }))
+          .filter(({ event }) => {
+            const holder = String(
+              event?.playerName ||
+                event?.scorer ||
+                ""
+            ).trim();
+
+            return (
+              String(event?.type || "")
+                .trim()
+                .toLowerCase() === "defensive_block" &&
+              Number(event?.matchNo) ===
+                requestedMatchNo &&
+              String(event?.teamId || "") ===
+                transfer.teamId &&
+              holder === transfer.from
+            );
+          })
+          .sort((a, b) => {
+            const blockA = Number(
+              a.event?.blockIndex ??
+                a.event?.blockNumber ??
+                999999
+            );
+            const blockB = Number(
+              b.event?.blockIndex ??
+                b.event?.blockNumber ??
+                999999
+            );
+
+            if (blockA !== blockB) return blockA - blockB;
+
+            return (
+              Number(a.event?.timeSeconds || 0) -
+              Number(b.event?.timeSeconds || 0)
+            );
+          });
+
+        const candidate = candidates[0];
+
+        if (!candidate) {
+          return;
+        }
+
+        const oldEvent = nextEvents[candidate.index];
+
+        nextEvents[candidate.index] = {
+          ...oldEvent,
+
+          /*
+           * Preserve the original role, block number,
+           * time interval and team. Only ownership moves.
+           */
+          playerName: transfer.to,
+          scorer: transfer.to,
+
+          manualDbCorrection: true,
+          manualDbCorrectionLatestFrom: transfer.from,
+          manualDbCorrectionLatestTo: transfer.to,
+          manualDbCorrectionAt:
+            new Date().toISOString(),
+
+          manualDbTransferHistory: [
+            ...(
+              Array.isArray(
+                oldEvent?.manualDbTransferHistory
+              )
+                ? oldEvent.manualDbTransferHistory
+                : []
+            ),
+            {
+              from: transfer.from,
+              to: transfer.to,
+              at: new Date().toISOString(),
+            },
+          ],
+        };
+
+        appliedCount += 1;
+      });
+
+      return {
+        events: nextEvents,
+        appliedCount,
+      };
+    };
+
+    updateActiveSeason((prevSeason) => {
+      const safeFriendlyHistory = Array.isArray(
+        prevSeason?.friendlyMatchDayHistory
+      )
+        ? prevSeason.friendlyMatchDayHistory
+        : [];
+
+      let historyAppliedCount = 0;
+
+      const nextFriendlyHistory =
+        safeFriendlyHistory.map((day) => {
+          const dayId = String(
+            day?.id ||
+              day?.matchDayId ||
+              day?.date ||
+              ""
+          ).trim();
+
+          if (
+            requestedDayId &&
+            dayId &&
+            dayId !== requestedDayId
+          ) {
+            return day;
+          }
+
+          const result = applyTransfersToEvents(
+            day?.allEvents
+          );
+
+          if (!result.appliedCount) return day;
+
+          historyAppliedCount += result.appliedCount;
+
+          return {
+            ...day,
+            allEvents: result.events,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+      /*
+       * Archived Friendly history is the preferred target.
+       * If no archived event matched, fall back to the active
+       * allEvents collection for the current Friendly week.
+       */
+      if (historyAppliedCount > 0) {
+        if (
+          historyAppliedCount !== safeTransfers.length
+        ) {
+          console.warn(
+            "[DB TRANSFER] Not every requested archived transfer could be applied.",
+            {
+              requested: safeTransfers.length,
+              applied: historyAppliedCount,
+              matchDayId: requestedDayId,
+              matchNo: requestedMatchNo,
+            }
+          );
+        }
+
+        return {
+          ...prevSeason,
+          friendlyMatchDayHistory:
+            nextFriendlyHistory,
+        };
+      }
+
+      const currentResult = applyTransfersToEvents(
+        prevSeason?.allEvents
+      );
+
+      if (
+        currentResult.appliedCount !==
+        safeTransfers.length
+      ) {
+        console.warn(
+          "[DB TRANSFER] Not every requested current transfer could be applied.",
+          {
+            requested: safeTransfers.length,
+            applied: currentResult.appliedCount,
+            matchDayId: requestedDayId,
+            matchNo: requestedMatchNo,
+          }
+        );
+      }
+
+      return {
+        ...prevSeason,
+        allEvents: currentResult.events,
       };
     });
   };
@@ -5168,32 +5587,99 @@ export default function App() {
   const handleDeleteSavedEvent = (eventId) => {
     if (!USE_V2) return;
 
+    const safeEventId = String(eventId || "").trim();
+    if (!safeEventId) return;
+
     updateActiveSeason((prevSeason) => {
+      /*
+       * League event deletion.
+       */
       const safeAllEvents = Array.isArray(prevSeason?.allEvents)
         ? prevSeason.allEvents
         : [];
-      const targetEvent = safeAllEvents.find(
-        (e) => String(e?.id) === String(eventId)
-      );
-      if (!targetEvent) return prevSeason;
 
-      const nextAllEvents = safeAllEvents.filter(
-        (e) => String(e?.id) !== String(eventId)
+      const leagueTargetEvent = safeAllEvents.find(
+        (e) => String(e?.id || "") === safeEventId
       );
 
-      const safeResults = Array.isArray(prevSeason?.results)
-        ? prevSeason.results
+      if (leagueTargetEvent) {
+        const nextAllEvents = safeAllEvents.filter(
+          (e) => String(e?.id || "") !== safeEventId
+        );
+
+        const safeResults = Array.isArray(prevSeason?.results)
+          ? prevSeason.results
+          : [];
+
+        const nextResults = safeResults.map((r) =>
+          Number(r?.matchNo) === Number(leagueTargetEvent?.matchNo)
+            ? buildUpdatedResultFromEvents(r, nextAllEvents)
+            : r
+        );
+
+        return {
+          ...prevSeason,
+          allEvents: nextAllEvents,
+          results: nextResults,
+        };
+      }
+
+      /*
+       * Completed Friendly event deletion.
+       */
+      const safeFriendlyHistory = Array.isArray(
+        prevSeason?.friendlyMatchDayHistory
+      )
+        ? prevSeason.friendlyMatchDayHistory
         : [];
-      const nextResults = safeResults.map((r) =>
-        Number(r?.matchNo) === Number(targetEvent?.matchNo)
-          ? buildUpdatedResultFromEvents(r, nextAllEvents)
-          : r
-      );
+
+      let friendlyEventFound = false;
+
+      const nextFriendlyHistory = safeFriendlyHistory.map((day) => {
+        const dayEvents = Array.isArray(day?.allEvents)
+          ? day.allEvents
+          : [];
+
+        const targetEvent = dayEvents.find(
+          (e) => String(e?.id || "") === safeEventId
+        );
+
+        if (!targetEvent) return day;
+
+        friendlyEventFound = true;
+
+        const nextEvents = dayEvents.filter(
+          (e) => String(e?.id || "") !== safeEventId
+        );
+
+        const dayResults = Array.isArray(day?.results)
+          ? day.results
+          : [];
+
+        const nextResults = dayResults.map((r) =>
+          Number(r?.matchNo) === Number(targetEvent?.matchNo)
+            ? buildUpdatedResultFromEvents(r, nextEvents)
+            : r
+        );
+
+        return {
+          ...day,
+          allEvents: nextEvents,
+          results: nextResults,
+        };
+      });
+
+      if (!friendlyEventFound) {
+        console.warn(
+          "[TK STATS DELETE] Saved event not found:",
+          safeEventId
+        );
+        return prevSeason;
+      }
 
       return {
         ...prevSeason,
-        allEvents: nextAllEvents,
-        results: nextResults,
+        friendlyMatchDayHistory: nextFriendlyHistory,
       };
     });
   };
@@ -7623,9 +8109,16 @@ export default function App() {
           onUpdateSavedEvent={handleUpdateSavedEvent}
           onDeleteSavedEvent={handleDeleteSavedEvent}
           onAddSavedEvent={handleAddSavedEvent}
+          onRedistributeFriendlyDefensiveBlocks={
+            handleRedistributeFriendlyDefensiveBlocks
+          }
           onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
           canPreviewPreviousSeasonUI={canPreviewPreviousSeasonUI}
-          isAdmin={isAdmin}
+          isAdmin={Boolean(
+            isAdmin ||
+            realRole === "admin"
+          )}
+          identity={pageIdentity}
           matchType={matchType}
         />
       )}

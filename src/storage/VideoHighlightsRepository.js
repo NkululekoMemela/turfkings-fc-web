@@ -23,7 +23,14 @@ import {
 } from "firebase/storage";
 
 import { db, storage } from "../firebaseConfig.js";
-import { curateHighlights } from "../core/VideoHighlightCuration.js";
+import {
+  curateHighlights,
+  buildVoteCounts,
+  getHighlightId,
+  getHighlightType,
+  getHighlightVoteCount,
+  HIGHLIGHT_TYPES,
+} from "../core/VideoHighlightCuration.js";
 import { getClubDoc } from "../core/clubFirestorePaths.js";
 import { CLUB_COLLECTIONS, DEFAULT_CLUB_ID } from "../core/clubPaths.js";
 
@@ -402,6 +409,7 @@ export async function toggleHighlightLike({
   matchId,
   clipId,
   userId,
+  userName = "",
   clubId = "",
   category = "",
 } = {}) {
@@ -429,6 +437,7 @@ export async function toggleHighlightLike({
     matchId: String(matchId),
     clipId: String(clipId),
     userId: String(userId),
+    userName: String(userName || ""),
     clubId: String(clubId || ""),
     category: String(category || ""),
     likedAtISO,
@@ -1264,6 +1273,228 @@ export async function clearRawHighlightsFromFirebase(matchId) {
 }
 
 // ============================
+// CURRENT CLUB AWARD LEADERS
+// ============================
+//
+// Development / in-season source of truth for:
+//   - Puskas Award leader
+//   - Skill of the Season leader
+//   - Save of the Season leader
+//
+// This is intentionally provisional while a season is active.
+// Final season winners can later replace these leaders without
+// requiring NewsPage to calculate awards independently.
+//
+export async function loadCurrentAwardLeadersFromFirebase(
+  clubId,
+  { visibilityDays = 5 } = {}
+) {
+  const safeClubId =
+    String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
+    DEFAULT_CLUB_ID;
+
+  const highlights =
+    await loadRecentClubHighlightsFromFirebase(
+      safeClubId,
+      { visibilityDays }
+    );
+
+  const safeHighlights = Array.isArray(highlights)
+    ? highlights.filter(Boolean)
+    : [];
+
+  if (!safeHighlights.length) {
+    return {
+      puskas: null,
+      skill: null,
+      save: null,
+      highlights: [],
+      likeCounts: {},
+    };
+  }
+
+  const matchIds = Array.from(
+    new Set(
+      safeHighlights
+        .map((highlight) =>
+          String(highlight?.matchId || "").trim()
+        )
+        .filter(Boolean)
+    )
+  );
+
+  /*
+   * IMPORTANT:
+   *
+   * VideoHighlightsPage currently builds its Top Voted selection
+   * with:
+   *
+   *   buildArchiveSelection(
+   *     approvedHighlights,
+   *     localVotesByUser,
+   *     likeCountsByClip
+   *   )
+   *
+   * Because likeCountsByClip is supplied as directLikeCounts,
+   * those live like counts become the ranking values.
+   *
+   * News deliberately mirrors that exact behaviour.
+   */
+  let likeCounts = {};
+
+  if (matchIds.length) {
+    try {
+      const result =
+        await loadHighlightLikesForMatchesFromFirebase(
+          matchIds
+        );
+
+      likeCounts =
+        result?.countsByClip &&
+        typeof result.countsByClip === "object"
+          ? result.countsByClip
+          : {};
+    } catch (error) {
+      console.warn(
+        "[CURRENT AWARD LEADERS] Could not load likes:",
+        error
+      );
+    }
+  }
+
+  const getId = (highlight = {}) =>
+    String(
+      highlight.clipId ||
+      highlight.id ||
+      highlight.highlightId ||
+      ""
+    ).trim();
+
+  const getLikeCount = (highlight = {}) =>
+    Math.max(
+      0,
+      Number(likeCounts[getId(highlight)] || 0)
+    );
+
+  const getCreatedTime = (highlight = {}) => {
+    const firestoreValue =
+      highlight.createdAt ||
+      highlight.createdAtServer ||
+      highlight.uploadedAt ||
+      highlight.timestamp;
+
+    const firestoreMs =
+      firestoreValue?.toMillis?.() ||
+      firestoreValue?.toDate?.()?.getTime?.();
+
+    if (Number.isFinite(Number(firestoreMs))) {
+      return Number(firestoreMs);
+    }
+
+    const parsed = new Date(
+      highlight.createdAtISO ||
+      highlight.createdAt ||
+      highlight.uploadedAtISO ||
+      highlight.uploadedAt ||
+      highlight.timestamp ||
+      0
+    ).getTime();
+
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const isApproved = (highlight = {}) => {
+    const status = String(
+      highlight.status ||
+      highlight.moderationStatus ||
+      highlight.reviewStatus ||
+      "approved"
+    )
+      .trim()
+      .toLowerCase();
+
+    return status === "approved";
+  };
+
+  /*
+   * Exact Top Voted ranking rule:
+   *   1. Highest live like count
+   *   2. Newest clip on a tie
+   */
+  const rank = (items = []) =>
+    items
+      .filter(isApproved)
+      .slice()
+      .sort((a, b) => {
+        const likeDiff =
+          getLikeCount(b) - getLikeCount(a);
+
+        if (likeDiff !== 0) return likeDiff;
+
+        return (
+          getCreatedTime(b) -
+          getCreatedTime(a)
+        );
+      });
+
+  const goals = [];
+  const skills = [];
+  const saves = [];
+
+  safeHighlights.forEach((highlight) => {
+    const type = getHighlightType(highlight);
+
+    if (type === HIGHLIGHT_TYPES.GOAL) {
+      goals.push(highlight);
+    } else if (type === HIGHLIGHT_TYPES.SKILL) {
+      skills.push(highlight);
+    } else if (type === HIGHLIGHT_TYPES.SAVE) {
+      saves.push(highlight);
+    }
+  });
+
+  const decorateLeader = (
+    highlight,
+    awardKey
+  ) => {
+    if (!highlight) return null;
+
+    const likeCount = getLikeCount(highlight);
+
+    return {
+      ...highlight,
+      awardKey,
+      currentAwardLeader: true,
+      likeCount,
+
+      /*
+       * Keep this compatibility field because NewsPage already
+       * reads voteCount. It now deliberately reflects the same
+       * live Top Voted count shown in Videos.
+       */
+      voteCount: likeCount,
+    };
+  };
+
+  return {
+    puskas: decorateLeader(
+      rank(goals)[0] || null,
+      "puskas"
+    ),
+    skill: decorateLeader(
+      rank(skills)[0] || null,
+      "skill_of_season"
+    ),
+    save: decorateLeader(
+      rank(saves)[0] || null,
+      "save_of_season"
+    ),
+    highlights: safeHighlights,
+    likeCounts,
+  };
+}
+
+// ============================
 // CLUB FEATURED HIGHLIGHT
 // ============================
 
@@ -1717,6 +1948,7 @@ const VideoHighlightsRepository = {
   loadRawHighlightsFromFirebase,
   loadArchivedHighlightsFromFirebase,
   loadRecentClubHighlightsFromFirebase,
+  loadCurrentAwardLeadersFromFirebase,
   loadVideoCleanupQueueFromFirebase,
   toggleHighlightLike,
   loadHighlightLikesFromFirebase,

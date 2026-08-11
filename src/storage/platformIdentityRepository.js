@@ -141,6 +141,102 @@ export function calculateIdentityConfidence(candidate = {}, identity = {}) {
   return score;
 }
 
+
+export async function findPlatformIdentitiesByEmail(emailValue = "") {
+  const email = normalizeEmail(emailValue);
+
+  if (!email) return [];
+
+  console.log("[GPI Repository] Looking up authenticated email:", email);
+
+  const membersSnap = await getDocs(
+    query(
+      collectionGroup(db, "members"),
+      where("email", "==", email)
+    )
+  );
+
+  const rawCandidates = [];
+
+  membersSnap.forEach((memberSnap) => {
+    const data = memberSnap.data() || {};
+    const names = splitFullName(data.fullName || data.name || "");
+
+    rawCandidates.push({
+      memberId: memberSnap.id,
+      clubId: memberSnap.ref.parent.parent?.id || "",
+      firstName: names.firstName,
+      surname: names.surname,
+      fullName:
+        String(data.fullName || "").trim() ||
+        [names.firstName, names.surname].filter(Boolean).join(" "),
+      shortName: String(data.shortName || "").trim(),
+      email: normalizeEmail(data.email),
+      phoneNumber: String(data.phoneNumber || "").trim(),
+      whatsappNumber: String(data.whatsappNumber || "").trim(),
+      photoUrl: String(
+        data.photoUrl ||
+        data.profilePhotoUrl ||
+        data.avatarUrl ||
+        ""
+      ).trim(),
+      uid: String(data.uid || "").trim(),
+      platformIdentityUid: String(
+        data.platformIdentityUid || ""
+      ).trim(),
+      playerId: String(data.playerId || "").trim(),
+    });
+  });
+
+  const candidates = await Promise.all(
+    rawCandidates.map(async (candidate) => {
+      let clubName = candidate.clubId;
+
+      if (candidate.clubId) {
+        try {
+          const clubSnap = await getDoc(
+            doc(db, "clubs", candidate.clubId)
+          );
+
+          if (clubSnap.exists()) {
+            const clubData = clubSnap.data() || {};
+            clubName = String(
+              clubData.name ||
+              clubData.clubName ||
+              candidate.clubId
+            ).trim();
+          }
+        } catch (error) {
+          console.warn(
+            "[GPI Repository] Could not load source club:",
+            candidate.clubId,
+            error
+          );
+        }
+      }
+
+      const photoData = await loadSourcePlayerPhoto(candidate);
+
+      return {
+        ...candidate,
+        clubName,
+        photoData,
+        photoUrl: candidate.photoUrl || photoData,
+        gpiIdentityMatch: "email",
+      };
+    })
+  );
+
+  console.log("[GPI Repository] Email memberships found:", {
+    email,
+    count: candidates.length,
+    clubs: candidates.map((candidate) => candidate.clubId),
+  });
+
+  return candidates;
+}
+
+
 export async function findCandidatePlatformIdentity(identity = {}) {
   const email = normalizeEmail(identity.email);
   const firstName = normalizeText(identity.firstName);

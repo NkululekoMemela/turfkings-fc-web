@@ -25,6 +25,7 @@ import {
   upsertKitOrder,
   removeKitOrder,
 } from "../storage/firebaseRepository.js";
+import VideoHighlightsRepository from "../storage/VideoHighlightsRepository.js";
 
 const BAD_MATCH_NUMBERS = new Set();
 
@@ -287,7 +288,295 @@ export function NewsPage({
   const [playerCanonicalMap, setPlayerCanonicalMap] = useState({});
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
   const [newsSeasonState, setNewsSeasonState] = useState(null);
+
+  const [awardHighlightLeaders, setAwardHighlightLeaders] = useState({
+    puskas: null,
+    skill: null,
+    save: null,
+  });
+  const [awardHighlightsLoading, setAwardHighlightsLoading] = useState(false);
+  const [activeAwardHighlightIndex, setActiveAwardHighlightIndex] = useState(0);
+
+  const awardCarouselRef = useRef(null);
+  const awardCardRefs = useRef([]);
+  const awardVideoRefs = useRef([]);
+
   const { normalizeName } = useMemberNameMap(Array.isArray(members) ? members : []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAwardHighlightLeaders() {
+      try {
+        setAwardHighlightsLoading(true);
+
+        const leaders =
+          await VideoHighlightsRepository
+            .loadCurrentAwardLeadersFromFirebase(
+              safeActiveClubId,
+              { visibilityDays: 5 }
+            );
+
+        if (cancelled) return;
+
+        setAwardHighlightLeaders({
+          puskas: leaders?.puskas || null,
+          skill: leaders?.skill || null,
+          save: leaders?.save || null,
+        });
+
+        setActiveAwardHighlightIndex(0);
+      } catch (error) {
+        console.warn(
+          "[NewsPage] Could not load current award highlight leaders:",
+          error
+        );
+
+        if (!cancelled) {
+          setAwardHighlightLeaders({
+            puskas: null,
+            skill: null,
+            save: null,
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setAwardHighlightsLoading(false);
+        }
+      }
+    }
+
+    loadAwardHighlightLeaders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [safeActiveClubId]);
+
+  const rotatingAwardHighlights = useMemo(() => {
+    const getVideoUrl = (clip) =>
+      String(
+        clip?.videoUrl ||
+        clip?.downloadUrl ||
+        clip?.mediaUrl ||
+        clip?.fileUrl ||
+        clip?.uri ||
+        ""
+      ).trim();
+
+    const getPlayerName = (clip) =>
+      normalizeName(
+        clip?.playerName ||
+        clip?.goalScorerName ||
+        clip?.scorer ||
+        clip?.keeperName ||
+        clip?.skillPlayer ||
+        ""
+      );
+
+    return [
+      {
+        key: "puskas",
+        title: "Puskas Award",
+        icon: "🏆",
+        clip: awardHighlightLeaders.puskas,
+      },
+      {
+        key: "skill",
+        title: "Skill of the Season",
+        icon: "✨",
+        clip: awardHighlightLeaders.skill,
+      },
+      {
+        key: "save",
+        title: "Save of the Season",
+        icon: "🧤",
+        clip: awardHighlightLeaders.save,
+      },
+    ]
+      .filter((item) => item.clip && getVideoUrl(item.clip))
+      .map((item) => ({
+        ...item,
+        videoUrl: getVideoUrl(item.clip),
+        playerName: getPlayerName(item.clip),
+        voteCount: Number(
+          item.clip?.voteCount ||
+          item.clip?.votes ||
+          0
+        ),
+      }));
+  }, [
+    awardHighlightLeaders,
+    normalizeName,
+  ]);
+
+  useEffect(() => {
+    if (rotatingAwardHighlights.length <= 1) {
+      setActiveAwardHighlightIndex(0);
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setActiveAwardHighlightIndex((current) =>
+        (current + 1) % rotatingAwardHighlights.length
+      );
+    }, 14000);
+
+    return () => window.clearInterval(timer);
+  }, [rotatingAwardHighlights.length]);
+
+  useEffect(() => {
+    if (
+      activeAwardHighlightIndex >=
+      rotatingAwardHighlights.length
+    ) {
+      setActiveAwardHighlightIndex(0);
+    }
+  }, [
+    activeAwardHighlightIndex,
+    rotatingAwardHighlights.length,
+  ]);
+
+  /*
+   * Keep the active award card centred and play only its video.
+   * Active video plays naturally from the beginning.
+   * Carousel movement is horizontal only and must never move the page.
+   */
+  useEffect(() => {
+    if (!rotatingAwardHighlights.length) return;
+
+    const container =
+      awardCarouselRef.current;
+
+    const card =
+      awardCardRefs.current[
+        activeAwardHighlightIndex
+      ];
+
+    if (container && card) {
+      const targetLeft =
+        card.offsetLeft -
+        (container.clientWidth - card.offsetWidth) / 2;
+
+      container.scrollTo({
+        left: Math.max(0, targetLeft),
+        behavior: "smooth",
+      });
+    }
+
+    awardVideoRefs.current.forEach((video, index) => {
+      if (!video) return;
+
+      if (index !== activeAwardHighlightIndex) {
+        try {
+          video.pause();
+        } catch {}
+        return;
+      }
+
+      const startActiveVideo = async () => {
+        try {
+          video.muted = true;
+          await video.play();
+        } catch {
+          /*
+           * Some browsers can still reject autoplay.
+           * Native video controls remain available as fallback.
+           */
+        }
+      };
+
+      if (video.readyState >= 1) {
+        startActiveVideo();
+      } else {
+        video.addEventListener(
+          "loadedmetadata",
+          startActiveVideo,
+          { once: true }
+        );
+      }
+    });
+  }, [
+    activeAwardHighlightIndex,
+    rotatingAwardHighlights,
+  ]);
+
+  const moveAwardHighlight = useCallback(
+    (direction) => {
+      const count = rotatingAwardHighlights.length;
+      if (!count) return;
+
+      setActiveAwardHighlightIndex((current) => {
+        const next =
+          direction > 0
+            ? (current + 1) % count
+            : (current - 1 + count) % count;
+
+        return next;
+      });
+    },
+    [rotatingAwardHighlights.length]
+  );
+
+  const awardScrollTimerRef = useRef(null);
+
+  const syncAwardIndexFromScroll = useCallback(() => {
+    const container = awardCarouselRef.current;
+
+    if (
+      !container ||
+      !rotatingAwardHighlights.length
+    ) {
+      return;
+    }
+
+    if (awardScrollTimerRef.current) {
+      window.clearTimeout(
+        awardScrollTimerRef.current
+      );
+    }
+
+    awardScrollTimerRef.current =
+      window.setTimeout(() => {
+        const containerRect =
+          container.getBoundingClientRect();
+
+        const centre =
+          containerRect.left +
+          containerRect.width / 2;
+
+        let closestIndex = 0;
+        let closestDistance =
+          Number.POSITIVE_INFINITY;
+
+        awardCardRefs.current.forEach(
+          (card, index) => {
+            if (!card) return;
+
+            const rect =
+              card.getBoundingClientRect();
+
+            const cardCentre =
+              rect.left + rect.width / 2;
+
+            const distance =
+              Math.abs(cardCentre - centre);
+
+            if (distance < closestDistance) {
+              closestDistance = distance;
+              closestIndex = index;
+            }
+          }
+        );
+
+        setActiveAwardHighlightIndex(
+          (current) =>
+            current === closestIndex
+              ? current
+              : closestIndex
+        );
+      }, 140);
+  }, [rotatingAwardHighlights.length]);
 
   const shortDisplayByNormalized = useMemo(() => {
     const out = {};
@@ -3390,6 +3679,357 @@ Votes for this poll will no longer be shown.`
               </strong>
             </div>
           </div>
+        </section>
+      )}
+
+      {(awardHighlightsLoading || rotatingAwardHighlights.length > 0) && (
+        <section
+          className="card"
+          style={{
+            padding: "1rem",
+            overflow: "hidden",
+            border: "1px solid rgba(250,204,21,0.22)",
+            background:
+              "linear-gradient(145deg, rgba(8,15,31,0.98), rgba(15,23,42,0.98))",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.65rem",
+              marginBottom: "0.8rem",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                minWidth: 0,
+              }}
+            >
+              <span style={{ fontSize: "1.15rem" }}>🏆</span>
+
+              <strong
+                style={{
+                  color: "#facc15",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  fontSize: "0.84rem",
+                }}
+              >
+                Awards Watch
+              </strong>
+            </div>
+
+            {rotatingAwardHighlights.length > 1 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                }}
+              >
+                <span
+                  style={{
+                    color: "#cbd5e1",
+                    fontSize: "0.72rem",
+                    fontWeight: 800,
+                  }}
+                >
+                  {activeAwardHighlightIndex + 1} /{" "}
+                  {rotatingAwardHighlights.length}
+                </span>
+
+                <button
+                  type="button"
+                  aria-label="Previous award"
+                  onClick={() => moveAwardHighlight(-1)}
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "999px",
+                    border: "1px solid rgba(148,163,184,0.3)",
+                    background: "rgba(15,23,42,0.9)",
+                    color: "#f8fafc",
+                    cursor: "pointer",
+                    fontSize: "1rem",
+                  }}
+                >
+                  ‹
+                </button>
+
+                <button
+                  type="button"
+                  aria-label="Next award"
+                  onClick={() => moveAwardHighlight(1)}
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "999px",
+                    border: "1px solid rgba(148,163,184,0.3)",
+                    background: "rgba(15,23,42,0.9)",
+                    color: "#f8fafc",
+                    cursor: "pointer",
+                    fontSize: "1rem",
+                  }}
+                >
+                  ›
+                </button>
+              </div>
+            )}
+          </div>
+
+          {awardHighlightsLoading &&
+          rotatingAwardHighlights.length === 0 ? (
+            <p className="muted" style={{ margin: 0 }}>
+              Loading awards race…
+            </p>
+          ) : (
+            <>
+              <div
+                ref={awardCarouselRef}
+                onScroll={syncAwardIndexFromScroll}
+                style={{
+                  display: "flex",
+                  gap: "0.85rem",
+                  overflowX: "auto",
+                  scrollSnapType: "x mandatory",
+                  scrollBehavior: "smooth",
+                  WebkitOverflowScrolling: "touch",
+                  overscrollBehaviorX: "contain",
+                  scrollbarWidth: "none",
+
+                  /*
+                   * Premium mobile safe gutter:
+                   * keeps the active award card border/glow away from
+                   * the clipping edge on narrow phone screens.
+                   */
+                  padding: "4px 7px 0.35rem",
+                  scrollPaddingInline: "7px",
+                }}
+              >
+                {rotatingAwardHighlights.map(
+                  (highlight, index) => {
+                    const isActive =
+                      index === activeAwardHighlightIndex;
+
+                    const isPuskas =
+                      highlight.key === "puskas";
+                    const isSkill =
+                      highlight.key === "skill";
+
+                    const accent = isPuskas
+                      ? "#facc15"
+                      : isSkill
+                      ? "#e879f9"
+                      : "#4ade80";
+
+                    const awardLabel = isPuskas
+                      ? "Puskas Award"
+                      : isSkill
+                      ? "Skill of the Season"
+                      : "Save of the Season";
+
+                    const headline = highlight.playerName
+                      ? isPuskas
+                        ? `${highlight.playerName} leads the Puskas race`
+                        : isSkill
+                        ? `${highlight.playerName} tops the skills race`
+                        : `${highlight.playerName} leads the save race`
+                      : isPuskas
+                      ? "The goal leading the Puskas race"
+                      : isSkill
+                      ? "The moment leading the skills race"
+                      : "The stop leading the save race";
+
+                    return (
+                      <article
+                        key={highlight.key}
+                        ref={(node) => {
+                          awardCardRefs.current[index] = node;
+                        }}
+                        onClick={() =>
+                          setActiveAwardHighlightIndex(index)
+                        }
+                        style={{
+                          flex:
+                            "0 0 min(calc(100% - 24px), 430px)",
+                          scrollSnapAlign: "center",
+                          overflow: "hidden",
+                          boxSizing: "border-box",
+                          borderRadius: "16px",
+                          border: isActive
+                            ? `2px solid ${accent}`
+                            : "1px solid rgba(148,163,184,0.24)",
+                          background:
+                            "linear-gradient(160deg, rgba(20,29,48,0.98), rgba(8,15,29,0.98))",
+                          boxShadow: isActive
+                            ? `0 0 22px ${accent}30`
+                            : "none",
+                          transition:
+                            "border-color 180ms ease, box-shadow 180ms ease",
+                        }}
+                      >
+                        <div
+                          style={{
+                            padding: "0.9rem 0.9rem 0.8rem",
+                          }}
+                        >
+                          <div
+                            style={{
+                              color: accent,
+                              fontWeight: 900,
+                              fontSize: "0.76rem",
+                              letterSpacing: "0.07em",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {isPuskas
+                              ? "🏆"
+                              : isSkill
+                              ? "✨"
+                              : "🧤"}{" "}
+                            {awardLabel}
+                          </div>
+
+                          <h3
+                            style={{
+                              margin: "0.45rem 0 0",
+                              color: "#f8fafc",
+                              fontSize: "1.2rem",
+                              lineHeight: 1.12,
+                            }}
+                          >
+                            {headline}
+                          </h3>
+
+                          <div
+                            style={{
+                              marginTop: "0.65rem",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "0.26rem 0.55rem",
+                              borderRadius: "999px",
+                              border: `1px solid ${accent}60`,
+                              background: `${accent}14`,
+                              color: accent,
+                              fontWeight: 900,
+                              fontSize: "0.72rem",
+                            }}
+                          >
+                            {highlight.voteCount}{" "}
+                            vote
+                            {highlight.voteCount === 1
+                              ? ""
+                              : "s"}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            background: "transparent",
+                            position: "relative",
+                            padding: "0 10px 10px",
+                          }}
+                        >
+                          <video
+                            ref={(node) => {
+                              awardVideoRefs.current[index] =
+                                node;
+                            }}
+                            src={highlight.videoUrl}
+                            controls
+                            muted
+                            playsInline
+                            preload="metadata"
+                            onEnded={() => {
+                              if (
+                                index ===
+                                activeAwardHighlightIndex
+                              ) {
+                                moveAwardHighlight(1);
+                              }
+                            }}
+                            style={{
+                              display: "block",
+                              width: "100%",
+                              maxWidth: "100%",
+                              aspectRatio: "16 / 9",
+                              background: "#000",
+                              objectFit: "cover",
+                              borderRadius: "14px",
+                              overflow: "hidden",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        </div>
+                      </article>
+                    );
+                  }
+                )}
+              </div>
+
+              {rotatingAwardHighlights.length > 1 && (
+                <div
+                  style={{
+                    marginTop: "0.7rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.4rem",
+                  }}
+                >
+                  {rotatingAwardHighlights.map(
+                    (item, index) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        aria-label={`Show ${item.title}`}
+                        onClick={() =>
+                          setActiveAwardHighlightIndex(index)
+                        }
+                        style={{
+                          width:
+                            index ===
+                            activeAwardHighlightIndex
+                              ? "24px"
+                              : "8px",
+                          height: "8px",
+                          padding: 0,
+                          border: "none",
+                          borderRadius: "999px",
+                          cursor: "pointer",
+                          background:
+                            index ===
+                            activeAwardHighlightIndex
+                              ? "#facc15"
+                              : "rgba(148,163,184,0.45)",
+                          transition:
+                            "width 180ms ease",
+                        }}
+                      />
+                    )
+                  )}
+                </div>
+              )}
+
+              <div
+                style={{
+                  marginTop: "0.55rem",
+                  textAlign: "center",
+                  color: "#94a3b8",
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                }}
+              >
+                Next award in 14 seconds • swipe or tap to
+                move faster
+              </div>
+            </>
+          )}
         </section>
       )}
 

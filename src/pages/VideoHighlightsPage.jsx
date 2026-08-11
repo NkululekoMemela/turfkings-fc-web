@@ -1,6 +1,7 @@
 // src/pages/VideoHighlightsPage.jsx
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import ReactionUsersSheet from "../components/ReactionUsersSheet.jsx";
 import { createPortal } from "react-dom";
 import VideoHighlightsRepository, {
   saveRawHighlightDoc,
@@ -655,6 +656,8 @@ function HighlightCard({
   showVoteLabel = false,
   canAttachToChat = false,
   currentUserKey = "",
+  likerUsers = [],
+  onShowLikes,
   onLike,
   onApprove,
   onReject,
@@ -669,6 +672,55 @@ function HighlightCard({
     left: 0,
   });
   const shareButtonRef = useRef(null);
+  const likeLongPressTimerRef = useRef(null);
+  const likeLongPressTriggeredRef = useRef(false);
+
+  const cancelLikeLongPress = () => {
+    if (likeLongPressTimerRef.current) {
+      window.clearTimeout(likeLongPressTimerRef.current);
+      likeLongPressTimerRef.current = null;
+    }
+  };
+
+  const startLikeLongPress = () => {
+    if (!Number(likeCount || 0)) return;
+
+    cancelLikeLongPress();
+    likeLongPressTriggeredRef.current = false;
+
+    likeLongPressTimerRef.current = window.setTimeout(() => {
+      likeLongPressTriggeredRef.current = true;
+
+      try {
+        navigator.vibrate?.(35);
+      } catch {
+        // Vibration is optional.
+      }
+
+      onShowLikes?.(highlight, likerUsers);
+    }, 450);
+  };
+
+  const handleLikeClick = (event) => {
+    cancelLikeLongPress();
+
+    if (likeLongPressTriggeredRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      likeLongPressTriggeredRef.current = false;
+      return;
+    }
+
+    onLike?.(highlight);
+  };
+
+  const handleLikeContextMenu = (event) => {
+    if (!Number(likeCount || 0)) return;
+
+    event.preventDefault();
+    cancelLikeLongPress();
+    onShowLikes?.(highlight, likerUsers);
+  };
   const missingBadges = getMissingBadges(highlight);
   const matchupLabel = getMatchupLabel(highlight, teams, matchType);
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
@@ -1021,7 +1073,12 @@ function HighlightCard({
               className={`tkh-btn tkh-btn-vote ${
                 isLiked ? "is-selected" : ""
               }`}
-              onClick={() => onLike?.(highlight)}
+              onPointerDown={startLikeLongPress}
+              onPointerUp={cancelLikeLongPress}
+              onPointerCancel={cancelLikeLongPress}
+              onPointerLeave={cancelLikeLongPress}
+              onContextMenu={handleLikeContextMenu}
+              onClick={handleLikeClick}
               aria-pressed={isLiked}
             >
               {isLiked
@@ -1124,6 +1181,8 @@ export function VideoHighlightsPage({
   const [localVotesByUser, setLocalVotesByUser] = useState(votesByUser || {});
   const [likeCountsByClip, setLikeCountsByClip] = useState({});
   const [likedClipIds, setLikedClipIds] = useState(() => new Set());
+  const [highlightLikeRecords, setHighlightLikeRecords] = useState([]);
+  const [likeUsersViewer, setLikeUsersViewer] = useState(null);
   const [likesLoading, setLikesLoading] = useState(false);
   const [showVoteLabel, setShowVoteLabel] = useState(false);
   const [mainTab, setMainTab] = useState("currentWeek");
@@ -1347,6 +1406,7 @@ export function VideoHighlightsPage({
         if (!cancelled) {
           setLikeCountsByClip({});
           setLikedClipIds(new Set());
+          setHighlightLikeRecords([]);
         }
         return;
       }
@@ -1364,6 +1424,12 @@ export function VideoHighlightsPage({
 
         setLikeCountsByClip(
           result?.countsByClip || {}
+        );
+
+        setHighlightLikeRecords(
+          Array.isArray(result?.likes)
+            ? result.likes
+            : []
         );
 
         const myLikedClipIds =
@@ -1404,6 +1470,99 @@ export function VideoHighlightsPage({
     identityKey,
     resolvedMatchId,
   ]);
+
+  const normalizeLikeIdentity = (value) =>
+    String(value || "").trim().toLowerCase();
+
+  const resolveLikeUserName = (like = {}) => {
+    const directName = String(
+      like.userName || like.displayName || ""
+    ).trim();
+
+    if (directName) return directName;
+
+    const target = normalizeLikeIdentity(like.userId);
+
+    const matchedMember = (
+      Array.isArray(members) ? members : []
+    ).find((member) => {
+      const candidates = [
+        member?.uid,
+        member?.id,
+        member?.memberId,
+        member?.playerId,
+        member?.email,
+        member?.shortName,
+        member?.fullName,
+        member?.displayName,
+        member?.name,
+      ]
+        .map(normalizeLikeIdentity)
+        .filter(Boolean);
+
+      return candidates.includes(target);
+    });
+
+    if (matchedMember) {
+      return String(
+        matchedMember.shortName ||
+        matchedMember.fullName ||
+        matchedMember.displayName ||
+        matchedMember.name ||
+        matchedMember.email ||
+        "Club member"
+      );
+    }
+
+    if (target === normalizeLikeIdentity(identityKey)) {
+      return String(identityName || "You");
+    }
+
+    return String(like.userId || "Club member");
+  };
+
+  const getLikerUsersForClip = (highlight = {}) => {
+    const clipId = String(
+      highlight.clipId ||
+      highlight.id ||
+      highlight.highlightId ||
+      ""
+    ).trim();
+
+    if (!clipId) return [];
+
+    return highlightLikeRecords
+      .filter(
+        (like) =>
+          String(like?.clipId || "").trim() === clipId
+      )
+      .map((like) => ({
+        key: String(like.id || like.userId || ""),
+        name: resolveLikeUserName(like),
+      }));
+  };
+
+  const openLikeUsersViewer = (
+    highlight,
+    providedUsers = []
+  ) => {
+    const users =
+      Array.isArray(providedUsers) && providedUsers.length
+        ? providedUsers
+        : getLikerUsersForClip(highlight);
+
+    if (!users.length) return;
+
+    setLikeUsersViewer({
+      title: "Liked by",
+      groups: [
+        {
+          emoji: "❤️",
+          users,
+        },
+      ],
+    });
+  };
 
   const playerOptions = useMemo(
     () => buildPlayerOptions({ members, teams, highlights: allHighlights }),
@@ -2331,6 +2490,7 @@ export function VideoHighlightsPage({
             matchId: clipMatchId,
             clipId,
             userId: identityKey,
+            userName: identityName,
             clubId: activeClubId,
             category:
               highlight.normalizedType ||
@@ -3740,6 +3900,8 @@ export function VideoHighlightsPage({
                       typeof onAttachHighlightToClubChat === "function"
                     }
                     currentUserKey={identityKey}
+                    likerUsers={getLikerUsersForClip(highlight)}
+                    onShowLikes={openLikeUsersViewer}
                     onLike={toggleLike}
                     onApprove={handleApprove}
                     onReject={handleReject}
@@ -3814,6 +3976,8 @@ export function VideoHighlightsPage({
                               typeof onAttachHighlightToClubChat === "function"
                             }
                             currentUserKey={identityKey}
+                            likerUsers={getLikerUsersForClip(clip)}
+                            onShowLikes={openLikeUsersViewer}
                             onLike={toggleLike}
                             onApprove={handleApprove}
                             onReject={handleReject}
@@ -3838,6 +4002,13 @@ export function VideoHighlightsPage({
           <span>Best save: <strong>{archiveSelection.bestSave?.playerName || "Pending"}</strong></span>
         </div>
       </section>
+
+      <ReactionUsersSheet
+        open={Boolean(likeUsersViewer)}
+        title={likeUsersViewer?.title || "Liked by"}
+        groups={likeUsersViewer?.groups || []}
+        onClose={() => setLikeUsersViewer(null)}
+      />
 
       {identifyTarget && (
         <div className="tkh-modal-backdrop">
