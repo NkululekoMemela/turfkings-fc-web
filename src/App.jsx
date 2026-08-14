@@ -7812,7 +7812,7 @@ export default function App() {
 
                   try {
                     const runtime = await createPracticeRuntime({
-                      clubId: normalizedBaseClubId,
+                      clubId: activeClubId,
                     });
 
                     setCurrentConfirmedLineupSnapshot(null);

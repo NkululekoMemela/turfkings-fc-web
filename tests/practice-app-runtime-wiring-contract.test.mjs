@@ -21,7 +21,7 @@ test("App stores authoritative Practice runtime", () => {
 test("Practice selector starts authoritative runtime", () => {
   assert.match(
     source,
-    /await createPracticeRuntime\(\{\s*clubId:\s*normalizedBaseClubId/
+    /await createPracticeRuntime\(\{\s*clubId:\s*activeClubId/
   );
 });
 
