@@ -23,6 +23,8 @@ import {
   getPlayerDoc,
   getPendingSignupsCollection,
   getMatchSignupsCollection,
+  getScopedPendingSignupsCollection,
+  getScopedMatchSignupsCollection,
 } from "../core/clubFirestorePaths.js";
 import {
   MATCH_MODE,
@@ -743,6 +745,7 @@ export function SquadsPage({
   matchType = MATCH_MODE.FRIENDLY,
   gameFormat = GAME_FORMAT.FIVE_V_FIVE,
   activeClubId = "turf-kings",
+  dataScope = null,
   activeClub = null,
   isPracticeMode = false,
   activeSeasonId = null,
@@ -943,6 +946,9 @@ export function SquadsPage({
   }, []);
 
   useEffect(() => {
+    // Practice v2 keeps this administrative control session-local.
+    // Do not bind Practice to the real club's operational setting.
+    if (isPracticeMode) return undefined;
     if (!activeClubId) return undefined;
 
     const ref = doc(db, "clubs", activeClubId, "settings", "squadControls");
@@ -959,7 +965,7 @@ export function SquadsPage({
     );
 
     return () => unsub();
-  }, [activeClubId]);
+  }, [activeClubId, isPracticeMode]);
 
   const handleToggleCaptainEditLock = async () => {
     if (!isAdmin || !activeClubId) return;
@@ -967,6 +973,12 @@ export function SquadsPage({
     const nextLocked = !captainEditLocked;
 
     setCaptainEditLocked(nextLocked);
+
+    // Practice may exercise the control in-memory, but must never mutate
+    // the real club's settings/squadControls document.
+    if (isPracticeMode) {
+      return;
+    }
 
     try {
       await setDoc(
@@ -1229,8 +1241,16 @@ export function SquadsPage({
       setSignupRecords(Array.from(byDoc.values()));
     };
 
+    const pendingCollection = isPracticeMode
+      ? getScopedPendingSignupsCollection(db, dataScope)
+      : getPendingSignupsCollection(db, activeClubId);
+
+    const paidCollection = isPracticeMode
+      ? getScopedMatchSignupsCollection(db, dataScope)
+      : getMatchSignupsCollection(db, activeClubId);
+
     const unsubPending = onSnapshot(
-      getPendingSignupsCollection(db, activeClubId),
+      pendingCollection,
       (snap) => {
         pendingDocs = snap.docs.map((d) => ({
           docId: d.id,
@@ -1242,7 +1262,7 @@ export function SquadsPage({
     );
 
     const unsubPaid = onSnapshot(
-      getMatchSignupsCollection(db, activeClubId),
+      paidCollection,
       (snap) => {
         paidDocs = snap.docs.map((d) => ({
           docId: d.id,
@@ -1257,7 +1277,7 @@ export function SquadsPage({
       unsubPending();
       unsubPaid();
     };
-  }, [activeClubId]);
+  }, [activeClubId, isPracticeMode, dataScope]);
 
   const nextTeamsheetWeekId = useMemo(() => {
     const today = new Date();
@@ -1287,15 +1307,6 @@ export function SquadsPage({
   }, [signupRecords]);
 
   const paidTeamSheetPlayers = useMemo(() => {
-    if (isPracticeMode) {
-      return buildPracticePlayers().map((player) => ({
-        id: player.id,
-        fullName: player.fullName || player.displayName || player.name || player.id,
-        paymentStatus: "practice",
-        weekId: "practice",
-      }));
-    }
-
     if (!nextTeamsheetWeekId) {
       return [];
     }
@@ -1828,6 +1839,20 @@ export function SquadsPage({
       updatedAtMs: Date.now(),
     };
 
+    // Practice v2 safety boundary:
+    // Club Challenge fixtures are real inter-club operational records.
+    // Practice may exercise squad football state, but must never create
+    // a real shared challenge fixture or mutate participating clubs.
+    if (isPracticeMode) {
+      showPremiumAlert({
+        title: "Practice simulation",
+        message:
+          "Club Challenge fixture creation is disabled in Practice. No Official club or challenge record was changed.",
+        icon: "🛡️",
+      });
+      return;
+    }
+
     try {
       const batch = writeBatch(db);
 
@@ -1893,6 +1918,19 @@ export function SquadsPage({
 
   const handleSubmitChallengeChangeRequest = async () => {
     if (!canEdit || !activeChallengeFixture?.fixtureId) return;
+
+    // Practice v2 safety boundary:
+    // a challenge change request mutates real shared fixture records and
+    // can create a real notice for another club.
+    if (isPracticeMode) {
+      showPremiumAlert({
+        title: "Practice simulation",
+        message:
+          "Club Challenge change requests are disabled in Practice. No Official fixture or club notice was changed.",
+        icon: "🛡️",
+      });
+      return;
+    }
 
     const nextDate = String(challengeChangeDraft.proposedDate || "").trim();
     const nextKickoff = String(challengeChangeDraft.proposedKickoff || "").trim();
@@ -1998,6 +2036,19 @@ export function SquadsPage({
 
   const handleCancelChallenge = async () => {
     if (!canEdit || !activeChallengeFixture?.fixtureId) return;
+
+    // Practice v2 safety boundary:
+    // cancellation deletes real shared fixture records and creates real
+    // cancellation notices for participating clubs.
+    if (isPracticeMode) {
+      showPremiumAlert({
+        title: "Practice simulation",
+        message:
+          "Club Challenge cancellation is disabled in Practice. No Official fixture or club notice was changed.",
+        icon: "🛡️",
+      });
+      return;
+    }
 
     const reason = String(cancelChallengeReason || "").trim();
 
@@ -2479,6 +2530,16 @@ export function SquadsPage({
 
   const handleConfirmDeletePlayer = async () => {
     if (!canEdit) return;
+
+    // Practice v2 safety boundary:
+    // terminating membership is an Official club mutation and must never
+    // be performed from a disposable Practice session.
+    if (isPracticeMode) {
+      setDeletePlayerError(
+        "Membership changes are disabled in Practice. No Official player or member record was changed."
+      );
+      return;
+    }
     if (!pendingDeletePlayerId) return;
     if (!playersById.has(pendingDeletePlayerId)) return;
 
@@ -2639,9 +2700,13 @@ export function SquadsPage({
     const toMakeCaptain = [...newCaptainIds].filter((id) => !currentCaptainIds.has(id));
     const toRemoveCaptain = [...currentCaptainIds].filter((id) => !newCaptainIds.has(id));
 
-    try {
-      const batch = writeBatch(db);
-      for (const pid of toMakeCaptain) {
+    // Captain-role persistence changes Official player records.
+    // Practice may still change the disposable squad configuration below,
+    // but it must never promote/demote real club players.
+    if (!isPracticeMode) {
+      try {
+        const batch = writeBatch(db);
+        for (const pid of toMakeCaptain) {
         batch.set(
           getPlayerDoc(db, pid, activeClubId),
           {
@@ -2664,11 +2729,12 @@ export function SquadsPage({
         );
       }
 
-      await batch.commit();
-    } catch (err) {
-      console.error("[Squads] Error updating captain roles:", err);
-      setSaveError("Could not update captain roles in the database.");
-      return;
+        await batch.commit();
+      } catch (err) {
+        console.error("[Squads] Error updating captain roles:", err);
+        setSaveError("Could not update captain roles in the database.");
+        return;
+      }
     }
 
     onUpdateTeams?.(

@@ -110,6 +110,80 @@ export function getPendingSignupsCollection(db, clubId = DEFAULT_CLUB_ID) {
   return getClubCollection(db, CLUB_COLLECTIONS.pendingSignups, clubId);
 }
 
+// ---------------------------------------------------------
+// DATASCOPE-AWARE SIGNUP HELPERS
+//
+// Official:
+//   clubs/{clubId}/pendingSignups/{docId}
+//   clubs/{clubId}/matchSignups/{docId}
+//
+// Practice:
+//   sandboxes/practice/clubs/{clubId}
+//     /sessions/{practiceSessionId}/pendingSignups/{docId}
+//   sandboxes/practice/clubs/{clubId}
+//     /sessions/{practiceSessionId}/matchSignups/{docId}
+//
+// These helpers never infer Practice from club naming conventions.
+// ---------------------------------------------------------
+
+export function getScopedPendingSignupsCollection(db, dataScope) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return collection(
+    db,
+    dataScopeCollectionPath(
+      CLUB_COLLECTIONS.pendingSignups,
+      normalizedScope
+    )
+  );
+}
+
+export function getScopedPendingSignupDoc(
+  db,
+  docId,
+  dataScope
+) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return doc(
+    db,
+    dataScopeDocPath(
+      CLUB_COLLECTIONS.pendingSignups,
+      docId,
+      normalizedScope
+    )
+  );
+}
+
+export function getScopedMatchSignupsCollection(db, dataScope) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return collection(
+    db,
+    dataScopeCollectionPath(
+      CLUB_COLLECTIONS.matchSignups,
+      normalizedScope
+    )
+  );
+}
+
+export function getScopedMatchSignupDoc(
+  db,
+  docId,
+  dataScope
+) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return doc(
+    db,
+    dataScopeDocPath(
+      CLUB_COLLECTIONS.matchSignups,
+      docId,
+      normalizedScope
+    )
+  );
+}
+
 export function getPeerRatingsCollection(db, clubId = DEFAULT_CLUB_ID) {
   return getClubCollection(db, CLUB_COLLECTIONS.peerRatings, clubId);
 }

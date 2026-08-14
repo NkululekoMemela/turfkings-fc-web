@@ -2110,7 +2110,18 @@ export function FriendlyLiveMatchPage({
   const idleTimerRef = useRef(null);
   const [screenDimmed, setScreenDimmed] = useState(false);
 
-  const savedLineups = useMemo(() => loadSavedLineups(), []);
+  const savedLineups = useMemo(
+    () =>
+      loadSavedLineups(activeClubId, {
+        isPracticeMode: dataScope?.environment === "practice",
+        practiceSessionId: dataScope?.practiceSessionId || null,
+      }),
+    [
+      activeClubId,
+      dataScope?.environment,
+      dataScope?.practiceSessionId,
+    ]
+  );
 
   useEffect(() => {
     let cancelled = false;

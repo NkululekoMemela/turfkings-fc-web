@@ -58,8 +58,15 @@ for (const [label, source] of [
 }
 
 test("App passes footballDataScope into LiveMatchPage router", () => {
+  const start = app.indexOf("<LiveMatchPage");
+  assert.ok(start >= 0, "LiveMatchPage render not found");
+
+  const end = app.indexOf("/>", start);
+  assert.ok(end > start, "LiveMatchPage render is not closed");
+
+  const block = app.slice(start, end + 2);
   const occurrences =
-    app.match(/dataScope=\{footballDataScope\}/g) || [];
+    block.match(/dataScope=\{footballDataScope\}/g) || [];
 
   assert.equal(
     occurrences.length,

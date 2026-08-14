@@ -20,6 +20,10 @@ import {
   getPlayerPhotosCollection,
   getPendingSignupsCollection,
   getMatchSignupsCollection,
+  getScopedPendingSignupsCollection,
+  getScopedPendingSignupDoc,
+  getScopedMatchSignupsCollection,
+  getScopedMatchSignupDoc,
 } from "../core/clubFirestorePaths";
 import { CLUB_COLLECTIONS } from "../core/clubPaths";
 import { showPremiumConfirm } from "../components/UI/PremiumConfirm";
@@ -806,10 +810,43 @@ export default function MatchSignupPage({
   currentTeamName = "",
   activeClubId = "turf-kings",
   activeClub = null,
+  isPracticeMode = false,
+  practiceSessionId = null,
+  dataScope = null,
   onBack,
   onProceedToPayment,
 }) {
   const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
+
+  const pendingSignupsCollectionRef = () =>
+    isPracticeMode
+      ? getScopedPendingSignupsCollection(db, dataScope)
+      : getPendingSignupsCollection(db, activeClubId);
+
+  const matchSignupsCollectionRef = () =>
+    isPracticeMode
+      ? getScopedMatchSignupsCollection(db, dataScope)
+      : getMatchSignupsCollection(db, activeClubId);
+
+  const pendingSignupDocRef = (docId) =>
+    isPracticeMode
+      ? getScopedPendingSignupDoc(db, docId, dataScope)
+      : getClubDoc(
+          db,
+          CLUB_COLLECTIONS.pendingSignups,
+          docId,
+          activeClubId
+        );
+
+  const matchSignupDocRef = (docId) =>
+    isPracticeMode
+      ? getScopedMatchSignupDoc(db, docId, dataScope)
+      : getClubDoc(
+          db,
+          CLUB_COLLECTIONS.matchSignups,
+          docId,
+          activeClubId
+        );
   const [viewportWidth, setViewportWidth] = useState(() => {
     if (typeof window === "undefined") return 390;
     return window.innerWidth;
@@ -1544,8 +1581,8 @@ export default function MatchSignupPage({
         setMatchSignupStateLoaded(false);
 
         const [pendingSnap, matchSignupSnap] = await Promise.all([
-          getDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId, activeClubId)),
-          getDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, pendingId, activeClubId)),
+          getDoc(pendingSignupDocRef(pendingId)),
+          getDoc(matchSignupDocRef(pendingId)),
         ]);
 
         if (cancelled) return;
@@ -1780,8 +1817,8 @@ export default function MatchSignupPage({
       setLiveCommittedUsers(nextCommittedUsers);
     };
 
-    const pendingQuery = query(getPendingSignupsCollection(db, activeClubId));
-    const matchSignupQuery = query(getMatchSignupsCollection(db, activeClubId));
+    const pendingQuery = query(pendingSignupsCollectionRef());
+    const matchSignupQuery = query(matchSignupsCollectionRef());
 
     const unsubscribePending = onSnapshot(
       pendingQuery,
@@ -2288,8 +2325,8 @@ export default function MatchSignupPage({
 
       try {
         await Promise.all([
-          setDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId, activeClubId), patch, { merge: true }),
-          setDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, pendingId, activeClubId), patch, { merge: true }),
+          setDoc(pendingSignupDocRef(pendingId), patch, { merge: true }),
+          setDoc(matchSignupDocRef(pendingId), patch, { merge: true }),
         ]);
       } catch (error) {
         console.error("Failed to remove unpaid week selection:", error);
@@ -2682,7 +2719,7 @@ export default function MatchSignupPage({
       const paymentStatus = statusFromWeekState(selectedWeeks, paidWeeks);
 
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, pendingId, activeClubId),
+        matchSignupDocRef(pendingId),
         {
           signupDocId: pendingId,
           sourcePendingSignupId: pendingId,
@@ -2843,7 +2880,7 @@ export default function MatchSignupPage({
         createdAt: serverTimestamp(),
       };
 
-      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId, activeClubId), payload, {
+      await setDoc(pendingSignupDocRef(pendingId), payload, {
         merge: true,
       });
 
@@ -2945,7 +2982,7 @@ export default function MatchSignupPage({
     setAdminCleanupError("");
 
     try {
-      const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, target.docId, activeClubId);
+      const pendingRef = pendingSignupDocRef(target.docId);
       const pendingSnap = await getDoc(pendingRef);
 
       const pendingData = pendingSnap.exists()
@@ -3026,7 +3063,7 @@ export default function MatchSignupPage({
       );
 
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, target.docId, activeClubId),
+        matchSignupDocRef(target.docId),
         {
           selectedWeeks: nextSelectedWeeks,
           paidWeeks: nextPaidWeeks,
@@ -3093,7 +3130,7 @@ export default function MatchSignupPage({
     setAdminCleanupError("");
 
     try {
-      const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, target.docId, activeClubId);
+      const pendingRef = pendingSignupDocRef(target.docId);
       const pendingSnap = await getDoc(pendingRef);
       const pendingData = pendingSnap.exists()
         ? pendingSnap.data() || {}
@@ -3160,7 +3197,7 @@ export default function MatchSignupPage({
       );
 
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, target.docId, activeClubId),
+        matchSignupDocRef(target.docId),
         {
           ...identityPayload,
           selectedWeeks: nextSelectedWeeks,
@@ -3219,7 +3256,7 @@ export default function MatchSignupPage({
     setAdminCleanupError("");
 
     try {
-      const pendingRef = getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, target.docId, activeClubId);
+      const pendingRef = pendingSignupDocRef(target.docId);
       const pendingSnap = await getDoc(pendingRef);
       if (!pendingSnap.exists()) {
         throw new Error("Pending signup record not found.");
@@ -3250,7 +3287,7 @@ export default function MatchSignupPage({
       );
 
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.matchSignups, target.docId, activeClubId),
+        matchSignupDocRef(target.docId),
         {
           selectedWeeks: paidWeeksOnly,
           paidWeeks: paidWeeksOnly,
@@ -3313,9 +3350,9 @@ export default function MatchSignupPage({
     try {
       await Promise.all(
         targetDocIds.map(async (docId) => {
-          await deleteDoc(getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, docId, activeClubId));
+          await deleteDoc(pendingSignupDocRef(docId));
           try {
-            await deleteDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, docId, activeClubId));
+            await deleteDoc(matchSignupDocRef(docId));
           } catch (error) {
             console.warn("Match signup delete skipped:", error);
           }
@@ -3404,7 +3441,7 @@ export default function MatchSignupPage({
         if (!nextSelectedWeeks.length) {
           await deleteDoc(pendingRef);
           try {
-            await deleteDoc(getClubDoc(db, CLUB_COLLECTIONS.matchSignups, record.docId, activeClubId));
+            await deleteDoc(matchSignupDocRef(record.docId));
           } catch (error) {
             console.warn("Match signup delete skipped:", error);
           }
@@ -3438,7 +3475,7 @@ export default function MatchSignupPage({
         );
 
         await setDoc(
-          getClubDoc(db, CLUB_COLLECTIONS.matchSignups, record.docId, activeClubId),
+          matchSignupDocRef(record.docId),
           {
             selectedWeeks: nextSelectedWeeks,
             paidWeeks: nextPaidWeeks,
@@ -3488,7 +3525,7 @@ export default function MatchSignupPage({
     try {
       setSelectedWeeks([]);
       await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.pendingSignups, pendingId, activeClubId),
+        pendingSignupDocRef(pendingId),
         {
           activeSeasonId: resolvedSeasonId,
           seasonAtSignupTime: resolvedSeasonId,

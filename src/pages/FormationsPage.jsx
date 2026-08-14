@@ -993,6 +993,8 @@ const MAX_SUBS = 6;
 
 export function FormationsPage({
   activeClubId = "turf-kings",
+  isPracticeMode = false,
+  practiceSessionId = null,
   activeClub = null,
   teams = [],
   fiveVFiveTeams = [],
@@ -1018,13 +1020,29 @@ export function FormationsPage({
 
   const isFriendlyMatch = String(matchType || "FRIENDLY").toUpperCase() !== "LEAGUE";
 
+  const lineupStorageOptions = useMemo(
+    () => ({
+      isPracticeMode,
+      practiceSessionId,
+    }),
+    [isPracticeMode, practiceSessionId]
+  );
+
   const [lineupsByTeam, setLineupsByTeam] = useState(() =>
-    loadSavedLineups(activeClubId)
+    loadSavedLineups(activeClubId, {
+      isPracticeMode,
+      practiceSessionId,
+    })
   );
 
   useEffect(() => {
-    setLineupsByTeam(loadSavedLineups(activeClubId));
-  }, [activeClubId]);
+    setLineupsByTeam(
+      loadSavedLineups(
+        activeClubId,
+        lineupStorageOptions
+      )
+    );
+  }, [activeClubId, lineupStorageOptions]);
 
   const sourceTeams = useMemo(() => {
     if (!isFriendlyMatch) return teams || [];
@@ -1364,32 +1382,41 @@ export function FormationsPage({
         ? `${slugFromName(selectedTeamCanonical?.label || selectedTeamCanonical?.id || "guest")}_${slugFromName(photoPlayer)}`
         : slugFromName(photoPlayer);
 
-      await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.playerPhotos, docId),
-        {
-          name: photoPlayer,
-          teamId: selectedTeamCanonical ? selectedTeamCanonical.id : "turf_kings",
-          teamName: selectedTeamCanonical?.label || null,
-          isTemporaryOpponentPhoto: Boolean(isTemporaryOpponentTeam),
-          photoData: dataUrl,
-          updatedAt: serverTimestamp(),
-          uploadedByEmail: authUser?.email || identity?.email || null,
-          uploadedByName:
-            identity?.shortName ||
-            identity?.fullName ||
-            identity?.displayName ||
-            identity?.name ||
-            null,
-        },
-        { merge: true }
-      );
+      // Practice v2 simulation:
+      // let the user experience selecting and previewing a player photo,
+      // but never mutate the real club's permanent playerPhotos records.
+      if (!isPracticeMode) {
+        await setDoc(
+          getClubDoc(db, CLUB_COLLECTIONS.playerPhotos, docId),
+          {
+            name: photoPlayer,
+            teamId: selectedTeamCanonical ? selectedTeamCanonical.id : "turf_kings",
+            teamName: selectedTeamCanonical?.label || null,
+            isTemporaryOpponentPhoto: Boolean(isTemporaryOpponentTeam),
+            photoData: dataUrl,
+            updatedAt: serverTimestamp(),
+            uploadedByEmail: authUser?.email || identity?.email || null,
+            uploadedByName:
+              identity?.shortName ||
+              identity?.fullName ||
+              identity?.displayName ||
+              identity?.name ||
+              null,
+          },
+          { merge: true }
+        );
+      }
 
       setPlayerPhotos((prev) => ({
         ...prev,
         [photoPlayer]: dataUrl,
       }));
 
-      setPhotoMessage(`Photo saved for ${photoPlayer} ✅`);
+      setPhotoMessage(
+        isPracticeMode
+          ? `Practice preview updated for ${photoPlayer} — the real player photo was not changed.`
+          : `Photo saved for ${photoPlayer} ✅`
+      );
     } catch (err) {
       console.error("Failed to upload player photo:", err);
       setPhotoMessage("Could not save photo. Please try again.");
@@ -1786,7 +1813,11 @@ export function FormationsPage({
         previewLineup,
         saveRole
       );
-      saveLineups(updatedMap, activeClubId);
+      saveLineups(
+        updatedMap,
+        activeClubId,
+        lineupStorageOptions
+      );
       return updatedMap;
     });
   };

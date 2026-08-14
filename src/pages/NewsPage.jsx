@@ -280,6 +280,9 @@ export function NewsPage({
   initialProgramOpen,
   matchDayHistory,
   activeClubId = "turf-kings",
+  isPracticeMode = false,
+  practiceSessionId = null,
+  dataScope = null,
   activeClub = null,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
@@ -307,6 +310,21 @@ export function NewsPage({
     let cancelled = false;
 
     async function loadAwardHighlightLeaders() {
+      // Practice v2:
+      // Video Highlights are a real external/shared system and are not
+      // sandboxed. Keep the News UI intact, but never enter the real
+      // Highlights repository from Practice.
+      if (isPracticeMode) {
+        setAwardHighlightLeaders({
+          puskas: null,
+          skill: null,
+          save: null,
+        });
+        setAwardHighlightsLoading(false);
+        setActiveAwardHighlightIndex(0);
+        return;
+      }
+
       try {
         setAwardHighlightsLoading(true);
 
@@ -351,7 +369,7 @@ export function NewsPage({
     return () => {
       cancelled = true;
     };
-  }, [safeActiveClubId]);
+  }, [safeActiveClubId, isPracticeMode]);
 
   const rotatingAwardHighlights = useMemo(() => {
     const getVideoUrl = (clip) =>
@@ -989,6 +1007,14 @@ export function NewsPage({
   const storyStudioRef = useRef(null);
 
   useEffect(() => {
+    // Practice custom stories are disposable session-local News state.
+    // Never subscribe Practice to the real shared newsStories collection.
+    if (isPracticeMode) {
+      setCustomStories([]);
+      setLoadingStories(false);
+      return undefined;
+    }
+
     const storiesRef = collection(db, CUSTOM_NEWS_STORIES_COLLECTION);
     const unsubscribe = onSnapshot(
       storiesRef,
@@ -1014,7 +1040,7 @@ export function NewsPage({
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [isPracticeMode, practiceSessionId]);
 
   const activeCustomStories = useMemo(
     () => customStories.filter((story) => story && !story.archived),
@@ -1117,6 +1143,51 @@ export function NewsPage({
 
     try {
       const storyId = editingStoryId || `story-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      if (isPracticeMode) {
+        const existingStory =
+          customStories.find((story) => story?.id === editingStoryId) || null;
+        const createdAtMs = editingStoryId
+          ? Number(existingStory?.createdAtMs || Date.now())
+          : Date.now();
+
+        const practiceStory = {
+          id: storyId,
+          title,
+          body,
+          tag,
+          slotKey,
+          playerName,
+          imageUrl,
+          imageSize,
+          imageFit,
+          archived: false,
+          createdAtMs: publishDateMs || createdAtMs,
+          publishDateMs: publishDateMs || createdAtMs,
+          updatedAtMs: Date.now(),
+          createdBy:
+            identity?.shortName || identity?.fullName || identity?.name || "Admin",
+        };
+
+        setCustomStories((current) => {
+          const withoutCurrent = current.filter(
+            (story) => story?.id !== storyId
+          );
+          return [...withoutCurrent, practiceStory];
+        });
+
+        setStoryFormNotice(
+          editingStoryId
+            ? "Story updated."
+            : "Story created and published."
+        );
+        setStoryDraft(createEmptyStoryDraft());
+        setEditingStoryId("");
+        setShowCreateStoryForm(false);
+        setStoryFormError("");
+        return;
+      }
+
       const storyRef = doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId);
       const createdAtMs = editingStoryId
         ? Number(
@@ -1173,6 +1244,26 @@ export function NewsPage({
     }
 
     try {
+      if (isPracticeMode) {
+        setCustomStories((current) =>
+          current.map((story) =>
+            story?.id === storyId
+              ? {
+                  ...story,
+                  archived: !targetStory.archived,
+                  archivedAtMs: !targetStory.archived ? Date.now() : null,
+                  updatedAtMs: Date.now(),
+                }
+              : story
+          )
+        );
+        setStoryFormError("");
+        setStoryFormNotice(
+          targetStory.archived ? "Story restored." : "Story archived."
+        );
+        return;
+      }
+
       await setDoc(
         doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId),
         {
@@ -1207,6 +1298,16 @@ This will remove it from live news and archives for everyone.`
     }
 
     try {
+      if (isPracticeMode) {
+        setCustomStories((current) =>
+          current.filter((story) => story?.id !== storyId)
+        );
+        if (editingStoryId === storyId) resetStoryDraft();
+        setStoryFormError("");
+        setStoryFormNotice(`Deleted "${storyToDelete.title}" permanently.`);
+        return;
+      }
+
       await deleteDoc(doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId));
       if (editingStoryId === storyId) resetStoryDraft();
       setStoryFormError("");
@@ -2113,6 +2214,14 @@ This will remove it from live news and archives for everyone.`
   }, [kitOrders, myKitOrderId]);
 
   useEffect(() => {
+    // Kit ordering is a real operational effect. Practice keeps the exact
+    // interaction locally and never subscribes to the real order list.
+    if (isPracticeMode) {
+      setKitOrders([]);
+      setKitOrdersError("");
+      return undefined;
+    }
+
     try {
       const unsub = subscribeToKitOrders((list) => {
         setKitOrders(Array.isArray(list) ? list : []);
@@ -2125,7 +2234,7 @@ This will remove it from live news and archives for everyone.`
       console.error("[NewsPage] kit orders subscribe failed:", err);
       setKitOrdersError("Could not load kit orders.");
     }
-  }, []);
+  }, [isPracticeMode, practiceSessionId]);
 
   const handleToggleKitOrder = async () => {
     if (!identity || identity.role === "spectator") {
@@ -2135,6 +2244,28 @@ This will remove it from live news and archives for everyone.`
     if (!myKitOrderId || !myKitOrderName) return;
 
     try {
+      if (isPracticeMode) {
+        setKitOrders((current) => {
+          const safeCurrent = Array.isArray(current) ? current : [];
+
+          if (safeCurrent.some((order) => order?.memberId === myKitOrderId)) {
+            return safeCurrent.filter(
+              (order) => order?.memberId !== myKitOrderId
+            );
+          }
+
+          return [
+            ...safeCurrent,
+            {
+              memberId: myKitOrderId,
+              name: myKitOrderName,
+            },
+          ];
+        });
+        setKitOrdersError("");
+        return;
+      }
+
       if (isInKitOrders) {
         await removeKitOrder(myKitOrderId);
       } else {
@@ -2167,6 +2298,12 @@ This will remove it from live news and archives for everyone.`
   const [editingPollId, setEditingPollId] = useState("");
 
   useEffect(() => {
+    if (isPracticeMode) {
+      setCustomPolls([]);
+      setPollFormError("");
+      return undefined;
+    }
+
     const pollsRef = collection(db, CUSTOM_POLLS_COLLECTION);
     const unsubscribe = onSnapshot(
       pollsRef,
@@ -2184,9 +2321,14 @@ This will remove it from live news and archives for everyone.`
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [isPracticeMode, practiceSessionId]);
 
   useEffect(() => {
+    if (isPracticeMode) {
+      setPollVotes([]);
+      return undefined;
+    }
+
     const votesRef = collection(db, CUSTOM_POLL_VOTES_COLLECTION);
     const unsubscribe = onSnapshot(
       votesRef,
@@ -2203,7 +2345,7 @@ This will remove it from live news and archives for everyone.`
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [isPracticeMode, practiceSessionId]);
 
   const activeCustomPolls = useMemo(
     () => customPolls.filter((poll) => poll && !poll.archived),
@@ -2295,6 +2437,44 @@ This will remove it from live news and archives for everyone.`
     try {
       const pollId = editingPollId || `poll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const existing = customPolls.find((poll) => poll?.id === editingPollId);
+
+      if (isPracticeMode) {
+        const createdAtMs = editingPollId
+          ? Number(existing?.createdAtMs || Date.now())
+          : Date.now();
+
+        const practicePoll = {
+          id: pollId,
+          question,
+          tag,
+          optionA,
+          optionB,
+          playerName,
+          imageUrl,
+          archived: false,
+          createdAtMs,
+          publishDateMs,
+          updatedAtMs: Date.now(),
+          createdBy:
+            identity?.shortName || identity?.fullName || identity?.name || "Admin",
+        };
+
+        setCustomPolls((current) => {
+          const withoutCurrent = current.filter(
+            (poll) => poll?.id !== pollId
+          );
+          return [...withoutCurrent, practicePoll];
+        });
+
+        setPollFormNotice(
+          editingPollId ? "Poll updated." : "Poll created."
+        );
+        setPollDraft(createEmptyPollDraft());
+        setEditingPollId("");
+        setShowCreatePollForm(false);
+        setPollFormError("");
+        return;
+      }
       const createdAtMs = editingPollId ? Number(existing?.createdAtMs || Date.now()) : Date.now();
 
       await setDoc(
@@ -2339,6 +2519,26 @@ This will remove it from live news and archives for everyone.`
     }
 
     try {
+      if (isPracticeMode) {
+        setCustomPolls((current) =>
+          current.map((poll) =>
+            poll?.id === pollId
+              ? {
+                  ...poll,
+                  archived: !targetPoll.archived,
+                  archivedAtMs: !targetPoll.archived ? Date.now() : null,
+                  updatedAtMs: Date.now(),
+                }
+              : poll
+          )
+        );
+        setPollFormError("");
+        setPollFormNotice(
+          targetPoll.archived ? "Poll restored." : "Poll archived."
+        );
+        return;
+      }
+
       await setDoc(
         doc(db, CUSTOM_POLLS_COLLECTION, pollId),
         {
@@ -2372,6 +2572,19 @@ Votes for this poll will no longer be shown.`
     }
 
     try {
+      if (isPracticeMode) {
+        setCustomPolls((current) =>
+          current.filter((poll) => poll?.id !== pollId)
+        );
+        setPollVotes((current) =>
+          current.filter((vote) => vote?.pollId !== pollId)
+        );
+        if (editingPollId === pollId) resetPollDraft();
+        setPollFormError("");
+        setPollFormNotice("Poll deleted.");
+        return;
+      }
+
       await deleteDoc(doc(db, CUSTOM_POLLS_COLLECTION, pollId));
       if (editingPollId === pollId) resetPollDraft();
       setPollFormError("");
@@ -2396,6 +2609,30 @@ Votes for this poll will no longer be shown.`
     }
 
     try {
+      if (isPracticeMode) {
+        const voteId = `${poll.id}__${voterId}`;
+        const practiceVote = {
+          id: voteId,
+          pollId: poll.id,
+          voterId,
+          voterName:
+            identity?.shortName ||
+            identity?.fullName ||
+            identity?.name ||
+            "Player",
+          choice,
+          updatedAtMs: Date.now(),
+        };
+
+        setPollVotes((current) => {
+          const withoutCurrent = current.filter(
+            (vote) => vote?.id !== voteId
+          );
+          return [...withoutCurrent, practiceVote];
+        });
+        return;
+      }
+
       await setDoc(
         doc(db, CUSTOM_POLL_VOTES_COLLECTION, `${poll.id}__${voterId}`),
         {

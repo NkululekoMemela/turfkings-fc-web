@@ -2790,6 +2790,10 @@ export default function App() {
 
 
   const persistReturnedHighlightsToFirebase = async (items) => {
+    // Practice v2 external-effect firewall:
+    // returned camera clips belong only to Official Sessions.
+    if (isPracticeMode) return;
+
     const safeItems = Array.isArray(items) ? items : [];
     if (!safeItems.length) return;
 
@@ -3681,15 +3685,9 @@ export default function App() {
   const handleBackToLanding = () => setPage(PAGE_LANDING);
   const handleBackToLive = () => setPage(PAGE_LIVE);
   const handleGoToViewHighlights = () => {
-    if (isPracticeMode) {
-      showPracticeRestriction(
-        "Highlights are for Official Sessions",
-        "Video highlights, uploads and voting are official club features. Click Change Profile and enter an Official Session to use them.",
-        "🎥"
-      );
-      return;
-    }
-
+    // Practice v2 keeps the same visible navigation as Official.
+    // Real Highlights effects are intercepted at the effect boundary,
+    // not by hiding or blocking the page.
     setPage(PAGE_VIEW_HIGHLIGHTS);
   };
 
@@ -3941,15 +3939,9 @@ export default function App() {
   const canAccessMatchSignup = isAdmin || isCaptain || isPlayer;
 
   const handleGoToMatchSignup = () => {
-    if (isPracticeMode) {
-      showPracticeRestriction(
-        "Payments are for Official Sessions",
-        "Practice Session assumes players are already available for training. Click Change Profile and enter an Official Session to use Match Signup and payments.",
-        "💳"
-      );
-      return;
-    }
-
+    // Practice deliberately uses the same Match Signup -> Payment UI.
+    // Financial settlement is simulated inside the disposable Practice
+    // DataScope; no external payment provider is contacted.
     if (!canAccessMatchSignup) {
       window.alert(
         "Please sign in as a club player before using payments. This prevents untracked payments."
@@ -6085,7 +6077,11 @@ export default function App() {
       const highlightsArchivePayload = buildHighlightsArchivePayload();
       console.log("[TK HIGHLIGHTS] archive winners on End Match Day:", highlightsArchivePayload);
 
-      if (currentVideoHighlightsMatchId && highlightArchiveSelection) {
+      if (
+        !isPracticeMode &&
+        currentVideoHighlightsMatchId &&
+        highlightArchiveSelection
+      ) {
         const selectedHighlights = [
           ...(Array.isArray(highlightArchiveSelection?.topGoals)
             ? highlightArchiveSelection.topGoals
@@ -6529,15 +6525,9 @@ export default function App() {
   };
 
   const handleOpenHighlightsCamera = () => {
-    if (isPracticeMode) {
-      showPracticeRestriction(
-        "Camera uploads are for Official Sessions",
-        "Practice Session keeps testing safe and isolated, so highlight recording and upload flows are blocked. Click Change Profile and enter an Official Session to use the camera.",
-        "📸"
-      );
-      return;
-    }
-
+    // Practice v2 preserves the same camera entry point as Official.
+    // Practice safety is enforced at the external-effect/persistence
+    // boundary rather than by changing the visible UI.
     if (typeof window === "undefined") return;
 
     const isAndroid = /Android/i.test(window.navigator.userAgent || "");
@@ -6674,6 +6664,14 @@ export default function App() {
   };
 
   const handleUploadHighlight = async (payload) => {
+    // Practice v2 external-effect firewall:
+    // never upload video or create permanent highlight metadata.
+    if (isPracticeMode) {
+      throw new Error(
+        "[Practice] Video highlight uploads are disabled."
+      );
+    }
+
     const matchId = currentVideoHighlightsMatchId;
 
     const clipId =
@@ -7951,6 +7949,9 @@ export default function App() {
           activeSeasonId={activeSeasonId}
           activeClub={activeClub}
           activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          practiceSessionId={practiceRuntime?.practiceSessionId || null}
+          dataScope={footballDataScope}
           playerPhotosByName={effectivePlayerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
@@ -7974,6 +7975,10 @@ export default function App() {
           activeRole={activeRole}
           activeSeasonId={activeSeasonId}
           paymentContext={paymentContext}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          practiceSessionId={practiceRuntime?.practiceSessionId || null}
+          dataScope={footballDataScope}
           isAdmin={isAdmin}
           isCaptain={isCaptain}
           onBack={handleBackFromPayment}
@@ -8132,7 +8137,7 @@ export default function App() {
       {page === PAGE_VIEW_HIGHLIGHTS && (
         <VideoHighlightsPage
           matchId={currentVideoHighlightsMatchId}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
           identity={pageIdentity}
           activeRole={activeRole}
           isAdmin={isAdmin}
@@ -8167,7 +8172,11 @@ export default function App() {
                 .trim()
                 .toLowerCase();
 
-            if (userId && currentVideoHighlightsMatchId) {
+            if (
+              !isPracticeMode &&
+              userId &&
+              currentVideoHighlightsMatchId
+            ) {
               try {
                 await VideoHighlightsRepository.saveHighlightVotesToFirebase({
                   matchId: currentVideoHighlightsMatchId,
@@ -8225,7 +8234,10 @@ export default function App() {
           onBack={handleBackToLanding}
           members={members}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          practiceSessionId={practiceRuntime?.practiceSessionId || null}
+          dataScope={footballDataScope}
         />
       )}
 
@@ -8300,6 +8312,7 @@ export default function App() {
           activeClub={activeClub}
           activeClubId={sessionScopedClubId}
           isPracticeMode={isPracticeMode}
+          dataScope={footballDataScope}
           activeTeamIds={normalizedActiveTeamIds}
           onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
@@ -8321,7 +8334,9 @@ export default function App() {
           playerPhotosByName={effectivePlayerPhotosByName}
           identity={pageIdentity}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          practiceSessionId={practiceRuntime?.practiceSessionId || null}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
           matchType={matchType}

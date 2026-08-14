@@ -10,7 +10,10 @@ import {
 import { db } from "../firebaseConfig";
 // import { getClubDoc, CLUB_COLLECTIONS } from "../core/clubFirestorePaths";
 
-import { getClubDoc } from "../core/clubFirestorePaths";
+import {
+  getClubDoc,
+  getScopedMatchSignupDoc,
+} from "../core/clubFirestorePaths";
 import { CLUB_COLLECTIONS } from "../core/clubPaths";
 import { getClubPaymentSettings } from "../core/payments/paymentSettingsRepository";
 import {
@@ -145,6 +148,10 @@ export default function PaymentPage({
   identity,
   activeRole = "player",
   activeSeasonId,
+  activeClubId: explicitActiveClubId = "",
+  isPracticeMode = false,
+  practiceSessionId = null,
+  dataScope = null,
   isAdmin = false,
   isCaptain = false,
   onBack,
@@ -159,11 +166,25 @@ export default function PaymentPage({
 
   const activeClubId =
     String(
-      paymentContext?.activeClubId ||
+      explicitActiveClubId ||
+        paymentContext?.activeClubId ||
         paymentContext?.clubId ||
         identity?.clubId ||
         "turf-kings"
     ).trim() || "turf-kings";
+
+  // One resolver for every payment-state read/write.
+  // Official keeps the historical club document.
+  // Practice resolves into the disposable session sandbox.
+  const matchSignupDocRef = (docId) =>
+    isPracticeMode
+      ? getScopedMatchSignupDoc(db, docId, dataScope)
+      : getClubDoc(
+          db,
+          CLUB_COLLECTIONS.matchSignups,
+          docId,
+          activeClubId
+        );
 
   const rawPrimarySelectedWeeks = paymentContext?.selectedWeeks || [];
   const rawSecondSelectedWeeks =
@@ -391,7 +412,7 @@ export default function PaymentPage({
     setLoading(true);
     setError("");
 
-    const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
+    const ref = matchSignupDocRef(signupDocId);
 
     const unsub = onSnapshot(
       ref,
@@ -414,7 +435,13 @@ export default function PaymentPage({
     );
 
     return () => unsub();
-  }, [signupDocId]);
+  }, [
+    signupDocId,
+    activeClubId,
+    isPracticeMode,
+    practiceSessionId,
+    dataScope,
+  ]);
 
   useEffect(() => {
     if (!signup) return;
@@ -507,6 +534,100 @@ export default function PaymentPage({
   async function handlePayNow() {
     if (!signupDocId || amountToPayNow <= 0 || creatingCheckout) return;
 
+    // --------------------------------------------------------
+    // PRACTICE PAYMENT SIMULATION
+    //
+    // This intentionally reproduces only the football consequence
+    // of payment. No Cloud Function, Paystack checkout, redirect,
+    // card transaction or real financial settlement may occur.
+    // --------------------------------------------------------
+    if (isPracticeMode) {
+      setCreatingCheckout(true);
+      setError("");
+      setSlowPaymentMessage("");
+
+      try {
+        const simulatedPrimaryPaidWeeks = uniqueWeeks([
+          ...effectivePrimaryPaidWeeks,
+          ...unpaidPrimaryWeeks,
+        ]);
+
+        const simulatedSecondPaidWeeks = uniqueWeeks([
+          ...effectiveSecondPaidWeeks,
+          ...unpaidSecondWeeks,
+        ]);
+
+        const simulatedPaidAmount =
+          (
+            simulatedPrimaryPaidWeeks.length +
+            simulatedSecondPaidWeeks.length
+          ) * costPerGame;
+
+        const simulatedFullyPaid =
+          effectiveTotalGamesSelected > 0 &&
+          simulatedPrimaryPaidWeeks.length === effectivePrimaryWeeks.length &&
+          simulatedSecondPaidWeeks.length === effectiveSecondWeeks.length;
+
+        const ref = matchSignupDocRef(signupDocId);
+
+        await setDoc(
+          ref,
+          {
+            signupDocId,
+            activeSeasonId: String(activeSeasonId || "").trim(),
+            displayName: primaryDisplayName,
+            shortName: firstNameOf(primaryDisplayName),
+            playerId: primaryPlayerId,
+            userId: currentUserId || "",
+            selectedWeeks: effectivePrimaryWeeks,
+
+            primaryPaidWeeks: simulatedPrimaryPaidWeeks,
+            paidWeeks: simulatedPrimaryPaidWeeks,
+
+            secondDisplayName: effectiveSecondDisplayName,
+            secondPlayerId: secondPlayerId || "",
+            secondEmail: secondEmail || "",
+            secondSelectedWeeks: effectiveSecondWeeks,
+            secondPaidWeeks: simulatedSecondPaidWeeks,
+
+            totalGamesSelected: effectiveTotalGamesSelected,
+            paymentForMode: effectiveMode,
+            amountDue: effectiveAmountDue,
+            amountPaid: simulatedPaidAmount,
+            costPerGame,
+
+            // Explicitly distinguish this disposable football simulation
+            // from a real payment-provider transaction.
+            paymentMethod: "Practice simulation",
+            paymentReference: `practice-${signupDocId}`,
+            paymentIntentAmount: amountToPayNow,
+            paymentStatus: simulatedFullyPaid ? "paid" : "part_paid",
+            paymentSimulation: true,
+            paymentProviderContacted: false,
+            paymentSubmittedAt: serverTimestamp(),
+            unpaidPrimaryWeeks: effectivePrimaryWeeks.filter(
+              (week) => !simulatedPrimaryPaidWeeks.includes(week)
+            ),
+            unpaidSecondWeeks: effectiveSecondWeeks.filter(
+              (week) => !simulatedSecondPaidWeeks.includes(week)
+            ),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (typeof onDone === "function") onDone();
+      } catch (err) {
+        console.error("Failed to simulate Practice payment:", err);
+        setError("Could not confirm the Practice payment simulation.");
+      } finally {
+        setCreatingCheckout(false);
+        setSlowPaymentMessage("");
+      }
+
+      return;
+    }
+
     const functionsBaseUrl = getFunctionsBaseUrl();
     if (!functionsBaseUrl) {
       setError(
@@ -579,7 +700,7 @@ export default function PaymentPage({
         throw new Error("Paystack checkout did not return a redirect URL.");
       }
 
-      const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
+      const ref = matchSignupDocRef(signupDocId);
       setDoc(
         ref,
         {
@@ -647,7 +768,55 @@ export default function PaymentPage({
     setError("");
 
     try {
-      const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
+      const ref = matchSignupDocRef(signupDocId);
+
+      // Practice v2 admin verification simulates only the football
+      // consequence of payment. It never represents real settlement.
+      //
+      // Explicit "paid" confirmation unlocks all selected Practice weeks.
+      // For part-paid/unpaid states we do NOT guess which particular
+      // weeks were covered, so existing paid-week state is preserved.
+      if (isPracticeMode) {
+        const confirmedPrimaryPaidWeeks =
+          nextStatus === "paid"
+            ? uniqueWeeks(effectivePrimaryWeeks)
+            : uniqueWeeks(effectivePrimaryPaidWeeks);
+
+        const confirmedSecondPaidWeeks =
+          nextStatus === "paid"
+            ? uniqueWeeks(effectiveSecondWeeks)
+            : uniqueWeeks(effectiveSecondPaidWeeks);
+
+        const simulatedAmountPaid =
+          nextStatus === "paid"
+            ? effectiveAmountDue
+            : verifiedAmount;
+
+        await setDoc(
+          ref,
+          {
+            amountPaid: simulatedAmountPaid,
+            paymentStatus: nextStatus,
+
+            primaryPaidWeeks: confirmedPrimaryPaidWeeks,
+            paidWeeks: confirmedPrimaryPaidWeeks,
+            secondPaidWeeks: confirmedSecondPaidWeeks,
+
+            paymentMethod: "Practice simulation",
+            paymentSimulation: true,
+            paymentProviderContacted: false,
+
+            adminNote: note,
+            verifiedBy: verifier,
+            verifiedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (typeof onDone === "function") onDone();
+        return;
+      }
 
       await setDoc(
         ref,

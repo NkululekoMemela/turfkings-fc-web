@@ -235,10 +235,67 @@ export const LINEUP_ROLE_PRIORITY = [
 ];
 
 // ---------------- LOCAL STORAGE ----------------
-export function loadSavedLineups(activeClubId = "turf-kings") {
+//
+// Official mode deliberately retains the historical LOCAL_KEY so existing
+// saved formations remain backward compatible.
+//
+// Practice v2 receives a session-scoped browser key. A new authoritative
+// Practice session therefore starts with an independent lineup workspace
+// and cannot inherit lineup changes from an earlier Practice session.
+function requireLineupStorageId(value, label) {
+  const normalized = String(value || "").trim();
+
+  if (!normalized) {
+    throw new Error(`[Lineups] ${label} is required.`);
+  }
+
+  if (normalized.includes("/")) {
+    throw new Error(
+      `[Lineups] ${label} must be an ID, not a path.`
+    );
+  }
+
+  return normalized;
+}
+
+export function resolveLineupStorageKey({
+  activeClubId = "turf-kings",
+  isPracticeMode = false,
+  practiceSessionId = null,
+} = {}) {
+  if (!isPracticeMode) {
+    return LOCAL_KEY;
+  }
+
+  const safeClubId = requireLineupStorageId(
+    activeClubId,
+    "activeClubId"
+  );
+  const safeSessionId = requireLineupStorageId(
+    practiceSessionId,
+    "practiceSessionId"
+  );
+
+  return (
+    `${LOCAL_KEY}:practice:` +
+    `${safeClubId}:${safeSessionId}`
+  );
+}
+
+export function loadSavedLineups(
+  activeClubId = "turf-kings",
+  options = {}
+) {
   if (typeof window === "undefined") return {};
+
+  const storageKey = resolveLineupStorageKey({
+    activeClubId,
+    isPracticeMode: options?.isPracticeMode === true,
+    practiceSessionId: options?.practiceSessionId || null,
+  });
+
   try {
-    const raw = window.localStorage.getItem(LOCAL_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed : {};
@@ -247,10 +304,24 @@ export function loadSavedLineups(activeClubId = "turf-kings") {
   }
 }
 
-export function saveLineups(data) {
+export function saveLineups(
+  data,
+  activeClubId = "turf-kings",
+  options = {}
+) {
   if (typeof window === "undefined") return;
+
+  const storageKey = resolveLineupStorageKey({
+    activeClubId,
+    isPracticeMode: options?.isPracticeMode === true,
+    practiceSessionId: options?.practiceSessionId || null,
+  });
+
   try {
-    window.localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify(data)
+    );
   } catch {
     // ignore quota errors
   }
