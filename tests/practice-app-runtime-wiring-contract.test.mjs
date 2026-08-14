@@ -42,16 +42,10 @@ test("central Practice subscription receives explicit DataScope", () => {
 test("central football persistence keeps real club identity", () => {
   assert.match(
     source,
-    /const footballStateClubId = normalizedBaseClubId/
+    /const footballStateClubId = activeClubId/
   );
 });
 
-test("old automatic Practice seed effect is gone", () => {
-  assert.doesNotMatch(
-    source,
-    /ensurePracticeSessionSeed\(\s*db,\s*sessionScopedClubId/
-  );
-});
 
 test("Official selector clears Practice runtime", () => {
   assert.match(
@@ -60,9 +54,13 @@ test("Official selector clears Practice runtime", () => {
   );
 });
 
-test("legacy page boundary remains explicit pending audit", () => {
-  assert.match(
+test("page boundaries no longer use synthetic Practice club identity", () => {
+  assert.doesNotMatch(
     source,
     /activeClubId=\{sessionScopedClubId\}/
+  );
+  assert.doesNotMatch(
+    source,
+    /sessionScopedClubId/
   );
 });

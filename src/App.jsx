@@ -48,7 +48,7 @@ import {
   buildCleanSheetEventsForMatch,
   buildFriendlyDefensiveBlockEvents,
 } from "./core/lineups.js";
-import { ensurePracticeSessionSeed, buildPracticeState } from "./core/practiceSessionSeed.js";
+import { buildPracticeState } from "./core/practiceSessionSeed.js";
 import { createPracticeRuntime } from "./core/practiceRuntime.js";
 
 import {
@@ -2358,19 +2358,9 @@ export default function App() {
 
   const activeClubId = activeClubIdentity.id;
 
-  const normalizedBaseClubId = String(activeClubId || "")
-    .replace(/-practice$/i, "");
-
-  const sessionScopedClubId =
-    sessionMode === "practice"
-      ? `${normalizedBaseClubId}-practice`
-      : normalizedBaseClubId;
-
-  // Practice v2 central football-state persistence uses the real club
-  // identity plus an explicit disposable DataScope. The legacy
-  // sessionScopedClubId remains temporarily for page-level surfaces
-  // until each of those repositories is independently audited.
-  const footballStateClubId = normalizedBaseClubId;
+  // Practice v2 always preserves the real club identity.
+  // Disposable football/session data is isolated exclusively by DataScope.
+  const footballStateClubId = activeClubId;
 
   const footballDataScope =
     sessionMode === "practice"
@@ -2881,7 +2871,7 @@ export default function App() {
         const nextSeason = { ...s, ...updated, updatedAt: new Date().toISOString() };
 
         if (
-          String(sessionScopedClubId || "").endsWith("-practice") &&
+          isPracticeMode &&
           s?.matchType !== nextSeason?.matchType
         ) {
           console.warn("[PRACTICE MATCHTYPE WRITER TRACE]", {
@@ -2917,7 +2907,9 @@ export default function App() {
               null;
 
             console.warn("[CLOUD STATE DEBUG]", {
-              sessionScopedClubId,
+              activeClubId,
+              dataScopeEnvironment: footballDataScope?.environment || "official",
+              practiceSessionId: footballDataScope?.practiceSessionId || null,
               activeSeasonId: nextCloudState?.activeSeasonId,
               cloudMatchType: cloudActiveSeason?.matchType,
               cloudGameFormat: cloudActiveSeason?.gameFormat,
@@ -4017,7 +4009,9 @@ export default function App() {
       activeSeasonId,
       currentMatchType: matchType,
       currentGameFormat: gameFormat,
-      sessionScopedClubId,
+      activeClubId,
+      dataScopeEnvironment: footballDataScope?.environment || "official",
+      practiceSessionId: footballDataScope?.practiceSessionId || null,
     });
 
     if (USE_V2) {
@@ -8323,7 +8317,7 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
           isPracticeMode={isPracticeMode}
           dataScope={footballDataScope}
           activeTeamIds={normalizedActiveTeamIds}

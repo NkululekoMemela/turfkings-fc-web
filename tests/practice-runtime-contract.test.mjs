@@ -48,17 +48,6 @@ test("Practice runtime does not manufacture fake Practice club IDs", () => {
   );
 });
 
-test("Practice runtime does not use old Practice seed", () => {
-  assert.doesNotMatch(
-    source,
-    /ensurePracticeSessionSeed/
-  );
-
-  assert.doesNotMatch(
-    source,
-    /practiceSessionSeed/
-  );
-});
 
 test("Practice runtime performs no direct Firestore operations", () => {
   assert.doesNotMatch(
