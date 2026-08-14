@@ -4,8 +4,10 @@ import { db } from "../firebaseConfig";
 import { getDoc, getDocs } from "firebase/firestore";
 import {
   getClubStateDoc,
+  getScopedStateDoc,
   getPlayersCollection,
   getPeerRatingBaselinesCollection,
+  getScopedPeerRatingBaselinesCollection,
   getPlayerPhotosCollection,
 } from "../core/clubFirestorePaths";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -1360,8 +1362,21 @@ export function PlayerCardPage({
   onBack,
   activeClubId = "turf-kings",
   activeClub = null,
+  isPracticeMode = false,
+  dataScope = null,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
+
+  const footballStateDocRef = () =>
+    isPracticeMode
+      ? getScopedStateDoc(db, dataScope)
+      : getClubStateDoc(db, safeActiveClubId);
+
+  const peerBaselinesCollectionRef = () =>
+    isPracticeMode
+      ? getScopedPeerRatingBaselinesCollection(db, dataScope)
+      : getPeerRatingBaselinesCollection(db, safeActiveClubId);
+
   const activeClubIdentity = useMemo(
     () => buildClubIdentity(activeClub || { id: safeActiveClubId }),
     [activeClub, safeActiveClubId]
@@ -1430,10 +1445,19 @@ export function PlayerCardPage({
           Object.keys(playerPhotosByName).length > 20;
 
         const [playersSnap, mainSnap, baselinesSnap, photosSnap] = await Promise.all([
+          // Real-club identity/profile inputs remain authoritative.
           getDocs(getPlayersCollection(db, safeActiveClubId)),
-          getDoc(getClubStateDoc(db, safeActiveClubId)),
-          getDocs(getPeerRatingBaselinesCollection(db, safeActiveClubId)),
-          alreadyLoaded ? Promise.resolve(null) : getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
+
+          // Football state is environment-scoped.
+          getDoc(footballStateDocRef()),
+
+          // Peer-review baselines are disposable in Practice.
+          getDocs(peerBaselinesCollectionRef()),
+
+          // Player photos remain real-club profile input.
+          alreadyLoaded
+            ? Promise.resolve(null)
+            : getDocs(getPlayerPhotosCollection(db, safeActiveClubId)),
         ]);
 
         if (!isMounted) return;
@@ -1473,19 +1497,23 @@ export function PlayerCardPage({
           baselinesBySeason
         );
 
-        const carrySnapshots = Object.keys(carrySnapshotsFromFrozen || {}).length > 0
-          ? carrySnapshotsFromFrozen
-          : buildCarrySnapshotsForPreviousSeason(
-              previousSeason,
-              mapNameToCanon,
-              baselinesBySeason
-            );
+        const carrySnapshots = isPracticeMode
+          ? {}
+          : Object.keys(carrySnapshotsFromFrozen || {}).length > 0
+            ? carrySnapshotsFromFrozen
+            : buildCarrySnapshotsForPreviousSeason(
+                previousSeason,
+                mapNameToCanon,
+                baselinesBySeason
+              );
 
-        const starsByPlayer = buildChampionshipStarsByPlayer(
-          mainSnap,
-          mapNameToCanon,
-          activeSeasonId
-        );
+        const starsByPlayer = isPracticeMode
+          ? {}
+          : buildChampionshipStarsByPlayer(
+              mainSnap,
+              mapNameToCanon,
+              activeSeasonId
+            );
 
         canonicalNameCacheRef.current = {};
 
@@ -1525,7 +1553,13 @@ export function PlayerCardPage({
     return () => {
       isMounted = false;
     };
-  }, [activeSeasonId, finalPlayerCardSnapshot, safeActiveClubId]);
+  }, [
+    activeSeasonId,
+    finalPlayerCardSnapshot,
+    safeActiveClubId,
+    isPracticeMode,
+    dataScope,
+  ]);
 
   const resolveCanonicalName = useCallback(
     (rawName) => {
@@ -2044,12 +2078,45 @@ export function PlayerCardPage({
         activeSeasonId
       );
 
+      let seasonSnapshotKey =
+        `tk_player_card_snapshot_${activeSeasonId}`;
+      let latestSnapshotKey =
+        "tk_player_card_snapshot_latest";
+
+      if (isPracticeMode) {
+        const practiceSessionId = String(
+          dataScope?.practiceSessionId || ""
+        ).trim();
+
+        if (!practiceSessionId) {
+          console.warn(
+            "Practice player-card snapshot skipped: authoritative Practice session ID is missing."
+          );
+          return;
+        }
+
+        const safeStoragePart = (value) =>
+          String(value || "")
+            .trim()
+            .replace(/[^a-zA-Z0-9_-]/g, "_");
+
+        const practicePrefix =
+          `tk_player_card_snapshot_practice_` +
+          `${safeStoragePart(safeActiveClubId)}_` +
+          `${safeStoragePart(practiceSessionId)}`;
+
+        seasonSnapshotKey =
+          `${practicePrefix}_${safeStoragePart(activeSeasonId)}`;
+        latestSnapshotKey =
+          `${practicePrefix}_latest`;
+      }
+
       window.localStorage.setItem(
-        `tk_player_card_snapshot_${activeSeasonId}`,
+        seasonSnapshotKey,
         JSON.stringify(exactSnapshot)
       );
       window.localStorage.setItem(
-        "tk_player_card_snapshot_latest",
+        latestSnapshotKey,
         JSON.stringify(exactSnapshot)
       );
     } catch (err) {
@@ -2062,6 +2129,9 @@ export function PlayerCardPage({
     participationLoaded,
     baselineLoaded,
     playersWithRatings,
+    isPracticeMode,
+    dataScope,
+    safeActiveClubId,
   ]);
 
   const seasonContextLabel = useMemo(() => {

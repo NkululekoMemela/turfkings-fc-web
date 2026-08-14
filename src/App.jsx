@@ -2451,7 +2451,14 @@ export default function App() {
     ? ensureV2StateShape(state)?.activeSeasonId || null
     : null;
 
-  const peerRatingsFromHook = usePeerRatings(activeSeasonIdForPeerRatings);
+  const peerRatingsFromHook = usePeerRatings(
+    activeSeasonIdForPeerRatings,
+    {
+      activeClubId,
+      isPracticeMode,
+      dataScope: footballDataScope,
+    }
+  );
   const peerRatingsByPlayer = peerRatingsFromHook || {};
 
   const [statsReturnPage, setStatsReturnPage] = useState(PAGE_LANDING);
@@ -8131,6 +8138,8 @@ export default function App() {
           )}
           identity={pageIdentity}
           matchType={matchType}
+          isPracticeMode={isPracticeMode}
+          dataScope={footballDataScope}
         />
       )}
 
@@ -8262,7 +8271,9 @@ export default function App() {
           gameFormat={gameFormat}
           activeSeasonNo={USE_V2 ? activeSeasonNo : null}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          dataScope={footballDataScope}
           finalPlayerCardSnapshot={
             USE_V2
               ? (() => {
@@ -8292,7 +8303,9 @@ export default function App() {
           identity={pageIdentity}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          dataScope={footballDataScope}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}

@@ -195,6 +195,81 @@ export function getPeerRatingBaselinesCollection(
   return getClubCollection(db, CLUB_COLLECTIONS.peerRatingBaselines, clubId);
 }
 
+// ---------------------------------------------------------
+// DATASCOPE-AWARE PEER REVIEW HELPERS
+//
+// Official:
+//   clubs/{clubId}/peerRatings/{docId}
+//   clubs/{clubId}/peerRatingBaselines/{docId}
+//
+// Practice:
+//   sandboxes/practice/clubs/{clubId}
+//     /sessions/{practiceSessionId}/peerRatings/{docId}
+//   sandboxes/practice/clubs/{clubId}
+//     /sessions/{practiceSessionId}/peerRatingBaselines/{docId}
+// ---------------------------------------------------------
+
+export function getScopedPeerRatingsCollection(db, dataScope) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return collection(
+    db,
+    dataScopeCollectionPath(
+      CLUB_COLLECTIONS.peerRatings,
+      normalizedScope
+    )
+  );
+}
+
+export function getScopedPeerRatingDoc(
+  db,
+  docId,
+  dataScope
+) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return doc(
+    db,
+    dataScopeDocPath(
+      CLUB_COLLECTIONS.peerRatings,
+      docId,
+      normalizedScope
+    )
+  );
+}
+
+export function getScopedPeerRatingBaselinesCollection(
+  db,
+  dataScope
+) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return collection(
+    db,
+    dataScopeCollectionPath(
+      CLUB_COLLECTIONS.peerRatingBaselines,
+      normalizedScope
+    )
+  );
+}
+
+export function getScopedPeerRatingBaselineDoc(
+  db,
+  docId,
+  dataScope
+) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return doc(
+    db,
+    dataScopeDocPath(
+      CLUB_COLLECTIONS.peerRatingBaselines,
+      docId,
+      normalizedScope
+    )
+  );
+}
+
 export function getPlayerPhotosCollection(db, clubId = DEFAULT_CLUB_ID) {
   return getClubCollection(db, CLUB_COLLECTIONS.playerPhotos, clubId);
 }
