@@ -27,10 +27,14 @@ test("Practice service exposes authoritative voluntary termination", () => {
   assert.match(service, /endPracticeSession,/);
 });
 
-test("ending Practice marks authoritative session ended", () => {
-  assert.match(service, /status:\s*["']ended["']/);
+test("ending Practice records the authoritative lifecycle status", () => {
+  assert.match(
+    service,
+    /const finalStatus\s*=\s*[\s\S]*?["']expired["'][\s\S]*?["']ended["']/
+  );
+  assert.match(service, /status:\s*finalStatus/);
   assert.match(service, /endedAt:/);
-  assert.match(service, /endedReason:\s*["']change-profile["']/);
+  assert.match(service, /endedReason:\s*safeReason/);
 });
 
 test("ending Practice clears authoritative active-session pointer", () => {

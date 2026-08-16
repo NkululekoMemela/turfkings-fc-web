@@ -213,9 +213,14 @@ async function startPracticeSession({
   const weekKey = getPracticeWeekKeyFromServerDate(serverNow);
   const sessionId = crypto.randomUUID();
 
+  // Practice duration is authoritative and identical for normal users
+  // and platform testers. Tester privileges bypass development access
+  // restrictions only; they do not alter the production session length.
+  const sessionDurationSeconds = PRACTICE_DURATION_SECONDS;
+
   const startedAt = Timestamp.fromDate(serverNow);
   const expiresAt = Timestamp.fromMillis(
-    serverNow.getTime() + PRACTICE_DURATION_SECONDS * 1000
+    serverNow.getTime() + sessionDurationSeconds * 1000
   );
 
   const refs = buildPracticeControlRefs({
@@ -315,7 +320,7 @@ async function startPracticeSession({
         createdByRole: role,
         weekKey,
         status: "active",
-        durationSeconds: PRACTICE_DURATION_SECONDS,
+        durationSeconds: sessionDurationSeconds,
         startedAt,
         expiresAt,
         creditConsumed: !isPlatformTester,
@@ -337,7 +342,7 @@ async function startPracticeSession({
     role,
     weekKey,
     status: "active",
-    durationSeconds: PRACTICE_DURATION_SECONDS,
+    durationSeconds: sessionDurationSeconds,
     startedAt,
     expiresAt,
     creditsRemaining,
@@ -350,6 +355,7 @@ async function endPracticeSession({
   db,
   authenticatedUser,
   clubId,
+  reason = "change-profile",
   now = new Date(),
 }) {
   if (!db) {
@@ -362,6 +368,16 @@ async function endPracticeSession({
   );
 
   const safeClubId = requireId(clubId, "clubId");
+
+  const safeReason =
+    reason === "time-expired"
+      ? "time-expired"
+      : "change-profile";
+
+  const finalStatus =
+    safeReason === "time-expired"
+      ? "expired"
+      : "ended";
 
   const serverNow =
     now instanceof Date ? new Date(now.getTime()) : new Date(now);
@@ -408,9 +424,9 @@ async function endPracticeSession({
       safeString(sessionSnap.data()?.userId) === uid
     ) {
       transaction.update(sessionRef, {
-        status: "ended",
+        status: finalStatus,
         endedAt: serverNow,
-        endedReason: "change-profile",
+        endedReason: safeReason,
       });
 
       endedSessionId = activeSessionId;
@@ -427,7 +443,8 @@ async function endPracticeSession({
     userId: uid,
     weekKey,
     sessionId: endedSessionId,
-    status: "ended",
+    status: finalStatus,
+    endedReason: safeReason,
   };
 }
 

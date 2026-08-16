@@ -226,6 +226,7 @@ export async function getActivePracticeSession({
 
 export async function endPracticeSession({
   clubId,
+  reason = "change-profile",
 } = {}) {
   const safeClubId = safeString(clubId);
 
@@ -262,6 +263,10 @@ export async function endPracticeSession({
     },
     body: JSON.stringify({
       clubId: safeClubId,
+      reason:
+        reason === "time-expired"
+          ? "time-expired"
+          : "change-profile",
     }),
   });
 

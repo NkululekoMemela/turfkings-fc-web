@@ -2339,16 +2339,72 @@ export default function App() {
   const [showSessionSelector, setShowSessionSelector] = useState(false);
   const [practiceRestrictionModal, setPracticeRestrictionModal] = useState(null);
 
+  // Temporary visual cue on Choose Session:
+  // after 4 seconds, alternate emphasis between Official and Practice
+  // every 2 seconds for 10 seconds, then return both to normal size.
+  const [sessionChoiceEmphasis, setSessionChoiceEmphasis] = useState(null);
+
   // Practice ribbon presentation only.
   // "open" = full persistent warning.
   // "left"/"right" = compact edge-hugging warning.
   // It can never be completely hidden.
   const [practiceRibbonPosition, setPracticeRibbonPosition] = useState("open");
 
+  // Practice expiry lifecycle guards.
+  // The wrap-up warning appears once per Practice session.
+  // The 00:00 authoritative expiry is also handled only once.
+  const practiceExpiryWarningAcknowledgedRef = useRef(false);
+  const practiceExpiryHandledRef = useRef(false);
+
   const [officialStartWarning, setOfficialStartWarning] = useState(null);
   const officialStartOverrideRef = useRef(false);
 
   const isPracticeMode = sessionMode === "practice";
+
+  useEffect(() => {
+    if (!showSessionSelector) {
+      setSessionChoiceEmphasis(null);
+      return undefined;
+    }
+
+    // Initial 4-second pause, then:
+    // 04s Official highlighted
+    // 06s Practice highlighted
+    // 08s Official highlighted
+    // 10s Practice highlighted
+    // 12s Official highlighted
+    // 14s animation ends and both return to 100%.
+    const timers = [
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("official"),
+        4000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("practice"),
+        6000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("official"),
+        8000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("practice"),
+        10000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("official"),
+        12000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis(null),
+        14000
+      ),
+    ];
+
+    return () => {
+      timers.forEach((timerId) => window.clearTimeout(timerId));
+    };
+  }, [showSessionSelector]);
 
   useEffect(() => {
     if (!isPracticeMode || !practiceRuntime?.expiresAt) {
@@ -2388,7 +2444,10 @@ export default function App() {
     setPracticeRestrictionModal({ title, message, icon });
   };
 
-  const closePracticeRestriction = () => setPracticeRestrictionModal(null);
+  const closePracticeRestriction = () => {
+    if (practiceRestrictionModal?.locked) return;
+    setPracticeRestrictionModal(null);
+  };
 
   const [identity, setIdentity] = useState(() => {
     if (typeof window === "undefined") return null;
@@ -2427,6 +2486,94 @@ export default function App() {
   ]);
 
   const activeClubId = activeClubIdentity.id;
+
+  useEffect(() => {
+    practiceExpiryWarningAcknowledgedRef.current = false;
+    practiceExpiryHandledRef.current = false;
+  }, [practiceRuntime?.practiceSessionId]);
+
+  useEffect(() => {
+    if (!isPracticeMode || !practiceRuntime?.expiresAt) {
+      return;
+    }
+
+    // One-time wrap-up warning.
+    // expiresAt remains authoritative; dismissing this notice does not
+    // extend the session or alter the server-issued deadline.
+    if (
+      practiceRemainingSeconds > 0 &&
+      practiceRemainingSeconds <= 45 &&
+      !practiceExpiryWarningAcknowledgedRef.current
+    ) {
+      practiceExpiryWarningAcknowledgedRef.current = true;
+
+      setPracticeRestrictionModal({
+        title: "45 seconds remaining",
+        message:
+          "Your Practice session is almost over. Finish what you're doing now — " +
+          "Practice will close automatically at 00:00.",
+        icon: "⏳",
+        buttonLabel: "OK",
+      });
+
+      return;
+    }
+
+    if (
+      practiceRemainingSeconds !== 0 ||
+      practiceExpiryHandledRef.current
+    ) {
+      return;
+    }
+
+    practiceExpiryHandledRef.current = true;
+
+    // Lock the UI immediately at 00:00.
+    setPracticeRestrictionModal({
+      title: "Practice session ended",
+      message:
+        "Your 15-minute Practice session has ended. Returning you to Choose Session…",
+      icon: "⏱️",
+      locked: true,
+    });
+
+    let cancelled = false;
+
+    const expirePractice = async () => {
+      try {
+        await endPracticeSession({
+          clubId: activeClubId,
+          reason: "time-expired",
+        });
+      } catch (err) {
+        // Security does not depend on this request succeeding:
+        // expired Practice writes are already rejected by the
+        // authoritative Practice security boundary.
+        console.error("[PRACTICE V2 EXPIRY CLEANUP ERROR]", err);
+      }
+
+      if (cancelled) return;
+
+      setPracticeRuntime(null);
+      setSessionMode("official");
+      setPracticeRibbonPosition("open");
+      setPracticeRestrictionModal(null);
+      setShowSessionSelector(true);
+      setPage(PAGE_LANDING);
+    };
+
+    void expirePractice();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isPracticeMode,
+    practiceRuntime?.expiresAt,
+    practiceRuntime?.practiceSessionId,
+    practiceRemainingSeconds,
+    activeClubId,
+  ]);
 
   const handleChangeProfile = async () => {
     if (isPracticeMode) {
@@ -7999,15 +8146,17 @@ export default function App() {
               {practiceRestrictionModal.message}
             </p>
 
-            <div style={{ display: "grid", gap: "0.7rem", marginTop: "1.1rem" }}>
-              <button
-                type="button"
-                className="primary-btn"
-                onClick={closePracticeRestriction}
-              >
-                {practiceRestrictionModal.buttonLabel || "Got it"}
-              </button>
-            </div>
+            {!practiceRestrictionModal.locked && (
+              <div style={{ display: "grid", gap: "0.7rem", marginTop: "1.1rem" }}>
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={closePracticeRestriction}
+                >
+                  {practiceRestrictionModal.buttonLabel || "Got it"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -8021,20 +8170,24 @@ export default function App() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: "1rem",
+            padding: "clamp(0.35rem, 1.2vh, 0.8rem)",
+            overflow: "hidden",
             background:
-              "radial-gradient(circle at top, rgba(30, 144, 255, 0.18), rgba(2, 6, 23, 0.88) 55%, rgba(0,0,0,0.94))",
+              "radial-gradient(circle at top, rgba(30, 144, 255, 0.18), rgba(2, 6, 23, 0.96) 55%, rgba(0,0,0,0.98))",
             backdropFilter: "blur(10px)",
           }}
         >
           <div
             style={{
-              width: "min(920px, 96vw)",
-              maxHeight: "92vh",
-              overflowY: "auto",
+              width: "min(920px, 98vw)",
+              height: "auto",
+              maxHeight: "96dvh",
+              overflow: "hidden",
               border: "1px solid rgba(147, 197, 253, 0.55)",
               borderRadius: "28px",
-              padding: "1.5rem",
+              padding: "clamp(0.65rem, 1.6vh, 1.25rem)",
+              display: "flex",
+              flexDirection: "column",
               background:
                 "linear-gradient(145deg, rgba(2, 8, 23, 0.98), rgba(7, 18, 38, 0.96))",
               boxShadow:
@@ -8043,21 +8196,21 @@ export default function App() {
               position: "relative",
             }}
           >
-            <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-              <div style={{ fontSize: "3rem", filter: "drop-shadow(0 0 18px rgba(251,191,36,0.8))" }}>
+            <div style={{ textAlign: "center", marginBottom: "clamp(0.45rem, 1vh, 1rem)", flexShrink: 0 }}>
+              <div style={{ fontSize: "clamp(1.8rem, 5vh, 2.7rem)", lineHeight: 1, filter: "drop-shadow(0 0 18px rgba(251,191,36,0.8))" }}>
                 👑
               </div>
-              <h1 style={{ fontSize: "clamp(2rem, 6vw, 3.4rem)", margin: 0 }}>
+              <h1 style={{ fontSize: "clamp(1.55rem, 4.5vh, 3rem)", margin: "0.2rem 0 0" }}>
                 Choose Session
               </h1>
-              <p style={{ color: "#dbeafe", fontSize: "1.1rem", marginTop: "0.5rem" }}>
+              <p style={{ color: "#dbeafe", fontSize: "clamp(0.78rem, 2vh, 1.05rem)", margin: "0.25rem 0 0" }}>
                 Choose how you want to enter the platform.
               </p>
               <div
                 style={{
                   width: 110,
                   height: 5,
-                  margin: "1rem auto 0",
+                  margin: "clamp(0.35rem, 0.8vh, 0.7rem) auto 0",
                   borderRadius: 999,
                   background: "linear-gradient(90deg, #0ea5e9, #d946ef)",
                 }}
@@ -8068,7 +8221,10 @@ export default function App() {
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                gap: "1.3rem",
+                gridAutoRows: "auto",
+                gap: "clamp(0.55rem, 1.2vh, 1rem)",
+                flex: "0 0 auto",
+                minHeight: 0,
               }}
             >
               <button
@@ -8081,7 +8237,9 @@ export default function App() {
                 style={{
                   border: "1px solid #0ea5e9",
                   borderRadius: "24px",
-                  padding: "1.35rem",
+                  padding: "clamp(0.65rem, 1.4vh, 1.1rem)",
+                  minHeight: 0,
+                  overflow: "hidden",
                   background:
                     "linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.96)), url('/session/official-session-bg.png'), radial-gradient(circle at top, rgba(14,165,233,0.42), rgba(2,6,23,0.96) 58%)",
                   backgroundSize: "cover, cover, cover",
@@ -8091,15 +8249,26 @@ export default function App() {
                   textAlign: "left",
                   cursor: "pointer",
                   boxShadow: "0 0 35px rgba(14,165,233,0.35)",
+                  transform:
+                    sessionChoiceEmphasis === "practice"
+                      ? "scale(0.95)"
+                      : "scale(1)",
+                  transformOrigin: "center",
+                  transition:
+                    "transform 420ms ease, opacity 420ms ease, box-shadow 420ms ease",
+                  opacity:
+                    sessionChoiceEmphasis === "practice"
+                      ? 0.92
+                      : 1,
                 }}
               >
-                <div style={{ textAlign: "center", fontSize: "4rem", marginBottom: "0.7rem" }}>🏃‍♂️⚽</div>
-                <h2 style={{ fontSize: "2rem", textAlign: "center", margin: 0 }}>Official<br />Session</h2>
+                <div style={{ textAlign: "center", fontSize: "clamp(2rem, 5vh, 3.2rem)", marginBottom: "0.25rem", lineHeight: 1 }}>🏃‍♂️⚽</div>
+                <h2 style={{ fontSize: "clamp(1.35rem, 3.5vh, 1.9rem)", textAlign: "center", margin: 0, lineHeight: 1.05 }}>Official<br />Session</h2>
                 <hr style={{ borderColor: "rgba(14,165,233,0.55)", margin: "1rem 0" }} />
                 <p>📊 Real standings & records</p>
                 <p>🎥 Videos & highlights enabled</p>
                 <p>🏅 Official stats & club history</p>
-                <p>🔒 Permanent club impact</p>
+                <p>🔒 Permanent club records</p>
                 <div
                   style={{
                     marginTop: "1rem",
@@ -8187,7 +8356,9 @@ export default function App() {
                 style={{
                   border: "1px solid #d946ef",
                   borderRadius: "24px",
-                  padding: "1.35rem",
+                  padding: "clamp(0.65rem, 1.4vh, 1.1rem)",
+                  minHeight: 0,
+                  overflow: "hidden",
                   background:
                     "linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.96)), url('/session/practice-session-bg.png'), radial-gradient(circle at top, rgba(168,85,247,0.48), rgba(2,6,23,0.96) 58%)",
                   backgroundSize: "cover, cover, cover",
@@ -8197,15 +8368,25 @@ export default function App() {
                   textAlign: "left",
                   cursor: "pointer",
                   boxShadow: "0 0 35px rgba(217,70,239,0.35)",
+                  transform:
+                    sessionChoiceEmphasis === "official"
+                      ? "scale(0.95)"
+                      : "scale(1)",
+                  transformOrigin: "center",
+                  transition:
+                    "transform 420ms ease, opacity 420ms ease, box-shadow 420ms ease",
+                  opacity:
+                    sessionChoiceEmphasis === "official"
+                      ? 0.92
+                      : 1,
                 }}
               >
-                <div style={{ textAlign: "center", fontSize: "4rem", marginBottom: "0.7rem" }}>🎮</div>
-                <h2 style={{ fontSize: "2rem", textAlign: "center", margin: 0 }}>Practice<br />Session</h2>
+                <div style={{ textAlign: "center", fontSize: "clamp(2rem, 5vh, 3.2rem)", marginBottom: "0.25rem", lineHeight: 1 }}>🎮</div>
+                <h2 style={{ fontSize: "clamp(1.35rem, 3.5vh, 1.9rem)", textAlign: "center", margin: 0, lineHeight: 1.05 }}>Practice<br />Session</h2>
                 <hr style={{ borderColor: "rgba(217,70,239,0.55)", margin: "1rem 0" }} />
-                <p>🎯 Learn the full workflow safely</p>
+                <p>🎯 For learning the app purposes</p>
                 <p>🧱 Isolated practice database</p>
                 <p>🛡️ Never affects official club records</p>
-                <p>↩️ Reset anytime, no risk</p>
                 <div
                   style={{
                     marginTop: "1rem",
@@ -8221,19 +8402,7 @@ export default function App() {
               </button>
             </div>
 
-            <div
-              style={{
-                marginTop: "1.25rem",
-                padding: "1rem",
-                border: "1px solid rgba(148,163,184,0.35)",
-                borderRadius: "18px",
-                background: "rgba(15,23,42,0.72)",
-                color: "#e5e7eb",
-                textAlign: "center",
-              }}
-            >
-              🛡️ Practice records stay isolated and never affect official club history.
-            </div>
+
           </div>
         </div>
       )}
@@ -9749,7 +9918,7 @@ export default function App() {
         />
       ) : null}
 
-      {showBottomNav && !showBackupModal ? (
+      {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav
           currentPage={page}
           activeClub={activeClubIdentity}

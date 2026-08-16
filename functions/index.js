@@ -2585,10 +2585,16 @@ exports.endPracticeSession = onRequest(
 
       const clubId = String(req.body?.clubId || "").trim();
 
+      const reason =
+        String(req.body?.reason || "").trim() === "time-expired"
+          ? "time-expired"
+          : "change-profile";
+
       const session = await endPracticeSessionService({
         db,
         authenticatedUser,
         clubId,
+        reason,
       });
 
       res.status(200).json({

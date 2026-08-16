@@ -55,10 +55,14 @@ test("cross-club tester access requires explicit permission", () => {
   );
 });
 
-test("tester sessions retain normal authoritative duration", () => {
+test("tester sessions retain the normal authoritative production duration", () => {
   assert.match(
     service,
-    /serverNow\.getTime\(\)\s*\+\s*PRACTICE_DURATION_SECONDS\s*\*\s*1000/
+    /const sessionDurationSeconds\s*=\s*PRACTICE_DURATION_SECONDS/
+  );
+  assert.match(
+    service,
+    /serverNow\.getTime\(\)\s*\+\s*sessionDurationSeconds\s*\*\s*1000/
   );
   assert.match(service, /testerOverrideUsed:\s*isPlatformTester/);
 });
