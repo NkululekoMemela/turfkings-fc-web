@@ -1158,7 +1158,11 @@ export default function MatchSignupPage({
       setWhatsAppVerificationStatus(savedStatus);
       setWhatsAppVerificationMessage(getWhatsappProfileMessage(savedStatus));
 
-      if (!savedNumber && !skipWhatsAppPromptThisSession) {
+      if (
+        !isPracticeMode &&
+        !savedNumber &&
+        !skipWhatsAppPromptThisSession
+      ) {
         setShowWhatsAppPrompt(true);
       }
     }
@@ -1175,9 +1179,16 @@ export default function MatchSignupPage({
     payerUserId,
     phoneNumber,
     skipWhatsAppPromptThisSession,
+    isPracticeMode,
   ]);
 
   async function handleSaveWhatsAppNumber() {
+    if (isPracticeMode) {
+      setShowWhatsAppPrompt(false);
+      setWhatsAppInputError("");
+      return;
+    }
+
     const normalized = normalizeWhatsAppNumber(whatsAppInput);
 
     if (!normalized) {

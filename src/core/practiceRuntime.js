@@ -60,15 +60,11 @@ function requireTimestamp(value, label) {
   return normalized;
 }
 
-export async function createPracticeRuntime({
+async function buildRuntimeFromAuthoritativeSession({
   clubId,
+  authoritativeSession,
 } = {}) {
   const safeClubId = requireId(clubId, "clubId");
-
-  const authoritativeSession =
-    await startPracticeSession({
-      clubId: safeClubId,
-    });
 
   const sessionId = requireId(
     authoritativeSession?.sessionId,
@@ -88,6 +84,15 @@ export async function createPracticeRuntime({
   if (Date.parse(expiresAt) <= Date.parse(startedAt)) {
     throw new Error(
       "[PracticeRuntime] Authoritative Practice expiry must be after start."
+    );
+  }
+
+  if (
+    authoritativeSession?.clubId &&
+    String(authoritativeSession.clubId).trim() !== safeClubId
+  ) {
+    throw new Error(
+      "[PracticeRuntime] Authoritative Practice club mismatch."
     );
   }
 
@@ -128,5 +133,31 @@ export async function createPracticeRuntime({
       startedAt,
       expiresAt,
     }),
+  });
+}
+
+export async function createPracticeRuntime({
+  clubId,
+} = {}) {
+  const safeClubId = requireId(clubId, "clubId");
+
+  const authoritativeSession =
+    await startPracticeSession({
+      clubId: safeClubId,
+    });
+
+  return buildRuntimeFromAuthoritativeSession({
+    clubId: safeClubId,
+    authoritativeSession,
+  });
+}
+
+export async function restorePracticeRuntime({
+  clubId,
+  authoritativeSession,
+} = {}) {
+  return buildRuntimeFromAuthoritativeSession({
+    clubId,
+    authoritativeSession,
   });
 }

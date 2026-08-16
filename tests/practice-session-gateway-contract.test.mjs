@@ -100,3 +100,37 @@ test("gateway requires authoritative session response", () => {
   assert.match(source, /session\.startedAt/);
   assert.match(source, /session\.expiresAt/);
 });
+
+test("gateway exposes active Practice session recovery", () => {
+  assert.match(
+    source,
+    /export async function getActivePracticeSession/
+  );
+});
+
+test("recovery gateway calls getActivePracticeSession function", () => {
+  assert.match(
+    source,
+    /\/getActivePracticeSession/
+  );
+});
+
+test("recovery sends only club identity from the client", () => {
+  const recoveryStart = source.indexOf(
+    "export async function getActivePracticeSession"
+  );
+
+  assert.ok(recoveryStart >= 0);
+
+  const recoverySource = source.slice(recoveryStart);
+
+  assert.match(
+    recoverySource,
+    /JSON\.stringify\(\{\s*clubId:\s*safeClubId/
+  );
+
+  assert.doesNotMatch(
+    recoverySource.slice(0, 2200),
+    /\b(role|uid|userId|email|startedAt|expiresAt|weekKey)\s*:/
+  );
+});

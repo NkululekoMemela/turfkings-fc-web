@@ -7,7 +7,7 @@ const source = fs.readFileSync("src/App.jsx", "utf8");
 test("App imports Practice v2 runtime", () => {
   assert.match(
     source,
-    /import\s*\{\s*createPracticeRuntime\s*\}\s*from\s*["']\.\/core\/practiceRuntime\.js["']/
+    /import\s*\{[\s\S]*?createPracticeRuntime[\s\S]*?\}\s*from\s*["']\.\/core\/practiceRuntime\.js["']/
   );
 });
 

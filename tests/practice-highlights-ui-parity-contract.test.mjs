@@ -4,7 +4,7 @@ import fs from "node:fs";
 
 const app = fs.readFileSync("src/App.jsx", "utf8");
 
-test("Practice does not block Highlights page navigation", () => {
+test("Practice blocks Highlights page navigation through the shared restriction UI", () => {
   const start = app.indexOf("const handleGoToViewHighlights");
   assert.ok(start >= 0);
 
@@ -18,21 +18,32 @@ test("Practice does not block Highlights page navigation", () => {
 
   assert.match(
     block,
-    /setPage\(PAGE_VIEW_HIGHLIGHTS\)/
-  );
-
-  assert.doesNotMatch(
-    block,
     /if\s*\(\s*isPracticeMode\s*\)/
   );
 
-  assert.doesNotMatch(
+  assert.match(
     block,
-    /Highlights are for Official Sessions/
+    /showPracticeRestriction\(/
+  );
+
+  assert.match(
+    block,
+    /Videos unavailable in Practice/
+  );
+
+  assert.match(
+    block,
+    /return;/
+  );
+
+  // Official behaviour remains available after the Practice guard.
+  assert.match(
+    block,
+    /setPage\(PAGE_VIEW_HIGHLIGHTS\)/
   );
 });
 
-test("Practice does not block the Highlights camera entry point", () => {
+test("Practice blocks Highlights camera before camera launch logic", () => {
   const start = app.indexOf("const handleOpenHighlightsCamera");
   assert.ok(start >= 0);
 
@@ -46,14 +57,31 @@ test("Practice does not block the Highlights camera entry point", () => {
       ? app.slice(start, end)
       : app.slice(start, start + 7000);
 
-  assert.doesNotMatch(
+  assert.match(
     block,
     /if\s*\(\s*isPracticeMode\s*\)/
   );
 
-  assert.doesNotMatch(
+  assert.match(
     block,
-    /Camera uploads are for Official Sessions/
+    /showPracticeRestriction\(/
+  );
+
+  assert.match(
+    block,
+    /Highlights Camera unavailable in Practice/
+  );
+
+  assert.match(
+    block,
+    /return;/
+  );
+
+  // The normal Official camera implementation still exists
+  // after the Practice-only early return.
+  assert.match(
+    block,
+    /navigator\.userAgent/
   );
 });
 

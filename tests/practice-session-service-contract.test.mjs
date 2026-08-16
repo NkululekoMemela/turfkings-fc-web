@@ -79,3 +79,61 @@ test("Practice business week is calculated server-side in SAST", () => {
 test("starting with no available credits fails closed", () => {
   assert.match(source, /practice\/no-credits/);
 });
+
+test("Practice start stores the active session pointer on entitlement", () => {
+  assert.match(
+    source,
+    /activeSessionId:\s*sessionId/
+  );
+});
+
+test("Practice service exposes active-session recovery", () => {
+  assert.match(
+    source,
+    /async function getActivePracticeSession/
+  );
+});
+
+test("active-session recovery reads the entitlement pointer", () => {
+  assert.match(
+    source,
+    /activeSessionId/
+  );
+  assert.match(
+    source,
+    /transaction\.get\(refs\.entitlementRef\)|refs\.entitlementRef\.get\(\)/
+  );
+});
+
+test("active-session recovery validates server expiry", () => {
+  assert.match(
+    source,
+    /expiresAt/
+  );
+  assert.match(
+    source,
+    /serverNow|getTime\(\)/
+  );
+});
+
+test("active-session recovery does not consume another credit", () => {
+  const fnStart = source.indexOf("async function getActivePracticeSession");
+  assert.ok(fnStart >= 0);
+
+  const recoverySource = source.slice(fnStart);
+
+  assert.doesNotMatch(
+    recoverySource,
+    /creditsConsumed:\s*nextConsumed/
+  );
+});
+
+test("active-session recovery validates club and user ownership", () => {
+  const fnStart = source.indexOf("async function getActivePracticeSession");
+  assert.ok(fnStart >= 0);
+
+  const recoverySource = source.slice(fnStart);
+
+  assert.match(recoverySource, /clubId/);
+  assert.match(recoverySource, /userId/);
+});

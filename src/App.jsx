@@ -49,7 +49,14 @@ import {
   buildFriendlyDefensiveBlockEvents,
 } from "./core/lineups.js";
 import { buildPracticeState } from "./core/practiceSessionSeed.js";
-import { createPracticeRuntime } from "./core/practiceRuntime.js";
+import {
+  createPracticeRuntime,
+  restorePracticeRuntime,
+} from "./core/practiceRuntime.js";
+import {
+  getActivePracticeSession,
+} from "./storage/practiceSessionGateway.js";
+import { useAuth } from "./auth/AuthContext.jsx";
 
 import {
   buildCurrentMatchFromFixture,
@@ -62,6 +69,10 @@ import {
 import { db } from "./firebaseConfig.js";
 import { clubCollectionPath, clubDocPath } from "./core/clubPaths.js";
 import { getPlayerPhotosCollection } from "./core/clubFirestorePaths.js";
+import {
+  dataScopeDocPath,
+  isPracticeDataScope,
+} from "./core/dataScope.js";
 import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 
 // Page constants
@@ -1359,6 +1370,7 @@ async function saveParticipationForMatchDay({
   matchDayId,
   createdAtISO,
   playerAppearances,
+  dataScope = null,
 }) {
   const safeSeasonId = String(seasonId || "").trim();
   const safeMatchDayId = String(matchDayId || "").trim();
@@ -1373,13 +1385,22 @@ async function saveParticipationForMatchDay({
 
   safeAppearances.forEach((entry) => {
     const attendanceDocId = `${safeMatchDayId}__${entry.playerId}`;
-    const attendanceRef = doc(
-      db,
-      "seasons",
-      safeSeasonId,
-      "attendance",
-      attendanceDocId
-    );
+    const attendanceRef = isPracticeDataScope(dataScope)
+      ? doc(
+          db,
+          dataScopeDocPath(
+            "attendance",
+            attendanceDocId,
+            dataScope
+          )
+        )
+      : doc(
+          db,
+          "seasons",
+          safeSeasonId,
+          "attendance",
+          attendanceDocId
+        );
 
     const teamMatches = Number(entry.teamMatches || 0);
     const expectedFullMatches = Number(entry.expectedFullMatches || 0);
@@ -2305,14 +2326,62 @@ export default function App() {
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
+  const {
+    authUser,
+    loading: authLoading,
+    signInWithGoogle,
+  } = useAuth();
+
   const [sessionMode, setSessionMode] = useState("official");
   const [practiceRuntime, setPracticeRuntime] = useState(null);
+  const [practiceClockNowMs, setPracticeClockNowMs] = useState(() => Date.now());
   const [showSessionSelector, setShowSessionSelector] = useState(false);
   const [practiceRestrictionModal, setPracticeRestrictionModal] = useState(null);
+
+  // Practice ribbon presentation only.
+  // "open" = full persistent warning.
+  // "left"/"right" = compact edge-hugging warning.
+  // It can never be completely hidden.
+  const [practiceRibbonPosition, setPracticeRibbonPosition] = useState("open");
+
   const [officialStartWarning, setOfficialStartWarning] = useState(null);
   const officialStartOverrideRef = useRef(false);
 
   const isPracticeMode = sessionMode === "practice";
+
+  useEffect(() => {
+    if (!isPracticeMode || !practiceRuntime?.expiresAt) {
+      return undefined;
+    }
+
+    // Display-only clock:
+    // authoritative expiry remains the server-issued expiresAt.
+    setPracticeClockNowMs(Date.now());
+
+    const intervalId = window.setInterval(() => {
+      setPracticeClockNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isPracticeMode, practiceRuntime?.expiresAt]);
+
+  const practiceRemainingSeconds = Math.max(
+    0,
+    Math.ceil(
+      (
+        Date.parse(practiceRuntime?.expiresAt || "") -
+        practiceClockNowMs
+      ) / 1000
+    ) || 0
+  );
+
+  const practiceTimerLabel = `${String(
+    Math.floor(practiceRemainingSeconds / 60)
+  ).padStart(2, "0")}:${String(
+    practiceRemainingSeconds % 60
+  ).padStart(2, "0")}`;
 
   const showPracticeRestriction = (title, message, icon = "🔒") => {
     setPracticeRestrictionModal({ title, message, icon });
@@ -2357,6 +2426,48 @@ export default function App() {
   ]);
 
   const activeClubId = activeClubIdentity.id;
+
+  // Practice v2 refresh recovery:
+  // recover the same authoritative session without consuming another credit.
+  useEffect(() => {
+    if (authLoading || !authUser || !activeClubId) return undefined;
+
+    let cancelled = false;
+
+    async function recoverPracticeSession() {
+      try {
+        const authoritativeSession =
+          await getActivePracticeSession({
+            clubId: activeClubId,
+          });
+
+        if (cancelled || !authoritativeSession) return;
+
+        const runtime = await restorePracticeRuntime({
+          clubId: activeClubId,
+          authoritativeSession,
+        });
+
+        if (cancelled) return;
+
+        setPracticeRuntime(runtime);
+        setSessionMode("practice");
+      } catch (err) {
+        if (!cancelled) {
+          console.warn(
+            "[PRACTICE V2 RECOVERY]",
+            err?.message || err
+          );
+        }
+      }
+    }
+
+    recoverPracticeSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, authUser, activeClubId]);
 
   // Practice v2 always preserves the real club identity.
   // Disposable football/session data is isolated exclusively by DataScope.
@@ -3376,6 +3487,7 @@ export default function App() {
 
     useEffect(() => {
     if (!USE_V2) return;
+    if (isPracticeMode) return;
 
     let cancelled = false;
 
@@ -3684,9 +3796,15 @@ export default function App() {
   const handleBackToLanding = () => setPage(PAGE_LANDING);
   const handleBackToLive = () => setPage(PAGE_LIVE);
   const handleGoToViewHighlights = () => {
-    // Practice v2 keeps the same visible navigation as Official.
-    // Real Highlights effects are intercepted at the effect boundary,
-    // not by hiding or blocking the page.
+    if (isPracticeMode) {
+      showPracticeRestriction(
+        "Videos unavailable in Practice",
+        "Videos and permanent highlights are disabled during Practice sessions. Switch to your Official profile to use this feature.",
+        "🎥"
+      );
+      return;
+    }
+
     setPage(PAGE_VIEW_HIGHLIGHTS);
   };
 
@@ -4578,9 +4696,11 @@ export default function App() {
     setCurrentConfirmedLineupSnapshot(null);
 
     if (USE_V2) {
-      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
-        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
-      });
+      if (!isPracticeMode) {
+        writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
+          console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+        });
+      }
 
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
@@ -4932,9 +5052,11 @@ export default function App() {
       setPendingMatchStartContext(null);
       setCurrentConfirmedLineupSnapshot(null);
       setCurrentConfirmedLineupTimeline([]);
-      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
-        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
-      });
+      if (!isPracticeMode) {
+        writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
+          console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+        });
+      }
       setPage(PAGE_LANDING);
       return;
     }
@@ -5112,7 +5234,9 @@ export default function App() {
     setPendingMatchStartContext(null);
     setCurrentConfirmedLineupSnapshot(null);
     try {
-      await writeCameraLiveContextToFirebase(null, activeClubId);
+      if (!isPracticeMode) {
+        await writeCameraLiveContextToFirebase(null, activeClubId);
+      }
     } catch (error) {
       console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
     }
@@ -5141,9 +5265,11 @@ export default function App() {
     setSecondsLeft(matchSeconds);
     setHasLiveMatch(false);
     setPendingMatchStartContext(null);
-    writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
-      console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
-    });
+    if (!isPracticeMode) {
+      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
+        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+      });
+    }
     setCurrentConfirmedLineupSnapshot(null);
 
     if (USE_V2) {
@@ -5153,9 +5279,11 @@ export default function App() {
         liveMatchDraft: null,
       }));
 
-      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
-        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
-      });
+      if (!isPracticeMode) {
+        writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
+          console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+        });
+      }
     } else {
       updateState((prev) => ({ ...prev, currentEvents: [] }));
     }
@@ -6115,6 +6243,7 @@ export default function App() {
             matchDayId: id,
             createdAtISO: now.toISOString(),
             playerAppearances: safeParticipationEntries,
+            dataScope: footballDataScope,
           });
         }
 
@@ -6526,9 +6655,15 @@ export default function App() {
   };
 
   const handleOpenHighlightsCamera = () => {
-    // Practice v2 preserves the same camera entry point as Official.
-    // Practice safety is enforced at the external-effect/persistence
-    // boundary rather than by changing the visible UI.
+    if (isPracticeMode) {
+      showPracticeRestriction(
+        "Highlights Camera unavailable in Practice",
+        "Camera recording and permanent video capture are disabled during Practice sessions. Switch to your Official profile to use this feature.",
+        "📹"
+      );
+      return;
+    }
+
     if (typeof window === "undefined") return;
 
     const isAndroid = /Android/i.test(window.navigator.userAgent || "");
@@ -6901,6 +7036,165 @@ export default function App() {
         page === PAGE_LANDING ? "app-root--landing" : ""
       }`}
     >
+      {import.meta.env.DEV && (
+        <div
+          style={{
+            position: "fixed",
+            right: 10,
+            top: 10,
+            zIndex: 13000,
+            padding: "0.65rem 0.8rem",
+            borderRadius: 12,
+            background: "rgba(2,6,23,0.94)",
+            border: "1px solid rgba(34,211,238,0.55)",
+            color: "#e2e8f0",
+            fontSize: "0.72rem",
+            lineHeight: 1.45,
+            fontFamily: "monospace",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+            pointerEvents: "none",
+          }}
+        >
+          <div><strong>Practice v2 diagnostic</strong></div>
+          <div>mode: {sessionMode}</div>
+          <div>runtime: {practiceRuntime ? "YES" : "NO"}</div>
+          <div>session: {practiceRuntime?.practiceSessionId || "NONE"}</div>
+          <div>scope: {footballDataScope?.environment || "NONE"}</div>
+          <div>roster: {practiceRuntime?.roster?.length ?? "NONE"}</div>
+          <div>expires: {practiceRuntime?.expiresAt || "NONE"}</div>
+        </div>
+      )}
+
+      {import.meta.env.DEV && (
+        <div
+          style={{
+            position: "fixed",
+            right: 10,
+            top: 10,
+            zIndex: 13000,
+            padding: "0.65rem 0.8rem",
+            borderRadius: 12,
+            background: "rgba(2,6,23,0.94)",
+            border: "1px solid rgba(34,211,238,0.55)",
+            color: "#e2e8f0",
+            fontSize: "0.72rem",
+            lineHeight: 1.45,
+            fontFamily: "monospace",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+            pointerEvents: "none",
+          }}
+        >
+          <div><strong>Practice v2 diagnostic</strong></div>
+          <div>mode: {sessionMode}</div>
+          <div>runtime: {practiceRuntime ? "YES" : "NO"}</div>
+          <div>session: {practiceRuntime?.practiceSessionId || "NONE"}</div>
+          <div>scope: {footballDataScope?.environment || "NONE"}</div>
+          <div>roster: {practiceRuntime?.roster?.length ?? "NONE"}</div>
+          <div>expires: {practiceRuntime?.expiresAt || "NONE"}</div>
+        </div>
+      )}
+
+      {isPracticeMode && practiceRuntime?.expiresAt && (
+        <div
+          role="status"
+          aria-label={`Practice Session ${practiceTimerLabel} remaining`}
+          style={{
+            position: "fixed",
+            top: "4.25rem",
+            left:
+              practiceRibbonPosition === "left"
+                ? 0
+                : practiceRibbonPosition === "right"
+                  ? "auto"
+                  : "54%",
+            right: practiceRibbonPosition === "right" ? 0 : "auto",
+            transform:
+              practiceRibbonPosition === "open"
+                ? "translateX(-50%)"
+                : "none",
+            zIndex: 12000,
+            display: "flex",
+            alignItems: "center",
+            gap: practiceRibbonPosition === "open" ? "0.5rem" : "0.35rem",
+            padding:
+              practiceRibbonPosition === "open"
+                ? "0.62rem 0.95rem"
+                : practiceRibbonPosition === "left"
+                  ? "0.58rem 0.65rem 0.58rem 0.45rem"
+                  : "0.58rem 0.45rem 0.58rem 0.65rem",
+            borderRadius:
+              practiceRibbonPosition === "open"
+                ? 999
+                : practiceRibbonPosition === "left"
+                  ? "0 999px 999px 0"
+                  : "999px 0 0 999px",
+            border: "2px solid rgba(232,121,249,0.95)",
+            background:
+              "linear-gradient(135deg, rgba(76,29,149,0.98), rgba(88,28,135,0.98), rgba(30,12,48,0.98))",
+            color: "#fff7ff",
+            boxShadow:
+              "0 0 0 1px rgba(250,204,255,0.28), 0 0 20px rgba(217,70,239,0.42), 0 10px 30px rgba(30,12,48,0.48)",
+            backdropFilter: "blur(14px)",
+            fontWeight: 850,
+            fontSize: practiceRibbonPosition === "open" ? "0.9rem" : "0.82rem",
+            letterSpacing: "0.01em",
+            cursor: "pointer",
+            userSelect: "none",
+            transition:
+              "left 180ms ease, right 180ms ease, transform 180ms ease, padding 180ms ease, box-shadow 180ms ease",
+          }}
+          title={
+            practiceRibbonPosition === "open"
+              ? "Tap to move the Practice Session warning to the right edge"
+              : "Tap to move or expand the Practice Session warning"
+          }
+          onClick={() => {
+            setPracticeRibbonPosition((current) => {
+              if (current === "open") return "right";
+              if (current === "right") return "left";
+              return "open";
+            });
+          }}
+        >
+          <span aria-hidden="true">🧪</span>
+
+          {practiceRibbonPosition === "open" && (
+            <>
+              <span>Practice session</span>
+              <span
+                style={{ opacity: 0.65 }}
+                aria-hidden="true"
+              >
+                •
+              </span>
+            </>
+          )}
+
+          <span
+            style={{
+              fontVariantNumeric: "tabular-nums",
+              minWidth:
+                practiceRibbonPosition === "open" ? "3.2rem" : "2.95rem",
+              textAlign: "center",
+            }}
+          >
+            {practiceTimerLabel}
+          </span>
+
+          {practiceRibbonPosition !== "open" && (
+            <span
+              aria-hidden="true"
+              style={{
+                fontSize: "0.72rem",
+                opacity: 0.8,
+              }}
+            >
+              {practiceRibbonPosition === "right" ? "◀" : "▶"}
+            </span>
+          )}
+        </div>
+      )}
+
       {officialStartWarning && (
         <div className="tk-referee-lock-backdrop" onClick={() => setOfficialStartWarning(null)}>
           <div className="tk-referee-lock-modal" onClick={(e) => e.stopPropagation()}>
@@ -7811,6 +8105,25 @@ export default function App() {
                   }
 
                   try {
+                    // Practice v2 requires Firebase authentication because
+                    // the server owns session authorization, credits and
+                    // authoritative Practice identity.
+                    //
+                    // IMPORTANT:
+                    // This authentication gate belongs ONLY to Practice.
+                    // Official Session behaviour is deliberately untouched.
+                    // Practice authentication:
+                    // If Firebase Auth has no current user, complete the existing
+                    // Google sign-in flow first. The Practice gateway remains the
+                    // authoritative security boundary: it reads auth.currentUser,
+                    // obtains a fresh Firebase ID token, and the server verifies it.
+                    //
+                    // Do not depend on React AuthContext propagation here because
+                    // AuthContext enrichment may complete after Firebase Auth itself.
+                    if (!authUser?.firebaseUser) {
+                      await signInWithGoogle();
+                    }
+
                     const runtime = await createPracticeRuntime({
                       clubId: activeClubId,
                     });
@@ -9392,7 +9705,7 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           members={members}
-          onOpenHighlight={() => setPage(PAGE_VIEW_HIGHLIGHTS)}
+          onOpenHighlight={handleGoToViewHighlights}
           variant="launcher"
         />
       ) : null}

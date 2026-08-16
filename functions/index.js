@@ -23,6 +23,7 @@ const fetch = require("node-fetch");
 
 const {
   startPracticeSession: startPracticeSessionService,
+  getActivePracticeSession: getActivePracticeSessionService,
 } = require("./practiceSessionService");
 
 admin.initializeApp();
@@ -183,7 +184,7 @@ async function requireFirebaseUser(req) {
     req.get("Authorization") || ""
   );
 
-  const match = authorization.match(/^Bearer\\s+(.+)$/i);
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
 
   if (!match) {
     const error = new Error(
@@ -2454,6 +2455,99 @@ exports.twilioStatusCallback = onRequest(
     } catch (error) {
       console.error("twilioStatusCallback failed:", error);
       return res.status(500).send("ERROR");
+    }
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Practice v2 — active-session recovery
+// -----------------------------------------------------------------------------
+//
+// SECURITY:
+// - Firebase authentication establishes caller identity.
+// - Recovery is read-only and never consumes another Practice credit.
+// - The service validates club/user ownership and authoritative expiry.
+//
+exports.getActivePracticeSession = onRequest(
+  {
+    region: REGION,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        error: "Method not allowed.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = safeString(
+        parseRequestValue(req, "clubId")
+      );
+
+      if (!clubId) {
+        res.status(400).json({
+          ok: false,
+          error: "clubId is required.",
+          code: "practice/club-required",
+        });
+        return;
+      }
+
+      const session = await getActivePracticeSessionService({
+        db,
+        authenticatedUser,
+        clubId,
+      });
+
+      res.status(200).json({
+        ok: true,
+        session: session
+          ? {
+              sessionId: session.sessionId,
+              clubId: session.clubId,
+              role: session.role,
+              weekKey: session.weekKey,
+              status: session.status,
+              durationSeconds: session.durationSeconds,
+              startedAt: session.startedAt.toDate().toISOString(),
+              expiresAt: session.expiresAt.toDate().toISOString(),
+              creditsRemaining: session.creditsRemaining,
+            }
+          : null,
+      });
+    } catch (error) {
+      const code = safeString(error?.code);
+
+      const status =
+        code === "practice/auth-required" ||
+        code === "practice/auth-invalid"
+          ? 401
+          : 500;
+
+      console.error(
+        "getActivePracticeSession failed:",
+        code || "unknown",
+        error?.message || error
+      );
+
+      res.status(status).json({
+        ok: false,
+        code: code || "practice/recovery-failed",
+        error:
+          status === 500
+            ? "Could not recover Practice session."
+            : safeString(error?.message) ||
+              "Could not recover Practice session.",
+      });
     }
   }
 );

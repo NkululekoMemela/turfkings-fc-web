@@ -246,6 +246,7 @@ async function startPracticeSession({
         creditsTransferredIn: transferredIn,
         creditsTransferredOut: transferredOut,
         creditsRemaining,
+        activeSessionId: sessionId,
         updatedAt: startedAt,
       },
       {merge: true}
@@ -284,6 +285,107 @@ async function startPracticeSession({
   };
 }
 
+async function getActivePracticeSession({
+  db,
+  authenticatedUser,
+  clubId,
+  now = new Date(),
+}) {
+  if (!db) {
+    throw new Error("[PracticeSession] Firestore db is required.");
+  }
+
+  const uid = requireId(
+    authenticatedUser?.uid,
+    "authenticated user UID"
+  );
+
+  const safeClubId = requireId(clubId, "clubId");
+
+  const serverNow =
+    now instanceof Date ? new Date(now.getTime()) : new Date(now);
+
+  if (Number.isNaN(serverNow.getTime())) {
+    throw new Error("[PracticeSession] Invalid server time.");
+  }
+
+  const weekKey =
+    getPracticeWeekKeyFromServerDate(serverNow);
+
+  const entitlementRef = db
+    .collection("practiceControl")
+    .doc(safeClubId)
+    .collection("weeks")
+    .doc(weekKey)
+    .collection("entitlements")
+    .doc(uid);
+
+  const entitlementSnap = await entitlementRef.get();
+
+  if (!entitlementSnap.exists) {
+    return null;
+  }
+
+  const entitlement = entitlementSnap.data() || {};
+  const activeSessionId = safeString(
+    entitlement.activeSessionId
+  );
+
+  if (!activeSessionId) {
+    return null;
+  }
+
+  const sessionRef = db
+    .collection("practiceSessions")
+    .doc(requireId(activeSessionId, "activeSessionId"));
+
+  const sessionSnap = await sessionRef.get();
+
+  if (!sessionSnap.exists) {
+    return null;
+  }
+
+  const session = sessionSnap.data() || {};
+
+  if (
+    safeString(session.clubId) !== safeClubId ||
+    safeString(session.userId) !== uid ||
+    safeString(session.weekKey) !== weekKey ||
+    safeString(session.status) !== "active"
+  ) {
+    return null;
+  }
+
+  const expiresAt = session.expiresAt;
+
+  if (
+    !expiresAt ||
+    typeof expiresAt.toMillis !== "function" ||
+    serverNow.getTime() >= expiresAt.toMillis()
+  ) {
+    return null;
+  }
+
+  return {
+    sessionId: activeSessionId,
+    clubId: safeClubId,
+    userId: uid,
+    role: safeString(session.createdByRole),
+    weekKey,
+    status: "active",
+    durationSeconds: Number(
+      session.durationSeconds ||
+      PRACTICE_DURATION_SECONDS
+    ),
+    startedAt: session.startedAt,
+    expiresAt,
+    creditsRemaining: Math.max(
+      0,
+      Number(entitlement.creditsRemaining || 0)
+    ),
+  };
+}
+
 module.exports = {
   PRACTICE_DURATION_SECONDS,
   PRACTICE_WEEKLY_CREDITS,
@@ -292,4 +394,5 @@ module.exports = {
   resolvePracticeRole,
   buildPracticeControlRefs,
   startPracticeSession,
+  getActivePracticeSession,
 };

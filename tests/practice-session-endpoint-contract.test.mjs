@@ -115,3 +115,90 @@ test("known Practice failures map to explicit HTTP statuses", () => {
   assert.match(source, /\?\s*404/);
   assert.match(source, /\?\s*409/);
 });
+
+test("active Practice recovery endpoint is exported", () => {
+  assert.match(
+    source,
+    /exports\.getActivePracticeSession\s*=\s*onRequest/
+  );
+});
+
+test("active Practice recovery delegates to recovery service", () => {
+  const start = source.indexOf(
+    "exports.getActivePracticeSession = onRequest("
+  );
+
+  assert.ok(start >= 0);
+
+  const block = source.slice(
+    start,
+    source.indexOf(
+      "exports.startPracticeSession = onRequest(",
+      start
+    )
+  );
+
+  assert.match(
+    block,
+    /getActivePracticeSessionService\(\{/
+  );
+
+  assert.match(block, /authenticatedUser/);
+  assert.match(block, /clubId/);
+});
+
+test("active Practice recovery can return no session without starting one", () => {
+  const start = source.indexOf(
+    "exports.getActivePracticeSession = onRequest("
+  );
+
+  assert.ok(start >= 0);
+
+  const block = source.slice(
+    start,
+    source.indexOf(
+      "exports.startPracticeSession = onRequest(",
+      start
+    )
+  );
+
+  assert.match(
+    block,
+    /session:\s*session\s*\?[\s\S]*?:\s*null/
+  );
+
+  assert.doesNotMatch(
+    block,
+    /startPracticeSessionService\(\{/
+  );
+});
+
+test("active Practice recovery does not accept client timing authority", () => {
+  const start = source.indexOf(
+    "exports.getActivePracticeSession = onRequest("
+  );
+
+  assert.ok(start >= 0);
+
+  const block = source.slice(
+    start,
+    source.indexOf(
+      "exports.startPracticeSession = onRequest(",
+      start
+    )
+  );
+
+  for (const field of [
+    "startedAt",
+    "expiresAt",
+    "weekKey",
+    "durationSeconds",
+  ]) {
+    assert.doesNotMatch(
+      block,
+      new RegExp(
+        `parseRequestValue\\\\(req,\\\\s*["']${field}["']\\\\)`
+      )
+    );
+  }
+});
