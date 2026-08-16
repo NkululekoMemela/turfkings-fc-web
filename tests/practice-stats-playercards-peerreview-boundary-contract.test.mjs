@@ -37,3 +37,15 @@ test("Stage 5D1 does not yet alter Peer Review persistence", () => {
   assert.match(peer, /CLUB_COLLECTIONS\.peerRatings/);
   assert.match(peer, /CLUB_COLLECTIONS\.peerRatingBaselines/);
 });
+
+test("Practice cannot inherit Official completed-session history", () => {
+  assert.match(
+    app,
+    /matchDayHistory\s*=\s*isPracticeMode\s*&&\s*!s\?\.isPracticeSeason\s*\?\s*\[\]\s*:\s*s\?\.matchDayHistory\s*\|\|\s*\[\]/
+  );
+
+  assert.match(
+    app,
+    /friendlyMatchDayHistory\s*=\s*isPracticeMode\s*&&\s*!s\?\.isPracticeSeason\s*\?\s*\[\]\s*:\s*s\?\.friendlyMatchDayHistory\s*\|\|\s*\[\]/
+  );
+});

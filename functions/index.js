@@ -24,6 +24,7 @@ const fetch = require("node-fetch");
 const {
   startPracticeSession: startPracticeSessionService,
   getActivePracticeSession: getActivePracticeSessionService,
+  endPracticeSession: endPracticeSessionService,
 } = require("./practiceSessionService");
 
 admin.initializeApp();
@@ -2562,6 +2563,59 @@ exports.getActivePracticeSession = onRequest(
 // - Club role is independently verified by practiceSessionService.
 // - Credit consumption + session creation happen in one Firestore transaction.
 //
+
+exports.endPracticeSession = onRequest(
+  {
+    region: "us-central1",
+    cors: true,
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        code: "practice/method-not-allowed",
+        error: "POST is required.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = String(req.body?.clubId || "").trim();
+
+      const session = await endPracticeSessionService({
+        db,
+        authenticatedUser,
+        clubId,
+      });
+
+      res.status(200).json({
+        ok: true,
+        session,
+      });
+    } catch (error) {
+      console.error(
+        "endPracticeSession failed:",
+        error?.code || "",
+        error?.message || error
+      );
+
+      const status =
+        error?.code === "practice/auth-required" ? 401 : 400;
+
+      res.status(status).json({
+        ok: false,
+        code: error?.code || "practice/end-failed",
+        error:
+          error?.message ||
+          "Practice session could not be ended.",
+      });
+    }
+  }
+);
+
 exports.startPracticeSession = onRequest(
   {
     region: REGION,
@@ -2614,6 +2668,7 @@ exports.startPracticeSession = onRequest(
           startedAt: session.startedAt.toDate().toISOString(),
           expiresAt: session.expiresAt.toDate().toISOString(),
           creditsRemaining: session.creditsRemaining,
+          testerOverrideUsed: session.testerOverrideUsed === true,
         },
       });
     } catch (error) {

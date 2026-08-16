@@ -55,6 +55,7 @@ import {
 } from "./core/practiceRuntime.js";
 import {
   getActivePracticeSession,
+  endPracticeSession,
 } from "./storage/practiceSessionGateway.js";
 import { useAuth } from "./auth/AuthContext.jsx";
 
@@ -2427,6 +2428,35 @@ export default function App() {
 
   const activeClubId = activeClubIdentity.id;
 
+  const handleChangeProfile = async () => {
+    if (isPracticeMode) {
+      try {
+        await endPracticeSession({
+          clubId: activeClubId,
+        });
+      } catch (err) {
+        console.error("[PRACTICE V2 END ERROR]", err);
+
+        showPracticeRestriction(
+          "Could not leave Practice yet",
+          "We could not safely close this Practice session. Please try Change Profile again.",
+          "⚠️"
+        );
+
+        return;
+      }
+
+      setPracticeRuntime(null);
+      setSessionMode("official");
+      setPracticeRestrictionModal(null);
+      setPracticeRibbonPosition("open");
+      setShowSessionSelector(false);
+    }
+
+    setPage(PAGE_ENTRY);
+  };
+
+
   // Practice v2 refresh recovery:
   // recover the same authoritative session without consuming another credit.
   useEffect(() => {
@@ -3204,8 +3234,18 @@ export default function App() {
     results = s?.results || [];
     allEvents = s?.allEvents || [];
     streaks = s?.streaks || {};
-    matchDayHistory = s?.matchDayHistory || [];
-    friendlyMatchDayHistory = s?.friendlyMatchDayHistory || [];
+    // Practice must start with its own disposable statistical history.
+    // Never allow Official completed-session history to leak into Practice
+    // Full Season stats. Practice-created history remains available because
+    // Practice state itself is written into the isolated football DataScope.
+    matchDayHistory =
+      isPracticeMode && !s?.isPracticeSeason
+        ? []
+        : s?.matchDayHistory || [];
+    friendlyMatchDayHistory =
+      isPracticeMode && !s?.isPracticeSeason
+        ? []
+        : s?.friendlyMatchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
     matchType = normalizeMatchMode(s?.matchType || s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
     gameFormat = normalizeGameFormat(s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
@@ -7963,21 +8003,9 @@ export default function App() {
               <button
                 type="button"
                 className="primary-btn"
-                onClick={() => {
-                  closePracticeRestriction();
-                  if (canChooseSessionMode) setShowSessionSelector(true);
-                  setPage(PAGE_LANDING);
-                }}
-              >
-                Change Profile
-              </button>
-
-              <button
-                type="button"
-                className="secondary-btn"
                 onClick={closePracticeRestriction}
               >
-                Stay in Practice
+                {practiceRestrictionModal.buttonLabel || "Got it"}
               </button>
             </div>
           </div>
@@ -8139,10 +8167,21 @@ export default function App() {
                     setShowSessionSelector(false);
                   } catch (err) {
                     console.error("[PRACTICE V2 START ERROR]", err);
-                    window.alert(
-                      err?.message ||
-                        "Practice Session could not be started."
-                    );
+
+                    if (err?.code === "practice/no-credits") {
+                      showPracticeRestriction(
+                        "Practice sessions used for this week",
+                        "You have used all 3 Practice sessions available this week. Your allowance refreshes automatically next week. You can continue using your Official Session normally.",
+                        "⏳"
+                      );
+                    } else {
+                      showPracticeRestriction(
+                        "Practice Session unavailable",
+                        err?.message ||
+                          "Practice Session could not be started right now. Your Official Session has not been affected.",
+                        "⚠️"
+                      );
+                    }
                   }
                 }}
                 style={{
@@ -8241,7 +8280,7 @@ export default function App() {
           onGoToNews={() => setPage(PAGE_NEWS)}
           onGoToHighlights={handleGoToViewHighlights}
           onOpenHighlightsCamera={handleOpenHighlightsCamera}
-          onGoToEntryDev={() => setPage(PAGE_ENTRY)}
+          onGoToEntryDev={handleChangeProfile}
           onGoToPayments={handleGoToMatchSignup}
           identity={pageIdentity}
           activeRole={activeRole}

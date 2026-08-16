@@ -223,3 +223,64 @@ export async function getActivePracticeSession({
 
   return session;
 }
+
+export async function endPracticeSession({
+  clubId,
+} = {}) {
+  const safeClubId = safeString(clubId);
+
+  if (!safeClubId) {
+    throw new Error(
+      "[PracticeSessionGateway] clubId is required."
+    );
+  }
+
+  const currentUser = auth?.currentUser;
+
+  if (!currentUser) {
+    throw new Error(
+      "[PracticeSessionGateway] Firebase sign-in is required."
+    );
+  }
+
+  const idToken = await currentUser.getIdToken(true);
+
+  if (!idToken) {
+    throw new Error(
+      "[PracticeSessionGateway] Could not obtain Firebase ID token."
+    );
+  }
+
+  const url =
+    `${getFunctionsBaseUrl()}/endPracticeSession`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({
+      clubId: safeClubId,
+    }),
+  });
+
+  const data = await readJsonResponse(response);
+
+  if (!response.ok || !data?.ok) {
+    const error = new Error(
+      safeString(data?.error) ||
+      "Could not end Practice session."
+    );
+
+    error.code =
+      safeString(data?.code) ||
+      "practice/end-failed";
+
+    error.status = response.status;
+
+    throw error;
+  }
+
+  return data.session || null;
+}

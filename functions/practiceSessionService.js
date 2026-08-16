@@ -145,6 +145,13 @@ async function startPracticeSession({
 
   const safeClubId = requireId(clubId, "clubId");
 
+  const serverNow =
+    now instanceof Date ? new Date(now.getTime()) : new Date(now);
+
+  if (Number.isNaN(serverNow.getTime())) {
+    throw new Error("[PracticeSession] Invalid server time.");
+  }
+
   const clubRef = db.collection("clubs").doc(safeClubId);
   const clubSnap = await clubRef.get();
 
@@ -155,10 +162,45 @@ async function startPracticeSession({
   }
 
   const club = clubSnap.data() || {};
-  const role = resolvePracticeRole({
+
+  // Temporary server-owned platform Practice Tester entitlement.
+  // This is deliberately separate from per-club weekly credits.
+  const platformTesterRef = db
+    .collection("practiceControl")
+    .doc("platformTesters")
+    .collection("users")
+    .doc(uid);
+
+  const platformTesterSnap = await platformTesterRef.get();
+  const platformTester = platformTesterSnap.exists
+    ? platformTesterSnap.data() || {}
+    : {};
+
+  const platformTesterExpiresAt = platformTester.expiresAt;
+  const platformTesterExpiresAtMs =
+    platformTesterExpiresAt &&
+    typeof platformTesterExpiresAt.toMillis === "function"
+      ? platformTesterExpiresAt.toMillis()
+      : 0;
+
+  const isPlatformTester =
+    platformTester.enabled === true &&
+    platformTester.bypassWeeklyStartLimit === true &&
+    platformTesterExpiresAtMs > serverNow.getTime();
+
+  const clubRole = resolvePracticeRole({
     club,
     email,
   });
+
+  const role =
+    clubRole ||
+    (
+      isPlatformTester &&
+      platformTester.bypassClubRoleRequirement === true
+        ? "admin"
+        : ""
+    );
 
   if (!role) {
     const error = new Error(
@@ -166,13 +208,6 @@ async function startPracticeSession({
     );
     error.code = "practice/not-authorized";
     throw error;
-  }
-
-  const serverNow =
-    now instanceof Date ? new Date(now.getTime()) : new Date(now);
-
-  if (Number.isNaN(serverNow.getTime())) {
-    throw new Error("[PracticeSession] Invalid server time.");
   }
 
   const weekKey = getPracticeWeekKeyFromServerDate(serverNow);
@@ -222,7 +257,7 @@ async function startPracticeSession({
 
     const availableBeforeStart = totalAvailable - consumed;
 
-    if (availableBeforeStart <= 0) {
+    if (!isPlatformTester && availableBeforeStart <= 0) {
       const error = new Error(
         "[PracticeSession] No Practice sessions remain for this week."
       );
@@ -230,8 +265,20 @@ async function startPracticeSession({
       throw error;
     }
 
-    const nextConsumed = consumed + 1;
-    creditsRemaining = totalAvailable - nextConsumed;
+    // Platform testing must not consume or manufacture ordinary user credits.
+    const nextConsumed =
+      isPlatformTester ? consumed : consumed + 1;
+
+    creditsRemaining = Math.max(
+      0,
+      totalAvailable - nextConsumed
+    );
+
+    const testerStartsThisWeek =
+      Math.max(
+        0,
+        Number(current.testerStartsThisWeek || 0)
+      ) + (isPlatformTester ? 1 : 0);
 
     transaction.set(
       refs.entitlementRef,
@@ -247,6 +294,12 @@ async function startPracticeSession({
         creditsTransferredOut: transferredOut,
         creditsRemaining,
         activeSessionId: sessionId,
+        ...(isPlatformTester
+          ? {
+              testerStartsThisWeek,
+              testerOverrideLastUsedAt: startedAt,
+            }
+          : {}),
         updatedAt: startedAt,
       },
       {merge: true}
@@ -265,7 +318,13 @@ async function startPracticeSession({
         durationSeconds: PRACTICE_DURATION_SECONDS,
         startedAt,
         expiresAt,
-        creditConsumed: true,
+        creditConsumed: !isPlatformTester,
+        testerOverrideUsed: isPlatformTester,
+        ...(isPlatformTester && platformTesterExpiresAt
+          ? {
+              testerOverrideExpiresAt: platformTesterExpiresAt,
+            }
+          : {}),
         controlPlaneVersion: 1,
       }
     );
@@ -282,6 +341,93 @@ async function startPracticeSession({
     startedAt,
     expiresAt,
     creditsRemaining,
+    testerOverrideUsed: isPlatformTester,
+  };
+}
+
+
+async function endPracticeSession({
+  db,
+  authenticatedUser,
+  clubId,
+  now = new Date(),
+}) {
+  if (!db) {
+    throw new Error("[PracticeSession] Firestore db is required.");
+  }
+
+  const uid = requireId(
+    authenticatedUser?.uid,
+    "authenticated user UID"
+  );
+
+  const safeClubId = requireId(clubId, "clubId");
+
+  const serverNow =
+    now instanceof Date ? new Date(now.getTime()) : new Date(now);
+
+  if (Number.isNaN(serverNow.getTime())) {
+    throw new Error("[PracticeSession] Invalid server time.");
+  }
+
+  const weekKey = getPracticeWeekKeyFromServerDate(serverNow);
+
+  const entitlementRef = db
+    .collection("practiceControl")
+    .doc(safeClubId)
+    .collection("weeks")
+    .doc(weekKey)
+    .collection("entitlements")
+    .doc(uid);
+
+  let endedSessionId = null;
+
+  await db.runTransaction(async (transaction) => {
+    const entitlementSnap = await transaction.get(entitlementRef);
+
+    if (!entitlementSnap.exists) {
+      return;
+    }
+
+    const entitlement = entitlementSnap.data() || {};
+    const activeSessionId = safeString(entitlement.activeSessionId);
+
+    if (!activeSessionId) {
+      return;
+    }
+
+    const sessionRef = db
+      .collection("practiceSessions")
+      .doc(requireId(activeSessionId, "activeSessionId"));
+
+    const sessionSnap = await transaction.get(sessionRef);
+
+    if (
+      sessionSnap.exists &&
+      safeString(sessionSnap.data()?.clubId) === safeClubId &&
+      safeString(sessionSnap.data()?.userId) === uid
+    ) {
+      transaction.update(sessionRef, {
+        status: "ended",
+        endedAt: serverNow,
+        endedReason: "change-profile",
+      });
+
+      endedSessionId = activeSessionId;
+    }
+
+    transaction.update(entitlementRef, {
+      activeSessionId: null,
+      updatedAt: serverNow,
+    });
+  });
+
+  return {
+    clubId: safeClubId,
+    userId: uid,
+    weekKey,
+    sessionId: endedSessionId,
+    status: "ended",
   };
 }
 
@@ -395,4 +541,5 @@ module.exports = {
   buildPracticeControlRefs,
   startPracticeSession,
   getActivePracticeSession,
+  endPracticeSession,
 };
