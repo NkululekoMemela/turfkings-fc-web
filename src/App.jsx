@@ -79,6 +79,7 @@ import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, 
 // Page constants
 const PAGE_HOME = "home";
 const PAGE_ENTRY = "entry";
+const PAGE_SESSION_SELECTOR = "session-selector";
 const PAGE_LANDING = "landing";
 const PAGE_CLUB_CHAT = "club-chat";
 const PAGE_LIVE = "live";
@@ -2559,7 +2560,7 @@ export default function App() {
       setPracticeRibbonPosition("open");
       setPracticeRestrictionModal(null);
       setShowSessionSelector(true);
-      setPage(PAGE_LANDING);
+      setPage(PAGE_SESSION_SELECTOR);
     };
 
     void expirePractice();
@@ -2717,8 +2718,16 @@ export default function App() {
       safePayload?.actingRole || safePayload?.role || safePayload?.realRole || ""
     ).trim().toLowerCase();
 
-    setShowSessionSelector(["admin", "captain"].includes(nextRole));
-    setPage(PAGE_LANDING);
+    const shouldChooseSession =
+      ["admin", "captain"].includes(nextRole);
+
+    setShowSessionSelector(shouldChooseSession);
+
+    setPage(
+      shouldChooseSession
+        ? PAGE_SESSION_SELECTOR
+        : PAGE_LANDING
+    );
   };
 
   const [state, setState] = useState(() =>
@@ -8117,7 +8126,7 @@ export default function App() {
             justifyContent: "center",
             padding: "1rem",
             background: "rgba(2, 6, 23, 0.78)",
-            backdropFilter: "blur(10px)",
+
           }}
         >
           <div
@@ -8161,7 +8170,9 @@ export default function App() {
         </div>
       )}
 
-      {showSessionSelector && canChooseSessionMode && page === PAGE_LANDING && (
+      {showSessionSelector &&
+        canChooseSessionMode &&
+        page === PAGE_SESSION_SELECTOR && (
         <div
           style={{
             position: "fixed",
@@ -8233,6 +8244,7 @@ export default function App() {
                   setPracticeRuntime(null);
                   setSessionMode("official");
                   setShowSessionSelector(false);
+                  setPage(PAGE_LANDING);
                 }}
                 style={{
                   border: "1px solid #0ea5e9",
@@ -8251,8 +8263,8 @@ export default function App() {
                   boxShadow: "0 0 35px rgba(14,165,233,0.35)",
                   transform:
                     sessionChoiceEmphasis === "practice"
-                      ? "scale(0.95)"
-                      : "scale(1)",
+                      ? "scale(0.85)"
+                      : "scale(0.90)",
                   transformOrigin: "center",
                   transition:
                     "transform 420ms ease, opacity 420ms ease, box-shadow 420ms ease",
@@ -8334,6 +8346,7 @@ export default function App() {
                     setPracticeRuntime(runtime);
                     setSessionMode("practice");
                     setShowSessionSelector(false);
+                    setPage(PAGE_LANDING);
                   } catch (err) {
                     console.error("[PRACTICE V2 START ERROR]", err);
 
@@ -8370,8 +8383,8 @@ export default function App() {
                   boxShadow: "0 0 35px rgba(217,70,239,0.35)",
                   transform:
                     sessionChoiceEmphasis === "official"
-                      ? "scale(0.95)"
-                      : "scale(1)",
+                      ? "scale(0.85)"
+                      : "scale(0.90)",
                   transformOrigin: "center",
                   transition:
                     "transform 420ms ease, opacity 420ms ease, box-shadow 420ms ease",
