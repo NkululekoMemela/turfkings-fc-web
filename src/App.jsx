@@ -6803,15 +6803,6 @@ export default function App() {
   };
 
   const handleProceedToPayment = (payload) => {
-    if (isPracticeMode) {
-      showPracticeRestriction(
-        "Payments are for Official Sessions",
-        "Practice Session does not process real payments. Click Change Profile and enter an Official Session to continue with payments.",
-        "💳"
-      );
-      return;
-    }
-
     const safePayload = payload || {};
     console.log("[TK PAYMENTS] proceed to payment payload:", safePayload);
     setPaymentContext(safePayload);
