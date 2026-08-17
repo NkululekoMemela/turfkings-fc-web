@@ -289,3 +289,88 @@ export async function endPracticeSession({
 
   return data.session || null;
 }
+
+export async function transferPracticeCredit({
+  clubId,
+  recipientUserId,
+  transferId,
+} = {}) {
+  const safeClubId = safeString(clubId);
+  const safeRecipientUserId = safeString(recipientUserId);
+  const safeTransferId = safeString(transferId);
+
+  if (!safeClubId) {
+    throw new Error(
+      "[PracticeSessionGateway] clubId is required."
+    );
+  }
+
+  if (!safeRecipientUserId) {
+    throw new Error(
+      "[PracticeSessionGateway] recipientUserId is required."
+    );
+  }
+
+  if (!safeTransferId) {
+    throw new Error(
+      "[PracticeSessionGateway] transferId is required."
+    );
+  }
+
+  const currentUser = auth?.currentUser;
+
+  if (!currentUser) {
+    throw new Error(
+      "[PracticeSessionGateway] Firebase sign-in is required."
+    );
+  }
+
+  const idToken = await currentUser.getIdToken(true);
+
+  if (!idToken) {
+    throw new Error(
+      "[PracticeSessionGateway] Could not obtain Firebase ID token."
+    );
+  }
+
+  const url =
+    `${getFunctionsBaseUrl()}/transferPracticeCredit`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({
+      clubId: safeClubId,
+      recipientUserId: safeRecipientUserId,
+      transferId: safeTransferId,
+    }),
+  });
+
+  const data = await readJsonResponse(response);
+
+  if (!response.ok || !data?.ok) {
+    const error = new Error(
+      safeString(data?.error) ||
+      "Could not transfer Practice credit."
+    );
+
+    error.code =
+      safeString(data?.code) ||
+      "practice/transfer-failed";
+
+    error.status = response.status;
+
+    throw error;
+  }
+
+  if (!data?.transfer) {
+    throw new Error(
+      "[PracticeSessionGateway] Server returned an invalid Practice credit transfer."
+    );
+  }
+
+  return data.transfer;
+}

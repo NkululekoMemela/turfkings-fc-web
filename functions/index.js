@@ -2668,7 +2668,7 @@ exports.transferPracticeCredit = onRequest(
 
       res.status(200).json({
         ok: true,
-        ...result,
+        transfer: result,
       });
     } catch (error) {
       console.error(
@@ -2687,7 +2687,7 @@ exports.transferPracticeCredit = onRequest(
             : error?.code === "practice/club-not-found" ||
                 error?.code === "practice/recipient-not-found"
               ? 404
-              : error?.code === "practice/duplicate-transfer"
+              : error?.code === "practice/transfer-exists"
                 ? 409
                 : 400;
 

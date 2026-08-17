@@ -55,6 +55,7 @@ import {
 import {
   getActivePracticeSession,
   endPracticeSession,
+  transferPracticeCredit,
 } from "./storage/practiceSessionGateway.js";
 import { useAuth } from "./auth/AuthContext.jsx";
 
@@ -2335,6 +2336,12 @@ export default function App() {
 
   const [sessionMode, setSessionMode] = useState("official");
   const [practiceRuntime, setPracticeRuntime] = useState(null);
+  const [showPracticeCreditTransfer, setShowPracticeCreditTransfer] = useState(false);
+  const [practiceCreditRecipientId, setPracticeCreditRecipientId] = useState("");
+  const [practiceCreditTransferPending, setPracticeCreditTransferPending] = useState(false);
+  const [practiceCreditTransferError, setPracticeCreditTransferError] = useState("");
+  const [practiceCreditTransferSuccess, setPracticeCreditTransferSuccess] = useState("");
+
   const [practiceClockNowMs, setPracticeClockNowMs] = useState(() => Date.now());
   const [showSessionSelector, setShowSessionSelector] = useState(false);
   const [practiceRestrictionModal, setPracticeRestrictionModal] = useState(null);
@@ -3491,6 +3498,116 @@ export default function App() {
   const isAdmin = activeRole === "admin";
   const isCaptain = activeRole === "captain";
   const canChooseSessionMode = isAdmin || isCaptain;
+
+  const practiceCreditRecipients = useMemo(() => {
+    if (!canChooseSessionMode) return [];
+
+    const currentIdentityCandidates = new Set(
+      [
+        identity?.uid,
+        identity?.memberId,
+        identity?.playerId,
+        identity?.email,
+      ]
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    return (Array.isArray(members) ? members : [])
+      .map((member) => {
+        const recipientUserId = String(
+          member?.uid ||
+          member?.platformIdentityUid ||
+          member?.authUid ||
+          member?.id ||
+          ""
+        ).trim();
+
+        const email = String(member?.email || "").trim();
+        const role = String(member?.role || "").trim().toLowerCase();
+
+        const name = String(
+          member?.fullName ||
+          member?.displayName ||
+          member?.shortName ||
+          member?.name ||
+          email ||
+          "Club member"
+        ).trim();
+
+        return {
+          recipientUserId,
+          email,
+          role,
+          name,
+        };
+      })
+      .filter((member) => {
+        if (!member.recipientUserId || !member.email) return false;
+
+        const candidateValues = [
+          member.recipientUserId,
+          member.email,
+        ]
+          .map((value) => String(value || "").trim().toLowerCase())
+          .filter(Boolean);
+
+        return !candidateValues.some((value) =>
+          currentIdentityCandidates.has(value)
+        );
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [canChooseSessionMode, members, identity]);
+
+  const handlePracticeCreditTransfer = async () => {
+    if (practiceCreditTransferPending) return;
+
+    const recipient = practiceCreditRecipients.find(
+      (candidate) =>
+        candidate.recipientUserId === practiceCreditRecipientId
+    );
+
+    if (!recipient) {
+      setPracticeCreditTransferError(
+        "Choose another club admin or captain."
+      );
+      return;
+    }
+
+    setPracticeCreditTransferPending(true);
+    setPracticeCreditTransferError("");
+    setPracticeCreditTransferSuccess("");
+
+    try {
+      const transferId =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `practice-transfer-${Date.now()}-${Math.random()
+              .toString(36)
+              .slice(2, 10)}`;
+
+      const result = await transferPracticeCredit({
+        clubId: activeClubId,
+        recipientUserId: recipient.recipientUserId,
+        transferId,
+      });
+
+      setPracticeCreditTransferSuccess(
+        `1 Practice credit transferred to ${recipient.name}. You have ${
+          Number(result?.senderCreditsRemaining ?? 0)
+        } remaining this week.`
+      );
+      setPracticeCreditRecipientId("");
+    } catch (error) {
+      console.error("[Practice] Credit transfer failed:", error);
+      setPracticeCreditTransferError(
+        error?.message || "Could not transfer the Practice credit."
+      );
+    } finally {
+      setPracticeCreditTransferPending(false);
+    }
+  };
+
   const isPlayer = activeRole === "player";
   const isSpectator = activeRole === "spectator";
 
@@ -7242,6 +7359,146 @@ export default function App() {
           }}
         >
           <div><strong>Practice v2 diagnostic</strong></div>
+
+          {canChooseSessionMode && !isPracticeMode && (
+            <div
+              style={{
+                marginTop: "0.75rem",
+                padding: "0.85rem",
+                border: "1px solid rgba(255,255,255,0.14)",
+                borderRadius: "12px",
+              }}
+            >
+              {!showPracticeCreditTransfer ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPracticeCreditTransferError("");
+                    setPracticeCreditTransferSuccess("");
+                    setShowPracticeCreditTransfer(true);
+                  }}
+                >
+                  Transfer a Practice Credit
+                </button>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 700, marginBottom: "0.35rem" }}>
+                    Transfer 1 Practice Credit
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "0.9rem",
+                      opacity: 0.8,
+                      marginBottom: "0.65rem",
+                    }}
+                  >
+                    Give one of your unused credits for this week to another
+                    eligible admin or captain in this club.
+                  </div>
+
+                  <select
+                    value={practiceCreditRecipientId}
+                    disabled={practiceCreditTransferPending}
+                    onChange={(event) => {
+                      setPracticeCreditRecipientId(event.target.value);
+                      setPracticeCreditTransferError("");
+                      setPracticeCreditTransferSuccess("");
+                    }}
+                    style={{
+                      width: "100%",
+                      marginBottom: "0.65rem",
+                    }}
+                  >
+                    <option value="">Choose recipient</option>
+                    {practiceCreditRecipients.map((recipient) => (
+                      <option
+                        key={recipient.recipientUserId}
+                        value={recipient.recipientUserId}
+                      >
+                        {recipient.name}
+                        {recipient.role
+                          ? ` — ${recipient.role}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  {practiceCreditRecipients.length === 0 && (
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        opacity: 0.75,
+                        marginBottom: "0.65rem",
+                      }}
+                    >
+                      No other eligible club member is currently available
+                      for a Practice credit transfer.
+                    </div>
+                  )}
+
+                  {practiceCreditTransferError && (
+                    <div
+                      role="alert"
+                      style={{
+                        marginBottom: "0.65rem",
+                        fontSize: "0.88rem",
+                      }}
+                    >
+                      {practiceCreditTransferError}
+                    </div>
+                  )}
+
+                  {practiceCreditTransferSuccess && (
+                    <div
+                      role="status"
+                      style={{
+                        marginBottom: "0.65rem",
+                        fontSize: "0.88rem",
+                      }}
+                    >
+                      {practiceCreditTransferSuccess}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.5rem",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={
+                        practiceCreditTransferPending ||
+                        !practiceCreditRecipientId
+                      }
+                      onClick={handlePracticeCreditTransfer}
+                    >
+                      {practiceCreditTransferPending
+                        ? "Transferring…"
+                        : "Transfer 1 Credit"}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={practiceCreditTransferPending}
+                      onClick={() => {
+                        setShowPracticeCreditTransfer(false);
+                        setPracticeCreditRecipientId("");
+                        setPracticeCreditTransferError("");
+                        setPracticeCreditTransferSuccess("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           <div>mode: {sessionMode}</div>
           <div>runtime: {practiceRuntime ? "YES" : "NO"}</div>
           <div>session: {practiceRuntime?.practiceSessionId || "NONE"}</div>
