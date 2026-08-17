@@ -48,7 +48,6 @@ import {
   buildCleanSheetEventsForMatch,
   buildFriendlyDefensiveBlockEvents,
 } from "./core/lineups.js";
-import { buildPracticeState } from "./core/practiceSessionSeed.js";
 import {
   createPracticeRuntime,
   restorePracticeRuntime,

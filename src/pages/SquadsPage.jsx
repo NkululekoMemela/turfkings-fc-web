@@ -33,7 +33,6 @@ import {
   normalizeMatchMode,
   normalizeGameFormat,
 } from "../core/matchConfig.js";
-import { buildPracticePlayers } from "../core/practiceSessionSeed.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 import {
   isCaptainCode,
