@@ -22,6 +22,7 @@ const {Buffer} = require("node:buffer");
 const fetch = require("node-fetch");
 
 const {
+  transferPracticeCredit: transferPracticeCreditService,
   startPracticeSession: startPracticeSessionService,
   getActivePracticeSession: getActivePracticeSessionService,
   endPracticeSession: endPracticeSessionService,
@@ -2617,6 +2618,85 @@ exports.endPracticeSession = onRequest(
         error:
           error?.message ||
           "Practice session could not be ended.",
+      });
+    }
+  }
+);
+
+
+exports.transferPracticeCredit = onRequest(
+  {
+    region: REGION,
+    cors: true,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        error: "Method not allowed.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser = await requireFirebaseUser(req);
+
+      const clubId = safeString(
+        parseRequestValue(req, "clubId") || ""
+      );
+
+      const recipientUserId = safeString(
+        parseRequestValue(req, "recipientUserId") || ""
+      );
+
+      const transferId = safeString(
+        parseRequestValue(req, "transferId") || ""
+      );
+
+      const result = await transferPracticeCreditService({
+        db,
+        authenticatedUser,
+        clubId,
+        recipientUserId,
+        transferId,
+        now: new Date(),
+      });
+
+      res.status(200).json({
+        ok: true,
+        ...result,
+      });
+    } catch (error) {
+      console.error(
+        "Practice credit transfer failed:",
+        error?.code || "",
+        error?.message || error
+      );
+
+      const status =
+        error?.code === "practice/auth-required" ||
+        error?.code === "practice/auth-invalid"
+          ? 401
+          : error?.code === "practice/not-authorized" ||
+              error?.code === "practice/recipient-not-authorized"
+            ? 403
+            : error?.code === "practice/club-not-found" ||
+                error?.code === "practice/recipient-not-found"
+              ? 404
+              : error?.code === "practice/duplicate-transfer"
+                ? 409
+                : 400;
+
+      res.status(status).json({
+        ok: false,
+        code: error?.code || "practice/transfer-failed",
+        error:
+          error?.message ||
+          "Practice credit transfer failed.",
       });
     }
   }

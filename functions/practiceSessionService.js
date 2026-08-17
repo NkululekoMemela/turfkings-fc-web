@@ -351,6 +351,334 @@ async function startPracticeSession({
 }
 
 
+
+async function transferPracticeCredit({
+  db,
+  authenticatedUser,
+  clubId,
+  recipientUserId,
+  transferId,
+  now = new Date(),
+}) {
+  if (!db) {
+    throw new Error("[PracticeSession] Firestore db is required.");
+  }
+
+  const uid = requireId(
+    authenticatedUser?.uid,
+    "authenticated user UID"
+  );
+
+  const senderEmail = normalizeEmail(
+    authenticatedUser?.email || ""
+  );
+
+  if (!senderEmail) {
+    const error = new Error(
+      "[PracticeSession] Authenticated account has no email address."
+    );
+    error.code = "practice/email-required";
+    throw error;
+  }
+
+  const safeClubId = requireId(clubId, "clubId");
+  const safeRecipientUserId = requireId(
+    recipientUserId,
+    "recipientUserId"
+  );
+  const safeTransferId = requireId(transferId, "transferId");
+
+  if (uid === safeRecipientUserId) {
+    const error = new Error(
+      "[PracticeSession] Practice credit cannot be transferred to yourself."
+    );
+    error.code = "practice/self-transfer";
+    throw error;
+  }
+
+  const serverNow =
+    now instanceof Date ? new Date(now.getTime()) : new Date(now);
+
+  if (Number.isNaN(serverNow.getTime())) {
+    throw new Error("[PracticeSession] Invalid server time.");
+  }
+
+  const weekKey = getPracticeWeekKeyFromServerDate(serverNow);
+  const transferredAt = Timestamp.fromDate(serverNow);
+
+  const clubRef = db.collection("clubs").doc(safeClubId);
+  const clubSnap = await clubRef.get();
+
+  if (!clubSnap.exists) {
+    const error = new Error("[PracticeSession] Club not found.");
+    error.code = "practice/club-not-found";
+    throw error;
+  }
+
+  const club = clubSnap.data() || {};
+
+  const senderRole = resolvePracticeRole({
+    club,
+    email: senderEmail,
+  });
+
+  if (!senderRole) {
+    const error = new Error(
+      "[PracticeSession] Only this club's admins and captains may transfer Practice credits."
+    );
+    error.code = "practice/not-authorized";
+    throw error;
+  }
+
+  const membersSnap = await clubRef.collection("members").get();
+
+  let recipientMember = null;
+
+  membersSnap.forEach((memberSnap) => {
+    if (recipientMember) return;
+
+    const member = memberSnap.data() || {};
+
+    const identityCandidates = [
+      member.uid,
+      member.platformIdentityUid,
+      member.authUid,
+    ]
+      .map((value) => safeString(value))
+      .filter(Boolean);
+
+    if (
+      memberSnap.id === safeRecipientUserId ||
+      identityCandidates.includes(safeRecipientUserId)
+    ) {
+      recipientMember = {
+        id: memberSnap.id,
+        ...member,
+      };
+    }
+  });
+
+  if (!recipientMember) {
+    const error = new Error(
+      "[PracticeSession] Practice credit recipient is not a member of this club."
+    );
+    error.code = "practice/recipient-not-found";
+    throw error;
+  }
+
+  const recipientEmail = normalizeEmail(
+    recipientMember.email || ""
+  );
+
+  if (!recipientEmail) {
+    const error = new Error(
+      "[PracticeSession] Practice credit recipient has no usable club email."
+    );
+    error.code = "practice/recipient-email-required";
+    throw error;
+  }
+
+  const recipientRole =
+    resolvePracticeRole({
+      club,
+      email: recipientEmail,
+    }) ||
+    (
+      ["admin", "captain"].includes(
+        safeString(recipientMember.role).toLowerCase()
+      )
+        ? safeString(recipientMember.role).toLowerCase()
+        : ""
+    );
+
+  if (!recipientRole) {
+    const error = new Error(
+      "[PracticeSession] Practice credits may only be transferred to another admin or captain of this club."
+    );
+    error.code = "practice/recipient-not-authorized";
+    throw error;
+  }
+
+  const senderRef = db
+    .collection("practiceControl")
+    .doc(safeClubId)
+    .collection("weeks")
+    .doc(weekKey)
+    .collection("entitlements")
+    .doc(uid);
+
+  const recipientRef = db
+    .collection("practiceControl")
+    .doc(safeClubId)
+    .collection("weeks")
+    .doc(weekKey)
+    .collection("entitlements")
+    .doc(safeRecipientUserId);
+
+  const transferRef = db
+    .collection("practiceControl")
+    .doc(safeClubId)
+    .collection("weeks")
+    .doc(weekKey)
+    .collection("transfers")
+    .doc(safeTransferId);
+
+  let senderCreditsRemaining = 0;
+  let recipientCreditsRemaining = 0;
+
+  await db.runTransaction(async (transaction) => {
+    const [
+      senderSnap,
+      recipientSnap,
+      transferSnap,
+    ] = await Promise.all([
+      transaction.get(senderRef),
+      transaction.get(recipientRef),
+      transaction.get(transferRef),
+    ]);
+
+    if (transferSnap.exists) {
+      const error = new Error(
+        "[PracticeSession] Practice transfer already exists."
+      );
+      error.code = "practice/transfer-exists";
+      throw error;
+    }
+
+    const sender = senderSnap.exists
+      ? senderSnap.data() || {}
+      : {};
+
+    const recipient = recipientSnap.exists
+      ? recipientSnap.data() || {}
+      : {};
+
+    const senderConsumed = Math.max(
+      0,
+      Number(sender.creditsConsumed || 0)
+    );
+    const senderTransferredIn = Math.max(
+      0,
+      Number(sender.creditsTransferredIn || 0)
+    );
+    const senderTransferredOut = Math.max(
+      0,
+      Number(sender.creditsTransferredOut || 0)
+    );
+
+    const senderTotalAvailable =
+      PRACTICE_WEEKLY_CREDITS +
+      senderTransferredIn -
+      senderTransferredOut;
+
+    const senderAvailableBeforeTransfer =
+      senderTotalAvailable - senderConsumed;
+
+    if (senderAvailableBeforeTransfer <= 0) {
+      const error = new Error(
+        "[PracticeSession] No Practice credit is available to transfer."
+      );
+      error.code = "practice/no-transfer-credit";
+      throw error;
+    }
+
+    const recipientConsumed = Math.max(
+      0,
+      Number(recipient.creditsConsumed || 0)
+    );
+    const recipientTransferredIn = Math.max(
+      0,
+      Number(recipient.creditsTransferredIn || 0)
+    );
+    const recipientTransferredOut = Math.max(
+      0,
+      Number(recipient.creditsTransferredOut || 0)
+    );
+
+    const nextSenderTransferredOut =
+      senderTransferredOut + 1;
+
+    const nextRecipientTransferredIn =
+      recipientTransferredIn + 1;
+
+    senderCreditsRemaining = Math.max(
+      0,
+      PRACTICE_WEEKLY_CREDITS +
+        senderTransferredIn -
+        nextSenderTransferredOut -
+        senderConsumed
+    );
+
+    recipientCreditsRemaining = Math.max(
+      0,
+      PRACTICE_WEEKLY_CREDITS +
+        nextRecipientTransferredIn -
+        recipientTransferredOut -
+        recipientConsumed
+    );
+
+    transaction.set(
+      senderRef,
+      {
+        clubId: safeClubId,
+        userId: uid,
+        userEmail: senderEmail,
+        weekKey,
+        role: senderRole,
+        weeklyBaseCredits: PRACTICE_WEEKLY_CREDITS,
+        creditsConsumed: senderConsumed,
+        creditsTransferredIn: senderTransferredIn,
+        creditsTransferredOut: nextSenderTransferredOut,
+        creditsRemaining: senderCreditsRemaining,
+        updatedAt: transferredAt,
+      },
+      {merge: true}
+    );
+
+    transaction.set(
+      recipientRef,
+      {
+        clubId: safeClubId,
+        userId: safeRecipientUserId,
+        userEmail: recipientEmail,
+        weekKey,
+        role: recipientRole,
+        weeklyBaseCredits: PRACTICE_WEEKLY_CREDITS,
+        creditsConsumed: recipientConsumed,
+        creditsTransferredIn: nextRecipientTransferredIn,
+        creditsTransferredOut: recipientTransferredOut,
+        creditsRemaining: recipientCreditsRemaining,
+        updatedAt: transferredAt,
+      },
+      {merge: true}
+    );
+
+    transaction.set(transferRef, {
+      transferId: safeTransferId,
+      clubId: safeClubId,
+      weekKey,
+      senderUserId: uid,
+      senderEmail,
+      recipientUserId: safeRecipientUserId,
+      recipientEmail,
+      amount: 1,
+      transferredAt,
+      controlPlaneVersion: 1,
+    });
+  });
+
+  return {
+    transferId: safeTransferId,
+    clubId: safeClubId,
+    weekKey,
+    senderUserId: uid,
+    recipientUserId: safeRecipientUserId,
+    amount: 1,
+    senderCreditsRemaining,
+    recipientCreditsRemaining,
+  };
+}
+
 async function endPracticeSession({
   db,
   authenticatedUser,
@@ -556,6 +884,7 @@ module.exports = {
   getPracticeWeekKeyFromServerDate,
   resolvePracticeRole,
   buildPracticeControlRefs,
+  transferPracticeCredit,
   startPracticeSession,
   getActivePracticeSession,
   endPracticeSession,
