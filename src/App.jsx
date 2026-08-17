@@ -8415,6 +8415,29 @@ export default function App() {
               </button>
             </div>
 
+            <div
+              aria-hidden="true"
+              style={{
+                flexShrink: 0,
+                width: "100%",
+                paddingTop: "clamp(0.65rem, 1.6vh, 1rem)",
+                paddingBottom:
+                  "calc(clamp(0.65rem, 1.6vh, 1rem) + env(safe-area-inset-bottom, 0px))",
+              }}
+            >
+              <div
+                style={{
+                  width: "min(180px, 48%)",
+                  height: "3px",
+                  margin: "0 auto",
+                  borderRadius: "999px",
+                  background:
+                    "linear-gradient(90deg, rgba(14,165,233,0.2), rgba(14,165,233,0.9), rgba(217,70,239,0.9), rgba(217,70,239,0.2))",
+                  boxShadow:
+                    "0 0 14px rgba(56,189,248,0.22), 0 0 14px rgba(217,70,239,0.18)",
+                }}
+              />
+            </div>
 
           </div>
         </div>
