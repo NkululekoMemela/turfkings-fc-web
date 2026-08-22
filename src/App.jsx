@@ -57,6 +57,10 @@ import {
   endPracticeSession,
   transferPracticeCredit,
 } from "./storage/practiceSessionGateway.js";
+import {
+  createCameraHandoff,
+  buildAuthorizedCameraDeepLink,
+} from "./storage/cameraHandoffGateway.js";
 import { useAuth } from "./auth/AuthContext.jsx";
 
 import {
@@ -99,6 +103,35 @@ const CAMERA_APP_DEEP_LINK_SCHEME = "fiveasidesnearmecamera://open";
 const CAMERA_APP_INSTALL_URL = "/five-asides-near-me-camera.apk";
 const CAMERA_APP_INSTALL_GUIDE_URL = "/camera-app";
 const CAMERA_APP_OPEN_FALLBACK_MS = 1400;
+
+const SESSION_MODE_INTENT_KEY = "fanm_session_mode_intent_v1";
+
+function readSessionModeIntent() {
+  if (typeof window === "undefined") return "official";
+
+  try {
+    const value = window.sessionStorage.getItem(
+      SESSION_MODE_INTENT_KEY
+    );
+
+    return value === "practice" ? "practice" : "official";
+  } catch {
+    return "official";
+  }
+}
+
+function writeSessionModeIntent(mode) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(
+      SESSION_MODE_INTENT_KEY,
+      mode === "practice" ? "practice" : "official"
+    );
+  } catch {
+    // Session-mode choice still works in memory if storage is unavailable.
+  }
+}
 
 const MASTER_CODE = "3333";
 const DEFAULT_LEAGUE_MATCH_SECONDS = 5 * 60;
@@ -717,7 +750,7 @@ function ensureSeasonSchedulingShape(season) {
     )
   ).slice(0, 2);
 
-  const legacyGameFormat = season?.gameFormat || GAME_FORMAT.FIVE_V_FIVE;
+  const legacyGameFormat = season?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE;
   const resolvedMatchType = normalizeMatchMode(
     season?.matchType || legacyGameFormat,
     MATCH_TYPE.FRIENDLY
@@ -1614,7 +1647,7 @@ function buildRawHighlightFirebaseDoc(highlight, options = {}) {
         : Number(currentMatchNo || 1),
     seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || highlight?.seasonId || null,
     matchType: normalizeMatchMode(matchType || highlight?.matchType || gameFormat),
-    gameFormat: normalizeGameFormat(gameFormat || highlight?.gameFormat || GAME_FORMAT.FIVE_V_FIVE),
+    gameFormat: normalizeGameFormat(gameFormat || highlight?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE),
     tag: safeTag,
     type: safeTag,
     playerName: highlight?.playerName || null,
@@ -1895,7 +1928,11 @@ function resolveCameraLaunchTeams({
     teamAId,
     teamBId,
     teamAName: teamA?.label || "Team A",
+    teamAAbbrev: String(teamA?.abbrev || "").trim(),
+    teamALogoUrl: String(teamA?.logo32 || teamA?.logoUrl || teamA?.logo || "").trim(),
     teamBName: teamB?.label || "Team B",
+    teamBAbbrev: String(teamB?.abbrev || "").trim(),
+    teamBLogoUrl: String(teamB?.logo32 || teamB?.logoUrl || teamB?.logo || "").trim(),
     teamAPlayers,
     teamBPlayers,
     hasVerifiedSnapshots: Boolean(snapshotA && snapshotB),
@@ -1908,6 +1945,14 @@ function buildCameraLiveContext({
   gameFormat,
   currentMatchNo,
   launchTeams,
+
+  // Read-only scoreboard projection for the Android camera.
+  goalsA = 0,
+  goalsB = 0,
+  matchSeconds = 0,
+  secondsLeft = 0,
+  running = false,
+  timeUp = false,
 }) {
   if (!launchTeams?.teamAId || !launchTeams?.teamBId) return null;
   if (!launchTeams.teamAPlayers?.length || !launchTeams.teamBPlayers?.length) {
@@ -1931,6 +1976,16 @@ function buildCameraLiveContext({
     teamBPlayers: Array.isArray(launchTeams.teamBPlayers)
       ? launchTeams.teamBPlayers
       : [],
+
+    // FANM referee/live-match state is authoritative.
+    // Android consumes these values but does not control them.
+    goalsA: Math.max(0, Number(goalsA || 0)),
+    goalsB: Math.max(0, Number(goalsB || 0)),
+    matchSeconds: Math.max(0, Number(matchSeconds || 0)),
+    secondsLeft: Math.max(0, Number(secondsLeft || 0)),
+    running: Boolean(running),
+    timeUp: Boolean(timeUp),
+
     updatedAtISO: new Date().toISOString(),
   };
 }
@@ -2615,6 +2670,17 @@ export default function App() {
   // recover the same authoritative session without consuming another credit.
   useEffect(() => {
     if (authLoading || !authUser || !activeClubId) return undefined;
+
+    /*
+     * An active Practice session must NEVER hijack an explicit
+     * Official-session choice.
+     *
+     * Practice recovery is allowed only when this browser tab was
+     * actually using Practice before the refresh.
+     */
+    if (readSessionModeIntent() !== "practice") {
+      return undefined;
+    }
 
     let cancelled = false;
 
@@ -3409,8 +3475,8 @@ export default function App() {
         ? []
         : s?.friendlyMatchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
-    matchType = normalizeMatchMode(s?.matchType || s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
-    gameFormat = normalizeGameFormat(s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    matchType = normalizeMatchMode(s?.matchType || s?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    gameFormat = normalizeGameFormat(s?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
     activeTeamIds = Array.isArray(s?.activeTeamIds) ? s.activeTeamIds : [];
     fiveVFiveTeams =
       isPracticeMode || s?.isPracticeSeason || String(s?.seasonId || "").startsWith("practice")
@@ -3443,8 +3509,8 @@ export default function App() {
       yearEndAttendance = [],
     } = legacy || createDefaultState());
 
-    matchType = normalizeMatchMode(legacy?.matchType || legacy?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
-    gameFormat = normalizeGameFormat(legacy?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    matchType = normalizeMatchMode(legacy?.matchType || legacy?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    gameFormat = normalizeGameFormat(legacy?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
     activeTeamIds = Array.isArray(legacy?.activeTeamIds)
       ? legacy.activeTeamIds
       : [];
@@ -3776,9 +3842,37 @@ export default function App() {
     activeMatchNo,
   ]);
 
+  const currentCameraScore = useMemo(() => {
+    const events = Array.isArray(currentEvents) ? currentEvents : [];
+
+    const goalEvents = events.filter((event) => {
+      const type = safeLower(event?.type || event?.eventType || "");
+      return type === "goal";
+    });
+
+    const countForTeam = (teamId) =>
+      goalEvents.filter((event) => {
+        const eventTeamId =
+          event?.teamId ||
+          event?.scoringTeamId ||
+          event?.team?.id ||
+          null;
+
+        return String(eventTeamId || "") === String(teamId || "");
+      }).length;
+
+    return {
+      goalsA: countForTeam(currentCameraLaunchTeams?.teamAId),
+      goalsB: countForTeam(currentCameraLaunchTeams?.teamBId),
+    };
+  }, [
+    currentEvents,
+    currentCameraLaunchTeams?.teamAId,
+    currentCameraLaunchTeams?.teamBId,
+  ]);
+
   const currentCameraLiveContext = useMemo(() => {
     if (!(hasLiveMatch || running)) return null;
-    if (matchType !== MATCH_TYPE.LEAGUE) return null;
 
     return buildCameraLiveContext({
       activeSeasonId,
@@ -3786,15 +3880,26 @@ export default function App() {
       gameFormat,
       currentMatchNo: activeMatchNo,
       launchTeams: currentCameraLaunchTeams,
+      goalsA: currentCameraScore.goalsA,
+      goalsB: currentCameraScore.goalsB,
+      matchSeconds,
+      secondsLeft,
+      running,
+      timeUp,
     });
   }, [
     hasLiveMatch,
     running,
+    timeUp,
     matchType,
     gameFormat,
     activeSeasonId,
     activeMatchNo,
     currentCameraLaunchTeams,
+    currentCameraScore.goalsA,
+    currentCameraScore.goalsB,
+    matchSeconds,
+    secondsLeft,
   ]);
 
     useEffect(() => {
@@ -6957,7 +7062,7 @@ export default function App() {
     };
   };
 
-  const handleOpenHighlightsCamera = () => {
+  const handleOpenHighlightsCamera = async () => {
     if (isPracticeMode) {
       showPracticeRestriction(
         "Highlights Camera unavailable in Practice",
@@ -6969,7 +7074,9 @@ export default function App() {
 
     if (typeof window === "undefined") return;
 
-    const isAndroid = /Android/i.test(window.navigator.userAgent || "");
+    const isAndroid =
+      /Android/i.test(window.navigator.userAgent || "");
+
     if (!isAndroid) {
       window.alert(
         "Highlights Camera currently opens from Android devices with the 5 Asides Near Me Camera app installed."
@@ -6977,120 +7084,297 @@ export default function App() {
       return;
     }
 
+    /*
+     * Camera must attach to the EXACT fixture currently displayed on
+     * LiveMatchPage. During a live/referee session,
+     * pendingMatchStartContext is authoritative and may be ahead of
+     * effectiveLiveMatch.
+     */
+    const cameraMatch =
+      pendingMatchStartContext?.currentMatch ||
+      effectiveLiveMatch;
+
+    const cameraMatchNo =
+      pendingMatchStartContext?.matchNo ||
+      activeMatchNo;
+
+    const cameraMatchType =
+      pendingMatchStartContext?.matchType ||
+      matchType;
+
+    const cameraGameFormat =
+      pendingMatchStartContext?.gameFormat ||
+      gameFormat;
+
+    const cameraTeams =
+      Array.isArray(pendingMatchStartContext?.teams) &&
+      pendingMatchStartContext.teams.length
+        ? pendingMatchStartContext.teams
+        : cameraMatchType === MATCH_TYPE.FRIENDLY
+        ? getActiveFriendlyTeams(fiveVFiveTeams)
+        : teams;
+
     const launchTeams = resolveCameraLaunchTeams({
-      teams: matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams,
-      currentMatch: effectiveLiveMatch,
+      teams: cameraTeams,
+      currentMatch: cameraMatch,
       currentConfirmedLineupSnapshot,
       confirmedLineupsByMatchNo,
-      currentMatchNo: activeMatchNo,
+      currentMatchNo: cameraMatchNo,
     });
 
+    /*
+     * Reuse FANM's already-preloaded canonical player photos.
+     * The Android camera receives display metadata only; it does not
+     * receive broad access to the player-photo collection.
+     */
+    const resolveCameraPlayerPhoto = (player) => {
+      const rawName = String(
+        player?.name ||
+        player?.displayName ||
+        player?.fullName ||
+        ""
+      ).trim();
+
+      if (!rawName) return null;
+
+      const pretty = toTitleCaseLoose(rawName);
+      const slug = slugFromLooseName(rawName);
+      const first = pretty.split(/\s+/)[0] || "";
+
+      const candidates = [
+        rawName,
+        pretty,
+        safeLower(rawName),
+        safeLower(pretty),
+        slug,
+        first,
+        safeLower(first),
+      ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+
+      for (const key of candidates) {
+        const photo =
+          preloadedPlayerPhotosByName?.[key] ||
+          playerPhotosByName?.[key];
+
+        if (photo) return photo;
+      }
+
+      return (
+        player?.photoUrl ||
+        player?.photoURL ||
+        player?.photo ||
+        player?.avatarUrl ||
+        null
+      );
+    };
+
+    const cameraLaunchTeams = {
+      ...launchTeams,
+
+      teamAPlayers: (launchTeams.teamAPlayers || []).map((player) => ({
+        ...player,
+        photoUrl: resolveCameraPlayerPhoto(player),
+      })),
+
+      teamBPlayers: (launchTeams.teamBPlayers || []).map((player) => ({
+        ...player,
+        photoUrl: resolveCameraPlayerPhoto(player),
+      })),
+    };
+
+    /*
+     * Do not reuse currentVideoHighlightsMatchId here because that memo
+     * may still describe the pre-live fixture. Build the camera ID from
+     * the same authoritative fixture being refereed right now.
+     */
     const recordingMatchId =
-      currentVideoHighlightsMatchId ||
       buildVideoHighlightsMatchId({
         activeSeasonId,
-        gameFormat,
-        currentMatchNo: activeMatchNo,
-        matchType,
-        currentMatch: effectiveLiveMatch,
+        gameFormat: cameraGameFormat,
+        currentMatchNo: cameraMatchNo,
+        matchType: cameraMatchType,
+        currentMatch: cameraMatch,
       });
 
-    // CAMERA PAYLOAD V3:
-    // For this camera test, a tap on the TurfKings lens button means the user
-    // is intentionally opening the official recording-device flow.
-    // MainActivity.kt requires sourceApp=TurfKings + matchIsLive=true + matchId.
-    // The matchId MUST be the video_highlights document id because Android listens at:
-    // video_highlights/{matchId}/capture_requests
-    const cameraPayloadVersion = "camera_payload_v3_force_official_recording_device";
-    const hasMatchSides = Boolean(launchTeams.teamAId && launchTeams.teamBId);
-    const isOfficialMatchLive = Boolean(recordingMatchId && hasMatchSides);
+    const organisingClubId =
+      activeClubId || DEFAULT_CLUB_ID;
 
-    const payload = {
-      payloadVersion: cameraPayloadVersion,
-      sourceApp: "TurfKings",
-      productName: "5 Asides Near Me",
-      teamName: "Turf Kings FC",
-      launchPurpose: "record_live_match",
-      recordingMode: "match_recording_device",
-      confirmedRecordingRequired: true,
-      cameraAppMode: "recording_device",
-      isOfficial: true,
-      officialContext: true,
+    if (
+      !recordingMatchId ||
+      !launchTeams.teamAId ||
+      !launchTeams.teamBId
+    ) {
+      window.alert(
+        "The camera cannot be attached because this fixture is incomplete."
+      );
+      return;
+    }
 
-      matchIsLive: isOfficialMatchLive,
-      matchId: recordingMatchId,
-      videoHighlightsMatchId: recordingMatchId,
-      currentVideoHighlightsMatchId: recordingMatchId,
-      legacyMatchId: `tk-${activeSeasonId || "season"}-${activeMatchNo || 1}`,
+    /*
+     * Future-ready fixture contract.
+     *
+     * Today both teams belong to organisingClubId.
+     * Later Club Challenges / Club League can give Team A and
+     * Team B different clubIds without redesigning the camera.
+     */
+    const fixtureContext = {
+      fixtureId: recordingMatchId,
+      organisingClubId,
+      competitionType: "within_club",
 
-      canUseOutsideOfficialMatch: true,
-      matchNo: Number(activeMatchNo || 1),
-      seasonId: activeSeasonId || null,
-      matchType: matchType || MATCH_TYPE.FRIENDLY,
-      gameFormat: normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE),
-      teamAId: launchTeams.teamAId,
-      teamBId: launchTeams.teamBId,
-      teamAName: launchTeams.teamAName,
-      teamBName: launchTeams.teamBName,
-      teamAPlayers: launchTeams.teamAPlayers,
-      teamBPlayers: launchTeams.teamBPlayers,
-      defaultTag: "goal",
-      recordingDeviceSession: {
-        collectionPath: `video_highlights/${recordingMatchId}/recording_devices`,
-        requiresConfirmation: true,
-        heartbeatSeconds: 15,
+      matchType:
+        cameraMatchType || MATCH_TYPE.FRIENDLY,
+
+      gameFormat:
+        normalizeGameFormat(
+          cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE
+        ),
+
+      matchNo: Number(cameraMatchNo || 1),
+
+      seasonId:
+        cameraMatchType === MATCH_TYPE.FRIENDLY
+          ? null
+          : activeSeasonId || null,
+
+      // Operational referee state only.
+      // It does NOT gate cameraman recording.
+      refereeMatchStarted: Boolean(running),
+
+      teamA: {
+        teamId: launchTeams.teamAId,
+        clubId: organisingClubId,
+        teamName: launchTeams.teamAName,
+        abbrev: launchTeams.teamAAbbrev || "",
+        logoUrl: launchTeams.teamALogoUrl || "",
+        players: (cameraLaunchTeams.teamAPlayers || []).map(
+          (player) => ({
+            ...player,
+            teamId:
+              player?.teamId || launchTeams.teamAId,
+            clubId:
+              player?.clubId || organisingClubId,
+          })
+        ),
       },
-      captureRequests: {
-        collectionPath: `video_highlights/${recordingMatchId}/capture_requests`,
-        listen: true,
-        preRollSeconds: 15,
-        postRollSeconds: 5,
+
+      teamB: {
+        teamId: launchTeams.teamBId,
+        clubId: organisingClubId,
+        teamName: launchTeams.teamBName,
+        abbrev: launchTeams.teamBAbbrev || "",
+        logoUrl: launchTeams.teamBLogoUrl || "",
+        players: (cameraLaunchTeams.teamBPlayers || []).map(
+          (player) => ({
+            ...player,
+            teamId:
+              player?.teamId || launchTeams.teamBId,
+            clubId:
+              player?.clubId || organisingClubId,
+          })
+        ),
       },
-      returnUrl: "turfkings://camera-return",
-      openedAtISO: new Date().toISOString(),
     };
 
-    console.log("[TK CAMERA] PAYLOAD V3 opening camera:", payload);
+    try {
+      const handoff =
+        await createCameraHandoff({
+          clubId: organisingClubId,
+          matchId: recordingMatchId,
+          fixtureContext,
+          dataScope: "official",
+        });
 
-    const launchUrl = `${CAMERA_APP_DEEP_LINK_SCHEME}?payload=${encodeURIComponent(
-      JSON.stringify(payload)
-    )}`;
+      const launchUrl =
+        buildAuthorizedCameraDeepLink({
+          handoffId: handoff.handoffId,
+        });
 
-    let appProbablyOpened = false;
+      console.log(
+        "[FANM CAMERA] Secure camera handoff created",
+        {
+          clubId: organisingClubId,
+          matchId: recordingMatchId,
+          teamA: fixtureContext.teamA.teamName,
+          teamB: fixtureContext.teamB.teamName,
+          players:
+            fixtureContext.teamA.players.length +
+            fixtureContext.teamB.players.length,
+        }
+      );
 
-    const markOpened = () => {
-      appProbablyOpened = true;
-    };
+      let appProbablyOpened = false;
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) markOpened();
-    };
+      const markOpened = () => {
+        appProbablyOpened = true;
+      };
 
-    const cleanupListeners = () => {
-      window.removeEventListener("pagehide", markOpened);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", markOpened);
-    };
+      const onVisibilityChange = () => {
+        if (document.hidden) markOpened();
+      };
 
-    window.addEventListener("pagehide", markOpened, { once: true });
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", markOpened, { once: true });
+      const cleanup = () => {
+        window.removeEventListener("pagehide", markOpened);
+        window.removeEventListener("blur", markOpened);
+        document.removeEventListener(
+          "visibilitychange",
+          onVisibilityChange
+        );
+      };
 
-    setCameraInstallPrompt(null);
-    window.location.href = launchUrl;
+      window.addEventListener(
+        "pagehide",
+        markOpened,
+        { once: true }
+      );
 
-    window.setTimeout(() => {
-      cleanupListeners();
-      if (appProbablyOpened || document.hidden) return;
+      window.addEventListener(
+        "blur",
+        markOpened,
+        { once: true }
+      );
 
-      setCameraInstallPrompt({
-        payload,
-        launchUrl,
-        installUrl: CAMERA_APP_INSTALL_URL,
-        installGuideUrl: CAMERA_APP_INSTALL_GUIDE_URL,
-        shownAtISO: new Date().toISOString(),
-      });
-    }, CAMERA_APP_OPEN_FALLBACK_MS);
+      document.addEventListener(
+        "visibilitychange",
+        onVisibilityChange
+      );
+
+      setCameraInstallPrompt(null);
+      window.location.href = launchUrl;
+
+      window.setTimeout(() => {
+        cleanup();
+
+        if (
+          appProbablyOpened ||
+          document.hidden
+        ) {
+          return;
+        }
+
+        setCameraInstallPrompt({
+          payload: fixtureContext,
+          launchUrl,
+          installUrl: CAMERA_APP_INSTALL_URL,
+          installGuideUrl:
+            CAMERA_APP_INSTALL_GUIDE_URL,
+          shownAtISO: new Date().toISOString(),
+        });
+      }, CAMERA_APP_OPEN_FALLBACK_MS);
+
+    } catch (error) {
+      console.error(
+        "[FANM CAMERA] Secure handoff failed",
+        error
+      );
+
+      window.alert(
+        error?.message ||
+          "The camera could not be securely attached to this fixture."
+      );
+    }
   };
 
   const handleRetryOpenHighlightsCamera = () => {
@@ -8491,6 +8775,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
+                  writeSessionModeIntent("official");
                   setPracticeRuntime(null);
                   setSessionMode("official");
                   setShowSessionSelector(false);
@@ -8593,6 +8878,7 @@ export default function App() {
                     // Practice v2:
                     // authoritative session + real Official roster +
                     // explicit disposable Practice DataScope.
+                    writeSessionModeIntent("practice");
                     setPracticeRuntime(runtime);
                     setSessionMode("practice");
                     setShowSessionSelector(false);
