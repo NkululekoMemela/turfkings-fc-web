@@ -27,6 +27,15 @@ import {
 } from "../core/clubFirestorePaths";
 import { CLUB_COLLECTIONS } from "../core/clubPaths";
 import { showPremiumConfirm } from "../components/UI/PremiumConfirm";
+import {
+  cancelPaidMatchAndIssueCredit,
+  listAvailablePlayerMatchCredits,
+  listClubMatchCredits,
+  redeemMatchCreditForMatch,
+  returnRedeemedMatchTicketToWallet,
+  MATCH_CREDIT_SOURCE,
+  MATCH_CREDIT_STATUS,
+} from "../core/payments/matchCreditsRepository";
 
 const MIN_PLAYERS = 10;
 const MAX_PLAYERS = 25;
@@ -47,6 +56,7 @@ const WEEKDAY_OPTIONS = [
 const CHALLENGE_PLAYER_LIMIT_OPTIONS = [5, 6, 10, 12, 15];
 const DEFAULT_MATCH_SIGNUP_SETTINGS = {
   weeklyDay: 3,
+  weeklyStartTime: "18:00",
   weeklyPrice: COST_PER_GAME,
   challenge: {
     enabled: true,
@@ -266,6 +276,12 @@ function mergeMatchSignupSettings(raw = {}) {
   const rawChallenge = raw?.challenge || {};
 
   const weeklyDay = Number(raw?.weeklyDay);
+  const weeklyStartTimeRaw = String(
+    raw?.weeklyStartTime || DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyStartTime
+  ).trim();
+  const weeklyStartTime = /^([01]\\d|2[0-3]):[0-5]\\d$/.test(weeklyStartTimeRaw)
+    ? weeklyStartTimeRaw
+    : DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyStartTime;
   const weeklyPrice = Number(raw?.weeklyPrice);
   const challengeMaxPlayers = Number(rawChallenge?.maxPlayers);
   const challengePrice = Number(rawChallenge?.price);
@@ -274,6 +290,7 @@ function mergeMatchSignupSettings(raw = {}) {
     weeklyDay: Number.isInteger(weeklyDay) && weeklyDay >= 0 && weeklyDay <= 6
       ? weeklyDay
       : DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyDay,
+    weeklyStartTime,
     weeklyPrice: Number.isFinite(weeklyPrice) && weeklyPrice > 0
       ? weeklyPrice
       : DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyPrice,
@@ -297,6 +314,120 @@ function buildDateId(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
     date.getDate()
   ).padStart(2, "0")}`;
+}
+
+function getMatchStartTimeForWeek(
+  week,
+  settings = DEFAULT_MATCH_SIGNUP_SETTINGS
+) {
+  const fixture = week?.fixturePayload || {};
+
+  const candidates = [
+    fixture.kickoff,
+    fixture.kickoffTime,
+    fixture.startTime,
+    fixture.time,
+    week?.kickoff,
+    week?.kickoffTime,
+    settings?.weeklyStartTime,
+    DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyStartTime,
+  ];
+
+  for (const candidate of candidates) {
+    const value = String(candidate || "").trim();
+
+    const match = value.match(/(?:^|T)([01]\\d|2[0-3]):([0-5]\\d)/);
+    if (match) {
+      return `${match[1]}:${match[2]}`;
+    }
+  }
+
+  return DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyStartTime;
+}
+
+function buildMatchKickoffDate(
+  week,
+  settings = DEFAULT_MATCH_SIGNUP_SETTINGS
+) {
+  if (!(week?.date instanceof Date) || Number.isNaN(week.date.getTime())) {
+    return null;
+  }
+
+  const startTime = getMatchStartTimeForWeek(week, settings);
+  const [hoursText, minutesText] = startTime.split(":");
+
+  const kickoff = new Date(
+    week.date.getFullYear(),
+    week.date.getMonth(),
+    week.date.getDate(),
+    Number(hoursText),
+    Number(minutesText),
+    0,
+    0
+  );
+
+  return Number.isNaN(kickoff.getTime()) ? null : kickoff;
+}
+
+function getMatchCreditDeadline(
+  week,
+  settings = DEFAULT_MATCH_SIGNUP_SETTINGS
+) {
+  const kickoff = buildMatchKickoffDate(week, settings);
+  if (!kickoff) return null;
+
+  return new Date(kickoff.getTime() - 48 * 60 * 60 * 1000);
+}
+
+function isAutomaticMatchCreditCancellationEligible(
+  week,
+  settings = DEFAULT_MATCH_SIGNUP_SETTINGS,
+  now = new Date()
+) {
+  const deadline = getMatchCreditDeadline(week, settings);
+  if (!deadline) return false;
+
+  return now.getTime() <= deadline.getTime();
+}
+
+function parseClubWeeklySchedule(text) {
+  const raw = String(text || "").trim().toLowerCase();
+  if (!raw) return null;
+
+  const dayMap = {
+    sunday: 0, sundays: 0,
+    monday: 1, mondays: 1,
+    tuesday: 2, tuesdays: 2,
+    wednesday: 3, wednesdays: 3,
+    thursday: 4, thursdays: 4,
+    friday: 5, fridays: 5,
+    saturday: 6, saturdays: 6,
+  };
+
+  const dayKey = Object.keys(dayMap).find((key) => raw.includes(key));
+  const timeMatch = raw.match(/(\d{1,2})[:h](\d{2})/);
+
+  if (!dayKey || !timeMatch) return null;
+
+  const [, hourText, minuteText] = timeMatch;
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+
+  if (
+    !Number.isInteger(hour) ||
+    hour < 0 ||
+    hour > 23 ||
+    !Number.isInteger(minute) ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+
+  return {
+    day: dayMap[dayKey],
+    startTime: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+  };
 }
 
 function getWeekdayName(dayNumber) {
@@ -818,6 +949,19 @@ export default function MatchSignupPage({
 }) {
   const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
 
+  const clubWeeklyScheduleText = String(
+    activeClub?.weeklyPlayTime ||
+    activeClub?.schedule?.weeklyPlayTime ||
+    activeClub?.schedule?.playTime ||
+    activeClub?.playTime ||
+    ""
+  ).trim();
+
+  const clubWeeklySchedule = useMemo(
+    () => parseClubWeeklySchedule(clubWeeklyScheduleText),
+    [clubWeeklyScheduleText]
+  );
+
   const pendingSignupsCollectionRef = () =>
     isPracticeMode
       ? getScopedPendingSignupsCollection(db, dataScope)
@@ -885,6 +1029,17 @@ export default function MatchSignupPage({
 
   const [selectedWeeks, setSelectedWeeks] = useState([]);
   const [paidWeeks, setPaidWeeks] = useState([]);
+
+  const [availableMatchCredits, setAvailableMatchCredits] = useState([]);
+  const [clubMatchCredits, setClubMatchCredits] = useState([]);
+  const [matchCreditsLoading, setMatchCreditsLoading] = useState(false);
+  const [matchCreditBusyWeekId, setMatchCreditBusyWeekId] = useState("");
+  const [matchCreditMessage, setMatchCreditMessage] = useState("");
+
+  const [showMatchTicketWallet, setShowMatchTicketWallet] = useState(false);
+  const [matchTicketWalletMode, setMatchTicketWalletMode] = useState("menu");
+  const [matchTicketBusy, setMatchTicketBusy] = useState(false);
+  const [matchTicketMinimized, setMatchTicketMinimized] = useState(false);
   const [directoryPlayers, setDirectoryPlayers] = useState([]);
   const [playerPhotos, setPlayerPhotos] = useState({});
   const [attendanceBadge, setAttendanceBadge] = useState({
@@ -906,7 +1061,28 @@ export default function MatchSignupPage({
   const [adminAddPaidWeeks, setAdminAddPaidWeeks] = useState([]);
   const [adminVerifyBusy, setAdminVerifyBusy] = useState(false);
   const [showAdminCleanupPanel, setShowAdminCleanupPanel] = useState(false);
+
+  const [showBulkPaidModal, setShowBulkPaidModal] = useState(false);
+  const [bulkPaidSelectedPlayerIds, setBulkPaidSelectedPlayerIds] = useState([]);
+  const [bulkPaidBusy, setBulkPaidBusy] = useState(false);
+  const [bulkPaidMessage, setBulkPaidMessage] = useState("");
+  const [bulkPaidError, setBulkPaidError] = useState("");
   const [matchSignupSettings, setMatchSignupSettings] = useState(DEFAULT_MATCH_SIGNUP_SETTINGS);
+
+  const effectiveMatchSignupSettings = useMemo(
+    () => ({
+      ...matchSignupSettings,
+      weeklyDay:
+        clubWeeklySchedule?.day ??
+        matchSignupSettings.weeklyDay,
+      weeklyStartTime:
+        clubWeeklySchedule?.startTime ||
+        matchSignupSettings.weeklyStartTime ||
+        DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyStartTime,
+    }),
+    [matchSignupSettings, clubWeeklySchedule]
+  );
+
   const [sharedChallengeFixtures, setSharedChallengeFixtures] = useState([]);
   const [selectionHydrated, setSelectionHydrated] = useState(false);
   const [matchSignupStateLoaded, setMatchSignupStateLoaded] = useState(false);
@@ -952,7 +1128,7 @@ export default function MatchSignupPage({
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [activeClubId]);
 
   const displayName =
     identity?.shortName ||
@@ -1016,7 +1192,7 @@ export default function MatchSignupPage({
   const allMonthWeeks = useMemo(() => {
     const generatedWeeks = getMonthWednesdays({
       visibleOnly: false,
-      settings: matchSignupSettings,
+      settings: effectiveMatchSignupSettings,
     });
 
     const byId = new Map();
@@ -1066,7 +1242,7 @@ export default function MatchSignupPage({
     });
 
     return Array.from(byId.values()).sort((a, b) => a.date - b.date);
-  }, [matchSignupSettings, sharedChallengeFixtures]);
+  }, [effectiveMatchSignupSettings, sharedChallengeFixtures]);
   const weeks = useMemo(() => {
     const today = new Date();
 
@@ -1458,6 +1634,62 @@ export default function MatchSignupPage({
       }),
     [signupType, beneficiary.playerId, calendarMonthKey]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMatchCredits() {
+      if (
+        isPracticeMode ||
+        !activeClubId ||
+        !beneficiary?.playerId ||
+        beneficiary?.isGuest
+      ) {
+        setAvailableMatchCredits([]);
+        setClubMatchCredits([]);
+        return;
+      }
+
+      try {
+        setMatchCreditsLoading(true);
+
+        const [credits, clubCredits] = await Promise.all([
+          listAvailablePlayerMatchCredits({
+            clubId: activeClubId,
+            playerId: beneficiary.playerId,
+          }),
+          listClubMatchCredits({
+            clubId: activeClubId,
+          }),
+        ]);
+
+        if (!cancelled) {
+          setAvailableMatchCredits(credits);
+          setClubMatchCredits(clubCredits);
+        }
+      } catch (error) {
+        console.error("Failed to load Match Tickets:", error);
+        if (!cancelled) {
+          setAvailableMatchCredits([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setMatchCreditsLoading(false);
+        }
+      }
+    }
+
+    loadMatchCredits();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeClubId,
+    beneficiary?.playerId,
+    beneficiary?.isGuest,
+    isPracticeMode,
+  ]);
 
   const currentUserDocKey = useMemo(
     () => beneficiary.stableKey,
@@ -2117,24 +2349,113 @@ export default function MatchSignupPage({
       fullName: user.fullName,
       shortName: user.shortName || firstNameOf(user.fullName),
       stableKey: user.stableKey,
-      isCurrent: normKey(user.stableKey) === normKey(beneficiary.stableKey),
+      isCurrent:
+        normKey(user.stableKey) === normKey(beneficiary.stableKey) ||
+        (
+          user.userId &&
+          beneficiary.playerId &&
+          normKey(user.userId) === normKey(beneficiary.playerId)
+        ),
       isEmpty: false,
+      isWithdrawnHistoryOnly: false,
     }));
 
+    /*
+     * Only individual player withdrawals belong in the matrix withdrawal
+     * history. A whole-match admin/weather cancellation is NOT a player
+     * withdrawal and therefore must not paint everybody purple.
+     */
+    const withdrawalSources = new Set([
+      MATCH_CREDIT_SOURCE.PLAYER_EARLY_CANCELLATION,
+      MATCH_CREDIT_SOURCE.ADMIN_EXCEPTION,
+    ]);
+
+    const withdrawnRows = clubMatchCredits
+      .filter((credit) => withdrawalSources.has(credit?.sourceType))
+      .filter((credit) =>
+        visibleWeekIds.has(String(credit?.sourceWeekId || "").trim())
+      )
+      .map((credit, index) => {
+        const playerId = String(credit?.playerId || "").trim();
+        const fullName = toTitleCaseLoose(
+          credit?.playerName || "Player"
+        );
+
+        return {
+          id:
+            playerId ||
+            `withdrawn_${slugFromLooseName(fullName)}_${index}`,
+          uid: playerId,
+          playerId,
+          memberId: playerId,
+          fullName,
+          shortName: firstNameOf(fullName) || fullName,
+          stableKey:
+            playerId
+              ? `uid:${normKey(playerId)}`
+              : `withdrawn:${normKey(fullName)}`,
+          isCurrent:
+            (
+              playerId &&
+              beneficiary.playerId &&
+              normKey(playerId) === normKey(beneficiary.playerId)
+            ) ||
+            normKey(fullName) === normKey(beneficiary.fullName),
+          isEmpty: false,
+          isWithdrawnHistoryOnly: true,
+        };
+      });
+
+    const identityKey = (row) =>
+      normKey(
+        row?.playerId ||
+        row?.uid ||
+        row?.fullName ||
+        row?.stableKey ||
+        row?.id ||
+        ""
+      );
+
     const uniqueMap = new Map();
+
+    /*
+     * Active/committed players go in first.
+     */
     rowsFromCommittedUsers.forEach((row) => {
-      uniqueMap.set(row.stableKey || row.id, row);
+      const key = identityKey(row);
+      if (key) uniqueMap.set(key, row);
+    });
+
+    /*
+     * Then append anyone who withdrew and no longer has an active booking.
+     * If they still have another active booking, preserve the active row.
+     */
+    withdrawnRows.forEach((row) => {
+      const key = identityKey(row);
+
+      if (!key || uniqueMap.has(key)) return;
+
+      uniqueMap.set(key, row);
     });
 
     const committedRows = Array.from(uniqueMap.values());
 
     const alreadyHasCurrent = committedRows.some(
-      (p) => normKey(p.stableKey) === normKey(beneficiary.stableKey)
+      (row) =>
+        row.isCurrent ||
+        (
+          row.playerId &&
+          beneficiary.playerId &&
+          normKey(row.playerId) === normKey(beneficiary.playerId)
+        ) ||
+        normKey(row.fullName) === normKey(beneficiary.fullName)
     );
 
     if (!alreadyHasCurrent) {
       committedRows.push({
-        id: beneficiary.playerId || slugFromLooseName(beneficiary.fullName),
+        id:
+          beneficiary.playerId ||
+          slugFromLooseName(beneficiary.fullName),
         uid: beneficiary.playerId || "",
         playerId: beneficiary.playerId || "",
         memberId: beneficiary.playerId || "",
@@ -2143,6 +2464,7 @@ export default function MatchSignupPage({
         stableKey: beneficiary.stableKey,
         isCurrent: true,
         isEmpty: false,
+        isWithdrawnHistoryOnly: false,
       });
     }
 
@@ -2153,11 +2475,17 @@ export default function MatchSignupPage({
         shortName: `Slot ${committedRows.length + 1}`,
         isCurrent: false,
         isEmpty: true,
+        isWithdrawnHistoryOnly: false,
       });
     }
 
     return committedRows.slice(0, MAX_PLAYERS);
-  }, [liveCommittedUsers, beneficiary]);
+  }, [
+    liveCommittedUsers,
+    beneficiary,
+    clubMatchCredits,
+    visibleWeekIds,
+  ]);
 
   const weekSelectionsAll = useMemo(() => {
     const out = {};
@@ -2271,6 +2599,61 @@ export default function MatchSignupPage({
     return out;
   }, [weeks, displayRows, liveCommittedUsers, effectivePaidWeekSet]);
 
+  const withdrawnPlayerWeekKeys = useMemo(() => {
+    const out = new Set();
+
+    const withdrawalSources = new Set([
+      MATCH_CREDIT_SOURCE.PLAYER_EARLY_CANCELLATION,
+      MATCH_CREDIT_SOURCE.ADMIN_EXCEPTION,
+    ]);
+
+    clubMatchCredits
+      .filter((credit) => withdrawalSources.has(credit?.sourceType))
+      .forEach((credit) => {
+        const withdrawalWeekIds = uniqueWeekIds([
+          credit?.sourceWeekId,
+          ...(Array.isArray(credit?.withdrawalWeekIds)
+            ? credit.withdrawalWeekIds
+            : []),
+        ]);
+
+        const playerId = normKey(credit?.playerId || "");
+        const playerName = normKey(credit?.playerName || "");
+        const firstName = normKey(
+          firstNameOf(credit?.playerName || "")
+        );
+
+        withdrawalWeekIds.forEach((weekId) => {
+          [playerId, playerName, firstName]
+            .filter(Boolean)
+            .forEach((key) => {
+              out.add(`${key}::${weekId}`);
+            });
+        });
+      });
+
+    return out;
+  }, [clubMatchCredits]);
+
+  const isPlayerWithdrawnForWeek = (player, weekId) => {
+    if (!player || player.isEmpty || !weekId) return false;
+
+    const keys = uniqueStrings([
+      player.playerId,
+      player.uid,
+      player.memberId,
+      player.fullName,
+      player.shortName,
+      firstNameOf(player.fullName || player.shortName || ""),
+    ])
+      .map(normKey)
+      .filter(Boolean);
+
+    return keys.some((key) =>
+      withdrawnPlayerWeekKeys.has(`${key}::${weekId}`)
+    );
+  };
+
   const weekMeta = useMemo(
     () =>
       weeks.map((week) => {
@@ -2283,6 +2666,185 @@ export default function MatchSignupPage({
       }),
     [weeks, weekSelectionsAll]
   );
+
+  const matchTicketUseWeeks = useMemo(() => {
+    return weekMeta.filter((week) => {
+      const kickoff = buildMatchKickoffDate(
+        week,
+        effectiveMatchSignupSettings
+      );
+
+      if (!kickoff || kickoff.getTime() <= Date.now()) {
+        return false;
+      }
+
+      if (
+        effectiveSelectedWeeks.includes(week.id) ||
+        effectivePaidWeekSet.has(week.id)
+      ) {
+        return false;
+      }
+
+      if (week?.status?.key === "full") {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    weekMeta,
+    effectiveMatchSignupSettings,
+    effectiveSelectedWeeks,
+    effectivePaidWeekSet,
+  ]);
+
+  const matchTicketCancelWeeks = useMemo(() => {
+    return weekMeta.filter((week) => {
+      if (!effectivePaidWeekSet.has(week.id)) {
+        return false;
+      }
+
+      const kickoff = buildMatchKickoffDate(
+        week,
+        effectiveMatchSignupSettings
+      );
+
+      if (!kickoff || kickoff.getTime() <= Date.now()) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    weekMeta,
+    effectiveMatchSignupSettings,
+    effectivePaidWeekSet,
+  ]);
+
+  const handleUseMatchTicket = async (week) => {
+    if (!week?.id || matchTicketBusy) return;
+
+    const credit = availableMatchCredits[0];
+
+    if (!credit?.id) {
+      setMatchCreditMessage("You do not currently have a Match Ticket.");
+      setMatchTicketWalletMode("menu");
+      return;
+    }
+
+    const confirmed = await showPremiumConfirm({
+      icon: "🎟️",
+      title: `Use Match Ticket for ${
+        week.shortLabel || week.label || "this match"
+      }?`,
+      message:
+        "This match will be booked and marked as paid immediately.",
+      detail:
+        "No payment will be taken. One Match Ticket will be used.",
+      confirmText: "Use Match Ticket",
+      cancelText: "Back",
+      variant: "success",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      setMatchTicketBusy(true);
+      setMatchCreditMessage("");
+
+      const result = await redeemMatchCreditForMatch({
+        clubId: activeClubId,
+        creditId: credit.id,
+        playerId: beneficiary.playerId,
+        playerName: beneficiary.fullName,
+        signupDocId: pendingId,
+        weekId: week.id,
+
+        signupIdentity: {
+          signupDocId: pendingId,
+          sourcePendingSignupId: pendingId,
+
+          activeSeasonId: resolvedSeasonId,
+          seasonAtSignupTime: resolvedSeasonId,
+
+          signupType,
+          signupScopeId,
+          signupScopeLabel,
+          monthLabel: calendarMonthData?.monthLabel || "",
+          monthKey: calendarMonthKey,
+
+          payerUserId,
+          payerName: displayName,
+          payerShortName: shortName,
+          userId: payerUserId,
+
+          playerId: beneficiary.playerId,
+          playerName: beneficiary.fullName,
+          shortName: beneficiary.shortName,
+          displayName: beneficiary.fullName,
+
+          beneficiaryType: beneficiary.mode,
+          beneficiaryPlayerId: beneficiary.playerId,
+          beneficiaryName: beneficiary.fullName,
+          beneficiaryShortName: beneficiary.shortName,
+          beneficiaryStableKey: beneficiary.stableKey,
+        },
+
+        redeemedBy:
+          currentUser?.uid ||
+          currentUser?.email ||
+          beneficiary.playerId,
+      });
+
+      setSelectedWeeks(result.selectedWeeks || []);
+      setPaidWeeks(result.paidWeeks || []);
+
+      writeSignupCache(pendingId, {
+        selectedWeeks: result.selectedWeeks || [],
+        paidWeeks: result.paidWeeks || [],
+        reminderPreference,
+      });
+
+      const [credits, clubCredits] = await Promise.all([
+        listAvailablePlayerMatchCredits({
+          clubId: activeClubId,
+          playerId: beneficiary.playerId,
+        }),
+        listClubMatchCredits({
+          clubId: activeClubId,
+        }),
+      ]);
+
+      setAvailableMatchCredits(credits);
+      setClubMatchCredits(clubCredits);
+
+      if (credits.length < 1) {
+        setMatchTicketMinimized(false);
+      }
+
+      setShowMatchTicketWallet(false);
+      setMatchTicketWalletMode("menu");
+
+      setMatchCreditMessage(
+        `Match Ticket used — ${
+          week.shortLabel || week.label || "your match"
+        } is booked and paid.`
+      );
+    } catch (error) {
+      console.error("Failed to use Match Ticket:", error);
+
+      await showPremiumConfirm({
+        title: "Match Ticket not used",
+        message:
+          error?.message ||
+          "Your ticket and booking were not changed.",
+        confirmText: "OK",
+        cancelText: "",
+      });
+    } finally {
+      setMatchTicketBusy(false);
+    }
+  };
 
   useEffect(() => {
     hasInitialScrollRef.current = false;
@@ -2350,6 +2912,182 @@ export default function MatchSignupPage({
     setSelectedWeeks((prev) => uniqueWeekIds([...prev, week.id]));
   };
 
+  const getRedeemedMatchTicketForWeek = (weekId) => {
+    const safeWeekId = String(weekId || "").trim();
+
+    if (!safeWeekId) return null;
+
+    return (
+      clubMatchCredits.find(
+        (credit) =>
+          credit?.status === MATCH_CREDIT_STATUS.REDEEMED &&
+          String(credit?.playerId || "").trim() ===
+            String(beneficiary?.playerId || "").trim() &&
+          String(credit?.redeemedWeekId || "").trim() === safeWeekId
+      ) || null
+    );
+  };
+
+  const handlePaidMatchCreditCancellation = async (week) => {
+    if (!week?.id) return;
+    if (isPracticeMode) return;
+    if (beneficiary?.isGuest) return;
+    if (!effectivePaidWeekSet.has(week.id)) return;
+
+    const kickoff = buildMatchKickoffDate(
+      week,
+      effectiveMatchSignupSettings
+    );
+
+    const deadline = getMatchCreditDeadline(
+      week,
+      effectiveMatchSignupSettings
+    );
+
+    const eligible =
+      isAutomaticMatchCreditCancellationEligible(
+        week,
+        effectiveMatchSignupSettings
+      );
+
+    if (!kickoff || !deadline) {
+      await showPremiumConfirm({
+        title: "Match unavailable",
+        message:
+          "We could not determine the kickoff time for this match.",
+        confirmText: "OK",
+        cancelText: "",
+      });
+      return;
+    }
+
+    if (!eligible) {
+      await showPremiumConfirm({
+        icon: "⏱️",
+        title: "Inside the 48-hour window",
+        message:
+          "Automatic Match Ticket returns close 48 hours before kickoff.",
+        detail:
+          "An admin can still grant an exception when appropriate.",
+        confirmText: "OK",
+        cancelText: "",
+      });
+      return;
+    }
+
+    const redeemedTicket =
+      getRedeemedMatchTicketForWeek(week.id);
+
+    const confirmed = await showPremiumConfirm({
+      icon: "🎟️",
+      title: redeemedTicket
+        ? "Return your Match Ticket?"
+        : "Cancel this match?",
+      message: redeemedTicket
+        ? "Your place will be released and your Match Ticket will return to your wallet."
+        : "Your place will be released and a Match Ticket will be added to your wallet.",
+      confirmText: redeemedTicket
+        ? "Return Ticket"
+        : "Cancel Match",
+      cancelText: "Keep Booking",
+      variant: "success",
+    });
+
+    if (!confirmed) return;
+
+    setMatchCreditBusyWeekId(week.id);
+    setMatchCreditMessage("");
+
+    try {
+      if (redeemedTicket) {
+        await returnRedeemedMatchTicketToWallet({
+          clubId: activeClubId,
+          creditId: redeemedTicket.id,
+          playerId: beneficiary.playerId,
+          signupDocId: pendingId,
+          weekId: week.id,
+          returnedBy:
+            currentUser?.uid ||
+            currentUser?.email ||
+            beneficiary.playerId,
+        });
+      } else {
+        await cancelPaidMatchAndIssueCredit({
+          clubId: activeClubId,
+          playerId: beneficiary.playerId,
+          playerName: beneficiary.fullName,
+          signupDocId: pendingId,
+          weekId: week.id,
+          sourceType:
+            MATCH_CREDIT_SOURCE.PLAYER_EARLY_CANCELLATION,
+          issuedBy:
+            currentUser?.uid ||
+            currentUser?.email ||
+            beneficiary.playerId,
+        });
+      }
+
+      const nextSelectedWeeks =
+        effectiveSelectedWeeks.filter(
+          (id) => id !== week.id
+        );
+
+      const nextPaidWeeks =
+        effectivePaidWeeks.filter(
+          (id) => id !== week.id
+        );
+
+      setSelectedWeeks(nextSelectedWeeks);
+      setPaidWeeks(nextPaidWeeks);
+
+      writeSignupCache(pendingId, {
+        selectedWeeks: nextSelectedWeeks,
+        paidWeeks: nextPaidWeeks,
+        reminderPreference,
+      });
+
+      const [credits, clubCredits] =
+        await Promise.all([
+          listAvailablePlayerMatchCredits({
+            clubId: activeClubId,
+            playerId: beneficiary.playerId,
+          }),
+          listClubMatchCredits({
+            clubId: activeClubId,
+          }),
+        ]);
+
+      setAvailableMatchCredits(credits);
+      setClubMatchCredits(clubCredits);
+
+      if (credits.length > 0) {
+        setMatchTicketMinimized(false);
+      }
+
+      setMatchCreditMessage(
+        redeemedTicket
+          ? "Match Ticket returned to your wallet."
+          : "Match cancelled — Match Ticket added."
+      );
+    } catch (error) {
+      console.error(
+        "Failed to cancel Match Ticket booking:",
+        error
+      );
+
+      await showPremiumConfirm({
+        title: "Booking unchanged",
+        message:
+          error?.message ||
+          "Nothing was changed. Please try again.",
+        confirmText: "OK",
+        cancelText: "",
+      });
+    } finally {
+      setMatchCreditBusyWeekId("");
+    }
+  };
+
   const fieldContributionDueNow = sumWeekCosts(weeksToPayNow);
   const serviceFeePerGame = 7.5;
   const serviceFeeDueNow = weeksToPayNow.length * serviceFeePerGame;
@@ -2397,6 +3135,57 @@ export default function MatchSignupPage({
 
     return effectiveRole === "admin";
   }, [activeRole, identity, currentUser]);
+
+  const BULK_PAID_MAX_PLAYERS = 18;
+
+  const bulkPaidTargetWeek = useMemo(
+    () => (Array.isArray(weeks) && weeks.length ? weeks[0] : null),
+    [weeks]
+  );
+
+  const bulkPaidAlreadyPaidKeys = useMemo(() => {
+    const out = new Set();
+    const targetWeekId = String(bulkPaidTargetWeek?.id || "").trim();
+
+    if (!targetWeekId) return out;
+
+    liveCommittedUsers.forEach((user) => {
+      const paid = Array.isArray(user?.paidWeeks)
+        ? user.paidWeeks
+        : [];
+
+      if (!paid.includes(targetWeekId)) return;
+
+      const id = normKey(
+        user?.userId ||
+        user?.rawData?.beneficiaryPlayerId ||
+        user?.rawData?.playerId ||
+        ""
+      );
+
+      const name = normKey(
+        user?.fullName ||
+        user?.shortName ||
+        user?.rawData?.beneficiaryName ||
+        ""
+      );
+
+      if (id) out.add(`id:${id}`);
+      if (name) out.add(`name:${name}`);
+    });
+
+    return out;
+  }, [liveCommittedUsers, bulkPaidTargetWeek]);
+
+  const isBulkPlayerAlreadyPaid = (player) => {
+    const id = normKey(player?.id || "");
+    const name = normKey(player?.fullName || player?.shortName || "");
+
+    return (
+      (id && bulkPaidAlreadyPaidKeys.has(`id:${id}`)) ||
+      (name && bulkPaidAlreadyPaidKeys.has(`name:${name}`))
+    );
+  };
 
   const adminCleanupCandidates = useMemo(() => {
     if (!canManageSignupsAsAdmin) return [];
@@ -2978,14 +3767,311 @@ export default function MatchSignupPage({
     };
   };
 
+  /*
+   * Shared existing Match Signup admin-paid write operation.
+   *
+   * This follows the same data shape used by the existing
+   * "Add booking as paid" administration workflow.
+   *
+   * The bulk selector is only another caller of this operation.
+   */
+  const applyExistingAdminPaidOperation = async ({
+    target,
+    weeksToAdd = [],
+    paymentMethod = "manual_admin_add_paid_week",
+  }) => {
+    const addWeeks = uniqueWeekIds(weeksToAdd).filter((weekId) =>
+      weeks.some((week) => week.id === weekId)
+    );
+
+    if (!target?.docId || !addWeeks.length) return false;
+
+    const pendingRef = pendingSignupDocRef(target.docId);
+    const pendingSnap = await getDoc(pendingRef);
+
+    const pendingData = pendingSnap.exists()
+      ? pendingSnap.data() || {}
+      : target.rawData || {};
+
+    const existingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
+      ? uniqueWeekIds(pendingData.selectedWeeks)
+      : Array.isArray(target.selectedWeeks)
+      ? uniqueWeekIds(target.selectedWeeks)
+      : [];
+
+    const existingPaidWeeks = Array.isArray(
+      pendingData.paidWeeks || pendingData.primaryPaidWeeks
+    )
+      ? uniqueWeekIds(
+          pendingData.paidWeeks || pendingData.primaryPaidWeeks
+        )
+      : Array.isArray(target.paidWeeks)
+      ? uniqueWeekIds(target.paidWeeks)
+      : [];
+
+    const nextSelectedWeeks = uniqueWeekIds([
+      ...existingSelectedWeeks,
+      ...addWeeks,
+    ]);
+
+    const nextPaidWeeks = uniqueWeekIds([
+      ...existingPaidWeeks,
+      ...addWeeks,
+    ]);
+
+    const nextUnpaidWeeks = nextSelectedWeeks.filter(
+      (weekId) => !nextPaidWeeks.includes(weekId)
+    );
+
+    const nextStatus = statusFromWeekState(
+      nextSelectedWeeks,
+      nextPaidWeeks
+    );
+
+    const verifier =
+      identity?.email ||
+      identity?.displayName ||
+      identity?.shortName ||
+      DEFAULT_ADMIN_NAME;
+
+    const identityPayload = buildAdminSignupIdentityPayload(
+      target,
+      pendingData
+    );
+
+    await setDoc(
+      pendingRef,
+      {
+        ...identityPayload,
+        selectedWeeks: nextSelectedWeeks,
+        paidWeeks: nextPaidWeeks,
+        unpaidWeeks: nextUnpaidWeeks,
+        weeksToPayNow: nextUnpaidWeeks,
+        totalAmount: sumWeekCosts(nextUnpaidWeeks),
+        amountDueNow: sumWeekCosts(nextUnpaidWeeks),
+        amountPaidTotal: sumWeekCosts(nextPaidWeeks),
+        paymentStatus: nextStatus,
+        isUnpaid: nextUnpaidWeeks.length > 0,
+        remindersEnabled:
+          Boolean(pendingData.effectiveWhatsappNumber) &&
+          nextUnpaidWeeks.length > 0,
+        remindersPaused:
+          !Boolean(pendingData.effectiveWhatsappNumber) ||
+          nextUnpaidWeeks.length === 0,
+        verifiedBy: verifier,
+        verifiedAt: serverTimestamp(),
+        paymentMethod,
+        updatedAt: serverTimestamp(),
+        createdAt:
+          pendingData.createdAt || serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await setDoc(
+      matchSignupDocRef(target.docId),
+      {
+        ...identityPayload,
+        selectedWeeks: nextSelectedWeeks,
+        paidWeeks: nextPaidWeeks,
+        primaryPaidWeeks: nextPaidWeeks,
+        unpaidWeeks: nextUnpaidWeeks,
+        weeksToPayNow: nextUnpaidWeeks,
+        amountDue: sumWeekCosts(nextUnpaidWeeks),
+        amountPaid: sumWeekCosts(nextPaidWeeks),
+        paymentIntentAmount: 0,
+        paymentStatus: nextStatus,
+        verifiedBy: verifier,
+        verifiedAt: serverTimestamp(),
+        paymentVerifiedAt: serverTimestamp(),
+        paymentMethod,
+        updatedAt: serverTimestamp(),
+        createdAt:
+          pendingData.createdAt || serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return true;
+  };
+
+  const handleBulkMarkPlayersPaid = async () => {
+    if (!canManageSignupsAsAdmin) return;
+
+    const targetWeekId = String(
+      bulkPaidTargetWeek?.id || ""
+    ).trim();
+
+    if (!targetWeekId) {
+      setBulkPaidError(
+        "No current or upcoming match day is available."
+      );
+      return;
+    }
+
+    const selectedPlayers = directoryPlayers.filter((player) =>
+      bulkPaidSelectedPlayerIds.includes(player.id)
+    );
+
+    if (!selectedPlayers.length) {
+      setBulkPaidError("Select at least one player.");
+      return;
+    }
+
+    if (selectedPlayers.length > BULK_PAID_MAX_PLAYERS) {
+      setBulkPaidError(
+        `You can mark a maximum of ${BULK_PAID_MAX_PLAYERS} players at once.`
+      );
+      return;
+    }
+
+    const confirmed = await showPremiumConfirm({
+      icon: "✅",
+      title: `Mark ${selectedPlayers.length} player${
+        selectedPlayers.length === 1 ? "" : "s"
+      } as paid?`,
+      message:
+        bulkPaidTargetWeek?.fullLabel ||
+        bulkPaidTargetWeek?.label ||
+        targetWeekId,
+      detail:
+        "Use this for cash, EFT, or another payment you have personally verified.",
+      confirmText: "Mark selected as paid",
+      variant: "success",
+    });
+
+    if (!confirmed) return;
+
+    setBulkPaidBusy(true);
+    setBulkPaidMessage("");
+    setBulkPaidError("");
+
+    try {
+      for (const player of selectedPlayers) {
+        /*
+         * Prefer the existing admin candidate because it carries
+         * the authoritative Match Signup document identity.
+         */
+        let target = adminCleanupCandidates.find((candidate) => {
+          const candidateUserId = normKey(
+            candidate?.userId || ""
+          );
+          const playerId = normKey(player?.id || "");
+
+          if (
+            candidateUserId &&
+            playerId &&
+            candidateUserId === playerId
+          ) {
+            return true;
+          }
+
+          return (
+            normKey(
+              candidate?.fullName ||
+              candidate?.shortName ||
+              ""
+            ) ===
+            normKey(
+              player?.fullName ||
+              player?.shortName ||
+              ""
+            )
+          );
+        });
+
+        /*
+         * A directory player may never have used Match Signup before.
+         * In that case construct exactly the same canonical document
+         * identity Match Signup uses for an existing-player beneficiary.
+         */
+        if (!target) {
+          const docId = buildPendingSignupId({
+            signupType,
+            beneficiaryPlayerId: player.id,
+            monthKey: calendarMonthKey,
+          });
+
+          target = {
+            docId,
+            userId: player.id,
+            fullName:
+              player.fullName ||
+              player.shortName ||
+              "Player",
+            shortName:
+              player.shortName ||
+              player.fullName ||
+              "Player",
+            stableKey: buildBeneficiaryStableKey(
+              "existing_player",
+              player.id,
+              player.fullName ||
+                player.shortName ||
+                ""
+            ),
+            beneficiaryType: "existing_player",
+            selectedWeeks: [],
+            paidWeeks: [],
+            rawData: {},
+          };
+        }
+
+        await applyExistingAdminPaidOperation({
+          target,
+          weeksToAdd: [targetWeekId],
+          paymentMethod: "manual_admin_add_paid_week",
+        });
+      }
+
+      setBulkPaidMessage(
+        `${selectedPlayers.length} player${
+          selectedPlayers.length === 1 ? "" : "s"
+        } marked paid for ${
+          bulkPaidTargetWeek?.shortLabel ||
+          bulkPaidTargetWeek?.label ||
+          targetWeekId
+        }.`
+      );
+
+      setBulkPaidSelectedPlayerIds([]);
+      setShowBulkPaidModal(false);
+    } catch (error) {
+      console.error("BULK PAID FAILURE:", error);
+      console.error(
+        "BULK PAID ERROR CODE:",
+        error?.code
+      );
+      console.error(
+        "BULK PAID ERROR MESSAGE:",
+        error?.message
+      );
+
+      setBulkPaidError(
+        `Could not mark the selected players as paid: ${
+          error?.code ||
+          error?.message ||
+          "unknown error"
+        }`
+      );
+    } finally {
+      setBulkPaidBusy(false);
+    }
+  };
+
   const handleAdminVerifyWeeks = async (weeksToVerify = []) => {
     if (!canManageSignupsAsAdmin || !adminCleanupTargetId) return;
-    const verifyWeeks = uniqueWeekIds(weeksToVerify);
+
+    const verifyWeeks = uniqueWeekIds(weeksToVerify).filter((weekId) =>
+      weeks.some((week) => week.id === weekId)
+    );
+
     if (!verifyWeeks.length) return;
 
     const target = adminCleanupCandidates.find(
       (item) => item.docId === adminCleanupTargetId
     );
+
     if (!target) return;
 
     setAdminVerifyBusy(true);
@@ -2993,116 +4079,35 @@ export default function MatchSignupPage({
     setAdminCleanupError("");
 
     try {
-      const pendingRef = pendingSignupDocRef(target.docId);
-      const pendingSnap = await getDoc(pendingRef);
+      const changed = await applyExistingAdminPaidOperation({
+        target,
+        weeksToAdd: verifyWeeks,
+        paymentMethod: "manual_admin_verify",
+      });
 
-      const pendingData = pendingSnap.exists()
-        ? pendingSnap.data() || {}
-        : target.rawData || {};
-
-      const existingSelectedWeeks = Array.isArray(pendingData.selectedWeeks)
-        ? uniqueWeekIds(pendingData.selectedWeeks)
-        : [];
-      const existingPaidWeeks = Array.isArray(
-        pendingData.paidWeeks || pendingData.primaryPaidWeeks
-      )
-        ? uniqueWeekIds(pendingData.paidWeeks || pendingData.primaryPaidWeeks)
-        : [];
-
-      const nextPaidWeeks = uniqueWeekIds([...existingPaidWeeks, ...verifyWeeks]);
-      const nextSelectedWeeks = uniqueWeekIds([
-        ...existingSelectedWeeks,
-        ...verifyWeeks,
-      ]);
-      const nextUnpaidWeeks = nextSelectedWeeks.filter(
-        (weekId) => !nextPaidWeeks.includes(weekId)
-      );
-      const nextStatus = statusFromWeekState(nextSelectedWeeks, nextPaidWeeks);
-
-      const verifier =
-        identity?.email ||
-        identity?.displayName ||
-        identity?.shortName ||
-        DEFAULT_ADMIN_NAME;
-
-      await setDoc(
-        pendingRef,
-        {
-          activeSeasonId: resolvedSeasonId,
-          seasonAtSignupTime: resolvedSeasonId,
-          signupType,
-          signupScopeId,
-          signupScopeLabel,
-          monthLabel: calendarMonthData?.monthLabel || "",
-          monthKey: calendarMonthKey,
-          payerUserId,
-          payerName: displayName,
-          payerShortName: shortName,
-          userId: target.userId || pendingData.userId || payerUserId,
-          playerId: target.userId || pendingData.playerId || pendingData.beneficiaryPlayerId || "",
-          playerName: target.fullName || pendingData.playerName || pendingData.beneficiaryName || "",
-          shortName: target.shortName || pendingData.shortName || pendingData.beneficiaryShortName || "",
-          beneficiaryType: target.beneficiaryType || pendingData.beneficiaryType || "self",
-          beneficiaryPlayerId:
-            pendingData.beneficiaryPlayerId || target.userId || pendingData.playerId || "",
-          beneficiaryName: target.fullName || pendingData.beneficiaryName || pendingData.playerName || "",
-          beneficiaryShortName:
-            target.shortName || pendingData.beneficiaryShortName || pendingData.shortName || "",
-          beneficiaryStableKey:
-            target.stableKey || pendingData.beneficiaryStableKey || "",
-          selectedWeeks: nextSelectedWeeks,
-          paidWeeks: nextPaidWeeks,
-          unpaidWeeks: nextUnpaidWeeks,
-          weeksToPayNow: nextUnpaidWeeks,
-          totalAmount: sumWeekCosts(nextUnpaidWeeks),
-          amountDueNow: sumWeekCosts(nextUnpaidWeeks),
-          amountPaidTotal: sumWeekCosts(nextPaidWeeks),
-          paymentStatus: nextStatus,
-          isUnpaid: nextUnpaidWeeks.length > 0,
-          remindersEnabled:
-            Boolean(pendingData.effectiveWhatsappNumber) &&
-            nextUnpaidWeeks.length > 0,
-          remindersPaused:
-            !Boolean(pendingData.effectiveWhatsappNumber) ||
-            nextUnpaidWeeks.length === 0,
-          verifiedBy: verifier,
-          verifiedAt: serverTimestamp(),
-          paymentMethod: "manual_admin_verify",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      await setDoc(
-        matchSignupDocRef(target.docId),
-        {
-          selectedWeeks: nextSelectedWeeks,
-          paidWeeks: nextPaidWeeks,
-          primaryPaidWeeks: nextPaidWeeks,
-          unpaidWeeks: nextUnpaidWeeks,
-          weeksToPayNow: nextUnpaidWeeks,
-          amountDue: sumWeekCosts(nextUnpaidWeeks),
-          amountPaid: sumWeekCosts(nextPaidWeeks),
-          paymentIntentAmount: 0,
-          paymentStatus: nextStatus,
-          verifiedBy: verifier,
-          verifiedAt: serverTimestamp(),
-          paymentVerifiedAt: serverTimestamp(),
-          paymentMethod: "manual_admin_verify",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      if (!changed) {
+        throw new Error(
+          "No valid booking was available to mark as paid."
+        );
+      }
 
       setAdminVerifyWeeks([]);
+
       setAdminCleanupMessage(
-        `${target.fullName} marked paid for ${verifyWeeks.length} week${
-          verifyWeeks.length === 1 ? "" : "s"
-        }.`
+        `${target.fullName || target.shortName || "Player"} marked as paid.`
       );
     } catch (error) {
-      console.error("Failed to verify selected weeks:", error);
-      setAdminCleanupError("Could not verify the selected weeks. Please try again.");
+      console.error("ADMIN VERIFY PAID FAILURE:", error);
+      console.error("ADMIN VERIFY PAID ERROR CODE:", error?.code);
+      console.error("ADMIN VERIFY PAID ERROR MESSAGE:", error?.message);
+
+      setAdminCleanupError(
+        `Could not mark booking as paid: ${
+          error?.code ||
+          error?.message ||
+          "unknown error"
+        }`
+      );
     } finally {
       setAdminVerifyBusy(false);
     }
@@ -3675,6 +4680,25 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               flexWrap: "wrap",
             }}
           >
+            {!isPracticeMode &&
+            !beneficiary?.isGuest &&
+            matchTicketCancelWeeks.length > 0 ? (
+              <button
+                type="button"
+                className="tk-match-pull-out-btn"
+                onClick={() => {
+                  setMatchTicketWalletMode("cancel");
+                  setShowMatchTicketWallet(true);
+                }}
+                disabled={matchTicketBusy}
+                title="Withdraw from a booked match"
+                style={{ touchAction: "manipulation" }}
+              >
+                <span aria-hidden="true">↩</span>
+                <strong>Match pull out</strong>
+              </button>
+            ) : null}
+
             <button
               type="button"
               className="secondary-btn signup-calendar-btn"
@@ -3725,6 +4749,300 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
           </div>
         </div>
       </section>
+
+      {matchCreditMessage ? (
+        <div
+          className="tk-golden-ticket-toast"
+          role="status"
+          aria-live="polite"
+        >
+          <span aria-hidden="true">🎟️</span>
+          <strong>{matchCreditMessage}</strong>
+        </div>
+      ) : null}
+
+      {!isPracticeMode &&
+      !beneficiary?.isGuest &&
+      availableMatchCredits.length > 0 ? (
+        <div
+          className={[
+            "tk-floating-match-ticket",
+            matchTicketMinimized ? "is-minimized" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {matchTicketMinimized ? (
+            <button
+              type="button"
+              className="tk-floating-ticket-restore"
+              onClick={() => setMatchTicketMinimized(false)}
+              aria-label={`Open Match Ticket. ${availableMatchCredits.length} available.`}
+              title="Open Match Ticket"
+            >
+              <span aria-hidden="true">🎟️</span>
+              <strong>{availableMatchCredits.length}</strong>
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="tk-floating-ticket-main"
+                onClick={() => {
+                  setMatchTicketWalletMode("use");
+                  setShowMatchTicketWallet(true);
+                }}
+                disabled={matchTicketBusy}
+                aria-label={`Use Match Ticket. ${availableMatchCredits.length} available.`}
+              >
+                <span
+                  className="tk-floating-ticket-icon"
+                  aria-hidden="true"
+                >
+                  🎟️
+                </span>
+
+                <span className="tk-floating-ticket-copy">
+                  <strong>Match Ticket</strong>
+                  <small>
+                    {availableMatchCredits.length} available
+                  </small>
+                </span>
+
+                <span
+                  className="tk-floating-ticket-count"
+                  aria-hidden="true"
+                >
+                  {availableMatchCredits.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="tk-floating-ticket-minimize"
+                onClick={() => setMatchTicketMinimized(true)}
+                aria-label="Minimize Match Ticket"
+                title="Hide to the side"
+              >
+                ‹
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {showMatchTicketWallet ? (
+        <div
+          className="tk-match-ticket-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !matchTicketBusy) {
+              setShowMatchTicketWallet(false);
+              setMatchTicketWalletMode("menu");
+            }
+          }}
+        >
+          <section
+            className="tk-match-ticket-wallet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="match-ticket-wallet-title"
+          >
+            <div className="tk-match-ticket-wallet-head">
+              <div>
+                <span className="tk-match-ticket-eyebrow">🎟️ MATCH TICKET</span>
+                <h2 id="match-ticket-wallet-title">
+                  {matchTicketWalletMode === "cancel"
+                    ? "Match pull out"
+                    : "Use Ticket"}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="tk-match-ticket-close"
+                onClick={() => {
+                  if (matchTicketBusy) return;
+                  setShowMatchTicketWallet(false);
+                  setMatchTicketWalletMode("menu");
+                }}
+                aria-label="Close Match Ticket"
+              >
+                ×
+              </button>
+            </div>
+
+            {matchTicketWalletMode === "menu" ? (
+              <>
+                <div className="tk-match-ticket-balance">
+                  <strong>{availableMatchCredits.length}</strong>
+                  <span>
+                    Match Ticket{availableMatchCredits.length === 1 ? "" : "s"} available
+                  </span>
+                </div>
+
+                <p className="tk-match-ticket-help">
+                  Use it whenever you need it.
+                </p>
+
+                <div className="tk-match-ticket-actions">
+                  <button
+                    type="button"
+                    className="tk-match-ticket-action primary"
+                    onClick={() => setMatchTicketWalletMode("use")}
+                    disabled={
+                      matchTicketBusy ||
+                      availableMatchCredits.length < 1
+                    }
+                  >
+                    <span className="tk-match-ticket-action-icon">🎟️</span>
+                    <span>
+                      <strong>Use Ticket</strong>
+                      <small>
+                        {availableMatchCredits.length > 0
+                          ? "Book a future match"
+                          : "You do not have a ticket available yet."}
+                      </small>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="tk-match-ticket-action"
+                    onClick={() => setMatchTicketWalletMode("cancel")}
+                    disabled={matchTicketBusy}
+                  >
+                    <span className="tk-match-ticket-action-icon">📅</span>
+                    <span>
+                      <strong>Cancel Match</strong>
+                      <small>
+                        Release your place
+                      </small>
+                    </span>
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {matchTicketWalletMode === "use" ? (
+              <>
+                <p className="tk-match-ticket-help">
+                  Choose a match.
+                </p>
+
+                <div className="tk-match-ticket-match-list">
+                  {matchTicketUseWeeks.length > 0 ? (
+                    matchTicketUseWeeks.map((week) => (
+                      <button
+                        key={week.id}
+                        type="button"
+                        className="tk-match-ticket-match"
+                        onClick={() => handleUseMatchTicket(week)}
+                        disabled={matchTicketBusy}
+                      >
+                        <span>
+                          <strong>
+                            {week.shortLabel || week.label || week.id}
+                          </strong>
+                          <small>No payment required</small>
+                        </span>
+                        <span className="tk-match-ticket-match-cta">
+                          Use ticket →
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="tk-match-ticket-empty">
+                      No available upcoming matches to book right now.
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="tk-match-ticket-back"
+                  onClick={() => setMatchTicketWalletMode("menu")}
+                  disabled={matchTicketBusy}
+                >
+                  ← Back
+                </button>
+              </>
+            ) : null}
+
+            {matchTicketWalletMode === "cancel" ? (
+              <>
+                <p className="tk-match-ticket-help">
+                  Choose a match.
+                </p>
+
+                <div className="tk-match-ticket-match-list">
+                  {matchTicketCancelWeeks.length > 0 ? (
+                    matchTicketCancelWeeks.map((week) => {
+                      const eligible =
+                        isAutomaticMatchCreditCancellationEligible(
+                          week,
+                          effectiveMatchSignupSettings
+                        );
+
+                      const redeemedTicket =
+                        getRedeemedMatchTicketForWeek(week.id);
+
+                      return (
+                        <button
+                          key={week.id}
+                          type="button"
+                          className="tk-match-ticket-match"
+                          onClick={() => {
+                            if (!eligible) return;
+                            setShowMatchTicketWallet(false);
+                            setMatchTicketWalletMode("menu");
+                            handlePaidMatchCreditCancellation(week);
+                          }}
+                          disabled={!eligible || matchTicketBusy}
+                        >
+                          <span>
+                            <strong>
+                              {week.shortLabel || week.label || week.id}
+                            </strong>
+                            <small>
+                              {eligible
+                                ? redeemedTicket
+                                  ? "Ticket returns to wallet"
+                                  : "Receive a Match Ticket"
+                                : "Inside 48 hours"}
+                            </small>
+                          </span>
+
+                          <span className="tk-match-ticket-match-cta">
+                            {eligible
+                              ? redeemedTicket
+                                ? "Return Ticket →"
+                                : "Cancel →"
+                              : "Locked"}
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="tk-match-ticket-empty">
+                      You do not have a paid future match to cancel.
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="tk-match-ticket-back"
+                  onClick={() => setMatchTicketWalletMode("menu")}
+                  disabled={matchTicketBusy}
+                >
+                  ← Back
+                </button>
+              </>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
 
       <section className="card signup-summary-card tk-booking-for-card">
         <div className="tk-booking-for-head">
@@ -4090,6 +5408,265 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
         </section>
       ) : null}
 
+      {showBulkPaidModal && canManageSignupsAsAdmin && (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            if (!bulkPaidBusy) setShowBulkPaidModal(false);
+          }}
+          style={{ zIndex: 14000 }}
+        >
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(94vw, 760px)",
+              maxHeight: "92vh",
+              overflowY: "auto",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 12,
+                marginBottom: 14,
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0 }}>Mark players paid</h3>
+                <p className="muted small" style={{ margin: "6px 0 0" }}>
+                  {bulkPaidTargetWeek?.fullLabel ||
+                    bulkPaidTargetWeek?.label ||
+                    bulkPaidTargetWeek?.id}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setShowBulkPaidModal(false)}
+                disabled={bulkPaidBusy}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="muted small">
+              Select players whose cash, EFT, or other manual payment you have received
+              or personally verified for this match day.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(2, minmax(0, 1fr))",
+                gap: 10,
+                marginTop: 14,
+              }}
+            >
+              {directoryPlayers.map((player) => {
+                const alreadyPaid = isBulkPlayerAlreadyPaid(player);
+                const selected = bulkPaidSelectedPlayerIds.includes(player.id);
+                const photo =
+                  getPlayerPhoto(player.fullName) ||
+                  getPlayerPhoto(player.shortName);
+
+                return (
+                  <button
+                    key={`bulk-paid-${player.id}`}
+                    type="button"
+                    className={
+                      selected
+                        ? "primary-btn"
+                        : "secondary-btn"
+                    }
+                    disabled={alreadyPaid || bulkPaidBusy}
+                    onClick={() => {
+                      setBulkPaidError("");
+
+                      setBulkPaidSelectedPlayerIds((prev) => {
+                        if (prev.includes(player.id)) {
+                          return prev.filter((id) => id !== player.id);
+                        }
+
+                        if (prev.length >= BULK_PAID_MAX_PLAYERS) {
+                          setBulkPaidError(
+                            `You can select a maximum of ${BULK_PAID_MAX_PLAYERS} players.`
+                          );
+                          return prev;
+                        }
+
+                        return [...prev, player.id];
+                      });
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      justifyContent: "flex-start",
+                      minHeight: 64,
+                      textAlign: "left",
+                      opacity: alreadyPaid ? 0.55 : 1,
+                      touchAction: "manipulation",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: "50%",
+                        overflow: "hidden",
+                        flex: "0 0 44px",
+                        display: "grid",
+                        placeItems: "center",
+                        background: "rgba(255,255,255,0.08)",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {photo ? (
+                        <img
+                          src={photo}
+                          alt={player.fullName}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      ) : (
+                        String(player.shortName || player.fullName || "P")
+                          .charAt(0)
+                          .toUpperCase()
+                      )}
+                    </span>
+
+                    <span
+                      style={{
+                        minWidth: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                      }}
+                    >
+                      <strong
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {player.fullName}
+                      </strong>
+
+                      <small>
+                        {alreadyPaid
+                          ? "Paid"
+                          : selected
+                          ? "Selected"
+                          : "Tap to select"}
+                      </small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                marginTop: 18,
+              }}
+            >
+              <strong>
+                {bulkPaidSelectedPlayerIds.length} selected
+              </strong>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  disabled={bulkPaidBusy}
+                  onClick={() => {
+                    const selectable = directoryPlayers
+                      .filter((player) => !isBulkPlayerAlreadyPaid(player))
+                      .slice(0, Math.min(15, BULK_PAID_MAX_PLAYERS))
+                      .map((player) => player.id);
+
+                    setBulkPaidSelectedPlayerIds(selectable);
+                    setBulkPaidError("");
+                  }}
+                >
+                  Select 15
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  disabled={bulkPaidBusy}
+                  onClick={() => {
+                    setBulkPaidSelectedPlayerIds([]);
+                    setBulkPaidError("");
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {bulkPaidError ? (
+              <p
+                className="error-text"
+                style={{ marginTop: 12 }}
+              >
+                {bulkPaidError}
+              </p>
+            ) : null}
+
+            <div
+              className="actions-row"
+              style={{ marginTop: 18 }}
+            >
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setShowBulkPaidModal(false)}
+                disabled={bulkPaidBusy}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handleBulkMarkPlayersPaid}
+                disabled={
+                  bulkPaidBusy ||
+                  bulkPaidSelectedPlayerIds.length === 0
+                }
+              >
+                {bulkPaidBusy
+                  ? "Marking paid..."
+                  : `Mark selected as paid (${bulkPaidSelectedPlayerIds.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCalendarPopup && (
         <div
           className="modal-backdrop"
@@ -4437,6 +6014,51 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
         </div>
       ) : null}
 
+      {canManageSignupsAsAdmin && bulkPaidTargetWeek ? (
+        <section className="card">
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <h3 style={{ margin: 0 }}>Manual payment confirmation</h3>
+              <p className="muted small" style={{ margin: "6px 0 0" }}>
+                Quickly mark several existing club players as paid for the next match day.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => {
+                setBulkPaidError("");
+                setBulkPaidMessage("");
+                setBulkPaidSelectedPlayerIds([]);
+                setShowBulkPaidModal(true);
+              }}
+              disabled={bulkPaidBusy}
+              style={{ touchAction: "manipulation" }}
+            >
+              Mark players paid
+            </button>
+          </div>
+
+          {bulkPaidMessage ? (
+            <p
+              className="muted small"
+              style={{ marginTop: 10, color: "#8ee89a" }}
+            >
+              {bulkPaidMessage}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="card signup-grid-card">
         <div className="signup-grid-title-row">
           <h3>Pick your match days</h3>
@@ -4608,6 +6230,68 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                       );
                     }
 
+                    const isWithdrawn =
+                      isPlayerWithdrawnForWeek(
+                        player,
+                        week.id
+                      );
+
+                    if (isWithdrawn && !signed && !isPaid) {
+                      if (player.isCurrent) {
+                        return (
+                          <button
+                            key={`${player.id}-${week.id}`}
+                            type="button"
+                            className={[
+                              "matrix-pick-cell",
+                              "current-player-cell",
+                              "is-current-row",
+                              "is-withdrawn",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            onClick={() => toggleWeek(week)}
+                            disabled={
+                              beneficiaryNeedsSelection ||
+                              (status.key === "full" && !signed)
+                            }
+                            style={getSpecialColumnStyle(week, {
+                              transition: "none",
+                              touchAction: "manipulation",
+                            })}
+                            title="Withdrew previously · click to book this match again"
+                          >
+                            <div className="matrix-pick-inner">
+                              <span className="matrix-pick-mark tk-withdrawn-mark">
+                                ✓
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={`${player.id}-${week.id}`}
+                          className="matrix-view-cell is-withdrawn"
+                          style={getSpecialColumnStyle(
+                            week,
+                            { transition: "none" },
+                            rowIndex === lastVisibleRowIndex
+                              ? "bottom"
+                              : "middle"
+                          )}
+                          title="Withdrew · Match Ticket issued"
+                        >
+                          <div className="matrix-view-inner">
+                            <span className="matrix-pick-mark tk-withdrawn-mark">
+                              ✓
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     if (player.isCurrent) {
                       if (isPaid) {
                         return (
@@ -4617,18 +6301,20 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                               "matrix-view-cell",
                               "current-player-cell",
                               "is-current-row",
-                              `status-${status.key}`,
-                              isPaid ? "is-paid" : "",
+                              "is-paid",
                               signed ? "is-signed" : "",
                             ]
                               .filter(Boolean)
                               .join(" ")}
-                            style={getSpecialColumnStyle(week, { transition: "none" })}
-                            title={isPaid ? "Paid" : "Locked"}
+                            style={getSpecialColumnStyle(
+                              week,
+                              { transition: "none" }
+                            )}
+                            title="Paid · playing"
                           >
                             <div className="matrix-view-inner">
                               <span className="matrix-pick-mark">
-                                {isPaid ? "✓" : signed ? "✓" : ""}
+                                ✓
                               </span>
                             </div>
                           </div>

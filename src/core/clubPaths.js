@@ -23,6 +23,7 @@ export const CLUB_COLLECTIONS = {
   members: "members",
   humanMembers: "humanMembers",
   matchSignups: "matchSignups",
+  matchCredits: "matchCredits",
   payments: "payments",
   peerRatings: "peerRatings",
   peerRatingBaselines: "peerRatingBaselines",

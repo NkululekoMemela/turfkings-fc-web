@@ -106,6 +106,23 @@ export function getMatchSignupsCollection(db, clubId = DEFAULT_CLUB_ID) {
   return getClubCollection(db, CLUB_COLLECTIONS.matchSignups, clubId);
 }
 
+// ---------------------------------------------------------
+// GOLDEN MATCH CREDITS
+//
+// Official club data only.
+//
+// There are deliberately no Practice/DataScope-aware equivalents.
+// Real Match Credits must never be created, redeemed, or mutated by
+// disposable Practice sessions.
+// ---------------------------------------------------------
+export function getMatchCreditsCollection(db, clubId = DEFAULT_CLUB_ID) {
+  return getClubCollection(db, CLUB_COLLECTIONS.matchCredits, clubId);
+}
+
+export function getMatchCreditDoc(db, creditId, clubId = DEFAULT_CLUB_ID) {
+  return getClubDoc(db, CLUB_COLLECTIONS.matchCredits, creditId, clubId);
+}
+
 export function getPendingSignupsCollection(db, clubId = DEFAULT_CLUB_ID) {
   return getClubCollection(db, CLUB_COLLECTIONS.pendingSignups, clubId);
 }
