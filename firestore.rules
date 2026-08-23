@@ -12,13 +12,44 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------
+    // OFFICIAL CAMERA SESSION
+    //
+    // A redeemed FANM camera credential is bound to exactly one
+    // Official club + match by server-issued custom-token claims.
+    // ---------------------------------------------------------
+    function isCameraSession() {
+      return isSignedIn()
+             && request.auth.token.get("cameraSession", false) == true
+             && request.auth.token.get("dataScope", "") == "official";
+    }
+
+    function cameraCanAccessMatch(clubId, matchId) {
+      return isCameraSession()
+             && request.auth.token.get("clubId", "") == clubId
+             && request.auth.token.get("matchId", "") == matchId;
+    }
+
+    // ---------------------------------------------------------
     // OFFICIAL CLUB DATA
     //
-    // Preserve the existing temporary bootstrap behaviour.
+    // Preserve existing temporary bootstrap behaviour for normal
+    // FANM users. Camera identities are deliberately excluded here
+    // so they cannot inherit unrestricted Official-club writes.
     // ---------------------------------------------------------
     match /clubs/{clubId}/{document=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isSignedIn() && !isCameraSession();
+    }
+
+    // ---------------------------------------------------------
+    // OFFICIAL CAMERA VIDEO-HIGHLIGHT DATA
+    //
+    // Camera may touch only the exact club + match encoded into
+    // its Firebase custom token.
+    // ---------------------------------------------------------
+    match /clubs/{clubId}/video_highlights/{matchId}/{document=**} {
+      allow read, write:
+        if cameraCanAccessMatch(clubId, matchId);
     }
 
     // ---------------------------------------------------------
@@ -99,6 +130,7 @@ service cloud.firestore {
     // ---------------------------------------------------------
     match /{topLevel}/{document=**} {
       allow read, write: if isSignedIn()
+                         && !isCameraSession()
                          && topLevel != "practiceControl"
                          && topLevel != "practiceSessions"
                          && topLevel != "sandboxes";
