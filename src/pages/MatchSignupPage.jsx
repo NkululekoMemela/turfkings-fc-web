@@ -4680,9 +4680,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               flexWrap: "wrap",
             }}
           >
-            {!isPracticeMode &&
-            !beneficiary?.isGuest &&
-            matchTicketCancelWeeks.length > 0 ? (
+            {!isPracticeMode && !beneficiary?.isGuest ? (
               <button
                 type="button"
                 className="tk-match-pull-out-btn"
@@ -4691,11 +4689,20 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                   setShowMatchTicketWallet(true);
                 }}
                 disabled={matchTicketBusy}
-                title="Withdraw from a booked match"
+                title="Pull out of an upcoming match"
                 style={{ touchAction: "manipulation" }}
               >
-                <span aria-hidden="true">↩</span>
-                <strong>Match pull out</strong>
+                <span
+                  className="tk-match-pull-out-icon"
+                  aria-hidden="true"
+                >
+                  ↩
+                </span>
+
+                <span className="tk-match-pull-out-copy">
+                  <strong>Match pull out</strong>
+                  <small>Can't make it this week?</small>
+                </span>
               </button>
             ) : null}
 
