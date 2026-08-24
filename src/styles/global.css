@@ -18177,3 +18177,14 @@ button.fanm-chat-highlight-card {
     font-size: 0.78rem !important;
   }
 }
+
+/* Choose Session — mobile: remove redundant top header */
+@media (max-width: 520px) {
+  .session-selector-header {
+    display: none !important;
+  }
+
+  .session-selector-grid {
+    gap: 0.75rem !important;
+  }
+}
