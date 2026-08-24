@@ -18009,345 +18009,19 @@ button.fanm-chat-highlight-card {
   }
 }
 
-/* =========================================================
-   CHOOSE SESSION — SHORT MOBILE FIT
-   Preserve the normal design. Compress vertically only when
-   the available phone height becomes restrictive.
-   ========================================================= */
 
-@media (max-width: 520px) and (max-height: 780px) {
-  .session-selector-overlay {
-    align-items: flex-start !important;
-    padding:
-      max(0.3rem, env(safe-area-inset-top))
-      0.3rem
-      max(0.3rem, env(safe-area-inset-bottom)) !important;
-  }
 
-  .session-selector-shell {
-    width: min(100%, 430px) !important;
-    margin: auto !important;
-    padding: 0.45rem 0.55rem 0.3rem !important;
-    border-radius: 22px !important;
-  }
 
-  .session-selector-header {
-    margin-bottom: 0.25rem !important;
-  }
 
-  .session-selector-header > div:first-child {
-    font-size: 1.55rem !important;
-  }
 
-  .session-selector-header h1 {
-    font-size: 1.65rem !important;
-    margin-top: 0.08rem !important;
-  }
 
-  .session-selector-header p {
-    font-size: 0.78rem !important;
-    margin-top: 0.12rem !important;
-  }
 
-  .session-selector-header > div:last-child {
-    height: 3px !important;
-    margin-top: 0.25rem !important;
-  }
 
-  .session-selector-grid {
-    gap: 0.18rem !important;
-  }
 
-  .session-choice-card {
-    padding: 0.5rem 0.65rem !important;
-    border-radius: 19px !important;
-  }
 
-  .session-choice-card > div:first-child {
-    font-size: 1.7rem !important;
-    margin-bottom: 0.12rem !important;
-  }
 
-  .session-choice-card h2 {
-    font-size: 1.25rem !important;
-    line-height: 0.98 !important;
-  }
 
-  .session-choice-card hr {
-    margin: 0.45rem 0 !important;
-  }
 
-  .session-choice-card p {
-    margin: 0.28rem 0 !important;
-    font-size: 0.78rem !important;
-    line-height: 1.2 !important;
-  }
-
-  .session-choice-card > div:last-child {
-    margin-top: 0.5rem !important;
-    padding: 0.62rem !important;
-    border-radius: 12px !important;
-    font-size: 0.8rem !important;
-  }
-}
-
-/* Extra-short phones: compact one further step rather than
-   allowing the top or bottom of the selector to disappear. */
-@media (max-width: 520px) and (max-height: 680px) {
-  .session-selector-shell {
-    padding: 0.3rem 0.45rem 0.2rem !important;
-  }
-
-  .session-selector-header > div:first-child {
-    font-size: 1.3rem !important;
-  }
-
-  .session-selector-header h1 {
-    font-size: 1.45rem !important;
-  }
-
-  .session-selector-header p {
-    display: none !important;
-  }
-
-  .session-choice-card {
-    padding: 0.38rem 0.55rem !important;
-  }
-
-  .session-choice-card > div:first-child {
-    font-size: 1.45rem !important;
-  }
-
-  .session-choice-card h2 {
-    font-size: 1.12rem !important;
-  }
-
-  .session-choice-card hr {
-    margin: 0.3rem 0 !important;
-  }
-
-  .session-choice-card p {
-    margin: 0.2rem 0 !important;
-    font-size: 0.72rem !important;
-  }
-
-  .session-choice-card > div:last-child {
-    margin-top: 0.35rem !important;
-    padding: 0.52rem !important;
-  }
-}
-
-/* =========================================================
-   CHOOSE SESSION — NEVER-SCROLL MOBILE SPLASH
-   Fit both session choices into the viewport.
-   ========================================================= */
-
-@media (max-width: 520px) {
-  .session-selector-overlay {
-    overflow-y: hidden !important;
-  }
-
-  .session-selector-shell {
-    max-height: calc(
-      100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)
-    ) !important;
-    overflow: hidden !important;
-  }
-}
-
-/* Short phones */
-@media (max-width: 520px) and (max-height: 760px) {
-  .session-selector-overlay {
-    align-items: center !important;
-    padding: 0.2rem !important;
-  }
-
-  .session-selector-shell {
-    width: min(100%, 420px) !important;
-    padding: 0.3rem 0.45rem 0.2rem !important;
-    border-radius: 20px !important;
-  }
-
-  .session-selector-header {
-    margin-bottom: 0.1rem !important;
-  }
-
-  .session-selector-header > div:first-child {
-    font-size: 1.25rem !important;
-  }
-
-  .session-selector-header h1 {
-    font-size: 1.42rem !important;
-    margin: 0.05rem 0 0 !important;
-  }
-
-  .session-selector-header p {
-    font-size: 0.7rem !important;
-    margin: 0.08rem 0 0 !important;
-  }
-
-  .session-selector-header > div:last-child {
-    width: 76px !important;
-    height: 3px !important;
-    margin-top: 0.18rem !important;
-  }
-
-  .session-selector-grid {
-    gap: 0 !important;
-  }
-
-  .session-choice-card {
-    padding: 0.28rem 0.55rem !important;
-    border-radius: 17px !important;
-  }
-
-  .session-choice-card > div:first-child {
-    font-size: 1.3rem !important;
-    margin-bottom: 0.05rem !important;
-  }
-
-  .session-choice-card h2 {
-    font-size: 1.05rem !important;
-    line-height: 0.92 !important;
-  }
-
-  .session-choice-card hr {
-    margin: 0.24rem 0 !important;
-  }
-
-  .session-choice-card p {
-    margin: 0.14rem 0 !important;
-    font-size: 0.68rem !important;
-    line-height: 1.12 !important;
-  }
-
-  .session-choice-card > div:last-child {
-    margin-top: 0.24rem !important;
-    padding: 0.45rem !important;
-    border-radius: 10px !important;
-    font-size: 0.7rem !important;
-  }
-}
-
-/* Very short phones */
-@media (max-width: 520px) and (max-height: 650px) {
-  .session-selector-header p {
-    display: none !important;
-  }
-
-  .session-selector-header > div:first-child {
-    font-size: 1.1rem !important;
-  }
-
-  .session-selector-header h1 {
-    font-size: 1.28rem !important;
-  }
-
-  .session-choice-card {
-    padding: 0.2rem 0.5rem !important;
-  }
-
-  .session-choice-card > div:first-child {
-    font-size: 1.15rem !important;
-  }
-
-  .session-choice-card h2 {
-    font-size: 0.98rem !important;
-  }
-
-  .session-choice-card p {
-    font-size: 0.63rem !important;
-    margin: 0.1rem 0 !important;
-  }
-
-  .session-choice-card > div:last-child {
-    margin-top: 0.18rem !important;
-    padding: 0.38rem !important;
-  }
-}
-
-/* =========================================================
-   CHOOSE SESSION — VERY SHORT PHONE REFINEMENT
-   Preserve the premium proportions by scaling the complete
-   selector rather than crushing each internal element.
-   ========================================================= */
-
-@media (max-width: 520px) and (max-height: 700px) {
-  .session-selector-overlay {
-    overflow: hidden !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-
-  .session-selector-shell {
-    transform: scale(0.90) !important;
-    transform-origin: center center !important;
-
-    width: min(100%, 425px) !important;
-
-    /* Counter the layout box retained by transform scaling. */
-    margin-top: -3vh !important;
-    margin-bottom: -3vh !important;
-
-    padding: 0.45rem 0.55rem 0.35rem !important;
-  }
-
-  /* Undo the excessively small very-short-phone overrides. */
-  .session-selector-header > div:first-child {
-    font-size: 1.45rem !important;
-  }
-
-  .session-selector-header h1 {
-    font-size: 1.55rem !important;
-  }
-
-  .session-selector-header p {
-    display: block !important;
-    font-size: 0.74rem !important;
-  }
-
-  .session-choice-card {
-    padding: 0.46rem 0.65rem !important;
-  }
-
-  .session-choice-card > div:first-child {
-    font-size: 1.55rem !important;
-  }
-
-  .session-choice-card h2 {
-    font-size: 1.18rem !important;
-    line-height: 1 !important;
-  }
-
-  .session-choice-card hr {
-    margin: 0.4rem 0 !important;
-  }
-
-  .session-choice-card p {
-    margin: 0.22rem 0 !important;
-    font-size: 0.73rem !important;
-    line-height: 1.18 !important;
-  }
-
-  .session-choice-card > div:last-child {
-    margin-top: 0.4rem !important;
-    padding: 0.52rem !important;
-    font-size: 0.76rem !important;
-  }
-}
-
-/* Extremely short devices: one final proportional reduction. */
-@media (max-width: 520px) and (max-height: 630px) {
-  .session-selector-shell {
-    transform: scale(0.82) !important;
-    margin-top: -7vh !important;
-    margin-bottom: -7vh !important;
-  }
-
-  .session-selector-header p {
-    display: none !important;
-  }
-}
 
 /* =========================================================
    SQUADS — FIRST-TIME WORKFLOW GUIDANCE
@@ -18428,5 +18102,78 @@ button.fanm-chat-highlight-card {
   .squad-preview-guidance-icon {
     width: 38px;
     height: 38px;
+  }
+}
+/* =========================================================
+   CHOOSE SESSION — MOBILE CANVAS LAYOUT
+   No squashing. No scrolling. No popup shell.
+   The two session cards retain their normal proportions.
+   ========================================================= */
+
+@media (max-width: 520px) {
+  .session-selector-overlay {
+    overflow: hidden !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    padding:
+      max(0.35rem, env(safe-area-inset-top))
+      0.45rem
+      max(0.35rem, env(safe-area-inset-bottom)) !important;
+  }
+
+  .session-selector-shell {
+    width: 100% !important;
+    max-width: 430px !important;
+    max-height: none !important;
+
+    margin: 0 auto !important;
+    padding: 0.25rem 0 !important;
+
+    border: 0 !important;
+    border-radius: 0 !important;
+
+    background: transparent !important;
+    box-shadow: none !important;
+
+    overflow: visible !important;
+
+    transform: none !important;
+  }
+
+  .session-selector-header {
+    margin-bottom: 0.65rem !important;
+  }
+
+  .session-selector-grid {
+    gap: 0.7rem !important;
+  }
+
+  .session-choice-card {
+    transform: none !important;
+  }
+}
+
+/*
+ * Short mobile screens:
+ * preserve cards, typography and orientation.
+ * Reclaim the final few pixels only from CTA padding.
+ */
+@media (max-width: 520px) and (max-height: 700px) {
+  .session-choice-card > div:last-child {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+    margin-top: 0.35rem !important;
+  }
+}
+
+/* Choose Session — short-phone CTA refinement */
+@media (max-width: 520px) and (max-height: 700px) {
+  .session-choice-card > div:last-child {
+    min-height: 42px !important;
+    padding: 0.42rem 0.75rem !important;
+    margin-top: 0.3rem !important;
+    border-radius: 11px !important;
+    font-size: 0.78rem !important;
   }
 }
