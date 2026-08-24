@@ -123,6 +123,51 @@ export function getMatchCreditDoc(db, creditId, clubId = DEFAULT_CLUB_ID) {
   return getClubDoc(db, CLUB_COLLECTIONS.matchCredits, creditId, clubId);
 }
 
+/*
+ * ---------------------------------------------------------
+ * DATASCOPE-AWARE MATCH TICKET HELPERS
+ *
+ * Official:
+ *   clubs/{clubId}/matchCredits/{creditId}
+ *
+ * Practice:
+ *   sandboxes/practice/clubs/{clubId}
+ *     /sessions/{practiceSessionId}/matchCredits/{creditId}
+ *
+ * Practice Match Tickets are disposable football simulation
+ * records. They never represent money or an Official credit.
+ * ---------------------------------------------------------
+ */
+
+export function getScopedMatchCreditsCollection(db, dataScope) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return collection(
+    db,
+    dataScopeCollectionPath(
+      CLUB_COLLECTIONS.matchCredits,
+      normalizedScope
+    )
+  );
+}
+
+export function getScopedMatchCreditDoc(
+  db,
+  creditId,
+  dataScope
+) {
+  const normalizedScope = normalizeDataScope(dataScope);
+
+  return doc(
+    db,
+    dataScopeDocPath(
+      CLUB_COLLECTIONS.matchCredits,
+      creditId,
+      normalizedScope
+    )
+  );
+}
+
 export function getPendingSignupsCollection(db, clubId = DEFAULT_CLUB_ID) {
   return getClubCollection(db, CLUB_COLLECTIONS.pendingSignups, clubId);
 }

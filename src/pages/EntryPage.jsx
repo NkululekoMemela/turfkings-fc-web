@@ -5252,19 +5252,27 @@ export function EntryPage({
           <div className="field-column" style={{ marginTop: "1rem" }}>
             <label>Select your name ({activeClubName} player list)</label>
             <p className="muted small" style={{ marginTop: "0.25rem" }}>
-              There are {activeMembers.length} players on the list – scroll down.
+              {loadingMembers
+                ? "Getting the latest player list."
+                : `There are ${activeMembers.length} players on the list – scroll down.`}
             </p>
 
             <select
               className="text-input"
               value={selectedMemberId}
+              disabled={loadingMembers}
+              aria-busy={loadingMembers}
               onChange={(e) => {
                 setSelectedMemberId(e.target.value);
                 setVerifyError("");
                 setVerifyStatus("");
               }}
             >
-              <option value="">Select your name...</option>
+              <option value="">
+                {loadingMembers
+                  ? "Loading club players…"
+                  : "Select your name..."}
+              </option>
 
               {activeMembers.map((m, idx) => (
                 <option key={m.id} value={m.id}>
@@ -5407,12 +5415,6 @@ export function EntryPage({
           {membersError && (
             <p className="error-text" style={{ marginTop: "0.5rem" }}>
               {membersError}
-            </p>
-          )}
-
-          {loadingMembers && (
-            <p className="muted small" style={{ marginTop: "0.5rem" }}>
-              Loading players…
             </p>
           )}
 

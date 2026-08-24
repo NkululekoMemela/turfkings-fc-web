@@ -36,6 +36,13 @@ import {
   MATCH_CREDIT_SOURCE,
   MATCH_CREDIT_STATUS,
 } from "../core/payments/matchCreditsRepository";
+import {
+  cancelPracticePaidMatchAndIssueCredit,
+  listAvailablePracticeMatchCredits,
+  listPracticeMatchCredits,
+  redeemPracticeMatchCreditForMatch,
+  returnPracticeRedeemedMatchTicketToWallet,
+} from "../core/payments/practiceMatchCreditsRepository";
 
 const MIN_PLAYERS = 10;
 const MAX_PLAYERS = 25;
@@ -1640,7 +1647,6 @@ export default function MatchSignupPage({
 
     async function loadMatchCredits() {
       if (
-        isPracticeMode ||
         !activeClubId ||
         !beneficiary?.playerId ||
         beneficiary?.isGuest
@@ -1654,13 +1660,22 @@ export default function MatchSignupPage({
         setMatchCreditsLoading(true);
 
         const [credits, clubCredits] = await Promise.all([
-          listAvailablePlayerMatchCredits({
-            clubId: activeClubId,
-            playerId: beneficiary.playerId,
-          }),
-          listClubMatchCredits({
-            clubId: activeClubId,
-          }),
+          isPracticeMode
+            ? listAvailablePracticeMatchCredits({
+                dataScope,
+                playerId: beneficiary.playerId,
+              })
+            : listAvailablePlayerMatchCredits({
+                clubId: activeClubId,
+                playerId: beneficiary.playerId,
+              }),
+          isPracticeMode
+            ? listPracticeMatchCredits({
+                dataScope,
+              })
+            : listClubMatchCredits({
+                clubId: activeClubId,
+              }),
         ]);
 
         if (!cancelled) {
@@ -1689,6 +1704,7 @@ export default function MatchSignupPage({
     beneficiary?.playerId,
     beneficiary?.isGuest,
     isPracticeMode,
+    dataScope,
   ]);
 
   const currentUserDocKey = useMemo(
@@ -2752,8 +2768,15 @@ export default function MatchSignupPage({
       setMatchTicketBusy(true);
       setMatchCreditMessage("");
 
-      const result = await redeemMatchCreditForMatch({
-        clubId: activeClubId,
+      const redeemTicket =
+        isPracticeMode
+          ? redeemPracticeMatchCreditForMatch
+          : redeemMatchCreditForMatch;
+
+      const result = await redeemTicket({
+        ...(isPracticeMode
+          ? { dataScope }
+          : { clubId: activeClubId }),
         creditId: credit.id,
         playerId: beneficiary.playerId,
         playerName: beneficiary.fullName,
@@ -2806,13 +2829,23 @@ export default function MatchSignupPage({
       });
 
       const [credits, clubCredits] = await Promise.all([
-        listAvailablePlayerMatchCredits({
-          clubId: activeClubId,
-          playerId: beneficiary.playerId,
-        }),
-        listClubMatchCredits({
-          clubId: activeClubId,
-        }),
+        isPracticeMode
+          ? listAvailablePracticeMatchCredits({
+              dataScope,
+              playerId: beneficiary.playerId,
+            })
+          : listAvailablePlayerMatchCredits({
+              clubId: activeClubId,
+              playerId: beneficiary.playerId,
+            }),
+
+        isPracticeMode
+          ? listPracticeMatchCredits({
+              dataScope,
+            })
+          : listClubMatchCredits({
+              clubId: activeClubId,
+            }),
       ]);
 
       setAvailableMatchCredits(credits);
@@ -2930,7 +2963,6 @@ export default function MatchSignupPage({
 
   const handlePaidMatchCreditCancellation = async (week) => {
     if (!week?.id) return;
-    if (isPracticeMode) return;
     if (beneficiary?.isGuest) return;
     if (!effectivePaidWeekSet.has(week.id)) return;
 
@@ -3000,8 +3032,15 @@ export default function MatchSignupPage({
 
     try {
       if (redeemedTicket) {
-        await returnRedeemedMatchTicketToWallet({
-          clubId: activeClubId,
+        const returnTicket =
+          isPracticeMode
+            ? returnPracticeRedeemedMatchTicketToWallet
+            : returnRedeemedMatchTicketToWallet;
+
+        await returnTicket({
+          ...(isPracticeMode
+            ? { dataScope }
+            : { clubId: activeClubId }),
           creditId: redeemedTicket.id,
           playerId: beneficiary.playerId,
           signupDocId: pendingId,
@@ -3012,8 +3051,15 @@ export default function MatchSignupPage({
             beneficiary.playerId,
         });
       } else {
-        await cancelPaidMatchAndIssueCredit({
-          clubId: activeClubId,
+        const cancelForTicket =
+          isPracticeMode
+            ? cancelPracticePaidMatchAndIssueCredit
+            : cancelPaidMatchAndIssueCredit;
+
+        await cancelForTicket({
+          ...(isPracticeMode
+            ? { dataScope }
+            : { clubId: activeClubId }),
           playerId: beneficiary.playerId,
           playerName: beneficiary.fullName,
           signupDocId: pendingId,
@@ -3048,13 +3094,22 @@ export default function MatchSignupPage({
 
       const [credits, clubCredits] =
         await Promise.all([
-          listAvailablePlayerMatchCredits({
-            clubId: activeClubId,
-            playerId: beneficiary.playerId,
-          }),
-          listClubMatchCredits({
-            clubId: activeClubId,
-          }),
+          isPracticeMode
+            ? listAvailablePracticeMatchCredits({
+                dataScope,
+                playerId: beneficiary.playerId,
+              })
+            : listAvailablePlayerMatchCredits({
+                clubId: activeClubId,
+                playerId: beneficiary.playerId,
+              }),
+          isPracticeMode
+            ? listPracticeMatchCredits({
+                dataScope,
+              })
+            : listClubMatchCredits({
+                clubId: activeClubId,
+              }),
         ]);
 
       setAvailableMatchCredits(credits);
@@ -3892,6 +3947,33 @@ export default function MatchSignupPage({
       { merge: true }
     );
 
+    /*
+     * Keep the currently viewed beneficiary in sync immediately.
+     *
+     * Firestore remains authoritative, but without this local update
+     * the live matrix can already show PAID while the page summary
+     * still says "0 weeks paid" until another hydration cycle.
+     */
+    if (String(target.docId || "") === String(pendingId || "")) {
+      const visibleSelectedWeeks = nextSelectedWeeks.filter(
+        (weekId) => visibleWeekIds.has(weekId)
+      );
+
+      const visiblePaidWeeks = nextPaidWeeks.filter(
+        (weekId) => visibleWeekIds.has(weekId)
+      );
+
+      setSelectedWeeks(visibleSelectedWeeks);
+      setPaidWeeks(visiblePaidWeeks);
+      setPendingSelectionsSaved(visibleSelectedWeeks.length > 0);
+
+      writeSignupCache(pendingId, {
+        selectedWeeks: visibleSelectedWeeks,
+        paidWeeks: visiblePaidWeeks,
+        reminderPreference,
+      });
+    }
+
     return true;
   };
 
@@ -3934,8 +4016,9 @@ export default function MatchSignupPage({
         bulkPaidTargetWeek?.fullLabel ||
         bulkPaidTargetWeek?.label ||
         targetWeekId,
-      detail:
-        "Use this for cash, EFT, or another payment you have personally verified.",
+      detail: isPracticeMode
+        ? "Practice only — no real payment is taken. The player will be treated as paid inside this Practice session."
+        : "Use this for cash, EFT, or another payment you have personally verified.",
       confirmText: "Mark selected as paid",
       variant: "success",
     });
@@ -4020,7 +4103,9 @@ export default function MatchSignupPage({
         await applyExistingAdminPaidOperation({
           target,
           weeksToAdd: [targetWeekId],
-          paymentMethod: "manual_admin_add_paid_week",
+          paymentMethod: isPracticeMode
+            ? "practice_manual_admin_paid"
+            : "manual_admin_add_paid_week",
         });
       }
 
@@ -4680,16 +4765,25 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               flexWrap: "wrap",
             }}
           >
-            {!isPracticeMode && !beneficiary?.isGuest ? (
+            {!beneficiary?.isGuest ? (
               <button
                 type="button"
-                className="tk-match-pull-out-btn"
+                className={[
+                  "tk-match-pull-out-btn",
+                  isPracticeMode ? "is-practice-ticket" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 onClick={() => {
                   setMatchTicketWalletMode("cancel");
                   setShowMatchTicketWallet(true);
                 }}
                 disabled={matchTicketBusy}
-                title="Pull out of an upcoming match"
+                title={
+                  isPracticeMode
+                    ? "Pull out of an upcoming Practice match"
+                    : "Pull out of an upcoming match"
+                }
                 style={{ touchAction: "manipulation" }}
               >
                 <span
@@ -4703,6 +4797,12 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                   <strong>Match pull out</strong>
                   <small>Can't make it this week?</small>
                 </span>
+
+                {isPracticeMode ? (
+                  <span className="tk-practice-feature-tag">
+                    Practice
+                  </span>
+                ) : null}
               </button>
             ) : null}
 
@@ -4768,13 +4868,13 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
         </div>
       ) : null}
 
-      {!isPracticeMode &&
-      !beneficiary?.isGuest &&
+      {!beneficiary?.isGuest &&
       availableMatchCredits.length > 0 ? (
         <div
           className={[
             "tk-floating-match-ticket",
             matchTicketMinimized ? "is-minimized" : "",
+            isPracticeMode ? "is-practice-ticket" : "",
           ]
             .filter(Boolean)
             .join(" ")}
@@ -4788,7 +4888,9 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               title="Open Match Ticket"
             >
               <span aria-hidden="true">🎟️</span>
-              <strong>{availableMatchCredits.length}</strong>
+              <strong>
+                {availableMatchCredits.length}
+              </strong>
             </button>
           ) : (
             <>
@@ -4812,7 +4914,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                 <span className="tk-floating-ticket-copy">
                   <strong>Match Ticket</strong>
                   <small>
-                    {availableMatchCredits.length} available
+                    {`${availableMatchCredits.length} available`}
                   </small>
                 </span>
 
