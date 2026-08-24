@@ -1366,6 +1366,22 @@ export function SquadsPage({
     [allPlayers]
   );
 
+  // Squad eligibility is session-specific:
+  // only players signed up and marked paid for the upcoming match
+  // may be seeded into squads.
+  const squadEligiblePlayerIds = useMemo(
+    () =>
+      new Set(
+        paidTeamSheetPlayers
+          .map((player) => String(player?.id || "").trim())
+          .filter(Boolean)
+      ),
+    [paidTeamSheetPlayers]
+  );
+
+  const isSquadEligiblePlayer = (playerId) =>
+    squadEligiblePlayerIds.has(String(playerId || "").trim());
+
   const seasonPlayerTeamIdByPlayerId = useMemo(() => {
     if (!isLeague) return new Map();
 
@@ -1423,9 +1439,21 @@ export function SquadsPage({
     return out;
   }, [isLeague, matchDayHistory, localLeagueTeams, playersById, allPlayers]);
 
+  // League history may repair missing assignments while the page is being
+  // hydrated, but it must never fight deliberate Squad Shape Preview edits.
+  // Once the player data has loaded, the current squad state is authoritative.
+  const leagueHistoryRestoreCompletedRef = useRef(false);
+
   useEffect(() => {
-    if (!isLeague) return;
-    if (!seasonPlayerTeamIdByPlayerId.size) return;
+    if (!isLeague || isPracticeMode) {
+      leagueHistoryRestoreCompletedRef.current = false;
+      return;
+    }
+
+    if (!allPlayers.length || !seasonPlayerTeamIdByPlayerId.size) return;
+    if (leagueHistoryRestoreCompletedRef.current) return;
+
+    leagueHistoryRestoreCompletedRef.current = true;
 
     setLocalLeagueTeams((prevTeams) => {
       const alreadyAssigned = new Set(
@@ -1435,7 +1463,10 @@ export function SquadsPage({
       );
 
       const playersToRestore = Array.from(seasonPlayerTeamIdByPlayerId.entries())
-        .filter(([playerId]) => playersById.has(playerId) && !alreadyAssigned.has(playerId));
+        .filter(
+          ([playerId]) =>
+            playersById.has(playerId) && !alreadyAssigned.has(playerId)
+        );
 
       if (!playersToRestore.length) return prevTeams;
 
@@ -1448,11 +1479,19 @@ export function SquadsPage({
 
         return {
           ...team,
-          players: Array.from(new Set([...(team.players || []), ...addHere])),
+          players: Array.from(
+            new Set([...(team.players || []), ...addHere])
+          ),
         };
       });
     });
-  }, [isLeague, seasonPlayerTeamIdByPlayerId, playersById]);
+  }, [
+    isLeague,
+    isPracticeMode,
+    allPlayers.length,
+    seasonPlayerTeamIdByPlayerId,
+    playersById,
+  ]);
 
 
   useEffect(() => {
@@ -1677,8 +1716,13 @@ export function SquadsPage({
   }, [sourceTeams, playersById]);
 
   const unseededPlayers = useMemo(
-    () => activePlayers.filter((p) => !assignedIds.has(p.id)),
-    [activePlayers, assignedIds]
+    () =>
+      activePlayers.filter(
+        (p) =>
+          squadEligiblePlayerIds.has(String(p.id || "").trim()) &&
+          !assignedIds.has(p.id)
+      ),
+    [activePlayers, assignedIds, squadEligiblePlayerIds]
   );
 
   const availableForTeams = useMemo(
@@ -2893,6 +2937,16 @@ export function SquadsPage({
   const assignRegisteredPlayerToTeam = (playerId, targetTeamId) => {
     if (!canEdit || !playersById.has(playerId)) return;
 
+    if (!isSquadEligiblePlayer(playerId)) {
+      showPremiumAlert({
+        title: "Player not ready for squads",
+        message:
+          "Players become available here after they are signed up and marked as paid in Match Signup.",
+        icon: "⚽",
+      });
+      return;
+    }
+
     setSourceTeams((prev) =>
       prev.map((team) => {
         const withoutPlayer = (team.players || []).filter((pid) => pid !== playerId);
@@ -2978,6 +3032,16 @@ export function SquadsPage({
 
   const handlePreviewPickPlayer = (playerId) => {
     if (!canEdit || !previewPickTarget || !playersById.has(playerId)) return;
+
+    if (!isSquadEligiblePlayer(playerId)) {
+      showPremiumAlert({
+        title: "Player not ready for squads",
+        message:
+          "Players become available here after they are signed up and marked as paid in Match Signup.",
+        icon: "⚽",
+      });
+      return;
+    }
 
     const { teamId, slotIndex } = previewPickTarget;
     if (isLockedClubChallengeTeam(teamId)) return;
@@ -4170,6 +4234,28 @@ export function SquadsPage({
                 >
                   Save Squads
                 </button>
+              </div>
+            </div>
+
+            <div className="squad-preview-guidance">
+              <div
+                className="squad-preview-guidance-icon"
+                aria-hidden="true"
+              >
+                👥
+              </div>
+
+              <div className="squad-preview-guidance-copy">
+                <span className="squad-preview-guidance-step">
+                  SQUAD SETUP
+                </span>
+
+                <strong>Building your squads</strong>
+
+                <span>
+                  Players appear here after they sign up and are marked as paid
+                  for the upcoming game.
+                </span>
               </div>
             </div>
 

@@ -7537,7 +7537,7 @@ export default function App() {
   ]);
 
   const hideBottomNavForSquadAdmin =
-    page === PAGE_SQUADS && Boolean(isAdmin);
+    page === PAGE_SQUADS && Boolean(squadsAdminPreviewOpen);
 
   const isLiveMatchControlLocked = Boolean(hasLiveMatch || running);
   const isRefereeStatsView = Boolean(isLiveMatchControlLocked && page === PAGE_STATS);
@@ -9591,8 +9591,28 @@ export default function App() {
 
       {page === PAGE_SQUADS && (
         <SquadsPage
-          teams={teams}
-          fiveVFiveTeams={ensureFiveVFiveTeamsShape(fiveVFiveTeams)}
+          teams={
+            isPracticeMode
+              ? (Array.isArray(teams)
+                  ? teams.map((team) => ({
+                      ...team,
+                      players: [],
+                      captainId: null,
+                      captain: "",
+                    }))
+                  : [])
+              : teams
+          }
+          fiveVFiveTeams={
+            isPracticeMode
+              ? ensureFiveVFiveTeamsShape([]).map((team) => ({
+                  ...team,
+                  players: [],
+                  captainId: null,
+                  captain: "",
+                }))
+              : ensureFiveVFiveTeamsShape(fiveVFiveTeams)
+          }
           onUpdateTeams={handleUpdateTeams}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
