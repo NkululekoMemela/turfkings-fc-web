@@ -3542,6 +3542,67 @@ export default function App() {
     [playerPhotosByName, preloadedPlayerPhotosByName]
   );
 
+  /*
+   * Practice isolation guard for downstream football surfaces.
+   *
+   * When switching from Official -> Practice there can be a brief render
+   * before the Practice-scoped Firestore state arrives. During that window
+   * the React state may still describe the previous Official season.
+   *
+   * Do not allow those Official squad assignments to reach Formations.
+   */
+  const activeSeasonForPracticeUi = useMemo(() => {
+    if (!USE_V2) return null;
+
+    return (
+      safeV2ForStats?.seasons?.find(
+        (season) =>
+          String(season?.seasonId || "") ===
+          String(safeV2ForStats?.activeSeasonId || "")
+      ) ||
+      safeV2ForStats?.seasons?.[0] ||
+      null
+    );
+  }, [safeV2ForStats]);
+
+  const practiceScopedSeasonReady =
+    !isPracticeMode ||
+    Boolean(
+      activeSeasonForPracticeUi?.isPracticeSeason ||
+      String(activeSeasonForPracticeUi?.seasonId || "").startsWith("practice")
+    );
+
+  /*
+   * Practice Formations must remain fully usable even before
+   * Practice squads have been created.
+   *
+   * During the short Official -> Practice transition, preserve
+   * the team/formation shells but strip every Official player
+   * assignment and captain. Once the authoritative Practice
+   * season has loaded, use its real Practice squads normally.
+   */
+  const formationTeams =
+    isPracticeMode && !practiceScopedSeasonReady
+      ? (Array.isArray(teams)
+          ? teams.map((team) => ({
+              ...team,
+              players: [],
+              captainId: null,
+              captain: "",
+            }))
+          : [])
+      : teams;
+
+  const formationFiveVFiveTeams =
+    isPracticeMode && !practiceScopedSeasonReady
+      ? ensureFiveVFiveTeamsShape([]).map((team) => ({
+          ...team,
+          players: [],
+          captainId: null,
+          captain: "",
+        }))
+      : getActiveFriendlyTeams(fiveVFiveTeams);
+
   const captainRoleTeams = useMemo(
     () =>
       matchType === MATCH_TYPE.FRIENDLY
@@ -9636,8 +9697,8 @@ export default function App() {
 
       {page === PAGE_FORMATIONS && (
         <FormationsPage
-          teams={teams}
-          fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
+          teams={formationTeams}
+          fiveVFiveTeams={formationFiveVFiveTeams}
           currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
           allEvents={allEvents}
