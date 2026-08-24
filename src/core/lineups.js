@@ -1061,6 +1061,7 @@ export function buildFriendlyDefensiveBlockEvents({
   elapsedMatchSeconds = 0,
   verifiedLineups,
   lineupTimeline = [],
+  formationMap = FORMATIONS_5,
 }) {
   const out = [];
 
@@ -1253,12 +1254,12 @@ export function buildFriendlyDefensiveBlockEvents({
       goalkeeper:
         getGoalkeeperFromSnapshot(
           snapshot,
-          FORMATIONS_5
+          formationMap
         ) || "",
       defenders:
         getDefensivePlayersFromSnapshot(
           snapshot,
-          FORMATIONS_5
+          formationMap
         ) || [],
     };
   };

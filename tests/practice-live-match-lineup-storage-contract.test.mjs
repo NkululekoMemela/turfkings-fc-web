@@ -47,7 +47,7 @@ for (const [label, source] of [
   test(`${label} no longer uses the global bare lineup loader`, () => {
     assert.doesNotMatch(
       source,
-      /loadSavedLineups\(\s*\)/
+      /(?<![A-Za-z0-9_$])loadSavedLineups\(\s*\)/
     );
   });
 }

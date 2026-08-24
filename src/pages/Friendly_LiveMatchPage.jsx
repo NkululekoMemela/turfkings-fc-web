@@ -32,6 +32,9 @@ import {
   toTitleCaseLoose,
   uniqueNames,
 } from "../core/lineups.js";
+import {
+  buildFriendlyDefensiveBlockEvents,
+} from "../core/lineups.js";
 import { getGameFormatConfig } from "../core/matchConfig.js";
 import {
   buildBestOutfieldAssignment,
@@ -2634,6 +2637,18 @@ export function FriendlyLiveMatchPage({
     useState(defaultTeamBLineup);
   const [localConfirmedSnapshots, setLocalConfirmedSnapshots] = useState(null);
 
+  /*
+   * STAGE 6F — AUTHORITATIVE FRIENDLY LINEUP TIMELINE
+   *
+   * This records football truth, not temporary editor movements.
+   *
+   * Entries are created when:
+   * - the referee confirms a lineup;
+   * - an automatic Friendly rotation becomes authoritative;
+   * - a disciplinary lineup change becomes authoritative.
+   */
+  const [friendlyLineupTimeline, setFriendlyLineupTimeline] = useState([]);
+
   const existingConfirmedFromApp =
     localConfirmedSnapshots ||
     confirmedLineupSnapshot ||
@@ -3177,8 +3192,73 @@ export function FriendlyLiveMatchPage({
     };
   };
 
+  /*
+   * Actual football elapsed time.
+   *
+   * Regulation duration is configurable, so nothing here assumes a
+   * five-minute match. Added time is counted from its own live clock.
+   */
+  const getActualElapsedFootballSeconds = () => {
+    const regulationElapsed = Math.max(
+      Number(matchSeconds || 0) -
+        Number(displaySeconds || 0),
+      0
+    );
+
+    const additionalElapsed = Math.max(
+      Number(additionalTimeTotalSeconds || 0) -
+        Number(additionalTimeSecondsLeft || 0),
+      0
+    );
+
+    return regulationElapsed + additionalElapsed;
+  };
+
+  const recordAuthoritativeFriendlyLineup = (
+    snapshots,
+    explicitTimeSeconds = null
+  ) => {
+    if (!snapshots || typeof snapshots !== "object") return;
+
+    const timeSeconds = Math.max(
+      0,
+      Number(
+        explicitTimeSeconds ??
+          getActualElapsedFootballSeconds()
+      ) || 0
+    );
+
+    setFriendlyLineupTimeline((previous) => {
+      const safePrevious = Array.isArray(previous)
+        ? previous
+        : [];
+
+      const entry = {
+        timeSeconds,
+        snapshots,
+      };
+
+      /*
+       * Several authoritative operations may occur in the same second.
+       * The latest football state for that second is the one that matters.
+       */
+      const withoutSameSecond = safePrevious.filter(
+        (candidate) =>
+          Number(candidate?.timeSeconds || 0) !==
+          timeSeconds
+      );
+
+      return [...withoutSameSecond, entry].sort(
+        (a, b) =>
+          Number(a?.timeSeconds || 0) -
+          Number(b?.timeSeconds || 0)
+      );
+    });
+  };
+
   const persistDisciplineLineups = (nextSnapshots) => {
     setLocalConfirmedSnapshots(nextSnapshots);
+    recordAuthoritativeFriendlyLineup(nextSnapshots);
 
     if (nextSnapshots?.[teamAId]) {
       setVerifyTeamALineup(nextSnapshots[teamAId]);
@@ -4201,6 +4281,19 @@ export function FriendlyLiveMatchPage({
     };
 
     setLocalConfirmedSnapshots(merged);
+
+    const confirmationTimeSeconds =
+      friendlyLineupTimeline.length === 0 &&
+      !isRunning &&
+      !additionalTimeRunning
+        ? 0
+        : getActualElapsedFootballSeconds();
+
+    recordAuthoritativeFriendlyLineup(
+      merged,
+      confirmationTimeSeconds
+    );
+
     onConfirmPreMatchLineups?.(merged);
     setShowVerifyModal(false);
   };
@@ -4789,9 +4882,54 @@ export function FriendlyLiveMatchPage({
       verifiedLineups: sanitizedConfirmedSnapshots || null,
     };
 
+    /*
+     * STAGE 6F — FRIENDLY DEFENSIVE BLOCK ATTRIBUTION
+     *
+     * Defensive Blocks are calculated only at Full Time from:
+     * - the actual football time played;
+     * - the final goal/event history;
+     * - the referee-confirmed lineup history;
+     * - the active Friendly formation catalogue.
+     *
+     * This does NOT control substitutions or match duration.
+     * The five-minute interval belongs only to the Defensive Block
+     * statistic itself.
+     */
+    const elapsedFootballSeconds =
+      getActualElapsedFootballSeconds();
+
+    const defensiveBlockEvents =
+      buildFriendlyDefensiveBlockEvents({
+        matchNo: currentMatchNo,
+        matchKey: resolvedVideoHighlightsMatchId || "",
+        teamAId,
+        teamBId,
+        events: currentEvents,
+        elapsedMatchSeconds: elapsedFootballSeconds,
+        verifiedLineups:
+          sanitizedConfirmedSnapshots || {},
+        lineupTimeline: friendlyLineupTimeline,
+        formationMap,
+      });
+
+    /*
+     * Defensive Blocks are derived statistical events.
+     * Remove any existing derived copies before appending the freshly
+     * calculated result, making this safe if Full Time is reprocessed.
+     */
+    const finalEvents = [
+      ...(Array.isArray(currentEvents)
+        ? currentEvents.filter(
+            (event) =>
+              event?.type !== "defensive_block"
+          )
+        : []),
+      ...defensiveBlockEvents,
+    ];
+
     writeFinalSummaryToFirestore(
       finalSummary,
-      currentEvents,
+      finalEvents,
       displaySeconds,
       matchSeconds
     );
