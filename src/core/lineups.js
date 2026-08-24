@@ -2,6 +2,8 @@
 
 // ---------------- GAME TYPES ----------------
 export const GAME_TYPE_5 = "5";
+export const GAME_TYPE_6 = "6_aside";
+export const GAME_TYPE_7 = "7_aside";
 export const GAME_TYPE_11 = "11";
 
 // ---------------- SAVE ROLES ----------------
@@ -10,6 +12,7 @@ export const LINEUP_SAVE_ROLE_ADMIN = "admin";
 export const LINEUP_SAVE_ROLE_GENERAL = "general";
 
 export const LOCAL_KEY = "turfkings_lineups_v2";
+export const LINEUPS_CHANGED_EVENT = "fanm:lineups-changed";
 
 // ---------------- HELPERS ----------------
 export function toTitleCaseLoose(name) {
@@ -112,6 +115,157 @@ export const FORMATIONS_5 = {
 };
 
 export const DEFAULT_FORMATION_ID_5 = "2-0-2";
+
+// ---------------- 6-A-SIDE FORMATIONS ----------------
+//
+// Canonical small-sided catalogue.
+// FormationsPage and both Live Match implementations must consume
+// these exact IDs and slot definitions rather than maintaining
+// competing copies.
+//
+export const FORMATIONS_6 = {
+  "6_2_2_1": {
+    id: "6_2_2_1",
+    label: "2-2-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 34, y: 68 },
+      { id: "def_r", label: "DEF", x: 66, y: 68 },
+      { id: "mid_l", label: "MID", x: 35, y: 43 },
+      { id: "mid_r", label: "MID", x: 65, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+
+  "6_1_3_1": {
+    id: "6_1_3_1",
+    label: "1-3-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def", label: "DEF", x: 50, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 45 },
+      { id: "mid_c", label: "MID", x: 50, y: 42 },
+      { id: "mid_r", label: "MID", x: 72, y: 45 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+
+  "6_2_1_2": {
+    id: "6_2_1_2",
+    label: "2-1-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 27, y: 68 },
+      { id: "def_r", label: "DEF", x: 73, y: 68 },
+      { id: "mid", label: "MID", x: 50, y: 45 },
+      { id: "fwd_l", label: "ST", x: 28, y: 20 },
+      { id: "fwd_r", label: "ST", x: 72, y: 20 },
+    ],
+  },
+
+  "6_2_3_0": {
+    id: "6_2_3_0",
+    label: "2-3-0",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 32, y: 68 },
+      { id: "def_r", label: "DEF", x: 68, y: 68 },
+      { id: "mid_l", label: "MID", x: 24, y: 38 },
+      { id: "mid_c", label: "MID", x: 50, y: 33 },
+      { id: "mid_r", label: "MID", x: 76, y: 38 },
+    ],
+  },
+
+  "6_3_2_0": {
+    id: "6_3_2_0",
+    label: "3-2-0",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 25, y: 68 },
+      { id: "def_c", label: "DEF", x: 50, y: 72 },
+      { id: "def_r", label: "DEF", x: 75, y: 68 },
+      { id: "mid_l", label: "MID", x: 38, y: 43 },
+      { id: "mid_r", label: "MID", x: 62, y: 43 },
+    ],
+  },
+};
+
+export const DEFAULT_FORMATION_ID_6 = "6_2_2_1";
+
+// ---------------- 7-A-SIDE FORMATIONS ----------------
+export const FORMATIONS_7 = {
+  "7_3_2_1": {
+    id: "7_3_2_1",
+    label: "3-2-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 25, y: 68 },
+      { id: "def_c", label: "DEF", x: 50, y: 72 },
+      { id: "def_r", label: "DEF", x: 75, y: 68 },
+      { id: "mid_l", label: "MID", x: 38, y: 43 },
+      { id: "mid_r", label: "MID", x: 62, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+
+  "7_2_3_1": {
+    id: "7_2_3_1",
+    label: "2-3-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 35, y: 68 },
+      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 43 },
+      { id: "mid_c", label: "MID", x: 50, y: 39 },
+      { id: "mid_r", label: "MID", x: 72, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 18 },
+    ],
+  },
+
+  "7_2_2_2": {
+    id: "7_2_2_2",
+    label: "2-2-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 35, y: 68 },
+      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      { id: "mid_l", label: "MID", x: 35, y: 43 },
+      { id: "mid_r", label: "MID", x: 65, y: 43 },
+      { id: "fwd_l", label: "ST", x: 38, y: 20 },
+      { id: "fwd_r", label: "ST", x: 62, y: 20 },
+    ],
+  },
+
+  "7_3_1_2": {
+    id: "7_3_1_2",
+    label: "3-1-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 25, y: 68 },
+      { id: "def_c", label: "DEF", x: 50, y: 72 },
+      { id: "def_r", label: "DEF", x: 75, y: 68 },
+      { id: "mid", label: "MID", x: 50, y: 44 },
+      { id: "fwd_l", label: "ST", x: 38, y: 20 },
+      { id: "fwd_r", label: "ST", x: 62, y: 20 },
+    ],
+  },
+
+  "7_1_3_2": {
+    id: "7_1_3_2",
+    label: "1-3-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def", label: "DEF", x: 50, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 45 },
+      { id: "mid_c", label: "MID", x: 50, y: 40 },
+      { id: "mid_r", label: "MID", x: 72, y: 45 },
+      { id: "fwd_l", label: "ST", x: 38, y: 20 },
+      { id: "fwd_r", label: "ST", x: 62, y: 20 },
+    ],
+  },
+};
+
+export const DEFAULT_FORMATION_ID_7 = "7_3_2_1";
 
 // ---------------- 11-A-SIDE FORMATIONS ----------------
 export const FORMATIONS_11 = {
@@ -221,7 +375,14 @@ export const FORMATIONS_11 = {
 
 export const DEFAULT_FORMATION_ID_11 = "4-3-3";
 
-const DEFENSIVE_LABELS = new Set(["CB", "LB", "RB", "LCB", "RCB"]);
+const DEFENSIVE_LABELS = new Set([
+  "DEF",
+  "CB",
+  "LB",
+  "RB",
+  "LCB",
+  "RCB",
+]);
 const GOALKEEPER_LABEL = "GK";
 
 // ---------------- ROLE PRIORITY ----------------
@@ -321,6 +482,24 @@ export function saveLineups(
     window.localStorage.setItem(
       storageKey,
       JSON.stringify(data)
+    );
+
+    /*
+     * localStorage's native "storage" event does not fire in the
+     * same browser window that performed the write.
+     *
+     * FormationsPage and Live Match can exist in the same app/window,
+     * so publish an explicit same-window notification as well.
+     *
+     * The resolved storage key is included so Official and each
+     * Practice session remain completely isolated.
+     */
+    window.dispatchEvent(
+      new CustomEvent(LINEUPS_CHANGED_EVENT, {
+        detail: {
+          storageKey,
+        },
+      })
     );
   } catch {
     // ignore quota errors

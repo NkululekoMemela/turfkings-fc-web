@@ -21,8 +21,14 @@ import {
   getDocs,
 } from "firebase/firestore";
 import {
+  GAME_TYPE_6,
+  GAME_TYPE_7,
   FORMATIONS_5,
+  FORMATIONS_6,
+  FORMATIONS_7,
   DEFAULT_FORMATION_ID_5,
+  DEFAULT_FORMATION_ID_6,
+  DEFAULT_FORMATION_ID_7,
   loadSavedLineups,
   resolvePreferredTeamLineup,
   createVerifiedLineupSnapshot,
@@ -36,6 +42,17 @@ import {
   normalizeGameFormat,
 } from "../core/matchConfig.js";
 
+import {
+  buildBestOutfieldAssignment,
+} from "../core/playerPositioning.js";
+
+import {
+  findPreviousConfirmedTeamAppearance,
+  buildNextAppearanceParticipationRotation,
+  buildNextAppearanceGoalkeeperConstraint,
+  buildNextAppearanceOutfieldAssignment,
+} from "../core/playerRotation.js";
+
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 
@@ -47,92 +64,6 @@ function resolveLiveMatchDoc(dataScope = null) {
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 const PLAYERS_COLLECTION = "players";
 
-
-const GAME_TYPE_6 = "6_aside";
-const GAME_TYPE_7 = "7_aside";
-const DEFAULT_FORMATION_ID_6 = "6_2_2_1";
-const DEFAULT_FORMATION_ID_7 = "7_3_2_1";
-
-const FORMATIONS_6 = {
-  "6_2_2_1": {
-    id: "6_2_2_1",
-    label: "2-2-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 34, y: 68 },
-      { id: "def_r", label: "DEF", x: 66, y: 68 },
-      { id: "mid_l", label: "MID", x: 35, y: 43 },
-      { id: "mid_r", label: "MID", x: 65, y: 43 },
-      { id: "fwd", label: "ST", x: 50, y: 20 },
-    ],
-  },
-  "6_1_3_1": {
-    id: "6_1_3_1",
-    label: "1-3-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def", label: "DEF", x: 50, y: 68 },
-      { id: "mid_l", label: "MID", x: 28, y: 45 },
-      { id: "mid_c", label: "MID", x: 50, y: 42 },
-      { id: "mid_r", label: "MID", x: 72, y: 45 },
-      { id: "fwd", label: "ST", x: 50, y: 20 },
-    ],
-  },
-  "6_2_1_2": {
-    id: "6_2_1_2",
-    label: "2-1-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 35, y: 68 },
-      { id: "def_r", label: "DEF", x: 65, y: 68 },
-      { id: "mid", label: "MID", x: 50, y: 45 },
-      { id: "fwd_l", label: "ST", x: 35, y: 20 },
-      { id: "fwd_r", label: "ST", x: 65, y: 20 },
-    ],
-  },
-};
-
-const FORMATIONS_7 = {
-  "7_3_2_1": {
-    id: "7_3_2_1",
-    label: "3-2-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 28, y: 68 },
-      { id: "def_c", label: "DEF", x: 50, y: 72 },
-      { id: "def_r", label: "DEF", x: 72, y: 68 },
-      { id: "mid_l", label: "MID", x: 36, y: 43 },
-      { id: "mid_r", label: "MID", x: 64, y: 43 },
-      { id: "fwd", label: "ST", x: 50, y: 20 },
-    ],
-  },
-  "7_2_3_1": {
-    id: "7_2_3_1",
-    label: "2-3-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 35, y: 68 },
-      { id: "def_r", label: "DEF", x: 65, y: 68 },
-      { id: "mid_l", label: "MID", x: 28, y: 43 },
-      { id: "mid_c", label: "MID", x: 50, y: 40 },
-      { id: "mid_r", label: "MID", x: 72, y: 43 },
-      { id: "fwd", label: "ST", x: 50, y: 18 },
-    ],
-  },
-  "7_2_2_2": {
-    id: "7_2_2_2",
-    label: "2-2-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 35, y: 68 },
-      { id: "def_r", label: "DEF", x: 65, y: 68 },
-      { id: "mid_l", label: "MID", x: 35, y: 43 },
-      { id: "mid_r", label: "MID", x: 65, y: 43 },
-      { id: "fwd_l", label: "ST", x: 35, y: 18 },
-      { id: "fwd_r", label: "ST", x: 65, y: 18 },
-    ],
-  },
-};
 
 function getLineupGameTypeFromFormat(rawFormat) {
   const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
@@ -1649,6 +1580,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   onGoToStats,
   onOpenHighlightsCamera,
   onUpdateMatchSeconds,
+  onCameraTimingStateChange = null,
   matchTeamColorOverrides = {},
   onUpdateMatchTeamColorOverride = null,
   onResetMatchTeamColorOverrides = null,
@@ -1771,6 +1703,20 @@ export function ThreeTeamLeagueLiveMatchPage({
             shortName,
             aliases,
             status: data.status || "active",
+
+            /*
+             * Match-day positional intelligence.
+             *
+             * Keep these raw profile values available to the shared
+             * positioning/rotation engine. Validation/defaulting remains
+             * the responsibility of core/playerPositioning.js.
+             *
+             * Official and Practice deliberately use the same player
+             * football attributes; Practice isolation concerns match/session
+             * state, not a duplicate version of the player's football profile.
+             */
+            mentality: data.mentality,
+            shooting: data.shooting,
           };
         });
 
@@ -1836,6 +1782,61 @@ export function ThreeTeamLeagueLiveMatchPage({
   const teamA = getTeamById(canonicalTeams, teamAId);
   const teamB = getTeamById(canonicalTeams, teamBId);
   const standbyTeam = getTeamById(canonicalTeams, standbyId);
+
+  /*
+   * Resolve canonical player names back to their rich player-profile
+   * records so the shared positioning engine receives mentality +
+   * shooting instead of neutral defaults.
+   */
+  const richPlayerByKey = useMemo(() => {
+    const map = new Map();
+
+    (players || []).forEach((player) => {
+      const candidates = [
+        player?.id,
+        player?.fullName,
+        player?.shortName,
+        ...(Array.isArray(player?.aliases)
+          ? player.aliases
+          : []),
+      ];
+
+      candidates.forEach((candidate) => {
+        const key = playerKeyFor(candidate);
+
+        if (key && !map.has(key)) {
+          map.set(key, player);
+        }
+      });
+    });
+
+    return map;
+  }, [players, playerKeyFor]);
+
+  const enrichTeamPlayersForRotation = (team) => {
+    const names = Array.isArray(team?.players)
+      ? team.players
+      : [];
+
+    return names.map((name) => {
+      const existing =
+        richPlayerByKey.get(playerKeyFor(name));
+
+      if (existing) {
+        return {
+          ...existing,
+          name:
+            existing.fullName ||
+            existing.shortName ||
+            canonicalName(name),
+        };
+      }
+
+      return {
+        name: canonicalName(name),
+      };
+    });
+  };
 
   /*
    * Match-day colour overrides persist in liveMatchDraft.
@@ -2079,6 +2080,43 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [additionalTimeSecondsLeft, setAdditionalTimeSecondsLeft] = useState(0);
   const [additionalTimeRunning, setAdditionalTimeRunning] = useState(false);
   const [additionalTimeFinished, setAdditionalTimeFinished] = useState(false);
+
+  useEffect(() => {
+    onCameraTimingStateChange?.({
+      regulationSecondsLeft:
+        typeof secondsLeft === "number" ? Math.max(0, secondsLeft) : null,
+      matchSeconds:
+        typeof matchSeconds === "number" ? Math.max(0, matchSeconds) : null,
+      timeUp: Boolean(timeUp),
+      running: Boolean(running),
+      pendingAdditionalTimeSeconds: Math.max(
+        0,
+        Number(pendingAdditionalTimeSeconds || 0)
+      ),
+      additionalTimeTotalSeconds: Math.max(
+        0,
+        Number(additionalTimeTotalSeconds || 0)
+      ),
+      additionalTimeSecondsLeft: Math.max(
+        0,
+        Number(additionalTimeSecondsLeft || 0)
+      ),
+      additionalTimeRunning: Boolean(additionalTimeRunning),
+      additionalTimeFinished: Boolean(additionalTimeFinished),
+    });
+  }, [
+    secondsLeft,
+    matchSeconds,
+    timeUp,
+    running,
+    pendingAdditionalTimeSeconds,
+    additionalTimeTotalSeconds,
+    additionalTimeSecondsLeft,
+    additionalTimeRunning,
+    additionalTimeFinished,
+    onCameraTimingStateChange,
+  ]);
+
   const [goalStep, setGoalStep] = useState("team");
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -2134,22 +2172,98 @@ export function ThreeTeamLeagueLiveMatchPage({
       canonicalName
     );
 
-    return sanitizeLiveLineupToRegisteredPlayers(
-      preferred,
-      registeredPool,
-      canonicalName,
-      playerKeyFor,
-      liveFormationsMap,
-      liveDefaultFormationId
-    );
+    const masterLineup =
+      sanitizeLiveLineupToRegisteredPlayers(
+        preferred,
+        registeredPool,
+        canonicalName,
+        playerKeyFor,
+        liveFormationsMap,
+        liveDefaultFormationId
+      );
+
+    const previous =
+      findPreviousConfirmedTeamAppearance({
+        teamId: teamAId,
+        currentMatchNo,
+        confirmedLineupsByMatchNo,
+      });
+
+    /*
+     * First appearance:
+     * Formation-page/master lineup remains untouched.
+     */
+    if (!previous?.found || !previous?.snapshot) {
+      return masterLineup;
+    }
+
+    const formation =
+      liveFormationsMap?.[
+        masterLineup?.formationId
+      ] ||
+      liveFormationsMap?.[
+        liveDefaultFormationId
+      ] ||
+      Object.values(liveFormationsMap || {})[0];
+
+    if (!formation) {
+      return masterLineup;
+    }
+
+    const richTeamPlayers =
+      enrichTeamPlayersForRotation(teamA);
+
+    const participation =
+      buildNextAppearanceParticipationRotation({
+        previousLineup: previous.snapshot,
+        registeredPlayers: richTeamPlayers,
+      });
+
+    /*
+     * No eligible previous substitute = no forced rotation.
+     * Preserve the captain's current master lineup.
+     */
+    if (!participation.rotationRequired) {
+      return masterLineup;
+    }
+
+    const goalkeeper =
+      buildNextAppearanceGoalkeeperConstraint({
+        participationRotation: participation,
+        formation,
+      });
+
+    const rotated =
+      buildNextAppearanceOutfieldAssignment({
+        participationRotation: participation,
+        goalkeeperConstraint: goalkeeper,
+        formation,
+        registeredPlayers: richTeamPlayers,
+        buildBestOutfieldAssignment,
+      });
+
+    if (!rotated.resolved) {
+      return masterLineup;
+    }
+
+    return {
+      ...masterLineup,
+      formationId: formation.id,
+      positions: rotated.positions,
+      benchSnapshot: rotated.benchPlayers,
+    };
   }, [
     teamA,
+    teamAId,
+    currentMatchNo,
+    confirmedLineupsByMatchNo,
     savedLineups,
     canonicalName,
     playerKeyFor,
     liveLineupGameType,
     liveFormationsMap,
     liveDefaultFormationId,
+    richPlayerByKey,
   ]);
 
   const defaultTeamBLineup = useMemo(() => {
@@ -2168,22 +2282,90 @@ export function ThreeTeamLeagueLiveMatchPage({
       canonicalName
     );
 
-    return sanitizeLiveLineupToRegisteredPlayers(
-      preferred,
-      registeredPool,
-      canonicalName,
-      playerKeyFor,
-      liveFormationsMap,
-      liveDefaultFormationId
-    );
+    const masterLineup =
+      sanitizeLiveLineupToRegisteredPlayers(
+        preferred,
+        registeredPool,
+        canonicalName,
+        playerKeyFor,
+        liveFormationsMap,
+        liveDefaultFormationId
+      );
+
+    const previous =
+      findPreviousConfirmedTeamAppearance({
+        teamId: teamBId,
+        currentMatchNo,
+        confirmedLineupsByMatchNo,
+      });
+
+    if (!previous?.found || !previous?.snapshot) {
+      return masterLineup;
+    }
+
+    const formation =
+      liveFormationsMap?.[
+        masterLineup?.formationId
+      ] ||
+      liveFormationsMap?.[
+        liveDefaultFormationId
+      ] ||
+      Object.values(liveFormationsMap || {})[0];
+
+    if (!formation) {
+      return masterLineup;
+    }
+
+    const richTeamPlayers =
+      enrichTeamPlayersForRotation(teamB);
+
+    const participation =
+      buildNextAppearanceParticipationRotation({
+        previousLineup: previous.snapshot,
+        registeredPlayers: richTeamPlayers,
+      });
+
+    if (!participation.rotationRequired) {
+      return masterLineup;
+    }
+
+    const goalkeeper =
+      buildNextAppearanceGoalkeeperConstraint({
+        participationRotation: participation,
+        formation,
+      });
+
+    const rotated =
+      buildNextAppearanceOutfieldAssignment({
+        participationRotation: participation,
+        goalkeeperConstraint: goalkeeper,
+        formation,
+        registeredPlayers: richTeamPlayers,
+        buildBestOutfieldAssignment,
+      });
+
+    if (!rotated.resolved) {
+      return masterLineup;
+    }
+
+    return {
+      ...masterLineup,
+      formationId: formation.id,
+      positions: rotated.positions,
+      benchSnapshot: rotated.benchPlayers,
+    };
   }, [
     teamB,
+    teamBId,
+    currentMatchNo,
+    confirmedLineupsByMatchNo,
     savedLineups,
     canonicalName,
     playerKeyFor,
     liveLineupGameType,
     liveFormationsMap,
     liveDefaultFormationId,
+    richPlayerByKey,
   ]);
 
   const [verifyTeamALineup, setVerifyTeamALineup] =

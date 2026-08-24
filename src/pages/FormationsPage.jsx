@@ -4,6 +4,7 @@ import { toPng } from "html-to-image";
 import { db } from "../firebaseConfig";
 import {
   getPlayersCollection,
+  getPlayerDoc,
   getMembersCollection,
   getPlayerPhotosCollection,
   getPeerRatingsCollection,
@@ -19,10 +20,16 @@ import {
 } from "firebase/firestore";
 import {
   GAME_TYPE_5,
+  GAME_TYPE_6,
+  GAME_TYPE_7,
   GAME_TYPE_11,
   FORMATIONS_5,
+  FORMATIONS_6,
+  FORMATIONS_7,
   FORMATIONS_11,
   DEFAULT_FORMATION_ID_5,
+  DEFAULT_FORMATION_ID_6,
+  DEFAULT_FORMATION_ID_7,
   DEFAULT_FORMATION_ID_11,
   loadSavedLineups,
   saveLineups,
@@ -33,146 +40,6 @@ import {
 } from "../core/lineups.js";
 import { buildFormationDecorations } from "../core/matchDayFormationRatings.js";
 
-
-const GAME_TYPE_6 = "6_aside";
-const DEFAULT_FORMATION_ID_6 = "6_2_2_1";
-
-const FORMATIONS_6 = {
-  "6_2_2_1": {
-    id: "6_2_2_1",
-    label: "2-2-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 34, y: 68 },
-      { id: "def_r", label: "DEF", x: 66, y: 68 },
-      { id: "mid_l", label: "MID", x: 35, y: 43 },
-      { id: "mid_r", label: "MID", x: 65, y: 43 },
-      { id: "fwd", label: "ST", x: 50, y: 20 },
-    ],
-  },
-  "6_1_3_1": {
-    id: "6_1_3_1",
-    label: "1-3-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def", label: "DEF", x: 50, y: 68 },
-      { id: "mid_l", label: "MID", x: 28, y: 45 },
-      { id: "mid_c", label: "MID", x: 50, y: 42 },
-      { id: "mid_r", label: "MID", x: 72, y: 45 },
-      { id: "fwd", label: "ST", x: 50, y: 20 },
-    ],
-  },
-  "6_2_1_2": {
-    id: "6_2_1_2",
-    label: "2-1-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      // Wider defensive and attacking lanes to avoid overlap on mobile
-      // and to make the formation look useful for real planning.
-      { id: "def_l", label: "DEF", x: 27, y: 68 },
-      { id: "def_r", label: "DEF", x: 73, y: 68 },
-      { id: "mid", label: "MID", x: 50, y: 45 },
-      { id: "fwd_l", label: "ST", x: 28, y: 20 },
-      { id: "fwd_r", label: "ST", x: 72, y: 20 },
-    ],
-  },
-  "6_2_3_0": {
-    id: "6_2_3_0",
-    label: "2-3-0",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 32, y: 68 },
-      { id: "def_r", label: "DEF", x: 68, y: 68 },
-      { id: "mid_l", label: "MID", x: 24, y: 38 },
-      { id: "mid_c", label: "MID", x: 50, y: 33 },
-      { id: "mid_r", label: "MID", x: 76, y: 38 },
-    ],
-  },
-  "6_3_2_0": {
-    id: "6_3_2_0",
-    label: "3-2-0",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 25, y: 68 },
-      { id: "def_c", label: "DEF", x: 50, y: 72 },
-      { id: "def_r", label: "DEF", x: 75, y: 68 },
-      { id: "mid_l", label: "MID", x: 38, y: 43 },
-      { id: "mid_r", label: "MID", x: 62, y: 43 },
-    ],
-  },
-};
-
-
-const GAME_TYPE_7 = "7_aside";
-const DEFAULT_FORMATION_ID_7 = "7_3_2_1";
-
-const FORMATIONS_7 = {
-  "7_3_2_1": {
-    id: "7_3_2_1",
-    label: "3-2-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 25, y: 68 },
-      { id: "def_c", label: "DEF", x: 50, y: 72 },
-      { id: "def_r", label: "DEF", x: 75, y: 68 },
-      { id: "mid_l", label: "MID", x: 38, y: 43 },
-      { id: "mid_r", label: "MID", x: 62, y: 43 },
-      { id: "fwd", label: "ST", x: 50, y: 20 },
-    ],
-  },
-  "7_2_3_1": {
-    id: "7_2_3_1",
-    label: "2-3-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 35, y: 68 },
-      { id: "def_r", label: "DEF", x: 65, y: 68 },
-      { id: "mid_l", label: "MID", x: 28, y: 43 },
-      { id: "mid_c", label: "MID", x: 50, y: 39 },
-      { id: "mid_r", label: "MID", x: 72, y: 43 },
-      { id: "fwd", label: "ST", x: 50, y: 18 },
-    ],
-  },
-  "7_2_2_2": {
-    id: "7_2_2_2",
-    label: "2-2-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 35, y: 68 },
-      { id: "def_r", label: "DEF", x: 65, y: 68 },
-      { id: "mid_l", label: "MID", x: 35, y: 43 },
-      { id: "mid_r", label: "MID", x: 65, y: 43 },
-      { id: "fwd_l", label: "ST", x: 38, y: 20 },
-      { id: "fwd_r", label: "ST", x: 62, y: 20 },
-    ],
-  },
-  "7_3_1_2": {
-    id: "7_3_1_2",
-    label: "3-1-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 25, y: 68 },
-      { id: "def_c", label: "DEF", x: 50, y: 72 },
-      { id: "def_r", label: "DEF", x: 75, y: 68 },
-      { id: "mid", label: "MID", x: 50, y: 44 },
-      { id: "fwd_l", label: "ST", x: 38, y: 20 },
-      { id: "fwd_r", label: "ST", x: 62, y: 20 },
-    ],
-  },
-  "7_1_3_2": {
-    id: "7_1_3_2",
-    label: "1-3-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def", label: "DEF", x: 50, y: 68 },
-      { id: "mid_l", label: "MID", x: 28, y: 45 },
-      { id: "mid_c", label: "MID", x: 50, y: 40 },
-      { id: "mid_r", label: "MID", x: 72, y: 45 },
-      { id: "fwd_l", label: "ST", x: 38, y: 20 },
-      { id: "fwd_r", label: "ST", x: 62, y: 20 },
-    ],
-  },
-};
 
 const FORMATIONS_11_WITH_ULTRA_DEFENSIVE = (() => {
   const adjusted = {};
@@ -1070,6 +937,10 @@ export function FormationsPage({
 
   const [players, setPlayers] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [savingMentality, setSavingMentality] = useState(false);
+  const [mentalityMessage, setMentalityMessage] = useState("");
+  const [savingShooting, setSavingShooting] = useState(false);
+  const [shootingMessage, setShootingMessage] = useState("");
   const [savingFormationImage, setSavingFormationImage] = useState(false);
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
@@ -1125,12 +996,30 @@ export function FormationsPage({
             ? data.aliases.map((a) => toTitleCase(a)).filter(Boolean)
             : [];
 
+          const rawMentality = Number(data.mentality);
+          const mentality =
+            Number.isInteger(rawMentality) &&
+            rawMentality >= 1 &&
+            rawMentality <= 5
+              ? rawMentality
+              : 3;
+
+          const rawShooting = Number(data.shooting);
+          const shooting =
+            Number.isInteger(rawShooting) &&
+            rawShooting >= 1 &&
+            rawShooting <= 5
+              ? rawShooting
+              : 3;
+
           return {
             id: d.id,
             fullName,
             shortName,
             aliases,
             status: data.status || "active",
+            mentality,
+            shooting,
           };
         });
 
@@ -1213,6 +1102,186 @@ export function FormationsPage({
   }, [players]);
 
   const canonicalName = (raw) => playerResolver.resolve(raw).display;
+
+  const mentalityOptions = [
+    { value: 1, label: "Very Defensive" },
+    { value: 2, label: "Defensive" },
+    { value: 3, label: "Balanced" },
+    { value: 4, label: "Attacking" },
+    { value: 5, label: "Very Attacking" },
+  ];
+
+  const shootingOptions = [
+    { value: 1, label: "Rarely Shoots" },
+    { value: 2, label: "Low" },
+    { value: 3, label: "Moderate" },
+    { value: 4, label: "Shoots Often" },
+    { value: 5, label: "Very High" },
+  ];
+
+  const selectedMentalityPlayer = useMemo(
+    () =>
+      selectedPlayer?.name
+        ? playerResolver.resolve(selectedPlayer.name)?.player || null
+        : null,
+    [selectedPlayer, playerResolver]
+  );
+
+  const handleMentalityChange = async (nextMentality) => {
+    if (!selectedMentalityPlayer?.id) return;
+
+    const value = Number(nextMentality);
+
+    if (
+      !Number.isInteger(value) ||
+      value < 1 ||
+      value > 5
+    ) {
+      return;
+    }
+
+    if (isPracticeMode) {
+      setMentalityMessage(
+        "Practice uses the player's saved Official mentality."
+      );
+      return;
+    }
+
+    if (!canEditMentality) {
+      setMentalityMessage(
+        "Only an admin or team captain can change player mentality."
+      );
+      return;
+    }
+
+    setSavingMentality(true);
+    setMentalityMessage("");
+
+    try {
+      await setDoc(
+        getPlayerDoc(
+          db,
+          selectedMentalityPlayer.id,
+          activeClubId
+        ),
+        {
+          mentality: value,
+          mentalityUpdatedAt: serverTimestamp(),
+          mentalityUpdatedByEmail:
+            String(authUser?.email || identity?.email || "").trim() || null,
+        },
+        { merge: true }
+      );
+
+      /*
+       * Update immediately rather than waiting for onSnapshot.
+       * The Firestore listener remains authoritative afterwards.
+       */
+      setPlayers((previous) =>
+        previous.map((player) =>
+          player.id === selectedMentalityPlayer.id
+            ? { ...player, mentality: value }
+            : player
+        )
+      );
+
+      const label =
+        mentalityOptions.find(
+          (option) => option.value === value
+        )?.label || "Balanced";
+
+      setMentalityMessage(
+        `${selectedMentalityPlayer.shortName || selectedMentalityPlayer.fullName} is now ${label}.`
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save player mentality:",
+        error
+      );
+
+      setMentalityMessage(
+        "Could not save player mentality. Please try again."
+      );
+    } finally {
+      setSavingMentality(false);
+    }
+  };
+
+  const handleShootingChange = async (nextShooting) => {
+    if (!selectedMentalityPlayer?.id) return;
+
+    const value = Number(nextShooting);
+
+    if (
+      !Number.isInteger(value) ||
+      value < 1 ||
+      value > 5
+    ) {
+      return;
+    }
+
+    if (isPracticeMode) {
+      setShootingMessage(
+        "Practice uses the player's saved Official shooting tendency."
+      );
+      return;
+    }
+
+    if (!canEditMentality) {
+      setShootingMessage(
+        "Only an admin or team captain can change shooting tendency."
+      );
+      return;
+    }
+
+    setSavingShooting(true);
+    setShootingMessage("");
+
+    try {
+      await setDoc(
+        getPlayerDoc(
+          db,
+          selectedMentalityPlayer.id,
+          activeClubId
+        ),
+        {
+          shooting: value,
+          shootingUpdatedAt: serverTimestamp(),
+          shootingUpdatedByEmail:
+            String(authUser?.email || identity?.email || "").trim() || null,
+        },
+        { merge: true }
+      );
+
+      setPlayers((previous) =>
+        previous.map((player) =>
+          player.id === selectedMentalityPlayer.id
+            ? { ...player, shooting: value }
+            : player
+        )
+      );
+
+      const label =
+        shootingOptions.find(
+          (option) => option.value === value
+        )?.label || "Moderate";
+
+      setShootingMessage(
+        `${selectedMentalityPlayer.shortName || selectedMentalityPlayer.fullName} shooting tendency is now ${label}.`
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save player shooting tendency:",
+        error
+      );
+
+      setShootingMessage(
+        "Could not save shooting tendency. Please try again."
+      );
+    } finally {
+      setSavingShooting(false);
+    }
+  };
 
   const displayCompactName = (raw) => {
     if (!raw) return "";
@@ -1454,6 +1523,29 @@ export function FormationsPage({
 
   const selectedTeamCanonical =
     canonicalTeams.find((t) => t.id === selectedTeamId) || canonicalTeams[0] || null;
+
+  /*
+   * Behaviour-profile editing permissions depend on the selected
+   * canonical team, so they must be resolved only AFTER
+   * selectedTeamCanonical has been initialized.
+   */
+  const mentalitySaveRole = selectedTeamCanonical
+    ? getSaveRole(
+        identity,
+        authUser,
+        selectedTeamCanonical,
+        gameType,
+        canonicalName
+      )?.savedByRole
+    : LINEUP_SAVE_ROLE_GENERAL;
+
+  const canEditMentality =
+    !isPracticeMode &&
+    (
+      mentalitySaveRole === LINEUP_SAVE_ROLE_ADMIN ||
+      mentalitySaveRole === LINEUP_SAVE_ROLE_CAPTAIN
+    );
+
 
   const isTemporaryOpponentTeam = useMemo(() => {
     return Boolean(
@@ -2354,6 +2446,252 @@ export function FormationsPage({
                 ? "Tap a sub, then tap a reserve to swap them."
                 : "Tap a sub, then tap a player on the pitch to swap them."}
             </p>
+
+            {selectedMentalityPlayer ? (
+              <div
+                style={{
+                  margin: "0.55rem 0 0.2rem",
+                  padding: "0.75rem",
+                  borderRadius: "14px",
+                  border: "1px solid rgba(148,163,184,0.22)",
+                  background: "rgba(15,23,42,0.58)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "0.75rem",
+                    alignItems: "center",
+                    marginBottom: "0.55rem",
+                  }}
+                >
+                  <div>
+                    <strong style={{ display: "block" }}>
+                      {selectedMentalityPlayer.shortName ||
+                        selectedMentalityPlayer.fullName}
+                    </strong>
+                    <span className="muted small">
+                      Player mentality
+                    </span>
+                  </div>
+
+                  <span
+                    style={{
+                      fontSize: "0.78rem",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {mentalityOptions.find(
+                      (option) =>
+                        option.value ===
+                        Number(selectedMentalityPlayer.mentality || 3)
+                    )?.label || "Balanced"}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                    gap: "0.35rem",
+                  }}
+                >
+                  {mentalityOptions.map((option) => {
+                    const active =
+                      Number(selectedMentalityPlayer.mentality || 3) ===
+                      option.value;
+
+                    return (
+                      <button
+                        key={`mentality-${option.value}`}
+                        type="button"
+                        disabled={
+                          savingMentality ||
+                          !canEditMentality
+                        }
+                        onClick={() =>
+                          handleMentalityChange(option.value)
+                        }
+                        title={option.label}
+                        style={{
+                          minHeight: "38px",
+                          padding: "0.35rem 0.2rem",
+                          borderRadius: "10px",
+                          border: active
+                            ? "2px solid rgba(96,165,250,0.95)"
+                            : "1px solid rgba(148,163,184,0.28)",
+                          background: active
+                            ? "rgba(37,99,235,0.28)"
+                            : "rgba(15,23,42,0.72)",
+                          color: "#f8fafc",
+                          fontWeight: 900,
+                          cursor:
+                            savingMentality || !canEditMentality
+                              ? "default"
+                              : "pointer",
+                          opacity:
+                            !canEditMentality && !active
+                              ? 0.58
+                              : 1,
+                        }}
+                      >
+                        {option.value}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div
+                  className="muted small"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "0.5rem",
+                    marginTop: "0.35rem",
+                  }}
+                >
+                  <span>Defensive</span>
+                  <span>Balanced</span>
+                  <span>Attacking</span>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "0.85rem",
+                    paddingTop: "0.75rem",
+                    borderTop: "1px solid rgba(148,163,184,0.18)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "0.75rem",
+                      alignItems: "center",
+                      marginBottom: "0.55rem",
+                    }}
+                  >
+                    <strong style={{ fontSize: "0.86rem" }}>
+                      Shooting tendency
+                    </strong>
+
+                    <span
+                      style={{
+                        fontSize: "0.78rem",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {shootingOptions.find(
+                        (option) =>
+                          option.value ===
+                          Number(selectedMentalityPlayer.shooting || 3)
+                      )?.label || "Moderate"}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                      gap: "0.35rem",
+                    }}
+                  >
+                    {shootingOptions.map((option) => {
+                      const active =
+                        Number(selectedMentalityPlayer.shooting || 3) ===
+                        option.value;
+
+                      return (
+                        <button
+                          key={`shooting-${option.value}`}
+                          type="button"
+                          disabled={
+                            savingShooting ||
+                            !canEditMentality
+                          }
+                          onClick={() =>
+                            handleShootingChange(option.value)
+                          }
+                          title={option.label}
+                          style={{
+                            minHeight: "38px",
+                            padding: "0.35rem 0.2rem",
+                            borderRadius: "10px",
+                            border: active
+                              ? "2px solid rgba(96,165,250,0.95)"
+                              : "1px solid rgba(148,163,184,0.28)",
+                            background: active
+                              ? "rgba(37,99,235,0.28)"
+                              : "rgba(15,23,42,0.72)",
+                            color: "#f8fafc",
+                            fontWeight: 900,
+                            cursor:
+                              savingShooting || !canEditMentality
+                                ? "default"
+                                : "pointer",
+                            opacity:
+                              !canEditMentality && !active
+                                ? 0.58
+                                : 1,
+                          }}
+                        >
+                          {option.value}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    className="muted small"
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "0.5rem",
+                      marginTop: "0.35rem",
+                    }}
+                  >
+                    <span>Rarely shoots</span>
+                    <span>Moderate</span>
+                    <span>Shoots often</span>
+                  </div>
+
+                  {shootingMessage ? (
+                    <p
+                      className="muted small"
+                      style={{ margin: "0.45rem 0 0" }}
+                    >
+                      {shootingMessage}
+                    </p>
+                  ) : null}
+                </div>
+
+                {isPracticeMode ? (
+                  <p
+                    className="muted small"
+                    style={{ margin: "0.5rem 0 0" }}
+                  >
+                    Practice uses this player&apos;s saved Official mentality and shooting tendency.
+                  </p>
+                ) : !canEditMentality ? (
+                  <p
+                    className="muted small"
+                    style={{ margin: "0.5rem 0 0" }}
+                  >
+                    Admins and team captains can update mentality.
+                  </p>
+                ) : null}
+
+                {mentalityMessage ? (
+                  <p
+                    className="muted small"
+                    style={{ margin: "0.45rem 0 0" }}
+                  >
+                    {mentalityMessage}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="bench-wrapper" style={{ marginTop: 0, paddingTop: 0 }}>
