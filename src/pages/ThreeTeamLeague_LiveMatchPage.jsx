@@ -789,8 +789,14 @@ function buildGoalRecorderChoices({
     ...bench.map((name) => ({
       name,
       isSub: true,
-      disabled: true,
-      roleTag: roleTagMap[playerKeyFor(name)] || "",
+
+      /*
+       * SUB players are deliberately selectable in Goal Recorder.
+       * Selecting one does NOT record the goal: it triggers the
+       * lineup-correction safeguard instead.
+       */
+      disabled: false,
+      roleTag: "SUB",
     })),
   ];
 }
@@ -1264,7 +1270,11 @@ function PlayerChoiceGrid({
                   isSelected={isSelected}
                   onClick={() => {
                     if (isEntryDisabled) return;
-                    onSelect(isSelected ? "" : rawName);
+
+                    onSelect(
+                      isSelected ? "" : rawName,
+                      isSelected ? null : entry
+                    );
                   }}
                   photoData={photoData}
                   disabled={isEntryDisabled}
@@ -3792,21 +3802,35 @@ export function ThreeTeamLeagueLiveMatchPage({
     }) || null;
   };
 
-  const handleGoalScorerSelection = (teamId, name) => {
+  const handleGoalScorerSelection = (teamId, name, selectedEntry = null) => {
     setScoringTeamId(teamId);
     setScorerName(name);
     setAssistName("");
 
     if (!name) return;
 
-    const choice = getGoalRecorderChoice(teamId, name);
+    /*
+     * PlayerChoiceGrid already knows whether the selected card is a SUB.
+     * Prefer that direct truth instead of trying to rediscover it later.
+     */
+    const choice =
+      selectedEntry ||
+      getGoalRecorderChoice(teamId, name);
 
-    const roleTag =
-      typeof choice === "string"
-        ? ""
-        : String(choice?.roleTag || "").trim().toUpperCase();
+    const isSub =
+      Boolean(
+        typeof choice === "object" &&
+        choice?.isSub
+      ) ||
+      String(
+        typeof choice === "object"
+          ? choice?.roleTag || ""
+          : ""
+      )
+        .trim()
+        .toUpperCase() === "SUB";
 
-    if (roleTag === "SUB") {
+    if (isSub) {
       /*
        * A recorded scorer must be on the pitch, but do not
        * unexpectedly throw the referee into Edit Lineups.
@@ -4770,8 +4794,12 @@ export function ThreeTeamLeagueLiveMatchPage({
                           title="Scorer"
                           players={goalRecorderChoicesForTeam(teamAId)}
                           selectedName={scorerName}
-                          onSelect={(name) =>
-                            handleGoalScorerSelection(teamAId, name)
+                          onSelect={(name, entry) =>
+                            handleGoalScorerSelection(
+                              teamAId,
+                              name,
+                              entry
+                            )
                           }
                           displayCompactPlayerName={displayCompactPlayerName}
                           getPlayerPhoto={getPlayerPhoto}
@@ -4790,8 +4818,12 @@ export function ThreeTeamLeagueLiveMatchPage({
                           title="Scorer"
                           players={goalRecorderChoicesForTeam(teamBId)}
                           selectedName={scorerName}
-                          onSelect={(name) =>
-                            handleGoalScorerSelection(teamBId, name)
+                          onSelect={(name, entry) =>
+                            handleGoalScorerSelection(
+                              teamBId,
+                              name,
+                              entry
+                            )
                           }
                           displayCompactPlayerName={displayCompactPlayerName}
                           getPlayerPhoto={getPlayerPhoto}
