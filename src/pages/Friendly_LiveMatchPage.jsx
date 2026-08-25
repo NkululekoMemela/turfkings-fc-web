@@ -41,6 +41,8 @@ import {
 } from "../core/playerPositioning.js";
 import {
   buildFriendlyInMatchRotation,
+  chooseNextFriendlyGoalkeeper,
+  buildFriendlyGoalkeeperOnlyRotation,
 } from "../core/playerRotation.js";
 import VideoHighlightsRepository from "../storage/VideoHighlightsRepository.js";
 import TeamIdentityEditor from "../components/TeamIdentityEditor";
@@ -2024,6 +2026,7 @@ export function FriendlyLiveMatchPage({
   scheduledFinishAtISO = null,
   onUpdateExpectedEndTime = null,
   rotationReminderMode = "off",
+  rotationReminderConfigured = false,
   onUpdateRotationReminder = null,
   redCardRule = "permanent",
   onUpdateRedCardRule = null,
@@ -2107,6 +2110,18 @@ export function FriendlyLiveMatchPage({
   const rotationDueTimerRef = useRef(null);
   const lastRotationTimeBucketRef = useRef(0);
   const lastRotationGoalBucketRef = useRef(0);
+
+  /*
+   * STAGE 7G1
+   *
+   * A Friendly with substitutes should invite the referee to choose
+   * the rotation rule once the authoritative starting lineups exist.
+   *
+   * A no-sub Friendly must NOT auto-prompt.
+   *
+   * Manual access to Player Rotation remains available in both cases.
+   */
+  const rotationSetupPromptKeyRef = useRef("");
 
   const [showShiboboRecorder, setShowShiboboRecorder] = useState(false);
   const [shiboboTeamId, setShiboboTeamId] = useState("");
@@ -2804,7 +2819,25 @@ export function FriendlyLiveMatchPage({
   const mustVerifyBeforePlay = isControllerSession;
 
   useEffect(() => {
-    if (mustVerifyBeforePlay && !hasVerifiedLineups) {
+    /*
+     * Do not reopen the verification modal while the parent is still
+     * catching up with a lineup that was just confirmed locally.
+     *
+     * localConfirmedSnapshots becomes authoritative immediately when
+     * Confirm lineups is pressed; the parent confirmation state can
+     * arrive one render later.
+     */
+    const hasLocallyConfirmedLineups =
+      Boolean(
+        localConfirmedSnapshots?.[teamAId] &&
+        localConfirmedSnapshots?.[teamBId]
+      );
+
+    if (
+      mustVerifyBeforePlay &&
+      !hasVerifiedLineups &&
+      !hasLocallyConfirmedLineups
+    ) {
       if (!playersReady) return;
 
       setVerifyTeamALineup(defaultTeamALineup);
@@ -2816,6 +2849,7 @@ export function FriendlyLiveMatchPage({
   }, [
     mustVerifyBeforePlay,
     hasVerifiedLineups,
+    localConfirmedSnapshots,
     currentMatchNo,
     teamAId,
     teamBId,
@@ -3365,6 +3399,174 @@ export function FriendlyLiveMatchPage({
     return true;
   };
 
+  /*
+   * STAGE 7G3 — FRIENDLY NO-BENCH GK ROTATION
+   *
+   * When the referee has explicitly enabled a Friendly rotation rule
+   * but a team has no substitute, the trigger applies only to GK duty.
+   *
+   * Teams WITH substitutes are deliberately left alone here:
+   * their incoming substitute -> GK rule remains handled by
+   * buildFriendlyInMatchRotation after the referee chooses who exits.
+   *
+   * The two teams may differ:
+   * - Team A may have a substitute;
+   * - Team B may have none.
+   *
+   * In that case Team B's GK rotates automatically while Team A still
+   * receives the normal player-rotation reminder.
+   */
+  const applyFriendlyNoBenchGoalkeeperRotations = () => {
+    if (!hasVerifiedLineups) {
+      return {
+        appliedCount: 0,
+        appliedTeams: [],
+      };
+    }
+
+    const currentSnapshots = {
+      ...(sanitizedConfirmedSnapshots || {}),
+    };
+
+    const teamConfigs = [
+      {
+        teamId: teamAId,
+        registeredPlayers: eligibleTeamAPlayers,
+      },
+      {
+        teamId: teamBId,
+        registeredPlayers: eligibleTeamBPlayers,
+      },
+    ];
+
+    const appliedTeams = [];
+
+    teamConfigs.forEach(({ teamId, registeredPlayers }) => {
+      if (!teamId) return;
+
+      const currentSnapshot =
+        currentSnapshots?.[teamId] || null;
+
+      if (!currentSnapshot) return;
+
+      /*
+       * A real bench means this team follows the existing Friendly
+       * substitution path instead:
+       *
+       * incoming substitute -> GK
+       * previous GK         -> outfield
+       * referee chooses who leaves
+       */
+      const benchPlayers =
+        getBenchPlayersFromSnapshot(
+          currentSnapshot,
+          registeredPlayers || [],
+          canonicalName,
+          playerKeyFor,
+          formationMap,
+          defaultFormationId
+        );
+
+      if (benchPlayers.length > 0) {
+        return;
+      }
+
+      const formation =
+        formationMap?.[
+          currentSnapshot?.formationId
+        ] ||
+        formationMap?.[defaultFormationId] ||
+        Object.values(formationMap || {})[0] ||
+        null;
+
+      if (!formation) return;
+
+      const nextKeeper =
+        chooseNextFriendlyGoalkeeper({
+          teamId,
+          currentLineup: currentSnapshot,
+          formation,
+          lineupTimeline:
+            friendlyLineupTimeline,
+        });
+
+      if (!nextKeeper?.resolved) {
+        console.warn(
+          "Friendly GK fairness could not choose the next goalkeeper:",
+          {
+            teamId,
+            result: nextKeeper,
+          }
+        );
+        return;
+      }
+
+      const rotation =
+        buildFriendlyGoalkeeperOnlyRotation({
+          currentLineup: currentSnapshot,
+          formation,
+          nextGoalkeeper:
+            nextKeeper.nextGoalkeeper,
+        });
+
+      if (!rotation?.resolved) {
+        console.warn(
+          "Friendly GK-only rotation could not be applied:",
+          {
+            teamId,
+            result: rotation,
+          }
+        );
+        return;
+      }
+
+      currentSnapshots[teamId] = {
+        ...currentSnapshot,
+        formationId:
+          rotation.formationId ||
+          currentSnapshot?.formationId ||
+          formation?.id ||
+          null,
+        positions: {
+          ...(rotation.positions || {}),
+        },
+        benchSnapshot: [
+          ...(rotation.benchPlayers || []),
+        ],
+        onFieldPlayerCount: Object.values(
+          rotation.positions || {}
+        ).filter(Boolean).length,
+      };
+
+      appliedTeams.push({
+        teamId,
+        previousGoalkeeper:
+          rotation.previousGoalkeeper || "",
+        nextGoalkeeper:
+          rotation.nextGoalkeeper || "",
+      });
+    });
+
+    if (appliedTeams.length > 0) {
+      /*
+       * One authoritative persistence operation is important here.
+       *
+       * If both teams have no bench, both GK changes must enter the
+       * same football snapshot rather than one team overwriting the
+       * other with stale state.
+       */
+      persistDisciplineLineups(
+        currentSnapshots
+      );
+    }
+
+    return {
+      appliedCount: appliedTeams.length,
+      appliedTeams,
+    };
+  };
+
+
   const removeDismissedPlayerFromLineup = (player) => {
     const teamId = player?.teamId;
     const playerName = canonicalName(player?.name);
@@ -3871,7 +4073,17 @@ export function FriendlyLiveMatchPage({
   };
 
   const triggerRotationReminder = (reason) => {
-    if (!canControlMatch || !hasRotationBench) return;
+    if (!canControlMatch) return;
+
+    /*
+     * If either team has no substitute, an explicitly enabled
+     * Friendly rotation rule rotates that team's goalkeeper now.
+     *
+     * Teams with substitutes remain referee-driven because the referee
+     * must choose WHO leaves the pitch.
+     */
+    const goalkeeperRotationResult =
+      applyFriendlyNoBenchGoalkeeperRotations();
 
     if (rotationToastTimerRef.current) {
       window.clearTimeout(rotationToastTimerRef.current);
@@ -3884,6 +4096,10 @@ export function FriendlyLiveMatchPage({
     setRotationDue({
       reason,
       triggeredAt: Date.now(),
+      goalkeeperRotationsApplied:
+        goalkeeperRotationResult?.appliedCount || 0,
+      goalkeeperRotationTeams:
+        goalkeeperRotationResult?.appliedTeams || [],
     });
     setRotationToastVisible(true);
 
@@ -3942,23 +4158,20 @@ export function FriendlyLiveMatchPage({
 
     if (
       normalizedActiveRotationMode === "off" ||
-      !canControlMatch ||
-      !hasRotationBench
+      !canControlMatch
     ) {
       clearRotationReminder();
     }
   }, [
     normalizedActiveRotationMode,
     canControlMatch,
-    hasRotationBench,
   ]);
 
   useEffect(() => {
     if (
       normalizedActiveRotationMode !== "time" ||
       !running ||
-      !canControlMatch ||
-      !hasRotationBench
+      !canControlMatch
     ) {
       return;
     }
@@ -3988,14 +4201,12 @@ export function FriendlyLiveMatchPage({
     running,
     normalizedActiveRotationMode,
     canControlMatch,
-    hasRotationBench,
   ]);
 
   useEffect(() => {
     if (
       normalizedActiveRotationMode !== "goals" ||
-      !canControlMatch ||
-      !hasRotationBench
+      !canControlMatch
     ) {
       return;
     }
@@ -4016,7 +4227,6 @@ export function FriendlyLiveMatchPage({
     totalGoals,
     normalizedActiveRotationMode,
     canControlMatch,
-    hasRotationBench,
   ]);
 
   useEffect(() => {
@@ -5180,6 +5390,64 @@ export function FriendlyLiveMatchPage({
     );
   }, [rotationReminderMode]);
 
+  /*
+   * STAGE 7G1 — ROTATION SETUP INVITATION
+   *
+   * With substitutes:
+   *   automatically invite the referee to choose the baseline rule
+   *   once the starting lineups have been confirmed.
+   *
+   * Without substitutes:
+   *   do not interrupt the referee.
+   *
+   * The referee can still manually open Player Rotation at any time.
+   * If they manually choose 5 minutes or 2 goals with no substitutes,
+   * that selected rule becomes the GK-only rotation trigger.
+   */
+  useEffect(() => {
+    if (
+      !hasVerifiedLineups ||
+      !canControlMatch ||
+      !hasRotationBench ||
+      rotationReminderConfigured ||
+      normalizedActiveRotationMode !== "off" ||
+      typeof onUpdateRotationReminder !== "function"
+    ) {
+      return;
+    }
+
+    const promptKey = [
+      currentMatchNo || 1,
+      teamAId || "",
+      teamBId || "",
+      gameFormat || "",
+    ].join("::");
+
+    if (
+      rotationSetupPromptKeyRef.current ===
+      promptKey
+    ) {
+      return;
+    }
+
+    rotationSetupPromptKeyRef.current =
+      promptKey;
+
+    setSelectedRotationMode("off");
+    setShowRotationModal(true);
+  }, [
+    hasVerifiedLineups,
+    canControlMatch,
+    hasRotationBench,
+    rotationReminderConfigured,
+    normalizedActiveRotationMode,
+    onUpdateRotationReminder,
+    currentMatchNo,
+    teamAId,
+    teamBId,
+    gameFormat,
+  ]);
+
   const openRotationModal = () => {
     if (
       !canControlMatch ||
@@ -5321,7 +5589,7 @@ export function FriendlyLiveMatchPage({
 
               <div>
                 <h2 id="rotation-modal-title">Set Rotation</h2>
-                <p>Substitution alert &amp; keeper change:</p>
+                <p>You have a substitute who should get fair game time. Set a player rotation rule.</p>
               </div>
             </div>
 

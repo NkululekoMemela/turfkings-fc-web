@@ -916,6 +916,30 @@ export function createVerifiedLineupSnapshot({
     formationLabel: formation?.label || lineup?.formationId || "",
     positions: normalizedPositions,
     guestPlayers: normalizedGuestPlayers,
+
+    /*
+     * STAGE 7H1
+     *
+     * Late players remain genuine members of their team, but are
+     * unavailable for this match until marked Arrived.
+     *
+     * This belongs to the match-specific verified snapshot only.
+     * FormationPage / permanent squad membership is untouched.
+     */
+    latePlayers: normalizeLineupNames(lineup?.latePlayers || []),
+
+    /*
+     * Registered player temporarily borrowed from another
+     * ThreeTeamLeague team as goalkeeper.
+     *
+     * This is deliberately separate from guestPlayers:
+     * the player remains a registered club player and may
+     * receive legitimate goalkeeper credit.
+     */
+    borrowedGoalkeepers: normalizeLineupNames(
+      lineup?.borrowedGoalkeepers || []
+    ),
+
     benchSnapshot: buildBenchFromLineup(
       {
         ...lineup,
@@ -991,6 +1015,7 @@ export function buildCleanSheetEventsForMatch({
   goalsA,
   goalsB,
   verifiedLineups,
+  formationMap = FORMATIONS_5,
 }) {
   const out = [];
 
@@ -1019,20 +1044,20 @@ export function buildCleanSheetEventsForMatch({
 
   // Team A kept clean sheet
   if (Number(goalsB) === 0 && lineupA) {
-    const gk = getGoalkeeperFromSnapshot(lineupA, FORMATIONS_5);
+    const gk = getGoalkeeperFromSnapshot(lineupA, formationMap);
     tryAdd(gk, teamAId, "gk", 1.5, lineupA);
 
-    getDefensivePlayersFromSnapshot(lineupA, FORMATIONS_5).forEach((name) => {
+    getDefensivePlayersFromSnapshot(lineupA, formationMap).forEach((name) => {
       tryAdd(name, teamAId, "def", 1, lineupA);
     });
   }
 
   // Team B kept clean sheet
   if (Number(goalsA) === 0 && lineupB) {
-    const gk = getGoalkeeperFromSnapshot(lineupB, FORMATIONS_5);
+    const gk = getGoalkeeperFromSnapshot(lineupB, formationMap);
     tryAdd(gk, teamBId, "gk", 1.5, lineupB);
 
-    getDefensivePlayersFromSnapshot(lineupB, FORMATIONS_5).forEach((name) => {
+    getDefensivePlayersFromSnapshot(lineupB, formationMap).forEach((name) => {
       tryAdd(name, teamBId, "def", 1, lineupB);
     });
   }

@@ -1137,6 +1137,39 @@ function HighlightCard({
   );
 }
 
+
+function isArchivedTopVotedClip(clip = {}) {
+  return Boolean(
+    clip?.archivedClubFeed ||
+    clip?.archived === true ||
+    String(clip?.status || "").toLowerCase() === "archived" ||
+    clip?.weeklyVotingClosed === true ||
+    clip?.votingLocked === true
+  );
+}
+
+function getFrozenWeeklyVoteCount(clip = {}) {
+  const candidates = [
+    clip?.frozenWeeklyVoteCount,
+    clip?.weeklyVoteCount,
+    clip?.voteCount,
+    clip?.votesCount,
+    clip?.totalVotes,
+    clip?.likesCount,
+    clip?.likeCount,
+  ];
+
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+
+  if (Array.isArray(clip?.votes)) return clip.votes.length;
+  if (Array.isArray(clip?.likes)) return clip.likes.length;
+
+  return 0;
+}
+
 export function VideoHighlightsPage({
   matchId,
   activeClubId = "turf-kings",
@@ -1302,7 +1335,11 @@ export function VideoHighlightsPage({
           typeof VideoHighlightsRepository
             .loadArchivedHighlightsFromFirebase === "function"
             ? VideoHighlightsRepository
-                .loadArchivedHighlightsFromFirebase(resolvedMatchId)
+                .loadArchivedHighlightsFromFirebase(
+                  activeClubId === "turf-kings"
+                    ? "league__2026-S5__match_13__2026-S1-team-1_vs_2026-S1-team-2"
+                    : resolvedMatchId
+                )
             : Promise.resolve([]),
           typeof VideoHighlightsRepository
             .loadRecentClubHighlightsFromFirebase === "function"
@@ -2440,6 +2477,17 @@ export function VideoHighlightsPage({
   };
 
   const toggleLike = async (highlight) => {
+    // Archived Top Voted clips are completed weekly results.
+    // Their historical vote totals stay frozen until the separate
+    // end-of-season voting phase is deliberately opened.
+    if (isArchivedTopVotedClip(highlight)) {
+      console.info(
+        "[VIDEO HIGHLIGHTS] Archived weekly result is locked:",
+        highlight?.clipId || highlight?.id
+      );
+      return;
+    }
+
     if (!isLoggedIn || !highlight) return;
 
     const clipId = String(
@@ -3947,30 +3995,12 @@ export function VideoHighlightsPage({
                             highlight={clip}
                             teams={teams}
                             matchType={matchType}
-                            likeCount={
-                              likeCountsByClip[
-                                clip.clipId ||
-                                clip.id
-                              ] ||
-                              Number(
-                                clip.likeCount ||
-                                clip.votes ||
-                                0
-                              )
-                            }
+                            likeCount={0}
                             isModerator={isModerator}
-                            canLike={
-                              isLoggedIn &&
-                              !likesLoading
-                            }
-                            isLiked={likedClipIds.has(
-                              String(
-                                clip.clipId ||
-                                clip.id ||
-                                ""
-                              )
-                            )}
-                            showVoteLabel={showVoteLabel}
+                            canLike={false}
+                            isLiked={false}
+                            showVoteLabel={false}
+                            hideLikeControl={true}
                             canAttachToChat={
                               ["player", "captain", "admin"].includes(role) &&
                               typeof onAttachHighlightToClubChat === "function"

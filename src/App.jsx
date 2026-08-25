@@ -45,6 +45,9 @@ import {
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
 import { useMembers } from "./hooks/useMembers.js";
 import {
+  FORMATIONS_5,
+  FORMATIONS_6,
+  FORMATIONS_7,
   buildCleanSheetEventsForMatch,
   buildFriendlyDefensiveBlockEvents,
 } from "./core/lineups.js";
@@ -1111,6 +1114,98 @@ function buildDefaultParticipationEntries({
 
 
 
+/*
+ * Friendly participation is based on actual verified pitch presence.
+ *
+ * A player receives matchesPlayed: 1 only when they appeared in a
+ * confirmed on-pitch position at least once during the match.
+ *
+ * Bench membership alone does NOT count as an appearance.
+ *
+ * We deliberately retain zero-appearance squad members in the archive
+ * so downstream Player Cards / Peer Review can distinguish:
+ *   squad member who did not play
+ * from
+ *   player who actually entered the pitch.
+ */
+function buildFriendlyActualParticipationEntries({
+  teams = [],
+  results = [],
+  members = [],
+  verifiedLineups = null,
+  lineupTimeline = [],
+}) {
+  const baseEntries = buildDefaultParticipationEntries({
+    teams,
+    results,
+    members,
+  });
+
+  const appearedByTeam = new Map();
+
+  const recordSnapshotBundle = (snapshotBundle) => {
+    if (!snapshotBundle || typeof snapshotBundle !== "object") return;
+
+    Object.entries(snapshotBundle).forEach(([teamId, snapshot]) => {
+      if (!teamId || !snapshot || typeof snapshot !== "object") return;
+
+      if (!appearedByTeam.has(teamId)) {
+        appearedByTeam.set(teamId, new Set());
+      }
+
+      const appeared = appearedByTeam.get(teamId);
+
+      Object.values(snapshot.positions || {}).forEach((rawName) => {
+        const name = toTitleCaseLoose(rawName || "");
+        if (!name) return;
+
+        const slug = slugFromLooseName(name);
+        if (slug) appeared.add(slug);
+      });
+    });
+  };
+
+  /*
+   * The initial/final verified snapshot is valid evidence even for
+   * older Friendly records that do not yet contain a timeline.
+   */
+  recordSnapshotBundle(verifiedLineups);
+
+  (Array.isArray(lineupTimeline) ? lineupTimeline : []).forEach((entry) => {
+    recordSnapshotBundle(entry?.snapshots || null);
+  });
+
+  return baseEntries.map((entry) => {
+    const appeared =
+      appearedByTeam.get(entry.teamId) ||
+      new Set();
+
+    const playerSlug = slugFromLooseName(
+      entry.playerName ||
+      entry.shortName ||
+      entry.playerId ||
+      ""
+    );
+
+    return {
+      ...entry,
+
+      /*
+       * Friendly is a one-match archive entry.
+       * Therefore actual participation is binary:
+       * 1 = entered the pitch
+       * 0 = remained off the pitch for the whole match.
+       */
+      expectedFullMatches: 1,
+      matchesPlayed:
+        playerSlug && appeared.has(playerSlug)
+          ? 1
+          : 0,
+    };
+  });
+}
+
+
 function getPeerReviewSessionTimestamp(session = {}) {
   const values = [
     session?.completedAtISO,
@@ -2004,6 +2099,33 @@ async function writeCameraLiveContextToFirebase(cameraLiveContext, clubId = DEFA
     { merge: true }
   );
 }
+
+/*
+ * STAGE 7H4
+ *
+ * Defensive awards must interpret the verified lineup using the
+ * formation family belonging to the match that was actually played.
+ *
+ * This keeps 5v5, 6v6 and 7v7 goalkeeper / defender attribution
+ * aligned with their real formations.
+ */
+function getFormationMapForGameFormat(rawGameFormat) {
+  const resolved = normalizeGameFormat(
+    rawGameFormat,
+    GAME_FORMAT.FIVE_V_FIVE
+  );
+
+  if (resolved === GAME_FORMAT.SIX_V_SIX) {
+    return FORMATIONS_6;
+  }
+
+  if (resolved === GAME_FORMAT.SEVEN_V_SEVEN) {
+    return FORMATIONS_7;
+  }
+
+  return FORMATIONS_5;
+}
+
 
 function buildMatchMetadata({ matchType, gameFormat, matchMode } = {}) {
   const resolvedMatchType = normalizeMatchMode(
@@ -4321,6 +4443,11 @@ export default function App() {
 
     setPendingMatchStartContext(buildPendingContextFromLiveDraft(draft));
     setCurrentConfirmedLineupSnapshot(draft.confirmedLineupSnapshot || null);
+    setCurrentConfirmedLineupTimeline(
+      Array.isArray(draft.lineupTimeline)
+        ? draft.lineupTimeline
+        : []
+    );
     setSecondsLeft(Math.max(0, safeSeconds));
     setTimeUp(safeSeconds <= 0);
     setRunning(safeSeconds > 0);
@@ -5327,6 +5454,15 @@ export default function App() {
           confirmedLineupsByMatchNo[matchNo] ||
           null;
 
+        const authoritativeLineupTimeline =
+          currentConfirmedLineupTimeline.length
+            ? currentConfirmedLineupTimeline
+            : Array.isArray(
+                prevSeason?.liveMatchDraft?.lineupTimeline
+              )
+              ? prevSeason.liveMatchDraft.lineupTimeline
+              : [];
+
         const committedEvents = (prevSeason.currentEvents || []).map((e) => ({
           ...e,
           ...matchMeta,
@@ -5349,14 +5485,7 @@ export default function App() {
                     Number(secondsLeft || 0)
                 ),
                 verifiedLineups,
-                lineupTimeline:
-                  currentConfirmedLineupTimeline.length
-                    ? currentConfirmedLineupTimeline
-                    : Array.isArray(
-                        prevSeason?.liveMatchDraft?.lineupTimeline
-                      )
-                      ? prevSeason.liveMatchDraft.lineupTimeline
-                      : [],
+                lineupTimeline: authoritativeLineupTimeline,
               }).map((event) => ({ ...event, ...matchMeta }))
             : buildCleanSheetEventsForMatch({
                 matchNo,
@@ -5365,6 +5494,9 @@ export default function App() {
                 goalsA,
                 goalsB,
                 verifiedLineups,
+              formationMap: getFormationMapForGameFormat(
+                matchMeta.gameFormat
+              ),
               }).map((event) => ({ ...event, ...matchMeta }));
 
         const allCommittedEvents = [
@@ -5427,6 +5559,7 @@ export default function App() {
           winnerId: rotationResult.winnerId,
           isDraw: rotationResult.isDraw,
           confirmedLineupSnapshot: verifiedLineups,
+          lineupTimeline: authoritativeLineupTimeline,
         };
 
         let nextScheduledFixtures = Array.isArray(prevSeason.scheduledFixtures)
@@ -5483,10 +5616,12 @@ export default function App() {
             results: [newResult],
             allEvents: allCommittedEvents,
             teams: friendlyTeamsSnapshot,
-            playerAppearances: buildDefaultParticipationEntries({
+            playerAppearances: buildFriendlyActualParticipationEntries({
               teams: friendlyTeamsSnapshot,
               results: [newResult],
               members,
+              verifiedLineups,
+              lineupTimeline: authoritativeLineupTimeline,
             }),
           };
 
@@ -5615,6 +5750,9 @@ export default function App() {
               goalsA,
               goalsB,
               verifiedLineups,
+              formationMap: getFormationMapForGameFormat(
+                matchMeta.gameFormat
+              ),
             }).map((event) => ({ ...event, ...matchMeta }));
 
       const allCommittedEvents = [
@@ -9384,6 +9522,9 @@ export default function App() {
               : null
           }
           rotationReminderMode={liveMatchDraft?.rotationReminderMode || "off"}
+          rotationReminderConfigured={Boolean(
+            liveMatchDraft?.rotationReminderUpdatedAtISO
+          )}
           onUpdateRotationReminder={handleUpdateRotationReminder}
           redCardRule={liveMatchDraft?.redCardRule || "permanent"}
           onUpdateRedCardRule={handleUpdateRedCardRule}

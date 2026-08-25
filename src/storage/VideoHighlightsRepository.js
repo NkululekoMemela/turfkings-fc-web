@@ -13,6 +13,7 @@ import {
   writeBatch,
   serverTimestamp,
   getDoc,
+  onSnapshot,
 } from "firebase/firestore";
 
 import {
@@ -53,7 +54,8 @@ function matchRef(matchId, clubId = DEFAULT_CLUB_ID) {
   return getClubDoc(db, CLUB_COLLECTIONS.videoHighlights, matchId, clubId);
 }
 
-const rawRef = (id) => collection(matchRef(id), "raw");
+const rawRef = (id, clubId = DEFAULT_CLUB_ID) =>
+  collection(matchRef(id, clubId), "raw");
 const archiveRef = (id) => collection(matchRef(id), "archived");
 const votesRef = (id) => collection(matchRef(id), "votes");
 const cleanupQueueRef = (id) => collection(matchRef(id), "cleanup_queue");
@@ -356,6 +358,56 @@ export async function loadRawHighlightsFromFirebase(matchId) {
   }));
 }
 
+export function subscribeToVarHighlights({
+  matchId,
+  clubId = DEFAULT_CLUB_ID,
+  onChange,
+  onError,
+} = {}) {
+  if (!matchId) {
+    onChange?.([]);
+    return () => {};
+  }
+
+  const q = query(
+    rawRef(matchId, clubId),
+    orderBy("createdAt", "desc")
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const varHighlights = snap.docs
+        .map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }))
+        .filter((item) => {
+          const type = String(
+            item?.tag ||
+            item?.type ||
+            item?.category ||
+            item?.highlightType ||
+            ""
+          )
+            .trim()
+            .toLowerCase();
+
+          return type === "var";
+        });
+
+      onChange?.(varHighlights);
+    },
+    (error) => {
+      console.error(
+        "[FANM VAR] Realtime VAR listener failed:",
+        error
+      );
+      onError?.(error);
+    }
+  );
+}
+
 export async function loadArchivedHighlightsFromFirebase(matchId) {
   if (!matchId) return [];
 
@@ -366,6 +418,171 @@ export async function loadArchivedHighlightsFromFirebase(matchId) {
     id: d.id,
     ...d.data(),
   }));
+}
+
+
+export async function loadClubArchivedHighlightsFromFirebase(clubId) {
+  const safeClubId =
+    String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
+    DEFAULT_CLUB_ID;
+
+  const collected = [];
+
+  const belongsToClub = (item = {}, matchId = "") => {
+    const explicitClubId =
+      item.clubId ||
+      item.clubID ||
+      item.clubSlug ||
+      item.activeClubId ||
+      item.matchContext?.clubId ||
+      item.matchContext?.activeClubId ||
+      item.matchContext?.clubSlug ||
+      item.metadata?.clubId ||
+      item.metadata?.activeClubId ||
+      "";
+
+    if (explicitClubId) {
+      return (
+        String(explicitClubId).trim().toLowerCase() === safeClubId
+      );
+    }
+
+    const safeMatchId = String(matchId || item.matchId || "")
+      .trim()
+      .toLowerCase();
+
+    if (
+      safeClubId !== DEFAULT_CLUB_ID &&
+      safeMatchId.startsWith(`${safeClubId}__`)
+    ) {
+      return true;
+    }
+
+    const clubName =
+      item.clubName ||
+      item.activeClubName ||
+      item.matchContext?.clubName ||
+      item.matchContext?.activeClubName ||
+      item.metadata?.clubName ||
+      "";
+
+    if (
+      safeClubId === DEFAULT_CLUB_ID &&
+      String(clubName).trim().toLowerCase().includes("turf")
+    ) {
+      return true;
+    }
+
+    // Legacy untagged archive records belong to Turf Kings only.
+    return (
+      safeClubId === DEFAULT_CLUB_ID &&
+      !explicitClubId &&
+      !safeMatchId.includes("__")
+    );
+  };
+
+  try {
+    const snap = await getDocs(
+      query(collectionGroup(db, "archived"), limit(250))
+    );
+
+    console.log("[TK ARCHIVED HIGHLIGHTS DEBUG] collectionGroup result", {
+      clubId: safeClubId,
+      size: snap.size,
+    });
+
+    for (const clipDoc of snap.docs) {
+      const data = clipDoc.data() || {};
+      const parentMatchRef = clipDoc.ref.parent?.parent;
+      const matchId =
+        String(data.matchId || parentMatchRef?.id || "").trim();
+
+      if (!belongsToClub(data, matchId)) continue;
+
+      let resolvedUrl =
+        data.downloadUrl ||
+        data.videoUrl ||
+        data.mediaUrl ||
+        data.fileUrl ||
+        data.publicUrl ||
+        data.previewUrl ||
+        data.url ||
+        data.uri ||
+        "";
+
+      if (!resolvedUrl && data.storagePath) {
+        try {
+          resolvedUrl = await getDownloadURL(
+            ref(storage, data.storagePath)
+          );
+        } catch (error) {
+          console.warn(
+            "[TK ARCHIVED HIGHLIGHTS] Could not resolve archived clip URL:",
+            data.storagePath,
+            error
+          );
+        }
+      }
+
+      const frozenWeeklyVoteCount = Number(
+        data.frozenWeeklyVoteCount ??
+        data.weeklyVoteCount ??
+        data.voteCount ??
+        data.votesCount ??
+        data.totalVotes ??
+        data.likesCount ??
+        data.likeCount ??
+        0
+      ) || 0;
+
+      collected.push({
+        id: clipDoc.id,
+        clipId: data.clipId || clipDoc.id,
+        ...data,
+        matchId,
+        videoUrl: data.videoUrl || resolvedUrl,
+        downloadUrl: data.downloadUrl || resolvedUrl,
+        mediaUrl: data.mediaUrl || resolvedUrl,
+
+        // Archived weekly results are historical and immutable in the UI.
+        archivedClubFeed: true,
+        weeklyVotingClosed: true,
+        votingLocked: true,
+        frozenWeeklyVoteCount,
+      });
+    }
+
+    const seen = new Set();
+
+    console.log("[TK ARCHIVED HIGHLIGHTS DEBUG] club-filtered", {
+      clubId: safeClubId,
+      count: collected.length,
+      clips: collected.map((clip) => ({
+        id: clip.clipId || clip.id,
+        matchId: clip.matchId,
+        clubId: clip.clubId || clip.activeClubId || "",
+      })),
+    });
+
+    return collected.filter((clip) => {
+      const key = String(
+        clip?.clipId || clip?.id || ""
+      ).trim();
+
+      if (!key) return true;
+      if (seen.has(key)) return false;
+
+      seen.add(key);
+      return true;
+    });
+  } catch (error) {
+    console.warn(
+      "[TK ARCHIVED HIGHLIGHTS] Failed to load club archive:",
+      safeClubId,
+      error
+    );
+    return [];
+  }
 }
 
 export async function loadVideoCleanupQueueFromFirebase(matchId) {
@@ -1293,10 +1510,16 @@ export async function loadCurrentAwardLeadersFromFirebase(
     String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
     DEFAULT_CLUB_ID;
 
+  /*
+   * NEWS AWARD RACE:
+   *
+   * Use the club's permanent archived weekly winners/nominees rather
+   * than the short-lived current-week feed. Archived clips are the
+   * surviving candidates for the season award race.
+   */
   const highlights =
-    await loadRecentClubHighlightsFromFirebase(
-      safeClubId,
-      { visibilityDays }
+    await loadClubArchivedHighlightsFromFirebase(
+      safeClubId
     );
 
   const safeHighlights = Array.isArray(highlights)
@@ -1313,55 +1536,13 @@ export async function loadCurrentAwardLeadersFromFirebase(
     };
   }
 
-  const matchIds = Array.from(
-    new Set(
-      safeHighlights
-        .map((highlight) =>
-          String(highlight?.matchId || "").trim()
-        )
-        .filter(Boolean)
-    )
-  );
-
   /*
-   * IMPORTANT:
+   * Archived clips have already completed weekly voting.
    *
-   * VideoHighlightsPage currently builds its Top Voted selection
-   * with:
-   *
-   *   buildArchiveSelection(
-   *     approvedHighlights,
-   *     localVotesByUser,
-   *     likeCountsByClip
-   *   )
-   *
-   * Because likeCountsByClip is supplied as directLikeCounts,
-   * those live like counts become the ranking values.
-   *
-   * News deliberately mirrors that exact behaviour.
+   * Never re-read the mutable live likes collection here.
+   * The archived document is the permanent record of the weekly
+   * result and therefore supplies the vote value used by Awards Watch.
    */
-  let likeCounts = {};
-
-  if (matchIds.length) {
-    try {
-      const result =
-        await loadHighlightLikesForMatchesFromFirebase(
-          matchIds
-        );
-
-      likeCounts =
-        result?.countsByClip &&
-        typeof result.countsByClip === "object"
-          ? result.countsByClip
-          : {};
-    } catch (error) {
-      console.warn(
-        "[CURRENT AWARD LEADERS] Could not load likes:",
-        error
-      );
-    }
-  }
-
   const getId = (highlight = {}) =>
     String(
       highlight.clipId ||
@@ -1373,7 +1554,16 @@ export async function loadCurrentAwardLeadersFromFirebase(
   const getLikeCount = (highlight = {}) =>
     Math.max(
       0,
-      Number(likeCounts[getId(highlight)] || 0)
+      Number(
+        highlight.frozenWeeklyVoteCount ??
+        highlight.weeklyVoteCount ??
+        highlight.voteCount ??
+        highlight.votesCount ??
+        highlight.totalVotes ??
+        highlight.likesCount ??
+        highlight.likeCount ??
+        0
+      ) || 0
     );
 
   const getCreatedTime = (highlight = {}) => {
@@ -1417,9 +1607,11 @@ export async function loadCurrentAwardLeadersFromFirebase(
   };
 
   /*
-   * Exact Top Voted ranking rule:
-   *   1. Highest live like count
-   *   2. Newest clip on a tie
+   * Awards Watch ranking rule:
+   *   1. Highest frozen weekly vote count
+   *   2. Newest archived clip on a tie
+   *
+   * Weekly voting is already closed for these clips.
    */
   const rank = (items = []) =>
     items
@@ -1946,7 +2138,9 @@ const VideoHighlightsRepository = {
   uploadHighlightVideoFile,
   saveRawHighlightDoc,
   loadRawHighlightsFromFirebase,
+  subscribeToVarHighlights,
   loadArchivedHighlightsFromFirebase,
+  loadClubArchivedHighlightsFromFirebase,
   loadRecentClubHighlightsFromFirebase,
   loadCurrentAwardLeadersFromFirebase,
   loadVideoCleanupQueueFromFirebase,

@@ -72,16 +72,34 @@ export function buildPlayerEventStats({
   (Array.isArray(events) ? events : []).forEach((event) => {
     if (!event) return;
 
-    if (event.type === "goal" && event.scorer) {
+    /*
+     * Guests remain part of the recorded match event and therefore still
+     * contribute to the match score, event history and highlights.
+     *
+     * They must not, however, create permanent personal statistics.
+     *
+     * Important legacy rule:
+     *   explicit "guest"      -> exclude from permanent player stats
+     *   explicit "registered" -> include
+     *   missing type          -> include for historical compatibility
+     *
+     * Older stored goal events predate scorerType / assistType, so requiring
+     * an explicit "registered" value would incorrectly erase historical stats.
+     */
+    if (
+      event.type === "goal" &&
+      event.scorer &&
+      event.scorerType !== "guest"
+    ) {
       const scorer = getOrCreate(event.scorer);
       if (scorer) scorer.goals += 1;
     }
 
     /*
      * Friendly assists are stored on the goal event itself.
-     * This deliberately applies to both League and Friendly events.
+     * Apply the same guest firewall while preserving legacy untyped assists.
      */
-    if (event.assist) {
+    if (event.assist && event.assistType !== "guest") {
       const assister = getOrCreate(event.assist);
       if (assister) assister.assists += 1;
     }

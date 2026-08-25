@@ -23,6 +23,7 @@
 
 export const PLAYER_AVAILABILITY = Object.freeze({
   ELIGIBLE: "eligible",
+  LATE: "late",
   TEMPORARILY_SUSPENDED: "temporarily_suspended",
   PERMANENTLY_DISMISSED: "permanently_dismissed",
   INJURED: "injured",
@@ -1268,5 +1269,385 @@ export function buildFriendlyInMatchRotation({
 
     totalFitScore:
       assignment.totalFitScore,
+  };
+}
+
+
+// ---------------------------------------------------------
+// STAGE 7G2 — FRIENDLY GOALKEEPER FAIRNESS
+// ---------------------------------------------------------
+//
+// Friendly rule:
+//
+// - With a bench, the incoming substitute remains the default GK.
+// - Without a bench, if the referee manually enables a rotation rule,
+//   that trigger rotates GOALKEEPER duty only.
+// - The next goalkeeper is the on-field player who has gone the
+//   longest without serving as GK.
+// - A player who has never been GK gets priority.
+// - Ties are deterministic and follow current formation order.
+// - Referee-confirmed manual GK changes automatically become part
+//   of the authoritative lineup history and therefore count as
+//   goalkeeper duty.
+//
+// Pure football logic:
+// - no React
+// - no Firestore
+// - works for 5v5, 6v6 and 7v7
+
+function getFriendlyGoalkeeperPosition(formation = null) {
+  const positions = Array.isArray(formation?.positions)
+    ? formation.positions
+    : [];
+
+  return (
+    positions.find(
+      (position) =>
+        String(position?.label || "")
+          .trim()
+          .toUpperCase() === "GK"
+    ) || null
+  );
+}
+
+function getFriendlyGoalkeeperName(snapshot = null, formation = null) {
+  const goalkeeperPosition =
+    getFriendlyGoalkeeperPosition(formation);
+
+  if (!goalkeeperPosition) return "";
+
+  return safeName(
+    snapshot?.positions?.[goalkeeperPosition.id]
+  );
+}
+
+export function chooseNextFriendlyGoalkeeper({
+  teamId = null,
+  currentLineup = null,
+  formation = null,
+  lineupTimeline = [],
+} = {}) {
+  const goalkeeperPosition =
+    getFriendlyGoalkeeperPosition(formation);
+
+  if (!goalkeeperPosition) {
+    return {
+      resolved: false,
+      reason: "goalkeeper_slot_not_found",
+      currentGoalkeeper: null,
+      nextGoalkeeper: null,
+    };
+  }
+
+  const currentPositions = {
+    ...(currentLineup?.positions || {}),
+  };
+
+  const currentGoalkeeper = safeName(
+    currentPositions[goalkeeperPosition.id]
+  );
+
+  const onFieldCandidates = (
+    Array.isArray(formation?.positions)
+      ? formation.positions
+      : []
+  )
+    .map((position, formationIndex) => ({
+      formationIndex,
+      positionId: position.id,
+      playerName: safeName(
+        currentPositions[position.id]
+      ),
+    }))
+    .filter(
+      (candidate) =>
+        candidate.playerName &&
+        playerKey(candidate.playerName) !==
+          playerKey(currentGoalkeeper)
+    );
+
+  if (!onFieldCandidates.length) {
+    return {
+      resolved: false,
+      reason: "no_outfield_goalkeeper_candidate",
+      currentGoalkeeper: currentGoalkeeper || null,
+      nextGoalkeeper: null,
+    };
+  }
+
+  /*
+   * Record the most recent authoritative moment each player
+   * served as goalkeeper.
+   *
+   * Never-GK players deliberately remain undefined, which gives
+   * them first priority.
+   */
+  const lastGoalkeeperDutyByKey = new Map();
+
+  const safeTimeline = Array.isArray(lineupTimeline)
+    ? lineupTimeline
+    : [];
+
+  safeTimeline.forEach((entry, timelineIndex) => {
+    const snapshot =
+      entry?.snapshots?.[teamId] || null;
+
+    if (!snapshot) return;
+
+    const goalkeeper =
+      getFriendlyGoalkeeperName(
+        snapshot,
+        formation
+      );
+
+    const key = playerKey(goalkeeper);
+    if (!key) return;
+
+    const safeSeconds = Number(
+      entry?.timeSeconds
+    );
+
+    /*
+     * timelineIndex is a deterministic fallback for legacy or
+     * malformed entries with no usable timeSeconds.
+     */
+    const dutyOrder = Number.isFinite(safeSeconds)
+      ? safeSeconds
+      : timelineIndex;
+
+    lastGoalkeeperDutyByKey.set(
+      key,
+      dutyOrder
+    );
+  });
+
+  /*
+   * The current confirmed lineup is also authoritative evidence.
+   * This matters at kickoff when the timeline may contain only
+   * the initial confirmation.
+   */
+  if (currentGoalkeeper) {
+    const currentKey =
+      playerKey(currentGoalkeeper);
+
+    if (
+      currentKey &&
+      !lastGoalkeeperDutyByKey.has(currentKey)
+    ) {
+      lastGoalkeeperDutyByKey.set(
+        currentKey,
+        Number.POSITIVE_INFINITY
+      );
+    }
+  }
+
+  const ranked = onFieldCandidates
+    .map((candidate) => {
+      const key =
+        playerKey(candidate.playerName);
+
+      const hasPreviousDuty =
+        lastGoalkeeperDutyByKey.has(key);
+
+      return {
+        ...candidate,
+        hasPreviousDuty,
+        lastDutyOrder:
+          hasPreviousDuty
+            ? lastGoalkeeperDutyByKey.get(key)
+            : Number.NEGATIVE_INFINITY,
+      };
+    })
+    .sort((a, b) => {
+      /*
+       * Never-GK first.
+       */
+      if (
+        a.hasPreviousDuty !==
+        b.hasPreviousDuty
+      ) {
+        return a.hasPreviousDuty ? 1 : -1;
+      }
+
+      /*
+       * Otherwise oldest GK duty first.
+       */
+      if (
+        a.lastDutyOrder !==
+        b.lastDutyOrder
+      ) {
+        return (
+          a.lastDutyOrder -
+          b.lastDutyOrder
+        );
+      }
+
+      /*
+       * Stable tie-break from the current formation.
+       */
+      return (
+        a.formationIndex -
+        b.formationIndex
+      );
+    });
+
+  const chosen = ranked[0] || null;
+
+  if (!chosen?.playerName) {
+    return {
+      resolved: false,
+      reason: "next_goalkeeper_not_resolved",
+      currentGoalkeeper: currentGoalkeeper || null,
+      nextGoalkeeper: null,
+    };
+  }
+
+  return {
+    resolved: true,
+    reason: "longest_since_goalkeeper_duty",
+    goalkeeperPositionId:
+      goalkeeperPosition.id,
+    currentGoalkeeper:
+      currentGoalkeeper || null,
+    nextGoalkeeper:
+      chosen.playerName,
+    nextGoalkeeperPositionId:
+      chosen.positionId,
+  };
+}
+
+
+// ---------------------------------------------------------
+// STAGE 7G2 — APPLY NO-BENCH GK ROTATION
+// ---------------------------------------------------------
+//
+// Minimum-prescription rule:
+//
+// The next goalkeeper swaps places with the current goalkeeper.
+//
+// This deliberately avoids unnecessarily reshuffling the whole
+// outfield during a no-sub Friendly. The referee may immediately
+// change any positions afterwards and that confirmed state remains
+// authoritative.
+//
+// With substitutes, buildFriendlyInMatchRotation remains responsible
+// for the richer incoming-sub -> GK rotation.
+
+export function buildFriendlyGoalkeeperOnlyRotation({
+  currentLineup = null,
+  formation = null,
+  nextGoalkeeper = "",
+} = {}) {
+  const goalkeeperPosition =
+    getFriendlyGoalkeeperPosition(formation);
+
+  if (!goalkeeperPosition) {
+    return {
+      resolved: false,
+      reason: "goalkeeper_slot_not_found",
+      positions: {
+        ...(currentLineup?.positions || {}),
+      },
+    };
+  }
+
+  const currentPositions = {
+    ...(currentLineup?.positions || {}),
+  };
+
+  const currentGoalkeeper =
+    safeName(
+      currentPositions[
+        goalkeeperPosition.id
+      ]
+    );
+
+  const nextGoalkeeperName =
+    safeName(nextGoalkeeper);
+
+  if (
+    !currentGoalkeeper ||
+    !nextGoalkeeperName
+  ) {
+    return {
+      resolved: false,
+      reason: "goalkeeper_player_missing",
+      positions: currentPositions,
+    };
+  }
+
+  const nextGoalkeeperKey =
+    playerKey(nextGoalkeeperName);
+
+  const nextGoalkeeperPosition =
+    (Array.isArray(formation?.positions)
+      ? formation.positions
+      : []
+    ).find(
+      (position) =>
+        playerKey(
+          currentPositions[position.id]
+        ) === nextGoalkeeperKey
+    ) || null;
+
+  if (!nextGoalkeeperPosition) {
+    return {
+      resolved: false,
+      reason: "next_goalkeeper_not_on_pitch",
+      positions: currentPositions,
+    };
+  }
+
+  if (
+    nextGoalkeeperPosition.id ===
+    goalkeeperPosition.id
+  ) {
+    return {
+      resolved: false,
+      reason: "player_already_goalkeeper",
+      positions: currentPositions,
+    };
+  }
+
+  const nextPositions = {
+    ...currentPositions,
+
+    /*
+     * New GK takes the GK slot.
+     */
+    [goalkeeperPosition.id]:
+      nextGoalkeeperName,
+
+    /*
+     * Previous GK takes the new GK's former outfield slot.
+     *
+     * This is the least-prescriptive automatic change.
+     */
+    [nextGoalkeeperPosition.id]:
+      currentGoalkeeper,
+  };
+
+  return {
+    resolved: true,
+    reason: "friendly_goalkeeper_only_rotation",
+    formationId:
+      formation?.id ||
+      currentLineup?.formationId ||
+      null,
+    goalkeeperPositionId:
+      goalkeeperPosition.id,
+    previousGoalkeeper:
+      currentGoalkeeper,
+    nextGoalkeeper:
+      nextGoalkeeperName,
+    previousOutfieldPositionId:
+      nextGoalkeeperPosition.id,
+    positions: nextPositions,
+    benchPlayers:
+      Array.isArray(
+        currentLineup?.benchSnapshot
+      )
+        ? [...currentLineup.benchSnapshot]
+        : [],
   };
 }

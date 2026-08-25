@@ -51,6 +51,7 @@ import {
   buildNextAppearanceParticipationRotation,
   buildNextAppearanceGoalkeeperConstraint,
   buildNextAppearanceOutfieldAssignment,
+  PLAYER_AVAILABILITY,
 } from "../core/playerRotation.js";
 
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
@@ -341,24 +342,83 @@ function sanitizeLiveLineupToRegisteredPlayers(
   defaultFormationId = DEFAULT_FORMATION_ID_5
 ) {
   const formation =
-    formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
+    formationMap[lineup?.formationId] ||
+    formationMap[defaultFormationId] ||
+    Object.values(formationMap)[0];
 
   const validRegistered = uniquePlayersNormalized(
     registeredPlayers || [],
     canonicalName,
     playerKeyFor
   );
-  const validKeys = new Set(validRegistered.map((name) => playerKeyFor(name)));
+
+  const guestPlayers = uniquePlayersNormalized(
+    lineup?.guestPlayers || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  const borrowedGoalkeepers = uniquePlayersNormalized(
+    lineup?.borrowedGoalkeepers || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  const latePlayers = uniquePlayersNormalized(
+    lineup?.latePlayers || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  const registeredKeys = new Set(
+    validRegistered.map((name) => playerKeyFor(name))
+  );
+
+  const guestKeys = new Set(
+    guestPlayers.map((name) => playerKeyFor(name))
+  );
+
+  const borrowedKeys = new Set(
+    borrowedGoalkeepers.map((name) => playerKeyFor(name))
+  );
+
+  const lateKeys = new Set(
+    latePlayers.map((name) => playerKeyFor(name))
+  );
 
   const cleanPositions = {};
   const usedKeys = new Set();
 
+  /*
+   * Preserve legitimate current match assignments.
+   *
+   * Registered team players may occupy normal positions.
+   * Foreign guests may occupy normal positions.
+   * Borrowed registered players are legal ONLY at GK.
+   * Late players stay off the pitch until Arrived.
+   */
   (formation.positions || []).forEach((pos) => {
     const rawName = lineup?.positions?.[pos.id] || "";
     const canonical = canonicalName(rawName);
     const key = playerKeyFor(canonical);
 
-    if (canonical && validKeys.has(key) && !usedKeys.has(key)) {
+    if (!canonical || !key || usedKeys.has(key) || lateKeys.has(key)) {
+      cleanPositions[pos.id] = null;
+      return;
+    }
+
+    const isRegistered = registeredKeys.has(key);
+    const isGuest = guestKeys.has(key);
+    const isBorrowed = borrowedKeys.has(key);
+    const isGoalkeeper =
+      String(pos?.label || "").toUpperCase() === "GK";
+
+    const allowed =
+      isRegistered ||
+      isGuest ||
+      (isBorrowed && isGoalkeeper);
+
+    if (allowed) {
       cleanPositions[pos.id] = canonical;
       usedKeys.add(key);
     } else {
@@ -366,30 +426,70 @@ function sanitizeLiveLineupToRegisteredPlayers(
     }
   });
 
-  const remainingRegistered = validRegistered.filter(
-    (name) => !usedKeys.has(playerKeyFor(name))
-  );
+  /*
+   * Only AVAILABLE registered team players may automatically
+   * refill empty starting positions.
+   *
+   * Guests and borrowed players are explicit referee choices.
+   */
+  const remainingRegistered = validRegistered.filter((name) => {
+    const key = playerKeyFor(name);
+
+    return (
+      key &&
+      !usedKeys.has(key) &&
+      !lateKeys.has(key)
+    );
+  });
 
   (formation.positions || []).forEach((pos) => {
     if (!cleanPositions[pos.id] && remainingRegistered.length > 0) {
       const next = remainingRegistered.shift();
+      const key = playerKeyFor(next);
+
       cleanPositions[pos.id] = next;
-      usedKeys.add(playerKeyFor(next));
+      usedKeys.add(key);
     }
   });
 
-  const cleanGuests = uniquePlayersNormalized(
-    lineup?.guestPlayers || [],
+  /*
+   * Preserve match-only bench identities as well.
+   * A foreign guest must not disappear merely because they
+   * have not yet been moved onto the pitch.
+   */
+  const existingBench = uniquePlayersNormalized(
+    lineup?.benchSnapshot || [],
     canonicalName,
     playerKeyFor
-  ).filter((name) => !usedKeys.has(playerKeyFor(name)));
+  );
+
+  const benchSnapshot = uniquePlayersNormalized(
+    [
+      ...remainingRegistered,
+      ...existingBench,
+      ...guestPlayers,
+    ],
+    canonicalName,
+    playerKeyFor
+  ).filter((name) => {
+    const key = playerKeyFor(name);
+
+    return (
+      key &&
+      !usedKeys.has(key) &&
+      !lateKeys.has(key) &&
+      !borrowedKeys.has(key)
+    );
+  });
 
   return {
     ...lineup,
     formationId: formation.id,
     positions: cleanPositions,
-    guestPlayers: cleanGuests,
-    benchSnapshot: remainingRegistered,
+    guestPlayers,
+    latePlayers,
+    borrowedGoalkeepers,
+    benchSnapshot,
     registeredPlayers: validRegistered,
   };
 }
@@ -436,6 +536,60 @@ function liveLineupStateEquals(
   if (aGuests.length !== bGuests.length) return false;
   for (let i = 0; i < aGuests.length; i += 1) {
     if (playerKeyFor(aGuests[i]) !== playerKeyFor(bGuests[i])) return false;
+  }
+
+  const aLate = uniquePlayersNormalized(
+    a?.latePlayers || [],
+    canonicalName,
+    playerKeyFor
+  );
+  const bLate = uniquePlayersNormalized(
+    b?.latePlayers || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  if (aLate.length !== bLate.length) return false;
+
+  for (let i = 0; i < aLate.length; i += 1) {
+    if (
+      playerKeyFor(aLate[i]) !==
+      playerKeyFor(bLate[i])
+    ) {
+      return false;
+    }
+  }
+
+  const aBorrowedGoalkeepers = uniquePlayersNormalized(
+    a?.borrowedGoalkeepers || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  const bBorrowedGoalkeepers = uniquePlayersNormalized(
+    b?.borrowedGoalkeepers || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  if (
+    aBorrowedGoalkeepers.length !==
+    bBorrowedGoalkeepers.length
+  ) {
+    return false;
+  }
+
+  for (
+    let i = 0;
+    i < aBorrowedGoalkeepers.length;
+    i += 1
+  ) {
+    if (
+      playerKeyFor(aBorrowedGoalkeepers[i]) !==
+      playerKeyFor(bBorrowedGoalkeepers[i])
+    ) {
+      return false;
+    }
   }
 
   const aBench = uniquePlayersNormalized(
@@ -1133,6 +1287,7 @@ function LineupBoard({
   lineup,
   setLineup,
   registeredPlayers,
+  borrowableGoalkeepers = [],
   canonicalName,
   displayCompactPlayerName,
   playerKeyFor,
@@ -1145,16 +1300,36 @@ function LineupBoard({
     formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [guestName, setGuestName] = useState("");
+  const [pendingLatePlayer, setPendingLatePlayer] = useState(null);
+  const [showRecoveryOptions, setShowRecoveryOptions] = useState(false);
+  const [draggedPlayer, setDraggedPlayer] = useState(null);
+
   const lastSanitizedSignatureRef = useRef("");
 
   useEffect(() => {
     setSelectedPlayer(null);
   }, [lineup?.formationId]);
 
+  const latePlayers = uniquePlayersNormalized(
+    lineup?.latePlayers || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  const latePlayerKeys = new Set(
+    latePlayers.map((name) => playerKeyFor(name))
+  );
+
+  /*
+   * Late players remain registered team members, but they are not
+   * available to occupy a pitch position or normal substitute slot.
+   */
   const allRegistered = uniquePlayersNormalized(
     registeredPlayers || [],
     canonicalName,
     playerKeyFor
+  ).filter(
+    (name) => !latePlayerKeys.has(playerKeyFor(name))
   );
 
   const sanitizedLineup = useMemo(
@@ -1175,6 +1350,9 @@ function LineupBoard({
       formationId: sanitizedLineup?.formationId || "",
       positions: sanitizedLineup?.positions || {},
       guestPlayers: sanitizedLineup?.guestPlayers || [],
+      latePlayers: sanitizedLineup?.latePlayers || [],
+      borrowedGoalkeepers:
+        sanitizedLineup?.borrowedGoalkeepers || [],
       benchSnapshot: sanitizedLineup?.benchSnapshot || [],
       registeredPlayers: sanitizedLineup?.registeredPlayers || [],
     });
@@ -1205,6 +1383,9 @@ function LineupBoard({
         formationId: prev?.formationId || "",
         positions: prev?.positions || {},
         guestPlayers: prev?.guestPlayers || [],
+        latePlayers: prev?.latePlayers || [],
+        borrowedGoalkeepers:
+          prev?.borrowedGoalkeepers || [],
         benchSnapshot: prev?.benchSnapshot || [],
         registeredPlayers: prev?.registeredPlayers || [],
       });
@@ -1226,20 +1407,70 @@ function LineupBoard({
     defaultFormationId,
   ]);
 
-  const assignedNames = Object.values(sanitizedLineup?.positions || {})
+  const borrowedGoalkeepers = uniquePlayersNormalized(
+    lineup?.borrowedGoalkeepers || [],
+    canonicalName,
+    playerKeyFor
+  );
+
+  const borrowedGoalkeeperKeys = new Set(
+    borrowedGoalkeepers.map((name) => playerKeyFor(name))
+  );
+
+  const goalkeeperPosition =
+    formation?.positions?.find(
+      (position) =>
+        String(position?.label || "").toUpperCase() === "GK"
+    ) || null;
+
+  const requestedBorrowedGoalkeeper =
+    goalkeeperPosition
+      ? canonicalName(
+          lineup?.positions?.[goalkeeperPosition.id] || ""
+        )
+      : "";
+
+  const preservedBorrowedGoalkeeper =
+    requestedBorrowedGoalkeeper &&
+    borrowedGoalkeeperKeys.has(
+      playerKeyFor(requestedBorrowedGoalkeeper)
+    )
+      ? requestedBorrowedGoalkeeper
+      : "";
+
+  const effectiveLineup = preservedBorrowedGoalkeeper
+    ? {
+        ...sanitizedLineup,
+        positions: {
+          ...(sanitizedLineup?.positions || {}),
+          [goalkeeperPosition.id]:
+            preservedBorrowedGoalkeeper,
+        },
+        borrowedGoalkeepers: [
+          preservedBorrowedGoalkeeper,
+        ],
+      }
+    : {
+        ...sanitizedLineup,
+        borrowedGoalkeepers: [],
+      };
+
+  const assignedNames = Object.values(
+    effectiveLineup?.positions || {}
+  )
     .map((name) => canonicalName(name))
     .filter(Boolean);
 
   const assignedKeys = new Set(assignedNames.map((name) => playerKeyFor(name)));
 
   const guestPlayers = uniquePlayersNormalized(
-    sanitizedLineup?.guestPlayers || [],
+    effectiveLineup?.guestPlayers || [],
     canonicalName,
     playerKeyFor
   );
 
   const sanitizedBenchRegistered = uniquePlayersNormalized(
-    sanitizedLineup?.benchSnapshot || [],
+    effectiveLineup?.benchSnapshot || [],
     canonicalName,
     playerKeyFor
   ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
@@ -1255,6 +1486,152 @@ function LineupBoard({
     canonicalName,
     playerKeyFor
   ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
+
+  /*
+   * STAGE 7H1 — LATE / ARRIVED
+   *
+   * One small status control; one responsibility only.
+   *
+   * AVAILABLE player:
+   *   click -> Mark Late
+   *
+   * LATE player:
+   *   click -> Mark Arrived
+   *
+   * No discipline/yellow-card behaviour belongs here.
+   */
+  const markPlayerLate = (playerName) => {
+    if (disabled) return;
+
+    const cleanName = canonicalName(playerName);
+    const targetKey = playerKeyFor(cleanName);
+
+    if (!cleanName || !targetKey) return;
+
+    setLineup((prev) => {
+      const formationForLineup =
+        formationMap?.[prev?.formationId] ||
+        formationMap?.[defaultFormationId] ||
+        Object.values(formationMap || {})[0];
+
+      const nextPositions = {
+        ...(prev?.positions || {}),
+      };
+
+      let vacatedPositionId = null;
+
+      Object.keys(nextPositions).forEach((positionId) => {
+        if (
+          playerKeyFor(nextPositions[positionId]) ===
+          targetKey
+        ) {
+          nextPositions[positionId] = null;
+          vacatedPositionId = positionId;
+        }
+      });
+
+      const nextLatePlayers =
+        uniquePlayersNormalized(
+          [
+            ...(prev?.latePlayers || []),
+            cleanName,
+          ],
+          canonicalName,
+          playerKeyFor
+        );
+
+      /*
+       * Keep the late player completely outside the active bench queue.
+       */
+      let nextBench =
+        uniquePlayersNormalized(
+          prev?.benchSnapshot || [],
+          canonicalName,
+          playerKeyFor
+        ).filter(
+          (name) =>
+            playerKeyFor(name) !== targetKey
+        );
+
+      /*
+       * If a genuine registered substitute is already available,
+       * immediately fill the vacated starting position.
+       *
+       * This is intentionally NOT the normal between-match GK rotation.
+       * We are simply resolving a pre-match attendance exception.
+       */
+      if (
+        vacatedPositionId &&
+        nextBench.length > 0
+      ) {
+        const replacement =
+          nextBench[0];
+
+        nextPositions[vacatedPositionId] =
+          replacement;
+
+        nextBench =
+          nextBench.slice(1);
+      }
+
+      return {
+        ...prev,
+        positions: nextPositions,
+        latePlayers: nextLatePlayers,
+        benchSnapshot: nextBench,
+      };
+    });
+
+    setSelectedPlayer(null);
+  };
+
+  const markPlayerArrived = (playerName) => {
+    if (disabled) return;
+
+    const cleanName = canonicalName(playerName);
+    const targetKey = playerKeyFor(cleanName);
+
+    if (!cleanName || !targetKey) return;
+
+    setLineup((prev) => ({
+      ...prev,
+
+      latePlayers:
+        uniquePlayersNormalized(
+          prev?.latePlayers || [],
+          canonicalName,
+          playerKeyFor
+        ).filter(
+          (name) =>
+            playerKeyFor(name) !== targetKey
+        ),
+
+      /*
+       * Arriving players return as available substitutes.
+       * They do not automatically displace somebody who is already
+       * playing the current match.
+       */
+      benchSnapshot:
+        movePlayerToFront(
+          prev?.benchSnapshot || [],
+          cleanName,
+          canonicalName,
+          playerKeyFor
+        ),
+    }));
+
+    setSelectedPlayer(null);
+  };
+
+  const hasUnfilledStartingPosition =
+    (formation?.positions || []).some(
+      (position) =>
+        !String(
+          sanitizedLineup?.positions?.[
+            position.id
+          ] || ""
+        ).trim()
+    );
 
   const handleBenchClick = (playerName) => {
     if (disabled) return;
@@ -1340,6 +1717,91 @@ function LineupBoard({
     setSelectedPlayer(null);
   };
 
+  const handleBorrowGoalkeeper = (playerName) => {
+    if (disabled) return;
+
+    const cleanName = canonicalName(playerName);
+    const targetKey = playerKeyFor(cleanName);
+
+    if (!cleanName || !targetKey) return;
+
+    const allowedPlayer = uniquePlayersNormalized(
+      borrowableGoalkeepers || [],
+      canonicalName,
+      playerKeyFor
+    ).find(
+      (name) => playerKeyFor(name) === targetKey
+    );
+
+    if (!allowedPlayer) return;
+
+    const gkPosition =
+      formation?.positions?.find(
+        (position) =>
+          String(position?.label || "").toUpperCase() === "GK"
+      );
+
+    if (!gkPosition) return;
+
+    setLineup((prev) => {
+      const nextPositions = {
+        ...(prev?.positions || {}),
+      };
+
+      const previousGoalkeeper = canonicalName(
+        nextPositions[gkPosition.id] || ""
+      );
+
+      nextPositions[gkPosition.id] = allowedPlayer;
+
+      let nextBench = uniquePlayersNormalized(
+        prev?.benchSnapshot || [],
+        canonicalName,
+        playerKeyFor
+      );
+
+      /*
+       * If this team's own player was previously in goal,
+       * return that player to this team's bench.
+       */
+      if (
+        previousGoalkeeper &&
+        playerKeyFor(previousGoalkeeper) !== targetKey &&
+        allRegistered.some(
+          (name) =>
+            playerKeyFor(name) ===
+            playerKeyFor(previousGoalkeeper)
+        )
+      ) {
+        nextBench = movePlayerToFront(
+          nextBench,
+          previousGoalkeeper,
+          canonicalName,
+          playerKeyFor
+        );
+      }
+
+      return {
+        ...prev,
+        positions: nextPositions,
+        borrowedGoalkeepers: [allowedPlayer],
+
+        /*
+         * Registered borrowed GK and foreign guest are
+         * intentionally different identities.
+         */
+        guestPlayers: (prev?.guestPlayers || []).filter(
+          (name) =>
+            playerKeyFor(name) !== targetKey
+        ),
+
+        benchSnapshot: nextBench,
+      };
+    });
+
+    setSelectedPlayer(null);
+  };
+
   const handleGuestAdd = () => {
     if (disabled) return;
 
@@ -1373,8 +1835,21 @@ function LineupBoard({
 
     setLineup((prev) => ({
       ...prev,
+
+      /*
+       * Foreign guests remain temporary identities, but they must also
+       * enter the usable match bench so the referee can actually place
+       * them on the pitch.
+       */
       guestPlayers: uniquePlayersNormalized(
         [...(prev?.guestPlayers || []), clean],
+        canonicalName,
+        playerKeyFor
+      ),
+
+      benchSnapshot: movePlayerToFront(
+        prev?.benchSnapshot || [],
+        clean,
         canonicalName,
         playerKeyFor
       ),
@@ -1441,10 +1916,113 @@ function LineupBoard({
             return (
               <div
                 key={pos.id}
+                draggable={Boolean(name) && !disabled}
+                onDragStart={(event) => {
+                  if (!name || disabled) return;
+
+                  setDraggedPlayer({
+                    from: "pitch",
+                    name,
+                    posId: pos.id,
+                  });
+
+                  try {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", name);
+                  } catch (_) {
+                    // Browser drag metadata is optional.
+                  }
+                }}
+                onDragEnd={() => setDraggedPlayer(null)}
+                onDragOver={(event) => {
+                  if (!disabled && draggedPlayer) {
+                    event.preventDefault();
+                  }
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+
+                  if (disabled || !draggedPlayer) return;
+
+                  const targetName =
+                    sanitizedLineup?.positions?.[pos.id] || null;
+
+                  setLineup((prev) => {
+                    const nextPositions = {
+                      ...(prev?.positions || {}),
+                    };
+
+                    if (draggedPlayer.from === "pitch") {
+                      const sourcePosId = draggedPlayer.posId;
+
+                      if (!sourcePosId || sourcePosId === pos.id) {
+                        return prev;
+                      }
+
+                      const sourceName =
+                        nextPositions[sourcePosId] ||
+                        draggedPlayer.name;
+
+                      nextPositions[sourcePosId] =
+                        targetName || null;
+
+                      nextPositions[pos.id] =
+                        sourceName;
+
+                      return {
+                        ...prev,
+                        positions: nextPositions,
+                      };
+                    }
+
+                    if (draggedPlayer.from === "bench") {
+                      const incoming = draggedPlayer.name;
+                      if (!incoming) return prev;
+
+                      nextPositions[pos.id] = incoming;
+
+                      let nextBench = removePlayerByKey(
+                        prev?.benchSnapshot || [],
+                        incoming,
+                        canonicalName,
+                        playerKeyFor
+                      );
+
+                      if (targetName) {
+                        nextBench = movePlayerToFront(
+                          nextBench,
+                          targetName,
+                          canonicalName,
+                          playerKeyFor
+                        );
+                      }
+
+                      return {
+                        ...prev,
+                        positions: nextPositions,
+                        benchSnapshot: nextBench,
+                      };
+                    }
+
+                    return prev;
+                  });
+
+                  setSelectedPlayer(null);
+                  setDraggedPlayer(null);
+                }}
                 className={`pitch-position ${name ? "has-player" : ""} ${
                   isSelected ? "selected" : ""
                 }`}
-                style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                style={{
+                  left: `${pos.x}%`,
+                  top: `${pos.y}%`,
+                  zIndex:
+                    pendingLatePlayer === name
+                      ? 120
+                      : isSelected
+                      ? 20
+                      : undefined,
+                }}
                 onClick={() => handlePitchClick(pos.id)}
               >
                 <div className="player-token">
@@ -1460,6 +2038,139 @@ function LineupBoard({
                     </span>
                     <span className="position-tag">{pos.label}</span>
                   </div>
+
+                  {name && !disabled && (
+                    <button
+                      type="button"
+                      aria-label={`Mark ${displayCompactPlayerName(name)} late`}
+                      title="Mark Late"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setPendingLatePlayer(
+                          pendingLatePlayer === name ? null : name
+                        );
+                      }}
+                      style={{
+                        position: "absolute",
+                        right: "-18px",
+                        top: "-14px",
+                        width: 26,
+                        height: 26,
+                        borderRadius: "50%",
+                        border: "1px solid rgba(148, 163, 184, 0.75)",
+                        background: "rgba(15, 23, 42, 0.94)",
+                        color: "#facc15",
+                        display: "grid",
+                        placeItems: "center",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        padding: 0,
+                        zIndex: 4,
+                      }}
+                    >
+                      ◷
+                    </button>
+                  )}
+
+                  {name &&
+                    !disabled &&
+                    pendingLatePlayer === name && (
+                      <div
+                        role="dialog"
+                        aria-label={`Is ${displayCompactPlayerName(name)} late?`}
+                        onClick={(event) => event.stopPropagation()}
+                        style={{
+                          position: "absolute",
+
+                          /*
+                           * Stay inside the mobile pitch instead of
+                           * projecting beyond the team-column edge.
+                           */
+                          left:
+                            Number(pos?.x || 0) >= 50
+                              ? "auto"
+                              : 0,
+                          right:
+                            Number(pos?.x || 0) >= 50
+                              ? 0
+                              : "auto",
+
+                          top:
+                            Number(pos?.y || 0) <= 42
+                              ? "calc(100% + 5px)"
+                              : "auto",
+                          bottom:
+                            Number(pos?.y || 0) <= 42
+                              ? "auto"
+                              : "calc(100% + 5px)",
+
+                          width: 108,
+                          maxWidth: 108,
+                          boxSizing: "border-box",
+                          padding: 8,
+                          borderRadius: 10,
+                          border:
+                            "1px solid rgba(250, 204, 21, 0.65)",
+                          background: "rgba(15, 23, 42, 0.98)",
+                          boxShadow:
+                            "0 10px 24px rgba(0,0,0,0.35)",
+                          zIndex: 9999,
+                        }}
+                      >
+                        <strong
+                          style={{
+                            display: "block",
+                            fontSize: 12,
+                            marginBottom: 7,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Player late?
+                        </strong>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 5,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="primary-btn"
+                            style={{
+                              minHeight: 30,
+                              padding: "4px 10px",
+                              fontSize: 12,
+                            }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const playerName = name;
+                              setPendingLatePlayer(null);
+                              markPlayerLate(playerName);
+                            }}
+                          >
+                            Yes
+                          </button>
+
+                          <button
+                            type="button"
+                            className="secondary-btn"
+                            style={{
+                              minHeight: 30,
+                              padding: "4px 10px",
+                              fontSize: 12,
+                            }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setPendingLatePlayer(null);
+                            }}
+                          >
+                            No
+                          </button>
+                        </div>
+                      </div>
+                    )}
                 </div>
               </div>
             );
@@ -1468,7 +2179,218 @@ function LineupBoard({
       </div>
 
       <div className="bench-wrapper live-bench-wrapper">
-        <h4 className="live-bench-title">Bench</h4>
+        <h4 className="live-bench-title">Bench / Subs</h4>
+
+        {latePlayers.length > 0 && (
+          <div
+            style={{
+              marginBottom: 12,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            {latePlayers.map((name) => {
+              const photoData =
+                getPlayerPhoto(name);
+
+              return (
+                <div
+                  key={`late-${playerKeyFor(name)}`}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "stretch",
+                    justifyContent: "flex-start",
+                    gap: 7,
+                    padding: "8px 9px",
+                    width: "100%",
+                    maxWidth: "100%",
+                    boxSizing: "border-box",
+                    borderRadius: 10,
+                    border:
+                      "1px solid rgba(250, 204, 21, 0.45)",
+                    background:
+                      "rgba(250, 204, 21, 0.08)",
+                  }}
+                >
+                  <PlayerBenchChip
+                    name={displayCompactPlayerName(name)}
+                    isSelected={false}
+                    onClick={() => {}}
+                    photoData={photoData}
+                    disabled={true}
+                    suffix=" (Late)"
+                    isSub={true}
+                  />
+
+                  {!disabled && (
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={() =>
+                        markPlayerArrived(name)
+                      }
+                      title="Player has arrived"
+                      style={{
+                        width: "100%",
+                        minHeight: 32,
+                        padding: "0.35rem 0.55rem",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      ✓ Arrived
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!disabled &&
+          hasUnfilledStartingPosition &&
+          latePlayers.length > 0 && (
+            <div
+              style={{
+                position: "relative",
+                marginBottom: 10,
+                width: "100%",
+                maxWidth: "100%",
+              }}
+            >
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() =>
+                  setShowRecoveryOptions((current) => !current)
+                }
+                style={{
+                  width: "100%",
+                  minHeight: 44,
+                  padding: "9px 11px",
+                  border:
+                    "1px solid rgba(250, 204, 21, 0.92)",
+                  background:
+                    "linear-gradient(135deg, rgba(180, 83, 9, 0.42), rgba(234, 179, 8, 0.18))",
+                  boxShadow:
+                    "0 0 0 1px rgba(250, 204, 21, 0.10), 0 8px 22px rgba(0,0,0,0.22)",
+                  textAlign: "center",
+                  whiteSpace: "normal",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  letterSpacing: "0.01em",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 7,
+                  }}
+                >
+                  <span aria-hidden="true">⚠️</span>
+                  <span>Missing player — choose cover</span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: 15,
+                      transform: showRecoveryOptions
+                        ? "rotate(180deg)"
+                        : "none",
+                    }}
+                  >
+                    ▾
+                  </span>
+                </span>
+              </button>
+
+              {showRecoveryOptions && (
+                <div
+                  style={{
+                    marginTop: 6,
+                    width: "100%",
+                    maxWidth: "100%",
+                    boxSizing: "border-box",
+                    padding: 8,
+                    borderRadius: 10,
+                    border:
+                      "1px solid rgba(59, 130, 246, 0.50)",
+                    background: "rgba(7, 17, 35, 0.98)",
+                    overflow: "hidden",
+                    position: "relative",
+                    zIndex: 30,
+                  }}
+                >
+                  <strong
+                    style={{
+                      display: "block",
+                      marginBottom: 3,
+                      fontSize: 12,
+                    }}
+                  >
+                    🧤 Borrow goalkeeper
+                  </strong>
+
+                  <div
+                    className="muted small"
+                    style={{ marginBottom: 7 }}
+                  >
+                    Registered player from another team.
+                  </div>
+
+                  {borrowableGoalkeepers.length > 0 ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 5,
+                        width: "100%",
+                      }}
+                    >
+                      {borrowableGoalkeepers.map((playerName) => (
+                        <button
+                          key={playerKeyFor(playerName)}
+                          type="button"
+                          className="secondary-btn"
+                          onClick={() => {
+                            handleBorrowGoalkeeper(playerName);
+                            setShowRecoveryOptions(false);
+                          }}
+                          style={{
+                            width: "100%",
+                            minHeight: 31,
+                            padding: "5px 7px",
+                            fontSize: 11,
+                            whiteSpace: "normal",
+                          }}
+                        >
+                          🧤 {displayCompactPlayerName(playerName)}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="muted small">
+                      No registered goalkeeper cover available.
+                    </div>
+                  )}
+
+                  <div
+                    className="muted small"
+                    style={{
+                      marginTop: 8,
+                      paddingTop: 7,
+                      borderTop:
+                        "1px solid rgba(148, 163, 184, 0.18)",
+                    }}
+                  >
+                    Or add a foreign guest below.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
         {benchList.length === 0 ? (
           <p className="muted">No bench players available.</p>
@@ -1485,7 +2407,27 @@ function LineupBoard({
               const photoData = getPlayerPhoto(p);
 
               return (
-                <li key={p} className="live-bench-item">
+                <li
+                  key={p}
+                  className="live-bench-item"
+                  draggable={!disabled}
+                  onDragStart={(event) => {
+                    if (disabled) return;
+
+                    setDraggedPlayer({
+                      from: "bench",
+                      name: p,
+                    });
+
+                    try {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", p);
+                    } catch (_) {
+                      // Browser drag metadata is optional.
+                    }
+                  }}
+                  onDragEnd={() => setDraggedPlayer(null)}
+                >
                   <PlayerBenchChip
                     name={displayCompactPlayerName(p)}
                     isSelected={isSelected}
@@ -1511,7 +2453,22 @@ function LineupBoard({
         )}
 
         {!disabled && (
-          <div className="live-guest-add">
+          <div
+            className="live-guest-add"
+            style={
+              hasUnfilledStartingPosition &&
+              latePlayers.length > 0
+                ? {
+                    padding: 10,
+                    borderRadius: 10,
+                    border:
+                      "1px solid rgba(245, 158, 11, 0.55)",
+                    background:
+                      "rgba(245, 158, 11, 0.08)",
+                  }
+                : undefined
+            }
+          >
             <label className="muted small live-guest-label live-guest-label-hidden">
               Add guest player
             </label>
@@ -2217,6 +3174,13 @@ export function ThreeTeamLeagueLiveMatchPage({
       buildNextAppearanceParticipationRotation({
         previousLineup: previous.snapshot,
         registeredPlayers: richTeamPlayers,
+        playerStates: (
+          previous.snapshot?.latePlayers || []
+        ).map((name) => ({
+          name,
+          availability:
+            PLAYER_AVAILABILITY.LATE,
+        })),
       });
 
     /*
@@ -2251,6 +3215,8 @@ export function ThreeTeamLeagueLiveMatchPage({
       formationId: formation.id,
       positions: rotated.positions,
       benchSnapshot: rotated.benchPlayers,
+      latePlayers:
+        previous.snapshot?.latePlayers || [],
     };
   }, [
     teamA,
@@ -2323,6 +3289,13 @@ export function ThreeTeamLeagueLiveMatchPage({
       buildNextAppearanceParticipationRotation({
         previousLineup: previous.snapshot,
         registeredPlayers: richTeamPlayers,
+        playerStates: (
+          previous.snapshot?.latePlayers || []
+        ).map((name) => ({
+          name,
+          availability:
+            PLAYER_AVAILABILITY.LATE,
+        })),
       });
 
     if (!participation.rotationRequired) {
@@ -2353,6 +3326,8 @@ export function ThreeTeamLeagueLiveMatchPage({
       formationId: formation.id,
       positions: rotated.positions,
       benchSnapshot: rotated.benchPlayers,
+      latePlayers:
+        previous.snapshot?.latePlayers || [],
     };
   }, [
     teamB,
@@ -2373,14 +3348,18 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [verifyTeamBLineup, setVerifyTeamBLineup] =
     useState(defaultTeamBLineup);
   const [localConfirmedSnapshots, setLocalConfirmedSnapshots] = useState(null);
+  const [lineupErrorModal, setLineupErrorModal] = useState(null);
+  const [pendingBenchScorer, setPendingBenchScorer] = useState(null);
 
-  useEffect(() => {
-    setVerifyTeamALineup(defaultTeamALineup);
-  }, [defaultTeamALineup]);
-
-  useEffect(() => {
-    setVerifyTeamBLineup(defaultTeamBLineup);
-  }, [defaultTeamBLineup]);
+  /*
+   * Seed the verification editor once per actual match.
+   *
+   * This deliberately does NOT follow every recomputation of the
+   * Formation-page defaults. Match-specific edits such as Late,
+   * borrowed GK and temporary foreign guests must survive
+   * Close -> reopen during the same live match.
+   */
+  const [lineupSeedKey, setLineupSeedKey] = useState("");
 
   const existingConfirmedFromApp =
     localConfirmedSnapshots ||
@@ -2442,14 +3421,52 @@ export function ThreeTeamLeagueLiveMatchPage({
     sanitizedConfirmedSnapshots?.[teamAId] && sanitizedConfirmedSnapshots?.[teamBId]
   );
 
+  useEffect(() => {
+    if (!playersReady) return;
+
+    const nextSeedKey =
+      `${currentMatchNo || 0}|${teamAId || ""}|${teamBId || ""}`;
+
+    if (lineupSeedKey === nextSeedKey) {
+      return;
+    }
+
+    /*
+     * Prefer confirmed match-specific truth when it exists.
+     * Otherwise begin from the generated starting lineup.
+     */
+    const source =
+      sanitizedConfirmedSnapshots ||
+      localConfirmedSnapshots ||
+      null;
+
+    setVerifyTeamALineup(
+      source?.[teamAId] || defaultTeamALineup
+    );
+
+    setVerifyTeamBLineup(
+      source?.[teamBId] || defaultTeamBLineup
+    );
+
+    setLineupSeedKey(nextSeedKey);
+  }, [
+    playersReady,
+    currentMatchNo,
+    teamAId,
+    teamBId,
+    lineupSeedKey,
+    sanitizedConfirmedSnapshots,
+    localConfirmedSnapshots,
+    defaultTeamALineup,
+    defaultTeamBLineup,
+  ]);
+
   const mustVerifyBeforePlay = isControllerSession;
 
   useEffect(() => {
     if (mustVerifyBeforePlay && !hasVerifiedLineups) {
       if (!playersReady) return;
 
-      setVerifyTeamALineup(defaultTeamALineup);
-      setVerifyTeamBLineup(defaultTeamBLineup);
       setShowVerifyModal(true);
       setShowGoalRecorder(false);
       setGoalStep("team");
@@ -2762,6 +3779,50 @@ export function ThreeTeamLeagueLiveMatchPage({
       defaultFormationId: liveDefaultFormationId,
     });
 
+  const getGoalRecorderChoice = (teamId, playerName) => {
+    const targetKey = playerKeyFor(playerName);
+
+    return goalRecorderChoicesForTeam(teamId).find((entry) => {
+      const rawName =
+        typeof entry === "string"
+          ? entry
+          : entry?.name || "";
+
+      return playerKeyFor(rawName) === targetKey;
+    }) || null;
+  };
+
+  const handleGoalScorerSelection = (teamId, name) => {
+    setScoringTeamId(teamId);
+    setScorerName(name);
+    setAssistName("");
+
+    if (!name) return;
+
+    const choice = getGoalRecorderChoice(teamId, name);
+
+    const roleTag =
+      typeof choice === "string"
+        ? ""
+        : String(choice?.roleTag || "").trim().toUpperCase();
+
+    if (roleTag === "SUB") {
+      /*
+       * A recorded scorer must be on the pitch, but do not
+       * unexpectedly throw the referee into Edit Lineups.
+       * Explain the inconsistency first and offer a choice.
+       */
+      setPendingBenchScorer({
+        teamId,
+        name,
+      });
+
+      return;
+    }
+
+    setGoalStep("assist");
+  };
+
   const basicSummary = {
     matchNumber: currentMatchNo,
     teamAId,
@@ -2777,21 +3838,42 @@ export function ThreeTeamLeagueLiveMatchPage({
 
   const handleConfirmLineups = () => {
     if (!canControlMatch) {
-      window.alert("Only captains or admin can confirm match lineups.");
+      setLineupErrorModal({
+        title: "Lineup access",
+        message: "Only captains or admin can confirm match lineups.",
+      });
       return;
     }
 
-    if (lineupHasEmptyPositions(verifyTeamALineup, liveFormationsMap, liveDefaultFormationId)) {
-      window.alert(
-        `${teamA?.label || "Team A"} lineup is incomplete. Please fill all required positions before confirming.`
-      );
+    if (
+      lineupHasEmptyPositions(
+        verifyTeamALineup,
+        liveFormationsMap,
+        liveDefaultFormationId
+      )
+    ) {
+      setLineupErrorModal({
+        title: "Complete the lineup",
+        message:
+          `${teamA?.label || "Team A"} still has an empty position. ` +
+          "Fill every required position before confirming.",
+      });
       return;
     }
 
-    if (lineupHasEmptyPositions(verifyTeamBLineup, liveFormationsMap, liveDefaultFormationId)) {
-      window.alert(
-        `${teamB?.label || "Team B"} lineup is incomplete. Please fill all required positions before confirming.`
-      );
+    if (
+      lineupHasEmptyPositions(
+        verifyTeamBLineup,
+        liveFormationsMap,
+        liveDefaultFormationId
+      )
+    ) {
+      setLineupErrorModal({
+        title: "Complete the lineup",
+        message:
+          `${teamB?.label || "Team B"} still has an empty position. ` +
+          "Fill every required position before confirming.",
+      });
       return;
     }
 
@@ -2834,6 +3916,36 @@ export function ThreeTeamLeagueLiveMatchPage({
     setLocalConfirmedSnapshots(merged);
     onConfirmPreMatchLineups?.(merged);
     setShowVerifyModal(false);
+
+    if (pendingBenchScorer?.name) {
+      const correctedSnapshot =
+        pendingBenchScorer.teamId === teamAId
+          ? snapshotA
+          : snapshotB;
+
+      const scorerKey =
+        playerKeyFor(pendingBenchScorer.name);
+
+      const isNowOnPitch = Object.values(
+        correctedSnapshot?.positions || {}
+      ).some(
+        (playerName) =>
+          playerKeyFor(playerName) === scorerKey
+      );
+
+      if (isNowOnPitch) {
+        setShowGoalRecorder(true);
+        setGoalStep("assist");
+        setPendingBenchScorer(null);
+      } else {
+        setLineupErrorModal({
+          title: "Substitution required",
+          message:
+            `${displayCompactPlayerName(pendingBenchScorer.name)} ` +
+            "is still listed as a substitute. Put the scorer on the pitch before recording the goal.",
+        });
+      }
+    }
   };
 
   const addAdditionalTime = (seconds) => {
@@ -3543,6 +4655,101 @@ export function ThreeTeamLeagueLiveMatchPage({
         </div>
       )}
 
+      {showGoalRecorder && pendingBenchScorer?.name && (
+        <div
+          className="modal-backdrop"
+          style={{ zIndex: 30000 }}
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Scorer is currently a substitute"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(92vw, 400px)",
+              border: "1px solid rgba(59, 130, 246, 0.58)",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.58)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 38,
+                  height: 38,
+                  flex: "0 0 38px",
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: 12,
+                  background:
+                    "linear-gradient(135deg, rgba(37,99,235,.95), rgba(29,78,216,.68))",
+                  fontSize: 19,
+                }}
+              >
+                ⚽
+              </span>
+
+              <h3 style={{ margin: 0 }}>
+                Scorer is currently a substitute
+              </h3>
+            </div>
+
+            <p
+              className="muted"
+              style={{
+                marginTop: 0,
+                lineHeight: 1.5,
+              }}
+            >
+              {displayCompactPlayerName(pendingBenchScorer.name)} is
+              currently listed on the bench. Put this player on the pitch
+              before recording the goal.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+                marginTop: 14,
+              }}
+            >
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setShowGoalRecorder(false);
+                  setShowVerifyModal(true);
+                }}
+              >
+                👥 Edit Lineups
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setPendingBenchScorer(null);
+                  setScorerName("");
+                  setAssistName("");
+                  setGoalStep("scorer");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showGoalRecorder && (
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal live-goal-recorder-modal">
@@ -3563,12 +4770,9 @@ export function ThreeTeamLeagueLiveMatchPage({
                           title="Scorer"
                           players={goalRecorderChoicesForTeam(teamAId)}
                           selectedName={scorerName}
-                          onSelect={(name) => {
-                            setScoringTeamId(teamAId);
-                            setScorerName(name);
-                            setAssistName("");
-                            if (name) setGoalStep("assist");
-                          }}
+                          onSelect={(name) =>
+                            handleGoalScorerSelection(teamAId, name)
+                          }
                           displayCompactPlayerName={displayCompactPlayerName}
                           getPlayerPhoto={getPlayerPhoto}
                           guestSnapshotChecker={(name) =>
@@ -3586,12 +4790,9 @@ export function ThreeTeamLeagueLiveMatchPage({
                           title="Scorer"
                           players={goalRecorderChoicesForTeam(teamBId)}
                           selectedName={scorerName}
-                          onSelect={(name) => {
-                            setScoringTeamId(teamBId);
-                            setScorerName(name);
-                            setAssistName("");
-                            if (name) setGoalStep("assist");
-                          }}
+                          onSelect={(name) =>
+                            handleGoalScorerSelection(teamBId, name)
+                          }
                           displayCompactPlayerName={displayCompactPlayerName}
                           getPlayerPhoto={getPlayerPhoto}
                           guestSnapshotChecker={(name) =>
@@ -3693,10 +4894,103 @@ export function ThreeTeamLeagueLiveMatchPage({
         </div>
       )}
 
+      {lineupErrorModal && (
+        <div
+          className="modal-backdrop"
+          style={{ zIndex: 30000 }}
+          onClick={() => setLineupErrorModal(null)}
+        >
+          <div
+            className="modal"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(92vw, 390px)",
+              border:
+                "1px solid rgba(59, 130, 246, 0.52)",
+              boxShadow:
+                "0 24px 80px rgba(0,0,0,0.55)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                marginBottom: 10,
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 11,
+                  display: "grid",
+                  placeItems: "center",
+                  background:
+                    "linear-gradient(135deg, rgba(37,99,235,.95), rgba(29,78,216,.65))",
+                  fontSize: 18,
+                }}
+              >
+                ⚽
+              </span>
+
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  {lineupErrorModal.title || "Lineup update"}
+                </h3>
+              </div>
+            </div>
+
+            <p
+              className="muted"
+              style={{
+                marginTop: 0,
+                lineHeight: 1.5,
+              }}
+            >
+              {lineupErrorModal.message}
+            </p>
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => setLineupErrorModal(null)}
+              style={{ width: "100%" }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       {showVerifyModal && (
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal live-verify-modal">
             <h3 className="live-lineups-title">Edit lineup positions</h3>
+
+            {pendingBenchScorer?.name && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(59, 130, 246, 0.55)",
+                  background:
+                    "linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(15, 23, 42, 0.94))",
+                }}
+              >
+                <strong style={{ display: "block", marginBottom: 3 }}>
+                  ⚽ Put the scorer on the pitch
+                </strong>
+
+                <div className="muted small">
+                  {displayCompactPlayerName(pendingBenchScorer.name)} is
+                  currently marked SUB. Complete the substitution, then
+                  confirm the lineups to continue recording the goal.
+                </div>
+              </div>
+            )}
             <p className="muted live-verify-note live-verify-note-compact">
               {teamA?.label || "Team A"} vs {teamB?.label || "Team B"}
             </p>
@@ -3718,6 +5012,11 @@ export function ThreeTeamLeagueLiveMatchPage({
                       verifyTeamALineup,
                       canonicalName
                     )}
+                    borrowableGoalkeepers={uniquePlayersNormalized(
+                      standbyTeam?.players || [],
+                      canonicalName,
+                      playerKeyFor
+                    )}
                     canonicalName={canonicalName}
                     displayCompactPlayerName={displayCompactPlayerName}
                     playerKeyFor={playerKeyFor}
@@ -3736,6 +5035,11 @@ export function ThreeTeamLeagueLiveMatchPage({
                       teamB?.players || [],
                       verifyTeamBLineup,
                       canonicalName
+                    )}
+                    borrowableGoalkeepers={uniquePlayersNormalized(
+                      standbyTeam?.players || [],
+                      canonicalName,
+                      playerKeyFor
                     )}
                     canonicalName={canonicalName}
                     displayCompactPlayerName={displayCompactPlayerName}

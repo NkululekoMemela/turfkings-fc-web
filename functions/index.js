@@ -28,6 +28,11 @@ const {
   endPracticeSession: endPracticeSessionService,
 } = require("./practiceSessionService");
 
+const {
+  createCameraHandoff: createCameraHandoffService,
+  redeemCameraHandoff: redeemCameraHandoffService,
+} = require("./cameraHandoffService");
+
 admin.initializeApp();
 const db = getFirestore();
 
@@ -2457,6 +2462,183 @@ exports.twilioStatusCallback = onRequest(
     } catch (error) {
       console.error("twilioStatusCallback failed:", error);
       return res.status(500).send("ERROR");
+    }
+  }
+);
+
+
+// -----------------------------------------------------------------------------
+// Camera — authenticated Official-session handoff creation
+// -----------------------------------------------------------------------------
+//
+// SECURITY:
+// - Firebase ID token establishes caller identity.
+// - Browser-supplied role/UID/email is never trusted.
+// - Club admin/captain authority is independently verified in Firestore.
+// - Practice is explicitly rejected.
+// - The handoff is short-lived and intended for one-time Android redemption.
+//
+
+// -----------------------------------------------------------------------------
+// Camera — one-time Android handoff redemption
+// -----------------------------------------------------------------------------
+exports.redeemCameraHandoff = onRequest(
+  {
+    region: REGION,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        code: "camera/method-not-allowed",
+        error: "POST is required.",
+      });
+      return;
+    }
+
+    try {
+      const handoffId = safeString(
+        parseRequestValue(req, "handoffId")
+      );
+
+      const deviceId = safeString(
+        parseRequestValue(req, "deviceId")
+      );
+
+      const session = await redeemCameraHandoffService({
+        db,
+        admin,
+        handoffId,
+        deviceId,
+        now: new Date(),
+      });
+
+      res.status(200).json({
+        ok: true,
+        session,
+      });
+    } catch (error) {
+      const code = safeString(error?.code);
+
+      const status =
+        code === "camera/practice-forbidden"
+          ? 403
+          : code === "camera/handoff-not-found"
+            ? 404
+            : code === "camera/handoff-required" ||
+                code === "camera/handoff-invalid"
+              ? 400
+              : code === "camera/handoff-used" ||
+                  code === "camera/handoff-expired"
+                ? 409
+                : 500;
+
+      console.error(
+        "redeemCameraHandoff failed:",
+        code || "unknown",
+        error?.message || error
+      );
+
+      res.status(status).json({
+        ok: false,
+        code: code || "camera/redemption-failed",
+        error:
+          status === 500
+            ? "Could not redeem camera handoff."
+            : safeString(error?.message) ||
+              "Could not redeem camera handoff.",
+      });
+    }
+  }
+);
+
+exports.createCameraHandoff = onRequest(
+  {
+    region: REGION,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        code: "camera/method-not-allowed",
+        error: "POST is required.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = safeString(
+        parseRequestValue(req, "clubId")
+      );
+
+      const matchId = safeString(
+        parseRequestValue(req, "matchId")
+      );
+
+      const dataScope = safeString(
+        parseRequestValue(req, "dataScope") || "official"
+      ).toLowerCase();
+
+      const fixtureContext =
+        parseRequestValue(req, "fixtureContext") || {};
+
+      const handoff = await createCameraHandoffService({
+        db,
+        authenticatedUser,
+        clubId,
+        matchId,
+        fixtureContext,
+        dataScope,
+        now: new Date(),
+      });
+
+      res.status(200).json({
+        ok: true,
+        handoff,
+      });
+    } catch (error) {
+      const code = safeString(error?.code);
+
+      const status =
+        code === "practice/auth-required" ||
+        code === "practice/auth-invalid"
+          ? 401
+          : code === "camera/not-authorized" ||
+              code === "camera/practice-forbidden"
+            ? 403
+            : code === "camera/club-not-found"
+              ? 404
+              : code === "camera/club-required" ||
+                  code === "camera/match-required"
+                ? 400
+                : 500;
+
+      console.error(
+        "createCameraHandoff failed:",
+        code || "unknown",
+        error?.message || error
+      );
+
+      res.status(status).json({
+        ok: false,
+        code: code || "camera/handoff-failed",
+        error:
+          status === 500
+            ? "Could not create camera handoff."
+            : safeString(error?.message) ||
+              "Could not create camera handoff.",
+      });
     }
   }
 );
