@@ -589,9 +589,9 @@ function computeSignupPaymentState({
     unpaidPrimaryWeeks.length + unpaidSecondWeeks.length;
 
   const serviceFeePerGame = Number(
-    requestBody.serviceFeePerGame ||
-    requestBody.fanmBookingFeePerGame ||
-    requestBody.platformFeePerGame ||
+    requestBody.serviceFeePerGame ??
+    requestBody.fanmBookingFeePerGame ??
+    requestBody.platformFeePerGame ??
     7.5
   );
 
@@ -1089,7 +1089,15 @@ exports.createYocoCheckout = onRequest(
         });
       }
 
-      const activeClubId = safeString(body.activeClubId || body.clubId || "turf-kings");
+      const activeClubId = safeString(body.activeClubId || body.clubId);
+
+      if (activeClubId !== "turf-kings") {
+        return res.status(403).json({
+          ok: false,
+          error: "Yoco payments are available only for Turf Kings FC.",
+        });
+      }
+
       const signupRef = db.collection("clubs").doc(activeClubId).collection("matchSignups").doc(signupDocId);
 
       const tSignupRead0 = Date.now();

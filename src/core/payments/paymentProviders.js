@@ -5,6 +5,7 @@ export const PAYMENT_COLLECTION_METHODS = {
 };
 
 export const PAYMENT_PROVIDERS = {
+  YOCO: "yoco",
   PEACH: "peach",
   STRIPE: "stripe",
   PAYSTACK: "paystack",

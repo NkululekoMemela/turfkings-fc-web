@@ -12,6 +12,8 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import { getClubPaymentSettings } from "../core/payments/paymentSettingsRepository";
+import { resolveClubPaymentSettings } from "../core/payments/paymentProviders";
 import {
   getClubDoc,
   getClubCollection,
@@ -1075,6 +1077,9 @@ export default function MatchSignupPage({
   const [bulkPaidMessage, setBulkPaidMessage] = useState("");
   const [bulkPaidError, setBulkPaidError] = useState("");
   const [matchSignupSettings, setMatchSignupSettings] = useState(DEFAULT_MATCH_SIGNUP_SETTINGS);
+  const [clubPaymentSettings, setClubPaymentSettings] = useState(() =>
+    resolveClubPaymentSettings(activeClub || {})
+  );
 
   const effectiveMatchSignupSettings = useMemo(
     () => ({
@@ -1136,6 +1141,25 @@ export default function MatchSignupPage({
 
     return () => unsubscribe();
   }, [activeClubId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getClubPaymentSettings(activeClubId)
+      .then((settings) => {
+        if (!cancelled) setClubPaymentSettings(settings);
+      })
+      .catch((error) => {
+        console.error("Failed to load club payment settings:", error);
+        if (!cancelled) {
+          setClubPaymentSettings(resolveClubPaymentSettings(activeClub || {}));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeClubId, activeClub]);
 
   const displayName =
     identity?.shortName ||
@@ -3144,7 +3168,9 @@ export default function MatchSignupPage({
   };
 
   const fieldContributionDueNow = sumWeekCosts(weeksToPayNow);
-  const serviceFeePerGame = 7.5;
+  const serviceFeePerGame = Number(
+    clubPaymentSettings?.pricingModel?.serviceFeePerPlayer ?? 7.5
+  );
   const serviceFeeDueNow = weeksToPayNow.length * serviceFeePerGame;
   const totalAmount = fieldContributionDueNow + serviceFeeDueNow;
   const selectedCount = selectedWeeks.length;
