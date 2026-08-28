@@ -7,19 +7,22 @@ import {
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
-import { db } from "../firebaseConfig";
+import { activeFirebaseProjectId, db } from "../firebaseConfig";
 // import { getClubDoc, CLUB_COLLECTIONS } from "../core/clubFirestorePaths";
 
-import { getClubDoc } from "../core/clubFirestorePaths";
+import {
+  getClubDoc,
+  getScopedMatchSignupDoc,
+} from "../core/clubFirestorePaths";
 import { CLUB_COLLECTIONS } from "../core/clubPaths";
 import { getClubPaymentSettings } from "../core/payments/paymentSettingsRepository";
 import {
   canUseExternalPayments,
   canUsePlatformPayments,
+  PAYMENT_PROVIDERS,
   resolveClubPaymentSettings,
 } from "../core/payments/paymentProviders";
 
-const PAYMENT_METHOD_LABEL = "Paystack";
 const COST_PER_GAME_DEFAULT = 65;
 const FUNCTIONS_REGION = "us-central1";
 
@@ -103,10 +106,16 @@ function getFunctionsBaseUrl() {
   const explicit = String(viteEnv.VITE_FUNCTIONS_BASE_URL || "").trim();
   if (explicit) return explicit.replace(/\/$/, "");
 
-  const projectId = String(viteEnv.VITE_FIREBASE_PROJECT_ID || "").trim();
+  const projectId = String(
+    viteEnv.VITE_FIREBASE_PROJECT_ID || activeFirebaseProjectId || ""
+  ).trim();
   if (!projectId) return "";
 
+  const useFunctionsEmulator =
+    String(viteEnv.VITE_USE_FUNCTIONS_EMULATOR || "").trim() === "true";
+
   if (
+    useFunctionsEmulator &&
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" ||
       window.location.hostname === "127.0.0.1")
@@ -145,6 +154,10 @@ export default function PaymentPage({
   identity,
   activeRole = "player",
   activeSeasonId,
+  activeClubId: explicitActiveClubId = "",
+  isPracticeMode = false,
+  practiceSessionId = null,
+  dataScope = null,
   isAdmin = false,
   isCaptain = false,
   onBack,
@@ -159,11 +172,25 @@ export default function PaymentPage({
 
   const activeClubId =
     String(
-      paymentContext?.activeClubId ||
+      explicitActiveClubId ||
+        paymentContext?.activeClubId ||
         paymentContext?.clubId ||
         identity?.clubId ||
         "turf-kings"
     ).trim() || "turf-kings";
+
+  // One resolver for every payment-state read/write.
+  // Official keeps the historical club document.
+  // Practice resolves into the disposable session sandbox.
+  const matchSignupDocRef = (docId) =>
+    isPracticeMode
+      ? getScopedMatchSignupDoc(db, docId, dataScope)
+      : getClubDoc(
+          db,
+          CLUB_COLLECTIONS.matchSignups,
+          docId,
+          activeClubId
+        );
 
   const rawPrimarySelectedWeeks = paymentContext?.selectedWeeks || [];
   const rawSecondSelectedWeeks =
@@ -295,7 +322,7 @@ export default function PaymentPage({
   );
 
   const platformUpliftPerGame = Number(
-    clubPaymentSettings?.pricingModel?.serviceFeePerPlayer || 7.5
+    clubPaymentSettings?.pricingModel?.serviceFeePerPlayer ?? 7.5
   );
 
   const playerChargePerGame = captainContributionPerGame + platformUpliftPerGame;
@@ -353,6 +380,13 @@ export default function PaymentPage({
   const clubCanUsePlatformPayments = canUsePlatformPayments(clubPaymentSettings);
   const clubCanUseExternalPayments = canUseExternalPayments(clubPaymentSettings);
 
+  const isTurfKingsYoco =
+    activeClubId === "turf-kings" &&
+    clubCanUsePlatformPayments &&
+    clubPaymentSettings?.provider === PAYMENT_PROVIDERS.YOCO;
+
+  const paymentMethodLabel = isTurfKingsYoco ? "Yoco" : "Online payment";
+
   const clubPaymentModeLabel = clubCanUsePlatformPayments
     ? `Online payments via ${String(clubPaymentSettings.provider || "platform")}`
     : clubCanUseExternalPayments
@@ -391,7 +425,7 @@ export default function PaymentPage({
     setLoading(true);
     setError("");
 
-    const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
+    const ref = matchSignupDocRef(signupDocId);
 
     const unsub = onSnapshot(
       ref,
@@ -414,7 +448,13 @@ export default function PaymentPage({
     );
 
     return () => unsub();
-  }, [signupDocId]);
+  }, [
+    signupDocId,
+    activeClubId,
+    isPracticeMode,
+    practiceSessionId,
+    dataScope,
+  ]);
 
   useEffect(() => {
     if (!signup) return;
@@ -507,10 +547,109 @@ export default function PaymentPage({
   async function handlePayNow() {
     if (!signupDocId || amountToPayNow <= 0 || creatingCheckout) return;
 
+    // --------------------------------------------------------
+    // PRACTICE PAYMENT SIMULATION
+    //
+    // This intentionally reproduces only the football consequence
+    // of payment. No Cloud Function, Paystack checkout, redirect,
+    // card transaction or real financial settlement may occur.
+    // --------------------------------------------------------
+    if (isPracticeMode) {
+      setCreatingCheckout(true);
+      setError("");
+      setSlowPaymentMessage("");
+
+      try {
+        const simulatedPrimaryPaidWeeks = uniqueWeeks([
+          ...effectivePrimaryPaidWeeks,
+          ...unpaidPrimaryWeeks,
+        ]);
+
+        const simulatedSecondPaidWeeks = uniqueWeeks([
+          ...effectiveSecondPaidWeeks,
+          ...unpaidSecondWeeks,
+        ]);
+
+        const simulatedPaidAmount =
+          (
+            simulatedPrimaryPaidWeeks.length +
+            simulatedSecondPaidWeeks.length
+          ) * costPerGame;
+
+        const simulatedFullyPaid =
+          effectiveTotalGamesSelected > 0 &&
+          simulatedPrimaryPaidWeeks.length === effectivePrimaryWeeks.length &&
+          simulatedSecondPaidWeeks.length === effectiveSecondWeeks.length;
+
+        const ref = matchSignupDocRef(signupDocId);
+
+        await setDoc(
+          ref,
+          {
+            signupDocId,
+            activeSeasonId: String(activeSeasonId || "").trim(),
+            displayName: primaryDisplayName,
+            shortName: firstNameOf(primaryDisplayName),
+            playerId: primaryPlayerId,
+            userId: currentUserId || "",
+            selectedWeeks: effectivePrimaryWeeks,
+
+            primaryPaidWeeks: simulatedPrimaryPaidWeeks,
+            paidWeeks: simulatedPrimaryPaidWeeks,
+
+            secondDisplayName: effectiveSecondDisplayName,
+            secondPlayerId: secondPlayerId || "",
+            secondEmail: secondEmail || "",
+            secondSelectedWeeks: effectiveSecondWeeks,
+            secondPaidWeeks: simulatedSecondPaidWeeks,
+
+            totalGamesSelected: effectiveTotalGamesSelected,
+            paymentForMode: effectiveMode,
+            amountDue: effectiveAmountDue,
+            amountPaid: simulatedPaidAmount,
+            costPerGame,
+
+            // Explicitly distinguish this disposable football simulation
+            // from a real payment-provider transaction.
+            paymentMethod: "Practice simulation",
+            paymentReference: `practice-${signupDocId}`,
+            paymentIntentAmount: amountToPayNow,
+            paymentStatus: simulatedFullyPaid ? "paid" : "part_paid",
+            paymentSimulation: true,
+            paymentProviderContacted: false,
+            paymentSubmittedAt: serverTimestamp(),
+            unpaidPrimaryWeeks: effectivePrimaryWeeks.filter(
+              (week) => !simulatedPrimaryPaidWeeks.includes(week)
+            ),
+            unpaidSecondWeeks: effectiveSecondWeeks.filter(
+              (week) => !simulatedSecondPaidWeeks.includes(week)
+            ),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (typeof onDone === "function") onDone();
+      } catch (err) {
+        console.error("Failed to simulate Practice payment:", err);
+        setError("Could not confirm the Practice payment simulation.");
+      } finally {
+        setCreatingCheckout(false);
+        setSlowPaymentMessage("");
+      }
+
+      return;
+    }
+
+    if (!isTurfKingsYoco) {
+      setError("Online payments are not available for this club yet.");
+      return;
+    }
+
     const functionsBaseUrl = getFunctionsBaseUrl();
     if (!functionsBaseUrl) {
       setError(
-        "Functions base URL is missing. Set VITE_FIREBASE_PROJECT_ID or VITE_FUNCTIONS_BASE_URL."
+        "The secure payment service is temporarily unavailable. Please try again later."
       );
       return;
     }
@@ -532,8 +671,9 @@ export default function PaymentPage({
           : "";
 
       const { ok, data } = await postJson(
-        `${functionsBaseUrl}/createPaystackCheckout`,
+        `${functionsBaseUrl}/createYocoCheckout`,
         {
+          activeClubId,
           signupDocId,
           activeSeasonId: String(activeSeasonId || "").trim(),
           userId: currentUserId || "",
@@ -549,7 +689,8 @@ export default function PaymentPage({
           secondPaidWeeks: effectiveSecondPaidWeeks,
           unpaidPrimaryWeeks,
           unpaidSecondWeeks,
-          costPerGame,
+          costPerGame: captainContributionPerGame,
+          serviceFeePerGame: platformUpliftPerGame,
           paymentReference: buildReferenceLabel(primaryDisplayName),
           returnUrl,
           successUrl: returnUrl
@@ -565,7 +706,7 @@ export default function PaymentPage({
       );
 
       if (!ok) {
-        throw new Error(data?.error || "Could not create Paystack checkout.");
+        throw new Error(data?.error || "Could not create Yoco checkout.");
       }
 
       if (data?.alreadyPaid) {
@@ -576,10 +717,10 @@ export default function PaymentPage({
 
       const redirectUrl = String(data?.redirectUrl || "").trim();
       if (!redirectUrl) {
-        throw new Error("Paystack checkout did not return a redirect URL.");
+        throw new Error("Yoco checkout did not return a redirect URL.");
       }
 
-      const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
+      const ref = matchSignupDocRef(signupDocId);
       setDoc(
         ref,
         {
@@ -602,7 +743,7 @@ export default function PaymentPage({
           amountDue: effectiveAmountDue,
           amountPaid,
           costPerGame,
-          paymentMethod: PAYMENT_METHOD_LABEL,
+          paymentMethod: paymentMethodLabel,
           paymentReference: buildReferenceLabel(primaryDisplayName),
           paymentIntentAmount: amountToPayNow,
           paymentStatus: amountToPayNow > 0 ? "pending" : "paid",
@@ -647,7 +788,55 @@ export default function PaymentPage({
     setError("");
 
     try {
-      const ref = getClubDoc(db, CLUB_COLLECTIONS.matchSignups, signupDocId);
+      const ref = matchSignupDocRef(signupDocId);
+
+      // Practice v2 admin verification simulates only the football
+      // consequence of payment. It never represents real settlement.
+      //
+      // Explicit "paid" confirmation unlocks all selected Practice weeks.
+      // For part-paid/unpaid states we do NOT guess which particular
+      // weeks were covered, so existing paid-week state is preserved.
+      if (isPracticeMode) {
+        const confirmedPrimaryPaidWeeks =
+          nextStatus === "paid"
+            ? uniqueWeeks(effectivePrimaryWeeks)
+            : uniqueWeeks(effectivePrimaryPaidWeeks);
+
+        const confirmedSecondPaidWeeks =
+          nextStatus === "paid"
+            ? uniqueWeeks(effectiveSecondWeeks)
+            : uniqueWeeks(effectiveSecondPaidWeeks);
+
+        const simulatedAmountPaid =
+          nextStatus === "paid"
+            ? effectiveAmountDue
+            : verifiedAmount;
+
+        await setDoc(
+          ref,
+          {
+            amountPaid: simulatedAmountPaid,
+            paymentStatus: nextStatus,
+
+            primaryPaidWeeks: confirmedPrimaryPaidWeeks,
+            paidWeeks: confirmedPrimaryPaidWeeks,
+            secondPaidWeeks: confirmedSecondPaidWeeks,
+
+            paymentMethod: "Practice simulation",
+            paymentSimulation: true,
+            paymentProviderContacted: false,
+
+            adminNote: note,
+            verifiedBy: verifier,
+            verifiedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (typeof onDone === "function") onDone();
+        return;
+      }
 
       await setDoc(
         ref,
@@ -677,7 +866,13 @@ export default function PaymentPage({
         <div className="payment-hero-top">
           <div>
             <h2>Payment</h2>
-            <p className="muted">Pay securely with Paystack.</p>
+            <p className="muted">
+              {isPracticeMode
+                ? "Practice payment simulation."
+                : isTurfKingsYoco
+                  ? "Pay securely with Yoco."
+                  : "Online payments are not available for this club yet."}
+            </p>
           </div>
 
           <button type="button" className="secondary-btn" onClick={onBack}>
@@ -751,10 +946,12 @@ export default function PaymentPage({
                     <span>Field contribution</span>
                     <strong>{formatCurrency(captainContributionToPayNow)}</strong>
                   </div>
-                  <div className="summary-row">
-                    <span>Service fee</span>
-                    <strong>{formatCurrency(fanmBookingFee)}</strong>
-                  </div>
+                  {fanmBookingFee > 0 ? (
+                    <div className="summary-row">
+                      <span>Service fee</span>
+                      <strong>{formatCurrency(fanmBookingFee)}</strong>
+                    </div>
+                  ) : null}
                   <div className="summary-row">
                     <span>Paid so far</span>
                     <strong>{formatCurrency(amountPaid)}</strong>
@@ -770,12 +967,18 @@ export default function PaymentPage({
                 <button
                   type="button"
                   className="primary-btn payment-action-btn"
-                  disabled={creatingCheckout || amountToPayNow <= 0}
+                  disabled={
+                    creatingCheckout ||
+                    amountToPayNow <= 0 ||
+                    (!isPracticeMode && !isTurfKingsYoco)
+                  }
                   onClick={handlePayNow}
                 >
                   {creatingCheckout
                     ? "Opening..."
-                    : `Pay ${formatCurrency(amountToPayNow)}`}
+                    : !isPracticeMode && !isTurfKingsYoco
+                      ? "Online payment unavailable"
+                      : `Pay ${formatCurrency(amountToPayNow)}`}
                 </button>
               ) : (
                 <div className="payment-paid-banner muted small">
@@ -786,7 +989,11 @@ export default function PaymentPage({
               <p className="muted small payment-help-text">
                 {isFullyPaid
                   ? "No further payment is needed for the currently selected weeks."
-                  : "You will be redirected to Paystack’s secure payment page in the same tab."}
+                  : isPracticeMode
+                    ? "This Practice payment is simulated and does not contact Yoco."
+                    : isTurfKingsYoco
+                      ? "You will be redirected to Yoco’s secure payment page in the same tab."
+                      : "This club is waiting for the future marketplace payment system."}
               </p>
 
               {slowPaymentMessage ? (

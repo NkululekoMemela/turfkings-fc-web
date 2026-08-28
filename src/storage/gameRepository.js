@@ -190,7 +190,11 @@ export function loadStateV2(clubId = DEFAULT_CLUB_ID) {
   return state;
 }
 
-export function saveStateV2(state, clubId = DEFAULT_CLUB_ID) {
+export function saveStateV2(
+  state,
+  clubId = DEFAULT_CLUB_ID,
+  dataScope = null
+) {
   saveRawStateV2(state, clubId);
-  saveStateToFirebaseV2(state, clubId);
+  saveStateToFirebaseV2(state, clubId, dataScope);
 }

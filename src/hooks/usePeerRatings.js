@@ -2,7 +2,10 @@
 import { useEffect, useState } from "react";
 import { onSnapshot } from "firebase/firestore";
 import { db } from "../firebaseConfig";
-import { getPeerRatingsCollection } from "../core/clubFirestorePaths";
+import {
+  getPeerRatingsCollection,
+  getScopedPeerRatingsCollection,
+} from "../core/clubFirestorePaths";
 
 function toNumberOrNull(v) {
   const n = Number(v);
@@ -71,11 +74,24 @@ function getRecencyWeight(weekKey, currentWeekKey) {
   return 0;
 }
 
-export function usePeerRatings(activeSeasonId = null) {
+export function usePeerRatings(
+  activeSeasonId = null,
+  {
+    activeClubId = null,
+    isPracticeMode = false,
+    dataScope = null,
+  } = {}
+) {
   const [peerRatingsByPlayer, setPeerRatingsByPlayer] = useState({});
 
   useEffect(() => {
-    const colRef = getPeerRatingsCollection(db);
+    // Official ratings remain under the real club.
+    // Practice ratings are disposable session-scoped football data.
+    // Never infer Practice from a synthetic club ID.
+    const colRef = isPracticeMode
+      ? getScopedPeerRatingsCollection(db, dataScope)
+      : getPeerRatingsCollection(db, activeClubId);
+
     const currentWeekKey = getCurrentWeekKey();
 
     const unsub = onSnapshot(colRef, (snap) => {
@@ -181,7 +197,12 @@ export function usePeerRatings(activeSeasonId = null) {
     });
 
     return () => unsub();
-  }, [activeSeasonId]);
+  }, [
+    activeSeasonId,
+    activeClubId,
+    isPracticeMode,
+    dataScope,
+  ]);
 
   return peerRatingsByPlayer;
 }

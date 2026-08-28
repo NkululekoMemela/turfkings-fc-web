@@ -45,10 +45,26 @@ import {
 import { usePeerRatings } from "./hooks/usePeerRatings.js";
 import { useMembers } from "./hooks/useMembers.js";
 import {
+  FORMATIONS_5,
+  FORMATIONS_6,
+  FORMATIONS_7,
   buildCleanSheetEventsForMatch,
   buildFriendlyDefensiveBlockEvents,
 } from "./core/lineups.js";
-import { ensurePracticeSessionSeed, buildPracticeState } from "./core/practiceSessionSeed.js";
+import {
+  createPracticeRuntime,
+  restorePracticeRuntime,
+} from "./core/practiceRuntime.js";
+import {
+  getActivePracticeSession,
+  endPracticeSession,
+  transferPracticeCredit,
+} from "./storage/practiceSessionGateway.js";
+import {
+  createCameraHandoff,
+  buildAuthorizedCameraDeepLink,
+} from "./storage/cameraHandoffGateway.js";
+import { useAuth } from "./auth/AuthContext.jsx";
 
 import {
   buildCurrentMatchFromFixture,
@@ -61,11 +77,16 @@ import {
 import { db } from "./firebaseConfig.js";
 import { clubCollectionPath, clubDocPath } from "./core/clubPaths.js";
 import { getPlayerPhotosCollection } from "./core/clubFirestorePaths.js";
+import {
+  dataScopeDocPath,
+  isPracticeDataScope,
+} from "./core/dataScope.js";
 import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 
 // Page constants
 const PAGE_HOME = "home";
 const PAGE_ENTRY = "entry";
+const PAGE_SESSION_SELECTOR = "session-selector";
 const PAGE_LANDING = "landing";
 const PAGE_CLUB_CHAT = "club-chat";
 const PAGE_LIVE = "live";
@@ -85,6 +106,35 @@ const CAMERA_APP_DEEP_LINK_SCHEME = "fiveasidesnearmecamera://open";
 const CAMERA_APP_INSTALL_URL = "/five-asides-near-me-camera.apk";
 const CAMERA_APP_INSTALL_GUIDE_URL = "/camera-app";
 const CAMERA_APP_OPEN_FALLBACK_MS = 1400;
+
+const SESSION_MODE_INTENT_KEY = "fanm_session_mode_intent_v1";
+
+function readSessionModeIntent() {
+  if (typeof window === "undefined") return "official";
+
+  try {
+    const value = window.sessionStorage.getItem(
+      SESSION_MODE_INTENT_KEY
+    );
+
+    return value === "practice" ? "practice" : "official";
+  } catch {
+    return "official";
+  }
+}
+
+function writeSessionModeIntent(mode) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(
+      SESSION_MODE_INTENT_KEY,
+      mode === "practice" ? "practice" : "official"
+    );
+  } catch {
+    // Session-mode choice still works in memory if storage is unavailable.
+  }
+}
 
 const MASTER_CODE = "3333";
 const DEFAULT_LEAGUE_MATCH_SECONDS = 5 * 60;
@@ -703,7 +753,7 @@ function ensureSeasonSchedulingShape(season) {
     )
   ).slice(0, 2);
 
-  const legacyGameFormat = season?.gameFormat || GAME_FORMAT.FIVE_V_FIVE;
+  const legacyGameFormat = season?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE;
   const resolvedMatchType = normalizeMatchMode(
     season?.matchType || legacyGameFormat,
     MATCH_TYPE.FRIENDLY
@@ -1064,6 +1114,98 @@ function buildDefaultParticipationEntries({
 
 
 
+/*
+ * Friendly participation is based on actual verified pitch presence.
+ *
+ * A player receives matchesPlayed: 1 only when they appeared in a
+ * confirmed on-pitch position at least once during the match.
+ *
+ * Bench membership alone does NOT count as an appearance.
+ *
+ * We deliberately retain zero-appearance squad members in the archive
+ * so downstream Player Cards / Peer Review can distinguish:
+ *   squad member who did not play
+ * from
+ *   player who actually entered the pitch.
+ */
+function buildFriendlyActualParticipationEntries({
+  teams = [],
+  results = [],
+  members = [],
+  verifiedLineups = null,
+  lineupTimeline = [],
+}) {
+  const baseEntries = buildDefaultParticipationEntries({
+    teams,
+    results,
+    members,
+  });
+
+  const appearedByTeam = new Map();
+
+  const recordSnapshotBundle = (snapshotBundle) => {
+    if (!snapshotBundle || typeof snapshotBundle !== "object") return;
+
+    Object.entries(snapshotBundle).forEach(([teamId, snapshot]) => {
+      if (!teamId || !snapshot || typeof snapshot !== "object") return;
+
+      if (!appearedByTeam.has(teamId)) {
+        appearedByTeam.set(teamId, new Set());
+      }
+
+      const appeared = appearedByTeam.get(teamId);
+
+      Object.values(snapshot.positions || {}).forEach((rawName) => {
+        const name = toTitleCaseLoose(rawName || "");
+        if (!name) return;
+
+        const slug = slugFromLooseName(name);
+        if (slug) appeared.add(slug);
+      });
+    });
+  };
+
+  /*
+   * The initial/final verified snapshot is valid evidence even for
+   * older Friendly records that do not yet contain a timeline.
+   */
+  recordSnapshotBundle(verifiedLineups);
+
+  (Array.isArray(lineupTimeline) ? lineupTimeline : []).forEach((entry) => {
+    recordSnapshotBundle(entry?.snapshots || null);
+  });
+
+  return baseEntries.map((entry) => {
+    const appeared =
+      appearedByTeam.get(entry.teamId) ||
+      new Set();
+
+    const playerSlug = slugFromLooseName(
+      entry.playerName ||
+      entry.shortName ||
+      entry.playerId ||
+      ""
+    );
+
+    return {
+      ...entry,
+
+      /*
+       * Friendly is a one-match archive entry.
+       * Therefore actual participation is binary:
+       * 1 = entered the pitch
+       * 0 = remained off the pitch for the whole match.
+       */
+      expectedFullMatches: 1,
+      matchesPlayed:
+        playerSlug && appeared.has(playerSlug)
+          ? 1
+          : 0,
+    };
+  });
+}
+
+
 function getPeerReviewSessionTimestamp(session = {}) {
   const values = [
     session?.completedAtISO,
@@ -1358,6 +1500,7 @@ async function saveParticipationForMatchDay({
   matchDayId,
   createdAtISO,
   playerAppearances,
+  dataScope = null,
 }) {
   const safeSeasonId = String(seasonId || "").trim();
   const safeMatchDayId = String(matchDayId || "").trim();
@@ -1372,13 +1515,22 @@ async function saveParticipationForMatchDay({
 
   safeAppearances.forEach((entry) => {
     const attendanceDocId = `${safeMatchDayId}__${entry.playerId}`;
-    const attendanceRef = doc(
-      db,
-      "seasons",
-      safeSeasonId,
-      "attendance",
-      attendanceDocId
-    );
+    const attendanceRef = isPracticeDataScope(dataScope)
+      ? doc(
+          db,
+          dataScopeDocPath(
+            "attendance",
+            attendanceDocId,
+            dataScope
+          )
+        )
+      : doc(
+          db,
+          "seasons",
+          safeSeasonId,
+          "attendance",
+          attendanceDocId
+        );
 
     const teamMatches = Number(entry.teamMatches || 0);
     const expectedFullMatches = Number(entry.expectedFullMatches || 0);
@@ -1590,7 +1742,7 @@ function buildRawHighlightFirebaseDoc(highlight, options = {}) {
         : Number(currentMatchNo || 1),
     seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || highlight?.seasonId || null,
     matchType: normalizeMatchMode(matchType || highlight?.matchType || gameFormat),
-    gameFormat: normalizeGameFormat(gameFormat || highlight?.gameFormat || GAME_FORMAT.FIVE_V_FIVE),
+    gameFormat: normalizeGameFormat(gameFormat || highlight?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE),
     tag: safeTag,
     type: safeTag,
     playerName: highlight?.playerName || null,
@@ -1871,7 +2023,11 @@ function resolveCameraLaunchTeams({
     teamAId,
     teamBId,
     teamAName: teamA?.label || "Team A",
+    teamAAbbrev: String(teamA?.abbrev || "").trim(),
+    teamALogoUrl: String(teamA?.logo32 || teamA?.logoUrl || teamA?.logo || "").trim(),
     teamBName: teamB?.label || "Team B",
+    teamBAbbrev: String(teamB?.abbrev || "").trim(),
+    teamBLogoUrl: String(teamB?.logo32 || teamB?.logoUrl || teamB?.logo || "").trim(),
     teamAPlayers,
     teamBPlayers,
     hasVerifiedSnapshots: Boolean(snapshotA && snapshotB),
@@ -1884,6 +2040,14 @@ function buildCameraLiveContext({
   gameFormat,
   currentMatchNo,
   launchTeams,
+
+  // Read-only scoreboard projection for the Android camera.
+  goalsA = 0,
+  goalsB = 0,
+  matchSeconds = 0,
+  secondsLeft = 0,
+  running = false,
+  timeUp = false,
 }) {
   if (!launchTeams?.teamAId || !launchTeams?.teamBId) return null;
   if (!launchTeams.teamAPlayers?.length || !launchTeams.teamBPlayers?.length) {
@@ -1907,6 +2071,16 @@ function buildCameraLiveContext({
     teamBPlayers: Array.isArray(launchTeams.teamBPlayers)
       ? launchTeams.teamBPlayers
       : [],
+
+    // FANM referee/live-match state is authoritative.
+    // Android consumes these values but does not control them.
+    goalsA: Math.max(0, Number(goalsA || 0)),
+    goalsB: Math.max(0, Number(goalsB || 0)),
+    matchSeconds: Math.max(0, Number(matchSeconds || 0)),
+    secondsLeft: Math.max(0, Number(secondsLeft || 0)),
+    running: Boolean(running),
+    timeUp: Boolean(timeUp),
+
     updatedAtISO: new Date().toISOString(),
   };
 }
@@ -1925,6 +2099,33 @@ async function writeCameraLiveContextToFirebase(cameraLiveContext, clubId = DEFA
     { merge: true }
   );
 }
+
+/*
+ * STAGE 7H4
+ *
+ * Defensive awards must interpret the verified lineup using the
+ * formation family belonging to the match that was actually played.
+ *
+ * This keeps 5v5, 6v6 and 7v7 goalkeeper / defender attribution
+ * aligned with their real formations.
+ */
+function getFormationMapForGameFormat(rawGameFormat) {
+  const resolved = normalizeGameFormat(
+    rawGameFormat,
+    GAME_FORMAT.FIVE_V_FIVE
+  );
+
+  if (resolved === GAME_FORMAT.SIX_V_SIX) {
+    return FORMATIONS_6;
+  }
+
+  if (resolved === GAME_FORMAT.SEVEN_V_SEVEN) {
+    return FORMATIONS_7;
+  }
+
+  return FORMATIONS_5;
+}
+
 
 function buildMatchMetadata({ matchType, gameFormat, matchMode } = {}) {
   const resolvedMatchType = normalizeMatchMode(
@@ -2304,19 +2505,142 @@ export default function App() {
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
+  const {
+    authUser,
+    loading: authLoading,
+    signInWithGoogle,
+  } = useAuth();
+
   const [sessionMode, setSessionMode] = useState("official");
+  const [practiceRuntime, setPracticeRuntime] = useState(null);
+  const [practiceBootstrapping, setPracticeBootstrapping] = useState(false);
+  const [practiceReadyForEntry, setPracticeReadyForEntry] = useState(false);
+  const [showPracticeCreditTransfer, setShowPracticeCreditTransfer] = useState(false);
+  const [practiceCreditRecipientId, setPracticeCreditRecipientId] = useState("");
+  const [practiceCreditTransferPending, setPracticeCreditTransferPending] = useState(false);
+  const [practiceCreditTransferError, setPracticeCreditTransferError] = useState("");
+  const [practiceCreditTransferSuccess, setPracticeCreditTransferSuccess] = useState("");
+
+  const [practiceClockNowMs, setPracticeClockNowMs] = useState(() => Date.now());
   const [showSessionSelector, setShowSessionSelector] = useState(false);
   const [practiceRestrictionModal, setPracticeRestrictionModal] = useState(null);
+
+  // Temporary visual cue on Choose Session:
+  // after 4 seconds, alternate emphasis between Official and Practice
+  // every 2 seconds for 10 seconds, then return both to normal size.
+  const [sessionChoiceEmphasis, setSessionChoiceEmphasis] = useState(null);
+
+  // Practice ribbon presentation only.
+  // "open" = full persistent warning.
+  // "left"/"right" = compact edge-hugging warning.
+  // It can never be completely hidden.
+  const [practiceRibbonPosition, setPracticeRibbonPosition] = useState("open");
+
+  // Practice expiry lifecycle guards.
+  // The wrap-up warning appears once per Practice session.
+  // The 00:00 authoritative expiry is also handled only once.
+  const practiceExpiryWarningAcknowledgedRef = useRef(false);
+  const practiceExpiryHandledRef = useRef(false);
+
   const [officialStartWarning, setOfficialStartWarning] = useState(null);
   const officialStartOverrideRef = useRef(false);
 
   const isPracticeMode = sessionMode === "practice";
 
+  // Practice v2 developer diagnostics/tools.
+  // Hidden normally; deliberately expose with ?practiceDebug=1 in DEV.
+  const showPracticeDevTools =
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("practiceDebug") === "1";
+
+  useEffect(() => {
+    if (!showSessionSelector) {
+      setSessionChoiceEmphasis(null);
+      return undefined;
+    }
+
+    // Initial 4-second pause, then:
+    // 04s Official highlighted
+    // 06s Practice highlighted
+    // 08s Official highlighted
+    // 10s Practice highlighted
+    // 12s Official highlighted
+    // 14s animation ends and both return to 100%.
+    const timers = [
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("official"),
+        4000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("practice"),
+        6000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("official"),
+        8000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("practice"),
+        10000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis("official"),
+        12000
+      ),
+      window.setTimeout(
+        () => setSessionChoiceEmphasis(null),
+        14000
+      ),
+    ];
+
+    return () => {
+      timers.forEach((timerId) => window.clearTimeout(timerId));
+    };
+  }, [showSessionSelector]);
+
+  useEffect(() => {
+    if (!isPracticeMode || !practiceRuntime?.expiresAt) {
+      return undefined;
+    }
+
+    // Display-only clock:
+    // authoritative expiry remains the server-issued expiresAt.
+    setPracticeClockNowMs(Date.now());
+
+    const intervalId = window.setInterval(() => {
+      setPracticeClockNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isPracticeMode, practiceRuntime?.expiresAt]);
+
+  const practiceRemainingSeconds = Math.max(
+    0,
+    Math.ceil(
+      (
+        Date.parse(practiceRuntime?.expiresAt || "") -
+        practiceClockNowMs
+      ) / 1000
+    ) || 0
+  );
+
+  const practiceTimerLabel = `${String(
+    Math.floor(practiceRemainingSeconds / 60)
+  ).padStart(2, "0")}:${String(
+    practiceRemainingSeconds % 60
+  ).padStart(2, "0")}`;
+
   const showPracticeRestriction = (title, message, icon = "🔒") => {
     setPracticeRestrictionModal({ title, message, icon });
   };
 
-  const closePracticeRestriction = () => setPracticeRestrictionModal(null);
+  const closePracticeRestriction = () => {
+    if (practiceRestrictionModal?.locked) return;
+    setPracticeRestrictionModal(null);
+  };
 
   const [identity, setIdentity] = useState(() => {
     if (typeof window === "undefined") return null;
@@ -2356,13 +2680,184 @@ export default function App() {
 
   const activeClubId = activeClubIdentity.id;
 
-  const normalizedBaseClubId = String(activeClubId || "")
-    .replace(/-practice$/i, "");
+  useEffect(() => {
+    practiceExpiryWarningAcknowledgedRef.current = false;
+    practiceExpiryHandledRef.current = false;
+  }, [practiceRuntime?.practiceSessionId]);
 
-  const sessionScopedClubId =
+  useEffect(() => {
+    if (!isPracticeMode || !practiceRuntime?.expiresAt) {
+      return;
+    }
+
+    // One-time wrap-up warning.
+    // expiresAt remains authoritative; dismissing this notice does not
+    // extend the session or alter the server-issued deadline.
+    if (
+      practiceRemainingSeconds > 0 &&
+      practiceRemainingSeconds <= 45 &&
+      !practiceExpiryWarningAcknowledgedRef.current
+    ) {
+      practiceExpiryWarningAcknowledgedRef.current = true;
+
+      setPracticeRestrictionModal({
+        title: "45 seconds remaining",
+        message:
+          "Your Practice session is almost over. Finish what you're doing now — " +
+          "Practice will close automatically at 00:00.",
+        icon: "⏳",
+        buttonLabel: "OK",
+      });
+
+      return;
+    }
+
+    if (
+      practiceRemainingSeconds !== 0 ||
+      practiceExpiryHandledRef.current
+    ) {
+      return;
+    }
+
+    practiceExpiryHandledRef.current = true;
+
+    // Lock the UI immediately at 00:00.
+    setPracticeRestrictionModal({
+      title: "Practice session ended",
+      message:
+        "Your 15-minute Practice session has ended. Returning you to Choose Session…",
+      icon: "⏱️",
+      locked: true,
+    });
+
+    let cancelled = false;
+
+    const expirePractice = async () => {
+      try {
+        await endPracticeSession({
+          clubId: activeClubId,
+          reason: "time-expired",
+        });
+      } catch (err) {
+        // Security does not depend on this request succeeding:
+        // expired Practice writes are already rejected by the
+        // authoritative Practice security boundary.
+        console.error("[PRACTICE V2 EXPIRY CLEANUP ERROR]", err);
+      }
+
+      if (cancelled) return;
+
+      setPracticeRuntime(null);
+      setSessionMode("official");
+      setPracticeRibbonPosition("open");
+      setPracticeRestrictionModal(null);
+      setShowSessionSelector(true);
+      setPage(PAGE_SESSION_SELECTOR);
+    };
+
+    void expirePractice();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isPracticeMode,
+    practiceRuntime?.expiresAt,
+    practiceRuntime?.practiceSessionId,
+    practiceRemainingSeconds,
+    activeClubId,
+  ]);
+
+  const handleChangeProfile = async () => {
+    if (isPracticeMode) {
+      try {
+        await endPracticeSession({
+          clubId: activeClubId,
+        });
+      } catch (err) {
+        console.error("[PRACTICE V2 END ERROR]", err);
+
+        showPracticeRestriction(
+          "Could not leave Practice yet",
+          "We could not safely close this Practice session. Please try Change Profile again.",
+          "⚠️"
+        );
+
+        return;
+      }
+
+      setPracticeRuntime(null);
+      setSessionMode("official");
+      setPracticeRestrictionModal(null);
+      setPracticeRibbonPosition("open");
+      setShowSessionSelector(false);
+    }
+
+    setPage(PAGE_ENTRY);
+  };
+
+
+  // Practice v2 refresh recovery:
+  // recover the same authoritative session without consuming another credit.
+  useEffect(() => {
+    if (authLoading || !authUser || !activeClubId) return undefined;
+
+    /*
+     * An active Practice session must NEVER hijack an explicit
+     * Official-session choice.
+     *
+     * Practice recovery is allowed only when this browser tab was
+     * actually using Practice before the refresh.
+     */
+    if (readSessionModeIntent() !== "practice") {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function recoverPracticeSession() {
+      try {
+        const authoritativeSession =
+          await getActivePracticeSession({
+            clubId: activeClubId,
+          });
+
+        if (cancelled || !authoritativeSession) return;
+
+        const runtime = await restorePracticeRuntime({
+          clubId: activeClubId,
+          authoritativeSession,
+        });
+
+        if (cancelled) return;
+
+        setPracticeRuntime(runtime);
+        setSessionMode("practice");
+      } catch (err) {
+        if (!cancelled) {
+          console.warn(
+            "[PRACTICE V2 RECOVERY]",
+            err?.message || err
+          );
+        }
+      }
+    }
+
+    recoverPracticeSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, authUser, activeClubId]);
+
+  // Practice v2 always preserves the real club identity.
+  // Disposable football/session data is isolated exclusively by DataScope.
+  const footballStateClubId = activeClubId;
+
+  const footballDataScope =
     sessionMode === "practice"
-      ? `${normalizedBaseClubId}-practice`
-      : normalizedBaseClubId;
+      ? practiceRuntime?.dataScope || null
+      : null;
 
   const activeClub = activeClubIdentity;
   const activeClubName = activeClubIdentity.name;
@@ -2426,8 +2921,16 @@ export default function App() {
       safePayload?.actingRole || safePayload?.role || safePayload?.realRole || ""
     ).trim().toLowerCase();
 
-    setShowSessionSelector(["admin", "captain"].includes(nextRole));
-    setPage(PAGE_LANDING);
+    const shouldChooseSession =
+      ["admin", "captain"].includes(nextRole);
+
+    setShowSessionSelector(shouldChooseSession);
+
+    setPage(
+      shouldChooseSession
+        ? PAGE_SESSION_SELECTOR
+        : PAGE_LANDING
+    );
   };
 
   const [state, setState] = useState(() =>
@@ -2438,7 +2941,14 @@ export default function App() {
     ? ensureV2StateShape(state)?.activeSeasonId || null
     : null;
 
-  const peerRatingsFromHook = usePeerRatings(activeSeasonIdForPeerRatings);
+  const peerRatingsFromHook = usePeerRatings(
+    activeSeasonIdForPeerRatings,
+    {
+      activeClubId,
+      isPracticeMode,
+      dataScope: footballDataScope,
+    }
+  );
   const peerRatingsByPlayer = peerRatingsFromHook || {};
 
   const [statsReturnPage, setStatsReturnPage] = useState(PAGE_LANDING);
@@ -2777,6 +3287,10 @@ export default function App() {
 
 
   const persistReturnedHighlightsToFirebase = async (items) => {
+    // Practice v2 external-effect firewall:
+    // returned camera clips belong only to Official Sessions.
+    if (isPracticeMode) return;
+
     const safeItems = Array.isArray(items) ? items : [];
     if (!safeItems.length) return;
 
@@ -2833,7 +3347,11 @@ export default function App() {
       const next = typeof updater === "function" ? updater(prev) : updater;
       if (USE_V2) {
         const safe = ensureV2StateShape(next);
-        saveStateV2(safe, sessionScopedClubId);
+        saveStateV2(
+          safe,
+          footballStateClubId,
+          footballDataScope
+        );
         return safe;
       }
       saveState(next);
@@ -2853,7 +3371,7 @@ export default function App() {
         const nextSeason = { ...s, ...updated, updatedAt: new Date().toISOString() };
 
         if (
-          String(sessionScopedClubId || "").endsWith("-practice") &&
+          isPracticeMode &&
           s?.matchType !== nextSeason?.matchType
         ) {
           console.warn("[PRACTICE MATCHTYPE WRITER TRACE]", {
@@ -2874,25 +3392,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!USE_V2) return;
-
-    if (!sessionScopedClubId?.endsWith("-practice")) {
-      return;
-    }
-
-    ensurePracticeSessionSeed(
-      db,
-      sessionScopedClubId,
-      activeClubIdentity
-    ).catch((err) => {
-      console.error("[PRACTICE SEED ERROR]", err);
-    });
-  }, [
-    sessionScopedClubId,
-    activeClubIdentity,
-  ]);
-
-  useEffect(() => {
     // Disabled localStorage bootstrap for V2.
 
     const unsubscribe = USE_V2
@@ -2908,7 +3407,9 @@ export default function App() {
               null;
 
             console.warn("[CLOUD STATE DEBUG]", {
-              sessionScopedClubId,
+              activeClubId,
+              dataScopeEnvironment: footballDataScope?.environment || "official",
+              practiceSessionId: footballDataScope?.practiceSessionId || null,
               activeSeasonId: nextCloudState?.activeSeasonId,
               cloudMatchType: cloudActiveSeason?.matchType,
               cloudGameFormat: cloudActiveSeason?.gameFormat,
@@ -2932,7 +3433,8 @@ export default function App() {
               return nextCloudState;
             });
           },
-          sessionScopedClubId
+          footballStateClubId,
+          footballDataScope
         )
       : subscribeToState((cloudState) => {
           if (!cloudState) return;
@@ -2940,7 +3442,10 @@ export default function App() {
         });
 
     return () => unsubscribe && unsubscribe();
-  }, [sessionScopedClubId]);
+  }, [
+    footballStateClubId,
+    footballDataScope,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3088,11 +3593,21 @@ export default function App() {
     results = s?.results || [];
     allEvents = s?.allEvents || [];
     streaks = s?.streaks || {};
-    matchDayHistory = s?.matchDayHistory || [];
-    friendlyMatchDayHistory = s?.friendlyMatchDayHistory || [];
+    // Practice must start with its own disposable statistical history.
+    // Never allow Official completed-session history to leak into Practice
+    // Full Season stats. Practice-created history remains available because
+    // Practice state itself is written into the isolated football DataScope.
+    matchDayHistory =
+      isPracticeMode && !s?.isPracticeSeason
+        ? []
+        : s?.matchDayHistory || [];
+    friendlyMatchDayHistory =
+      isPracticeMode && !s?.isPracticeSeason
+        ? []
+        : s?.friendlyMatchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
-    matchType = normalizeMatchMode(s?.matchType || s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
-    gameFormat = normalizeGameFormat(s?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    matchType = normalizeMatchMode(s?.matchType || s?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    gameFormat = normalizeGameFormat(s?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
     activeTeamIds = Array.isArray(s?.activeTeamIds) ? s.activeTeamIds : [];
     fiveVFiveTeams =
       isPracticeMode || s?.isPracticeSeason || String(s?.seasonId || "").startsWith("practice")
@@ -3125,8 +3640,8 @@ export default function App() {
       yearEndAttendance = [],
     } = legacy || createDefaultState());
 
-    matchType = normalizeMatchMode(legacy?.matchType || legacy?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
-    gameFormat = normalizeGameFormat(legacy?.gameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    matchType = normalizeMatchMode(legacy?.matchType || legacy?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    gameFormat = normalizeGameFormat(legacy?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
     activeTeamIds = Array.isArray(legacy?.activeTeamIds)
       ? legacy.activeTeamIds
       : [];
@@ -3148,6 +3663,67 @@ export default function App() {
     }),
     [playerPhotosByName, preloadedPlayerPhotosByName]
   );
+
+  /*
+   * Practice isolation guard for downstream football surfaces.
+   *
+   * When switching from Official -> Practice there can be a brief render
+   * before the Practice-scoped Firestore state arrives. During that window
+   * the React state may still describe the previous Official season.
+   *
+   * Do not allow those Official squad assignments to reach Formations.
+   */
+  const activeSeasonForPracticeUi = useMemo(() => {
+    if (!USE_V2) return null;
+
+    return (
+      safeV2ForStats?.seasons?.find(
+        (season) =>
+          String(season?.seasonId || "") ===
+          String(safeV2ForStats?.activeSeasonId || "")
+      ) ||
+      safeV2ForStats?.seasons?.[0] ||
+      null
+    );
+  }, [safeV2ForStats]);
+
+  const practiceScopedSeasonReady =
+    !isPracticeMode ||
+    Boolean(
+      activeSeasonForPracticeUi?.isPracticeSeason ||
+      String(activeSeasonForPracticeUi?.seasonId || "").startsWith("practice")
+    );
+
+  /*
+   * Practice Formations must remain fully usable even before
+   * Practice squads have been created.
+   *
+   * During the short Official -> Practice transition, preserve
+   * the team/formation shells but strip every Official player
+   * assignment and captain. Once the authoritative Practice
+   * season has loaded, use its real Practice squads normally.
+   */
+  const formationTeams =
+    isPracticeMode && !practiceScopedSeasonReady
+      ? (Array.isArray(teams)
+          ? teams.map((team) => ({
+              ...team,
+              players: [],
+              captainId: null,
+              captain: "",
+            }))
+          : [])
+      : teams;
+
+  const formationFiveVFiveTeams =
+    isPracticeMode && !practiceScopedSeasonReady
+      ? ensureFiveVFiveTeamsShape([]).map((team) => ({
+          ...team,
+          players: [],
+          captainId: null,
+          captain: "",
+        }))
+      : getActiveFriendlyTeams(fiveVFiveTeams);
 
   const captainRoleTeams = useMemo(
     () =>
@@ -3180,6 +3756,116 @@ export default function App() {
   const isAdmin = activeRole === "admin";
   const isCaptain = activeRole === "captain";
   const canChooseSessionMode = isAdmin || isCaptain;
+
+  const practiceCreditRecipients = useMemo(() => {
+    if (!canChooseSessionMode) return [];
+
+    const currentIdentityCandidates = new Set(
+      [
+        identity?.uid,
+        identity?.memberId,
+        identity?.playerId,
+        identity?.email,
+      ]
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    return (Array.isArray(members) ? members : [])
+      .map((member) => {
+        const recipientUserId = String(
+          member?.uid ||
+          member?.platformIdentityUid ||
+          member?.authUid ||
+          member?.id ||
+          ""
+        ).trim();
+
+        const email = String(member?.email || "").trim();
+        const role = String(member?.role || "").trim().toLowerCase();
+
+        const name = String(
+          member?.fullName ||
+          member?.displayName ||
+          member?.shortName ||
+          member?.name ||
+          email ||
+          "Club member"
+        ).trim();
+
+        return {
+          recipientUserId,
+          email,
+          role,
+          name,
+        };
+      })
+      .filter((member) => {
+        if (!member.recipientUserId || !member.email) return false;
+
+        const candidateValues = [
+          member.recipientUserId,
+          member.email,
+        ]
+          .map((value) => String(value || "").trim().toLowerCase())
+          .filter(Boolean);
+
+        return !candidateValues.some((value) =>
+          currentIdentityCandidates.has(value)
+        );
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [canChooseSessionMode, members, identity]);
+
+  const handlePracticeCreditTransfer = async () => {
+    if (practiceCreditTransferPending) return;
+
+    const recipient = practiceCreditRecipients.find(
+      (candidate) =>
+        candidate.recipientUserId === practiceCreditRecipientId
+    );
+
+    if (!recipient) {
+      setPracticeCreditTransferError(
+        "Choose another club admin or captain."
+      );
+      return;
+    }
+
+    setPracticeCreditTransferPending(true);
+    setPracticeCreditTransferError("");
+    setPracticeCreditTransferSuccess("");
+
+    try {
+      const transferId =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `practice-transfer-${Date.now()}-${Math.random()
+              .toString(36)
+              .slice(2, 10)}`;
+
+      const result = await transferPracticeCredit({
+        clubId: activeClubId,
+        recipientUserId: recipient.recipientUserId,
+        transferId,
+      });
+
+      setPracticeCreditTransferSuccess(
+        `1 Practice credit transferred to ${recipient.name}. You have ${
+          Number(result?.senderCreditsRemaining ?? 0)
+        } remaining this week.`
+      );
+      setPracticeCreditRecipientId("");
+    } catch (error) {
+      console.error("[Practice] Credit transfer failed:", error);
+      setPracticeCreditTransferError(
+        error?.message || "Could not transfer the Practice credit."
+      );
+    } finally {
+      setPracticeCreditTransferPending(false);
+    }
+  };
+
   const isPlayer = activeRole === "player";
   const isSpectator = activeRole === "spectator";
 
@@ -3348,9 +4034,37 @@ export default function App() {
     activeMatchNo,
   ]);
 
+  const currentCameraScore = useMemo(() => {
+    const events = Array.isArray(currentEvents) ? currentEvents : [];
+
+    const goalEvents = events.filter((event) => {
+      const type = safeLower(event?.type || event?.eventType || "");
+      return type === "goal";
+    });
+
+    const countForTeam = (teamId) =>
+      goalEvents.filter((event) => {
+        const eventTeamId =
+          event?.teamId ||
+          event?.scoringTeamId ||
+          event?.team?.id ||
+          null;
+
+        return String(eventTeamId || "") === String(teamId || "");
+      }).length;
+
+    return {
+      goalsA: countForTeam(currentCameraLaunchTeams?.teamAId),
+      goalsB: countForTeam(currentCameraLaunchTeams?.teamBId),
+    };
+  }, [
+    currentEvents,
+    currentCameraLaunchTeams?.teamAId,
+    currentCameraLaunchTeams?.teamBId,
+  ]);
+
   const currentCameraLiveContext = useMemo(() => {
     if (!(hasLiveMatch || running)) return null;
-    if (matchType !== MATCH_TYPE.LEAGUE) return null;
 
     return buildCameraLiveContext({
       activeSeasonId,
@@ -3358,19 +4072,31 @@ export default function App() {
       gameFormat,
       currentMatchNo: activeMatchNo,
       launchTeams: currentCameraLaunchTeams,
+      goalsA: currentCameraScore.goalsA,
+      goalsB: currentCameraScore.goalsB,
+      matchSeconds,
+      secondsLeft,
+      running,
+      timeUp,
     });
   }, [
     hasLiveMatch,
     running,
+    timeUp,
     matchType,
     gameFormat,
     activeSeasonId,
     activeMatchNo,
     currentCameraLaunchTeams,
+    currentCameraScore.goalsA,
+    currentCameraScore.goalsB,
+    matchSeconds,
+    secondsLeft,
   ]);
 
     useEffect(() => {
     if (!USE_V2) return;
+    if (isPracticeMode) return;
 
     let cancelled = false;
 
@@ -3681,8 +4407,8 @@ export default function App() {
   const handleGoToViewHighlights = () => {
     if (isPracticeMode) {
       showPracticeRestriction(
-        "Highlights are for Official Sessions",
-        "Video highlights, uploads and voting are official club features. Click Change Profile and enter an Official Session to use them.",
+        "Videos unavailable in Practice",
+        "Videos and permanent highlights are disabled during Practice sessions. Switch to your Official profile to use this feature.",
         "🎥"
       );
       return;
@@ -3717,6 +4443,11 @@ export default function App() {
 
     setPendingMatchStartContext(buildPendingContextFromLiveDraft(draft));
     setCurrentConfirmedLineupSnapshot(draft.confirmedLineupSnapshot || null);
+    setCurrentConfirmedLineupTimeline(
+      Array.isArray(draft.lineupTimeline)
+        ? draft.lineupTimeline
+        : []
+    );
     setSecondsLeft(Math.max(0, safeSeconds));
     setTimeUp(safeSeconds <= 0);
     setRunning(safeSeconds > 0);
@@ -3939,15 +4670,9 @@ export default function App() {
   const canAccessMatchSignup = isAdmin || isCaptain || isPlayer;
 
   const handleGoToMatchSignup = () => {
-    if (isPracticeMode) {
-      showPracticeRestriction(
-        "Payments are for Official Sessions",
-        "Practice Session assumes players are already available for training. Click Change Profile and enter an Official Session to use Match Signup and payments.",
-        "💳"
-      );
-      return;
-    }
-
+    // Practice deliberately uses the same Match Signup -> Payment UI.
+    // Financial settlement is simulated inside the disposable Practice
+    // DataScope; no external payment provider is contacted.
     if (!canAccessMatchSignup) {
       window.alert(
         "Please sign in as a club player before using payments. This prevents untracked payments."
@@ -4016,7 +4741,9 @@ export default function App() {
       activeSeasonId,
       currentMatchType: matchType,
       currentGameFormat: gameFormat,
-      sessionScopedClubId,
+      activeClubId,
+      dataScopeEnvironment: footballDataScope?.environment || "official",
+      practiceSessionId: footballDataScope?.practiceSessionId || null,
     });
 
     if (USE_V2) {
@@ -4583,9 +5310,11 @@ export default function App() {
     setCurrentConfirmedLineupSnapshot(null);
 
     if (USE_V2) {
-      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
-        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
-      });
+      if (!isPracticeMode) {
+        writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
+          console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+        });
+      }
 
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
@@ -4725,6 +5454,15 @@ export default function App() {
           confirmedLineupsByMatchNo[matchNo] ||
           null;
 
+        const authoritativeLineupTimeline =
+          currentConfirmedLineupTimeline.length
+            ? currentConfirmedLineupTimeline
+            : Array.isArray(
+                prevSeason?.liveMatchDraft?.lineupTimeline
+              )
+              ? prevSeason.liveMatchDraft.lineupTimeline
+              : [];
+
         const committedEvents = (prevSeason.currentEvents || []).map((e) => ({
           ...e,
           ...matchMeta,
@@ -4747,14 +5485,7 @@ export default function App() {
                     Number(secondsLeft || 0)
                 ),
                 verifiedLineups,
-                lineupTimeline:
-                  currentConfirmedLineupTimeline.length
-                    ? currentConfirmedLineupTimeline
-                    : Array.isArray(
-                        prevSeason?.liveMatchDraft?.lineupTimeline
-                      )
-                      ? prevSeason.liveMatchDraft.lineupTimeline
-                      : [],
+                lineupTimeline: authoritativeLineupTimeline,
               }).map((event) => ({ ...event, ...matchMeta }))
             : buildCleanSheetEventsForMatch({
                 matchNo,
@@ -4763,6 +5494,9 @@ export default function App() {
                 goalsA,
                 goalsB,
                 verifiedLineups,
+              formationMap: getFormationMapForGameFormat(
+                matchMeta.gameFormat
+              ),
               }).map((event) => ({ ...event, ...matchMeta }));
 
         const allCommittedEvents = [
@@ -4825,6 +5559,7 @@ export default function App() {
           winnerId: rotationResult.winnerId,
           isDraw: rotationResult.isDraw,
           confirmedLineupSnapshot: verifiedLineups,
+          lineupTimeline: authoritativeLineupTimeline,
         };
 
         let nextScheduledFixtures = Array.isArray(prevSeason.scheduledFixtures)
@@ -4881,10 +5616,12 @@ export default function App() {
             results: [newResult],
             allEvents: allCommittedEvents,
             teams: friendlyTeamsSnapshot,
-            playerAppearances: buildDefaultParticipationEntries({
+            playerAppearances: buildFriendlyActualParticipationEntries({
               teams: friendlyTeamsSnapshot,
               results: [newResult],
               members,
+              verifiedLineups,
+              lineupTimeline: authoritativeLineupTimeline,
             }),
           };
 
@@ -4937,9 +5674,11 @@ export default function App() {
       setPendingMatchStartContext(null);
       setCurrentConfirmedLineupSnapshot(null);
       setCurrentConfirmedLineupTimeline([]);
-      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
-        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
-      });
+      if (!isPracticeMode) {
+        writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
+          console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+        });
+      }
       setPage(PAGE_LANDING);
       return;
     }
@@ -5011,6 +5750,9 @@ export default function App() {
               goalsA,
               goalsB,
               verifiedLineups,
+              formationMap: getFormationMapForGameFormat(
+                matchMeta.gameFormat
+              ),
             }).map((event) => ({ ...event, ...matchMeta }));
 
       const allCommittedEvents = [
@@ -5117,7 +5859,9 @@ export default function App() {
     setPendingMatchStartContext(null);
     setCurrentConfirmedLineupSnapshot(null);
     try {
-      await writeCameraLiveContextToFirebase(null, activeClubId);
+      if (!isPracticeMode) {
+        await writeCameraLiveContextToFirebase(null, activeClubId);
+      }
     } catch (error) {
       console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
     }
@@ -5146,9 +5890,11 @@ export default function App() {
     setSecondsLeft(matchSeconds);
     setHasLiveMatch(false);
     setPendingMatchStartContext(null);
-    writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
-      console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
-    });
+    if (!isPracticeMode) {
+      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
+        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+      });
+    }
     setCurrentConfirmedLineupSnapshot(null);
 
     if (USE_V2) {
@@ -5158,9 +5904,11 @@ export default function App() {
         liveMatchDraft: null,
       }));
 
-      writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
-        console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
-      });
+      if (!isPracticeMode) {
+        writeCameraLiveContextToFirebase(null, activeClubId).catch((error) => {
+          console.error("[TK CAMERA] Failed to clear cameraLiveContext:", error);
+        });
+      }
     } else {
       updateState((prev) => ({ ...prev, currentEvents: [] }));
     }
@@ -6083,7 +6831,11 @@ export default function App() {
       const highlightsArchivePayload = buildHighlightsArchivePayload();
       console.log("[TK HIGHLIGHTS] archive winners on End Match Day:", highlightsArchivePayload);
 
-      if (currentVideoHighlightsMatchId && highlightArchiveSelection) {
+      if (
+        !isPracticeMode &&
+        currentVideoHighlightsMatchId &&
+        highlightArchiveSelection
+      ) {
         const selectedHighlights = [
           ...(Array.isArray(highlightArchiveSelection?.topGoals)
             ? highlightArchiveSelection.topGoals
@@ -6116,6 +6868,7 @@ export default function App() {
             matchDayId: id,
             createdAtISO: now.toISOString(),
             playerAppearances: safeParticipationEntries,
+            dataScope: footballDataScope,
           });
         }
 
@@ -6479,15 +7232,6 @@ export default function App() {
   };
 
   const handleProceedToPayment = (payload) => {
-    if (isPracticeMode) {
-      showPracticeRestriction(
-        "Payments are for Official Sessions",
-        "Practice Session does not process real payments. Click Change Profile and enter an Official Session to continue with payments.",
-        "💳"
-      );
-      return;
-    }
-
     const safePayload = payload || {};
     console.log("[TK PAYMENTS] proceed to payment payload:", safePayload);
     setPaymentContext(safePayload);
@@ -6526,19 +7270,21 @@ export default function App() {
     };
   };
 
-  const handleOpenHighlightsCamera = () => {
+  const handleOpenHighlightsCamera = async () => {
     if (isPracticeMode) {
       showPracticeRestriction(
-        "Camera uploads are for Official Sessions",
-        "Practice Session keeps testing safe and isolated, so highlight recording and upload flows are blocked. Click Change Profile and enter an Official Session to use the camera.",
-        "📸"
+        "Highlights Camera unavailable in Practice",
+        "Camera recording and permanent video capture are disabled during Practice sessions. Switch to your Official profile to use this feature.",
+        "📹"
       );
       return;
     }
 
     if (typeof window === "undefined") return;
 
-    const isAndroid = /Android/i.test(window.navigator.userAgent || "");
+    const isAndroid =
+      /Android/i.test(window.navigator.userAgent || "");
+
     if (!isAndroid) {
       window.alert(
         "Highlights Camera currently opens from Android devices with the 5 Asides Near Me Camera app installed."
@@ -6546,120 +7292,297 @@ export default function App() {
       return;
     }
 
+    /*
+     * Camera must attach to the EXACT fixture currently displayed on
+     * LiveMatchPage. During a live/referee session,
+     * pendingMatchStartContext is authoritative and may be ahead of
+     * effectiveLiveMatch.
+     */
+    const cameraMatch =
+      pendingMatchStartContext?.currentMatch ||
+      effectiveLiveMatch;
+
+    const cameraMatchNo =
+      pendingMatchStartContext?.matchNo ||
+      activeMatchNo;
+
+    const cameraMatchType =
+      pendingMatchStartContext?.matchType ||
+      matchType;
+
+    const cameraGameFormat =
+      pendingMatchStartContext?.gameFormat ||
+      gameFormat;
+
+    const cameraTeams =
+      Array.isArray(pendingMatchStartContext?.teams) &&
+      pendingMatchStartContext.teams.length
+        ? pendingMatchStartContext.teams
+        : cameraMatchType === MATCH_TYPE.FRIENDLY
+        ? getActiveFriendlyTeams(fiveVFiveTeams)
+        : teams;
+
     const launchTeams = resolveCameraLaunchTeams({
-      teams: matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams,
-      currentMatch: effectiveLiveMatch,
+      teams: cameraTeams,
+      currentMatch: cameraMatch,
       currentConfirmedLineupSnapshot,
       confirmedLineupsByMatchNo,
-      currentMatchNo: activeMatchNo,
+      currentMatchNo: cameraMatchNo,
     });
 
+    /*
+     * Reuse FANM's already-preloaded canonical player photos.
+     * The Android camera receives display metadata only; it does not
+     * receive broad access to the player-photo collection.
+     */
+    const resolveCameraPlayerPhoto = (player) => {
+      const rawName = String(
+        player?.name ||
+        player?.displayName ||
+        player?.fullName ||
+        ""
+      ).trim();
+
+      if (!rawName) return null;
+
+      const pretty = toTitleCaseLoose(rawName);
+      const slug = slugFromLooseName(rawName);
+      const first = pretty.split(/\s+/)[0] || "";
+
+      const candidates = [
+        rawName,
+        pretty,
+        safeLower(rawName),
+        safeLower(pretty),
+        slug,
+        first,
+        safeLower(first),
+      ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+
+      for (const key of candidates) {
+        const photo =
+          preloadedPlayerPhotosByName?.[key] ||
+          playerPhotosByName?.[key];
+
+        if (photo) return photo;
+      }
+
+      return (
+        player?.photoUrl ||
+        player?.photoURL ||
+        player?.photo ||
+        player?.avatarUrl ||
+        null
+      );
+    };
+
+    const cameraLaunchTeams = {
+      ...launchTeams,
+
+      teamAPlayers: (launchTeams.teamAPlayers || []).map((player) => ({
+        ...player,
+        photoUrl: resolveCameraPlayerPhoto(player),
+      })),
+
+      teamBPlayers: (launchTeams.teamBPlayers || []).map((player) => ({
+        ...player,
+        photoUrl: resolveCameraPlayerPhoto(player),
+      })),
+    };
+
+    /*
+     * Do not reuse currentVideoHighlightsMatchId here because that memo
+     * may still describe the pre-live fixture. Build the camera ID from
+     * the same authoritative fixture being refereed right now.
+     */
     const recordingMatchId =
-      currentVideoHighlightsMatchId ||
       buildVideoHighlightsMatchId({
         activeSeasonId,
-        gameFormat,
-        currentMatchNo: activeMatchNo,
-        matchType,
-        currentMatch: effectiveLiveMatch,
+        gameFormat: cameraGameFormat,
+        currentMatchNo: cameraMatchNo,
+        matchType: cameraMatchType,
+        currentMatch: cameraMatch,
       });
 
-    // CAMERA PAYLOAD V3:
-    // For this camera test, a tap on the TurfKings lens button means the user
-    // is intentionally opening the official recording-device flow.
-    // MainActivity.kt requires sourceApp=TurfKings + matchIsLive=true + matchId.
-    // The matchId MUST be the video_highlights document id because Android listens at:
-    // video_highlights/{matchId}/capture_requests
-    const cameraPayloadVersion = "camera_payload_v3_force_official_recording_device";
-    const hasMatchSides = Boolean(launchTeams.teamAId && launchTeams.teamBId);
-    const isOfficialMatchLive = Boolean(recordingMatchId && hasMatchSides);
+    const organisingClubId =
+      activeClubId || DEFAULT_CLUB_ID;
 
-    const payload = {
-      payloadVersion: cameraPayloadVersion,
-      sourceApp: "TurfKings",
-      productName: "5 Asides Near Me",
-      teamName: "Turf Kings FC",
-      launchPurpose: "record_live_match",
-      recordingMode: "match_recording_device",
-      confirmedRecordingRequired: true,
-      cameraAppMode: "recording_device",
-      isOfficial: true,
-      officialContext: true,
+    if (
+      !recordingMatchId ||
+      !launchTeams.teamAId ||
+      !launchTeams.teamBId
+    ) {
+      window.alert(
+        "The camera cannot be attached because this fixture is incomplete."
+      );
+      return;
+    }
 
-      matchIsLive: isOfficialMatchLive,
-      matchId: recordingMatchId,
-      videoHighlightsMatchId: recordingMatchId,
-      currentVideoHighlightsMatchId: recordingMatchId,
-      legacyMatchId: `tk-${activeSeasonId || "season"}-${activeMatchNo || 1}`,
+    /*
+     * Future-ready fixture contract.
+     *
+     * Today both teams belong to organisingClubId.
+     * Later Club Challenges / Club League can give Team A and
+     * Team B different clubIds without redesigning the camera.
+     */
+    const fixtureContext = {
+      fixtureId: recordingMatchId,
+      organisingClubId,
+      competitionType: "within_club",
 
-      canUseOutsideOfficialMatch: true,
-      matchNo: Number(activeMatchNo || 1),
-      seasonId: activeSeasonId || null,
-      matchType: matchType || MATCH_TYPE.FRIENDLY,
-      gameFormat: normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE),
-      teamAId: launchTeams.teamAId,
-      teamBId: launchTeams.teamBId,
-      teamAName: launchTeams.teamAName,
-      teamBName: launchTeams.teamBName,
-      teamAPlayers: launchTeams.teamAPlayers,
-      teamBPlayers: launchTeams.teamBPlayers,
-      defaultTag: "goal",
-      recordingDeviceSession: {
-        collectionPath: `video_highlights/${recordingMatchId}/recording_devices`,
-        requiresConfirmation: true,
-        heartbeatSeconds: 15,
+      matchType:
+        cameraMatchType || MATCH_TYPE.FRIENDLY,
+
+      gameFormat:
+        normalizeGameFormat(
+          cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE
+        ),
+
+      matchNo: Number(cameraMatchNo || 1),
+
+      seasonId:
+        cameraMatchType === MATCH_TYPE.FRIENDLY
+          ? null
+          : activeSeasonId || null,
+
+      // Operational referee state only.
+      // It does NOT gate cameraman recording.
+      refereeMatchStarted: Boolean(running),
+
+      teamA: {
+        teamId: launchTeams.teamAId,
+        clubId: organisingClubId,
+        teamName: launchTeams.teamAName,
+        abbrev: launchTeams.teamAAbbrev || "",
+        logoUrl: launchTeams.teamALogoUrl || "",
+        players: (cameraLaunchTeams.teamAPlayers || []).map(
+          (player) => ({
+            ...player,
+            teamId:
+              player?.teamId || launchTeams.teamAId,
+            clubId:
+              player?.clubId || organisingClubId,
+          })
+        ),
       },
-      captureRequests: {
-        collectionPath: `video_highlights/${recordingMatchId}/capture_requests`,
-        listen: true,
-        preRollSeconds: 15,
-        postRollSeconds: 5,
+
+      teamB: {
+        teamId: launchTeams.teamBId,
+        clubId: organisingClubId,
+        teamName: launchTeams.teamBName,
+        abbrev: launchTeams.teamBAbbrev || "",
+        logoUrl: launchTeams.teamBLogoUrl || "",
+        players: (cameraLaunchTeams.teamBPlayers || []).map(
+          (player) => ({
+            ...player,
+            teamId:
+              player?.teamId || launchTeams.teamBId,
+            clubId:
+              player?.clubId || organisingClubId,
+          })
+        ),
       },
-      returnUrl: "turfkings://camera-return",
-      openedAtISO: new Date().toISOString(),
     };
 
-    console.log("[TK CAMERA] PAYLOAD V3 opening camera:", payload);
+    try {
+      const handoff =
+        await createCameraHandoff({
+          clubId: organisingClubId,
+          matchId: recordingMatchId,
+          fixtureContext,
+          dataScope: "official",
+        });
 
-    const launchUrl = `${CAMERA_APP_DEEP_LINK_SCHEME}?payload=${encodeURIComponent(
-      JSON.stringify(payload)
-    )}`;
+      const launchUrl =
+        buildAuthorizedCameraDeepLink({
+          handoffId: handoff.handoffId,
+        });
 
-    let appProbablyOpened = false;
+      console.log(
+        "[FANM CAMERA] Secure camera handoff created",
+        {
+          clubId: organisingClubId,
+          matchId: recordingMatchId,
+          teamA: fixtureContext.teamA.teamName,
+          teamB: fixtureContext.teamB.teamName,
+          players:
+            fixtureContext.teamA.players.length +
+            fixtureContext.teamB.players.length,
+        }
+      );
 
-    const markOpened = () => {
-      appProbablyOpened = true;
-    };
+      let appProbablyOpened = false;
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) markOpened();
-    };
+      const markOpened = () => {
+        appProbablyOpened = true;
+      };
 
-    const cleanupListeners = () => {
-      window.removeEventListener("pagehide", markOpened);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", markOpened);
-    };
+      const onVisibilityChange = () => {
+        if (document.hidden) markOpened();
+      };
 
-    window.addEventListener("pagehide", markOpened, { once: true });
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", markOpened, { once: true });
+      const cleanup = () => {
+        window.removeEventListener("pagehide", markOpened);
+        window.removeEventListener("blur", markOpened);
+        document.removeEventListener(
+          "visibilitychange",
+          onVisibilityChange
+        );
+      };
 
-    setCameraInstallPrompt(null);
-    window.location.href = launchUrl;
+      window.addEventListener(
+        "pagehide",
+        markOpened,
+        { once: true }
+      );
 
-    window.setTimeout(() => {
-      cleanupListeners();
-      if (appProbablyOpened || document.hidden) return;
+      window.addEventListener(
+        "blur",
+        markOpened,
+        { once: true }
+      );
 
-      setCameraInstallPrompt({
-        payload,
-        launchUrl,
-        installUrl: CAMERA_APP_INSTALL_URL,
-        installGuideUrl: CAMERA_APP_INSTALL_GUIDE_URL,
-        shownAtISO: new Date().toISOString(),
-      });
-    }, CAMERA_APP_OPEN_FALLBACK_MS);
+      document.addEventListener(
+        "visibilitychange",
+        onVisibilityChange
+      );
+
+      setCameraInstallPrompt(null);
+      window.location.href = launchUrl;
+
+      window.setTimeout(() => {
+        cleanup();
+
+        if (
+          appProbablyOpened ||
+          document.hidden
+        ) {
+          return;
+        }
+
+        setCameraInstallPrompt({
+          payload: fixtureContext,
+          launchUrl,
+          installUrl: CAMERA_APP_INSTALL_URL,
+          installGuideUrl:
+            CAMERA_APP_INSTALL_GUIDE_URL,
+          shownAtISO: new Date().toISOString(),
+        });
+      }, CAMERA_APP_OPEN_FALLBACK_MS);
+
+    } catch (error) {
+      console.error(
+        "[FANM CAMERA] Secure handoff failed",
+        error
+      );
+
+      window.alert(
+        error?.message ||
+          "The camera could not be securely attached to this fixture."
+      );
+    }
   };
 
   const handleRetryOpenHighlightsCamera = () => {
@@ -6672,6 +7595,14 @@ export default function App() {
   };
 
   const handleUploadHighlight = async (payload) => {
+    // Practice v2 external-effect firewall:
+    // never upload video or create permanent highlight metadata.
+    if (isPracticeMode) {
+      throw new Error(
+        "[Practice] Video highlight uploads are disabled."
+      );
+    }
+
     const matchId = currentVideoHighlightsMatchId;
 
     const clipId =
@@ -6805,7 +7736,7 @@ export default function App() {
   ]);
 
   const hideBottomNavForSquadAdmin =
-    page === PAGE_SQUADS && Boolean(isAdmin);
+    page === PAGE_SQUADS && Boolean(squadsAdminPreviewOpen);
 
   const isLiveMatchControlLocked = Boolean(hasLiveMatch || running);
   const isRefereeStatsView = Boolean(isLiveMatchControlLocked && page === PAGE_STATS);
@@ -6900,6 +7831,495 @@ export default function App() {
         page === PAGE_LANDING ? "app-root--landing" : ""
       }`}
     >
+      {(practiceBootstrapping || practiceReadyForEntry) && (
+        <div
+          className="practice-startup-overlay"
+          role="status"
+          aria-live="polite"
+          aria-label="Preparing Practice Session"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 20000,
+            display: "grid",
+            placeItems: "center",
+            padding: "1.25rem",
+            background:
+              "radial-gradient(circle at 50% 28%, rgba(126,34,206,0.24), transparent 34%), linear-gradient(180deg, rgba(2,6,23,0.985), rgba(8,10,28,0.995))",
+            color: "#f8fafc",
+          }}
+        >
+          <div
+            className="practice-startup-card"
+            style={{
+              width: "min(430px, 100%)",
+              padding: "2rem 1.5rem",
+              borderRadius: "26px",
+              border: "1px solid rgba(217,70,239,0.42)",
+              background:
+                "linear-gradient(180deg, rgba(30,12,48,0.94), rgba(8,15,35,0.97))",
+              boxShadow:
+                "0 0 0 1px rgba(250,204,255,0.08), 0 24px 70px rgba(0,0,0,0.48), 0 0 38px rgba(168,85,247,0.16)",
+              textAlign: "center",
+            }}
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                width: 64,
+                height: 64,
+                margin: "0 auto 1.15rem",
+                display: "grid",
+                placeItems: "center",
+                borderRadius: "50%",
+                border: "2px solid rgba(217,70,239,0.68)",
+                background: "rgba(126,34,206,0.18)",
+                fontSize: "1.75rem",
+                boxShadow: "0 0 24px rgba(217,70,239,0.20)",
+              }}
+            >
+              🎮
+            </div>
+
+            <div
+              style={{
+                color: "#e879f9",
+                fontSize: "0.72rem",
+                fontWeight: 900,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                marginBottom: "0.65rem",
+              }}
+            >
+              Admin & Captain Training
+            </div>
+
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "clamp(1.65rem, 6vw, 2.15rem)",
+                lineHeight: 1.05,
+              }}
+            >
+              Practice Session
+            </h1>
+
+            <p
+              style={{
+                margin: "0.8rem 0 0",
+                color: "#f5d0fe",
+                fontSize: "1.05rem",
+                fontWeight: 800,
+              }}
+            >
+              Learn the app safely.
+            </p>
+
+            <p
+              style={{
+                margin: "0.85rem auto 0",
+                maxWidth: 350,
+                color: "rgba(226,232,240,0.86)",
+                fontSize: "0.92rem",
+                lineHeight: 1.6,
+              }}
+            >
+              Practice lets admins and captains rehearse club management
+              and matchday features without affecting your Official club data.
+            </p>
+
+            <div
+              style={{
+                marginTop: "1.4rem",
+                height: 4,
+                overflow: "hidden",
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.08)",
+              }}
+            >
+              <div
+                style={{
+                  width: "42%",
+                  height: "100%",
+                  borderRadius: 999,
+                  background:
+                    "linear-gradient(90deg, #7e22ce, #d946ef, #7e22ce)",
+                  animation: "practiceBootPulse 1.25s ease-in-out infinite alternate",
+                }}
+              />
+            </div>
+
+            {practiceBootstrapping ? (
+              <>
+                <small
+                  style={{
+                    display: "block",
+                    marginTop: "0.8rem",
+                    color: "rgba(203,213,225,0.68)",
+                    fontSize: "0.75rem",
+                  }}
+                >
+                  Preparing your isolated Practice session…
+                </small>
+
+                <style>{`
+                  @keyframes practiceBootPulse {
+                    from {
+                      transform: translateX(0);
+                      opacity: 0.7;
+                    }
+                    to {
+                      transform: translateX(138%);
+                      opacity: 1;
+                    }
+                  }
+                `}</style>
+              </>
+            ) : (
+              <>
+                <small
+                  style={{
+                    display: "block",
+                    marginTop: "0.85rem",
+                    color: "#86efac",
+                    fontSize: "0.78rem",
+                    fontWeight: 800,
+                  }}
+                >
+                  Practice Session ready
+                </small>
+
+                <button
+                  className="practice-startup-proceed"
+                  type="button"
+                  onClick={() => {
+                    setPracticeReadyForEntry(false);
+                    setPage(PAGE_LANDING);
+                  }}
+                  style={{
+                    width: "100%",
+                    marginTop: "1rem",
+                    minHeight: 46,
+                    border: "1px solid rgba(134,239,172,0.75)",
+                    borderRadius: 14,
+                    background:
+                      "linear-gradient(135deg, #16a34a, #22c55e)",
+                    color: "#ffffff",
+                    fontWeight: 900,
+                    fontSize: "0.92rem",
+                    letterSpacing: "0.01em",
+                    boxShadow:
+                      "0 10px 30px rgba(34,197,94,0.24), 0 0 18px rgba(34,197,94,0.18)",
+                    cursor: "pointer",
+                  }}
+                >
+                  Proceed
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showPracticeDevTools && (
+        <div
+          style={{
+            position: "fixed",
+            right: 10,
+            top: 10,
+            zIndex: 13000,
+            padding: "0.65rem 0.8rem",
+            borderRadius: 12,
+            background: "rgba(2,6,23,0.94)",
+            border: "1px solid rgba(34,211,238,0.55)",
+            color: "#e2e8f0",
+            fontSize: "0.72rem",
+            lineHeight: 1.45,
+            fontFamily: "monospace",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+            pointerEvents: "none",
+          }}
+        >
+          <div><strong>Practice v2 diagnostic</strong></div>
+
+          {canChooseSessionMode && !isPracticeMode && (
+            <div
+              style={{
+                marginTop: "0.75rem",
+                padding: "0.85rem",
+                border: "1px solid rgba(255,255,255,0.14)",
+                borderRadius: "12px",
+              }}
+            >
+              {!showPracticeCreditTransfer ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPracticeCreditTransferError("");
+                    setPracticeCreditTransferSuccess("");
+                    setShowPracticeCreditTransfer(true);
+                  }}
+                >
+                  Transfer a Practice Credit
+                </button>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 700, marginBottom: "0.35rem" }}>
+                    Transfer 1 Practice Credit
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "0.9rem",
+                      opacity: 0.8,
+                      marginBottom: "0.65rem",
+                    }}
+                  >
+                    Give one of your unused credits for this week to another
+                    eligible admin or captain in this club.
+                  </div>
+
+                  <select
+                    value={practiceCreditRecipientId}
+                    disabled={practiceCreditTransferPending}
+                    onChange={(event) => {
+                      setPracticeCreditRecipientId(event.target.value);
+                      setPracticeCreditTransferError("");
+                      setPracticeCreditTransferSuccess("");
+                    }}
+                    style={{
+                      width: "100%",
+                      marginBottom: "0.65rem",
+                    }}
+                  >
+                    <option value="">Choose recipient</option>
+                    {practiceCreditRecipients.map((recipient) => (
+                      <option
+                        key={recipient.recipientUserId}
+                        value={recipient.recipientUserId}
+                      >
+                        {recipient.name}
+                        {recipient.role
+                          ? ` — ${recipient.role}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  {practiceCreditRecipients.length === 0 && (
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        opacity: 0.75,
+                        marginBottom: "0.65rem",
+                      }}
+                    >
+                      No other eligible club member is currently available
+                      for a Practice credit transfer.
+                    </div>
+                  )}
+
+                  {practiceCreditTransferError && (
+                    <div
+                      role="alert"
+                      style={{
+                        marginBottom: "0.65rem",
+                        fontSize: "0.88rem",
+                      }}
+                    >
+                      {practiceCreditTransferError}
+                    </div>
+                  )}
+
+                  {practiceCreditTransferSuccess && (
+                    <div
+                      role="status"
+                      style={{
+                        marginBottom: "0.65rem",
+                        fontSize: "0.88rem",
+                      }}
+                    >
+                      {practiceCreditTransferSuccess}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.5rem",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={
+                        practiceCreditTransferPending ||
+                        !practiceCreditRecipientId
+                      }
+                      onClick={handlePracticeCreditTransfer}
+                    >
+                      {practiceCreditTransferPending
+                        ? "Transferring…"
+                        : "Transfer 1 Credit"}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={practiceCreditTransferPending}
+                      onClick={() => {
+                        setShowPracticeCreditTransfer(false);
+                        setPracticeCreditRecipientId("");
+                        setPracticeCreditTransferError("");
+                        setPracticeCreditTransferSuccess("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          <div>mode: {sessionMode}</div>
+          <div>runtime: {practiceRuntime ? "YES" : "NO"}</div>
+          <div>session: {practiceRuntime?.practiceSessionId || "NONE"}</div>
+          <div>scope: {footballDataScope?.environment || "NONE"}</div>
+          <div>roster: {practiceRuntime?.roster?.length ?? "NONE"}</div>
+          <div>expires: {practiceRuntime?.expiresAt || "NONE"}</div>
+        </div>
+      )}
+
+      {showPracticeDevTools && (
+        <div
+          style={{
+            position: "fixed",
+            right: 10,
+            top: 10,
+            zIndex: 13000,
+            padding: "0.65rem 0.8rem",
+            borderRadius: 12,
+            background: "rgba(2,6,23,0.94)",
+            border: "1px solid rgba(34,211,238,0.55)",
+            color: "#e2e8f0",
+            fontSize: "0.72rem",
+            lineHeight: 1.45,
+            fontFamily: "monospace",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+            pointerEvents: "none",
+          }}
+        >
+          <div><strong>Practice v2 diagnostic</strong></div>
+          <div>mode: {sessionMode}</div>
+          <div>runtime: {practiceRuntime ? "YES" : "NO"}</div>
+          <div>session: {practiceRuntime?.practiceSessionId || "NONE"}</div>
+          <div>scope: {footballDataScope?.environment || "NONE"}</div>
+          <div>roster: {practiceRuntime?.roster?.length ?? "NONE"}</div>
+          <div>expires: {practiceRuntime?.expiresAt || "NONE"}</div>
+        </div>
+      )}
+
+      {isPracticeMode && practiceRuntime?.expiresAt && (
+        <div
+          role="status"
+          aria-label={`Practice Session ${practiceTimerLabel} remaining`}
+          style={{
+            position: "fixed",
+            top: "4.25rem",
+            left:
+              practiceRibbonPosition === "left"
+                ? 0
+                : practiceRibbonPosition === "right"
+                  ? "auto"
+                  : "54%",
+            right: practiceRibbonPosition === "right" ? 0 : "auto",
+            transform:
+              practiceRibbonPosition === "open"
+                ? "translateX(-50%)"
+                : "none",
+            zIndex: 12000,
+            display: "flex",
+            alignItems: "center",
+            gap: practiceRibbonPosition === "open" ? "0.5rem" : "0.35rem",
+            padding:
+              practiceRibbonPosition === "open"
+                ? "0.62rem 0.95rem"
+                : practiceRibbonPosition === "left"
+                  ? "0.58rem 0.65rem 0.58rem 0.45rem"
+                  : "0.58rem 0.45rem 0.58rem 0.65rem",
+            borderRadius:
+              practiceRibbonPosition === "open"
+                ? 999
+                : practiceRibbonPosition === "left"
+                  ? "0 999px 999px 0"
+                  : "999px 0 0 999px",
+            border: "2px solid rgba(232,121,249,0.95)",
+            background:
+              "linear-gradient(135deg, rgba(76,29,149,0.98), rgba(88,28,135,0.98), rgba(30,12,48,0.98))",
+            color: "#fff7ff",
+            boxShadow:
+              "0 0 0 1px rgba(250,204,255,0.28), 0 0 20px rgba(217,70,239,0.42), 0 10px 30px rgba(30,12,48,0.48)",
+            backdropFilter: "blur(14px)",
+            fontWeight: 850,
+            fontSize: practiceRibbonPosition === "open" ? "0.9rem" : "0.82rem",
+            letterSpacing: "0.01em",
+            cursor: "pointer",
+            userSelect: "none",
+            transition:
+              "left 180ms ease, right 180ms ease, transform 180ms ease, padding 180ms ease, box-shadow 180ms ease",
+          }}
+          title={
+            practiceRibbonPosition === "open"
+              ? "Tap to move the Practice Session warning to the right edge"
+              : "Tap to move or expand the Practice Session warning"
+          }
+          onClick={() => {
+            setPracticeRibbonPosition((current) => {
+              if (current === "open") return "right";
+              if (current === "right") return "left";
+              return "open";
+            });
+          }}
+        >
+          <span aria-hidden="true">🧪</span>
+
+          {practiceRibbonPosition === "open" && (
+            <>
+              <span>Practice session</span>
+              <span
+                style={{ opacity: 0.65 }}
+                aria-hidden="true"
+              >
+                •
+              </span>
+            </>
+          )}
+
+          <span
+            style={{
+              fontVariantNumeric: "tabular-nums",
+              minWidth:
+                practiceRibbonPosition === "open" ? "3.2rem" : "2.95rem",
+              textAlign: "center",
+            }}
+          >
+            {practiceTimerLabel}
+          </span>
+
+          {practiceRibbonPosition !== "open" && (
+            <span
+              aria-hidden="true"
+              style={{
+                fontSize: "0.72rem",
+                opacity: 0.8,
+              }}
+            >
+              {practiceRibbonPosition === "right" ? "◀" : "▶"}
+            </span>
+          )}
+        </div>
+      )}
+
       {officialStartWarning && (
         <div className="tk-referee-lock-backdrop" onClick={() => setOfficialStartWarning(null)}>
           <div className="tk-referee-lock-modal" onClick={(e) => e.stopPropagation()}>
@@ -7635,7 +9055,7 @@ export default function App() {
             justifyContent: "center",
             padding: "1rem",
             background: "rgba(2, 6, 23, 0.78)",
-            backdropFilter: "blur(10px)",
+
           }}
         >
           <div
@@ -7664,33 +9084,26 @@ export default function App() {
               {practiceRestrictionModal.message}
             </p>
 
-            <div style={{ display: "grid", gap: "0.7rem", marginTop: "1.1rem" }}>
-              <button
-                type="button"
-                className="primary-btn"
-                onClick={() => {
-                  closePracticeRestriction();
-                  if (canChooseSessionMode) setShowSessionSelector(true);
-                  setPage(PAGE_LANDING);
-                }}
-              >
-                Change Profile
-              </button>
-
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={closePracticeRestriction}
-              >
-                Stay in Practice
-              </button>
-            </div>
+            {!practiceRestrictionModal.locked && (
+              <div style={{ display: "grid", gap: "0.7rem", marginTop: "1.1rem" }}>
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={closePracticeRestriction}
+                >
+                  {practiceRestrictionModal.buttonLabel || "Got it"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {showSessionSelector && canChooseSessionMode && page === PAGE_LANDING && (
+      {showSessionSelector &&
+        canChooseSessionMode &&
+        page === PAGE_SESSION_SELECTOR && (
         <div
+          className="session-selector-overlay"
           style={{
             position: "fixed",
             inset: 0,
@@ -7698,20 +9111,28 @@ export default function App() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: "1rem",
+            padding: "clamp(0.35rem, 1.2vh, 0.8rem)",
+            overflowX: "hidden",
+            overflowY: "auto",
+            WebkitOverflowScrolling: "touch",
             background:
-              "radial-gradient(circle at top, rgba(30, 144, 255, 0.18), rgba(2, 6, 23, 0.88) 55%, rgba(0,0,0,0.94))",
+              "radial-gradient(circle at top, rgba(30, 144, 255, 0.18), rgba(2, 6, 23, 0.96) 55%, rgba(0,0,0,0.98))",
             backdropFilter: "blur(10px)",
           }}
         >
           <div
+            className="session-selector-shell"
             style={{
-              width: "min(920px, 96vw)",
-              maxHeight: "92vh",
-              overflowY: "auto",
+              width: "min(920px, 98vw)",
+              height: "auto",
+              maxHeight: "none",
+              overflow: "visible",
               border: "1px solid rgba(147, 197, 253, 0.55)",
               borderRadius: "28px",
-              padding: "1.5rem",
+              padding:
+                "clamp(0.55rem, 1.25vh, 1.1rem) clamp(0.65rem, 1.6vh, 1.25rem) clamp(0.3rem, 0.65vh, 0.55rem)",
+              display: "flex",
+              flexDirection: "column",
               background:
                 "linear-gradient(145deg, rgba(2, 8, 23, 0.98), rgba(7, 18, 38, 0.96))",
               boxShadow:
@@ -7720,21 +9141,21 @@ export default function App() {
               position: "relative",
             }}
           >
-            <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-              <div style={{ fontSize: "3rem", filter: "drop-shadow(0 0 18px rgba(251,191,36,0.8))" }}>
+            <div className="session-selector-header" style={{ textAlign: "center", marginBottom: "clamp(0.45rem, 1vh, 1rem)", flexShrink: 0 }}>
+              <div style={{ fontSize: "clamp(1.8rem, 5vh, 2.7rem)", lineHeight: 1, filter: "drop-shadow(0 0 18px rgba(251,191,36,0.8))" }}>
                 👑
               </div>
-              <h1 style={{ fontSize: "clamp(2rem, 6vw, 3.4rem)", margin: 0 }}>
+              <h1 style={{ fontSize: "clamp(1.55rem, 4.5vh, 3rem)", margin: "0.2rem 0 0" }}>
                 Choose Session
               </h1>
-              <p style={{ color: "#dbeafe", fontSize: "1.1rem", marginTop: "0.5rem" }}>
+              <p style={{ color: "#dbeafe", fontSize: "clamp(0.78rem, 2vh, 1.05rem)", margin: "0.25rem 0 0" }}>
                 Choose how you want to enter the platform.
               </p>
               <div
                 style={{
                   width: 110,
                   height: 5,
-                  margin: "1rem auto 0",
+                  margin: "clamp(0.35rem, 0.8vh, 0.7rem) auto 0",
                   borderRadius: 999,
                   background: "linear-gradient(90deg, #0ea5e9, #d946ef)",
                 }}
@@ -7742,22 +9163,32 @@ export default function App() {
             </div>
 
             <div
+              className="session-selector-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                gap: "1.3rem",
+                gridAutoRows: "auto",
+                gap: "clamp(0.25rem, 0.55vh, 0.55rem)",
+                flex: "0 0 auto",
+                minHeight: 0,
               }}
             >
               <button
                 type="button"
+                className="session-choice-card session-choice-card-official"
                 onClick={() => {
+                  writeSessionModeIntent("official");
+                  setPracticeRuntime(null);
                   setSessionMode("official");
                   setShowSessionSelector(false);
+                  setPage(PAGE_LANDING);
                 }}
                 style={{
                   border: "1px solid #0ea5e9",
                   borderRadius: "24px",
-                  padding: "1.35rem",
+                  padding: "clamp(0.65rem, 1.4vh, 1.1rem)",
+                  minHeight: 0,
+                  overflow: "hidden",
                   background:
                     "linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.96)), url('/session/official-session-bg.png'), radial-gradient(circle at top, rgba(14,165,233,0.42), rgba(2,6,23,0.96) 58%)",
                   backgroundSize: "cover, cover, cover",
@@ -7767,15 +9198,26 @@ export default function App() {
                   textAlign: "left",
                   cursor: "pointer",
                   boxShadow: "0 0 35px rgba(14,165,233,0.35)",
+                  transform:
+                    sessionChoiceEmphasis === "practice"
+                      ? "scale(0.85)"
+                      : "scale(0.90)",
+                  transformOrigin: "center",
+                  transition:
+                    "transform 420ms ease, opacity 420ms ease, box-shadow 420ms ease",
+                  opacity:
+                    sessionChoiceEmphasis === "practice"
+                      ? 0.92
+                      : 1,
                 }}
               >
-                <div style={{ textAlign: "center", fontSize: "4rem", marginBottom: "0.7rem" }}>🏃‍♂️⚽</div>
-                <h2 style={{ fontSize: "2rem", textAlign: "center", margin: 0 }}>Official<br />Session</h2>
+                <div style={{ textAlign: "center", fontSize: "clamp(2rem, 5vh, 3.2rem)", marginBottom: "0.25rem", lineHeight: 1 }}>🏃‍♂️⚽</div>
+                <h2 style={{ fontSize: "clamp(1.35rem, 3.5vh, 1.9rem)", textAlign: "center", margin: 0, lineHeight: 1.05 }}>Official<br />Session</h2>
                 <hr style={{ borderColor: "rgba(14,165,233,0.55)", margin: "1rem 0" }} />
                 <p>📊 Real standings & records</p>
                 <p>🎥 Videos & highlights enabled</p>
                 <p>🏅 Official stats & club history</p>
-                <p>🔒 Permanent club impact</p>
+                <p>🔒 Permanent club records</p>
                 <div
                   style={{
                     marginTop: "1rem",
@@ -7792,6 +9234,7 @@ export default function App() {
 
               <button
                 type="button"
+                className="session-choice-card session-choice-card-practice"
                 onClick={async () => {
                   const weeklyPlayTime =
                     activeClubIdentity?.weeklyPlayTime ||
@@ -7808,30 +9251,77 @@ export default function App() {
                     return;
                   }
 
-                  const nextPracticeClubId = `${activeClubId}-practice`;
+                  setPracticeReadyForEntry(false);
+                  setPracticeBootstrapping(true);
 
                   try {
-                    await ensurePracticeSessionSeed(
-                      db,
-                      nextPracticeClubId,
-                      activeClubIdentity
-                    );
+                    // Practice v2 requires Firebase authentication because
+                    // the server owns session authorization, credits and
+                    // authoritative Practice identity.
+                    //
+                    // IMPORTANT:
+                    // This authentication gate belongs ONLY to Practice.
+                    // Official Session behaviour is deliberately untouched.
+                    // Practice authentication:
+                    // If Firebase Auth has no current user, complete the existing
+                    // Google sign-in flow first. The Practice gateway remains the
+                    // authoritative security boundary: it reads auth.currentUser,
+                    // obtains a fresh Firebase ID token, and the server verifies it.
+                    //
+                    // Do not depend on React AuthContext propagation here because
+                    // AuthContext enrichment may complete after Firebase Auth itself.
+                    if (!authUser?.firebaseUser) {
+                      await signInWithGoogle();
+                    }
+
+                    const runtime = await createPracticeRuntime({
+                      clubId: activeClubId,
+                    });
+
+                    setCurrentConfirmedLineupSnapshot(null);
+                    setConfirmedLineupsByMatchNo({});
+
+                    // Practice v2:
+                    // authoritative session + real Official roster +
+                    // explicit disposable Practice DataScope.
+                    writeSessionModeIntent("practice");
+                    setPracticeRuntime(runtime);
+                    setSessionMode("practice");
+                    setShowSessionSelector(false);
+
+                    /*
+                     * Practice is now genuinely ready, but keep the
+                     * startup splash visible until the admin/captain
+                     * has finished reading it and presses OK.
+                     */
+                    setPracticeBootstrapping(false);
+                    setPracticeReadyForEntry(true);
                   } catch (err) {
-                    console.error("[PRACTICE SEED ERROR]", err);
+                    setPracticeBootstrapping(false);
+                    console.error("[PRACTICE V2 START ERROR]", err);
+
+                    if (err?.code === "practice/no-credits") {
+                      showPracticeRestriction(
+                        "Practice sessions used for this week",
+                        "You have used all 3 Practice sessions available this week. Your allowance refreshes automatically next week. You can continue using your Official Session normally.",
+                        "⏳"
+                      );
+                    } else {
+                      showPracticeRestriction(
+                        "Practice Session unavailable",
+                        err?.message ||
+                          "Practice Session could not be started right now. Your Official Session has not been affected.",
+                        "⚠️"
+                      );
+                    }
                   }
-
-                  setCurrentConfirmedLineupSnapshot(null);
-                  setConfirmedLineupsByMatchNo({});
-
-                  // Practice state is seeded in Firebase and then loaded by subscribeToStateV2().
-                  // Do not rebuild/reset it here, otherwise saved practice squads are wiped on entry.
-                  setSessionMode("practice");
-                  setShowSessionSelector(false);
                 }}
                 style={{
                   border: "1px solid #d946ef",
                   borderRadius: "24px",
-                  padding: "1.35rem",
+                  padding: "clamp(0.65rem, 1.4vh, 1.1rem)",
+                  minHeight: 0,
+                  overflow: "hidden",
                   background:
                     "linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.96)), url('/session/practice-session-bg.png'), radial-gradient(circle at top, rgba(168,85,247,0.48), rgba(2,6,23,0.96) 58%)",
                   backgroundSize: "cover, cover, cover",
@@ -7841,15 +9331,25 @@ export default function App() {
                   textAlign: "left",
                   cursor: "pointer",
                   boxShadow: "0 0 35px rgba(217,70,239,0.35)",
+                  transform:
+                    sessionChoiceEmphasis === "official"
+                      ? "scale(0.85)"
+                      : "scale(0.90)",
+                  transformOrigin: "center",
+                  transition:
+                    "transform 420ms ease, opacity 420ms ease, box-shadow 420ms ease",
+                  opacity:
+                    sessionChoiceEmphasis === "official"
+                      ? 0.92
+                      : 1,
                 }}
               >
-                <div style={{ textAlign: "center", fontSize: "4rem", marginBottom: "0.7rem" }}>🎮</div>
-                <h2 style={{ fontSize: "2rem", textAlign: "center", margin: 0 }}>Practice<br />Session</h2>
+                <div style={{ textAlign: "center", fontSize: "clamp(2rem, 5vh, 3.2rem)", marginBottom: "0.25rem", lineHeight: 1 }}>🎮</div>
+                <h2 style={{ fontSize: "clamp(1.35rem, 3.5vh, 1.9rem)", textAlign: "center", margin: 0, lineHeight: 1.05 }}>Practice<br />Session</h2>
                 <hr style={{ borderColor: "rgba(217,70,239,0.55)", margin: "1rem 0" }} />
-                <p>🎯 Learn the full workflow safely</p>
+                <p>🎯 For learning the app purposes</p>
                 <p>🧱 Isolated practice database</p>
                 <p>🛡️ Never affects official club records</p>
-                <p>↩️ Reset anytime, no risk</p>
                 <div
                   style={{
                     marginTop: "1rem",
@@ -7865,19 +9365,7 @@ export default function App() {
               </button>
             </div>
 
-            <div
-              style={{
-                marginTop: "1.25rem",
-                padding: "1rem",
-                border: "1px solid rgba(148,163,184,0.35)",
-                borderRadius: "18px",
-                background: "rgba(15,23,42,0.72)",
-                color: "#e5e7eb",
-                textAlign: "center",
-              }}
-            >
-              🛡️ Practice records stay isolated and never affect official club history.
-            </div>
+
           </div>
         </div>
       )}
@@ -7924,7 +9412,7 @@ export default function App() {
           onGoToNews={() => setPage(PAGE_NEWS)}
           onGoToHighlights={handleGoToViewHighlights}
           onOpenHighlightsCamera={handleOpenHighlightsCamera}
-          onGoToEntryDev={() => setPage(PAGE_ENTRY)}
+          onGoToEntryDev={handleChangeProfile}
           onGoToPayments={handleGoToMatchSignup}
           identity={pageIdentity}
           activeRole={activeRole}
@@ -7946,6 +9434,9 @@ export default function App() {
           activeSeasonId={activeSeasonId}
           activeClub={activeClub}
           activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          practiceSessionId={practiceRuntime?.practiceSessionId || null}
+          dataScope={footballDataScope}
           playerPhotosByName={effectivePlayerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
@@ -7969,6 +9460,10 @@ export default function App() {
           activeRole={activeRole}
           activeSeasonId={activeSeasonId}
           paymentContext={paymentContext}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          practiceSessionId={practiceRuntime?.practiceSessionId || null}
+          dataScope={footballDataScope}
           isAdmin={isAdmin}
           isCaptain={isCaptain}
           onBack={handleBackFromPayment}
@@ -8027,6 +9522,9 @@ export default function App() {
               : null
           }
           rotationReminderMode={liveMatchDraft?.rotationReminderMode || "off"}
+          rotationReminderConfigured={Boolean(
+            liveMatchDraft?.rotationReminderUpdatedAtISO
+          )}
           onUpdateRotationReminder={handleUpdateRotationReminder}
           redCardRule={liveMatchDraft?.redCardRule || "permanent"}
           onUpdateRedCardRule={handleUpdateRedCardRule}
@@ -8042,7 +9540,8 @@ export default function App() {
           confirmedLineupSnapshot={currentConfirmedLineupSnapshot}
           confirmedLineupsByMatchNo={confirmedLineupsByMatchNo}
           playerPhotosByName={effectivePlayerPhotosByName}
-          activeClubId={sessionScopedClubId}
+          activeClubId={footballStateClubId}
+          dataScope={footballDataScope}
           activeClub={activeClub}
           onConfirmPreMatchLineups={handleConfirmPreMatchLineups}
           onCancelPreMatchLineups={handleCancelPreMatchLineups}
@@ -8120,13 +9619,15 @@ export default function App() {
           )}
           identity={pageIdentity}
           matchType={matchType}
+          isPracticeMode={isPracticeMode}
+          dataScope={footballDataScope}
         />
       )}
 
       {page === PAGE_VIEW_HIGHLIGHTS && (
         <VideoHighlightsPage
           matchId={currentVideoHighlightsMatchId}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
           identity={pageIdentity}
           activeRole={activeRole}
           isAdmin={isAdmin}
@@ -8161,7 +9662,11 @@ export default function App() {
                 .trim()
                 .toLowerCase();
 
-            if (userId && currentVideoHighlightsMatchId) {
+            if (
+              !isPracticeMode &&
+              userId &&
+              currentVideoHighlightsMatchId
+            ) {
               try {
                 await VideoHighlightsRepository.saveHighlightVotesToFirebase({
                   matchId: currentVideoHighlightsMatchId,
@@ -8219,7 +9724,10 @@ export default function App() {
           onBack={handleBackToLanding}
           members={members}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          practiceSessionId={practiceRuntime?.practiceSessionId || null}
+          dataScope={footballDataScope}
         />
       )}
 
@@ -8244,7 +9752,9 @@ export default function App() {
           gameFormat={gameFormat}
           activeSeasonNo={USE_V2 ? activeSeasonNo : null}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          dataScope={footballDataScope}
           finalPlayerCardSnapshot={
             USE_V2
               ? (() => {
@@ -8274,15 +9784,37 @@ export default function App() {
           identity={pageIdentity}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          dataScope={footballDataScope}
           onBack={() => setPage(PAGE_STATS)}
         />
       )}
 
       {page === PAGE_SQUADS && (
         <SquadsPage
-          teams={teams}
-          fiveVFiveTeams={ensureFiveVFiveTeamsShape(fiveVFiveTeams)}
+          teams={
+            isPracticeMode
+              ? (Array.isArray(teams)
+                  ? teams.map((team) => ({
+                      ...team,
+                      players: [],
+                      captainId: null,
+                      captain: "",
+                    }))
+                  : [])
+              : teams
+          }
+          fiveVFiveTeams={
+            isPracticeMode
+              ? ensureFiveVFiveTeamsShape([]).map((team) => ({
+                  ...team,
+                  players: [],
+                  captainId: null,
+                  captain: "",
+                }))
+              : ensureFiveVFiveTeamsShape(fiveVFiveTeams)
+          }
           onUpdateTeams={handleUpdateTeams}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
@@ -8292,8 +9824,9 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
           isPracticeMode={isPracticeMode}
+          dataScope={footballDataScope}
           activeTeamIds={normalizedActiveTeamIds}
           onUpdateActiveTeamIds={handleUpdateActiveTeamIds}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
@@ -8305,8 +9838,8 @@ export default function App() {
 
       {page === PAGE_FORMATIONS && (
         <FormationsPage
-          teams={teams}
-          fiveVFiveTeams={getActiveFriendlyTeams(fiveVFiveTeams)}
+          teams={formationTeams}
+          fiveVFiveTeams={formationFiveVFiveTeams}
           currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
           allEvents={allEvents}
@@ -8315,7 +9848,9 @@ export default function App() {
           playerPhotosByName={effectivePlayerPhotosByName}
           identity={pageIdentity}
           activeClub={activeClub}
-          activeClubId={sessionScopedClubId}
+          activeClubId={activeClubId}
+          isPracticeMode={isPracticeMode}
+          practiceSessionId={practiceRuntime?.practiceSessionId || null}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
           matchType={matchType}
@@ -9364,12 +10899,12 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           members={members}
-          onOpenHighlight={() => setPage(PAGE_VIEW_HIGHLIGHTS)}
+          onOpenHighlight={handleGoToViewHighlights}
           variant="launcher"
         />
       ) : null}
 
-      {showBottomNav && !showBackupModal ? (
+      {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav
           currentPage={page}
           activeClub={activeClubIdentity}

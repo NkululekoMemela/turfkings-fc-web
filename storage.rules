@@ -14,12 +14,61 @@ service firebase.storage {
       return request.resource.size < 60 * 1024 * 1024;
     }
 
+    // ---------------------------------------------------------
+    // OFFICIAL CAMERA SESSION
+    //
+    // Camera credentials are issued by the FANM server and bound
+    // to exactly one Official match.
+    // ---------------------------------------------------------
+    function isCameraSession() {
+      return signedIn()
+             && request.auth.token.cameraSession == true
+             && request.auth.token.dataScope == "official";
+    }
+
+    function cameraCanAccessMatch(clubId, matchId) {
+      return isCameraSession()
+             && request.auth.token.clubId == clubId
+             && request.auth.token.matchId == matchId;
+    }
+
+    // ---------------------------------------------------------
+    // LEGACY FANM VIDEO STORAGE
+    //
+    // Keep current browser/manual-upload compatibility temporarily.
+    // Camera identities are explicitly excluded so they cannot avoid
+    // the new club + match security boundary.
+    // ---------------------------------------------------------
     match /video_highlights/{matchId}/raw/{source}/{fileName} {
       allow read: if signedIn();
-      allow write: if signedIn() && isVideo() && isReasonableSize();
+
+      allow write:
+        if signedIn()
+           && !isCameraSession()
+           && isVideo()
+           && isReasonableSize();
     }
 
     match /video_highlights/{matchId}/{allPaths=**} {
+      allow read: if signedIn();
+    }
+
+    // ---------------------------------------------------------
+    // CLUB-SCOPED OFFICIAL CAMERA STORAGE
+    //
+    // The server-issued camera credential and Storage path must
+    // agree on BOTH clubId and matchId.
+    // ---------------------------------------------------------
+    match /clubs/{clubId}/video_highlights/{matchId}/raw/{source}/{fileName} {
+      allow read: if signedIn();
+
+      allow write:
+        if cameraCanAccessMatch(clubId, matchId)
+           && isVideo()
+           && isReasonableSize();
+    }
+
+    match /clubs/{clubId}/video_highlights/{matchId}/{allPaths=**} {
       allow read: if signedIn();
     }
   }
