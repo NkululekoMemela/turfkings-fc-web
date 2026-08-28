@@ -1330,7 +1330,8 @@ export function VideoHighlightsPage({
       const [loaded, archived, recentClubClips] =
         await Promise.all([
           VideoHighlightsRepository.loadRawHighlightsFromFirebase(
-            resolvedMatchId
+            resolvedMatchId,
+            activeClubId
           ),
           typeof VideoHighlightsRepository
             .loadArchivedHighlightsFromFirebase === "function"

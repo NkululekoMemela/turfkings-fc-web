@@ -346,10 +346,16 @@ export async function uploadAndSaveRawHighlight({
 // LOAD RAW / ARCHIVED / CLEANUP QUEUE
 // ============================
 
-export async function loadRawHighlightsFromFirebase(matchId) {
+export async function loadRawHighlightsFromFirebase(
+  matchId,
+  clubId = DEFAULT_CLUB_ID
+) {
   if (!matchId) return [];
 
-  const q = query(rawRef(matchId), orderBy("createdAt", "desc"));
+  const q = query(
+    rawRef(matchId, clubId),
+    orderBy("createdAt", "desc")
+  );
   const snap = await getDocs(q);
 
   return snap.docs.map((d) => ({
