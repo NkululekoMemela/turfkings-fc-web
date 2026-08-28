@@ -23,6 +23,8 @@ import {
   getPlayerDoc,
   getPendingSignupsCollection,
   getMatchSignupsCollection,
+  getScopedPendingSignupsCollection,
+  getScopedMatchSignupsCollection,
 } from "../core/clubFirestorePaths.js";
 import {
   MATCH_MODE,
@@ -31,7 +33,6 @@ import {
   normalizeMatchMode,
   normalizeGameFormat,
 } from "../core/matchConfig.js";
-import { buildPracticePlayers } from "../core/practiceSessionSeed.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 import {
   isCaptainCode,
@@ -743,6 +744,7 @@ export function SquadsPage({
   matchType = MATCH_MODE.FRIENDLY,
   gameFormat = GAME_FORMAT.FIVE_V_FIVE,
   activeClubId = "turf-kings",
+  dataScope = null,
   activeClub = null,
   isPracticeMode = false,
   activeSeasonId = null,
@@ -943,6 +945,9 @@ export function SquadsPage({
   }, []);
 
   useEffect(() => {
+    // Practice v2 keeps this administrative control session-local.
+    // Do not bind Practice to the real club's operational setting.
+    if (isPracticeMode) return undefined;
     if (!activeClubId) return undefined;
 
     const ref = doc(db, "clubs", activeClubId, "settings", "squadControls");
@@ -959,7 +964,7 @@ export function SquadsPage({
     );
 
     return () => unsub();
-  }, [activeClubId]);
+  }, [activeClubId, isPracticeMode]);
 
   const handleToggleCaptainEditLock = async () => {
     if (!isAdmin || !activeClubId) return;
@@ -967,6 +972,12 @@ export function SquadsPage({
     const nextLocked = !captainEditLocked;
 
     setCaptainEditLocked(nextLocked);
+
+    // Practice may exercise the control in-memory, but must never mutate
+    // the real club's settings/squadControls document.
+    if (isPracticeMode) {
+      return;
+    }
 
     try {
       await setDoc(
@@ -1229,8 +1240,16 @@ export function SquadsPage({
       setSignupRecords(Array.from(byDoc.values()));
     };
 
+    const pendingCollection = isPracticeMode
+      ? getScopedPendingSignupsCollection(db, dataScope)
+      : getPendingSignupsCollection(db, activeClubId);
+
+    const paidCollection = isPracticeMode
+      ? getScopedMatchSignupsCollection(db, dataScope)
+      : getMatchSignupsCollection(db, activeClubId);
+
     const unsubPending = onSnapshot(
-      getPendingSignupsCollection(db, activeClubId),
+      pendingCollection,
       (snap) => {
         pendingDocs = snap.docs.map((d) => ({
           docId: d.id,
@@ -1242,7 +1261,7 @@ export function SquadsPage({
     );
 
     const unsubPaid = onSnapshot(
-      getMatchSignupsCollection(db, activeClubId),
+      paidCollection,
       (snap) => {
         paidDocs = snap.docs.map((d) => ({
           docId: d.id,
@@ -1257,7 +1276,7 @@ export function SquadsPage({
       unsubPending();
       unsubPaid();
     };
-  }, [activeClubId]);
+  }, [activeClubId, isPracticeMode, dataScope]);
 
   const nextTeamsheetWeekId = useMemo(() => {
     const today = new Date();
@@ -1287,15 +1306,6 @@ export function SquadsPage({
   }, [signupRecords]);
 
   const paidTeamSheetPlayers = useMemo(() => {
-    if (isPracticeMode) {
-      return buildPracticePlayers().map((player) => ({
-        id: player.id,
-        fullName: player.fullName || player.displayName || player.name || player.id,
-        paymentStatus: "practice",
-        weekId: "practice",
-      }));
-    }
-
     if (!nextTeamsheetWeekId) {
       return [];
     }
@@ -1356,6 +1366,22 @@ export function SquadsPage({
     [allPlayers]
   );
 
+  // Squad eligibility is session-specific:
+  // only players signed up and marked paid for the upcoming match
+  // may be seeded into squads.
+  const squadEligiblePlayerIds = useMemo(
+    () =>
+      new Set(
+        paidTeamSheetPlayers
+          .map((player) => String(player?.id || "").trim())
+          .filter(Boolean)
+      ),
+    [paidTeamSheetPlayers]
+  );
+
+  const isSquadEligiblePlayer = (playerId) =>
+    squadEligiblePlayerIds.has(String(playerId || "").trim());
+
   const seasonPlayerTeamIdByPlayerId = useMemo(() => {
     if (!isLeague) return new Map();
 
@@ -1413,9 +1439,21 @@ export function SquadsPage({
     return out;
   }, [isLeague, matchDayHistory, localLeagueTeams, playersById, allPlayers]);
 
+  // League history may repair missing assignments while the page is being
+  // hydrated, but it must never fight deliberate Squad Shape Preview edits.
+  // Once the player data has loaded, the current squad state is authoritative.
+  const leagueHistoryRestoreCompletedRef = useRef(false);
+
   useEffect(() => {
-    if (!isLeague) return;
-    if (!seasonPlayerTeamIdByPlayerId.size) return;
+    if (!isLeague || isPracticeMode) {
+      leagueHistoryRestoreCompletedRef.current = false;
+      return;
+    }
+
+    if (!allPlayers.length || !seasonPlayerTeamIdByPlayerId.size) return;
+    if (leagueHistoryRestoreCompletedRef.current) return;
+
+    leagueHistoryRestoreCompletedRef.current = true;
 
     setLocalLeagueTeams((prevTeams) => {
       const alreadyAssigned = new Set(
@@ -1425,7 +1463,10 @@ export function SquadsPage({
       );
 
       const playersToRestore = Array.from(seasonPlayerTeamIdByPlayerId.entries())
-        .filter(([playerId]) => playersById.has(playerId) && !alreadyAssigned.has(playerId));
+        .filter(
+          ([playerId]) =>
+            playersById.has(playerId) && !alreadyAssigned.has(playerId)
+        );
 
       if (!playersToRestore.length) return prevTeams;
 
@@ -1438,11 +1479,19 @@ export function SquadsPage({
 
         return {
           ...team,
-          players: Array.from(new Set([...(team.players || []), ...addHere])),
+          players: Array.from(
+            new Set([...(team.players || []), ...addHere])
+          ),
         };
       });
     });
-  }, [isLeague, seasonPlayerTeamIdByPlayerId, playersById]);
+  }, [
+    isLeague,
+    isPracticeMode,
+    allPlayers.length,
+    seasonPlayerTeamIdByPlayerId,
+    playersById,
+  ]);
 
 
   useEffect(() => {
@@ -1667,8 +1716,13 @@ export function SquadsPage({
   }, [sourceTeams, playersById]);
 
   const unseededPlayers = useMemo(
-    () => activePlayers.filter((p) => !assignedIds.has(p.id)),
-    [activePlayers, assignedIds]
+    () =>
+      activePlayers.filter(
+        (p) =>
+          squadEligiblePlayerIds.has(String(p.id || "").trim()) &&
+          !assignedIds.has(p.id)
+      ),
+    [activePlayers, assignedIds, squadEligiblePlayerIds]
   );
 
   const availableForTeams = useMemo(
@@ -1828,6 +1882,20 @@ export function SquadsPage({
       updatedAtMs: Date.now(),
     };
 
+    // Practice v2 safety boundary:
+    // Club Challenge fixtures are real inter-club operational records.
+    // Practice may exercise squad football state, but must never create
+    // a real shared challenge fixture or mutate participating clubs.
+    if (isPracticeMode) {
+      showPremiumAlert({
+        title: "Practice simulation",
+        message:
+          "Club Challenge fixture creation is disabled in Practice. No Official club or challenge record was changed.",
+        icon: "🛡️",
+      });
+      return;
+    }
+
     try {
       const batch = writeBatch(db);
 
@@ -1893,6 +1961,19 @@ export function SquadsPage({
 
   const handleSubmitChallengeChangeRequest = async () => {
     if (!canEdit || !activeChallengeFixture?.fixtureId) return;
+
+    // Practice v2 safety boundary:
+    // a challenge change request mutates real shared fixture records and
+    // can create a real notice for another club.
+    if (isPracticeMode) {
+      showPremiumAlert({
+        title: "Practice simulation",
+        message:
+          "Club Challenge change requests are disabled in Practice. No Official fixture or club notice was changed.",
+        icon: "🛡️",
+      });
+      return;
+    }
 
     const nextDate = String(challengeChangeDraft.proposedDate || "").trim();
     const nextKickoff = String(challengeChangeDraft.proposedKickoff || "").trim();
@@ -1998,6 +2079,19 @@ export function SquadsPage({
 
   const handleCancelChallenge = async () => {
     if (!canEdit || !activeChallengeFixture?.fixtureId) return;
+
+    // Practice v2 safety boundary:
+    // cancellation deletes real shared fixture records and creates real
+    // cancellation notices for participating clubs.
+    if (isPracticeMode) {
+      showPremiumAlert({
+        title: "Practice simulation",
+        message:
+          "Club Challenge cancellation is disabled in Practice. No Official fixture or club notice was changed.",
+        icon: "🛡️",
+      });
+      return;
+    }
 
     const reason = String(cancelChallengeReason || "").trim();
 
@@ -2479,6 +2573,16 @@ export function SquadsPage({
 
   const handleConfirmDeletePlayer = async () => {
     if (!canEdit) return;
+
+    // Practice v2 safety boundary:
+    // terminating membership is an Official club mutation and must never
+    // be performed from a disposable Practice session.
+    if (isPracticeMode) {
+      setDeletePlayerError(
+        "Membership changes are disabled in Practice. No Official player or member record was changed."
+      );
+      return;
+    }
     if (!pendingDeletePlayerId) return;
     if (!playersById.has(pendingDeletePlayerId)) return;
 
@@ -2639,9 +2743,13 @@ export function SquadsPage({
     const toMakeCaptain = [...newCaptainIds].filter((id) => !currentCaptainIds.has(id));
     const toRemoveCaptain = [...currentCaptainIds].filter((id) => !newCaptainIds.has(id));
 
-    try {
-      const batch = writeBatch(db);
-      for (const pid of toMakeCaptain) {
+    // Captain-role persistence changes Official player records.
+    // Practice may still change the disposable squad configuration below,
+    // but it must never promote/demote real club players.
+    if (!isPracticeMode) {
+      try {
+        const batch = writeBatch(db);
+        for (const pid of toMakeCaptain) {
         batch.set(
           getPlayerDoc(db, pid, activeClubId),
           {
@@ -2664,11 +2772,12 @@ export function SquadsPage({
         );
       }
 
-      await batch.commit();
-    } catch (err) {
-      console.error("[Squads] Error updating captain roles:", err);
-      setSaveError("Could not update captain roles in the database.");
-      return;
+        await batch.commit();
+      } catch (err) {
+        console.error("[Squads] Error updating captain roles:", err);
+        setSaveError("Could not update captain roles in the database.");
+        return;
+      }
     }
 
     onUpdateTeams?.(
@@ -2828,6 +2937,16 @@ export function SquadsPage({
   const assignRegisteredPlayerToTeam = (playerId, targetTeamId) => {
     if (!canEdit || !playersById.has(playerId)) return;
 
+    if (!isSquadEligiblePlayer(playerId)) {
+      showPremiumAlert({
+        title: "Player not ready for squads",
+        message:
+          "Players become available here after they are signed up and marked as paid in Match Signup.",
+        icon: "⚽",
+      });
+      return;
+    }
+
     setSourceTeams((prev) =>
       prev.map((team) => {
         const withoutPlayer = (team.players || []).filter((pid) => pid !== playerId);
@@ -2913,6 +3032,16 @@ export function SquadsPage({
 
   const handlePreviewPickPlayer = (playerId) => {
     if (!canEdit || !previewPickTarget || !playersById.has(playerId)) return;
+
+    if (!isSquadEligiblePlayer(playerId)) {
+      showPremiumAlert({
+        title: "Player not ready for squads",
+        message:
+          "Players become available here after they are signed up and marked as paid in Match Signup.",
+        icon: "⚽",
+      });
+      return;
+    }
 
     const { teamId, slotIndex } = previewPickTarget;
     if (isLockedClubChallengeTeam(teamId)) return;
@@ -4105,6 +4234,28 @@ export function SquadsPage({
                 >
                   Save Squads
                 </button>
+              </div>
+            </div>
+
+            <div className="squad-preview-guidance">
+              <div
+                className="squad-preview-guidance-icon"
+                aria-hidden="true"
+              >
+                👥
+              </div>
+
+              <div className="squad-preview-guidance-copy">
+                <span className="squad-preview-guidance-step">
+                  SQUAD SETUP
+                </span>
+
+                <strong>Building your squads</strong>
+
+                <span>
+                  Players appear here after they sign up and are marked as paid
+                  for the upcoming game.
+                </span>
               </div>
             </div>
 

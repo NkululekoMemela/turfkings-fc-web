@@ -410,6 +410,8 @@ export function StatsPage({
   matchType = "LEAGUE",
   activeClubId = "turf-kings",
   activeClub = null,
+  isPracticeMode = false,
+  dataScope = null,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
   const safeMembers = Array.isArray(members) ? members : [];

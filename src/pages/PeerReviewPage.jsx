@@ -9,6 +9,10 @@ import {
   getPeerRatingsCollection,
   getPeerRatingBaselinesCollection,
   getClubDoc,
+  getScopedPeerRatingsCollection,
+  getScopedPeerRatingDoc,
+  getScopedPeerRatingBaselinesCollection,
+  getScopedPeerRatingBaselineDoc,
 } from "../core/clubFirestorePaths";
 import { CLUB_COLLECTIONS } from "../core/clubPaths";
 
@@ -98,9 +102,41 @@ export function PeerReviewPage({
   onBack,
   activeClubId = "turf-kings",
   activeClub = null,
+  isPracticeMode = false,
+  dataScope = null,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
   const activeClubName = String(activeClub?.shortName || activeClub?.name || "this club").trim();
+
+  const peerRatingsCollectionRef = () =>
+    isPracticeMode
+      ? getScopedPeerRatingsCollection(db, dataScope)
+      : getPeerRatingsCollection(db, safeActiveClubId);
+
+  const peerRatingBaselinesCollectionRef = () =>
+    isPracticeMode
+      ? getScopedPeerRatingBaselinesCollection(db, dataScope)
+      : getPeerRatingBaselinesCollection(db, safeActiveClubId);
+
+  const peerRatingDocRef = (docId) =>
+    isPracticeMode
+      ? getScopedPeerRatingDoc(db, docId, dataScope)
+      : getClubDoc(
+          db,
+          CLUB_COLLECTIONS.peerRatings,
+          docId,
+          safeActiveClubId
+        );
+
+  const peerRatingBaselineDocRef = (docId) =>
+    isPracticeMode
+      ? getScopedPeerRatingBaselineDoc(db, docId, dataScope)
+      : getClubDoc(
+          db,
+          CLUB_COLLECTIONS.peerRatingBaselines,
+          docId,
+          safeActiveClubId
+        );
   const isTurfKingsClub = safeActiveClubId === "turf-kings";
   const [weekKey] = useState(() => getCurrentWeekKey());
 
@@ -407,7 +443,7 @@ export function PeerReviewPage({
       const ratedSet = new Set();
 
       try {
-        const snap = await getDocs(getPeerRatingsCollection(db, safeActiveClubId));
+        const snap = await getDocs(peerRatingsCollectionRef());
 
         snap.forEach((docSnap) => {
           const data = docSnap.data() || {};
@@ -439,7 +475,7 @@ export function PeerReviewPage({
 
     async function loadBaselines() {
       try {
-        const snap = await getDocs(getPeerRatingBaselinesCollection(db, safeActiveClubId));
+        const snap = await getDocs(peerRatingBaselinesCollectionRef());
         if (cancelled) return;
 
         const next = {};
@@ -785,7 +821,7 @@ export function PeerReviewPage({
         source: "peer-review-page",
       };
 
-      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatings, peerRatingDocId, safeActiveClubId), docData, { merge: true });
+      await setDoc(peerRatingDocRef(peerRatingDocId), docData, { merge: true });
 
       setRatedTargets((prev) => (prev.includes(targetNorm) ? prev : [...prev, targetNorm]));
       setActiveTarget(null);
@@ -867,7 +903,7 @@ export function PeerReviewPage({
     setSavingBaseline(true);
 
     try {
-      await setDoc(getClubDoc(db, CLUB_COLLECTIONS.peerRatingBaselines, docId, safeActiveClubId), payload, { merge: true });
+      await setDoc(peerRatingBaselineDocRef(docId), payload, { merge: true });
 
       setBaselineMap((prev) => ({
         ...prev,

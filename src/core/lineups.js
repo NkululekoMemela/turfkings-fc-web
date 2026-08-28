@@ -2,6 +2,8 @@
 
 // ---------------- GAME TYPES ----------------
 export const GAME_TYPE_5 = "5";
+export const GAME_TYPE_6 = "6_aside";
+export const GAME_TYPE_7 = "7_aside";
 export const GAME_TYPE_11 = "11";
 
 // ---------------- SAVE ROLES ----------------
@@ -10,6 +12,7 @@ export const LINEUP_SAVE_ROLE_ADMIN = "admin";
 export const LINEUP_SAVE_ROLE_GENERAL = "general";
 
 export const LOCAL_KEY = "turfkings_lineups_v2";
+export const LINEUPS_CHANGED_EVENT = "fanm:lineups-changed";
 
 // ---------------- HELPERS ----------------
 export function toTitleCaseLoose(name) {
@@ -112,6 +115,157 @@ export const FORMATIONS_5 = {
 };
 
 export const DEFAULT_FORMATION_ID_5 = "2-0-2";
+
+// ---------------- 6-A-SIDE FORMATIONS ----------------
+//
+// Canonical small-sided catalogue.
+// FormationsPage and both Live Match implementations must consume
+// these exact IDs and slot definitions rather than maintaining
+// competing copies.
+//
+export const FORMATIONS_6 = {
+  "6_2_2_1": {
+    id: "6_2_2_1",
+    label: "2-2-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 34, y: 68 },
+      { id: "def_r", label: "DEF", x: 66, y: 68 },
+      { id: "mid_l", label: "MID", x: 35, y: 43 },
+      { id: "mid_r", label: "MID", x: 65, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+
+  "6_1_3_1": {
+    id: "6_1_3_1",
+    label: "1-3-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def", label: "DEF", x: 50, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 45 },
+      { id: "mid_c", label: "MID", x: 50, y: 42 },
+      { id: "mid_r", label: "MID", x: 72, y: 45 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+
+  "6_2_1_2": {
+    id: "6_2_1_2",
+    label: "2-1-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 27, y: 68 },
+      { id: "def_r", label: "DEF", x: 73, y: 68 },
+      { id: "mid", label: "MID", x: 50, y: 45 },
+      { id: "fwd_l", label: "ST", x: 28, y: 20 },
+      { id: "fwd_r", label: "ST", x: 72, y: 20 },
+    ],
+  },
+
+  "6_2_3_0": {
+    id: "6_2_3_0",
+    label: "2-3-0",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 32, y: 68 },
+      { id: "def_r", label: "DEF", x: 68, y: 68 },
+      { id: "mid_l", label: "MID", x: 24, y: 38 },
+      { id: "mid_c", label: "MID", x: 50, y: 33 },
+      { id: "mid_r", label: "MID", x: 76, y: 38 },
+    ],
+  },
+
+  "6_3_2_0": {
+    id: "6_3_2_0",
+    label: "3-2-0",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 25, y: 68 },
+      { id: "def_c", label: "DEF", x: 50, y: 72 },
+      { id: "def_r", label: "DEF", x: 75, y: 68 },
+      { id: "mid_l", label: "MID", x: 38, y: 43 },
+      { id: "mid_r", label: "MID", x: 62, y: 43 },
+    ],
+  },
+};
+
+export const DEFAULT_FORMATION_ID_6 = "6_2_2_1";
+
+// ---------------- 7-A-SIDE FORMATIONS ----------------
+export const FORMATIONS_7 = {
+  "7_3_2_1": {
+    id: "7_3_2_1",
+    label: "3-2-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 25, y: 68 },
+      { id: "def_c", label: "DEF", x: 50, y: 72 },
+      { id: "def_r", label: "DEF", x: 75, y: 68 },
+      { id: "mid_l", label: "MID", x: 38, y: 43 },
+      { id: "mid_r", label: "MID", x: 62, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 20 },
+    ],
+  },
+
+  "7_2_3_1": {
+    id: "7_2_3_1",
+    label: "2-3-1",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 35, y: 68 },
+      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 43 },
+      { id: "mid_c", label: "MID", x: 50, y: 39 },
+      { id: "mid_r", label: "MID", x: 72, y: 43 },
+      { id: "fwd", label: "ST", x: 50, y: 18 },
+    ],
+  },
+
+  "7_2_2_2": {
+    id: "7_2_2_2",
+    label: "2-2-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 35, y: 68 },
+      { id: "def_r", label: "DEF", x: 65, y: 68 },
+      { id: "mid_l", label: "MID", x: 35, y: 43 },
+      { id: "mid_r", label: "MID", x: 65, y: 43 },
+      { id: "fwd_l", label: "ST", x: 38, y: 20 },
+      { id: "fwd_r", label: "ST", x: 62, y: 20 },
+    ],
+  },
+
+  "7_3_1_2": {
+    id: "7_3_1_2",
+    label: "3-1-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def_l", label: "DEF", x: 25, y: 68 },
+      { id: "def_c", label: "DEF", x: 50, y: 72 },
+      { id: "def_r", label: "DEF", x: 75, y: 68 },
+      { id: "mid", label: "MID", x: 50, y: 44 },
+      { id: "fwd_l", label: "ST", x: 38, y: 20 },
+      { id: "fwd_r", label: "ST", x: 62, y: 20 },
+    ],
+  },
+
+  "7_1_3_2": {
+    id: "7_1_3_2",
+    label: "1-3-2",
+    positions: [
+      { id: "gk", label: "GK", x: 50, y: 88 },
+      { id: "def", label: "DEF", x: 50, y: 68 },
+      { id: "mid_l", label: "MID", x: 28, y: 45 },
+      { id: "mid_c", label: "MID", x: 50, y: 40 },
+      { id: "mid_r", label: "MID", x: 72, y: 45 },
+      { id: "fwd_l", label: "ST", x: 38, y: 20 },
+      { id: "fwd_r", label: "ST", x: 62, y: 20 },
+    ],
+  },
+};
+
+export const DEFAULT_FORMATION_ID_7 = "7_3_2_1";
 
 // ---------------- 11-A-SIDE FORMATIONS ----------------
 export const FORMATIONS_11 = {
@@ -221,7 +375,14 @@ export const FORMATIONS_11 = {
 
 export const DEFAULT_FORMATION_ID_11 = "4-3-3";
 
-const DEFENSIVE_LABELS = new Set(["CB", "LB", "RB", "LCB", "RCB"]);
+const DEFENSIVE_LABELS = new Set([
+  "DEF",
+  "CB",
+  "LB",
+  "RB",
+  "LCB",
+  "RCB",
+]);
 const GOALKEEPER_LABEL = "GK";
 
 // ---------------- ROLE PRIORITY ----------------
@@ -235,10 +396,67 @@ export const LINEUP_ROLE_PRIORITY = [
 ];
 
 // ---------------- LOCAL STORAGE ----------------
-export function loadSavedLineups(activeClubId = "turf-kings") {
+//
+// Official mode deliberately retains the historical LOCAL_KEY so existing
+// saved formations remain backward compatible.
+//
+// Practice v2 receives a session-scoped browser key. A new authoritative
+// Practice session therefore starts with an independent lineup workspace
+// and cannot inherit lineup changes from an earlier Practice session.
+function requireLineupStorageId(value, label) {
+  const normalized = String(value || "").trim();
+
+  if (!normalized) {
+    throw new Error(`[Lineups] ${label} is required.`);
+  }
+
+  if (normalized.includes("/")) {
+    throw new Error(
+      `[Lineups] ${label} must be an ID, not a path.`
+    );
+  }
+
+  return normalized;
+}
+
+export function resolveLineupStorageKey({
+  activeClubId = "turf-kings",
+  isPracticeMode = false,
+  practiceSessionId = null,
+} = {}) {
+  if (!isPracticeMode) {
+    return LOCAL_KEY;
+  }
+
+  const safeClubId = requireLineupStorageId(
+    activeClubId,
+    "activeClubId"
+  );
+  const safeSessionId = requireLineupStorageId(
+    practiceSessionId,
+    "practiceSessionId"
+  );
+
+  return (
+    `${LOCAL_KEY}:practice:` +
+    `${safeClubId}:${safeSessionId}`
+  );
+}
+
+export function loadSavedLineups(
+  activeClubId = "turf-kings",
+  options = {}
+) {
   if (typeof window === "undefined") return {};
+
+  const storageKey = resolveLineupStorageKey({
+    activeClubId,
+    isPracticeMode: options?.isPracticeMode === true,
+    practiceSessionId: options?.practiceSessionId || null,
+  });
+
   try {
-    const raw = window.localStorage.getItem(LOCAL_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed : {};
@@ -247,10 +465,42 @@ export function loadSavedLineups(activeClubId = "turf-kings") {
   }
 }
 
-export function saveLineups(data) {
+export function saveLineups(
+  data,
+  activeClubId = "turf-kings",
+  options = {}
+) {
   if (typeof window === "undefined") return;
+
+  const storageKey = resolveLineupStorageKey({
+    activeClubId,
+    isPracticeMode: options?.isPracticeMode === true,
+    practiceSessionId: options?.practiceSessionId || null,
+  });
+
   try {
-    window.localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify(data)
+    );
+
+    /*
+     * localStorage's native "storage" event does not fire in the
+     * same browser window that performed the write.
+     *
+     * FormationsPage and Live Match can exist in the same app/window,
+     * so publish an explicit same-window notification as well.
+     *
+     * The resolved storage key is included so Official and each
+     * Practice session remain completely isolated.
+     */
+    window.dispatchEvent(
+      new CustomEvent(LINEUPS_CHANGED_EVENT, {
+        detail: {
+          storageKey,
+        },
+      })
+    );
   } catch {
     // ignore quota errors
   }
@@ -666,6 +916,30 @@ export function createVerifiedLineupSnapshot({
     formationLabel: formation?.label || lineup?.formationId || "",
     positions: normalizedPositions,
     guestPlayers: normalizedGuestPlayers,
+
+    /*
+     * STAGE 7H1
+     *
+     * Late players remain genuine members of their team, but are
+     * unavailable for this match until marked Arrived.
+     *
+     * This belongs to the match-specific verified snapshot only.
+     * FormationPage / permanent squad membership is untouched.
+     */
+    latePlayers: normalizeLineupNames(lineup?.latePlayers || []),
+
+    /*
+     * Registered player temporarily borrowed from another
+     * ThreeTeamLeague team as goalkeeper.
+     *
+     * This is deliberately separate from guestPlayers:
+     * the player remains a registered club player and may
+     * receive legitimate goalkeeper credit.
+     */
+    borrowedGoalkeepers: normalizeLineupNames(
+      lineup?.borrowedGoalkeepers || []
+    ),
+
     benchSnapshot: buildBenchFromLineup(
       {
         ...lineup,
@@ -741,6 +1015,7 @@ export function buildCleanSheetEventsForMatch({
   goalsA,
   goalsB,
   verifiedLineups,
+  formationMap = FORMATIONS_5,
 }) {
   const out = [];
 
@@ -769,20 +1044,20 @@ export function buildCleanSheetEventsForMatch({
 
   // Team A kept clean sheet
   if (Number(goalsB) === 0 && lineupA) {
-    const gk = getGoalkeeperFromSnapshot(lineupA, FORMATIONS_5);
+    const gk = getGoalkeeperFromSnapshot(lineupA, formationMap);
     tryAdd(gk, teamAId, "gk", 1.5, lineupA);
 
-    getDefensivePlayersFromSnapshot(lineupA, FORMATIONS_5).forEach((name) => {
+    getDefensivePlayersFromSnapshot(lineupA, formationMap).forEach((name) => {
       tryAdd(name, teamAId, "def", 1, lineupA);
     });
   }
 
   // Team B kept clean sheet
   if (Number(goalsA) === 0 && lineupB) {
-    const gk = getGoalkeeperFromSnapshot(lineupB, FORMATIONS_5);
+    const gk = getGoalkeeperFromSnapshot(lineupB, formationMap);
     tryAdd(gk, teamBId, "gk", 1.5, lineupB);
 
-    getDefensivePlayersFromSnapshot(lineupB, FORMATIONS_5).forEach((name) => {
+    getDefensivePlayersFromSnapshot(lineupB, formationMap).forEach((name) => {
       tryAdd(name, teamBId, "def", 1, lineupB);
     });
   }
@@ -811,6 +1086,7 @@ export function buildFriendlyDefensiveBlockEvents({
   elapsedMatchSeconds = 0,
   verifiedLineups,
   lineupTimeline = [],
+  formationMap = FORMATIONS_5,
 }) {
   const out = [];
 
@@ -1003,12 +1279,12 @@ export function buildFriendlyDefensiveBlockEvents({
       goalkeeper:
         getGoalkeeperFromSnapshot(
           snapshot,
-          FORMATIONS_5
+          formationMap
         ) || "",
       defenders:
         getDefensivePlayersFromSnapshot(
           snapshot,
-          FORMATIONS_5
+          formationMap
         ) || [],
     };
   };

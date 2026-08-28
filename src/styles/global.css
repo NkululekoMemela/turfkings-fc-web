@@ -16906,3 +16906,1285 @@ button.fanm-chat-highlight-card {
       max(0.7rem, env(safe-area-inset-bottom));
   }
 }
+
+
+/* =========================================================
+   GOLDEN MATCH CREDITS
+   Premium Match Signup ticket + paid cancellation surface
+   ========================================================= */
+
+.match-signup-page .tk-golden-ticket-btn {
+  position: relative;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 13px 7px 11px;
+  border: 1px solid rgba(180, 138, 38, 0.52);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 247, 204, 0.96) 0%,
+      rgba(232, 190, 76, 0.96) 31%,
+      rgba(255, 224, 126, 0.98) 55%,
+      rgba(179, 128, 27, 0.96) 100%
+    );
+  color: #3d2900;
+  box-shadow:
+    0 8px 22px rgba(116, 76, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -1px 0 rgba(94, 60, 0, 0.2);
+  cursor: pointer;
+  overflow: visible;
+  isolation: isolate;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease;
+}
+
+.match-signup-page .tk-golden-ticket-btn::before,
+.match-signup-page .tk-golden-ticket-btn::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 16px;
+  background: var(--card-bg, #111827);
+  border-radius: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.match-signup-page .tk-golden-ticket-btn::before {
+  left: -5px;
+  box-shadow: 1px 0 0 rgba(180, 138, 38, 0.45);
+}
+
+.match-signup-page .tk-golden-ticket-btn::after {
+  right: -5px;
+  box-shadow: -1px 0 0 rgba(180, 138, 38, 0.45);
+}
+
+.match-signup-page .tk-golden-ticket-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 11px 28px rgba(116, 76, 0, 0.23),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.match-signup-page .tk-golden-ticket-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+}
+
+.match-signup-page .tk-golden-ticket-btn:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.match-signup-page .tk-golden-ticket-btn:not(.has-credit) {
+  filter: saturate(0.55);
+  opacity: 0.76;
+}
+
+.match-signup-page .tk-golden-ticket-btn.has-credit {
+  border-color: rgba(255, 218, 103, 0.9);
+  box-shadow:
+    0 9px 28px rgba(214, 157, 28, 0.3),
+    0 0 0 1px rgba(255, 222, 122, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  animation: tkGoldenTicketArrival 2.8s ease-in-out infinite;
+}
+
+.match-signup-page .tk-golden-ticket-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 2px rgba(91, 54, 0, 0.18));
+}
+
+.match-signup-page .tk-golden-ticket-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.match-signup-page .tk-golden-ticket-copy strong {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.025em;
+}
+
+.match-signup-page .tk-golden-ticket-copy small {
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 800;
+  color: rgba(61, 41, 0, 0.7);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.match-signup-page .tk-golden-ticket-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 23px;
+  height: 23px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(255, 244, 197, 0.96);
+  border-radius: 999px;
+  background: #6f4b00;
+  color: #fff4c7;
+  font-size: 11px;
+  font-weight: 950;
+  box-shadow:
+    0 4px 12px rgba(53, 32, 0, 0.32),
+    0 0 0 3px rgba(236, 191, 67, 0.16);
+}
+
+@keyframes tkGoldenTicketArrival {
+  0%,
+  72%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  76% {
+    transform: rotate(-1.5deg);
+  }
+
+  80% {
+    transform: rotate(1.5deg);
+  }
+
+  84% {
+    transform: rotate(-0.8deg);
+  }
+
+  88% {
+    transform: rotate(0.8deg);
+  }
+
+  92% {
+    transform: rotate(0deg);
+  }
+}
+
+.match-signup-page .tk-golden-ticket-toast {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: -2px 0 14px;
+  padding: 10px 13px;
+  border: 1px solid rgba(226, 183, 63, 0.42);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(95, 65, 5, 0.16),
+      rgba(225, 181, 57, 0.08)
+    );
+  color: inherit;
+  box-shadow: inset 3px 0 0 rgba(226, 183, 63, 0.75);
+}
+
+.match-signup-page .tk-paid-credit-inner {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 3px;
+}
+
+.match-signup-page .tk-credit-cancel-trigger {
+  appearance: none;
+  border: 0;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(229, 184, 55, 0.12);
+  color: #e8c461;
+  font: inherit;
+  font-size: 9px;
+  line-height: 1.15;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.match-signup-page .tk-credit-cancel-trigger:hover:not(:disabled) {
+  background: rgba(229, 184, 55, 0.22);
+  transform: translateY(-1px);
+}
+
+.match-signup-page .tk-credit-cancel-trigger:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.match-signup-page .tk-credit-window-closed {
+  display: block;
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(148, 163, 184, 0.74);
+  font-size: 8px;
+  line-height: 1.1;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .match-signup-page .tk-golden-ticket-btn {
+    min-height: 40px;
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .match-signup-page .tk-golden-ticket-icon {
+    width: 24px;
+    height: 24px;
+    font-size: 18px;
+  }
+
+  .match-signup-page .tk-golden-ticket-copy strong {
+    font-size: 10px;
+  }
+
+  .match-signup-page .tk-golden-ticket-copy small {
+    font-size: 8px;
+  }
+
+  .match-signup-page .tk-credit-cancel-trigger {
+    font-size: 8px;
+    padding-inline: 3px;
+  }
+
+  .match-signup-page .tk-credit-window-closed {
+    max-width: 58px;
+    font-size: 7px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-signup-page .tk-golden-ticket-btn.has-credit {
+    animation: none;
+  }
+}
+
+
+/* =========================================================
+   MATCH TICKET — WITHDRAWN HISTORY
+   Purple is reserved for players who withdrew after booking.
+   Green remains exclusively booked + paid + expected to play.
+   ========================================================= */
+
+.match-signup-page .tk-withdrawn-strip {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border: 1px solid rgba(168, 85, 247, 0.32);
+  border-radius: 12px;
+  background: rgba(126, 34, 206, 0.07);
+}
+
+.match-signup-page .tk-withdrawn-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  color: #c084fc;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.match-signup-page .tk-withdrawn-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 999px;
+  background: #a855f7;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.13);
+}
+
+.match-signup-page .tk-withdrawn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.match-signup-page .tk-withdrawn-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 9px;
+  background: rgba(168, 85, 247, 0.08);
+}
+
+.match-signup-page .tk-withdrawn-player {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.match-signup-page .tk-withdrawn-match {
+  color: #c084fc;
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.match-signup-page .tk-withdrawn-status {
+  color: rgba(196, 181, 253, 0.8);
+  font-size: 9px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .match-signup-page .tk-withdrawn-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .match-signup-page .tk-withdrawn-status {
+    grid-column: 1 / -1;
+  }
+}
+
+/* =========================================================
+   MATCH TICKET — MATRIX STATUS
+   Green  = paid and playing.
+   Purple = withdrew; ticket issued.
+   Same compact ✓ language, different meaning.
+   ========================================================= */
+
+.match-signup-page .matrix-view-cell.is-withdrawn {
+  position: relative;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(88, 28, 135, 0.34),
+      rgba(126, 34, 206, 0.22)
+    ) !important;
+  border-color: rgba(192, 132, 252, 0.72) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(216, 180, 254, 0.12);
+}
+
+.match-signup-page .matrix-view-cell.is-withdrawn .matrix-pick-mark {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 6px;
+  background: rgba(126, 34, 206, 0.92);
+  border: 1px solid rgba(216, 180, 254, 0.9);
+  color: #faf5ff;
+  font-weight: 950;
+  box-shadow:
+    0 0 0 2px rgba(168, 85, 247, 0.12);
+}
+
+.match-signup-page .matrix-view-cell.is-withdrawn:hover {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(107, 33, 168, 0.4),
+      rgba(126, 34, 206, 0.27)
+    ) !important;
+}
+
+
+/* =========================================================
+   MATCH TICKET WALLET — FINAL INTERACTION SURFACE
+   ========================================================= */
+
+.match-signup-page .matrix-view-cell.is-withdrawn,
+.match-signup-page .matrix-pick-cell.is-withdrawn {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.match-signup-page .matrix-view-cell.is-withdrawn {
+  border-color: inherit !important;
+}
+
+.match-signup-page .tk-withdrawn-mark {
+  display: inline-grid !important;
+  place-items: center;
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 6px;
+  background: rgba(126, 34, 206, 0.95) !important;
+  border: 1px solid rgba(216, 180, 254, 0.95) !important;
+  color: #faf5ff !important;
+  font-weight: 950;
+  box-shadow:
+    0 0 0 2px rgba(168, 85, 247, 0.11) !important;
+}
+
+.match-signup-page .tk-match-ticket-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.match-signup-page .tk-match-ticket-wallet {
+  width: min(520px, 100%);
+  max-height: min(720px, calc(100vh - 36px));
+  overflow-y: auto;
+  border: 1px solid rgba(222, 183, 71, 0.42);
+  border-radius: 20px;
+  background:
+    linear-gradient(
+      160deg,
+      rgba(15, 29, 53, 0.99),
+      rgba(7, 17, 34, 0.99)
+    );
+  color: #f8fafc;
+  box-shadow:
+    0 24px 75px rgba(0, 0, 0, 0.46),
+    0 0 0 1px rgba(255, 215, 102, 0.06);
+}
+
+.match-signup-page .tk-match-ticket-wallet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 20px 12px;
+}
+
+.match-signup-page .tk-match-ticket-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: #e9c85f;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+}
+
+.match-signup-page .tk-match-ticket-wallet h2 {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.15;
+}
+
+.match-signup-page .tk-match-ticket-close {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.7);
+  color: #cbd5e1;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.match-signup-page .tk-match-ticket-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 4px 20px 0;
+  padding: 13px 15px;
+  border: 1px solid rgba(226, 183, 63, 0.3);
+  border-radius: 14px;
+  background: rgba(226, 183, 63, 0.08);
+}
+
+.match-signup-page .tk-match-ticket-balance strong {
+  color: #f8db77;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.match-signup-page .tk-match-ticket-balance span {
+  color: #e8dcae;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.match-signup-page .tk-match-ticket-help {
+  margin: 12px 20px 14px;
+  color: #aebbd0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.match-signup-page .tk-match-ticket-actions,
+.match-signup-page .tk-match-ticket-match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 0 20px 20px;
+}
+
+.match-signup-page .tk-match-ticket-action,
+.match-signup-page .tk-match-ticket-match {
+  width: 100%;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.68);
+  color: #f8fafc;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.match-signup-page .tk-match-ticket-action.primary {
+  border-color: rgba(226, 183, 63, 0.52);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(101, 75, 12, 0.31),
+      rgba(48, 38, 13, 0.22)
+    );
+}
+
+.match-signup-page .tk-match-ticket-action:hover:not(:disabled),
+.match-signup-page .tk-match-ticket-match:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(226, 183, 63, 0.55);
+  background: rgba(51, 65, 85, 0.8);
+}
+
+.match-signup-page .tk-match-ticket-action:disabled,
+.match-signup-page .tk-match-ticket-match:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.match-signup-page .tk-match-ticket-action-icon {
+  flex: 0 0 35px;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+}
+
+.match-signup-page .tk-match-ticket-action > span:last-child,
+.match-signup-page .tk-match-ticket-match > span:first-child {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.match-signup-page .tk-match-ticket-action strong,
+.match-signup-page .tk-match-ticket-match strong {
+  font-size: 13px;
+}
+
+.match-signup-page .tk-match-ticket-action small,
+.match-signup-page .tk-match-ticket-match small {
+  color: #94a3b8;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.match-signup-page .tk-match-ticket-match {
+  min-height: 58px;
+}
+
+.match-signup-page .tk-match-ticket-match-cta {
+  flex: 0 0 auto;
+  color: #e8ca68;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.match-signup-page .tk-match-ticket-empty {
+  padding: 17px 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.26);
+  border-radius: 13px;
+  color: #94a3b8;
+  text-align: center;
+  font-size: 11px;
+}
+
+.match-signup-page .tk-match-ticket-back {
+  margin: 0 20px 20px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (max-width: 520px) {
+  .match-signup-page .tk-match-ticket-overlay {
+    padding: 10px;
+  }
+
+  .match-signup-page .tk-match-ticket-wallet {
+    border-radius: 16px;
+  }
+
+  .match-signup-page .tk-match-ticket-wallet-head {
+    padding: 16px 15px 10px;
+  }
+
+  .match-signup-page .tk-match-ticket-balance,
+  .match-signup-page .tk-match-ticket-help {
+    margin-left: 15px;
+    margin-right: 15px;
+  }
+
+  .match-signup-page .tk-match-ticket-actions,
+  .match-signup-page .tk-match-ticket-match-list {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  .match-signup-page .tk-match-ticket-back {
+    margin-left: 15px;
+    margin-right: 15px;
+  }
+}
+
+/* =========================================================
+   MATCH TICKET — AVAILABLE CREDIT ONLY
+   Gold means: there is a ticket ready to use.
+   ========================================================= */
+
+.match-signup-page .tk-floating-match-ticket {
+  position: fixed;
+  left: 12px;
+  top: 42%;
+  z-index: 9600;
+
+  display: flex;
+  align-items: stretch;
+
+  max-width: min(230px, calc(100vw - 24px));
+
+  border: 1px solid rgba(245, 205, 82, 0.7);
+  border-radius: 15px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 231, 148, 0.98),
+      rgba(198, 154, 44, 0.97)
+    );
+
+  box-shadow:
+    0 13px 36px rgba(0, 0, 0, 0.34),
+    0 0 18px rgba(231, 191, 66, 0.14);
+
+  overflow: hidden;
+
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease;
+}
+
+.match-signup-page .tk-floating-ticket-main {
+  position: relative;
+
+  min-height: 58px;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  padding: 9px 10px 9px 12px;
+
+  border: 0;
+  background: transparent;
+  color: #342608;
+
+  cursor: pointer;
+  text-align: left;
+}
+
+.match-signup-page .tk-floating-ticket-icon {
+  flex: 0 0 auto;
+  font-size: 22px;
+}
+
+.match-signup-page .tk-floating-ticket-copy {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  line-height: 1.05;
+}
+
+.match-signup-page .tk-floating-ticket-copy strong {
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.match-signup-page .tk-floating-ticket-copy small {
+  margin-top: 3px;
+
+  color: rgba(52, 38, 8, 0.74);
+
+  font-size: 8px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.match-signup-page .tk-floating-ticket-count {
+  min-width: 20px;
+  height: 20px;
+
+  display: grid;
+  place-items: center;
+
+  margin-left: 2px;
+
+  border-radius: 999px;
+
+  background: #4e3705;
+  color: #ffe891;
+
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.match-signup-page .tk-floating-ticket-minimize {
+  width: 30px;
+
+  border: 0;
+  border-left: 1px solid rgba(61, 42, 4, 0.22);
+
+  background: rgba(80, 56, 4, 0.09);
+  color: #463105;
+
+  font-size: 25px;
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+.match-signup-page .tk-floating-match-ticket.is-minimized {
+  border-radius: 0 14px 14px 0;
+}
+
+.match-signup-page .tk-floating-ticket-restore {
+  width: 48px;
+  min-height: 56px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+
+  padding: 5px;
+
+  border: 0;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 231, 148, 0.99),
+      rgba(198, 154, 44, 0.98)
+    );
+
+  color: #382805;
+  cursor: pointer;
+}
+
+.match-signup-page .tk-floating-ticket-restore span {
+  font-size: 18px;
+}
+
+.match-signup-page .tk-floating-ticket-restore strong {
+  min-width: 16px;
+  height: 16px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 999px;
+
+  background: #4e3705;
+  color: #ffe891;
+
+  font-size: 8px;
+}
+
+
+/* =========================================================
+   MATCH PULL OUT
+   Noticeable without becoming visually aggressive.
+   ========================================================= */
+
+.match-signup-page .tk-match-pull-out-btn {
+  min-height: 44px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+
+  padding: 6px 13px 6px 7px;
+
+  border: 1px solid rgba(196, 181, 253, 0.34);
+  border-radius: 14px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(76, 29, 149, 0.34),
+      rgba(46, 16, 101, 0.20)
+    );
+
+  color: #ede9fe;
+
+  box-shadow:
+    0 5px 16px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  cursor: pointer;
+
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.match-signup-page .tk-match-pull-out-icon {
+  width: 31px;
+  height: 31px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  flex: 0 0 31px;
+
+  border-radius: 10px;
+
+  background: rgba(139, 92, 246, 0.20);
+  border: 1px solid rgba(196, 181, 253, 0.22);
+
+  color: #ddd6fe;
+
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.match-signup-page .tk-match-pull-out-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+
+  line-height: 1.05;
+}
+
+.match-signup-page .tk-match-pull-out-copy strong {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+}
+
+.match-signup-page .tk-match-pull-out-copy small {
+  margin-top: 3px;
+
+  color: rgba(221, 214, 254, 0.68);
+
+  font-size: 8px;
+  font-weight: 650;
+}
+
+.match-signup-page .tk-match-pull-out-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+
+  border-color: rgba(216, 180, 254, 0.58);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(91, 33, 182, 0.42),
+      rgba(59, 7, 100, 0.25)
+    );
+
+  box-shadow:
+    0 7px 18px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.match-signup-page .tk-match-pull-out-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.match-signup-page .tk-match-pull-out-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+@media (max-width: 520px) {
+  .match-signup-page .tk-floating-match-ticket {
+    left: 7px;
+    top: 38%;
+    max-width: 190px;
+  }
+
+  .match-signup-page .tk-floating-ticket-main {
+    min-height: 52px;
+    padding: 7px 8px 7px 9px;
+  }
+
+  .match-signup-page .tk-floating-ticket-copy strong {
+    font-size: 10px;
+  }
+
+  .match-signup-page .tk-floating-ticket-copy small {
+    font-size: 7px;
+  }
+
+  .match-signup-page .tk-floating-ticket-minimize {
+    width: 27px;
+  }
+}
+
+/* =========================================================
+   PRACTICE — MATCH TICKET TRAINING SURFACES
+   Same feature language as Official, but visually identifies
+   the non-authoritative Practice preview.
+   ========================================================= */
+
+.match-signup-page .tk-practice-feature-tag {
+  margin-left: 3px;
+  padding: 3px 6px;
+
+  border: 1px solid rgba(147, 197, 253, 0.30);
+  border-radius: 999px;
+
+  background: rgba(30, 64, 175, 0.16);
+  color: rgba(219, 234, 254, 0.90);
+
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.match-signup-page .tk-match-pull-out-btn.is-practice-preview {
+  border-style: dashed;
+}
+
+.match-signup-page .tk-floating-match-ticket.is-practice-preview {
+  border-color: rgba(245, 205, 82, 0.56);
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(238, 211, 119, 0.94),
+      rgba(176, 134, 34, 0.93)
+    );
+
+  box-shadow:
+    0 11px 28px rgba(0, 0, 0, 0.28),
+    0 0 0 2px rgba(96, 165, 250, 0.08);
+}
+
+
+/* =========================================================
+   MATCH TICKET — EDGE-HUGGING MINIMIZED STATE
+   Expanded ticket keeps its normal spacing.
+   Minimized ticket behaves like the club-chat edge control.
+   ========================================================= */
+
+.match-signup-page .tk-floating-match-ticket.is-minimized {
+  left: 0;
+  border-left: 0;
+  border-radius: 0 14px 14px 0;
+}
+
+@media (max-width: 520px) {
+  .match-signup-page .tk-floating-match-ticket.is-minimized {
+    left: 0;
+  }
+}
+
+/* =========================================================
+   PRACTICE STARTUP — MOBILE FULL-SCREEN TREATMENT
+   Removes the popup/modal feeling on narrow screens.
+   ========================================================= */
+
+@media (max-width: 520px) {
+  .practice-startup-overlay {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+
+  .practice-startup-card {
+    width: 100% !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    padding:
+      max(5.5rem, env(safe-area-inset-top))
+      1.35rem
+      max(2rem, env(safe-area-inset-bottom)) !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+
+    border: 0 !important;
+    border-radius: 0 !important;
+
+    background:
+      radial-gradient(
+        circle at 50% 30%,
+        rgba(126, 34, 206, 0.22),
+        transparent 34%
+      ),
+      linear-gradient(
+        180deg,
+        rgba(15, 6, 35, 0.99),
+        rgba(4, 9, 27, 1)
+      ) !important;
+
+    box-shadow: none !important;
+  }
+
+  .practice-startup-card h1 {
+    font-size: 2rem !important;
+  }
+
+  .practice-startup-proceed {
+    min-height: 52px !important;
+    border-radius: 15px !important;
+    font-size: 1rem !important;
+  }
+}
+
+/* Practice startup — refined premium mobile CTA */
+@media (max-width: 520px) {
+  .practice-startup-proceed {
+    width: min(250px, 76%) !important;
+    min-height: 46px !important;
+    align-self: center !important;
+    padding: 0.7rem 1.5rem !important;
+    border-radius: 14px !important;
+    font-size: 0.95rem !important;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   SQUADS — FIRST-TIME WORKFLOW GUIDANCE
+   Noticeable and premium, without warning/error styling.
+   ========================================================= */
+
+.squad-preview-guidance {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 0.8rem 0 1.05rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(56, 189, 248, 0.52);
+  border-left: 4px solid #38bdf8;
+  border-radius: 15px;
+  background:
+    radial-gradient(
+      circle at 0% 50%,
+      rgba(14, 165, 233, 0.18),
+      transparent 38%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(15, 23, 42, 0.94),
+      rgba(8, 25, 49, 0.88)
+    );
+  box-shadow:
+    0 10px 28px rgba(2, 6, 23, 0.2),
+    0 0 22px rgba(56, 189, 248, 0.08);
+}
+
+.squad-preview-guidance-icon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.13);
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  font-size: 1.25rem;
+}
+
+.squad-preview-guidance-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.squad-preview-guidance-step {
+  color: #7dd3fc;
+  font-size: 0.66rem;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.squad-preview-guidance-copy strong {
+  color: #f8fafc;
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.squad-preview-guidance-copy > span:last-child {
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 520px) {
+  .squad-preview-guidance {
+    gap: 0.7rem;
+    padding: 0.8rem 0.85rem;
+  }
+
+  .squad-preview-guidance-icon {
+    width: 38px;
+    height: 38px;
+  }
+}
+/* =========================================================
+   CHOOSE SESSION — MOBILE CANVAS LAYOUT
+   No squashing. No scrolling. No popup shell.
+   The two session cards retain their normal proportions.
+   ========================================================= */
+
+@media (max-width: 520px) {
+  .session-selector-overlay {
+    overflow: hidden !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    padding:
+      max(0.35rem, env(safe-area-inset-top))
+      0.45rem
+      max(0.35rem, env(safe-area-inset-bottom)) !important;
+  }
+
+  .session-selector-shell {
+    width: 100% !important;
+    max-width: 430px !important;
+    max-height: none !important;
+
+    margin: 0 auto !important;
+    padding: 0.25rem 0 !important;
+
+    border: 0 !important;
+    border-radius: 0 !important;
+
+    background: transparent !important;
+    box-shadow: none !important;
+
+    overflow: visible !important;
+
+    transform: none !important;
+  }
+
+  .session-selector-header {
+    margin-bottom: 0.65rem !important;
+  }
+
+  .session-selector-grid {
+    gap: 0.7rem !important;
+  }
+
+  .session-choice-card {
+    transform: none !important;
+  }
+}
+
+/*
+ * Short mobile screens:
+ * preserve cards, typography and orientation.
+ * Reclaim the final few pixels only from CTA padding.
+ */
+@media (max-width: 520px) and (max-height: 700px) {
+  .session-choice-card > div:last-child {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+    margin-top: 0.35rem !important;
+  }
+}
+
+/* Choose Session — short-phone CTA refinement */
+@media (max-width: 520px) and (max-height: 700px) {
+  .session-choice-card > div:last-child {
+    min-height: 42px !important;
+    padding: 0.42rem 0.75rem !important;
+    margin-top: 0.3rem !important;
+    border-radius: 11px !important;
+    font-size: 0.78rem !important;
+  }
+}
+
+/* Choose Session — mobile: remove redundant top header */
+@media (max-width: 520px) {
+  .session-selector-header {
+    display: none !important;
+  }
+
+  .session-selector-grid {
+    gap: 0.75rem !important;
+  }
+}

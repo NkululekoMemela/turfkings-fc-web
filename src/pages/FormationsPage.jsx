@@ -4,6 +4,7 @@ import { toPng } from "html-to-image";
 import { db } from "../firebaseConfig";
 import {
   getPlayersCollection,
+  getPlayerDoc,
   getMembersCollection,
   getPlayerPhotosCollection,
   getPeerRatingsCollection,
@@ -19,10 +20,16 @@ import {
 } from "firebase/firestore";
 import {
   GAME_TYPE_5,
+  GAME_TYPE_6,
+  GAME_TYPE_7,
   GAME_TYPE_11,
   FORMATIONS_5,
+  FORMATIONS_6,
+  FORMATIONS_7,
   FORMATIONS_11,
   DEFAULT_FORMATION_ID_5,
+  DEFAULT_FORMATION_ID_6,
+  DEFAULT_FORMATION_ID_7,
   DEFAULT_FORMATION_ID_11,
   loadSavedLineups,
   saveLineups,
@@ -33,146 +40,6 @@ import {
 } from "../core/lineups.js";
 import { buildFormationDecorations } from "../core/matchDayFormationRatings.js";
 
-
-const GAME_TYPE_6 = "6_aside";
-const DEFAULT_FORMATION_ID_6 = "6_2_2_1";
-
-const FORMATIONS_6 = {
-  "6_2_2_1": {
-    id: "6_2_2_1",
-    label: "2-2-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 34, y: 68 },
-      { id: "def_r", label: "DEF", x: 66, y: 68 },
-      { id: "mid_l", label: "MID", x: 35, y: 43 },
-      { id: "mid_r", label: "MID", x: 65, y: 43 },
-      { id: "fwd", label: "ST", x: 50, y: 20 },
-    ],
-  },
-  "6_1_3_1": {
-    id: "6_1_3_1",
-    label: "1-3-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def", label: "DEF", x: 50, y: 68 },
-      { id: "mid_l", label: "MID", x: 28, y: 45 },
-      { id: "mid_c", label: "MID", x: 50, y: 42 },
-      { id: "mid_r", label: "MID", x: 72, y: 45 },
-      { id: "fwd", label: "ST", x: 50, y: 20 },
-    ],
-  },
-  "6_2_1_2": {
-    id: "6_2_1_2",
-    label: "2-1-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      // Wider defensive and attacking lanes to avoid overlap on mobile
-      // and to make the formation look useful for real planning.
-      { id: "def_l", label: "DEF", x: 27, y: 68 },
-      { id: "def_r", label: "DEF", x: 73, y: 68 },
-      { id: "mid", label: "MID", x: 50, y: 45 },
-      { id: "fwd_l", label: "ST", x: 28, y: 20 },
-      { id: "fwd_r", label: "ST", x: 72, y: 20 },
-    ],
-  },
-  "6_2_3_0": {
-    id: "6_2_3_0",
-    label: "2-3-0",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 32, y: 68 },
-      { id: "def_r", label: "DEF", x: 68, y: 68 },
-      { id: "mid_l", label: "MID", x: 24, y: 38 },
-      { id: "mid_c", label: "MID", x: 50, y: 33 },
-      { id: "mid_r", label: "MID", x: 76, y: 38 },
-    ],
-  },
-  "6_3_2_0": {
-    id: "6_3_2_0",
-    label: "3-2-0",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 25, y: 68 },
-      { id: "def_c", label: "DEF", x: 50, y: 72 },
-      { id: "def_r", label: "DEF", x: 75, y: 68 },
-      { id: "mid_l", label: "MID", x: 38, y: 43 },
-      { id: "mid_r", label: "MID", x: 62, y: 43 },
-    ],
-  },
-};
-
-
-const GAME_TYPE_7 = "7_aside";
-const DEFAULT_FORMATION_ID_7 = "7_3_2_1";
-
-const FORMATIONS_7 = {
-  "7_3_2_1": {
-    id: "7_3_2_1",
-    label: "3-2-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 25, y: 68 },
-      { id: "def_c", label: "DEF", x: 50, y: 72 },
-      { id: "def_r", label: "DEF", x: 75, y: 68 },
-      { id: "mid_l", label: "MID", x: 38, y: 43 },
-      { id: "mid_r", label: "MID", x: 62, y: 43 },
-      { id: "fwd", label: "ST", x: 50, y: 20 },
-    ],
-  },
-  "7_2_3_1": {
-    id: "7_2_3_1",
-    label: "2-3-1",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 35, y: 68 },
-      { id: "def_r", label: "DEF", x: 65, y: 68 },
-      { id: "mid_l", label: "MID", x: 28, y: 43 },
-      { id: "mid_c", label: "MID", x: 50, y: 39 },
-      { id: "mid_r", label: "MID", x: 72, y: 43 },
-      { id: "fwd", label: "ST", x: 50, y: 18 },
-    ],
-  },
-  "7_2_2_2": {
-    id: "7_2_2_2",
-    label: "2-2-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 35, y: 68 },
-      { id: "def_r", label: "DEF", x: 65, y: 68 },
-      { id: "mid_l", label: "MID", x: 35, y: 43 },
-      { id: "mid_r", label: "MID", x: 65, y: 43 },
-      { id: "fwd_l", label: "ST", x: 38, y: 20 },
-      { id: "fwd_r", label: "ST", x: 62, y: 20 },
-    ],
-  },
-  "7_3_1_2": {
-    id: "7_3_1_2",
-    label: "3-1-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def_l", label: "DEF", x: 25, y: 68 },
-      { id: "def_c", label: "DEF", x: 50, y: 72 },
-      { id: "def_r", label: "DEF", x: 75, y: 68 },
-      { id: "mid", label: "MID", x: 50, y: 44 },
-      { id: "fwd_l", label: "ST", x: 38, y: 20 },
-      { id: "fwd_r", label: "ST", x: 62, y: 20 },
-    ],
-  },
-  "7_1_3_2": {
-    id: "7_1_3_2",
-    label: "1-3-2",
-    positions: [
-      { id: "gk", label: "GK", x: 50, y: 88 },
-      { id: "def", label: "DEF", x: 50, y: 68 },
-      { id: "mid_l", label: "MID", x: 28, y: 45 },
-      { id: "mid_c", label: "MID", x: 50, y: 40 },
-      { id: "mid_r", label: "MID", x: 72, y: 45 },
-      { id: "fwd_l", label: "ST", x: 38, y: 20 },
-      { id: "fwd_r", label: "ST", x: 62, y: 20 },
-    ],
-  },
-};
 
 const FORMATIONS_11_WITH_ULTRA_DEFENSIVE = (() => {
   const adjusted = {};
@@ -993,6 +860,8 @@ const MAX_SUBS = 6;
 
 export function FormationsPage({
   activeClubId = "turf-kings",
+  isPracticeMode = false,
+  practiceSessionId = null,
   activeClub = null,
   teams = [],
   fiveVFiveTeams = [],
@@ -1018,13 +887,29 @@ export function FormationsPage({
 
   const isFriendlyMatch = String(matchType || "FRIENDLY").toUpperCase() !== "LEAGUE";
 
+  const lineupStorageOptions = useMemo(
+    () => ({
+      isPracticeMode,
+      practiceSessionId,
+    }),
+    [isPracticeMode, practiceSessionId]
+  );
+
   const [lineupsByTeam, setLineupsByTeam] = useState(() =>
-    loadSavedLineups(activeClubId)
+    loadSavedLineups(activeClubId, {
+      isPracticeMode,
+      practiceSessionId,
+    })
   );
 
   useEffect(() => {
-    setLineupsByTeam(loadSavedLineups(activeClubId));
-  }, [activeClubId]);
+    setLineupsByTeam(
+      loadSavedLineups(
+        activeClubId,
+        lineupStorageOptions
+      )
+    );
+  }, [activeClubId, lineupStorageOptions]);
 
   const sourceTeams = useMemo(() => {
     if (!isFriendlyMatch) return teams || [];
@@ -1052,6 +937,19 @@ export function FormationsPage({
 
   const [players, setPlayers] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
+
+  /*
+   * Player Tendencies deliberately has its own state.
+   * selectedPlayer belongs to normal formation swapping and must
+   * not control whether this popup remains open.
+   */
+  const [tendenciesPopup, setTendenciesPopup] = useState(null);
+  const [draggedFormationPlayer, setDraggedFormationPlayer] = useState(null);
+
+  const [savingMentality, setSavingMentality] = useState(false);
+  const [mentalityMessage, setMentalityMessage] = useState("");
+  const [savingShooting, setSavingShooting] = useState(false);
+  const [shootingMessage, setShootingMessage] = useState("");
   const [savingFormationImage, setSavingFormationImage] = useState(false);
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
@@ -1107,12 +1005,30 @@ export function FormationsPage({
             ? data.aliases.map((a) => toTitleCase(a)).filter(Boolean)
             : [];
 
+          const rawMentality = Number(data.mentality);
+          const mentality =
+            Number.isInteger(rawMentality) &&
+            rawMentality >= 1 &&
+            rawMentality <= 5
+              ? rawMentality
+              : 3;
+
+          const rawShooting = Number(data.shooting);
+          const shooting =
+            Number.isInteger(rawShooting) &&
+            rawShooting >= 1 &&
+            rawShooting <= 5
+              ? rawShooting
+              : 3;
+
           return {
             id: d.id,
             fullName,
             shortName,
             aliases,
             status: data.status || "active",
+            mentality,
+            shooting,
           };
         });
 
@@ -1195,6 +1111,186 @@ export function FormationsPage({
   }, [players]);
 
   const canonicalName = (raw) => playerResolver.resolve(raw).display;
+
+  const mentalityOptions = [
+    { value: 1, label: "Very Defensive" },
+    { value: 2, label: "Defensive" },
+    { value: 3, label: "Balanced" },
+    { value: 4, label: "Attacking" },
+    { value: 5, label: "Very Attacking" },
+  ];
+
+  const shootingOptions = [
+    { value: 1, label: "Rarely Shoots" },
+    { value: 2, label: "Low" },
+    { value: 3, label: "Moderate" },
+    { value: 4, label: "Shoots Often" },
+    { value: 5, label: "Very High" },
+  ];
+
+  const selectedMentalityPlayer = useMemo(
+    () =>
+      tendenciesPopup?.name
+        ? playerResolver.resolve(tendenciesPopup.name)?.player || null
+        : null,
+    [tendenciesPopup, playerResolver]
+  );
+
+  const handleMentalityChange = async (nextMentality) => {
+    if (!selectedMentalityPlayer?.id) return;
+
+    const value = Number(nextMentality);
+
+    if (
+      !Number.isInteger(value) ||
+      value < 1 ||
+      value > 5
+    ) {
+      return;
+    }
+
+    if (isPracticeMode) {
+      setMentalityMessage(
+        "Practice uses the player's saved Official mentality."
+      );
+      return;
+    }
+
+    if (!canEditMentality) {
+      setMentalityMessage(
+        "Only an admin or team captain can change player mentality."
+      );
+      return;
+    }
+
+    setSavingMentality(true);
+    setMentalityMessage("");
+
+    try {
+      await setDoc(
+        getPlayerDoc(
+          db,
+          selectedMentalityPlayer.id,
+          activeClubId
+        ),
+        {
+          mentality: value,
+          mentalityUpdatedAt: serverTimestamp(),
+          mentalityUpdatedByEmail:
+            String(authUser?.email || identity?.email || "").trim() || null,
+        },
+        { merge: true }
+      );
+
+      /*
+       * Update immediately rather than waiting for onSnapshot.
+       * The Firestore listener remains authoritative afterwards.
+       */
+      setPlayers((previous) =>
+        previous.map((player) =>
+          player.id === selectedMentalityPlayer.id
+            ? { ...player, mentality: value }
+            : player
+        )
+      );
+
+      const label =
+        mentalityOptions.find(
+          (option) => option.value === value
+        )?.label || "Balanced";
+
+      setMentalityMessage(
+        `${selectedMentalityPlayer.shortName || selectedMentalityPlayer.fullName} is now ${label}.`
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save player mentality:",
+        error
+      );
+
+      setMentalityMessage(
+        "Could not save player mentality. Please try again."
+      );
+    } finally {
+      setSavingMentality(false);
+    }
+  };
+
+  const handleShootingChange = async (nextShooting) => {
+    if (!selectedMentalityPlayer?.id) return;
+
+    const value = Number(nextShooting);
+
+    if (
+      !Number.isInteger(value) ||
+      value < 1 ||
+      value > 5
+    ) {
+      return;
+    }
+
+    if (isPracticeMode) {
+      setShootingMessage(
+        "Practice uses the player's saved Official shooting tendency."
+      );
+      return;
+    }
+
+    if (!canEditMentality) {
+      setShootingMessage(
+        "Only an admin or team captain can change shooting tendency."
+      );
+      return;
+    }
+
+    setSavingShooting(true);
+    setShootingMessage("");
+
+    try {
+      await setDoc(
+        getPlayerDoc(
+          db,
+          selectedMentalityPlayer.id,
+          activeClubId
+        ),
+        {
+          shooting: value,
+          shootingUpdatedAt: serverTimestamp(),
+          shootingUpdatedByEmail:
+            String(authUser?.email || identity?.email || "").trim() || null,
+        },
+        { merge: true }
+      );
+
+      setPlayers((previous) =>
+        previous.map((player) =>
+          player.id === selectedMentalityPlayer.id
+            ? { ...player, shooting: value }
+            : player
+        )
+      );
+
+      const label =
+        shootingOptions.find(
+          (option) => option.value === value
+        )?.label || "Moderate";
+
+      setShootingMessage(
+        `${selectedMentalityPlayer.shortName || selectedMentalityPlayer.fullName} shooting tendency is now ${label}.`
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save player shooting tendency:",
+        error
+      );
+
+      setShootingMessage(
+        "Could not save shooting tendency. Please try again."
+      );
+    } finally {
+      setSavingShooting(false);
+    }
+  };
 
   const displayCompactName = (raw) => {
     if (!raw) return "";
@@ -1364,32 +1460,41 @@ export function FormationsPage({
         ? `${slugFromName(selectedTeamCanonical?.label || selectedTeamCanonical?.id || "guest")}_${slugFromName(photoPlayer)}`
         : slugFromName(photoPlayer);
 
-      await setDoc(
-        getClubDoc(db, CLUB_COLLECTIONS.playerPhotos, docId),
-        {
-          name: photoPlayer,
-          teamId: selectedTeamCanonical ? selectedTeamCanonical.id : "turf_kings",
-          teamName: selectedTeamCanonical?.label || null,
-          isTemporaryOpponentPhoto: Boolean(isTemporaryOpponentTeam),
-          photoData: dataUrl,
-          updatedAt: serverTimestamp(),
-          uploadedByEmail: authUser?.email || identity?.email || null,
-          uploadedByName:
-            identity?.shortName ||
-            identity?.fullName ||
-            identity?.displayName ||
-            identity?.name ||
-            null,
-        },
-        { merge: true }
-      );
+      // Practice v2 simulation:
+      // let the user experience selecting and previewing a player photo,
+      // but never mutate the real club's permanent playerPhotos records.
+      if (!isPracticeMode) {
+        await setDoc(
+          getClubDoc(db, CLUB_COLLECTIONS.playerPhotos, docId),
+          {
+            name: photoPlayer,
+            teamId: selectedTeamCanonical ? selectedTeamCanonical.id : "turf_kings",
+            teamName: selectedTeamCanonical?.label || null,
+            isTemporaryOpponentPhoto: Boolean(isTemporaryOpponentTeam),
+            photoData: dataUrl,
+            updatedAt: serverTimestamp(),
+            uploadedByEmail: authUser?.email || identity?.email || null,
+            uploadedByName:
+              identity?.shortName ||
+              identity?.fullName ||
+              identity?.displayName ||
+              identity?.name ||
+              null,
+          },
+          { merge: true }
+        );
+      }
 
       setPlayerPhotos((prev) => ({
         ...prev,
         [photoPlayer]: dataUrl,
       }));
 
-      setPhotoMessage(`Photo saved for ${photoPlayer} ✅`);
+      setPhotoMessage(
+        isPracticeMode
+          ? `Practice preview updated for ${photoPlayer} — the real player photo was not changed.`
+          : `Photo saved for ${photoPlayer} ✅`
+      );
     } catch (err) {
       console.error("Failed to upload player photo:", err);
       setPhotoMessage("Could not save photo. Please try again.");
@@ -1427,6 +1532,29 @@ export function FormationsPage({
 
   const selectedTeamCanonical =
     canonicalTeams.find((t) => t.id === selectedTeamId) || canonicalTeams[0] || null;
+
+  /*
+   * Behaviour-profile editing permissions depend on the selected
+   * canonical team, so they must be resolved only AFTER
+   * selectedTeamCanonical has been initialized.
+   */
+  const mentalitySaveRole = selectedTeamCanonical
+    ? getSaveRole(
+        identity,
+        authUser,
+        selectedTeamCanonical,
+        gameType,
+        canonicalName
+      )?.savedByRole
+    : LINEUP_SAVE_ROLE_GENERAL;
+
+  const canEditMentality =
+    !isPracticeMode &&
+    (
+      mentalitySaveRole === LINEUP_SAVE_ROLE_ADMIN ||
+      mentalitySaveRole === LINEUP_SAVE_ROLE_CAPTAIN
+    );
+
 
   const isTemporaryOpponentTeam = useMemo(() => {
     return Boolean(
@@ -1786,7 +1914,11 @@ export function FormationsPage({
         previewLineup,
         saveRole
       );
-      saveLineups(updatedMap, activeClubId);
+      saveLineups(
+        updatedMap,
+        activeClubId,
+        lineupStorageOptions
+      );
       return updatedMap;
     });
   };
@@ -1936,6 +2068,36 @@ export function FormationsPage({
     }
 
     setSelectedPlayer(null);
+  };
+
+  const handlePitchDrop = (fromPosId, toPosId) => {
+    if (!canEditLineups) return;
+    if (!fromPosId || !toPosId || fromPosId === toPosId) return;
+
+    const fromName = lineup.positions[fromPosId] || null;
+    if (!fromName) return;
+
+    const toName = lineup.positions[toPosId] || null;
+
+    const newPositions = {
+      ...lineup.positions,
+      [fromPosId]: toName || null,
+      [toPosId]: fromName,
+    };
+
+    const updated = {
+      ...lineup,
+      positions: newPositions,
+    };
+
+    setLineup(updated);
+
+    if (selectedTeamCanonical) {
+      saveTeamLineup(selectedTeamCanonical.id, updated);
+    }
+
+    setSelectedPlayer(null);
+    setDraggedFormationPlayer(null);
   };
 
   const handleClearSpot = (posId) => {
@@ -2233,14 +2395,177 @@ export function FormationsPage({
                 const assistsCount = Number(decor?.icons?.assists || 0);
 
                 return (
+                  <React.Fragment key={pos.id}>
+                  {name && (
+                    <div
+                      className="formation-tendencies-control-layer"
+                      style={{
+                        position: "absolute",
+                        left: `${pos.x}%`,
+                        top: `${pos.y}%`,
+                        transform: "translate(-50%, -50%) translateX(-38px)",
+                        width: 36,
+                        height: 36,
+                        zIndex: 200,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <button
+                      type="button"
+                      aria-label={`Open player tendencies for ${name}`}
+                      title="Player tendencies"
+                      onPointerDown={(event) => {
+                      event.stopPropagation();
+                      }}
+                      onMouseDown={(event) => {
+                      event.stopPropagation();
+                      }}
+                      onTouchStart={(event) => {
+                      event.stopPropagation();
+                      }}
+                      onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+
+                      const rect =
+                      event.currentTarget.getBoundingClientRect();
+
+                      const popupWidth = Math.min(
+                      260,
+                      Math.max(210, window.innerWidth - 24)
+                      );
+
+                      const popupHeight = 300;
+                      const gap = 8;
+                      const edge = 12;
+
+                      let left =
+                      rect.right + gap + popupWidth <=
+                      window.innerWidth - edge
+                      ? rect.right + gap
+                      : rect.left - popupWidth - gap;
+
+                      left = Math.max(
+                      edge,
+                      Math.min(
+                      left,
+                      window.innerWidth - popupWidth - edge
+                      )
+                      );
+
+                      let top = rect.top;
+
+                      if (
+                      top + popupHeight >
+                      window.innerHeight - edge
+                      ) {
+                      top =
+                      window.innerHeight -
+                      popupHeight -
+                      edge;
+                      }
+
+                      top = Math.max(edge, top);
+
+                      setTendenciesPopup((current) =>
+                      current?.posId === pos.id
+                      ? null
+                      : {
+                      name,
+                      posId: pos.id,
+                      left,
+                      top,
+                      width: popupWidth,
+                      }
+                      );
+                      }}
+                      style={{
+                      zIndex: 100,
+                      pointerEvents: "auto",
+                      touchAction: "manipulation",
+                      /*
+                      * LEFT side belongs to tendencies.
+                      * RIGHT side remains free for rating/stats.
+                      *
+                      * Visible control is 23px, but its actual
+                      * thumb-friendly hit target is 36px.
+                      */
+                      position: "relative",
+                      top: 0,
+                      left: 0,
+                      width: 36,
+                      height: 36,
+                      minWidth: 36,
+                      padding: 0,
+                      border: "none",
+                      background: "transparent",
+                      color: "#f8fafc",
+                      display: "grid",
+                      placeItems: "center",
+                      cursor: "pointer",
+                      }}
+                      >
+                      <span
+                      aria-hidden="true"
+                      style={{
+                      width: 23,
+                      height: 23,
+                      borderRadius: "50%",
+                      border:
+                      "1px solid rgba(255,255,255,0.68)",
+                      background:
+                      "rgba(15,23,42,0.96)",
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: "0.72rem",
+                      fontWeight: 900,
+                      lineHeight: 1,
+                      boxShadow:
+                      "0 3px 9px rgba(0,0,0,0.42)",
+                      pointerEvents: "none",
+                      }}
+                      >
+                      ▾
+                      </span>
+                      </button>
+                    </div>
+                  )}
+
                   <div
-                    key={pos.id}
                     className={`pitch-position ${name ? "has-player" : ""} ${isSelected ? "selected" : ""}`}
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                     onClick={() => handlePitchClick(pos.id)}
                     onDoubleClick={(e) => {
                       e.stopPropagation();
                       handleClearSpot(pos.id);
+                    }}
+                    onDragOver={(event) => {
+                      if (!canEditLineups || !draggedFormationPlayer) return;
+                      event.preventDefault();
+
+                      try {
+                        event.dataTransfer.dropEffect = "move";
+                      } catch (_) {
+                        // Optional browser drag metadata.
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+
+                      const fromPosId =
+                        draggedFormationPlayer?.posId ||
+                        (() => {
+                          try {
+                            return event.dataTransfer.getData(
+                              "application/x-formation-pos"
+                            );
+                          } catch (_) {
+                            return "";
+                          }
+                        })();
+
+                      handlePitchDrop(fromPosId, pos.id);
                     }}
                   >
                     <div className="player-token" style={{ position: "relative", overflow: "visible" }}>
@@ -2294,19 +2619,398 @@ export function FormationsPage({
                       ) : null}
 
                       <div
+                        className="formation-avatar-control"
                         style={{
                           position: "relative",
                           width: "54px",
                           height: "54px",
                           margin: "0 auto",
                           overflow: "visible",
+                          zIndex: 5,
+                        }}
+                      >
+
+                      <div
+                        draggable={Boolean(name) && canEditLineups}
+                        onClick={(event) => {
+                          /*
+                           * The avatar owns normal football positioning.
+                           * Stop here so pitch-position does not receive
+                           * the same click a second time.
+                           */
+                          event.stopPropagation();
+                          handlePitchClick(pos.id);
+                        }}
+                        onDragStart={(event) => {
+                          if (!name || !canEditLineups) {
+                            event.preventDefault();
+                            return;
+                          }
+
+                          setDraggedFormationPlayer({
+                            name,
+                            posId: pos.id,
+                          });
+
+                          try {
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData(
+                              "application/x-formation-pos",
+                              pos.id
+                            );
+                            event.dataTransfer.setData(
+                              "text/plain",
+                              name
+                            );
+                          } catch (_) {
+                            // Browser metadata is optional.
+                          }
+                        }}
+                        onDragEnd={() =>
+                          setDraggedFormationPlayer(null)
+                        }
+                        style={{
+                          position: "relative",
+                          width: "54px",
+                          height: "54px",
+                          margin: "0 auto",
+                          overflow: "visible",
+                          cursor:
+                            name && canEditLineups
+                              ? "grab"
+                              : "default",
+                          touchAction: "manipulation",
                         }}
                       >
                         <div
                           className={`player-shirt ${photoData ? "with-photo" : ""}`}
                           style={photoData ? { backgroundImage: `url(${photoData})` } : {}}
                         />
+
+                        {name &&
+                          tendenciesPopup?.posId === pos.id &&
+                          selectedMentalityPlayer && (
+                            <div
+                              onClick={(event) => event.stopPropagation()}
+                              onPointerDown={(event) =>
+                                event.stopPropagation()
+                              }
+                              style={{
+                                /*
+                                 * Fixed viewport positioning means the
+                                 * popup cannot be clipped by the pitch
+                                 * or formation containers.
+                                 */
+                                position: "fixed",
+                                zIndex: 12000,
+                                left: tendenciesPopup.left,
+                                top: tendenciesPopup.top,
+                                width: tendenciesPopup.width || 220,
+                                maxWidth: "calc(100vw - 24px)",
+                                maxHeight: "calc(100vh - 24px)",
+                                overflowY: "auto",
+                                boxSizing: "border-box",
+                                padding: "0.72rem",
+                                borderRadius: 14,
+                                border:
+                                  "1px solid rgba(96,165,250,0.48)",
+                                background:
+                                  "linear-gradient(145deg, rgba(15,23,42,0.99), rgba(30,41,59,0.99))",
+                                boxShadow:
+                                  "0 18px 42px rgba(0,0,0,0.5)",
+                                color: "#f8fafc",
+                                textAlign: "left",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  marginBottom: 9,
+                                }}
+                              >
+                                <div>
+                                  <strong
+                                    style={{
+                                      display: "block",
+                                      fontSize: "0.86rem",
+                                    }}
+                                  >
+                                    {selectedMentalityPlayer.shortName ||
+                                      selectedMentalityPlayer.fullName}
+                                  </strong>
+
+                                  <span
+                                    className="muted small"
+                                    style={{ fontSize: "0.68rem" }}
+                                  >
+                                    Player tendencies
+                                  </span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  aria-label="Close player tendencies"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setTendenciesPopup(null);
+                                  }}
+                                  style={{
+                                    width: 26,
+                                    height: 26,
+                                    minWidth: 26,
+                                    padding: 0,
+                                    borderRadius: "50%",
+                                    border:
+                                      "1px solid rgba(148,163,184,0.28)",
+                                    background:
+                                      "rgba(15,23,42,0.76)",
+                                    color: "#f8fafc",
+                                    fontWeight: 900,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </div>
+
+                              <div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 6,
+                                    marginBottom: 5,
+                                  }}
+                                >
+                                  <strong
+                                    style={{ fontSize: "0.76rem" }}
+                                  >
+                                    Mentality
+                                  </strong>
+
+                                  <span
+                                    style={{
+                                      fontSize: "0.67rem",
+                                      fontWeight: 800,
+                                    }}
+                                  >
+                                    {mentalityOptions.find(
+                                      (option) =>
+                                        option.value ===
+                                        Number(
+                                          selectedMentalityPlayer.mentality ||
+                                            3
+                                        )
+                                    )?.label || "Balanced"}
+                                  </span>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns:
+                                      "repeat(5, minmax(0, 1fr))",
+                                    gap: 4,
+                                  }}
+                                >
+                                  {mentalityOptions.map((option) => {
+                                    const active =
+                                      Number(
+                                        selectedMentalityPlayer.mentality ||
+                                          3
+                                      ) === option.value;
+
+                                    return (
+                                      <button
+                                        key={`avatar-mentality-${option.value}`}
+                                        type="button"
+                                        disabled={
+                                          savingMentality ||
+                                          !canEditMentality
+                                        }
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleMentalityChange(
+                                            option.value
+                                          );
+                                        }}
+                                        title={option.label}
+                                        style={{
+                                          minHeight: 32,
+                                          padding: 3,
+                                          borderRadius: 8,
+                                          border: active
+                                            ? "2px solid rgba(96,165,250,0.98)"
+                                            : "1px solid rgba(148,163,184,0.28)",
+                                          background: active
+                                            ? "rgba(37,99,235,0.34)"
+                                            : "rgba(15,23,42,0.72)",
+                                          color: "#f8fafc",
+                                          fontWeight: 900,
+                                          cursor:
+                                            savingMentality ||
+                                            !canEditMentality
+                                              ? "default"
+                                              : "pointer",
+                                        }}
+                                      >
+                                        {option.value}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+
+                                <div
+                                  className="muted small"
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    marginTop: 3,
+                                    fontSize: "0.61rem",
+                                  }}
+                                >
+                                  <span>Defensive</span>
+                                  <span>Attacking</span>
+                                </div>
+                              </div>
+
+                              <div
+                                style={{
+                                  marginTop: 9,
+                                  paddingTop: 8,
+                                  borderTop:
+                                    "1px solid rgba(148,163,184,0.18)",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 6,
+                                    marginBottom: 5,
+                                  }}
+                                >
+                                  <strong
+                                    style={{ fontSize: "0.76rem" }}
+                                  >
+                                    Shooting tendency
+                                  </strong>
+
+                                  <span
+                                    style={{
+                                      fontSize: "0.67rem",
+                                      fontWeight: 800,
+                                    }}
+                                  >
+                                    {shootingOptions.find(
+                                      (option) =>
+                                        option.value ===
+                                        Number(
+                                          selectedMentalityPlayer.shooting ||
+                                            3
+                                        )
+                                    )?.label || "Moderate"}
+                                  </span>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns:
+                                      "repeat(5, minmax(0, 1fr))",
+                                    gap: 4,
+                                  }}
+                                >
+                                  {shootingOptions.map((option) => {
+                                    const active =
+                                      Number(
+                                        selectedMentalityPlayer.shooting ||
+                                          3
+                                      ) === option.value;
+
+                                    return (
+                                      <button
+                                        key={`avatar-shooting-${option.value}`}
+                                        type="button"
+                                        disabled={
+                                          savingShooting ||
+                                          !canEditMentality
+                                        }
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleShootingChange(
+                                            option.value
+                                          );
+                                        }}
+                                        title={option.label}
+                                        style={{
+                                          minHeight: 32,
+                                          padding: 3,
+                                          borderRadius: 8,
+                                          border: active
+                                            ? "2px solid rgba(96,165,250,0.98)"
+                                            : "1px solid rgba(148,163,184,0.28)",
+                                          background: active
+                                            ? "rgba(37,99,235,0.34)"
+                                            : "rgba(15,23,42,0.72)",
+                                          color: "#f8fafc",
+                                          fontWeight: 900,
+                                          cursor:
+                                            savingShooting ||
+                                            !canEditMentality
+                                              ? "default"
+                                              : "pointer",
+                                        }}
+                                      >
+                                        {option.value}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+
+                                <div
+                                  className="muted small"
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    marginTop: 3,
+                                    fontSize: "0.61rem",
+                                  }}
+                                >
+                                  <span>Rarely shoots</span>
+                                  <span>Shoots often</span>
+                                </div>
+                              </div>
+
+                              {isPracticeMode ? (
+                                <p
+                                  className="muted small"
+                                  style={{
+                                    margin: "8px 0 0",
+                                    fontSize: "0.63rem",
+                                  }}
+                                >
+                                  Practice uses saved Official ratings.
+                                </p>
+                              ) : !canEditMentality ? (
+                                <p
+                                  className="muted small"
+                                  style={{
+                                    margin: "8px 0 0",
+                                    fontSize: "0.63rem",
+                                  }}
+                                >
+                                  Admins and captains can edit these ratings.
+                                </p>
+                              ) : null}
+                            </div>
+                          )}
                       </div>
+                      </div>
+
 
                       <div className="player-label">
                         <span className="player-name">{name ? withCaptainTag(name) : "Empty"}</span>
@@ -2314,6 +3018,7 @@ export function FormationsPage({
                       </div>
                     </div>
                   </div>
+                  </React.Fragment>
                 );
               })}
             </div>
@@ -2323,6 +3028,7 @@ export function FormationsPage({
                 ? "Tap a sub, then tap a reserve to swap them."
                 : "Tap a sub, then tap a player on the pitch to swap them."}
             </p>
+
           </div>
 
           <div className="bench-wrapper" style={{ marginTop: 0, paddingTop: 0 }}>

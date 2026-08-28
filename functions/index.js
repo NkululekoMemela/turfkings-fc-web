@@ -21,6 +21,18 @@ const crypto = require("crypto");
 const {Buffer} = require("node:buffer");
 const fetch = require("node-fetch");
 
+const {
+  transferPracticeCredit: transferPracticeCreditService,
+  startPracticeSession: startPracticeSessionService,
+  getActivePracticeSession: getActivePracticeSessionService,
+  endPracticeSession: endPracticeSessionService,
+} = require("./practiceSessionService");
+
+const {
+  createCameraHandoff: createCameraHandoffService,
+  redeemCameraHandoff: redeemCameraHandoffService,
+} = require("./cameraHandoffService");
+
 admin.initializeApp();
 const db = getFirestore();
 
@@ -172,6 +184,37 @@ function handleOptions(req, res) {
     return true;
   }
   return false;
+}
+
+async function requireFirebaseUser(req) {
+  const authorization = safeString(
+    req.get("Authorization") || ""
+  );
+
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+
+  if (!match) {
+    const error = new Error(
+      "Firebase authentication is required."
+    );
+    error.code = "practice/auth-required";
+    throw error;
+  }
+
+  try {
+    return await admin.auth().verifyIdToken(match[1]);
+  } catch (cause) {
+    console.error(
+      "Practice Firebase token verification failed:",
+      cause?.message || cause
+    );
+
+    const error = new Error(
+      "Firebase authentication is invalid or expired."
+    );
+    error.code = "practice/auth-invalid";
+    throw error;
+  }
 }
 
 function safeString(value = "") {
@@ -546,9 +589,9 @@ function computeSignupPaymentState({
     unpaidPrimaryWeeks.length + unpaidSecondWeeks.length;
 
   const serviceFeePerGame = Number(
-    requestBody.serviceFeePerGame ||
-    requestBody.fanmBookingFeePerGame ||
-    requestBody.platformFeePerGame ||
+    requestBody.serviceFeePerGame ??
+    requestBody.fanmBookingFeePerGame ??
+    requestBody.platformFeePerGame ??
     7.5
   );
 
@@ -1046,7 +1089,15 @@ exports.createYocoCheckout = onRequest(
         });
       }
 
-      const activeClubId = safeString(body.activeClubId || body.clubId || "turf-kings");
+      const activeClubId = safeString(body.activeClubId || body.clubId);
+
+      if (activeClubId !== "turf-kings") {
+        return res.status(403).json({
+          ok: false,
+          error: "Yoco payments are available only for Turf Kings FC.",
+        });
+      }
+
       const signupRef = db.collection("clubs").doc(activeClubId).collection("matchSignups").doc(signupDocId);
 
       const tSignupRead0 = Date.now();
@@ -2419,6 +2470,513 @@ exports.twilioStatusCallback = onRequest(
     } catch (error) {
       console.error("twilioStatusCallback failed:", error);
       return res.status(500).send("ERROR");
+    }
+  }
+);
+
+
+// -----------------------------------------------------------------------------
+// Camera — authenticated Official-session handoff creation
+// -----------------------------------------------------------------------------
+//
+// SECURITY:
+// - Firebase ID token establishes caller identity.
+// - Browser-supplied role/UID/email is never trusted.
+// - Club admin/captain authority is independently verified in Firestore.
+// - Practice is explicitly rejected.
+// - The handoff is short-lived and intended for one-time Android redemption.
+//
+
+// -----------------------------------------------------------------------------
+// Camera — one-time Android handoff redemption
+// -----------------------------------------------------------------------------
+exports.redeemCameraHandoff = onRequest(
+  {
+    region: REGION,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        code: "camera/method-not-allowed",
+        error: "POST is required.",
+      });
+      return;
+    }
+
+    try {
+      const handoffId = safeString(
+        parseRequestValue(req, "handoffId")
+      );
+
+      const deviceId = safeString(
+        parseRequestValue(req, "deviceId")
+      );
+
+      const session = await redeemCameraHandoffService({
+        db,
+        admin,
+        handoffId,
+        deviceId,
+        now: new Date(),
+      });
+
+      res.status(200).json({
+        ok: true,
+        session,
+      });
+    } catch (error) {
+      const code = safeString(error?.code);
+
+      const status =
+        code === "camera/practice-forbidden"
+          ? 403
+          : code === "camera/handoff-not-found"
+            ? 404
+            : code === "camera/handoff-required" ||
+                code === "camera/handoff-invalid"
+              ? 400
+              : code === "camera/handoff-used" ||
+                  code === "camera/handoff-expired"
+                ? 409
+                : 500;
+
+      console.error(
+        "redeemCameraHandoff failed:",
+        code || "unknown",
+        error?.message || error
+      );
+
+      res.status(status).json({
+        ok: false,
+        code: code || "camera/redemption-failed",
+        error:
+          status === 500
+            ? "Could not redeem camera handoff."
+            : safeString(error?.message) ||
+              "Could not redeem camera handoff.",
+      });
+    }
+  }
+);
+
+exports.createCameraHandoff = onRequest(
+  {
+    region: REGION,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        code: "camera/method-not-allowed",
+        error: "POST is required.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = safeString(
+        parseRequestValue(req, "clubId")
+      );
+
+      const matchId = safeString(
+        parseRequestValue(req, "matchId")
+      );
+
+      const dataScope = safeString(
+        parseRequestValue(req, "dataScope") || "official"
+      ).toLowerCase();
+
+      const fixtureContext =
+        parseRequestValue(req, "fixtureContext") || {};
+
+      const handoff = await createCameraHandoffService({
+        db,
+        authenticatedUser,
+        clubId,
+        matchId,
+        fixtureContext,
+        dataScope,
+        now: new Date(),
+      });
+
+      res.status(200).json({
+        ok: true,
+        handoff,
+      });
+    } catch (error) {
+      const code = safeString(error?.code);
+
+      const status =
+        code === "practice/auth-required" ||
+        code === "practice/auth-invalid"
+          ? 401
+          : code === "camera/not-authorized" ||
+              code === "camera/practice-forbidden"
+            ? 403
+            : code === "camera/club-not-found"
+              ? 404
+              : code === "camera/club-required" ||
+                  code === "camera/match-required"
+                ? 400
+                : 500;
+
+      console.error(
+        "createCameraHandoff failed:",
+        code || "unknown",
+        error?.message || error
+      );
+
+      res.status(status).json({
+        ok: false,
+        code: code || "camera/handoff-failed",
+        error:
+          status === 500
+            ? "Could not create camera handoff."
+            : safeString(error?.message) ||
+              "Could not create camera handoff.",
+      });
+    }
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Practice v2 — active-session recovery
+// -----------------------------------------------------------------------------
+//
+// SECURITY:
+// - Firebase authentication establishes caller identity.
+// - Recovery is read-only and never consumes another Practice credit.
+// - The service validates club/user ownership and authoritative expiry.
+//
+exports.getActivePracticeSession = onRequest(
+  {
+    region: REGION,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        error: "Method not allowed.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = safeString(
+        parseRequestValue(req, "clubId")
+      );
+
+      if (!clubId) {
+        res.status(400).json({
+          ok: false,
+          error: "clubId is required.",
+          code: "practice/club-required",
+        });
+        return;
+      }
+
+      const session = await getActivePracticeSessionService({
+        db,
+        authenticatedUser,
+        clubId,
+      });
+
+      res.status(200).json({
+        ok: true,
+        session: session
+          ? {
+              sessionId: session.sessionId,
+              clubId: session.clubId,
+              role: session.role,
+              weekKey: session.weekKey,
+              status: session.status,
+              durationSeconds: session.durationSeconds,
+              startedAt: session.startedAt.toDate().toISOString(),
+              expiresAt: session.expiresAt.toDate().toISOString(),
+              creditsRemaining: session.creditsRemaining,
+            }
+          : null,
+      });
+    } catch (error) {
+      const code = safeString(error?.code);
+
+      const status =
+        code === "practice/auth-required" ||
+        code === "practice/auth-invalid"
+          ? 401
+          : 500;
+
+      console.error(
+        "getActivePracticeSession failed:",
+        code || "unknown",
+        error?.message || error
+      );
+
+      res.status(status).json({
+        ok: false,
+        code: code || "practice/recovery-failed",
+        error:
+          status === 500
+            ? "Could not recover Practice session."
+            : safeString(error?.message) ||
+              "Could not recover Practice session.",
+      });
+    }
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Practice v2 — authoritative session start
+// -----------------------------------------------------------------------------
+//
+// SECURITY:
+// - The caller's Firebase ID token establishes identity.
+// - UID/email/role/credits/week/timestamps are NOT trusted from request body.
+// - Club role is independently verified by practiceSessionService.
+// - Credit consumption + session creation happen in one Firestore transaction.
+//
+
+exports.endPracticeSession = onRequest(
+  {
+    region: "us-central1",
+    cors: true,
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        code: "practice/method-not-allowed",
+        error: "POST is required.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = String(req.body?.clubId || "").trim();
+
+      const reason =
+        String(req.body?.reason || "").trim() === "time-expired"
+          ? "time-expired"
+          : "change-profile";
+
+      const session = await endPracticeSessionService({
+        db,
+        authenticatedUser,
+        clubId,
+        reason,
+      });
+
+      res.status(200).json({
+        ok: true,
+        session,
+      });
+    } catch (error) {
+      console.error(
+        "endPracticeSession failed:",
+        error?.code || "",
+        error?.message || error
+      );
+
+      const status =
+        error?.code === "practice/auth-required" ? 401 : 400;
+
+      res.status(status).json({
+        ok: false,
+        code: error?.code || "practice/end-failed",
+        error:
+          error?.message ||
+          "Practice session could not be ended.",
+      });
+    }
+  }
+);
+
+
+exports.transferPracticeCredit = onRequest(
+  {
+    region: REGION,
+    cors: true,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        error: "Method not allowed.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser = await requireFirebaseUser(req);
+
+      const clubId = safeString(
+        parseRequestValue(req, "clubId") || ""
+      );
+
+      const recipientUserId = safeString(
+        parseRequestValue(req, "recipientUserId") || ""
+      );
+
+      const transferId = safeString(
+        parseRequestValue(req, "transferId") || ""
+      );
+
+      const result = await transferPracticeCreditService({
+        db,
+        authenticatedUser,
+        clubId,
+        recipientUserId,
+        transferId,
+        now: new Date(),
+      });
+
+      res.status(200).json({
+        ok: true,
+        transfer: result,
+      });
+    } catch (error) {
+      console.error(
+        "Practice credit transfer failed:",
+        error?.code || "",
+        error?.message || error
+      );
+
+      const status =
+        error?.code === "practice/auth-required" ||
+        error?.code === "practice/auth-invalid"
+          ? 401
+          : error?.code === "practice/not-authorized" ||
+              error?.code === "practice/recipient-not-authorized"
+            ? 403
+            : error?.code === "practice/club-not-found" ||
+                error?.code === "practice/recipient-not-found"
+              ? 404
+              : error?.code === "practice/transfer-exists"
+                ? 409
+                : 400;
+
+      res.status(status).json({
+        ok: false,
+        code: error?.code || "practice/transfer-failed",
+        error:
+          error?.message ||
+          "Practice credit transfer failed.",
+      });
+    }
+  }
+);
+
+exports.startPracticeSession = onRequest(
+  {
+    region: REGION,
+  },
+  async (req, res) => {
+    setCors(res);
+
+    if (handleOptions(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({
+        ok: false,
+        error: "Method not allowed.",
+      });
+      return;
+    }
+
+    try {
+      const authenticatedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = safeString(
+        parseRequestValue(req, "clubId")
+      );
+
+      if (!clubId) {
+        res.status(400).json({
+          ok: false,
+          error: "clubId is required.",
+          code: "practice/club-required",
+        });
+        return;
+      }
+
+      const session = await startPracticeSessionService({
+        db,
+        authenticatedUser,
+        clubId,
+      });
+
+      res.status(200).json({
+        ok: true,
+        session: {
+          sessionId: session.sessionId,
+          clubId: session.clubId,
+          role: session.role,
+          weekKey: session.weekKey,
+          status: session.status,
+          durationSeconds: session.durationSeconds,
+          startedAt: session.startedAt.toDate().toISOString(),
+          expiresAt: session.expiresAt.toDate().toISOString(),
+          creditsRemaining: session.creditsRemaining,
+          testerOverrideUsed: session.testerOverrideUsed === true,
+        },
+      });
+    } catch (error) {
+      const code = safeString(error?.code);
+
+      const status =
+        code === "practice/auth-required" ||
+        code === "practice/auth-invalid"
+          ? 401
+          : code === "practice/not-authorized"
+            ? 403
+            : code === "practice/club-not-found"
+              ? 404
+              : code === "practice/no-credits"
+                ? 409
+                : 500;
+
+      console.error(
+        "startPracticeSession failed:",
+        code || "unknown",
+        error?.message || error
+      );
+
+      res.status(status).json({
+        ok: false,
+        code: code || "practice/start-failed",
+        error:
+          status === 500
+            ? "Could not start Practice session."
+            : safeString(error?.message) ||
+              "Could not start Practice session.",
+      });
     }
   }
 );

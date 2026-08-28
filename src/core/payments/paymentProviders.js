@@ -5,6 +5,7 @@ export const PAYMENT_COLLECTION_METHODS = {
 };
 
 export const PAYMENT_PROVIDERS = {
+  YOCO: "yoco",
   PEACH: "peach",
   STRIPE: "stripe",
   PAYSTACK: "paystack",
@@ -61,6 +62,10 @@ export function getDefaultClubPaymentSettings() {
       canCollectOnline: false,
       canReceivePayouts: false,
       canUseFreeTrial: true,
+
+      // Golden Match Credits are built for every club but remain opt-in.
+      // Each club can activate the feature independently when ready.
+      canUseMatchCredits: false,
     },
   };
 }
@@ -97,5 +102,12 @@ export function canUseExternalPayments(paymentSettings) {
     paymentSettings &&
       paymentSettings.collectionMethod === PAYMENT_COLLECTION_METHODS.EXTERNAL &&
       paymentSettings.allowedActions?.canCollectExternal
+  );
+}
+
+export function canUseMatchCredits(paymentSettings) {
+  return Boolean(
+    paymentSettings &&
+      paymentSettings.allowedActions?.canUseMatchCredits === true
   );
 }

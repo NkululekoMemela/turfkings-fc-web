@@ -4,6 +4,7 @@ import { getTeamById } from "../core/teams.js";
 import { db } from "../firebaseConfig.js";
 import {
   getMatchDoc,
+  getScopedMatchDoc,
   getPlayerPhotosCollection,
 } from "../core/clubFirestorePaths";
 import {
@@ -17,15 +18,32 @@ import {
 } from "firebase/firestore";
 import {
   FORMATIONS_5,
+  FORMATIONS_6,
+  FORMATIONS_7,
   DEFAULT_FORMATION_ID_5,
+  DEFAULT_FORMATION_ID_6,
+  DEFAULT_FORMATION_ID_7,
   loadSavedLineups,
+  resolveLineupStorageKey,
+  LINEUPS_CHANGED_EVENT,
   resolvePreferredTeamLineup,
   createVerifiedLineupSnapshot,
   isGuestPlayerInSnapshot,
   toTitleCaseLoose,
   uniqueNames,
 } from "../core/lineups.js";
+import {
+  buildFriendlyDefensiveBlockEvents,
+} from "../core/lineups.js";
 import { getGameFormatConfig } from "../core/matchConfig.js";
+import {
+  buildBestOutfieldAssignment,
+} from "../core/playerPositioning.js";
+import {
+  buildFriendlyInMatchRotation,
+  chooseNextFriendlyGoalkeeper,
+  buildFriendlyGoalkeeperOnlyRotation,
+} from "../core/playerRotation.js";
 import VideoHighlightsRepository from "../storage/VideoHighlightsRepository.js";
 import TeamIdentityEditor from "../components/TeamIdentityEditor";
 import {
@@ -35,6 +53,12 @@ import {
 
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
+
+function resolveLiveMatchDoc(dataScope = null) {
+  return dataScope
+    ? getScopedMatchDoc(db, MATCH_DOC_ID, dataScope)
+    : getMatchDoc(db, MATCH_DOC_ID);
+}
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 const ROTATION_SOUND_URL = `${import.meta.env.BASE_URL}Player_Change.mp4`;
 const PLAYERS_COLLECTION = "players";
@@ -99,66 +123,6 @@ function resolveFanmTeamIdentity(team = {}) {
 }
 
 
-const FORMATIONS_6_FRIENDLY = {
-  "2-2-1": {
-    id: "2-2-1",
-    label: "2-2-1",
-    positions: [
-      { id: "p1", label: "ST", x: 50, y: 18 },
-      { id: "p2", label: "LM", x: 30, y: 42 },
-      { id: "p3", label: "RM", x: 70, y: 42 },
-      { id: "p4", label: "LB", x: 32, y: 68 },
-      { id: "p5", label: "RB", x: 68, y: 68 },
-      { id: "p6", label: "GK", x: 50, y: 88 },
-    ],
-  },
-  "2-1-2": {
-    id: "2-1-2",
-    label: "2-1-2",
-    positions: [
-      { id: "p1", label: "LF", x: 35, y: 18 },
-      { id: "p2", label: "RF", x: 65, y: 18 },
-      { id: "p3", label: "CM", x: 50, y: 45 },
-      { id: "p4", label: "LB", x: 32, y: 68 },
-      { id: "p5", label: "RB", x: 68, y: 68 },
-      { id: "p6", label: "GK", x: 50, y: 88 },
-    ],
-  },
-};
-
-const DEFAULT_FORMATION_ID_6_FRIENDLY = "2-2-1";
-
-const FORMATIONS_7_FRIENDLY = {
-  "2-3-1": {
-    id: "2-3-1",
-    label: "2-3-1",
-    positions: [
-      { id: "p1", label: "ST", x: 50, y: 16 },
-      { id: "p2", label: "LM", x: 25, y: 40 },
-      { id: "p3", label: "CM", x: 50, y: 44 },
-      { id: "p4", label: "RM", x: 75, y: 40 },
-      { id: "p5", label: "LB", x: 32, y: 68 },
-      { id: "p6", label: "RB", x: 68, y: 68 },
-      { id: "p7", label: "GK", x: 50, y: 88 },
-    ],
-  },
-  "3-2-1": {
-    id: "3-2-1",
-    label: "3-2-1",
-    positions: [
-      { id: "p1", label: "ST", x: 50, y: 16 },
-      { id: "p2", label: "LM", x: 35, y: 42 },
-      { id: "p3", label: "RM", x: 65, y: 42 },
-      { id: "p4", label: "LB", x: 24, y: 68 },
-      { id: "p5", label: "CB", x: 50, y: 72 },
-      { id: "p6", label: "RB", x: 76, y: 68 },
-      { id: "p7", label: "GK", x: 50, y: 88 },
-    ],
-  },
-};
-
-const DEFAULT_FORMATION_ID_7_FRIENDLY = "2-3-1";
-
 function getFriendlyFormationTools(gameFormat) {
   const playersPerSide = getGameFormatConfig(gameFormat).playersPerSide;
 
@@ -167,8 +131,8 @@ function getFriendlyFormationTools(gameFormat) {
       playersPerSide,
       formatLabel: "7 v 7",
       shortLabel: "7v7",
-      formationMap: FORMATIONS_7_FRIENDLY,
-      defaultFormationId: DEFAULT_FORMATION_ID_7_FRIENDLY,
+      formationMap: FORMATIONS_7,
+      defaultFormationId: DEFAULT_FORMATION_ID_7,
       lineupStorageKey: "7",
     };
   }
@@ -178,8 +142,8 @@ function getFriendlyFormationTools(gameFormat) {
       playersPerSide,
       formatLabel: "6 v 6",
       shortLabel: "6v6",
-      formationMap: FORMATIONS_6_FRIENDLY,
-      defaultFormationId: DEFAULT_FORMATION_ID_6_FRIENDLY,
+      formationMap: FORMATIONS_6,
+      defaultFormationId: DEFAULT_FORMATION_ID_6,
       lineupStorageKey: "6",
     };
   }
@@ -417,6 +381,26 @@ function sanitizeLiveLineupToRegisteredPlayers(
 ) {
   const preservePositions =
     Boolean(options?.preservePositions);
+
+  /*
+   * Confirmed/live snapshots normally preserve their exact positions,
+   * because a genuine dismissal may intentionally leave the team short.
+   *
+   * repairUnprotectedVacancies gives us the safer middle ground:
+   * repair accidental ordinary holes while preserving only positions
+   * explicitly protected by match events.
+   */
+  const repairUnprotectedVacancies =
+    Boolean(options?.repairUnprotectedVacancies);
+
+  const preservePositionIds = new Set(
+    Array.isArray(options?.preservePositionIds)
+      ? options.preservePositionIds
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+      : []
+  );
+
   const formation =
     formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
 
@@ -447,8 +431,24 @@ function sanitizeLiveLineupToRegisteredPlayers(
     (name) => !usedKeys.has(playerKeyFor(name))
   );
 
-  if (!preservePositions) {
+  if (!preservePositions || repairUnprotectedVacancies) {
     (formation.positions || []).forEach((pos) => {
+      const positionId = String(pos?.id || "").trim();
+
+      /*
+       * Never auto-fill a position deliberately vacated by a
+       * disciplinary event. This covers both an active penalty and
+       * a two-minute penalty whose replacement is now allowed.
+       *
+       * The referee remains responsible for choosing that replacement.
+       */
+      if (
+        preservePositions &&
+        preservePositionIds.has(positionId)
+      ) {
+        return;
+      }
+
       if (
         !cleanPositions[pos.id] &&
         remainingRegistered.length > 0
@@ -1033,7 +1033,7 @@ function getRoleBadgeStyle(roleTag = "", isSub = false) {
 
 async function hardReset5v5MatchDoc(summaryInfo, matchSeconds) {
   try {
-    const ref = getMatchDoc(db, MATCH_DOC_ID);
+    const ref = resolveLiveMatchDoc(dataScope);
     await setDoc(
       ref,
       {
@@ -1069,7 +1069,7 @@ async function appendEventToFirestore(
   matchSeconds
 ) {
   try {
-    const ref = getMatchDoc(db, MATCH_DOC_ID);
+    const ref = resolveLiveMatchDoc(dataScope);
 
     const common = {
       ...summaryInfo,
@@ -1111,7 +1111,7 @@ async function overwriteEventsInFirestore(
   matchSeconds
 ) {
   try {
-    const ref = getMatchDoc(db, MATCH_DOC_ID);
+    const ref = resolveLiveMatchDoc(dataScope);
     await setDoc(
       ref,
       {
@@ -1140,7 +1140,7 @@ async function writeFinalSummaryToFirestore(
   matchSeconds
 ) {
   try {
-    const ref = getMatchDoc(db, MATCH_DOC_ID);
+    const ref = resolveLiveMatchDoc(dataScope);
     await setDoc(
       ref,
       {
@@ -1337,6 +1337,7 @@ function LineupBoard({
   defaultFormationId = DEFAULT_FORMATION_ID_5,
   protectedVacancies = {},
   disabled = false,
+  onAutomaticBenchRotation = null,
 }) {
   const formation =
     formationMap[lineup?.formationId] || formationMap[defaultFormationId] || Object.values(formationMap)[0];
@@ -1535,6 +1536,38 @@ function LineupBoard({
     if (selectedPlayer.from === "bench") {
       const incoming = canonicalName(selectedPlayer.name);
       const outgoing = canonicalName(currentAtPos);
+
+      /*
+       * During a confirmed live Friendly, selecting a substitute and
+       * tapping an OCCUPIED pitch position means "rotate now".
+       *
+       * The referee chooses who leaves. The shared football engine
+       * decides the resulting positions:
+       *
+       * incoming sub -> GK
+       * previous GK  -> outfield
+       * tapped player -> back of bench queue
+       *
+       * Empty replacement-ready disciplinary vacancies deliberately
+       * retain the existing direct replacement behaviour below.
+       */
+      if (
+        outgoing &&
+        typeof onAutomaticBenchRotation === "function"
+      ) {
+        const handled = onAutomaticBenchRotation({
+          incomingPlayer: incoming,
+          outgoingPlayer: outgoing,
+          outgoingPositionId: posId,
+          currentLineup: lineup,
+          formation,
+        });
+
+        if (handled) {
+          setSelectedPlayer(null);
+          return;
+        }
+      }
 
       Object.keys(newPositions).forEach((key) => {
         if (playerKeyFor(newPositions[key]) === playerKeyFor(incoming)) {
@@ -1962,6 +1995,7 @@ function eventLabel(teamId, teamAId, teamBId, teamA, teamB) {
 
 export function FriendlyLiveMatchPage({
   activeClubId = "turf-kings",
+  dataScope = null,
   activeClub = null,
   matchSeconds,
   secondsLeft,
@@ -1992,6 +2026,7 @@ export function FriendlyLiveMatchPage({
   scheduledFinishAtISO = null,
   onUpdateExpectedEndTime = null,
   rotationReminderMode = "off",
+  rotationReminderConfigured = false,
   onUpdateRotationReminder = null,
   redCardRule = "permanent",
   onUpdateRedCardRule = null,
@@ -2014,6 +2049,14 @@ export function FriendlyLiveMatchPage({
   currentVideoHighlightsMatchId = "",
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
+
+  // Referee-only operational VAR state.
+  // VAR must never enter ordinary player-facing highlight surfaces.
+  const [refereeVarHighlights, setRefereeVarHighlights] = useState([]);
+  const [activeRefereeVar, setActiveRefereeVar] = useState(null);
+  const [dismissedRefereeVarIds, setDismissedRefereeVarIds] = useState(
+    () => new Set()
+  );
   const { teamAId, teamBId } = currentMatch || {};
   const role = String(activeRole || "spectator").trim().toLowerCase();
   const isControllerSession =
@@ -2068,6 +2111,18 @@ export function FriendlyLiveMatchPage({
   const lastRotationTimeBucketRef = useRef(0);
   const lastRotationGoalBucketRef = useRef(0);
 
+  /*
+   * STAGE 7G1
+   *
+   * A Friendly with substitutes should invite the referee to choose
+   * the rotation rule once the authoritative starting lineups exist.
+   *
+   * A no-sub Friendly must NOT auto-prompt.
+   *
+   * Manual access to Player Rotation remains available in both cases.
+   */
+  const rotationSetupPromptKeyRef = useRef("");
+
   const [showShiboboRecorder, setShowShiboboRecorder] = useState(false);
   const [shiboboTeamId, setShiboboTeamId] = useState("");
   const [shiboboPlayerName, setShiboboPlayerName] = useState("");
@@ -2102,7 +2157,108 @@ export function FriendlyLiveMatchPage({
   const idleTimerRef = useRef(null);
   const [screenDimmed, setScreenDimmed] = useState(false);
 
-  const savedLineups = useMemo(() => loadSavedLineups(), []);
+  const lineupStorageOptions = useMemo(
+    () => ({
+      isPracticeMode:
+        dataScope?.environment === "practice",
+      practiceSessionId:
+        dataScope?.practiceSessionId || null,
+    }),
+    [
+      dataScope?.environment,
+      dataScope?.practiceSessionId,
+    ]
+  );
+
+  const activeLineupStorageKey = useMemo(
+    () =>
+      resolveLineupStorageKey({
+        activeClubId,
+        ...lineupStorageOptions,
+      }),
+    [
+      activeClubId,
+      lineupStorageOptions,
+    ]
+  );
+
+  const [savedLineups, setSavedLineups] = useState(
+    () =>
+      loadSavedLineups(
+        activeClubId,
+        lineupStorageOptions
+      )
+  );
+
+  /*
+   * FormationsPage is the master lineup source.
+   *
+   * Reload whenever:
+   * - club / Official-Practice scope changes;
+   * - FormationsPage saves in this same browser window;
+   * - another tab/window changes the same lineup storage key.
+   *
+   * Practice follows the identical code path but listens only to
+   * its own session-scoped storage key.
+   */
+  useEffect(() => {
+    const reloadSavedLineups = () => {
+      setSavedLineups(
+        loadSavedLineups(
+          activeClubId,
+          lineupStorageOptions
+        )
+      );
+    };
+
+    reloadSavedLineups();
+
+    const handleLineupsChanged = (event) => {
+      if (
+        event?.detail?.storageKey &&
+        event.detail.storageKey !==
+          activeLineupStorageKey
+      ) {
+        return;
+      }
+
+      reloadSavedLineups();
+    };
+
+    const handleStorage = (event) => {
+      if (event?.key !== activeLineupStorageKey) {
+        return;
+      }
+
+      reloadSavedLineups();
+    };
+
+    window.addEventListener(
+      LINEUPS_CHANGED_EVENT,
+      handleLineupsChanged
+    );
+
+    window.addEventListener(
+      "storage",
+      handleStorage
+    );
+
+    return () => {
+      window.removeEventListener(
+        LINEUPS_CHANGED_EVENT,
+        handleLineupsChanged
+      );
+
+      window.removeEventListener(
+        "storage",
+        handleStorage
+      );
+    };
+  }, [
+    activeClubId,
+    lineupStorageOptions,
+    activeLineupStorageKey,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2143,6 +2299,20 @@ export function FriendlyLiveMatchPage({
             shortName,
             aliases,
             status: data.status || "active",
+
+            /*
+             * Match-day positional intelligence.
+             *
+             * Friendly rotations use the same canonical player-profile
+             * attributes as ThreeTeamLeague. Validation/defaulting remains
+             * centralized in core/playerPositioning.js.
+             *
+             * Official and Practice deliberately share these football
+             * attributes; Practice isolation concerns session/match state,
+             * not a duplicate player football profile.
+             */
+            mentality: data.mentality,
+            shooting: data.shooting,
           };
         });
 
@@ -2482,6 +2652,18 @@ export function FriendlyLiveMatchPage({
     useState(defaultTeamBLineup);
   const [localConfirmedSnapshots, setLocalConfirmedSnapshots] = useState(null);
 
+  /*
+   * STAGE 6F — AUTHORITATIVE FRIENDLY LINEUP TIMELINE
+   *
+   * This records football truth, not temporary editor movements.
+   *
+   * Entries are created when:
+   * - the referee confirms a lineup;
+   * - an automatic Friendly rotation becomes authoritative;
+   * - a disciplinary lineup change becomes authoritative.
+   */
+  const [friendlyLineupTimeline, setFriendlyLineupTimeline] = useState([]);
+
   const existingConfirmedFromApp =
     localConfirmedSnapshots ||
     confirmedLineupSnapshot ||
@@ -2490,6 +2672,30 @@ export function FriendlyLiveMatchPage({
 
   const sanitizedConfirmedSnapshots = useMemo(() => {
     if (!existingConfirmedFromApp) return null;
+
+    /*
+     * Red-card events are the authoritative explanation for a live
+     * team deliberately having fewer players than its formation.
+     *
+     * Any other empty position, while an eligible registered player
+     * is available, is treated as lineup corruption and repaired.
+     */
+    const protectedPositionIdsForTeam = (teamId) =>
+      (Array.isArray(currentEvents) ? currentEvents : [])
+        .filter(
+          (event) =>
+            event?.type === "red_card" &&
+            event?.teamId === teamId &&
+            !event?.wasSubstitute
+        )
+        .map(
+          (event) =>
+            event?.removedPositionId ||
+            event?.positionId ||
+            null
+        )
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
 
     return {
       ...(existingConfirmedFromApp || {}),
@@ -2504,6 +2710,9 @@ export function FriendlyLiveMatchPage({
               defaultFormationId,
               {
                 preservePositions: true,
+                repairUnprotectedVacancies: true,
+                preservePositionIds:
+                  protectedPositionIdsForTeam(teamAId),
               }
             ),
           }
@@ -2519,6 +2728,9 @@ export function FriendlyLiveMatchPage({
               defaultFormationId,
               {
                 preservePositions: true,
+                repairUnprotectedVacancies: true,
+                preservePositionIds:
+                  protectedPositionIdsForTeam(teamBId),
               }
             ),
           }
@@ -2534,32 +2746,57 @@ export function FriendlyLiveMatchPage({
     playerKeyFor,
     formationMap,
     defaultFormationId,
+    currentEvents,
   ]);
 
   const hasVerifiedLineups = Boolean(
     sanitizedConfirmedSnapshots?.[teamAId] && sanitizedConfirmedSnapshots?.[teamBId]
   );
 
-  const lineupEditorMatchKey = [
+  /*
+   * Synchronize the editor only when its AUTHORITATIVE SOURCE changes.
+   *
+   * Before confirmation:
+   *   Formation-page/master lineup is authoritative.
+   *
+   * After confirmation:
+   *   confirmed match snapshot is the starting authoritative snapshot.
+   *
+   * IMPORTANT:
+   * Once that snapshot has been loaded into the live editor, ordinary
+   * referee edits must remain local working state until the referee
+   * confirms them. We must not continuously copy the old confirmed
+   * snapshot back over verifyTeamALineup / verifyTeamBLineup, otherwise
+   * a perfectly valid manual position swap appears "locked".
+   *
+   * The source key deliberately describes SOURCE IDENTITY rather than
+   * object identity. This prevents sanitization/rerender churn from
+   * resetting referee work.
+   *
+   * Official and Practice use this same behaviour. Practice isolation
+   * remains provided by its session-scoped data/storage source.
+   */
+  const lineupEditorSourceKey = [
     currentMatchNo,
     teamAId || "",
     teamBId || "",
+    hasVerifiedLineups ? "confirmed" : "master",
   ].join("::");
 
-  const lastLoadedLineupMatchKeyRef = useRef("");
+  const lastLoadedLineupSourceKeyRef = useRef("");
 
   useEffect(() => {
+    if (!teamAId || !teamBId) return;
+
     if (
-      !teamAId ||
-      !teamBId ||
-      lastLoadedLineupMatchKeyRef.current ===
-        lineupEditorMatchKey
+      lastLoadedLineupSourceKeyRef.current ===
+      lineupEditorSourceKey
     ) {
       return;
     }
 
-    lastLoadedLineupMatchKeyRef.current =
-      lineupEditorMatchKey;
+    lastLoadedLineupSourceKeyRef.current =
+      lineupEditorSourceKey;
 
     setVerifyTeamALineup(
       sanitizedConfirmedSnapshots?.[teamAId] ||
@@ -2571,15 +2808,36 @@ export function FriendlyLiveMatchPage({
         defaultTeamBLineup
     );
   }, [
-    lineupEditorMatchKey,
+    lineupEditorSourceKey,
     teamAId,
     teamBId,
+    sanitizedConfirmedSnapshots,
+    defaultTeamALineup,
+    defaultTeamBLineup,
   ]);
 
   const mustVerifyBeforePlay = isControllerSession;
 
   useEffect(() => {
-    if (mustVerifyBeforePlay && !hasVerifiedLineups) {
+    /*
+     * Do not reopen the verification modal while the parent is still
+     * catching up with a lineup that was just confirmed locally.
+     *
+     * localConfirmedSnapshots becomes authoritative immediately when
+     * Confirm lineups is pressed; the parent confirmation state can
+     * arrive one render later.
+     */
+    const hasLocallyConfirmedLineups =
+      Boolean(
+        localConfirmedSnapshots?.[teamAId] &&
+        localConfirmedSnapshots?.[teamBId]
+      );
+
+    if (
+      mustVerifyBeforePlay &&
+      !hasVerifiedLineups &&
+      !hasLocallyConfirmedLineups
+    ) {
       if (!playersReady) return;
 
       setVerifyTeamALineup(defaultTeamALineup);
@@ -2591,6 +2849,7 @@ export function FriendlyLiveMatchPage({
   }, [
     mustVerifyBeforePlay,
     hasVerifiedLineups,
+    localConfirmedSnapshots,
     currentMatchNo,
     teamAId,
     teamBId,
@@ -2674,7 +2933,7 @@ export function FriendlyLiveMatchPage({
 
     const pushTimer = async () => {
       try {
-        const ref = getMatchDoc(db, MATCH_DOC_ID);
+        const ref = resolveLiveMatchDoc(dataScope);
         await updateDoc(ref, {
           secondsLeft: Math.max(secondsLeft, 0),
           matchSeconds: matchSeconds ?? 0,
@@ -2967,8 +3226,73 @@ export function FriendlyLiveMatchPage({
     };
   };
 
+  /*
+   * Actual football elapsed time.
+   *
+   * Regulation duration is configurable, so nothing here assumes a
+   * five-minute match. Added time is counted from its own live clock.
+   */
+  const getActualElapsedFootballSeconds = () => {
+    const regulationElapsed = Math.max(
+      Number(matchSeconds || 0) -
+        Number(displaySeconds || 0),
+      0
+    );
+
+    const additionalElapsed = Math.max(
+      Number(additionalTimeTotalSeconds || 0) -
+        Number(additionalTimeSecondsLeft || 0),
+      0
+    );
+
+    return regulationElapsed + additionalElapsed;
+  };
+
+  const recordAuthoritativeFriendlyLineup = (
+    snapshots,
+    explicitTimeSeconds = null
+  ) => {
+    if (!snapshots || typeof snapshots !== "object") return;
+
+    const timeSeconds = Math.max(
+      0,
+      Number(
+        explicitTimeSeconds ??
+          getActualElapsedFootballSeconds()
+      ) || 0
+    );
+
+    setFriendlyLineupTimeline((previous) => {
+      const safePrevious = Array.isArray(previous)
+        ? previous
+        : [];
+
+      const entry = {
+        timeSeconds,
+        snapshots,
+      };
+
+      /*
+       * Several authoritative operations may occur in the same second.
+       * The latest football state for that second is the one that matters.
+       */
+      const withoutSameSecond = safePrevious.filter(
+        (candidate) =>
+          Number(candidate?.timeSeconds || 0) !==
+          timeSeconds
+      );
+
+      return [...withoutSameSecond, entry].sort(
+        (a, b) =>
+          Number(a?.timeSeconds || 0) -
+          Number(b?.timeSeconds || 0)
+      );
+    });
+  };
+
   const persistDisciplineLineups = (nextSnapshots) => {
     setLocalConfirmedSnapshots(nextSnapshots);
+    recordAuthoritativeFriendlyLineup(nextSnapshots);
 
     if (nextSnapshots?.[teamAId]) {
       setVerifyTeamALineup(nextSnapshots[teamAId]);
@@ -2980,6 +3304,268 @@ export function FriendlyLiveMatchPage({
 
     onConfirmPreMatchLineups?.(nextSnapshots);
   };
+
+  const applyFriendlyAutomaticRotation = ({
+    teamId,
+    incomingPlayer,
+    outgoingPlayer,
+    currentLineup,
+    formation,
+    registeredPlayers = [],
+  }) => {
+    /*
+     * Automatic player rotation is meaningful only after the match
+     * lineups have become the confirmed live-match truth.
+     *
+     * Before confirmation, LineupBoard retains its normal manual
+     * formation-editing behaviour.
+     */
+    if (!hasVerifiedLineups) {
+      return false;
+    }
+
+    const result = buildFriendlyInMatchRotation({
+      currentLineup,
+      incomingPlayer,
+      outgoingPlayer,
+      formation,
+      registeredPlayers,
+      buildBestOutfieldAssignment,
+      protectedVacancies:
+        teamId === teamAId
+          ? protectedVacanciesA
+          : teamId === teamBId
+          ? protectedVacanciesB
+          : {},
+    });
+
+    if (!result?.resolved) {
+      if (
+        result?.reason ===
+        "current_goalkeeper_must_rotate_outfield"
+      ) {
+        /*
+         * The automatic rule is a DEFAULT, never a referee blocker.
+         *
+         * Returning false deliberately hands control back to
+         * LineupBoard's ordinary manual substitution path:
+         *
+         * incoming player -> tapped GK position
+         * current GK      -> bench
+         *
+         * The referee may therefore overrule the normal rotation
+         * whenever real match circumstances require it.
+         */
+        return false;
+      }
+
+      console.warn(
+        "Friendly automatic rotation was not resolved:",
+        result
+      );
+      return false;
+    }
+
+    const currentSnapshots = {
+      ...(sanitizedConfirmedSnapshots || {}),
+    };
+
+    const currentSnapshot =
+      currentSnapshots?.[teamId] || currentLineup || {};
+
+    const nextSnapshot = {
+      ...currentSnapshot,
+      formationId:
+        result.formationId ||
+        currentSnapshot?.formationId ||
+        formation?.id ||
+        null,
+      positions: {
+        ...(result.positions || {}),
+      },
+      benchSnapshot: [
+        ...(result.benchPlayers || []),
+      ],
+      onFieldPlayerCount: Object.values(
+        result.positions || {}
+      ).filter(Boolean).length,
+    };
+
+    persistDisciplineLineups({
+      ...currentSnapshots,
+      [teamId]: nextSnapshot,
+    });
+
+    return true;
+  };
+
+  /*
+   * STAGE 7G3 — FRIENDLY NO-BENCH GK ROTATION
+   *
+   * When the referee has explicitly enabled a Friendly rotation rule
+   * but a team has no substitute, the trigger applies only to GK duty.
+   *
+   * Teams WITH substitutes are deliberately left alone here:
+   * their incoming substitute -> GK rule remains handled by
+   * buildFriendlyInMatchRotation after the referee chooses who exits.
+   *
+   * The two teams may differ:
+   * - Team A may have a substitute;
+   * - Team B may have none.
+   *
+   * In that case Team B's GK rotates automatically while Team A still
+   * receives the normal player-rotation reminder.
+   */
+  const applyFriendlyNoBenchGoalkeeperRotations = () => {
+    if (!hasVerifiedLineups) {
+      return {
+        appliedCount: 0,
+        appliedTeams: [],
+      };
+    }
+
+    const currentSnapshots = {
+      ...(sanitizedConfirmedSnapshots || {}),
+    };
+
+    const teamConfigs = [
+      {
+        teamId: teamAId,
+        registeredPlayers: eligibleTeamAPlayers,
+      },
+      {
+        teamId: teamBId,
+        registeredPlayers: eligibleTeamBPlayers,
+      },
+    ];
+
+    const appliedTeams = [];
+
+    teamConfigs.forEach(({ teamId, registeredPlayers }) => {
+      if (!teamId) return;
+
+      const currentSnapshot =
+        currentSnapshots?.[teamId] || null;
+
+      if (!currentSnapshot) return;
+
+      /*
+       * A real bench means this team follows the existing Friendly
+       * substitution path instead:
+       *
+       * incoming substitute -> GK
+       * previous GK         -> outfield
+       * referee chooses who leaves
+       */
+      const benchPlayers =
+        getBenchPlayersFromSnapshot(
+          currentSnapshot,
+          registeredPlayers || [],
+          canonicalName,
+          playerKeyFor,
+          formationMap,
+          defaultFormationId
+        );
+
+      if (benchPlayers.length > 0) {
+        return;
+      }
+
+      const formation =
+        formationMap?.[
+          currentSnapshot?.formationId
+        ] ||
+        formationMap?.[defaultFormationId] ||
+        Object.values(formationMap || {})[0] ||
+        null;
+
+      if (!formation) return;
+
+      const nextKeeper =
+        chooseNextFriendlyGoalkeeper({
+          teamId,
+          currentLineup: currentSnapshot,
+          formation,
+          lineupTimeline:
+            friendlyLineupTimeline,
+        });
+
+      if (!nextKeeper?.resolved) {
+        console.warn(
+          "Friendly GK fairness could not choose the next goalkeeper:",
+          {
+            teamId,
+            result: nextKeeper,
+          }
+        );
+        return;
+      }
+
+      const rotation =
+        buildFriendlyGoalkeeperOnlyRotation({
+          currentLineup: currentSnapshot,
+          formation,
+          nextGoalkeeper:
+            nextKeeper.nextGoalkeeper,
+        });
+
+      if (!rotation?.resolved) {
+        console.warn(
+          "Friendly GK-only rotation could not be applied:",
+          {
+            teamId,
+            result: rotation,
+          }
+        );
+        return;
+      }
+
+      currentSnapshots[teamId] = {
+        ...currentSnapshot,
+        formationId:
+          rotation.formationId ||
+          currentSnapshot?.formationId ||
+          formation?.id ||
+          null,
+        positions: {
+          ...(rotation.positions || {}),
+        },
+        benchSnapshot: [
+          ...(rotation.benchPlayers || []),
+        ],
+        onFieldPlayerCount: Object.values(
+          rotation.positions || {}
+        ).filter(Boolean).length,
+      };
+
+      appliedTeams.push({
+        teamId,
+        previousGoalkeeper:
+          rotation.previousGoalkeeper || "",
+        nextGoalkeeper:
+          rotation.nextGoalkeeper || "",
+      });
+    });
+
+    if (appliedTeams.length > 0) {
+      /*
+       * One authoritative persistence operation is important here.
+       *
+       * If both teams have no bench, both GK changes must enter the
+       * same football snapshot rather than one team overwriting the
+       * other with stale state.
+       */
+      persistDisciplineLineups(
+        currentSnapshots
+      );
+    }
+
+    return {
+      appliedCount: appliedTeams.length,
+      appliedTeams,
+    };
+  };
+
 
   const removeDismissedPlayerFromLineup = (player) => {
     const teamId = player?.teamId;
@@ -3487,7 +4073,17 @@ export function FriendlyLiveMatchPage({
   };
 
   const triggerRotationReminder = (reason) => {
-    if (!canControlMatch || !hasRotationBench) return;
+    if (!canControlMatch) return;
+
+    /*
+     * If either team has no substitute, an explicitly enabled
+     * Friendly rotation rule rotates that team's goalkeeper now.
+     *
+     * Teams with substitutes remain referee-driven because the referee
+     * must choose WHO leaves the pitch.
+     */
+    const goalkeeperRotationResult =
+      applyFriendlyNoBenchGoalkeeperRotations();
 
     if (rotationToastTimerRef.current) {
       window.clearTimeout(rotationToastTimerRef.current);
@@ -3500,6 +4096,10 @@ export function FriendlyLiveMatchPage({
     setRotationDue({
       reason,
       triggeredAt: Date.now(),
+      goalkeeperRotationsApplied:
+        goalkeeperRotationResult?.appliedCount || 0,
+      goalkeeperRotationTeams:
+        goalkeeperRotationResult?.appliedTeams || [],
     });
     setRotationToastVisible(true);
 
@@ -3558,23 +4158,20 @@ export function FriendlyLiveMatchPage({
 
     if (
       normalizedActiveRotationMode === "off" ||
-      !canControlMatch ||
-      !hasRotationBench
+      !canControlMatch
     ) {
       clearRotationReminder();
     }
   }, [
     normalizedActiveRotationMode,
     canControlMatch,
-    hasRotationBench,
   ]);
 
   useEffect(() => {
     if (
       normalizedActiveRotationMode !== "time" ||
       !running ||
-      !canControlMatch ||
-      !hasRotationBench
+      !canControlMatch
     ) {
       return;
     }
@@ -3604,14 +4201,12 @@ export function FriendlyLiveMatchPage({
     running,
     normalizedActiveRotationMode,
     canControlMatch,
-    hasRotationBench,
   ]);
 
   useEffect(() => {
     if (
       normalizedActiveRotationMode !== "goals" ||
-      !canControlMatch ||
-      !hasRotationBench
+      !canControlMatch
     ) {
       return;
     }
@@ -3632,7 +4227,6 @@ export function FriendlyLiveMatchPage({
     totalGoals,
     normalizedActiveRotationMode,
     canControlMatch,
-    hasRotationBench,
   ]);
 
   useEffect(() => {
@@ -3897,6 +4491,19 @@ export function FriendlyLiveMatchPage({
     };
 
     setLocalConfirmedSnapshots(merged);
+
+    const confirmationTimeSeconds =
+      friendlyLineupTimeline.length === 0 &&
+      !isRunning &&
+      !additionalTimeRunning
+        ? 0
+        : getActualElapsedFootballSeconds();
+
+    recordAuthoritativeFriendlyLineup(
+      merged,
+      confirmationTimeSeconds
+    );
+
     onConfirmPreMatchLineups?.(merged);
     setShowVerifyModal(false);
   };
@@ -4073,6 +4680,80 @@ export function FriendlyLiveMatchPage({
     setScoringTeamId("");
     setScorerName("");
     setAssistName("");
+  };
+
+  useEffect(() => {
+    /*
+     * Live VAR belongs to the controlling referee only.
+     *
+     * Admin disposal/review at End Match Day is a separate workflow.
+     * Captains, players and spectators must never receive this listener.
+     */
+    if (
+      !canControlCurrentLiveMatch ||
+      !resolvedVideoHighlightsMatchId
+    ) {
+      setRefereeVarHighlights([]);
+      setActiveRefereeVar(null);
+      return undefined;
+    }
+
+    const unsubscribe =
+      VideoHighlightsRepository.subscribeToVarHighlights({
+        matchId: resolvedVideoHighlightsMatchId,
+        clubId: safeActiveClubId,
+
+        onChange: (items) => {
+          const incoming = Array.isArray(items) ? items : [];
+
+          setRefereeVarHighlights(incoming);
+
+          setActiveRefereeVar((current) => {
+            if (
+              current &&
+              incoming.some((item) => item.id === current.id)
+            ) {
+              return current;
+            }
+
+            const next = incoming.find(
+              (item) => !dismissedRefereeVarIds.has(item.id)
+            );
+
+            return next || null;
+          });
+        },
+
+        onError: (error) => {
+          console.warn(
+            "[FANM VAR] Referee VAR subscription failed:",
+            error
+          );
+        },
+      });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [
+    canControlCurrentLiveMatch,
+    resolvedVideoHighlightsMatchId,
+    safeActiveClubId,
+    dismissedRefereeVarIds,
+  ]);
+
+  const dismissActiveRefereeVar = () => {
+    const id = activeRefereeVar?.id;
+
+    if (id) {
+      setDismissedRefereeVarIds((previous) => {
+        const next = new Set(previous);
+        next.add(id);
+        return next;
+      });
+    }
+
+    setActiveRefereeVar(null);
   };
 
   const handleChooseScoringTeam = (teamId) => {
@@ -4411,9 +5092,54 @@ export function FriendlyLiveMatchPage({
       verifiedLineups: sanitizedConfirmedSnapshots || null,
     };
 
+    /*
+     * STAGE 6F — FRIENDLY DEFENSIVE BLOCK ATTRIBUTION
+     *
+     * Defensive Blocks are calculated only at Full Time from:
+     * - the actual football time played;
+     * - the final goal/event history;
+     * - the referee-confirmed lineup history;
+     * - the active Friendly formation catalogue.
+     *
+     * This does NOT control substitutions or match duration.
+     * The five-minute interval belongs only to the Defensive Block
+     * statistic itself.
+     */
+    const elapsedFootballSeconds =
+      getActualElapsedFootballSeconds();
+
+    const defensiveBlockEvents =
+      buildFriendlyDefensiveBlockEvents({
+        matchNo: currentMatchNo,
+        matchKey: resolvedVideoHighlightsMatchId || "",
+        teamAId,
+        teamBId,
+        events: currentEvents,
+        elapsedMatchSeconds: elapsedFootballSeconds,
+        verifiedLineups:
+          sanitizedConfirmedSnapshots || {},
+        lineupTimeline: friendlyLineupTimeline,
+        formationMap,
+      });
+
+    /*
+     * Defensive Blocks are derived statistical events.
+     * Remove any existing derived copies before appending the freshly
+     * calculated result, making this safe if Full Time is reprocessed.
+     */
+    const finalEvents = [
+      ...(Array.isArray(currentEvents)
+        ? currentEvents.filter(
+            (event) =>
+              event?.type !== "defensive_block"
+          )
+        : []),
+      ...defensiveBlockEvents,
+    ];
+
     writeFinalSummaryToFirestore(
       finalSummary,
-      currentEvents,
+      finalEvents,
       displaySeconds,
       matchSeconds
     );
@@ -4664,6 +5390,64 @@ export function FriendlyLiveMatchPage({
     );
   }, [rotationReminderMode]);
 
+  /*
+   * STAGE 7G1 — ROTATION SETUP INVITATION
+   *
+   * With substitutes:
+   *   automatically invite the referee to choose the baseline rule
+   *   once the starting lineups have been confirmed.
+   *
+   * Without substitutes:
+   *   do not interrupt the referee.
+   *
+   * The referee can still manually open Player Rotation at any time.
+   * If they manually choose 5 minutes or 2 goals with no substitutes,
+   * that selected rule becomes the GK-only rotation trigger.
+   */
+  useEffect(() => {
+    if (
+      !hasVerifiedLineups ||
+      !canControlMatch ||
+      !hasRotationBench ||
+      rotationReminderConfigured ||
+      normalizedActiveRotationMode !== "off" ||
+      typeof onUpdateRotationReminder !== "function"
+    ) {
+      return;
+    }
+
+    const promptKey = [
+      currentMatchNo || 1,
+      teamAId || "",
+      teamBId || "",
+      gameFormat || "",
+    ].join("::");
+
+    if (
+      rotationSetupPromptKeyRef.current ===
+      promptKey
+    ) {
+      return;
+    }
+
+    rotationSetupPromptKeyRef.current =
+      promptKey;
+
+    setSelectedRotationMode("off");
+    setShowRotationModal(true);
+  }, [
+    hasVerifiedLineups,
+    canControlMatch,
+    hasRotationBench,
+    rotationReminderConfigured,
+    normalizedActiveRotationMode,
+    onUpdateRotationReminder,
+    currentMatchNo,
+    teamAId,
+    teamBId,
+    gameFormat,
+  ]);
+
   const openRotationModal = () => {
     if (
       !canControlMatch ||
@@ -4805,7 +5589,7 @@ export function FriendlyLiveMatchPage({
 
               <div>
                 <h2 id="rotation-modal-title">Set Rotation</h2>
-                <p>Substitution alert &amp; keeper change:</p>
+                <p>You have a substitute who should get fair game time. Set a player rotation rule.</p>
               </div>
             </div>
 
@@ -5945,6 +6729,13 @@ export function FriendlyLiveMatchPage({
                     formationMap={formationMap}
                     defaultFormationId={defaultFormationId}
                     disabled={!canControlMatch}
+                    onAutomaticBenchRotation={(rotation) =>
+                      applyFriendlyAutomaticRotation({
+                        ...rotation,
+                        teamId: teamAId,
+                        registeredPlayers: eligibleTeamAPlayers,
+                      })
+                    }
                   />
 
                   <LineupBoard
@@ -5963,6 +6754,13 @@ export function FriendlyLiveMatchPage({
                     formationMap={formationMap}
                     defaultFormationId={defaultFormationId}
                     disabled={!canControlMatch}
+                    onAutomaticBenchRotation={(rotation) =>
+                      applyFriendlyAutomaticRotation({
+                        ...rotation,
+                        teamId: teamBId,
+                        registeredPlayers: eligibleTeamBPlayers,
+                      })
+                    }
                   />
                 </>
               )}
@@ -6352,6 +7150,116 @@ export function FriendlyLiveMatchPage({
                 onClick={handleConfirmDiscardAndBack}
               >
                 ⚠️ Don&apos;t save this game
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeRefereeVar && canControlCurrentLiveMatch && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Private referee VAR review"
+          style={{ zIndex: 10000 }}
+        >
+          <div
+            className="modal"
+            style={{
+              width: "min(94vw, 760px)",
+              maxHeight: "94vh",
+              overflowY: "auto",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "1rem",
+                marginBottom: "0.75rem",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  VAR READY
+                </h3>
+
+                <p
+                  className="muted small"
+                  style={{ margin: "0.25rem 0 0" }}
+                >
+                  Private referee review • 20-second replay
+                </p>
+              </div>
+
+              <span
+                style={{
+                  fontWeight: 800,
+                  fontSize: "0.78rem",
+                  letterSpacing: "0.04em",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                REFEREE ONLY
+              </span>
+            </div>
+
+            {(
+              activeRefereeVar.downloadUrl ||
+              activeRefereeVar.videoUrl ||
+              activeRefereeVar.url
+            ) ? (
+              <video
+                key={activeRefereeVar.id}
+                src={
+                  activeRefereeVar.downloadUrl ||
+                  activeRefereeVar.videoUrl ||
+                  activeRefereeVar.url
+                }
+                controls
+                autoPlay
+                playsInline
+                preload="auto"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  maxHeight: "62vh",
+                  background: "#000",
+                  borderRadius: "12px",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  padding: "1.25rem",
+                  textAlign: "center",
+                }}
+              >
+                <strong>VAR video is preparing…</strong>
+                <p className="muted small">
+                  The referee review will become available as soon as
+                  the camera upload finishes.
+                </p>
+              </div>
+            )}
+
+            <p
+              className="muted small"
+              style={{ marginTop: "0.8rem" }}
+            >
+              This replay is an operational refereeing aid. It is not
+              published to players or ordinary Video Highlights.
+            </p>
+
+            <div className="actions-row">
+              <button
+                className="primary-btn"
+                type="button"
+                onClick={dismissActiveRefereeVar}
+              >
+                Review complete
               </button>
             </div>
           </div>
