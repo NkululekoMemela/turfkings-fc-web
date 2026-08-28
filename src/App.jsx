@@ -554,6 +554,21 @@ function isCaptainFromTeams(identity, teams = []) {
 
 function deriveActiveRole(identity, teams = []) {
   const storedRole = getStoredRole(identity);
+
+  // Admin "View As" is an explicit experience override.
+  // When an admin deliberately chooses Captain, Player, or Spectator,
+  // that selected role must win over dynamic captain detection.
+  if (identity?.isRolePreview === true) {
+    if (
+      storedRole === "admin" ||
+      storedRole === "captain" ||
+      storedRole === "player" ||
+      storedRole === "spectator"
+    ) {
+      return storedRole;
+    }
+  }
+
   const isDynamicCaptain = isCaptainFromTeams(identity, teams);
 
   if (storedRole === "spectator" && !isDynamicCaptain) return "spectator";
@@ -9613,10 +9628,7 @@ export default function App() {
           }
           onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
           canPreviewPreviousSeasonUI={canPreviewPreviousSeasonUI}
-          isAdmin={Boolean(
-            isAdmin ||
-            realRole === "admin"
-          )}
+          isAdmin={isAdmin}
           identity={pageIdentity}
           matchType={matchType}
           isPracticeMode={isPracticeMode}
