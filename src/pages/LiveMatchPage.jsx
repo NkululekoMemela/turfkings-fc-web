@@ -3,6 +3,7 @@ import React from "react";
 import ThreeTeamLeagueLiveMatchPage from "./ThreeTeamLeague_LiveMatchPage.jsx";
 import FriendlyLiveMatchPage from "./Friendly_LiveMatchPage";
 import { MATCH_MODE, buildMatchClassification } from "../core/matchConfig.js";
+import RefereeVarReview from "../components/RefereeVarReview.jsx";
 
 export function LiveMatchPage(props) {
   const liveCurrentMatch =
@@ -48,11 +49,26 @@ export function LiveMatchPage(props) {
     playersPerSide: classification.playersPerSide,
   };
 
-  if (classification.matchMode === MATCH_MODE.LEAGUE) {
-    return <ThreeTeamLeagueLiveMatchPage {...sharedProps} />;
-  }
+  const routedLivePage =
+    classification.matchMode === MATCH_MODE.LEAGUE
+      ? <ThreeTeamLeagueLiveMatchPage {...sharedProps} />
+      : <FriendlyLiveMatchPage {...sharedProps} />;
 
-  return <FriendlyLiveMatchPage {...sharedProps} />;
+  return (
+    <>
+      {routedLivePage}
+
+      <RefereeVarReview
+        enabled={Boolean(props.canControlCurrentLiveMatch)}
+        matchId={props.currentVideoHighlightsMatchId || ""}
+        clubId={
+          props.videoHighlightsClubId ||
+          props.activeClubId ||
+          "turf-kings"
+        }
+      />
+    </>
+  );
 }
 
 export default LiveMatchPage;

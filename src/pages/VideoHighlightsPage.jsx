@@ -311,6 +311,7 @@ function buildArchiveSelection(
 
   return {
     topGoals: goals.slice(0, 2),
+    topSkills: skills.slice(0, 2),
     bestSkill: skills[0] || null,
     bestSave: saves[0] || null,
   };
@@ -1327,7 +1328,10 @@ export function VideoHighlightsPage({
     try {
       setLoadingHighlights(true);
       setLoadError("");
-      const [loaded, archived, recentClubClips] =
+      const legacyTurfKingsMatchId =
+        "league__2026-S5__match_13__2026-S1-team-1_vs_2026-S1-team-2";
+
+      const [loaded, archived, recentClubClips, legacyTurfKingsRaw] =
         await Promise.all([
           VideoHighlightsRepository.loadRawHighlightsFromFirebase(
             resolvedMatchId,
@@ -1338,16 +1342,22 @@ export function VideoHighlightsPage({
             ? VideoHighlightsRepository
                 .loadArchivedHighlightsFromFirebase(
                   activeClubId === "turf-kings"
-                    ? "league__2026-S5__match_13__2026-S1-team-1_vs_2026-S1-team-2"
+                    ? legacyTurfKingsMatchId
                     : resolvedMatchId
                 )
             : Promise.resolve([]),
           typeof VideoHighlightsRepository
-            .loadRecentClubHighlightsFromFirebase === "function"
+            .loadAllClubHighlightsForAudit === "function"
             ? VideoHighlightsRepository
-                .loadRecentClubHighlightsFromFirebase(
-                  activeClubId,
-                  { visibilityDays: 5 }
+                .loadAllClubHighlightsForAudit(
+                  activeClubId
+                )
+            : Promise.resolve([]),
+          activeClubId === "turf-kings"
+            ? VideoHighlightsRepository
+                .loadRawHighlightsFromFirebase(
+                  legacyTurfKingsMatchId,
+                  activeClubId
                 )
             : Promise.resolve([]),
         ]);
@@ -1356,6 +1366,13 @@ export function VideoHighlightsPage({
         ...(Array.isArray(loaded) ? loaded : []),
         ...(Array.isArray(recentClubClips)
           ? recentClubClips
+          : []),
+        ...(Array.isArray(legacyTurfKingsRaw)
+          ? legacyTurfKingsRaw.map((clip) => ({
+              ...clip,
+              matchId:
+                clip?.matchId || legacyTurfKingsMatchId,
+            }))
           : []),
       ];
 
@@ -1705,16 +1722,14 @@ export function VideoHighlightsPage({
 
   const currentTopVotedClips = useMemo(
     () => [
-      ...archiveSelection.topGoals,
+      ...(archiveSelection.topGoals || []),
+      ...(archiveSelection.topSkills || []),
       archiveSelection.bestSave,
-      archiveSelection.bestSkill,
-      archiveSelection.bestMomish,
     ].filter(Boolean),
     [
       archiveSelection.topGoals,
+      archiveSelection.topSkills,
       archiveSelection.bestSave,
-      archiveSelection.bestSkill,
-      archiveSelection.bestMomish,
     ]
   );
 
@@ -1728,13 +1743,11 @@ export function VideoHighlightsPage({
   );
 
   const topVotedClipGroups = useMemo(() => {
-    const source = archivedHighlights.length ? archivedHighlights : currentTopVotedClips;
     return groupTopVotedClipsByMatchDay(
-      source,
+      currentTopVotedClips,
       likeCountsByClip
     );
   }, [
-    archivedHighlights,
     currentTopVotedClips,
     likeCountsByClip,
   ]);
@@ -1956,6 +1969,7 @@ export function VideoHighlightsPage({
       if (resolvedMatchId) {
         savedHighlight = await VideoHighlightsRepository.uploadAndSaveRawHighlight({
           matchId: resolvedMatchId,
+          clubId: activeClubId,
           file: clipFile,
           highlight: payload,
           onProgress: (progress) => {
@@ -2074,7 +2088,8 @@ export function VideoHighlightsPage({
 
     if (resolvedMatchId && updated.clipId) {
       await saveRawHighlightDoc({
-        matchId: resolvedMatchId,
+        matchId: updated.matchId || resolvedMatchId,
+        clubId: activeClubId,
         highlight: updated,
       });
       await loadHighlights();
@@ -2312,6 +2327,7 @@ export function VideoHighlightsPage({
       */
       await saveRawHighlightDoc({
         matchId: clipMatchId,
+        clubId: activeClubId,
         highlight: updated,
       });
 
@@ -2379,7 +2395,8 @@ export function VideoHighlightsPage({
     try {
       if (resolvedMatchId && updated.clipId) {
         await saveRawHighlightDoc({
-          matchId: resolvedMatchId,
+          matchId: updated.matchId || resolvedMatchId,
+          clubId: activeClubId,
           highlight: updated,
         });
         await loadHighlights();
@@ -3996,7 +4013,11 @@ export function VideoHighlightsPage({
                             highlight={clip}
                             teams={teams}
                             matchType={matchType}
-                            likeCount={0}
+                            likeCount={
+                              likeCountsByClip[
+                                String(clip.clipId || clip.id || "")
+                              ] || 0
+                            }
                             isModerator={isModerator}
                             canLike={false}
                             isLiked={false}

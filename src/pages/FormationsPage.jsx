@@ -946,6 +946,10 @@ export function FormationsPage({
   const [tendenciesPopup, setTendenciesPopup] = useState(null);
   const [draggedFormationPlayer, setDraggedFormationPlayer] = useState(null);
 
+  // Temporarily hidden for the current release.
+  // Keep the Player Tendencies system intact so it can be restored later.
+  const showPlayerTendenciesArrow = false;
+
   const [savingMentality, setSavingMentality] = useState(false);
   const [mentalityMessage, setMentalityMessage] = useState("");
   const [savingShooting, setSavingShooting] = useState(false);
@@ -2396,7 +2400,7 @@ export function FormationsPage({
 
                 return (
                   <React.Fragment key={pos.id}>
-                  {name && (
+                  {showPlayerTendenciesArrow && (name) && (
                     <div
                       className="formation-tendencies-control-layer"
                       style={{

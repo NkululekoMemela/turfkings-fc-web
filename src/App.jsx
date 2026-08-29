@@ -554,6 +554,21 @@ function isCaptainFromTeams(identity, teams = []) {
 
 function deriveActiveRole(identity, teams = []) {
   const storedRole = getStoredRole(identity);
+
+  // Admin "View As" is an explicit experience override.
+  // When an admin deliberately chooses Captain, Player, or Spectator,
+  // that selected role must win over dynamic captain detection.
+  if (identity?.isRolePreview === true) {
+    if (
+      storedRole === "admin" ||
+      storedRole === "captain" ||
+      storedRole === "player" ||
+      storedRole === "spectator"
+    ) {
+      return storedRole;
+    }
+  }
+
   const isDynamicCaptain = isCaptainFromTeams(identity, teams);
 
   if (storedRole === "spectator" && !isDynamicCaptain) return "spectator";
@@ -4009,6 +4024,46 @@ export default function App() {
       }),
     [activeSeasonId, gameFormat, activeMatchNo, matchType, effectiveLiveMatch]
   );
+
+  /*
+   * Canonical identifier for the fixture being refereed right now.
+   *
+   * Camera launch and referee-only VAR must use the same live fixture
+   * identity. pendingMatchStartContext is authoritative during a live
+   * referee session and may be ahead of effectiveLiveMatch.
+   */
+  const liveVideoHighlightsMatchId = useMemo(() => {
+    const liveMatch =
+      pendingMatchStartContext?.currentMatch ||
+      effectiveLiveMatch;
+
+    const liveMatchNo =
+      pendingMatchStartContext?.matchNo ||
+      activeMatchNo;
+
+    const liveMatchType =
+      pendingMatchStartContext?.matchType ||
+      matchType;
+
+    const liveGameFormat =
+      pendingMatchStartContext?.gameFormat ||
+      gameFormat;
+
+    return buildVideoHighlightsMatchId({
+      activeSeasonId,
+      gameFormat: liveGameFormat,
+      currentMatchNo: liveMatchNo,
+      matchType: liveMatchType,
+      currentMatch: liveMatch,
+    });
+  }, [
+    activeSeasonId,
+    gameFormat,
+    activeMatchNo,
+    matchType,
+    effectiveLiveMatch,
+    pendingMatchStartContext,
+  ]);
 
   useEffect(() => {
     if (running || hasLiveMatch) return;
@@ -7611,6 +7666,7 @@ export default function App() {
 
     const savedHighlight = await VideoHighlightsRepository.uploadAndSaveRawHighlight({
       matchId,
+      clubId: payload?.clubId || payload?.activeClubId || "turf-kings",
       file: payload?.file,
       highlight: {
         ...(payload || {}),
@@ -9552,6 +9608,8 @@ export default function App() {
           onBackToLanding={handleDiscardMatchAndBack}
           onGoToStats={() => handleGoToStats(PAGE_LIVE)}
           onOpenHighlightsCamera={handleOpenHighlightsCamera}
+          currentVideoHighlightsMatchId={liveVideoHighlightsMatchId}
+          videoHighlightsClubId={activeClubId || DEFAULT_CLUB_ID}
         />
       )}
 
@@ -9613,10 +9671,7 @@ export default function App() {
           }
           onDeleteCurrentEmptySeason={handleDeleteCurrentEmptySeason}
           canPreviewPreviousSeasonUI={canPreviewPreviousSeasonUI}
-          isAdmin={Boolean(
-            isAdmin ||
-            realRole === "admin"
-          )}
+          isAdmin={isAdmin}
           identity={pageIdentity}
           matchType={matchType}
           isPracticeMode={isPracticeMode}
