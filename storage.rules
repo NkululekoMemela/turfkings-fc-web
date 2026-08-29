@@ -62,11 +62,16 @@ service firebase.storage {
     match /clubs/{clubId}/video_highlights/{matchId}/raw/{source}/{fileName} {
       allow read: if signedIn();
 
-      // Camera may create/update only inside its server-authorized club + match.
+      // Camera identities remain locked to their server-authorized club + match.
+      // Normal signed-in FANM users may upload manual highlights to club-scoped storage.
       allow create, update:
-        if cameraCanAccessMatch(clubId, matchId)
+        if signedIn()
            && isVideo()
-           && isReasonableSize();
+           && isReasonableSize()
+           && (
+             !isCameraSession()
+             || cameraCanAccessMatch(clubId, matchId)
+           );
 
       // Normal authenticated FANM users may remove disposable camera footage.
       // Camera-session identities remain constrained to their own club + match.

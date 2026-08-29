@@ -7666,6 +7666,7 @@ export default function App() {
 
     const savedHighlight = await VideoHighlightsRepository.uploadAndSaveRawHighlight({
       matchId,
+      clubId: payload?.clubId || payload?.activeClubId || "turf-kings",
       file: payload?.file,
       highlight: {
         ...(payload || {}),
