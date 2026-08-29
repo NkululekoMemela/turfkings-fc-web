@@ -22,8 +22,8 @@ service firebase.storage {
     // ---------------------------------------------------------
     function isCameraSession() {
       return signedIn()
-             && request.auth.token.cameraSession == true
-             && request.auth.token.dataScope == "official";
+             && request.auth.token.get("cameraSession", false) == true
+             && request.auth.token.get("dataScope", "") == "official";
     }
 
     function cameraCanAccessMatch(clubId, matchId) {
@@ -62,10 +62,20 @@ service firebase.storage {
     match /clubs/{clubId}/video_highlights/{matchId}/raw/{source}/{fileName} {
       allow read: if signedIn();
 
-      allow write:
+      // Camera may create/update only inside its server-authorized club + match.
+      allow create, update:
         if cameraCanAccessMatch(clubId, matchId)
            && isVideo()
            && isReasonableSize();
+
+      // Normal authenticated FANM users may remove disposable camera footage.
+      // Camera-session identities remain constrained to their own club + match.
+      allow delete:
+        if signedIn()
+           && (
+             !isCameraSession()
+             || cameraCanAccessMatch(clubId, matchId)
+           );
     }
 
     match /clubs/{clubId}/video_highlights/{matchId}/{allPaths=**} {

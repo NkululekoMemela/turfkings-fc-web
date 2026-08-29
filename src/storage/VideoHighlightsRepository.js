@@ -23,7 +23,7 @@ import {
   deleteObject,
 } from "firebase/storage";
 
-import { db, storage } from "../firebaseConfig.js";
+import { auth, db, storage } from "../firebaseConfig.js";
 import {
   curateHighlights,
   buildVoteCounts,
@@ -364,6 +364,94 @@ export async function loadRawHighlightsFromFirebase(
   }));
 }
 
+export async function deleteVarHighlight({
+  matchId,
+  clubId = DEFAULT_CLUB_ID,
+  highlight,
+} = {}) {
+  console.log("[FANM VAR DELETE] Firebase identity", {
+    uid: auth.currentUser?.uid || null,
+    email: auth.currentUser?.email || null,
+    signedIn: Boolean(auth.currentUser),
+    projectId: auth.app?.options?.projectId || null,
+    storageBucket: storage.app?.options?.storageBucket || null,
+  });
+
+  const safeMatchId = safeString(matchId);
+  const clipId = getClipId(highlight);
+  const storagePath = safeString(highlight?.storagePath);
+
+  if (!safeMatchId) {
+    throw new Error("Missing matchId while deleting VAR replay.");
+  }
+
+  if (!clipId) {
+    throw new Error("Missing clipId while deleting VAR replay.");
+  }
+
+  // Delete the Storage object first. If that fails, preserve the Firestore
+  // metadata so the VAR remains recoverable/retryable rather than orphaning
+  // an inaccessible video.
+  if (storagePath) {
+    try {
+      console.log("[FANM VAR DELETE] deleting Storage object", {
+        matchId: safeMatchId,
+        clubId,
+        clipId,
+        storagePath,
+      });
+
+      await deleteObject(ref(storage, storagePath));
+
+      console.log("[FANM VAR DELETE] Storage object deleted", {
+        clipId,
+      });
+    } catch (error) {
+      console.error("[FANM VAR DELETE] Storage deletion failed", {
+        matchId: safeMatchId,
+        clubId,
+        clipId,
+        storagePath,
+        code: error?.code,
+        message: error?.message,
+        error,
+      });
+
+      if (error?.code !== "storage/object-not-found") {
+        throw error;
+      }
+    }
+  }
+
+  try {
+    console.log("[FANM VAR DELETE] deleting Firestore raw doc", {
+      matchId: safeMatchId,
+      clubId,
+      clipId,
+    });
+
+    await deleteDoc(
+      doc(rawRef(safeMatchId, clubId), clipId)
+    );
+
+    console.log("[FANM VAR DELETE] Firestore raw doc deleted", {
+      clipId,
+    });
+  } catch (error) {
+    console.error("[FANM VAR DELETE] Firestore deletion failed", {
+      matchId: safeMatchId,
+      clubId,
+      clipId,
+      code: error?.code,
+      message: error?.message,
+      error,
+    });
+    throw error;
+  }
+
+  return { matchId: safeMatchId, clipId };
+}
+
 export function subscribeToVarHighlights({
   matchId,
   clubId = DEFAULT_CLUB_ID,
@@ -383,6 +471,21 @@ export function subscribeToVarHighlights({
   return onSnapshot(
     q,
     (snap) => {
+      console.log("[FANM VAR DEBUG] Firestore raw snapshot", {
+        matchId,
+        clubId,
+        size: snap.size,
+        docs: snap.docs.map((d) => ({
+          id: d.id,
+          type: d.data()?.type,
+          tag: d.data()?.tag,
+          category: d.data()?.category,
+          highlightType: d.data()?.highlightType,
+          downloadUrl: d.data()?.downloadUrl,
+          videoUrl: d.data()?.videoUrl,
+        })),
+      });
+
       const varHighlights = snap.docs
         .map((d) => ({
           id: d.id,
@@ -401,6 +504,13 @@ export function subscribeToVarHighlights({
 
           return type === "var";
         });
+
+      console.log("[FANM VAR DEBUG] Filtered VAR highlights", {
+        matchId,
+        clubId,
+        count: varHighlights.length,
+        ids: varHighlights.map((item) => item.id),
+      });
 
       onChange?.(varHighlights);
     },
@@ -2145,6 +2255,7 @@ const VideoHighlightsRepository = {
   saveRawHighlightDoc,
   loadRawHighlightsFromFirebase,
   subscribeToVarHighlights,
+  deleteVarHighlight,
   loadArchivedHighlightsFromFirebase,
   loadClubArchivedHighlightsFromFirebase,
   loadRecentClubHighlightsFromFirebase,

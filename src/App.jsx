@@ -4025,6 +4025,46 @@ export default function App() {
     [activeSeasonId, gameFormat, activeMatchNo, matchType, effectiveLiveMatch]
   );
 
+  /*
+   * Canonical identifier for the fixture being refereed right now.
+   *
+   * Camera launch and referee-only VAR must use the same live fixture
+   * identity. pendingMatchStartContext is authoritative during a live
+   * referee session and may be ahead of effectiveLiveMatch.
+   */
+  const liveVideoHighlightsMatchId = useMemo(() => {
+    const liveMatch =
+      pendingMatchStartContext?.currentMatch ||
+      effectiveLiveMatch;
+
+    const liveMatchNo =
+      pendingMatchStartContext?.matchNo ||
+      activeMatchNo;
+
+    const liveMatchType =
+      pendingMatchStartContext?.matchType ||
+      matchType;
+
+    const liveGameFormat =
+      pendingMatchStartContext?.gameFormat ||
+      gameFormat;
+
+    return buildVideoHighlightsMatchId({
+      activeSeasonId,
+      gameFormat: liveGameFormat,
+      currentMatchNo: liveMatchNo,
+      matchType: liveMatchType,
+      currentMatch: liveMatch,
+    });
+  }, [
+    activeSeasonId,
+    gameFormat,
+    activeMatchNo,
+    matchType,
+    effectiveLiveMatch,
+    pendingMatchStartContext,
+  ]);
+
   useEffect(() => {
     if (running || hasLiveMatch) return;
     setSecondsLeft(matchSeconds);
@@ -9567,6 +9607,8 @@ export default function App() {
           onBackToLanding={handleDiscardMatchAndBack}
           onGoToStats={() => handleGoToStats(PAGE_LIVE)}
           onOpenHighlightsCamera={handleOpenHighlightsCamera}
+          currentVideoHighlightsMatchId={liveVideoHighlightsMatchId}
+          videoHighlightsClubId={activeClubId || DEFAULT_CLUB_ID}
         />
       )}
 
