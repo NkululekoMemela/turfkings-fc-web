@@ -31,6 +31,7 @@ import { CLUB_COLLECTIONS } from "../core/clubPaths";
 import { showPremiumConfirm } from "../components/UI/PremiumConfirm";
 import {
   cancelPaidMatchAndIssueCredit,
+  issueMatchCredit,
   listAvailablePlayerMatchCredits,
   listClubMatchCredits,
   redeemMatchCreditForMatch,
@@ -1048,6 +1049,16 @@ export default function MatchSignupPage({
   const [showMatchTicketWallet, setShowMatchTicketWallet] = useState(false);
   const [matchTicketWalletMode, setMatchTicketWalletMode] = useState("menu");
   const [matchTicketBusy, setMatchTicketBusy] = useState(false);
+
+  const [adminWeatherBusy, setAdminWeatherBusy] = useState(false);
+  const [adminWeatherMessage, setAdminWeatherMessage] = useState("");
+  const [adminWeatherError, setAdminWeatherError] = useState("");
+
+  const [dangerZonePlayerId, setDangerZonePlayerId] = useState("");
+  const [dangerZoneTicketCount, setDangerZoneTicketCount] = useState(1);
+  const [dangerZoneBusy, setDangerZoneBusy] = useState(false);
+  const [dangerZoneMessage, setDangerZoneMessage] = useState("");
+  const [dangerZoneError, setDangerZoneError] = useState("");
   const [matchTicketMinimized, setMatchTicketMinimized] = useState(false);
   const [directoryPlayers, setDirectoryPlayers] = useState([]);
   const [playerPhotos, setPlayerPhotos] = useState({});
@@ -1315,6 +1326,78 @@ export default function MatchSignupPage({
     calendarMonthsData[Math.min(calendarMonthPage, Math.max(calendarMonthsData.length - 1, 0))] ||
     calendarMonthsData[0] ||
     calendarMonthData;
+
+  const getDefaultCalendarMonthPage = () => {
+    if (!calendarMonthsData.length) return 0;
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    const getMonthDate = (month) =>
+      month?.cells?.find((cell) => cell?.date instanceof Date)?.date || null;
+
+    const currentMonthIndex = calendarMonthsData.findIndex((month) => {
+      const monthDate = getMonthDate(month);
+      return (
+        monthDate instanceof Date &&
+        monthDate.getFullYear() === currentYear &&
+        monthDate.getMonth() === currentMonth
+      );
+    });
+
+    if (currentMonthIndex < 0) {
+      const currentMonthStart = new Date(currentYear, currentMonth, 1);
+      const firstFutureIndex = calendarMonthsData.findIndex((month) => {
+        const monthDate = getMonthDate(month);
+        return (
+          monthDate instanceof Date &&
+          new Date(
+            monthDate.getFullYear(),
+            monthDate.getMonth(),
+            1
+          ) > currentMonthStart
+        );
+      });
+
+      return firstFutureIndex >= 0 ? firstFutureIndex : 0;
+    }
+
+    const currentMonthRegularWeeks = allMonthWeeks.filter(
+      (week) =>
+        !week?.isChallenge &&
+        week?.date instanceof Date &&
+        week.date.getFullYear() === currentYear &&
+        week.date.getMonth() === currentMonth
+    );
+
+    const remainingCurrentMonthFixtures = currentMonthRegularWeeks.filter(
+      (week) => {
+        const kickoff = buildMatchKickoffDate(
+          week,
+          effectiveMatchSignupSettings
+        );
+
+        return kickoff && kickoff.getTime() > now.getTime();
+      }
+    );
+
+    const shouldAdvanceToNextMonth =
+      now.getDate() >= 25 ||
+      (
+        currentMonthRegularWeeks.length > 0 &&
+        remainingCurrentMonthFixtures.length === 0
+      );
+
+    if (!shouldAdvanceToNextMonth) {
+      return currentMonthIndex;
+    }
+
+    return Math.min(
+      currentMonthIndex + 1,
+      calendarMonthsData.length - 1
+    );
+  };
 
   useEffect(() => {
     setCalendarMonthPage((prev) =>
@@ -2760,6 +2843,235 @@ export default function MatchSignupPage({
     effectiveMatchSignupSettings,
     effectivePaidWeekSet,
   ]);
+
+  const adminWeatherWeeks = useMemo(() => {
+    return weekMeta.filter((week) => {
+      const kickoff = buildMatchKickoffDate(
+        week,
+        effectiveMatchSignupSettings
+      );
+
+      return kickoff && kickoff.getTime() > Date.now();
+    });
+  }, [
+    weekMeta,
+    effectiveMatchSignupSettings,
+  ]);
+
+  const handleAdminWeatherCancellation = async (week) => {
+    if (
+      !canManageSignupsAsAdmin ||
+      !week?.id ||
+      adminWeatherBusy
+    ) {
+      return;
+    }
+
+    const paidPlayers = adminCleanupCandidates.filter(
+      (player) =>
+        Array.isArray(player?.paidWeeks) &&
+        player.paidWeeks.includes(week.id)
+    );
+
+    const fixtureLabel =
+      week.shortLabel || week.label || week.id;
+
+    if (!paidPlayers.length) {
+      setAdminWeatherMessage("");
+      setAdminWeatherError(
+        `${fixtureLabel} has no recorded paid bookings to return.`
+      );
+      return;
+    }
+
+    const confirmed = await showPremiumConfirm({
+      icon: "🌧️",
+      title: `Weather cancellation · ${fixtureLabel}`,
+      message:
+        `${paidPlayers.length} paid booking${
+          paidPlayers.length === 1 ? "" : "s"
+        } will be released.`,
+      detail:
+        `Each paid player will receive one Match Ticket. Unpaid bookings will not receive tickets.`,
+      confirmText: "Cancel match",
+      cancelText: "Keep Match",
+      variant: "danger",
+    });
+
+    if (!confirmed) return;
+
+    setAdminWeatherBusy(true);
+    setAdminWeatherMessage("");
+    setAdminWeatherError("");
+
+    let completed = 0;
+    const failures = [];
+
+    try {
+      for (const player of paidPlayers) {
+        const playerId = String(
+          player?.userId ||
+          player?.stableKey ||
+          player?.rawData?.userId ||
+          player?.rawData?.playerId ||
+          ""
+        ).trim();
+
+        const signupDocId = String(player?.docId || "").trim();
+
+        if (!playerId || !signupDocId) {
+          failures.push(player?.fullName || "Unknown player");
+          continue;
+        }
+
+        try {
+          await cancelPaidMatchAndIssueCredit({
+            clubId: activeClubId,
+            playerId,
+            playerName:
+              player?.fullName ||
+              player?.shortName ||
+              "",
+            signupDocId,
+            weekId: week.id,
+            sourceType: MATCH_CREDIT_SOURCE.MATCH_CANCELLED,
+            issuedBy:
+              currentUser?.uid ||
+              identity?.uid ||
+              identity?.userId ||
+              "admin",
+          });
+
+          completed += 1;
+        } catch (error) {
+          console.error(
+            "Failed weather Match Ticket return:",
+            player?.fullName,
+            error
+          );
+          failures.push(player?.fullName || "Unknown player");
+        }
+      }
+
+      if (completed > 0) {
+        setAdminWeatherMessage(
+          `${fixtureLabel}: ${completed} paid booking${
+            completed === 1 ? "" : "s"
+          } returned as Match Ticket${
+            completed === 1 ? "" : "s"
+          }.`
+        );
+      }
+
+      if (failures.length > 0) {
+        setAdminWeatherError(
+          `${failures.length} booking${
+            failures.length === 1 ? "" : "s"
+          } could not be returned: ${failures.join(", ")}.`
+        );
+      }
+    } finally {
+      setAdminWeatherBusy(false);
+    }
+  };
+
+  const handleDangerZoneGrant = async () => {
+    if (
+      !canManageSignupsAsAdmin ||
+      dangerZoneBusy
+    ) {
+      return;
+    }
+
+    const player = existingPlayerOptions.find(
+      (item) =>
+        String(item?.id || "") ===
+        String(dangerZonePlayerId || "")
+    );
+
+    const requestedCount = Math.max(
+      1,
+      Math.min(5, Number(dangerZoneTicketCount) || 1)
+    );
+
+    if (!player?.id) {
+      setDangerZoneMessage("");
+      setDangerZoneError("Select a player first.");
+      return;
+    }
+
+    const confirmed = await showPremiumConfirm({
+      icon: "⚠️",
+      title: `Danger Zone · ${player.fullName}`,
+      message:
+        `Grant ${requestedCount} Match Ticket${
+          requestedCount === 1 ? "" : "s"
+        } manually?`,
+      detail:
+        "These tickets are not backed by a recorded match payment. Use this only when you have independently confirmed that the club owes the player these games.",
+      confirmText: `Grant ${requestedCount} Ticket${
+        requestedCount === 1 ? "" : "s"
+      }`,
+      cancelText: "Cancel",
+      variant: "danger",
+    });
+
+    if (!confirmed) return;
+
+    setDangerZoneBusy(true);
+    setDangerZoneMessage("");
+    setDangerZoneError("");
+
+    let completed = 0;
+
+    try {
+      for (let index = 0; index < requestedCount; index += 1) {
+        const uniquePart =
+          typeof crypto !== "undefined" &&
+          typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `${Date.now()}_${index}_${Math.random()
+                .toString(36)
+                .slice(2, 10)}`;
+
+        await issueMatchCredit({
+          clubId: activeClubId,
+          playerId: player.id,
+          playerName: player.fullName || player.shortName || "",
+          sourceType: MATCH_CREDIT_SOURCE.ADMIN_EXCEPTION,
+          issuedBy:
+            currentUser?.uid ||
+            identity?.uid ||
+            identity?.userId ||
+            "admin",
+          legacyAdjustmentKey:
+            `admin_exception_${uniquePart}`,
+        });
+
+        completed += 1;
+      }
+
+      setDangerZoneMessage(
+        `${completed} Match Ticket${
+          completed === 1 ? "" : "s"
+        } granted to ${player.fullName}.`
+      );
+
+      setDangerZoneTicketCount(1);
+    } catch (error) {
+      console.error("Failed Danger Zone Match Ticket grant:", error);
+
+      setDangerZoneError(
+        completed > 0
+          ? `${completed} ticket${
+              completed === 1 ? "" : "s"
+            } were created before the operation stopped. Do not retry blindly.`
+          : "No Match Tickets were created. Please try again."
+      );
+    } finally {
+      setDangerZoneBusy(false);
+    }
+  };
 
   const handleUseMatchTicket = async (week) => {
     if (!week?.id || matchTicketBusy) return;
@@ -4836,7 +5148,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               type="button"
               className="secondary-btn signup-calendar-btn"
               onClick={() => {
-                setCalendarMonthPage(0);
+                setCalendarMonthPage(getDefaultCalendarMonthPage());
                 setShowCalendarPopup(true);
               }}
               aria-label="Open next month calendar"
@@ -4989,6 +5301,10 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                 <h2 id="match-ticket-wallet-title">
                   {matchTicketWalletMode === "cancel"
                     ? "Match pull out"
+                    : matchTicketWalletMode === "weather"
+                    ? "Weather cancellation"
+                    : matchTicketWalletMode === "danger"
+                    ? "Danger Zone"
                     : "Use Ticket"}
                 </h2>
               </div>
@@ -5165,11 +5481,313 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                   )}
                 </div>
 
+                {canManageSignupsAsAdmin ? (
+                  <div
+                    style={{
+                      marginTop: 16,
+                      paddingTop: 14,
+                      borderTop: "1px solid rgba(148, 163, 184, 0.18)",
+                    }}
+                  >
+                    <p
+                      className="tk-match-ticket-help"
+                      style={{
+                        marginBottom: 8,
+                        fontSize: 10,
+                        fontWeight: 800,
+                        letterSpacing: "0.12em",
+                      }}
+                    >
+                      ADMIN CONTROLS
+                    </p>
+
+                    <div className="tk-match-ticket-match-list">
+                      <button
+                        type="button"
+                        className="tk-match-ticket-match"
+                        onClick={() =>
+                          setMatchTicketWalletMode("weather")
+                        }
+                        disabled={adminWeatherBusy || dangerZoneBusy}
+                      >
+                        <span>
+                          <strong>🌧️ Weather cancellation</strong>
+                          <small>
+                            Return all paid bookings as Match Tickets
+                          </small>
+                        </span>
+                        <span className="tk-match-ticket-match-cta">
+                          Open →
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="tk-match-ticket-match"
+                        onClick={() =>
+                          setMatchTicketWalletMode("danger")
+                        }
+                        disabled={adminWeatherBusy || dangerZoneBusy}
+                      >
+                        <span>
+                          <strong>⚠️ Danger Zone</strong>
+                          <small>
+                            Manually grant up to 5 Match Tickets
+                          </small>
+                        </span>
+                        <span className="tk-match-ticket-match-cta">
+                          Open →
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <button
                   type="button"
                   className="tk-match-ticket-back"
                   onClick={() => setMatchTicketWalletMode("menu")}
-                  disabled={matchTicketBusy}
+                  disabled={
+                    matchTicketBusy ||
+                    adminWeatherBusy ||
+                    dangerZoneBusy
+                  }
+                >
+                  ← Back
+                </button>
+              </>
+            ) : null}
+
+            {matchTicketWalletMode === "weather" &&
+            canManageSignupsAsAdmin ? (
+              <>
+                <p className="tk-match-ticket-help">
+                  🌧️ Choose the match cancelled because of weather.
+                </p>
+
+                <div className="tk-match-ticket-match-list">
+                  {adminWeatherWeeks.length > 0 ? (
+                    adminWeatherWeeks.map((week) => {
+                      const paidCount =
+                        adminCleanupCandidates.filter(
+                          (player) =>
+                            Array.isArray(player?.paidWeeks) &&
+                            player.paidWeeks.includes(week.id)
+                        ).length;
+
+                      return (
+                        <button
+                          key={`weather-${week.id}`}
+                          type="button"
+                          className="tk-match-ticket-match"
+                          onClick={() =>
+                            handleAdminWeatherCancellation(week)
+                          }
+                          disabled={adminWeatherBusy}
+                        >
+                          <span>
+                            <strong>
+                              {week.shortLabel ||
+                                week.label ||
+                                week.id}
+                            </strong>
+                            <small>
+                              {paidCount} paid booking
+                              {paidCount === 1 ? "" : "s"}
+                            </small>
+                          </span>
+
+                          <span className="tk-match-ticket-match-cta">
+                            Cancel →
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="tk-match-ticket-empty">
+                      No upcoming fixtures available.
+                    </div>
+                  )}
+                </div>
+
+                {adminWeatherMessage ? (
+                  <p
+                    className="tk-match-ticket-help"
+                    style={{ color: "#9ef0b2" }}
+                  >
+                    {adminWeatherMessage}
+                  </p>
+                ) : null}
+
+                {adminWeatherError ? (
+                  <p
+                    className="tk-match-ticket-help"
+                    style={{ color: "#ff9b9b" }}
+                  >
+                    {adminWeatherError}
+                  </p>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="tk-match-ticket-back"
+                  onClick={() =>
+                    setMatchTicketWalletMode("cancel")
+                  }
+                  disabled={adminWeatherBusy}
+                >
+                  ← Back
+                </button>
+              </>
+            ) : null}
+
+            {matchTicketWalletMode === "danger" &&
+            canManageSignupsAsAdmin ? (
+              <>
+                <p className="tk-match-ticket-help">
+                  Manually grant Match Tickets without a recorded payment.
+                </p>
+
+                <div
+                  style={{
+                    border: "1px solid rgba(248, 113, 113, 0.38)",
+                    borderRadius: 12,
+                    padding: 12,
+                    background: "rgba(127, 29, 29, 0.10)",
+                  }}
+                >
+                  <div
+                    className="signup-reminder-choice"
+                    style={{ marginBottom: 12 }}
+                  >
+                    <label htmlFor="dangerZonePlayerId">
+                      Player
+                    </label>
+
+                    <select
+                      id="dangerZonePlayerId"
+                      value={dangerZonePlayerId}
+                      onChange={(event) => {
+                        setDangerZonePlayerId(event.target.value);
+                        setDangerZoneMessage("");
+                        setDangerZoneError("");
+                      }}
+                      disabled={dangerZoneBusy}
+                    >
+                      <option value="">
+                        Select a player
+                      </option>
+
+                      {existingPlayerOptions.map((player) => (
+                        <option
+                          key={`danger-${player.id}`}
+                          value={player.id}
+                        >
+                          {player.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="signup-reminder-choice">
+                    <label htmlFor="dangerZoneTicketCount">
+                      Number of Match Tickets
+                    </label>
+
+                    <select
+                      id="dangerZoneTicketCount"
+                      value={dangerZoneTicketCount}
+                      onChange={(event) =>
+                        setDangerZoneTicketCount(
+                          Math.max(
+                            1,
+                            Math.min(
+                              5,
+                              Number(event.target.value) || 1
+                            )
+                          )
+                        )
+                      }
+                      disabled={dangerZoneBusy}
+                    >
+                      {[1, 2, 3, 4, 5].map((count) => (
+                        <option key={count} value={count}>
+                          {count}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <p
+                    className="tk-match-ticket-help"
+                    style={{
+                      marginTop: 12,
+                      color: "#ffb4b4",
+                    }}
+                  >
+                    ⚠️ No payment record is required. Maximum 5
+                    tickets per operation.
+                  </p>
+
+                  <button
+                    type="button"
+                    className="tk-match-ticket-action"
+                    onClick={handleDangerZoneGrant}
+                    disabled={
+                      dangerZoneBusy ||
+                      !dangerZonePlayerId
+                    }
+                    style={{
+                      width: "100%",
+                      marginTop: 8,
+                      borderColor: "rgba(248, 113, 113, 0.55)",
+                    }}
+                  >
+                    <span className="tk-match-ticket-action-icon">
+                      ⚠️
+                    </span>
+                    <span>
+                      <strong>
+                        {dangerZoneBusy
+                          ? "Granting..."
+                          : `Grant ${dangerZoneTicketCount} Ticket${
+                              Number(dangerZoneTicketCount) === 1
+                                ? ""
+                                : "s"
+                            }`}
+                      </strong>
+                      <small>
+                        Manual admin exception
+                      </small>
+                    </span>
+                  </button>
+                </div>
+
+                {dangerZoneMessage ? (
+                  <p
+                    className="tk-match-ticket-help"
+                    style={{ color: "#9ef0b2" }}
+                  >
+                    {dangerZoneMessage}
+                  </p>
+                ) : null}
+
+                {dangerZoneError ? (
+                  <p
+                    className="tk-match-ticket-help"
+                    style={{ color: "#ff9b9b" }}
+                  >
+                    {dangerZoneError}
+                  </p>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="tk-match-ticket-back"
+                  onClick={() =>
+                    setMatchTicketWalletMode("cancel")
+                  }
+                  disabled={dangerZoneBusy}
                 >
                   ← Back
                 </button>
@@ -5897,7 +6515,9 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                   const linkedWeek = getWeekByCalendarCellId(cell.id);
                   const isSelectableDay = Boolean(linkedWeek);
                   const isTargetWeekday =
-                    cell.weekday === Number(matchSignupSettings.weeklyDay);
+                    cell.weekday === Number(
+                      effectiveMatchSignupSettings.weeklyDay
+                    );
                   const isSpecialFixture = Boolean(linkedWeek?.isChallenge);
                   const isSelected = effectiveSelectedWeeks.includes(cell.id);
                   const isPaid = effectivePaidWeekSet.has(cell.id);

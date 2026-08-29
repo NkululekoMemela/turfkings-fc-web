@@ -23,7 +23,7 @@ import {
   deleteObject,
 } from "firebase/storage";
 
-import { db, storage } from "../firebaseConfig.js";
+import { auth, db, storage } from "../firebaseConfig.js";
 import {
   curateHighlights,
   buildVoteCounts,
@@ -187,9 +187,14 @@ export function buildVideoStoragePath({
   clipId,
   file,
   source = "manual_upload",
+  clubId = DEFAULT_CLUB_ID,
 }) {
   const ext = file?.name?.split(".").pop() || "mp4";
-  return `video_highlights/${matchId}/raw/${source}/${clipId}.${ext}`;
+  const safeClubId =
+    String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
+    DEFAULT_CLUB_ID;
+
+  return `clubs/${safeClubId}/video_highlights/${matchId}/raw/${source}/${clipId}.${ext}`;
 }
 
 // ============================
@@ -201,6 +206,7 @@ export async function uploadHighlightVideoFile({
   matchId,
   clipId,
   source = "manual_upload",
+  clubId = DEFAULT_CLUB_ID,
   onProgress,
 }) {
   if (!file) throw new Error("No video file supplied");
@@ -212,6 +218,7 @@ export async function uploadHighlightVideoFile({
     matchId,
     clipId,
     source,
+    clubId,
   });
 
   const storageRef = ref(storage, path);
@@ -261,7 +268,11 @@ export async function uploadHighlightVideoFile({
 // SAVE RAW DOC
 // ============================
 
-export async function saveRawHighlightDoc({ matchId, highlight }) {
+export async function saveRawHighlightDoc({
+  matchId,
+  highlight,
+  clubId = DEFAULT_CLUB_ID,
+}) {
   if (!matchId) throw new Error("Missing matchId.");
 
   const safeHighlight = cleanFirestorePayload(highlight);
@@ -276,7 +287,15 @@ export async function saveRawHighlightDoc({ matchId, highlight }) {
     throw new Error("Missing clipId while saving highlight metadata.");
   }
 
-  await setDoc(rawDoc(matchId, payload.clipId), payload, { merge: true });
+  await setDoc(
+    doc(rawRef(matchId, clubId), payload.clipId),
+    {
+      ...payload,
+      clubId,
+      activeClubId: payload.activeClubId || clubId,
+    },
+    { merge: true }
+  );
 
   return payload;
 }
@@ -289,6 +308,7 @@ export async function uploadAndSaveRawHighlight({
   matchId,
   file,
   highlight,
+  clubId = DEFAULT_CLUB_ID,
   onProgress,
 }) {
   if (!matchId) throw new Error("Missing matchId.");
@@ -316,6 +336,7 @@ export async function uploadAndSaveRawHighlight({
     matchId,
     clipId: base.clipId,
     source: base.source || "manual_upload",
+    clubId,
     onProgress,
   });
 
@@ -327,9 +348,12 @@ export async function uploadAndSaveRawHighlight({
 
   const saved = await saveRawHighlightDoc({
     matchId,
+    clubId,
     highlight: {
       ...base,
       ...uploaded,
+      clubId,
+      activeClubId: base.activeClubId || clubId,
     },
   });
 
@@ -364,6 +388,94 @@ export async function loadRawHighlightsFromFirebase(
   }));
 }
 
+export async function deleteVarHighlight({
+  matchId,
+  clubId = DEFAULT_CLUB_ID,
+  highlight,
+} = {}) {
+  console.log("[FANM VAR DELETE] Firebase identity", {
+    uid: auth.currentUser?.uid || null,
+    email: auth.currentUser?.email || null,
+    signedIn: Boolean(auth.currentUser),
+    projectId: auth.app?.options?.projectId || null,
+    storageBucket: storage.app?.options?.storageBucket || null,
+  });
+
+  const safeMatchId = safeString(matchId);
+  const clipId = getClipId(highlight);
+  const storagePath = safeString(highlight?.storagePath);
+
+  if (!safeMatchId) {
+    throw new Error("Missing matchId while deleting VAR replay.");
+  }
+
+  if (!clipId) {
+    throw new Error("Missing clipId while deleting VAR replay.");
+  }
+
+  // Delete the Storage object first. If that fails, preserve the Firestore
+  // metadata so the VAR remains recoverable/retryable rather than orphaning
+  // an inaccessible video.
+  if (storagePath) {
+    try {
+      console.log("[FANM VAR DELETE] deleting Storage object", {
+        matchId: safeMatchId,
+        clubId,
+        clipId,
+        storagePath,
+      });
+
+      await deleteObject(ref(storage, storagePath));
+
+      console.log("[FANM VAR DELETE] Storage object deleted", {
+        clipId,
+      });
+    } catch (error) {
+      console.error("[FANM VAR DELETE] Storage deletion failed", {
+        matchId: safeMatchId,
+        clubId,
+        clipId,
+        storagePath,
+        code: error?.code,
+        message: error?.message,
+        error,
+      });
+
+      if (error?.code !== "storage/object-not-found") {
+        throw error;
+      }
+    }
+  }
+
+  try {
+    console.log("[FANM VAR DELETE] deleting Firestore raw doc", {
+      matchId: safeMatchId,
+      clubId,
+      clipId,
+    });
+
+    await deleteDoc(
+      doc(rawRef(safeMatchId, clubId), clipId)
+    );
+
+    console.log("[FANM VAR DELETE] Firestore raw doc deleted", {
+      clipId,
+    });
+  } catch (error) {
+    console.error("[FANM VAR DELETE] Firestore deletion failed", {
+      matchId: safeMatchId,
+      clubId,
+      clipId,
+      code: error?.code,
+      message: error?.message,
+      error,
+    });
+    throw error;
+  }
+
+  return { matchId: safeMatchId, clipId };
+}
+
 export function subscribeToVarHighlights({
   matchId,
   clubId = DEFAULT_CLUB_ID,
@@ -383,6 +495,21 @@ export function subscribeToVarHighlights({
   return onSnapshot(
     q,
     (snap) => {
+      console.log("[FANM VAR DEBUG] Firestore raw snapshot", {
+        matchId,
+        clubId,
+        size: snap.size,
+        docs: snap.docs.map((d) => ({
+          id: d.id,
+          type: d.data()?.type,
+          tag: d.data()?.tag,
+          category: d.data()?.category,
+          highlightType: d.data()?.highlightType,
+          downloadUrl: d.data()?.downloadUrl,
+          videoUrl: d.data()?.videoUrl,
+        })),
+      });
+
       const varHighlights = snap.docs
         .map((d) => ({
           id: d.id,
@@ -401,6 +528,13 @@ export function subscribeToVarHighlights({
 
           return type === "var";
         });
+
+      console.log("[FANM VAR DEBUG] Filtered VAR highlights", {
+        matchId,
+        clubId,
+        count: varHighlights.length,
+        ids: varHighlights.map((item) => item.id),
+      });
 
       onChange?.(varHighlights);
     },
@@ -1509,24 +1643,24 @@ export async function clearRawHighlightsFromFirebase(matchId) {
 // requiring NewsPage to calculate awards independently.
 //
 export async function loadCurrentAwardLeadersFromFirebase(
-  clubId,
-  { visibilityDays = 5 } = {}
+  clubId
 ) {
   const safeClubId =
     String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
     DEFAULT_CLUB_ID;
 
   /*
-   * NEWS AWARD RACE:
+   * LIVE NEWS AWARD RACE
    *
-   * Use the club's permanent archived weekly winners/nominees rather
-   * than the short-lived current-week feed. Archived clips are the
-   * surviving candidates for the season award race.
+   * No age/visibility cutoff.
+   * No archived-only requirement.
+   * No weekly-winner requirement.
+   *
+   * Rank the club's currently available highlight library using
+   * the same live likes that players see on Video Highlights.
    */
   const highlights =
-    await loadClubArchivedHighlightsFromFirebase(
-      safeClubId
-    );
+    await loadRecentClubHighlightsFromFirebase(safeClubId);
 
   const safeHighlights = Array.isArray(highlights)
     ? highlights.filter(Boolean)
@@ -1542,13 +1676,6 @@ export async function loadCurrentAwardLeadersFromFirebase(
     };
   }
 
-  /*
-   * Archived clips have already completed weekly voting.
-   *
-   * Never re-read the mutable live likes collection here.
-   * The archived document is the permanent record of the weekly
-   * result and therefore supplies the vote value used by Awards Watch.
-   */
   const getId = (highlight = {}) =>
     String(
       highlight.clipId ||
@@ -1557,20 +1684,41 @@ export async function loadCurrentAwardLeadersFromFirebase(
       ""
     ).trim();
 
-  const getLikeCount = (highlight = {}) =>
-    Math.max(
+  const matchIds = [
+    ...new Set(
+      safeHighlights
+        .map((highlight) =>
+          String(highlight?.matchId || "").trim()
+        )
+        .filter(Boolean)
+    ),
+  ];
+
+  const likesResult =
+    await loadHighlightLikesForMatchesFromFirebase(matchIds);
+
+  const likeCounts =
+    likesResult?.countsByClip &&
+    typeof likesResult.countsByClip === "object"
+      ? likesResult.countsByClip
+      : {};
+
+  const getLikeCount = (highlight = {}) => {
+    const id = getId(highlight);
+
+    return Math.max(
       0,
       Number(
-        highlight.frozenWeeklyVoteCount ??
-        highlight.weeklyVoteCount ??
+        likeCounts[id] ??
+        highlight.likeCount ??
+        highlight.likesCount ??
         highlight.voteCount ??
         highlight.votesCount ??
         highlight.totalVotes ??
-        highlight.likesCount ??
-        highlight.likeCount ??
         0
       ) || 0
     );
+  };
 
   const getCreatedTime = (highlight = {}) => {
     const firestoreValue =
@@ -1599,29 +1747,8 @@ export async function loadCurrentAwardLeadersFromFirebase(
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
-  const isApproved = (highlight = {}) => {
-    const status = String(
-      highlight.status ||
-      highlight.moderationStatus ||
-      highlight.reviewStatus ||
-      "approved"
-    )
-      .trim()
-      .toLowerCase();
-
-    return status === "approved";
-  };
-
-  /*
-   * Awards Watch ranking rule:
-   *   1. Highest frozen weekly vote count
-   *   2. Newest archived clip on a tie
-   *
-   * Weekly voting is already closed for these clips.
-   */
   const rank = (items = []) =>
     items
-      .filter(isApproved)
       .slice()
       .sort((a, b) => {
         const likeDiff =
@@ -1629,10 +1756,7 @@ export async function loadCurrentAwardLeadersFromFirebase(
 
         if (likeDiff !== 0) return likeDiff;
 
-        return (
-          getCreatedTime(b) -
-          getCreatedTime(a)
-        );
+        return getCreatedTime(b) - getCreatedTime(a);
       });
 
   const goals = [];
@@ -1651,10 +1775,7 @@ export async function loadCurrentAwardLeadersFromFirebase(
     }
   });
 
-  const decorateLeader = (
-    highlight,
-    awardKey
-  ) => {
+  const decorateLeader = (highlight, awardKey) => {
     if (!highlight) return null;
 
     const likeCount = getLikeCount(highlight);
@@ -1664,12 +1785,6 @@ export async function loadCurrentAwardLeadersFromFirebase(
       awardKey,
       currentAwardLeader: true,
       likeCount,
-
-      /*
-       * Keep this compatibility field because NewsPage already
-       * reads voteCount. It now deliberately reflects the same
-       * live Top Voted count shown in Videos.
-       */
       voteCount: likeCount,
     };
   };
@@ -1697,15 +1812,21 @@ export async function loadCurrentAwardLeadersFromFirebase(
 // ============================
 
 export async function loadRecentClubHighlightsFromFirebase(
-  clubId,
-  { visibilityDays = 5 } = {}
+  clubId
 ) {
   const safeClubId =
     String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
     DEFAULT_CLUB_ID;
 
-  const safeDays = Math.max(1, Number(visibilityDays || 5));
-  const cutoffMs = Date.now() - safeDays * 24 * 60 * 60 * 1000;
+  /*
+   * Club-scoped discovery.
+   *
+   * Do not use collectionGroup("raw") here: browser security rules
+   * reject that global query.
+   *
+   * Each match with highlights must have its parent/index document:
+   * clubs/<clubId>/video_highlights/<matchId>
+   */
   const collected = [];
 
   const getTimestampMs = (item = {}) => {
@@ -1736,145 +1857,70 @@ export async function loadRecentClubHighlightsFromFirebase(
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
-  const getVotingCloseMs = (item = {}) => {
-    const explicit = new Date(
-      item.votingClosesAtISO ||
-      item.votingEndsAtISO ||
-      item.expiresAtISO ||
-      ""
-    ).getTime();
-
-    if (Number.isFinite(explicit)) return explicit;
-
-    const createdMs = getTimestampMs(item);
-    return createdMs > 0
-      ? createdMs + safeDays * 24 * 60 * 60 * 1000
-      : 0;
-  };
-
-  const belongsToClub = (item = {}, matchId = "") => {
-    const explicitClubId =
-      item.clubId ||
-      item.clubID ||
-      item.clubSlug ||
-      item.activeClubId ||
-      item.matchContext?.clubId ||
-      item.matchContext?.activeClubId ||
-      item.metadata?.clubId ||
-      item.metadata?.activeClubId ||
-      "";
-
-    if (explicitClubId) {
-      return (
-        String(explicitClubId).trim().toLowerCase() === safeClubId
-      );
-    }
-
-    const safeMatchId = String(matchId || item.matchId || "")
-      .trim()
-      .toLowerCase();
-
-    if (
-      safeClubId !== DEFAULT_CLUB_ID &&
-      safeMatchId.startsWith(`${safeClubId}__`)
-    ) {
-      return true;
-    }
-
-    const clubName =
-      item.clubName ||
-      item.uploaderClubName ||
-      item.activeClubName ||
-      item.matchContext?.clubName ||
-      item.metadata?.clubName ||
-      "";
-
-    if (
-      safeClubId === DEFAULT_CLUB_ID &&
-      String(clubName).trim().toLowerCase().includes("turf")
-    ) {
-      return true;
-    }
-
-    /*
-      Legacy untagged clips belong to Turf Kings only.
-      This prevents old clips leaking into newer clubs.
-    */
-    return (
-      safeClubId === DEFAULT_CLUB_ID &&
-      !explicitClubId &&
-      !safeMatchId.includes("__")
-    );
-  };
-
   try {
-    /*
-      Collection-group lookup is required because Firestore allows
-      raw subcollections below parent match documents that do not
-      themselves exist as materialised documents.
-    */
-    const snap = await getDocs(
-      query(collectionGroup(db, "raw"), limit(250))
+    const clubMatchesRef = collection(
+      db,
+      "clubs",
+      safeClubId,
+      CLUB_COLLECTIONS.videoHighlights
     );
 
-    for (const clipDoc of snap.docs) {
-      const data = clipDoc.data() || {};
-      const parentMatchRef = clipDoc.ref.parent?.parent;
-      const matchId =
-        String(data.matchId || parentMatchRef?.id || "").trim();
+    const matchSnap = await getDocs(clubMatchesRef);
 
-      if (!belongsToClub(data, matchId)) continue;
+    for (const matchDoc of matchSnap.docs) {
+      const matchId = String(matchDoc.id || "").trim();
+      if (!matchId) continue;
 
-      const votingCloseMs = getVotingCloseMs(data);
-      const createdMs = getTimestampMs(data);
+      const rawSnap = await getDocs(
+        collection(matchDoc.ref, "raw")
+      );
 
-      const stillVisible =
-        votingCloseMs > Date.now() ||
-        (!votingCloseMs && createdMs >= cutoffMs);
+      for (const clipDoc of rawSnap.docs) {
+        const data = clipDoc.data() || {};
 
-      if (!stillVisible) continue;
+        let resolvedUrl =
+          data.downloadUrl ||
+          data.videoUrl ||
+          data.mediaUrl ||
+          data.fileUrl ||
+          data.publicUrl ||
+          data.previewUrl ||
+          data.url ||
+          data.uri ||
+          "";
 
-      let resolvedUrl =
-        data.downloadUrl ||
-        data.videoUrl ||
-        data.mediaUrl ||
-        data.fileUrl ||
-        data.publicUrl ||
-        data.previewUrl ||
-        data.url ||
-        data.uri ||
-        "";
-
-      if (!resolvedUrl && data.storagePath) {
-        try {
-          resolvedUrl = await getDownloadURL(
-            ref(storage, data.storagePath)
-          );
-        } catch (error) {
-          console.warn(
-            "[TK HIGHLIGHTS] Could not resolve recent clip URL:",
-            data.storagePath,
-            error
-          );
+        if (!resolvedUrl && data.storagePath) {
+          try {
+            resolvedUrl = await getDownloadURL(
+              ref(storage, data.storagePath)
+            );
+          } catch (error) {
+            console.warn(
+              "[VIDEO HIGHLIGHTS] Could not resolve clip URL:",
+              data.storagePath,
+              error
+            );
+          }
         }
-      }
 
-      collected.push({
-        id: clipDoc.id,
-        clipId: data.clipId || clipDoc.id,
-        ...data,
-        matchId,
-        videoUrl: data.videoUrl || resolvedUrl,
-        downloadUrl: data.downloadUrl || resolvedUrl,
-        mediaUrl: data.mediaUrl || resolvedUrl,
-        votingClosesAtISO:
-          data.votingClosesAtISO ||
-          data.votingEndsAtISO ||
-          (votingCloseMs
-            ? new Date(votingCloseMs).toISOString()
-            : null),
-        recentClubFeed: true,
-      });
+        collected.push({
+          id: clipDoc.id,
+          clipId: data.clipId || clipDoc.id,
+          ...data,
+          matchId: data.matchId || matchId,
+          clubId: data.clubId || safeClubId,
+          activeClubId: data.activeClubId || safeClubId,
+          videoUrl: data.videoUrl || resolvedUrl,
+          downloadUrl: data.downloadUrl || resolvedUrl,
+          mediaUrl: data.mediaUrl || resolvedUrl,
+          votingClosesAtISO:
+            data.votingClosesAtISO ||
+            data.votingEndsAtISO ||
+            data.expiresAtISO ||
+            null,
+          recentClubFeed: true,
+        });
+      }
     }
 
     const seen = new Set();
@@ -1897,12 +1943,382 @@ export async function loadRecentClubHighlightsFromFirebase(
       );
   } catch (error) {
     console.warn(
-      "[TK HIGHLIGHTS] Failed to load recent club clips:",
+      "[VIDEO HIGHLIGHTS] Failed club-scoped highlight discovery:",
       safeClubId,
       error
     );
     return [];
   }
+}
+
+
+export async function loadAllClubHighlightsForAudit(clubId) {
+  if (!clubId) return [];
+
+  const safeClubId = String(clubId).trim().toLowerCase();
+  const allVideos = [];
+
+  const getUrl = (item = {}) =>
+    item.downloadUrl ||
+    item.videoUrl ||
+    item.mediaUrl ||
+    item.fileUrl ||
+    item.publicUrl ||
+    item.previewUrl ||
+    item.url ||
+    item.uri ||
+    "";
+
+  const hasVideo = (item = {}) =>
+    Boolean(getUrl(item) || item.storagePath);
+
+  const isVar = (item = {}) => {
+    const type = String(
+      item.tag ||
+      item.type ||
+      item.category ||
+      item.highlightType ||
+      ""
+    ).trim().toLowerCase();
+
+    return type === "var";
+  };
+
+  const belongsToClub = (item = {}, matchId = "") => {
+    const explicitClubId =
+      item.clubId ||
+      item.clubID ||
+      item.clubSlug ||
+      item.activeClubId ||
+      item.matchContext?.clubId ||
+      item.matchContext?.activeClubId ||
+      item.matchContext?.clubSlug ||
+      item.metadata?.clubId ||
+      item.metadata?.activeClubId ||
+      "";
+
+    if (explicitClubId) {
+      return String(explicitClubId).trim().toLowerCase() === safeClubId;
+    }
+
+    const safeMatchId = String(matchId || item.matchId || "")
+      .trim()
+      .toLowerCase();
+
+    if (
+      safeClubId !== DEFAULT_CLUB_ID &&
+      safeMatchId.startsWith(`${safeClubId}__`)
+    ) {
+      return true;
+    }
+
+    const clubName =
+      item.clubName ||
+      item.activeClubName ||
+      item.matchContext?.clubName ||
+      item.matchContext?.activeClubName ||
+      item.metadata?.clubName ||
+      "";
+
+    if (
+      safeClubId === DEFAULT_CLUB_ID &&
+      String(clubName).trim().toLowerCase().includes("turf")
+    ) {
+      return true;
+    }
+
+    // Legacy records created before club IDs were written into highlight
+    // metadata belong to Turf Kings only when the match ID itself does not
+    // explicitly identify another club.
+    if (safeClubId === DEFAULT_CLUB_ID && !explicitClubId) {
+      const explicitOtherClubPrefixes = [
+        "test-fc-",
+        "zee-fc__",
+      ];
+
+      return !explicitOtherClubPrefixes.some((prefix) =>
+        safeMatchId.startsWith(prefix)
+      );
+    }
+
+    return false;
+  };
+
+  async function resolvePlayableUrl(item = {}) {
+    const existingUrl = getUrl(item);
+
+    if (existingUrl) {
+      return {
+        ...item,
+        videoUrl: item.videoUrl || existingUrl,
+        downloadUrl: item.downloadUrl || existingUrl,
+        mediaUrl: item.mediaUrl || existingUrl,
+      };
+    }
+
+    if (!item.storagePath) return item;
+
+    try {
+      const url = await getDownloadURL(ref(storage, item.storagePath));
+      return {
+        ...item,
+        videoUrl: url,
+        downloadUrl: url,
+        mediaUrl: url,
+      };
+    } catch (error) {
+      console.warn(
+        "[VIDEO AUDIT] Could not resolve Storage object:",
+        item.storagePath,
+        error
+      );
+      return item;
+    }
+  }
+
+  async function collectMatchCollection(collectionRef, sourceLabel) {
+    try {
+      const matches = await getDocs(collectionRef);
+
+      console.log(
+        `[VIDEO AUDIT] ${sourceLabel} discovered ${matches.size} parent matches`,
+        matches.docs.map((d) => d.id)
+      );
+
+      for (const matchSnap of matches.docs) {
+        const matchId = matchSnap.id;
+        const direct = matchSnap.data?.() || {};
+
+        if (hasVideo(direct) && belongsToClub(direct, matchId)) {
+          allVideos.push({
+            id: matchSnap.id,
+            clipId: matchSnap.id,
+            matchId,
+            auditSource: sourceLabel,
+            ...direct,
+          });
+        }
+
+        const [rawResult, archivedResult] = await Promise.allSettled([
+          getDocs(collection(matchSnap.ref, "raw")),
+          getDocs(collection(matchSnap.ref, "archived")),
+        ]);
+
+        if (rawResult.status === "fulfilled") {
+          rawResult.value.docs.forEach((clipDoc) => {
+            const data = clipDoc.data() || {};
+            if (!belongsToClub(data, matchId)) return;
+
+            allVideos.push({
+              id: clipDoc.id,
+              clipId: data.clipId || clipDoc.id,
+              matchId,
+              auditSource: `${sourceLabel}/${matchId}/raw`,
+              ...data,
+            });
+          });
+        }
+
+        if (archivedResult.status === "fulfilled") {
+          archivedResult.value.docs.forEach((clipDoc) => {
+            const data = clipDoc.data() || {};
+            if (!belongsToClub(data, matchId)) return;
+
+            allVideos.push({
+              id: clipDoc.id,
+              clipId: data.clipId || clipDoc.id,
+              matchId,
+              auditSource: `${sourceLabel}/${matchId}/archived`,
+              archivedClubFeed: true,
+              weeklyVotingClosed: true,
+              votingLocked: true,
+              ...data,
+            });
+          });
+        }
+      }
+    } catch (error) {
+      console.warn("[VIDEO AUDIT] Skipped collection:", sourceLabel, error);
+    }
+  }
+
+  async function collectGroup(groupName) {
+    try {
+      // Audit deliberately has no result limit.
+      const snap = await getDocs(collectionGroup(db, groupName));
+
+      snap.docs.forEach((clipDoc) => {
+        const data = clipDoc.data() || {};
+        const matchId = String(
+          data.matchId || clipDoc.ref.parent?.parent?.id || ""
+        ).trim();
+
+        if (!belongsToClub(data, matchId)) return;
+
+        allVideos.push({
+          id: clipDoc.id,
+          clipId: data.clipId || clipDoc.id,
+          matchId,
+          auditSource: `collectionGroup/${groupName}`,
+          ...data,
+        });
+      });
+    } catch (error) {
+      console.warn(
+        "[VIDEO AUDIT] Collection-group scan failed:",
+        groupName,
+        error
+      );
+    }
+  }
+
+  async function collectChatAttachments() {
+    try {
+      // Audit all historical messages, not the UI's latest-30 window.
+      const snap = await getDocs(
+        collection(db, "clubs", safeClubId, "chatMessages")
+      );
+
+      snap.docs.forEach((messageDoc) => {
+        const message = messageDoc.data() || {};
+
+        if (
+          message.attachmentType !== "highlight" ||
+          !message.highlightMediaUrl
+        ) {
+          return;
+        }
+
+        allVideos.push({
+          id:
+            message.highlightId ||
+            `chat-${messageDoc.id}`,
+          clipId:
+            message.highlightId ||
+            `chat-${messageDoc.id}`,
+          matchId:
+            message.highlightMatchDayId ||
+            "",
+          clubId: safeClubId,
+          type:
+            message.highlightType ||
+            "highlight",
+          playerName:
+            message.highlightPlayerName ||
+            message.highlightScorerName ||
+            "",
+          scorerName:
+            message.highlightScorerName ||
+            message.highlightPlayerName ||
+            "",
+          teamName:
+            message.highlightTeamName ||
+            "",
+          title:
+            message.highlightLabel ||
+            message.highlightTitle ||
+            "Historical club highlight",
+          videoUrl: message.highlightMediaUrl,
+          downloadUrl: message.highlightMediaUrl,
+          mediaUrl: message.highlightMediaUrl,
+          createdAt: message.createdAt,
+          createdAtMs: message.createdAtMs,
+          auditSource: "clubChat",
+          chatMessageId: messageDoc.id,
+          chatReferenced: true,
+        });
+      });
+    } catch (error) {
+      console.warn("[VIDEO AUDIT] Club Chat scan failed:", error);
+    }
+  }
+
+  await Promise.all([
+    collectMatchCollection(
+      collection(db, "clubs", safeClubId, CLUB_COLLECTIONS.videoHighlights),
+      `clubs/${safeClubId}/${CLUB_COLLECTIONS.videoHighlights}`
+    ),
+    collectMatchCollection(
+      collection(db, "clubs", safeClubId, "videoHighlights"),
+      `clubs/${safeClubId}/videoHighlights`
+    ),
+    collectMatchCollection(
+      collection(db, "clubs", safeClubId, "video_highlights"),
+      `clubs/${safeClubId}/video_highlights`
+    ),
+    collectMatchCollection(
+      collection(db, "video_highlights"),
+      "video_highlights"
+    ),
+    collectMatchCollection(
+      collection(db, "videoHighlights"),
+      "videoHighlights"
+    ),
+    collectGroup("raw"),
+    collectGroup("archived"),
+    collectChatAttachments(),
+  ]);
+
+  const resolved = await Promise.all(
+    allVideos
+      .filter(hasVideo)
+      .filter((item) => !isVar(item))
+      .map(resolvePlayableUrl)
+  );
+
+  const playable = resolved.filter((item) => getUrl(item));
+
+  /*
+   * Prefer clip ID for normal records. If the same physical video was
+   * discovered through several historical layouts, URL provides a second
+   * dedupe key.
+   */
+  const seenIds = new Set();
+  const seenUrls = new Set();
+
+  const unique = playable.filter((item) => {
+    const id = String(item.clipId || item.id || "").trim();
+    const url = String(getUrl(item) || "").trim();
+
+    if (id && seenIds.has(id)) return false;
+    if (url && seenUrls.has(url)) return false;
+
+    if (id) seenIds.add(id);
+    if (url) seenUrls.add(url);
+    return true;
+  });
+
+  const getTime = (item = {}) =>
+    item.createdAt?.toMillis?.() ||
+    item.createdAtServer?.toMillis?.() ||
+    item.updatedAtServer?.toMillis?.() ||
+    item.timestamp?.toMillis?.() ||
+    Number(item.createdAtMs || 0) ||
+    new Date(
+      item.createdAtISO ||
+      item.uploadedAtISO ||
+      item.archivedAtISO ||
+      0
+    ).getTime() ||
+    0;
+
+  unique.sort((a, b) => getTime(b) - getTime(a));
+
+  console.log("[VIDEO AUDIT] Complete club inventory", {
+    clubId: safeClubId,
+    discoveredReferences: allVideos.length,
+    playableReferences: playable.length,
+    uniqueVideos: unique.length,
+    chatReferenced: unique.filter((v) => v.chatReferenced).length,
+    videos: unique.map((v) => ({
+      id: v.clipId || v.id,
+      matchId: v.matchId || "",
+      source: v.auditSource || "",
+      chatReferenced: Boolean(v.chatReferenced),
+    })),
+  });
+
+  return unique;
 }
 
 
@@ -2145,9 +2561,11 @@ const VideoHighlightsRepository = {
   saveRawHighlightDoc,
   loadRawHighlightsFromFirebase,
   subscribeToVarHighlights,
+  deleteVarHighlight,
   loadArchivedHighlightsFromFirebase,
   loadClubArchivedHighlightsFromFirebase,
   loadRecentClubHighlightsFromFirebase,
+  loadAllClubHighlightsForAudit,
   loadCurrentAwardLeadersFromFirebase,
   loadVideoCleanupQueueFromFirebase,
   toggleHighlightLike,

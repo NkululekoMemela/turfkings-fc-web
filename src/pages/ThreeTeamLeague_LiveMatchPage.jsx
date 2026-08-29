@@ -63,6 +63,7 @@ function resolveLiveMatchDoc(dataScope = null) {
     : getMatchDoc(db, MATCH_DOC_ID);
 }
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
+import TeamIdentityEditor from "../components/TeamIdentityEditor";
 const PLAYERS_COLLECTION = "players";
 
 
@@ -1220,11 +1221,20 @@ function PlayerChoiceGrid({
   displayCompactPlayerName,
   getPlayerPhoto,
   guestSnapshotChecker = null,
+  team = null,
   disabled = false,
 }) {
   const firstSubIndex = players.findIndex(
     (entry) => typeof entry !== "string" && Boolean(entry?.isSub)
   );
+
+
+  const teamAccent =
+    String(
+      team?.teamColorHex ||
+      team?.colorHex ||
+      ""
+    ).trim() || "#38bdf8";
 
   return (
     <div className="field-row">
@@ -1243,6 +1253,26 @@ function PlayerChoiceGrid({
               (typeof entry === "string" ? false : Boolean(entry?.disabled));
             const roleTag =
               typeof entry === "string" ? "" : String(entry?.roleTag || "");
+
+            const availabilityType =
+              typeof entry === "string"
+                ? ""
+                : String(entry?.availabilityType || "");
+
+            const availabilityLabel =
+              typeof entry === "string"
+                ? ""
+                : String(entry?.availabilityLabel || "");
+
+            const availabilityIcon =
+              typeof entry === "string"
+                ? ""
+                : String(entry?.availabilityIcon || "");
+
+            const isUnavailable =
+              availabilityType === "dismissed" ||
+              availabilityType === "sitting_out";
+
             const isSelected = selectedName === rawName;
             const isGuest = guestSnapshotChecker
               ? guestSnapshotChecker(rawName)
@@ -1265,23 +1295,57 @@ function PlayerChoiceGrid({
                   />
                 )}
 
-                <PlayerBenchChip
-                  name={displayCompactPlayerName(rawName)}
-                  isSelected={isSelected}
-                  onClick={() => {
-                    if (isEntryDisabled) return;
+                <div
+                  style={
+                    isUnavailable
+                      ? {
+                          borderRadius: 12,
+                          padding: 3,
+                          border:
+                            availabilityType === "dismissed"
+                              ? "1px solid rgba(239, 68, 68, 0.95)"
+                              : "1px solid rgba(245, 158, 11, 0.95)",
+                          background:
+                            availabilityType === "dismissed"
+                              ? "rgba(127, 29, 29, 0.26)"
+                              : "rgba(120, 53, 15, 0.24)",
+                          boxShadow:
+                            availabilityType === "dismissed"
+                              ? "inset 4px 0 0 #ef4444"
+                              : "inset 4px 0 0 #f59e0b",
+                        }
+                      : {
+                          borderRadius: 12,
+                          padding: 3,
+                          border: `1px solid ${teamAccent}`,
+                          boxShadow: `inset 4px 0 0 ${teamAccent}`,
+                        }
+                  }
+                >
+                  <PlayerBenchChip
+                    name={displayCompactPlayerName(rawName)}
+                    isSelected={isSelected}
+                    onClick={() => {
+                      if (isEntryDisabled) return;
 
-                    onSelect(
-                      isSelected ? "" : rawName,
-                      isSelected ? null : entry
-                    );
-                  }}
-                  photoData={photoData}
-                  disabled={isEntryDisabled}
-                  suffix={isGuest ? " (Guest)" : ""}
-                  isSub={isSub}
-                  roleTag={roleTag}
-                />
+                      onSelect(
+                        isSelected ? "" : rawName,
+                        isSelected ? null : entry
+                      );
+                    }}
+                    photoData={photoData}
+                    disabled={isEntryDisabled}
+                    suffix={
+                      isUnavailable
+                        ? ` · ${availabilityIcon} ${availabilityLabel}`
+                        : isGuest
+                        ? " (Guest)"
+                        : ""
+                    }
+                    isSub={isSub}
+                    roleTag={roleTag}
+                  />
+                </div>
               </React.Fragment>
             );
           })}
@@ -1302,6 +1366,8 @@ function LineupBoard({
   displayCompactPlayerName,
   playerKeyFor,
   getPlayerPhoto,
+  protectedVacancies = {},
+  unavailablePlayers = [],
   disabled = false,
   formationMap = FORMATIONS_5,
   defaultFormationId = DEFAULT_FORMATION_ID_5,
@@ -1479,23 +1545,45 @@ function LineupBoard({
     playerKeyFor
   );
 
+  const unavailableBenchKeys = new Set(
+    (Array.isArray(unavailablePlayers) ? unavailablePlayers : [])
+      .map((player) =>
+        playerKeyFor(
+          canonicalName(player?.name || "")
+        )
+      )
+      .filter(Boolean)
+  );
+
   const sanitizedBenchRegistered = uniquePlayersNormalized(
     effectiveLineup?.benchSnapshot || [],
     canonicalName,
     playerKeyFor
-  ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
+  ).filter(
+    (p) =>
+      !assignedKeys.has(playerKeyFor(p)) &&
+      !unavailableBenchKeys.has(playerKeyFor(p))
+  );
 
   const sanitizedGuestBench = uniquePlayersNormalized(
     guestPlayers,
     canonicalName,
     playerKeyFor
-  ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
+  ).filter(
+    (p) =>
+      !assignedKeys.has(playerKeyFor(p)) &&
+      !unavailableBenchKeys.has(playerKeyFor(p))
+  );
 
   const benchList = uniquePlayersNormalized(
     [...sanitizedGuestBench, ...sanitizedBenchRegistered],
     canonicalName,
     playerKeyFor
-  ).filter((p) => !assignedKeys.has(playerKeyFor(p)));
+  ).filter(
+    (p) =>
+      !assignedKeys.has(playerKeyFor(p)) &&
+      !unavailableBenchKeys.has(playerKeyFor(p))
+  );
 
   /*
    * STAGE 7H1 — LATE / ARRIVED
@@ -1660,6 +1748,13 @@ function LineupBoard({
 
   const handlePitchClick = (posId) => {
     if (disabled) return;
+
+    const vacancy = protectedVacancies?.[posId] || null;
+
+    if (vacancy?.locked) {
+      setSelectedPlayer(null);
+      return;
+    }
 
     const currentAtPos = sanitizedLineup?.positions?.[posId] || null;
 
@@ -2022,6 +2117,14 @@ function LineupBoard({
                 }}
                 className={`pitch-position ${name ? "has-player" : ""} ${
                   isSelected ? "selected" : ""
+                } ${
+                  protectedVacancies?.[pos.id]?.locked
+                    ? "is-protected-vacancy"
+                    : ""
+                } ${
+                  protectedVacancies?.[pos.id]?.replacementAllowed && !name
+                    ? "is-replacement-ready"
+                    : ""
                 }`}
                 style={{
                   left: `${pos.x}%`,
@@ -2036,18 +2139,66 @@ function LineupBoard({
                 onClick={() => handlePitchClick(pos.id)}
               >
                 <div className="player-token">
-                  <div
-                    className={`player-shirt ${photoData ? "with-photo" : ""}`}
-                    style={
-                      photoData ? { backgroundImage: `url(${photoData})` } : {}
-                    }
-                  />
-                  <div className="live-player-meta">
-                    <span className="player-name">
-                      {name ? displayCompactPlayerName(name) : "Empty"}
-                    </span>
-                    <span className="position-tag">{pos.label}</span>
-                  </div>
+                  {protectedVacancies?.[pos.id]?.locked ? (
+                    <>
+                      <div
+                        className="fanm-vacancy-token is-red-card"
+                        aria-hidden="true"
+                      >
+                        🟥
+                      </div>
+
+                      <div className="live-player-meta">
+                        <span className="player-name">
+                          Sent off
+                        </span>
+                        <span className="position-tag">
+                          {protectedVacancies?.[pos.id]?.remainingLabel ||
+                            "Permanent"}
+                        </span>
+                      </div>
+                    </>
+                  ) : protectedVacancies?.[pos.id]?.replacementAllowed &&
+                    !name ? (
+                    <>
+                      <div
+                        className="fanm-vacancy-token is-ready"
+                        aria-hidden="true"
+                      >
+                        ✓
+                      </div>
+
+                      <div className="live-player-meta">
+                        <span className="player-name">
+                          Replacement
+                        </span>
+                        <span className="position-tag">
+                          Select substitute
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className={`player-shirt ${photoData ? "with-photo" : ""}`}
+                        style={
+                          photoData
+                            ? { backgroundImage: `url(${photoData})` }
+                            : {}
+                        }
+                      />
+                      <div className="live-player-meta">
+                        <span className="player-name">
+                          {name
+                            ? displayCompactPlayerName(name)
+                            : "Empty"}
+                        </span>
+                        <span className="position-tag">
+                          {pos.label}
+                        </span>
+                      </div>
+                    </>
+                  )}
 
                   {name && !disabled && (
                     <button
@@ -2190,6 +2341,94 @@ function LineupBoard({
 
       <div className="bench-wrapper live-bench-wrapper">
         <h4 className="live-bench-title">Bench / Subs</h4>
+
+
+        {Array.isArray(unavailablePlayers) &&
+          unavailablePlayers.length > 0 && (
+            <div
+              className="fanm-unavailable-bench-list"
+              style={{
+                display: "grid",
+                gap: 8,
+                marginBottom: 12,
+              }}
+            >
+              {unavailablePlayers.map((player) => {
+                const name = canonicalName(player?.name || "");
+                const isDismissed =
+                  player?.availabilityType === "dismissed";
+                const isSittingOut =
+                  player?.availabilityType === "sitting_out";
+
+                if (!name) return null;
+
+                return (
+                  <div
+                    key={`unavailable-${playerKeyFor(name)}-${player?.availabilityType}`}
+                    className={`fanm-unavailable-bench-player ${
+                      isDismissed
+                        ? "is-dismissed"
+                        : isSittingOut
+                        ? "is-sitting-out"
+                        : ""
+                    }`}
+                    style={{
+                      padding: "8px 9px",
+                      borderRadius: 10,
+                      border: isDismissed
+                        ? "1px solid rgba(239, 68, 68, 0.70)"
+                        : "1px solid rgba(249, 115, 22, 0.62)",
+                      background: isDismissed
+                        ? "rgba(127, 29, 29, 0.22)"
+                        : "rgba(124, 45, 18, 0.18)",
+                      boxShadow: isDismissed
+                        ? "inset 3px 0 0 rgba(239, 68, 68, 0.85)"
+                        : "inset 3px 0 0 rgba(249, 115, 22, 0.80)",
+                    }}
+                  >
+                    <PlayerBenchChip
+                      name={displayCompactPlayerName(name)}
+                      isSelected={false}
+                      onClick={() => {}}
+                      photoData={getPlayerPhoto(name)}
+                      disabled={true}
+                      suffix={
+                        isDismissed
+                          ? " · Sent off"
+                          : " · Sitting out"
+                      }
+                      isSub={true}
+                    />
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        marginTop: 5,
+                        padding: "0 4px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        color: isDismissed
+                          ? "#fca5a5"
+                          : "#fdba74",
+                      }}
+                    >
+                      <span aria-hidden="true">
+                        {isDismissed ? "🟥" : "🤕"}
+                      </span>
+
+                      <span>
+                        {isDismissed
+                          ? "Unavailable for this match"
+                          : "Unavailable until recovered"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
         {latePlayers.length > 0 && (
           <div
@@ -2548,6 +2787,8 @@ export function ThreeTeamLeagueLiveMatchPage({
   onOpenHighlightsCamera,
   onUpdateMatchSeconds,
   onCameraTimingStateChange = null,
+  redCardRule = "permanent",
+  onUpdateRedCardRule = null,
   matchTeamColorOverrides = {},
   onUpdateMatchTeamColorOverride = null,
   onResetMatchTeamColorOverrides = null,
@@ -2684,6 +2925,20 @@ export function ThreeTeamLeagueLiveMatchPage({
              */
             mentality: data.mentality,
             shooting: data.shooting,
+
+            // Match-day availability inventory.
+            // A knock remains rotation-eligible.
+            // Sitting out is excluded from automatic rotation.
+            availability:
+              data.availability || PLAYER_AVAILABILITY.ELIGIBLE,
+            injuryStatus: data.injuryStatus || null,
+            injuryUpdatedAt: data.injuryUpdatedAt || null,
+            injuryRemovedPositionId:
+              data.injuryRemovedPositionId || null,
+            injuryWasSubstitute:
+              Boolean(data.injuryWasSubstitute),
+            injuryTeamId:
+              data.injuryTeamId || null,
           };
         });
 
@@ -2780,6 +3035,79 @@ export function ThreeTeamLeagueLiveMatchPage({
     return map;
   }, [players, playerKeyFor]);
 
+  /*
+   * Resolve a live-match player back to the real registered Firestore
+   * player record.
+   *
+   * Squad team.players are stored as player document IDs. The League
+   * presentation layer canonicalises those values into display names,
+   * so injury persistence must recover the registered identity rather
+   * than assuming the displayed name itself is a document ID.
+   *
+   * Guests deliberately return null and therefore can never receive a
+   * persistent injury state on a registered-player document.
+   */
+  const resolveRegisteredLeaguePlayer = (player, teamId = null) => {
+    const directId = String(player?.id || player?.playerId || "").trim();
+
+    if (directId) {
+      const direct =
+        (players || []).find(
+          (candidate) => String(candidate?.id || "").trim() === directId
+        ) || null;
+
+      if (direct) return direct;
+    }
+
+    const requestedKey = playerKeyFor(
+      player?.name ||
+        player?.fullName ||
+        player?.shortName ||
+        player?.displayName ||
+        ""
+    );
+
+    if (!requestedKey) return null;
+
+    const candidateTeam =
+      canonicalTeams.find(
+        (team) =>
+          team?.id === (teamId || player?.teamId || null)
+      ) || null;
+
+    const rosterIds = Array.isArray(candidateTeam?.playerIds)
+      ? candidateTeam.playerIds
+      : [];
+
+    for (const rosterId of rosterIds) {
+      const registered =
+        (players || []).find(
+          (candidate) =>
+            String(candidate?.id || "").trim() ===
+            String(rosterId || "").trim()
+        ) || null;
+
+      if (!registered) continue;
+
+      const registeredKeys = [
+        registered?.id,
+        registered?.fullName,
+        registered?.shortName,
+        ...(Array.isArray(registered?.aliases)
+          ? registered.aliases
+          : []),
+      ]
+        .map((value) => playerKeyFor(value))
+        .filter(Boolean);
+
+      if (registeredKeys.includes(requestedKey)) {
+        return registered;
+      }
+    }
+
+    return richPlayerByKey.get(requestedKey) || null;
+  };
+
   const enrichTeamPlayersForRotation = (team) => {
     const names = Array.isArray(team?.players)
       ? team.players
@@ -2801,6 +3129,8 @@ export function ThreeTeamLeagueLiveMatchPage({
 
       return {
         name: canonicalName(name),
+        availability: PLAYER_AVAILABILITY.ELIGIBLE,
+        injuryStatus: null,
       };
     });
   };
@@ -3040,6 +3370,10 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [scorerName, setScorerName] = useState("");
   const [assistName, setAssistName] = useState("");
   const [editingGoalIndex, setEditingGoalIndex] = useState(null);
+  const [editingDisciplineEventIndex, setEditingDisciplineEventIndex] =
+    useState(null);
+  const [editingInjuryEventIndex, setEditingInjuryEventIndex] =
+    useState(null);
   const [showGoalRecorder, setShowGoalRecorder] = useState(false);
   const [showAdditionalTimeModal, setShowAdditionalTimeModal] = useState(false);
   const [pendingAdditionalTimeSeconds, setPendingAdditionalTimeSeconds] = useState(0);
@@ -3184,13 +3518,22 @@ export function ThreeTeamLeagueLiveMatchPage({
       buildNextAppearanceParticipationRotation({
         previousLineup: previous.snapshot,
         registeredPlayers: richTeamPlayers,
-        playerStates: (
-          previous.snapshot?.latePlayers || []
-        ).map((name) => ({
-          name,
-          availability:
-            PLAYER_AVAILABILITY.LATE,
-        })),
+        playerStates: [
+          ...richTeamPlayers.map((player) => ({
+            name:
+              player?.name ||
+              player?.fullName ||
+              player?.shortName ||
+              "",
+            availability:
+              player?.availability ||
+              PLAYER_AVAILABILITY.ELIGIBLE,
+          })),
+          ...(previous.snapshot?.latePlayers || []).map((name) => ({
+            name,
+            availability: PLAYER_AVAILABILITY.LATE,
+          })),
+        ],
       });
 
     /*
@@ -3299,13 +3642,22 @@ export function ThreeTeamLeagueLiveMatchPage({
       buildNextAppearanceParticipationRotation({
         previousLineup: previous.snapshot,
         registeredPlayers: richTeamPlayers,
-        playerStates: (
-          previous.snapshot?.latePlayers || []
-        ).map((name) => ({
-          name,
-          availability:
-            PLAYER_AVAILABILITY.LATE,
-        })),
+        playerStates: [
+          ...richTeamPlayers.map((player) => ({
+            name:
+              player?.name ||
+              player?.fullName ||
+              player?.shortName ||
+              "",
+            availability:
+              player?.availability ||
+              PLAYER_AVAILABILITY.ELIGIBLE,
+          })),
+          ...(previous.snapshot?.latePlayers || []).map((name) => ({
+            name,
+            availability: PLAYER_AVAILABILITY.LATE,
+          })),
+        ],
       });
 
     if (!participation.rotationRequired) {
@@ -3360,6 +3712,14 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [localConfirmedSnapshots, setLocalConfirmedSnapshots] = useState(null);
   const [lineupErrorModal, setLineupErrorModal] = useState(null);
   const [pendingBenchScorer, setPendingBenchScorer] = useState(null);
+
+  // Match Discipline and Injured Players are independent tools.
+  const [showCardRecorder, setShowCardRecorder] = useState(false);
+  const [selectedDisciplinePlayer, setSelectedDisciplinePlayer] =
+    useState(null);
+  const [showInjuryRecorder, setShowInjuryRecorder] = useState(false);
+  const [selectedInjuryPlayer, setSelectedInjuryPlayer] = useState(null);
+  const [injurySavingPlayerId, setInjurySavingPlayerId] = useState(null);
 
   /*
    * Seed the verification editor once per actual match.
@@ -3738,6 +4098,245 @@ export function ThreeTeamLeagueLiveMatchPage({
   const selectedSnapshot =
     scoringTeamId === teamAId ? verifiedLineupA : verifiedLineupB;
 
+  /*
+   * Friendly principle:
+   * a player who is no longer football-eligible must not appear
+   * in scorer or assist selection.
+   *
+   * League additionally treats Sitting Out as unavailable.
+   */
+  const unavailableGoalPlayerKeysForTeam = (teamId) => {
+    const unavailable = new Set();
+    const latestInjuryByPlayer = new Map();
+
+    (Array.isArray(currentEvents) ? currentEvents : []).forEach(
+      (event, eventIndex) => {
+        if (event?.teamId !== teamId) return;
+
+        const key = playerKeyFor(
+          canonicalName(event?.playerName || "")
+        );
+
+        if (!key) return;
+
+        if (event?.type === "red_card") {
+          unavailable.add(key);
+          return;
+        }
+
+        if (
+          event?.type === "injury_knock" ||
+          event?.type === "injury_sitting_out" ||
+          event?.type === "injury_recovered"
+        ) {
+          latestInjuryByPlayer.set(key, {
+            type: event.type,
+            eventIndex,
+          });
+        }
+      }
+    );
+
+    latestInjuryByPlayer.forEach((event, key) => {
+      if (event?.type === "injury_sitting_out") {
+        unavailable.add(key);
+      }
+    });
+
+    return unavailable;
+  };
+
+  const filterGoalRecorderEligibility = (
+    entries,
+    teamId
+  ) => {
+    const unavailable =
+      unavailableGoalPlayerKeysForTeam(teamId);
+
+    return (Array.isArray(entries) ? entries : []).filter(
+      (entry) => {
+        const rawName =
+          typeof entry === "string"
+            ? entry
+            : entry?.name || "";
+
+        const key = playerKeyFor(
+          canonicalName(rawName)
+        );
+
+        return key && !unavailable.has(key);
+      }
+    );
+  };
+
+  /*
+   * Referee-visible Goal Recorder inventory.
+   *
+   * Dismissed and Sitting Out players remain visible so the referee
+   * understands why they cannot be selected.
+   */
+  const getGoalPlayerUnavailableState = (teamId, playerName) => {
+    const key = playerKeyFor(
+      canonicalName(playerName || "")
+    );
+
+    if (!teamId || !key) return null;
+
+    const events = Array.isArray(currentEvents)
+      ? currentEvents
+      : [];
+
+    const redCard = events.find(
+      (event) =>
+        event?.teamId === teamId &&
+        event?.type === "red_card" &&
+        playerKeyFor(
+          canonicalName(event?.playerName || "")
+        ) === key
+    );
+
+    if (redCard) {
+      return {
+        type: "dismissed",
+        label: "Red carded",
+        icon: "🟥",
+      };
+    }
+
+    const injuryEvents = events.filter(
+      (event) =>
+        event?.teamId === teamId &&
+        [
+          "injury_knock",
+          "injury_sitting_out",
+          "injury_recovered",
+        ].includes(event?.type) &&
+        playerKeyFor(
+          canonicalName(event?.playerName || "")
+        ) === key
+    );
+
+    const latest =
+      injuryEvents[injuryEvents.length - 1] || null;
+
+    if (latest?.type === "injury_sitting_out") {
+      return {
+        type: "sitting_out",
+        label: "Sitting out",
+        icon: "🤕",
+      };
+    }
+
+    return null;
+  };
+
+  const buildGoalRecorderDisplayChoices = (teamId) => {
+    const snapshot =
+      teamId === teamAId
+        ? verifiedLineupA
+        : verifiedLineupB;
+
+    const fallbackPlayers =
+      teamId === teamAId
+        ? teamA?.players || []
+        : teamB?.players || [];
+
+    const result = [
+      ...buildGoalRecorderChoices({
+        snapshot,
+        fallbackPlayers,
+        canonicalName,
+        playerKeyFor,
+        formationMap: liveFormationsMap,
+        defaultFormationId: liveDefaultFormationId,
+      }),
+    ];
+
+    const included = new Set(
+      result
+        .map((entry) =>
+          playerKeyFor(
+            canonicalName(
+              typeof entry === "string"
+                ? entry
+                : entry?.name || ""
+            )
+          )
+        )
+        .filter(Boolean)
+    );
+
+    /*
+     * Dismissed/Sitting Out players may already have been removed
+     * from the active lineup. Put them back for display only.
+     */
+    (Array.isArray(currentEvents) ? currentEvents : []).forEach(
+      (event) => {
+        if (event?.teamId !== teamId) return;
+
+        if (
+          event?.type !== "red_card" &&
+          event?.type !== "injury_sitting_out"
+        ) {
+          return;
+        }
+
+        const name = canonicalName(
+          event?.playerName || ""
+        );
+
+        const key = playerKeyFor(name);
+
+        if (!name || !key || included.has(key)) return;
+
+        const unavailable =
+          getGoalPlayerUnavailableState(
+            teamId,
+            name
+          );
+
+        // A recovered injury must not be re-added as unavailable.
+        if (!unavailable) return;
+
+        result.push({
+          name,
+          isSub: true,
+          roleTag: "SUB",
+        });
+
+        included.add(key);
+      }
+    );
+
+    return result.map((entry) => {
+      const name =
+        typeof entry === "string"
+          ? entry
+          : entry?.name || "";
+
+      const unavailable =
+        getGoalPlayerUnavailableState(
+          teamId,
+          name
+        );
+
+      if (!unavailable) return entry;
+
+      return {
+        ...(typeof entry === "string"
+          ? { name: entry }
+          : entry),
+        name,
+        isSub: true,
+        disabled: true,
+        availabilityType: unavailable.type,
+        availabilityLabel: unavailable.label,
+        availabilityIcon: unavailable.icon,
+      };
+    });
+  };
+
+
   const goalRecorderChoices = useMemo(() => {
     const snapshot =
       scoringTeamId === teamAId
@@ -3753,14 +4352,17 @@ export function ThreeTeamLeagueLiveMatchPage({
         ? teamB
         : null;
 
-    return buildGoalRecorderChoices({
-      snapshot,
-      fallbackPlayers: fallbackTeam?.players || [],
-      canonicalName,
-      playerKeyFor,
-      formationMap: liveFormationsMap,
-      defaultFormationId: liveDefaultFormationId,
-    });
+    return filterGoalRecorderEligibility(
+      buildGoalRecorderChoices({
+        snapshot,
+        fallbackPlayers: fallbackTeam?.players || [],
+        canonicalName,
+        playerKeyFor,
+        formationMap: liveFormationsMap,
+        defaultFormationId: liveDefaultFormationId,
+      }),
+      scoringTeamId
+    );
   }, [
     scoringTeamId,
     verifiedLineupA,
@@ -3780,14 +4382,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   }, [goalRecorderChoices, scorerName]);
 
   const goalRecorderChoicesForTeam = (teamId) =>
-    buildGoalRecorderChoices({
-      snapshot: teamId === teamAId ? verifiedLineupA : verifiedLineupB,
-      fallbackPlayers: teamId === teamAId ? teamA?.players || [] : teamB?.players || [],
-      canonicalName,
-      playerKeyFor,
-      formationMap: liveFormationsMap,
-      defaultFormationId: liveDefaultFormationId,
-    });
+    buildGoalRecorderDisplayChoices(teamId);
 
   const getGoalRecorderChoice = (teamId, playerName) => {
     const targetKey = playerKeyFor(playerName);
@@ -3972,6 +4567,1289 @@ export function ThreeTeamLeagueLiveMatchPage({
     }
   };
 
+  const normalizedActiveRedCardRule =
+    String(redCardRule || "").trim().toLowerCase() === "two_minute"
+      ? "two_minute"
+      : "permanent";
+
+  const buildLeagueDisciplinePlayers = () => {
+    const buildForTeam = (teamId, snapshot) => {
+      if (!teamId || !snapshot) return [];
+
+      const result = [];
+
+      Object.entries(snapshot.positions || {}).forEach(
+        ([positionId, playerName]) => {
+          if (!playerName) return;
+
+          result.push({
+            name: canonicalName(playerName),
+            teamId,
+            positionId,
+            isSubstitute: false,
+          });
+        }
+      );
+
+      (snapshot.benchSnapshot || []).forEach((playerName) => {
+        if (!playerName) return;
+
+        result.push({
+          name: canonicalName(playerName),
+          teamId,
+          positionId: null,
+          isSubstitute: true,
+        });
+      });
+
+      return result;
+    };
+
+    return [
+      ...buildForTeam(teamAId, verifiedLineupA),
+      ...buildForTeam(teamBId, verifiedLineupB),
+    ];
+  };
+
+  const disciplinePlayers = buildLeagueDisciplinePlayers();
+
+  const disciplineCardEvents = (currentEvents || [])
+    .map((event, eventIndex) => ({ ...event, eventIndex }))
+    .filter(
+      (event) =>
+        event?.type === "yellow_card" ||
+        event?.type === "red_card"
+    );
+
+
+  /*
+   * Injury is a match-event system just like discipline.
+   *
+   * The latest injury event is the authoritative match state:
+   *
+   * injury_knock        -> playing with a knock
+   * injury_sitting_out  -> unavailable
+   * injury_recovered    -> available again
+   *
+   * This means the football incident never depends on a player-profile
+   * lookup succeeding.
+   */
+  const injuryMatchEvents = (currentEvents || [])
+    .map((event, eventIndex) => ({
+      ...event,
+      eventIndex,
+    }))
+    .filter((event) =>
+      [
+        "injury_knock",
+        "injury_sitting_out",
+        "injury_recovered",
+      ].includes(event?.type)
+    );
+
+  const getLeagueInjuryStatus = (player) => {
+    const playerKey =
+      playerKeyFor(player?.name || "");
+
+    const matchingEvents =
+      injuryMatchEvents.filter(
+        (event) =>
+          event?.teamId === player?.teamId &&
+          playerKeyFor(
+            event?.playerName || ""
+          ) === playerKey
+      );
+
+    const latestEvent =
+      matchingEvents[
+        matchingEvents.length - 1
+      ] || null;
+
+    const status =
+      latestEvent?.type ===
+      "injury_sitting_out"
+        ? "sitting_out"
+        : latestEvent?.type ===
+          "injury_knock"
+        ? "playing_knock"
+        : null;
+
+    return {
+      status,
+      latestEvent,
+      events: matchingEvents,
+    };
+  };
+
+  const getLeagueDisciplineStatus = (player) => {
+    const playerKey = playerKeyFor(player?.name);
+
+    const matching = disciplineCardEvents.filter(
+      (event) =>
+        event?.teamId === player?.teamId &&
+        playerKeyFor(event?.playerName) === playerKey
+    );
+
+    return {
+      yellowEvents: matching.filter(
+        (event) => event.type === "yellow_card"
+      ),
+      redEvents: matching.filter(
+        (event) => event.type === "red_card"
+      ),
+    };
+  };
+
+  const persistLeagueDisciplineLineups = (nextSnapshots) => {
+    setLocalConfirmedSnapshots(nextSnapshots);
+
+    /*
+     * Keep Edit Lineups synchronized with the authoritative live
+     * football state.
+     *
+     * This mirrors Friendly Match Discipline:
+     * a dismissed or sitting-out player must disappear from the
+     * editable pitch/bench immediately as well.
+     */
+    if (nextSnapshots?.[teamAId]) {
+      setVerifyTeamALineup(nextSnapshots[teamAId]);
+    }
+
+    if (nextSnapshots?.[teamBId]) {
+      setVerifyTeamBLineup(nextSnapshots[teamBId]);
+    }
+
+    onConfirmPreMatchLineups?.(nextSnapshots);
+  };
+
+  const removeLeagueDismissedPlayer = (player) => {
+    const teamId = player?.teamId;
+    const playerName = canonicalName(player?.name);
+
+    if (!teamId || !playerName) {
+      return {
+        removedPositionId: null,
+        wasSubstitute: Boolean(player?.isSubstitute),
+      };
+    }
+
+    const currentSnapshots = {
+      ...(sanitizedConfirmedSnapshots || {}),
+    };
+
+    const currentSnapshot = currentSnapshots?.[teamId];
+
+    if (!currentSnapshot) {
+      return {
+        removedPositionId: player?.positionId || null,
+        wasSubstitute: Boolean(player?.isSubstitute),
+      };
+    }
+
+    const targetKey = playerKeyFor(playerName);
+    const nextPositions = {
+      ...(currentSnapshot.positions || {}),
+    };
+
+    let removedPositionId = null;
+
+    Object.entries(nextPositions).forEach(
+      ([positionId, assignedName]) => {
+        if (
+          assignedName &&
+          playerKeyFor(assignedName) === targetKey
+        ) {
+          removedPositionId = positionId;
+          nextPositions[positionId] = null;
+        }
+      }
+    );
+
+    const currentBench = Array.isArray(
+      currentSnapshot.benchSnapshot
+    )
+      ? currentSnapshot.benchSnapshot
+      : [];
+
+    const wasSubstitute = currentBench.some(
+      (name) => playerKeyFor(name) === targetKey
+    );
+
+    const nextBench = currentBench.filter(
+      (name) => playerKeyFor(name) !== targetKey
+    );
+
+    const nextSnapshots = {
+      ...currentSnapshots,
+      [teamId]: {
+        ...currentSnapshot,
+        positions: nextPositions,
+        benchSnapshot: nextBench,
+        onFieldPlayerCount:
+          Object.values(nextPositions).filter(Boolean).length,
+      },
+    };
+
+    persistLeagueDisciplineLineups(nextSnapshots);
+
+    return {
+      removedPositionId:
+        removedPositionId || player?.positionId || null,
+      wasSubstitute:
+        wasSubstitute || Boolean(player?.isSubstitute),
+    };
+  };
+
+  /*
+   * Injury removal is deliberately different from a red-card dismissal.
+   *
+   * RED CARD:
+   *   player leaves the pitch and the team remains short.
+   *
+   * SITTING OUT:
+   *   if an on-field player is injured, the current available substitute
+   *   automatically enters the exact vacated position.
+   *
+   *   if the injured player was already a substitute, they simply become
+   *   unavailable and no pitch position changes.
+   *
+   * PLAYING WITH A KNOCK never calls this function.
+   */
+  const removeLeagueInjuredPlayerAndAutoSub = (player) => {
+    const teamId = player?.teamId;
+    const playerName = canonicalName(player?.name);
+
+    if (!teamId || !playerName) {
+      return {
+        removedPositionId: null,
+        wasSubstitute: Boolean(player?.isSubstitute),
+        replacementPlayerName: null,
+      };
+    }
+
+    const currentSnapshots = {
+      ...(sanitizedConfirmedSnapshots || {}),
+    };
+
+    const currentSnapshot = currentSnapshots?.[teamId];
+
+    if (!currentSnapshot) {
+      return {
+        removedPositionId: player?.positionId || null,
+        wasSubstitute: Boolean(player?.isSubstitute),
+        replacementPlayerName: null,
+      };
+    }
+
+    const targetKey = playerKeyFor(playerName);
+
+    const nextPositions = {
+      ...(currentSnapshot.positions || {}),
+    };
+
+    const currentBench = Array.isArray(
+      currentSnapshot.benchSnapshot
+    )
+      ? [...currentSnapshot.benchSnapshot]
+      : [];
+
+    let removedPositionId = null;
+
+    Object.entries(nextPositions).forEach(
+      ([positionId, assignedName]) => {
+        if (
+          assignedName &&
+          playerKeyFor(assignedName) === targetKey
+        ) {
+          removedPositionId = positionId;
+          nextPositions[positionId] = null;
+        }
+      }
+    );
+
+    const wasSubstitute = currentBench.some(
+      (name) => playerKeyFor(name) === targetKey
+    );
+
+    /*
+     * First remove the injured player themselves from the available bench.
+     */
+    let nextBench = currentBench.filter(
+      (name) => playerKeyFor(name) !== targetKey
+    );
+
+    let replacementPlayerName = null;
+
+    /*
+     * Only an ON-FIELD injury triggers the automatic substitution.
+     *
+     * Use the first currently available substitute. The bench order is
+     * already the live authoritative substitute order.
+     */
+    if (removedPositionId && nextBench.length > 0) {
+      replacementPlayerName = nextBench[0];
+
+      nextPositions[removedPositionId] =
+        replacementPlayerName;
+
+      nextBench = nextBench.slice(1);
+    }
+
+    const nextSnapshots = {
+      ...currentSnapshots,
+      [teamId]: {
+        ...currentSnapshot,
+        positions: nextPositions,
+        benchSnapshot: nextBench,
+        onFieldPlayerCount:
+          Object.values(nextPositions).filter(Boolean).length,
+      },
+    };
+
+    persistLeagueDisciplineLineups(nextSnapshots);
+
+    return {
+      removedPositionId:
+        removedPositionId || player?.positionId || null,
+      wasSubstitute:
+        wasSubstitute || Boolean(player?.isSubstitute),
+      replacementPlayerName,
+    };
+  };
+
+
+  const restoreLeagueDismissedPlayer = (cardEvent) => {
+    const teamId = cardEvent?.teamId;
+    const playerName = canonicalName(cardEvent?.playerName);
+
+    if (!teamId || !playerName) return;
+
+    const currentSnapshots = {
+      ...(sanitizedConfirmedSnapshots || {}),
+    };
+
+    const currentSnapshot = currentSnapshots?.[teamId];
+    if (!currentSnapshot) return;
+
+    const nextPositions = {
+      ...(currentSnapshot.positions || {}),
+    };
+
+    const nextBench = Array.isArray(
+      currentSnapshot.benchSnapshot
+    )
+      ? [...currentSnapshot.benchSnapshot]
+      : [];
+
+    const targetKey = playerKeyFor(playerName);
+
+    const alreadyOnField = Object.values(nextPositions).some(
+      (name) =>
+        name && playerKeyFor(name) === targetKey
+    );
+
+    const alreadyOnBench = nextBench.some(
+      (name) => playerKeyFor(name) === targetKey
+    );
+
+    if (alreadyOnField || alreadyOnBench) return;
+
+    const formerPositionId =
+      cardEvent?.removedPositionId || null;
+
+    if (
+      formerPositionId &&
+      !nextPositions[formerPositionId]
+    ) {
+      nextPositions[formerPositionId] = playerName;
+    } else {
+      nextBench.unshift(playerName);
+    }
+
+    const uniqueBench = [];
+    const seen = new Set();
+
+    nextBench.forEach((name) => {
+      const key = playerKeyFor(name);
+
+      if (!key || seen.has(key)) return;
+
+      seen.add(key);
+      uniqueBench.push(name);
+    });
+
+    const nextSnapshots = {
+      ...currentSnapshots,
+      [teamId]: {
+        ...currentSnapshot,
+        positions: nextPositions,
+        benchSnapshot: uniqueBench,
+        onFieldPlayerCount:
+          Object.values(nextPositions).filter(Boolean).length,
+      },
+    };
+
+    persistLeagueDisciplineLineups(nextSnapshots);
+  };
+
+  const issueLeagueDisciplineCard = async (
+    cardType,
+    player
+  ) => {
+    if (
+      !canControlMatch ||
+      !player?.name ||
+      !player?.teamId
+    ) {
+      return;
+    }
+
+    const normalizedType =
+      cardType === "red_card"
+        ? "red_card"
+        : "yellow_card";
+
+    const status = getLeagueDisciplineStatus(player);
+
+    if (
+      normalizedType === "yellow_card" &&
+      status.yellowEvents.length > 0
+    ) {
+      return;
+    }
+
+    if (
+      normalizedType === "red_card" &&
+      status.redEvents.length > 0
+    ) {
+      return;
+    }
+
+    let dismissalDetails = {
+      removedPositionId: null,
+      wasSubstitute: Boolean(player.isSubstitute),
+    };
+
+    if (normalizedType === "red_card") {
+      dismissalDetails =
+        removeLeagueDismissedPlayer(player);
+    }
+
+    const relevantSnapshot =
+      player.teamId === teamAId
+        ? verifiedLineupA
+        : verifiedLineupB;
+
+    const event = {
+      id:
+        `discipline-${Date.now()}-` +
+        Math.random().toString(36).slice(2, 8),
+      type: normalizedType,
+      teamId: player.teamId,
+      playerName: canonicalName(player.name),
+      playerType: isGuestPlayerInSnapshot(
+        relevantSnapshot,
+        player.name
+      )
+        ? "guest"
+        : "registered",
+      positionId: player.positionId || null,
+      removedPositionId:
+        dismissalDetails.removedPositionId || null,
+      wasSubstitute:
+        dismissalDetails.wasSubstitute,
+      timeSeconds: Math.max(
+        Number(matchSeconds || 0) -
+          Number(displaySeconds || 0),
+        0
+      ),
+      dismissalRule:
+        normalizedType === "red_card"
+          ? normalizedActiveRedCardRule
+          : null,
+      teamPenaltySeconds:
+        normalizedType === "red_card" &&
+        normalizedActiveRedCardRule === "two_minute"
+          ? 120
+          : null,
+    };
+
+    onAddEvent?.(event);
+
+    await appendEventToFirestore(
+      event,
+      basicSummary,
+      displaySeconds,
+      matchSeconds
+    );
+
+    setSelectedDisciplinePlayer(null);
+  };
+
+  const reverseLeagueDisciplineCard = async (cardEvent) => {
+    if (
+      !canControlMatch ||
+      typeof cardEvent?.eventIndex !== "number" ||
+      cardEvent.eventIndex < 0
+    ) {
+      return;
+    }
+
+    if (cardEvent.type === "red_card") {
+      restoreLeagueDismissedPlayer(cardEvent);
+    }
+
+    onDeleteEvent?.(cardEvent.eventIndex);
+
+    const nextEvents = (currentEvents || []).filter(
+      (_, index) => index !== cardEvent.eventIndex
+    );
+
+    await overwriteEventsInFirestore(
+      nextEvents,
+      basicSummary,
+      displaySeconds,
+      matchSeconds
+    );
+
+    setSelectedDisciplinePlayer(null);
+  };
+
+  /*
+   * Only registered players receive persistent inventory state.
+   * Guests remain match-local and are deliberately excluded.
+   */
+  const injuryInventoryPlayers = (players || [])
+    .filter((player) => {
+      const key = playerKeyFor(
+        player.fullName || player.shortName
+      );
+
+      return canonicalTeams.some((team) =>
+        (team.players || []).some(
+          (name) => playerKeyFor(name) === key
+        )
+      );
+    })
+    .sort((a, b) =>
+      String(
+        a.fullName || a.shortName || ""
+      ).localeCompare(
+        String(b.fullName || b.shortName || "")
+      )
+    );
+
+  const leagueDisciplinePlayerKey = (player) =>
+    [
+      player?.teamId || "",
+      playerKeyFor(player?.name || ""),
+    ].join("::");
+
+  const closeLeagueCardRecorder = () => {
+    setSelectedDisciplinePlayer(null);
+    setShowCardRecorder(false);
+  };
+
+  const toggleLeagueDisciplinePlayer = (player) => {
+    const currentKey =
+      leagueDisciplinePlayerKey(selectedDisciplinePlayer);
+
+    const nextKey =
+      leagueDisciplinePlayerKey(player);
+
+    setSelectedDisciplinePlayer(
+      currentKey && currentKey === nextKey
+        ? null
+        : player
+    );
+  };
+
+  const leagueDisciplineGroupsForTeam = (teamId) => {
+    const teamPlayers = disciplinePlayers.filter(
+      (player) => player?.teamId === teamId
+    );
+
+    return {
+      onField: teamPlayers
+        .filter((player) => !player.isSubstitute)
+        .map((player) => ({
+          ...player,
+          roleLabel: "On field",
+        })),
+      substitutes: teamPlayers
+        .filter((player) => player.isSubstitute)
+        .map((player) => ({
+          ...player,
+          roleLabel: "Substitute",
+        })),
+    };
+  };
+
+  const leagueDismissedPlayersForTeam = (teamId) => {
+    const seen = new Set();
+
+    return disciplineCardEvents
+      .filter(
+        (event) =>
+          event?.type === "red_card" &&
+          event?.teamId === teamId
+      )
+      .map((event) => {
+        const name = canonicalName(
+          event?.playerName || ""
+        );
+
+        const key = playerKeyFor(name);
+
+        if (!name || !key || seen.has(key)) {
+          return null;
+        }
+
+        seen.add(key);
+
+        return {
+          teamId,
+          name,
+          positionId:
+            event?.removedPositionId ||
+            event?.positionId ||
+            null,
+          roleLabel: "Dismissed",
+          isSubstitute:
+            Boolean(event?.wasSubstitute),
+          isDismissed: true,
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const leagueDisciplinePlayersA =
+    leagueDisciplineGroupsForTeam(teamAId);
+
+  const leagueDisciplinePlayersB =
+    leagueDisciplineGroupsForTeam(teamBId);
+
+  const leagueDismissedPlayersA =
+    leagueDismissedPlayersForTeam(teamAId);
+
+  const leagueDismissedPlayersB =
+    leagueDismissedPlayersForTeam(teamBId);
+
+
+  /*
+   * Reuses Friendly's disciplinary-vacancy model.
+   *
+   * Permanent red card:
+   *   exact vacated position remains locked.
+   *
+   * Two-minute red card:
+   *   position remains locked until penalty expiry,
+   *   then becomes available for referee-selected replacement.
+   *
+   * Substitute red card:
+   *   no pitch vacancy because the player was already off-field.
+   */
+  const leagueProtectedVacanciesForTeam = (teamId) => {
+    const vacancies = {};
+
+    const currentDisciplineMatchSeconds = Math.max(
+      Number(matchSeconds || 0) -
+        Number(displaySeconds || 0),
+      0
+    );
+
+    disciplineCardEvents
+      .filter(
+        (event) =>
+          event?.type === "red_card" &&
+          event?.teamId === teamId
+      )
+      .forEach((event) => {
+        const positionId =
+          event?.removedPositionId ||
+          event?.positionId ||
+          null;
+
+        if (!positionId || event?.wasSubstitute) {
+          return;
+        }
+
+        const isTwoMinuteRule =
+          event?.dismissalRule === "two_minute";
+
+        const penaltySeconds = Math.max(
+          Number(
+            event?.teamPenaltySeconds ||
+              (isTwoMinuteRule ? 120 : 0)
+          ),
+          0
+        );
+
+        const startedAtSeconds = Math.max(
+          Number(event?.timeSeconds || 0),
+          0
+        );
+
+        const elapsedSinceCard = Math.max(
+          currentDisciplineMatchSeconds -
+            startedAtSeconds,
+          0
+        );
+
+        const remainingSeconds =
+          isTwoMinuteRule
+            ? Math.max(
+                penaltySeconds -
+                  elapsedSinceCard,
+                0
+              )
+            : null;
+
+        const expired =
+          isTwoMinuteRule &&
+          remainingSeconds <= 0;
+
+        vacancies[positionId] = {
+          eventId: event?.id || null,
+          reason: "red_card",
+          playerName:
+            event?.playerName ||
+            "Sent-off player",
+          dismissalRule:
+            isTwoMinuteRule
+              ? "two_minute"
+              : "permanent",
+
+          locked:
+            !isTwoMinuteRule ||
+            !expired,
+
+          replacementAllowed:
+            isTwoMinuteRule &&
+            expired,
+
+          remainingSeconds,
+
+          remainingLabel:
+            isTwoMinuteRule && !expired
+              ? `${Math.floor(
+                  remainingSeconds / 60
+                )}:${String(
+                  remainingSeconds % 60
+                ).padStart(2, "0")} remaining`
+              : isTwoMinuteRule
+              ? "Replacement allowed"
+              : "Permanent",
+        };
+      });
+
+    return vacancies;
+  };
+
+  const leagueProtectedVacanciesA =
+    leagueProtectedVacanciesForTeam(teamAId);
+
+  const leagueProtectedVacanciesB =
+    leagueProtectedVacanciesForTeam(teamBId);
+
+
+
+  /*
+   * Injury inventory deliberately uses only registered players
+   * who are actually in the verified League lineups.
+   *
+   * Guests are not given persistent player documents.
+   */
+  const getLeagueUnavailableLineupKeys = (teamId) => {
+    const unavailable = new Set();
+
+    /*
+     * Red-card dismissals.
+     *
+     * Reversed red cards disappear from disciplineCardEvents, so
+     * only active dismissals remain here.
+     */
+    leagueDismissedPlayersForTeam(teamId).forEach(
+      (player) => {
+        const key =
+          playerKeyFor(player?.name || "");
+
+        if (key) {
+          unavailable.add(key);
+        }
+      }
+    );
+
+    /*
+     * Injury state is event-derived.
+     *
+     * Only the latest injury event for each player matters.
+     */
+    const latestInjuryByPlayer =
+      new Map();
+
+    injuryMatchEvents
+      .filter(
+        (event) =>
+          event?.teamId === teamId
+      )
+      .forEach((event) => {
+        const key =
+          playerKeyFor(
+            event?.playerName || ""
+          );
+
+        if (key) {
+          latestInjuryByPlayer.set(
+            key,
+            event
+          );
+        }
+      });
+
+    latestInjuryByPlayer.forEach(
+      (event, key) => {
+        if (
+          event?.type ===
+          "injury_sitting_out"
+        ) {
+          unavailable.add(key);
+        }
+      }
+    );
+
+    return unavailable;
+  };
+
+  const getLeagueEligibleLineupPlayers = (
+    team,
+    teamId,
+    lineup
+  ) => {
+    const unavailable =
+      getLeagueUnavailableLineupKeys(
+        teamId
+      );
+
+    return buildRegisteredFallbackPlayers(
+      team?.players || [],
+      lineup,
+      canonicalName
+    ).filter(
+      (name) =>
+        !unavailable.has(
+          playerKeyFor(name)
+        )
+    );
+  };
+
+  const leagueInjuryPlayersForTeam = (teamId) => {
+    const result = [];
+    const seen = new Set();
+
+    const addPlayer = (player) => {
+      const key = [
+        String(player?.teamId || teamId),
+        playerKeyFor(player?.name || ""),
+      ].join("::");
+
+      if (
+        !player?.name ||
+        seen.has(key)
+      ) {
+        return;
+      }
+
+      seen.add(key);
+      result.push(player);
+    };
+
+    /*
+     * Same authoritative rows used by Match Discipline.
+     */
+    disciplinePlayers
+      .filter(
+        (player) =>
+          player?.teamId === teamId
+      )
+      .forEach((player) => {
+        const injuryState =
+          getLeagueInjuryStatus(player);
+
+        /*
+         * A sitting-out player should no longer appear under
+         * On Field/Substitutes even if an old lineup snapshot
+         * briefly still contains them.
+         */
+        if (
+          injuryState.status ===
+          "sitting_out"
+        ) {
+          return;
+        }
+
+        addPlayer({
+          ...player,
+          roleLabel:
+            player.isSubstitute
+              ? "Substitute"
+              : "On field",
+        });
+      });
+
+    /*
+     * Rebuild currently sitting-out players from match events,
+     * exactly like dismissed players are rebuilt from red-card
+     * events.
+     */
+    const latestByPlayer = new Map();
+
+    injuryMatchEvents
+      .filter(
+        (event) =>
+          event?.teamId === teamId
+      )
+      .forEach((event) => {
+        const key =
+          playerKeyFor(
+            event?.playerName || ""
+          );
+
+        if (!key) return;
+
+        latestByPlayer.set(
+          key,
+          event
+        );
+      });
+
+    latestByPlayer.forEach((event) => {
+      if (
+        event?.type !==
+        "injury_sitting_out"
+      ) {
+        return;
+      }
+
+      const name =
+        canonicalName(
+          event?.playerName || ""
+        );
+
+      if (!name) return;
+
+      addPlayer({
+        id:
+          event?.playerId || null,
+        playerId:
+          event?.playerId || null,
+        teamId,
+        name,
+        positionId:
+          event?.removedPositionId ||
+          event?.positionId ||
+          null,
+        isSubstitute:
+          Boolean(
+            event?.wasSubstitute
+          ),
+        roleLabel:
+          "Sitting out",
+        injuryStatus:
+          "sitting_out",
+      });
+    });
+
+    return result;
+  };
+
+  /*
+   * Referee-visible unavailable bench inventory.
+   *
+   * These players remain part of the match visually but are deliberately
+   * excluded from normal lineup/scorer eligibility.
+   */
+  const leagueUnavailablePlayersForTeam = (teamId) => {
+    const unavailable = [];
+    const seen = new Set();
+
+    leagueDismissedPlayersForTeam(teamId).forEach((player) => {
+      const name = canonicalName(player?.name || "");
+      const key = playerKeyFor(name);
+
+      if (!name || !key || seen.has(key)) return;
+
+      seen.add(key);
+
+      unavailable.push({
+        ...player,
+        name,
+        availabilityType: "dismissed",
+      });
+    });
+
+    leagueInjuryPlayersForTeam(teamId)
+      .filter((player) => {
+        const status = getLeagueInjuryStatus(player);
+        return status?.status === "sitting_out";
+      })
+      .forEach((player) => {
+        const name = canonicalName(player?.name || "");
+        const key = playerKeyFor(name);
+
+        if (!name || !key || seen.has(key)) return;
+
+        seen.add(key);
+
+        unavailable.push({
+          ...player,
+          name,
+          availabilityType: "sitting_out",
+        });
+      });
+
+    return unavailable;
+  };
+
+  const leagueUnavailablePlayersA =
+    leagueUnavailablePlayersForTeam(teamAId);
+
+  const leagueUnavailablePlayersB =
+    leagueUnavailablePlayersForTeam(teamBId);
+
+
+  const leagueInjuryPlayersA =
+    leagueInjuryPlayersForTeam(teamAId);
+
+  const leagueInjuryPlayersB =
+    leagueInjuryPlayersForTeam(teamBId);
+
+  const toggleLeagueInjuryPlayer = (player) => {
+    const currentKey =
+      leagueDisciplinePlayerKey(selectedInjuryPlayer);
+
+    const nextKey =
+      leagueDisciplinePlayerKey(player);
+
+    setSelectedInjuryPlayer(
+      currentKey && currentKey === nextKey
+        ? null
+        : player
+    );
+  };
+
+  const updateLeaguePlayerInjury = async (
+    player,
+    nextStatus
+  ) => {
+    if (
+      !canControlMatch ||
+      !player?.name ||
+      injurySavingPlayerId
+    ) {
+      return;
+    }
+
+    const playerName =
+      canonicalName(player.name);
+
+    const teamId =
+      player.teamId;
+
+    if (!playerName || !teamId) {
+      return;
+    }
+
+    const safeStatus =
+      nextStatus === "playing_knock"
+        ? "playing_knock"
+        : nextStatus === "sitting_out"
+        ? "sitting_out"
+        : null;
+
+    const currentState =
+      getLeagueInjuryStatus(player);
+
+    const previousStatus =
+      currentState.status;
+
+    /*
+     * Stable UI saving key.
+     * No registered-player document is required.
+     */
+    const savingKey = [
+      teamId,
+      playerKeyFor(playerName),
+    ].join("::");
+
+    setInjurySavingPlayerId(
+      savingKey
+    );
+
+    try {
+      /*
+       * Default incident information mirrors the discipline event.
+       */
+      let incidentDetails = {
+        removedPositionId:
+          player?.positionId || null,
+        wasSubstitute:
+          Boolean(player?.isSubstitute),
+      };
+
+      /*
+       * 🤕 SITTING OUT
+       *
+       * EXACT football equivalent of dismissal:
+       *
+       * - remove from current pitch position, OR
+       * - remove from available substitutes;
+       * - persist the new authoritative lineup;
+       * - player will be reconstructed from the injury event under
+       *   UNAVAILABLE (SITTING OUT).
+       *
+       * Because they are no longer in benchSnapshot, automatic
+       * rotation cannot bring them back.
+       */
+      if (
+        safeStatus === "sitting_out" &&
+        previousStatus !== "sitting_out"
+      ) {
+        incidentDetails =
+          removeLeagueInjuredPlayerAndAutoSub(
+            player
+          );
+      }
+
+      /*
+       * MARK RECOVERED
+       *
+       * Parallel to reversing a dismissal:
+       *
+       * - restore former position if still vacant;
+       * - otherwise restore to the available substitutes;
+       * - never displace another player.
+       */
+      if (
+        !safeStatus &&
+        previousStatus === "sitting_out" &&
+        currentState.latestEvent
+      ) {
+        restoreLeagueDismissedPlayer({
+          ...currentState.latestEvent,
+          teamId,
+          playerName,
+        });
+      }
+
+      /*
+       * Match-event history is authoritative.
+       *
+       * Keep this deliberately close to the League card event shape:
+       * team + player + lineup origin + match time.
+       */
+      const event = {
+        id: `injury-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`,
+
+        type:
+          safeStatus === "playing_knock"
+            ? "injury_knock"
+            : safeStatus === "sitting_out"
+            ? "injury_sitting_out"
+            : "injury_recovered",
+
+        teamId,
+
+        playerName,
+
+        playerType:
+          player?.playerType ||
+          "match_player",
+
+        positionId:
+          player?.positionId ||
+          currentState.latestEvent?.positionId ||
+          null,
+
+        removedPositionId:
+          safeStatus === "sitting_out"
+            ? incidentDetails.removedPositionId ||
+              player?.positionId ||
+              null
+            : currentState.latestEvent
+                ?.removedPositionId ||
+              null,
+
+        wasSubstitute:
+          safeStatus === "sitting_out"
+            ? Boolean(
+                incidentDetails.wasSubstitute
+              )
+            : Boolean(
+                currentState.latestEvent
+                  ?.wasSubstitute ||
+                player?.isSubstitute
+              ),
+
+        replacementPlayerName:
+          safeStatus === "sitting_out"
+            ? incidentDetails.replacementPlayerName || null
+            : currentState.latestEvent
+                ?.replacementPlayerName || null,
+
+        previousInjuryStatus:
+          previousStatus,
+
+        injuryStatus:
+          safeStatus,
+
+        availability:
+          safeStatus === "sitting_out"
+            ? PLAYER_AVAILABILITY.INJURED
+            : PLAYER_AVAILABILITY.ELIGIBLE,
+
+        timeSeconds: Math.max(
+          Number(matchSeconds || 0) -
+            Number(displaySeconds || 0),
+          0
+        ),
+      };
+
+      /*
+       * EXACT same event pipeline used by League goals/cards.
+       */
+      onAddEvent?.(event);
+
+      await appendEventToFirestore(
+        event,
+        basicSummary,
+        displaySeconds,
+        matchSeconds
+      );
+
+      /*
+       * Do not leave a stale selected row open after the lineup changes.
+       */
+      setSelectedInjuryPlayer(null);
+    } catch (error) {
+      console.error(
+        "Failed to record League injury incident:",
+        error
+      );
+
+      window.alert(
+        `The injury incident could not be recorded: ${
+          error?.message || "Unknown error"
+        }`
+      );
+    } finally {
+      setInjurySavingPlayerId(null);
+    }
+  };
+
+
   const addAdditionalTime = (seconds) => {
     const extra = Number(seconds || 0);
     if (!extra) return;
@@ -4115,6 +5993,76 @@ export function ThreeTeamLeagueLiveMatchPage({
     setShowGoalRecorder(true);
   };
 
+  const handleEditMatchEvent = (index) => {
+    if (!canControlMatch) return;
+
+    const event = currentEvents[index];
+    if (!event) return;
+
+    if (event.type === "goal") {
+      handleEditGoal(index);
+      return;
+    }
+
+    if (
+      event.type === "yellow_card" ||
+      event.type === "red_card"
+    ) {
+      const selectedPlayer =
+        disciplinePlayers.find(
+          (candidate) =>
+            candidate?.teamId === event.teamId &&
+            playerKeyFor(candidate?.name || "") ===
+              playerKeyFor(event?.playerName || "")
+        ) || {
+          teamId: event.teamId,
+          name: canonicalName(event.playerName || ""),
+          positionId:
+            event.positionId ||
+            event.removedPositionId ||
+            null,
+          isSubstitute: Boolean(event.wasSubstitute),
+        };
+
+      setEditingDisciplineEventIndex(index);
+      setSelectedDisciplinePlayer(selectedPlayer);
+      setShowCardRecorder(true);
+      return;
+    }
+
+    if (
+      event.type === "injury_knock" ||
+      event.type === "injury_sitting_out" ||
+      event.type === "injury_recovered"
+    ) {
+      const selectedPlayer =
+        disciplinePlayers.find(
+          (candidate) =>
+            candidate?.teamId === event.teamId &&
+            playerKeyFor(candidate?.name || "") ===
+              playerKeyFor(event?.playerName || "")
+        ) || {
+          teamId: event.teamId,
+          name: canonicalName(event.playerName || ""),
+          positionId:
+            event.positionId ||
+            event.removedPositionId ||
+            null,
+          isSubstitute: Boolean(event.wasSubstitute),
+          injuryStatus:
+            event.type === "injury_sitting_out"
+              ? "sitting_out"
+              : event.type === "injury_knock"
+              ? "playing_knock"
+              : null,
+        };
+
+      setEditingInjuryEventIndex(index);
+      setSelectedInjuryPlayer(selectedPlayer);
+      setShowInjuryRecorder(true);
+    }
+  };
+
   const handleSaveEditedGoal = async () => {
     if (!canControlMatch || editingGoalIndex === null) return;
     if (!scoringTeamId || !scorerName) return;
@@ -4148,7 +6096,16 @@ export function ThreeTeamLeagueLiveMatchPage({
       index === editingGoalIndex ? updatedEvent : event
     );
 
-    overwriteEventsInFirestore(
+    /*
+     * Keep the live React event list synchronized with the edited event.
+     *
+     * Firestore persistence alone does not mutate currentEvents, which is
+     * why an edited scorer previously remained stale on screen.
+     */
+    onDeleteEvent?.(editingGoalIndex);
+    onAddEvent?.(updatedEvent);
+
+    await overwriteEventsInFirestore(
       updatedEvents,
       basicSummary,
       displaySeconds,
@@ -4453,7 +6410,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                 </span>
               ) : null}
             </div>
-            {canControlMatch ? (
+            {canControlMatch && !additionalTimeRunning ? (
               <button
                 type="button"
                 className={`secondary-btn live-add-time-btn ${(displaySeconds <= 120 || timeUp) && !additionalTimeTotalSeconds ? "is-ready" : "is-locked"}`}
@@ -4462,6 +6419,33 @@ export function ThreeTeamLeagueLiveMatchPage({
                 title={additionalTimeTotalSeconds ? "Additional time already selected" : displaySeconds > 120 && !timeUp ? "Additional time opens in the final 2 minutes" : "Add additional time"}
               >
                 {additionalTimeTotalSeconds ? "✅ Time added" : "⏳ Add time"}
+              </button>
+            ) : null}
+
+            {canControlMatch ? (
+              <button
+                type="button"
+                className="secondary-btn live-card-settings-btn"
+                onClick={() => {
+                  setSelectedDisciplinePlayer(null);
+                  setShowCardRecorder(true);
+                }}
+                title="Open match discipline"
+                aria-label="Open match discipline"
+              >
+                <span aria-hidden="true">🟨</span>
+              </button>
+            ) : null}
+
+            {canControlMatch ? (
+              <button
+                type="button"
+                className="secondary-btn live-card-settings-btn"
+                onClick={() => setShowInjuryRecorder(true)}
+                title="Open injured players"
+                aria-label="Open injured players"
+              >
+                <span aria-hidden="true">🤕</span>
               </button>
             ) : null}
           </div>
@@ -4489,14 +6473,14 @@ export function ThreeTeamLeagueLiveMatchPage({
         <div className="score-row">
           <div className="score-team">
             <strong className="score-team-name">
-              <TeamColorBadge team={teamA} short={isMobile} />
+              <TeamColorBadge team={effectiveTeamA || teamA} short={isMobile} />
             </strong>
             <div className="score-number">{goalsA}</div>
           </div>
           <div className="score-dash">–</div>
           <div className="score-team">
             <strong className="score-team-name">
-              <TeamColorBadge team={teamB} short={isMobile} />
+              <TeamColorBadge team={effectiveTeamB || teamB} short={isMobile} />
             </strong>
             <div className="score-number">{goalsB}</div>
           </div>
@@ -4544,10 +6528,14 @@ export function ThreeTeamLeagueLiveMatchPage({
 
         <div className="event-log">
           <div className="event-log-header">
-            <h3>Current Match Goals</h3>
+            <h3>Current Match Events</h3>
           </div>
 
-          {currentEvents.length === 0 && <p className="muted">No goals yet.</p>}
+          {currentEvents.length === 0 ? (
+            <p className="muted">
+              No match events yet.
+            </p>
+          ) : null}
 
           <ul>
             {currentEvents.map((e, idx) => {
@@ -4558,59 +6546,152 @@ export function ThreeTeamLeagueLiveMatchPage({
                   ? teamB
                   : null;
 
-              const teamAbbrev = getLiveTeamAbbrev(team);
-              const goalTheme = getTeamAccent(team || {});
+              const teamAbbrev =
+                getLiveTeamAbbrev(team);
+
+              const theme =
+                getTeamAccent(team || {});
+
+              const isGoal =
+                e.type === "goal";
+
+              const isYellow =
+                e.type === "yellow_card";
+
+              const isRed =
+                e.type === "red_card";
+
+              const isKnock =
+                e.type === "injury_knock";
+
+              const isSittingOut =
+                e.type === "injury_sitting_out";
+
+              const isRecovered =
+                e.type === "injury_recovered";
+
+              const playerName =
+                isGoal
+                  ? e.scorer
+                  : e.playerName;
+
+              const icon =
+                isGoal
+                  ? "⚽"
+                  : isYellow
+                  ? "🟨"
+                  : isRed
+                  ? "🟥"
+                  : isKnock
+                  ? "🩹"
+                  : isSittingOut
+                  ? "🤕"
+                  : isRecovered
+                  ? "✅"
+                  : "•";
+
+              const label =
+                isGoal
+                  ? "Goal"
+                  : isYellow
+                  ? "Yellow card"
+                  : isRed
+                  ? "Dismissed"
+                  : isKnock
+                  ? "Playing with a knock"
+                  : isSittingOut
+                  ? "Sitting out"
+                  : isRecovered
+                  ? "Recovered"
+                  : String(e.type || "Event");
 
               return (
                 <li
-                    key={e.id}
-                    className="event-item premium-goal-event"
-                    style={{
-                      "--goal-team-soft": goalTheme.soft,
-                      "--goal-team-border": goalTheme.border,
-                      "--goal-team-dot": goalTheme.dot,
-                    }}
-                  >
-                    <div className="premium-goal-main">
-                      <span className="premium-goal-icon">⚽</span>
-                      <div className="premium-goal-text">
-                        <div className="premium-goal-topline">
-                          <span className="premium-goal-clock">
-                            {formatSeconds(e.timeSeconds)}
-                          </span>
-                        </div>
-                        <div className="premium-goal-scorer">
-                          {displayCompactPlayerName(e.scorer)} <span className="premium-goal-abbrev">({teamAbbrev})</span>
-                        </div>
-                        {e.assist ? (
-                          <div className="premium-goal-assist">
-                            Assist: {displayCompactPlayerName(e.assist)}
-                          </div>
-                        ) : null}
+                  key={e.id || `${e.type}-${idx}`}
+                  className="event-item premium-goal-event"
+                  style={{
+                    "--goal-team-soft":
+                      theme.soft,
+                    "--goal-team-border":
+                      theme.border,
+                    "--goal-team-dot":
+                      theme.dot,
+                  }}
+                >
+                  <div className="premium-goal-main">
+                    <span
+                      className="premium-goal-icon"
+                      style={{
+                        fontSize:
+                          isYellow ||
+                          isRed ||
+                          isKnock ||
+                          isSittingOut
+                            ? "1.3rem"
+                            : undefined,
+                      }}
+                    >
+                      {icon}
+                    </span>
+
+                    <div className="premium-goal-text">
+                      <div className="premium-goal-topline">
+                        <span className="premium-goal-clock">
+                          {formatSeconds(
+                            e.timeSeconds
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="premium-goal-scorer">
+                        {displayCompactPlayerName(
+                          playerName || ""
+                        )}{" "}
+                        <span className="premium-goal-abbrev">
+                          ({teamAbbrev})
+                        </span>
+                      </div>
+
+                      <div className="premium-goal-assist">
+                        {label}
+
+                        {isGoal && e.assist
+                          ? ` · Assist: ${displayCompactPlayerName(
+                              e.assist
+                            )}`
+                          : ""}
                       </div>
                     </div>
+                  </div>
 
-                    {canControlMatch && (
-                      <div className="event-actions premium-goal-actions">
-                        <button
-                          className="link-btn premium-goal-edit"
-                          type="button"
-                          onClick={() => handleEditGoal(idx)}
-                          title="Edit goal"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          className="link-btn premium-goal-delete"
-                          type="button"
-                          onClick={() => handleRequestDelete(idx)}
-                          title="Delete goal"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    )}
-                  </li>
+                  {canControlMatch ? (
+                    <div className="event-actions premium-goal-actions">
+                      <button
+                        className="link-btn premium-goal-edit"
+                        type="button"
+                        onClick={() =>
+                          handleEditMatchEvent(idx)
+                        }
+                        title={`Edit ${label.toLowerCase()}`}
+                        aria-label={`Edit ${label.toLowerCase()}`}
+                      >
+                        ✎
+                      </button>
+
+                      <button
+                        className="link-btn premium-goal-delete"
+                        type="button"
+                        onClick={() =>
+                          handleRequestDelete(idx)
+                        }
+                        title={`Delete ${label.toLowerCase()}`}
+                        aria-label={`Delete ${label.toLowerCase()}`}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : null}
+                </li>
               );
             })}
           </ul>
@@ -4645,6 +6726,790 @@ export function ThreeTeamLeagueLiveMatchPage({
           )}
         </div>
       </section>
+
+      {showCardRecorder && (
+        <div
+          className="modal-backdrop fanm-discipline-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeLeagueCardRecorder();
+            }
+          }}
+        >
+          <section
+            className="modal fanm-discipline-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="league-match-discipline-title"
+          >
+            <button
+              type="button"
+              className="fanm-card-placeholder-close"
+              onClick={closeLeagueCardRecorder}
+              aria-label="Close match discipline"
+            >
+              ×
+            </button>
+
+            <div className="fanm-card-placeholder-heading fanm-discipline-heading">
+              <span aria-hidden="true">🟨</span>
+
+              <div>
+                <h2 id="league-match-discipline-title">
+                  Match Discipline
+                </h2>
+                <p>
+                  Select a player to issue a caution or dismissal.
+                </p>
+              </div>
+            </div>
+
+            <section className="fanm-discipline-rules">
+              <div className="fanm-discipline-rules-heading">
+                <span aria-hidden="true">⚖️</span>
+
+                <div>
+                  <strong>Competition Rules</strong>
+                  <small>
+                    Red-card consequence for this match
+                  </small>
+                </div>
+              </div>
+
+              <div className="fanm-discipline-rule-options">
+                <button
+                  type="button"
+                  className={`fanm-discipline-rule-option ${
+                    normalizedActiveRedCardRule === "permanent"
+                      ? "is-selected"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    onUpdateRedCardRule?.("permanent")
+                  }
+                  disabled={
+                    typeof onUpdateRedCardRule !== "function"
+                  }
+                >
+                  <span
+                    className="fanm-discipline-rule-radio"
+                    aria-hidden="true"
+                  />
+                  <span aria-hidden="true">🚫</span>
+
+                  <span>
+                    <strong>
+                      Send off for remainder of match
+                    </strong>
+                    <small>
+                      Player cannot return and the team stays short.
+                    </small>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`fanm-discipline-rule-option ${
+                    normalizedActiveRedCardRule === "two_minute"
+                      ? "is-selected"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    onUpdateRedCardRule?.("two_minute")
+                  }
+                  disabled={
+                    typeof onUpdateRedCardRule !== "function"
+                  }
+                >
+                  <span
+                    className="fanm-discipline-rule-radio"
+                    aria-hidden="true"
+                  />
+                  <span aria-hidden="true">⏱️</span>
+
+                  <span>
+                    <strong>
+                      Team plays short for 2 minutes
+                    </strong>
+                    <small>
+                      Sent-off player cannot return, but another
+                      substitute may restore the team after the penalty.
+                    </small>
+                  </span>
+                </button>
+              </div>
+
+              <p className="fanm-discipline-rules-default">
+                Permanent dismissal is the default unless changed.
+              </p>
+            </section>
+
+            <div className="fanm-discipline-teams">
+              {[
+                {
+                  teamId: teamAId,
+                  team: effectiveTeamA,
+                  groups: leagueDisciplinePlayersA,
+                  dismissed: leagueDismissedPlayersA,
+                },
+                {
+                  teamId: teamBId,
+                  team: effectiveTeamB,
+                  groups: leagueDisciplinePlayersB,
+                  dismissed: leagueDismissedPlayersB,
+                },
+              ].map(
+                ({
+                  teamId,
+                  team,
+                  groups,
+                  dismissed,
+                }) => (
+                  <section
+                    key={teamId}
+                    className="fanm-discipline-team"
+                  >
+                    <div className="fanm-discipline-team-heading">
+                      <TeamColorBadge team={team} />
+                    </div>
+
+                    {[
+                      {
+                        label: "On field",
+                        players: groups.onField,
+                      },
+                      {
+                        label: "Substitutes",
+                        players: groups.substitutes,
+                      },
+                      {
+                        label: "Dismissed",
+                        players: dismissed || [],
+                      },
+                    ].map((group) => (
+                      <div
+                        key={group.label}
+                        className="fanm-discipline-group"
+                      >
+                        <h3>{group.label}</h3>
+
+                        {group.players.length === 0 ? (
+                          <p className="muted small fanm-discipline-empty">
+                            No players available
+                          </p>
+                        ) : (
+                          <div className="fanm-discipline-player-list">
+                            {group.players.map((player) => {
+                              const selected =
+                                leagueDisciplinePlayerKey(
+                                  selectedDisciplinePlayer
+                                ) ===
+                                leagueDisciplinePlayerKey(
+                                  player
+                                );
+
+                              const cardStatus =
+                                getLeagueDisciplineStatus(
+                                  player
+                                );
+
+                              const yellowEvent =
+                                cardStatus.yellowEvents[
+                                  cardStatus.yellowEvents.length - 1
+                                ] || null;
+
+                              const redEvent =
+                                cardStatus.redEvents[
+                                  cardStatus.redEvents.length - 1
+                                ] || null;
+
+                              const initials = String(
+                                player.name || "?"
+                              )
+                                .trim()
+                                .split(/\s+/)
+                                .slice(0, 2)
+                                .map((part) =>
+                                  part.charAt(0).toUpperCase()
+                                )
+                                .join("");
+
+                              const playerPhoto =
+                                getPlayerPhoto(player.name);
+
+                              return (
+                                <article
+                                  key={`${teamId}-${player.positionId || "bench"}-${playerKeyFor(player.name)}`}
+                                  className={`fanm-discipline-player ${
+                                    selected
+                                      ? "is-selected"
+                                      : ""
+                                  } ${
+                                    player.isDismissed
+                                      ? "is-dismissed"
+                                      : ""
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    className="fanm-discipline-player-main"
+                                    onClick={() =>
+                                      toggleLeagueDisciplinePlayer(
+                                        player
+                                      )
+                                    }
+                                    aria-expanded={selected}
+                                  >
+                                    <span
+                                      className={`fanm-discipline-player-avatar ${
+                                        playerPhoto
+                                          ? "has-photo"
+                                          : ""
+                                      }`}
+                                      aria-hidden="true"
+                                    >
+                                      {playerPhoto ? (
+                                        <img
+                                          src={playerPhoto}
+                                          alt=""
+                                          loading="lazy"
+                                        />
+                                      ) : (
+                                        initials || "?"
+                                      )}
+                                    </span>
+
+                                    <span className="fanm-discipline-player-copy">
+                                      <strong>
+                                        {player.name}
+                                      </strong>
+                                      <small>
+                                        {player.roleLabel}
+                                      </small>
+                                    </span>
+
+                                    <span className="fanm-discipline-booking-status">
+                                      {yellowEvent ? (
+                                        <span
+                                          className="is-yellow"
+                                          title="Yellow card"
+                                        >
+                                          🟨{" "}
+                                          {Math.max(
+                                            1,
+                                            Math.ceil(
+                                              Number(
+                                                yellowEvent.timeSeconds ||
+                                                  0
+                                              ) / 60
+                                            )
+                                          )}
+                                          '
+                                        </span>
+                                      ) : null}
+
+                                      {redEvent ? (
+                                        <span
+                                          className="is-red"
+                                          title="Red card"
+                                        >
+                                          🟥{" "}
+                                          {Math.max(
+                                            1,
+                                            Math.ceil(
+                                              Number(
+                                                redEvent.timeSeconds ||
+                                                  0
+                                              ) / 60
+                                            )
+                                          )}
+                                          '
+                                        </span>
+                                      ) : null}
+                                    </span>
+
+                                    <span
+                                      className="fanm-discipline-player-chevron"
+                                      aria-hidden="true"
+                                    >
+                                      {selected ? "⌃" : "›"}
+                                    </span>
+                                  </button>
+
+                                  {selected ? (
+                                    <div className="fanm-discipline-actions">
+                                      {!yellowEvent &&
+                                      !redEvent ? (
+                                        <button
+                                          type="button"
+                                          className="fanm-discipline-yellow"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+
+                                            issueLeagueDisciplineCard(
+                                              "yellow_card",
+                                              player
+                                            );
+                                          }}
+                                        >
+                                          <span aria-hidden="true">
+                                            🟨
+                                          </span>
+                                          Yellow card
+                                        </button>
+                                      ) : null}
+
+                                      {!redEvent ? (
+                                        <button
+                                          type="button"
+                                          className="fanm-discipline-red"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+
+                                            issueLeagueDisciplineCard(
+                                              "red_card",
+                                              player
+                                            );
+                                          }}
+                                        >
+                                          <span aria-hidden="true">
+                                            🟥
+                                          </span>
+                                          Red card
+                                        </button>
+                                      ) : null}
+
+                                      {yellowEvent ? (
+                                        <button
+                                          type="button"
+                                          className="fanm-discipline-undo"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+
+                                            reverseLeagueDisciplineCard(
+                                              yellowEvent
+                                            );
+                                          }}
+                                        >
+                                          Undo 🟨
+                                        </button>
+                                      ) : null}
+
+                                      {redEvent ? (
+                                        <button
+                                          type="button"
+                                          className="fanm-discipline-undo"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+
+                                            reverseLeagueDisciplineCard(
+                                              redEvent
+                                            );
+                                          }}
+                                        >
+                                          Undo 🟥
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </article>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </section>
+                )
+              )}
+            </div>
+
+            <div className="fanm-discipline-note">
+              <span aria-hidden="true">ⓘ</span>
+              <p>
+                <strong>Yellow card</strong> means caution.
+                <span aria-hidden="true"> · </span>
+                <strong>Red card</strong> means dismissal.
+              </p>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showInjuryRecorder && (
+        <div
+          className="modal-backdrop fanm-discipline-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setSelectedInjuryPlayer(null);
+              setShowInjuryRecorder(false);
+            }
+          }}
+        >
+          <section
+            className="modal fanm-discipline-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="league-injured-players-title"
+          >
+            <button
+              type="button"
+              className="fanm-card-placeholder-close"
+              onClick={() => {
+                setSelectedInjuryPlayer(null);
+                setShowInjuryRecorder(false);
+              }}
+              aria-label="Close injured players"
+            >
+              ×
+            </button>
+
+            <div className="fanm-card-placeholder-heading fanm-discipline-heading">
+              <span aria-hidden="true">🤕</span>
+
+              <div>
+                <h2 id="league-injured-players-title">
+                  Injured Players
+                </h2>
+                <p>
+                  Select a player and update their match availability.
+                </p>
+              </div>
+            </div>
+
+            <div className="fanm-discipline-teams">
+              {[
+                {
+                  teamId: teamAId,
+                  team: effectiveTeamA,
+                  players: leagueInjuryPlayersA,
+                },
+                {
+                  teamId: teamBId,
+                  team: effectiveTeamB,
+                  players: leagueInjuryPlayersB,
+                },
+              ].map(
+                ({
+                  teamId,
+                  team,
+                  players: teamPlayers,
+                }) => (
+                  <section
+                    key={teamId}
+                    className="fanm-discipline-team"
+                  >
+                    <div className="fanm-discipline-team-heading">
+                      <TeamColorBadge team={team} />
+                    </div>
+
+                    {[
+                      {
+                        label: "On field",
+                        players: teamPlayers.filter(
+                          (player) =>
+                            !player.isSubstitute &&
+                            player.injuryStatus !==
+                              "sitting_out"
+                        ),
+                      },
+                      {
+                        label: "Substitutes",
+                        players: teamPlayers.filter(
+                          (player) =>
+                            player.isSubstitute &&
+                            player.injuryStatus !==
+                              "sitting_out"
+                        ),
+                      },
+                      {
+                        label:
+                          "Unavailable (Sitting Out)",
+                        players: teamPlayers.filter(
+                          (player) =>
+                            player.injuryStatus ===
+                              "sitting_out"
+                        ),
+                      },
+                    ].map((group) => (
+                      <div
+                        key={group.label}
+                        className="fanm-discipline-group"
+                      >
+                        <h3>{group.label}</h3>
+
+                        {group.players.length === 0 ? (
+                          <p className="muted small fanm-discipline-empty">
+                            No players available
+                          </p>
+                        ) : (
+                          <div className="fanm-discipline-player-list">
+                            {group.players.map((player) => {
+                              const selected =
+                                leagueDisciplinePlayerKey(
+                                  selectedInjuryPlayer
+                                ) ===
+                                leagueDisciplinePlayerKey(
+                                  player
+                                );
+
+                              const injuryState =
+                                getLeagueInjuryStatus(
+                                  player
+                                );
+
+                              const status =
+                                injuryState.status;
+
+                              const injuryMinute =
+                                injuryState.latestEvent
+                                  ? Math.max(
+                                      1,
+                                      Math.ceil(
+                                        Number(
+                                          injuryState
+                                            .latestEvent
+                                            .timeSeconds ||
+                                            0
+                                        ) / 60
+                                      )
+                                    )
+                                  : null;
+
+                              const saving =
+                                injurySavingPlayerId ===
+                                [
+                                  player.teamId,
+                                  playerKeyFor(
+                                    player.name
+                                  ),
+                                ].join("::");
+
+                              const initials = String(
+                                player.name || "?"
+                              )
+                                .trim()
+                                .split(/\s+/)
+                                .slice(0, 2)
+                                .map((part) =>
+                                  part.charAt(0).toUpperCase()
+                                )
+                                .join("");
+
+                              const playerPhoto =
+                                getPlayerPhoto(player.name);
+
+                              return (
+                                <article
+                                  key={`${teamId}-${playerKeyFor(player.name)}`}
+                                  className={`fanm-discipline-player ${
+                                    selected
+                                      ? "is-selected"
+                                      : ""
+                                  }`}
+                                  style={
+                                    status === "sitting_out"
+                                      ? {
+                                          borderColor:
+                                            "rgba(249, 115, 22, 0.72)",
+                                          background:
+                                            "linear-gradient(135deg, rgba(124, 45, 18, 0.28), rgba(15, 23, 42, 0.94))",
+                                          boxShadow:
+                                            "inset 3px 0 0 rgba(249, 115, 22, 0.88)",
+                                        }
+                                      : status ===
+                                        "playing_knock"
+                                      ? {
+                                          borderColor:
+                                            "rgba(234, 179, 8, 0.48)",
+                                        }
+                                      : undefined
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    className="fanm-discipline-player-main"
+                                    onClick={() =>
+                                      toggleLeagueInjuryPlayer(
+                                        player
+                                      )
+                                    }
+                                    aria-expanded={selected}
+                                  >
+                                    <span
+                                      className={`fanm-discipline-player-avatar ${
+                                        playerPhoto
+                                          ? "has-photo"
+                                          : ""
+                                      }`}
+                                      aria-hidden="true"
+                                    >
+                                      {playerPhoto ? (
+                                        <img
+                                          src={playerPhoto}
+                                          alt=""
+                                          loading="lazy"
+                                        />
+                                      ) : (
+                                        initials || "?"
+                                      )}
+                                    </span>
+
+                                    <span className="fanm-discipline-player-copy">
+                                      <strong>
+                                        {player.name}
+                                      </strong>
+
+                                      <small>
+                                        {status ===
+                                        "playing_knock"
+                                          ? "Playing with a knock"
+                                          : status ===
+                                            "sitting_out"
+                                          ? "Sitting out"
+                                          : player.roleLabel}
+                                      </small>
+                                    </span>
+
+                                    <span className="fanm-discipline-booking-status">
+                                      {status ===
+                                      "playing_knock" ? (
+                                        <span
+                                          className="is-yellow"
+                                          title="Playing with a knock"
+                                          style={{
+                                            fontSize: "1rem",
+                                            fontWeight: 800,
+                                            whiteSpace: "nowrap",
+                                          }}
+                                        >
+                                          🩹{" "}
+                                          {injuryMinute
+                                            ? `${injuryMinute}'`
+                                            : ""}
+                                        </span>
+                                      ) : null}
+
+                                      {status ===
+                                      "sitting_out" ? (
+                                        <span
+                                          title="Sitting out"
+                                          style={{
+                                            fontSize: "1rem",
+                                            fontWeight: 800,
+                                            whiteSpace: "nowrap",
+                                            color: "#fb923c",
+                                          }}
+                                        >
+                                          🤕{" "}
+                                          {injuryMinute
+                                            ? `${injuryMinute}'`
+                                            : ""}
+                                        </span>
+                                      ) : null}
+                                    </span>
+
+                                    <span
+                                      className="fanm-discipline-player-chevron"
+                                      aria-hidden="true"
+                                    >
+                                      {selected ? "⌃" : "›"}
+                                    </span>
+                                  </button>
+
+                                  {selected ? (
+                                    <div className="fanm-discipline-actions">
+                                      {!status ? (
+                                        <button
+                                          type="button"
+                                          className="fanm-discipline-yellow"
+                                          disabled={saving}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+
+                                            updateLeaguePlayerInjury(
+                                              player,
+                                              "playing_knock"
+                                            );
+                                          }}
+                                        >
+                                          <span aria-hidden="true">
+                                            🩹
+                                          </span>
+                                          Playing with a knock
+                                        </button>
+                                      ) : null}
+
+                                      {status !== "sitting_out" ? (
+                                        <button
+                                          type="button"
+                                          className="fanm-discipline-red"
+                                          disabled={saving}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+
+                                            updateLeaguePlayerInjury(
+                                              player,
+                                              "sitting_out"
+                                            );
+                                          }}
+                                        >
+                                          <span aria-hidden="true">
+                                            🤕
+                                          </span>
+                                          Sitting out
+                                        </button>
+                                      ) : null}
+
+                                      {status ? (
+                                        <button
+                                          type="button"
+                                          className="fanm-discipline-undo"
+                                          disabled={saving}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+
+                                            updateLeaguePlayerInjury(
+                                              player,
+                                              null
+                                            );
+                                          }}
+                                        >
+                                          {saving
+                                            ? "Saving…"
+                                            : "Mark recovered"}
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </article>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </section>
+                )
+              )}
+            </div>
+
+            <div className="fanm-discipline-note">
+              <span aria-hidden="true">ⓘ</span>
+
+              <p>
+                <strong>Playing with a knock</strong> remains
+                available for rotation.
+                <span aria-hidden="true"> · </span>
+                <strong>Sitting out</strong> is skipped by automatic
+                rotation until marked recovered.
+              </p>
+            </div>
+          </section>
+        </div>
+      )}
 
       {showAdditionalTimeModal && (
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
@@ -4793,6 +7658,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                         <PlayerChoiceGrid
                           title="Scorer"
                           players={goalRecorderChoicesForTeam(teamAId)}
+                          team={effectiveTeamA || teamA}
                           selectedName={scorerName}
                           onSelect={(name, entry) =>
                             handleGoalScorerSelection(
@@ -4817,6 +7683,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                         <PlayerChoiceGrid
                           title="Scorer"
                           players={goalRecorderChoicesForTeam(teamBId)}
+                          team={effectiveTeamB || teamB}
                           selectedName={scorerName}
                           onSelect={(name, entry) =>
                             handleGoalScorerSelection(
@@ -5027,7 +7894,130 @@ export function ThreeTeamLeagueLiveMatchPage({
               {teamA?.label || "Team A"} vs {teamB?.label || "Team B"}
             </p>
 
-            <div className="live-lineup-columns">
+            <section className="fanm-match-colours-panel">
+              <div className="fanm-match-colours-heading">
+                <div>
+                  <span aria-hidden="true">🎨</span>
+                  <div>
+                    <strong>Match Colours</strong>
+                    <small>
+                      Override squad colours for this match only
+                    </small>
+                  </div>
+                </div>
+
+                {Object.keys(
+                  localMatchTeamColorOverrides || {}
+                ).length > 0 ? (
+                  <button
+                    type="button"
+                    className="fanm-match-colours-reset"
+                    onClick={resetMatchTeamColourOverrides}
+                    disabled={!canControlMatch}
+                  >
+                    Reset to squad colours
+                  </button>
+                ) : (
+                  <span className="fanm-match-colours-default">
+                    Using squad defaults
+                  </span>
+                )}
+              </div>
+
+              <div className="fanm-match-colours-grid">
+                {[
+                  {
+                    teamId: teamAId,
+                    team: teamA,
+                    effectiveTeam: effectiveTeamA,
+                    fallback: "TEAM A",
+                  },
+                  {
+                    teamId: teamBId,
+                    team: teamB,
+                    effectiveTeam: effectiveTeamB,
+                    fallback: "TEAM B",
+                  },
+                ].map(
+                  ({
+                    teamId,
+                    team,
+                    effectiveTeam,
+                    fallback,
+                  }) => {
+                    const hasOverride = Boolean(
+                      localMatchTeamColorOverrides?.[teamId]
+                    );
+
+                    return (
+                      <article
+                        key={teamId || fallback}
+                        className="fanm-match-colour-card"
+                        style={{
+                          "--match-colour-accent":
+                            getTeamAccent(
+                              effectiveTeam || team || {}
+                            ).dot,
+                          "--match-colour-soft":
+                            getTeamAccent(
+                              effectiveTeam || team || {}
+                            ).soft,
+                          "--match-colour-border":
+                            getTeamAccent(
+                              effectiveTeam || team || {}
+                            ).border,
+                        }}
+                      >
+                        <div className="fanm-match-colour-card-head">
+                          <TeamColorBadge
+                            team={effectiveTeam || team}
+                            fallback={fallback}
+                          />
+
+                          <span
+                            className={`fanm-match-colour-source ${
+                              hasOverride
+                                ? "is-override"
+                                : ""
+                            }`}
+                          >
+                            {hasOverride
+                              ? "Match override"
+                              : "Squad default"}
+                          </span>
+                        </div>
+
+                        <TeamIdentityEditor
+                          team={effectiveTeam || team}
+                          colourName={
+                            effectiveTeam?.teamColorName ||
+                            effectiveTeam?.colorName ||
+                            ""
+                          }
+                          showName={false}
+                          showAbbreviation={false}
+                          showColour
+                          compact
+                          disabled={
+                            !canControlMatch ||
+                            typeof onUpdateMatchTeamColorOverride !==
+                              "function"
+                          }
+                          onColourChange={(nextColour) =>
+                            applyMatchTeamColorOverride(
+                              teamId,
+                              nextColour
+                            )
+                          }
+                        />
+                      </article>
+                    );
+                  }
+                )}
+              </div>
+            </section>
+
+            <div className="live-lineup-columns fanm-colour-coded-lineups">
               {!playersReady ? (
                 <div className="live-empty-full">
                   <p className="muted">Loading verified lineups…</p>
@@ -5035,14 +8025,16 @@ export function ThreeTeamLeagueLiveMatchPage({
               ) : (
                 <>
                   <LineupBoard
-                    title={teamA?.label}
-                    team={teamA}
+                    title={effectiveTeamA?.label || teamA?.label}
+                    team={effectiveTeamA || teamA}
+                    protectedVacancies={leagueProtectedVacanciesA}
+                    unavailablePlayers={leagueUnavailablePlayersA}
                     lineup={verifyTeamALineup}
                     setLineup={setVerifyTeamALineup}
-                    registeredPlayers={buildRegisteredFallbackPlayers(
-                      teamA?.players || [],
-                      verifyTeamALineup,
-                      canonicalName
+                    registeredPlayers={getLeagueEligibleLineupPlayers(
+                      teamA,
+                      teamAId,
+                      verifyTeamALineup
                     )}
                     borrowableGoalkeepers={uniquePlayersNormalized(
                       standbyTeam?.players || [],
@@ -5059,14 +8051,16 @@ export function ThreeTeamLeagueLiveMatchPage({
                   />
 
                   <LineupBoard
-                    title={teamB?.label}
-                    team={teamB}
+                    title={effectiveTeamB?.label || teamB?.label}
+                    team={effectiveTeamB || teamB}
+                    protectedVacancies={leagueProtectedVacanciesB}
+                    unavailablePlayers={leagueUnavailablePlayersB}
                     lineup={verifyTeamBLineup}
                     setLineup={setVerifyTeamBLineup}
-                    registeredPlayers={buildRegisteredFallbackPlayers(
-                      teamB?.players || [],
-                      verifyTeamBLineup,
-                      canonicalName
+                    registeredPlayers={getLeagueEligibleLineupPlayers(
+                      teamB,
+                      teamBId,
+                      verifyTeamBLineup
                     )}
                     borrowableGoalkeepers={uniquePlayersNormalized(
                       standbyTeam?.players || [],
