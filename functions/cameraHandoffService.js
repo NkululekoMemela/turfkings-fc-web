@@ -142,7 +142,31 @@ function normalizeCameraTeam(
     clubId,
     teamName,
     abbrev: limitedString(team.abbrev, 12) || "",
-    logoUrl: limitedString(team.logoUrl || team.logo32 || team.logo, 2048) || "",
+    logoUrl:
+      limitedString(
+        team.logoUrl ||
+          team.logo32 ||
+          team.logo ||
+          (() => {
+            const abbrev = limitedString(team.abbrev, 12)
+              .trim()
+              .toUpperCase();
+
+            if (!abbrev) return "";
+
+            /*
+             * FANM professional-team badges use their canonical
+             * abbreviation as the asset filename.
+             *
+             * Custom / national teams simply fall back to the Camera's
+             * existing neon ring if this asset does not exist.
+             */
+            return `https://five-asides-near-me.web.app/fanm-assets/pro-clubs/svg/${encodeURIComponent(
+              abbrev
+            )}.svg`;
+          })(),
+        2048
+      ) || "",
     players,
   };
 }
