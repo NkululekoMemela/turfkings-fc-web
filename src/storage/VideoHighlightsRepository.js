@@ -388,6 +388,76 @@ export async function loadRawHighlightsFromFirebase(
   }));
 }
 
+export function subscribeToMatchHighlights({
+  matchId,
+  clubId = DEFAULT_CLUB_ID,
+  onChange,
+  onError,
+} = {}) {
+  if (!matchId) {
+    onChange?.([]);
+    return () => {};
+  }
+
+  const q = query(
+    rawRef(matchId, clubId),
+    orderBy("createdAt", "desc")
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const highlights = snap.docs
+        .map((docSnap) => {
+          const item = {
+            id: docSnap.id,
+            ...docSnap.data(),
+          };
+
+          const normalizedType = safeString(
+            item.normalizedType ||
+              item.tag ||
+              item.type ||
+              item.category ||
+              item.highlightType ||
+              item.eventType
+          ).toLowerCase();
+
+          const playableUrl = safeString(
+            item.videoUrl ||
+              item.downloadUrl ||
+              item.mediaUrl ||
+              item.fileUrl ||
+              item.storageDownloadUrl ||
+              item.url
+          );
+
+          return {
+            ...item,
+            normalizedType,
+            playableUrl,
+          };
+        })
+        .filter(
+          (item) =>
+            ["goal", "save", "skill"].includes(
+              item.normalizedType
+            ) &&
+            Boolean(item.playableUrl)
+        );
+
+      onChange?.(highlights);
+    },
+    (error) => {
+      console.error(
+        "[FANM MATCH HIGHLIGHTS] Realtime listener failed:",
+        error
+      );
+      onError?.(error);
+    }
+  );
+}
+
 export async function deleteVarHighlight({
   matchId,
   clubId = DEFAULT_CLUB_ID,
@@ -2561,6 +2631,7 @@ const VideoHighlightsRepository = {
   saveRawHighlightDoc,
   loadRawHighlightsFromFirebase,
   subscribeToVarHighlights,
+  subscribeToMatchHighlights,
   deleteVarHighlight,
   loadArchivedHighlightsFromFirebase,
   loadClubArchivedHighlightsFromFirebase,

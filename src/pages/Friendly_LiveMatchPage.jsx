@@ -54,10 +54,13 @@ import {
 const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 
-function resolveLiveMatchDoc(dataScope = null) {
+function resolveLiveMatchDoc(
+  dataScope = null,
+  activeClubId = "turf-kings"
+) {
   return dataScope
     ? getScopedMatchDoc(db, MATCH_DOC_ID, dataScope)
-    : getMatchDoc(db, MATCH_DOC_ID);
+    : getMatchDoc(db, MATCH_DOC_ID, activeClubId);
 }
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 const ROTATION_SOUND_URL = `${import.meta.env.BASE_URL}Player_Change.mp4`;
@@ -1031,9 +1034,17 @@ function getRoleBadgeStyle(roleTag = "", isSub = false) {
   };
 }
 
-async function hardReset5v5MatchDoc(summaryInfo, matchSeconds) {
+async function hardReset5v5MatchDoc(
+  summaryInfo,
+  matchSeconds,
+  dataScope = null,
+  activeClubId = "turf-kings"
+) {
   try {
-    const ref = resolveLiveMatchDoc(dataScope);
+    const ref = resolveLiveMatchDoc(
+      dataScope,
+      activeClubId
+    );
     await setDoc(
       ref,
       {
@@ -1066,10 +1077,15 @@ async function appendEventToFirestore(
   event,
   summaryInfo,
   secondsLeft,
-  matchSeconds
+  matchSeconds,
+  dataScope = null,
+  activeClubId = "turf-kings"
 ) {
   try {
-    const ref = resolveLiveMatchDoc(dataScope);
+    const ref = resolveLiveMatchDoc(
+      dataScope,
+      activeClubId
+    );
 
     const common = {
       ...summaryInfo,
@@ -1108,10 +1124,15 @@ async function overwriteEventsInFirestore(
   allEvents,
   summaryInfo,
   secondsLeft,
-  matchSeconds
+  matchSeconds,
+  dataScope = null,
+  activeClubId = "turf-kings"
 ) {
   try {
-    const ref = resolveLiveMatchDoc(dataScope);
+    const ref = resolveLiveMatchDoc(
+      dataScope,
+      activeClubId
+    );
     await setDoc(
       ref,
       {
@@ -1137,10 +1158,15 @@ async function writeFinalSummaryToFirestore(
   finalSummary,
   events,
   secondsLeft,
-  matchSeconds
+  matchSeconds,
+  dataScope = null,
+  activeClubId = "turf-kings"
 ) {
   try {
-    const ref = resolveLiveMatchDoc(dataScope);
+    const ref = resolveLiveMatchDoc(
+      dataScope,
+      activeClubId
+    );
     await setDoc(
       ref,
       {
@@ -2926,7 +2952,10 @@ export function FriendlyLiveMatchPage({
 
     const pushTimer = async () => {
       try {
-        const ref = resolveLiveMatchDoc(dataScope);
+        const ref = resolveLiveMatchDoc(
+          dataScope,
+          safeActiveClubId
+        );
         await updateDoc(ref, {
           secondsLeft: Math.max(secondsLeft, 0),
           matchSeconds: matchSeconds ?? 0,
@@ -2939,7 +2968,14 @@ export function FriendlyLiveMatchPage({
     };
 
     pushTimer();
-  }, [secondsLeft, running, matchSeconds, canControlMatch]);
+  }, [
+    secondsLeft,
+    running,
+    matchSeconds,
+    canControlMatch,
+    dataScope,
+    safeActiveClubId,
+  ]);
 
 
   useEffect(() => {
@@ -3081,7 +3117,9 @@ export function FriendlyLiveMatchPage({
         teamAColorName: effectiveTeamA?.teamColorName || effectiveTeamA?.colorName || "",
         teamBColorName: effectiveTeamB?.teamColorName || effectiveTeamB?.colorName || "",
       },
-      matchSeconds
+      matchSeconds,
+      dataScope,
+      safeActiveClubId
     );
   }, [
     isControllerSession,
@@ -4877,7 +4915,14 @@ export function FriendlyLiveMatchPage({
     setEditingGoalIndex(null);
     setGoalStep("team");
 
-    appendEventToFirestore(event, basicSummary, displaySeconds, matchSeconds);
+    appendEventToFirestore(
+      event,
+      basicSummary,
+      displaySeconds,
+      matchSeconds,
+      dataScope,
+      safeActiveClubId
+    );
   };
 
   const handleStartShiboboRecord = () => {
@@ -4927,7 +4972,14 @@ export function FriendlyLiveMatchPage({
     setShiboboPlayerName("");
     setShiboboVictimName("");
 
-    appendEventToFirestore(event, basicSummary, displaySeconds, matchSeconds);
+    appendEventToFirestore(
+      event,
+      basicSummary,
+      displaySeconds,
+      matchSeconds,
+      dataScope,
+      safeActiveClubId
+    );
   };
 
   const handleMarkRotationDone = async () => {
@@ -4942,7 +4994,14 @@ export function FriendlyLiveMatchPage({
     };
 
     onAddEvent?.(event);
-    appendEventToFirestore(event, basicSummary, displaySeconds, matchSeconds);
+    appendEventToFirestore(
+      event,
+      basicSummary,
+      displaySeconds,
+      matchSeconds,
+      dataScope,
+      safeActiveClubId
+    );
   };
 
   const handleEndMatchClick = () => {
@@ -5060,7 +5119,9 @@ export function FriendlyLiveMatchPage({
       finalSummary,
       finalEvents,
       displaySeconds,
-      matchSeconds
+      matchSeconds,
+      dataScope,
+      safeActiveClubId
     );
   };
 
@@ -5137,7 +5198,9 @@ export function FriendlyLiveMatchPage({
       updatedEvents,
       basicSummary,
       displaySeconds,
-      matchSeconds
+      matchSeconds,
+      dataScope,
+      safeActiveClubId
     );
 
     setEditingGoalIndex(null);
@@ -5241,7 +5304,14 @@ export function FriendlyLiveMatchPage({
     setBackPassword("");
     setBackError("");
 
-    overwriteEventsInFirestore([], basicSummary, displaySeconds, matchSeconds);
+    overwriteEventsInFirestore(
+      [],
+      basicSummary,
+      displaySeconds,
+      matchSeconds,
+      dataScope,
+      safeActiveClubId
+    );
 
     if (mustVerifyBeforePlay && typeof onCancelPreMatchLineups === "function") {
       onCancelPreMatchLineups();
@@ -5286,7 +5356,9 @@ export function FriendlyLiveMatchPage({
       newEvents,
       basicSummary,
       displaySeconds,
-      matchSeconds
+      matchSeconds,
+      dataScope,
+      safeActiveClubId
     );
 
     setShowUndoModal(false);
