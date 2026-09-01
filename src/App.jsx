@@ -9789,6 +9789,11 @@ export default function App() {
       {page === PAGE_PLAYER_CARDS && (
         <PlayerCardPage
           teams={matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
+          matchHistory={
+            matchType === MATCH_TYPE.FRIENDLY
+              ? friendlyMatchDayHistory
+              : matchDayHistory
+          }
           allEvents={
             matchType === MATCH_TYPE.FRIENDLY
               ? archivedFriendlyEventsFromHistory
