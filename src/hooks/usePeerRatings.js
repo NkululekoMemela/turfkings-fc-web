@@ -27,13 +27,8 @@ function toTitleCase(name) {
     .join(" ");
 }
 
-function getStartOfWeekFromKey(weekKey) {
-  const s = String(weekKey || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-
-  const d = new Date(`${s}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
+function isValidWeekKey(weekKey) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(weekKey || "").trim());
 }
 
 function getCurrentWeekKey() {
@@ -50,28 +45,6 @@ function getCurrentWeekKey() {
   const d = String(sunday.getDate()).padStart(2, "0");
 
   return `${y}-${m}-${d}`;
-}
-
-function getWeekDistanceFromCurrent(weekKey, currentWeekKey) {
-  const a = getStartOfWeekFromKey(weekKey);
-  const b = getStartOfWeekFromKey(currentWeekKey);
-
-  if (!a || !b) return null;
-
-  const diffMs = b.getTime() - a.getTime();
-  return Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
-}
-
-function getRecencyWeight(weekKey, currentWeekKey) {
-  const diffWeeks = getWeekDistanceFromCurrent(weekKey, currentWeekKey);
-
-  if (diffWeeks == null) return 0;
-  if (diffWeeks < 0) return 0;
-  if (diffWeeks === 0) return 0.6;
-  if (diffWeeks === 1) return 0.2;
-  if (diffWeeks === 2) return 0.1;
-
-  return 0;
 }
 
 export function usePeerRatings(
@@ -95,7 +68,7 @@ export function usePeerRatings(
     const currentWeekKey = getCurrentWeekKey();
 
     const unsub = onSnapshot(colRef, (snap) => {
-      const acc = {};
+      const players = {};
 
       snap.forEach((docSnap) => {
         const d = docSnap.data() || {};
@@ -109,87 +82,87 @@ export function usePeerRatings(
         if (!rawName || typeof rawName !== "string") return;
 
         const weekKey = String(d?.weekKey || "").trim();
-        const weight = getRecencyWeight(weekKey, currentWeekKey);
 
-        if (weight <= 0) return;
+        // Only real completed/current rating weeks may become persistent.
+        if (!isValidWeekKey(weekKey) || weekKey > currentWeekKey) return;
 
         const name = toTitleCase(rawName);
         if (!name) return;
 
-        const key = safeLower(name);
+        const playerKey = safeLower(name);
 
-        if (!acc[key]) {
-          acc[key] = {
+        if (!players[playerKey]) {
+          players[playerKey] = {
             displayName: name,
-            attackWeightedSum: 0,
-            attackWeightTotal: 0,
-            attackVotes: 0,
-            defenceWeightedSum: 0,
-            defenceWeightTotal: 0,
-            defenceVotes: 0,
-            gkWeightedSum: 0,
-            gkWeightTotal: 0,
-            gkVotes: 0,
-            weightedVoteCount: 0,
-            rawVoteCount: 0,
-            hasCurrentWeekReview: false,
+            weeks: {},
           };
         }
 
-        const rec = acc[key];
+        if (!players[playerKey].weeks[weekKey]) {
+          players[playerKey].weeks[weekKey] = {
+            attackSum: 0,
+            attackCount: 0,
+            defenceSum: 0,
+            defenceCount: 0,
+            gkSum: 0,
+            gkCount: 0,
+            rawVoteCount: 0,
+          };
+        }
 
-        const a = toNumberOrNull(d.attack);
-        const df = toNumberOrNull(d.defence);
+        const rec = players[playerKey].weeks[weekKey];
+        const attack = toNumberOrNull(d.attack);
+        const defence = toNumberOrNull(d.defence);
         const gk = toNumberOrNull(d.gk);
 
-        if (weekKey === currentWeekKey) {
-          rec.hasCurrentWeekReview = true;
+        if (attack != null) {
+          rec.attackSum += attack;
+          rec.attackCount += 1;
+          rec.rawVoteCount += 1;
         }
 
-        if (a != null) {
-          rec.attackWeightedSum += a * weight;
-          rec.attackWeightTotal += weight;
-          rec.attackVotes += 1;
+        if (defence != null) {
+          rec.defenceSum += defence;
+          rec.defenceCount += 1;
           rec.rawVoteCount += 1;
-          rec.weightedVoteCount += weight;
-        }
-
-        if (df != null) {
-          rec.defenceWeightedSum += df * weight;
-          rec.defenceWeightTotal += weight;
-          rec.defenceVotes += 1;
-          rec.rawVoteCount += 1;
-          rec.weightedVoteCount += weight;
         }
 
         if (gk != null) {
-          rec.gkWeightedSum += gk * weight;
-          rec.gkWeightTotal += weight;
-          rec.gkVotes += 1;
+          rec.gkSum += gk;
+          rec.gkCount += 1;
           rec.rawVoteCount += 1;
-          rec.weightedVoteCount += weight;
         }
       });
 
       const out = {};
 
-      Object.values(acc).forEach((rec) => {
-        out[rec.displayName] = {
+      Object.values(players).forEach((player) => {
+        const latestWeekKey = Object.keys(player.weeks)
+          .filter((weekKey) => player.weeks[weekKey].rawVoteCount > 0)
+          .sort()
+          .at(-1);
+
+        if (!latestWeekKey) return;
+
+        const rec = player.weeks[latestWeekKey];
+
+        out[player.displayName] = {
           attackAvg:
-            rec.attackWeightTotal > 0
-              ? rec.attackWeightedSum / rec.attackWeightTotal
+            rec.attackCount > 0
+              ? rec.attackSum / rec.attackCount
               : null,
           defenceAvg:
-            rec.defenceWeightTotal > 0
-              ? rec.defenceWeightedSum / rec.defenceWeightTotal
+            rec.defenceCount > 0
+              ? rec.defenceSum / rec.defenceCount
               : null,
           gkAvg:
-            rec.gkWeightTotal > 0
-              ? rec.gkWeightedSum / rec.gkWeightTotal
+            rec.gkCount > 0
+              ? rec.gkSum / rec.gkCount
               : null,
           voteCount: rec.rawVoteCount,
-          weightedVoteCount: rec.weightedVoteCount,
-          hasCurrentWeekReview: rec.hasCurrentWeekReview,
+          weightedVoteCount: rec.rawVoteCount,
+          hasCurrentWeekReview: latestWeekKey === currentWeekKey,
+          latestWeekKey,
         };
       });
 

@@ -744,6 +744,280 @@ function combineRatingStats(leagueStats = {}, friendlyStats = {}) {
   return out;
 }
 
+const PERFORMANCE_ACTION_VALUE = 0.7;
+const MATCH_PERFORMANCE_BASE = 4.5;
+const MAX_AUTOMATIC_PERFORMANCE_SCORE = 9.5;
+
+function buildDiminishingActionValues(count = 0) {
+  const safeCount = Math.max(0, Math.floor(Number(count || 0)));
+  const values = [];
+
+  for (let index = 0; index < safeCount; index += 1) {
+    if (index < 3) values.push(1);
+    else if (index === 3) values.push(0.75);
+    else if (index === 4) values.push(0.5);
+    else if (index === 5) values.push(0.4);
+    else if (index === 6) values.push(0.3);
+    else values.push(0.25);
+  }
+
+  return values;
+}
+
+function upgradeLowestDiscountedAction(values = [], upgrades = 0) {
+  const ladder = new Map([
+    [0.25, 0.3],
+    [0.3, 0.4],
+    [0.4, 0.5],
+    [0.5, 0.75],
+    [0.75, 1],
+  ]);
+
+  for (
+    let upgradeIndex = 0;
+    upgradeIndex < Math.max(0, Number(upgrades || 0));
+    upgradeIndex += 1
+  ) {
+    let lowestIndex = -1;
+
+    values.forEach((value, index) => {
+      if (value >= 1) return;
+      if (lowestIndex < 0 || value < values[lowestIndex]) {
+        lowestIndex = index;
+      }
+    });
+
+    if (lowestIndex < 0) break;
+
+    values[lowestIndex] =
+      ladder.get(values[lowestIndex]) ?? values[lowestIndex];
+  }
+
+  return values;
+}
+
+function buildFriendlyAttackingContribution(goals = 0, assists = 0) {
+  const goalValues = buildDiminishingActionValues(goals);
+  const assistValues = buildDiminishingActionValues(assists);
+
+  upgradeLowestDiscountedAction(goalValues, assists);
+  upgradeLowestDiscountedAction(assistValues, goals);
+
+  return (
+    goalValues.reduce((sum, value) => sum + value, 0) +
+    assistValues.reduce((sum, value) => sum + value, 0)
+  );
+}
+
+function buildLeaguePerformanceContribution(stats = {}) {
+  const goals = Math.max(0, Number(stats.goals || 0));
+  const assists = Math.max(0, Number(stats.assists || 0));
+  const assistValues = buildDiminishingActionValues(assists);
+
+  // League goals remain full-value and restore discounted assists.
+  upgradeLowestDiscountedAction(assistValues, goals);
+
+  const assistContribution = assistValues.reduce(
+    (sum, value) => sum + value,
+    0
+  );
+
+  return (
+    goals +
+    assistContribution +
+    Math.max(0, Number(stats.gkCleanSheets || 0)) +
+    Math.max(0, Number(stats.defCleanSheets || 0))
+  );
+}
+
+function buildRecentFormScoreForPlayer({
+  matchHistory = [],
+  mode = "LEAGUE",
+  canonName,
+  canonicalMap,
+  maxScore = MAX_AUTOMATIC_PERFORMANCE_SCORE,
+}) {
+  const completed = Array.isArray(matchHistory)
+    ? [...matchHistory].reverse()
+    : [];
+
+  const scores = [];
+
+  for (const day of completed) {
+    const appearances = Array.isArray(day?.playerAppearances)
+      ? day.playerAppearances
+      : [];
+
+    const participated = appearances.some((entry) => {
+      const rawName =
+        entry?.playerName ||
+        entry?.shortName ||
+        entry?.playerId ||
+        "";
+
+      const entryCanon = resolveCanonicalNameFromMap(rawName, canonicalMap);
+
+      return (
+        safeLower(entryCanon) === safeLower(canonName) &&
+        Number(entry?.matchesPlayed || 0) > 0
+      );
+    });
+
+    if (!participated) continue;
+
+    const events = Array.isArray(day?.allEvents) ? day.allEvents : [];
+
+    if (mode === "FRIENDLY") {
+      const stats = buildFriendlyStatsByPlayer(
+        events,
+        Array.isArray(day?.teams) ? day.teams : [],
+        canonicalMap
+      )?.[canonName] || {};
+
+      const goals = Number(stats.goals || 0);
+      const assists = Number(stats.assists || 0);
+      const defensiveBlocks = Number(stats.defensiveBlocks || 0);
+
+      const score = clamp(
+        0,
+        MATCH_PERFORMANCE_BASE +
+          (
+              buildFriendlyAttackingContribution(goals, assists) +
+              defensiveBlocks
+            ) * PERFORMANCE_ACTION_VALUE,
+          maxScore
+      );
+
+      scores.push(score);
+      if (scores.length >= 3) break;
+      continue;
+    }
+
+    const stats = buildLeagueStatsByPlayer(events, canonicalMap)?.[canonName] || {};
+    scores.push(clamp(0, MATCH_PERFORMANCE_BASE +
+          buildLeaguePerformanceContribution(stats) *
+            PERFORMANCE_ACTION_VALUE,
+        maxScore
+      ));
+    break;
+  }
+
+  if (!scores.length) return null;
+
+  if (mode === "LEAGUE") {
+    return round1(scores[0]);
+  }
+
+  const weights = [3, 2, 1].slice(0, scores.length);
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  const weightedScore = scores.reduce(
+    (sum, score, index) => sum + score * weights[index],
+    0
+  );
+
+  return round1(weightedScore / totalWeight);
+}
+
+function buildSeasonStatsScoreForPlayer({
+  matchHistory = [],
+  mode = "LEAGUE",
+  canonName,
+  canonicalMap,
+}) {
+  const scores = [];
+
+  (Array.isArray(matchHistory) ? matchHistory : []).forEach((day) => {
+    const appearances = Array.isArray(day?.playerAppearances)
+      ? day.playerAppearances
+      : [];
+
+    const participated = appearances.some((entry) => {
+      const rawName =
+        entry?.playerName ||
+        entry?.shortName ||
+        entry?.playerId ||
+        "";
+
+      const entryCanon = resolveCanonicalNameFromMap(rawName, canonicalMap);
+
+      return (
+        safeLower(entryCanon) === safeLower(canonName) &&
+        Number(entry?.matchesPlayed || 0) > 0
+      );
+    });
+
+    if (!participated) return;
+
+    const events = Array.isArray(day?.allEvents) ? day.allEvents : [];
+
+    if (mode === "FRIENDLY") {
+      const stats = buildFriendlyStatsByPlayer(
+        events,
+        Array.isArray(day?.teams) ? day.teams : [],
+        canonicalMap
+      )?.[canonName] || {};
+
+      const goals = Number(stats.goals || 0);
+      const assists = Number(stats.assists || 0);
+      const defensiveBlocks = Number(stats.defensiveBlocks || 0);
+
+      scores.push(
+        clamp(
+          0,
+          MATCH_PERFORMANCE_BASE +
+            (
+              buildFriendlyAttackingContribution(goals, assists) +
+              defensiveBlocks
+            ) * PERFORMANCE_ACTION_VALUE,
+          MAX_AUTOMATIC_PERFORMANCE_SCORE
+        )
+      );
+      return;
+    }
+
+    const stats =
+      buildLeagueStatsByPlayer(events, canonicalMap)?.[canonName] || {};
+
+    scores.push(
+      clamp(0, MATCH_PERFORMANCE_BASE +
+          buildLeaguePerformanceContribution(stats) *
+            PERFORMANCE_ACTION_VALUE,
+        MAX_AUTOMATIC_PERFORMANCE_SCORE
+      )
+    );
+  });
+
+  if (!scores.length) return null;
+
+  return round1(
+    scores.reduce((sum, score) => sum + score, 0) / scores.length
+  );
+}
+
+function combineAvailableRatingComponents(components = []) {
+  const available = components.filter(
+    ({ value, weight }) =>
+      value != null &&
+      Number.isFinite(Number(value)) &&
+      Number(weight) > 0
+  );
+
+  const totalWeight = available.reduce(
+    (sum, component) => sum + Number(component.weight),
+    0
+  );
+
+  if (totalWeight <= 0) return null;
+
+  const weightedTotal = available.reduce(
+    (sum, component) =>
+      sum + Number(component.value) * Number(component.weight),
+    0
+  );
+
+  return round1(weightedTotal / totalWeight);
+}
+
 function buildPeerScore10FromBaseline(baseline) {
   if (!baseline) return null;
 
@@ -1344,10 +1618,72 @@ function buildTournamentAwardBadges(players = []) {
   return badgesByPlayerId;
 }
 
+function getArchivedSessionTimestamp(session = {}) {
+  const candidates = [
+    session?.completedAtISO,
+    session?.createdAt,
+    session?.date,
+    session?.matchDayId,
+    session?.id,
+  ];
+
+  for (const candidate of candidates) {
+    const timestamp = new Date(candidate || "").getTime();
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+
+  return 0;
+}
+
+function buildPlayerActivityByName(matchHistory = [], canonicalMap) {
+  const out = {};
+
+  (Array.isArray(matchHistory) ? matchHistory : []).forEach((session) => {
+    const timestamp = getArchivedSessionTimestamp(session);
+    const appearances = Array.isArray(session?.playerAppearances)
+      ? session.playerAppearances
+      : [];
+
+    appearances.forEach((entry) => {
+      if (Number(entry?.matchesPlayed || 0) <= 0) return;
+
+      const rawName =
+        entry?.playerName ||
+        entry?.shortName ||
+        entry?.playerId ||
+        "";
+
+      const canonName = resolveCanonicalNameFromMap(
+        rawName,
+        canonicalMap
+      );
+
+      if (!canonName) return;
+
+      const key = safeLower(canonName);
+
+      if (!out[key]) {
+        out[key] = {
+          hasCurrentSeasonAppearance: true,
+          latestAppearanceAt: 0,
+        };
+      }
+
+      out[key].latestAppearanceAt = Math.max(
+        Number(out[key].latestAppearanceAt || 0),
+        timestamp
+      );
+    });
+  });
+
+  return out;
+}
+
 // ---------------- PAGE ----------------
 
 export function PlayerCardPage({
   teams,
+  matchHistory = [],
   allEvents,
   archivedEvents = [],
   peerRatingsByPlayer,
@@ -1814,9 +2150,12 @@ export function PlayerCardPage({
       const gamesPlayed = Number(participation.gamesPlayed || 0);
       const matchDaysPresent = Number(participation.matchDaysPresent || 0);
 
-      const ratingGames = gamesPlayed > 0 ? gamesPlayed : 1;
-      const pointsPerGame = ratingStats.points / ratingGames;
-      const statsScore10 = clamp(0, (ratingStats.rawStatsScore / maxRaw) * 10, 10);
+      const statsScore10 = buildSeasonStatsScoreForPlayer({
+        matchHistory,
+        mode: cardMode,
+        canonName,
+        canonicalMap: nameToCanonical,
+      });
 
       const squadAttackAvg = peer
         ? safeNumber(
@@ -1877,36 +2216,69 @@ export function PlayerCardPage({
       const playmakingAvg = blendPeerValue(adminPlaymaking, squadPlaymakingAvg);
       const gkAvg = blendPeerValue(adminGk, squadGkAvg);
 
-      let peerScore10 = null;
-      const validVals = [attackAvg, defenceAvg, playmakingAvg, gkAvg].filter((v) => v != null);
+      const baselineValues = [
+        adminAttack,
+        adminDefence,
+        adminPlaymaking,
+        adminGk,
+      ].filter((value) => value != null);
 
-      if (validVals.length > 0) {
-        const avgAttr = validVals.reduce((a, b) => a + b, 0) / validVals.length;
-        peerScore10 = clamp(0, 2 * avgAttr, 10);
-      }
+      const baselineScore10 =
+        baselineValues.length > 0
+          ? clamp(
+              0,
+              2 *
+                (
+                  baselineValues.reduce((sum, value) => sum + value, 0) /
+                  baselineValues.length
+                ),
+              10
+            )
+          : null;
 
-      const ppgScore10 = clamp(0, (pointsPerGame / maxPpg) * 10, 10);
+      const squadValues = [
+        squadAttackAvg,
+        squadDefenceAvg,
+        squadPlaymakingAvg,
+        squadGkAvg,
+      ].filter((value) => value != null);
 
-      let currentVisibleForm = null;
-      let currentVisibleOverall = 0;
+      const genuinePeerScore10 =
+        squadValues.length > 0
+          ? clamp(
+              0,
+              2 *
+                (
+                  squadValues.reduce((sum, value) => sum + value, 0) /
+                  squadValues.length
+                ),
+              10
+            )
+          : null;
 
-      if (ratingStats.rawStatsScore > 0) {
-        const rawForm =
-          peerScore10 != null
-            ? round1(ppgScore10 * 0.55 + peerScore10 * 0.45)
-            : round1(ppgScore10);
+      // Until a player has genuine Peer evidence, Baseline fills
+      // the Peer component. Missing evidence never becomes zero.
+      const peerScore10 =
+        genuinePeerScore10 != null
+          ? genuinePeerScore10
+          : baselineScore10;
 
-        const rawOverall =
-          peerScore10 != null
-            ? round1(statsScore10 * 0.4 + peerScore10 * 0.3 + rawForm * 0.3)
-            : round1(statsScore10 * 0.65 + rawForm * 0.35);
+      const recentFormScore10 = buildRecentFormScoreForPlayer({
+        matchHistory,
+        mode: cardMode,
+        canonName,
+        canonicalMap: nameToCanonical,
+      });
 
-        currentVisibleForm = applyScoreFloor(rawForm);
-        currentVisibleOverall = applyScoreFloor(rawOverall);
-      } else {
-        currentVisibleForm = null;
-        currentVisibleOverall = peerScore10 != null ? applyScoreFloor(peerScore10) : 0;
-      }
+      const currentVisibleForm = recentFormScore10;
+
+      const currentVisibleOverall =
+        combineAvailableRatingComponents([
+          { value: baselineScore10, weight: 40 },
+          { value: peerScore10, weight: 25 },
+          { value: recentFormScore10, weight: 25 },
+          { value: statsScore10, weight: 10 },
+        ]) ?? 0;
 
       // Bragging-rights carryover:
       // Keep previous-season stats/ratings visible only before the first
@@ -1946,7 +2318,7 @@ export function PlayerCardPage({
         : gamesPlayed;
       const displayStatsScore10 = shouldUseCarry && carry?.statsScore10 != null
         ? round1(carry.statsScore10)
-        : round1(statsScore10);
+        : (statsScore10 != null ? round1(statsScore10) : 0);
 
       const displayPeerScore10 = shouldUseCarry && carry?.peerScore10 != null
         ? round1(carry.peerScore10)
@@ -2148,7 +2520,10 @@ export function PlayerCardPage({
   }, [activeSeasonNo, activeSeasonId, activeSeasonHasStarted, finalPlayerCardSnapshot]);
 
   const [teamFilter, setTeamFilter] = useState("ALL");
-  const [playerViewFilter, setPlayerViewFilter] = useState("ACTIVE");
+  const [seasonActivityFilter, setSeasonActivityFilter] =
+    useState("CURRENT_SEASON");
+  const [attendanceFilter, setAttendanceFilter] =
+    useState("THIS_MONTH");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -2159,12 +2534,153 @@ export function PlayerCardPage({
 
   const searchLower = useMemo(() => search.trim().toLowerCase(), [search]);
 
-  const filteredPlayers = useMemo(() => {
-    return playersWithRatings.filter((p) => {
-      if (playerViewFilter === "ACTIVE" && Number(p.overall || 0) <= 0) return false;
-      if (playerViewFilter === "OFF_SEASON" && Number(p.overall || 0) > 0) return false;
+  const playerActivityByName = useMemo(
+    () => buildPlayerActivityByName(matchHistory, nameToCanonical),
+    [matchHistory, nameToCanonical]
+  );
 
-      if (teamFilter !== "ALL" && p.teamName && p.teamName !== teamFilter) return false;
+  const playersWithPeriodLeader = useMemo(() => {
+    const candidates = playersWithRatings
+      .map((player) => {
+        const canonName = player.name || player.displayName || "";
+
+        const rawFormScore = buildRecentFormScoreForPlayer({
+          matchHistory,
+          mode: cardMode,
+          canonName,
+          canonicalMap: nameToCanonical,
+          maxScore: Number.POSITIVE_INFINITY,
+        });
+
+        return {
+          player,
+          rawFormScore,
+        };
+      })
+      .filter(({ rawFormScore }) => rawFormScore != null)
+      .sort((a, b) => {
+        let difference =
+          Number(b.rawFormScore || 0) -
+          Number(a.rawFormScore || 0);
+
+        if (difference !== 0) return difference;
+
+        difference =
+          Number(b.player.assists || 0) -
+          Number(a.player.assists || 0);
+
+        if (difference !== 0) return difference;
+
+        const defensiveA =
+          Number(a.player.defensiveBlocks || 0) +
+          Number(a.player.gkCleanSheets || 0) +
+          Number(a.player.defCleanSheets || 0);
+
+        const defensiveB =
+          Number(b.player.defensiveBlocks || 0) +
+          Number(b.player.gkCleanSheets || 0) +
+          Number(b.player.defCleanSheets || 0);
+
+        difference = defensiveB - defensiveA;
+        if (difference !== 0) return difference;
+
+        difference =
+          Number(b.player.goals || 0) -
+          Number(a.player.goals || 0);
+
+        if (difference !== 0) return difference;
+
+        difference =
+          Number(b.player.peerScore10 || 0) -
+          Number(a.player.peerScore10 || 0);
+
+        if (difference !== 0) return difference;
+
+        return String(
+          a.player.displayName || a.player.name || ""
+        ).localeCompare(
+          String(b.player.displayName || b.player.name || "")
+        );
+      });
+
+    const leaderId = candidates[0]?.player?.id || null;
+
+    return playersWithRatings.map((player) => {
+      if (!leaderId || player.id !== leaderId) return player;
+
+      const previousForm = Number(player.formScore10 || 0);
+      const overallIncrease = Math.max(0, 10 - previousForm) * 0.25;
+
+      return {
+        ...player,
+        form: 10,
+        formScore10: 10,
+        overall: round1(
+          clamp(
+            0,
+            Number(player.overall || 0) + overallIncrease,
+            10
+          )
+        ),
+      };
+    });
+  }, [
+    playersWithRatings,
+    matchHistory,
+    cardMode,
+    nameToCanonical,
+  ]);
+
+  const filteredPlayers = useMemo(() => {
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+    return playersWithPeriodLeader.filter((p) => {
+      const playerKey = safeLower(p.name || p.displayName || "");
+      const activity = playerActivityByName[playerKey] || null;
+      const playedThisSeason =
+        activity?.hasCurrentSeasonAppearance === true;
+      const playedThisMonth =
+        Number(activity?.latestAppearanceAt || 0) >= thirtyDaysAgo;
+
+      if (
+        !friendlyCardMode &&
+        seasonActivityFilter === "CURRENT_SEASON" &&
+        !playedThisSeason
+      ) {
+        return false;
+      }
+
+      if (
+        !friendlyCardMode &&
+        seasonActivityFilter === "OFF_SEASON" &&
+        playedThisSeason
+      ) {
+        return false;
+      }
+
+      if (
+        friendlyCardMode &&
+        attendanceFilter === "THIS_MONTH" &&
+        !playedThisMonth
+      ) {
+        return false;
+      }
+
+      if (
+        friendlyCardMode &&
+        attendanceFilter === "NO_SHOW" &&
+        playedThisMonth
+      ) {
+        return false;
+      }
+
+      if (
+        teamFilter !== "ALL" &&
+        p.teamName &&
+        p.teamName !== teamFilter
+      ) {
+        return false;
+      }
 
       if (!searchLower) return true;
 
@@ -2173,7 +2689,15 @@ export function PlayerCardPage({
 
       return dn.includes(searchLower) || tn.includes(searchLower);
     });
-  }, [playersWithRatings, playerViewFilter, teamFilter, searchLower]);
+  }, [
+    playersWithPeriodLeader,
+    playerActivityByName,
+    seasonActivityFilter,
+    attendanceFilter,
+    teamFilter,
+    searchLower,
+    friendlyCardMode,
+  ]);
 
   const uniqueTeams = useMemo(() => {
     if (friendlyCardMode) return ["ALL", "Turf Kings"];
@@ -2322,41 +2846,89 @@ export function PlayerCardPage({
 
       <section className="card player-card-filters">
         <div className="player-card-filters-row">
-          <div className="player-card-filter player-card-filter-view">
-            <label>Players in</label>
+          {!friendlyCardMode && (
+            <div className="player-card-filter player-card-filter-view">
+              <label>Season</label>
 
             <div
               className="segmented-toggle"
               role="tablist"
-              aria-label="Player card view filter"
+              aria-label="Season participation filter"
             >
               <button
                 type="button"
                 className={
-                  playerViewFilter === "ACTIVE"
+                  seasonActivityFilter === "CURRENT_SEASON"
                     ? "segmented-option active"
                     : "segmented-option"
                 }
-                onClick={() => setPlayerViewFilter("ACTIVE")}
-                aria-pressed={playerViewFilter === "ACTIVE"}
+                onClick={() =>
+                  setSeasonActivityFilter("CURRENT_SEASON")
+                }
+                aria-pressed={
+                  seasonActivityFilter === "CURRENT_SEASON"
+                }
               >
-                Active players
+                Played this season
               </button>
 
               <button
                 type="button"
                 className={
-                  playerViewFilter === "OFF_SEASON"
+                  seasonActivityFilter === "OFF_SEASON"
                     ? "segmented-option active"
                     : "segmented-option"
                 }
-                onClick={() => setPlayerViewFilter("OFF_SEASON")}
-                aria-pressed={playerViewFilter === "OFF_SEASON"}
+                onClick={() =>
+                  setSeasonActivityFilter("OFF_SEASON")
+                }
+                aria-pressed={
+                  seasonActivityFilter === "OFF_SEASON"
+                }
               >
-                Unrated
+                Off-season
               </button>
             </div>
-          </div>
+            </div>
+          )}
+
+          {friendlyCardMode && (
+            <div className="player-card-filter player-card-filter-view">
+              <label>Attendance</label>
+
+            <div
+              className="segmented-toggle"
+              role="tablist"
+              aria-label="Recent attendance filter"
+            >
+              <button
+                type="button"
+                className={
+                  attendanceFilter === "THIS_MONTH"
+                    ? "segmented-option active"
+                    : "segmented-option"
+                }
+                onClick={() => setAttendanceFilter("THIS_MONTH")}
+                aria-pressed={attendanceFilter === "THIS_MONTH"}
+              >
+                Played this month
+              </button>
+
+              <button
+                type="button"
+                className={
+                  attendanceFilter === "NO_SHOW"
+                    ? "segmented-option active"
+                    : "segmented-option"
+                }
+                onClick={() => setAttendanceFilter("NO_SHOW")}
+                aria-pressed={attendanceFilter === "NO_SHOW"}
+              >
+                No show in a while
+              </button>
+            </div>
+            </div>
+          )}
 
           <div className="player-card-filter">
             <label>Team</label>
@@ -2386,9 +2958,7 @@ export function PlayerCardPage({
           <p className="muted">Loading player cards…</p>
         ) : filteredPlayers.length === 0 ? (
           <p className="muted">
-            {playerViewFilter === "OFF_SEASON"
-              ? "No unrated players found for this filter."
-              : "No active players found for this filter."}
+            No players found for these season and attendance filters.
           </p>
         ) : (
           <div className="player-card-grid">

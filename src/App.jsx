@@ -65,6 +65,7 @@ import {
   buildAuthorizedCameraDeepLink,
 } from "./storage/cameraHandoffGateway.js";
 import { useAuth } from "./auth/AuthContext.jsx";
+import { FANM_PRO_CLUBS } from "./data/fanm/fanmTeamLibrary.js";
 
 import {
   buildCurrentMatchFromFixture,
@@ -2003,6 +2004,60 @@ function buildCameraPlayersFromTeam(team = {}, teamId) {
   return out;
 }
 
+function resolveCameraTeamLogoUrl(team = {}) {
+  const abbrev = String(
+    team?.teamIdentity?.abbr ||
+    team?.abbrev ||
+    ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const canonicalIdentity =
+    FANM_PRO_CLUBS.find(
+      (identity) =>
+        String(identity?.abbr || "")
+          .trim()
+          .toUpperCase() === abbrev
+    ) || null;
+
+  const rawLogo = String(
+    team?.teamIdentity?.logo32 ||
+    team?.logo32 ||
+    team?.logoUrl ||
+    team?.logo ||
+    canonicalIdentity?.logo32 ||
+    ""
+  ).trim();
+
+  if (!rawLogo) return "";
+
+  // Already absolute: leave it untouched.
+  if (/^https?:\/\//i.test(rawLogo)) {
+    return rawLogo;
+  }
+
+  /*
+   * FANM's canonical team library stores browser-relative asset paths
+   * such as /fanm-assets/pro-clubs/svg/ARS.svg.
+   *
+   * Android Coil needs a complete URL. In deployed FANM, use the
+   * current HTTPS origin. During local HTTP development, use the
+   * Firebase Hosting origin so Android receives an HTTPS asset URL.
+   */
+  const publicOrigin =
+    typeof window !== "undefined" &&
+    window.location?.protocol === "https:"
+      ? window.location.origin
+      : "https://five-asides-near-me.web.app";
+
+  try {
+    return new URL(rawLogo, publicOrigin).href;
+  } catch {
+    return "";
+  }
+}
+
 function resolveCameraLaunchTeams({
   teams = [],
   currentMatch = null,
@@ -2039,10 +2094,10 @@ function resolveCameraLaunchTeams({
     teamBId,
     teamAName: teamA?.label || "Team A",
     teamAAbbrev: String(teamA?.abbrev || "").trim(),
-    teamALogoUrl: String(teamA?.logo32 || teamA?.logoUrl || teamA?.logo || "").trim(),
+    teamALogoUrl: resolveCameraTeamLogoUrl(teamA),
     teamBName: teamB?.label || "Team B",
     teamBAbbrev: String(teamB?.abbrev || "").trim(),
-    teamBLogoUrl: String(teamB?.logo32 || teamB?.logoUrl || teamB?.logo || "").trim(),
+    teamBLogoUrl: resolveCameraTeamLogoUrl(teamB),
     teamAPlayers,
     teamBPlayers,
     hasVerifiedSnapshots: Boolean(snapshotA && snapshotB),
@@ -9620,6 +9675,11 @@ export default function App() {
           currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
           results={results}
+          matchType={matchType}
+          activeClubId={activeClubId}
+          dataScope={footballDataScope}
+          currentVideoHighlightsMatchId={currentVideoHighlightsMatchId}
+          videoHighlightsClubId={activeClubId || DEFAULT_CLUB_ID}
           onBackToLanding={handleBackToLanding}
         />
       )}
@@ -9789,6 +9849,11 @@ export default function App() {
       {page === PAGE_PLAYER_CARDS && (
         <PlayerCardPage
           teams={matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
+          matchHistory={
+            matchType === MATCH_TYPE.FRIENDLY
+              ? friendlyMatchDayHistory
+              : matchDayHistory
+          }
           allEvents={
             matchType === MATCH_TYPE.FRIENDLY
               ? archivedFriendlyEventsFromHistory
