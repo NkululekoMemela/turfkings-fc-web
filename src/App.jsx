@@ -9675,6 +9675,11 @@ export default function App() {
           currentMatch={effectiveLiveMatch}
           currentEvents={currentEvents}
           results={results}
+          matchType={matchType}
+          activeClubId={activeClubId}
+          dataScope={footballDataScope}
+          currentVideoHighlightsMatchId={currentVideoHighlightsMatchId}
+          videoHighlightsClubId={activeClubId || DEFAULT_CLUB_ID}
           onBackToLanding={handleBackToLanding}
         />
       )}

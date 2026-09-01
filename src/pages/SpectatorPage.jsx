@@ -6,8 +6,12 @@ import {
   FANM_PRO_CLUBS,
 } from "../data/fanm/fanmTeamLibrary.js";
 import { db } from "../firebaseConfig.js";
-import { getMatchDoc } from "../core/clubFirestorePaths";
+import {
+  getMatchDoc,
+  getScopedMatchDoc,
+} from "../core/clubFirestorePaths";
 import { doc, onSnapshot } from "firebase/firestore";
+import { subscribeToMatchHighlights } from "../storage/VideoHighlightsRepository.js";
 
 // same helper used in LiveMatchPage (reimplemented here)
 function formatSeconds(s) {
@@ -144,40 +148,257 @@ function displaySpectatorName(name) {
   return clean;
 }
 
+function normalizeSpectatorMatchType(value = "") {
+  return String(value || "").trim().toUpperCase();
+}
+
+function isSameSpectatorFixture({
+  liveData = {},
+  expectedMatchType = "",
+}) {
+  /*
+   * Once the referee presses Start Match, the Firestore current-match
+   * document is authoritative for teams, timer, score and events.
+   *
+   * Home's projected fixture can briefly differ from that document, so
+   * team IDs and match numbers must not hide a legitimately live match.
+   * We reject only a document explicitly belonging to the other mode.
+   */
+  const selectedType = normalizeSpectatorMatchType(expectedMatchType);
+  const liveType = normalizeSpectatorMatchType(
+    liveData?.matchType ||
+      liveData?.type ||
+      liveData?.matchMetadata?.matchType
+  );
+
+  if (selectedType && liveType && selectedType !== liveType) {
+    return false;
+  }
+
+  return true;
+}
+
+function getSpectatorHighlightType(highlight = {}) {
+  return String(
+    highlight?.normalizedType ||
+      highlight?.tag ||
+      highlight?.type ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function getSpectatorHighlightPlayer(highlight = {}) {
+  return displaySpectatorName(
+    highlight?.goalScorerName ||
+      highlight?.goalScorer ||
+      highlight?.scorer ||
+      highlight?.keeperName ||
+      highlight?.skillPlayer ||
+      highlight?.playerName ||
+      highlight?.player ||
+      ""
+  );
+}
+
+function getSpectatorHighlightSeconds(highlight = {}) {
+  const value = Number(
+    highlight?.timeSeconds ??
+      highlight?.matchTimeSeconds ??
+      highlight?.eventTimeSeconds
+  );
+
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function getSpectatorHighlightCreatedAt(highlight = {}) {
+  return (
+    highlight?.createdAt?.toMillis?.() ||
+    highlight?.createdAtServer?.toMillis?.() ||
+    new Date(
+      highlight?.createdAtISO ||
+        highlight?.uploadedAtISO ||
+        0
+    ).getTime() ||
+    0
+  );
+}
+
+function getSpectatorHighlightPresentation(highlight = {}) {
+  const type = getSpectatorHighlightType(highlight);
+
+  if (type === "goal") return { icon: "⚽", label: "GOAL" };
+  if (type === "save") return { icon: "🧤", label: "SAVE" };
+  return { icon: "✨", label: "SKILL" };
+}
+
+function getSpectatorEventPresentation(event = {}) {
+  const type = String(event?.type || "").trim().toLowerCase();
+
+  if (type === "goal") return { icon: "⚽", label: "Goal" };
+  if (type === "shibobo") return { icon: "🎯", label: "Shibobo" };
+  if (type === "yellow_card") return { icon: "🟨", label: "Yellow card" };
+  if (type === "red_card") return { icon: "🟥", label: "Red card" };
+  if (type === "injury") return { icon: "🤕", label: "Injury" };
+
+  return { icon: "●", label: "Match event" };
+}
+
+function getSpectatorEventPlayer(event = {}) {
+  return displaySpectatorName(
+    event?.scorer ||
+      event?.playerName ||
+      event?.player ||
+      event?.targetName ||
+      ""
+  );
+}
+
+function SpectatorEventCard({
+  event,
+  team,
+  align = "left",
+}) {
+  const presentation = getSpectatorEventPresentation(event);
+  const player = getSpectatorEventPlayer(event);
+  const teamLabel = getSpectatorTeamLabel(team, false);
+  const teamAbbrev = getSpectatorTeamLabel(team, true);
+  const theme = getSpectatorTeamAccent(teamLabel);
+  const isRight = align === "right";
+
+  return (
+    <article
+      style={{
+        display: "flex",
+        flexDirection: isRight ? "row-reverse" : "row",
+        alignItems: "center",
+        gap: "0.55rem",
+        padding: "0.65rem",
+        border: `1px solid ${theme.border}`,
+        borderRadius: "0.8rem",
+        background: theme.soft,
+        textAlign: isRight ? "right" : "left",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          display: "grid",
+          placeItems: "center",
+          flex: "0 0 2rem",
+          width: "2rem",
+          height: "2rem",
+          borderRadius: "999px",
+          background: "rgba(2, 6, 23, 0.72)",
+          fontSize: "1rem",
+        }}
+      >
+        {presentation.icon}
+      </span>
+
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div
+          className="muted small"
+          style={{
+            display: "flex",
+            flexDirection: isRight ? "row-reverse" : "row",
+            gap: "0.35rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <span>{formatSeconds(event?.timeSeconds)}</span>
+          <span>{teamLabel}</span>
+        </div>
+
+        <div style={{ fontWeight: 800 }}>
+          {player}{" "}
+          <span className="muted small">
+            ({teamAbbrev})
+          </span>
+        </div>
+
+        <div className="small">
+          {presentation.label}
+          {event?.assist
+            ? ` · Assist: ${displaySpectatorName(event.assist)}`
+            : ""}
+          {event?.reason
+            ? ` · ${String(event.reason).trim()}`
+            : ""}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export function SpectatorPage(props) {
   // support either prop name to be safe with your existing App.jsx
   const goBack = props.onBackToLanding || props.onBack || (() => {});
 
+  const expectedMatch = props.currentMatch || {};
+  const expectedMatchNo =
+    props.currentMatchNo ??
+    expectedMatch?.matchNumber ??
+    expectedMatch?.matchNo ??
+    null;
+  const expectedMatchType = props.matchType || "";
+  const activeClubId =
+    String(props.activeClubId || "turf-kings").trim();
+  const dataScope = props.dataScope || null;
+  const highlightsMatchId =
+    String(props.currentVideoHighlightsMatchId || "").trim();
+  const highlightsClubId =
+    String(props.videoHighlightsClubId || "turf-kings").trim();
+
   const [matchDoc, setMatchDoc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState("");
+  const [matchHighlights, setMatchHighlights] = useState([]);
+  const [matchReelOpen, setMatchReelOpen] = useState(false);
+  const [matchReelIndex, setMatchReelIndex] = useState(0);
 
   // local countdown state for smoother timer
   const [localSecondsLeft, setLocalSecondsLeft] = useState(null);
 
   useEffect(() => {
-    const ref = getMatchDoc(db, "current");
+    const ref = dataScope
+      ? getScopedMatchDoc(db, "current", dataScope)
+      : getMatchDoc(db, "current", activeClubId);
 
     const unsub = onSnapshot(
       ref,
       (snap) => {
         if (snap.exists()) {
-          const data = snap.data();
-          setMatchDoc(data);
+          const data = snap.data() || {};
 
-          // sync local timer with server secondsLeft if available
-          if (
-            typeof data.secondsLeft === "number" &&
-            Number.isFinite(data.secondsLeft)
-          ) {
-            setLocalSecondsLeft(Math.max(data.secondsLeft, 0));
+          const isSelectedFixture = isSameSpectatorFixture({
+            liveData: data,
+            expectedMatchType,
+          });
+
+          if (isSelectedFixture) {
+            setMatchDoc(data);
+
+            if (
+              typeof data.secondsLeft === "number" &&
+              Number.isFinite(data.secondsLeft)
+            ) {
+              setLocalSecondsLeft(Math.max(data.secondsLeft, 0));
+            } else {
+              setLocalSecondsLeft(null);
+            }
           } else {
+            // The shared current document still belongs to the other mode.
+            setMatchDoc(null);
             setLocalSecondsLeft(null);
           }
         } else {
           setMatchDoc(null);
           setLocalSecondsLeft(null);
         }
+
+        setErrorText("");
         setLoading(false);
       },
       (err) => {
@@ -188,7 +409,60 @@ export function SpectatorPage(props) {
     );
 
     return () => unsub();
-  }, []);
+  }, [expectedMatchType, activeClubId, dataScope]);
+
+  useEffect(() => {
+    setMatchHighlights([]);
+
+    return subscribeToMatchHighlights({
+      matchId: highlightsMatchId,
+      clubId: highlightsClubId,
+      onChange: setMatchHighlights,
+      onError: (error) => {
+        console.error(
+          "Spectator match-highlight listener failed:",
+          error
+        );
+        setMatchHighlights([]);
+      },
+    });
+  }, [highlightsMatchId, highlightsClubId]);
+
+  const orderedMatchHighlights = useMemo(() => {
+    return [...matchHighlights].sort((a, b) => {
+      const aSeconds = getSpectatorHighlightSeconds(a);
+      const bSeconds = getSpectatorHighlightSeconds(b);
+
+      if (aSeconds != null && bSeconds != null) {
+        return aSeconds - bSeconds;
+      }
+
+      return (
+        getSpectatorHighlightCreatedAt(a) -
+        getSpectatorHighlightCreatedAt(b)
+      );
+    });
+  }, [matchHighlights]);
+
+  useEffect(() => {
+    if (!orderedMatchHighlights.length) {
+      setMatchReelOpen(false);
+      setMatchReelIndex(0);
+      return;
+    }
+
+    setMatchReelIndex((currentIndex) =>
+      Math.min(
+        currentIndex,
+        orderedMatchHighlights.length - 1
+      )
+    );
+  }, [orderedMatchHighlights.length]);
+
+  const activeMatchReelHighlight =
+    orderedMatchHighlights[matchReelIndex] ||
+    orderedMatchHighlights[0] ||
+    null;
 
   const {
     teamALabel,
@@ -369,122 +643,348 @@ export function SpectatorPage(props) {
               </div>
             </div>
 
-            {(teamALabel || teamBLabel || standbyLabel) && (
-              <p className="muted" style={{ textAlign: "center" }}>
-                On-field:{" "}
-                <strong><SpectatorTeamBadge team={teamAForDisplay} short /></strong> vs{" "}
-                <strong><SpectatorTeamBadge team={teamBForDisplay} short /></strong>
-                {standbyLabel && (
-                  <>
-                    {" "}
-                    | Standby: <strong><SpectatorTeamBadge team={standbyForDisplay} short /></strong>
-                  </>
-                )}
-              </p>
-            )}
-
-            {/* Premium latest goals */}
-            <div className="event-log spectator-goals-feed" style={{ marginTop: "1.5rem" }}>
-              <div className="event-log-header spectator-feed-header">
-                <h3>⚽ Latest Goals</h3>
-                {goalEvents.length > 3 ? (
-                  <span className="muted small">Showing latest 3</span>
-                ) : null}
-              </div>
-
-              {goalEvents.length === 0 ? (
-                <p className="muted">
-                  No goals yet. When a goal is recorded, the scorer will appear here live.
-                </p>
-              ) : (
-                <ul className="spectator-goals-list">
-                  {goalEvents.map((e, idx) => {
-                    const teamForGoal =
-                      e.teamId === matchDoc.teamAId
-                        ? teamAForDisplay
-                        : e.teamId === matchDoc.teamBId
-                        ? teamBForDisplay
-                        : { label: "Team" };
-
-                    const teamLabel = getSpectatorTeamLabel(teamForGoal, false);
-                    const teamAbbrev = getSpectatorTeamLabel(teamForGoal, true);
-                    const goalTheme = getSpectatorTeamAccent(teamLabel);
-
-                    return (
-                      <li
-                        key={e.id || `${e.timeSeconds}-${idx}`}
-                        className="event-item premium-goal-event spectator-premium-goal-event"
+            {goalEvents.length > 0 && (
+              <div
+                aria-label="Goal scorers"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                  gap: "1rem",
+                  marginTop: "0.65rem",
+                  padding: "0.55rem 0.2rem 0.75rem",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "0.25rem",
+                    textAlign: "left",
+                  }}
+                >
+                  {goalEvents
+                    .filter((event) => event?.teamId === teamAId)
+                    .map((event, index) => (
+                      <div
+                        key={
+                          event.id ||
+                          `scorer-a-${event.timeSeconds}-${index}`
+                        }
                         style={{
-                          "--goal-team-soft": goalTheme.soft,
-                          "--goal-team-border": goalTheme.border,
-                          "--goal-team-dot": goalTheme.dot,
+                          fontSize: "0.82rem",
+                          lineHeight: 1.25,
                         }}
                       >
-                        <div className="premium-goal-main">
-                          <span className="premium-goal-icon">⚽</span>
-                          <div className="premium-goal-text">
-                            <div className="premium-goal-topline">
-                              <span className="premium-goal-clock">
-                                {formatSeconds(e.timeSeconds)}
-                              </span>
-                              <span className="premium-goal-team">{teamLabel}</span>
-                            </div>
-                            <div className="premium-goal-scorer">
-                              {displaySpectatorName(e.scorer)}
-                              <span className="premium-goal-abbrev"> ({teamAbbrev})</span>
-                            </div>
-                            {e.assist ? (
-                              <div className="premium-goal-assist">
-                                Assist: {displaySpectatorName(e.assist)}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            {/* Compact full event log */}
-            <div className="event-log spectator-compact-events" style={{ marginTop: "1rem" }}>
-              <div className="event-log-header">
-                <h3>Match Events</h3>
-              </div>
-
-              {sortedEvents.length === 0 ? (
-                <p className="muted">
-                  No events logged yet.
-                </p>
-              ) : (
-                <ul>
-                  {sortedEvents.map((e) => {
-                    const typeLabel =
-                      e.type === "shibobo" ? "Shibobo" : "Goal";
-                    const who =
-                      e.scorer ||
-                      e.player ||
-                      e.playerName ||
-                      "Unknown player";
-                    const assist =
-                      e.assist && e.assist !== ""
-                        ? ` · Assist: ${e.assist}`
-                        : "";
-
-                    return (
-                      <li key={e.id} className="event-item spectator-compact-event-item">
-                        <span>
-                          [{formatSeconds(e.timeSeconds)}]{" "}
-                          <strong>{typeLabel}</strong> – {who}
-                          {assist}
+                        <strong>
+                          ⚽ {displaySpectatorName(event.scorer)}
+                        </strong>{" "}
+                        <span className="muted">
+                          {formatSeconds(event.timeSeconds)}
                         </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
+                        {event.assist ? (
+                          <div className="muted small">
+                            Assist:{" "}
+                            {displaySpectatorName(event.assist)}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "0.25rem",
+                    textAlign: "right",
+                  }}
+                >
+                  {goalEvents
+                    .filter((event) => event?.teamId === teamBId)
+                    .map((event, index) => (
+                      <div
+                        key={
+                          event.id ||
+                          `scorer-b-${event.timeSeconds}-${index}`
+                        }
+                        style={{
+                          fontSize: "0.82rem",
+                          lineHeight: 1.25,
+                        }}
+                      >
+                        <strong>
+                          {displaySpectatorName(event.scorer)} ⚽
+                        </strong>{" "}
+                        <span className="muted">
+                          {formatSeconds(event.timeSeconds)}
+                        </span>
+                        {event.assist ? (
+                          <div className="muted small">
+                            Assist:{" "}
+                            {displaySpectatorName(event.assist)}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {orderedMatchHighlights.length > 0 && (
+              <div
+                className="event-log spectator-match-highlights"
+                style={{ marginTop: "1rem" }}
+              >
+                <div className="event-log-header spectator-feed-header">
+                  <h3>🎬 Match Reel</h3>
+                  <span className="muted small">
+                    {orderedMatchHighlights.length}{" "}
+                    {orderedMatchHighlights.length === 1
+                      ? "highlight"
+                      : "highlights"}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!matchReelOpen) {
+                      setMatchReelIndex(0);
+                    }
+                    setMatchReelOpen((open) => !open);
+                  }}
+                  aria-expanded={matchReelOpen}
+                  style={{
+                    position: "relative",
+                    display: "block",
+                    width: "100%",
+                    minHeight: "108px",
+                    padding: 0,
+                    overflow: "hidden",
+                    border: matchReelOpen
+                      ? "2px solid #60a5fa"
+                      : "1px solid rgba(96,165,250,0.48)",
+                    borderRadius: "0.85rem",
+                    background: "#020617",
+                    color: "white",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <video
+                    src={orderedMatchHighlights[0]?.playableUrl}
+                    poster={
+                      orderedMatchHighlights[0]?.thumbnailUrl ||
+                      orderedMatchHighlights[0]?.posterUrl ||
+                      ""
+                    }
+                    muted
+                    playsInline
+                    preload="auto"
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      pointerEvents: "none",
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background:
+                        "linear-gradient(90deg, rgba(2,6,23,0.97) 0%, rgba(2,6,23,0.72) 52%, rgba(2,6,23,0.18) 100%)",
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      position: "relative",
+                      zIndex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                      minHeight: "108px",
+                      padding: "0.85rem",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        display: "grid",
+                        placeItems: "center",
+                        flex: "0 0 2.8rem",
+                        width: "2.8rem",
+                        height: "2.8rem",
+                        borderRadius: "999px",
+                        background: "rgba(37,99,235,0.86)",
+                        border:
+                          "1px solid rgba(255,255,255,0.76)",
+                        fontSize: "1.15rem",
+                      }}
+                    >
+                      {matchReelOpen ? "▴" : "▶"}
+                    </span>
+
+                    <div>
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          fontSize: "1rem",
+                        }}
+                      >
+                        Watch Match Highlights
+                      </div>
+
+                      <div
+                        className="small"
+                        style={{ marginTop: "0.18rem" }}
+                      >
+                        GOALS · SAVES · SKILLS
+                      </div>
+
+                      <div
+                        className="muted small"
+                        style={{ marginTop: "0.18rem" }}
+                      >
+                        Continuous live playlist
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {matchReelOpen &&
+                activeMatchReelHighlight ? (
+                  <article
+                    style={{
+                      marginTop: "0.75rem",
+                      padding: "0.7rem",
+                      border:
+                        "1px solid rgba(96,165,250,0.52)",
+                      borderRadius: "0.85rem",
+                      background: "rgba(8,15,31,0.9)",
+                    }}
+                  >
+                    <video
+                      key={activeMatchReelHighlight.id}
+                      src={activeMatchReelHighlight.playableUrl}
+                      controls
+                      autoPlay
+                      playsInline
+                      preload="auto"
+                      onEnded={() => {
+                        if (
+                          matchReelIndex <
+                          orderedMatchHighlights.length - 1
+                        ) {
+                          setMatchReelIndex(
+                            (index) => index + 1
+                          );
+                        } else {
+                          setMatchReelOpen(false);
+                          setMatchReelIndex(0);
+                        }
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        aspectRatio: "16 / 9",
+                        maxHeight: "420px",
+                        objectFit: "contain",
+                        borderRadius: "0.65rem",
+                        background: "#020617",
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "0.6rem",
+                        marginTop: "0.55rem",
+                      }}
+                    >
+                      <div>
+                        <strong>
+                          {
+                            getSpectatorHighlightPresentation(
+                              activeMatchReelHighlight
+                            ).icon
+                          }{" "}
+                          {
+                            getSpectatorHighlightPresentation(
+                              activeMatchReelHighlight
+                            ).label
+                          }
+                        </strong>
+
+                        <div className="small">
+                          {getSpectatorHighlightPlayer(
+                            activeMatchReelHighlight
+                          )}{" "}
+                          · {matchReelIndex + 1}/
+                          {orderedMatchHighlights.length}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "0.35rem",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          disabled={matchReelIndex === 0}
+                          onClick={() =>
+                            setMatchReelIndex((index) =>
+                              Math.max(0, index - 1)
+                            )
+                          }
+                        >
+                          ‹
+                        </button>
+
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          disabled={
+                            matchReelIndex >=
+                            orderedMatchHighlights.length - 1
+                          }
+                          onClick={() =>
+                            setMatchReelIndex((index) =>
+                              Math.min(
+                                orderedMatchHighlights.length - 1,
+                                index + 1
+                              )
+                            )
+                          }
+                        >
+                          ›
+                        </button>
+
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={() => {
+                            setMatchReelOpen(false);
+                            setMatchReelIndex(0);
+                          }}
+                        >
+                          Minimize
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ) : null}
+              </div>
+            )}
+
           </>
         )}
       </section>
