@@ -646,6 +646,26 @@ function getMissingBadges(highlight) {
   return badges;
 }
 
+function getHighlightSeasonId(highlight = {}) {
+  const explicit = String(
+    highlight?.seasonId ||
+    highlight?.matchContext?.seasonId ||
+    highlight?.metadata?.seasonId ||
+    ""
+  ).trim();
+
+  if (explicit) return explicit;
+
+  const matchId = String(
+    highlight?.matchId ||
+    highlight?.fixtureId ||
+    ""
+  ).trim();
+
+  const match = matchId.match(/league__(\d{4}-S\d+)__/i);
+  return match?.[1] || "";
+}
+
 function HighlightCard({
   highlight,
   teams = [],
@@ -666,8 +686,13 @@ function HighlightCard({
   onEdit,
   onIdentifyPlayer,
   onAttachToClubChat,
+  feedPosition = 0,
+  feedTotal = 0,
+  isWatched = false,
+  onWatched,
 }) {
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => !isWatched);
   const [shareMenuPosition, setShareMenuPosition] = useState({
     top: 0,
     left: 0,
@@ -830,7 +855,80 @@ function HighlightCard({
   };
 
   return (
-    <article className={`tkh-card ${highlight.highlightEra === "throwback" || highlight.isThrowback ? "is-throwback" : ""}`}>
+    <article
+      className={`tkh-card ${
+        highlight.highlightEra === "throwback" || highlight.isThrowback
+          ? "is-throwback"
+          : ""
+      } ${isWatched ? "is-watched" : ""}`}
+    >
+      {isWatched && !isExpanded ? (
+        <button
+          type="button"
+          className="tkh-watched-summary"
+          onClick={() => setIsExpanded(true)}
+          aria-label={`Open watched clip by ${
+            highlight.playerName || "player"
+          }`}
+        >
+          <span
+            className="tkh-watched-summary-preview"
+            aria-hidden="true"
+          >
+            {highlight.thumbnailUrl ||
+            highlight.posterUrl ||
+            highlight.previewImageUrl ? (
+              <img
+                src={
+                  highlight.thumbnailUrl ||
+                  highlight.posterUrl ||
+                  highlight.previewImageUrl
+                }
+                alt=""
+              />
+            ) : (
+              <video
+                src={highlight.mediaUrl}
+                preload="metadata"
+                muted
+                playsInline
+                tabIndex={-1}
+              />
+            )}
+            <span>▶</span>
+          </span>
+
+          <span className="tkh-watched-summary-copy">
+            <strong>
+              {String(highlight.playerName || "Player")
+                .trim()
+                .split(" ")[0]}
+            </strong>
+            <small>
+              Clip {feedPosition || 1} of {feedTotal || 1}
+              {" · "}
+              {typeBadgeLabel(highlight.normalizedType)}
+            </small>
+          </span>
+
+          <span className="tkh-watched-summary-likes">
+            ❤️ {Number(likeCount || 0)}
+          </span>
+
+          <span className="tkh-watched-summary-open">
+            Review
+          </span>
+        </button>
+      ) : (
+        <>
+          <div className="tkh-card-progress">
+            <span>
+              Clip {feedPosition || 1} of {feedTotal || 1}
+            </span>
+            <span className={isWatched ? "is-complete" : ""}>
+              {isWatched ? "✓ Watched" : "New"}
+            </span>
+          </div>
       <div className="tkh-card-top">
         <div className="tkh-card-title-block">
           <div className="tkh-player-name">
@@ -860,6 +958,14 @@ function HighlightCard({
         preload="metadata"
         playsInline
         src={highlight.mediaUrl}
+        onPlay={() => {
+          setIsExpanded(true);
+          onWatched?.(highlight);
+        }}
+        onEnded={() => {
+          onWatched?.(highlight);
+          setIsExpanded(false);
+        }}
       />
 
       <div className="tkh-badge-row">
@@ -1134,6 +1240,8 @@ function HighlightCard({
         )}
 
       </div>
+        </>
+      )}
     </article>
   );
 }
@@ -1220,6 +1328,10 @@ export function VideoHighlightsPage({
   const [mainTab, setMainTab] = useState("currentWeek");
   const [selectedTab, setSelectedTab] = useState("approved");
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [selectedPlayerFilter, setSelectedPlayerFilter] = useState("all");
+  const [watchedFilter, setWatchedFilter] = useState("all");
+  const [showFeedFilters, setShowFeedFilters] = useState(false);
+  const [watchedClipIds, setWatchedClipIds] = useState(() => new Set());
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [loadingHighlights, setLoadingHighlights] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -1265,6 +1377,53 @@ export function VideoHighlightsPage({
   const [teamName, setTeamName] = useState("");
 
   const [nowTick, setNowTick] = useState(() => Date.now());
+
+  const watchedStorageKey = useMemo(
+    () => `tkh_watched_clips_${safeLower(activeClubId) || "club"}`,
+    [activeClubId]
+  );
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(
+        window.localStorage.getItem(watchedStorageKey) || "[]"
+      );
+
+      setWatchedClipIds(
+        new Set(Array.isArray(stored) ? stored.map(String) : [])
+      );
+    } catch {
+      setWatchedClipIds(new Set());
+    }
+  }, [watchedStorageKey]);
+
+  const markHighlightWatched = (highlight) => {
+    const clipId = String(
+      highlight?.clipId ||
+      highlight?.id ||
+      ""
+    ).trim();
+
+    if (!clipId) return;
+
+    setWatchedClipIds((previous) => {
+      if (previous.has(clipId)) return previous;
+
+      const next = new Set(previous);
+      next.add(clipId);
+
+      try {
+        window.localStorage.setItem(
+          watchedStorageKey,
+          JSON.stringify([...next])
+        );
+      } catch {
+        // Watched state is optional browser convenience.
+      }
+
+      return next;
+    });
+  };
 
   const identityKey = useMemo(() => getIdentityKey(identity), [identity]);
   const identityName = useMemo(() => getIdentityDisplayName(identity), [identity]);
@@ -1679,23 +1838,76 @@ export function VideoHighlightsPage({
   }, [selectedTab, scopedApprovedHighlights, scopedPendingHighlights, scopedRejectedHighlights]);
 
   const visibleHighlights = useMemo(() => {
-    const filtered =
-      selectedFilter === "all"
-        ? tabHighlights
-        : tabHighlights.filter((item) => item.normalizedType === selectedFilter);
+    const belongsToCurrentSeason = (item) => {
+      if (
+        item?.highlightEra === "throwback" ||
+        item?.isThrowback === true
+      ) {
+        return false;
+      }
 
-    if (mainTab !== "currentWeek") return filtered;
+      const clipSeasonId = getHighlightSeasonId(item);
+      const currentSeasonId = String(activeSeasonId || "").trim();
 
-    const fresh = filtered.filter(
-      (item) => item.highlightEra !== "throwback" && item.isThrowback !== true
-    );
+      if (clipSeasonId && currentSeasonId) {
+        return clipSeasonId === currentSeasonId;
+      }
 
-    const throwbacks = filtered.filter(
-      (item) => item.highlightEra === "throwback" || item.isThrowback === true
-    );
+      return true;
+    };
 
-    return [...fresh, ...throwbacks];
-  }, [tabHighlights, selectedFilter, mainTab]);
+    let filtered = tabHighlights.filter((item) => {
+      if (mainTab === "currentWeek") {
+        return belongsToCurrentSeason(item);
+      }
+
+      if (mainTab === "throwback") {
+        return !belongsToCurrentSeason(item);
+      }
+
+      return true;
+    });
+
+    if (selectedFilter !== "all") {
+      filtered = filtered.filter(
+        (item) => item.normalizedType === selectedFilter
+      );
+    }
+
+    if (selectedPlayerFilter !== "all") {
+      filtered = filtered.filter(
+        (item) =>
+          safeLower(item?.playerName) ===
+          safeLower(selectedPlayerFilter)
+      );
+    }
+
+    if (watchedFilter !== "all") {
+      filtered = filtered.filter((item) => {
+        const clipId = String(
+          item?.clipId ||
+          item?.id ||
+          ""
+        ).trim();
+
+        const watched = watchedClipIds.has(clipId);
+
+        return watchedFilter === "watched"
+          ? watched
+          : !watched;
+      });
+    }
+
+    return filtered;
+  }, [
+    tabHighlights,
+    selectedFilter,
+    selectedPlayerFilter,
+    watchedFilter,
+    watchedClipIds,
+    mainTab,
+    activeSeasonId,
+  ]);
 
   const voteCounts = useMemo(
     () => getVoteBuckets(localVotesByUser, approvedHighlights),
@@ -3597,7 +3809,7 @@ export function VideoHighlightsPage({
             className="tkh-btn"
             onClick={() => {
               setHighlightEra("throwback");
-              setMainTab("currentWeek");
+              setMainTab("throwback");
               setShowUploadModal(true);
             }}
             disabled={!canUpload}
@@ -3622,10 +3834,18 @@ export function VideoHighlightsPage({
               type="button"
               className={`pill-toggle ${mainTab === "currentWeek" ? "pill-toggle-active" : ""}`}
               onClick={() => setMainTab("currentWeek")}
-              title={votingWindowClosed ? "This week’s voting window has closed. Top Voted is now the main hub." : `Voting closes ${votingDeadlineLabel}`}
+              title={votingWindowClosed ? "The current voting window has closed. Top Voted is now the main hub." : `Voting closes ${votingDeadlineLabel}`}
             >
-              Current Week
+              Current Season
             </button>
+            <button
+              type="button"
+              className={`pill-toggle ${mainTab === "throwback" ? "pill-toggle-active" : ""}`}
+              onClick={() => setMainTab("throwback")}
+            >
+              Previous Seasons
+            </button>
+
             <button
               type="button"
               className={`pill-toggle ${mainTab === "winners" ? "pill-toggle-active" : ""}`}
@@ -3784,34 +4004,124 @@ export function VideoHighlightsPage({
         </div>
 
         {(mainTab === "currentWeek" || mainTab === "throwback") && (
-          <div className="tkh-compact-filter-row">
-            <label className="tkh-compact-select-label">
-              Review
-              <select
-                className="tkh-compact-select"
-                value={selectedTab}
-                onChange={(event) => setSelectedTab(event.target.value)}
-              >
-                <option value="approved">Approved ({approvedHighlights.length})</option>
-                {isModerator && <option value="pending">Pending ({pendingHighlights.length})</option>}
-                {isModerator && rejectedHighlights.length > 0 && (
-                  <option value="rejected">Rejected ({rejectedHighlights.length})</option>
-                )}
-              </select>
-            </label>
+          <div className="tkh-feed-toolbar">
+            <div className="tkh-filter-summary">
+              <strong>
+                {mainTab === "throwback"
+                  ? "Previous Seasons"
+                  : "Current Season"}
+              </strong>
+              <span>
+                {visibleHighlights.length} clip
+                {visibleHighlights.length === 1 ? "" : "s"}
+              </span>
+            </div>
 
-            <label className="tkh-compact-select-label">
-              Type
-              <select
-                className="tkh-compact-select"
-                value={selectedFilter}
-                onChange={(event) => setSelectedFilter(event.target.value)}
-              >
-                {["all", "goal", "save", "skill", "other"].map((filter) => (
-                  <option key={filter} value={filter}>{getFilterLabel(filter)}</option>
-                ))}
-              </select>
-            </label>
+            <button
+              type="button"
+              className={`tkh-filter-toggle ${
+                showFeedFilters ? "is-open" : ""
+              }`}
+              onClick={() =>
+                setShowFeedFilters((current) => !current)
+              }
+              aria-expanded={showFeedFilters}
+            >
+              <span aria-hidden="true">☰</span>
+              Filters
+              {[
+                selectedFilter !== "all",
+                selectedPlayerFilter !== "all",
+                watchedFilter !== "all",
+                isModerator && selectedTab !== "approved",
+              ].filter(Boolean).length > 0 && (
+                <strong>
+                  {
+                    [
+                      selectedFilter !== "all",
+                      selectedPlayerFilter !== "all",
+                      watchedFilter !== "all",
+                      isModerator && selectedTab !== "approved",
+                    ].filter(Boolean).length
+                  }
+                </strong>
+              )}
+            </button>
+
+            {showFeedFilters && (
+              <div className="tkh-feed-filter-fields">
+                {isModerator && (
+                  <label className="tkh-compact-select-label">
+                    Review status
+                    <select
+                      className="tkh-compact-select"
+                      value={selectedTab}
+                      onChange={(event) =>
+                        setSelectedTab(event.target.value)
+                      }
+                    >
+                      <option value="approved">Approved</option>
+                      <option value="pending">Pending review</option>
+                      {rejectedHighlights.length > 0 && (
+                        <option value="rejected">Rejected</option>
+                      )}
+                    </select>
+                  </label>
+                )}
+
+                <label className="tkh-compact-select-label">
+                  Moment
+                  <select
+                    className="tkh-compact-select"
+                    value={selectedFilter}
+                    onChange={(event) =>
+                      setSelectedFilter(event.target.value)
+                    }
+                  >
+                    {["all", "goal", "save", "skill", "other"].map(
+                      (filter) => (
+                        <option key={filter} value={filter}>
+                          {getFilterLabel(filter)}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </label>
+
+                <label className="tkh-compact-select-label">
+                  Player
+                  <select
+                    className="tkh-compact-select"
+                    value={selectedPlayerFilter}
+                    onChange={(event) =>
+                      setSelectedPlayerFilter(event.target.value)
+                    }
+                  >
+                    <option value="all">All players</option>
+                    {playerOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="tkh-compact-select-label">
+                  Viewed
+                  <select
+                    className="tkh-compact-select"
+                    value={watchedFilter}
+                    onChange={(event) =>
+                      setWatchedFilter(event.target.value)
+                    }
+                  >
+                    <option value="all">All clips</option>
+                    <option value="unwatched">Not watched</option>
+                    <option value="watched">Watched</option>
+                  </select>
+                </label>
+              </div>
+            )}
           </div>
         )}
 
@@ -3867,7 +4177,7 @@ export function VideoHighlightsPage({
           </div>
         )}
 
-        {mainTab === "currentWeek" && (
+        {(mainTab === "currentWeek" || mainTab === "throwback") && (
           <>
             {votingWindowClosed && (
               <div className="tkh-system-note">
@@ -3897,8 +4207,11 @@ export function VideoHighlightsPage({
                       type="button"
                       className="tkh-btn tkh-btn-primary"
                       onClick={() => {
-                        setHighlightEra("current_week");
-                        setMainTab("currentWeek");
+                        setHighlightEra(
+                          mainTab === "throwback"
+                            ? "throwback"
+                            : "current_week"
+                        );
                         setShowUploadModal(true);
                       }}
                     >
@@ -3973,6 +4286,16 @@ export function VideoHighlightsPage({
                     onEdit={openMetadataEditor}
                     onIdentifyPlayer={openIdentifyPlayer}
                     onAttachToClubChat={onAttachHighlightToClubChat}
+                    feedPosition={index + 1}
+                    feedTotal={visibleHighlights.length}
+                    isWatched={watchedClipIds.has(
+                      String(
+                        highlight.clipId ||
+                        highlight.id ||
+                        ""
+                      )
+                    )}
+                    onWatched={markHighlightWatched}
                   />
                     </React.Fragment>
                   );

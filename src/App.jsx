@@ -3343,6 +3343,7 @@ export default function App() {
   const [highlightVotesByUser, setHighlightVotesByUser] = useState({});
   const [highlightArchiveSelection, setHighlightArchiveSelection] = useState(null);
   const [cameraInstallPrompt, setCameraInstallPrompt] = useState(null);
+  const [cameraLaunchPending, setCameraLaunchPending] = useState(false);
 
 
   const persistReturnedHighlightsToFirebase = async (items) => {
@@ -4804,6 +4805,30 @@ export default function App() {
     if (!liveMatchDraft || liveMatchDraft.status !== "running") return;
     if (hasLiveMatch || running) return;
 
+    const recoveryControllerDeviceId = String(
+      liveMatchDraft?.controller?.deviceId || ""
+    ).trim();
+
+    const currentRefereeDeviceId = String(
+      refereeDeviceId || ""
+    ).trim();
+
+    /*
+     * Automatic recovery belongs exclusively to the browser/device
+     * that controlled the match. Other captains and admins must not
+     * be interrupted or silently placed inside the referee booth.
+     *
+     * A different device can still use the deliberate takeover flow
+     * when control genuinely needs to move.
+     */
+    if (
+      !recoveryControllerDeviceId ||
+      !currentRefereeDeviceId ||
+      recoveryControllerDeviceId !== currentRefereeDeviceId
+    ) {
+      return;
+    }
+
     const draftKey = liveMatchDraft.id || liveMatchDraft.startedAtISO || "live-draft";
 
     try {
@@ -4820,7 +4845,15 @@ export default function App() {
     setLiveDraftRecoveryKey(draftKey);
     applyRecoveredLiveDraftToControls(liveMatchDraft);
     setShowLiveMatchRecoveryModal(true);
-  }, [canStartMatch, liveMatchDraft, hasLiveMatch, running, liveDraftRecoveryKey]);
+  }, [
+    canStartMatch,
+    liveMatchDraft,
+    hasLiveMatch,
+    running,
+    liveDraftRecoveryKey,
+    refereeDeviceId,
+    activeClubId,
+  ]);
 
   const canAccessMatchSignup = isAdmin || isCaptain || isPlayer;
 
@@ -7426,6 +7459,8 @@ export default function App() {
   };
 
   const handleOpenHighlightsCamera = async () => {
+    if (cameraLaunchPending) return;
+
     if (isPracticeMode) {
       showPracticeRestriction(
         "Highlights Camera unavailable in Practice",
@@ -7641,6 +7676,9 @@ export default function App() {
       },
     };
 
+    setCameraInstallPrompt(null);
+    setCameraLaunchPending(true);
+
     try {
       const handoff =
         await createCameraHandoff({
@@ -7672,6 +7710,7 @@ export default function App() {
 
       const markOpened = () => {
         appProbablyOpened = true;
+        setCameraLaunchPending(false);
       };
 
       const onVisibilityChange = () => {
@@ -7704,11 +7743,11 @@ export default function App() {
         onVisibilityChange
       );
 
-      setCameraInstallPrompt(null);
       window.location.href = launchUrl;
 
       window.setTimeout(() => {
         cleanup();
+        setCameraLaunchPending(false);
 
         if (
           appProbablyOpened ||
@@ -7728,6 +7767,8 @@ export default function App() {
       }, CAMERA_APP_OPEN_FALLBACK_MS);
 
     } catch (error) {
+      setCameraLaunchPending(false);
+
       console.error(
         "[FANM CAMERA] Secure handoff failed",
         error
@@ -10022,6 +10063,59 @@ export default function App() {
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
         />
+      )}
+
+      {cameraLaunchPending && (
+        <div
+          className="modal-backdrop"
+          role="status"
+          aria-live="assertive"
+          aria-label="Launching Highlights Camera"
+          style={{
+            zIndex: 10120,
+            cursor: "wait",
+          }}
+        >
+          <div
+            className="modal"
+            style={{
+              width: "min(88vw, 390px)",
+              padding: "1.4rem",
+              textAlign: "center",
+              border: "1px solid rgba(56,189,248,0.5)",
+              background:
+                "radial-gradient(circle at top, rgba(56,189,248,0.2), rgba(2,6,23,0.98) 62%)",
+              boxShadow:
+                "0 24px 70px rgba(0,0,0,0.65), 0 0 34px rgba(56,189,248,0.18)",
+            }}
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                fontSize: "3rem",
+                lineHeight: 1,
+                marginBottom: "0.75rem",
+              }}
+            >
+              📹
+            </div>
+
+            <h2 style={{ margin: "0 0 0.45rem" }}>
+              Launching Camera…
+            </h2>
+
+            <p
+              style={{
+                margin: 0,
+                color: "#bae6fd",
+                lineHeight: 1.5,
+              }}
+            >
+              Preparing the secure fixture and opening the FANM Camera.
+              Please wait.
+            </p>
+          </div>
+        </div>
       )}
 
       {cameraInstallPrompt && (
