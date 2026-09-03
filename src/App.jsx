@@ -4162,6 +4162,11 @@ export default function App() {
     currentCameraLaunchTeams?.teamBId,
   ]);
 
+  const cameraTelemetryPublishRef = useRef({
+    fingerprint: "",
+    lastPublishedAtMs: 0,
+  });
+
   const currentCameraLiveContext = useMemo(() => {
     if (!(hasLiveMatch || running)) return null;
 
@@ -4193,29 +4198,80 @@ export default function App() {
     secondsLeft,
   ]);
 
-    useEffect(() => {
-    if (!USE_V2) return;
-    if (isPracticeMode) return;
+  useEffect(() => {
+    if (!USE_V2) return undefined;
+    if (isPracticeMode) return undefined;
+
+    const now = Date.now();
+    const context = currentCameraLiveContext;
+
+    /*
+     * Scores, fixture changes, start/pause and full-time publish
+     * immediately. Clock-only changes use a ten-second heartbeat.
+     * Android renders smoothly between these authoritative anchors.
+     */
+    const fingerprint = JSON.stringify(
+      context
+        ? {
+            matchId: context.matchId,
+            matchNo: context.matchNo,
+            teamAId: context.teamAId,
+            teamBId: context.teamBId,
+            goalsA: context.goalsA,
+            goalsB: context.goalsB,
+            matchSeconds: context.matchSeconds,
+            running: context.running,
+            timeUp: context.timeUp,
+          }
+        : null
+    );
+
+    const previous =
+      cameraTelemetryPublishRef.current;
+
+    const meaningfulChange =
+      fingerprint !== previous.fingerprint;
+
+    const heartbeatDue =
+      now - previous.lastPublishedAtMs >= 10_000;
+
+    if (!meaningfulChange && !heartbeatDue) {
+      return undefined;
+    }
+
+    cameraTelemetryPublishRef.current = {
+      fingerprint,
+      lastPublishedAtMs: now,
+    };
 
     let cancelled = false;
 
-    (async () => {
-      try {
-        await writeCameraLiveContextToFirebase(currentCameraLiveContext, activeClubId);
-      } catch (error) {
-        if (!cancelled) {
-          console.error(
-            "[TK CAMERA] Failed to write club-scoped cameraLiveContext:",
-            error
-          );
-        }
-      }
-    })();
+    writeCameraLiveContextToFirebase(
+      context,
+      activeClubId
+    ).catch((error) => {
+      if (cancelled) return;
+
+      /*
+       * Permit the next render to retry promptly rather than waiting
+       * for another full heartbeat interval.
+       */
+      cameraTelemetryPublishRef.current = {
+        fingerprint: previous.fingerprint,
+        lastPublishedAtMs:
+          previous.lastPublishedAtMs,
+      };
+
+      console.error(
+        "[TK CAMERA] Failed to write club-scoped cameraLiveContext:",
+        error
+      );
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [currentCameraLiveContext, activeClubId]);
+  }, [currentCameraLiveContext, activeClubId, isPracticeMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
