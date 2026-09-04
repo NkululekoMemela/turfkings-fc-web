@@ -121,6 +121,102 @@ function sortHighlightsByVotesThenNewest(items = [], voteCounts = {}) {
   });
 }
 
+/*
+ * Select competitive weekly winners.
+ *
+ * Rules:
+ * - Zero-vote clips cannot win.
+ * - Keep the normal number of category places.
+ * - A qualifying-boundary tie may expand the result only when
+ *   that tied group contains no more than three clips.
+ * - A tie larger than three does not expand the result.
+ * - Within a large tie, the earliest admin-liked clip ranks first.
+ */
+function selectVotedWinners(
+  rankedHighlights = [],
+  placesToKeep = 1,
+  voteCounts = {},
+  adminLikePriority = {}
+) {
+  const eligible = rankedHighlights.filter(
+    (highlight) =>
+      getHighlightVoteCount(highlight, voteCounts) > 0
+  );
+
+  const safePlaces = Math.max(
+    0,
+    Math.floor(Number(placesToKeep) || 0)
+  );
+
+  if (!eligible.length || safePlaces === 0) {
+    return [];
+  }
+
+  if (eligible.length <= safePlaces) {
+    return eligible;
+  }
+
+  const boundaryVotes = getHighlightVoteCount(
+    eligible[safePlaces - 1],
+    voteCounts
+  );
+
+  const aboveBoundary = eligible.filter(
+    (highlight) =>
+      getHighlightVoteCount(highlight, voteCounts) >
+      boundaryVotes
+  );
+
+  const boundaryTie = eligible.filter(
+    (highlight) =>
+      getHighlightVoteCount(highlight, voteCounts) ===
+      boundaryVotes
+  );
+
+  if (boundaryTie.length <= 3) {
+    return [...aboveBoundary, ...boundaryTie];
+  }
+
+  const remainingPlaces = Math.max(
+    0,
+    safePlaces - aboveBoundary.length
+  );
+
+  const rankedLargeTie = [...boundaryTie].sort((a, b) => {
+    const aPriority = Number(
+      adminLikePriority[getHighlightId(a)]
+    );
+    const bPriority = Number(
+      adminLikePriority[getHighlightId(b)]
+    );
+
+    const aHasAdminPriority = Number.isFinite(aPriority);
+    const bHasAdminPriority = Number.isFinite(bPriority);
+
+    if (aHasAdminPriority && bHasAdminPriority) {
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+    } else if (aHasAdminPriority) {
+      return -1;
+    } else if (bHasAdminPriority) {
+      return 1;
+    }
+
+    const timeDiff = getCreatedTime(b) - getCreatedTime(a);
+    if (timeDiff !== 0) return timeDiff;
+
+    return getHighlightId(a).localeCompare(
+      getHighlightId(b)
+    );
+  });
+
+  return [
+    ...aboveBoundary,
+    ...rankedLargeTie.slice(0, remainingPlaces),
+  ];
+}
+
 export function splitHighlightsByType(highlights = []) {
   const buckets = {
     goals: [],
@@ -180,6 +276,7 @@ export function curateHighlights({
   highlights = [],
   votesByUser = {},
   voteCounts: providedVoteCounts = null,
+  adminLikePriority = {},
   limits = DEFAULT_CURATION_LIMITS,
 } = {}) {
   const safeHighlights = Array.isArray(highlights) ? highlights : [];
@@ -196,9 +293,12 @@ export function curateHighlights({
   const rankedSaves = sortHighlightsByVotesThenNewest(buckets.saves, voteCounts);
   const rankedSkills = sortHighlightsByVotesThenNewest(buckets.skills, voteCounts);
 
-  const topGoals = rankedGoals
-    .slice(0, safeLimits.goalsToKeep)
-    .map((highlight, index) =>
+  const topGoals = selectVotedWinners(
+    rankedGoals,
+    safeLimits.goalsToKeep,
+    voteCounts,
+    adminLikePriority
+  ).map((highlight, index) =>
       decorateWinner(highlight, {
         category: HIGHLIGHT_TYPES.GOAL,
         rank: index + 1,
@@ -206,26 +306,39 @@ export function curateHighlights({
       })
     );
 
-  const bestSave = rankedSaves[0]
-    ? decorateWinner(rankedSaves[0], {
-        category: HIGHLIGHT_TYPES.SAVE,
-        rank: 1,
-        voteCounts,
-      })
-    : null;
+  const selectedSaves = selectVotedWinners(
+    rankedSaves,
+    safeLimits.savesToKeep,
+    voteCounts,
+    adminLikePriority
+  ).map((highlight) =>
+    decorateWinner(highlight, {
+      category: HIGHLIGHT_TYPES.SAVE,
+      rank: 1,
+      voteCounts,
+    })
+  );
 
-  const bestSkill = rankedSkills[0]
-    ? decorateWinner(rankedSkills[0], {
-        category: HIGHLIGHT_TYPES.SKILL,
-        rank: 1,
-        voteCounts,
-      })
-    : null;
+  const selectedSkills = selectVotedWinners(
+    rankedSkills,
+    safeLimits.skillsToKeep,
+    voteCounts,
+    adminLikePriority
+  ).map((highlight) =>
+    decorateWinner(highlight, {
+      category: HIGHLIGHT_TYPES.SKILL,
+      rank: 1,
+      voteCounts,
+    })
+  );
+
+  const bestSave = selectedSaves[0] || null;
+  const bestSkill = selectedSkills[0] || null;
 
   const winners = [
     ...topGoals,
-    ...(bestSave ? [bestSave] : []),
-    ...(bestSkill ? [bestSkill] : []),
+    ...selectedSaves,
+    ...selectedSkills,
   ];
 
   const winnerIds = new Set(winners.map(getHighlightId).filter(Boolean));

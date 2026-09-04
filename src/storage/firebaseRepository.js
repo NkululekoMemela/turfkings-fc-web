@@ -115,6 +115,72 @@ export function subscribeToState(callback) {
   );
 }
 
+function compactArchivedPlayerCardSnapshots(state) {
+  if (!state || typeof state !== "object") return state;
+
+  const activeSeasonId =
+    String(state.activeSeasonId || "");
+
+  const seasons = Array.isArray(state.seasons)
+    ? state.seasons
+    : [];
+
+  let changed = false;
+
+  const compactedSeasons = seasons.map((season) => {
+    const seasonId = String(season?.seasonId || "");
+    const snapshot = season?.finalPlayerCardSnapshot;
+
+    if (
+      !seasonId ||
+      seasonId === activeSeasonId ||
+      !snapshot ||
+      typeof snapshot !== "object"
+    ) {
+      return season;
+    }
+
+    const players =
+      snapshot.players &&
+      typeof snapshot.players === "object"
+        ? snapshot.players
+        : {};
+
+    if (Object.keys(players).length === 0) {
+      return season;
+    }
+
+    changed = true;
+
+    return {
+      ...season,
+      finalPlayerCardSnapshot: {
+        createdAt:
+          snapshot.createdAt ||
+          season.finalPlayerCardSnapshotCreatedAt ||
+          null,
+        seasonId,
+        seasonNo: Number(season?.seasonNo || 0),
+        source:
+          "outgoing_state_compact_rebuild_from_archived_history",
+        players: {},
+        renderedSnapshotCreatedAt:
+          snapshot.renderedSnapshotCreatedAt || null,
+        rebuildFromArchivedHistory: true,
+        preventedEmbeddedPlayerCount:
+          Object.keys(players).length,
+      },
+    };
+  });
+
+  return changed
+    ? {
+        ...state,
+        seasons: compactedSeasons,
+      }
+    : state;
+}
+
 export async function saveStateToFirebaseV2(
   state,
   clubId = DEFAULT_CLUB_ID,
@@ -122,7 +188,52 @@ export async function saveStateToFirebaseV2(
 ) {
   try {
     const ref = resolveV2StateDoc(clubId, dataScope);
-    const cleanedState = stripUndefinedDeep(state);
+    const compactState =
+      compactArchivedPlayerCardSnapshots(state);
+    const cleanedState =
+      stripUndefinedDeep(compactState);
+
+    const jsonBytes = (value) => {
+      try {
+        return new TextEncoder().encode(
+          JSON.stringify(value ?? null)
+        ).length;
+      } catch {
+        return -1;
+      }
+    };
+
+    const topLevelSizes = Object.entries(cleanedState || {})
+      .map(([field, value]) => ({
+        field,
+        bytes: jsonBytes(value),
+        count: Array.isArray(value)
+          ? value.length
+          : value && typeof value === "object"
+            ? Object.keys(value).length
+            : "",
+      }))
+      .sort((a, b) => b.bytes - a.bytes);
+
+    const seasonSizes = (
+      Array.isArray(cleanedState?.seasons)
+        ? cleanedState.seasons
+        : []
+    )
+      .map((season) => ({
+        seasonId: season?.seasonId || "",
+        bytes: jsonBytes(season),
+        matchDayHistoryBytes: jsonBytes(
+          season?.matchDayHistory || []
+        ),
+        friendlyHistoryBytes: jsonBytes(
+          season?.friendlyMatchDayHistory || []
+        ),
+        finalSnapshotBytes: jsonBytes(
+          season?.finalPlayerCardSnapshot || null
+        ),
+      }))
+      .sort((a, b) => b.bytes - a.bytes);
 
     console.log("[FIREBASE SAVE V2] attempting", {
       clubId,
@@ -130,7 +241,11 @@ export async function saveStateToFirebaseV2(
         dataScope?.environment || "official",
       activeSeasonId: cleanedState?.activeSeasonId,
       seasonsCount: cleanedState?.seasons?.length || 0,
+      approximateStateBytes: jsonBytes(cleanedState),
     });
+
+    console.table(topLevelSizes);
+    console.table(seasonSizes);
 
     await setDoc(
       ref,

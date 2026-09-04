@@ -62,8 +62,12 @@ const cleanupQueueRef = (id) => collection(matchRef(id), "cleanup_queue");
 const recordingDevicesRef = (id) => collection(matchRef(id), "recording_devices");
 const captureRequestsRef = (id) => collection(matchRef(id), "capture_requests");
 
-function rawDoc(matchId, clipId) {
-  return doc(rawRef(matchId), clipId);
+function rawDoc(
+  matchId,
+  clipId,
+  clubId = DEFAULT_CLUB_ID
+) {
+  return doc(rawRef(matchId, clubId), clipId);
 }
 
 function archiveDoc(matchId, clipId) {
@@ -811,16 +815,24 @@ export async function loadVideoCleanupQueueFromFirebase(matchId) {
 // LIKES
 // ============================
 
-function highlightLikesRef(matchId) {
-  return collection(matchRef(matchId), "likes");
+function highlightLikesRef(
+  matchId,
+  clubId = DEFAULT_CLUB_ID
+) {
+  return collection(matchRef(matchId, clubId), "likes");
 }
 
-function highlightLikeDoc(matchId, clipId, userId) {
+function highlightLikeDoc(
+  matchId,
+  clipId,
+  userId,
+  clubId = DEFAULT_CLUB_ID
+) {
   const safeClipId = safeId(clipId, "clip");
   const safeUserId = safeId(userId, "user");
 
   return doc(
-    highlightLikesRef(matchId),
+    highlightLikesRef(matchId, clubId),
     `${safeClipId}__${safeUserId}`
   );
 }
@@ -844,7 +856,16 @@ export async function toggleHighlightLike({
   if (!clipId) throw new Error("Missing clipId.");
   if (!userId) throw new Error("Missing userId.");
 
-  const target = highlightLikeDoc(matchId, clipId, userId);
+  const safeClubId =
+    String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
+    DEFAULT_CLUB_ID;
+
+  const target = highlightLikeDoc(
+    matchId,
+    clipId,
+    userId,
+    safeClubId
+  );
   const existing = await getDoc(target);
 
   if (existing.exists()) {
@@ -865,7 +886,7 @@ export async function toggleHighlightLike({
     clipId: String(clipId),
     userId: String(userId),
     userName: String(userName || ""),
-    clubId: String(clubId || ""),
+    clubId: safeClubId,
     category: String(category || ""),
     likedAtISO,
     likedAtServer: serverTimestamp(),
@@ -886,7 +907,10 @@ export async function toggleHighlightLike({
  * - countsByClip: total unique likes per clip
  * - likedClipIdsByUser: clips liked by each user
  */
-export async function loadHighlightLikesFromFirebase(matchId) {
+export async function loadHighlightLikesFromFirebase(
+  matchId,
+  clubId = DEFAULT_CLUB_ID
+) {
   if (!matchId) {
     return {
       likes: [],
@@ -895,7 +919,13 @@ export async function loadHighlightLikesFromFirebase(matchId) {
     };
   }
 
-  const snap = await getDocs(highlightLikesRef(matchId));
+  const safeClubId =
+    String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
+    DEFAULT_CLUB_ID;
+
+  const snap = await getDocs(
+    highlightLikesRef(matchId, safeClubId)
+  );
   const likes = [];
   const countsByClip = {};
   const likedClipIdsByUser = {};
@@ -938,7 +968,8 @@ export async function loadHighlightLikesFromFirebase(matchId) {
  * Load and merge likes for every match represented in the club feed.
  */
 export async function loadHighlightLikesForMatchesFromFirebase(
-  matchIds = []
+  matchIds = [],
+  clubId = DEFAULT_CLUB_ID
 ) {
   const uniqueMatchIds = [
     ...new Set(
@@ -950,7 +981,7 @@ export async function loadHighlightLikesForMatchesFromFirebase(
 
   const results = await Promise.all(
     uniqueMatchIds.map((matchId) =>
-      loadHighlightLikesFromFirebase(matchId)
+      loadHighlightLikesFromFirebase(matchId, clubId)
     )
   );
 
@@ -1665,21 +1696,73 @@ export async function deleteRawHighlightFromFirebase({
   matchId,
   clipId,
   storagePath,
+  clubId = "",
 }) {
   if (!matchId) throw new Error("Missing matchId.");
   if (!clipId) throw new Error("Missing clipId.");
 
-  await deleteDoc(rawDoc(matchId, clipId));
+  /*
+   * Older UI calls did not pass clubId. Derive it from the
+   * canonical Storage path so deletion still targets the correct
+   * club instead of silently defaulting to Turf Kings.
+   */
+  const storageClubId = String(storagePath || "")
+    .match(/^clubs\/([^/]+)\/video_highlights\//)?.[1] || "";
 
+  const safeClubId =
+    String(
+      clubId ||
+      storageClubId ||
+      DEFAULT_CLUB_ID
+    ).trim().toLowerCase() ||
+    DEFAULT_CLUB_ID;
+
+  /*
+   * Delete Storage first. If this fails for a real reason, retain
+   * Firestore metadata so the operation remains recoverable.
+   */
   if (storagePath) {
     const fileRef = ref(storage, storagePath);
 
     try {
       await deleteObject(fileRef);
-    } catch (e) {
-      console.warn("[TK HIGHLIGHTS] Storage delete failed:", e);
+    } catch (error) {
+      if (error?.code !== "storage/object-not-found") {
+        console.error(
+          "[TK HIGHLIGHTS] Storage deletion failed; " +
+          "Firestore metadata retained.",
+          {
+            clubId: safeClubId,
+            matchId,
+            clipId,
+            storagePath,
+            code: error?.code,
+            message: error?.message,
+          }
+        );
+
+        throw error;
+      }
     }
   }
+
+  await deleteDoc(
+    rawDoc(matchId, clipId, safeClubId)
+  );
+
+  console.log("[TK HIGHLIGHTS] Clip deleted", {
+    clubId: safeClubId,
+    matchId,
+    clipId,
+    storagePath: storagePath || null,
+  });
+
+  return {
+    clubId: safeClubId,
+    matchId,
+    clipId,
+    deleted: true,
+  };
 }
 
 // ============================
@@ -2115,35 +2198,60 @@ export async function loadAllClubHighlightsForAudit(clubId) {
   };
 
   async function resolvePlayableUrl(item = {}) {
+    /*
+     * Prefer Firebase Storage as the source of truth.
+     * Legacy saved URLs may be stale or reused by another record.
+     */
+    if (item.storagePath) {
+      try {
+        const url = await getDownloadURL(
+          ref(storage, item.storagePath)
+        );
+
+        return {
+          ...item,
+          videoUrl: url,
+          downloadUrl: url,
+          mediaUrl: url,
+        };
+      } catch (error) {
+        console.warn(
+          "[VIDEO AUDIT] Could not resolve Storage object:",
+          item.storagePath,
+          error
+        );
+
+        return {
+          ...item,
+          videoUrl: "",
+          downloadUrl: "",
+          mediaUrl: "",
+          fileUrl: "",
+          publicUrl: "",
+          previewUrl: "",
+          url: "",
+          uri: "",
+          playableVideo: false,
+        };
+      }
+    }
+
     const existingUrl = getUrl(item);
 
-    if (existingUrl) {
+    if (!existingUrl) {
       return {
         ...item,
-        videoUrl: item.videoUrl || existingUrl,
-        downloadUrl: item.downloadUrl || existingUrl,
-        mediaUrl: item.mediaUrl || existingUrl,
+        playableVideo: false,
       };
     }
 
-    if (!item.storagePath) return item;
-
-    try {
-      const url = await getDownloadURL(ref(storage, item.storagePath));
-      return {
-        ...item,
-        videoUrl: url,
-        downloadUrl: url,
-        mediaUrl: url,
-      };
-    } catch (error) {
-      console.warn(
-        "[VIDEO AUDIT] Could not resolve Storage object:",
-        item.storagePath,
-        error
-      );
-      return item;
-    }
+    return {
+      ...item,
+      videoUrl: item.videoUrl || existingUrl,
+      downloadUrl: item.downloadUrl || existingUrl,
+      mediaUrl: item.mediaUrl || existingUrl,
+      playableVideo: true,
+    };
   }
 
   async function collectMatchCollection(collectionRef, sourceLabel) {
@@ -2344,17 +2452,18 @@ export async function loadAllClubHighlightsForAudit(clubId) {
    * dedupe key.
    */
   const seenIds = new Set();
-  const seenUrls = new Set();
 
   const unique = playable.filter((item) => {
-    const id = String(item.clipId || item.id || "").trim();
-    const url = String(getUrl(item) || "").trim();
+    const id = String(
+      item.clipId ||
+      item.id ||
+      item.storagePath ||
+      ""
+    ).trim();
 
     if (id && seenIds.has(id)) return false;
-    if (url && seenUrls.has(url)) return false;
-
     if (id) seenIds.add(id);
-    if (url) seenUrls.add(url);
+
     return true;
   });
 
@@ -2393,229 +2502,131 @@ export async function loadAllClubHighlightsForAudit(clubId) {
 
 
 export async function getClubFeaturedHighlight(clubId) {
-  if (!clubId) return null;
-
-  const allVideos = [];
-
-  const getUrl = (item = {}) =>
-    item.downloadUrl ||
-    item.videoUrl ||
-    item.mediaUrl ||
-    item.fileUrl ||
-    item.publicUrl ||
-    item.previewUrl ||
-    item.url ||
-    item.uri ||
-    "";
-
-  const hasUrl = (item = {}) => Boolean(getUrl(item) || item.storagePath);
-
-  const belongsToClub = (item = {}) => {
-    const explicitClubId =
-      item.clubId ||
-      item.clubID ||
-      item.clubSlug ||
-      item.activeClubId ||
-      item.matchContext?.clubId ||
-      item.matchContext?.activeClubId ||
-      item.matchContext?.clubSlug ||
-      item.metadata?.clubId ||
-      item.metadata?.activeClubId ||
-      "";
-
-    if (explicitClubId) {
-      return String(explicitClubId).trim().toLowerCase() === String(clubId).trim().toLowerCase();
-    }
-
-    const clubName =
-      item.clubName ||
-      item.activeClubName ||
-      item.matchContext?.clubName ||
-      item.matchContext?.activeClubName ||
-      item.metadata?.clubName ||
-      "";
-
-    if (clubName && clubId === "turf-kings") {
-      return String(clubName).toLowerCase().includes("turf");
-    }
-
-    // Older uploaded clips may not yet have club metadata.
-    // Treat untagged legacy clips as Turf Kings only so they do not leak into other clubs.
-    return String(clubId).trim().toLowerCase() === "turf-kings";
-  };
-
-  async function resolvePlayableUrl(item = {}) {
-    const existingUrl = getUrl(item);
-
-    if (existingUrl) {
-      return {
-        ...item,
-        downloadUrl: item.downloadUrl || existingUrl,
-        videoUrl: item.videoUrl || existingUrl,
-        mediaUrl: item.mediaUrl || existingUrl,
-      };
-    }
-
-    if (!item.storagePath) return item;
-
-    try {
-      const resolvedUrl = await getDownloadURL(ref(storage, item.storagePath));
-
-      return {
-        ...item,
-        downloadUrl: resolvedUrl,
-        videoUrl: resolvedUrl,
-        mediaUrl: resolvedUrl,
-      };
-    } catch (error) {
-      console.warn("[TK FEATURED HIGHLIGHT] Could not resolve storage URL:", item.storagePath, error);
-      return item;
-    }
-  }
-
-  async function collectFromMatchCollection(collectionRef, sourceLabel) {
-    try {
-      const matchDocsSnap = await getDocs(collectionRef);
-
-      for (const matchDocSnap of matchDocsSnap.docs) {
-        const matchId = matchDocSnap.id;
-        const directData = matchDocSnap.data?.() || {};
-
-        if (hasUrl(directData)) {
-          allVideos.push({
-            id: matchDocSnap.id,
-            clipId: matchDocSnap.id,
-            matchId,
-            sourcePath: sourceLabel,
-            ...directData,
-          });
-        }
-
-        const [rawSnap, archivedSnap] = await Promise.allSettled([
-          getDocs(collection(matchDocSnap.ref, "raw")),
-          getDocs(collection(matchDocSnap.ref, "archived")),
-        ]);
-
-        if (rawSnap.status === "fulfilled") {
-          rawSnap.value.docs.forEach((clipDoc) => {
-            allVideos.push({
-              id: clipDoc.id,
-              clipId: clipDoc.id,
-              matchId,
-              sourcePath: `${sourceLabel}/${matchId}/raw`,
-              ...clipDoc.data(),
-            });
-          });
-        }
-
-        if (archivedSnap.status === "fulfilled") {
-          archivedSnap.value.docs.forEach((clipDoc) => {
-            allVideos.push({
-              id: clipDoc.id,
-              clipId: clipDoc.id,
-              matchId,
-              sourcePath: `${sourceLabel}/${matchId}/archived`,
-              ...clipDoc.data(),
-            });
-          });
-        }
-      }
-    } catch (error) {
-      console.warn("[TK FEATURED HIGHLIGHT] Skipped path:", sourceLabel, error);
-    }
-  }
-
-  async function collectFromGroup(groupName) {
-    try {
-      const snap = await getDocs(query(collectionGroup(db, groupName), limit(50)));
-
-      snap.docs.forEach((clipDoc) => {
-        const data = clipDoc.data() || {};
-        const parentMatchRef = clipDoc.ref.parent?.parent;
-
-        allVideos.push({
-          id: clipDoc.id,
-          clipId: clipDoc.id,
-          matchId: data.matchId || parentMatchRef?.id || "",
-          sourcePath: `collectionGroup/${groupName}`,
-          ...data,
-        });
-      });
-    } catch (error) {
-      console.warn("[TK FEATURED HIGHLIGHT] Collection-group scan failed:", groupName, error);
-    }
-  }
+  const safeClubId =
+    String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
+    DEFAULT_CLUB_ID;
 
   try {
-    await Promise.all([
-      collectFromMatchCollection(
-        collection(db, "clubs", clubId, CLUB_COLLECTIONS.videoHighlights),
-        `clubs/${clubId}/${CLUB_COLLECTIONS.videoHighlights}`
-      ),
-      collectFromMatchCollection(
-        collection(db, "clubs", clubId, "videoHighlights"),
-        `clubs/${clubId}/videoHighlights`
-      ),
-      collectFromMatchCollection(
-        collection(db, "clubs", clubId, "video_highlights"),
-        `clubs/${clubId}/video_highlights`
-      ),
-      collectFromMatchCollection(
-        collection(db, "video_highlights"),
-        "video_highlights"
-      ),
-      collectFromMatchCollection(
-        collection(db, "videoHighlights"),
-        "videoHighlights"
-      ),
-      collectFromGroup("raw"),
-      collectFromGroup("archived"),
-    ]);
+    /*
+     * Query only this club's indexed highlight matches.
+     * Missing parent indexes are repaired separately; this reader
+     * must never depend on a global cross-club sample.
+     */
+    const highlights =
+      await loadRecentClubHighlightsFromFirebase(safeClubId);
 
-    const resolvedVideos = await Promise.all(
-      allVideos
-        .filter((item) => hasUrl(item))
-        .filter((item) => belongsToClub(item))
-        .map((item) => resolvePlayableUrl(item))
+    const playable = (Array.isArray(highlights)
+      ? highlights
+      : []
+    ).filter((item) =>
+      Boolean(
+        item?.mediaUrl ||
+        item?.downloadUrl ||
+        item?.videoUrl
+      )
     );
 
-    const videos = resolvedVideos.filter((item) => getUrl(item));
+    if (!playable.length) {
+      return null;
+    }
 
-    console.log("[TK FEATURED HIGHLIGHT SEARCH]", {
-      clubId,
-      foundVideos: videos.length,
-      videos,
-    });
+    const matchIds = [
+      ...new Set(
+        playable
+          .map((item) =>
+            String(item?.matchId || "").trim()
+          )
+          .filter(Boolean)
+      ),
+    ];
 
-    if (!videos.length) return null;
+    const likesResult =
+      await loadHighlightLikesForMatchesFromFirebase(
+        matchIds,
+        safeClubId
+      );
 
-    const getVotes = (item) =>
-      Number(item.votes || item.voteCount || item.totalVotes || item.upvotes || 0);
+    const countsByClip =
+      likesResult?.countsByClip &&
+      typeof likesResult.countsByClip === "object"
+        ? likesResult.countsByClip
+        : {};
 
-    const getTime = (item) =>
-      item.createdAt?.toMillis?.() ||
-      item.createdAtServer?.toMillis?.() ||
-      item.updatedAtServer?.toMillis?.() ||
-      item.timestamp?.toMillis?.() ||
-      new Date(
-        item.createdAtISO ||
-          item.createdAt ||
-          item.timestamp ||
-          item.uploadedAtISO ||
-          item.archivedAtISO ||
+    const getVotes = (item = {}) => {
+      const clipId = String(
+        item.clipId || item.id || item.highlightId || ""
+      ).trim();
+
+      return Math.max(
+        0,
+        Number(
+          countsByClip[clipId] ??
+          item.frozenWeeklyVoteCount ??
+          item.voteCount ??
+          item.votes ??
+          item.likesCount ??
+          item.totalVotes ??
           0
-      ).getTime() ||
-      0;
+        ) || 0
+      );
+    };
 
-    videos.sort((a, b) => {
-      const voteDiff = getVotes(b) - getVotes(a);
-      if (voteDiff !== 0) return voteDiff;
-      return getTime(b) - getTime(a);
+    const getTime = (item = {}) => {
+      const firestoreTime =
+        item.createdAt?.toMillis?.() ||
+        item.createdAtServer?.toMillis?.() ||
+        item.updatedAtServer?.toMillis?.() ||
+        item.timestamp?.toMillis?.();
+
+      if (Number.isFinite(Number(firestoreTime))) {
+        return Number(firestoreTime);
+      }
+
+      const parsed = new Date(
+        item.createdAtISO ||
+        item.uploadedAtISO ||
+        item.archivedAtISO ||
+        item.createdAt ||
+        item.uploadedAt ||
+        item.timestamp ||
+        0
+      ).getTime();
+
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    playable.sort((a, b) => {
+      const voteDifference = getVotes(b) - getVotes(a);
+      if (voteDifference !== 0) return voteDifference;
+
+      const timeDifference = getTime(b) - getTime(a);
+      if (timeDifference !== 0) return timeDifference;
+
+      const aId = String(a.clipId || a.id || "");
+      const bId = String(b.clipId || b.id || "");
+      return aId.localeCompare(bId);
     });
 
-    return videos[0];
+    const selected = playable[0];
+
+    console.log("[TK FEATURED HIGHLIGHT]", {
+      clubId: safeClubId,
+      clipId: selected?.clipId || selected?.id || "",
+      votes: getVotes(selected),
+      availableClips: playable.length,
+      selection:
+        getVotes(selected) > 0
+          ? "highest_voted"
+          : "newest_playable",
+    });
+
+    return selected;
   } catch (error) {
-    console.warn("[TK FEATURED HIGHLIGHT] Failed to load featured highlight:", clubId, error);
+    console.warn(
+      "[TK FEATURED HIGHLIGHT] Failed:",
+      safeClubId,
+      error
+    );
     return null;
   }
 }

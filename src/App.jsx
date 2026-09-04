@@ -1438,61 +1438,31 @@ function readRenderedPlayerCardSnapshotFromLocalStorage(seasonId, clubId = DEFAU
 
 function buildFinalPlayerCardSnapshot({
   season,
-  peerRatingsByPlayer = {},
   renderedPlayerCardSnapshot = null,
 }) {
-  if (!season || typeof season !== "object") {
-    return {
-      createdAt: new Date().toISOString(),
-      seasonId: "",
-      players: {},
-    };
-  }
+  const safeSeason =
+    season && typeof season === "object"
+      ? season
+      : {};
 
-  const history = Array.isArray(season.matchDayHistory)
-    ? season.matchDayHistory
-    : [];
-
-  const events = [
-    ...history.flatMap((day) =>
-      Array.isArray(day?.allEvents) ? day.allEvents : []
-    ),
-    ...(Array.isArray(season.allEvents) ? season.allEvents : []),
-    ...(Array.isArray(season.currentEvents) ? season.currentEvents : []),
-  ];
-
-  const results = [
-    ...history.flatMap((day) =>
-      Array.isArray(day?.results) ? day.results : []
-    ),
-    ...(Array.isArray(season.results) ? season.results : []),
-  ];
-
-  const playerAppearances = history.flatMap((day) =>
-    Array.isArray(day?.playerAppearances)
-      ? day.playerAppearances.map((entry) => ({
-          ...entry,
-          matchDayId:
-            entry?.matchDayId ||
-            day?.id ||
-            day?.matchDayId ||
-            day?.date ||
-            "",
-          matchDayCreatedAt:
-            entry?.matchDayCreatedAt || day?.createdAt || "",
-        }))
-      : []
-  );
-
+  /*
+   * Keep the shared club state compact.
+   *
+   * Historical player cards are rebuilt from the archived season's
+   * matchDayHistory, teams, results, events and appearances. Exact
+   * rendered cards must never be embedded in clubs/{clubId}/state/main,
+   * because that duplicates the season and can exceed Firestore's
+   * one-document size limit.
+   */
   return {
     createdAt: new Date().toISOString(),
-    seasonId: season.seasonId || "",
-    seasonNo: Number(season.seasonNo || 0),
-    source: renderedPlayerCardSnapshot?.players
-      ? "end_season_exact_rendered_player_card_snapshot"
-      : "end_season_frozen_player_card_snapshot",
-    players: renderedPlayerCardSnapshot?.players || {},
-    renderedSnapshotCreatedAt: renderedPlayerCardSnapshot?.createdAt || null,
+    seasonId: safeSeason.seasonId || "",
+    seasonNo: Number(safeSeason.seasonNo || 0),
+    source: "end_season_compact_rebuild_from_archived_history",
+    players: {},
+    renderedSnapshotCreatedAt:
+      renderedPlayerCardSnapshot?.createdAt || null,
+    rebuildFromArchivedHistory: true,
     weights: {
       formStats: 0.55,
       formPeer: 0.45,
@@ -1502,11 +1472,6 @@ function buildFinalPlayerCardSnapshot({
       overallPeer: 0.3,
       overallForm: 0.3,
     },
-    teams: Array.isArray(season.teams) ? season.teams : [],
-    events,
-    results,
-    playerAppearances,
-    peerRatingsByPlayer: peerRatingsByPlayer || {},
   };
 }
 
@@ -2156,18 +2121,42 @@ function buildCameraLiveContext({
 }
 
 async function writeCameraLiveContextToFirebase(cameraLiveContext, clubId = DEFAULT_CLUB_ID) {
-  const safeClubId = String(clubId || DEFAULT_CLUB_ID).trim() || DEFAULT_CLUB_ID;
-  const appStateRef = doc(db, "clubs", safeClubId, "state", "main");
+  const safeClubId =
+    String(clubId || DEFAULT_CLUB_ID).trim() || DEFAULT_CLUB_ID;
 
-  await setDoc(
-    appStateRef,
-    {
-      cameraLiveContext: cameraLiveContext || null,
-      updatedAt: serverTimestamp(),
-      updatedAtISO: new Date().toISOString(),
-    },
-    { merge: true }
+  const payload = {
+    cameraLiveContext: cameraLiveContext || null,
+    updatedAt: serverTimestamp(),
+    updatedAtISO: new Date().toISOString(),
+  };
+
+  const dedicatedCameraRef = doc(
+    db,
+    "clubs",
+    safeClubId,
+    "camera",
+    "live"
   );
+
+  const legacyStateRef = doc(
+    db,
+    "clubs",
+    safeClubId,
+    "state",
+    "main"
+  );
+
+  /*
+   * Dedicated live telemetry keeps per-second camera traffic separate
+   * from the club's permanent season/state document.
+   *
+   * Keep the legacy mirror temporarily so existing Camera installations
+   * continue receiving League updates during migration.
+   */
+  await Promise.all([
+    setDoc(dedicatedCameraRef, payload, { merge: true }),
+    setDoc(legacyStateRef, payload, { merge: true }),
+  ]);
 }
 
 /*
@@ -3354,6 +3343,7 @@ export default function App() {
   const [highlightVotesByUser, setHighlightVotesByUser] = useState({});
   const [highlightArchiveSelection, setHighlightArchiveSelection] = useState(null);
   const [cameraInstallPrompt, setCameraInstallPrompt] = useState(null);
+  const [cameraLaunchPending, setCameraLaunchPending] = useState(false);
 
 
   const persistReturnedHighlightsToFirebase = async (items) => {
@@ -4173,6 +4163,11 @@ export default function App() {
     currentCameraLaunchTeams?.teamBId,
   ]);
 
+  const cameraTelemetryPublishRef = useRef({
+    fingerprint: "",
+    lastPublishedAtMs: 0,
+  });
+
   const currentCameraLiveContext = useMemo(() => {
     if (!(hasLiveMatch || running)) return null;
 
@@ -4204,29 +4199,80 @@ export default function App() {
     secondsLeft,
   ]);
 
-    useEffect(() => {
-    if (!USE_V2) return;
-    if (isPracticeMode) return;
+  useEffect(() => {
+    if (!USE_V2) return undefined;
+    if (isPracticeMode) return undefined;
+
+    const now = Date.now();
+    const context = currentCameraLiveContext;
+
+    /*
+     * Scores, fixture changes, start/pause and full-time publish
+     * immediately. Clock-only changes use a ten-second heartbeat.
+     * Android renders smoothly between these authoritative anchors.
+     */
+    const fingerprint = JSON.stringify(
+      context
+        ? {
+            matchId: context.matchId,
+            matchNo: context.matchNo,
+            teamAId: context.teamAId,
+            teamBId: context.teamBId,
+            goalsA: context.goalsA,
+            goalsB: context.goalsB,
+            matchSeconds: context.matchSeconds,
+            running: context.running,
+            timeUp: context.timeUp,
+          }
+        : null
+    );
+
+    const previous =
+      cameraTelemetryPublishRef.current;
+
+    const meaningfulChange =
+      fingerprint !== previous.fingerprint;
+
+    const heartbeatDue =
+      now - previous.lastPublishedAtMs >= 10_000;
+
+    if (!meaningfulChange && !heartbeatDue) {
+      return undefined;
+    }
+
+    cameraTelemetryPublishRef.current = {
+      fingerprint,
+      lastPublishedAtMs: now,
+    };
 
     let cancelled = false;
 
-    (async () => {
-      try {
-        await writeCameraLiveContextToFirebase(currentCameraLiveContext, activeClubId);
-      } catch (error) {
-        if (!cancelled) {
-          console.error(
-            "[TK CAMERA] Failed to write club-scoped cameraLiveContext:",
-            error
-          );
-        }
-      }
-    })();
+    writeCameraLiveContextToFirebase(
+      context,
+      activeClubId
+    ).catch((error) => {
+      if (cancelled) return;
+
+      /*
+       * Permit the next render to retry promptly rather than waiting
+       * for another full heartbeat interval.
+       */
+      cameraTelemetryPublishRef.current = {
+        fingerprint: previous.fingerprint,
+        lastPublishedAtMs:
+          previous.lastPublishedAtMs,
+      };
+
+      console.error(
+        "[TK CAMERA] Failed to write club-scoped cameraLiveContext:",
+        error
+      );
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [currentCameraLiveContext]);
+  }, [currentCameraLiveContext, activeClubId, isPracticeMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -4759,6 +4805,30 @@ export default function App() {
     if (!liveMatchDraft || liveMatchDraft.status !== "running") return;
     if (hasLiveMatch || running) return;
 
+    const recoveryControllerDeviceId = String(
+      liveMatchDraft?.controller?.deviceId || ""
+    ).trim();
+
+    const currentRefereeDeviceId = String(
+      refereeDeviceId || ""
+    ).trim();
+
+    /*
+     * Automatic recovery belongs exclusively to the browser/device
+     * that controlled the match. Other captains and admins must not
+     * be interrupted or silently placed inside the referee booth.
+     *
+     * A different device can still use the deliberate takeover flow
+     * when control genuinely needs to move.
+     */
+    if (
+      !recoveryControllerDeviceId ||
+      !currentRefereeDeviceId ||
+      recoveryControllerDeviceId !== currentRefereeDeviceId
+    ) {
+      return;
+    }
+
     const draftKey = liveMatchDraft.id || liveMatchDraft.startedAtISO || "live-draft";
 
     try {
@@ -4775,7 +4845,15 @@ export default function App() {
     setLiveDraftRecoveryKey(draftKey);
     applyRecoveredLiveDraftToControls(liveMatchDraft);
     setShowLiveMatchRecoveryModal(true);
-  }, [canStartMatch, liveMatchDraft, hasLiveMatch, running, liveDraftRecoveryKey]);
+  }, [
+    canStartMatch,
+    liveMatchDraft,
+    hasLiveMatch,
+    running,
+    liveDraftRecoveryKey,
+    refereeDeviceId,
+    activeClubId,
+  ]);
 
   const canAccessMatchSignup = isAdmin || isCaptain || isPlayer;
 
@@ -7381,6 +7459,8 @@ export default function App() {
   };
 
   const handleOpenHighlightsCamera = async () => {
+    if (cameraLaunchPending) return;
+
     if (isPracticeMode) {
       showPracticeRestriction(
         "Highlights Camera unavailable in Practice",
@@ -7596,6 +7676,9 @@ export default function App() {
       },
     };
 
+    setCameraInstallPrompt(null);
+    setCameraLaunchPending(true);
+
     try {
       const handoff =
         await createCameraHandoff({
@@ -7627,6 +7710,7 @@ export default function App() {
 
       const markOpened = () => {
         appProbablyOpened = true;
+        setCameraLaunchPending(false);
       };
 
       const onVisibilityChange = () => {
@@ -7659,11 +7743,11 @@ export default function App() {
         onVisibilityChange
       );
 
-      setCameraInstallPrompt(null);
       window.location.href = launchUrl;
 
       window.setTimeout(() => {
         cleanup();
+        setCameraLaunchPending(false);
 
         if (
           appProbablyOpened ||
@@ -7683,6 +7767,8 @@ export default function App() {
       }, CAMERA_APP_OPEN_FALLBACK_MS);
 
     } catch (error) {
+      setCameraLaunchPending(false);
+
       console.error(
         "[FANM CAMERA] Secure handoff failed",
         error
@@ -9977,6 +10063,43 @@ export default function App() {
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
         />
+      )}
+
+      {cameraLaunchPending && (
+        <div
+          className="fanm-camera-launch-splash"
+          role="status"
+          aria-live="assertive"
+          aria-label="Launching Highlights Camera"
+        >
+          <div className="fanm-camera-launch-orb fanm-camera-launch-orb-one" />
+          <div className="fanm-camera-launch-orb fanm-camera-launch-orb-two" />
+
+          <div className="fanm-camera-launch-content">
+            <div className="fanm-camera-launch-kicker">
+              FANM Highlights Camera
+            </div>
+
+            <div className="fanm-camera-lens" aria-hidden="true">
+              <div className="fanm-camera-lens-inner">
+                <span />
+              </div>
+              <i />
+            </div>
+
+            <h2>Preparing your camera</h2>
+
+            <p>
+              Securing the live fixture and opening the Highlights Camera.
+            </p>
+
+            <div className="fanm-camera-launch-loader" aria-hidden="true">
+              <span />
+            </div>
+
+            <small>Connecting to the match…</small>
+          </div>
+        </div>
       )}
 
       {cameraInstallPrompt && (

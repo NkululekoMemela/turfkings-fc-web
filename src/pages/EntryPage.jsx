@@ -864,6 +864,10 @@ export function EntryPage({
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [membersError, setMembersError] = useState("");
+  const [showMemberLoadingWelcome, setShowMemberLoadingWelcome] =
+    useState(false);
+  const memberWelcomeShownAtRef = useRef(0);
+  const memberWelcomeVisibleRef = useRef(false);
 
 
 
@@ -1026,6 +1030,33 @@ export function EntryPage({
 
     return () => unsub();
   }, [activeClubId, activeClubName]);
+
+  useEffect(() => {
+    let timer = null;
+
+    if (loadingMembers) {
+      timer = window.setTimeout(() => {
+        memberWelcomeShownAtRef.current = Date.now();
+        memberWelcomeVisibleRef.current = true;
+        setShowMemberLoadingWelcome(true);
+      }, 650);
+    } else if (memberWelcomeVisibleRef.current) {
+      const visibleFor =
+        Date.now() - memberWelcomeShownAtRef.current;
+      const remaining = Math.max(0, 700 - visibleFor);
+
+      timer = window.setTimeout(() => {
+        memberWelcomeVisibleRef.current = false;
+        setShowMemberLoadingWelcome(false);
+      }, remaining);
+    } else {
+      setShowMemberLoadingWelcome(false);
+    }
+
+    return () => {
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [loadingMembers, activeClubId]);
 
   const activeMembers = useMemo(
     () => members.filter((m) => m.status === "active"),
@@ -4764,6 +4795,50 @@ export function EntryPage({
 
   return (
     <div className="page entry-page">
+      {showMemberLoadingWelcome && !showSigninLoading && (
+        <div
+          className="entry-member-loading-backdrop"
+          role="status"
+          aria-live="polite"
+          aria-label={`Loading ${activeClubName} player list`}
+        >
+          <div className="entry-member-loading-orb entry-member-loading-orb-one" />
+          <div className="entry-member-loading-orb entry-member-loading-orb-two" />
+
+          <div className="entry-member-loading-card">
+            <div className="entry-member-loading-kicker">
+              Welcome to the club
+            </div>
+
+            <div className="entry-member-loading-identity" aria-hidden="true">
+              {activeClubLogoSrc ? (
+                <img src={activeClubLogoSrc} alt="" />
+              ) : (
+                <span>⚽</span>
+              )}
+            </div>
+
+            <h2>Getting everything ready</h2>
+
+            <p>
+              Bringing in the latest player list for{" "}
+              <strong>{activeClubName}</strong>.
+            </p>
+
+            <div
+              className="entry-member-loading-players"
+              aria-hidden="true"
+            >
+              <span />
+              <span />
+              <span />
+            </div>
+
+            <small>Your club will be ready in a moment…</small>
+          </div>
+        </div>
+      )}
+
       {showSigninLoading ? (
         <LoadingSplash
           progress={signinProgress}
