@@ -10067,53 +10067,37 @@ export default function App() {
 
       {cameraLaunchPending && (
         <div
-          className="modal-backdrop"
+          className="fanm-camera-launch-splash"
           role="status"
           aria-live="assertive"
           aria-label="Launching Highlights Camera"
-          style={{
-            zIndex: 10120,
-            cursor: "wait",
-          }}
         >
-          <div
-            className="modal"
-            style={{
-              width: "min(88vw, 390px)",
-              padding: "1.4rem",
-              textAlign: "center",
-              border: "1px solid rgba(56,189,248,0.5)",
-              background:
-                "radial-gradient(circle at top, rgba(56,189,248,0.2), rgba(2,6,23,0.98) 62%)",
-              boxShadow:
-                "0 24px 70px rgba(0,0,0,0.65), 0 0 34px rgba(56,189,248,0.18)",
-            }}
-          >
-            <div
-              aria-hidden="true"
-              style={{
-                fontSize: "3rem",
-                lineHeight: 1,
-                marginBottom: "0.75rem",
-              }}
-            >
-              📹
+          <div className="fanm-camera-launch-orb fanm-camera-launch-orb-one" />
+          <div className="fanm-camera-launch-orb fanm-camera-launch-orb-two" />
+
+          <div className="fanm-camera-launch-content">
+            <div className="fanm-camera-launch-kicker">
+              FANM Highlights Camera
             </div>
 
-            <h2 style={{ margin: "0 0 0.45rem" }}>
-              Launching Camera…
-            </h2>
+            <div className="fanm-camera-lens" aria-hidden="true">
+              <div className="fanm-camera-lens-inner">
+                <span />
+              </div>
+              <i />
+            </div>
 
-            <p
-              style={{
-                margin: 0,
-                color: "#bae6fd",
-                lineHeight: 1.5,
-              }}
-            >
-              Preparing the secure fixture and opening the FANM Camera.
-              Please wait.
+            <h2>Preparing your camera</h2>
+
+            <p>
+              Securing the live fixture and opening the Highlights Camera.
             </p>
+
+            <div className="fanm-camera-launch-loader" aria-hidden="true">
+              <span />
+            </div>
+
+            <small>Connecting to the match…</small>
           </div>
         </div>
       )}

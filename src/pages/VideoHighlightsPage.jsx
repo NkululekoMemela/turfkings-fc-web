@@ -1342,7 +1342,12 @@ export function VideoHighlightsPage({
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [categorySelectorPassed, setCategorySelectorPassed] = useState(false);
   const [showStickyCategories, setShowStickyCategories] = useState(false);
-  const [loadingHighlights, setLoadingHighlights] = useState(false);
+  const [loadingHighlights, setLoadingHighlights] = useState(true);
+  const [clipPreviewsReady, setClipPreviewsReady] = useState(false);
+  const [splashDismissed, setSplashDismissed] = useState(false);
+  const [previewLoadStatus, setPreviewLoadStatus] = useState(
+    "Loading match clips…"
+  );
   const [loadError, setLoadError] = useState("");
   const [showVotingInfo, setShowVotingInfo] = useState(false);
 
@@ -1538,7 +1543,10 @@ export function VideoHighlightsPage({
 
 
   const loadHighlights = async () => {
-    if (!resolvedMatchId) return;
+    if (!resolvedMatchId) {
+      setLoadingHighlights(false);
+      return;
+    }
 
     try {
       setLoadingHighlights(true);
@@ -1621,9 +1629,94 @@ export function VideoHighlightsPage({
   }, [votesByUser]);
 
   useEffect(() => {
+    setSplashDismissed(false);
+    setClipPreviewsReady(false);
+    setPreviewLoadStatus("Loading match clips…");
     loadHighlights();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedMatchId, activeClubId]);
+
+  useEffect(() => {
+    if (loadingHighlights) return undefined;
+
+    let cancelled = false;
+    let finished = false;
+    let fallbackTimer = null;
+
+    const frame = window.requestAnimationFrame(() => {
+      const videos = Array.from(
+        document.querySelectorAll(
+          ".video-highlights-page .tkh-video"
+        )
+      ).slice(0, 3);
+
+      if (videos.length === 0) {
+        setPreviewLoadStatus("Highlights ready");
+        setClipPreviewsReady(true);
+        return;
+      }
+
+      let settledCount = 0;
+
+      const finish = () => {
+        if (cancelled || finished) return;
+        finished = true;
+        setPreviewLoadStatus("Your highlights are ready");
+        setClipPreviewsReady(true);
+      };
+
+      const settleVideo = () => {
+        settledCount += 1;
+
+        if (!cancelled && settledCount < videos.length) {
+          setPreviewLoadStatus(
+            `Preparing preview ${settledCount + 1} of ${videos.length}…`
+          );
+        }
+
+        if (settledCount >= videos.length) finish();
+      };
+
+      setPreviewLoadStatus(
+        `Preparing preview 1 of ${videos.length}…`
+      );
+
+      videos.forEach((video) => {
+        if (video.readyState >= 2) {
+          settleVideo();
+          return;
+        }
+
+        video.preload = "auto";
+        video.addEventListener("loadeddata", settleVideo, {
+          once: true,
+        });
+        video.addEventListener("error", settleVideo, {
+          once: true,
+        });
+        video.load();
+      });
+
+      fallbackTimer = window.setTimeout(finish, 12000);
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+    };
+  }, [loadingHighlights]);
+
+  useEffect(() => {
+    if (splashDismissed) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [splashDismissed]);
 
   useEffect(() => {
     return () => {
@@ -4295,6 +4388,72 @@ export function VideoHighlightsPage({
           </div>
         </header>
       </div>
+
+      {!splashDismissed &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="tkh-premium-splash"
+            role="status"
+            aria-live="polite"
+            aria-label="Preparing video highlights"
+          >
+            <div className="tkh-splash-orb tkh-splash-orb-one" />
+            <div className="tkh-splash-orb tkh-splash-orb-two" />
+
+            <div className="tkh-splash-content">
+              <div className="tkh-splash-kicker">
+                {isLeagueMode
+                  ? "League Highlight Awards"
+                  : "Monthly Highlight Awards"}
+              </div>
+
+              <div className="tkh-splash-cinema" aria-hidden="true">
+                <span className="tkh-splash-play">▶</span>
+              </div>
+
+              <h2>
+                {clipPreviewsReady
+                  ? "Your highlights are ready"
+                  : "Preparing your highlights"}
+              </h2>
+
+              <p className="tkh-splash-intro">
+                Watch and like your favourite Goal, Skill and Save within five
+                days of the match.
+              </p>
+
+              <p className="tkh-splash-retention">
+                Unliked clips leave after five days. Weekly winners remain in
+                the {isLeagueMode ? "season race" : "month competition"}.
+              </p>
+
+              <p className="tkh-splash-champion">
+                {isLeagueMode
+                  ? "The season winners come from the most-voted weekly champions across the league season."
+                  : "The month winners come from the most-voted weekly champions across the month."}
+              </p>
+
+              {clipPreviewsReady ? (
+                <button
+                  type="button"
+                  className="tkh-splash-proceed"
+                  onClick={() => setSplashDismissed(true)}
+                >
+                  <span>Proceed to Highlights</span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              ) : (
+                <div className="tkh-splash-loader" aria-hidden="true">
+                  <span />
+                </div>
+              )}
+
+              <small>{previewLoadStatus}</small>
+            </div>
+          </div>,
+          document.body
+        )}
 
       <header className="header tkh-page-intro">
         {canUpload && (
