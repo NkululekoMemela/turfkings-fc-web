@@ -2198,35 +2198,60 @@ export async function loadAllClubHighlightsForAudit(clubId) {
   };
 
   async function resolvePlayableUrl(item = {}) {
+    /*
+     * Prefer Firebase Storage as the source of truth.
+     * Legacy saved URLs may be stale or reused by another record.
+     */
+    if (item.storagePath) {
+      try {
+        const url = await getDownloadURL(
+          ref(storage, item.storagePath)
+        );
+
+        return {
+          ...item,
+          videoUrl: url,
+          downloadUrl: url,
+          mediaUrl: url,
+        };
+      } catch (error) {
+        console.warn(
+          "[VIDEO AUDIT] Could not resolve Storage object:",
+          item.storagePath,
+          error
+        );
+
+        return {
+          ...item,
+          videoUrl: "",
+          downloadUrl: "",
+          mediaUrl: "",
+          fileUrl: "",
+          publicUrl: "",
+          previewUrl: "",
+          url: "",
+          uri: "",
+          playableVideo: false,
+        };
+      }
+    }
+
     const existingUrl = getUrl(item);
 
-    if (existingUrl) {
+    if (!existingUrl) {
       return {
         ...item,
-        videoUrl: item.videoUrl || existingUrl,
-        downloadUrl: item.downloadUrl || existingUrl,
-        mediaUrl: item.mediaUrl || existingUrl,
+        playableVideo: false,
       };
     }
 
-    if (!item.storagePath) return item;
-
-    try {
-      const url = await getDownloadURL(ref(storage, item.storagePath));
-      return {
-        ...item,
-        videoUrl: url,
-        downloadUrl: url,
-        mediaUrl: url,
-      };
-    } catch (error) {
-      console.warn(
-        "[VIDEO AUDIT] Could not resolve Storage object:",
-        item.storagePath,
-        error
-      );
-      return item;
-    }
+    return {
+      ...item,
+      videoUrl: item.videoUrl || existingUrl,
+      downloadUrl: item.downloadUrl || existingUrl,
+      mediaUrl: item.mediaUrl || existingUrl,
+      playableVideo: true,
+    };
   }
 
   async function collectMatchCollection(collectionRef, sourceLabel) {
@@ -2427,17 +2452,18 @@ export async function loadAllClubHighlightsForAudit(clubId) {
    * dedupe key.
    */
   const seenIds = new Set();
-  const seenUrls = new Set();
 
   const unique = playable.filter((item) => {
-    const id = String(item.clipId || item.id || "").trim();
-    const url = String(getUrl(item) || "").trim();
+    const id = String(
+      item.clipId ||
+      item.id ||
+      item.storagePath ||
+      ""
+    ).trim();
 
     if (id && seenIds.has(id)) return false;
-    if (url && seenUrls.has(url)) return false;
-
     if (id) seenIds.add(id);
-    if (url) seenUrls.add(url);
+
     return true;
   });
 
