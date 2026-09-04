@@ -646,6 +646,26 @@ function getMissingBadges(highlight) {
   return badges;
 }
 
+function getHighlightSeasonId(highlight = {}) {
+  const explicit = String(
+    highlight?.seasonId ||
+    highlight?.matchContext?.seasonId ||
+    highlight?.metadata?.seasonId ||
+    ""
+  ).trim();
+
+  if (explicit) return explicit;
+
+  const matchId = String(
+    highlight?.matchId ||
+    highlight?.fixtureId ||
+    ""
+  ).trim();
+
+  const match = matchId.match(/league__(\d{4}-S\d+)__/i);
+  return match?.[1] || "";
+}
+
 function HighlightCard({
   highlight,
   teams = [],
@@ -655,6 +675,7 @@ function HighlightCard({
   canLike = false,
   isLiked = false,
   showVoteLabel = false,
+  voteLabel = "",
   canAttachToChat = false,
   currentUserKey = "",
   likerUsers = [],
@@ -666,8 +687,13 @@ function HighlightCard({
   onEdit,
   onIdentifyPlayer,
   onAttachToClubChat,
+  feedPosition = 0,
+  feedTotal = 0,
+  isWatched = false,
+  onWatched,
 }) {
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => !isWatched);
   const [shareMenuPosition, setShareMenuPosition] = useState({
     top: 0,
     left: 0,
@@ -830,7 +856,80 @@ function HighlightCard({
   };
 
   return (
-    <article className={`tkh-card ${highlight.highlightEra === "throwback" || highlight.isThrowback ? "is-throwback" : ""}`}>
+    <article
+      className={`tkh-card ${
+        highlight.highlightEra === "throwback" || highlight.isThrowback
+          ? "is-throwback"
+          : ""
+      } ${isWatched ? "is-watched" : ""}`}
+    >
+      {isWatched && !isExpanded ? (
+        <button
+          type="button"
+          className="tkh-watched-summary"
+          onClick={() => setIsExpanded(true)}
+          aria-label={`Open watched clip by ${
+            highlight.playerName || "player"
+          }`}
+        >
+          <span
+            className="tkh-watched-summary-preview"
+            aria-hidden="true"
+          >
+            {highlight.thumbnailUrl ||
+            highlight.posterUrl ||
+            highlight.previewImageUrl ? (
+              <img
+                src={
+                  highlight.thumbnailUrl ||
+                  highlight.posterUrl ||
+                  highlight.previewImageUrl
+                }
+                alt=""
+              />
+            ) : (
+              <video
+                src={highlight.mediaUrl}
+                preload="metadata"
+                muted
+                playsInline
+                tabIndex={-1}
+              />
+            )}
+            <span>▶</span>
+          </span>
+
+          <span className="tkh-watched-summary-copy">
+            <strong>
+              {String(highlight.playerName || "Player")
+                .trim()
+                .split(" ")[0]}
+            </strong>
+            <small>
+              Clip {feedPosition || 1} of {feedTotal || 1}
+              {" · "}
+              {typeBadgeLabel(highlight.normalizedType)}
+            </small>
+          </span>
+
+          <span className="tkh-watched-summary-likes">
+            ❤️ {Number(likeCount || 0)}
+          </span>
+
+          <span className="tkh-watched-summary-open">
+            Review
+          </span>
+        </button>
+      ) : (
+        <>
+          <div className="tkh-card-progress">
+            <span>
+              Clip {feedPosition || 1} of {feedTotal || 1}
+            </span>
+            <span className={isWatched ? "is-complete" : ""}>
+              {isWatched ? "✓ Watched" : "New"}
+            </span>
+          </div>
       <div className="tkh-card-top">
         <div className="tkh-card-title-block">
           <div className="tkh-player-name">
@@ -860,6 +959,14 @@ function HighlightCard({
         preload="metadata"
         playsInline
         src={highlight.mediaUrl}
+        onPlay={() => {
+          setIsExpanded(true);
+          onWatched?.(highlight);
+        }}
+        onEnded={() => {
+          onWatched?.(highlight);
+          setIsExpanded(false);
+        }}
       />
 
       <div className="tkh-badge-row">
@@ -1063,7 +1170,8 @@ function HighlightCard({
       )}
 
       <div className="tkh-card-actions">
-        {highlight.status === "approved" &&
+        {(highlight.status === "approved" ||
+          isArchivedTopVotedClip(highlight)) &&
           canLike &&
           !(highlight.highlightEra === "throwback" || highlight.isThrowback) &&
           ["goal", "save", "skill", "momish"].includes(
@@ -1083,15 +1191,18 @@ function HighlightCard({
               aria-pressed={isLiked}
             >
               {isLiked
-                ? "❤️ Liked"
-                : (showVoteLabel ? "🗳️ Vote" : "♡ Like")}
+                ? (voteLabel ? `❤️ ${voteLabel} cast` : "❤️ Liked")
+                : (voteLabel
+                    ? `♡ ${voteLabel}`
+                    : (showVoteLabel ? "🗳️ Vote" : "♡ Like"))}
               {Number(likeCount || 0) > 0
                 ? ` · ${Number(likeCount || 0)}`
                 : ""}
             </button>
           )}
 
-        {highlight.status === "approved" &&
+        {(highlight.status === "approved" ||
+          isArchivedTopVotedClip(highlight)) &&
           !canLike &&
           !(highlight.highlightEra === "throwback" || highlight.isThrowback) &&
           ["goal", "save", "skill", "momish"].includes(
@@ -1134,6 +1245,8 @@ function HighlightCard({
         )}
 
       </div>
+        </>
+      )}
     </article>
   );
 }
@@ -1194,6 +1307,8 @@ export function VideoHighlightsPage({
   onBack,
 }) {
   const fileInputRef = useRef(null);
+  const categorySelectorRef = useRef(null);
+  const stickyCategoryTimerRef = useRef(null);
 
   const resolvedMatchId = useMemo(
     () =>
@@ -1220,7 +1335,13 @@ export function VideoHighlightsPage({
   const [mainTab, setMainTab] = useState("currentWeek");
   const [selectedTab, setSelectedTab] = useState("approved");
   const [selectedFilter, setSelectedFilter] = useState("all");
+  const [selectedPlayerFilter, setSelectedPlayerFilter] = useState("all");
+  const [watchedFilter, setWatchedFilter] = useState("all");
+  const [showFeedFilters, setShowFeedFilters] = useState(false);
+  const [watchedClipIds, setWatchedClipIds] = useState(() => new Set());
   const [headerScrolled, setHeaderScrolled] = useState(false);
+  const [categorySelectorPassed, setCategorySelectorPassed] = useState(false);
+  const [showStickyCategories, setShowStickyCategories] = useState(false);
   const [loadingHighlights, setLoadingHighlights] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [showVotingInfo, setShowVotingInfo] = useState(false);
@@ -1266,13 +1387,60 @@ export function VideoHighlightsPage({
 
   const [nowTick, setNowTick] = useState(() => Date.now());
 
+  const watchedStorageKey = useMemo(
+    () => `tkh_watched_clips_${safeLower(activeClubId) || "club"}`,
+    [activeClubId]
+  );
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(
+        window.localStorage.getItem(watchedStorageKey) || "[]"
+      );
+
+      setWatchedClipIds(
+        new Set(Array.isArray(stored) ? stored.map(String) : [])
+      );
+    } catch {
+      setWatchedClipIds(new Set());
+    }
+  }, [watchedStorageKey]);
+
+  const markHighlightWatched = (highlight) => {
+    const clipId = String(
+      highlight?.clipId ||
+      highlight?.id ||
+      ""
+    ).trim();
+
+    if (!clipId) return;
+
+    setWatchedClipIds((previous) => {
+      if (previous.has(clipId)) return previous;
+
+      const next = new Set(previous);
+      next.add(clipId);
+
+      try {
+        window.localStorage.setItem(
+          watchedStorageKey,
+          JSON.stringify([...next])
+        );
+      } catch {
+        // Watched state is optional browser convenience.
+      }
+
+      return next;
+    });
+  };
+
   const identityKey = useMemo(() => getIdentityKey(identity), [identity]);
   const identityName = useMemo(() => getIdentityDisplayName(identity), [identity]);
   const defaultClubName = useMemo(() => getIdentityClub(identity), [identity]);
   const role = safeLower(activeRole);
   const isLoggedIn = Boolean(identityKey);
   const isModerator = role === "admin" || role === "captain";
-  const canUpload = isLoggedIn && ["admin", "captain", "player"].includes(role);
+  const canUpload = isLoggedIn && role === "admin";
   const isLeagueMode = safeLower(matchType).includes("league");
   const teamContextText = useMemo(() => getTeamContextText(teams, matchType), [teams, matchType]);
   const featuredTeamNames = useMemo(
@@ -1306,6 +1474,55 @@ export function VideoHighlightsPage({
   }, []);
 
   useEffect(() => {
+    const clearStickyTimer = () => {
+      if (stickyCategoryTimerRef.current) {
+        window.clearTimeout(stickyCategoryTimerRef.current);
+        stickyCategoryTimerRef.current = null;
+      }
+    };
+
+    const handleCategoryScroll = () => {
+      const selector = categorySelectorRef.current;
+      const passed = selector
+        ? selector.getBoundingClientRect().bottom < 72
+        : window.scrollY > 420;
+
+      setCategorySelectorPassed(passed);
+
+      if (!passed) {
+        clearStickyTimer();
+        setShowStickyCategories(false);
+        return;
+      }
+
+      setShowStickyCategories(true);
+      clearStickyTimer();
+
+      if (!showFeedFilters) {
+        stickyCategoryTimerRef.current =
+          window.setTimeout(() => {
+            setShowStickyCategories(false);
+          }, 3000);
+      }
+    };
+
+    handleCategoryScroll();
+    window.addEventListener(
+      "scroll",
+      handleCategoryScroll,
+      { passive: true }
+    );
+
+    return () => {
+      clearStickyTimer();
+      window.removeEventListener(
+        "scroll",
+        handleCategoryScroll
+      );
+    };
+  }, [showFeedFilters]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => setNowTick(Date.now()), 60 * 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -1336,12 +1553,10 @@ export function VideoHighlightsPage({
             activeClubId
           ),
           typeof VideoHighlightsRepository
-            .loadArchivedHighlightsFromFirebase === "function"
+            .loadClubArchivedHighlightsFromFirebase === "function"
             ? VideoHighlightsRepository
-                .loadArchivedHighlightsFromFirebase(
-                  activeClubId === "turf-kings"
-                    ? legacyTurfKingsMatchId
-                    : resolvedMatchId
+                .loadClubArchivedHighlightsFromFirebase(
+                  activeClubId
                 )
             : Promise.resolve([]),
           typeof VideoHighlightsRepository
@@ -1443,7 +1658,12 @@ export function VideoHighlightsPage({
     const loadClubFeedLikes = async () => {
       const matchIds = [
         ...new Set(
-          allHighlights
+          [
+            ...allHighlights,
+            ...(Array.isArray(archivedHighlights)
+              ? archivedHighlights
+              : []),
+          ]
             .map((clip) =>
               String(
                 clip?.matchId ||
@@ -1520,6 +1740,7 @@ export function VideoHighlightsPage({
     };
   }, [
     allHighlights,
+    archivedHighlights,
     identityKey,
     resolvedMatchId,
   ]);
@@ -1647,13 +1868,134 @@ export function VideoHighlightsPage({
     [allHighlights]
   );
 
+  const getHighlightDate = (item = {}) => {
+    const value =
+      item?.createdAtISO ||
+      item?.createdAt ||
+      item?.createdAtServer ||
+      item?.uploadedAtISO ||
+      item?.uploadedAt ||
+      item?.timestamp ||
+      "";
+
+    if (typeof value?.toDate === "function") {
+      return value.toDate();
+    }
+
+    if (typeof value?.toMillis === "function") {
+      return new Date(value.toMillis());
+    }
+
+    if (Number.isFinite(value?.seconds)) {
+      return new Date(value.seconds * 1000);
+    }
+
+    return new Date(value);
+  };
+
+  const isPreviousSeasonLeagueClip = (item = {}) => {
+    const searchable = [
+      item?.teamName,
+      item?.opponentName,
+      item?.homeTeam,
+      item?.awayTeam,
+      item?.title,
+      item?.description,
+      item?.matchId,
+      item?.fixtureId,
+      item?.seasonId,
+      item?.activeSeasonId,
+      item?.matchContext?.seasonId,
+    ]
+      .map((value) => String(value || "").toLowerCase())
+      .join(" ");
+
+    return (
+      searchable.includes("2026-s5") ||
+      searchable.includes("morocco") ||
+      searchable.includes("morroco") ||
+      searchable.includes("cabo verde") ||
+      searchable.includes("supa strikers") ||
+      searchable.includes("supa strickers")
+    );
+  };
+
   const currentWeekHighlights = useMemo(
-    () => allHighlights.filter((item) => item.highlightEra !== "throwback" && item.isThrowback !== true),
-    [allHighlights]
+    () =>
+      allHighlights.filter((item) => {
+        if (
+          item?.highlightEra === "throwback" ||
+          item?.isThrowback === true ||
+          item?.archivedClubFeed === true ||
+          item?.weeklyVotingClosed === true ||
+          item?.votingLocked === true ||
+          item?.seasonWinner === true ||
+          Boolean(item?.archivedAtISO) ||
+          isPreviousSeasonLeagueClip(item)
+        ) {
+          return false;
+        }
+
+        const clipSeasonId =
+          String(getHighlightSeasonId(item) || "").trim();
+
+        if (
+          isLeagueMode &&
+          activeSeasonId &&
+          clipSeasonId &&
+          clipSeasonId !== String(activeSeasonId).trim()
+        ) {
+          return false;
+        }
+
+        const clipMatchId = String(
+          item?.matchId ||
+          item?.fixtureId ||
+          item?.matchContext?.matchId ||
+          ""
+        ).trim();
+
+        const clipDate = getHighlightDate(item);
+
+        if (Number.isNaN(clipDate.getTime())) {
+          return Boolean(
+            clipMatchId &&
+            resolvedMatchId &&
+            clipMatchId === resolvedMatchId
+          );
+        }
+
+        const windowEnd = votingDeadline.getTime();
+        const windowStart =
+          windowEnd - (7 * 24 * 60 * 60 * 1000);
+
+        return (
+          clipDate.getTime() > windowStart &&
+          clipDate.getTime() <= windowEnd
+        );
+      }),
+    [
+      allHighlights,
+      resolvedMatchId,
+      votingDeadline,
+      activeSeasonId,
+      isLeagueMode,
+    ]
   );
 
   const throwbackHighlights = useMemo(
-    () => allHighlights.filter((item) => item.highlightEra === "throwback" || item.isThrowback === true),
+    () =>
+      allHighlights.filter((item) => {
+        const isThrowback =
+          item?.highlightEra === "throwback" ||
+          item?.isThrowback === true;
+
+        return (
+          isThrowback &&
+          item?.status === "approved" &&
+          Boolean(getHighlightMediaUrl(item))
+        );
+      }),
     [allHighlights]
   );
 
@@ -1679,23 +2021,120 @@ export function VideoHighlightsPage({
   }, [selectedTab, scopedApprovedHighlights, scopedPendingHighlights, scopedRejectedHighlights]);
 
   const visibleHighlights = useMemo(() => {
-    const filtered =
-      selectedFilter === "all"
-        ? tabHighlights
-        : tabHighlights.filter((item) => item.normalizedType === selectedFilter);
+    const isThrowbackClip = (item) =>
+      item?.highlightEra === "throwback" ||
+      item?.isThrowback === true;
 
-    if (mainTab !== "currentWeek") return filtered;
+    const belongsToCurrentWeek = (item) => {
+      if (
+        isThrowbackClip(item) ||
+        item?.archivedClubFeed === true ||
+        item?.weeklyVotingClosed === true ||
+        item?.votingLocked === true ||
+        item?.seasonWinner === true ||
+        Boolean(item?.archivedAtISO) ||
+        isPreviousSeasonLeagueClip(item)
+      ) {
+        return false;
+      }
 
-    const fresh = filtered.filter(
-      (item) => item.highlightEra !== "throwback" && item.isThrowback !== true
-    );
+      const clipSeasonId =
+        String(getHighlightSeasonId(item) || "").trim();
 
-    const throwbacks = filtered.filter(
-      (item) => item.highlightEra === "throwback" || item.isThrowback === true
-    );
+      if (
+        isLeagueMode &&
+        activeSeasonId &&
+        clipSeasonId &&
+        clipSeasonId !== String(activeSeasonId).trim()
+      ) {
+        return false;
+      }
 
-    return [...fresh, ...throwbacks];
-  }, [tabHighlights, selectedFilter, mainTab]);
+      const clipMatchId = String(
+        item?.matchId ||
+        item?.fixtureId ||
+        item?.matchContext?.matchId ||
+        ""
+      ).trim();
+
+      /*
+       * Upload date is the primary current-week identity.
+       * Match identity is only a fallback for undated clips.
+       */
+      const clipDate = getHighlightDate(item);
+      if (Number.isNaN(clipDate.getTime())) {
+        return Boolean(
+          clipMatchId &&
+          resolvedMatchId &&
+          clipMatchId === resolvedMatchId
+        );
+      }
+
+      const windowEnd = votingDeadline.getTime();
+      const windowStart =
+        windowEnd - (7 * 24 * 60 * 60 * 1000);
+
+      return (
+        clipDate.getTime() > windowStart &&
+        clipDate.getTime() <= windowEnd
+      );
+    };
+
+    let filtered = tabHighlights.filter((item) => {
+      if (mainTab === "currentWeek") {
+        return belongsToCurrentWeek(item);
+      }
+
+      if (mainTab === "throwback") {
+        return isThrowbackClip(item);
+      }
+
+      return false;
+    });
+
+    if (selectedFilter !== "all") {
+      filtered = filtered.filter(
+        (item) => item.normalizedType === selectedFilter
+      );
+    }
+
+    if (selectedPlayerFilter !== "all") {
+      filtered = filtered.filter(
+        (item) =>
+          safeLower(item?.playerName) ===
+          safeLower(selectedPlayerFilter)
+      );
+    }
+
+    if (watchedFilter !== "all") {
+      filtered = filtered.filter((item) => {
+        const clipId = String(
+          item?.clipId ||
+          item?.id ||
+          ""
+        ).trim();
+
+        const watched = watchedClipIds.has(clipId);
+
+        return watchedFilter === "watched"
+          ? watched
+          : !watched;
+      });
+    }
+
+    return filtered;
+  }, [
+    tabHighlights,
+    selectedFilter,
+    selectedPlayerFilter,
+    watchedFilter,
+    watchedClipIds,
+    mainTab,
+    resolvedMatchId,
+    votingDeadline,
+    activeSeasonId,
+    isLeagueMode,
+  ]);
 
   const voteCounts = useMemo(
     () => getVoteBuckets(localVotesByUser, approvedHighlights),
@@ -1718,18 +2157,107 @@ export function VideoHighlightsPage({
     ]
   );
 
-  const currentTopVotedClips = useMemo(
-    () => [
-      ...(archiveSelection.topGoals || []),
-      ...(archiveSelection.topSkills || []),
-      archiveSelection.bestSave,
-    ].filter(Boolean),
-    [
-      archiveSelection.topGoals,
-      archiveSelection.topSkills,
-      archiveSelection.bestSave,
+  const currentTopVotedClips = useMemo(() => {
+    const currentSeasonId =
+      String(activeSeasonId || "").trim();
+
+    const currentMonthKey =
+      new Date(nowTick).toISOString().slice(0, 7);
+
+    return (Array.isArray(archivedHighlights)
+      ? archivedHighlights
+      : []
+    )
+      .map((clip, index) =>
+        normalizeHighlight(clip, index)
+      )
+      .filter((clip) => {
+        const isThrowback =
+          clip?.highlightEra === "throwback" ||
+          clip?.isThrowback === true;
+
+        const isSeasonWinner =
+          clip?.seasonWinner === true ||
+          String(clip?.winnerLevel || "")
+            .toLowerCase() === "season" ||
+          String(clip?.retentionStatus || "")
+            .toLowerCase() === "season_winner";
+
+        if (isThrowback || isSeasonWinner) return false;
+
+        if (isLeagueMode) {
+          return (
+            Boolean(currentSeasonId) &&
+            getHighlightSeasonId(clip) ===
+              currentSeasonId
+          );
+        }
+
+        const clipDate = new Date(
+          clip?.archivedAtISO ||
+          clip?.createdAtISO ||
+          clip?.createdAt ||
+          0
+        );
+
+        return (
+          !Number.isNaN(clipDate.getTime()) &&
+          clipDate.toISOString().slice(0, 7) ===
+            currentMonthKey
+        );
+      });
+  }, [
+    archivedHighlights,
+    activeSeasonId,
+    isLeagueMode,
+    nowTick,
+  ]);
+
+  const topShelfClips = useMemo(() => {
+    const seen = new Set();
+
+    return [
+      ...(Array.isArray(archivedHighlights)
+        ? archivedHighlights
+        : []),
+      ...(Array.isArray(allHighlights)
+        ? allHighlights
+        : []),
     ]
-  );
+      .map((clip, index) =>
+        normalizeHighlight(clip, index)
+      )
+      .filter((clip) =>
+        clip?.seasonWinner === true ||
+        String(clip?.winnerLevel || "")
+          .toLowerCase() === "season" ||
+        String(clip?.retentionStatus || "")
+          .toLowerCase() === "season_winner"
+      )
+      .filter((clip) => {
+        const key = String(
+          clip?.clipId ||
+          clip?.id ||
+          clip?.storagePath ||
+          clip?.videoUrl ||
+          ""
+        ).trim();
+
+        if (!key) return true;
+        if (seen.has(key)) return false;
+
+        seen.add(key);
+        return true;
+      });
+  }, [
+    archivedHighlights,
+    allHighlights,
+  ]);
+
+  const winnerFeedClips =
+    mainTab === "topShelf"
+      ? topShelfClips
+      : currentTopVotedClips;
 
   const currentTopVotedClipNames = useMemo(
     () =>
@@ -1742,19 +2270,13 @@ export function VideoHighlightsPage({
 
   const topVotedClipGroups = useMemo(() => {
     return groupTopVotedClipsByMatchDay(
-      currentTopVotedClips,
+      winnerFeedClips,
       likeCountsByClip
     );
   }, [
-    currentTopVotedClips,
+    winnerFeedClips,
     likeCountsByClip,
   ]);
-
-  useEffect(() => {
-    if (votingWindowClosed) {
-      setMainTab("winners");
-    }
-  }, [votingWindowClosed]);
 
   useEffect(() => {
     onHighlightsSelectionChange?.(archiveSelection);
@@ -2864,31 +3386,236 @@ export function VideoHighlightsPage({
         }
 
         .tkh-view-toggle {
-          width: min(100%, 360px);
+          width: min(100%, 760px);
           max-width: 100%;
           margin: 0 auto;
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 0;
-          padding: 0.22rem;
-          border-radius: 999px;
-          background: rgba(2, 6, 23, 0.88);
-          border: 1px solid rgba(148, 163, 184, 0.16);
-          overflow: hidden;
+          gap: 0.65rem;
+          padding: 0;
+          background: transparent;
+          border: 0;
+          overflow: visible;
         }
 
         .tkh-view-toggle .pill-toggle {
+          position: relative;
           min-width: 0;
+          min-height: 76px;
           width: 100%;
-          justify-content: center;
-          font-weight: 900;
-          border-radius: 999px;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-rows: auto auto;
+          align-content: center;
+          justify-content: stretch;
+          gap: 0.2rem 0.55rem;
+          padding: 0.85rem 0.95rem;
+          text-align: left;
+          border-radius: 1rem;
+          color: #e2e8f0;
+          border: 1px solid rgba(148,163,184,0.20);
+          background:
+            radial-gradient(
+              circle at top right,
+              rgba(56,189,248,0.10),
+              transparent 42%
+            ),
+            linear-gradient(
+              145deg,
+              rgba(15,23,42,0.94),
+              rgba(2,6,23,0.90)
+            );
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.05),
+            0 12px 28px rgba(2,6,23,0.18);
+          transition:
+            transform 180ms ease,
+            border-color 180ms ease,
+            box-shadow 180ms ease;
+        }
+
+        .tkh-view-toggle .pill-toggle:hover {
+          transform: translateY(-1px);
+          border-color: rgba(125,211,252,0.38);
         }
 
         .tkh-view-toggle .pill-toggle-active {
-          background: #f8fafc !important;
-          color: #020617 !important;
-          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.25);
+          color: #ffffff !important;
+          border-color: rgba(74,222,128,0.58);
+          background:
+            radial-gradient(
+              circle at top right,
+              rgba(74,222,128,0.28),
+              transparent 46%
+            ),
+            linear-gradient(
+              145deg,
+              rgba(5,46,22,0.96),
+              rgba(8,47,73,0.94)
+            ) !important;
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.12),
+            0 16px 34px rgba(16,185,129,0.18);
+        }
+
+        .tkh-category-title {
+          grid-column: 1;
+          font-size: 0.92rem;
+          font-weight: 1000;
+          line-height: 1.1;
+        }
+
+        .tkh-view-toggle .pill-toggle small {
+          grid-column: 1;
+          color: rgba(203,213,225,0.66);
+          font-size: 0.7rem;
+          font-weight: 750;
+          line-height: 1.2;
+        }
+
+        .tkh-view-toggle .pill-toggle-active small {
+          color: rgba(220,252,231,0.78);
+        }
+
+        .tkh-category-count {
+          grid-column: 2;
+          grid-row: 1 / span 2;
+          align-self: center;
+          min-width: 1.9rem;
+          padding: 0.28rem 0.42rem;
+          border-radius: 999px;
+          text-align: center;
+          color: #bae6fd;
+          background: rgba(14,165,233,0.12);
+          border: 1px solid rgba(125,211,252,0.20);
+          font-size: 0.72rem;
+          font-weight: 1000;
+        }
+
+        .tkh-view-toggle .pill-toggle-active
+        .tkh-category-count {
+          color: #052e16;
+          background: #86efac;
+          border-color: rgba(220,252,231,0.80);
+        }
+
+        .tkh-scroll-category-nav {
+          position: fixed;
+          z-index: 80;
+          top: 88px;
+          left: 50%;
+          width: min(760px, calc(100vw - 1.25rem));
+          padding: 0.35rem;
+          border-radius: 999px;
+          border: 2px solid #38bdf8;
+          outline: 1px solid rgba(186,230,253,0.78);
+          outline-offset: 2px;
+          background: rgba(2,6,23,0.92);
+          box-shadow:
+            0 0 0 3px rgba(56,189,248,0.16),
+            0 0 24px rgba(56,189,248,0.36),
+            0 14px 38px rgba(2,6,23,0.42),
+            inset 0 1px 0 rgba(255,255,255,0.10);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          opacity: 0;
+          pointer-events: none;
+          transform: translate(-50%, -12px);
+          transition:
+            opacity 180ms ease,
+            transform 180ms ease;
+        }
+
+        .tkh-scroll-category-nav.is-visible {
+          opacity: 1;
+          pointer-events: auto;
+          transform: translate(-50%, 0);
+        }
+
+        .tkh-scroll-category-track {
+          display: flex;
+          align-items: center;
+          gap: 0.28rem;
+          overflow-x: auto;
+          scrollbar-width: none;
+          overscroll-behavior-x: contain;
+        }
+
+        .tkh-scroll-category-track::-webkit-scrollbar {
+          display: none;
+        }
+
+        .tkh-scroll-category-track button {
+          flex: 0 0 auto;
+          min-height: 34px;
+          padding: 0.48rem 0.72rem;
+          border-radius: 999px;
+          border: 1px solid transparent;
+          background: transparent;
+          color: rgba(226,232,240,0.76);
+          font-size: 0.74rem;
+          font-weight: 900;
+          white-space: nowrap;
+        }
+
+        .tkh-scroll-category-track button.is-active {
+          color: #052e16;
+          background: #86efac;
+          border-color: rgba(220,252,231,0.72);
+          box-shadow: 0 8px 18px rgba(34,197,94,0.18);
+        }
+
+        .tkh-scroll-category-track
+        button.tkh-scroll-filter {
+          margin-left: auto;
+          color: #bae6fd;
+          border-color: rgba(125,211,252,0.24);
+          background: rgba(14,165,233,0.10);
+        }
+
+        .tkh-scroll-category-track
+        button.tkh-scroll-filter.is-active {
+          color: #082f49;
+          background: #7dd3fc;
+        }
+
+        @media (max-width: 620px) {
+          .tkh-view-toggle {
+            gap: 0.5rem;
+          }
+
+          .tkh-view-toggle .pill-toggle {
+            min-height: 68px;
+            padding: 0.72rem 0.75rem;
+            border-radius: 0.9rem;
+          }
+
+          .tkh-category-title {
+            font-size: 0.82rem;
+          }
+
+          .tkh-view-toggle .pill-toggle small {
+            font-size: 0.64rem;
+          }
+
+          .tkh-scroll-category-nav {
+            top: 76px;
+            width: calc(100vw - 0.75rem);
+            padding: 0.28rem;
+          }
+
+          .tkh-scroll-category-track button {
+            min-height: 32px;
+            padding: 0.44rem 0.62rem;
+            font-size: 0.7rem;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .tkh-view-toggle .pill-toggle,
+          .tkh-scroll-category-nav {
+            transition: none;
+          }
         }
 
         .tkh-compact-filter-row {
@@ -3570,15 +4297,8 @@ export function VideoHighlightsPage({
       </div>
 
       <header className="header tkh-page-intro">
-        <h2>Highlights hub</h2>
-        <p className="tkh-intro-copy">
-          Upload a short match clip, vote for the best moments, and check weekly winners.
-        </p>
-        <div className="tkh-feature-line">
-          <span>{isLeagueMode ? "League teams:" : "Featured match:"}</span>
-          <strong>{teamContextText}</strong>
-        </div>
-        <div className="tkh-header-actions">
+        {canUpload && (
+          <div className="tkh-header-actions">
           <button
             type="button"
             className="tkh-btn tkh-btn-primary"
@@ -3597,7 +4317,7 @@ export function VideoHighlightsPage({
             className="tkh-btn"
             onClick={() => {
               setHighlightEra("throwback");
-              setMainTab("currentWeek");
+              setMainTab("throwback");
               setShowUploadModal(true);
             }}
             disabled={!canUpload}
@@ -3610,28 +4330,158 @@ export function VideoHighlightsPage({
           >
             Throwback ✨
           </button>
-        </div>
+          </div>
+        )}
       </header>
 
       {loadError && <section className="card tkh-error-box">{loadError}</section>}
 
+      <nav
+        className={`tkh-scroll-category-nav ${
+          categorySelectorPassed &&
+          showStickyCategories
+            ? "is-visible"
+            : ""
+        }`}
+        aria-label="Quick highlight categories"
+        aria-hidden={
+          !categorySelectorPassed ||
+          !showStickyCategories
+        }
+        onPointerDown={() =>
+          setShowStickyCategories(true)
+        }
+      >
+        <div className="tkh-scroll-category-track">
+          <button
+            type="button"
+            className={
+              mainTab === "currentWeek"
+                ? "is-active"
+                : ""
+            }
+            onClick={() => setMainTab("currentWeek")}
+          >
+            This Week
+          </button>
+
+          <button
+            type="button"
+            className={
+              mainTab === "winners"
+                ? "is-active"
+                : ""
+            }
+            onClick={() => setMainTab("winners")}
+          >
+            {isLeagueMode ? "Season Race" : "This Month"}
+          </button>
+
+          <button
+            type="button"
+            className={
+              mainTab === "topShelf"
+                ? "is-active"
+                : ""
+            }
+            onClick={() => setMainTab("topShelf")}
+          >
+            Top Shelf
+          </button>
+
+          <button
+            type="button"
+            className={
+              mainTab === "throwback"
+                ? "is-active"
+                : ""
+            }
+            onClick={() => setMainTab("throwback")}
+          >
+            Club Memories
+          </button>
+
+          {(mainTab === "currentWeek" ||
+            mainTab === "throwback") && (
+            <button
+              type="button"
+              className={`tkh-scroll-filter ${
+                showFeedFilters ? "is-active" : ""
+              }`}
+              onClick={() => {
+                setShowStickyCategories(true);
+                setShowFeedFilters((current) => !current);
+              }}
+              aria-expanded={showFeedFilters}
+            >
+              Filters
+            </button>
+          )}
+        </div>
+      </nav>
+
       <section className="card tkh-card-section">
         <div className="tkh-tab-info-wrap">
-          <div className="pill-toggle-group tkh-view-toggle" role="tablist" aria-label="Video highlights view">
+          <div
+            ref={categorySelectorRef}
+            className="pill-toggle-group tkh-view-toggle"
+            role="tablist"
+            aria-label="Video highlights view"
+          >
             <button
               type="button"
               className={`pill-toggle ${mainTab === "currentWeek" ? "pill-toggle-active" : ""}`}
               onClick={() => setMainTab("currentWeek")}
-              title={votingWindowClosed ? "This week’s voting window has closed. Top Voted is now the main hub." : `Voting closes ${votingDeadlineLabel}`}
+              title={`Fresh clips competing this week. Voting closes ${votingDeadlineLabel}`}
             >
-              Current Week
+              <span className="tkh-category-title">This Week</span>
+              <small>Fresh competition</small>
+              <span className="tkh-category-count">
+                {currentWeekHighlights.length}
+              </span>
             </button>
+
             <button
               type="button"
               className={`pill-toggle ${mainTab === "winners" ? "pill-toggle-active" : ""}`}
               onClick={() => setMainTab("winners")}
+              title={isLeagueMode
+                ? "Weekly winners building their season totals"
+                : "Weekly winners collected during this month"}
             >
-              Top Voted ⭐
+              <span className="tkh-category-title">
+                {isLeagueMode ? "Season Race" : "This Month"}
+              </span>
+              <small>Weekly winners</small>
+              <span className="tkh-category-count">
+                {currentTopVotedClips.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className={`pill-toggle ${mainTab === "topShelf" ? "pill-toggle-active" : ""}`}
+              onClick={() => setMainTab("topShelf")}
+              title="Champions retained from completed seasons"
+            >
+              <span className="tkh-category-title">Top Shelf</span>
+              <small>Season champions</small>
+              <span className="tkh-category-count">
+                {topShelfClips.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className={`pill-toggle ${mainTab === "throwback" ? "pill-toggle-active" : ""}`}
+              onClick={() => setMainTab("throwback")}
+              title="Special club moments curated by admins"
+            >
+              <span className="tkh-category-title">Club Memories</span>
+              <small>Special moments</small>
+              <span className="tkh-category-count">
+                {throwbackHighlights.length}
+              </span>
             </button>
           </div>
 
@@ -3784,34 +4634,124 @@ export function VideoHighlightsPage({
         </div>
 
         {(mainTab === "currentWeek" || mainTab === "throwback") && (
-          <div className="tkh-compact-filter-row">
-            <label className="tkh-compact-select-label">
-              Review
-              <select
-                className="tkh-compact-select"
-                value={selectedTab}
-                onChange={(event) => setSelectedTab(event.target.value)}
-              >
-                <option value="approved">Approved ({approvedHighlights.length})</option>
-                {isModerator && <option value="pending">Pending ({pendingHighlights.length})</option>}
-                {isModerator && rejectedHighlights.length > 0 && (
-                  <option value="rejected">Rejected ({rejectedHighlights.length})</option>
-                )}
-              </select>
-            </label>
+          <div className="tkh-feed-toolbar">
+            <div className="tkh-filter-summary">
+              <strong>
+                {mainTab === "throwback"
+                  ? "Previous Seasons"
+                  : "Current Season"}
+              </strong>
+              <span>
+                {visibleHighlights.length} clip
+                {visibleHighlights.length === 1 ? "" : "s"}
+              </span>
+            </div>
 
-            <label className="tkh-compact-select-label">
-              Type
-              <select
-                className="tkh-compact-select"
-                value={selectedFilter}
-                onChange={(event) => setSelectedFilter(event.target.value)}
-              >
-                {["all", "goal", "save", "skill", "other"].map((filter) => (
-                  <option key={filter} value={filter}>{getFilterLabel(filter)}</option>
-                ))}
-              </select>
-            </label>
+            <button
+              type="button"
+              className={`tkh-filter-toggle ${
+                showFeedFilters ? "is-open" : ""
+              }`}
+              onClick={() =>
+                setShowFeedFilters((current) => !current)
+              }
+              aria-expanded={showFeedFilters}
+            >
+              <span aria-hidden="true">☰</span>
+              Filters
+              {[
+                selectedFilter !== "all",
+                selectedPlayerFilter !== "all",
+                watchedFilter !== "all",
+                isModerator && selectedTab !== "approved",
+              ].filter(Boolean).length > 0 && (
+                <strong>
+                  {
+                    [
+                      selectedFilter !== "all",
+                      selectedPlayerFilter !== "all",
+                      watchedFilter !== "all",
+                      isModerator && selectedTab !== "approved",
+                    ].filter(Boolean).length
+                  }
+                </strong>
+              )}
+            </button>
+
+            {showFeedFilters && (
+              <div className="tkh-feed-filter-fields">
+                {isModerator && (
+                  <label className="tkh-compact-select-label">
+                    Review status
+                    <select
+                      className="tkh-compact-select"
+                      value={selectedTab}
+                      onChange={(event) =>
+                        setSelectedTab(event.target.value)
+                      }
+                    >
+                      <option value="approved">Approved</option>
+                      <option value="pending">Pending review</option>
+                      {rejectedHighlights.length > 0 && (
+                        <option value="rejected">Rejected</option>
+                      )}
+                    </select>
+                  </label>
+                )}
+
+                <label className="tkh-compact-select-label">
+                  Moment
+                  <select
+                    className="tkh-compact-select"
+                    value={selectedFilter}
+                    onChange={(event) =>
+                      setSelectedFilter(event.target.value)
+                    }
+                  >
+                    {["all", "goal", "save", "skill", "other"].map(
+                      (filter) => (
+                        <option key={filter} value={filter}>
+                          {getFilterLabel(filter)}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </label>
+
+                <label className="tkh-compact-select-label">
+                  Player
+                  <select
+                    className="tkh-compact-select"
+                    value={selectedPlayerFilter}
+                    onChange={(event) =>
+                      setSelectedPlayerFilter(event.target.value)
+                    }
+                  >
+                    <option value="all">All players</option>
+                    {playerOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="tkh-compact-select-label">
+                  Viewed
+                  <select
+                    className="tkh-compact-select"
+                    value={watchedFilter}
+                    onChange={(event) =>
+                      setWatchedFilter(event.target.value)
+                    }
+                  >
+                    <option value="all">All clips</option>
+                    <option value="unwatched">Not watched</option>
+                    <option value="watched">Watched</option>
+                  </select>
+                </label>
+              </div>
+            )}
           </div>
         )}
 
@@ -3867,7 +4807,7 @@ export function VideoHighlightsPage({
           </div>
         )}
 
-        {mainTab === "currentWeek" && (
+        {(mainTab === "currentWeek" || mainTab === "throwback") && (
           <>
             {votingWindowClosed && (
               <div className="tkh-system-note">
@@ -3897,8 +4837,11 @@ export function VideoHighlightsPage({
                       type="button"
                       className="tkh-btn tkh-btn-primary"
                       onClick={() => {
-                        setHighlightEra("current_week");
-                        setMainTab("currentWeek");
+                        setHighlightEra(
+                          mainTab === "throwback"
+                            ? "throwback"
+                            : "current_week"
+                        );
                         setShowUploadModal(true);
                       }}
                     >
@@ -3973,6 +4916,16 @@ export function VideoHighlightsPage({
                     onEdit={openMetadataEditor}
                     onIdentifyPlayer={openIdentifyPlayer}
                     onAttachToClubChat={onAttachHighlightToClubChat}
+                    feedPosition={index + 1}
+                    feedTotal={visibleHighlights.length}
+                    isWatched={watchedClipIds.has(
+                      String(
+                        highlight.clipId ||
+                        highlight.id ||
+                        ""
+                      )
+                    )}
+                    onWatched={markHighlightWatched}
                   />
                     </React.Fragment>
                   );
@@ -3982,18 +4935,40 @@ export function VideoHighlightsPage({
           </>
         )}
 
-        {mainTab === "winners" && (
+        {(mainTab === "winners" || mainTab === "topShelf") && (
           <div className="tkh-winners-panel">
             <div className="tkh-winners-head">
               <div>
-                <h2>Top Voted Clips</h2>
-                <p>This is the main highlights hub after the weekly voting window closes on Sunday night. Winners are kept here for monthly and season voting.</p>
+                <h2>
+                  {mainTab === "topShelf"
+                    ? "Top Shelf"
+                    : (isLeagueMode
+                        ? "Season Race"
+                        : "This Month")}
+                </h2>
+                <p>
+                  {mainTab === "topShelf"
+                    ? "The finest Goal, Save and Skill champions retained from completed seasons."
+                    : (isLeagueMode
+                        ? "Weekly winners from this season. Their original votes carry forward and every new vote builds their season tally."
+                        : "This month’s weekly winners. Their original votes carry forward and every new vote builds their monthly tally.")}
+                </p>
               </div>
-              <span className="tkh-winners-badge">Archive ready</span>
+              <span className="tkh-winners-badge">
+                {mainTab === "topShelf"
+                  ? "Season champions"
+                  : "Voting live"}
+              </span>
             </div>
 
             {topVotedClipGroups.length === 0 ? (
-              <div className="tkh-empty-mini">No top voted clips saved yet.</div>
+              <div className="tkh-empty-mini">
+                {mainTab === "topShelf"
+                  ? "No season champions have reached the Top Shelf yet."
+                  : (isLeagueMode
+                      ? "No Weekly Winners have been saved for this season yet."
+                      : "No Weekly Winners have been saved this month yet.")}
+              </div>
             ) : (
               <div className="tkh-matchday-goal-stack">
                 {topVotedClipGroups.map((group) => (
@@ -4017,10 +4992,22 @@ export function VideoHighlightsPage({
                               ] || 0
                             }
                             isModerator={isModerator}
-                            canLike={false}
-                            isLiked={false}
+                            canLike={
+                              mainTab === "winners" &&
+                              isLoggedIn &&
+                              !likesLoading
+                            }
+                            isLiked={likedClipIds.has(
+                              String(clip.clipId || clip.id || "")
+                            )}
                             showVoteLabel={false}
-                            hideLikeControl={true}
+                            voteLabel={
+                              mainTab === "winners"
+                                ? (isLeagueMode
+                                    ? "Season vote"
+                                    : "Monthly vote")
+                                : ""
+                            }
                             canAttachToChat={
                               ["player", "captain", "admin"].includes(role) &&
                               typeof onAttachHighlightToClubChat === "function"
