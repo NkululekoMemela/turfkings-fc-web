@@ -793,7 +793,8 @@ function ensureSeasonSchedulingShape(season) {
         : ensureFiveVFiveTeamsShape(season?.fiveVFiveTeams),
     matchMode: season?.matchMode || "round_robin",
     scheduledTarget:
-      Number.isInteger(Number(season?.scheduledTarget))
+      Number.isInteger(Number(season?.scheduledTarget)) &&
+      Number(season?.scheduledTarget) > 0
         ? Number(season.scheduledTarget)
         : null,
     scheduledFixtures: Array.isArray(season?.scheduledFixtures)
@@ -3675,7 +3676,10 @@ export default function App() {
         : ensureFiveVFiveTeamsShape(s?.fiveVFiveTeams);
     matchMode = s?.matchMode || "round_robin";
     scheduledTarget =
-      Number.isInteger(Number(s?.scheduledTarget)) ? Number(s.scheduledTarget) : null;
+      Number.isInteger(Number(s?.scheduledTarget)) &&
+      Number(s?.scheduledTarget) > 0
+        ? Number(s.scheduledTarget)
+        : null;
     scheduledFixtures = Array.isArray(s?.scheduledFixtures)
       ? s.scheduledFixtures
       : [];
@@ -3708,7 +3712,8 @@ export default function App() {
     fiveVFiveTeams = ensureFiveVFiveTeamsShape(legacy?.fiveVFiveTeams);
     matchMode = legacy?.matchMode || "round_robin";
     scheduledTarget =
-      Number.isInteger(Number(legacy?.scheduledTarget))
+      Number.isInteger(Number(legacy?.scheduledTarget)) &&
+      Number(legacy?.scheduledTarget) > 0
         ? Number(legacy.scheduledTarget)
         : null;
     scheduledFixtures = Array.isArray(legacy?.scheduledFixtures)
@@ -4461,12 +4466,14 @@ export default function App() {
 
   const isSeasonTargetReached = useMemo(() => {
     if (matchMode !== "scheduled_target") return false;
-    if (!Number.isFinite(Number(scheduledTarget))) return false;
+
+    const target = Number(scheduledTarget);
+    if (!Number.isFinite(target) || target <= 0) return false;
 
     const values = Object.values(teamPlayedCounts || {});
     if (!values.length) return false;
 
-    return values.every((value) => Number(value) >= Number(scheduledTarget));
+    return values.every((value) => Number(value) >= target);
   }, [matchMode, scheduledTarget, teamPlayedCounts]);
 
   const seasonCompletionKey = useMemo(() => {
@@ -5102,77 +5109,16 @@ export default function App() {
         };
       }
 
-      const seasonResults = [
-        ...((prevSeason.matchDayHistory || []).flatMap((day) => day?.results || [])),
-        ...(prevSeason.results || []),
-      ];
-
-      const counts = Object.fromEntries(
-        (prevSeason.teams || []).map((team) => [team.id, 0])
-      );
-
-      seasonResults.forEach((r) => {
-        if (r?.teamAId && counts[r.teamAId] != null) counts[r.teamAId] += 1;
-        if (r?.teamBId && counts[r.teamBId] != null) counts[r.teamBId] += 1;
-      });
-
-      const maxP = Math.max(0, ...Object.values(counts));
-      const desiredStart = maxP + normalizedSmartOffset;
-
-      const nearest = findNearestValidTarget({
-        teams: prevSeason.teams || [],
-        results: seasonResults,
-        minTarget: desiredStart,
-        maxLookAhead: 40,
-      });
-
-      console.log("[FIXTURE DEBUG] handleSetMatchMode -> maxP =", maxP);
-      console.log(
-        "[FIXTURE DEBUG] handleSetMatchMode -> smart offset =",
-        normalizedSmartOffset
-      );
-      console.log(
-        "[FIXTURE DEBUG] handleSetMatchMode -> desired start target =",
-        desiredStart
-      );
-      console.log(
-        "[FIXTURE DEBUG] handleSetMatchMode -> nearest valid target =",
-        nearest?.target ?? null
-      );
-      console.log(
-        "[FIXTURE DEBUG] handleSetMatchMode -> team P counts =",
-        (prevSeason.teams || []).map((team) => ({
-          team: team.label,
-          played: seasonResults.filter(
-            (r) => r.teamAId === team.id || r.teamBId === team.id
-          ).length,
-        }))
-      );
-
-      if (!nearest?.plan?.ok || nearest?.target == null) {
-        window.alert(
-          "Could not find a reachable fixtured target from the current standings."
-        );
-        return {
-          ...prevSeason,
-          matchMode: "scheduled_target",
-          scheduledTarget: null,
-          scheduledFixtures: [],
-        };
-      }
-
-      const firstFixture = getFirstPendingFixture(nearest.plan.fixtures);
-      const nextCurrentMatch = buildCurrentMatchFromFixture(
-        firstFixture,
-        prevSeason.teams || []
-      );
-
+      /*
+       * Enter Fixtured mode without silently choosing the season target.
+       * LandingPage opens the setup immediately so the captain can accept
+       * the suggested target or enter a different positive target.
+       */
       return {
         ...prevSeason,
         matchMode: "scheduled_target",
-        scheduledTarget: Number(nearest.target),
-        scheduledFixtures: nearest.plan.fixtures,
-        currentMatch: nextCurrentMatch || prevSeason.currentMatch,
+        scheduledTarget: null,
+        scheduledFixtures: [],
       };
     });
   };
@@ -5242,6 +5188,21 @@ export default function App() {
   const handleStartMatch = () => {
     if (!canStartMatch) {
       window.alert("Only captains or admin can start a match.");
+      return;
+    }
+
+    if (
+      matchType === MATCH_TYPE.LEAGUE &&
+      matchMode === "scheduled_target" &&
+      (
+        !Number.isFinite(Number(scheduledTarget)) ||
+        Number(scheduledTarget) <= 0 ||
+        !(scheduledFixtures || []).some((fixture) => !fixture?.completed)
+      )
+    ) {
+      window.alert(
+        "Choose your season target and generate the fixture list before starting."
+      );
       return;
     }
 
@@ -5750,6 +5711,42 @@ export default function App() {
           lineupTimeline: authoritativeLineupTimeline,
         };
 
+        const completedAtISO = new Date().toISOString();
+
+        /*
+         * Display-only snapshot for Spectator View.
+         *
+         * It belongs to the completed liveMatchDraft, not to the season.
+         * A new match replaces that draft and End Match Day clears it.
+         * It must never participate in scheduling or completion logic.
+         */
+        const matchDaySpectatorSnapshot = {
+          teamAId,
+          teamBId,
+          standbyId: standbyId || null,
+          teamALabel: resolvedTeamALabel,
+          teamBLabel: resolvedTeamBLabel,
+          teamASnapshot:
+            teamASnapshotSafe ||
+            (prevSeason.teams || []).find((team) => team?.id === teamAId) ||
+            null,
+          teamBSnapshot:
+            teamBSnapshotSafe ||
+            (prevSeason.teams || []).find((team) => team?.id === teamBId) ||
+            null,
+          matchNumber: matchNo,
+          events: committedEvents,
+          finalSummary: {
+            goalsA: Number(goalsA || 0),
+            goalsB: Number(goalsB || 0),
+          },
+          isFinished: true,
+          completedAtISO,
+          matchType: matchMeta.matchType,
+          videoHighlightsMatchId:
+            String(liveVideoHighlightsMatchId || "").trim(),
+        };
+
         let nextScheduledFixtures = Array.isArray(prevSeason.scheduledFixtures)
           ? prevSeason.scheduledFixtures
           : [];
@@ -5823,7 +5820,8 @@ export default function App() {
               ? {
                   ...prevSeason.liveMatchDraft,
                   status: "completed",
-                  completedAtISO: new Date().toISOString(),
+                  completedAtISO,
+                  spectatorSnapshot: matchDaySpectatorSnapshot,
                 }
               : null,
             allEvents: [],
@@ -7140,7 +7138,8 @@ export default function App() {
               ? {
                   ...prevSeason.liveMatchDraft,
                   status: "completed",
-                  completedAtISO: new Date().toISOString(),
+                  completedAtISO,
+                  spectatorSnapshot: matchDaySpectatorSnapshot,
                 }
               : null,
             allEvents: [],
@@ -9765,6 +9764,18 @@ export default function App() {
           activeClubId={activeClubId}
           dataScope={footballDataScope}
           currentVideoHighlightsMatchId={currentVideoHighlightsMatchId}
+          matchDaySpectatorSnapshot={
+            liveMatchDraft?.status === "completed"
+              ? liveMatchDraft?.spectatorSnapshot || null
+              : null
+          }
+          nextMatchDaySchedule={
+            activeClubIdentity?.weeklyPlayTime ||
+            activeClubIdentity?.schedule?.weeklyPlayTime ||
+            activeClubIdentity?.schedule?.playTime ||
+            activeClubIdentity?.playTime ||
+            ""
+          }
           videoHighlightsClubId={activeClubId || DEFAULT_CLUB_ID}
           onBackToLanding={handleBackToLanding}
         />
@@ -11101,7 +11112,7 @@ export default function App() {
         PAGE_LANDING,
         PAGE_MATCH_SIGNUP,
         PAGE_PAYMENT,
-        PAGE_LIVE,
+        PAGE_SPECTATOR,
         PAGE_STATS,
         PAGE_VIEW_HIGHLIGHTS,
         PAGE_NEWS,

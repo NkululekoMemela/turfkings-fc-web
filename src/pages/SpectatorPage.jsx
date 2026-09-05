@@ -346,8 +346,15 @@ export function SpectatorPage(props) {
   const activeClubId =
     String(props.activeClubId || "turf-kings").trim();
   const dataScope = props.dataScope || null;
-  const highlightsMatchId =
+  const liveHighlightsMatchId =
     String(props.currentVideoHighlightsMatchId || "").trim();
+  const matchDaySnapshot =
+    props.matchDaySpectatorSnapshot &&
+    typeof props.matchDaySpectatorSnapshot === "object"
+      ? props.matchDaySpectatorSnapshot
+      : null;
+  const nextMatchDaySchedule =
+    String(props.nextMatchDaySchedule || "").trim();
   const highlightsClubId =
     String(props.videoHighlightsClubId || "turf-kings").trim();
 
@@ -357,6 +364,13 @@ export function SpectatorPage(props) {
   const [matchHighlights, setMatchHighlights] = useState([]);
   const [matchReelOpen, setMatchReelOpen] = useState(false);
   const [matchReelIndex, setMatchReelIndex] = useState(0);
+
+  const displayMatchDoc = matchDoc || matchDaySnapshot;
+  const highlightsMatchId = String(
+    matchDoc
+      ? liveHighlightsMatchId
+      : matchDaySnapshot?.videoHighlightsMatchId || ""
+  ).trim();
 
   // local countdown state for smoother timer
   const [localSecondsLeft, setLocalSecondsLeft] = useState(null);
@@ -478,25 +492,40 @@ export function SpectatorPage(props) {
     events = [],
     finalSummary,
     isFinished,
-  } = matchDoc || {};
+  } = displayMatchDoc || {};
 
-  // ✅ Always compute from events live; only fall back to finalSummary
+  /*
+   * Compute from events while live. At FT, prefer the authoritative final
+   * summary so defensive/statistical events can never alter the score.
+   */
   const computedScores = useMemo(() => {
-    if (!matchDoc) return { goalsA: 0, goalsB: 0 };
+    if (!displayMatchDoc) return { goalsA: 0, goalsB: 0 };
+
+    if (
+      isFinished &&
+      finalSummary &&
+      Number.isFinite(Number(finalSummary.goalsA)) &&
+      Number.isFinite(Number(finalSummary.goalsB))
+    ) {
+      return {
+        goalsA: Number(finalSummary.goalsA),
+        goalsB: Number(finalSummary.goalsB),
+      };
+    }
 
     if (events && events.length > 0) {
       let gA = 0;
       let gB = 0;
-      for (const e of events) {
-        if (e.type === "goal") {
-          if (e.teamId === matchDoc.teamAId) gA += 1;
-          if (e.teamId === matchDoc.teamBId) gB += 1;
-        }
+
+      for (const event of events) {
+        if (event?.type !== "goal") continue;
+        if (event.teamId === displayMatchDoc.teamAId) gA += 1;
+        if (event.teamId === displayMatchDoc.teamBId) gB += 1;
       }
+
       return { goalsA: gA, goalsB: gB };
     }
 
-    // fallback for old finished matches with only finalSummary stored
     if (finalSummary && typeof finalSummary.goalsA === "number") {
       return {
         goalsA: finalSummary.goalsA,
@@ -505,7 +534,7 @@ export function SpectatorPage(props) {
     }
 
     return { goalsA: 0, goalsB: 0 };
-  }, [matchDoc, events, finalSummary]);
+  }, [displayMatchDoc, events, finalSummary, isFinished]);
 
   const { goalsA, goalsB } = computedScores;
 
@@ -596,11 +625,28 @@ export function SpectatorPage(props) {
           </p>
         )}
 
-        {!loading && !matchDoc && !errorText && (
-          <p className="muted" style={{ textAlign: "center" }}>
-            There is no active match yet. Once the captain starts logging
-            events, the live score will appear here.
-          </p>
+        {!loading && !displayMatchDoc && !errorText && (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "1.2rem 0.75rem",
+            }}
+          >
+            <div
+              aria-hidden="true"
+              style={{ fontSize: "1.6rem", marginBottom: "0.55rem" }}
+            >
+              📅
+            </div>
+            <strong style={{ display: "block", marginBottom: "0.35rem" }}>
+              The match day has ended
+            </strong>
+            <p className="muted" style={{ margin: 0, lineHeight: 1.55 }}>
+              {nextMatchDaySchedule
+                ? <>Tune in on <strong>{nextMatchDaySchedule}</strong>.</>
+                : "Tune in for the next scheduled match day."}
+            </p>
+          </div>
         )}
 
         {errorText && (
@@ -609,12 +655,19 @@ export function SpectatorPage(props) {
           </p>
         )}
 
-        {matchDoc && (
+        {displayMatchDoc && (
           <>
             <div className="timer-row" style={{ marginBottom: "1rem" }}>
               {isFinished ? (
-                <span className="timer-warning">
-                  Match finished – final score below.
+                <span
+                  className="timer-warning"
+                  style={{
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    fontWeight: 900,
+                  }}
+                >
+                  FT · Final score
                 </span>
               ) : (
                 <>
