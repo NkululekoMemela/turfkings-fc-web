@@ -691,10 +691,43 @@ export function LandingPage({
   };
 
   const requestLeagueModeChange = (nextLeagueMode) => {
-    requestProtectedFormatChange({
-      kind: "leagueMode",
-      value: nextLeagueMode === "scheduled_target" ? "scheduled_target" : "round_robin",
-    });
+    if (!canSeeCaptainStyleControls) return;
+
+    const safeLeagueMode =
+      nextLeagueMode === "scheduled_target"
+        ? "scheduled_target"
+        : "round_robin";
+
+    if (safeLeagueMode === resolvedLeagueMode) return;
+
+    /*
+     * The signed-in captain/admin role is sufficient authorization for
+     * league scheduling. Do not add a second captain-code checkpoint.
+     */
+    if (typeof onSetLeagueMode === "function") {
+      onSetLeagueMode(safeLeagueMode);
+    } else {
+      onSetMatchMode?.(safeLeagueMode);
+    }
+
+    closeSettingsPanelAfterPopup();
+
+    if (safeLeagueMode === "scheduled_target") {
+      const suggestedTarget = Number(smartTarget);
+      const existingTarget = Number(scheduledTarget);
+
+      setFixtureTargetDraft(
+        Number.isFinite(existingTarget) && existingTarget > 0
+          ? String(Math.round(existingTarget))
+          : Number.isFinite(suggestedTarget) && suggestedTarget > 0
+            ? String(Math.round(suggestedTarget))
+            : ""
+      );
+
+      window.setTimeout(() => {
+        setShowFixturesModal(true);
+      }, 0);
+    }
   };
 
   const cancelGameFormatChange = () => {
