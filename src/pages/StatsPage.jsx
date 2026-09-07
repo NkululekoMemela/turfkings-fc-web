@@ -1,5 +1,9 @@
 // src/pages/StatsPage.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FANM_NATIONAL_TEAMS,
+  FANM_PRO_CLUBS,
+} from "../data/fanm/fanmTeamLibrary.js";
 import { db } from "../firebaseConfig";
 import { getDocs } from "firebase/firestore";
 import {
@@ -9,6 +13,156 @@ import {
 
 import { buildPlayerEventStats } from "../core/playerEventStats.js";
 // ---------------- HELPERS ----------------
+function normalizeStatsTeamIdentity(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+const STATS_TEAM_IDENTITIES = [
+  ...(Array.isArray(FANM_PRO_CLUBS) ? FANM_PRO_CLUBS : []),
+  ...(Array.isArray(FANM_NATIONAL_TEAMS) ? FANM_NATIONAL_TEAMS : []),
+];
+
+function resolveStatsTeamIdentity(team = {}) {
+  if (team?.teamIdentity) return team.teamIdentity;
+
+  const suppliedNames = [
+    team?.label,
+    team?.name,
+    team?.title,
+  ]
+    .map(normalizeStatsTeamIdentity)
+    .filter(Boolean);
+
+  /*
+   * Resolve by full database name first. This avoids ambiguous codes
+   * such as POR, which can represent Portugal or Porto.
+   */
+  const nameMatch = STATS_TEAM_IDENTITIES.find((identity) =>
+    suppliedNames.includes(
+      normalizeStatsTeamIdentity(identity?.name)
+    )
+  );
+
+  if (nameMatch) return nameMatch;
+
+  const suppliedCodes = [
+    team?.abbr,
+    team?.abbrev,
+    team?.abbreviation,
+    team?.clubAbbreviation,
+    team?.id,
+  ]
+    .map(normalizeStatsTeamIdentity)
+    .filter(Boolean);
+
+  return (
+    STATS_TEAM_IDENTITIES.find((identity) =>
+      suppliedCodes.includes(
+        normalizeStatsTeamIdentity(identity?.abbr)
+      )
+    ) || null
+  );
+}
+
+function getStatsTeamAbbreviation(team = {}) {
+  const identity = resolveStatsTeamIdentity(team);
+
+  return String(
+    identity?.abbr ||
+      team?.abbr ||
+      team?.abbrev ||
+      team?.abbreviation ||
+      team?.clubAbbreviation ||
+      team?.label ||
+      team?.name ||
+      team?.title ||
+      "Team"
+  ).trim();
+}
+
+function StatsTeamBadge({ team = {} }) {
+  const identity = resolveStatsTeamIdentity(team);
+  const label = getStatsTeamAbbreviation(team);
+
+  return (
+    <span
+      className="stats-team-identity-badge"
+      title={
+        identity?.name ||
+        team?.label ||
+        team?.name ||
+        label
+      }
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.38rem",
+        minWidth: 0,
+        whiteSpace: "nowrap",
+        fontWeight: 700,
+      }}
+    >
+      {identity?.type === "national" && identity?.flag ? (
+        <span
+          aria-hidden="true"
+          style={{
+            fontSize: "1rem",
+            lineHeight: 1,
+            flexShrink: 0,
+          }}
+        >
+          {identity.flag}
+        </span>
+      ) : identity?.logo32 ? (
+        <img
+          src={identity.logo32}
+          alt=""
+          aria-hidden="true"
+          style={{
+            width: "18px",
+            height: "18px",
+            objectFit: "contain",
+            flexShrink: 0,
+          }}
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      ) : null}
+
+      <span
+        style={{
+          display: "inline-flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          justifyContent: "center",
+          minWidth: 0,
+          lineHeight: 1,
+        }}
+      >
+        <span>{label}</span>
+
+        <span
+          style={{
+            marginTop: "0.16rem",
+            color: "rgba(203, 213, 225, 0.68)",
+            fontSize: "0.52rem",
+            fontWeight: 600,
+            letterSpacing: "0.025em",
+            lineHeight: 1,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Fantasy-5
+        </span>
+      </span>
+    </span>
+  );
+}
+
 function toTitleCase(name) {
   return String(name || "")
     .trim()
@@ -1129,6 +1283,26 @@ export function StatsPage({
 
     return map;
   }, [scopedTeams]);
+
+  const getStatsTeamRecord = useCallback(
+    (id, fallbackLabel = "") => {
+      const raw = String(id || "").trim();
+
+      const team =
+        teamById.get(raw) ||
+        teamById.get(raw.toUpperCase()) ||
+        teamById.get(raw.toLowerCase()) ||
+        null;
+
+      if (team) return team;
+
+      return {
+        id: raw,
+        label: fallbackLabel || raw || "Team",
+      };
+    },
+    [teamById]
+  );
 
   const getFriendlyTeamName = useCallback(
     (id) => {
@@ -3299,7 +3473,14 @@ export function StatsPage({
                 {teamStats.map((t, idx) => (
                   <tr key={t.teamId}>
                     <td>{idx + 1}</td>
-                    <td>{t.name}</td>
+                    <td>
+                      <StatsTeamBadge
+                        team={getStatsTeamRecord(
+                          t.teamId,
+                          t.name
+                        )}
+                      />
+                    </td>
                     <td>{t.points}</td>
                     <td>{t.played}</td>
                     <td>{t.won}</td>
@@ -3363,7 +3544,18 @@ export function StatsPage({
                   <tr key={p.name + "-combined"}>
                     <td>{idx + 1}</td>
                     <td>{p.displayName || p.name}</td>
-                    <td>{p.teamName || "—"}</td>
+                    <td>
+                      {p.teamName ? (
+                        <StatsTeamBadge
+                          team={getStatsTeamRecord(
+                            p.teamId || p.teamName,
+                            p.teamName
+                          )}
+                        />
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td>{p.goals}</td>
                     <td>{p.assists}</td>
                     <td>{p.cleanSheets}</td>
@@ -3413,7 +3605,18 @@ export function StatsPage({
                   <tr key={p.name + "-g"}>
                     <td>{idx + 1}</td>
                     <td>{p.displayName || p.name}</td>
-                    <td>{p.teamName || "—"}</td>
+                    <td>
+                      {p.teamName ? (
+                        <StatsTeamBadge
+                          team={getStatsTeamRecord(
+                            p.teamId || p.teamName,
+                            p.teamName
+                          )}
+                        />
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td>{p.goals}</td>
                   </tr>
                 ))}
@@ -3460,7 +3663,18 @@ export function StatsPage({
                   <tr key={p.name + "-a"}>
                     <td>{idx + 1}</td>
                     <td>{p.displayName || p.name}</td>
-                    <td>{p.teamName || "—"}</td>
+                    <td>
+                      {p.teamName ? (
+                        <StatsTeamBadge
+                          team={getStatsTeamRecord(
+                            p.teamId || p.teamName,
+                            p.teamName
+                          )}
+                        />
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td>{p.assists}</td>
                   </tr>
                 ))}
@@ -3517,7 +3731,18 @@ export function StatsPage({
                   <tr key={p.name + "-cs"}>
                     <td>{idx + 1}</td>
                     <td>{p.displayName || p.name}</td>
-                    <td>{p.teamName || "—"}</td>
+                    <td>
+                      {p.teamName ? (
+                        <StatsTeamBadge
+                          team={getStatsTeamRecord(
+                            p.teamId || p.teamName,
+                            p.teamName
+                          )}
+                        />
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td>{p.gkCleanSheets}</td>
                     <td>{p.defCleanSheets}</td>
                     <td>{p.cleanSheets}</td>
@@ -3841,11 +4066,25 @@ export function StatsPage({
                 {sortedResults.map((r) => {
                   const teamAName = getTeamName(r.teamAId);
                   const teamBName = getTeamName(r.teamBId);
+                  const teamARecord = getStatsTeamRecord(
+                    r.teamAId,
+                    teamAName
+                  );
+                  const teamBRecord = getStatsTeamRecord(
+                    r.teamBId,
+                    teamBName
+                  );
 
                   let resultText = "Draw";
                   if (!r.isDraw) {
                     const winnerName = getTeamName(r.winnerId);
-                    resultText = `Won by ${winnerName}`;
+                    const winnerRecord = getStatsTeamRecord(
+                      r.winnerId,
+                      winnerName
+                    );
+
+                    resultText =
+                      `${getStatsTeamAbbreviation(winnerRecord)} won`;
                   }
 
                   const mk = matchKeyOf(r);
@@ -3922,11 +4161,15 @@ export function StatsPage({
                             </span>
                           ) : null}
                         </td>
-                        <td>{teamAName}</td>
+                        <td>
+                          <StatsTeamBadge team={teamARecord} />
+                        </td>
                         <td>
                           {r.goalsA} – {r.goalsB}
                         </td>
-                        <td>{teamBName}</td>
+                        <td>
+                          <StatsTeamBadge team={teamBRecord} />
+                        </td>
                         <td>{resultText}</td>
                       </tr>
 

@@ -958,17 +958,48 @@ function resolveLiveTeamIdentity(team = {}) {
   );
 }
 
-function getLiveTeamLabel(team = {}, short = false) {
-  const identity = resolveLiveTeamIdentity(team);
-  if (short && identity?.abbr) return identity.abbr;
-  if (identity?.name) return identity.name;
-  if (short) return team?.abbrev || getShortName(team?.label);
-  return team?.label || team?.name || team?.title || "Team";
-}
-
 function getLiveTeamAbbrev(team = {}) {
   const identity = resolveLiveTeamIdentity(team);
-  return identity?.abbr || team?.abbrev || getShortName(team?.label) || "TEAM";
+
+  const storedAbbreviation =
+    identity?.abbr ||
+    team?.abbr ||
+    team?.abbrev ||
+    team?.abbreviation ||
+    team?.clubAbbreviation;
+
+  return (
+    (storedAbbreviation &&
+      String(storedAbbreviation).trim()) ||
+    getShortName(
+      team?.label || team?.name || team?.title
+    ) ||
+    "TEAM"
+  );
+}
+
+function getLiveTeamLabel(team = {}, short = false) {
+  const identity = resolveLiveTeamIdentity(team);
+
+  /*
+   * Use the official stored club abbreviation throughout the referee
+   * scoreboard. Custom teams without one retain their readable name.
+   */
+  const storedAbbreviation =
+    identity?.abbr ||
+    team?.abbr ||
+    team?.abbrev ||
+    team?.abbreviation ||
+    team?.clubAbbreviation;
+
+  if (storedAbbreviation) {
+    return String(storedAbbreviation).trim();
+  }
+
+  if (identity?.name) return identity.name;
+  if (short) return getLiveTeamAbbrev(team);
+
+  return team?.label || team?.name || team?.title || "Team";
 }
 
 function TeamColorBadge({ team, short = false }) {

@@ -6940,6 +6940,7 @@ export default function App() {
             )
           : {},
         currentEvents: [],
+        liveMatchDraft: null,
         allEvents: [],
         results: [],
         matchDayHistory: prevSeason.matchDayHistory || [],
@@ -7134,14 +7135,7 @@ export default function App() {
                 )
               : {},
             currentEvents: [],
-            liveMatchDraft: prevSeason.liveMatchDraft
-              ? {
-                  ...prevSeason.liveMatchDraft,
-                  status: "completed",
-                  completedAtISO,
-                  spectatorSnapshot: matchDaySpectatorSnapshot,
-                }
-              : null,
+            liveMatchDraft: null,
             allEvents: [],
             results: [],
             matchMode: "round_robin",
@@ -9776,6 +9770,18 @@ export default function App() {
             activeClubIdentity?.playTime ||
             ""
           }
+          upcomingMatch={effectiveLiveMatch}
+          isInsideMatchDayWindow={isInsideClubWeeklyWindow(
+            activeClubIdentity?.weeklyPlayTime ||
+            activeClubIdentity?.schedule?.weeklyPlayTime ||
+            activeClubIdentity?.schedule?.playTime ||
+            activeClubIdentity?.playTime ||
+            ""
+          )}
+          hasUpcomingMatch={
+            matchMode !== "scheduled_target" ||
+            hasPendingScheduledFixture
+          }
           videoHighlightsClubId={activeClubId || DEFAULT_CLUB_ID}
           onBackToLanding={handleBackToLanding}
         />
@@ -11127,6 +11133,7 @@ export default function App() {
           MATCH_TYPE.FRIENDLY
       ) &&
       (
+        page === PAGE_SPECTATOR ||
         isAdmin ||
         isCaptain ||
         Boolean(identity?.memberId || identity?.playerId)

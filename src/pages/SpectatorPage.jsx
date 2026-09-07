@@ -78,9 +78,29 @@ function resolveSpectatorTeamIdentity(team = {}) {
 
 function getSpectatorTeamLabel(team = {}, short = false) {
   const identity = resolveSpectatorTeamIdentity(team);
-  if (short && identity?.abbr) return identity.abbr;
+
+  /*
+   * Database-backed clubs already have official abbreviations.
+   * Prefer that deliberate identity on the compact live scoreboard.
+   */
+  const storedAbbreviation =
+    identity?.abbr ||
+    team?.abbr ||
+    team?.abbrev ||
+    team?.abbreviation ||
+    team?.clubAbbreviation;
+
+  if (storedAbbreviation) {
+    return String(storedAbbreviation).trim();
+  }
+
   if (identity?.name) return identity.name;
-  if (short) return team?.abbrev || getShortName(team?.label);
+  if (short) {
+    return getShortName(
+      team?.label || team?.name || team?.title
+    );
+  }
+
   return team?.label || team?.name || team?.title || "Team";
 }
 
@@ -240,6 +260,19 @@ function getSpectatorEventPresentation(event = {}) {
   if (type === "shibobo") return { icon: "🎯", label: "Shibobo" };
   if (type === "yellow_card") return { icon: "🟨", label: "Yellow card" };
   if (type === "red_card") return { icon: "🟥", label: "Red card" };
+
+  if (type === "injury_knock") {
+    return { icon: "🩹", label: "Playing with a knock" };
+  }
+
+  if (type === "injury_sitting_out") {
+    return { icon: "🤕", label: "Sitting out injured" };
+  }
+
+  if (type === "injury_recovered") {
+    return { icon: "✅", label: "Recovered and available" };
+  }
+
   if (type === "injury") return { icon: "🤕", label: "Injury" };
 
   return { icon: "●", label: "Match event" };
@@ -332,6 +365,70 @@ function SpectatorEventCard({
   );
 }
 
+function formatNextSpectatorMatchDay(scheduleText) {
+  const raw = String(scheduleText || "").trim();
+  const lower = raw.toLowerCase();
+
+  if (!raw) return "the next scheduled match day";
+
+  const dayMap = {
+    sunday: 0,
+    sundays: 0,
+    monday: 1,
+    mondays: 1,
+    tuesday: 2,
+    tuesdays: 2,
+    wednesday: 3,
+    wednesdays: 3,
+    thursday: 4,
+    thursdays: 4,
+    friday: 5,
+    fridays: 5,
+    saturday: 6,
+    saturdays: 6,
+  };
+
+  const dayKey = Object.keys(dayMap).find((key) =>
+    lower.includes(key)
+  );
+  const timeMatch = lower.match(/(\d{1,2})[:h](\d{2})/);
+
+  if (!dayKey || !timeMatch) return raw;
+
+  const targetDay = dayMap[dayKey];
+  const hours = Number(timeMatch[1]);
+  const minutes = Number(timeMatch[2]);
+  const now = new Date();
+
+  let daysAhead = (targetDay - now.getDay() + 7) % 7;
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const targetMinutes = hours * 60 + minutes;
+
+  /*
+   * When today's session has started or finished, the next future
+   * match day is the same weekday next week.
+   */
+  if (daysAhead === 0 && currentMinutes >= targetMinutes) {
+    daysAhead = 7;
+  }
+
+  const nextDate = new Date(now);
+  nextDate.setDate(now.getDate() + daysAhead);
+  nextDate.setHours(hours, minutes, 0, 0);
+
+  const dateLabel = new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(nextDate);
+
+  const timeLabel = `${String(hours).padStart(2, "0")}:${String(
+    minutes
+  ).padStart(2, "0")}`;
+
+  return `${dateLabel} at ${timeLabel}`;
+}
+
 export function SpectatorPage(props) {
   // support either prop name to be safe with your existing App.jsx
   const goBack = props.onBackToLanding || props.onBack || (() => {});
@@ -355,6 +452,11 @@ export function SpectatorPage(props) {
       : null;
   const nextMatchDaySchedule =
     String(props.nextMatchDaySchedule || "").trim();
+  const upcomingMatch = props.upcomingMatch || null;
+  const isInsideMatchDayWindow =
+    Boolean(props.isInsideMatchDayWindow);
+  const hasUpcomingMatch =
+    props.hasUpcomingMatch !== false;
   const highlightsClubId =
     String(props.videoHighlightsClubId || "turf-kings").trim();
 
@@ -570,6 +672,50 @@ export function SpectatorPage(props) {
       .reverse();
   }, [sortedEvents]);
 
+  const reportableMatchEvents = useMemo(() => {
+    const supportedTypes = new Set([
+      "yellow_card",
+      "red_card",
+      "injury",
+      "injury_knock",
+      "injury_sitting_out",
+      "injury_recovered",
+    ]);
+
+    return sortedEvents
+      .filter((event) =>
+        supportedTypes.has(
+          String(event?.type || "").trim().toLowerCase()
+        )
+      )
+      .slice()
+      .reverse();
+  }, [sortedEvents]);
+
+  const spectatorTeams = Array.isArray(props.teams)
+    ? props.teams
+    : [];
+
+  const upcomingTeamA = spectatorTeams.find(
+    (team) => team?.id === upcomingMatch?.teamAId
+  );
+
+  const upcomingTeamB = spectatorTeams.find(
+    (team) => team?.id === upcomingMatch?.teamBId
+  );
+
+  const upcomingTeamALabel =
+    upcomingTeamA?.label ||
+    upcomingTeamA?.name ||
+    upcomingMatch?.teamALabel ||
+    "Team A";
+
+  const upcomingTeamBLabel =
+    upcomingTeamB?.label ||
+    upcomingTeamB?.name ||
+    upcomingMatch?.teamBLabel ||
+    "Team B";
+
   // 🔁 Local 1-second countdown for smoother timer
   useEffect(() => {
     if (!matchDoc) return;
@@ -597,6 +743,13 @@ export function SpectatorPage(props) {
     localSecondsLeft != null && Number.isFinite(localSecondsLeft);
 
   const timerText = hasLiveTimer ? formatSeconds(localSecondsLeft) : "--:--";
+  const regulationTimeComplete =
+    !isFinished &&
+    hasLiveTimer &&
+    Number(localSecondsLeft) <= 0;
+
+  const futureMatchDayLabel =
+    formatNextSpectatorMatchDay(nextMatchDaySchedule);
 
   return (
     <div className="page live-page">
@@ -642,9 +795,8 @@ export function SpectatorPage(props) {
               The match day has ended
             </strong>
             <p className="muted" style={{ margin: 0, lineHeight: 1.55 }}>
-              {nextMatchDaySchedule
-                ? <>Tune in on <strong>{nextMatchDaySchedule}</strong>.</>
-                : "Tune in for the next scheduled match day."}
+              Tune in on{" "}
+              <strong>{futureMatchDayLabel}</strong>.
             </p>
           </div>
         )}
@@ -669,6 +821,19 @@ export function SpectatorPage(props) {
                 >
                   FT · Final score
                 </span>
+              ) : regulationTimeComplete ? (
+                <>
+                  <div className="timer-display">00:00</div>
+                  <span
+                    className="timer-warning"
+                    style={{
+                      marginLeft: "0.75rem",
+                      fontWeight: 900,
+                    }}
+                  >
+                    Regulation time complete · awaiting final whistle
+                  </span>
+                </>
               ) : (
                 <>
                   <div className="timer-display">{timerText}</div>
@@ -678,6 +843,41 @@ export function SpectatorPage(props) {
                 </>
               )}
             </div>
+
+            {isFinished && (
+              <div
+                style={{
+                  margin: "0 0 1rem",
+                  padding: "0.8rem 0.9rem",
+                  borderRadius: "0.9rem",
+                  border: "1px solid rgba(52, 211, 153, 0.28)",
+                  background: "rgba(16, 185, 129, 0.1)",
+                  textAlign: "center",
+                  lineHeight: 1.5,
+                }}
+              >
+                {isInsideMatchDayWindow &&
+                hasUpcomingMatch &&
+                upcomingMatch?.teamAId &&
+                upcomingMatch?.teamBId ? (
+                  <>
+                    <strong>Up next today</strong>
+                    <div className="muted small">
+                      {upcomingTeamALabel} vs {upcomingTeamBLabel}
+                      {" · "}
+                      Starting shortly
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <strong>Next match day</strong>
+                    <div className="muted small">
+                      {futureMatchDayLabel}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Scoreboard */}
             <div className="score-row">
@@ -777,6 +977,101 @@ export function SpectatorPage(props) {
                         ) : null}
                       </div>
                     ))}
+                </div>
+              </div>
+            )}
+
+            {reportableMatchEvents.length > 0 && (
+              <div
+                aria-label="Cards and injuries"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "minmax(0, 1fr) minmax(0, 1fr)",
+                  gap: "1rem",
+                  marginTop: "0.55rem",
+                  padding: "0.7rem 0.2rem 0.65rem",
+                  borderTop:
+                    "1px solid rgba(148, 163, 184, 0.16)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "0.28rem",
+                    alignContent: "start",
+                  }}
+                >
+                  {reportableMatchEvents
+                    .filter((event) => event?.teamId === teamAId)
+                    .map((event, index) => {
+                      const presentation =
+                        getSpectatorEventPresentation(event);
+
+                      return (
+                        <div
+                          key={
+                            event?.id ||
+                            `event-a-${event?.type}-${event?.timeSeconds}-${index}`
+                          }
+                          style={{
+                            fontSize: "0.78rem",
+                            lineHeight: 1.25,
+                          }}
+                        >
+                          <strong>
+                            {presentation.icon}{" "}
+                            {getSpectatorEventPlayer(event)}
+                          </strong>{" "}
+                          <span className="muted">
+                            {formatSeconds(event?.timeSeconds)}
+                          </span>
+                          <div className="muted small">
+                            {presentation.label}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "0.28rem",
+                    alignContent: "start",
+                    textAlign: "right",
+                  }}
+                >
+                  {reportableMatchEvents
+                    .filter((event) => event?.teamId === teamBId)
+                    .map((event, index) => {
+                      const presentation =
+                        getSpectatorEventPresentation(event);
+
+                      return (
+                        <div
+                          key={
+                            event?.id ||
+                            `event-b-${event?.type}-${event?.timeSeconds}-${index}`
+                          }
+                          style={{
+                            fontSize: "0.78rem",
+                            lineHeight: 1.25,
+                          }}
+                        >
+                          <strong>
+                            {getSpectatorEventPlayer(event)}{" "}
+                            {presentation.icon}
+                          </strong>{" "}
+                          <span className="muted">
+                            {formatSeconds(event?.timeSeconds)}
+                          </span>
+                          <div className="muted small">
+                            {presentation.label}
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             )}
