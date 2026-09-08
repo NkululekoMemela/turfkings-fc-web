@@ -92,10 +92,10 @@ function normalizeTeamLibraryKey(value = "") {
 }
 
 function resolveFanmTeamIdentity(team = {}) {
-  if (team?.teamIdentity?.abbr) {
-    return team.teamIdentity;
-  }
-
+  /*
+   * Always consult the current catalogue before falling back to an
+   * identity embedded in an older saved team or match.
+   */
   const candidates = [
     team?.abbr,
     team?.abbrev,

@@ -26,9 +26,16 @@ const STATS_TEAM_IDENTITIES = [
 ];
 
 function resolveStatsTeamIdentity(team = {}) {
-  if (team?.teamIdentity) return team.teamIdentity;
+  /*
+   * Historical matches may contain an embedded identity with the former
+   * official logo32. Resolve its name/code through the current canonical
+   * catalogue so visual-brand migrations apply without rewriting history.
+   */
+  const embeddedIdentity =
+    team?.teamIdentity || null;
 
   const suppliedNames = [
+    embeddedIdentity?.name,
     team?.label,
     team?.name,
     team?.title,
@@ -49,6 +56,7 @@ function resolveStatsTeamIdentity(team = {}) {
   if (nameMatch) return nameMatch;
 
   const suppliedCodes = [
+    embeddedIdentity?.abbr,
     team?.abbr,
     team?.abbrev,
     team?.abbreviation,
@@ -63,7 +71,9 @@ function resolveStatsTeamIdentity(team = {}) {
       suppliedCodes.includes(
         normalizeStatsTeamIdentity(identity?.abbr)
       )
-    ) || null
+    ) ||
+    embeddedIdentity ||
+    null
   );
 }
 
@@ -116,9 +126,15 @@ function StatsTeamBadge({ team = {} }) {
         >
           {identity.flag}
         </span>
-      ) : identity?.logo32 ? (
+      ) : (
+        identity?.fantasyLogo32 ||
+        identity?.logo32
+      ) ? (
         <img
-          src={identity.logo32}
+          src={
+            identity.fantasyLogo32 ||
+            identity.logo32
+          }
           alt=""
           aria-hidden="true"
           style={{

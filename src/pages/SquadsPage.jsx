@@ -2268,7 +2268,7 @@ export function SquadsPage({
 
     return (
       <img
-        src={identity.logo32}
+        src={(identity.fantasyLogo32 || identity.logo32)}
         alt=""
         className="squad-team-identity-logo"
         onError={(event) => {

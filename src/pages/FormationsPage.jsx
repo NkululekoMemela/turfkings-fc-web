@@ -1,4 +1,5 @@
 // src/pages/FormationsPage.jsx
+import { FANM_PRO_CLUBS } from "../data/fanm/fanmTeamLibrary.js";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { db } from "../firebaseConfig";
@@ -2247,15 +2248,40 @@ export function FormationsPage({
   );
 
   const renderTeamIdentityLabel = (team, fallback = "Team") => {
-    const identity = team?.teamIdentity || null;
-    const label = team?.label || team?.name || fallback;
+    const embeddedIdentity =
+      team?.teamIdentity || null;
+
+    const canonicalIdentity =
+      embeddedIdentity?.type === "club"
+        ? FANM_PRO_CLUBS.find(
+            (identity) =>
+              String(identity?.abbr || "")
+                .trim()
+                .toUpperCase() ===
+              String(embeddedIdentity?.abbr || "")
+                .trim()
+                .toUpperCase()
+          ) || null
+        : null;
+
+    const identity =
+      canonicalIdentity || embeddedIdentity;
+
+    const label =
+      team?.label || team?.name || fallback;
 
     return (
       <span className="fanm-inline-team-identity">
         {identity?.type === "national" && identity.flag ? (
-          <span className="fanm-inline-team-flag">{identity.flag}</span>
+          <span className="fanm-inline-team-flag">
+            {identity.flag}
+          </span>
         ) : identity?.logo32 ? (
-          <img src={identity.logo32} alt="" className="fanm-inline-team-logo" />
+          <img
+            src={identity.logo32}
+            alt=""
+            className="fanm-inline-team-logo"
+          />
         ) : null}
         <span>{label}</span>
       </span>

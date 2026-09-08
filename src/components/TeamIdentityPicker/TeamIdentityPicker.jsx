@@ -30,9 +30,13 @@ export default function TeamIdentityPicker({ open, onClose, onSelect, selectedId
     if (!open) return;
 
     FANM_PRO_CLUBS.forEach((team) => {
-      if (!team.logo32) return;
+      const badgeUrl =
+        team.fantasyLogo32 || team.logo32;
+
+      if (!badgeUrl) return;
+
       const img = new Image();
-      img.src = team.logo32;
+      img.src = badgeUrl;
     });
   }, [open]);
 
@@ -96,7 +100,13 @@ export default function TeamIdentityPicker({ open, onClose, onSelect, selectedId
                     >
                       <span className="fanm-team-picker-badge">
                         {team.type === "club" ? (
-                          <img src={team.logo32} alt="" />
+                          <img
+                            src={
+                              team.fantasyLogo32 ||
+                              team.logo32
+                            }
+                            alt=""
+                          />
                         ) : (
                           <span className="fanm-team-picker-flag">{team.flag}</span>
                         )}

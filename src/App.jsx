@@ -1988,11 +1988,11 @@ function resolveCameraTeamLogoUrl(team = {}) {
     ) || null;
 
   const rawLogo = String(
+    canonicalIdentity?.logo32 ||
     team?.teamIdentity?.logo32 ||
     team?.logo32 ||
     team?.logoUrl ||
     team?.logo ||
-    canonicalIdentity?.logo32 ||
     ""
   ).trim();
 

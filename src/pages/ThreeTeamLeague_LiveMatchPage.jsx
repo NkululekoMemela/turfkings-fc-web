@@ -933,7 +933,27 @@ const FANM_TEAM_IDENTITY_LOOKUP = [
 ];
 
 function resolveLiveTeamIdentity(team = {}) {
-  if (team?.teamIdentity) return team.teamIdentity;
+  const embeddedIdentity =
+    team?.teamIdentity || null;
+
+  const embeddedAbbr = String(
+    embeddedIdentity?.abbr || ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const canonicalIdentity =
+    embeddedAbbr
+      ? FANM_TEAM_IDENTITY_LOOKUP.find(
+          (identity) =>
+            String(identity?.abbr || "")
+              .trim()
+              .toUpperCase() === embeddedAbbr
+        ) || null
+      : null;
+
+  if (canonicalIdentity) return canonicalIdentity;
+  if (embeddedIdentity) return embeddedIdentity;
 
   const keys = [
     team?.abbr,
