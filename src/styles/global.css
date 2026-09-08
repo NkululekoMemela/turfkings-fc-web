@@ -10056,16 +10056,16 @@ button.fanm-chat-highlight-card {
 }
 
 .squad-team-identity-logo {
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
-  flex: 0 0 22px;
+  flex: 0 0 32px;
 }
 
 .squad-team-identity-flag {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -10080,16 +10080,16 @@ button.fanm-chat-highlight-card {
 }
 
 .teamsheet-card-team-name-with-identity .squad-team-identity-logo {
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
 }
 
 .teamsheet-card-team-name-with-identity .squad-team-identity-flag {
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
-  font-size: 1.25rem;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  font-size: 1.6rem;
 }
 
 .teamsheet-card-team-name-with-identity {
@@ -10139,14 +10139,14 @@ button.fanm-chat-highlight-card {
 }
 
 .fanm-inline-team-logo {
-  width: 1.15em;
-  height: 1.15em;
+  width: 2em;
+  height: 2em;
   object-fit: contain;
   flex: 0 0 auto;
 }
 
 .fanm-inline-team-flag {
-  font-size: 1.05em;
+  font-size: 1.4em;
   line-height: 1;
   flex: 0 0 auto;
 }
@@ -10638,8 +10638,8 @@ button.fanm-chat-highlight-card {
 }
 
 .fanm-live-team-logo {
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 1.65rem;
+  height: 1.65rem;
   object-fit: contain;
   flex: 0 0 auto;
 }
@@ -10792,8 +10792,8 @@ button.fanm-chat-highlight-card {
 }
 
 .spectator-team-badge .fanm-live-team-logo {
-  width: 1.15em;
-  height: 1.15em;
+  width: 1.7rem;
+  height: 1.7rem;
   object-fit: contain;
 }
 
@@ -19603,4 +19603,12 @@ button.fanm-chat-highlight-card {
   .entry-member-loading-players span::after {
     animation: none;
   }
+}
+
+.player-card-team-badge {
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  object-fit: contain;
+  display: block;
 }

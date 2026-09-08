@@ -119,7 +119,7 @@ function StatsTeamBadge({ team = {} }) {
         <span
           aria-hidden="true"
           style={{
-            fontSize: "1rem",
+            fontSize: "1.55rem",
             lineHeight: 1,
             flexShrink: 0,
           }}
@@ -138,8 +138,8 @@ function StatsTeamBadge({ team = {} }) {
           alt=""
           aria-hidden="true"
           style={{
-            width: "18px",
-            height: "18px",
+            width: "29px",
+            height: "29px",
             objectFit: "contain",
             flexShrink: 0,
           }}

@@ -952,12 +952,12 @@ function TeamColorBadge({ team, fallback = "LIGHT", iconPosition = "before", com
 
   const identityIcon =
     identity?.type === "national" && identity.flag ? (
-      <span style={{ fontSize: "1.05em", lineHeight: 1 }}>{identity.flag}</span>
+      <span style={{ fontSize: "1.3rem", lineHeight: 1 }}>{identity.flag}</span>
     ) : identity?.logo32 ? (
       <img
         src={identity.logo32}
         alt=""
-        style={{ width: "1.15em", height: "1.15em", objectFit: "contain", flexShrink: 0 }}
+        style={{ width: "1.65rem", height: "1.65rem", objectFit: "contain", flexShrink: 0 }}
       />
     ) : (
       <span
