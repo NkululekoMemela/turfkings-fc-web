@@ -196,5 +196,9 @@ export function saveStateV2(
   dataScope = null
 ) {
   saveRawStateV2(state, clubId);
-  saveStateToFirebaseV2(state, clubId, dataScope);
+  return saveStateToFirebaseV2(
+    state,
+    clubId,
+    dataScope
+  );
 }

@@ -313,6 +313,216 @@ export function buildNextTeamAppearanceRotationContext({
 }
 
 // ---------------------------------------------------------
+// CONFIRMED TEAM APPEARANCE HISTORY
+// ---------------------------------------------------------
+//
+// Returns this team's confirmed lineups newest-first.
+//
+// Referee-confirmed snapshots are authoritative. This means an
+// emergency/manual override naturally becomes part of the fairness
+// history used for the team's next automatic rotation.
+
+export function buildConfirmedLineupsHistoryMap({
+  completedResults = [],
+  liveConfirmedLineupsByMatchNo = {},
+} = {}) {
+  const recovered = {};
+
+  (Array.isArray(completedResults) ? completedResults : []).forEach(
+    (result) => {
+      const matchNo = Number(result?.matchNo);
+      const snapshots =
+        result?.confirmedLineupSnapshot ||
+        result?.verifiedLineups ||
+        result?.lineups ||
+        null;
+
+      if (
+        !Number.isFinite(matchNo) ||
+        matchNo <= 0 ||
+        !snapshots ||
+        typeof snapshots !== "object"
+      ) {
+        return;
+      }
+
+      recovered[matchNo] = {
+        ...(recovered[matchNo] || {}),
+        ...snapshots,
+      };
+    }
+  );
+
+  Object.entries(
+    liveConfirmedLineupsByMatchNo &&
+      typeof liveConfirmedLineupsByMatchNo === "object"
+      ? liveConfirmedLineupsByMatchNo
+      : {}
+  ).forEach(([matchNo, snapshots]) => {
+    if (!snapshots || typeof snapshots !== "object") return;
+
+    recovered[matchNo] = {
+      ...(recovered[matchNo] || {}),
+      ...snapshots,
+    };
+  });
+
+  return recovered;
+}
+
+export function getConfirmedTeamAppearanceHistory({
+  teamId = null,
+  currentMatchNo = null,
+  confirmedLineupsByMatchNo = {},
+} = {}) {
+  const safeTeamId = String(teamId || "").trim();
+  const safeCurrentMatchNo = Number(currentMatchNo);
+
+  if (!safeTeamId || !Number.isFinite(safeCurrentMatchNo)) {
+    return [];
+  }
+
+  return Object.keys(confirmedLineupsByMatchNo || {})
+    .map(Number)
+    .filter(
+      (matchNo) =>
+        Number.isFinite(matchNo) &&
+        matchNo > 0 &&
+        matchNo < safeCurrentMatchNo
+    )
+    .sort((left, right) => right - left)
+    .map((matchNo) => ({
+      matchNo,
+      snapshot:
+        confirmedLineupsByMatchNo?.[matchNo]?.[safeTeamId] ||
+        confirmedLineupsByMatchNo?.[String(matchNo)]?.[safeTeamId] ||
+        null,
+    }))
+    .filter((entry) => Boolean(entry.snapshot));
+}
+
+function getLineupGoalkeeperName(
+  lineup = null,
+  goalkeeperPositionId = null
+) {
+  const positions =
+    lineup?.positions && typeof lineup.positions === "object"
+      ? lineup.positions
+      : {};
+
+  const explicitPositionId =
+    String(goalkeeperPositionId || "").trim();
+
+  if (
+    explicitPositionId &&
+    Object.prototype.hasOwnProperty.call(
+      positions,
+      explicitPositionId
+    )
+  ) {
+    return safeName(positions[explicitPositionId]);
+  }
+
+  /*
+   * Backwards-compatible fallback for formations whose goalkeeper
+   * slot ID itself contains GK.
+   */
+  const goalkeeperEntry = Object.entries(positions).find(
+    ([positionId]) => {
+      const normalized = String(positionId || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_");
+
+      return (
+        normalized === "gk" ||
+        normalized === "goalkeeper" ||
+        normalized.startsWith("gk_") ||
+        normalized.endsWith("_gk")
+      );
+    }
+  );
+
+  return safeName(goalkeeperEntry?.[1]);
+}
+
+function chooseLongestServingOutfieldStarter({
+  eligiblePreviousStarters = [],
+  previousLineup = null,
+  appearanceHistory = [],
+  goalkeeperPositionId = null,
+} = {}) {
+  const previousGoalkeeperKey = playerKey(
+    getLineupGoalkeeperName(
+      previousLineup,
+      goalkeeperPositionId
+    )
+  );
+
+  const candidates = eligiblePreviousStarters.filter(
+    (name) =>
+      !previousGoalkeeperKey ||
+      playerKey(name) !== previousGoalkeeperKey
+  );
+
+  if (!candidates.length) return null;
+
+  const safeHistory =
+    Array.isArray(appearanceHistory) && appearanceHistory.length
+      ? appearanceHistory
+      : [{ matchNo: null, snapshot: previousLineup }];
+
+  const serviceProfile = (name, originalIndex) => {
+    const targetKey = playerKey(name);
+    let consecutiveStarts = 0;
+    let totalStarts = 0;
+    let runStillActive = true;
+
+    safeHistory.forEach((entry) => {
+      const snapshot = entry?.snapshot || entry;
+      const started = getLineupOnFieldPlayers(snapshot).some(
+        (playerName) => playerKey(playerName) === targetKey
+      );
+
+      if (started) {
+        totalStarts += 1;
+
+        if (runStillActive) {
+          consecutiveStarts += 1;
+        }
+      } else {
+        runStillActive = false;
+      }
+    });
+
+    return {
+      name,
+      consecutiveStarts,
+      totalStarts,
+      originalIndex,
+    };
+  };
+
+  return candidates
+    .map(serviceProfile)
+    .sort((left, right) => {
+      if (right.consecutiveStarts !== left.consecutiveStarts) {
+        return right.consecutiveStarts - left.consecutiveStarts;
+      }
+
+      if (right.totalStarts !== left.totalStarts) {
+        return right.totalStarts - left.totalStarts;
+      }
+
+      /*
+       * Preserve the old deterministic behaviour as the final
+       * tie-break: the later player in the prior lineup order rests.
+       */
+      return right.originalIndex - left.originalIndex;
+    })[0]?.name || null;
+}
+
+// ---------------------------------------------------------
 // STAGE 5B — NEXT TEAM APPEARANCE PARTICIPATION ROTATION
 // ---------------------------------------------------------
 //
@@ -342,6 +552,8 @@ export function buildNextAppearanceParticipationRotation({
   previousLineup = null,
   registeredPlayers = [],
   playerStates = [],
+  appearanceHistory = [],
+  goalkeeperPositionId = null,
 } = {}) {
   if (!previousLineup) {
     return {
@@ -467,24 +679,46 @@ export function buildNextAppearanceParticipationRotation({
   }
 
   /*
-   * Stage 5B deliberately rotates participation fairly.
+   * The current goalkeeper is protected because the incoming
+   * substitute takes the GK position and the former goalkeeper
+   * returns to the outfield.
    *
-   * The outgoing starter is the LAST eligible player from the
-   * previous starting order.
+   * Among eligible outfield starters, rest the player with the
+   * longest uninterrupted run of confirmed team appearances.
+   * Total confirmed starts and prior lineup order provide stable
+   * deterministic tie-breaks.
+   */
+  const previousGoalkeeper =
+    getLineupGoalkeeperName(
+      previousLineup,
+      goalkeeperPositionId
+    );
+
+  const eligiblePreviousGoalkeeper =
+    eligiblePreviousStarters.find(
+      (name) =>
+        playerKey(name) ===
+        playerKey(previousGoalkeeper)
+    ) || null;
+
+  /*
+   * Approved Three-Team League cycle:
    *
-   * We are NOT claiming that this is the final football-position
-   * decision. Stage 5C/5D will rebuild the actual pitch assignment
-   * using GK rotation + positional intelligence.
+   * previous substitute -> goalkeeper
+   * previous goalkeeper -> bench
    *
-   * Keeping this deterministic is important: the same previous
-   * snapshot must always produce the same participation result.
+   * If the prior GK cannot be identified or is unavailable, fall
+   * back to the longest-serving eligible outfield player.
    */
   const outgoingStarter =
-    eligiblePreviousStarters.length >=
-    requiredStartingCount
-      ? eligiblePreviousStarters[
-          eligiblePreviousStarters.length - 1
-        ]
+    eligiblePreviousStarters.length >= requiredStartingCount
+      ? eligiblePreviousGoalkeeper ||
+        chooseLongestServingOutfieldStarter({
+          eligiblePreviousStarters,
+          previousLineup,
+          appearanceHistory,
+          goalkeeperPositionId,
+        })
       : null;
 
   let nextStartingPlayers =

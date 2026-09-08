@@ -7,6 +7,9 @@ import {
 import { getTeamById } from "../core/teams.js";
 import { db } from "../firebaseConfig.js";
 import {
+  getPlayersCollection,
+} from "../core/clubFirestorePaths.js";
+import {
   getMatchDoc,
   getScopedMatchDoc,
   getPlayerPhotosCollection,
@@ -48,6 +51,8 @@ import {
 
 import {
   findPreviousConfirmedTeamAppearance,
+  buildConfirmedLineupsHistoryMap,
+  getConfirmedTeamAppearanceHistory,
   buildNextAppearanceParticipationRotation,
   buildNextAppearanceGoalkeeperConstraint,
   buildNextAppearanceOutfieldAssignment,
@@ -67,7 +72,6 @@ function resolveLiveMatchDoc(
 }
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 import TeamIdentityEditor from "../components/TeamIdentityEditor";
-const PLAYERS_COLLECTION = "players";
 
 
 function getLineupGameTypeFromFormat(rawFormat) {
@@ -933,7 +937,27 @@ const FANM_TEAM_IDENTITY_LOOKUP = [
 ];
 
 function resolveLiveTeamIdentity(team = {}) {
-  if (team?.teamIdentity) return team.teamIdentity;
+  const embeddedIdentity =
+    team?.teamIdentity || null;
+
+  const embeddedAbbr = String(
+    embeddedIdentity?.abbr || ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const canonicalIdentity =
+    embeddedAbbr
+      ? FANM_TEAM_IDENTITY_LOOKUP.find(
+          (identity) =>
+            String(identity?.abbr || "")
+              .trim()
+              .toUpperCase() === embeddedAbbr
+        ) || null
+      : null;
+
+  if (canonicalIdentity) return canonicalIdentity;
+  if (embeddedIdentity) return embeddedIdentity;
 
   const keys = [
     team?.abbr,
@@ -958,17 +982,48 @@ function resolveLiveTeamIdentity(team = {}) {
   );
 }
 
-function getLiveTeamLabel(team = {}, short = false) {
-  const identity = resolveLiveTeamIdentity(team);
-  if (short && identity?.abbr) return identity.abbr;
-  if (identity?.name) return identity.name;
-  if (short) return team?.abbrev || getShortName(team?.label);
-  return team?.label || team?.name || team?.title || "Team";
-}
-
 function getLiveTeamAbbrev(team = {}) {
   const identity = resolveLiveTeamIdentity(team);
-  return identity?.abbr || team?.abbrev || getShortName(team?.label) || "TEAM";
+
+  const storedAbbreviation =
+    identity?.abbr ||
+    team?.abbr ||
+    team?.abbrev ||
+    team?.abbreviation ||
+    team?.clubAbbreviation;
+
+  return (
+    (storedAbbreviation &&
+      String(storedAbbreviation).trim()) ||
+    getShortName(
+      team?.label || team?.name || team?.title
+    ) ||
+    "TEAM"
+  );
+}
+
+function getLiveTeamLabel(team = {}, short = false) {
+  const identity = resolveLiveTeamIdentity(team);
+
+  /*
+   * Use the official stored club abbreviation throughout the referee
+   * scoreboard. Custom teams without one retain their readable name.
+   */
+  const storedAbbreviation =
+    identity?.abbr ||
+    team?.abbr ||
+    team?.abbrev ||
+    team?.abbreviation ||
+    team?.clubAbbreviation;
+
+  if (storedAbbreviation) {
+    return String(storedAbbreviation).trim();
+  }
+
+  if (identity?.name) return identity.name;
+  if (short) return getLiveTeamAbbrev(team);
+
+  return team?.label || team?.name || team?.title || "Team";
 }
 
 function TeamColorBadge({ team, short = false }) {
@@ -2767,6 +2822,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   currentMatchNo,
   currentMatch,
   currentEvents,
+  results = [],
   identity = null,
   activeRole = "spectator",
   isAdmin = false,
@@ -2807,6 +2863,15 @@ export function ThreeTeamLeagueLiveMatchPage({
   onUpdateMatchTeamColorOverride = null,
   onResetMatchTeamColorOverrides = null,
 }) {
+  const effectiveConfirmedLineupsByMatchNo = useMemo(
+    () =>
+      buildConfirmedLineupsHistoryMap({
+        completedResults: results,
+        liveConfirmedLineupsByMatchNo: confirmedLineupsByMatchNo,
+      }),
+    [results, confirmedLineupsByMatchNo]
+  );
+
   const liveTeams =
     Array.isArray(pendingMatchStartContext?.teams) &&
     pendingMatchStartContext.teams.length
@@ -2893,7 +2958,9 @@ export function ThreeTeamLeagueLiveMatchPage({
       setPlayersLoading(true);
 
       try {
-        const snap = await getDocs(collection(db, PLAYERS_COLLECTION));
+        const snap = await getDocs(
+          getPlayersCollection(db, activeClubId)
+        );
         if (cancelled) return;
 
         const list = snap.docs.map((d) => {
@@ -2976,7 +3043,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeClubId]);
 
   const playersReady = !playersLoading;
 
@@ -3501,7 +3568,8 @@ export function ThreeTeamLeagueLiveMatchPage({
       findPreviousConfirmedTeamAppearance({
         teamId: teamAId,
         currentMatchNo,
-        confirmedLineupsByMatchNo,
+        confirmedLineupsByMatchNo:
+          effectiveConfirmedLineupsByMatchNo,
       });
 
     /*
@@ -3531,6 +3599,19 @@ export function ThreeTeamLeagueLiveMatchPage({
     const participation =
       buildNextAppearanceParticipationRotation({
         previousLineup: previous.snapshot,
+        goalkeeperPositionId:
+          formation.positions.find(
+            (position) =>
+              String(position?.label || "")
+                .trim()
+                .toUpperCase() === "GK"
+          )?.id || null,
+        appearanceHistory: getConfirmedTeamAppearanceHistory({
+          teamId: teamAId,
+          currentMatchNo,
+          confirmedLineupsByMatchNo:
+            effectiveConfirmedLineupsByMatchNo,
+        }),
         registeredPlayers: richTeamPlayers,
         playerStates: [
           ...richTeamPlayers.map((player) => ({
@@ -3589,7 +3670,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     teamA,
     teamAId,
     currentMatchNo,
-    confirmedLineupsByMatchNo,
+    effectiveConfirmedLineupsByMatchNo,
     savedLineups,
     canonicalName,
     playerKeyFor,
@@ -3629,7 +3710,8 @@ export function ThreeTeamLeagueLiveMatchPage({
       findPreviousConfirmedTeamAppearance({
         teamId: teamBId,
         currentMatchNo,
-        confirmedLineupsByMatchNo,
+        confirmedLineupsByMatchNo:
+          effectiveConfirmedLineupsByMatchNo,
       });
 
     if (!previous?.found || !previous?.snapshot) {
@@ -3655,6 +3737,19 @@ export function ThreeTeamLeagueLiveMatchPage({
     const participation =
       buildNextAppearanceParticipationRotation({
         previousLineup: previous.snapshot,
+        goalkeeperPositionId:
+          formation.positions.find(
+            (position) =>
+              String(position?.label || "")
+                .trim()
+                .toUpperCase() === "GK"
+          )?.id || null,
+        appearanceHistory: getConfirmedTeamAppearanceHistory({
+          teamId: teamBId,
+          currentMatchNo,
+          confirmedLineupsByMatchNo:
+            effectiveConfirmedLineupsByMatchNo,
+        }),
         registeredPlayers: richTeamPlayers,
         playerStates: [
           ...richTeamPlayers.map((player) => ({
@@ -3709,7 +3804,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     teamB,
     teamBId,
     currentMatchNo,
-    confirmedLineupsByMatchNo,
+    effectiveConfirmedLineupsByMatchNo,
     savedLineups,
     canonicalName,
     playerKeyFor,
@@ -3724,6 +3819,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [verifyTeamBLineup, setVerifyTeamBLineup] =
     useState(defaultTeamBLineup);
   const [localConfirmedSnapshots, setLocalConfirmedSnapshots] = useState(null);
+  const [localConfirmedMatchKey, setLocalConfirmedMatchKey] = useState("");
   const [lineupErrorModal, setLineupErrorModal] = useState(null);
   const [pendingBenchScorer, setPendingBenchScorer] = useState(null);
 
@@ -3745,10 +3841,18 @@ export function ThreeTeamLeagueLiveMatchPage({
    */
   const [lineupSeedKey, setLineupSeedKey] = useState("");
 
+  const currentLineupMatchKey =
+    `${currentMatchNo || 0}|${teamAId || ""}|${teamBId || ""}`;
+
+  const currentLocalConfirmedSnapshots =
+    localConfirmedMatchKey === currentLineupMatchKey
+      ? localConfirmedSnapshots
+      : null;
+
   const existingConfirmedFromApp =
-    localConfirmedSnapshots ||
+    currentLocalConfirmedSnapshots ||
     confirmedLineupSnapshot ||
-    confirmedLineupsByMatchNo?.[currentMatchNo] ||
+    effectiveConfirmedLineupsByMatchNo?.[currentMatchNo] ||
     null;
 
   const sanitizedConfirmedSnapshots = useMemo(() => {
@@ -3808,8 +3912,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   useEffect(() => {
     if (!playersReady) return;
 
-    const nextSeedKey =
-      `${currentMatchNo || 0}|${teamAId || ""}|${teamBId || ""}`;
+    const nextSeedKey = currentLineupMatchKey;
 
     if (lineupSeedKey === nextSeedKey) {
       return;
@@ -3838,6 +3941,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     currentMatchNo,
     teamAId,
     teamBId,
+    currentLineupMatchKey,
     lineupSeedKey,
     sanitizedConfirmedSnapshots,
     localConfirmedSnapshots,
@@ -4561,6 +4665,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     };
 
     setLocalConfirmedSnapshots(merged);
+    setLocalConfirmedMatchKey(currentLineupMatchKey);
     onConfirmPreMatchLineups?.(merged);
     setShowVerifyModal(false);
 
@@ -4730,6 +4835,7 @@ export function ThreeTeamLeagueLiveMatchPage({
 
   const persistLeagueDisciplineLineups = (nextSnapshots) => {
     setLocalConfirmedSnapshots(nextSnapshots);
+    setLocalConfirmedMatchKey(currentLineupMatchKey);
 
     /*
      * Keep Edit Lineups synchronized with the authoritative live

@@ -8,6 +8,7 @@ import { LiveMatchPage } from "./pages/LiveMatchPage.jsx";
 import { StatsPage } from "./pages/StatsPage.jsx";
 import { SquadsPage } from "./pages/SquadsPage.jsx";
 import { FormationsPage } from "./pages/FormationsPage.jsx";
+import { PlayerMentalitiesPage } from "./pages/PlayerMentalitiesPage.jsx";
 import { SpectatorPage } from "./pages/SpectatorPage.jsx";
 import { NewsPage } from "./pages/NewsPage.jsx";
 import { PlayerCardPage } from "./pages/PlayerCardPage.jsx";
@@ -94,6 +95,7 @@ const PAGE_LIVE = "live";
 const PAGE_STATS = "stats";
 const PAGE_SQUADS = "squads";
 const PAGE_FORMATIONS = "formations";
+const PAGE_PLAYER_MENTALITIES = "player-mentalities";
 const PAGE_SPECTATOR = "spectator";
 const PAGE_NEWS = "news";
 const PAGE_PLAYER_CARDS = "player-cards";
@@ -793,7 +795,8 @@ function ensureSeasonSchedulingShape(season) {
         : ensureFiveVFiveTeamsShape(season?.fiveVFiveTeams),
     matchMode: season?.matchMode || "round_robin",
     scheduledTarget:
-      Number.isInteger(Number(season?.scheduledTarget))
+      Number.isInteger(Number(season?.scheduledTarget)) &&
+      Number(season?.scheduledTarget) > 0
         ? Number(season.scheduledTarget)
         : null,
     scheduledFixtures: Array.isArray(season?.scheduledFixtures)
@@ -1987,11 +1990,11 @@ function resolveCameraTeamLogoUrl(team = {}) {
     ) || null;
 
   const rawLogo = String(
+    canonicalIdentity?.logo32 ||
     team?.teamIdentity?.logo32 ||
     team?.logo32 ||
     team?.logoUrl ||
     team?.logo ||
-    canonicalIdentity?.logo32 ||
     ""
   ).trim();
 
@@ -2996,6 +2999,32 @@ export default function App() {
     USE_V2 ? createDefaultStateV2() : loadState()
   );
 
+  /*
+   * Protect optimistic local changes from an older Firestore
+   * snapshot while the latest V2 write is still pending.
+   */
+  const pendingStateWriteUpdatedAtRef = useRef(null);
+
+  /*
+   * A coded Practice squad save must remain authoritative while
+   * navigating between pages. Firestore still provides durable
+   * recovery after a refresh.
+   */
+  const [
+    practiceSavedLeagueTeams,
+    setPracticeSavedLeagueTeams,
+  ] = useState(null);
+
+  const [
+    practiceSavedFiveVFiveTeams,
+    setPracticeSavedFiveVFiveTeams,
+  ] = useState(null);
+
+  useEffect(() => {
+    setPracticeSavedLeagueTeams(null);
+    setPracticeSavedFiveVFiveTeams(null);
+  }, [practiceRuntime?.practiceSessionId]);
+
   const activeSeasonIdForPeerRatings = USE_V2
     ? ensureV2StateShape(state)?.activeSeasonId || null
     : null;
@@ -3407,11 +3436,25 @@ export default function App() {
       const next = typeof updater === "function" ? updater(prev) : updater;
       if (USE_V2) {
         const safe = ensureV2StateShape(next);
-        saveStateV2(
+        const writeVersion =
+          String(safe?.updatedAt || "").trim();
+
+        pendingStateWriteUpdatedAtRef.current =
+          writeVersion || null;
+
+        void saveStateV2(
           safe,
           footballStateClubId,
           footballDataScope
-        );
+        ).catch(() => {
+          if (
+            pendingStateWriteUpdatedAtRef.current ===
+            writeVersion
+          ) {
+            pendingStateWriteUpdatedAtRef.current = null;
+          }
+        });
+
         return safe;
       }
       saveState(next);
@@ -3482,8 +3525,50 @@ export default function App() {
                 : [],
             });
             setState((prev) => {
+              const pendingWriteVersion =
+                pendingStateWriteUpdatedAtRef.current;
+
+              const cloudWriteVersion =
+                String(
+                  nextCloudState?.updatedAt || ""
+                ).trim();
+
+              /*
+               * The subscription can deliver the older Practice
+               * document after a local squad save has already updated
+               * React state. Keep the optimistic state until Firestore
+               * echoes the exact write version we just submitted.
+               */
+              if (
+                pendingWriteVersion &&
+                cloudWriteVersion !== pendingWriteVersion
+              ) {
+                console.warn(
+                  "[STATE V2] Ignored stale snapshot during pending write",
+                  {
+                    pendingWriteVersion,
+                    cloudWriteVersion,
+                    environment:
+                      footballDataScope?.environment ||
+                      "official",
+                  }
+                );
+
+                return prev;
+              }
+
+              if (
+                pendingWriteVersion &&
+                cloudWriteVersion === pendingWriteVersion
+              ) {
+                pendingStateWriteUpdatedAtRef.current = null;
+              }
+
               try {
-                if (JSON.stringify(prev) === JSON.stringify(nextCloudState)) {
+                if (
+                  JSON.stringify(prev) ===
+                  JSON.stringify(nextCloudState)
+                ) {
                   return prev;
                 }
               } catch (_) {
@@ -3675,7 +3760,10 @@ export default function App() {
         : ensureFiveVFiveTeamsShape(s?.fiveVFiveTeams);
     matchMode = s?.matchMode || "round_robin";
     scheduledTarget =
-      Number.isInteger(Number(s?.scheduledTarget)) ? Number(s.scheduledTarget) : null;
+      Number.isInteger(Number(s?.scheduledTarget)) &&
+      Number(s?.scheduledTarget) > 0
+        ? Number(s.scheduledTarget)
+        : null;
     scheduledFixtures = Array.isArray(s?.scheduledFixtures)
       ? s.scheduledFixtures
       : [];
@@ -3708,7 +3796,8 @@ export default function App() {
     fiveVFiveTeams = ensureFiveVFiveTeamsShape(legacy?.fiveVFiveTeams);
     matchMode = legacy?.matchMode || "round_robin";
     scheduledTarget =
-      Number.isInteger(Number(legacy?.scheduledTarget))
+      Number.isInteger(Number(legacy?.scheduledTarget)) &&
+      Number(legacy?.scheduledTarget) > 0
         ? Number(legacy.scheduledTarget)
         : null;
     scheduledFixtures = Array.isArray(legacy?.scheduledFixtures)
@@ -3723,6 +3812,20 @@ export default function App() {
     }),
     [playerPhotosByName, preloadedPlayerPhotosByName]
   );
+
+  if (
+    isPracticeMode &&
+    Array.isArray(practiceSavedLeagueTeams)
+  ) {
+    teams = practiceSavedLeagueTeams;
+  }
+
+  if (
+    isPracticeMode &&
+    Array.isArray(practiceSavedFiveVFiveTeams)
+  ) {
+    fiveVFiveTeams = practiceSavedFiveVFiveTeams;
+  }
 
   /*
    * Practice isolation guard for downstream football surfaces.
@@ -4461,12 +4564,14 @@ export default function App() {
 
   const isSeasonTargetReached = useMemo(() => {
     if (matchMode !== "scheduled_target") return false;
-    if (!Number.isFinite(Number(scheduledTarget))) return false;
+
+    const target = Number(scheduledTarget);
+    if (!Number.isFinite(target) || target <= 0) return false;
 
     const values = Object.values(teamPlayedCounts || {});
     if (!values.length) return false;
 
-    return values.every((value) => Number(value) >= Number(scheduledTarget));
+    return values.every((value) => Number(value) >= target);
   }, [matchMode, scheduledTarget, teamPlayedCounts]);
 
   const seasonCompletionKey = useMemo(() => {
@@ -5102,77 +5207,16 @@ export default function App() {
         };
       }
 
-      const seasonResults = [
-        ...((prevSeason.matchDayHistory || []).flatMap((day) => day?.results || [])),
-        ...(prevSeason.results || []),
-      ];
-
-      const counts = Object.fromEntries(
-        (prevSeason.teams || []).map((team) => [team.id, 0])
-      );
-
-      seasonResults.forEach((r) => {
-        if (r?.teamAId && counts[r.teamAId] != null) counts[r.teamAId] += 1;
-        if (r?.teamBId && counts[r.teamBId] != null) counts[r.teamBId] += 1;
-      });
-
-      const maxP = Math.max(0, ...Object.values(counts));
-      const desiredStart = maxP + normalizedSmartOffset;
-
-      const nearest = findNearestValidTarget({
-        teams: prevSeason.teams || [],
-        results: seasonResults,
-        minTarget: desiredStart,
-        maxLookAhead: 40,
-      });
-
-      console.log("[FIXTURE DEBUG] handleSetMatchMode -> maxP =", maxP);
-      console.log(
-        "[FIXTURE DEBUG] handleSetMatchMode -> smart offset =",
-        normalizedSmartOffset
-      );
-      console.log(
-        "[FIXTURE DEBUG] handleSetMatchMode -> desired start target =",
-        desiredStart
-      );
-      console.log(
-        "[FIXTURE DEBUG] handleSetMatchMode -> nearest valid target =",
-        nearest?.target ?? null
-      );
-      console.log(
-        "[FIXTURE DEBUG] handleSetMatchMode -> team P counts =",
-        (prevSeason.teams || []).map((team) => ({
-          team: team.label,
-          played: seasonResults.filter(
-            (r) => r.teamAId === team.id || r.teamBId === team.id
-          ).length,
-        }))
-      );
-
-      if (!nearest?.plan?.ok || nearest?.target == null) {
-        window.alert(
-          "Could not find a reachable fixtured target from the current standings."
-        );
-        return {
-          ...prevSeason,
-          matchMode: "scheduled_target",
-          scheduledTarget: null,
-          scheduledFixtures: [],
-        };
-      }
-
-      const firstFixture = getFirstPendingFixture(nearest.plan.fixtures);
-      const nextCurrentMatch = buildCurrentMatchFromFixture(
-        firstFixture,
-        prevSeason.teams || []
-      );
-
+      /*
+       * Enter Fixtured mode without silently choosing the season target.
+       * LandingPage opens the setup immediately so the captain can accept
+       * the suggested target or enter a different positive target.
+       */
       return {
         ...prevSeason,
         matchMode: "scheduled_target",
-        scheduledTarget: Number(nearest.target),
-        scheduledFixtures: nearest.plan.fixtures,
-        currentMatch: nextCurrentMatch || prevSeason.currentMatch,
+        scheduledTarget: null,
+        scheduledFixtures: [],
       };
     });
   };
@@ -5242,6 +5286,21 @@ export default function App() {
   const handleStartMatch = () => {
     if (!canStartMatch) {
       window.alert("Only captains or admin can start a match.");
+      return;
+    }
+
+    if (
+      matchType === MATCH_TYPE.LEAGUE &&
+      matchMode === "scheduled_target" &&
+      (
+        !Number.isFinite(Number(scheduledTarget)) ||
+        Number(scheduledTarget) <= 0 ||
+        !(scheduledFixtures || []).some((fixture) => !fixture?.completed)
+      )
+    ) {
+      window.alert(
+        "Choose your season target and generate the fixture list before starting."
+      );
       return;
     }
 
@@ -5750,6 +5809,42 @@ export default function App() {
           lineupTimeline: authoritativeLineupTimeline,
         };
 
+        const completedAtISO = new Date().toISOString();
+
+        /*
+         * Display-only snapshot for Spectator View.
+         *
+         * It belongs to the completed liveMatchDraft, not to the season.
+         * A new match replaces that draft and End Match Day clears it.
+         * It must never participate in scheduling or completion logic.
+         */
+        const matchDaySpectatorSnapshot = {
+          teamAId,
+          teamBId,
+          standbyId: standbyId || null,
+          teamALabel: resolvedTeamALabel,
+          teamBLabel: resolvedTeamBLabel,
+          teamASnapshot:
+            teamASnapshotSafe ||
+            (prevSeason.teams || []).find((team) => team?.id === teamAId) ||
+            null,
+          teamBSnapshot:
+            teamBSnapshotSafe ||
+            (prevSeason.teams || []).find((team) => team?.id === teamBId) ||
+            null,
+          matchNumber: matchNo,
+          events: committedEvents,
+          finalSummary: {
+            goalsA: Number(goalsA || 0),
+            goalsB: Number(goalsB || 0),
+          },
+          isFinished: true,
+          completedAtISO,
+          matchType: matchMeta.matchType,
+          videoHighlightsMatchId:
+            String(liveVideoHighlightsMatchId || "").trim(),
+        };
+
         let nextScheduledFixtures = Array.isArray(prevSeason.scheduledFixtures)
           ? prevSeason.scheduledFixtures
           : [];
@@ -5823,7 +5918,8 @@ export default function App() {
               ? {
                   ...prevSeason.liveMatchDraft,
                   status: "completed",
-                  completedAtISO: new Date().toISOString(),
+                  completedAtISO,
+                  spectatorSnapshot: matchDaySpectatorSnapshot,
                 }
               : null,
             allEvents: [],
@@ -6736,6 +6832,11 @@ export default function App() {
     }
 
     const safeUpdatedTeams = Array.isArray(updatedTeams) ? updatedTeams : [];
+
+    if (isPracticeMode) {
+      setPracticeSavedLeagueTeams(safeUpdatedTeams);
+    }
+
     console.log("[APP TEAMS SAVE DEBUG]", {
       isPracticeMode,
       count: safeUpdatedTeams.length,
@@ -6807,6 +6908,10 @@ export default function App() {
     const safeTeams = isPracticeMode
       ? (Array.isArray(updatedTeams) ? updatedTeams : [])
       : ensureFiveVFiveTeamsShape(updatedTeams);
+
+    if (isPracticeMode) {
+      setPracticeSavedFiveVFiveTeams(safeTeams);
+    }
 
     console.log("[APP SAVE DEBUG] safe fiveVFiveTeams", safeTeams);
 
@@ -6942,6 +7047,7 @@ export default function App() {
             )
           : {},
         currentEvents: [],
+        liveMatchDraft: null,
         allEvents: [],
         results: [],
         matchDayHistory: prevSeason.matchDayHistory || [],
@@ -7136,13 +7242,7 @@ export default function App() {
                 )
               : {},
             currentEvents: [],
-            liveMatchDraft: prevSeason.liveMatchDraft
-              ? {
-                  ...prevSeason.liveMatchDraft,
-                  status: "completed",
-                  completedAtISO: new Date().toISOString(),
-                }
-              : null,
+            liveMatchDraft: null,
             allEvents: [],
             results: [],
             matchMode: "round_robin",
@@ -7928,6 +8028,7 @@ export default function App() {
     PAGE_PLAYER_CARDS,
     PAGE_SQUADS,
     PAGE_FORMATIONS,
+    PAGE_PLAYER_MENTALITIES,
     PAGE_PEER_REVIEW,
     PAGE_VIEW_HIGHLIGHTS,
   ]);
@@ -9497,20 +9598,12 @@ export default function App() {
                     setPracticeBootstrapping(false);
                     console.error("[PRACTICE V2 START ERROR]", err);
 
-                    if (err?.code === "practice/no-credits") {
-                      showPracticeRestriction(
-                        "Practice sessions used for this week",
-                        "You have used all 3 Practice sessions available this week. Your allowance refreshes automatically next week. You can continue using your Official Session normally.",
-                        "⏳"
-                      );
-                    } else {
-                      showPracticeRestriction(
-                        "Practice Session unavailable",
-                        err?.message ||
-                          "Practice Session could not be started right now. Your Official Session has not been affected.",
-                        "⚠️"
-                      );
-                    }
+                    showPracticeRestriction(
+                      "Practice Session unavailable",
+                      err?.message ||
+                        "Practice Session could not be started right now. Your Official Session has not been affected.",
+                      "⚠️"
+                    );
                   }
                 }}
                 style={{
@@ -9683,6 +9776,7 @@ export default function App() {
           currentMatchNo={pendingMatchStartContext?.matchNo || activeMatchNo}
           currentMatch={pendingMatchStartContext?.currentMatch || effectiveLiveMatch}
           currentEvents={currentEvents}
+          results={results}
           identity={pageIdentity}
           activeRole={activeRole}
           isAdmin={isAdmin}
@@ -9765,6 +9859,30 @@ export default function App() {
           activeClubId={activeClubId}
           dataScope={footballDataScope}
           currentVideoHighlightsMatchId={currentVideoHighlightsMatchId}
+          matchDaySpectatorSnapshot={
+            liveMatchDraft?.status === "completed"
+              ? liveMatchDraft?.spectatorSnapshot || null
+              : null
+          }
+          nextMatchDaySchedule={
+            activeClubIdentity?.weeklyPlayTime ||
+            activeClubIdentity?.schedule?.weeklyPlayTime ||
+            activeClubIdentity?.schedule?.playTime ||
+            activeClubIdentity?.playTime ||
+            ""
+          }
+          upcomingMatch={effectiveLiveMatch}
+          isInsideMatchDayWindow={isInsideClubWeeklyWindow(
+            activeClubIdentity?.weeklyPlayTime ||
+            activeClubIdentity?.schedule?.weeklyPlayTime ||
+            activeClubIdentity?.schedule?.playTime ||
+            activeClubIdentity?.playTime ||
+            ""
+          )}
+          hasUpcomingMatch={
+            matchMode !== "scheduled_target" ||
+            hasPendingScheduledFixture
+          }
           videoHighlightsClubId={activeClubId || DEFAULT_CLUB_ID}
           onBackToLanding={handleBackToLanding}
         />
@@ -9999,28 +10117,11 @@ export default function App() {
 
       {page === PAGE_SQUADS && (
         <SquadsPage
-          teams={
-            isPracticeMode
-              ? (Array.isArray(teams)
-                  ? teams.map((team) => ({
-                      ...team,
-                      players: [],
-                      captainId: null,
-                      captain: "",
-                    }))
-                  : [])
-              : teams
-          }
-          fiveVFiveTeams={
-            isPracticeMode
-              ? ensureFiveVFiveTeamsShape([]).map((team) => ({
-                  ...team,
-                  players: [],
-                  captainId: null,
-                  captain: "",
-                }))
-              : ensureFiveVFiveTeamsShape(fiveVFiveTeams)
-          }
+          key={`squads-${activeSeasonId || "no-season"}-${
+            practiceScopedSeasonReady ? "ready" : "loading"
+          }`}
+          teams={formationTeams}
+          fiveVFiveTeams={formationFiveVFiveTeams}
           onUpdateTeams={handleUpdateTeams}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
@@ -10039,6 +10140,23 @@ export default function App() {
           seasonNo={USE_V2 ? activeSeasonNo : null}
           matchDayHistory={matchDayHistory || []}
           onSquadPreviewEditingChange={setSquadsAdminPreviewOpen}
+        />
+      )}
+
+      {page === PAGE_PLAYER_MENTALITIES && (
+        <PlayerMentalitiesPage
+          activeClubId={activeClubId}
+          activeClub={activeClub}
+          identity={pageIdentity}
+          isPracticeMode={isPracticeMode}
+          playerPhotosByName={effectivePlayerPhotosByName}
+          teams={
+            matchType === MATCH_TYPE.FRIENDLY
+              ? formationFiveVFiveTeams
+              : formationTeams
+          }
+          matchType={matchType}
+          onBack={handleBackToLanding}
         />
       )}
 
@@ -11101,7 +11219,7 @@ export default function App() {
         PAGE_LANDING,
         PAGE_MATCH_SIGNUP,
         PAGE_PAYMENT,
-        PAGE_LIVE,
+        PAGE_SPECTATOR,
         PAGE_STATS,
         PAGE_VIEW_HIGHLIGHTS,
         PAGE_NEWS,
@@ -11116,6 +11234,7 @@ export default function App() {
           MATCH_TYPE.FRIENDLY
       ) &&
       (
+        page === PAGE_SPECTATOR ||
         isAdmin ||
         isCaptain ||
         Boolean(identity?.memberId || identity?.playerId)

@@ -12,6 +12,7 @@ const items = [
   //{ key: "live", emoji: "⚽", label: "Live" },
   { key: "squads", emoji: "👥", label: "Squads" },
   { key: "formations", image: "/formations-icon.png", label: "Lineups" },
+  { key: "player-mentalities", emoji: "🧠", label: "Mentality" },
   { key: "peer-review", emoji: "⭐", label: "Rate" },
   { key: "player-cards", emoji: "🪪", label: "Cards" },
   { key: "news", emoji: "📰", label: "News" },

@@ -2268,7 +2268,7 @@ export function SquadsPage({
 
     return (
       <img
-        src={identity.logo32}
+        src={(identity.fantasyLogo32 || identity.logo32)}
         alt=""
         className="squad-team-identity-logo"
         onError={(event) => {
@@ -2779,13 +2779,6 @@ export function SquadsPage({
         return;
       }
     }
-
-    onUpdateTeams?.(
-      cleanedLeagueTeams.map((t) => ({
-        ...t,
-        captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
-      }))
-    );
 
     const outgoingFiveVFiveTeams = cleanedFiveVFiveTeams.map((t) => ({
       ...t,

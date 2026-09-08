@@ -213,6 +213,9 @@ export function buildMatchDayStatsByPlayer(events = [], resolveCanonicalName) {
         cleanSheets: 0,
         gkCleanSheets: 0,
         defCleanSheets: 0,
+        yellowCards: 0,
+        redCards: 0,
+        injuryStatus: null,
         points: 0,
       };
     }
@@ -244,6 +247,38 @@ export function buildMatchDayStatsByPlayer(events = [], resolveCanonicalName) {
       const assister = safeResolve(e.assist || "");
       const a = ensure(assister);
       if (a) a.assists += 1;
+    }
+
+    if (
+      e.type === "yellow_card" ||
+      e.type === "red_card"
+    ) {
+      const player = safeResolve(e.playerName || "");
+      const s = ensure(player);
+
+      if (s) {
+        if (e.type === "yellow_card") {
+          s.yellowCards += 1;
+        } else {
+          s.redCards += 1;
+        }
+      }
+    }
+
+    if (
+      e.type === "injury_knock" ||
+      e.type === "injury_sitting_out" ||
+      e.type === "injury_recovered"
+    ) {
+      const player = safeResolve(e.playerName || "");
+      const s = ensure(player);
+
+      if (s) {
+        s.injuryStatus =
+          e.type === "injury_recovered"
+            ? null
+            : e.type;
+      }
     }
   });
 
@@ -343,6 +378,9 @@ export function buildFormationDecorations({
       cleanSheets: 0,
       gkCleanSheets: 0,
       defCleanSheets: 0,
+      yellowCards: 0,
+      redCards: 0,
+      injuryStatus: null,
       points: 0,
     };
 
@@ -405,6 +443,9 @@ export function buildFormationDecorations({
         assists: Number(stats.assists || 0),
         gkCS: Number(stats.gkCleanSheets || 0),
         defCS: Number(stats.defCleanSheets || 0),
+        yellowCards: Number(stats.yellowCards || 0),
+        redCards: Number(stats.redCards || 0),
+        injuryStatus: stats.injuryStatus || null,
 
         // Friendlies-only rating metadata.
         // These are deliberately separate from real goals/assists.

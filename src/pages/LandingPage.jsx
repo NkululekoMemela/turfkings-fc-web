@@ -691,10 +691,43 @@ export function LandingPage({
   };
 
   const requestLeagueModeChange = (nextLeagueMode) => {
-    requestProtectedFormatChange({
-      kind: "leagueMode",
-      value: nextLeagueMode === "scheduled_target" ? "scheduled_target" : "round_robin",
-    });
+    if (!canSeeCaptainStyleControls) return;
+
+    const safeLeagueMode =
+      nextLeagueMode === "scheduled_target"
+        ? "scheduled_target"
+        : "round_robin";
+
+    if (safeLeagueMode === resolvedLeagueMode) return;
+
+    /*
+     * The signed-in captain/admin role is sufficient authorization for
+     * league scheduling. Do not add a second captain-code checkpoint.
+     */
+    if (typeof onSetLeagueMode === "function") {
+      onSetLeagueMode(safeLeagueMode);
+    } else {
+      onSetMatchMode?.(safeLeagueMode);
+    }
+
+    closeSettingsPanelAfterPopup();
+
+    if (safeLeagueMode === "scheduled_target") {
+      const suggestedTarget = Number(smartTarget);
+      const existingTarget = Number(scheduledTarget);
+
+      setFixtureTargetDraft(
+        Number.isFinite(existingTarget) && existingTarget > 0
+          ? String(Math.round(existingTarget))
+          : Number.isFinite(suggestedTarget) && suggestedTarget > 0
+            ? String(Math.round(suggestedTarget))
+            : ""
+      );
+
+      window.setTimeout(() => {
+        setShowFixturesModal(true);
+      }, 0);
+    }
   };
 
   const cancelGameFormatChange = () => {
@@ -758,17 +791,39 @@ export function LandingPage({
       return;
     }
 
-    applyPendingProtectedChange(pendingGameFormat);
+    const confirmedChange = pendingGameFormat;
+
+    applyPendingProtectedChange(confirmedChange);
     cancelGameFormatChange();
+
+    /*
+     * Enter fixture setup immediately after the protected mode change.
+     * The captain has already confirmed the structural change, so target
+     * selection must not introduce a second password barrier.
+     */
+    if (
+      confirmedChange.kind === "leagueMode" &&
+      confirmedChange.value === "scheduled_target"
+    ) {
+      const suggestedTarget = Number(smartTarget);
+      const existingTarget = Number(scheduledTarget);
+
+      setFixtureTargetDraft(
+        Number.isFinite(existingTarget) && existingTarget > 0
+          ? String(Math.round(existingTarget))
+          : Number.isFinite(suggestedTarget) && suggestedTarget > 0
+            ? String(Math.round(suggestedTarget))
+            : ""
+      );
+
+      window.setTimeout(() => {
+        setShowFixturesModal(true);
+      }, 0);
+    }
   };
 
   const handleProtectedTargetChange = (target) => {
-    if (!isAdmin) return;
-
-    if (!isAdminCode(fixtureAdminCode)) {
-      setFixtureAdminError("Invalid admin code.");
-      return;
-    }
+    if (!canSeeCaptainStyleControls) return;
 
     const numericTarget = Number(target);
 
@@ -2625,8 +2680,9 @@ export function LandingPage({
                   Fixtured Match List
                 </h3>
                 <p className="muted small" style={{ margin: 0 }}>
-                  Common target:{" "}
-                  <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+                  {Number(scheduledTarget) > 0
+                    ? <>Current target: <strong>{scheduledTarget}</strong></>
+                    : <>Choose how many games each team should reach</>}
                 </p>
               </div>
 
@@ -2648,7 +2704,7 @@ export function LandingPage({
               </button>
             </div>
 
-            {isAdmin && (
+            {canSeeCaptainStyleControls && (
               <div
                 style={{
                   marginBottom: "1rem",
@@ -2663,31 +2719,11 @@ export function LandingPage({
                     display: "grid",
                     gridTemplateColumns: isMobile
                       ? "1fr"
-                      : "minmax(180px, 1fr) minmax(150px, 0.8fr) auto",
+                      : "minmax(180px, 1fr) auto",
                     gap: "0.75rem",
                     alignItems: "end",
                   }}
                 >
-                  <div>
-                    <label
-                      className="muted small"
-                      style={{ display: "block", marginBottom: "0.35rem" }}
-                    >
-                      Admin code
-                    </label>
-                    <input
-                      type="password"
-                      className="text-input"
-                      placeholder="Enter admin code"
-                      value={fixtureAdminCode}
-                      onChange={(e) => {
-                        setFixtureAdminCode(e.target.value);
-                        setFixtureAdminError("");
-                      }}
-                      style={{ width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
-
                   <div>
                     <label
                       className="muted small"
@@ -2732,9 +2768,9 @@ export function LandingPage({
                     lineHeight: 1.5,
                   }}
                 >
-                  Select the common target you want all 3 teams to move towards.
-                  If the number cannot be reached perfectly, choose the nearest
-                  sensible target just above or below it.
+                  Choose the number of games each team should reach. We suggest
+                  a reachable target, but you remain in control. FANM will build
+                  the fairest available fixture sequence around your choice.
                 </p>
 
                 {fixtureAdminError && (
