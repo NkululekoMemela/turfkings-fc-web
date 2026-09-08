@@ -750,6 +750,98 @@ function StatCornerBadge({ icon, count }) {
   );
 }
 
+function PlayerMatchStatStack({ decor = null }) {
+  const goals = Number(decor?.icons?.goals || 0);
+  const assists = Number(decor?.icons?.assists || 0);
+  const yellows = Number(decor?.icons?.yellowCards || 0);
+  const reds = Number(decor?.icons?.redCards || 0);
+  const injuryStatus = decor?.icons?.injuryStatus || null;
+
+  const goal = goals
+    ? { icon: "⚽", count: goals }
+    : null;
+  const assist = assists
+    ? { icon: "👟", count: assists }
+    : null;
+  const injury =
+    injuryStatus === "injury_knock"
+      ? { icon: "🩹", count: 1 }
+      : injuryStatus === "injury_sitting_out"
+        ? { icon: "🤕", count: 1 }
+        : null;
+  const yellow = yellows
+    ? { icon: "🟨", count: yellows }
+    : null;
+  const red = reds
+    ? { icon: "🟥", count: reds }
+    : null;
+
+  const rows = [];
+
+  if (goal) rows.push([goal]);
+  if (assist) rows.push([assist]);
+
+  const remaining = [injury, yellow, red].filter(Boolean);
+
+  // Fill the third vertical position before doubling rows.
+  while (rows.length < 3 && remaining.length) {
+    rows.push([remaining.shift()]);
+  }
+
+  remaining.forEach((badge, index) => {
+    const preferredRow =
+      Math.min(index + 1, rows.length - 1);
+
+    if (rows[preferredRow]?.length < 2) {
+      rows[preferredRow].push(badge);
+      return;
+    }
+
+    const availableRow = rows.find(
+      (row) => row.length < 2
+    );
+
+    if (availableRow) {
+      availableRow.push(badge);
+    }
+  });
+
+  if (!rows.length) return null;
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        gap: "3px",
+        minHeight: "22px",
+        pointerEvents: "none",
+      }}
+    >
+      {rows.map((row, rowIndex) => (
+        <span
+          key={`player-stat-row-${rowIndex}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "3px",
+            minHeight: "10px",
+          }}
+        >
+          {row.map((badge) => (
+            <StatCornerBadge
+              key={badge.icon}
+              icon={badge.icon}
+              count={badge.count}
+            />
+          ))}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function PlayerBenchChip({
   name,
   isSelected,
@@ -759,9 +851,6 @@ function PlayerBenchChip({
   decor = null,
 }) {
   const rating = decor?.rating != null ? Number(decor.rating || 0) : null;
-  const goals = Number(decor?.icons?.goals || 0);
-  const assists = Number(decor?.icons?.assists || 0);
-
   return (
     <button
       type="button"
@@ -838,19 +927,15 @@ function PlayerBenchChip({
         </span>
       ) : null}
 
-      {(goals > 0 || assists > 0) ? (
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.18rem",
-            marginLeft: "-0.1rem",
-          }}
-        >
-          <StatCornerBadge icon="⚽" count={goals} />
-          <StatCornerBadge icon="👟" count={assists} />
-        </span>
-      ) : null}
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          marginLeft: "-0.1rem",
+        }}
+      >
+        <PlayerMatchStatStack decor={decor} />
+      </span>
     </button>
   );
 }
@@ -2421,9 +2506,6 @@ export function FormationsPage({
                   selectedPlayer && selectedPlayer.from === "pitch" && selectedPlayer.posId === pos.id;
 
                 const photoData = name ? getPlayerPhoto(name) : null;
-                const goalsCount = Number(decor?.icons?.goals || 0);
-                const assistsCount = Number(decor?.icons?.assists || 0);
-
                 return (
                   <React.Fragment key={pos.id}>
                   {showPlayerTendenciesArrow && (name) && (
@@ -2629,22 +2711,11 @@ export function FormationsPage({
                             {Number(decor.rating || 0).toFixed(1)}
                           </div>
 
-                          {goalsCount > 0 || assistsCount > 0 ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "flex-start",
-                                justifyContent: "center",
-                                gap: "1px",
-                                minHeight: "18px",
-                                marginTop: "1px",
-                              }}
-                            >
-                              <StatCornerBadge icon="⚽" count={goalsCount} />
-                              <StatCornerBadge icon="👟" count={assistsCount} />
-                            </div>
-                          ) : null}
+                          <div style={{ marginTop: "1px" }}>
+                            <PlayerMatchStatStack
+                              decor={decor}
+                            />
+                          </div>
                         </div>
                       ) : null}
 
