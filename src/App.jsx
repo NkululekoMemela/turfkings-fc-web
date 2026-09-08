@@ -9679,6 +9679,7 @@ export default function App() {
           currentMatchNo={pendingMatchStartContext?.matchNo || activeMatchNo}
           currentMatch={pendingMatchStartContext?.currentMatch || effectiveLiveMatch}
           currentEvents={currentEvents}
+          results={results}
           identity={pageIdentity}
           activeRole={activeRole}
           isAdmin={isAdmin}
