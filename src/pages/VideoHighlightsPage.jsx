@@ -4404,7 +4404,7 @@ export function VideoHighlightsPage({
             <div className="tkh-splash-content">
               <div className="tkh-splash-kicker">
                 {isLeagueMode
-                  ? "League Highlight Awards"
+                  ? "Video Highlights"
                   : "Monthly Highlight Awards"}
               </div>
 
