@@ -2780,13 +2780,6 @@ export function SquadsPage({
       }
     }
 
-    onUpdateTeams?.(
-      cleanedLeagueTeams.map((t) => ({
-        ...t,
-        captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
-      }))
-    );
-
     const outgoingFiveVFiveTeams = cleanedFiveVFiveTeams.map((t) => ({
       ...t,
       captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",

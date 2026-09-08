@@ -231,108 +231,37 @@ async function startPracticeSession({
     sessionId,
   });
 
-  let creditsRemaining = 0;
+  /*
+   * Practice sessions are unlimited.
+   *
+   * Authentication, club-role authorization, isolated storage and
+   * the authoritative 15-minute expiry remain enforced. Starting a
+   * session no longer reads, consumes or transfers weekly credits.
+   */
+  const creditsRemaining = null;
 
-  await db.runTransaction(async (transaction) => {
-    const entitlementSnap = await transaction.get(refs.entitlementRef);
-
-    const current = entitlementSnap.exists
-      ? entitlementSnap.data() || {}
-      : {};
-
-    const consumed = Math.max(
-      0,
-      Number(current.creditsConsumed || 0)
-    );
-
-    const transferredIn = Math.max(
-      0,
-      Number(current.creditsTransferredIn || 0)
-    );
-
-    const transferredOut = Math.max(
-      0,
-      Number(current.creditsTransferredOut || 0)
-    );
-
-    const totalAvailable =
-      PRACTICE_WEEKLY_CREDITS +
-      transferredIn -
-      transferredOut;
-
-    const availableBeforeStart = totalAvailable - consumed;
-
-    if (!isPlatformTester && availableBeforeStart <= 0) {
-      const error = new Error(
-        "[PracticeSession] No Practice sessions remain for this week."
-      );
-      error.code = "practice/no-credits";
-      throw error;
-    }
-
-    // Platform testing must not consume or manufacture ordinary user credits.
-    const nextConsumed =
-      isPlatformTester ? consumed : consumed + 1;
-
-    creditsRemaining = Math.max(
-      0,
-      totalAvailable - nextConsumed
-    );
-
-    const testerStartsThisWeek =
-      Math.max(
-        0,
-        Number(current.testerStartsThisWeek || 0)
-      ) + (isPlatformTester ? 1 : 0);
-
-    transaction.set(
-      refs.entitlementRef,
-      {
-        clubId: safeClubId,
-        userId: uid,
-        userEmail: email,
-        weekKey,
-        role,
-        weeklyBaseCredits: PRACTICE_WEEKLY_CREDITS,
-        creditsConsumed: nextConsumed,
-        creditsTransferredIn: transferredIn,
-        creditsTransferredOut: transferredOut,
-        creditsRemaining,
-        activeSessionId: sessionId,
-        ...(isPlatformTester
-          ? {
-              testerStartsThisWeek,
-              testerOverrideLastUsedAt: startedAt,
-            }
-          : {}),
-        updatedAt: startedAt,
-      },
-      {merge: true}
-    );
-
-    transaction.set(
-      refs.sessionRef,
-      {
-        sessionId,
-        clubId: safeClubId,
-        userId: uid,
-        userEmail: email,
-        createdByRole: role,
-        weekKey,
-        status: "active",
-        durationSeconds: sessionDurationSeconds,
-        startedAt,
-        expiresAt,
-        creditConsumed: !isPlatformTester,
-        testerOverrideUsed: isPlatformTester,
-        ...(isPlatformTester && platformTesterExpiresAt
-          ? {
-              testerOverrideExpiresAt: platformTesterExpiresAt,
-            }
-          : {}),
-        controlPlaneVersion: 1,
-      }
-    );
+  await refs.sessionRef.set({
+    sessionId,
+    clubId: safeClubId,
+    userId: uid,
+    userEmail: email,
+    createdByRole: role,
+    weekKey,
+    status: "active",
+    durationSeconds: sessionDurationSeconds,
+    startedAt,
+    expiresAt,
+    creditConsumed: false,
+    weeklyLimitApplied: false,
+    unlimitedPractice: true,
+    testerOverrideUsed: isPlatformTester,
+    ...(isPlatformTester && platformTesterExpiresAt
+      ? {
+          testerOverrideExpiresAt:
+            platformTesterExpiresAt,
+        }
+      : {}),
+    controlPlaneVersion: 2,
   });
 
   return {

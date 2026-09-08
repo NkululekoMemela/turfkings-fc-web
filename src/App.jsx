@@ -2999,6 +2999,32 @@ export default function App() {
     USE_V2 ? createDefaultStateV2() : loadState()
   );
 
+  /*
+   * Protect optimistic local changes from an older Firestore
+   * snapshot while the latest V2 write is still pending.
+   */
+  const pendingStateWriteUpdatedAtRef = useRef(null);
+
+  /*
+   * A coded Practice squad save must remain authoritative while
+   * navigating between pages. Firestore still provides durable
+   * recovery after a refresh.
+   */
+  const [
+    practiceSavedLeagueTeams,
+    setPracticeSavedLeagueTeams,
+  ] = useState(null);
+
+  const [
+    practiceSavedFiveVFiveTeams,
+    setPracticeSavedFiveVFiveTeams,
+  ] = useState(null);
+
+  useEffect(() => {
+    setPracticeSavedLeagueTeams(null);
+    setPracticeSavedFiveVFiveTeams(null);
+  }, [practiceRuntime?.practiceSessionId]);
+
   const activeSeasonIdForPeerRatings = USE_V2
     ? ensureV2StateShape(state)?.activeSeasonId || null
     : null;
@@ -3410,11 +3436,25 @@ export default function App() {
       const next = typeof updater === "function" ? updater(prev) : updater;
       if (USE_V2) {
         const safe = ensureV2StateShape(next);
-        saveStateV2(
+        const writeVersion =
+          String(safe?.updatedAt || "").trim();
+
+        pendingStateWriteUpdatedAtRef.current =
+          writeVersion || null;
+
+        void saveStateV2(
           safe,
           footballStateClubId,
           footballDataScope
-        );
+        ).catch(() => {
+          if (
+            pendingStateWriteUpdatedAtRef.current ===
+            writeVersion
+          ) {
+            pendingStateWriteUpdatedAtRef.current = null;
+          }
+        });
+
         return safe;
       }
       saveState(next);
@@ -3485,8 +3525,50 @@ export default function App() {
                 : [],
             });
             setState((prev) => {
+              const pendingWriteVersion =
+                pendingStateWriteUpdatedAtRef.current;
+
+              const cloudWriteVersion =
+                String(
+                  nextCloudState?.updatedAt || ""
+                ).trim();
+
+              /*
+               * The subscription can deliver the older Practice
+               * document after a local squad save has already updated
+               * React state. Keep the optimistic state until Firestore
+               * echoes the exact write version we just submitted.
+               */
+              if (
+                pendingWriteVersion &&
+                cloudWriteVersion !== pendingWriteVersion
+              ) {
+                console.warn(
+                  "[STATE V2] Ignored stale snapshot during pending write",
+                  {
+                    pendingWriteVersion,
+                    cloudWriteVersion,
+                    environment:
+                      footballDataScope?.environment ||
+                      "official",
+                  }
+                );
+
+                return prev;
+              }
+
+              if (
+                pendingWriteVersion &&
+                cloudWriteVersion === pendingWriteVersion
+              ) {
+                pendingStateWriteUpdatedAtRef.current = null;
+              }
+
               try {
-                if (JSON.stringify(prev) === JSON.stringify(nextCloudState)) {
+                if (
+                  JSON.stringify(prev) ===
+                  JSON.stringify(nextCloudState)
+                ) {
                   return prev;
                 }
               } catch (_) {
@@ -3730,6 +3812,20 @@ export default function App() {
     }),
     [playerPhotosByName, preloadedPlayerPhotosByName]
   );
+
+  if (
+    isPracticeMode &&
+    Array.isArray(practiceSavedLeagueTeams)
+  ) {
+    teams = practiceSavedLeagueTeams;
+  }
+
+  if (
+    isPracticeMode &&
+    Array.isArray(practiceSavedFiveVFiveTeams)
+  ) {
+    fiveVFiveTeams = practiceSavedFiveVFiveTeams;
+  }
 
   /*
    * Practice isolation guard for downstream football surfaces.
@@ -6736,6 +6832,11 @@ export default function App() {
     }
 
     const safeUpdatedTeams = Array.isArray(updatedTeams) ? updatedTeams : [];
+
+    if (isPracticeMode) {
+      setPracticeSavedLeagueTeams(safeUpdatedTeams);
+    }
+
     console.log("[APP TEAMS SAVE DEBUG]", {
       isPracticeMode,
       count: safeUpdatedTeams.length,
@@ -6807,6 +6908,10 @@ export default function App() {
     const safeTeams = isPracticeMode
       ? (Array.isArray(updatedTeams) ? updatedTeams : [])
       : ensureFiveVFiveTeamsShape(updatedTeams);
+
+    if (isPracticeMode) {
+      setPracticeSavedFiveVFiveTeams(safeTeams);
+    }
 
     console.log("[APP SAVE DEBUG] safe fiveVFiveTeams", safeTeams);
 
@@ -9493,20 +9598,12 @@ export default function App() {
                     setPracticeBootstrapping(false);
                     console.error("[PRACTICE V2 START ERROR]", err);
 
-                    if (err?.code === "practice/no-credits") {
-                      showPracticeRestriction(
-                        "Practice sessions used for this week",
-                        "You have used all 3 Practice sessions available this week. Your allowance refreshes automatically next week. You can continue using your Official Session normally.",
-                        "⏳"
-                      );
-                    } else {
-                      showPracticeRestriction(
-                        "Practice Session unavailable",
-                        err?.message ||
-                          "Practice Session could not be started right now. Your Official Session has not been affected.",
-                        "⚠️"
-                      );
-                    }
+                    showPracticeRestriction(
+                      "Practice Session unavailable",
+                      err?.message ||
+                        "Practice Session could not be started right now. Your Official Session has not been affected.",
+                      "⚠️"
+                    );
                   }
                 }}
                 style={{
@@ -10020,28 +10117,11 @@ export default function App() {
 
       {page === PAGE_SQUADS && (
         <SquadsPage
-          teams={
-            isPracticeMode
-              ? (Array.isArray(teams)
-                  ? teams.map((team) => ({
-                      ...team,
-                      players: [],
-                      captainId: null,
-                      captain: "",
-                    }))
-                  : [])
-              : teams
-          }
-          fiveVFiveTeams={
-            isPracticeMode
-              ? ensureFiveVFiveTeamsShape([]).map((team) => ({
-                  ...team,
-                  players: [],
-                  captainId: null,
-                  captain: "",
-                }))
-              : ensureFiveVFiveTeamsShape(fiveVFiveTeams)
-          }
+          key={`squads-${activeSeasonId || "no-season"}-${
+            practiceScopedSeasonReady ? "ready" : "loading"
+          }`}
+          teams={formationTeams}
+          fiveVFiveTeams={formationFiveVFiveTeams}
           onUpdateTeams={handleUpdateTeams}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}

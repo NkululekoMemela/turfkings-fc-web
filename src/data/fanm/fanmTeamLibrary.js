@@ -77,11 +77,11 @@ export const FANM_NATIONAL_TEAMS = [
 ];
 
 export const FANM_PRO_CLUBS = [
-  { type: "club", abbr: "MUN", name: "Manchester United", leagueGroup: "EPL", logo32: "/fanm-assets/pro-clubs/svg/MUN.svg" },
+  { type: "club", abbr: "MUN", name: "Man United", leagueGroup: "EPL", logo32: "/fanm-assets/pro-clubs/svg/MUN.svg" },
   { type: "club", abbr: "LIV", name: "Liverpool", leagueGroup: "EPL", logo32: "/fanm-assets/pro-clubs/svg/LIV.svg" },
   { type: "club", abbr: "ARS", name: "Arsenal", leagueGroup: "EPL", logo32: "/fanm-assets/pro-clubs/svg/ARS.svg" },
   { type: "club", abbr: "CHE", name: "Chelsea", leagueGroup: "EPL", logo32: "/fanm-assets/pro-clubs/svg/CHE.svg" },
-  { type: "club", abbr: "MCI", name: "Manchester City", leagueGroup: "EPL", logo32: "/fanm-assets/pro-clubs/svg/MCI.svg" },
+  { type: "club", abbr: "MCI", name: "Man City", leagueGroup: "EPL", logo32: "/fanm-assets/pro-clubs/svg/MCI.svg" },
   { type: "club", abbr: "TOT", name: "Tottenham Hotspur", leagueGroup: "EPL", logo32: "/fanm-assets/pro-clubs/svg/TOT.svg" },
   { type: "club", abbr: "NEW", name: "Newcastle United", leagueGroup: "EPL", logo32: "/fanm-assets/pro-clubs/svg/NEW.svg" },
   { type: "club", abbr: "RMA", name: "Real Madrid", leagueGroup: "LaLiga", logo32: "/fanm-assets/pro-clubs/svg/RMA.svg" },
