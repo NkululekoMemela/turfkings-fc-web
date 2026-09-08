@@ -8,6 +8,7 @@ import { LiveMatchPage } from "./pages/LiveMatchPage.jsx";
 import { StatsPage } from "./pages/StatsPage.jsx";
 import { SquadsPage } from "./pages/SquadsPage.jsx";
 import { FormationsPage } from "./pages/FormationsPage.jsx";
+import { PlayerMentalitiesPage } from "./pages/PlayerMentalitiesPage.jsx";
 import { SpectatorPage } from "./pages/SpectatorPage.jsx";
 import { NewsPage } from "./pages/NewsPage.jsx";
 import { PlayerCardPage } from "./pages/PlayerCardPage.jsx";
@@ -94,6 +95,7 @@ const PAGE_LIVE = "live";
 const PAGE_STATS = "stats";
 const PAGE_SQUADS = "squads";
 const PAGE_FORMATIONS = "formations";
+const PAGE_PLAYER_MENTALITIES = "player-mentalities";
 const PAGE_SPECTATOR = "spectator";
 const PAGE_NEWS = "news";
 const PAGE_PLAYER_CARDS = "player-cards";
@@ -7921,6 +7923,7 @@ export default function App() {
     PAGE_PLAYER_CARDS,
     PAGE_SQUADS,
     PAGE_FORMATIONS,
+    PAGE_PLAYER_MENTALITIES,
     PAGE_PEER_REVIEW,
     PAGE_VIEW_HIGHLIGHTS,
   ]);
@@ -10056,6 +10059,23 @@ export default function App() {
           seasonNo={USE_V2 ? activeSeasonNo : null}
           matchDayHistory={matchDayHistory || []}
           onSquadPreviewEditingChange={setSquadsAdminPreviewOpen}
+        />
+      )}
+
+      {page === PAGE_PLAYER_MENTALITIES && (
+        <PlayerMentalitiesPage
+          activeClubId={activeClubId}
+          activeClub={activeClub}
+          identity={pageIdentity}
+          isPracticeMode={isPracticeMode}
+          playerPhotosByName={effectivePlayerPhotosByName}
+          teams={
+            matchType === MATCH_TYPE.FRIENDLY
+              ? formationFiveVFiveTeams
+              : formationTeams
+          }
+          matchType={matchType}
+          onBack={handleBackToLanding}
         />
       )}
 
