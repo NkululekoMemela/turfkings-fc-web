@@ -13768,236 +13768,15 @@ button.fanm-chat-highlight-card {
 }
 
 
-/* Goal recorder full team-coloured player rectangles */
+/* Goal recorder restrained team palette defaults */
 .fanm-team-player-choice {
   --player-team-color: #38bdf8;
-  --player-team-soft: rgba(56, 189, 248, 0.18);
-  --player-team-border: rgba(56, 189, 248, 0.42);
+  --player-team-soft: rgba(56, 189, 248, 0.14);
+  --player-team-border: rgba(148, 163, 184, 0.3);
   --player-team-text: #f8fafc;
 }
 
-/*
- * The complete selectable player block uses the same team colour
- * as the team-name badge, rather than only showing a small accent.
- */
-.goal-scorer-team-card
-  .fanm-team-player-choice
-  .live-bench-chip {
-  border:
-    1.5px solid
-    color-mix(
-      in srgb,
-      var(--player-team-color) 72%,
-      white 8%
-    ) !important;
-
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(
-        in srgb,
-        var(--player-team-color) 38%,
-        #111827
-      ) 0%,
-      color-mix(
-        in srgb,
-        var(--player-team-color) 24%,
-        #08111f
-      ) 100%
-    ) !important;
-
-  color: var(--player-team-text) !important;
-
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.11),
-    inset 4px 0 0 var(--player-team-color),
-    0 7px 18px
-      color-mix(
-        in srgb,
-        var(--player-team-color) 18%,
-        transparent
-      ) !important;
-}
-
-/* Make player names remain clearly readable */
-.goal-scorer-team-card
-  .fanm-team-player-choice
-  .live-bench-chip
-  > span:last-child {
-  color: #ffffff !important;
-  font-weight: 800 !important;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.48);
-}
-
-/* Player hover keeps the same team identity but becomes brighter */
-.goal-scorer-team-card
-  .fanm-team-player-choice
-  .live-bench-chip:hover:not(:disabled) {
-  border-color:
-    color-mix(
-      in srgb,
-      var(--player-team-color) 84%,
-      white 16%
-    ) !important;
-
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(
-        in srgb,
-        var(--player-team-color) 51%,
-        #111827
-      ) 0%,
-      color-mix(
-        in srgb,
-        var(--player-team-color) 34%,
-        #08111f
-      ) 100%
-    ) !important;
-
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
-    inset 5px 0 0 var(--player-team-color),
-    0 10px 25px
-      color-mix(
-        in srgb,
-        var(--player-team-color) 28%,
-        transparent
-      ) !important;
-}
-
-/* Selected scorer or assist is unmistakable */
-.goal-scorer-team-card
-  .fanm-team-player-choice
-  .live-bench-chip.selected,
-.goal-scorer-team-card
-  .fanm-team-player-choice
-  .live-bench-chip.active,
-.goal-scorer-team-card
-  .fanm-team-player-choice
-  .live-bench-chip[aria-pressed="true"] {
-  border:
-    2px solid
-    color-mix(
-      in srgb,
-      var(--player-team-color) 72%,
-      white 28%
-    ) !important;
-
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(
-        in srgb,
-        var(--player-team-color) 66%,
-        #0f172a
-      ) 0%,
-      color-mix(
-        in srgb,
-        var(--player-team-color) 43%,
-        #07101e
-      ) 100%
-    ) !important;
-
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    inset 5px 0 0
-      color-mix(
-        in srgb,
-        var(--player-team-color) 70%,
-        white 30%
-      ),
-    0 0 0 2px
-      color-mix(
-        in srgb,
-        var(--player-team-color) 34%,
-        transparent
-      ),
-    0 12px 30px
-      color-mix(
-        in srgb,
-        var(--player-team-color) 34%,
-        transparent
-      ) !important;
-}
-
-/*
- * Substitutes still use their team's full rectangle colour.
- * The existing orange SUB badge remains the special identifier.
- */
-.goal-scorer-team-card
-  .fanm-team-player-choice
-  .live-bench-chip.is-sub {
-  opacity: 0.92 !important;
-  border-style: dashed !important;
-  border-color:
-    color-mix(
-      in srgb,
-      var(--player-team-color) 68%,
-      #f59e0b 32%
-    ) !important;
-
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(
-        in srgb,
-        var(--player-team-color) 35%,
-        #78350f
-      ) 0%,
-      color-mix(
-        in srgb,
-        var(--player-team-color) 24%,
-        #111827
-      ) 100%
-    ) !important;
-}
-
-/* Strengthen the team-name badge above each coloured squad */
-.goal-scorer-team-head > span {
-  border-width: 2px !important;
-  border-color:
-    color-mix(
-      in srgb,
-      currentColor 42%,
-      transparent
-    ) !important;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 7px 20px rgba(0, 0, 0, 0.28) !important;
-  font-weight: 900 !important;
-}
-
-/*
- * Use the team badge's own inline background as the strongest colour
- * reference, while the player blocks remain slightly darker.
- */
-.goal-scorer-team-head {
-  position: relative;
-  z-index: 2;
-  margin-bottom: 0.9rem !important;
-}
-
-/* Mobile readability */
-@media (max-width: 680px) {
-  .goal-scorer-team-card
-    .fanm-team-player-choice
-    .live-bench-chip {
-    border-width: 1.5px !important;
-    box-shadow:
-      inset 3px 0 0 var(--player-team-color),
-      inset 0 1px 0 rgba(255, 255, 255, 0.09),
-      0 5px 14px
-        color-mix(
-          in srgb,
-          var(--player-team-color) 17%,
-          transparent
-        ) !important;
-  }
-}
-
-
-/* Premium restrained team-coloured player rectangles */
+/* Premium team-coloured player rectangles */
 .goal-scorer-team-card
   .fanm-team-player-choice
   .live-bench-chip {
@@ -14005,41 +13784,62 @@ button.fanm-chat-highlight-card {
     1px solid
     color-mix(
       in srgb,
-      var(--player-team-color) 46%,
-      rgba(148, 163, 184, 0.34)
+      var(--player-team-color) 55%,
+      rgba(148, 163, 184, 0.28)
     ) !important;
 
   background:
     radial-gradient(
-      circle at 8% 0%,
+      circle at 12% 0%,
       color-mix(
         in srgb,
-        var(--player-team-color) 14%,
+        var(--player-team-color) 34%,
         transparent
       ),
-      transparent 44%
+      transparent 52%
     ),
     linear-gradient(
       135deg,
       color-mix(
         in srgb,
-        var(--player-team-color) 15%,
-        #111827
+        var(--player-team-color) 24%,
+        #142038
       ) 0%,
-      #0b1424 100%
+      color-mix(
+        in srgb,
+        var(--player-team-color) 14%,
+        #0b1426
+      ) 58%,
+      color-mix(
+        in srgb,
+        var(--player-team-color) 8%,
+        #070e1d
+      ) 100%
     ) !important;
 
   color: #f8fafc !important;
 
   box-shadow:
-    inset 3px 0 0
+    inset 4px 0 0
       color-mix(
         in srgb,
-        var(--player-team-color) 54%,
+        var(--player-team-color) 72%,
         transparent
       ),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045),
-    0 6px 16px rgba(0, 0, 0, 0.16) !important;
+    inset 0 1px 0
+      rgba(255, 255, 255, 0.075),
+    inset 0 -1px 0
+      color-mix(
+        in srgb,
+        var(--player-team-color) 17%,
+        transparent
+      ),
+    0 7px 18px
+      color-mix(
+        in srgb,
+        var(--player-team-color) 13%,
+        rgba(0, 0, 0, 0.34)
+      ) !important;
 }
 
 /* Hover: slightly brighter, still premium */
@@ -20148,5 +19948,107 @@ button.fanm-chat-highlight-card {
   .fixture-download-button {
     padding: 0.4rem 0.55rem;
     font-size: 0.65rem;
+  }
+}
+
+
+/* League goal recorder — premium restrained interaction */
+.fanm-bench-participant-modal {
+  width: min(92vw, 420px) !important;
+  border: 1px solid rgba(96, 165, 250, 0.32) !important;
+  background:
+    radial-gradient(
+      circle at 10% 0%,
+      rgba(59, 130, 246, 0.13),
+      transparent 42%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(8, 20, 42, 0.99),
+      rgba(3, 10, 25, 0.99)
+    ) !important;
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055) !important;
+}
+
+.fanm-bench-participant-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.7rem;
+}
+
+.fanm-bench-participant-heading > span {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(37, 99, 235, 0.88),
+      rgba(30, 64, 175, 0.58)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 8px 20px rgba(30, 64, 175, 0.24);
+}
+
+.fanm-bench-participant-heading h3 {
+  margin: 0;
+}
+
+.fanm-bench-participant-modal > p {
+  margin-top: 0;
+  line-height: 1.5;
+}
+
+.fanm-bench-participant-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+}
+
+.fanm-bench-participant-guidance {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(37, 99, 235, 0.13),
+      rgba(15, 23, 42, 0.88)
+    );
+}
+
+.fanm-bench-participant-guidance strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.live-goal-recorder-modal
+  .live-goal-recorder-panel
+  > .live-goal-recorder-actions {
+  position: sticky;
+  bottom: -1px;
+  z-index: 12;
+  padding: 0.85rem 0 0.25rem;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(2, 6, 23, 0),
+      rgba(2, 6, 23, 0.96) 30%,
+      rgba(2, 6, 23, 0.995)
+    );
+}
+
+@media (max-width: 520px) {
+  .fanm-bench-participant-actions {
+    grid-template-columns: 1fr;
   }
 }
