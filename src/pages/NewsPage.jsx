@@ -4436,7 +4436,8 @@ Votes for this poll will no longer be shown.`
 
       {renderCustomStoriesAt("before-old-stories")}
 
-      {/* OLD STORIES FOLDER */}
+      {canManageCustomStories && (
+      /* OLD STORIES FOLDER */
       <details className="card">
         <summary style={{ cursor: "pointer", fontWeight: 800 }}>
           🗂️ Old stories (tap to expand)
@@ -4736,6 +4737,7 @@ Votes for this poll will no longer be shown.`
           </section>
         </details>
 </details>
+      )}
 
       {renderCustomStoriesAt("before-recap")}
 

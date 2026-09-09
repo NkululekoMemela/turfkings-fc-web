@@ -2786,6 +2786,66 @@ export function PlayerCardPage({
     return ["ALL", ...Array.from(set)];
   }, [teams, friendlyCardMode]);
 
+  const teamFilterOptions = useMemo(
+    () =>
+      uniqueTeams.map((teamName) => {
+        if (teamName === "ALL") {
+          return {
+            value: "ALL",
+            label: "All teams",
+            badgeUrl: "",
+          };
+        }
+
+        const sourceTeam = (teams || []).find(
+          (team) =>
+            String(team?.label || team?.name || "")
+              .trim()
+              .toLowerCase() ===
+            String(teamName).trim().toLowerCase()
+        );
+
+        const embedded = sourceTeam?.teamIdentity || {};
+
+        const abbreviation = String(
+          embedded?.abbr ||
+          sourceTeam?.abbrev ||
+          sourceTeam?.code ||
+          ""
+        )
+          .trim()
+          .toUpperCase();
+
+        const canonical = (FANM_PRO_CLUBS || []).find(
+          (identity) =>
+            (
+              abbreviation &&
+              String(identity?.abbr || "")
+                .trim()
+                .toUpperCase() === abbreviation
+            ) ||
+            String(identity?.name || "")
+              .trim()
+              .toLowerCase() ===
+              String(teamName).trim().toLowerCase()
+        );
+
+        return {
+          value: teamName,
+          label: teamName,
+          badgeUrl:
+            canonical?.fantasyLogo32 ||
+            canonical?.logo32 ||
+            embedded?.fantasyLogo32 ||
+            embedded?.logo32 ||
+            sourceTeam?.badgeUrl ||
+            sourceTeam?.logoUrl ||
+            "",
+        };
+      }),
+    [uniqueTeams, teams]
+  );
+
   // ---------------- PHONE BACK BUTTON SUPPORT ----------------
   useEffect(() => {
     if (typeof window === "undefined" || typeof onBack !== "function") return;
@@ -3009,13 +3069,47 @@ export function PlayerCardPage({
 
           <div className="player-card-filter">
             <label>Team</label>
-            <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-              {uniqueTeams.map((t) => (
-                <option key={t} value={t}>
-                  {t === "ALL" ? "All teams" : t}
-                </option>
+
+            <div
+              className="player-card-team-filter-options"
+              role="listbox"
+              aria-label="Filter Player Cards by team"
+            >
+              {teamFilterOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={teamFilter === option.value}
+                  className={
+                    teamFilter === option.value
+                      ? "player-card-team-filter-option active"
+                      : "player-card-team-filter-option"
+                  }
+                  onClick={() => setTeamFilter(option.value)}
+                >
+                  {option.badgeUrl ? (
+                    <img
+                      src={option.badgeUrl}
+                      alt=""
+                      aria-hidden="true"
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="player-card-team-filter-all"
+                      aria-hidden="true"
+                    >
+                      ◈
+                    </span>
+                  )}
+
+                  <span>{option.label}</span>
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
           <div className="player-card-filter">
