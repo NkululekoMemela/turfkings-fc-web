@@ -13,6 +13,9 @@ import {
 import { useAuth } from "../auth/AuthContext.jsx";
 import { toPng } from "html-to-image";
 import { buildClubIdentity } from "../core/clubIdentity.js";
+import {
+  FANM_PRO_CLUBS,
+} from "../data/fanm/fanmTeamLibrary.js";
 
 import { buildPlayerEventStats } from "../core/playerEventStats.js";
 // ---------------- HELPERS ----------------
@@ -2032,11 +2035,80 @@ export function PlayerCardPage({
   const playerTeamMap = useMemo(() => {
     const map = {};
 
+    const identityKey = (value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "");
+
     (teams || []).forEach((t) => {
+      const embeddedIdentity =
+        t?.teamIdentity ||
+        t?.identity ||
+        t?.clubIdentity ||
+        null;
+
+      const teamKeys = new Set(
+        [
+          t?.id,
+          t?.teamId,
+          t?.label,
+          t?.name,
+          t?.shortName,
+          t?.abbr,
+          embeddedIdentity?.id,
+          embeddedIdentity?.name,
+          embeddedIdentity?.shortName,
+          embeddedIdentity?.abbr,
+        ]
+          .map(identityKey)
+          .filter(Boolean)
+      );
+
+      const canonicalIdentity =
+        (FANM_PRO_CLUBS || []).find((identity) =>
+          [
+            identity?.id,
+            identity?.clubId,
+            identity?.name,
+            identity?.shortName,
+            identity?.abbr,
+            identity?.code,
+          ]
+            .map(identityKey)
+            .filter(Boolean)
+            .some((key) => teamKeys.has(key))
+        ) || null;
+
+      const identity =
+        canonicalIdentity ||
+        embeddedIdentity ||
+        t;
+
+      const badgeUrl =
+        identity?.fantasyLogo32 ||
+        identity?.logo32 ||
+        identity?.badge ||
+        identity?.badgeUrl ||
+        identity?.logo ||
+        "";
+
+      const teamName =
+        t?.label ||
+        t?.name ||
+        identity?.name ||
+        "—";
+
       (t.players || []).forEach((p) => {
         const raw = getPlayerRawName(p);
         const canon = resolveCanonicalName(raw);
-        if (canon && !map[canon]) map[canon] = t.label;
+
+        if (canon && !map[canon]) {
+          map[canon] = {
+            teamName,
+            badgeUrl,
+          };
+        }
       });
     });
 
@@ -2355,7 +2427,12 @@ export function PlayerCardPage({
         name: canonName,
         displayName,
         shortName,
-        teamName: playerTeamMap[canonName] || (friendlyCardMode ? activeClubName : "—"),
+        teamName:
+          playerTeamMap[canonName]?.teamName ||
+          (friendlyCardMode ? activeClubName : "—"),
+        teamBadgeUrl:
+          playerTeamMap[canonName]?.badgeUrl ||
+          "",
         photoUrl,
 
         goals: friendlyCardMode && !shouldUseCarry ? valueOrZero(visibleStats.goals) : displayGoals,
@@ -2709,6 +2786,66 @@ export function PlayerCardPage({
     return ["ALL", ...Array.from(set)];
   }, [teams, friendlyCardMode]);
 
+  const teamFilterOptions = useMemo(
+    () =>
+      uniqueTeams.map((teamName) => {
+        if (teamName === "ALL") {
+          return {
+            value: "ALL",
+            label: "All teams",
+            badgeUrl: "",
+          };
+        }
+
+        const sourceTeam = (teams || []).find(
+          (team) =>
+            String(team?.label || team?.name || "")
+              .trim()
+              .toLowerCase() ===
+            String(teamName).trim().toLowerCase()
+        );
+
+        const embedded = sourceTeam?.teamIdentity || {};
+
+        const abbreviation = String(
+          embedded?.abbr ||
+          sourceTeam?.abbrev ||
+          sourceTeam?.code ||
+          ""
+        )
+          .trim()
+          .toUpperCase();
+
+        const canonical = (FANM_PRO_CLUBS || []).find(
+          (identity) =>
+            (
+              abbreviation &&
+              String(identity?.abbr || "")
+                .trim()
+                .toUpperCase() === abbreviation
+            ) ||
+            String(identity?.name || "")
+              .trim()
+              .toLowerCase() ===
+              String(teamName).trim().toLowerCase()
+        );
+
+        return {
+          value: teamName,
+          label: teamName,
+          badgeUrl:
+            canonical?.fantasyLogo32 ||
+            canonical?.logo32 ||
+            embedded?.fantasyLogo32 ||
+            embedded?.logo32 ||
+            sourceTeam?.badgeUrl ||
+            sourceTeam?.logoUrl ||
+            "",
+        };
+      }),
+    [uniqueTeams, teams]
+  );
+
   // ---------------- PHONE BACK BUTTON SUPPORT ----------------
   useEffect(() => {
     if (typeof window === "undefined" || typeof onBack !== "function") return;
@@ -2932,13 +3069,47 @@ export function PlayerCardPage({
 
           <div className="player-card-filter">
             <label>Team</label>
-            <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-              {uniqueTeams.map((t) => (
-                <option key={t} value={t}>
-                  {t === "ALL" ? "All teams" : t}
-                </option>
+
+            <div
+              className="player-card-team-filter-options"
+              role="listbox"
+              aria-label="Filter Player Cards by team"
+            >
+              {teamFilterOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={teamFilter === option.value}
+                  className={
+                    teamFilter === option.value
+                      ? "player-card-team-filter-option active"
+                      : "player-card-team-filter-option"
+                  }
+                  onClick={() => setTeamFilter(option.value)}
+                >
+                  {option.badgeUrl ? (
+                    <img
+                      src={option.badgeUrl}
+                      alt=""
+                      aria-hidden="true"
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="player-card-team-filter-all"
+                      aria-hidden="true"
+                    >
+                      ◈
+                    </span>
+                  )}
+
+                  <span>{option.label}</span>
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
           <div className="player-card-filter">
@@ -3137,8 +3308,28 @@ export function PlayerCardPage({
                           minWidth: 0,
                         }}
                       >
-                        <span className="fifa-team" style={{ minWidth: 0 }}>
-                          {p.teamName}
+                        <span
+                          className="fifa-team"
+                          style={{
+                            minWidth: 0,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.45rem",
+                          }}
+                        >
+                          {p.teamBadgeUrl ? (
+                            <img
+                              src={p.teamBadgeUrl}
+                              alt=""
+                              aria-hidden="true"
+                              className="player-card-team-badge"
+                              onError={(event) => {
+                                event.currentTarget.style.display = "none";
+                              }}
+                            />
+                          ) : null}
+
+                          <span>{p.teamName}</span>
                         </span>
 
                         {Array.isArray(p.honorBadges) && p.honorBadges.length > 0 ? (

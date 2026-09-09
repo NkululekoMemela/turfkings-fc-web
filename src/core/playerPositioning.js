@@ -15,8 +15,8 @@
 
 export const DEFAULT_BEHAVIOUR_SCORE = 3;
 
-const MENTALITY_WEIGHT = 0.65;
-const SHOOTING_WEIGHT = 0.35;
+const MENTALITY_WEIGHT = 0.55;
+const SHOOTING_WEIGHT = 0.45;
 
 export function normalizeBehaviourScore(value) {
   const numeric = Number(value);

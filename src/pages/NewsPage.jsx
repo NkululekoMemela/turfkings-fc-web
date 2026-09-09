@@ -37,6 +37,8 @@ const CUSTOM_STORY_LIMIT = 5;
 const CUSTOM_POLLS_COLLECTION = "newsPolls";
 const CUSTOM_POLL_VOTES_COLLECTION = "newsPollVotes";
 const CUSTOM_POLL_LIMIT = 2;
+const JERSEY_POLL_CONTROL_ID =
+  "turf-kings-jersey-orders";
 
 const STORY_IMAGE_SIZE_OPTIONS = [
   { value: "100", label: "Full", scale: 1, mode: "image" },
@@ -2348,14 +2350,110 @@ This will remove it from live news and archives for everyone.`
   }, [isPracticeMode, practiceSessionId]);
 
   const activeCustomPolls = useMemo(
-    () => customPolls.filter((poll) => poll && !poll.archived),
+    () =>
+      customPolls.filter(
+        (poll) =>
+          poll &&
+          poll.id !== JERSEY_POLL_CONTROL_ID &&
+          !poll.archived
+      ),
     [customPolls]
   );
 
   const archivedCustomPolls = useMemo(
-    () => customPolls.filter((poll) => poll && poll.archived),
+    () =>
+      customPolls.filter(
+        (poll) =>
+          poll &&
+          poll.id !== JERSEY_POLL_CONTROL_ID &&
+          poll.archived
+      ),
     [customPolls]
   );
+
+  const jerseyPollControl = useMemo(
+    () =>
+      customPolls.find(
+        (poll) =>
+          poll?.id === JERSEY_POLL_CONTROL_ID
+      ) || null,
+    [customPolls]
+  );
+
+  /*
+   * The jersey poll is being retired now, so absence of a control
+   * document means archived. Restoring it creates the persistent
+   * control document with archived: false.
+   */
+  const jerseyPollArchived =
+    jerseyPollControl
+      ? jerseyPollControl.archived !== false
+      : true;
+
+  const handleToggleJerseyPollArchive = async () => {
+    if (!canManageCustomStories) return;
+
+    const nextArchived = !jerseyPollArchived;
+    const nowMs = Date.now();
+
+    const control = {
+      id: JERSEY_POLL_CONTROL_ID,
+      kind: "builtin_jersey_poll",
+      question: "TurfKings jersey orders",
+      tag: "Jersey poll",
+      archived: nextArchived,
+      archivedAtMs: nextArchived ? nowMs : null,
+      updatedAtMs: nowMs,
+    };
+
+    try {
+      if (isPracticeMode) {
+        setCustomPolls((current) => [
+          ...(Array.isArray(current)
+            ? current.filter(
+                (poll) =>
+                  poll?.id !==
+                  JERSEY_POLL_CONTROL_ID
+              )
+            : []),
+          control,
+        ]);
+      } else {
+        await setDoc(
+          doc(
+            db,
+            CUSTOM_POLLS_COLLECTION,
+            JERSEY_POLL_CONTROL_ID
+          ),
+          {
+            kind: control.kind,
+            question: control.question,
+            tag: control.tag,
+            archived: control.archived,
+            archivedAtMs: control.archivedAtMs,
+            updatedAtMs: control.updatedAtMs,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      setPollFormError("");
+      setPollFormNotice(
+        nextArchived
+          ? "Jersey poll archived."
+          : "Jersey poll restored."
+      );
+    } catch (error) {
+      console.error(
+        "[NewsPage] failed to update jersey poll archive:",
+        error
+      );
+      setPollFormError(
+        "Could not update the jersey poll archive status."
+      );
+    }
+  };
 
   const sortedActiveCustomPolls = useMemo(() => {
     return activeCustomPolls.slice().sort((a, b) =>
@@ -3546,7 +3644,7 @@ Votes for this poll will no longer be shown.`
         </div>
       )}
 
-      {isTurfKingsClub && (
+      {isTurfKingsClub && !jerseyPollArchived && (
         <>
       {/* ✅ JERSEY STORY */}
       <section className="card" style={{ overflow: "hidden" }}>
@@ -3577,6 +3675,22 @@ Votes for this poll will no longer be shown.`
             </div>
 
             <h2 style={{ marginTop: 0 }}>TurfKings jersey orders</h2>
+
+            {canManageCustomStories && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleToggleJerseyPollArchive}
+                style={{
+                  padding: "0.48rem 0.8rem",
+                  marginBottom: "0.65rem",
+                  fontSize: "0.82rem",
+                }}
+              >
+                Archive poll
+              </button>
+            )}
+
             {renderStoryDateBadges(Date.now())}
             <p style={{ marginTop: "0.35rem" }}>
               We&apos;re about to place an order for the new TurfKings team kit.
@@ -4322,7 +4436,8 @@ Votes for this poll will no longer be shown.`
 
       {renderCustomStoriesAt("before-old-stories")}
 
-      {/* OLD STORIES FOLDER */}
+      {canManageCustomStories && (
+      /* OLD STORIES FOLDER */
       <details className="card">
         <summary style={{ cursor: "pointer", fontWeight: 800 }}>
           🗂️ Old stories (tap to expand)
@@ -4352,6 +4467,130 @@ Votes for this poll will no longer be shown.`
           </details>
         )}
 
+
+        {isTurfKingsClub && jerseyPollArchived && (
+          <details style={{ marginTop: "0.8rem" }}>
+            <summary
+              style={{
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              👕 TurfKings jersey orders
+            </summary>
+
+            <section
+              className="card"
+              style={{
+                marginTop: "0.8rem",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isNarrow
+                    ? "1fr"
+                    : "0.85fr 1.15fr",
+                  gap: "1rem",
+                  alignItems: "center",
+                }}
+              >
+                <img
+                  src={JerseyImage}
+                  alt="TurfKings jersey"
+                  style={{
+                    width: "100%",
+                    maxWidth: 320,
+                    justifySelf: "center",
+                    borderRadius: "1rem",
+                    objectFit: "contain",
+                    border:
+                      "1px solid rgba(148,163,184,0.2)",
+                  }}
+                />
+
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.45rem",
+                      flexWrap: "wrap",
+                      marginBottom: "0.65rem",
+                    }}
+                  >
+                    <span style={metaChipStyle}>
+                      👕 Jersey poll
+                    </span>
+                    <span style={metaChipStyle}>
+                      ARCHIVE
+                    </span>
+                  </div>
+
+                  <h2 style={{ marginTop: 0 }}>
+                    TurfKings jersey orders
+                  </h2>
+
+                  <p className="muted small">
+                    This jersey-order poll has ended. Its
+                    existing responses remain preserved.
+                  </p>
+
+                  <p>
+                    Votes:{" "}
+                    <strong>
+                      {kitOrders?.length || 0}
+                    </strong>
+                  </p>
+
+                  {kitOrders?.length > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "0.45rem",
+                        marginTop: "0.65rem",
+                      }}
+                    >
+                      {kitOrders
+                        .slice()
+                        .sort((a, b) =>
+                          String(a?.name || "").localeCompare(
+                            String(b?.name || "")
+                          )
+                        )
+                        .map((order) => (
+                          <span
+                            key={order.memberId}
+                            style={metaChipStyle}
+                          >
+                            {order.name}
+                          </span>
+                        ))}
+                    </div>
+                  )}
+
+                  {canManageCustomStories && (
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={
+                        handleToggleJerseyPollArchive
+                      }
+                      style={{
+                        padding: "0.48rem 0.8rem",
+                        marginTop: "0.9rem",
+                        fontSize: "0.82rem",
+                      }}
+                    >
+                      Restore poll
+                    </button>
+                  )}
+                </div>
+              </div>
+            </section>
+          </details>
+        )}
 
         {archivedCustomPolls.length > 0 && (
           <details style={{ marginTop: "0.8rem" }}>
@@ -4498,6 +4737,7 @@ Votes for this poll will no longer be shown.`
           </section>
         </details>
 </details>
+      )}
 
       {renderCustomStoriesAt("before-recap")}
 

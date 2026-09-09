@@ -3,6 +3,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { getTeamById } from "../core/teams.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 import { GLOBAL_CAPTAIN_CODES } from "../core/accessCodes.js";
+import {
+  FANM_PRO_CLUBS,
+} from "../data/fanm/fanmTeamLibrary.js";
 
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
@@ -17,6 +20,81 @@ import {
 } from "../core/matchConfig.js";
 
 const CAPTAIN_CODES = GLOBAL_CAPTAIN_CODES;
+
+function landingTeamIdentityKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function resolveLandingTeamIdentity(team = {}) {
+  const embedded = team?.teamIdentity || {};
+
+  const candidates = new Set(
+    [
+      embedded?.id,
+      embedded?.abbr,
+      embedded?.code,
+      embedded?.shortName,
+      embedded?.name,
+      team?.id,
+      team?.teamId,
+      team?.abbrev,
+      team?.code,
+      team?.label,
+      team?.name,
+    ]
+      .map(landingTeamIdentityKey)
+      .filter(Boolean)
+  );
+
+  return (
+    (FANM_PRO_CLUBS || []).find(
+      (identity) =>
+        [
+          identity?.id,
+          identity?.abbr,
+          identity?.code,
+          identity?.shortName,
+          identity?.name,
+        ]
+          .map(landingTeamIdentityKey)
+          .filter(Boolean)
+          .some((key) => candidates.has(key))
+    ) ||
+    (Object.keys(embedded).length ? embedded : null)
+  );
+}
+
+function getLandingTeamAbbreviation(team = {}) {
+  const identity = resolveLandingTeamIdentity(team);
+
+  return String(
+    identity?.abbr ||
+    team?.abbrev ||
+    team?.code ||
+    team?.label ||
+    "TEAM"
+  )
+    .trim()
+    .toUpperCase()
+    .slice(0, 4);
+}
+
+function getLandingTeamBadge(team = {}) {
+  const identity = resolveLandingTeamIdentity(team);
+
+  return (
+    identity?.fantasyLogo32 ||
+    identity?.logo32 ||
+    identity?.badgeUrl ||
+    identity?.logoUrl ||
+    team?.badgeUrl ||
+    team?.logoUrl ||
+    ""
+  );
+}
 
 const activePrimaryStyle = {
   background:
@@ -239,6 +317,8 @@ export function LandingPage({
   const [fixtureTargetDraft, setFixtureTargetDraft] = useState(
     scheduledTarget ?? smartTarget ?? ""
   );
+  const [downloadingFixtures, setDownloadingFixtures] =
+    useState(false);
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -560,13 +640,364 @@ export function LandingPage({
     ribbonText += "       • No results yet – first game incoming!";
   }
 
+  const nextTwelveFixtures = useMemo(
+    () =>
+      (scheduledFixtures || [])
+        .filter((fixture) => !fixture?.completed)
+        .slice(0, 12),
+    [scheduledFixtures]
+  );
+
+  const handleDownloadNextTwelveFixtures = async () => {
+    if (
+      !isAdmin ||
+      downloadingFixtures ||
+      nextTwelveFixtures.length === 0
+    ) {
+      return;
+    }
+
+    const loadCanvasImage = (source) =>
+      new Promise((resolve) => {
+        if (!source) {
+          resolve(null);
+          return;
+        }
+
+        const image = new Image();
+        image.crossOrigin = "anonymous";
+
+        image.onload = () => resolve(image);
+        image.onerror = () => resolve(null);
+        image.src = source;
+      });
+
+    const drawRoundedRectangle = (
+      context,
+      x,
+      y,
+      width,
+      height,
+      radius
+    ) => {
+      context.beginPath();
+      context.roundRect(
+        x,
+        y,
+        width,
+        height,
+        radius
+      );
+      context.closePath();
+    };
+
+    try {
+      setDownloadingFixtures(true);
+
+      if (document?.fonts?.ready) {
+        await document.fonts.ready;
+      }
+
+      const exportRows = nextTwelveFixtures.map(
+        (fixture, index) => {
+          const teamA =
+            getTeamById(teams, fixture.teamAId) || {
+              label: fixture.teamALabel,
+            };
+
+          const teamB =
+            getTeamById(teams, fixture.teamBId) || {
+              label: fixture.teamBLabel,
+            };
+
+          return {
+            number: index + 1,
+            abbreviationA:
+              getLandingTeamAbbreviation(teamA),
+            abbreviationB:
+              getLandingTeamAbbreviation(teamB),
+            labelA:
+              teamA?.label ||
+              fixture.teamALabel ||
+              "Team A",
+            labelB:
+              teamB?.label ||
+              fixture.teamBLabel ||
+              "Team B",
+            badgeA: getLandingTeamBadge(teamA),
+            badgeB: getLandingTeamBadge(teamB),
+          };
+        }
+      );
+
+      const imagePairs = await Promise.all(
+        exportRows.map(async (row) => ({
+          badgeA: await loadCanvasImage(row.badgeA),
+          badgeB: await loadCanvasImage(row.badgeB),
+        }))
+      );
+
+      const canvas = document.createElement("canvas");
+      const width = 1200;
+      const horizontalPadding = 68;
+      const headerHeight = 220;
+      const rowHeight = 104;
+      const rowGap = 14;
+      const footerHeight = 105;
+
+      const height =
+        headerHeight +
+        exportRows.length * (rowHeight + rowGap) +
+        footerHeight;
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        throw new Error("Canvas is unavailable.");
+      }
+
+      const background = context.createLinearGradient(
+        0,
+        0,
+        width,
+        height
+      );
+
+      background.addColorStop(0, "#0b2350");
+      background.addColorStop(0.48, "#071633");
+      background.addColorStop(1, "#03131e");
+
+      context.fillStyle = background;
+      context.fillRect(0, 0, width, height);
+
+      const topGlow = context.createRadialGradient(
+        width,
+        0,
+        0,
+        width,
+        0,
+        650
+      );
+
+      topGlow.addColorStop(
+        0,
+        "rgba(37, 99, 235, 0.42)"
+      );
+      topGlow.addColorStop(
+        1,
+        "rgba(37, 99, 235, 0)"
+      );
+
+      context.fillStyle = topGlow;
+      context.fillRect(0, 0, width, height);
+
+      context.fillStyle = "#67e8f9";
+      context.font = "900 18px sans-serif";
+      context.letterSpacing = "3px";
+      context.fillText(
+        "5 ASIDES NEAR ME · SEASON SCHEDULE",
+        horizontalPadding,
+        58
+      );
+
+      context.fillStyle = "#f8fafc";
+      context.font = "900 48px sans-serif";
+      context.letterSpacing = "0px";
+      context.fillText(
+        "Next 12 Fixtures",
+        horizontalPadding,
+        120
+      );
+
+      context.fillStyle = "rgba(226,232,240,0.76)";
+      context.font = "600 22px sans-serif";
+      context.fillText(
+        `${resolvedClubName} · Fixtured season`,
+        horizontalPadding,
+        162
+      );
+
+      context.fillStyle = "rgba(148,163,184,0.28)";
+      context.fillRect(
+        horizontalPadding,
+        190,
+        width - horizontalPadding * 2,
+        2
+      );
+
+      exportRows.forEach((row, index) => {
+        const y =
+          headerHeight +
+          index * (rowHeight + rowGap);
+
+        const cardGradient =
+          context.createLinearGradient(
+            horizontalPadding,
+            y,
+            width - horizontalPadding,
+            y + rowHeight
+          );
+
+        cardGradient.addColorStop(
+          0,
+          "rgba(18, 47, 96, 0.96)"
+        );
+        cardGradient.addColorStop(
+          1,
+          "rgba(7, 24, 53, 0.98)"
+        );
+
+        drawRoundedRectangle(
+          context,
+          horizontalPadding,
+          y,
+          width - horizontalPadding * 2,
+          rowHeight,
+          22
+        );
+
+        context.fillStyle = cardGradient;
+        context.fill();
+
+        context.strokeStyle =
+          "rgba(96,165,250,0.34)";
+        context.lineWidth = 2;
+        context.stroke();
+
+        context.fillStyle =
+          "rgba(148,163,184,0.8)";
+        context.font = "900 17px sans-serif";
+        context.fillText(
+          String(row.number).padStart(2, "0"),
+          horizontalPadding + 24,
+          y + 61
+        );
+
+        const badgeSize = 58;
+        const badgeAY = y + (rowHeight - badgeSize) / 2;
+        const badgeAX = horizontalPadding + 90;
+        const badgeBX =
+          width - horizontalPadding - 90 - badgeSize;
+
+        if (imagePairs[index]?.badgeA) {
+          context.drawImage(
+            imagePairs[index].badgeA,
+            badgeAX,
+            badgeAY,
+            badgeSize,
+            badgeSize
+          );
+        }
+
+        if (imagePairs[index]?.badgeB) {
+          context.drawImage(
+            imagePairs[index].badgeB,
+            badgeBX,
+            badgeAY,
+            badgeSize,
+            badgeSize
+          );
+        }
+
+        context.fillStyle = "#f8fafc";
+        context.font = "900 28px sans-serif";
+        context.textAlign = "left";
+        context.fillText(
+          row.abbreviationA,
+          badgeAX + badgeSize + 20,
+          y + 48
+        );
+
+        context.fillStyle =
+          "rgba(203,213,225,0.68)";
+        context.font = "600 15px sans-serif";
+        context.fillText(
+          row.labelA,
+          badgeAX + badgeSize + 20,
+          y + 75
+        );
+
+        context.fillStyle = "#7dd3fc";
+        context.font = "900 17px sans-serif";
+        context.textAlign = "center";
+        context.fillText(
+          "VS",
+          width / 2,
+          y + 61
+        );
+
+        context.fillStyle = "#f8fafc";
+        context.font = "900 28px sans-serif";
+        context.textAlign = "right";
+        context.fillText(
+          row.abbreviationB,
+          badgeBX - 20,
+          y + 48
+        );
+
+        context.fillStyle =
+          "rgba(203,213,225,0.68)";
+        context.font = "600 15px sans-serif";
+        context.fillText(
+          row.labelB,
+          badgeBX - 20,
+          y + 75
+        );
+
+        context.textAlign = "left";
+      });
+
+      const footerY =
+        height - footerHeight + 40;
+
+      context.fillStyle =
+        "rgba(148,163,184,0.25)";
+      context.fillRect(
+        horizontalPadding,
+        footerY - 22,
+        width - horizontalPadding * 2,
+        2
+      );
+
+      context.fillStyle =
+        "rgba(167,243,208,0.88)";
+      context.font = "800 17px sans-serif";
+      context.textAlign = "center";
+      context.fillText(
+        "MATCHDAY INTELLIGENCE EDITION",
+        width / 2,
+        footerY + 22
+      );
+
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download =
+        "next-12-fixtured-matches.png";
+      link.click();
+    } catch (error) {
+      console.error(
+        "[FIXTURES] Could not download fixture list:",
+        error
+      );
+
+      window.alert(
+        "The next 12 fixtures could not be downloaded."
+      );
+    } finally {
+      setDownloadingFixtures(false);
+    }
+  };
+
   const requestPairChange = (candidateMatch) => {
     if (!canStartMatch) return;
 
-    if (isThreeTeamLeague && resolvedLeagueMode === "scheduled_target") {
-      window.alert(
-        "Pairing override is locked while Fixtured mode is active."
-      );
+    if (
+      isThreeTeamLeague &&
+      resolvedLeagueMode === "scheduled_target"
+    ) {
       return;
     }
 
@@ -691,10 +1122,43 @@ export function LandingPage({
   };
 
   const requestLeagueModeChange = (nextLeagueMode) => {
-    requestProtectedFormatChange({
-      kind: "leagueMode",
-      value: nextLeagueMode === "scheduled_target" ? "scheduled_target" : "round_robin",
-    });
+    if (!canSeeCaptainStyleControls) return;
+
+    const safeLeagueMode =
+      nextLeagueMode === "scheduled_target"
+        ? "scheduled_target"
+        : "round_robin";
+
+    if (safeLeagueMode === resolvedLeagueMode) return;
+
+    /*
+     * The signed-in captain/admin role is sufficient authorization for
+     * league scheduling. Do not add a second captain-code checkpoint.
+     */
+    if (typeof onSetLeagueMode === "function") {
+      onSetLeagueMode(safeLeagueMode);
+    } else {
+      onSetMatchMode?.(safeLeagueMode);
+    }
+
+    closeSettingsPanelAfterPopup();
+
+    if (safeLeagueMode === "scheduled_target") {
+      const suggestedTarget = Number(smartTarget);
+      const existingTarget = Number(scheduledTarget);
+
+      setFixtureTargetDraft(
+        Number.isFinite(existingTarget) && existingTarget > 0
+          ? String(Math.round(existingTarget))
+          : Number.isFinite(suggestedTarget) && suggestedTarget > 0
+            ? String(Math.round(suggestedTarget))
+            : ""
+      );
+
+      window.setTimeout(() => {
+        setShowFixturesModal(true);
+      }, 0);
+    }
   };
 
   const cancelGameFormatChange = () => {
@@ -758,17 +1222,39 @@ export function LandingPage({
       return;
     }
 
-    applyPendingProtectedChange(pendingGameFormat);
+    const confirmedChange = pendingGameFormat;
+
+    applyPendingProtectedChange(confirmedChange);
     cancelGameFormatChange();
+
+    /*
+     * Enter fixture setup immediately after the protected mode change.
+     * The captain has already confirmed the structural change, so target
+     * selection must not introduce a second password barrier.
+     */
+    if (
+      confirmedChange.kind === "leagueMode" &&
+      confirmedChange.value === "scheduled_target"
+    ) {
+      const suggestedTarget = Number(smartTarget);
+      const existingTarget = Number(scheduledTarget);
+
+      setFixtureTargetDraft(
+        Number.isFinite(existingTarget) && existingTarget > 0
+          ? String(Math.round(existingTarget))
+          : Number.isFinite(suggestedTarget) && suggestedTarget > 0
+            ? String(Math.round(suggestedTarget))
+            : ""
+      );
+
+      window.setTimeout(() => {
+        setShowFixturesModal(true);
+      }, 0);
+    }
   };
 
   const handleProtectedTargetChange = (target) => {
-    if (!isAdmin) return;
-
-    if (!isAdminCode(fixtureAdminCode)) {
-      setFixtureAdminError("Invalid admin code.");
-      return;
-    }
+    if (!canSeeCaptainStyleControls) return;
 
     const numericTarget = Number(target);
 
@@ -1530,41 +2016,44 @@ export function LandingPage({
         )}
 
         {isThreeTeamLeague && fixturedMode && (
+          <section className="fixture-premium-summary">
+            <div className="fixture-premium-summary-icon">
+              ◫
+            </div>
 
-          <div style={{ marginBottom: "0.9rem" }}>
-            <div
-              style={{
-                display: "flex",
-                gap: "0.45rem",
-                flexWrap: "wrap",
-                alignItems: "center",
-                marginBottom: "0.55rem",
-              }}
+            <div className="fixture-premium-summary-copy">
+              <span>FIXTURED SEASON</span>
+              <strong>
+                {scheduledTarget ?? smartTarget ?? "—"} match target
+              </strong>
+              <small>
+                {(scheduledFixtures || []).length} scheduled fixtures
+              </small>
+            </div>
+
+            <button
+              type="button"
+              className="fixture-premium-view-button"
+              onClick={() => setShowFixturesModal(true)}
+              disabled={
+                !scheduledFixtures ||
+                scheduledFixtures.length === 0
+              }
             >
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => setShowFixturesModal(true)}
-                disabled={!scheduledFixtures || scheduledFixtures.length === 0}
-                style={{
-                  opacity:
-                    scheduledFixtures && scheduledFixtures.length > 0 ? 1 : 0.6,
-                }}
-              >
-                View fixtures
-              </button>
-            </div>
-
-            <div className="muted small">
-              Season Target:{" "}
-              <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong> {" "}
-              Matches
-            </div>
-          </div>
+              View fixtures
+              <span aria-hidden="true">›</span>
+            </button>
+          </section>
         )}
 
         {isThreeTeamLeague && (
-          <div className="match-setup-row">
+          <div
+            className={`match-setup-row ${
+              fixturedMode
+                ? "fixture-premium-pairing"
+                : ""
+            }`}
+          >
             <div className="team-select">
               <label>On-field Team 1</label>
               <select
@@ -1608,12 +2097,6 @@ export function LandingPage({
           </p>
         )}
 
-
-        {isThreeTeamLeague && fixturedMode && (
-          <p className="muted small" style={{ marginTop: "-0.1rem" }}>
-            Pairing override is locked while Fixtured mode is active.
-          </p>
-        )}
 
         {canStartMatch ? (
           <div
@@ -1862,10 +2345,16 @@ export function LandingPage({
           </div>
         ) : (
           <>
-            <p className="muted">
+            <p
+              className={
+                isPlayer
+                  ? "muted"
+                  : "muted landing-spectator-note"
+              }
+            >
               {isPlayer
                 ? "Players can view the setup, lineups and stats, but only captains or admin can start a match."
-                : "You can follow the live game and view all public information."}
+                : "You can follow the live game."}
             </p>
 
             <div
@@ -2597,213 +3086,225 @@ export function LandingPage({
       )}
 
       {showFixturesModal && (
-        <div className="modal-backdrop">
-          <div
-            className="modal"
-            style={{
-              width: "min(96vw, 760px)",
-              maxWidth: "760px",
-              maxHeight: "88vh",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-              padding: isMobile ? "1rem" : "1.25rem",
-              boxSizing: "border-box",
-            }}
+        <div
+          className="modal-backdrop fixture-presentation-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeFixturesModal();
+            }
+          }}
+        >
+          <section
+            className="fixture-presentation-modal"
+            aria-label="Fixtured match list"
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: "1rem",
-                marginBottom: "0.8rem",
-              }}
-            >
-              <div>
-                <h3 style={{ marginTop: 0, marginBottom: "0.35rem" }}>
-                  Fixtured Match List
-                </h3>
-                <p className="muted small" style={{ margin: 0 }}>
-                  Common target:{" "}
-                  <strong>{scheduledTarget ?? smartTarget ?? "-"}</strong>
+            <header className="fixture-presentation-head">
+              <div className="fixture-presentation-title">
+                <span className="fixture-presentation-kicker">
+                  SEASON SCHEDULE
+                </span>
+                <h3>Fixtured Match List</h3>
+                <p>
+                  {Number(scheduledTarget) > 0
+                    ? `${scheduledTarget} match target`
+                    : "Build a fair season schedule"}
+                  <span aria-hidden="true"> · </span>
+                  {(scheduledFixtures || []).length} fixtures
                 </p>
               </div>
 
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={closeFixturesModal}
-                aria-label="Close fixtures"
-                style={{
-                  width: "42px",
-                  minWidth: "42px",
-                  height: "42px",
-                  borderRadius: "999px",
-                  padding: 0,
-                  touchAction: "manipulation",
-                }}
-              >
-                ✕
-              </button>
-            </div>
+              <div className="fixture-presentation-head-actions">
+                {isAdmin && nextTwelveFixtures.length > 0 ? (
+                  <button
+                    type="button"
+                    className="fixture-download-button"
+                    onClick={handleDownloadNextTwelveFixtures}
+                    disabled={downloadingFixtures}
+                  >
+                    <span aria-hidden="true">⇩</span>
+                    {downloadingFixtures
+                      ? "Preparing…"
+                      : "Next 12"}
+                  </button>
+                ) : null}
 
-            {isAdmin && (
-              <div
-                style={{
-                  marginBottom: "1rem",
-                  padding: isMobile ? "0.85rem" : "1rem",
-                  borderRadius: "1rem",
-                  border: "1px solid rgba(148,163,184,0.18)",
-                  background: "rgba(15,23,42,0.42)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "minmax(180px, 1fr) minmax(150px, 0.8fr) auto",
-                    gap: "0.75rem",
-                    alignItems: "end",
-                  }}
+                <button
+                  type="button"
+                  className="fixture-presentation-close"
+                  onClick={closeFixturesModal}
+                  aria-label="Close fixtures"
                 >
-                  <div>
-                    <label
-                      className="muted small"
-                      style={{ display: "block", marginBottom: "0.35rem" }}
-                    >
-                      Admin code
-                    </label>
-                    <input
-                      type="password"
-                      className="text-input"
-                      placeholder="Enter admin code"
-                      value={fixtureAdminCode}
-                      onChange={(e) => {
-                        setFixtureAdminCode(e.target.value);
-                        setFixtureAdminError("");
-                      }}
-                      style={{ width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
+                  ✕
+                </button>
+              </div>
+            </header>
 
-                  <div>
-                    <label
-                      className="muted small"
-                      style={{ display: "block", marginBottom: "0.35rem" }}
-                    >
-                      Target
-                    </label>
-                    <input
-                      type="number"
-                      min={Math.max(1, matchesPlayed)}
-                      step="1"
-                      className="text-input"
-                      value={fixtureTargetDraft}
-                      onChange={(e) => {
-                        setFixtureTargetDraft(e.target.value);
-                        setFixtureAdminError("");
-                      }}
-                      placeholder={String(smartTarget ?? scheduledTarget ?? 50)}
-                      style={{ width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
+            {canSeeCaptainStyleControls ? (
+              <section className="fixture-target-panel">
+                <div className="fixture-target-copy">
+                  <span>SEASON CONTROL</span>
+                  <strong>Set the match target</strong>
+                  <small>
+                    We suggest a reachable total. You remain in control.
+                  </small>
+                </div>
+
+                <div className="fixture-target-actions">
+                  <input
+                    type="number"
+                    min={Math.max(1, matchesPlayed)}
+                    step="1"
+                    className="text-input"
+                    value={fixtureTargetDraft}
+                    onChange={(event) => {
+                      setFixtureTargetDraft(event.target.value);
+                      setFixtureAdminError("");
+                    }}
+                    placeholder={String(
+                      smartTarget ?? scheduledTarget ?? 50
+                    )}
+                    aria-label="Season match target"
+                  />
 
                   <button
                     type="button"
                     className="primary-btn"
-                    onClick={() => handleProtectedTargetChange(fixtureTargetDraft)}
+                    onClick={() =>
+                      handleProtectedTargetChange(
+                        fixtureTargetDraft
+                      )
+                    }
                     disabled={fixtureTargetDraft === ""}
-                    style={{
-                      minHeight: "44px",
-                      whiteSpace: "nowrap",
-                      touchAction: "manipulation",
-                    }}
                   >
-                    Update fixtures
+                    Update
                   </button>
                 </div>
 
-                <p
-                  className="muted small"
-                  style={{
-                    margin: "0.65rem 0 0",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Select the common target you want all 3 teams to move towards.
-                  If the number cannot be reached perfectly, choose the nearest
-                  sensible target just above or below it.
-                </p>
-
-                {fixtureAdminError && (
-                  <p className="error-text" style={{ marginTop: "0.45rem" }}>
+                {fixtureAdminError ? (
+                  <p className="error-text">
                     {fixtureAdminError}
                   </p>
-                )}
-              </div>
-            )}
+                ) : null}
+              </section>
+            ) : null}
 
-            <div
-              style={{
-                flex: "1 1 auto",
-                overflowY: "auto",
-                paddingRight: isMobile ? "0.15rem" : "0.35rem",
-                minHeight: 0,
-              }}
-            >
-              {(scheduledFixtures || []).map((fixture, index) => {
-                const done = !!fixture.completed;
+            <div className="fixture-presentation-list">
+              {(scheduledFixtures || []).map(
+                (fixture, index) => {
+                  const done = Boolean(fixture.completed);
 
-                const hasScore =
-                  done &&
-                  fixture.goalsA !== null &&
-                  fixture.goalsA !== undefined &&
-                  fixture.goalsB !== null &&
-                  fixture.goalsB !== undefined;
+                  const hasScore =
+                    done &&
+                    fixture.goalsA !== null &&
+                    fixture.goalsA !== undefined &&
+                    fixture.goalsB !== null &&
+                    fixture.goalsB !== undefined;
 
-                return (
-                  <div
-                    key={`${
-                      fixture.id || `${fixture.teamAId}-${fixture.teamBId}`
-                    }-${index}`}
-                    style={{
-                      padding: isMobile ? "0.58rem 0" : "0.65rem 0",
-                      fontWeight: done ? 500 : 800,
-                      opacity: done ? 0.58 : 1,
-                      borderBottom: "1px solid rgba(255,255,255,0.07)",
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    {index + 1}. {fixture.teamALabel} vs {fixture.teamBLabel}
-                    {hasScore ? ` (${fixture.goalsA}-${fixture.goalsB})` : ""}
-                  </div>
-                );
-              })}
+                  const fixtureTeamA =
+                    getTeamById(teams, fixture.teamAId) || {
+                      id: fixture.teamAId,
+                      label: fixture.teamALabel,
+                    };
+
+                  const fixtureTeamB =
+                    getTeamById(teams, fixture.teamBId) || {
+                      id: fixture.teamBId,
+                      label: fixture.teamBLabel,
+                    };
+
+                  const abbreviationA =
+                    getLandingTeamAbbreviation(fixtureTeamA);
+
+                  const abbreviationB =
+                    getLandingTeamAbbreviation(fixtureTeamB);
+
+                  const badgeA =
+                    getLandingTeamBadge(fixtureTeamA);
+
+                  const badgeB =
+                    getLandingTeamBadge(fixtureTeamB);
+
+                  return (
+                    <article
+                      key={`${
+                        fixture.id ||
+                        `${fixture.teamAId}-${fixture.teamBId}`
+                      }-${index}`}
+                      className={`fixture-premium-row ${
+                        done ? "is-complete" : "is-upcoming"
+                      }`}
+                    >
+                      <span className="fixture-premium-number">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+
+                      <div className="fixture-premium-team">
+                        {badgeA ? (
+                          <img src={badgeA} alt="" />
+                        ) : (
+                          <span className="fixture-badge-fallback">
+                            {abbreviationA.slice(0, 1)}
+                          </span>
+                        )}
+
+                        <div>
+                          <strong>{abbreviationA}</strong>
+                          <small>
+                            {fixtureTeamA.label ||
+                              fixture.teamALabel}
+                          </small>
+                        </div>
+                      </div>
+
+                      <div className="fixture-premium-versus">
+                        {hasScore ? (
+                          <strong>
+                            {fixture.goalsA}
+                            <span>–</span>
+                            {fixture.goalsB}
+                          </strong>
+                        ) : (
+                          <span>VS</span>
+                        )}
+                      </div>
+
+                      <div className="fixture-premium-team is-away">
+                        <div>
+                          <strong>{abbreviationB}</strong>
+                          <small>
+                            {fixtureTeamB.label ||
+                              fixture.teamBLabel}
+                          </small>
+                        </div>
+
+                        {badgeB ? (
+                          <img src={badgeB} alt="" />
+                        ) : (
+                          <span className="fixture-badge-fallback">
+                            {abbreviationB.slice(0, 1)}
+                          </span>
+                        )}
+                      </div>
+
+                      <span className="fixture-premium-status">
+                        {done ? "FINAL" : "UPCOMING"}
+                      </span>
+                    </article>
+                  );
+                }
+              )}
             </div>
 
-            <div
-              className="actions-row"
-              style={{
-                marginTop: "1rem",
-                flexShrink: 0,
-                display: "flex",
-                justifyContent: "center",
-              }}
-            >
+            <footer className="fixture-presentation-footer">
               <button
+                type="button"
                 className="secondary-btn"
                 onClick={closeFixturesModal}
-                style={{
-                  width: isMobile ? "100%" : "min(320px, 100%)",
-                  touchAction: "manipulation",
-                }}
               >
-                Close
+                Close schedule
               </button>
-            </div>
-          </div>
+            </footer>
+          </section>
         </div>
       )}
     </div>

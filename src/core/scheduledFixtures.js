@@ -102,157 +102,655 @@ function safeNum(value) {
     return (teams || []).map((t) => t.id).filter(Boolean);
   }
   
-  function buildPairToTeamsMap(remaining = {}) {
-    const out = {};
-    Object.keys(remaining).forEach((key) => {
-      const [a, b] = key.split("__");
-      out[key] = [a, b];
-    });
-    return out;
-  }
-  
-  function computeRemainingAppearances(remaining = {}, teamIds = []) {
-    const counts = Object.fromEntries((teamIds || []).map((id) => [id, 0]));
-  
-    Object.entries(remaining).forEach(([key, value]) => {
-      const n = safeNum(value);
-      if (n <= 0) return;
-      const [a, b] = key.split("__");
-      if (counts[a] != null) counts[a] += n;
-      if (counts[b] != null) counts[b] += n;
-    });
-  
-    return counts;
-  }
-  
-  function nextAppearanceStreaks(currentStreaks = {}, teamIds = [], teamAId, teamBId) {
-    const next = {};
-  
-    (teamIds || []).forEach((id) => {
-      const current = safeNum(currentStreaks[id]);
-      if (id === teamAId || id === teamBId) {
-        next[id] = current + 1;
-      } else {
-        next[id] = 0;
-      }
-    });
-  
-    return next;
-  }
-  
-  function maxStreak(streaks = {}) {
-    return Math.max(0, ...Object.values(streaks).map((v) => safeNum(v)));
-  }
-  
-  function sumSelectedRemainingAppearances(remainingAppearances = {}, a, b) {
-    return safeNum(remainingAppearances[a]) + safeNum(remainingAppearances[b]);
-  }
-  
-  function pickBestCandidate(candidates = [], lastPairKey, currentStreaks, remaining, teamIds) {
-    if (!candidates.length) return null;
-  
-    const remainingAppearances = computeRemainingAppearances(remaining, teamIds);
-  
-    const withMeta = candidates.map((key) => {
-      const [a, b] = key.split("__");
-      const nextStreaks = nextAppearanceStreaks(currentStreaks, teamIds, a, b);
-      const nextMaxStreak = maxStreak(nextStreaks);
-  
-      return {
-        key,
-        a,
-        b,
-        sameAsLast: key === lastPairKey,
-        pairRemaining: safeNum(remaining[key]),
-        selectedRemainingAppearances: sumSelectedRemainingAppearances(
-          remainingAppearances,
-          a,
-          b
-        ),
-        nextStreaks,
-        nextMaxStreak,
-        currentAStreak: safeNum(currentStreaks[a]),
-        currentBStreak: safeNum(currentStreaks[b]),
-      };
-    });
-  
-    const nonRepeat = withMeta.filter((x) => !x.sameAsLast);
-    const noRepeatPool = nonRepeat.length ? nonRepeat : withMeta;
-  
-    const max2Pool = noRepeatPool.filter((x) => x.nextMaxStreak <= 2);
-    const max3Pool = noRepeatPool.filter((x) => x.nextMaxStreak <= 3);
-  
-    const finalPool =
-      max2Pool.length > 0 ? max2Pool : max3Pool.length > 0 ? max3Pool : noRepeatPool;
-  
-    finalPool.sort((x, y) => {
-      if (y.pairRemaining !== x.pairRemaining) {
-        return y.pairRemaining - x.pairRemaining;
-      }
-  
-      if (y.selectedRemainingAppearances !== x.selectedRemainingAppearances) {
-        return y.selectedRemainingAppearances - x.selectedRemainingAppearances;
-      }
-  
-      const xCurrentStreakSum = x.currentAStreak + x.currentBStreak;
-      const yCurrentStreakSum = y.currentAStreak + y.currentBStreak;
-      if (xCurrentStreakSum !== yCurrentStreakSum) {
-        return xCurrentStreakSum - yCurrentStreakSum;
-      }
-  
-      return x.key.localeCompare(y.key);
-    });
-  
-    return finalPool[0] || null;
-  }
-  
-  export function buildScheduledFixtures(teams = [], pairCounts = {}) {
-    const safeTeams = Array.isArray(teams) ? teams.slice(0, 3) : [];
-    const teamById = Object.fromEntries(safeTeams.map((t) => [t.id, t]));
-    const remaining = Object.fromEntries(
-      Object.entries(pairCounts || {}).map(([k, v]) => [k, safeNum(v)])
+  function buildRemainingAppearanceCounts(
+    pairKeys = [],
+    remainingCounts = [],
+    teamIds = []
+  ) {
+    const appearances = Object.fromEntries(
+      teamIds.map((teamId) => [teamId, 0])
     );
-  
-    const teamIds = buildTeamIds(safeTeams);
-    const fixtures = [];
-    let lastPairKey = null;
-    let appearanceStreaks = Object.fromEntries(teamIds.map((id) => [id, 0]));
-  
-    while (true) {
-      const candidates = Object.keys(remaining).filter((key) => remaining[key] > 0);
-      if (!candidates.length) break;
-  
-      const picked = pickBestCandidate(
-        candidates,
-        lastPairKey,
-        appearanceStreaks,
-        remaining,
+
+    pairKeys.forEach((pairKey, index) => {
+      const count = safeNum(remainingCounts[index]);
+      if (count <= 0) return;
+
+      const [teamAId, teamBId] = pairKey.split("__");
+      appearances[teamAId] += count;
+      appearances[teamBId] += count;
+    });
+
+    return appearances;
+  }
+
+  function buildNextAppearanceStreaks(
+    currentStreaks,
+    teamIds,
+    teamAId,
+    teamBId
+  ) {
+    return Object.fromEntries(
+      teamIds.map((teamId) => [
+        teamId,
+        teamId === teamAId || teamId === teamBId
+          ? safeNum(currentStreaks[teamId]) + 1
+          : 0,
+      ])
+    );
+  }
+
+  function remainingStateIsFeasible({
+    pairKeys,
+    remainingCounts,
+    teamIds,
+    currentStreaks,
+    lastPairIndex,
+    maxTeamStreak,
+    avoidImmediatePairRepeat,
+  }) {
+    const totalRemaining = remainingCounts.reduce(
+      (sum, value) => sum + safeNum(value),
+      0
+    );
+
+    const appearances = buildRemainingAppearanceCounts(
+      pairKeys,
+      remainingCounts,
+      teamIds
+    );
+
+    /*
+     * Every omission breaks that team's appearance streak. Check
+     * that enough omissions remain to distribute all appearances
+     * without exceeding the active streak limit.
+     */
+    for (const teamId of teamIds) {
+      const remainingAppearances = safeNum(
+        appearances[teamId]
+      );
+
+      const remainingOmissions =
+        totalRemaining - remainingAppearances;
+
+      const openingCapacity = Math.max(
+        0,
+        maxTeamStreak -
+          safeNum(currentStreaks[teamId])
+      );
+
+      const totalCapacity =
+        openingCapacity +
+        remainingOmissions * maxTeamStreak;
+
+      if (remainingAppearances > totalCapacity) {
+        return false;
+      }
+    }
+
+    if (avoidImmediatePairRepeat) {
+      for (
+        let pairIndex = 0;
+        pairIndex < remainingCounts.length;
+        pairIndex += 1
+      ) {
+        const pairRemaining = safeNum(
+          remainingCounts[pairIndex]
+        );
+
+        const otherRemaining =
+          totalRemaining - pairRemaining;
+
+        const openingSlot =
+          lastPairIndex === pairIndex ? 0 : 1;
+
+        if (
+          pairRemaining >
+          otherRemaining + openingSlot
+        ) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  function findGloballyBalancedPairOrder({
+    pairKeys,
+    pairCounts,
+    teamIds,
+    maxTeamStreak,
+    avoidImmediatePairRepeat,
+    catchUpTeamId = null,
+    useCatchUpCadence = false,
+    matchDayWindowSize = 12,
+  }) {
+    const initialCounts = pairKeys.map(
+      (key) => safeNum(pairCounts[key])
+    );
+
+    const initialStreaks = Object.fromEntries(
+      teamIds.map((teamId) => [teamId, 0])
+    );
+
+    const failedStates = new Set();
+
+    const totalFixtureCount = initialCounts.reduce(
+      (sum, value) => sum + safeNum(value),
+      0
+    );
+
+    const search = (
+      remainingCounts,
+      lastPairIndex,
+      currentStreaks,
+      catchUpCadenceActive = null
+    ) => {
+      const totalRemaining = remainingCounts.reduce(
+        (sum, value) => sum + safeNum(value),
+        0
+      );
+
+      if (totalRemaining === 0) return [];
+
+      const scheduledCount =
+        totalFixtureCount - totalRemaining;
+
+      const positionInWindow =
+        scheduledCount % matchDayWindowSize;
+
+      const fixturesLeftInWindow =
+        matchDayWindowSize - positionInWindow;
+
+      const completeWindowAvailable =
+        totalRemaining >= fixturesLeftInWindow &&
+        fixturesLeftInWindow === matchDayWindowSize;
+
+      const remainingWorkloads =
+        buildRemainingAppearanceCounts(
+          pairKeys,
+          remainingCounts,
+          teamIds
+        );
+
+      const otherLargestWorkload = Math.max(
+        0,
+        ...teamIds
+          .filter((teamId) => teamId !== catchUpTeamId)
+          .map((teamId) =>
+            safeNum(remainingWorkloads[teamId])
+          )
+      );
+
+      const currentCatchUpLead =
+        catchUpTeamId
+          ? safeNum(
+              remainingWorkloads[catchUpTeamId]
+            ) - otherLargestWorkload
+          : 0;
+
+      /*
+       * Apply the exceptional cadence to the first upcoming
+       * 12-fixture match-day window only. Later windows return to
+       * the established balancing search so an impossible rigid
+       * pattern later cannot discard the successful first window.
+       */
+      const resolvedCatchUpCadenceActive =
+        catchUpCadenceActive == null
+          ? Boolean(
+              useCatchUpCadence &&
+              catchUpTeamId &&
+              scheduledCount === 0 &&
+              completeWindowAvailable &&
+              currentCatchUpLead >= 1
+            )
+          : catchUpCadenceActive;
+
+      const stateKey = [
+        remainingCounts.join(","),
+        lastPairIndex,
+        teamIds
+          .map((teamId) =>
+            safeNum(currentStreaks[teamId])
+          )
+          .join(","),
+        resolvedCatchUpCadenceActive ? 1 : 0,
+      ].join("|");
+
+      if (failedStates.has(stateKey)) return null;
+
+      const candidates = pairKeys
+        .map((pairKey, pairIndex) => {
+          const count = safeNum(
+            remainingCounts[pairIndex]
+          );
+
+          if (count <= 0) return null;
+
+          if (
+            avoidImmediatePairRepeat &&
+            pairIndex === lastPairIndex
+          ) {
+            return null;
+          }
+
+          const [teamAId, teamBId] =
+            pairKey.split("__");
+
+          const nextStreaks =
+            buildNextAppearanceStreaks(
+              currentStreaks,
+              teamIds,
+              teamAId,
+              teamBId
+            );
+
+          const nextMaxStreak = Math.max(
+            ...teamIds.map((teamId) =>
+              safeNum(nextStreaks[teamId])
+            )
+          );
+
+          if (nextMaxStreak > maxTeamStreak) {
+            return null;
+          }
+
+          const playsCatchUpTeam =
+            Boolean(catchUpTeamId) &&
+            (
+              teamAId === catchUpTeamId ||
+              teamBId === catchUpTeamId
+            );
+
+          /*
+           * Material-backlog cadence for each complete
+           * 12-fixture match-day window:
+           *
+           *   play, play, play, rest,
+           *   play, play, rest,
+           *   play, play, play, rest,
+           *   then normal rotation.
+           *
+           * This gives the catch-up team two controlled
+           * three-match runs separated by recovery.
+           */
+          const catchUpCadence = [
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            false,
+            null,
+          ];
+
+          const requiredCatchUpAppearance =
+            resolvedCatchUpCadenceActive
+              ? catchUpCadence[positionInWindow]
+              : null;
+
+          if (
+            requiredCatchUpAppearance === true &&
+            !playsCatchUpTeam
+          ) {
+            return null;
+          }
+
+          if (
+            requiredCatchUpAppearance === false &&
+            playsCatchUpTeam
+          ) {
+            return null;
+          }
+
+          const closesMatchDayWindow =
+            fixturesLeftInWindow === 1;
+
+          const nextCounts = remainingCounts.slice();
+          nextCounts[pairIndex] -= 1;
+
+          if (
+            !remainingStateIsFeasible({
+              pairKeys,
+              remainingCounts: nextCounts,
+              teamIds,
+              currentStreaks: nextStreaks,
+              lastPairIndex: pairIndex,
+              maxTeamStreak,
+              avoidImmediatePairRepeat,
+            })
+          ) {
+            return null;
+          }
+
+          const remainingAppearances =
+            buildRemainingAppearanceCounts(
+              pairKeys,
+              nextCounts,
+              teamIds
+            );
+
+          const smallestTeamSlack = Math.min(
+            ...[teamAId, teamBId].map(
+              (teamId) =>
+                safeNum(
+                  remainingAppearances[teamId]
+                )
+            )
+          );
+
+          return {
+            pairKey,
+            pairIndex,
+            count,
+            nextCounts,
+            nextStreaks,
+            nextMaxStreak,
+            smallestTeamSlack,
+            closesMatchDayWindow,
+          };
+        })
+        .filter(Boolean)
+        .sort((left, right) => {
+          /*
+           * Deal with the most constrained pairing early enough to
+           * prevent it collecting at the end, while preferring the
+           * choice that creates the lower immediate streak.
+           */
+          if (
+            left.nextMaxStreak !==
+            right.nextMaxStreak
+          ) {
+            return (
+              left.nextMaxStreak -
+              right.nextMaxStreak
+            );
+          }
+
+          if (right.count !== left.count) {
+            return right.count - left.count;
+          }
+
+          if (
+            right.smallestTeamSlack !==
+            left.smallestTeamSlack
+          ) {
+            return (
+              right.smallestTeamSlack -
+              left.smallestTeamSlack
+            );
+          }
+
+          return left.pairKey.localeCompare(
+            right.pairKey
+          );
+        });
+
+      for (const candidate of candidates) {
+        /*
+         * A 12-fixture boundary approximates the end of a match
+         * day. Players recover before the next window, so appearance
+         * fatigue and the planned burst counter restart.
+         */
+        const nextWindowStreaks =
+          candidate.closesMatchDayWindow
+            ? Object.fromEntries(
+                teamIds.map((teamId) => [
+                  teamId,
+                  0,
+                ])
+              )
+            : candidate.nextStreaks;
+
+        const suffix = search(
+          candidate.nextCounts,
+          candidate.pairIndex,
+          nextWindowStreaks,
+          candidate.closesMatchDayWindow
+            ? null
+            : resolvedCatchUpCadenceActive
+        );
+
+        if (suffix) {
+          return [
+            candidate.pairKey,
+            ...suffix,
+          ];
+        }
+      }
+
+      failedStates.add(stateKey);
+      return null;
+    };
+
+    if (
+      !remainingStateIsFeasible({
+        pairKeys,
+        remainingCounts: initialCounts,
+        teamIds,
+        currentStreaks: initialStreaks,
+        lastPairIndex: -1,
+        maxTeamStreak,
+        avoidImmediatePairRepeat,
+      })
+    ) {
+      return null;
+    }
+
+    return search(
+      initialCounts,
+      -1,
+      initialStreaks,
+      null
+    );
+  }
+
+  function buildBalancedPairOrder(
+    pairCounts = {},
+    teamIds = []
+  ) {
+    const pairKeys = Object.keys(pairCounts)
+      .filter((key) => safeNum(pairCounts[key]) > 0)
+      .sort();
+
+    const totalFixtures = pairKeys.reduce(
+      (sum, key) => sum + safeNum(pairCounts[key]),
+      0
+    );
+
+    const remainingAppearances =
+      buildRemainingAppearanceCounts(
+        pairKeys,
+        pairKeys.map(
+          (key) => safeNum(pairCounts[key])
+        ),
         teamIds
       );
-  
-      if (!picked) break;
-  
-      const teamA = teamById[picked.a];
-      const teamB = teamById[picked.b];
-      if (!teamA || !teamB) break;
-  
-      fixtures.push(buildFixtureObject(fixtures.length, teamA, teamB));
-      remaining[picked.key] -= 1;
-      lastPairKey = picked.key;
-      appearanceStreaks = picked.nextStreaks;
+
+    const sortedWorkloads = teamIds
+      .map((teamId) => ({
+        teamId,
+        appearances: safeNum(
+          remainingAppearances[teamId]
+        ),
+      }))
+      .sort(
+        (left, right) =>
+          right.appearances - left.appearances
+      );
+
+    /*
+     * Match-day-window catch-up handling is exceptional.
+     *
+     * Preserve the established general rotation when every team
+     * has the same remaining workload. When one team has even one
+     * additional appearance to complete, give it the controlled
+     * catch-up cadence in the first upcoming 12-fixture window.
+     */
+    const catchUpAppearanceLead =
+      sortedWorkloads.length > 1
+        ? sortedWorkloads[0].appearances -
+          sortedWorkloads[1].appearances
+        : 0;
+
+    const minimumCatchUpLead = 1;
+
+    const catchUpTeamId =
+      catchUpAppearanceLead >= minimumCatchUpLead
+        ? sortedWorkloads[0].teamId
+        : null;
+
+    /*
+     * Give a backlogged team the controlled catch-up cadence in
+     * the first upcoming 12-fixture window. The three-match ceiling
+     * remains absolute throughout the generated schedule.
+     */
+    if (
+      catchUpTeamId &&
+      totalFixtures >= 12
+    ) {
+      const windowAwareOrder =
+        findGloballyBalancedPairOrder({
+          pairKeys,
+          pairCounts,
+          teamIds,
+          maxTeamStreak: 3,
+          avoidImmediatePairRepeat: true,
+          catchUpTeamId,
+          useCatchUpCadence: true,
+          matchDayWindowSize: 12,
+        });
+
+      if (windowAwareOrder) {
+        return windowAwareOrder;
+      }
     }
-  
-    return fixtures.map((fixture, idx) => ({
-      ...fixture,
-      order: idx + 1,
-    }));
+
+    /*
+     * Preserve strict rotation where the workload does not require
+     * a planned catch-up burst, or if the exact remaining totals
+     * make the window preference mathematically impossible.
+     */
+    for (
+      let maxTeamStreak = 2;
+      maxTeamStreak <= 3;
+      maxTeamStreak += 1
+    ) {
+      const strictOrder =
+        findGloballyBalancedPairOrder({
+          pairKeys,
+          pairCounts,
+          teamIds,
+          maxTeamStreak,
+          avoidImmediatePairRepeat: true,
+          catchUpTeamId,
+          useCatchUpCadence: false,
+          matchDayWindowSize: 12,
+        });
+
+      if (strictOrder) return strictOrder;
+    }
+
+    /*
+     * This is only reached when pair repetition is mathematically
+     * unavoidable.
+     */
+    for (
+      let maxTeamStreak = 2;
+      maxTeamStreak <= 3;
+      maxTeamStreak += 1
+    ) {
+      const relaxedOrder =
+        findGloballyBalancedPairOrder({
+          pairKeys,
+          pairCounts,
+          teamIds,
+          maxTeamStreak,
+          avoidImmediatePairRepeat: false,
+          catchUpTeamId,
+          useCatchUpCadence: false,
+          matchDayWindowSize: 12,
+        });
+
+      if (relaxedOrder) return relaxedOrder;
+    }
+
+    return [];
   }
-  
+
+  export function buildScheduledFixtures(
+    teams = [],
+    pairCounts = {}
+  ) {
+    const safeTeams = Array.isArray(teams)
+      ? teams.slice(0, 3)
+      : [];
+
+    const teamById = Object.fromEntries(
+      safeTeams.map((team) => [team.id, team])
+    );
+
+    const teamIds = buildTeamIds(safeTeams);
+
+    const pairOrder = buildBalancedPairOrder(
+      pairCounts,
+      teamIds
+    );
+
+    return pairOrder
+      .map((pairKey, index) => {
+        const [teamAId, teamBId] =
+          pairKey.split("__");
+
+        const teamA = teamById[teamAId];
+        const teamB = teamById[teamBId];
+
+        if (!teamA || !teamB) return null;
+
+        return buildFixtureObject(
+          index,
+          teamA,
+          teamB
+        );
+      })
+      .filter(Boolean)
+      .map((fixture, index) => ({
+        ...fixture,
+        order: index + 1,
+      }));
+  }
+
   export function computeScheduledPlan({ teams = [], results = [], target }) {
     const solved = solveThreeTeamTarget(teams, results, target);
     if (!solved.ok) return solved;
   
-    const fixtures = buildScheduledFixtures(teams, solved.pairCounts);
+    const fixtures = buildScheduledFixtures(
+      teams,
+      solved.pairCounts
+    );
+
+    const expectedFixtureCount = Object.values(
+      solved.pairCounts || {}
+    ).reduce(
+      (sum, value) => sum + safeNum(value),
+      0
+    );
+
+    if (fixtures.length !== expectedFixtureCount) {
+      return {
+        ...solved,
+        ok: false,
+        reason:
+          "A safe fixture order could not be generated without making one team play four consecutive matches.",
+        fixtures: [],
+        totalRemainingMatches: expectedFixtureCount,
+      };
+    }
   
     return {
       ok: true,
