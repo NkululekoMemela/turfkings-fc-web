@@ -221,6 +221,9 @@ function safeNum(value) {
     teamIds,
     maxTeamStreak,
     avoidImmediatePairRepeat,
+    catchUpTeamId = null,
+    useCatchUpCadence = false,
+    matchDayWindowSize = 12,
   }) {
     const initialCounts = pairKeys.map(
       (key) => safeNum(pairCounts[key])
@@ -232,10 +235,16 @@ function safeNum(value) {
 
     const failedStates = new Set();
 
+    const totalFixtureCount = initialCounts.reduce(
+      (sum, value) => sum + safeNum(value),
+      0
+    );
+
     const search = (
       remainingCounts,
       lastPairIndex,
-      currentStreaks
+      currentStreaks,
+      catchUpCadenceActive = null
     ) => {
       const totalRemaining = remainingCounts.reduce(
         (sum, value) => sum + safeNum(value),
@@ -243,6 +252,59 @@ function safeNum(value) {
       );
 
       if (totalRemaining === 0) return [];
+
+      const scheduledCount =
+        totalFixtureCount - totalRemaining;
+
+      const positionInWindow =
+        scheduledCount % matchDayWindowSize;
+
+      const fixturesLeftInWindow =
+        matchDayWindowSize - positionInWindow;
+
+      const completeWindowAvailable =
+        totalRemaining >= fixturesLeftInWindow &&
+        fixturesLeftInWindow === matchDayWindowSize;
+
+      const remainingWorkloads =
+        buildRemainingAppearanceCounts(
+          pairKeys,
+          remainingCounts,
+          teamIds
+        );
+
+      const otherLargestWorkload = Math.max(
+        0,
+        ...teamIds
+          .filter((teamId) => teamId !== catchUpTeamId)
+          .map((teamId) =>
+            safeNum(remainingWorkloads[teamId])
+          )
+      );
+
+      const currentCatchUpLead =
+        catchUpTeamId
+          ? safeNum(
+              remainingWorkloads[catchUpTeamId]
+            ) - otherLargestWorkload
+          : 0;
+
+      /*
+       * Apply the exceptional cadence to the first upcoming
+       * 12-fixture match-day window only. Later windows return to
+       * the established balancing search so an impossible rigid
+       * pattern later cannot discard the successful first window.
+       */
+      const resolvedCatchUpCadenceActive =
+        catchUpCadenceActive == null
+          ? Boolean(
+              useCatchUpCadence &&
+              catchUpTeamId &&
+              scheduledCount === 0 &&
+              completeWindowAvailable &&
+              currentCatchUpLead >= 1
+            )
+          : catchUpCadenceActive;
 
       const stateKey = [
         remainingCounts.join(","),
@@ -252,6 +314,7 @@ function safeNum(value) {
             safeNum(currentStreaks[teamId])
           )
           .join(","),
+        resolvedCatchUpCadenceActive ? 1 : 0,
       ].join("|");
 
       if (failedStates.has(stateKey)) return null;
@@ -291,6 +354,62 @@ function safeNum(value) {
           if (nextMaxStreak > maxTeamStreak) {
             return null;
           }
+
+          const playsCatchUpTeam =
+            Boolean(catchUpTeamId) &&
+            (
+              teamAId === catchUpTeamId ||
+              teamBId === catchUpTeamId
+            );
+
+          /*
+           * Material-backlog cadence for each complete
+           * 12-fixture match-day window:
+           *
+           *   play, play, play, rest,
+           *   play, play, rest,
+           *   play, play, play, rest,
+           *   then normal rotation.
+           *
+           * This gives the catch-up team two controlled
+           * three-match runs separated by recovery.
+           */
+          const catchUpCadence = [
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            false,
+            null,
+          ];
+
+          const requiredCatchUpAppearance =
+            resolvedCatchUpCadenceActive
+              ? catchUpCadence[positionInWindow]
+              : null;
+
+          if (
+            requiredCatchUpAppearance === true &&
+            !playsCatchUpTeam
+          ) {
+            return null;
+          }
+
+          if (
+            requiredCatchUpAppearance === false &&
+            playsCatchUpTeam
+          ) {
+            return null;
+          }
+
+          const closesMatchDayWindow =
+            fixturesLeftInWindow === 1;
 
           const nextCounts = remainingCounts.slice();
           nextCounts[pairIndex] -= 1;
@@ -333,6 +452,7 @@ function safeNum(value) {
             nextStreaks,
             nextMaxStreak,
             smallestTeamSlack,
+            closesMatchDayWindow,
           };
         })
         .filter(Boolean)
@@ -372,10 +492,28 @@ function safeNum(value) {
         });
 
       for (const candidate of candidates) {
+        /*
+         * A 12-fixture boundary approximates the end of a match
+         * day. Players recover before the next window, so appearance
+         * fatigue and the planned burst counter restart.
+         */
+        const nextWindowStreaks =
+          candidate.closesMatchDayWindow
+            ? Object.fromEntries(
+                teamIds.map((teamId) => [
+                  teamId,
+                  0,
+                ])
+              )
+            : candidate.nextStreaks;
+
         const suffix = search(
           candidate.nextCounts,
           candidate.pairIndex,
-          candidate.nextStreaks
+          nextWindowStreaks,
+          candidate.closesMatchDayWindow
+            ? null
+            : resolvedCatchUpCadenceActive
         );
 
         if (suffix) {
@@ -404,7 +542,12 @@ function safeNum(value) {
       return null;
     }
 
-    return search(initialCounts, -1, initialStreaks);
+    return search(
+      initialCounts,
+      -1,
+      initialStreaks,
+      null
+    );
   }
 
   function buildBalancedPairOrder(
@@ -420,14 +563,82 @@ function safeNum(value) {
       0
     );
 
+    const remainingAppearances =
+      buildRemainingAppearanceCounts(
+        pairKeys,
+        pairKeys.map(
+          (key) => safeNum(pairCounts[key])
+        ),
+        teamIds
+      );
+
+    const sortedWorkloads = teamIds
+      .map((teamId) => ({
+        teamId,
+        appearances: safeNum(
+          remainingAppearances[teamId]
+        ),
+      }))
+      .sort(
+        (left, right) =>
+          right.appearances - left.appearances
+      );
+
     /*
-     * Preserve strict rotation where mathematically possible.
-     * Relax only the team-streak ceiling required to complete the
-     * equal-target season.
+     * Match-day-window catch-up handling is exceptional.
+     *
+     * Preserve the established general rotation when every team
+     * has the same remaining workload. When one team has even one
+     * additional appearance to complete, give it the controlled
+     * catch-up cadence in the first upcoming 12-fixture window.
+     */
+    const catchUpAppearanceLead =
+      sortedWorkloads.length > 1
+        ? sortedWorkloads[0].appearances -
+          sortedWorkloads[1].appearances
+        : 0;
+
+    const minimumCatchUpLead = 1;
+
+    const catchUpTeamId =
+      catchUpAppearanceLead >= minimumCatchUpLead
+        ? sortedWorkloads[0].teamId
+        : null;
+
+    /*
+     * Give a backlogged team the controlled catch-up cadence in
+     * the first upcoming 12-fixture window. The three-match ceiling
+     * remains absolute throughout the generated schedule.
+     */
+    if (
+      catchUpTeamId &&
+      totalFixtures >= 12
+    ) {
+      const windowAwareOrder =
+        findGloballyBalancedPairOrder({
+          pairKeys,
+          pairCounts,
+          teamIds,
+          maxTeamStreak: 3,
+          avoidImmediatePairRepeat: true,
+          catchUpTeamId,
+          useCatchUpCadence: true,
+          matchDayWindowSize: 12,
+        });
+
+      if (windowAwareOrder) {
+        return windowAwareOrder;
+      }
+    }
+
+    /*
+     * Preserve strict rotation where the workload does not require
+     * a planned catch-up burst, or if the exact remaining totals
+     * make the window preference mathematically impossible.
      */
     for (
       let maxTeamStreak = 2;
-      maxTeamStreak <= Math.max(2, totalFixtures);
+      maxTeamStreak <= 3;
       maxTeamStreak += 1
     ) {
       const strictOrder =
@@ -437,6 +648,9 @@ function safeNum(value) {
           teamIds,
           maxTeamStreak,
           avoidImmediatePairRepeat: true,
+          catchUpTeamId,
+          useCatchUpCadence: false,
+          matchDayWindowSize: 12,
         });
 
       if (strictOrder) return strictOrder;
@@ -448,7 +662,7 @@ function safeNum(value) {
      */
     for (
       let maxTeamStreak = 2;
-      maxTeamStreak <= Math.max(2, totalFixtures);
+      maxTeamStreak <= 3;
       maxTeamStreak += 1
     ) {
       const relaxedOrder =
@@ -458,6 +672,9 @@ function safeNum(value) {
           teamIds,
           maxTeamStreak,
           avoidImmediatePairRepeat: false,
+          catchUpTeamId,
+          useCatchUpCadence: false,
+          matchDayWindowSize: 12,
         });
 
       if (relaxedOrder) return relaxedOrder;
@@ -512,7 +729,28 @@ function safeNum(value) {
     const solved = solveThreeTeamTarget(teams, results, target);
     if (!solved.ok) return solved;
   
-    const fixtures = buildScheduledFixtures(teams, solved.pairCounts);
+    const fixtures = buildScheduledFixtures(
+      teams,
+      solved.pairCounts
+    );
+
+    const expectedFixtureCount = Object.values(
+      solved.pairCounts || {}
+    ).reduce(
+      (sum, value) => sum + safeNum(value),
+      0
+    );
+
+    if (fixtures.length !== expectedFixtureCount) {
+      return {
+        ...solved,
+        ok: false,
+        reason:
+          "A safe fixture order could not be generated without making one team play four consecutive matches.",
+        fixtures: [],
+        totalRemainingMatches: expectedFixtureCount,
+      };
+    }
   
     return {
       ok: true,
