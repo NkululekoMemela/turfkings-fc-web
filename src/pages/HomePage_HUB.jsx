@@ -397,6 +397,19 @@ const HUB_INFO_CONTENT = {
       "The receiving captain can review, accept or decline the challenge.",
     ],
   },
+  about: {
+    title: "About 5 Asides Near Me",
+    body: [
+      "September 2026 · Matchday Intelligence Edition",
+      "This release makes match-day planning, player development and club presentation smarter and clearer.",
+      "• Smarter lineup placement using player mentality and shooting profiles.",
+      "• Fairer goalkeeper, substitute, and positional rotations.",
+      "• Dedicated Mentality & Shooting player profiles.",
+      "• Improved club-badge visibility across cards, formations, tables, and team sheets.",
+      "• Unlimited isolated 15-minute Practice sessions.",
+      "• Improved News archiving and the renamed Video Highlights experience.",
+    ],
+  },
   terms: {
     title: "Terms & Privacy",
     body: [
@@ -1650,7 +1663,11 @@ export default function HomePage_HUB({
 
           <section className="hub-premium-footer-card">
             <h3>Quick links <span>🔗</span></h3>
-            <button type="button" className="hub-premium-footer-row">
+            <button
+              type="button"
+              className="hub-premium-footer-row"
+              onClick={() => openHubInfoModal("about")}
+            >
               <span className="hub-premium-footer-icon">👥</span>
               <span><strong>About 5 Asides Near Me</strong></span>
               <em>›</em>
@@ -1687,7 +1704,12 @@ export default function HomePage_HUB({
 
           <details className="hub-mobile-help-group">
             <summary>🔗 Quick links</summary>
-            <button type="button">About 5 Asides Near Me</button>
+            <button
+              type="button"
+              onClick={() => openHubInfoModal("about")}
+            >
+              About 5 Asides Near Me
+            </button>
             <button type="button" onClick={() => openHubInfoModal("terms")}>Terms & Privacy</button>
             <button type="button" onClick={() => openHubContactModal("feedback")}>Send feedback</button>
           </details>
