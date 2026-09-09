@@ -1999,22 +1999,6 @@ export function LandingPage({
           </div>
         )}
 
-        <h2>
-          {isThreeTeamLeague
-            ? `Upcoming League ${activeGameFormatLabel} Match #${currentMatchNo}`
-            : `Upcoming Friendly ${activeGameFormatLabel} Match`}
-        </h2>
-
-
-        {isFriendlyMatch && (
-          <p
-            className="muted small"
-            style={{ marginTop: "-0.25rem", marginBottom: "0.9rem" }}
-          >
-            Friendly {activeGameFormatLabel} is active. Squads and live match flow should follow the {activeGameFormatLabel} format.
-          </p>
-        )}
-
         {isThreeTeamLeague && fixturedMode && (
           <section className="fixture-premium-summary">
             <div className="fixture-premium-summary-icon">
@@ -2044,6 +2028,22 @@ export function LandingPage({
               <span aria-hidden="true">›</span>
             </button>
           </section>
+        )}
+
+        <h2>
+          {isThreeTeamLeague
+            ? `Upcoming League ${activeGameFormatLabel} Match #${currentMatchNo}`
+            : `Upcoming Friendly ${activeGameFormatLabel} Match`}
+        </h2>
+
+
+        {isFriendlyMatch && (
+          <p
+            className="muted small"
+            style={{ marginTop: "-0.25rem", marginBottom: "0.9rem" }}
+          >
+            Friendly {activeGameFormatLabel} is active. Squads and live match flow should follow the {activeGameFormatLabel} format.
+          </p>
         )}
 
         {isThreeTeamLeague && (
