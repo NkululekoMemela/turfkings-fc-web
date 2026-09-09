@@ -1298,15 +1298,36 @@ function PlayerChoiceGrid({
   );
 
 
+  /*
+   * Match the Friendly goal selector: expose the complete
+   * team palette to the player-card gradient, not only the
+   * border colour.
+   */
   const teamAccent =
-    String(
-      team?.teamColorHex ||
-      team?.colorHex ||
-      ""
-    ).trim() || "#38bdf8";
+    team ? getTeamAccent(team) : null;
 
   return (
-    <div className="field-row">
+    <div
+      className={`field-row ${
+        teamAccent
+          ? "fanm-team-player-choice"
+          : ""
+      }`}
+      style={
+        teamAccent
+          ? {
+              "--player-team-color":
+                teamAccent.dot,
+              "--player-team-soft":
+                teamAccent.soft,
+              "--player-team-border":
+                teamAccent.border,
+              "--player-team-text":
+                teamAccent.text,
+            }
+          : undefined
+      }
+    >
       <label>{title}</label>
       {players.length === 0 ? (
         <p className="muted small">No players available.</p>
@@ -3821,7 +3842,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [localConfirmedSnapshots, setLocalConfirmedSnapshots] = useState(null);
   const [localConfirmedMatchKey, setLocalConfirmedMatchKey] = useState("");
   const [lineupErrorModal, setLineupErrorModal] = useState(null);
-  const [pendingBenchScorer, setPendingBenchScorer] = useState(null);
+  const [pendingBenchParticipant, setPendingBenchParticipant] = useState(null);
 
   // Match Discipline and Injured Players are independent tools.
   const [showCardRecorder, setShowCardRecorder] = useState(false);
@@ -4563,15 +4584,57 @@ export function ThreeTeamLeagueLiveMatchPage({
        * unexpectedly throw the referee into Edit Lineups.
        * Explain the inconsistency first and offer a choice.
        */
-      setPendingBenchScorer({
+      setPendingBenchParticipant({
         teamId,
         name,
+        role: "scorer",
       });
 
       return;
     }
 
     setGoalStep("assist");
+  };
+
+  const handleGoalAssistSelection = (
+    name,
+    selectedEntry = null
+  ) => {
+    if (!name || assistName === name) {
+      setAssistName("");
+      return;
+    }
+
+    const choice =
+      selectedEntry ||
+      getGoalRecorderChoice(
+        scoringTeamId,
+        name
+      );
+
+    const isSub =
+      Boolean(
+        typeof choice === "object" &&
+        choice?.isSub
+      ) ||
+      String(
+        typeof choice === "object"
+          ? choice?.roleTag || ""
+          : ""
+      )
+        .trim()
+        .toUpperCase() === "SUB";
+
+    if (isSub) {
+      setPendingBenchParticipant({
+        teamId: scoringTeamId,
+        name,
+        role: "assist",
+      });
+      return;
+    }
+
+    setAssistName(name);
   };
 
   const basicSummary = {
@@ -4669,32 +4732,52 @@ export function ThreeTeamLeagueLiveMatchPage({
     onConfirmPreMatchLineups?.(merged);
     setShowVerifyModal(false);
 
-    if (pendingBenchScorer?.name) {
+    if (pendingBenchParticipant?.name) {
       const correctedSnapshot =
-        pendingBenchScorer.teamId === teamAId
+        pendingBenchParticipant.teamId === teamAId
           ? snapshotA
           : snapshotB;
 
-      const scorerKey =
-        playerKeyFor(pendingBenchScorer.name);
+      const participantKey =
+        playerKeyFor(
+          pendingBenchParticipant.name
+        );
 
       const isNowOnPitch = Object.values(
         correctedSnapshot?.positions || {}
       ).some(
         (playerName) =>
-          playerKeyFor(playerName) === scorerKey
+          playerKeyFor(playerName) ===
+          participantKey
       );
 
+      const participantRole =
+        pendingBenchParticipant.role === "assist"
+          ? "assist"
+          : "scorer";
+
       if (isNowOnPitch) {
+        if (participantRole === "assist") {
+          setAssistName(
+            pendingBenchParticipant.name
+          );
+        }
+
         setShowGoalRecorder(true);
         setGoalStep("assist");
-        setPendingBenchScorer(null);
+        setPendingBenchParticipant(null);
       } else {
         setLineupErrorModal({
           title: "Substitution required",
           message:
-            `${displayCompactPlayerName(pendingBenchScorer.name)} ` +
-            "is still listed as a substitute. Put the scorer on the pitch before recording the goal.",
+            `${displayCompactPlayerName(
+              pendingBenchParticipant.name
+            )} is still listed as a substitute. ` +
+            `Put the ${
+              participantRole === "assist"
+                ? "assister"
+                : "scorer"
+            } on the pitch before recording the goal.`,
         });
       }
     }
@@ -7702,73 +7785,47 @@ export function ThreeTeamLeagueLiveMatchPage({
         </div>
       )}
 
-      {showGoalRecorder && pendingBenchScorer?.name && (
+      {showGoalRecorder && pendingBenchParticipant?.name && (
         <div
           className="modal-backdrop"
           style={{ zIndex: 30000 }}
         >
           <div
-            className="modal"
+            className="modal fanm-bench-participant-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="Scorer is currently a substitute"
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              width: "min(92vw, 400px)",
-              border: "1px solid rgba(59, 130, 246, 0.58)",
-              boxShadow: "0 24px 80px rgba(0,0,0,0.58)",
-            }}
+            aria-label={`${
+              pendingBenchParticipant.role === "assist"
+                ? "Assister"
+                : "Scorer"
+            } is currently a substitute`}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 10,
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 38,
-                  height: 38,
-                  flex: "0 0 38px",
-                  display: "grid",
-                  placeItems: "center",
-                  borderRadius: 12,
-                  background:
-                    "linear-gradient(135deg, rgba(37,99,235,.95), rgba(29,78,216,.68))",
-                  fontSize: 19,
-                }}
-              >
-                ⚽
-              </span>
+            <div className="fanm-bench-participant-heading">
+              <span aria-hidden="true">⚽</span>
 
-              <h3 style={{ margin: 0 }}>
-                Scorer is currently a substitute
+              <h3>
+                {pendingBenchParticipant.role === "assist"
+                  ? "Assister"
+                  : "Scorer"}{" "}
+                is currently a substitute
               </h3>
             </div>
 
-            <p
-              className="muted"
-              style={{
-                marginTop: 0,
-                lineHeight: 1.5,
-              }}
-            >
-              {displayCompactPlayerName(pendingBenchScorer.name)} is
-              currently listed on the bench. Put this player on the pitch
-              before recording the goal.
+            <p className="muted">
+              {displayCompactPlayerName(
+                pendingBenchParticipant.name
+              )}{" "}
+              is currently listed on the bench. Put this
+              player on the pitch before recording the{" "}
+              {pendingBenchParticipant.role === "assist"
+                ? "assist"
+                : "goal"}.
             </p>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                marginTop: 14,
-              }}
-            >
+            <div className="fanm-bench-participant-actions">
               <button
                 type="button"
                 className="primary-btn"
@@ -7784,10 +7841,19 @@ export function ThreeTeamLeagueLiveMatchPage({
                 type="button"
                 className="secondary-btn"
                 onClick={() => {
-                  setPendingBenchScorer(null);
-                  setScorerName("");
-                  setAssistName("");
-                  setGoalStep("scorer");
+                  const participantRole =
+                    pendingBenchParticipant.role;
+
+                  setPendingBenchParticipant(null);
+
+                  if (participantRole === "assist") {
+                    setAssistName("");
+                    setGoalStep("assist");
+                  } else {
+                    setScorerName("");
+                    setAssistName("");
+                    setGoalStep("scorer");
+                  }
                 }}
               >
                 Cancel
@@ -7860,7 +7926,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                       </div>
                     </div>
 
-                    <div className="live-inline-actions">
+                    <div className="actions-row live-goal-recorder-actions">
                       <button
                         className="secondary-btn"
                         type="button"
@@ -7905,8 +7971,9 @@ export function ThreeTeamLeagueLiveMatchPage({
                               name={displayCompactPlayerName(rawName)}
                               isSelected={assistName === rawName}
                               onClick={() =>
-                                setAssistName(
-                                  assistName === rawName ? "" : rawName
+                                handleGoalAssistSelection(
+                                  rawName,
+                                  entry
                                 )
                               }
                               photoData={photoData}
@@ -7917,7 +7984,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                       </div>
                     </div>
 
-                    <div className="live-inline-actions">
+                    <div className="actions-row live-goal-recorder-actions">
                       <button
                         className="secondary-btn"
                         type="button"
@@ -8026,28 +8093,27 @@ export function ThreeTeamLeagueLiveMatchPage({
           <div className="modal live-verify-modal">
             <h3 className="live-lineups-title">Edit lineup positions</h3>
 
-            {pendingBenchScorer?.name && (
-              <div
-                style={{
-                  marginBottom: 12,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(59, 130, 246, 0.55)",
-                  background:
-                    "linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(15, 23, 42, 0.94))",
-                }}
-              >
-                <strong style={{ display: "block", marginBottom: 3 }}>
-                  ⚽ Put the scorer on the pitch
+            {pendingBenchParticipant?.name && (
+              <div className="fanm-bench-participant-guidance">
+                <strong>
+                  ⚽ Put the{" "}
+                  {pendingBenchParticipant.role === "assist"
+                    ? "assister"
+                    : "scorer"}{" "}
+                  on the pitch
                 </strong>
 
                 <div className="muted small">
-                  {displayCompactPlayerName(pendingBenchScorer.name)} is
-                  currently marked SUB. Complete the substitution, then
-                  confirm the lineups to continue recording the goal.
+                  {displayCompactPlayerName(
+                    pendingBenchParticipant.name
+                  )}{" "}
+                  is currently marked SUB. Complete the
+                  substitution, then confirm the lineups
+                  to continue recording the goal.
                 </div>
               </div>
             )}
+
             <p className="muted live-verify-note live-verify-note-compact">
               {teamA?.label || "Team A"} vs {teamB?.label || "Team B"}
             </p>
