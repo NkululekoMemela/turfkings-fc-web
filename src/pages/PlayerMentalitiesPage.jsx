@@ -107,23 +107,6 @@ function playerKeys(player) {
 function resolveTeamBadge(team = {}) {
   const embedded = team?.teamIdentity || {};
 
-  const directBadge =
-    team?.logoUrl ||
-    team?.badgeUrl ||
-    team?.crestUrl ||
-    team?.image ||
-    team?.fantasyLogo32 ||
-    team?.logo32 ||
-    embedded?.logoUrl ||
-    embedded?.badgeUrl ||
-    embedded?.crestUrl ||
-    embedded?.image ||
-    embedded?.fantasyLogo32 ||
-    embedded?.logo32 ||
-    "";
-
-  if (directBadge) return directBadge;
-
   const identityCandidates = new Set(
     [
       embedded?.id,
@@ -131,6 +114,7 @@ function resolveTeamBadge(team = {}) {
       embedded?.teamId,
       embedded?.slug,
       embedded?.code,
+      embedded?.abbr,
       embedded?.shortName,
       embedded?.name,
       team?.identityId,
@@ -146,27 +130,60 @@ function resolveTeamBadge(team = {}) {
       .filter(Boolean)
   );
 
-  const canonical = (FANM_PRO_CLUBS || []).find((club) =>
-    [
+  const canonical = (FANM_PRO_CLUBS || []).find((club) => {
+    const canonicalKeys = [
       club?.id,
       club?.clubId,
       club?.teamId,
       club?.slug,
       club?.code,
-      club?.abbrev,
+      club?.abbr,
       club?.shortName,
       club?.name,
-    ]
+    ];
+
+    /*
+     * Preserve recognition of previously stored long names after
+     * shortening the canonical Manchester display names.
+     */
+    if (String(club?.abbr || "").toUpperCase() === "MUN") {
+      canonicalKeys.push("Manchester United");
+    }
+
+    if (String(club?.abbr || "").toUpperCase() === "MCI") {
+      canonicalKeys.push("Manchester City");
+    }
+
+    return canonicalKeys
       .map(keyOf)
       .filter(Boolean)
-      .some((candidate) => identityCandidates.has(candidate))
-  );
+      .some((candidate) =>
+        identityCandidates.has(candidate)
+      );
+  });
 
-  return (
+  const canonicalBadge =
     canonical?.fantasyLogo32 ||
     canonical?.logo32 ||
     canonical?.logoUrl ||
     canonical?.image ||
+    "";
+
+  if (canonicalBadge) return canonicalBadge;
+
+  return (
+    team?.logoUrl ||
+    team?.badgeUrl ||
+    team?.crestUrl ||
+    team?.image ||
+    team?.fantasyLogo32 ||
+    team?.logo32 ||
+    embedded?.logoUrl ||
+    embedded?.badgeUrl ||
+    embedded?.crestUrl ||
+    embedded?.image ||
+    embedded?.fantasyLogo32 ||
+    embedded?.logo32 ||
     ""
   );
 }
@@ -213,9 +230,24 @@ export function PlayerMentalitiesPage({
     identity?.actingRole || identity?.role || ""
   ).toLowerCase();
 
+  const canManagePlayerProfiles =
+    activeRole === "admin" || activeRole === "captain";
+
   const canEdit =
-    !isPracticeMode &&
-    (activeRole === "admin" || activeRole === "captain");
+    !isPracticeMode && canManagePlayerProfiles;
+
+  /*
+   * Do not retain an administrative Unseeded filter after changing
+   * to a player or spectator profile.
+   */
+  useEffect(() => {
+    if (
+      !canManagePlayerProfiles &&
+      teamFilter === "unseeded"
+    ) {
+      setTeamFilter("all");
+    }
+  }, [canManagePlayerProfiles, teamFilter]);
 
   useEffect(() => {
     setLoading(true);
@@ -325,20 +357,40 @@ export function PlayerMentalitiesPage({
   }, [players, teamProfiles]);
 
   const scopedPlayers = useMemo(() => {
-    if (teamFilter === "all") return players;
+    /*
+     * Unseeded membership is an administrative view.
+     * Players and spectators only see members assigned to a squad.
+     */
+    const roleVisiblePlayers = canManagePlayerProfiles
+      ? players
+      : players.filter(
+          (player) =>
+            (playerTeamMap.get(player.id) || []).length > 0
+        );
 
-    if (teamFilter === "unseeded") {
+    if (teamFilter === "all") return roleVisiblePlayers;
+
+    if (
+      teamFilter === "unseeded" &&
+      canManagePlayerProfiles
+    ) {
       return players.filter(
-        (player) => (playerTeamMap.get(player.id) || []).length === 0
+        (player) =>
+          (playerTeamMap.get(player.id) || []).length === 0
       );
     }
 
-    return players.filter((player) =>
+    return roleVisiblePlayers.filter((player) =>
       (playerTeamMap.get(player.id) || []).some(
         (team) => team.id === teamFilter
       )
     );
-  }, [players, playerTeamMap, teamFilter]);
+  }, [
+    players,
+    playerTeamMap,
+    teamFilter,
+    canManagePlayerProfiles,
+  ]);
 
   const completedCount = scopedPlayers.filter(
     (player) => player.profileComplete
@@ -761,13 +813,17 @@ export function PlayerMentalitiesPage({
               </button>
             ))}
 
-            <button
-              type="button"
-              className={teamFilter === "unseeded" ? "active" : ""}
-              onClick={() => setTeamFilter("unseeded")}
-            >
-              Unseeded
-            </button>
+            {canManagePlayerProfiles ? (
+              <button
+                type="button"
+                className={
+                  teamFilter === "unseeded" ? "active" : ""
+                }
+                onClick={() => setTeamFilter("unseeded")}
+              >
+                Unseeded
+              </button>
+            ) : null}
           </div>
         </div>
 

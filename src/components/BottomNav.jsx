@@ -26,6 +26,7 @@ export default function BottomNav({
   activeClub = null,
   activeClubName = "Club",
   canAccessPayments = true,
+  canAccessPeerReview = true,
   hidden = false,
   locked = false,
   lockedMessage = "Return to the live match first.",
@@ -69,7 +70,20 @@ export default function BottomNav({
   }, [currentPage]);
 
   const visible = items.filter((item) => {
-    if (item.key === "match-signup" && !canAccessPayments) return false;
+    if (
+      item.key === "match-signup" &&
+      !canAccessPayments
+    ) {
+      return false;
+    }
+
+    if (
+      item.key === "peer-review" &&
+      !canAccessPeerReview
+    ) {
+      return false;
+    }
+
     return true;
   });
 

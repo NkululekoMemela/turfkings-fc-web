@@ -10101,7 +10101,8 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_PEER_REVIEW && (
+      {page === PAGE_PEER_REVIEW &&
+        activeRole !== "spectator" && (
         <PeerReviewPage
           teams={peerReviewTeams}
           playerPhotosByName={effectivePlayerPhotosByName}
@@ -11276,6 +11277,7 @@ export default function App() {
           canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
           canManageSquads={canManageSquads}
           canAccessPayments={canAccessMatchSignup}
+          canAccessPeerReview={activeRole !== "spectator"}
           locked={isRefereeStatsView}
           lockedMessage="You Are A Referee, have you forgotten? Return to the Game Controls"
         />

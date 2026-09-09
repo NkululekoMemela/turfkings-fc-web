@@ -59,6 +59,62 @@ const PLAYERS_COLLECTION = "players";
 const ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
 const LONG_PRESS_MS = 650;
 
+function squadIdentityKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function resolveSquadTeamIdentity(team = {}) {
+  const embedded = team?.teamIdentity || {};
+
+  const candidates = new Set(
+    [
+      embedded?.id,
+      embedded?.clubId,
+      embedded?.teamId,
+      embedded?.slug,
+      embedded?.code,
+      embedded?.abbr,
+      embedded?.shortName,
+      embedded?.name,
+      team?.identityId,
+      team?.clubId,
+      team?.teamId,
+      team?.slug,
+      team?.code,
+      team?.abbrev,
+      team?.label,
+      team?.teamName,
+      team?.name,
+    ]
+      .map(squadIdentityKey)
+      .filter(Boolean)
+  );
+
+  const canonical = (FANM_PRO_CLUBS || []).find(
+    (identity) =>
+      [
+        identity?.id,
+        identity?.clubId,
+        identity?.teamId,
+        identity?.slug,
+        identity?.code,
+        identity?.abbr,
+        identity?.shortName,
+        identity?.name,
+      ]
+        .map(squadIdentityKey)
+        .filter(Boolean)
+        .some((key) => candidates.has(key))
+  );
+
+  return canonical || (
+    Object.keys(embedded).length ? embedded : null
+  );
+}
+
 /* ---------------- Helpers ---------------- */
 
 function toTitleCase(name) {
@@ -2259,16 +2315,29 @@ export function SquadsPage({
   };
 
   const getTeamIdentityVisual = (team) => {
-    const identity = team?.teamIdentity;
+    const identity = resolveSquadTeamIdentity(team);
     if (!identity) return null;
 
-    if (identity.type === "national") {
-      return <span className="squad-team-identity-flag">{identity.flag}</span>;
+    if (identity.type === "national" && identity.flag) {
+      return (
+        <span className="squad-team-identity-flag">
+          {identity.flag}
+        </span>
+      );
     }
+
+    const badgeUrl =
+      identity.fantasyLogo32 ||
+      identity.logo32 ||
+      identity.badgeUrl ||
+      identity.logoUrl ||
+      "";
+
+    if (!badgeUrl) return null;
 
     return (
       <img
-        src={(identity.fantasyLogo32 || identity.logo32)}
+        src={badgeUrl}
         alt=""
         className="squad-team-identity-logo"
         onError={(event) => {
@@ -3526,7 +3595,9 @@ export function SquadsPage({
                           {getTeamIdentityVisual(team)}
                           <span className="teamsheet-card-team-name-stack">
                             <span>{getPreviewTeamName(team)}</span>
-                            {team.teamIdentity ? <small>Fantasy 5s</small> : null}
+                            {resolveSquadTeamIdentity(team) ? (
+                              <small>Fantasy 5s</small>
+                            ) : null}
                           </span>
                         </h4>
                         <p>
@@ -3534,7 +3605,11 @@ export function SquadsPage({
                         </p>
                       </div>
                     </div>
-                    <span className="teamsheet-card-team-abbrev">{team.teamIdentity?.abbr || team.abbrev || ""}</span>
+                    <span className="teamsheet-card-team-abbrev">
+                      {resolveSquadTeamIdentity(team)?.abbr ||
+                        team.abbrev ||
+                        ""}
+                    </span>
                   </div>
 
                   <ol>
