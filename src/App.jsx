@@ -5242,30 +5242,6 @@ export default function App() {
       target: safeTarget,
     });
 
-    console.log("[FIXTURE DEBUG] target =", safeTarget);
-    console.log("[FIXTURE DEBUG] fullResults length =", fullResults.length);
-    console.log(
-      "[FIXTURE DEBUG] team P counts from fullResults =",
-      teams.map((team) => ({
-        team: team.label,
-        played: fullResults.filter(
-          (r) => r.teamAId === team.id || r.teamBId === team.id
-        ).length,
-      }))
-    );
-    console.log("[FIXTURE DEBUG] pairCounts =", plan?.pairCounts || null);
-    console.log("[FIXTURE DEBUG] generated fixtures =", plan?.fixtures || []);
-    console.log(
-      "[FIXTURE DEBUG] generated fixtures length =",
-      plan?.fixtures?.length || 0
-    );
-    console.log(
-      "[FIXTURE DEBUG] generated fixture labels =",
-      (plan?.fixtures || []).map(
-        (f, i) => `${i + 1}. ${f.teamALabel} vs ${f.teamBLabel}`
-      )
-    );
-
     if (!plan.ok) {
       window.alert(plan.reason || "Could not generate fixtured schedule.");
       return;
@@ -5866,18 +5842,6 @@ export default function App() {
             goalsA,
             goalsB,
           });
-
-          console.log("[FIXTURE DEBUG] completed fixture", {
-            matchNo,
-            teamAId,
-            teamBId,
-            goalsA,
-            goalsB,
-          });
-          console.log(
-            "[FIXTURE DEBUG] nextScheduledFixtures after completion =",
-            nextScheduledFixtures
-          );
 
           const nextFixture = getFirstPendingFixture(nextScheduledFixtures);
           nextCurrentMatch =
