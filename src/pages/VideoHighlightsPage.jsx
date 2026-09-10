@@ -691,6 +691,7 @@ function HighlightCard({
   feedTotal = 0,
   isWatched = false,
   onWatched,
+  compactWinner = false,
 }) {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [isExpanded, setIsExpanded] = useState(() => !isWatched);
@@ -861,7 +862,9 @@ function HighlightCard({
         highlight.highlightEra === "throwback" || highlight.isThrowback
           ? "is-throwback"
           : ""
-      } ${isWatched ? "is-watched" : ""}`}
+      } ${isWatched ? "is-watched" : ""} ${
+        compactWinner ? "is-season-winner" : ""
+      }`}
     >
       {isWatched && !isExpanded ? (
         <button
@@ -947,9 +950,11 @@ function HighlightCard({
           {(highlight.highlightEra === "throwback" || highlight.isThrowback) && (
             <span className="tkh-throwback-badge">Throwback ✨</span>
           )}
-          <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
-            {statusBadgeLabel(highlight.status)}
-          </span>
+          {!compactWinner && (
+            <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
+              {statusBadgeLabel(highlight.status)}
+            </span>
+          )}
         </div>
       </div>
 
@@ -1114,11 +1119,11 @@ function HighlightCard({
           )}
         </div>
 
-        {missingBadges.map((badge) => (
+        {!compactWinner && missingBadges.map((badge) => (
           <span key={badge} className="tkh-missing-badge">{badge}</span>
         ))}
 
-        {needsPlayer(highlight) && (
+        {!compactWinner && needsPlayer(highlight) && (
           <button
             type="button"
             className="tkh-btn"
@@ -1136,18 +1141,20 @@ function HighlightCard({
         )}
       </div>
 
-      <div className="tkh-meta-row">
-        <span>{highlight.clubName}</span>
-        <span className="tkh-matchup-label">{matchupLabel}</span>
-        <span>{highlight.teamName}</span>
-        <span>{highlight.durationSeconds ? formatSeconds(highlight.durationSeconds) : "Clip"}</span>
-        <span>
-          {Number(likeCount || 0)} like
-          {Number(likeCount || 0) === 1 ? "" : "s"}
-        </span>
-      </div>
+      {!compactWinner && (
+        <div className="tkh-meta-row">
+          <span>{highlight.clubName}</span>
+          <span className="tkh-matchup-label">{matchupLabel}</span>
+          <span>{highlight.teamName}</span>
+          <span>{highlight.durationSeconds ? formatSeconds(highlight.durationSeconds) : "Clip"}</span>
+          <span>
+            {Number(likeCount || 0)} like
+            {Number(likeCount || 0) === 1 ? "" : "s"}
+          </span>
+        </div>
+      )}
 
-      {highlight.assist && (
+      {!compactWinner && highlight.assist && (
         <div className="tkh-soft-line">
   Assist:{" "}
   <strong>
@@ -1158,7 +1165,7 @@ function HighlightCard({
 </div>
       )}
 
-      {isModerator && (
+      {!compactWinner && isModerator && (
         <div className="tkh-soft-line">
           Uploaded {formatDate(highlight.createdAt)}
           {highlight.createdByName
@@ -1191,9 +1198,11 @@ function HighlightCard({
               aria-pressed={isLiked}
             >
               {isLiked ? (
-                voteLabel
-                  ? `❤️ ${voteLabel} cast`
-                  : "❤️ Liked"
+                compactWinner
+                  ? "❤️ Vote"
+                  : voteLabel
+                    ? `❤️ ${voteLabel} cast`
+                    : "❤️ Liked"
               ) : (
                 <>
                   <span
@@ -1238,7 +1247,7 @@ function HighlightCard({
             className="tkh-btn"
             onClick={() => onAttachToClubChat?.(highlight)}
           >
-            Attach to Chat
+            {compactWinner ? "💬 Chat" : "Attach to Chat"}
           </button>
         )}
 
@@ -2309,23 +2318,85 @@ export function VideoHighlightsPage({
 
       const seen = new Set();
 
-      setFirebaseHighlights(
-        combinedRaw.filter((clip) => {
-          const key = String(
-            clip?.clipId || clip?.id || ""
-          ).trim();
+      const deduplicatedRaw = combinedRaw.filter((clip) => {
+        const key = String(
+          clip?.clipId || clip?.id || ""
+        ).trim();
 
-          if (!key) return true;
-          if (seen.has(key)) return false;
+        if (!key) return true;
+        if (seen.has(key)) return false;
 
-          seen.add(key);
-          return true;
-        })
-      );
+        seen.add(key);
+        return true;
+      });
 
-      setArchivedHighlights(
-        Array.isArray(archived) ? archived : []
-      );
+      setFirebaseHighlights(deduplicatedRaw);
+
+      /*
+       * A collection-group archive query can be rejected or return
+       * no usable records in the browser. Fall back to exact,
+       * club-scoped archive reads for every match already present
+       * in this club's raw feed.
+       */
+      const clubMatchIds = [
+        ...new Set(
+          deduplicatedRaw
+            .map((clip) =>
+              String(
+                clip?.matchId ||
+                clip?.fixtureId ||
+                clip?.matchContext?.matchId ||
+                ""
+              ).trim()
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+      const directArchiveResults =
+        typeof VideoHighlightsRepository
+          .loadArchivedHighlightsFromFirebase === "function"
+          ? await Promise.allSettled(
+              clubMatchIds.map((clubMatchId) =>
+                VideoHighlightsRepository
+                  .loadArchivedHighlightsFromFirebase(
+                    clubMatchId,
+                    activeClubId
+                  )
+              )
+            )
+          : [];
+
+      const directlyLoadedArchives =
+        directArchiveResults.flatMap((result) =>
+          result.status === "fulfilled" &&
+          Array.isArray(result.value)
+            ? result.value
+            : []
+        );
+
+      const archiveSeen = new Set();
+
+      const mergedArchives = [
+        ...(Array.isArray(archived) ? archived : []),
+        ...directlyLoadedArchives,
+      ].filter((clip) => {
+        const key = String(
+          clip?.clipId ||
+          clip?.id ||
+          clip?.storagePath ||
+          clip?.videoUrl ||
+          ""
+        ).trim();
+
+        if (!key) return true;
+        if (archiveSeen.has(key)) return false;
+
+        archiveSeen.add(key);
+        return true;
+      });
+
+      setArchivedHighlights(mergedArchives);
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Failed to load highlights:", error);
       setLoadError(error?.message || "Could not load highlights from the server.");
@@ -2785,6 +2856,54 @@ export function VideoHighlightsPage({
       isLeagueMode,
     ]
   );
+
+  const currentWeekCountdown = useMemo(() => {
+    const clipTimes = currentWeekHighlights
+      .map((clip) => getHighlightDate(clip).getTime())
+      .filter(Number.isFinite);
+
+    if (!clipTimes.length) return null;
+
+    /*
+     * The earliest clip marks the beginning of the current
+     * matchday/week voting batch. Voting remains open for five days.
+     */
+    const votingStartedAt = Math.min(...clipTimes);
+    const votingDurationMs =
+      5 * 24 * 60 * 60 * 1000;
+    const closesAt = votingStartedAt + votingDurationMs;
+    const remainingMs = Math.max(0, closesAt - nowTick);
+
+    const wholeDays = Math.floor(
+      remainingMs / (24 * 60 * 60 * 1000)
+    );
+    const wholeHours = Math.floor(
+      (remainingMs % (24 * 60 * 60 * 1000)) /
+      (60 * 60 * 1000)
+    );
+
+    const elapsedPercentage = Math.min(
+      100,
+      Math.max(
+        0,
+        ((nowTick - votingStartedAt) / votingDurationMs) * 100
+      )
+    );
+
+    return {
+      closesAt,
+      remainingMs,
+      wholeDays,
+      wholeHours,
+      elapsedPercentage,
+      label:
+        remainingMs <= 0
+          ? "Voting window complete"
+          : wholeDays > 0
+          ? `${wholeDays}d ${wholeHours}h remaining`
+          : `${wholeHours}h remaining`,
+    };
+  }, [currentWeekHighlights, nowTick]);
 
   const throwbackHighlights = useMemo(
     () =>
@@ -4836,6 +4955,82 @@ export function VideoHighlightsPage({
           box-sizing: border-box;
         }
 
+        .tkh-card.is-season-winner {
+          position: relative;
+          gap: 0.65rem;
+          padding: 0.8rem;
+          overflow: hidden;
+          border: 1px solid rgba(245, 158, 11, 0.38);
+          background:
+            radial-gradient(
+              circle at 100% 0%,
+              rgba(245, 158, 11, 0.13),
+              transparent 42%
+            ),
+            linear-gradient(
+              155deg,
+              rgba(18, 25, 45, 0.99),
+              rgba(8, 18, 38, 0.99)
+            );
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.05),
+            0 14px 32px rgba(2, 6, 23, 0.34);
+        }
+
+        .tkh-card.is-season-winner::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 3px;
+          background: linear-gradient(
+            180deg,
+            #facc15,
+            #f59e0b,
+            rgba(245, 158, 11, 0.15)
+          );
+        }
+
+        .tkh-card.is-season-winner .tkh-card-progress {
+          color: #fde68a;
+        }
+
+        .tkh-card.is-season-winner .tkh-clip-title {
+          color: rgba(226, 232, 240, 0.68);
+        }
+
+        .tkh-card.is-season-winner .tkh-video {
+          border: 1px solid rgba(250, 204, 21, 0.16);
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+        }
+
+        .tkh-card.is-season-winner .tkh-card-actions {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          gap: 0.5rem;
+          flex-wrap: nowrap;
+        }
+
+        .tkh-card.is-season-winner .tkh-card-actions .tkh-btn {
+          width: 100%;
+          min-width: 0;
+          min-height: 36px;
+          padding: 0.48rem 0.65rem;
+          font-size: 0.76rem;
+          white-space: nowrap;
+        }
+
+        .tkh-card.is-season-winner .tkh-btn-vote {
+          border-color: rgba(250, 204, 21, 0.34);
+          background: rgba(250, 204, 21, 0.10);
+          color: #fef3c7;
+        }
+
+        .tkh-card.is-season-winner .tkh-btn-vote.is-selected {
+          border-color: rgba(248, 113, 113, 0.46);
+          background: rgba(239, 68, 68, 0.13);
+          color: #fecaca;
+        }
+
         .tkh-winners-head {
           display: flex;
           align-items: flex-start;
@@ -5467,7 +5662,7 @@ export function VideoHighlightsPage({
                   zIndex: 10000,
                   display: "grid",
                   placeItems: "center",
-                  padding: "1rem",
+                  padding: "0.75rem",
                   background: "rgba(2, 6, 23, 0.76)",
                   backdropFilter: "blur(12px)",
                   WebkitBackdropFilter: "blur(12px)",
@@ -5479,11 +5674,11 @@ export function VideoHighlightsPage({
                   aria-labelledby="weekly-winners-title"
                   style={{
                     position: "relative",
-                    width: "min(420px, calc(100vw - 2rem))",
-                    maxHeight: "calc(100dvh - 2rem)",
+                    width: "min(360px, calc(100vw - 1.5rem))",
+                    maxHeight: "calc(100dvh - 1.5rem)",
                     overflowY: "auto",
-                    padding: "1.15rem",
-                    borderRadius: "24px",
+                    padding: "0.9rem",
+                    borderRadius: "20px",
                     color: "#f8fafc",
                     background:
                       "linear-gradient(160deg, rgba(15,23,42,0.99), rgba(6,18,38,0.99))",
@@ -5497,10 +5692,10 @@ export function VideoHighlightsPage({
                     aria-label="Close"
                     style={{
                       position: "absolute",
-                      top: "0.8rem",
-                      right: "0.8rem",
-                      width: "38px",
-                      height: "38px",
+                      top: "0.65rem",
+                      right: "0.65rem",
+                      width: "32px",
+                      height: "32px",
                       borderRadius: "999px",
                       border: "1px solid rgba(125,211,252,0.28)",
                       background: "rgba(15,23,42,0.88)",
@@ -5512,7 +5707,7 @@ export function VideoHighlightsPage({
                     ×
                   </button>
 
-                  <div style={{ fontSize: "1.45rem", marginBottom: "0.55rem" }}>
+                  <div style={{ fontSize: "1.15rem", marginBottom: "0.35rem" }}>
                     🏆
                   </div>
 
@@ -5520,8 +5715,8 @@ export function VideoHighlightsPage({
                     id="weekly-winners-title"
                     style={{
                       margin: 0,
-                      paddingRight: "2.8rem",
-                      fontSize: "1.2rem",
+                      paddingRight: "2.35rem",
+                      fontSize: "1.05rem",
                     }}
                   >
                     Weekly highlight voting
@@ -5530,14 +5725,14 @@ export function VideoHighlightsPage({
                   <div
                     style={{
                       display: "grid",
-                      gap: "0.65rem",
-                      marginTop: "0.9rem",
+                      gap: "0.48rem",
+                      marginTop: "0.7rem",
                     }}
                   >
                     <div
                       style={{
-                        padding: "0.8rem",
-                        borderRadius: "15px",
+                        padding: "0.62rem 0.68rem",
+                        borderRadius: "12px",
                         background: "rgba(30,41,59,0.72)",
                       }}
                     >
@@ -5575,8 +5770,8 @@ export function VideoHighlightsPage({
                     onClick={() => setShowVotingInfo(false)}
                     style={{
                       width: "100%",
-                      marginTop: "0.9rem",
-                      minHeight: "44px",
+                      marginTop: "0.7rem",
+                      minHeight: "40px",
                       borderRadius: "14px",
                     }}
                   >
@@ -5588,6 +5783,126 @@ export function VideoHighlightsPage({
             )}
 
         </div>
+
+        {mainTab === "currentWeek" &&
+          currentWeekCountdown && (
+            <section
+              aria-label="Highlight voting countdown"
+              style={{
+                position: "relative",
+                overflow: "hidden",
+                width: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
+                marginBottom: "0.85rem",
+                padding: "0.82rem 0.9rem",
+                borderRadius: "17px",
+                border:
+                  currentWeekCountdown.remainingMs > 0
+                    ? "1px solid rgba(56,189,248,0.3)"
+                    : "1px solid rgba(250,204,21,0.34)",
+                background:
+                  "linear-gradient(135deg, rgba(8,47,73,0.92), rgba(15,23,42,0.97))",
+                boxShadow:
+                  "0 14px 30px rgba(2,132,199,0.12)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      color: "#7dd3fc",
+                      fontSize: "0.68rem",
+                      fontWeight: 900,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Voting countdown
+                  </div>
+
+                  <strong
+                    style={{
+                      display: "block",
+                      marginTop: "0.22rem",
+                      color: "#f8fafc",
+                      fontSize: "0.96rem",
+                    }}
+                  >
+                    {currentWeekCountdown.label}
+                  </strong>
+                </div>
+
+                <div
+                  aria-hidden="true"
+                  style={{
+                    flex: "0 0 auto",
+                    display: "grid",
+                    placeItems: "center",
+                    width: "42px",
+                    height: "42px",
+                    borderRadius: "14px",
+                    color: "#fde68a",
+                    background: "rgba(250,204,21,0.11)",
+                    border: "1px solid rgba(250,204,21,0.22)",
+                    fontSize: "1.15rem",
+                  }}
+                >
+                  ⏳
+                </div>
+              </div>
+
+              <div
+                style={{
+                  height: "5px",
+                  marginTop: "0.7rem",
+                  overflow: "hidden",
+                  borderRadius: "999px",
+                  background: "rgba(148,163,184,0.18)",
+                }}
+              >
+                <div
+                  style={{
+                    width:
+                      `${currentWeekCountdown.elapsedPercentage}%`,
+                    height: "100%",
+                    borderRadius: "inherit",
+                    background:
+                      "linear-gradient(90deg, #38bdf8, #22c55e, #facc15)",
+                    transition: "width 500ms ease",
+                  }}
+                />
+              </div>
+
+              <div
+                style={{
+                  marginTop: "0.52rem",
+                  color: "#cbd5e1",
+                  fontSize: "0.72rem",
+                  lineHeight: 1.35,
+                }}
+              >
+                Vote before{" "}
+                {new Date(
+                  currentWeekCountdown.closesAt
+                ).toLocaleDateString(undefined, {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+                . Winners advance; non-winners become deletion-eligible.
+              </div>
+            </section>
+          )}
 
         {(mainTab === "currentWeek" || mainTab === "throwback") && (
           <div className="tkh-feed-toolbar">
@@ -5944,9 +6259,11 @@ export function VideoHighlightsPage({
                     <div className="tkh-grid tkh-winner-grid">
                       {group.clips.map((clip, index) => (
                         <div key={clip.id} className="tkh-winner-card-wrap">
-                          <div className="tkh-winner-rank">#{index + 1} Clip</div>
                           <HighlightCard
                             highlight={clip}
+                            compactWinner={mainTab === "winners"}
+                            feedPosition={index + 1}
+                            feedTotal={group.clips.length}
                             teams={teams}
                             matchType={matchType}
                             likeCount={
@@ -5966,9 +6283,7 @@ export function VideoHighlightsPage({
                             showVoteLabel={false}
                             voteLabel={
                               mainTab === "winners"
-                                ? (isLeagueMode
-                                    ? "Season vote"
-                                    : "Monthly vote")
+                                ? "Vote"
                                 : ""
                             }
                             canAttachToChat={
