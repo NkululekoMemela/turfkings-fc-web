@@ -56,7 +56,10 @@ function matchRef(matchId, clubId = DEFAULT_CLUB_ID) {
 
 const rawRef = (id, clubId = DEFAULT_CLUB_ID) =>
   collection(matchRef(id, clubId), "raw");
-const archiveRef = (id) => collection(matchRef(id), "archived");
+const archiveRef = (
+  id,
+  clubId = DEFAULT_CLUB_ID
+) => collection(matchRef(id, clubId), "archived");
 const votesRef = (id) => collection(matchRef(id), "votes");
 const cleanupQueueRef = (id) => collection(matchRef(id), "cleanup_queue");
 const recordingDevicesRef = (id) => collection(matchRef(id), "recording_devices");
@@ -622,10 +625,16 @@ export function subscribeToVarHighlights({
   );
 }
 
-export async function loadArchivedHighlightsFromFirebase(matchId) {
+export async function loadArchivedHighlightsFromFirebase(
+  matchId,
+  clubId = DEFAULT_CLUB_ID
+) {
   if (!matchId) return [];
 
-  const q = query(archiveRef(matchId), orderBy("archivedAtISO", "desc"));
+  const q = query(
+    archiveRef(matchId, clubId),
+    orderBy("archivedAtISO", "desc")
+  );
   const snap = await getDocs(q);
 
   return snap.docs.map((d) => ({

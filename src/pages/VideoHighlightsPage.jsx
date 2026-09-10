@@ -1,6 +1,6 @@
 // src/pages/VideoHighlightsPage.jsx
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactionUsersSheet from "../components/ReactionUsersSheet.jsx";
 import { createPortal } from "react-dom";
 import VideoHighlightsRepository, {
@@ -640,8 +640,7 @@ function getMissingBadges(highlight) {
   const isThrowback = highlight?.highlightEra === "throwback" || highlight?.isThrowback === true;
 
   if (needsPlayer(highlight)) badges.push("Needs player");
-  // Team is optional for highlight clips, so do not show a warning badge.
-  if (needsClub(highlight)) badges.push("Needs club");
+  // Club and team metadata are optional for highlight clips.
 
   return badges;
 }
@@ -691,6 +690,7 @@ function HighlightCard({
   feedTotal = 0,
   isWatched = false,
   onWatched,
+  compactWinner = false,
 }) {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [isExpanded, setIsExpanded] = useState(() => !isWatched);
@@ -861,7 +861,9 @@ function HighlightCard({
         highlight.highlightEra === "throwback" || highlight.isThrowback
           ? "is-throwback"
           : ""
-      } ${isWatched ? "is-watched" : ""}`}
+      } ${isWatched ? "is-watched" : ""} ${
+        compactWinner ? "is-season-winner" : ""
+      }`}
     >
       {isWatched && !isExpanded ? (
         <button
@@ -947,9 +949,11 @@ function HighlightCard({
           {(highlight.highlightEra === "throwback" || highlight.isThrowback) && (
             <span className="tkh-throwback-badge">Throwback ✨</span>
           )}
-          <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
-            {statusBadgeLabel(highlight.status)}
-          </span>
+          {!compactWinner && (
+            <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
+              {statusBadgeLabel(highlight.status)}
+            </span>
+          )}
         </div>
       </div>
 
@@ -1114,11 +1118,11 @@ function HighlightCard({
           )}
         </div>
 
-        {missingBadges.map((badge) => (
+        {!compactWinner && missingBadges.map((badge) => (
           <span key={badge} className="tkh-missing-badge">{badge}</span>
         ))}
 
-        {needsPlayer(highlight) && (
+        {!compactWinner && needsPlayer(highlight) && (
           <button
             type="button"
             className="tkh-btn"
@@ -1136,18 +1140,17 @@ function HighlightCard({
         )}
       </div>
 
-      <div className="tkh-meta-row">
-        <span>{highlight.clubName}</span>
-        <span className="tkh-matchup-label">{matchupLabel}</span>
-        <span>{highlight.teamName}</span>
-        <span>{highlight.durationSeconds ? formatSeconds(highlight.durationSeconds) : "Clip"}</span>
-        <span>
-          {Number(likeCount || 0)} like
-          {Number(likeCount || 0) === 1 ? "" : "s"}
-        </span>
-      </div>
+      {!compactWinner && (
+        <div className="tkh-meta-row">
+          <span>{highlight.clubName}</span>
+          <span className="tkh-matchup-label">{matchupLabel}</span>
+          {!needsTeam(highlight) && (
+            <span>{highlight.teamName}</span>
+          )}
+        </div>
+      )}
 
-      {highlight.assist && (
+      {!compactWinner && highlight.assist && (
         <div className="tkh-soft-line">
   Assist:{" "}
   <strong>
@@ -1158,7 +1161,7 @@ function HighlightCard({
 </div>
       )}
 
-      {isModerator && (
+      {!compactWinner && isModerator && (
         <div className="tkh-soft-line">
           Uploaded {formatDate(highlight.createdAt)}
           {highlight.createdByName
@@ -1190,11 +1193,24 @@ function HighlightCard({
               onClick={handleLikeClick}
               aria-pressed={isLiked}
             >
-              {isLiked
-                ? (voteLabel ? `❤️ ${voteLabel} cast` : "❤️ Liked")
-                : (voteLabel
-                    ? `♡ ${voteLabel}`
-                    : (showVoteLabel ? "🗳️ Vote" : "♡ Like"))}
+              {isLiked ? (
+                compactWinner
+                  ? "❤️ Vote"
+                  : voteLabel
+                    ? `❤️ ${voteLabel} cast`
+                    : "❤️ Liked"
+              ) : (
+                <>
+                  <span
+                    className="tkh-like-heart-outline"
+                    aria-hidden="true"
+                  >
+                    ♡
+                  </span>{" "}
+                  {voteLabel ||
+                    (showVoteLabel ? "Vote" : "Like")}
+                </>
+              )}
               {Number(likeCount || 0) > 0
                 ? ` · ${Number(likeCount || 0)}`
                 : ""}
@@ -1227,7 +1243,7 @@ function HighlightCard({
             className="tkh-btn"
             onClick={() => onAttachToClubChat?.(highlight)}
           >
-            Attach to Chat
+            💬 Chat
           </button>
         )}
 
@@ -1284,6 +1300,658 @@ function getFrozenWeeklyVoteCount(clip = {}) {
   return 0;
 }
 
+
+function getTopShelfSeasonLabel(seasonId, clips = []) {
+  const explicitLabel = clips
+    .map((clip) =>
+      String(
+        clip?.seasonDisplayLabel ||
+        clip?.seasonLabel ||
+        clip?.matchContext?.seasonLabel ||
+        clip?.metadata?.seasonLabel ||
+        ""
+      ).trim()
+    )
+    .find(Boolean);
+
+  if (explicitLabel) return explicitLabel;
+
+  const normalizedId = String(seasonId || "").trim();
+  const match = normalizedId.match(/(?:^|[-_])S(\d+)(?:$|[-_])/i);
+  const seasonNumber = match?.[1] || "";
+
+  /*
+   * Season 5 is the completed Jul–Aug season currently on Top Shelf.
+   * Future seasons may provide their own seasonLabel metadata; otherwise
+   * they still receive a truthful numbered heading.
+   */
+  if (seasonNumber === "5") return "Season 5 (Jul–Aug)";
+  if (seasonNumber) return `Season ${seasonNumber}`;
+
+  return "Previous Season";
+}
+
+function TopShelfSeasonCarousel({
+  seasonLabel,
+  clips = [],
+  likeCountsByClip = {},
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const carouselRef = useRef(null);
+  const cardRefs = useRef([]);
+  const videoRefs = useRef([]);
+  const scrollTimerRef = useRef(null);
+  const programmaticScrollRef = useRef(false);
+  const programmaticScrollTimerRef = useRef(null);
+
+  const awards = useMemo(() => {
+    const definitions = [
+      {
+        key: "goal",
+        title: "Puskas Award",
+        icon: "🏆",
+        accent: "#facc15",
+      },
+      {
+        key: "skill",
+        title: "Skill of the Season",
+        icon: "✨",
+        accent: "#e879f9",
+      },
+      {
+        key: "save",
+        title: "Save of the Season",
+        icon: "🧤",
+        accent: "#4ade80",
+      },
+    ];
+
+    return definitions
+      .map((definition) => {
+        const candidates = clips
+          .filter(
+            (clip) =>
+              normalizeHighlightType(
+                clip?.normalizedType ||
+                clip?.tag ||
+                clip?.type ||
+                ""
+              ) === definition.key
+          )
+          .filter((clip) => getHighlightMediaUrl(clip))
+          .sort((a, b) => {
+            const getVotes = (clip) => {
+              const clipId = String(clip?.clipId || clip?.id || "");
+              return Math.max(
+                Number(clip?.seasonVote || 0),
+                Number(clip?.seasonVoteCount || 0),
+                Number(clip?.voteCount || 0),
+                Number(clip?.votes || 0),
+                Number(clip?.weeklyVoteCount || 0),
+                Number(likeCountsByClip[clipId] || 0)
+              );
+            };
+
+            return getVotes(b) - getVotes(a);
+          });
+
+        const clip = candidates[0];
+        if (!clip) return null;
+
+        const clipId = String(clip?.clipId || clip?.id || "");
+        const playerName = getHighlightPlayerName(clip);
+        const hasPlayer =
+          playerName &&
+          safeLower(playerName) !== safeLower(PENDING_PLAYER);
+
+        const voteCount = Math.max(
+          Number(clip?.seasonVote || 0),
+          Number(clip?.seasonVoteCount || 0),
+          Number(clip?.voteCount || 0),
+          Number(clip?.votes || 0),
+          Number(clip?.weeklyVoteCount || 0),
+          Number(likeCountsByClip[clipId] || 0)
+        );
+
+        const fallbackHeadline =
+          definition.key === "goal"
+            ? "The winning goal takes the Puskas Award"
+            : definition.key === "skill"
+            ? "The winning moment takes Skill of the Season"
+            : "The winning stop takes Save of the Season";
+
+        return {
+          ...definition,
+          clip,
+          clipId,
+          videoUrl: getHighlightMediaUrl(clip),
+          voteCount,
+          headline: hasPlayer
+            ? `${playerName} wins the ${definition.title}`
+            : fallbackHeadline,
+        };
+      })
+      .filter(Boolean);
+  }, [clips, likeCountsByClip]);
+
+  useEffect(() => {
+    if (awards.length <= 1) {
+      setActiveIndex(0);
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % awards.length);
+    }, 14000);
+
+    return () => window.clearInterval(timer);
+  }, [awards.length]);
+
+  useEffect(() => {
+    if (activeIndex >= awards.length) setActiveIndex(0);
+  }, [activeIndex, awards.length]);
+
+  useEffect(() => {
+    if (!awards.length) return;
+
+    const container = carouselRef.current;
+    const card = cardRefs.current[activeIndex];
+
+    if (container && card) {
+      const targetLeft =
+        card.offsetLeft -
+        (container.clientWidth - card.offsetWidth) / 2;
+
+      if (programmaticScrollTimerRef.current) {
+        window.clearTimeout(
+          programmaticScrollTimerRef.current
+        );
+      }
+
+      /*
+       * Prevent the scroll-position observer from restoring the old
+       * index before this smooth programmatic move has completed.
+       */
+      programmaticScrollRef.current = true;
+
+      container.scrollTo({
+        left: Math.max(0, targetLeft),
+        behavior: "smooth",
+      });
+
+      programmaticScrollTimerRef.current =
+        window.setTimeout(() => {
+          programmaticScrollRef.current = false;
+          programmaticScrollTimerRef.current = null;
+        }, 700);
+    }
+
+    videoRefs.current.forEach((video, index) => {
+      if (!video) return;
+
+      if (index !== activeIndex) {
+        try {
+          video.pause();
+        } catch {}
+        return;
+      }
+
+      const playActiveVideo = async () => {
+        try {
+          video.muted = true;
+          await video.play();
+        } catch {}
+      };
+
+      if (video.readyState >= 1) {
+        playActiveVideo();
+      } else {
+        video.addEventListener("loadedmetadata", playActiveVideo, {
+          once: true,
+        });
+      }
+    });
+  }, [activeIndex, awards]);
+
+  const moveAward = useCallback(
+    (direction) => {
+      if (!awards.length) return;
+
+      setActiveIndex((current) =>
+        direction > 0
+          ? (current + 1) % awards.length
+          : (current - 1 + awards.length) % awards.length
+      );
+    },
+    [awards.length]
+  );
+
+  const syncIndexFromScroll = useCallback(() => {
+    const container = carouselRef.current;
+
+    if (
+      !container ||
+      !awards.length ||
+      programmaticScrollRef.current
+    ) {
+      return;
+    }
+
+    if (scrollTimerRef.current) {
+      window.clearTimeout(scrollTimerRef.current);
+    }
+
+    scrollTimerRef.current = window.setTimeout(() => {
+      const containerRect = container.getBoundingClientRect();
+      const centre = containerRect.left + containerRect.width / 2;
+      let closestIndex = 0;
+      let closestDistance = Number.POSITIVE_INFINITY;
+
+      cardRefs.current.forEach((card, index) => {
+        if (!card) return;
+        const cardRect = card.getBoundingClientRect();
+        const cardCentre = cardRect.left + cardRect.width / 2;
+        const distance = Math.abs(cardCentre - centre);
+
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestIndex = index;
+        }
+      });
+
+      setActiveIndex(closestIndex);
+    }, 90);
+  }, [awards.length]);
+
+  useEffect(
+    () => () => {
+      if (scrollTimerRef.current) {
+        window.clearTimeout(scrollTimerRef.current);
+      }
+
+      if (programmaticScrollTimerRef.current) {
+        window.clearTimeout(
+          programmaticScrollTimerRef.current
+        );
+      }
+    },
+    []
+  );
+
+  if (!awards.length) return null;
+
+  return (
+    <section
+      style={{
+        marginBottom: "1.25rem",
+        width: "100%",
+        maxWidth: "calc(100vw - 20px)",
+        minWidth: 0,
+        boxSizing: "border-box",
+        overflow: "hidden",
+      }}
+    >
+      <h2
+        style={{
+          margin: "0 0 0.65rem",
+          color: "#f8fafc",
+          fontSize: "1.1rem",
+          fontWeight: 900,
+        }}
+      >
+        {seasonLabel}
+      </h2>
+
+      <div
+        style={{
+          display: "block",
+          width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
+          padding: "1rem",
+          overflow: "hidden",
+          borderRadius: "20px",
+          marginBottom: "18px",
+          boxShadow:
+            "0 18px 45px rgba(15,23,42,0.45)",
+          border: "1px solid rgba(250,204,21,0.22)",
+          background:
+            "linear-gradient(145deg, rgba(8,15,31,0.98), rgba(15,23,42,0.98))",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.65rem",
+            marginBottom: "0.8rem",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              minWidth: 0,
+            }}
+          >
+            <span style={{ fontSize: "1.15rem" }}>🏆</span>
+            <strong
+              style={{
+                color: "#facc15",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                fontSize: "0.84rem",
+              }}
+            >
+              Awards Watch
+            </strong>
+          </div>
+
+          {awards.length > 1 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+              }}
+            >
+              <span
+                style={{
+                  color: "#cbd5e1",
+                  fontSize: "0.72rem",
+                  fontWeight: 800,
+                }}
+              >
+                {activeIndex + 1} / {awards.length}
+              </span>
+
+              <button
+                type="button"
+                aria-label={`Previous award in ${seasonLabel}`}
+                onClick={() => moveAward(-1)}
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "999px",
+                  border: "1px solid rgba(148,163,184,0.3)",
+                  background: "rgba(15,23,42,0.9)",
+                  color: "#f8fafc",
+                  cursor: "pointer",
+                  fontSize: "1rem",
+                }}
+              >
+                ‹
+              </button>
+
+              <button
+                type="button"
+                aria-label={`Next award in ${seasonLabel}`}
+                onClick={() => moveAward(1)}
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "999px",
+                  border: "1px solid rgba(148,163,184,0.3)",
+                  background: "rgba(15,23,42,0.9)",
+                  color: "#f8fafc",
+                  cursor: "pointer",
+                  fontSize: "1rem",
+                }}
+              >
+                ›
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div
+          ref={carouselRef}
+          onScroll={syncIndexFromScroll}
+          style={{
+            display: "flex",
+            width: "100%",
+            maxWidth: "100%",
+            minWidth: 0,
+            boxSizing: "border-box",
+            gap: "0.85rem",
+            overflowX: "auto",
+            scrollSnapType: "x mandatory",
+            scrollBehavior: "smooth",
+            WebkitOverflowScrolling: "touch",
+            overscrollBehaviorX: "contain",
+            scrollbarWidth: "none",
+            padding: "4px 7px 0.35rem",
+            scrollPaddingInline: "7px",
+          }}
+        >
+          {awards.map((award, index) => {
+            const isActive = index === activeIndex;
+
+            return (
+              <article
+                key={award.key}
+                ref={(node) => {
+                  cardRefs.current[index] = node;
+                }}
+                onClick={() => setActiveIndex(index)}
+                style={{
+                  flex: "0 0 min(calc(100% - 24px), 430px)",
+                  scrollSnapAlign: "center",
+                  overflow: "hidden",
+                  boxSizing: "border-box",
+                  borderRadius: "16px",
+                  border: isActive
+                    ? `2px solid ${award.accent}`
+                    : "1px solid rgba(148,163,184,0.24)",
+                  background:
+                    "linear-gradient(160deg, rgba(20,29,48,0.98), rgba(8,15,29,0.98))",
+                  boxShadow: isActive
+                    ? `0 0 22px ${award.accent}30`
+                    : "none",
+                  transition:
+                    "border-color 180ms ease, box-shadow 180ms ease",
+                }}
+              >
+                <div style={{ padding: "0.9rem 0.9rem 0.8rem" }}>
+                  <div
+                    style={{
+                      color: award.accent,
+                      fontWeight: 900,
+                      fontSize: "0.76rem",
+                      letterSpacing: "0.07em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {award.icon} {award.title}
+                  </div>
+
+                  <h3
+                    style={{
+                      margin: "0.45rem 0 0",
+                      color: "#f8fafc",
+                      fontSize: "1.2rem",
+                      lineHeight: 1.12,
+                    }}
+                  >
+                    {award.headline}
+                  </h3>
+
+                  <div
+                    style={{
+                      marginTop: "0.65rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "0.26rem 0.55rem",
+                      borderRadius: "999px",
+                      border: `1px solid ${award.accent}60`,
+                      background: `${award.accent}14`,
+                      color: award.accent,
+                      fontWeight: 900,
+                      fontSize: "0.72rem",
+                    }}
+                  >
+                    {award.voteCount} vote
+                    {award.voteCount === 1 ? "" : "s"}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "transparent",
+                    position: "relative",
+                    padding: "0 10px 10px",
+                  }}
+                >
+                  <video
+                    ref={(node) => {
+                      videoRefs.current[index] = node;
+                    }}
+                    src={award.videoUrl}
+                    controls
+                    muted
+                    playsInline
+                    preload="metadata"
+                    onEnded={() => {
+                      if (index === activeIndex) moveAward(1);
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      maxWidth: "100%",
+                      aspectRatio: "16 / 9",
+                      background: "#000",
+                      objectFit: "cover",
+                      borderRadius: "14px",
+                      overflow: "hidden",
+                    }}
+                  />
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        {awards.length > 1 && (
+          <>
+            <div
+              aria-label={`Award position in ${seasonLabel}`}
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: "0.42rem",
+                marginTop: "0.72rem",
+              }}
+            >
+              {awards.map((award, index) => (
+                <button
+                  key={award.key}
+                  type="button"
+                  aria-label={`Show ${award.title}`}
+                  onClick={() => setActiveIndex(index)}
+                  style={{
+                    width: index === activeIndex ? "24px" : "8px",
+                    height: "8px",
+                    padding: 0,
+                    border: 0,
+                    borderRadius: "999px",
+                    background:
+                      index === activeIndex
+                        ? "#facc15"
+                        : "#64748b",
+                    cursor: "pointer",
+                    transition: "width 180ms ease",
+                  }}
+                />
+              ))}
+            </div>
+
+            <p
+              style={{
+                margin: "0.62rem 0 0",
+                textAlign: "center",
+                color: "#94a3b8",
+                fontSize: "0.72rem",
+                fontWeight: 700,
+              }}
+            >
+              Next award in 14 seconds • swipe or tap to move faster
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TopShelfAwardsWatch({
+  clips = [],
+  likeCountsByClip = {},
+}) {
+  const seasonGroups = useMemo(() => {
+    const groups = new Map();
+
+    clips.forEach((clip) => {
+      const seasonId =
+        getHighlightSeasonId(clip) ||
+        String(clip?.activeSeasonId || "").trim() ||
+        "previous-season";
+
+      if (!groups.has(seasonId)) groups.set(seasonId, []);
+      groups.get(seasonId).push(clip);
+    });
+
+    return Array.from(groups.entries())
+      .map(([seasonId, seasonClips]) => ({
+        seasonId,
+        clips: seasonClips,
+        label: getTopShelfSeasonLabel(seasonId, seasonClips),
+      }))
+      .sort((a, b) =>
+        String(b.seasonId).localeCompare(
+          String(a.seasonId),
+          undefined,
+          { numeric: true }
+        )
+      );
+  }, [clips]);
+
+  if (!seasonGroups.length) {
+    return (
+      <div className="tkh-winners-panel">
+        <div className="tkh-winners-head">
+          <div>
+            <h2>Top Shelf</h2>
+            <p>
+              Goal, Save and Skill champions retained from completed seasons.
+            </p>
+          </div>
+          <span className="tkh-winners-badge">Season champions</span>
+        </div>
+
+        <div className="tkh-empty-mini">
+          No season champions have reached the Top Shelf yet.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tkh-winners-panel">
+      {seasonGroups.map((group) => (
+        <TopShelfSeasonCarousel
+          key={group.seasonId}
+          seasonLabel={group.label}
+          clips={group.clips}
+          likeCountsByClip={likeCountsByClip}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function VideoHighlightsPage({
   matchId,
   activeClubId = "turf-kings",
@@ -1327,7 +1995,54 @@ export function VideoHighlightsPage({
   const [localHighlights, setLocalHighlights] = useState([]);
   const [localVotesByUser, setLocalVotesByUser] = useState(votesByUser || {});
   const [likeCountsByClip, setLikeCountsByClip] = useState({});
+  const [topShelfAwardClips, setTopShelfAwardClips] = useState([]);
   const [likedClipIds, setLikedClipIds] = useState(() => new Set());
+
+  /*
+   * Top Shelf intentionally uses the same complete Goal, Skill and Save
+   * award set currently rendered by News. Keep the existing season-winner
+   * collection as a fallback until this transplant is visually approved.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTopShelfAwardClips() {
+      try {
+        const leaders =
+          await VideoHighlightsRepository
+            .loadCurrentAwardLeadersFromFirebase(
+              activeClubId || "turf-kings"
+            );
+
+        if (cancelled) return;
+
+        const exactNewsAwards = [
+          leaders?.puskas || null,
+          leaders?.skill || null,
+          leaders?.save || null,
+        ].filter(
+          (clip) => clip && getHighlightMediaUrl(clip)
+        );
+
+        setTopShelfAwardClips(exactNewsAwards);
+      } catch (error) {
+        console.warn(
+          "[VideoHighlightsPage] Could not load the News award set:",
+          error
+        );
+
+        if (!cancelled) {
+          setTopShelfAwardClips([]);
+        }
+      }
+    }
+
+    loadTopShelfAwardClips();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeClubId]);
   const [highlightLikeRecords, setHighlightLikeRecords] = useState([]);
   const [likeUsersViewer, setLikeUsersViewer] = useState(null);
   const [likesLoading, setLikesLoading] = useState(false);
@@ -1349,7 +2064,6 @@ export function VideoHighlightsPage({
     "Loading match clips…"
   );
   const [loadError, setLoadError] = useState("");
-  const [showVotingInfo, setShowVotingInfo] = useState(false);
 
   const [curationResult, setCurationResult] = useState(null);
   const [runningCuration, setRunningCuration] = useState(false);
@@ -1599,23 +2313,85 @@ export function VideoHighlightsPage({
 
       const seen = new Set();
 
-      setFirebaseHighlights(
-        combinedRaw.filter((clip) => {
-          const key = String(
-            clip?.clipId || clip?.id || ""
-          ).trim();
+      const deduplicatedRaw = combinedRaw.filter((clip) => {
+        const key = String(
+          clip?.clipId || clip?.id || ""
+        ).trim();
 
-          if (!key) return true;
-          if (seen.has(key)) return false;
+        if (!key) return true;
+        if (seen.has(key)) return false;
 
-          seen.add(key);
-          return true;
-        })
-      );
+        seen.add(key);
+        return true;
+      });
 
-      setArchivedHighlights(
-        Array.isArray(archived) ? archived : []
-      );
+      setFirebaseHighlights(deduplicatedRaw);
+
+      /*
+       * A collection-group archive query can be rejected or return
+       * no usable records in the browser. Fall back to exact,
+       * club-scoped archive reads for every match already present
+       * in this club's raw feed.
+       */
+      const clubMatchIds = [
+        ...new Set(
+          deduplicatedRaw
+            .map((clip) =>
+              String(
+                clip?.matchId ||
+                clip?.fixtureId ||
+                clip?.matchContext?.matchId ||
+                ""
+              ).trim()
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+      const directArchiveResults =
+        typeof VideoHighlightsRepository
+          .loadArchivedHighlightsFromFirebase === "function"
+          ? await Promise.allSettled(
+              clubMatchIds.map((clubMatchId) =>
+                VideoHighlightsRepository
+                  .loadArchivedHighlightsFromFirebase(
+                    clubMatchId,
+                    activeClubId
+                  )
+              )
+            )
+          : [];
+
+      const directlyLoadedArchives =
+        directArchiveResults.flatMap((result) =>
+          result.status === "fulfilled" &&
+          Array.isArray(result.value)
+            ? result.value
+            : []
+        );
+
+      const archiveSeen = new Set();
+
+      const mergedArchives = [
+        ...(Array.isArray(archived) ? archived : []),
+        ...directlyLoadedArchives,
+      ].filter((clip) => {
+        const key = String(
+          clip?.clipId ||
+          clip?.id ||
+          clip?.storagePath ||
+          clip?.videoUrl ||
+          ""
+        ).trim();
+
+        if (!key) return true;
+        if (archiveSeen.has(key)) return false;
+
+        archiveSeen.add(key);
+        return true;
+      });
+
+      setArchivedHighlights(mergedArchives);
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Failed to load highlights:", error);
       setLoadError(error?.message || "Could not load highlights from the server.");
@@ -2076,6 +2852,54 @@ export function VideoHighlightsPage({
     ]
   );
 
+  const currentWeekCountdown = useMemo(() => {
+    const clipTimes = currentWeekHighlights
+      .map((clip) => getHighlightDate(clip).getTime())
+      .filter(Number.isFinite);
+
+    if (!clipTimes.length) return null;
+
+    /*
+     * The earliest clip marks the beginning of the current
+     * matchday/week voting batch. Voting remains open for five days.
+     */
+    const votingStartedAt = Math.min(...clipTimes);
+    const votingDurationMs =
+      5 * 24 * 60 * 60 * 1000;
+    const closesAt = votingStartedAt + votingDurationMs;
+    const remainingMs = Math.max(0, closesAt - nowTick);
+
+    const wholeDays = Math.floor(
+      remainingMs / (24 * 60 * 60 * 1000)
+    );
+    const wholeHours = Math.floor(
+      (remainingMs % (24 * 60 * 60 * 1000)) /
+      (60 * 60 * 1000)
+    );
+
+    const elapsedPercentage = Math.min(
+      100,
+      Math.max(
+        0,
+        ((nowTick - votingStartedAt) / votingDurationMs) * 100
+      )
+    );
+
+    return {
+      closesAt,
+      remainingMs,
+      wholeDays,
+      wholeHours,
+      elapsedPercentage,
+      label:
+        remainingMs <= 0
+          ? "Voting window complete"
+          : wholeDays > 0
+          ? `${wholeDays}d ${wholeHours}h remaining`
+          : `${wholeHours}h remaining`,
+    };
+  }, [currentWeekHighlights, nowTick]);
+
   const throwbackHighlights = useMemo(
     () =>
       allHighlights.filter((item) => {
@@ -2250,9 +3074,47 @@ export function VideoHighlightsPage({
     ]
   );
 
+  /*
+   * Official club state can omit activeSeasonId. In league mode,
+   * infer it from the current visible clips so valid archived
+   * Matchday winners are not rejected from Season Race.
+   */
+  const resolvedHighlightsSeasonId = useMemo(() => {
+    const explicitSeasonId =
+      String(activeSeasonId || "").trim();
+
+    if (explicitSeasonId) return explicitSeasonId;
+
+    const seasonCounts = new Map();
+
+    currentWeekHighlights.forEach((clip) => {
+      const seasonId =
+        String(getHighlightSeasonId(clip) || "").trim();
+
+      if (!seasonId) return;
+
+      seasonCounts.set(
+        seasonId,
+        Number(seasonCounts.get(seasonId) || 0) + 1
+      );
+    });
+
+    return [...seasonCounts.entries()]
+      .sort((a, b) => {
+        const countDifference = b[1] - a[1];
+        if (countDifference !== 0) return countDifference;
+
+        return String(b[0]).localeCompare(
+          String(a[0]),
+          undefined,
+          { numeric: true }
+        );
+      })[0]?.[0] || "";
+  }, [activeSeasonId, currentWeekHighlights]);
+
   const currentTopVotedClips = useMemo(() => {
     const currentSeasonId =
-      String(activeSeasonId || "").trim();
+      String(resolvedHighlightsSeasonId || "").trim();
 
     const currentMonthKey =
       new Date(nowTick).toISOString().slice(0, 7);
@@ -2301,7 +3163,7 @@ export function VideoHighlightsPage({
       });
   }, [
     archivedHighlights,
-    activeSeasonId,
+    resolvedHighlightsSeasonId,
     isLeagueMode,
     nowTick,
   ]);
@@ -2347,9 +3209,14 @@ export function VideoHighlightsPage({
     allHighlights,
   ]);
 
+  const topShelfDisplayClips =
+    topShelfAwardClips.length > 0
+      ? topShelfAwardClips
+      : topShelfClips;
+
   const winnerFeedClips =
     mainTab === "topShelf"
-      ? topShelfClips
+      ? topShelfDisplayClips
       : currentTopVotedClips;
 
   const currentTopVotedClipNames = useMemo(
@@ -3108,17 +3975,11 @@ export function VideoHighlightsPage({
   };
 
   const toggleLike = async (highlight) => {
-    // Archived Top Voted clips are completed weekly results.
-    // Their historical vote totals stay frozen until the separate
-    // end-of-season voting phase is deliberately opened.
-    if (isArchivedTopVotedClip(highlight)) {
-      console.info(
-        "[VIDEO HIGHLIGHTS] Archived weekly result is locked:",
-        highlight?.clipId || highlight?.id
-      );
-      return;
-    }
-
+    /*
+     * Matchday/weekly winners remain open for season/month voting.
+     * Their frozen weekly result remains in weeklyVoteCount while
+     * new unique-user likes continue accumulating separately.
+     */
     if (!isLoggedIn || !highlight) return;
 
     const clipId = String(
@@ -3353,6 +4214,46 @@ export function VideoHighlightsPage({
           border-color: rgba(187, 247, 208, 0.65);
           color: #052e16;
           box-shadow: 0 12px 24px rgba(22, 163, 74, 0.22);
+        }
+
+        .tkh-like-heart-outline {
+          display: inline-block;
+          color: #ef4444;
+          font-size: 1.15em;
+          font-weight: 900;
+          line-height: 0.8;
+          transform-origin: center;
+          animation: tkh-heartbeat 2.2s ease-in-out infinite;
+        }
+
+        @keyframes tkh-heartbeat {
+          0%,
+          58%,
+          100% {
+            transform: scale(1);
+          }
+
+          66% {
+            transform: scale(1.24);
+          }
+
+          74% {
+            transform: scale(1);
+          }
+
+          82% {
+            transform: scale(1.15);
+          }
+
+          90% {
+            transform: scale(1);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .tkh-like-heart-outline {
+            animation: none;
+          }
         }
 
         .tkh-btn-vote.is-selected,
@@ -4036,7 +4937,93 @@ export function VideoHighlightsPage({
         .tkh-winner-section,
         .tkh-winner-card-wrap {
           display: grid;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
           gap: 0.75rem;
+        }
+
+        .tkh-winners-panel > * {
+          min-width: 0;
+          max-width: 100%;
+          box-sizing: border-box;
+        }
+
+        .tkh-card.is-season-winner {
+          position: relative;
+          gap: 0.65rem;
+          padding: 0.8rem;
+          overflow: hidden;
+          border: 1px solid rgba(245, 158, 11, 0.38);
+          background:
+            radial-gradient(
+              circle at 100% 0%,
+              rgba(245, 158, 11, 0.13),
+              transparent 42%
+            ),
+            linear-gradient(
+              155deg,
+              rgba(18, 25, 45, 0.99),
+              rgba(8, 18, 38, 0.99)
+            );
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.05),
+            0 14px 32px rgba(2, 6, 23, 0.34);
+        }
+
+        .tkh-card.is-season-winner::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 3px;
+          background: linear-gradient(
+            180deg,
+            #facc15,
+            #f59e0b,
+            rgba(245, 158, 11, 0.15)
+          );
+        }
+
+        .tkh-card.is-season-winner .tkh-card-progress {
+          color: #fde68a;
+        }
+
+        .tkh-card.is-season-winner .tkh-clip-title {
+          color: rgba(226, 232, 240, 0.68);
+        }
+
+        .tkh-card.is-season-winner .tkh-video {
+          border: 1px solid rgba(250, 204, 21, 0.16);
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+        }
+
+        .tkh-card.is-season-winner .tkh-card-actions {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          gap: 0.5rem;
+          flex-wrap: nowrap;
+        }
+
+        .tkh-card.is-season-winner .tkh-card-actions .tkh-btn {
+          width: 100%;
+          min-width: 0;
+          min-height: 36px;
+          padding: 0.48rem 0.65rem;
+          font-size: 0.76rem;
+          white-space: nowrap;
+        }
+
+        .tkh-card.is-season-winner .tkh-btn-vote {
+          border-color: rgba(250, 204, 21, 0.34);
+          background: rgba(250, 204, 21, 0.10);
+          color: #fef3c7;
+        }
+
+        .tkh-card.is-season-winner .tkh-btn-vote.is-selected {
+          border-color: rgba(248, 113, 113, 0.46);
+          background: rgba(239, 68, 68, 0.13);
+          color: #fecaca;
         }
 
         .tkh-winners-head {
@@ -4626,7 +5613,7 @@ export function VideoHighlightsPage({
               <span className="tkh-category-title">Top Shelf</span>
               <small>Season champions</small>
               <span className="tkh-category-count">
-                {topShelfClips.length}
+                {topShelfDisplayClips.length}
               </span>
             </button>
 
@@ -4644,153 +5631,127 @@ export function VideoHighlightsPage({
             </button>
           </div>
 
-          <button
-            type="button"
-            className="tkh-info-dot"
-            onClick={() => setShowVotingInfo((prev) => !prev)}
-            aria-label="Explain highlight voting"
-            title="How highlight voting works"
-          >
-            i
-          </button>
+        </div>
 
-          {showVotingInfo &&
-            typeof document !== "undefined" &&
-            createPortal(
+        {mainTab === "currentWeek" &&
+          currentWeekCountdown && (
+            <section
+              aria-label="Highlight voting countdown"
+              style={{
+                position: "relative",
+                overflow: "hidden",
+                width: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
+                marginBottom: "0.85rem",
+                padding: "0.82rem 0.9rem",
+                borderRadius: "17px",
+                border:
+                  currentWeekCountdown.remainingMs > 0
+                    ? "1px solid rgba(56,189,248,0.3)"
+                    : "1px solid rgba(250,204,21,0.34)",
+                background:
+                  "linear-gradient(135deg, rgba(8,47,73,0.92), rgba(15,23,42,0.97))",
+                boxShadow:
+                  "0 14px 30px rgba(2,132,199,0.12)",
+              }}
+            >
               <div
-                role="presentation"
-                onMouseDown={(event) => {
-                  if (event.target === event.currentTarget) {
-                    setShowVotingInfo(false);
-                  }
-                }}
                 style={{
-                  position: "fixed",
-                  inset: 0,
-                  zIndex: 10000,
-                  display: "grid",
-                  placeItems: "center",
-                  padding: "1rem",
-                  background: "rgba(2, 6, 23, 0.76)",
-                  backdropFilter: "blur(12px)",
-                  WebkitBackdropFilter: "blur(12px)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      color: "#7dd3fc",
+                      fontSize: "0.68rem",
+                      fontWeight: 900,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Voting countdown
+                  </div>
+
+                  <strong
+                    style={{
+                      display: "block",
+                      marginTop: "0.22rem",
+                      color: "#f8fafc",
+                      fontSize: "0.96rem",
+                    }}
+                  >
+                    {currentWeekCountdown.label}
+                  </strong>
+                </div>
+
+                <div
+                  aria-hidden="true"
+                  style={{
+                    flex: "0 0 auto",
+                    display: "grid",
+                    placeItems: "center",
+                    width: "42px",
+                    height: "42px",
+                    borderRadius: "14px",
+                    color: "#fde68a",
+                    background: "rgba(250,204,21,0.11)",
+                    border: "1px solid rgba(250,204,21,0.22)",
+                    fontSize: "1.15rem",
+                  }}
+                >
+                  ⏳
+                </div>
+              </div>
+
+              <div
+                style={{
+                  height: "5px",
+                  marginTop: "0.7rem",
+                  overflow: "hidden",
+                  borderRadius: "999px",
+                  background: "rgba(148,163,184,0.18)",
                 }}
               >
                 <div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="weekly-winners-title"
                   style={{
-                    position: "relative",
-                    width: "min(420px, calc(100vw - 2rem))",
-                    maxHeight: "calc(100dvh - 2rem)",
-                    overflowY: "auto",
-                    padding: "1.15rem",
-                    borderRadius: "24px",
-                    color: "#f8fafc",
+                    width:
+                      `${currentWeekCountdown.elapsedPercentage}%`,
+                    height: "100%",
+                    borderRadius: "inherit",
                     background:
-                      "linear-gradient(160deg, rgba(15,23,42,0.99), rgba(6,18,38,0.99))",
-                    border: "1px solid rgba(96,165,250,0.28)",
-                    boxShadow: "0 30px 90px rgba(0,0,0,0.62)",
+                      "linear-gradient(90deg, #38bdf8, #22c55e, #facc15)",
+                    transition: "width 500ms ease",
                   }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setShowVotingInfo(false)}
-                    aria-label="Close"
-                    style={{
-                      position: "absolute",
-                      top: "0.8rem",
-                      right: "0.8rem",
-                      width: "38px",
-                      height: "38px",
-                      borderRadius: "999px",
-                      border: "1px solid rgba(125,211,252,0.28)",
-                      background: "rgba(15,23,42,0.88)",
-                      color: "#bae6fd",
-                      fontSize: "1.25rem",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ×
-                  </button>
+                />
+              </div>
 
-                  <div style={{ fontSize: "1.45rem", marginBottom: "0.55rem" }}>
-                    🏆
-                  </div>
-
-                  <h2
-                    id="weekly-winners-title"
-                    style={{
-                      margin: 0,
-                      paddingRight: "2.8rem",
-                      fontSize: "1.2rem",
-                    }}
-                  >
-                    Weekly highlight voting
-                  </h2>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: "0.65rem",
-                      marginTop: "0.9rem",
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: "0.8rem",
-                        borderRadius: "15px",
-                        background: "rgba(30,41,59,0.72)",
-                      }}
-                    >
-                      🔐 Sign in to vote. Likes count as votes.
-                    </div>
-
-                    <div
-                      style={{
-                        padding: "0.8rem",
-                        borderRadius: "15px",
-                        background: "rgba(30,41,59,0.72)",
-                      }}
-                    >
-                      ⭐ Top goals, save, skill and MOM-ish clips become weekly
-                      winners.
-                    </div>
-
-                    <div
-                      style={{
-                        padding: "0.8rem",
-                        borderRadius: "15px",
-                        color: "#d1fae5",
-                        background: "rgba(16,185,129,0.13)",
-                        border: "1px solid rgba(52,211,153,0.22)",
-                      }}
-                    >
-                      ⏳ Non-winners remain visible for five days, then are
-                      permanently deleted.
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="tkh-btn tkh-btn-primary"
-                    onClick={() => setShowVotingInfo(false)}
-                    style={{
-                      width: "100%",
-                      marginTop: "0.9rem",
-                      minHeight: "44px",
-                      borderRadius: "14px",
-                    }}
-                  >
-                    Got it
-                  </button>
-                </div>
-              </div>,
-              document.body
-            )}
-
-        </div>
+              <div
+                style={{
+                  marginTop: "0.52rem",
+                  color: "#cbd5e1",
+                  fontSize: "0.72rem",
+                  lineHeight: 1.35,
+                }}
+              >
+                Vote before{" "}
+                {new Date(
+                  currentWeekCountdown.closesAt
+                ).toLocaleDateString(undefined, {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+                . Winners advance; non-winners become deletion-eligible.
+              </div>
+            </section>
+          )}
 
         {(mainTab === "currentWeek" || mainTab === "throwback") && (
           <div className="tkh-feed-toolbar">
@@ -5040,6 +6001,7 @@ export function VideoHighlightsPage({
                       <HighlightCard
                     key={highlight.id}
                     highlight={highlight}
+                    compactCurrentWeek={mainTab === "currentWeek"}
                     teams={teams}
                     matchType={matchType}
                     likeCount={
@@ -5094,7 +6056,14 @@ export function VideoHighlightsPage({
           </>
         )}
 
-        {(mainTab === "winners" || mainTab === "topShelf") && (
+        {mainTab === "topShelf" && (
+          <TopShelfAwardsWatch
+            clips={topShelfDisplayClips}
+            likeCountsByClip={likeCountsByClip}
+          />
+        )}
+
+        {mainTab === "winners" && (
           <div className="tkh-winners-panel">
             <div className="tkh-winners-head">
               <div>
@@ -5140,9 +6109,11 @@ export function VideoHighlightsPage({
                     <div className="tkh-grid tkh-winner-grid">
                       {group.clips.map((clip, index) => (
                         <div key={clip.id} className="tkh-winner-card-wrap">
-                          <div className="tkh-winner-rank">#{index + 1} Clip</div>
                           <HighlightCard
                             highlight={clip}
+                            compactWinner={mainTab === "winners"}
+                            feedPosition={index + 1}
+                            feedTotal={group.clips.length}
                             teams={teams}
                             matchType={matchType}
                             likeCount={
@@ -5162,9 +6133,7 @@ export function VideoHighlightsPage({
                             showVoteLabel={false}
                             voteLabel={
                               mainTab === "winners"
-                                ? (isLeagueMode
-                                    ? "Season vote"
-                                    : "Monthly vote")
+                                ? "Vote"
                                 : ""
                             }
                             canAttachToChat={
