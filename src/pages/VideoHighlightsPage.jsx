@@ -1336,6 +1336,8 @@ function TopShelfSeasonCarousel({
   const cardRefs = useRef([]);
   const videoRefs = useRef([]);
   const scrollTimerRef = useRef(null);
+  const programmaticScrollRef = useRef(false);
+  const programmaticScrollTimerRef = useRef(null);
 
   const awards = useMemo(() => {
     const definitions = [
@@ -1455,10 +1457,28 @@ function TopShelfSeasonCarousel({
         card.offsetLeft -
         (container.clientWidth - card.offsetWidth) / 2;
 
+      if (programmaticScrollTimerRef.current) {
+        window.clearTimeout(
+          programmaticScrollTimerRef.current
+        );
+      }
+
+      /*
+       * Prevent the scroll-position observer from restoring the old
+       * index before this smooth programmatic move has completed.
+       */
+      programmaticScrollRef.current = true;
+
       container.scrollTo({
         left: Math.max(0, targetLeft),
         behavior: "smooth",
       });
+
+      programmaticScrollTimerRef.current =
+        window.setTimeout(() => {
+          programmaticScrollRef.current = false;
+          programmaticScrollTimerRef.current = null;
+        }, 700);
     }
 
     videoRefs.current.forEach((video, index) => {
@@ -1503,7 +1523,14 @@ function TopShelfSeasonCarousel({
 
   const syncIndexFromScroll = useCallback(() => {
     const container = carouselRef.current;
-    if (!container || !awards.length) return;
+
+    if (
+      !container ||
+      !awards.length ||
+      programmaticScrollRef.current
+    ) {
+      return;
+    }
 
     if (scrollTimerRef.current) {
       window.clearTimeout(scrollTimerRef.current);
@@ -1536,6 +1563,12 @@ function TopShelfSeasonCarousel({
       if (scrollTimerRef.current) {
         window.clearTimeout(scrollTimerRef.current);
       }
+
+      if (programmaticScrollTimerRef.current) {
+        window.clearTimeout(
+          programmaticScrollTimerRef.current
+        );
+      }
     },
     []
   );
@@ -1543,7 +1576,16 @@ function TopShelfSeasonCarousel({
   if (!awards.length) return null;
 
   return (
-    <section style={{ marginBottom: "1.25rem" }}>
+    <section
+      style={{
+        marginBottom: "1.25rem",
+        width: "100%",
+        maxWidth: "calc(100vw - 20px)",
+        minWidth: 0,
+        boxSizing: "border-box",
+        overflow: "hidden",
+      }}
+    >
       <h2
         style={{
           margin: "0 0 0.65rem",
@@ -1556,10 +1598,18 @@ function TopShelfSeasonCarousel({
       </h2>
 
       <div
-        className="card"
         style={{
+          display: "block",
+          width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
           padding: "1rem",
           overflow: "hidden",
+          borderRadius: "20px",
+          marginBottom: "18px",
+          boxShadow:
+            "0 18px 45px rgba(15,23,42,0.45)",
           border: "1px solid rgba(250,204,21,0.22)",
           background:
             "linear-gradient(145deg, rgba(8,15,31,0.98), rgba(15,23,42,0.98))",
@@ -1657,6 +1707,10 @@ function TopShelfSeasonCarousel({
           onScroll={syncIndexFromScroll}
           style={{
             display: "flex",
+            width: "100%",
+            maxWidth: "100%",
+            minWidth: 0,
+            boxSizing: "border-box",
             gap: "0.85rem",
             overflowX: "auto",
             scrollSnapType: "x mandatory",
@@ -4769,7 +4823,17 @@ export function VideoHighlightsPage({
         .tkh-winner-section,
         .tkh-winner-card-wrap {
           display: grid;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
           gap: 0.75rem;
+        }
+
+        .tkh-winners-panel > * {
+          min-width: 0;
+          max-width: 100%;
+          box-sizing: border-box;
         }
 
         .tkh-winners-head {
