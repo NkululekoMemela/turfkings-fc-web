@@ -640,8 +640,7 @@ function getMissingBadges(highlight) {
   const isThrowback = highlight?.highlightEra === "throwback" || highlight?.isThrowback === true;
 
   if (needsPlayer(highlight)) badges.push("Needs player");
-  // Team is optional for highlight clips, so do not show a warning badge.
-  if (needsClub(highlight)) badges.push("Needs club");
+  // Club and team metadata are optional for highlight clips.
 
   return badges;
 }
@@ -1145,12 +1144,9 @@ function HighlightCard({
         <div className="tkh-meta-row">
           <span>{highlight.clubName}</span>
           <span className="tkh-matchup-label">{matchupLabel}</span>
-          <span>{highlight.teamName}</span>
-          <span>{highlight.durationSeconds ? formatSeconds(highlight.durationSeconds) : "Clip"}</span>
-          <span>
-            {Number(likeCount || 0)} like
-            {Number(likeCount || 0) === 1 ? "" : "s"}
-          </span>
+          {!needsTeam(highlight) && (
+            <span>{highlight.teamName}</span>
+          )}
         </div>
       )}
 
@@ -1247,7 +1243,7 @@ function HighlightCard({
             className="tkh-btn"
             onClick={() => onAttachToClubChat?.(highlight)}
           >
-            {compactWinner ? "💬 Chat" : "Attach to Chat"}
+            💬 Chat
           </button>
         )}
 
@@ -2068,7 +2064,6 @@ export function VideoHighlightsPage({
     "Loading match clips…"
   );
   const [loadError, setLoadError] = useState("");
-  const [showVotingInfo, setShowVotingInfo] = useState(false);
 
   const [curationResult, setCurationResult] = useState(null);
   const [runningCuration, setRunningCuration] = useState(false);
@@ -5636,152 +5631,6 @@ export function VideoHighlightsPage({
             </button>
           </div>
 
-          <button
-            type="button"
-            className="tkh-info-dot"
-            onClick={() => setShowVotingInfo((prev) => !prev)}
-            aria-label="Explain highlight voting"
-            title="How highlight voting works"
-          >
-            i
-          </button>
-
-          {showVotingInfo &&
-            typeof document !== "undefined" &&
-            createPortal(
-              <div
-                role="presentation"
-                onMouseDown={(event) => {
-                  if (event.target === event.currentTarget) {
-                    setShowVotingInfo(false);
-                  }
-                }}
-                style={{
-                  position: "fixed",
-                  inset: 0,
-                  zIndex: 10000,
-                  display: "grid",
-                  placeItems: "center",
-                  padding: "0.75rem",
-                  background: "rgba(2, 6, 23, 0.76)",
-                  backdropFilter: "blur(12px)",
-                  WebkitBackdropFilter: "blur(12px)",
-                }}
-              >
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="weekly-winners-title"
-                  style={{
-                    position: "relative",
-                    width: "min(360px, calc(100vw - 1.5rem))",
-                    maxHeight: "calc(100dvh - 1.5rem)",
-                    overflowY: "auto",
-                    padding: "0.9rem",
-                    borderRadius: "20px",
-                    color: "#f8fafc",
-                    background:
-                      "linear-gradient(160deg, rgba(15,23,42,0.99), rgba(6,18,38,0.99))",
-                    border: "1px solid rgba(96,165,250,0.28)",
-                    boxShadow: "0 30px 90px rgba(0,0,0,0.62)",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setShowVotingInfo(false)}
-                    aria-label="Close"
-                    style={{
-                      position: "absolute",
-                      top: "0.65rem",
-                      right: "0.65rem",
-                      width: "32px",
-                      height: "32px",
-                      borderRadius: "999px",
-                      border: "1px solid rgba(125,211,252,0.28)",
-                      background: "rgba(15,23,42,0.88)",
-                      color: "#bae6fd",
-                      fontSize: "1.25rem",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ×
-                  </button>
-
-                  <div style={{ fontSize: "1.15rem", marginBottom: "0.35rem" }}>
-                    🏆
-                  </div>
-
-                  <h2
-                    id="weekly-winners-title"
-                    style={{
-                      margin: 0,
-                      paddingRight: "2.35rem",
-                      fontSize: "1.05rem",
-                    }}
-                  >
-                    Weekly highlight voting
-                  </h2>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: "0.48rem",
-                      marginTop: "0.7rem",
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: "0.62rem 0.68rem",
-                        borderRadius: "12px",
-                        background: "rgba(30,41,59,0.72)",
-                      }}
-                    >
-                      🔐 Sign in to vote. Likes count as votes.
-                    </div>
-
-                    <div
-                      style={{
-                        padding: "0.8rem",
-                        borderRadius: "15px",
-                        background: "rgba(30,41,59,0.72)",
-                      }}
-                    >
-                      ⭐ Top goals, save, skill and MOM-ish clips become weekly
-                      winners.
-                    </div>
-
-                    <div
-                      style={{
-                        padding: "0.8rem",
-                        borderRadius: "15px",
-                        color: "#d1fae5",
-                        background: "rgba(16,185,129,0.13)",
-                        border: "1px solid rgba(52,211,153,0.22)",
-                      }}
-                    >
-                      ⏳ Non-winners remain visible for five days, then are
-                      permanently deleted.
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="tkh-btn tkh-btn-primary"
-                    onClick={() => setShowVotingInfo(false)}
-                    style={{
-                      width: "100%",
-                      marginTop: "0.7rem",
-                      minHeight: "40px",
-                      borderRadius: "14px",
-                    }}
-                  >
-                    Got it
-                  </button>
-                </div>
-              </div>,
-              document.body
-            )}
-
         </div>
 
         {mainTab === "currentWeek" &&
@@ -6152,6 +6001,7 @@ export function VideoHighlightsPage({
                       <HighlightCard
                     key={highlight.id}
                     highlight={highlight}
+                    compactCurrentWeek={mainTab === "currentWeek"}
                     teams={teams}
                     matchType={matchType}
                     likeCount={
