@@ -14,9 +14,15 @@
     "inspect:appearances": "node src/scripts/inspectSeasonAppearances.js",
     "backfill:participation": "node src/scripts/backfillHistoricalParticipation.js",
     "dev:production": "vite --mode production",
-    "build:production": "vite build --mode production"
+    "build:production": "vite build --mode production",
+    "build:native": "FANM_NATIVE_BUILD=1 vite build --mode production",
+    "native:sync:android": "npm run build:native && cap sync android",
+    "native:open:android": "cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@vis.gl/react-google-maps": "^1.8.3",
     "archiver": "^8.0.0",
     "dotenv": "^17.3.1",
@@ -31,6 +37,7 @@
     "twilio": "^5.13.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@eslint/js": "^9.39.1",
     "@firebase/rules-unit-testing": "^5.0.1",
     "@types/react": "^19.2.2",
