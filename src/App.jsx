@@ -11190,20 +11190,10 @@ export default function App() {
         PAGE_NEWS,
         PAGE_PLAYER_CARDS,
         PAGE_PEER_REVIEW,
+        PAGE_PLAYER_MENTALITIES,
         PAGE_SQUADS,
         PAGE_FORMATIONS,
-      ].includes(page) &&
-      !(
-        page === PAGE_LIVE &&
-        normalizeMatchMode(matchType, MATCH_TYPE.FRIENDLY) ===
-          MATCH_TYPE.FRIENDLY
-      ) &&
-      (
-        page === PAGE_SPECTATOR ||
-        isAdmin ||
-        isCaptain ||
-        Boolean(identity?.memberId || identity?.playerId)
-      ) ? (
+      ].includes(page) ? (
         <ClubChatWidget
           activeClubId={activeClubId}
           activeClubName={activeClubName}

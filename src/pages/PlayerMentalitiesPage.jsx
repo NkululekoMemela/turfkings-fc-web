@@ -2058,6 +2058,88 @@ export function PlayerMentalitiesPage({
           }
         }
 
+        /*
+         * Desktop readability within the standard 1100px canvas.
+         * Mobile and tablet card dimensions remain unchanged.
+         */
+        @media (min-width: 1000px) {
+          .pm-list {
+            gap: 12px;
+          }
+
+          .pm-card {
+            padding: 14px 16px 16px;
+            border-radius: 19px;
+          }
+
+          .pm-player-head {
+            gap: 12px;
+            margin-bottom: 11px;
+          }
+
+          .pm-avatar {
+            flex-basis: 60px;
+            width: 60px;
+            height: 60px;
+            font-size: .78rem;
+          }
+
+          .pm-player-copy h2 {
+            margin-bottom: 4px;
+            font-size: .98rem;
+          }
+
+          .pm-team-line {
+            gap: 5px;
+            font-size: .66rem;
+          }
+
+          .pm-card-badges {
+            gap: 4px;
+          }
+
+          .pm-tactical-badge,
+          .pm-status {
+            padding: 3px 6px;
+            font-size: .54rem;
+          }
+
+          .pm-profile-controls {
+            gap: 10px;
+          }
+
+          .pm-scale {
+            grid-template-columns:
+              minmax(105px, .64fr)
+              minmax(270px, 1.36fr);
+            gap: 12px;
+          }
+
+          .pm-scale-copy strong {
+            font-size: .73rem;
+          }
+
+          .pm-scale-copy > span {
+            margin-top: 3px;
+            font-size: .65rem;
+          }
+
+          .pm-scale-ends {
+            margin-bottom: 4px;
+            font-size: .54rem;
+          }
+
+          .pm-points {
+            gap: 7px;
+          }
+
+          .pm-points button {
+            height: 34px;
+            border-radius: 10px;
+            font-size: .71rem;
+          }
+        }
+
         @media (max-width: 390px) {
           .pm-page {
             width: 100%;

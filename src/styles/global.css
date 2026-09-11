@@ -1,3 +1,11 @@
+/*
+ * FANM CENTRAL PAGE WIDTH
+ * Change this single value to resize every desktop page.
+ */
+:root {
+  --fanm-page-max-width: 1200px;
+}
+
 /* src/styles/global.css */
 
 /* =========================================
@@ -36,12 +44,12 @@
 
   .page {
     width: 100%;
-    max-width: 1100px;
+    max-width: var(--fanm-page-max-width);
     color: #e5e7eb;
   }
 
   .page.landing-page {
-    max-width: 1120px;
+    max-width: var(--fanm-page-max-width);
     width: 100%;
   }
 
@@ -6147,10 +6155,22 @@
   order: 4 !important;
 }
 
-/* make teamsheet use the open space properly */
-.teamsheet-export-wrap {
-  width: min(920px, calc(100vw - 32px)) !important;
+/* SQUADS — use the complete standard page canvas */
+.squads-page .teamsheet-export-wrap {
+  width: 100% !important;
+  max-width: none !important;
+  box-sizing: border-box;
   margin: 1rem auto !important;
+}
+
+/*
+ * Three club teams use the desktop space naturally.
+ * Existing tablet and mobile rules remain unchanged.
+ */
+@media (min-width: 900px) {
+  .squads-page .teamsheet-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 
@@ -20050,5 +20070,17 @@ button.fanm-chat-highlight-card {
 @media (max-width: 520px) {
   .fanm-bench-participant-actions {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Central desktop canvas enforcement */
+@media (min-width: 769px) {
+  .page,
+  .page.landing-page,
+  .squads-page,
+  .pm-page {
+    width: 100% !important;
+    max-width: var(--fanm-page-max-width) !important;
+    box-sizing: border-box;
   }
 }
