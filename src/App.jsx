@@ -66,6 +66,7 @@ import {
   buildAuthorizedCameraDeepLink,
 } from "./storage/cameraHandoffGateway.js";
 import { useAuth } from "./auth/AuthContext.jsx";
+import { initialiseNativePushNotifications } from "./core/notifications/nativePushNotifications.js";
 import { FANM_PRO_CLUBS } from "./data/fanm/fanmTeamLibrary.js";
 
 import {
@@ -2741,6 +2742,55 @@ export default function App() {
   ]);
 
   const activeClubId = activeClubIdentity.id;
+
+  useEffect(() => {
+    if (authLoading || !authUser?.uid || !activeClubId) {
+      return undefined;
+    }
+
+    let disposed = false;
+    let removePushListeners = () => {};
+
+    initialiseNativePushNotifications({
+      authUser,
+      identity,
+      activeClubId,
+    })
+      .then(cleanup => {
+        if (disposed) {
+          cleanup();
+          return;
+        }
+
+        removePushListeners = cleanup;
+      })
+      .catch(error => {
+        console.error(
+          "[NativePush] Initialisation failed:",
+          error
+        );
+      });
+
+    return () => {
+      disposed = true;
+      removePushListeners();
+    };
+  }, [
+    authLoading,
+    authUser?.uid,
+    authUser?.email,
+    authUser?.memberId,
+    authUser?.playerId,
+    authUser?.role,
+    identity?.memberId,
+    identity?.playerId,
+    identity?.email,
+    identity?.fullName,
+    identity?.shortName,
+    identity?.role,
+    identity?.actingRole,
+    activeClubId,
+  ]);
 
   useEffect(() => {
     practiceExpiryWarningAcknowledgedRef.current = false;

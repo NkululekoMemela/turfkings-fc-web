@@ -20,9 +20,11 @@
     "native:open:android": "cap open android"
   },
   "dependencies": {
+    "@capacitor-firebase/authentication": "^8.5.1",
     "@capacitor/android": "^8.5.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
+    "@capacitor/push-notifications": "^8.1.2",
     "@vis.gl/react-google-maps": "^1.8.3",
     "archiver": "^8.0.0",
     "dotenv": "^17.3.1",

@@ -1,5 +1,13 @@
 {
   "appId": "com.fiveasidesnearme.app",
   "appName": "5 Asides Near Me",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": true,
+      "providers": [
+        "google.com"
+      ]
+    }
+  }
 }
