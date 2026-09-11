@@ -121,7 +121,21 @@ export function ClubChatWidget({
   const [clubChatLastSeenMs, setClubChatLastSeenMs] = useState(0);
   const [launcherBottom, setLauncherBottom] = useState(() => {
     try {
-      return Number(window.localStorage.getItem("fanm_chat_launcher_bottom") || 88);
+      const storedBottom = Number(
+        window.localStorage.getItem(
+          "fanm_chat_launcher_bottom"
+        ) || 88
+      );
+      const viewportHeight = window.innerHeight || 720;
+      const maximumBottom = Math.max(
+        120,
+        viewportHeight - 120
+      );
+
+      return Math.min(
+        Math.max(storedBottom || 88, 72),
+        maximumBottom
+      );
     } catch {
       return 88;
     }
