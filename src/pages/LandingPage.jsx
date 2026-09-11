@@ -1473,6 +1473,7 @@ export function LandingPage({
            * while the mode lip remains a fixed premium size.
            */
           .landing-wave-header::before {
+            display: none;
             content: "";
             position: absolute;
             z-index: 0;
@@ -1495,18 +1496,16 @@ export function LandingPage({
             position: absolute;
             display: block;
             z-index: 1;
-            /*
-             * One-pixel overlap removes the browser's
-             * anti-aliasing seam between bar and lip.
-             */
-            top: 85px;
+            top: -1px;
             left: 0;
-            width: min(240px, 20%);
-            height: 37px;
+            width: 100%;
+            height: 123px;
             overflow: visible;
             pointer-events: none;
             filter:
-              drop-shadow(0 10px 16px rgba(2, 6, 23, 0.24));
+              drop-shadow(
+                0 13px 22px rgba(2, 6, 23, 0.24)
+              );
           }
 
           .tk-ribbon-mode-label {
@@ -1611,7 +1610,7 @@ export function LandingPage({
 
           <svg
             className="tk-ribbon-desktop-lip"
-            viewBox="0 0 190 36"
+            viewBox="0 0 1200 122"
             preserveAspectRatio="none"
             aria-hidden="true"
             focusable="false"
@@ -1622,7 +1621,7 @@ export function LandingPage({
                 gradientUnits="userSpaceOnUse"
                 x1="0"
                 y1="0"
-                x2="950"
+                x2="1200"
                 y2="0"
               >
                 <stop offset="0%" stopColor="#1d4ed8" />
@@ -1631,13 +1630,20 @@ export function LandingPage({
               </linearGradient>
             </defs>
 
+            {/*
+             * One continuous desktop path:
+             * full-width header and compact mode lip share
+             * the same fill, with no join between them.
+             */}
             <path
               d="
                 M 0 0
-                H 190
-                C 171 0, 164 33, 144 33
-                H 55
-                C 43 33, 38 0, 28 0
+                H 1200
+                V 86
+                H 240
+                C 216 86, 207 119, 182 119
+                H 69
+                C 54 119, 48 86, 35 86
                 H 0
                 Z
               "
@@ -1645,7 +1651,12 @@ export function LandingPage({
             />
 
             <path
-              d="M 28 0 C 38 0, 43 33, 55 33 H 144 C 164 33, 171 0, 190 0"
+              d="
+                M 35 86
+                C 48 86, 54 119, 69 119
+                H 182
+                C 207 119, 216 86, 240 86
+              "
               fill="none"
               stroke="rgba(34,211,238,0.38)"
               strokeWidth="1.2"
