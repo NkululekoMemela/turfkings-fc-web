@@ -1462,9 +1462,58 @@ export function LandingPage({
           box-shadow: none;
         }
 
+        .tk-ribbon-desktop-lip {
+          display: none;
+        }
+
         @media (min-width: 760px) {
+          /*
+           * Desktop ribbon:
+           * the main bar follows the central page width,
+           * while the mode lip remains a fixed premium size.
+           */
+          .landing-wave-header::before {
+            content: "";
+            position: absolute;
+            z-index: 0;
+            inset: 0 0 auto;
+            height: 86px;
+            background:
+              linear-gradient(
+                90deg,
+                #1d4ed8 0%,
+                #071329 42%,
+                #22c55e 100%
+              );
+          }
+
+          .tk-ribbon-wave-svg--mobile {
+            display: none;
+          }
+
+          .tk-ribbon-desktop-lip {
+            position: absolute;
+            display: block;
+            z-index: 1;
+            /*
+             * One-pixel overlap removes the browser's
+             * anti-aliasing seam between bar and lip.
+             */
+            top: 85px;
+            left: 0;
+            width: min(240px, 20%);
+            height: 37px;
+            overflow: visible;
+            pointer-events: none;
+            filter:
+              drop-shadow(0 10px 16px rgba(2, 6, 23, 0.24));
+          }
+
           .tk-ribbon-mode-label {
-            font-size: clamp(0.58rem, 0.52vw, 0.72rem);
+            left: 67px;
+            top: 103px;
+            transform: translateY(-50%);
+            font-size: 0.62rem;
             letter-spacing: 0.08em;
           }
         }
@@ -1503,7 +1552,7 @@ export function LandingPage({
       >
         <header className="landing-wave-header">
           <svg
-            className="tk-ribbon-wave-svg"
+            className="tk-ribbon-wave-svg tk-ribbon-wave-svg--mobile"
             viewBox="0 0 390 122"
             preserveAspectRatio="none"
             aria-hidden="true"
@@ -1558,6 +1607,50 @@ export function LandingPage({
               strokeWidth="1.2"
             />
 
+          </svg>
+
+          <svg
+            className="tk-ribbon-desktop-lip"
+            viewBox="0 0 190 36"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <defs>
+              <linearGradient
+                id="tkLandingDesktopLipGradient"
+                gradientUnits="userSpaceOnUse"
+                x1="0"
+                y1="0"
+                x2="950"
+                y2="0"
+              >
+                <stop offset="0%" stopColor="#1d4ed8" />
+                <stop offset="42%" stopColor="#071329" />
+                <stop offset="100%" stopColor="#22c55e" />
+              </linearGradient>
+            </defs>
+
+            <path
+              d="
+                M 0 0
+                H 190
+                C 171 0, 164 33, 144 33
+                H 55
+                C 43 33, 38 0, 28 0
+                H 0
+                Z
+              "
+              fill="url(#tkLandingDesktopLipGradient)"
+            />
+
+            <path
+              d="M 28 0 C 38 0, 43 33, 55 33 H 144 C 164 33, 171 0, 190 0"
+              fill="none"
+              stroke="rgba(34,211,238,0.38)"
+              strokeWidth="1.2"
+              vectorEffect="non-scaling-stroke"
+            />
           </svg>
 
           <div className="tk-ribbon-mode-label" aria-label={modeLipLabel}>
