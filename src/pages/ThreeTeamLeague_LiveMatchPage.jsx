@@ -48,6 +48,11 @@ import {
 import {
   buildBestOutfieldAssignment,
 } from "../core/playerPositioning.js";
+import {
+  saveTeamGoalkeeperRestrictions,
+  subscribeGoalkeeperRestrictions,
+} from "../storage/goalkeeperRestrictionsRepository.js";
+import HandInjuryConfirmationModal from "../components/HandInjuryConfirmationModal.jsx";
 
 import {
   findPreviousConfirmedTeamAppearance,
@@ -3539,6 +3544,28 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [undoError, setUndoError] = useState("");
 
   const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [
+    goalkeeperRestrictionsByTeam,
+    setGoalkeeperRestrictionsByTeam,
+  ] = useState({});
+  const [
+    goalkeeperRestrictionsReady,
+    setGoalkeeperRestrictionsReady,
+  ] = useState(
+    dataScope?.environment === "practice"
+  );
+  const [
+    showHandInjuryManager,
+    setShowHandInjuryManager,
+  ] = useState(false);
+  const [
+    handInjurySavingKey,
+    setHandInjurySavingKey,
+  ] = useState("");
+  const [
+    pendingHandInjuryConfirmation,
+    setPendingHandInjuryConfirmation,
+  ] = useState(null);
 
   const alarmLoopRef = useRef(null);
 
@@ -3557,6 +3584,46 @@ export function ThreeTeamLeagueLiveMatchPage({
       dataScope?.environment,
       dataScope?.practiceSessionId,
     ]
+  );
+
+  useEffect(() => {
+    const isPractice =
+      dataScope?.environment === "practice";
+
+    if (isPractice || !activeClubId) {
+      setGoalkeeperRestrictionsByTeam({});
+      setGoalkeeperRestrictionsReady(true);
+      return undefined;
+    }
+
+    setGoalkeeperRestrictionsReady(false);
+
+    return subscribeGoalkeeperRestrictions({
+      activeClubId,
+      onData: (nextByTeam) => {
+        setGoalkeeperRestrictionsByTeam(nextByTeam);
+        setGoalkeeperRestrictionsReady(true);
+      },
+      onError: () => {
+        setGoalkeeperRestrictionsByTeam({});
+        setGoalkeeperRestrictionsReady(true);
+      },
+    });
+  }, [
+    activeClubId,
+    dataScope?.environment,
+  ]);
+
+  const teamARestrictedPlayerKeys = useMemo(
+    () =>
+      goalkeeperRestrictionsByTeam?.[teamAId] || [],
+    [goalkeeperRestrictionsByTeam, teamAId]
+  );
+
+  const teamBRestrictedPlayerKeys = useMemo(
+    () =>
+      goalkeeperRestrictionsByTeam?.[teamBId] || [],
+    [goalkeeperRestrictionsByTeam, teamBId]
   );
 
   const defaultTeamALineup = useMemo(() => {
@@ -3598,7 +3665,12 @@ export function ThreeTeamLeagueLiveMatchPage({
      * Formation-page/master lineup remains untouched.
      */
     if (!previous?.found || !previous?.snapshot) {
-      return masterLineup;
+      return {
+        ...masterLineup,
+        latePlayers: [],
+        goalkeeperRestrictedPlayerKeys:
+          teamARestrictedPlayerKeys,
+      };
     }
 
     const formation =
@@ -3664,6 +3736,15 @@ export function ThreeTeamLeagueLiveMatchPage({
       buildNextAppearanceGoalkeeperConstraint({
         participationRotation: participation,
         formation,
+        appearanceHistory:
+          getConfirmedTeamAppearanceHistory({
+            teamId: teamAId,
+            currentMatchNo,
+            confirmedLineupsByMatchNo:
+              effectiveConfirmedLineupsByMatchNo,
+          }),
+        goalkeeperRestrictedPlayerKeys:
+          teamARestrictedPlayerKeys,
       });
 
     const rotated =
@@ -3684,14 +3765,22 @@ export function ThreeTeamLeagueLiveMatchPage({
       formationId: formation.id,
       positions: rotated.positions,
       benchSnapshot: rotated.benchPlayers,
-      latePlayers:
-        previous.snapshot?.latePlayers || [],
+
+      /*
+       * Late is match-specific and must be set again
+       * by the referee when necessary.
+       */
+      latePlayers: [],
+
+      goalkeeperRestrictedPlayerKeys:
+        teamARestrictedPlayerKeys,
     };
   }, [
     teamA,
     teamAId,
     currentMatchNo,
     effectiveConfirmedLineupsByMatchNo,
+    teamARestrictedPlayerKeys,
     savedLineups,
     canonicalName,
     playerKeyFor,
@@ -3736,7 +3825,12 @@ export function ThreeTeamLeagueLiveMatchPage({
       });
 
     if (!previous?.found || !previous?.snapshot) {
-      return masterLineup;
+      return {
+        ...masterLineup,
+        latePlayers: [],
+        goalkeeperRestrictedPlayerKeys:
+          teamBRestrictedPlayerKeys,
+      };
     }
 
     const formation =
@@ -3798,6 +3892,15 @@ export function ThreeTeamLeagueLiveMatchPage({
       buildNextAppearanceGoalkeeperConstraint({
         participationRotation: participation,
         formation,
+        appearanceHistory:
+          getConfirmedTeamAppearanceHistory({
+            teamId: teamBId,
+            currentMatchNo,
+            confirmedLineupsByMatchNo:
+              effectiveConfirmedLineupsByMatchNo,
+          }),
+        goalkeeperRestrictedPlayerKeys:
+          teamBRestrictedPlayerKeys,
       });
 
     const rotated =
@@ -3818,14 +3921,22 @@ export function ThreeTeamLeagueLiveMatchPage({
       formationId: formation.id,
       positions: rotated.positions,
       benchSnapshot: rotated.benchPlayers,
-      latePlayers:
-        previous.snapshot?.latePlayers || [],
+
+      /*
+       * Late is match-specific and must be set again
+       * by the referee when necessary.
+       */
+      latePlayers: [],
+
+      goalkeeperRestrictedPlayerKeys:
+        teamBRestrictedPlayerKeys,
     };
   }, [
     teamB,
     teamBId,
     currentMatchNo,
     effectiveConfirmedLineupsByMatchNo,
+    teamBRestrictedPlayerKeys,
     savedLineups,
     canonicalName,
     playerKeyFor,
@@ -3843,6 +3954,164 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [localConfirmedMatchKey, setLocalConfirmedMatchKey] = useState("");
   const [lineupErrorModal, setLineupErrorModal] = useState(null);
   const [pendingBenchParticipant, setPendingBenchParticipant] = useState(null);
+
+  const restrictionPlayerNames = (team) =>
+    uniquePlayersNormalized(
+      (Array.isArray(team?.players) ? team.players : [])
+        .map((player) =>
+          typeof player === "string"
+            ? player
+            : player?.name ||
+              player?.fullName ||
+              player?.shortName ||
+              ""
+        )
+        .filter(Boolean),
+      canonicalName,
+      playerKeyFor
+    );
+
+  const teamARestrictionOptions =
+    restrictionPlayerNames(teamA);
+  const teamBRestrictionOptions =
+    restrictionPlayerNames(teamB);
+  const standbyRestrictionOptions =
+    restrictionPlayerNames(standbyTeam);
+  const standbyRestrictedPlayerKeys =
+    goalkeeperRestrictionsByTeam?.[standbyId] || [];
+
+  const canManageLiveHandInjury =
+    canControlMatch &&
+    dataScope?.environment !== "practice";
+
+  const isGoalkeeperRestricted = (
+    teamId,
+    playerName
+  ) => {
+    const targetKey = playerKeyFor(playerName);
+
+    return (
+      goalkeeperRestrictionsByTeam?.[teamId] || []
+    ).some(
+      (name) => playerKeyFor(name) === targetKey
+    );
+  };
+
+  const handleToggleHandInjury = async (
+    teamId,
+    playerName,
+    confirmed = false
+  ) => {
+    if (!canManageLiveHandInjury) return;
+
+    const cleanName = canonicalName(playerName);
+    const targetKey = playerKeyFor(cleanName);
+
+    if (!teamId || !cleanName || !targetKey) return;
+
+    const savingKey = `${teamId}|${targetKey}`;
+    if (handInjurySavingKey) return;
+
+    const current =
+      goalkeeperRestrictionsByTeam?.[teamId] || [];
+
+    const currentlyRestricted = current.some(
+      (name) => playerKeyFor(name) === targetKey
+    );
+
+    if (!confirmed) {
+      const selectedTeam =
+        [teamA, teamB, standbyTeam].find(
+          (team) => team?.id === teamId
+        ) || null;
+
+      setPendingHandInjuryConfirmation({
+        teamId,
+        playerName: cleanName,
+        teamLabel:
+          selectedTeam?.label || "League team",
+        currentlyRestricted,
+      });
+      return;
+    }
+
+    const next = currentlyRestricted
+      ? current.filter(
+          (name) => playerKeyFor(name) !== targetKey
+        )
+      : [...current, cleanName];
+
+    setHandInjurySavingKey(savingKey);
+
+    try {
+      const saved =
+        await saveTeamGoalkeeperRestrictions({
+          activeClubId,
+          teamId,
+          goalkeeperRestrictedPlayerKeys: next,
+          updatedByName:
+            identity?.fullName ||
+            identity?.shortName ||
+            identity?.displayName ||
+            identity?.email ||
+            "",
+          updatedByRole:
+            activeRole || "match_controller",
+        });
+
+      setGoalkeeperRestrictionsByTeam((previous) => ({
+        ...previous,
+        [teamId]: saved,
+      }));
+      setPendingHandInjuryConfirmation(null);
+
+      if (teamId === teamAId) {
+        setVerifyTeamALineup((previous) => ({
+          ...previous,
+          goalkeeperRestrictedPlayerKeys: saved,
+        }));
+      }
+
+      if (teamId === teamBId) {
+        setVerifyTeamBLineup((previous) => ({
+          ...previous,
+          goalkeeperRestrictedPlayerKeys: saved,
+        }));
+      }
+    } catch (error) {
+      console.error(
+        "[LiveMatch] Failed to update Hand injury list:",
+        error
+      );
+      window.alert(
+        "The Hand injury list could not be updated. Please try again."
+      );
+    } finally {
+      setHandInjurySavingKey("");
+    }
+  };
+
+  useEffect(() => {
+    if (!goalkeeperRestrictionsReady) return;
+
+    setVerifyTeamALineup((previous) => ({
+      ...previous,
+      goalkeeperRestrictedPlayerKeys:
+        teamARestrictedPlayerKeys,
+    }));
+
+    setVerifyTeamBLineup((previous) => ({
+      ...previous,
+      goalkeeperRestrictedPlayerKeys:
+        teamBRestrictedPlayerKeys,
+    }));
+  }, [
+    goalkeeperRestrictionsReady,
+    teamARestrictedPlayerKeys,
+    teamBRestrictedPlayerKeys,
+    teamAId,
+    teamBId,
+  ]);
 
   // Match Discipline and Injured Players are independent tools.
   const [showCardRecorder, setShowCardRecorder] = useState(false);
@@ -3931,7 +4200,9 @@ export function ThreeTeamLeagueLiveMatchPage({
   );
 
   useEffect(() => {
-    if (!playersReady) return;
+    if (!playersReady || !goalkeeperRestrictionsReady) {
+      return;
+    }
 
     const nextSeedKey = currentLineupMatchKey;
 
@@ -3959,6 +4230,9 @@ export function ThreeTeamLeagueLiveMatchPage({
     setLineupSeedKey(nextSeedKey);
   }, [
     playersReady,
+    goalkeeperRestrictionsReady,
+    teamARestrictedPlayerKeys,
+    teamBRestrictedPlayerKeys,
     currentMatchNo,
     teamAId,
     teamBId,
@@ -6758,6 +7032,7 @@ export function ThreeTeamLeagueLiveMatchPage({
               >
                 🧑 Edit Lineups
               </button>
+
             </div>
           ) : (
             <p className="muted stats-season-range">
@@ -8088,10 +8363,328 @@ export function ThreeTeamLeagueLiveMatchPage({
         </div>
       )}
 
+      <HandInjuryConfirmationModal
+        pending={pendingHandInjuryConfirmation}
+        saving={Boolean(handInjurySavingKey)}
+        onCancel={() => {
+          if (!handInjurySavingKey) {
+            setPendingHandInjuryConfirmation(null);
+          }
+        }}
+        onConfirm={() => {
+          const pending = pendingHandInjuryConfirmation;
+          if (!pending) return;
+
+          /*
+           * Close the confirmation and Hand injury manager
+           * immediately. Firebase completes in the background;
+           * the existing error alert still reports a failed save.
+           */
+          setPendingHandInjuryConfirmation(null);
+          setShowHandInjuryManager(false);
+
+          void handleToggleHandInjury(
+            pending.teamId,
+            pending.playerName,
+            true
+          );
+        }}
+      />
+
       {showVerifyModal && (
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal live-verify-modal">
             <h3 className="live-lineups-title">Edit lineup positions</h3>
+
+            {canManageLiveHandInjury &&
+              Number(currentMatchNo) === 1 &&
+              !hasVerifiedLineups && (
+                <section
+                  style={{
+                    marginBottom: 12,
+                    padding: 13,
+                    borderRadius: 17,
+                    border:
+                      "1px solid rgba(245,158,11,0.34)",
+                    background:
+                      "linear-gradient(145deg, rgba(15,23,42,0.98), rgba(69,38,8,0.78))",
+                    boxShadow:
+                      "0 15px 34px rgba(2,6,23,0.28)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "center",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 38,
+                        height: 38,
+                        flex: "0 0 38px",
+                        display: "grid",
+                        placeItems: "center",
+                        borderRadius: 12,
+                        background:
+                          "rgba(245,158,11,0.16)",
+                        border:
+                          "1px solid rgba(245,158,11,0.3)",
+                        fontSize: 18,
+                      }}
+                    >
+                      🧤
+                    </span>
+
+                    <div style={{ minWidth: 0 }}>
+                      <strong
+                        style={{
+                          display: "block",
+                          fontSize: 14,
+                        }}
+                      >
+                        Set tonight’s rotation foundation
+                      </strong>
+                      <small
+                        style={{
+                          display: "block",
+                          marginTop: 3,
+                          lineHeight: 1.4,
+                          color:
+                            "rgba(226,232,240,0.76)",
+                        }}
+                      >
+                        Check each goalkeeper and substitute before
+                        confirming the first match.
+                      </small>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 7,
+                      marginTop: 11,
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: "5px 8px",
+                        borderRadius: 999,
+                        background:
+                          "rgba(34,197,94,0.11)",
+                        border:
+                          "1px solid rgba(34,197,94,0.23)",
+                        color: "#bbf7d0",
+                        fontSize: 11,
+                        fontWeight: 750,
+                      }}
+                    >
+                      GK checked
+                    </span>
+
+                    <span
+                      style={{
+                        padding: "5px 8px",
+                        borderRadius: 999,
+                        background:
+                          "rgba(56,189,248,0.1)",
+                        border:
+                          "1px solid rgba(56,189,248,0.22)",
+                        color: "#bae6fd",
+                        fontSize: 11,
+                        fontWeight: 750,
+                      }}
+                    >
+                      Sub checked
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowHandInjuryManager(
+                          (visible) => !visible
+                        )
+                      }
+                      aria-expanded={showHandInjuryManager}
+                      style={{
+                        padding: "5px 9px",
+                        borderRadius: 999,
+                        background:
+                          "rgba(245,158,11,0.14)",
+                        border:
+                          "1px solid rgba(245,158,11,0.3)",
+                        color: "#fde68a",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      💪 Hand injury ·{" "}
+                      {teamARestrictedPlayerKeys.length +
+                        teamBRestrictedPlayerKeys.length +
+                        standbyRestrictedPlayerKeys.length}
+                    </button>
+                  </div>
+                </section>
+              )}
+
+            {canManageLiveHandInjury &&
+              !(
+                Number(currentMatchNo) === 1 &&
+                !hasVerifiedLineups
+              ) && (
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() =>
+                    setShowHandInjuryManager(
+                      (visible) => !visible
+                    )
+                  }
+                  aria-expanded={showHandInjuryManager}
+                  style={{
+                    width: "100%",
+                    marginBottom: 10,
+                    minHeight: 38,
+                  }}
+                >
+                  💪 Hand injury ·{" "}
+                  {teamARestrictedPlayerKeys.length +
+                    teamBRestrictedPlayerKeys.length +
+                        standbyRestrictedPlayerKeys.length}
+                </button>
+              )}
+
+            {canManageLiveHandInjury &&
+              showHandInjuryManager && (
+                <section
+                  aria-label="Hand injury goalkeeper restrictions"
+                  style={{
+                    marginBottom: 12,
+                    padding: 11,
+                    borderRadius: 15,
+                    border:
+                      "1px solid rgba(245,158,11,0.3)",
+                    background:
+                      "rgba(15,23,42,0.94)",
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: "0 0 10px",
+                      color:
+                        "rgba(226,232,240,0.78)",
+                      fontSize: 12,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    These players remain available outfield but
+                    will not be assigned goalkeeper.
+                  </p>
+
+                  {[
+                    {
+                      teamId: teamAId,
+                      label:
+                        effectiveTeamA?.label ||
+                        teamA?.label ||
+                        "Team A",
+                      players: teamARestrictionOptions,
+                    },
+                    {
+                      teamId: teamBId,
+                      label:
+                        effectiveTeamB?.label ||
+                        teamB?.label ||
+                        "Team B",
+                      players: teamBRestrictionOptions,
+                    },
+                    {
+                      teamId: standbyId,
+                      label: `${
+                        standbyTeam?.label || "Team C"
+                      } · Standby`,
+                      players: standbyRestrictionOptions,
+                    },
+                  ]
+                    .filter(
+                      (group) =>
+                        group.teamId &&
+                        group.players.length > 0
+                    )
+                    .map((group) => (
+                    <div
+                      key={`hand-injury-group-${group.teamId}`}
+                      style={{ marginTop: 9 }}
+                    >
+                      <strong
+                        style={{
+                          display: "block",
+                          marginBottom: 6,
+                          fontSize: 12,
+                        }}
+                      >
+                        {group.label}
+                      </strong>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 6,
+                        }}
+                      >
+                        {group.players.map((name) => {
+                          const selected =
+                            isGoalkeeperRestricted(
+                              group.teamId,
+                              name
+                            );
+                          const saving =
+                            handInjurySavingKey ===
+                            `${group.teamId}|${playerKeyFor(name)}`;
+
+                          return (
+                            <button
+                              key={`${group.teamId}-${playerKeyFor(name)}`}
+                              type="button"
+                              className={
+                                selected
+                                  ? "primary-btn"
+                                  : "secondary-btn"
+                              }
+                              aria-pressed={selected}
+                              disabled={Boolean(
+                                handInjurySavingKey
+                              )}
+                              onClick={() =>
+                                handleToggleHandInjury(
+                                  group.teamId,
+                                  name
+                                )
+                              }
+                              style={{
+                                minHeight: 34,
+                                padding:
+                                  "0.35rem 0.55rem",
+                                fontSize: 11,
+                              }}
+                            >
+                              {saving
+                                ? "Saving…"
+                                : `${selected ? "💪 " : ""}${displayCompactPlayerName(name)}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              )}
 
             {pendingBenchParticipant?.name && (
               <div className="fanm-bench-participant-guidance">
