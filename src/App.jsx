@@ -2565,6 +2565,8 @@ export default function App() {
 
   const [entryPageIntent, setEntryPageIntent] = useState(null);
   const [page, setPage] = useState(PAGE_HOME);
+  const [nativeChatOpenRequest, setNativeChatOpenRequest] =
+    useState(null);
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
@@ -2755,6 +2757,37 @@ export default function App() {
       authUser,
       identity,
       activeClubId,
+      onNotificationOpened: notification => {
+        const data = notification?.data || {};
+
+        if (
+          data.type !== "club_chat" &&
+          data.route !== "club-chat"
+        ) {
+          return;
+        }
+
+        const notificationClubId = String(
+          data.clubId || ""
+        ).trim();
+
+        if (!notificationClubId) return;
+
+        if (notificationClubId !== activeClubId) {
+          setSelectedHomeClub(
+            buildClubIdentity({
+              id: notificationClubId,
+            })
+          );
+        }
+
+        setPage(PAGE_LANDING);
+        setNativeChatOpenRequest({
+          clubId: notificationClubId,
+          messageId: String(data.messageId || ""),
+          openedAt: Date.now(),
+        });
+      },
     })
       .then(cleanup => {
         if (disposed) {
@@ -11266,6 +11299,7 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           members={members}
+          nativeOpenRequest={nativeChatOpenRequest}
           onOpenHighlight={handleGoToViewHighlights}
           variant="launcher"
         />

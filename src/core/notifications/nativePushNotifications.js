@@ -29,6 +29,7 @@ export async function initialiseNativePushNotifications({
   authUser,
   identity,
   activeClubId,
+  onNotificationOpened,
 }) {
   if (!isNativePushAvailable()) return () => {};
   if (!authUser?.uid || !activeClubId) return () => {};
@@ -124,6 +125,15 @@ export async function initialiseNativePushNotifications({
           "[NativePush] Notification opened:",
           action.notification
         );
+
+        try {
+          onNotificationOpened?.(action.notification);
+        } catch (error) {
+          console.error(
+            "[NativePush] Notification routing failed:",
+            error
+          );
+        }
       }
     )
   );

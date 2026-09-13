@@ -2980,3 +2980,169 @@ exports.startPracticeSession = onRequest(
     }
   }
 );
+
+// -----------------------------------------------------------------------------
+// Native Club Chat notifications
+// -----------------------------------------------------------------------------
+//
+// TEMPORARY TESTING:
+// The sender is intentionally included so one physical device can verify
+// delivery end-to-end. Set this to false before production release.
+const INCLUDE_CHAT_SENDER_DURING_NATIVE_TESTING = true;
+
+function buildClubChatNotificationBody(message) {
+  const text = String(message.text || "").trim();
+
+  if (text) {
+    return text.length > 140
+      ? `${text.slice(0, 137)}...`
+      : text;
+  }
+
+  if (message.attachmentType === "highlight") {
+    return "Shared a club highlight";
+  }
+
+  return "Sent a new club message";
+}
+
+function isInvalidMessagingTokenError(code) {
+  return [
+    "messaging/invalid-registration-token",
+    "messaging/registration-token-not-registered",
+  ].includes(String(code || ""));
+}
+
+exports.onClubChatMessageCreated = onDocumentCreated(
+  {
+    document:
+      "clubs/{clubId}/chatMessages/{messageId}",
+    region: REGION,
+  },
+  async (event) => {
+    const snap = event.data;
+
+    if (!snap) {
+      console.log(
+        "[ClubChatPush] Missing message snapshot."
+      );
+      return;
+    }
+
+    const message = snap.data() || {};
+    const clubId = String(event.params.clubId || "");
+    const messageId = String(event.params.messageId || "");
+    const senderUid = String(message.senderUid || "");
+    const senderName = String(
+      message.senderName || "Club member"
+    );
+    const clubName = String(
+      message.clubName || "Club Chat"
+    );
+
+    const devicesSnapshot = await db
+      .collection("clubs")
+      .doc(clubId)
+      .collection("notificationDevices")
+      .get();
+
+    const tokenRecords = [];
+    const seenTokens = new Set();
+
+    devicesSnapshot.docs.forEach((deviceDoc) => {
+      const device = deviceDoc.data() || {};
+      const token = String(device.token || "").trim();
+
+      if (!device.enabled || !token) return;
+      if (seenTokens.has(token)) return;
+
+      if (
+        !INCLUDE_CHAT_SENDER_DURING_NATIVE_TESTING &&
+        senderUid &&
+        String(device.firebaseUid || "") === senderUid
+      ) {
+        return;
+      }
+
+      seenTokens.add(token);
+      tokenRecords.push({
+        token,
+        ref: deviceDoc.ref,
+      });
+    });
+
+    if (!tokenRecords.length) {
+      console.log(
+        `[ClubChatPush] No recipients for club ${clubId}.`
+      );
+      return;
+    }
+
+    const invalidRefs = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (
+      let start = 0;
+      start < tokenRecords.length;
+      start += 500
+    ) {
+      const batch = tokenRecords.slice(start, start + 500);
+
+      const response =
+        await admin.messaging().sendEachForMulticast({
+          tokens: batch.map((record) => record.token),
+          notification: {
+            title: `${senderName} • ${clubName}`,
+            body: buildClubChatNotificationBody(message),
+          },
+          data: {
+            type: "club_chat",
+            route: "club-chat",
+            clubId,
+            messageId,
+            senderUid,
+            senderName,
+          },
+          android: {
+            priority: "high",
+          },
+        });
+
+      successCount += response.successCount;
+      failureCount += response.failureCount;
+
+      response.responses.forEach((result, index) => {
+        if (
+          !result.success &&
+          isInvalidMessagingTokenError(
+            result.error?.code
+          )
+        ) {
+          invalidRefs.push(batch[index].ref);
+        }
+      });
+    }
+
+    if (invalidRefs.length) {
+      const cleanupBatch = db.batch();
+
+      invalidRefs.forEach((ref) => {
+        cleanupBatch.delete(ref);
+      });
+
+      await cleanupBatch.commit();
+    }
+
+    console.log("[ClubChatPush] Delivery complete.", {
+      clubId,
+      messageId,
+      recipients: tokenRecords.length,
+      successCount,
+      failureCount,
+      invalidTokensRemoved: invalidRefs.length,
+      senderIncludedForTesting:
+        INCLUDE_CHAT_SENDER_DURING_NATIVE_TESTING,
+    });
+  }
+);
