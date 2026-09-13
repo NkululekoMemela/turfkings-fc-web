@@ -1,9 +1,56 @@
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig.js";
 
 const DEVICE_ID_KEY = "fanm_native_push_device_id_v1";
+
+function foregroundNotificationId(notification = {}) {
+  const source = String(
+    notification.id ||
+    notification.data?.messageId ||
+    notification.data?.paymentId ||
+    `${Date.now()}_${Math.random()}`
+  );
+
+  let hash = 0;
+
+  for (let index = 0; index < source.length; index += 1) {
+    hash = ((hash << 5) - hash) + source.charCodeAt(index);
+    hash |= 0;
+  }
+
+  return Math.max(1, Math.abs(hash));
+}
+
+async function showForegroundNotification(notification = {}) {
+  const title = String(
+    notification.title ||
+    notification.data?.title ||
+    "5 Asides Near Me"
+  );
+
+  const body = String(
+    notification.body ||
+    notification.data?.body ||
+    "You have a new notification."
+  );
+
+  await LocalNotifications.schedule({
+    notifications: [
+      {
+        id: foregroundNotificationId(notification),
+        title,
+        body,
+        extra: notification.data || {},
+        schedule: {
+          at: new Date(Date.now() + 100),
+        },
+      },
+    ],
+  });
+}
 
 function getOrCreateDeviceId() {
   try {
@@ -108,11 +155,41 @@ export async function initialiseNativePushNotifications({
   listenerHandles.push(
     await PushNotifications.addListener(
       "pushNotificationReceived",
-      notification => {
+      async notification => {
         console.info(
           "[NativePush] Notification received:",
           notification
         );
+
+        try {
+          await showForegroundNotification(notification);
+        } catch (error) {
+          console.error(
+            "[NativePush] Foreground presentation failed:",
+            error
+          );
+        }
+      }
+    )
+  );
+
+  listenerHandles.push(
+    await LocalNotifications.addListener(
+      "localNotificationActionPerformed",
+      action => {
+        const notification = {
+          id: String(action.notification?.id || ""),
+          title: action.notification?.title || "",
+          body: action.notification?.body || "",
+          data: action.notification?.extra || {},
+        };
+
+        console.info(
+          "[NativePush] Foreground notification opened:",
+          notification
+        );
+
+        onNotificationOpened?.(notification);
       }
     )
   );

@@ -298,6 +298,7 @@ export function LandingPage({
   isSpectator = false,
   canStartMatch = false,
   hasRecordedMatchDayState = false,
+  onReady,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
 
@@ -360,6 +361,12 @@ export function LandingPage({
   }, [resolvedClubIdentity, resolvedClubLogo]);
 
   const [photoIndex, setPhotoIndex] = useState(0);
+
+  useEffect(() => {
+    if (!teamPhotos.length) {
+      onReady?.();
+    }
+  }, [teamPhotos.length, onReady]);
 
   useEffect(() => {
     if (teamPhotos.length <= 1) return;
@@ -2700,6 +2707,8 @@ export function LandingPage({
           src={teamPhotos[photoIndex]}
           alt={`${resolvedClubName} club image ${photoIndex + 1}`}
           className="team-photo"
+          onLoad={() => onReady?.()}
+          onError={() => onReady?.()}
           style={{
             width: "100%",
             height: "100%",

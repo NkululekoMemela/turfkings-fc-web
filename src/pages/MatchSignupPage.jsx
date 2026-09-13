@@ -2868,9 +2868,65 @@ export default function MatchSignupPage({
     }
 
     const paidPlayers = adminCleanupCandidates.filter(
-      (player) =>
-        Array.isArray(player?.paidWeeks) &&
-        player.paidWeeks.includes(week.id)
+      (player) => {
+        if (
+          !Array.isArray(player?.paidWeeks) ||
+          !player.paidWeeks.includes(week.id)
+        ) {
+          return false;
+        }
+
+        const data = {
+          ...(player?.rawData || {}),
+          ...player,
+        };
+        const method = String(
+          data.paymentMethod || ""
+        ).trim().toLowerCase();
+        const moneyBackedWeeks = uniqueWeekIds(
+          data.moneyBackedWeeks || []
+        );
+        const accessOverrideWeeks = uniqueWeekIds(
+          data.accessOverrideWeeks || []
+        );
+
+        const isTicketBooking =
+          method === "match_ticket" &&
+          String(data.lastMatchTicketWeekId || "").trim() ===
+            week.id &&
+          Boolean(
+            String(data.lastMatchTicketId || "").trim()
+          );
+
+        if (isTicketBooking) return true;
+        if (moneyBackedWeeks.includes(week.id)) return true;
+        if (accessOverrideWeeks.includes(week.id)) return false;
+        if (data.paymentSimulation === true) return false;
+
+        if (
+          [
+            "manual_admin_add_paid_week",
+            "practice_manual_admin_paid",
+            "practice simulation",
+          ].includes(method)
+        ) {
+          return false;
+        }
+
+        return (
+          data.paymentActuallyReceived === true ||
+          [
+            "yoco",
+            "paystack",
+            "manual_admin_verify",
+          ].includes(method) ||
+          ["yoco_webhook", "paystack_webhook"].includes(
+            String(data.verifiedBy || "")
+              .trim()
+              .toLowerCase()
+          )
+        );
+      }
     );
 
     const fixtureLabel =
@@ -2886,15 +2942,15 @@ export default function MatchSignupPage({
 
     const confirmed = await showPremiumConfirm({
       icon: "🌧️",
-      title: `Weather cancellation · ${fixtureLabel}`,
+      title: `Cancel Match Day · ${fixtureLabel}`,
       message:
         `${paidPlayers.length} paid booking${
           paidPlayers.length === 1 ? "" : "s"
         } will be released.`,
       detail:
         `Each paid player will receive one Match Ticket. Unpaid bookings will not receive tickets.`,
-      confirmText: "Cancel match",
-      cancelText: "Keep Match",
+      confirmText: "Cancel Match Day",
+      cancelText: "Keep Match Day",
       variant: "danger",
     });
 
@@ -2925,22 +2981,55 @@ export default function MatchSignupPage({
         }
 
         try {
-          await cancelPaidMatchAndIssueCredit({
-            clubId: activeClubId,
-            playerId,
-            playerName:
-              player?.fullName ||
-              player?.shortName ||
-              "",
-            signupDocId,
-            weekId: week.id,
-            sourceType: MATCH_CREDIT_SOURCE.MATCH_CANCELLED,
-            issuedBy:
-              currentUser?.uid ||
-              identity?.uid ||
-              identity?.userId ||
-              "admin",
-          });
+          const playerData = {
+            ...(player?.rawData || {}),
+            ...player,
+          };
+          const redeemedTicketId = String(
+            playerData.lastMatchTicketId || ""
+          ).trim();
+          const redeemedTicketWeekId = String(
+            playerData.lastMatchTicketWeekId || ""
+          ).trim();
+
+          if (
+            redeemedTicketId &&
+            redeemedTicketWeekId === week.id &&
+            String(playerData.paymentMethod || "")
+              .trim()
+              .toLowerCase() === "match_ticket"
+          ) {
+            await returnRedeemedMatchTicketToWallet({
+              clubId: activeClubId,
+              creditId: redeemedTicketId,
+              playerId,
+              signupDocId,
+              weekId: week.id,
+              returnedBy:
+                currentUser?.uid ||
+                identity?.uid ||
+                identity?.userId ||
+                "admin",
+            });
+          } else {
+            await cancelPaidMatchAndIssueCredit({
+              clubId: activeClubId,
+              playerId,
+              playerName:
+                player?.fullName ||
+                player?.shortName ||
+                "",
+              signupDocId,
+              weekId: week.id,
+              sourceType:
+                MATCH_CREDIT_SOURCE.MATCH_CANCELLED,
+              issuedBy:
+                currentUser?.uid ||
+                identity?.uid ||
+                identity?.userId ||
+                "admin",
+            });
+          }
 
           completed += 1;
         } catch (error) {
@@ -4232,6 +4321,47 @@ export default function MatchSignupPage({
       pendingData
     );
 
+    const isGenuinePaymentConfirmation =
+      paymentMethod === "manual_admin_verify";
+
+    const paymentVerificationEventId =
+      isGenuinePaymentConfirmation
+        ? globalThis.crypto?.randomUUID?.() ||
+          `manual_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2)}`
+        : "";
+
+    const paymentConfirmedAmount =
+      isGenuinePaymentConfirmation
+        ? sumWeekCosts(addWeeks)
+        : 0;
+
+    const existingMoneyBackedWeeks = uniqueWeekIds(
+      pendingData.moneyBackedWeeks || []
+    );
+    const existingAccessOverrideWeeks = uniqueWeekIds(
+      pendingData.accessOverrideWeeks || []
+    );
+
+    const nextMoneyBackedWeeks =
+      isGenuinePaymentConfirmation
+        ? uniqueWeekIds([
+            ...existingMoneyBackedWeeks,
+            ...addWeeks,
+          ])
+        : existingMoneyBackedWeeks;
+
+    const nextAccessOverrideWeeks =
+      isGenuinePaymentConfirmation
+        ? existingAccessOverrideWeeks.filter(
+            (weekId) => !addWeeks.includes(weekId)
+          )
+        : uniqueWeekIds([
+            ...existingAccessOverrideWeeks,
+            ...addWeeks,
+          ]);
+
     await setDoc(
       pendingRef,
       {
@@ -4254,6 +4384,20 @@ export default function MatchSignupPage({
         verifiedBy: verifier,
         verifiedAt: serverTimestamp(),
         paymentMethod,
+        paymentSimulation: false,
+        paymentActuallyReceived:
+          isGenuinePaymentConfirmation,
+        paymentProviderContacted: false,
+        paymentVerificationEventId,
+        paymentConfirmedAmount,
+        paymentConfirmedWeeks:
+          isGenuinePaymentConfirmation ? addWeeks : [],
+        moneyBackedWeeks: nextMoneyBackedWeeks,
+        accessOverrideWeeks: nextAccessOverrideWeeks,
+        paymentActuallyReceivedAt:
+          isGenuinePaymentConfirmation
+            ? serverTimestamp()
+            : null,
         updatedAt: serverTimestamp(),
         createdAt:
           pendingData.createdAt || serverTimestamp(),
@@ -4278,6 +4422,20 @@ export default function MatchSignupPage({
         verifiedAt: serverTimestamp(),
         paymentVerifiedAt: serverTimestamp(),
         paymentMethod,
+        paymentSimulation: false,
+        paymentActuallyReceived:
+          isGenuinePaymentConfirmation,
+        paymentProviderContacted: false,
+        paymentVerificationEventId,
+        paymentConfirmedAmount,
+        paymentConfirmedWeeks:
+          isGenuinePaymentConfirmation ? addWeeks : [],
+        moneyBackedWeeks: nextMoneyBackedWeeks,
+        accessOverrideWeeks: nextAccessOverrideWeeks,
+        paymentActuallyReceivedAt:
+          isGenuinePaymentConfirmation
+            ? serverTimestamp()
+            : null,
         updatedAt: serverTimestamp(),
         createdAt:
           pendingData.createdAt || serverTimestamp(),
@@ -4354,9 +4512,8 @@ export default function MatchSignupPage({
         bulkPaidTargetWeek?.fullLabel ||
         bulkPaidTargetWeek?.label ||
         targetWeekId,
-      detail: isPracticeMode
-        ? "Practice only — no real payment is taken. The player will be treated as paid inside this Practice session."
-        : "Use this for cash, EFT, or another payment you have personally verified.",
+      detail:
+        "Launch access only — no real payment is recorded and no payment confirmation will be sent.",
       confirmText: "Mark selected as paid",
       variant: "success",
     });

@@ -314,6 +314,76 @@ function sumWeekCostsFromSignup(data = {}, weekIds = []) {
   );
 }
 
+function normalisePaymentEvidence(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isTicketBackedWeek(data = {}, weekId = "") {
+  const safeWeekId = String(weekId || "").trim();
+
+  return (
+    normalisePaymentEvidence(data.paymentMethod) ===
+      "match_ticket" &&
+    String(data.lastMatchTicketWeekId || "").trim() ===
+      safeWeekId &&
+    Boolean(String(data.lastMatchTicketId || "").trim())
+  );
+}
+
+function isMoneyBackedWeek(data = {}, weekId = "") {
+  const safeWeekId = String(weekId || "").trim();
+
+  const moneyBackedWeeks = uniqueWeekIds(
+    data.moneyBackedWeeks || []
+  );
+  const accessOverrideWeeks = uniqueWeekIds(
+    data.accessOverrideWeeks || []
+  );
+
+  if (moneyBackedWeeks.includes(safeWeekId)) {
+    return true;
+  }
+
+  if (accessOverrideWeeks.includes(safeWeekId)) {
+    return false;
+  }
+
+  if (data.paymentSimulation === true) {
+    return false;
+  }
+
+  const method = normalisePaymentEvidence(
+    data.paymentMethod
+  );
+  const verifiedBy = normalisePaymentEvidence(
+    data.verifiedBy
+  );
+  const provider = normalisePaymentEvidence(
+    data.provider
+  );
+
+  if (
+    [
+      "manual_admin_add_paid_week",
+      "practice_manual_admin_paid",
+      "practice simulation",
+      "match_ticket",
+    ].includes(method)
+  ) {
+    return false;
+  }
+
+  return (
+    data.paymentActuallyReceived === true ||
+    ["yoco", "paystack", "manual_admin_verify"].includes(
+      method
+    ) ||
+    ["yoco", "paystack"].includes(provider) ||
+    verifiedBy === "yoco_webhook" ||
+    verifiedBy === "paystack_webhook"
+  );
+}
+
 /*
  * Cancel one already-paid Official Match Signup entitlement and return it
  * as exactly one Golden Match Credit.
@@ -440,6 +510,23 @@ export async function cancelPaidMatchAndIssueCredit({
       );
     }
 
+    const sourceData =
+      Object.keys(matchData).length > 0
+        ? { ...pendingData, ...matchData }
+        : pendingData;
+
+    if (isTicketBackedWeek(sourceData, safeWeekId)) {
+      throw new Error(
+        "This booking used a Match Ticket. Return the same ticket instead."
+      );
+    }
+
+    if (!isMoneyBackedWeek(sourceData, safeWeekId)) {
+      throw new Error(
+        "This booking is an access override and is not eligible for a Match Ticket."
+      );
+    }
+
     const nextSelectedWeeks = selectedWeeks.filter(
       (id) => id !== safeWeekId
     );
@@ -451,11 +538,6 @@ export async function cancelPaidMatchAndIssueCredit({
     const nextUnpaidWeeks = nextSelectedWeeks.filter(
       (id) => !nextPaidWeeks.includes(id)
     );
-
-    const sourceData =
-      Object.keys(matchData).length > 0
-        ? { ...pendingData, ...matchData }
-        : pendingData;
 
     const nextPaymentStatus = statusFromWeekState(
       nextSelectedWeeks,
@@ -486,6 +568,13 @@ export async function cancelPaidMatchAndIssueCredit({
 
       paymentStatus: nextPaymentStatus,
       isUnpaid: nextUnpaidWeeks.length > 0,
+
+      moneyBackedWeeks: uniqueWeekIds(
+        sourceData.moneyBackedWeeks || []
+      ).filter((id) => id !== safeWeekId),
+      accessOverrideWeeks: uniqueWeekIds(
+        sourceData.accessOverrideWeeks || []
+      ).filter((id) => id !== safeWeekId),
 
       lastMatchCreditCancellationWeekId: safeWeekId,
       lastMatchCreditCancellationAt: serverTimestamp(),

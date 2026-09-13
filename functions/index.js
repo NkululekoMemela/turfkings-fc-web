@@ -10,7 +10,11 @@
 //
 // TYPE: FULL SCRIPT (replace your entire existing functions/index.js)
 
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentUpdated,
+  onDocumentWritten,
+} = require("firebase-functions/v2/firestore");
 const {onRequest} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const functions = require("firebase-functions");
@@ -935,10 +939,25 @@ async function settleVerifiedPayment({
 
   const batch = db.batch();
 
+  const moneyBackedWeeks = uniqueArray([
+    ...(signupData.moneyBackedWeeks || []),
+    ...newlyPaidPrimaryWeeks,
+  ]);
+  const accessOverrideWeeks = uniqueArray(
+    signupData.accessOverrideWeeks || []
+  ).filter((weekId) => !moneyBackedWeeks.includes(weekId));
+
   batch.set(signupRef, {
     primaryPaidWeeks: mergedPrimaryPaidWeeks,
     paidWeeks: mergedPrimaryPaidWeeks,
     secondPaidWeeks: mergedSecondPaidWeeks,
+    moneyBackedWeeks,
+    accessOverrideWeeks,
+    paymentActuallyReceived: true,
+    paymentSimulation: false,
+    paymentProviderContacted: true,
+    paymentMethod:
+      safeString(paymentData.provider || "yoco").toLowerCase(),
     unpaidPrimaryWeeks: remainingPrimaryWeeks,
     unpaidSecondWeeks: remainingSecondWeeks,
     amountDue,
@@ -1955,70 +1974,585 @@ exports.handlePaystackWebhook = onRequest(
 );
 
 // -----------------------------------------------------------------------------
-// Existing payment confirmation hook
+// Native payment confirmation notifications
 // -----------------------------------------------------------------------------
-exports.onPaymentConfirmed = onDocumentCreated(
-  "payments/{paymentId}",
+
+function normalizeNotificationIdentity(value) {
+  return safeString(value).toLowerCase();
+}
+
+function collectPaymentIdentityKeys(payment = {}, signup = {}) {
+  return new Set([
+    payment.userId,
+    payment.payerUserId,
+    payment.playerId,
+    payment.email,
+    payment.payerEmail,
+    payment.customerEmail,
+    signup.userId,
+    signup.playerId,
+    signup.email,
+    signup.payerEmail,
+  ].map(normalizeNotificationIdentity).filter(Boolean));
+}
+
+function deviceMatchesIdentityKeys(device = {}, identityKeys = new Set()) {
+  return [
+    device.firebaseUid,
+    device.memberId,
+    device.playerId,
+    device.email,
+  ].map(normalizeNotificationIdentity)
+    .some((value) => value && identityKeys.has(value));
+}
+
+function buildClubAdminIdentityKeys(club = {}) {
+  return new Set([
+    club.createdByUid,
+    club.ownerUid,
+    club.adminUid,
+    club.createdByEmail,
+    club.ownerEmail,
+    club.adminEmail,
+    club.captainEmail,
+    club.captain?.email,
+    ...(Array.isArray(club.adminUids) ? club.adminUids : []),
+    ...(Array.isArray(club.adminEmails) ? club.adminEmails : []),
+    ...(Array.isArray(club.captainEmails) ?
+      club.captainEmails :
+      []),
+  ].map(normalizeNotificationIdentity).filter(Boolean));
+}
+
+async function claimPaymentNotificationDelivery({
+  paymentId,
+  eventId,
+}) {
+  const deliveryRef = db
+    .collection("notificationDeliveries")
+    .doc(`payment_confirmation_${paymentId}`);
+
+  const claimed = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(deliveryRef);
+    const existing = snapshot.exists ? snapshot.data() || {} : {};
+
+    if (
+      existing.status === "completed" ||
+      existing.status === "processing"
+    ) {
+      return false;
+    }
+
+    transaction.set(deliveryRef, {
+      type: "payment_confirmation",
+      paymentId,
+      eventId: safeString(eventId),
+      status: "processing",
+      startedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+
+    return true;
+  });
+
+  return {
+    claimed,
+    deliveryRef,
+  };
+}
+
+async function sendPaymentNotificationBatch({
+  tokenRecords,
+  title,
+  body,
+  data,
+}) {
+  let successCount = 0;
+  let failureCount = 0;
+  const invalidRefs = [];
+
+  for (
+    let start = 0;
+    start < tokenRecords.length;
+    start += 500
+  ) {
+    const batch = tokenRecords.slice(start, start + 500);
+
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens: batch.map((record) => record.token),
+      notification: {
+        title,
+        body,
+      },
+      data,
+      android: {
+        priority: "high",
+      },
+    });
+
+    successCount += response.successCount;
+    failureCount += response.failureCount;
+
+    response.responses.forEach((result, index) => {
+      if (
+        !result.success &&
+        isInvalidMessagingTokenError(result.error?.code)
+      ) {
+        invalidRefs.push(batch[index].ref);
+      }
+    });
+  }
+
+  if (invalidRefs.length) {
+    const cleanupBatch = db.batch();
+
+    invalidRefs.forEach((ref) => {
+      cleanupBatch.delete(ref);
+    });
+
+    await cleanupBatch.commit();
+  }
+
+  return {
+    successCount,
+    failureCount,
+    invalidTokensRemoved: invalidRefs.length,
+  };
+}
+
+exports.onPaymentConfirmed = onDocumentUpdated(
+  {
+    document: "payments/{paymentId}",
+    region: REGION,
+  },
   async (event) => {
-    const snap = event.data;
-    if (!snap) {
-      console.log("No payment snapshot found.");
+    const before = event.data?.before?.data() || {};
+    const payment = event.data?.after?.data() || {};
+
+    if (
+      safeString(before.status).toLowerCase() === "paid" ||
+      safeString(payment.status).toLowerCase() !== "paid"
+    ) {
       return;
     }
 
-    const payment = snap.data() || {};
-    console.log("Payment received:", payment);
+    const paymentId = safeString(event.params.paymentId);
+    const clubId = safeString(
+      payment.activeClubId ||
+      payment.clubId ||
+      "turf-kings"
+    );
 
-    const {
-      userId,
-      playerName = "",
-      selectedWeeks = [],
-      whatsappNumber = "",
-    } = payment;
+    const delivery = await claimPaymentNotificationDelivery({
+      paymentId,
+      eventId: event.id,
+    });
 
-    if (!userId) {
-      console.log("No userId found. Skipping.");
+    if (!delivery.claimed) {
+      console.log(
+        `[PaymentPush] Delivery already claimed for ${paymentId}.`
+      );
       return;
     }
 
     try {
-      const pendingQuery = await db
-        .collection("pendingSignups")
-        .where("userId", "==", userId)
-        .where("paymentStatus", "in", ["pending", "payment_deferred"])
-        .get();
+      const signupDocId = safeString(payment.signupDocId);
 
-      const batch = db.batch();
+      const [clubSnapshot, devicesSnapshot, signupSnapshot] =
+        await Promise.all([
+          db.collection("clubs").doc(clubId).get(),
+          db
+            .collection("clubs")
+            .doc(clubId)
+            .collection("notificationDevices")
+            .get(),
+          signupDocId ?
+            db
+              .collection("clubs")
+              .doc(clubId)
+              .collection("matchSignups")
+              .doc(signupDocId)
+              .get() :
+            Promise.resolve(null),
+        ]);
 
-      pendingQuery.forEach((docSnap) => {
-        batch.update(docSnap.ref, {
-          paymentStatus: "paid_confirmed",
-          remindersPaused: true,
-          remindersEnabled: false,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+      const club = clubSnapshot.exists ?
+        clubSnapshot.data() || {} :
+        {};
+      const signup = signupSnapshot?.exists ?
+        signupSnapshot.data() || {} :
+        {};
+
+      const payerKeys = collectPaymentIdentityKeys(
+        payment,
+        signup
+      );
+      const adminKeys = buildClubAdminIdentityKeys(club);
+
+      const payerTokens = [];
+      const adminTokens = [];
+      const seenPayerTokens = new Set();
+      const seenAdminTokens = new Set();
+
+      devicesSnapshot.docs.forEach((deviceSnapshot) => {
+        const device = deviceSnapshot.data() || {};
+        const token = safeString(device.token);
+
+        if (!device.enabled || !token) return;
+
+        if (
+          deviceMatchesIdentityKeys(device, payerKeys) &&
+          !seenPayerTokens.has(token)
+        ) {
+          seenPayerTokens.add(token);
+          payerTokens.push({
+            token,
+            ref: deviceSnapshot.ref,
+          });
+        }
+
+        const deviceRole = normalizeNotificationIdentity(
+          device.role
+        );
+        const isAdmin =
+          deviceRole === "admin" ||
+          deviceMatchesIdentityKeys(device, adminKeys);
+
+        if (isAdmin && !seenAdminTokens.has(token)) {
+          seenAdminTokens.add(token);
+          adminTokens.push({
+            token,
+            ref: deviceSnapshot.ref,
+          });
+        }
       });
 
-      await batch.commit();
+      const playerName = safeString(
+        payment.displayName ||
+        signup.displayName ||
+        "Player"
+      );
+      const amount = Number(
+        payment.amountReceived ||
+        payment.amountRequested ||
+        0
+      );
+      const amountLabel = formatCurrency(amount);
 
-      console.log("Marked matching pending signups as paid.");
+      const commonData = {
+        route: "landing",
+        clubId,
+        paymentId,
+        signupDocId,
+      };
 
-      const confirmationMessage =
-        `Payment confirmed for ${playerName}. ` +
-        `You are confirmed for: ${selectedWeeks.join(", ")}. Thank you.`;
+      const results = await Promise.all([
+        payerTokens.length ?
+          sendPaymentNotificationBatch({
+            tokenRecords: payerTokens,
+            title: "Payment confirmed",
+            body:
+              `Your ${amountLabel} payment was received. ` +
+              "Your booking is confirmed.",
+            data: {
+              ...commonData,
+              type: "payment_confirmation",
+            },
+          }) :
+          Promise.resolve({
+            successCount: 0,
+            failureCount: 0,
+            invalidTokensRemoved: 0,
+          }),
+        adminTokens.length ?
+          sendPaymentNotificationBatch({
+            tokenRecords: adminTokens,
+            title: "Player payment received",
+            body: `${playerName} has paid ${amountLabel}.`,
+            data: {
+              ...commonData,
+              type: "payment_received_admin",
+            },
+          }) :
+          Promise.resolve({
+            successCount: 0,
+            failureCount: 0,
+            invalidTokensRemoved: 0,
+          }),
+      ]);
 
-      console.log(
-        `WhatsApp confirmation candidate -> ${whatsappNumber}: ` +
-        confirmationMessage
+      await delivery.deliveryRef.set({
+        status: "completed",
+        payerRecipients: payerTokens.length,
+        adminRecipients: adminTokens.length,
+        payerSuccessCount: results[0].successCount,
+        payerFailureCount: results[0].failureCount,
+        adminSuccessCount: results[1].successCount,
+        adminFailureCount: results[1].failureCount,
+        completedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      console.log("[PaymentPush] Delivery completed.", {
+        paymentId,
+        clubId,
+        payerRecipients: payerTokens.length,
+        adminRecipients: adminTokens.length,
+      });
+    } catch (error) {
+      await delivery.deliveryRef.set({
+        status: "failed",
+        error: safeString(error?.message || error),
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      console.error("[PaymentPush] Delivery failed:", error);
+      throw error;
+    }
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Genuine manually verified payment notifications
+// -----------------------------------------------------------------------------
+
+exports.onManualPaymentConfirmed = onDocumentWritten(
+  {
+    document:
+      "clubs/{clubId}/matchSignups/{signupDocId}",
+    region: REGION,
+  },
+  async (event) => {
+    const before = event.data?.before?.data() || {};
+    const signup = event.data?.after?.data() || {};
+
+    const beforeStatus =
+      safeString(before.paymentStatus).toLowerCase();
+    const nextStatus =
+      safeString(signup.paymentStatus).toLowerCase();
+    const paymentMethod =
+      safeString(signup.paymentMethod).toLowerCase();
+
+    const beforeVerificationEventId = safeString(
+      before.paymentVerificationEventId
+    );
+    const verificationEventId = safeString(
+      signup.paymentVerificationEventId
+    );
+    const hasNewVerificationEvent =
+      Boolean(verificationEventId) &&
+      verificationEventId !== beforeVerificationEventId;
+    const becameFullyPaid =
+      beforeStatus !== "paid" &&
+      nextStatus === "paid";
+
+    const confirmedAmount = Number(
+      signup.paymentConfirmedAmount || 0
+    );
+
+    const isGenuineManualPayment =
+      paymentMethod === "manual_admin_verify" &&
+      signup.paymentActuallyReceived === true &&
+      signup.paymentSimulation !== true &&
+      (
+        (
+          hasNewVerificationEvent &&
+          confirmedAmount > 0
+        ) ||
+        becameFullyPaid
       );
 
-      // Optional:
-      // await sendWhatsAppMessage({
-      //   to: whatsappNumber,
-      //   body: confirmationMessage,
-      // });
+    if (!isGenuineManualPayment) {
+      return;
+    }
+
+    const clubId = safeString(event.params.clubId);
+    const signupDocId = safeString(
+      event.params.signupDocId
+    );
+    const amount = Number(
+      signup.paymentConfirmedAmount ||
+      signup.amountPaid ||
+      signup.amountPaidTotal ||
+      0
+    );
+
+    if (!(amount > 0)) {
+      console.log(
+        "[ManualPaymentPush] Ignoring zero-value confirmation.",
+        {
+          clubId,
+          signupDocId,
+        }
+      );
+      return;
+    }
+
+    const deliveryKey =
+      verificationEventId ||
+      `fully_paid_${clubId}_${signupDocId}`;
+
+    const delivery = await claimPaymentNotificationDelivery({
+      paymentId:
+        `manual_${clubId}_${signupDocId}_${deliveryKey}`,
+      eventId: event.id,
+    });
+
+    if (!delivery.claimed) {
+      console.log(
+        "[ManualPaymentPush] Delivery already claimed.",
+        {
+          clubId,
+          signupDocId,
+        }
+      );
+      return;
+    }
+
+    try {
+      const [clubSnapshot, devicesSnapshot] =
+        await Promise.all([
+          db.collection("clubs").doc(clubId).get(),
+          db
+            .collection("clubs")
+            .doc(clubId)
+            .collection("notificationDevices")
+            .get(),
+        ]);
+
+      const club = clubSnapshot.exists ?
+        clubSnapshot.data() || {} :
+        {};
+
+      const payerKeys = collectPaymentIdentityKeys(
+        signup,
+        signup
+      );
+      const adminKeys = buildClubAdminIdentityKeys(club);
+
+      const payerTokens = [];
+      const adminTokens = [];
+      const seenPayerTokens = new Set();
+      const seenAdminTokens = new Set();
+
+      devicesSnapshot.docs.forEach((deviceSnapshot) => {
+        const device = deviceSnapshot.data() || {};
+        const token = safeString(device.token);
+
+        if (!device.enabled || !token) return;
+
+        if (
+          deviceMatchesIdentityKeys(device, payerKeys) &&
+          !seenPayerTokens.has(token)
+        ) {
+          seenPayerTokens.add(token);
+          payerTokens.push({
+            token,
+            ref: deviceSnapshot.ref,
+          });
+        }
+
+        const deviceRole = normalizeNotificationIdentity(
+          device.role
+        );
+        const isAdmin =
+          deviceRole === "admin" ||
+          deviceMatchesIdentityKeys(device, adminKeys);
+
+        if (isAdmin && !seenAdminTokens.has(token)) {
+          seenAdminTokens.add(token);
+          adminTokens.push({
+            token,
+            ref: deviceSnapshot.ref,
+          });
+        }
+      });
+
+      const playerName = safeString(
+        signup.displayName ||
+        signup.playerName ||
+        signup.beneficiaryName ||
+        "Player"
+      );
+      const amountLabel = formatCurrency(amount);
+      const commonData = {
+        route: "landing",
+        clubId,
+        signupDocId,
+        paymentId: "",
+      };
+
+      const results = await Promise.all([
+        payerTokens.length ?
+          sendPaymentNotificationBatch({
+            tokenRecords: payerTokens,
+            title: "Payment confirmed",
+            body:
+              `Your ${amountLabel} payment was confirmed. ` +
+              "Your booking is ready.",
+            data: {
+              ...commonData,
+              type: "payment_confirmation",
+            },
+          }) :
+          Promise.resolve({
+            successCount: 0,
+            failureCount: 0,
+            invalidTokensRemoved: 0,
+          }),
+        adminTokens.length ?
+          sendPaymentNotificationBatch({
+            tokenRecords: adminTokens,
+            title: "Player payment confirmed",
+            body: `${playerName} has paid ${amountLabel}.`,
+            data: {
+              ...commonData,
+              type: "payment_received_admin",
+            },
+          }) :
+          Promise.resolve({
+            successCount: 0,
+            failureCount: 0,
+            invalidTokensRemoved: 0,
+          }),
+      ]);
+
+      await delivery.deliveryRef.set({
+        status: "completed",
+        source: "genuine_manual_confirmation",
+        payerRecipients: payerTokens.length,
+        adminRecipients: adminTokens.length,
+        payerSuccessCount: results[0].successCount,
+        payerFailureCount: results[0].failureCount,
+        adminSuccessCount: results[1].successCount,
+        adminFailureCount: results[1].failureCount,
+        completedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      console.log(
+        "[ManualPaymentPush] Delivery completed.",
+        {
+          clubId,
+          signupDocId,
+          payerRecipients: payerTokens.length,
+          adminRecipients: adminTokens.length,
+        }
+      );
     } catch (error) {
-      console.error("Error processing payment confirmation:", error);
+      await delivery.deliveryRef.set({
+        status: "failed",
+        error: safeString(error?.message || error),
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      console.error(
+        "[ManualPaymentPush] Delivery failed:",
+        error
+      );
+      throw error;
     }
   }
 );
@@ -3144,5 +3678,390 @@ exports.onClubChatMessageCreated = onDocumentCreated(
       senderIncludedForTesting:
         INCLUDE_CHAT_SENDER_DURING_NATIVE_TESTING,
     });
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Secure club invitations
+// -----------------------------------------------------------------------------
+
+const CLUB_INVITATION_LIFETIME_MS =
+  7 * 24 * 60 * 60 * 1000;
+
+function normalizeInvitationClubId(value) {
+  return safeString(value)
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "");
+}
+
+function normalizeInvitationEmail(value) {
+  return safeString(value).toLowerCase();
+}
+
+function hashClubInvitationToken(token) {
+  return crypto
+    .createHash("sha256")
+    .update(safeString(token), "utf8")
+    .digest("hex");
+}
+
+function invitationRoleAllowsCreation(role) {
+  return ["admin", "captain"].includes(
+    safeString(role).toLowerCase()
+  );
+}
+
+async function callerCanCreateClubInvitation({
+  decodedUser,
+  clubId,
+}) {
+  const uid = safeString(decodedUser?.uid);
+  const email = normalizeInvitationEmail(
+    decodedUser?.email
+  );
+
+  if (!uid && !email) return false;
+
+  const clubRef = db.collection("clubs").doc(clubId);
+  const clubSnap = await clubRef.get();
+
+  if (!clubSnap.exists) return false;
+
+  const club = clubSnap.data() || {};
+
+  const privilegedUids = uniqueArray([
+    club.createdByUid,
+    club.ownerUid,
+    ...(Array.isArray(club.adminUids)
+      ? club.adminUids
+      : []),
+    ...(Array.isArray(club.captainUids)
+      ? club.captainUids
+      : []),
+  ]);
+
+  if (uid && privilegedUids.includes(uid)) {
+    return true;
+  }
+
+  const privilegedEmails = uniqueArray([
+    club.adminEmail,
+    club.ownerEmail,
+    club.captainEmail,
+    club.createdByEmail,
+    club.createdBy,
+    club.captain?.email,
+    ...(Array.isArray(club.adminEmails)
+      ? club.adminEmails
+      : []),
+    ...(Array.isArray(club.captainEmails)
+      ? club.captainEmails
+      : []),
+  ]).map(normalizeInvitationEmail);
+
+  if (email && privilegedEmails.includes(email)) {
+    return true;
+  }
+
+  const membersRef = clubRef.collection("members");
+  const candidateDocs = new Map();
+
+  if (uid) {
+    for (const field of [
+      "uid",
+      "platformIdentityUid",
+    ]) {
+      const snapshot = await membersRef
+        .where(field, "==", uid)
+        .limit(5)
+        .get();
+
+      snapshot.docs.forEach((memberDoc) => {
+        candidateDocs.set(memberDoc.id, memberDoc);
+      });
+    }
+  }
+
+  if (email) {
+    const snapshot = await membersRef
+      .where("email", "==", email)
+      .limit(5)
+      .get();
+
+    snapshot.docs.forEach((memberDoc) => {
+      candidateDocs.set(memberDoc.id, memberDoc);
+    });
+  }
+
+  return Array.from(candidateDocs.values()).some(
+    (memberDoc) => {
+      const member = memberDoc.data() || {};
+      const status = safeString(
+        member.status || "active"
+      ).toLowerCase();
+
+      return (
+        invitationRoleAllowsCreation(member.role) &&
+        !["withdrawn", "rejected", "suspended"].includes(
+          status
+        )
+      );
+    }
+  );
+}
+
+exports.createClubInvitation = onRequest(
+  {
+    region: REGION,
+    invoker: "public",
+  },
+  async (req, res) => {
+    if (handleOptions(req, res)) return;
+    setCors(res);
+
+    if (req.method !== "POST") {
+      return res.status(405).json({
+        ok: false,
+        error: "Method not allowed. Use POST.",
+      });
+    }
+
+    try {
+      const decodedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = normalizeInvitationClubId(
+        req.body?.clubId
+      );
+
+      if (!clubId) {
+        return res.status(400).json({
+          ok: false,
+          error: "A valid club ID is required.",
+        });
+      }
+
+      const allowed =
+        await callerCanCreateClubInvitation({
+          decodedUser,
+          clubId,
+        });
+
+      if (!allowed) {
+        return res.status(403).json({
+          ok: false,
+          error:
+            "Only this club's admin or captain may create invitations.",
+        });
+      }
+
+      const clubRef = db.collection("clubs").doc(clubId);
+      const clubSnap = await clubRef.get();
+
+      if (!clubSnap.exists) {
+        return res.status(404).json({
+          ok: false,
+          error: "Club not found.",
+        });
+      }
+
+      const token = crypto
+        .randomBytes(32)
+        .toString("base64url");
+
+      const tokenHash =
+        hashClubInvitationToken(token);
+
+      const nowMs = Date.now();
+      const expiresAtMs =
+        nowMs + CLUB_INVITATION_LIFETIME_MS;
+
+      await clubRef
+        .collection("invitations")
+        .doc(tokenHash)
+        .set({
+          clubId,
+          status: "active",
+          tokenHash,
+          createdByUid:
+            safeString(decodedUser.uid),
+          createdByEmail:
+            normalizeInvitationEmail(
+              decodedUser.email
+            ),
+          createdAt:
+            FieldValue.serverTimestamp(),
+          createdAtMs: nowMs,
+          expiresAt:
+            admin.firestore.Timestamp.fromMillis(
+              expiresAtMs
+            ),
+          expiresAtMs,
+          useCount: 0,
+          lastUsedAt: null,
+        });
+
+      const invitationUrl =
+        "https://five-asides-near-me.web.app/" +
+        `?club=${encodeURIComponent(clubId)}` +
+        `&invite=${encodeURIComponent(token)}`;
+
+      return res.status(200).json({
+        ok: true,
+        clubId,
+        invitationUrl,
+        expiresAtMs,
+      });
+    } catch (error) {
+      console.error(
+        "[ClubInvitation] Creation failed:",
+        error
+      );
+
+      const authFailure = String(
+        error?.code || ""
+      ).startsWith("practice/auth-");
+
+      return res
+        .status(authFailure ? 401 : 500)
+        .json({
+          ok: false,
+          error:
+            authFailure
+              ? "Please sign in before creating an invitation."
+              : "Could not create the club invitation.",
+        });
+    }
+  }
+);
+
+exports.validateClubInvitation = onRequest(
+  {
+    region: REGION,
+    invoker: "public",
+  },
+  async (req, res) => {
+    if (handleOptions(req, res)) return;
+    setCors(res);
+
+    if (req.method !== "POST") {
+      return res.status(405).json({
+        ok: false,
+        error: "Method not allowed. Use POST.",
+      });
+    }
+
+    try {
+      const clubId = normalizeInvitationClubId(
+        req.body?.clubId
+      );
+      const token = safeString(req.body?.token);
+
+      if (!clubId || !token) {
+        return res.status(400).json({
+          ok: false,
+          valid: false,
+          error: "Invitation details are incomplete.",
+        });
+      }
+
+      const tokenHash =
+        hashClubInvitationToken(token);
+
+      const clubRef = db.collection("clubs").doc(clubId);
+
+      const [clubSnap, invitationSnap] =
+        await Promise.all([
+          clubRef.get(),
+          clubRef
+            .collection("invitations")
+            .doc(tokenHash)
+            .get(),
+        ]);
+
+      if (!clubSnap.exists || !invitationSnap.exists) {
+        return res.status(404).json({
+          ok: false,
+          valid: false,
+          error: "This invitation is not valid.",
+        });
+      }
+
+      const invitation =
+        invitationSnap.data() || {};
+
+      const expiresAtMs = Number(
+        invitation.expiresAtMs ||
+        invitation.expiresAt?.toMillis?.() ||
+        0
+      );
+
+      const isActive =
+        invitation.status === "active" &&
+        expiresAtMs > Date.now();
+
+      if (!isActive) {
+        return res.status(410).json({
+          ok: false,
+          valid: false,
+          error:
+            "This invitation has expired or was cancelled.",
+        });
+      }
+
+      const club = clubSnap.data() || {};
+
+      return res.status(200).json({
+        ok: true,
+        valid: true,
+        club: {
+          id: clubId,
+          name:
+            safeString(
+              club.name ||
+              club.clubName ||
+              club.displayName
+            ) || "Football Club",
+          shortName:
+            safeString(
+              club.shortName ||
+              club.clubShortName
+            ),
+          logoUrl:
+            safeString(
+              club.logoUrl ||
+              club.logo ||
+              club.badgeUrl
+            ),
+          heroImage:
+            safeString(
+              club.heroImage ||
+              club.teamPhoto ||
+              club.image
+            ),
+          weeklyPlayTime:
+            safeString(
+              club.weeklyPlayTime ||
+              club.playTime ||
+              club.schedule?.weeklyPlayTime ||
+              club.schedule?.playTime
+            ),
+        },
+        expiresAtMs,
+      });
+    } catch (error) {
+      console.error(
+        "[ClubInvitation] Validation failed:",
+        error
+      );
+
+      return res.status(500).json({
+        ok: false,
+        valid: false,
+        error:
+          "Could not validate this invitation right now.",
+      });
+    }
   }
 );
