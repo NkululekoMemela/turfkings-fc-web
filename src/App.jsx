@@ -2582,6 +2582,8 @@ export default function App() {
     useState(false);
   const [nativeChatOpenRequest, setNativeChatOpenRequest] =
     useState(null);
+  const [nativePollOpenRequest, setNativePollOpenRequest] =
+    useState(null);
 
   useEffect(() => {
     if (page !== PAGE_LANDING) {
@@ -2854,8 +2856,13 @@ export default function App() {
           data.type === "club_chat" ||
           data.route === "club-chat";
 
+        const opensClubPoll =
+          data.type === "club_poll" ||
+          data.route === "club-poll";
+
         const opensLanding =
           opensClubChat ||
+          opensClubPoll ||
           data.route === "landing" ||
           data.type === "payment_confirmation" ||
           data.type === "payment_received_admin" ||
@@ -2878,6 +2885,22 @@ export default function App() {
           );
         }
 
+        if (opensClubPoll) {
+          const pollId = String(data.pollId || "").trim();
+
+          if (!pollId) return;
+
+          setNativeChatOpenRequest(null);
+          setNativePollOpenRequest({
+            clubId: notificationClubId,
+            pollId,
+            openedAt: Date.now(),
+          });
+          setPage(PAGE_NEWS);
+          return;
+        }
+
+        setNativePollOpenRequest(null);
         setPage(PAGE_LANDING);
 
         if (opensClubChat) {
@@ -10286,6 +10309,7 @@ export default function App() {
           isPracticeMode={isPracticeMode}
           practiceSessionId={practiceRuntime?.practiceSessionId || null}
           dataScope={footballDataScope}
+          initialPollOpen={nativePollOpenRequest}
         />
       )}
 

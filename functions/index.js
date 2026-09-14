@@ -2258,7 +2258,7 @@ exports.onPaymentConfirmed = onDocumentUpdated(
         payerTokens.length ?
           sendPaymentNotificationBatch({
             tokenRecords: payerTokens,
-            title: `${clubName} payment confirmed`,
+            title: `✅ ${clubName} payment confirmed`,
             body:
               `Your ${amountLabel} payment was received. ` +
               "Your booking is confirmed.",
@@ -2275,7 +2275,7 @@ exports.onPaymentConfirmed = onDocumentUpdated(
         adminTokens.length ?
           sendPaymentNotificationBatch({
             tokenRecords: adminTokens,
-            title: "Player payment received",
+            title: "💰 Player payment received",
             body: `${playerName} has paid ${amountLabel}.`,
             data: {
               ...commonData,
@@ -2503,7 +2503,7 @@ exports.onManualPaymentConfirmed = onDocumentWritten(
         payerTokens.length ?
           sendPaymentNotificationBatch({
             tokenRecords: payerTokens,
-            title: `${clubName} payment confirmed`,
+            title: `✅ ${clubName} payment confirmed`,
             body:
               `Your ${amountLabel} payment was confirmed. ` +
               "Your booking is ready.",
@@ -2520,7 +2520,7 @@ exports.onManualPaymentConfirmed = onDocumentWritten(
         adminTokens.length ?
           sendPaymentNotificationBatch({
             tokenRecords: adminTokens,
-            title: `${clubName} player payment`,
+            title: `💰 ${clubName} player payment`,
             body: `${playerName} has paid ${amountLabel}.`,
             data: {
               ...commonData,
@@ -3643,7 +3643,7 @@ exports.onClubChatMessageCreated = onDocumentCreated(
         await admin.messaging().sendEachForMulticast({
           tokens: batch.map((record) => record.token),
           notification: {
-            title: `${senderName} • ${clubName}`,
+            title: `💬 ${senderName} • ${clubName}`,
             body: buildClubChatNotificationBody(message),
           },
           data: {
@@ -4653,7 +4653,7 @@ async function processClubMatchDayReminders({
       clubName,
       matchDayId,
       notificationType: "match_day_squads_required",
-      title: `${clubName} squads required`,
+      title: `🧩 ${clubName} squads required`,
       body:
         `${unassigned.length} registered player` +
         `${unassigned.length === 1 ? "" : "s"} still need ` +
@@ -4672,7 +4672,7 @@ async function processClubMatchDayReminders({
       clubName,
       matchDayId,
       notificationType: "match_day_squads_urgent",
-      title: `${clubName} squads incomplete`,
+      title: `🧩 ${clubName} squads incomplete`,
       body:
         `${unassigned.length} player` +
         `${unassigned.length === 1 ? "" : "s"} still need ` +
@@ -4715,7 +4715,7 @@ async function processClubMatchDayReminders({
 
     const result = await sendPaymentNotificationBatch({
       tokenRecords,
-      title: `${clubName} Match Day`,
+      title: `⚽ ${clubName} Match Day`,
       body:
         `${matchLabel}: You are in ${team.name}. ` +
         `Wear ${team.colour}.`,
@@ -4836,6 +4836,153 @@ exports.scheduleNativeMatchDayReminders = onSchedule(
 // -----------------------------------------------------------------------------
 // Native Match Ticket availability notifications
 // -----------------------------------------------------------------------------
+
+
+exports.onClubPollCreated = onDocumentCreated(
+  {
+    document: "newsPolls/{pollId}",
+    region: REGION,
+  },
+  async (event) => {
+    const poll = event.data?.data() || {};
+    const pollId = safeString(event.params.pollId);
+    const clubId = safeString(poll.clubId);
+    const question = safeString(poll.question);
+
+    if (!clubId || !question || poll.archived === true) {
+      console.log("[ClubPollPush] New poll skipped.", {
+        pollId,
+        clubId,
+        hasQuestion: Boolean(question),
+        archived: poll.archived === true,
+      });
+      return;
+    }
+
+    const delivery = await claimMatchDayNotification({
+      clubId,
+      matchDayId: pollId,
+      notificationType: "club_poll_created",
+      recipientKey: "club_devices",
+    });
+
+    if (!delivery.claimed) {
+      console.log("[ClubPollPush] Duplicate skipped.", {
+        clubId,
+        pollId,
+      });
+      return;
+    }
+
+    try {
+      const clubRef = db.collection("clubs").doc(clubId);
+      const [clubSnapshot, devicesSnapshot] =
+        await Promise.all([
+          clubRef.get(),
+          clubRef.collection("notificationDevices").get(),
+        ]);
+
+      const club = clubSnapshot.exists
+        ? clubSnapshot.data() || {}
+        : {};
+
+      const clubName = safeString(
+        club.name ||
+        club.clubName ||
+        poll.clubName ||
+        clubId
+      );
+
+      const tokenRecords = [];
+      const seen = new Set();
+
+      devicesSnapshot.docs.forEach((deviceSnapshot) => {
+        const device = deviceSnapshot.data() || {};
+        const token = safeString(device.token);
+
+        if (!device.enabled || !token || seen.has(token)) {
+          return;
+        }
+
+        seen.add(token);
+        tokenRecords.push({
+          token,
+          ref: deviceSnapshot.ref,
+        });
+      });
+
+      if (!tokenRecords.length) {
+        await delivery.deliveryRef.set(
+          {
+            status: "completed",
+            recipients: 0,
+            successCount: 0,
+            failureCount: 0,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        );
+
+        console.log("[ClubPollPush] No registered devices.", {
+          clubId,
+          pollId,
+        });
+        return;
+      }
+
+      const result = await sendPaymentNotificationBatch({
+        tokenRecords,
+        title:
+          `${safeString(poll.icon || "🗳️")} ` +
+          `${clubName} posted a new poll`,
+        body:
+          question.length > 140
+            ? `${question.slice(0, 137).trimEnd()}...`
+            : question,
+        data: {
+          type: "club_poll",
+          route: "club-poll",
+          clubId,
+          clubName,
+          pollId,
+        },
+      });
+
+      await completeMatchDayDelivery(
+        delivery,
+        result,
+        tokenRecords.length
+      );
+
+      console.log("[ClubPollPush] Delivery completed.", {
+        clubId,
+        pollId,
+        recipients: tokenRecords.length,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+      });
+    } catch (error) {
+      await delivery.deliveryRef.set(
+        {
+          status: "failed",
+          error: safeString(error?.message || error),
+          failedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      console.error("[ClubPollPush] Delivery failed.", {
+        clubId,
+        pollId,
+        error: safeString(error?.message || error),
+      });
+
+      throw error;
+    }
+  }
+);
 
 exports.onMatchTicketAvailable = onDocumentWritten(
   {
@@ -5020,7 +5167,7 @@ exports.onMatchTicketAvailable = onDocumentWritten(
 
       const result = await sendPaymentNotificationBatch({
         tokenRecords,
-        title: `${clubName} Match Ticket issued`,
+        title: `🎟️ ${clubName} Match Ticket issued`,
         body,
         data: {
           type: "match_ticket_available",
@@ -5208,7 +5355,20 @@ exports.onMatchDayCancelled = onDocumentWritten(
 
       const result = await sendPaymentNotificationBatch({
         tokenRecords,
-        title: `${clubName} Match Day cancelled`,
+        title:
+          `${
+            safeString(cancellation.reasonCode) ===
+            "bad_weather"
+              ? "🌧️"
+              : [
+                  "insufficient_players",
+                  "low_signups",
+                ].includes(
+                  safeString(cancellation.reasonCode)
+                )
+              ? "👥"
+              : "🚫"
+          } ${clubName} Match Day cancelled`,
         body:
           `${matchLabel} is cancelled due to ${reason}. ` +
           "Match Tickets issued where eligible.",
