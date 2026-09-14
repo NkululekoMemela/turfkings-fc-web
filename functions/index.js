@@ -4838,6 +4838,193 @@ exports.scheduleNativeMatchDayReminders = onSchedule(
 // -----------------------------------------------------------------------------
 
 
+
+async function sendClubAdminEventNotification({
+  clubId,
+  eventId,
+  notificationType,
+  title,
+  body,
+  data = {},
+}) {
+  const delivery = await claimMatchDayNotification({
+    clubId,
+    matchDayId: eventId,
+    notificationType,
+    recipientKey: "admins",
+  });
+
+  if (!delivery.claimed) return;
+
+  try {
+    const clubRef = db.collection("clubs").doc(clubId);
+    const [clubSnapshot, devicesSnapshot] =
+      await Promise.all([
+        clubRef.get(),
+        clubRef.collection("notificationDevices").get(),
+      ]);
+
+    const club = clubSnapshot.exists
+      ? clubSnapshot.data() || {}
+      : {};
+
+    const tokenRecords = collectAdminTokenRecords({
+      club,
+      deviceDocuments: devicesSnapshot.docs,
+    });
+
+    if (!tokenRecords.length) {
+      await delivery.deliveryRef.set(
+        {
+          status: "completed",
+          recipients: 0,
+          successCount: 0,
+          failureCount: 0,
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      console.log("[AdminEventPush] No admin devices.", {
+        clubId,
+        eventId,
+        notificationType,
+      });
+      return;
+    }
+
+    const result = await sendPaymentNotificationBatch({
+      tokenRecords,
+      title,
+      body,
+      data: {
+        type: notificationType,
+        route: "admin-entry",
+        clubId,
+        eventId,
+        ...data,
+      },
+    });
+
+    await completeMatchDayDelivery(
+      delivery,
+      result,
+      tokenRecords.length
+    );
+
+    console.log("[AdminEventPush] Delivery completed.", {
+      clubId,
+      eventId,
+      notificationType,
+      recipients: tokenRecords.length,
+      successCount: result.successCount,
+      failureCount: result.failureCount,
+    });
+  } catch (error) {
+    await delivery.deliveryRef.set(
+      {
+        status: "failed",
+        error: safeString(error?.message || error),
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      {merge: true}
+    );
+
+    console.error("[AdminEventPush] Delivery failed.", {
+      clubId,
+      eventId,
+      notificationType,
+      error: safeString(error?.message || error),
+    });
+
+    throw error;
+  }
+}
+
+exports.onClubMemberPending = onDocumentWritten(
+  {
+    document: "clubs/{clubId}/members/{memberId}",
+    region: REGION,
+  },
+  async (event) => {
+    const before = event.data?.before?.data() || {};
+    const member = event.data?.after?.data() || {};
+
+    const wasPending =
+      safeString(before.status).toLowerCase() === "pending";
+    const isPending =
+      safeString(member.status).toLowerCase() === "pending";
+
+    if (wasPending || !isPending) return;
+
+    const clubId = safeString(event.params.clubId);
+    const memberId = safeString(event.params.memberId);
+    const playerName = safeString(
+      member.fullName ||
+      member.displayName ||
+      member.name ||
+      member.shortName ||
+      "A new player"
+    );
+
+    await sendClubAdminEventNotification({
+      clubId,
+      eventId: memberId,
+      notificationType: "club_member_pending",
+      title: "👤 New club membership request",
+      body: `${playerName} is waiting for your approval.`,
+      data: {
+        memberId,
+        playerName,
+      },
+    });
+  }
+);
+
+exports.onIncomingClubChallengeCreated = onDocumentCreated(
+  {
+    document:
+      "clubs/{clubId}/incomingChallenges/{challengeId}",
+    region: REGION,
+  },
+  async (event) => {
+    const challenge = event.data?.data() || {};
+    const clubId = safeString(event.params.clubId);
+    const challengeId = safeString(
+      event.params.challengeId
+    );
+    const challengerClubName = safeString(
+      challenge.challengerClubName ||
+      challenge.homeClubName ||
+      "Another club"
+    );
+    const proposedDate = safeString(
+      challenge.proposedDateLabel ||
+      challenge.matchDateLabel ||
+      challenge.dateLabel
+    );
+
+    await sendClubAdminEventNotification({
+      clubId,
+      eventId: challengeId,
+      notificationType: "incoming_club_challenge",
+      title: "⚔️ New club challenge",
+      body:
+        `${challengerClubName} challenged your club` +
+        `${proposedDate ? ` · ${proposedDate}` : ""}.`,
+      data: {
+        challengeId,
+        challengerClubId: safeString(
+          challenge.challengerClubId
+        ),
+        challengerClubName,
+      },
+    });
+  }
+);
+
 exports.onClubPollCreated = onDocumentCreated(
   {
     document: "newsPolls/{pollId}",

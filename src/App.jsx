@@ -2860,9 +2860,15 @@ export default function App() {
           data.type === "club_poll" ||
           data.route === "club-poll";
 
+        const opensAdminEntry =
+          data.type === "club_member_pending" ||
+          data.type === "incoming_club_challenge" ||
+          data.route === "admin-entry";
+
         const opensLanding =
           opensClubChat ||
           opensClubPoll ||
+          opensAdminEntry ||
           data.route === "landing" ||
           data.type === "payment_confirmation" ||
           data.type === "payment_received_admin" ||
@@ -2883,6 +2889,23 @@ export default function App() {
               id: notificationClubId,
             })
           );
+        }
+
+        if (opensAdminEntry) {
+          setNativeChatOpenRequest(null);
+          setNativePollOpenRequest(null);
+          setEntryPageIntent({
+            type: String(data.type || ""),
+            clubId: notificationClubId,
+            memberId: String(data.memberId || ""),
+            challengeId: String(data.challengeId || ""),
+            openedAt: Date.now(),
+          });
+          setSessionMode("official");
+          writeSessionModeIntent("official");
+          setShowSessionSelector(false);
+          setPage(PAGE_ENTRY);
+          return;
         }
 
         if (opensClubPoll) {
