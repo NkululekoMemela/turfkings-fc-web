@@ -2858,7 +2858,10 @@ export default function MatchSignupPage({
     effectiveMatchSignupSettings,
   ]);
 
-  const handleAdminWeatherCancellation = async (week) => {
+  const handleAdminWeatherCancellation = async (
+    week,
+    reasonCode = "bad_weather"
+  ) => {
     if (
       !canManageSignupsAsAdmin ||
       !week?.id ||
@@ -2866,6 +2869,19 @@ export default function MatchSignupPage({
     ) {
       return;
     }
+
+    const reasonConfig =
+      reasonCode === "insufficient_players"
+        ? {
+            code: "insufficient_players",
+            label: "insufficient player sign-ups",
+            icon: "👥",
+          }
+        : {
+            code: "bad_weather",
+            label: "bad weather",
+            icon: "🌧️",
+          };
 
     const paidPlayers = adminCleanupCandidates.filter(
       (player) => {
@@ -2947,12 +2963,12 @@ export default function MatchSignupPage({
     }
 
     const confirmed = await showPremiumConfirm({
-      icon: "🌧️",
+      icon: reasonConfig.icon,
       title: `Cancel Match Day · ${fixtureLabel}`,
       message:
         `${affectedPlayers.length} registered player${
           affectedPlayers.length === 1 ? "" : "s"
-        } will be notified that the entire Match Day is cancelled.`,
+        } will be notified that the entire Match Day is cancelled due to ${reasonConfig.label}.`,
       detail:
         `${paidPlayers.length} eligible paid booking${
           paidPlayers.length === 1 ? "" : "s"
@@ -3067,8 +3083,8 @@ export default function MatchSignupPage({
             fixtureLabel,
           status: "cancelled",
           scope: "entire_match_day",
-          reasonCode: "bad_weather",
-          reasonLabel: "bad weather",
+          reasonCode: reasonConfig.code,
+          reasonLabel: reasonConfig.label,
           affectedRecipients: affectedPlayers.map((player) => {
             const data = {
               ...(player?.rawData || {}),
@@ -5798,7 +5814,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             canManageSignupsAsAdmin ? (
               <>
                 <p className="tk-match-ticket-help">
-                  🌧️ Choose the match cancelled because of weather.
+                  Cancel an entire Match Day and notify every registered player.
                 </p>
 
                 <div className="tk-match-ticket-match-list">
@@ -5812,14 +5828,9 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                         ).length;
 
                       return (
-                        <button
-                          key={`weather-${week.id}`}
-                          type="button"
+                        <div
+                          key={`cancellation-${week.id}`}
                           className="tk-match-ticket-match"
-                          onClick={() =>
-                            handleAdminWeatherCancellation(week)
-                          }
-                          disabled={adminWeatherBusy}
                         >
                           <span>
                             <strong>
@@ -5833,10 +5844,42 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                             </small>
                           </span>
 
-                          <span className="tk-match-ticket-match-cta">
-                            Cancel →
+                          <span
+                            className="tk-match-ticket-match-cta"
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              justifyContent: "flex-end",
+                              gap: "0.45rem",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleAdminWeatherCancellation(
+                                  week,
+                                  "bad_weather"
+                                )
+                              }
+                              disabled={adminWeatherBusy}
+                            >
+                              🌧️ Weather
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleAdminWeatherCancellation(
+                                  week,
+                                  "insufficient_players"
+                                )
+                              }
+                              disabled={adminWeatherBusy}
+                            >
+                              👥 Low sign-ups
+                            </button>
                           </span>
-                        </button>
+                        </div>
                       );
                     })
                   ) : (

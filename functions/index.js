@@ -2238,10 +2238,18 @@ exports.onPaymentConfirmed = onDocumentUpdated(
         0
       );
       const amountLabel = formatCurrency(amount);
+      const clubName = safeString(
+        payment.clubName ||
+        signup.clubName ||
+        club.name ||
+        club.clubName ||
+        "Your club"
+      );
 
       const commonData = {
         route: "landing",
         clubId,
+        clubName,
         paymentId,
         signupDocId,
       };
@@ -2250,7 +2258,7 @@ exports.onPaymentConfirmed = onDocumentUpdated(
         payerTokens.length ?
           sendPaymentNotificationBatch({
             tokenRecords: payerTokens,
-            title: "Payment confirmed",
+            title: `${clubName} payment confirmed`,
             body:
               `Your ${amountLabel} payment was received. ` +
               "Your booking is confirmed.",
@@ -2476,9 +2484,17 @@ exports.onManualPaymentConfirmed = onDocumentWritten(
         "Player"
       );
       const amountLabel = formatCurrency(amount);
+      const clubName = safeString(
+        signup.clubName ||
+        club.name ||
+        club.clubName ||
+        "Your club"
+      );
+
       const commonData = {
         route: "landing",
         clubId,
+        clubName,
         signupDocId,
         paymentId: "",
       };
@@ -2487,7 +2503,7 @@ exports.onManualPaymentConfirmed = onDocumentWritten(
         payerTokens.length ?
           sendPaymentNotificationBatch({
             tokenRecords: payerTokens,
-            title: "Payment confirmed",
+            title: `${clubName} payment confirmed`,
             body:
               `Your ${amountLabel} payment was confirmed. ` +
               "Your booking is ready.",
@@ -2504,7 +2520,7 @@ exports.onManualPaymentConfirmed = onDocumentWritten(
         adminTokens.length ?
           sendPaymentNotificationBatch({
             tokenRecords: adminTokens,
-            title: "Player payment confirmed",
+            title: `${clubName} player payment`,
             body: `${playerName} has paid ${amountLabel}.`,
             data: {
               ...commonData,
@@ -4815,6 +4831,256 @@ exports.scheduleNativeMatchDayReminders = onSchedule(
 // -----------------------------------------------------------------------------
 // Whole-Match-Day cancellation notifications
 // -----------------------------------------------------------------------------
+
+
+// -----------------------------------------------------------------------------
+// Native Match Ticket availability notifications
+// -----------------------------------------------------------------------------
+
+exports.onMatchTicketAvailable = onDocumentWritten(
+  {
+    document:
+      "clubs/{clubId}/matchCredits/{creditId}",
+    region: REGION,
+  },
+  async (event) => {
+    const before = event.data?.before?.data() || {};
+    const credit = event.data?.after?.data() || {};
+
+    const beforeStatus = safeString(
+      before.status
+    ).toLowerCase();
+    const afterStatus = safeString(
+      credit.status
+    ).toLowerCase();
+
+    if (
+      afterStatus !== "available" ||
+      beforeStatus === "available"
+    ) {
+      return;
+    }
+
+    const clubId = safeString(event.params.clubId);
+    const creditId = safeString(event.params.creditId);
+    const sourceType = safeString(credit.sourceType);
+    const playerId = safeString(credit.playerId);
+    const playerName = safeString(
+      credit.playerName || "Player"
+    );
+    const matchDayId = safeString(
+      credit.sourceWeekId
+    );
+
+    const allowedSources = new Set([
+      "player_early_cancellation",
+      "match_cancelled",
+      "admin_exception",
+    ]);
+
+    if (!allowedSources.has(sourceType)) {
+      console.log("[MatchTicketPush] Source skipped.", {
+        clubId,
+        creditId,
+        sourceType,
+      });
+      return;
+    }
+
+    const deliveryKey = [
+      "match_ticket_available",
+      clubId,
+      creditId,
+      safeString(event.id),
+    ].map((part) =>
+      part
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "_")
+    ).join("__");
+
+    const deliveryRef = db
+      .collection("notificationDeliveries")
+      .doc(deliveryKey);
+
+    const claimed = await db.runTransaction(
+      async (transaction) => {
+        const snapshot = await transaction.get(deliveryRef);
+
+        if (snapshot.exists) return false;
+
+        transaction.set(deliveryRef, {
+          type: "match_ticket_available",
+          clubId,
+          creditId,
+          matchDayId,
+          playerId,
+          sourceType,
+          status: "processing",
+          startedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        return true;
+      }
+    );
+
+    if (!claimed) return;
+
+    try {
+      const clubRef = db.collection("clubs").doc(clubId);
+
+      const [
+        clubSnapshot,
+        devicesSnapshot,
+      ] = await Promise.all([
+        clubRef.get(),
+        clubRef.collection("notificationDevices").get(),
+      ]);
+
+      const club = clubSnapshot.exists ?
+        clubSnapshot.data() || {} :
+        {};
+
+      const clubName = safeString(
+        credit.clubName ||
+        club.name ||
+        club.clubName ||
+        clubId
+      );
+
+      const recipientKeys = [
+        playerId,
+        credit.firebaseUid,
+        credit.authUid,
+        credit.uid,
+        credit.playerEmail,
+        credit.email,
+        playerName,
+      ].map(normalizeNotificationIdentity)
+        .filter(Boolean);
+
+      const tokenRecords = [];
+      const seenTokens = new Set();
+
+      devicesSnapshot.docs.forEach((snapshot) => {
+        const device = snapshot.data() || {};
+        const token = safeString(device.token);
+
+        if (!device.enabled || !token) return;
+
+        if (
+          !deviceMatchesIdentityKeys(
+            device,
+            recipientKeys
+          )
+        ) {
+          return;
+        }
+
+        if (seenTokens.has(token)) return;
+
+        seenTokens.add(token);
+        tokenRecords.push({
+          token,
+          ref: snapshot.ref,
+        });
+      });
+
+      if (!tokenRecords.length) {
+        await deliveryRef.set(
+          {
+            status: "completed",
+            recipients: 0,
+            successCount: 0,
+            failureCount: 0,
+            reason: "no_registered_player_device",
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        );
+
+        console.log(
+          "[MatchTicketPush] No registered player device.",
+          {
+            clubId,
+            creditId,
+            playerId,
+          }
+        );
+        return;
+      }
+
+      const body =
+        sourceType === "match_cancelled"
+          ? "A Match Ticket was added after the Match Day cancellation."
+          : beforeStatus === "redeemed"
+            ? "Your cancelled booking returned a Match Ticket to your wallet."
+            : "Your cancellation was eligible. 1 Match Ticket was added to your wallet.";
+
+      const result = await sendPaymentNotificationBatch({
+        tokenRecords,
+        title: `${clubName} Match Ticket issued`,
+        body,
+        data: {
+          type: "match_ticket_available",
+          route: "landing",
+          clubId,
+          clubName,
+          creditId,
+          matchDayId,
+          sourceType,
+        },
+      });
+
+      await deliveryRef.set(
+        {
+          status:
+            result.successCount > 0
+              ? "completed"
+              : "failed",
+          recipients: tokenRecords.length,
+          successCount: result.successCount,
+          failureCount: result.failureCount,
+          invalidTokensRemoved:
+            result.invalidTokensRemoved,
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      console.log("[MatchTicketPush] Delivery completed.", {
+        clubId,
+        creditId,
+        playerId,
+        sourceType,
+        recipients: tokenRecords.length,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+      });
+    } catch (error) {
+      await deliveryRef.set(
+        {
+          status: "failed",
+          error: safeString(error?.message || error),
+          failedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      console.error("[MatchTicketPush] Delivery failed.", {
+        clubId,
+        creditId,
+        playerId,
+        error: safeString(error?.message || error),
+      });
+
+      throw error;
+    }
+  }
+);
 
 exports.onMatchDayCancelled = onDocumentWritten(
   {

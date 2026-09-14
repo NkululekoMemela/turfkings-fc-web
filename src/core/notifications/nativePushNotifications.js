@@ -44,6 +44,13 @@ async function showForegroundNotification(notification = {}) {
         title,
         body,
         extra: notification.data || {},
+
+        /*
+         * This is an immediate foreground presentation, not an
+         * alarm-clock event. Prevent Android from opening the
+         * separate "Alarms and reminders" permission screen.
+         */
+        isExactNotification: false,
         schedule: {
           at: new Date(Date.now() + 100),
         },
