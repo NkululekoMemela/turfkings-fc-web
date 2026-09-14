@@ -2932,10 +2932,16 @@ export default function MatchSignupPage({
     const fixtureLabel =
       week.shortLabel || week.label || week.id;
 
-    if (!paidPlayers.length) {
+    const affectedPlayers = adminCleanupCandidates.filter(
+      (player) =>
+        Array.isArray(player?.selectedWeeks) &&
+        player.selectedWeeks.includes(week.id)
+    );
+
+    if (!affectedPlayers.length) {
       setAdminWeatherMessage("");
       setAdminWeatherError(
-        `${fixtureLabel} has no recorded paid bookings to return.`
+        `${fixtureLabel} has no registered players to notify.`
       );
       return;
     }
@@ -2944,11 +2950,13 @@ export default function MatchSignupPage({
       icon: "🌧️",
       title: `Cancel Match Day · ${fixtureLabel}`,
       message:
-        `${paidPlayers.length} paid booking${
-          paidPlayers.length === 1 ? "" : "s"
-        } will be released.`,
+        `${affectedPlayers.length} registered player${
+          affectedPlayers.length === 1 ? "" : "s"
+        } will be notified that the entire Match Day is cancelled.`,
       detail:
-        `Each paid player will receive one Match Ticket. Unpaid bookings will not receive tickets.`,
+        `${paidPlayers.length} eligible paid booking${
+          paidPlayers.length === 1 ? "" : "s"
+        } will receive Match Tickets. Free-access and unpaid bookings will not receive tickets.`,
       confirmText: "Cancel Match Day",
       cancelText: "Keep Match Day",
       variant: "danger",
@@ -3041,6 +3049,77 @@ export default function MatchSignupPage({
           failures.push(player?.fullName || "Unknown player");
         }
       }
+
+      await setDoc(
+        getClubDoc(
+          db,
+          "matchDayOperations",
+          week.id,
+          activeClubId
+        ),
+        {
+          clubId: activeClubId,
+          clubName: activeClubName,
+          matchDayId: week.id,
+          matchDayLabel:
+            week.fullLabel ||
+            week.label ||
+            fixtureLabel,
+          status: "cancelled",
+          scope: "entire_match_day",
+          reasonCode: "bad_weather",
+          reasonLabel: "bad weather",
+          affectedRecipients: affectedPlayers.map((player) => {
+            const data = {
+              ...(player?.rawData || {}),
+              ...player,
+            };
+
+            return {
+              playerId: String(
+                data.beneficiaryPlayerId ||
+                data.userId ||
+                data.playerId ||
+                ""
+              ),
+              firebaseUid: String(
+                data.firebaseUid ||
+                data.authUid ||
+                data.uid ||
+                ""
+              ),
+              email: String(
+                data.email ||
+                data.payerEmail ||
+                ""
+              ),
+              playerName: String(
+                data.beneficiaryName ||
+                data.playerName ||
+                data.fullName ||
+                data.shortName ||
+                ""
+              ),
+            };
+          }),
+          affectedPlayerCount: affectedPlayers.length,
+          ticketEligibleCount: paidPlayers.length,
+          ticketsIssuedCount: completed,
+          ticketFailureCount: failures.length,
+          cancelledByUid:
+            currentUser?.uid ||
+            identity?.uid ||
+            identity?.userId ||
+            "",
+          cancelledByEmail:
+            currentUser?.email ||
+            identity?.email ||
+            "",
+          cancelledAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
       if (completed > 0) {
         setAdminWeatherMessage(
