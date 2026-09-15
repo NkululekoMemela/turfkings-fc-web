@@ -1,0 +1,363 @@
+#fanm-welcome-hero {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow-y: auto;
+  box-sizing: border-box;
+  color: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background-color: #071a2a;
+  background-image:
+    linear-gradient(90deg,
+      rgba(5, 18, 37, .94) 0%,
+      rgba(6, 23, 43, .82) 41%,
+      rgba(6, 24, 42, .53) 70%,
+      rgba(4, 25, 35, .72) 100%),
+    linear-gradient(0deg,
+      rgba(3, 16, 30, .93) 0%,
+      transparent 43%,
+      rgba(2, 15, 33, .38) 100%),
+    url("/HomePage/ClubPhoto_marketing.jpeg");
+  background-size: cover;
+  background-position: center;
+}
+#fanm-welcome-hero * { box-sizing: border-box; }
+#fanm-welcome-hero::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 5px;
+  background: linear-gradient(90deg, #42c9a2, #4c82ed, #a17ce6);
+}
+#fanm-welcome-hero .fanm-hero__content {
+  position: relative;
+  width: min(100%, 1320px);
+  min-height: 100dvh;
+  margin: auto;
+  padding: max(26px, env(safe-area-inset-top)) clamp(24px, 5vw, 72px)
+           max(30px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+#fanm-welcome-hero .fanm-hero__header,
+#fanm-welcome-hero .fanm-hero__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+#fanm-welcome-hero .fanm-hero__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 17px;
+  font-weight: 850;
+  letter-spacing: -.02em;
+}
+#fanm-welcome-hero .fanm-hero__brand img {
+  width: 39px;
+  height: 39px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 13px rgba(0,0,0,.35));
+}
+#fanm-welcome-hero .fanm-hero__edition,
+#fanm-welcome-hero .fanm-hero__footer,
+#fanm-welcome-hero .fanm-hero__prompt,
+#fanm-welcome-hero .fanm-hero__eyebrow {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .19em;
+}
+#fanm-welcome-hero .fanm-hero__edition { color: #c7e9d9; }
+#fanm-welcome-hero .fanm-hero__main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 425px);
+  align-items: center;
+  gap: clamp(35px, 7vw, 115px);
+  padding: 50px 0;
+}
+#fanm-welcome-hero .fanm-hero__story {
+  max-width: 700px;
+  text-shadow: 0 6px 30px rgba(0, 0, 0, .3);
+}
+#fanm-welcome-hero .fanm-hero__eyebrow { color: #a9f1cc; }
+#fanm-welcome-hero h1 {
+  color: #fff;
+  font-size: clamp(52px, 6.3vw, 106px);
+  line-height: .99;
+  letter-spacing: -.065em;
+  margin: 18px 0 24px;
+  font-weight: 850;
+}
+#fanm-welcome-hero h1 em {
+  font-style: normal;
+  color: #a5f1c1;
+}
+#fanm-welcome-hero .fanm-hero__story p {
+  color: #e2ecf4;
+  font-size: clamp(16px, 1.5vw, 20px);
+  line-height: 1.55;
+  max-width: 520px;
+  margin: 0;
+}
+#fanm-welcome-hero .fanm-hero__actions {
+  display: grid;
+  gap: 10px;
+  padding: 24px;
+  border: 1px solid rgba(231, 255, 246, .25);
+  border-radius: 25px;
+  background: rgba(6, 20, 38, .7);
+  box-shadow: 0 30px 80px rgba(0, 9, 25, .35);
+  backdrop-filter: blur(18px);
+}
+#fanm-welcome-hero .fanm-hero__prompt {
+  color: #c2d7dc;
+  margin: 0 0 8px 3px;
+}
+#fanm-welcome-hero .fanm-hero__actions button {
+  font: inherit;
+  color: #fff;
+  cursor: pointer;
+  width: 100%;
+  min-height: 76px;
+  border: 1px solid rgba(226, 246, 255, .25);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .08);
+  padding: 12px 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  text-align: left;
+  transition: background .2s, transform .2s, border-color .2s;
+}
+#fanm-welcome-hero .fanm-hero__actions button:hover,
+#fanm-welcome-hero .fanm-hero__actions button:focus-visible {
+  background: rgba(255, 255, 255, .16);
+  border-color: #b4f4d1;
+  transform: translateY(-2px);
+}
+#fanm-welcome-hero .fanm-hero__action-icon {
+  color: #aaf0c6;
+  font-size: 12px;
+  font-weight: 850;
+  flex: 0 0 24px;
+}
+#fanm-welcome-hero .fanm-hero__action-copy { flex: 1; }
+#fanm-welcome-hero .fanm-hero__action-copy strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 850;
+}
+#fanm-welcome-hero .fanm-hero__action-copy small {
+  display: block;
+  color: #d0dce6;
+  font-size: 12px;
+  margin-top: 4px;
+}
+#fanm-welcome-hero .fanm-hero__arrow {
+  font-size: 23px;
+  color: #b5f5d0;
+}
+#fanm-welcome-hero .fanm-hero__actions .fanm-hero__join {
+  background: #b9efc6;
+  border-color: #b9efc6;
+  color: #17382e;
+}
+#fanm-welcome-hero .fanm-hero__join .fanm-hero__action-icon,
+#fanm-welcome-hero .fanm-hero__join .fanm-hero__arrow {
+  color: #235c42;
+}
+#fanm-welcome-hero .fanm-hero__join .fanm-hero__action-copy small {
+  color: #38614d;
+}
+#fanm-welcome-hero .fanm-hero__footer { color: #d8e9ed; }
+
+@media (max-width: 790px) {
+  #fanm-welcome-hero {
+    background-image:
+      linear-gradient(0deg,
+        #061a2d 0%,
+        rgba(6, 24, 43, .98) 30%,
+        rgba(6, 22, 40, .75) 62%,
+        rgba(4, 21, 36, .26) 100%),
+      url("/HomePage/ClubPhoto_marketing.jpeg");
+    background-position: 58% center;
+  }
+  #fanm-welcome-hero .fanm-hero__content {
+    padding: max(19px, env(safe-area-inset-top)) 20px
+             max(24px, env(safe-area-inset-bottom));
+  }
+  #fanm-welcome-hero .fanm-hero__edition { display: none; }
+  #fanm-welcome-hero .fanm-hero__main {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
+    gap: 22px;
+    padding: 95px 0 20px;
+  }
+  #fanm-welcome-hero h1 {
+    font-size: clamp(43px, 11vw, 68px);
+    margin: 12px 0 14px;
+  }
+  #fanm-welcome-hero .fanm-hero__story p {
+    font-size: 14px;
+    max-width: 390px;
+  }
+  #fanm-welcome-hero .fanm-hero__actions {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    backdrop-filter: none;
+  }
+  #fanm-welcome-hero .fanm-hero__actions button {
+    min-height: 66px;
+    background: rgba(18, 44, 61, .87);
+    backdrop-filter: blur(14px);
+  }
+  #fanm-welcome-hero .fanm-hero__footer {
+    justify-content: center;
+    text-align: center;
+    font-size: 10px;
+  }
+  #fanm-welcome-hero .fanm-hero__footer span:first-child { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #fanm-welcome-hero .fanm-hero__actions button { transition: none; }
+}
+
+/* Desktop: one clear story and three peer destinations */
+#fanm-welcome-hero .fanm-hero__desktop-headline { display: none; }
+
+@media (min-width: 791px) {
+  #fanm-welcome-hero .fanm-hero__mobile-headline { display: none; }
+  #fanm-welcome-hero .fanm-hero__desktop-headline { display: inline; }
+
+  #fanm-welcome-hero .fanm-hero__main {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: clamp(35px, 6vh, 72px);
+  }
+  #fanm-welcome-hero .fanm-hero__story {
+    max-width: 1050px;
+  }
+  #fanm-welcome-hero h1 {
+    font-size: clamp(58px, 5.2vw, 82px);
+    max-width: 1050px;
+    margin-bottom: 18px;
+  }
+  #fanm-welcome-hero .fanm-hero__story p {
+    max-width: 680px;
+  }
+  #fanm-welcome-hero .fanm-hero__actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  #fanm-welcome-hero .fanm-hero__prompt {
+    grid-column: 1 / -1;
+    margin: 0 0 3px;
+  }
+  #fanm-welcome-hero .fanm-hero__actions button {
+    min-height: 112px;
+    padding: 18px;
+    background: rgba(9, 30, 48, .78);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 16px 36px rgba(0, 9, 25, .24);
+  }
+  #fanm-welcome-hero .fanm-hero__actions .fanm-hero__join {
+    background: #b9efc6;
+  }
+  #fanm-welcome-hero .fanm-hero__action-copy strong {
+    font-size: clamp(17px, 1.4vw, 21px);
+  }
+}
+
+/* Desktop: one clear story and three peer destinations */
+#fanm-welcome-hero .fanm-hero__desktop-headline { display: none; }
+
+@media (min-width: 791px) {
+  #fanm-welcome-hero .fanm-hero__mobile-headline { display: none; }
+  #fanm-welcome-hero .fanm-hero__desktop-headline { display: inline; }
+
+  #fanm-welcome-hero .fanm-hero__main {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: clamp(35px, 6vh, 72px);
+  }
+  #fanm-welcome-hero .fanm-hero__story {
+    max-width: 1050px;
+  }
+  #fanm-welcome-hero h1 {
+    font-size: clamp(58px, 5.2vw, 82px);
+    max-width: 1050px;
+    margin-bottom: 18px;
+  }
+  #fanm-welcome-hero .fanm-hero__story p {
+    max-width: 680px;
+  }
+  #fanm-welcome-hero .fanm-hero__actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  #fanm-welcome-hero .fanm-hero__prompt {
+    grid-column: 1 / -1;
+    margin: 0 0 3px;
+  }
+  #fanm-welcome-hero .fanm-hero__actions button {
+    min-height: 112px;
+    padding: 18px;
+    background: rgba(9, 30, 48, .78);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 16px 36px rgba(0, 9, 25, .24);
+  }
+  #fanm-welcome-hero .fanm-hero__actions .fanm-hero__join {
+    background: #b9efc6;
+  }
+  #fanm-welcome-hero .fanm-hero__action-copy strong {
+    font-size: clamp(17px, 1.4vw, 21px);
+  }
+}
+
+/* Welcome identity refinement */
+#fanm-welcome-hero .fanm-hero__brand img {
+  width: 58px;
+  height: 58px;
+}
+#fanm-welcome-hero h1 {
+  overflow-wrap: anywhere;
+  letter-spacing: -.065em;
+}
+@media (max-width: 790px) {
+  #fanm-welcome-hero .fanm-hero__brand img {
+    width: 48px;
+    height: 48px;
+  }
+  #fanm-welcome-hero h1 {
+    font-size: clamp(29px, 7.5vw, 46px);
+  }
+}

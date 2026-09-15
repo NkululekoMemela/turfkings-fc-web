@@ -24,6 +24,8 @@ import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import VideoHighlightsPage from "./pages/VideoHighlightsPage.jsx";
 import HomePage_HUB from "./pages/HomePage_HUB.jsx";
+import WelcomePage from "./pages/WelcomePage.jsx";
+import LeagueVenuesHub from "./pages/LeagueVenuesHub.jsx";
 import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
 import BottomNav from "./components/BottomNav.jsx";
 import { buildClubIdentity, DEFAULT_CLUB_ID } from "./core/clubIdentity.js";
@@ -94,6 +96,8 @@ import {
 import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 
 // Page constants
+const PAGE_WELCOME = "welcome";
+const PAGE_LEAGUE_VENUES = "league-venues";
 const PAGE_HOME = "home";
 const PAGE_ENTRY = "entry";
 const PAGE_SESSION_SELECTOR = "session-selector";
@@ -2572,7 +2576,7 @@ export default function App() {
 
   const [entryPageIntent, setEntryPageIntent] = useState(null);
   const [page, setPage] = useState(() =>
-    Capacitor.isNativePlatform() ? PAGE_ENTRY : PAGE_HOME
+    Capacitor.isNativePlatform() ? PAGE_ENTRY : PAGE_WELCOME
   );
   const nativeStartupRoutedRef = useRef(false);
   const [nativeStartupReady, setNativeStartupReady] = useState(
@@ -9559,6 +9563,18 @@ export default function App() {
           <span aria-hidden="true">🛡️</span>
           <span className="tk-admin-reclaim-tab-role">{activeRole}</span>
         </button>
+      )}
+
+      {page === PAGE_WELCOME && (
+        <WelcomePage
+          onExploreClubs={() => setPage(PAGE_HOME)}
+          onExploreLeagues={() => setPage(PAGE_LEAGUE_VENUES)}
+          onFindClub={() => setPage(PAGE_HOME)}
+        />
+      )}
+
+      {page === PAGE_LEAGUE_VENUES && (
+        <LeagueVenuesHub onBack={() => setPage(PAGE_WELCOME)} />
       )}
 
       {page === PAGE_HOME && (
