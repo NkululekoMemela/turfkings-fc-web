@@ -843,6 +843,15 @@ export default function PaymentPage({
         {
           amountPaid: verifiedAmount,
           paymentStatus: nextStatus,
+
+          // This is genuine manual confirmation that money was received.
+          // Launch access overrides and Practice simulations use separate
+          // payment methods and must never produce payment notifications.
+          paymentMethod: "manual_admin_verify",
+          paymentSimulation: false,
+          paymentActuallyReceived: true,
+          paymentProviderContacted: false,
+
           adminNote: note,
           verifiedBy: verifier,
           verifiedAt: serverTimestamp(),

@@ -10,7 +10,11 @@
 //
 // TYPE: FULL SCRIPT (replace your entire existing functions/index.js)
 
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentUpdated,
+  onDocumentWritten,
+} = require("firebase-functions/v2/firestore");
 const {onRequest} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const functions = require("firebase-functions");
@@ -935,10 +939,25 @@ async function settleVerifiedPayment({
 
   const batch = db.batch();
 
+  const moneyBackedWeeks = uniqueArray([
+    ...(signupData.moneyBackedWeeks || []),
+    ...newlyPaidPrimaryWeeks,
+  ]);
+  const accessOverrideWeeks = uniqueArray(
+    signupData.accessOverrideWeeks || []
+  ).filter((weekId) => !moneyBackedWeeks.includes(weekId));
+
   batch.set(signupRef, {
     primaryPaidWeeks: mergedPrimaryPaidWeeks,
     paidWeeks: mergedPrimaryPaidWeeks,
     secondPaidWeeks: mergedSecondPaidWeeks,
+    moneyBackedWeeks,
+    accessOverrideWeeks,
+    paymentActuallyReceived: true,
+    paymentSimulation: false,
+    paymentProviderContacted: true,
+    paymentMethod:
+      safeString(paymentData.provider || "yoco").toLowerCase(),
     unpaidPrimaryWeeks: remainingPrimaryWeeks,
     unpaidSecondWeeks: remainingSecondWeeks,
     amountDue,
@@ -1955,70 +1974,601 @@ exports.handlePaystackWebhook = onRequest(
 );
 
 // -----------------------------------------------------------------------------
-// Existing payment confirmation hook
+// Native payment confirmation notifications
 // -----------------------------------------------------------------------------
-exports.onPaymentConfirmed = onDocumentCreated(
-  "payments/{paymentId}",
+
+function normalizeNotificationIdentity(value) {
+  return safeString(value).toLowerCase();
+}
+
+function collectPaymentIdentityKeys(payment = {}, signup = {}) {
+  return new Set([
+    payment.userId,
+    payment.payerUserId,
+    payment.playerId,
+    payment.email,
+    payment.payerEmail,
+    payment.customerEmail,
+    signup.userId,
+    signup.playerId,
+    signup.email,
+    signup.payerEmail,
+  ].map(normalizeNotificationIdentity).filter(Boolean));
+}
+
+function deviceMatchesIdentityKeys(device = {}, identityKeys = new Set()) {
+  return [
+    device.firebaseUid,
+    device.memberId,
+    device.playerId,
+    device.email,
+  ].map(normalizeNotificationIdentity)
+    .some((value) => value && identityKeys.has(value));
+}
+
+function buildClubAdminIdentityKeys(club = {}) {
+  return new Set([
+    club.createdByUid,
+    club.ownerUid,
+    club.adminUid,
+    club.createdByEmail,
+    club.ownerEmail,
+    club.adminEmail,
+    club.captainEmail,
+    club.captain?.email,
+    ...(Array.isArray(club.adminUids) ? club.adminUids : []),
+    ...(Array.isArray(club.adminEmails) ? club.adminEmails : []),
+    ...(Array.isArray(club.captainEmails) ?
+      club.captainEmails :
+      []),
+  ].map(normalizeNotificationIdentity).filter(Boolean));
+}
+
+async function claimPaymentNotificationDelivery({
+  paymentId,
+  eventId,
+}) {
+  const deliveryRef = db
+    .collection("notificationDeliveries")
+    .doc(`payment_confirmation_${paymentId}`);
+
+  const claimed = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(deliveryRef);
+    const existing = snapshot.exists ? snapshot.data() || {} : {};
+
+    if (
+      existing.status === "completed" ||
+      existing.status === "processing"
+    ) {
+      return false;
+    }
+
+    transaction.set(deliveryRef, {
+      type: "payment_confirmation",
+      paymentId,
+      eventId: safeString(eventId),
+      status: "processing",
+      startedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+
+    return true;
+  });
+
+  return {
+    claimed,
+    deliveryRef,
+  };
+}
+
+async function sendPaymentNotificationBatch({
+  tokenRecords,
+  title,
+  body,
+  data,
+}) {
+  let successCount = 0;
+  let failureCount = 0;
+  const invalidRefs = [];
+
+  for (
+    let start = 0;
+    start < tokenRecords.length;
+    start += 500
+  ) {
+    const batch = tokenRecords.slice(start, start + 500);
+
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens: batch.map((record) => record.token),
+      notification: {
+        title,
+        body,
+      },
+      data,
+      android: {
+        priority: "high",
+      },
+    });
+
+    successCount += response.successCount;
+    failureCount += response.failureCount;
+
+    response.responses.forEach((result, index) => {
+      if (
+        !result.success &&
+        isInvalidMessagingTokenError(result.error?.code)
+      ) {
+        invalidRefs.push(batch[index].ref);
+      }
+    });
+  }
+
+  if (invalidRefs.length) {
+    const cleanupBatch = db.batch();
+
+    invalidRefs.forEach((ref) => {
+      cleanupBatch.delete(ref);
+    });
+
+    await cleanupBatch.commit();
+  }
+
+  return {
+    successCount,
+    failureCount,
+    invalidTokensRemoved: invalidRefs.length,
+  };
+}
+
+exports.onPaymentConfirmed = onDocumentUpdated(
+  {
+    document: "payments/{paymentId}",
+    region: REGION,
+  },
   async (event) => {
-    const snap = event.data;
-    if (!snap) {
-      console.log("No payment snapshot found.");
+    const before = event.data?.before?.data() || {};
+    const payment = event.data?.after?.data() || {};
+
+    if (
+      safeString(before.status).toLowerCase() === "paid" ||
+      safeString(payment.status).toLowerCase() !== "paid"
+    ) {
       return;
     }
 
-    const payment = snap.data() || {};
-    console.log("Payment received:", payment);
+    const paymentId = safeString(event.params.paymentId);
+    const clubId = safeString(
+      payment.activeClubId ||
+      payment.clubId ||
+      "turf-kings"
+    );
 
-    const {
-      userId,
-      playerName = "",
-      selectedWeeks = [],
-      whatsappNumber = "",
-    } = payment;
+    const delivery = await claimPaymentNotificationDelivery({
+      paymentId,
+      eventId: event.id,
+    });
 
-    if (!userId) {
-      console.log("No userId found. Skipping.");
+    if (!delivery.claimed) {
+      console.log(
+        `[PaymentPush] Delivery already claimed for ${paymentId}.`
+      );
       return;
     }
 
     try {
-      const pendingQuery = await db
-        .collection("pendingSignups")
-        .where("userId", "==", userId)
-        .where("paymentStatus", "in", ["pending", "payment_deferred"])
-        .get();
+      const signupDocId = safeString(payment.signupDocId);
 
-      const batch = db.batch();
+      const [clubSnapshot, devicesSnapshot, signupSnapshot] =
+        await Promise.all([
+          db.collection("clubs").doc(clubId).get(),
+          db
+            .collection("clubs")
+            .doc(clubId)
+            .collection("notificationDevices")
+            .get(),
+          signupDocId ?
+            db
+              .collection("clubs")
+              .doc(clubId)
+              .collection("matchSignups")
+              .doc(signupDocId)
+              .get() :
+            Promise.resolve(null),
+        ]);
 
-      pendingQuery.forEach((docSnap) => {
-        batch.update(docSnap.ref, {
-          paymentStatus: "paid_confirmed",
-          remindersPaused: true,
-          remindersEnabled: false,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+      const club = clubSnapshot.exists ?
+        clubSnapshot.data() || {} :
+        {};
+      const signup = signupSnapshot?.exists ?
+        signupSnapshot.data() || {} :
+        {};
+
+      const payerKeys = collectPaymentIdentityKeys(
+        payment,
+        signup
+      );
+      const adminKeys = buildClubAdminIdentityKeys(club);
+
+      const payerTokens = [];
+      const adminTokens = [];
+      const seenPayerTokens = new Set();
+      const seenAdminTokens = new Set();
+
+      devicesSnapshot.docs.forEach((deviceSnapshot) => {
+        const device = deviceSnapshot.data() || {};
+        const token = safeString(device.token);
+
+        if (!device.enabled || !token) return;
+
+        if (
+          deviceMatchesIdentityKeys(device, payerKeys) &&
+          !seenPayerTokens.has(token)
+        ) {
+          seenPayerTokens.add(token);
+          payerTokens.push({
+            token,
+            ref: deviceSnapshot.ref,
+          });
+        }
+
+        const deviceRole = normalizeNotificationIdentity(
+          device.role
+        );
+        const isAdmin =
+          deviceRole === "admin" ||
+          deviceMatchesIdentityKeys(device, adminKeys);
+
+        if (isAdmin && !seenAdminTokens.has(token)) {
+          seenAdminTokens.add(token);
+          adminTokens.push({
+            token,
+            ref: deviceSnapshot.ref,
+          });
+        }
       });
 
-      await batch.commit();
-
-      console.log("Marked matching pending signups as paid.");
-
-      const confirmationMessage =
-        `Payment confirmed for ${playerName}. ` +
-        `You are confirmed for: ${selectedWeeks.join(", ")}. Thank you.`;
-
-      console.log(
-        `WhatsApp confirmation candidate -> ${whatsappNumber}: ` +
-        confirmationMessage
+      const playerName = safeString(
+        payment.displayName ||
+        signup.displayName ||
+        "Player"
+      );
+      const amount = Number(
+        payment.amountReceived ||
+        payment.amountRequested ||
+        0
+      );
+      const amountLabel = formatCurrency(amount);
+      const clubName = safeString(
+        payment.clubName ||
+        signup.clubName ||
+        club.name ||
+        club.clubName ||
+        "Your club"
       );
 
-      // Optional:
-      // await sendWhatsAppMessage({
-      //   to: whatsappNumber,
-      //   body: confirmationMessage,
-      // });
+      const commonData = {
+        route: "landing",
+        clubId,
+        clubName,
+        paymentId,
+        signupDocId,
+      };
+
+      const results = await Promise.all([
+        payerTokens.length ?
+          sendPaymentNotificationBatch({
+            tokenRecords: payerTokens,
+            title: `✅ ${clubName} payment confirmed`,
+            body:
+              `Your ${amountLabel} payment was received. ` +
+              "Your booking is confirmed.",
+            data: {
+              ...commonData,
+              type: "payment_confirmation",
+            },
+          }) :
+          Promise.resolve({
+            successCount: 0,
+            failureCount: 0,
+            invalidTokensRemoved: 0,
+          }),
+        adminTokens.length ?
+          sendPaymentNotificationBatch({
+            tokenRecords: adminTokens,
+            title: "💰 Player payment received",
+            body: `${playerName} has paid ${amountLabel}.`,
+            data: {
+              ...commonData,
+              type: "payment_received_admin",
+            },
+          }) :
+          Promise.resolve({
+            successCount: 0,
+            failureCount: 0,
+            invalidTokensRemoved: 0,
+          }),
+      ]);
+
+      await delivery.deliveryRef.set({
+        status: "completed",
+        payerRecipients: payerTokens.length,
+        adminRecipients: adminTokens.length,
+        payerSuccessCount: results[0].successCount,
+        payerFailureCount: results[0].failureCount,
+        adminSuccessCount: results[1].successCount,
+        adminFailureCount: results[1].failureCount,
+        completedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      console.log("[PaymentPush] Delivery completed.", {
+        paymentId,
+        clubId,
+        payerRecipients: payerTokens.length,
+        adminRecipients: adminTokens.length,
+      });
     } catch (error) {
-      console.error("Error processing payment confirmation:", error);
+      await delivery.deliveryRef.set({
+        status: "failed",
+        error: safeString(error?.message || error),
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      console.error("[PaymentPush] Delivery failed:", error);
+      throw error;
+    }
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Genuine manually verified payment notifications
+// -----------------------------------------------------------------------------
+
+exports.onManualPaymentConfirmed = onDocumentWritten(
+  {
+    document:
+      "clubs/{clubId}/matchSignups/{signupDocId}",
+    region: REGION,
+  },
+  async (event) => {
+    const before = event.data?.before?.data() || {};
+    const signup = event.data?.after?.data() || {};
+
+    const beforeStatus =
+      safeString(before.paymentStatus).toLowerCase();
+    const nextStatus =
+      safeString(signup.paymentStatus).toLowerCase();
+    const paymentMethod =
+      safeString(signup.paymentMethod).toLowerCase();
+
+    const beforeVerificationEventId = safeString(
+      before.paymentVerificationEventId
+    );
+    const verificationEventId = safeString(
+      signup.paymentVerificationEventId
+    );
+    const hasNewVerificationEvent =
+      Boolean(verificationEventId) &&
+      verificationEventId !== beforeVerificationEventId;
+    const becameFullyPaid =
+      beforeStatus !== "paid" &&
+      nextStatus === "paid";
+
+    const confirmedAmount = Number(
+      signup.paymentConfirmedAmount || 0
+    );
+
+    const isGenuineManualPayment =
+      paymentMethod === "manual_admin_verify" &&
+      signup.paymentActuallyReceived === true &&
+      signup.paymentSimulation !== true &&
+      (
+        (
+          hasNewVerificationEvent &&
+          confirmedAmount > 0
+        ) ||
+        becameFullyPaid
+      );
+
+    if (!isGenuineManualPayment) {
+      return;
+    }
+
+    const clubId = safeString(event.params.clubId);
+    const signupDocId = safeString(
+      event.params.signupDocId
+    );
+    const amount = Number(
+      signup.paymentConfirmedAmount ||
+      signup.amountPaid ||
+      signup.amountPaidTotal ||
+      0
+    );
+
+    if (!(amount > 0)) {
+      console.log(
+        "[ManualPaymentPush] Ignoring zero-value confirmation.",
+        {
+          clubId,
+          signupDocId,
+        }
+      );
+      return;
+    }
+
+    const deliveryKey =
+      verificationEventId ||
+      `fully_paid_${clubId}_${signupDocId}`;
+
+    const delivery = await claimPaymentNotificationDelivery({
+      paymentId:
+        `manual_${clubId}_${signupDocId}_${deliveryKey}`,
+      eventId: event.id,
+    });
+
+    if (!delivery.claimed) {
+      console.log(
+        "[ManualPaymentPush] Delivery already claimed.",
+        {
+          clubId,
+          signupDocId,
+        }
+      );
+      return;
+    }
+
+    try {
+      const [clubSnapshot, devicesSnapshot] =
+        await Promise.all([
+          db.collection("clubs").doc(clubId).get(),
+          db
+            .collection("clubs")
+            .doc(clubId)
+            .collection("notificationDevices")
+            .get(),
+        ]);
+
+      const club = clubSnapshot.exists ?
+        clubSnapshot.data() || {} :
+        {};
+
+      const payerKeys = collectPaymentIdentityKeys(
+        signup,
+        signup
+      );
+      const adminKeys = buildClubAdminIdentityKeys(club);
+
+      const payerTokens = [];
+      const adminTokens = [];
+      const seenPayerTokens = new Set();
+      const seenAdminTokens = new Set();
+
+      devicesSnapshot.docs.forEach((deviceSnapshot) => {
+        const device = deviceSnapshot.data() || {};
+        const token = safeString(device.token);
+
+        if (!device.enabled || !token) return;
+
+        if (
+          deviceMatchesIdentityKeys(device, payerKeys) &&
+          !seenPayerTokens.has(token)
+        ) {
+          seenPayerTokens.add(token);
+          payerTokens.push({
+            token,
+            ref: deviceSnapshot.ref,
+          });
+        }
+
+        const deviceRole = normalizeNotificationIdentity(
+          device.role
+        );
+        const isAdmin =
+          deviceRole === "admin" ||
+          deviceMatchesIdentityKeys(device, adminKeys);
+
+        if (isAdmin && !seenAdminTokens.has(token)) {
+          seenAdminTokens.add(token);
+          adminTokens.push({
+            token,
+            ref: deviceSnapshot.ref,
+          });
+        }
+      });
+
+      const playerName = safeString(
+        signup.displayName ||
+        signup.playerName ||
+        signup.beneficiaryName ||
+        "Player"
+      );
+      const amountLabel = formatCurrency(amount);
+      const clubName = safeString(
+        signup.clubName ||
+        club.name ||
+        club.clubName ||
+        "Your club"
+      );
+
+      const commonData = {
+        route: "landing",
+        clubId,
+        clubName,
+        signupDocId,
+        paymentId: "",
+      };
+
+      const results = await Promise.all([
+        payerTokens.length ?
+          sendPaymentNotificationBatch({
+            tokenRecords: payerTokens,
+            title: `✅ ${clubName} payment confirmed`,
+            body:
+              `Your ${amountLabel} payment was confirmed. ` +
+              "Your booking is ready.",
+            data: {
+              ...commonData,
+              type: "payment_confirmation",
+            },
+          }) :
+          Promise.resolve({
+            successCount: 0,
+            failureCount: 0,
+            invalidTokensRemoved: 0,
+          }),
+        adminTokens.length ?
+          sendPaymentNotificationBatch({
+            tokenRecords: adminTokens,
+            title: `💰 ${clubName} player payment`,
+            body: `${playerName} has paid ${amountLabel}.`,
+            data: {
+              ...commonData,
+              type: "payment_received_admin",
+            },
+          }) :
+          Promise.resolve({
+            successCount: 0,
+            failureCount: 0,
+            invalidTokensRemoved: 0,
+          }),
+      ]);
+
+      await delivery.deliveryRef.set({
+        status: "completed",
+        source: "genuine_manual_confirmation",
+        payerRecipients: payerTokens.length,
+        adminRecipients: adminTokens.length,
+        payerSuccessCount: results[0].successCount,
+        payerFailureCount: results[0].failureCount,
+        adminSuccessCount: results[1].successCount,
+        adminFailureCount: results[1].failureCount,
+        completedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      console.log(
+        "[ManualPaymentPush] Delivery completed.",
+        {
+          clubId,
+          signupDocId,
+          payerRecipients: payerTokens.length,
+          adminRecipients: adminTokens.length,
+        }
+      );
+    } catch (error) {
+      await delivery.deliveryRef.set({
+        status: "failed",
+        error: safeString(error?.message || error),
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      console.error(
+        "[ManualPaymentPush] Delivery failed:",
+        error
+      );
+      throw error;
     }
   }
 );
@@ -2977,6 +3527,2080 @@ exports.startPracticeSession = onRequest(
             : safeString(error?.message) ||
               "Could not start Practice session.",
       });
+    }
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Native Club Chat notifications
+// -----------------------------------------------------------------------------
+//
+// TEMPORARY TESTING:
+// The sender is intentionally included so one physical device can verify
+// delivery end-to-end. Set this to false before production release.
+const INCLUDE_CHAT_SENDER_DURING_NATIVE_TESTING = true;
+
+function buildClubChatNotificationBody(message) {
+  const text = String(message.text || "").trim();
+
+  if (text) {
+    return text.length > 140
+      ? `${text.slice(0, 137)}...`
+      : text;
+  }
+
+  if (message.attachmentType === "highlight") {
+    return "Shared a club highlight";
+  }
+
+  return "Sent a new club message";
+}
+
+function isInvalidMessagingTokenError(code) {
+  return [
+    "messaging/invalid-registration-token",
+    "messaging/registration-token-not-registered",
+  ].includes(String(code || ""));
+}
+
+exports.onClubChatMessageCreated = onDocumentCreated(
+  {
+    document:
+      "clubs/{clubId}/chatMessages/{messageId}",
+    region: REGION,
+  },
+  async (event) => {
+    const snap = event.data;
+
+    if (!snap) {
+      console.log(
+        "[ClubChatPush] Missing message snapshot."
+      );
+      return;
+    }
+
+    const message = snap.data() || {};
+    const clubId = String(event.params.clubId || "");
+    const messageId = String(event.params.messageId || "");
+    const senderUid = String(message.senderUid || "");
+    const senderName = String(
+      message.senderName || "Club member"
+    );
+    const clubName = String(
+      message.clubName || "Club Chat"
+    );
+
+    const devicesSnapshot = await db
+      .collection("clubs")
+      .doc(clubId)
+      .collection("notificationDevices")
+      .get();
+
+    const tokenRecords = [];
+    const seenTokens = new Set();
+
+    devicesSnapshot.docs.forEach((deviceDoc) => {
+      const device = deviceDoc.data() || {};
+      const token = String(device.token || "").trim();
+
+      if (!device.enabled || !token) return;
+      if (seenTokens.has(token)) return;
+
+      if (
+        !INCLUDE_CHAT_SENDER_DURING_NATIVE_TESTING &&
+        senderUid &&
+        String(device.firebaseUid || "") === senderUid
+      ) {
+        return;
+      }
+
+      seenTokens.add(token);
+      tokenRecords.push({
+        token,
+        ref: deviceDoc.ref,
+      });
+    });
+
+    if (!tokenRecords.length) {
+      console.log(
+        `[ClubChatPush] No recipients for club ${clubId}.`
+      );
+      return;
+    }
+
+    const invalidRefs = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (
+      let start = 0;
+      start < tokenRecords.length;
+      start += 500
+    ) {
+      const batch = tokenRecords.slice(start, start + 500);
+
+      const response =
+        await admin.messaging().sendEachForMulticast({
+          tokens: batch.map((record) => record.token),
+          notification: {
+            title: `💬 ${senderName} • ${clubName}`,
+            body: buildClubChatNotificationBody(message),
+          },
+          data: {
+            type: "club_chat",
+            route: "club-chat",
+            clubId,
+            messageId,
+            senderUid,
+            senderName,
+          },
+          android: {
+            priority: "high",
+          },
+        });
+
+      successCount += response.successCount;
+      failureCount += response.failureCount;
+
+      response.responses.forEach((result, index) => {
+        if (
+          !result.success &&
+          isInvalidMessagingTokenError(
+            result.error?.code
+          )
+        ) {
+          invalidRefs.push(batch[index].ref);
+        }
+      });
+    }
+
+    if (invalidRefs.length) {
+      const cleanupBatch = db.batch();
+
+      invalidRefs.forEach((ref) => {
+        cleanupBatch.delete(ref);
+      });
+
+      await cleanupBatch.commit();
+    }
+
+    console.log("[ClubChatPush] Delivery complete.", {
+      clubId,
+      messageId,
+      recipients: tokenRecords.length,
+      successCount,
+      failureCount,
+      invalidTokensRemoved: invalidRefs.length,
+      senderIncludedForTesting:
+        INCLUDE_CHAT_SENDER_DURING_NATIVE_TESTING,
+    });
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Secure club invitations
+// -----------------------------------------------------------------------------
+
+const CLUB_INVITATION_LIFETIME_MS =
+  7 * 24 * 60 * 60 * 1000;
+
+function normalizeInvitationClubId(value) {
+  return safeString(value)
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "");
+}
+
+function normalizeInvitationEmail(value) {
+  return safeString(value).toLowerCase();
+}
+
+function hashClubInvitationToken(token) {
+  return crypto
+    .createHash("sha256")
+    .update(safeString(token), "utf8")
+    .digest("hex");
+}
+
+function invitationRoleAllowsCreation(role) {
+  return ["admin", "captain"].includes(
+    safeString(role).toLowerCase()
+  );
+}
+
+async function callerCanCreateClubInvitation({
+  decodedUser,
+  clubId,
+}) {
+  const uid = safeString(decodedUser?.uid);
+  const email = normalizeInvitationEmail(
+    decodedUser?.email
+  );
+
+  if (!uid && !email) return false;
+
+  const clubRef = db.collection("clubs").doc(clubId);
+  const clubSnap = await clubRef.get();
+
+  if (!clubSnap.exists) return false;
+
+  const club = clubSnap.data() || {};
+
+  const privilegedUids = uniqueArray([
+    club.createdByUid,
+    club.ownerUid,
+    ...(Array.isArray(club.adminUids)
+      ? club.adminUids
+      : []),
+    ...(Array.isArray(club.captainUids)
+      ? club.captainUids
+      : []),
+  ]);
+
+  if (uid && privilegedUids.includes(uid)) {
+    return true;
+  }
+
+  const privilegedEmails = uniqueArray([
+    club.adminEmail,
+    club.ownerEmail,
+    club.captainEmail,
+    club.createdByEmail,
+    club.createdBy,
+    club.captain?.email,
+    ...(Array.isArray(club.adminEmails)
+      ? club.adminEmails
+      : []),
+    ...(Array.isArray(club.captainEmails)
+      ? club.captainEmails
+      : []),
+  ]).map(normalizeInvitationEmail);
+
+  if (email && privilegedEmails.includes(email)) {
+    return true;
+  }
+
+  const membersRef = clubRef.collection("members");
+  const candidateDocs = new Map();
+
+  if (uid) {
+    for (const field of [
+      "uid",
+      "platformIdentityUid",
+    ]) {
+      const snapshot = await membersRef
+        .where(field, "==", uid)
+        .limit(5)
+        .get();
+
+      snapshot.docs.forEach((memberDoc) => {
+        candidateDocs.set(memberDoc.id, memberDoc);
+      });
+    }
+  }
+
+  if (email) {
+    const snapshot = await membersRef
+      .where("email", "==", email)
+      .limit(5)
+      .get();
+
+    snapshot.docs.forEach((memberDoc) => {
+      candidateDocs.set(memberDoc.id, memberDoc);
+    });
+  }
+
+  return Array.from(candidateDocs.values()).some(
+    (memberDoc) => {
+      const member = memberDoc.data() || {};
+      const status = safeString(
+        member.status || "active"
+      ).toLowerCase();
+
+      return (
+        invitationRoleAllowsCreation(member.role) &&
+        !["withdrawn", "rejected", "suspended"].includes(
+          status
+        )
+      );
+    }
+  );
+}
+
+exports.createClubInvitation = onRequest(
+  {
+    region: REGION,
+    invoker: "public",
+  },
+  async (req, res) => {
+    if (handleOptions(req, res)) return;
+    setCors(res);
+
+    if (req.method !== "POST") {
+      return res.status(405).json({
+        ok: false,
+        error: "Method not allowed. Use POST.",
+      });
+    }
+
+    try {
+      const decodedUser =
+        await requireFirebaseUser(req);
+
+      const clubId = normalizeInvitationClubId(
+        req.body?.clubId
+      );
+
+      if (!clubId) {
+        return res.status(400).json({
+          ok: false,
+          error: "A valid club ID is required.",
+        });
+      }
+
+      const allowed =
+        await callerCanCreateClubInvitation({
+          decodedUser,
+          clubId,
+        });
+
+      if (!allowed) {
+        return res.status(403).json({
+          ok: false,
+          error:
+            "Only this club's admin or captain may create invitations.",
+        });
+      }
+
+      const clubRef = db.collection("clubs").doc(clubId);
+      const clubSnap = await clubRef.get();
+
+      if (!clubSnap.exists) {
+        return res.status(404).json({
+          ok: false,
+          error: "Club not found.",
+        });
+      }
+
+      const token = crypto
+        .randomBytes(32)
+        .toString("base64url");
+
+      const tokenHash =
+        hashClubInvitationToken(token);
+
+      const nowMs = Date.now();
+      const expiresAtMs =
+        nowMs + CLUB_INVITATION_LIFETIME_MS;
+
+      await clubRef
+        .collection("invitations")
+        .doc(tokenHash)
+        .set({
+          clubId,
+          status: "active",
+          tokenHash,
+          createdByUid:
+            safeString(decodedUser.uid),
+          createdByEmail:
+            normalizeInvitationEmail(
+              decodedUser.email
+            ),
+          createdAt:
+            FieldValue.serverTimestamp(),
+          createdAtMs: nowMs,
+          expiresAt:
+            admin.firestore.Timestamp.fromMillis(
+              expiresAtMs
+            ),
+          expiresAtMs,
+          useCount: 0,
+          lastUsedAt: null,
+        });
+
+      const invitationUrl =
+        "https://five-asides-near-me.web.app/" +
+        `?club=${encodeURIComponent(clubId)}` +
+        `&invite=${encodeURIComponent(token)}`;
+
+      return res.status(200).json({
+        ok: true,
+        clubId,
+        invitationUrl,
+        expiresAtMs,
+      });
+    } catch (error) {
+      console.error(
+        "[ClubInvitation] Creation failed:",
+        error
+      );
+
+      const authFailure = String(
+        error?.code || ""
+      ).startsWith("practice/auth-");
+
+      return res
+        .status(authFailure ? 401 : 500)
+        .json({
+          ok: false,
+          error:
+            authFailure
+              ? "Please sign in before creating an invitation."
+              : "Could not create the club invitation.",
+        });
+    }
+  }
+);
+
+exports.validateClubInvitation = onRequest(
+  {
+    region: REGION,
+    invoker: "public",
+  },
+  async (req, res) => {
+    if (handleOptions(req, res)) return;
+    setCors(res);
+
+    if (req.method !== "POST") {
+      return res.status(405).json({
+        ok: false,
+        error: "Method not allowed. Use POST.",
+      });
+    }
+
+    try {
+      const clubId = normalizeInvitationClubId(
+        req.body?.clubId
+      );
+      const token = safeString(req.body?.token);
+
+      if (!clubId || !token) {
+        return res.status(400).json({
+          ok: false,
+          valid: false,
+          error: "Invitation details are incomplete.",
+        });
+      }
+
+      const tokenHash =
+        hashClubInvitationToken(token);
+
+      const clubRef = db.collection("clubs").doc(clubId);
+
+      const [clubSnap, invitationSnap] =
+        await Promise.all([
+          clubRef.get(),
+          clubRef
+            .collection("invitations")
+            .doc(tokenHash)
+            .get(),
+        ]);
+
+      if (!clubSnap.exists || !invitationSnap.exists) {
+        return res.status(404).json({
+          ok: false,
+          valid: false,
+          error: "This invitation is not valid.",
+        });
+      }
+
+      const invitation =
+        invitationSnap.data() || {};
+
+      const expiresAtMs = Number(
+        invitation.expiresAtMs ||
+        invitation.expiresAt?.toMillis?.() ||
+        0
+      );
+
+      const isActive =
+        invitation.status === "active" &&
+        expiresAtMs > Date.now();
+
+      if (!isActive) {
+        return res.status(410).json({
+          ok: false,
+          valid: false,
+          error:
+            "This invitation has expired or was cancelled.",
+        });
+      }
+
+      const club = clubSnap.data() || {};
+
+      return res.status(200).json({
+        ok: true,
+        valid: true,
+        club: {
+          id: clubId,
+          name:
+            safeString(
+              club.name ||
+              club.clubName ||
+              club.displayName
+            ) || "Football Club",
+          shortName:
+            safeString(
+              club.shortName ||
+              club.clubShortName
+            ),
+          logoUrl:
+            safeString(
+              club.logoUrl ||
+              club.logo ||
+              club.badgeUrl
+            ),
+          heroImage:
+            safeString(
+              club.heroImage ||
+              club.teamPhoto ||
+              club.image
+            ),
+          weeklyPlayTime:
+            safeString(
+              club.weeklyPlayTime ||
+              club.playTime ||
+              club.schedule?.weeklyPlayTime ||
+              club.schedule?.playTime
+            ),
+        },
+        expiresAtMs,
+      });
+    } catch (error) {
+      console.error(
+        "[ClubInvitation] Validation failed:",
+        error
+      );
+
+      return res.status(500).json({
+        ok: false,
+        valid: false,
+        error:
+          "Could not validate this invitation right now.",
+      });
+    }
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Native Match Day reminders
+// -----------------------------------------------------------------------------
+
+const MATCH_DAY_TIME_ZONE = "Africa/Johannesburg";
+
+function getSouthAfricanDateKey(date = new Date()) {
+  const parts = new globalThis.Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone: MATCH_DAY_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }
+  ).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value])
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function shiftDateKey(dateKey, days) {
+  const match = String(dateKey || "").match(
+    /^(\d{4})-(\d{2})-(\d{2})$/
+  );
+
+  if (!match) return "";
+
+  const date = new Date(Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    12,
+    0,
+    0
+  ));
+
+  date.setUTCDate(date.getUTCDate() + Number(days || 0));
+
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function formatMatchDayLabel(dateKey) {
+  const match = String(dateKey || "").match(
+    /^(\d{4})-(\d{2})-(\d{2})$/
+  );
+
+  if (!match) return "the upcoming Match Day";
+
+  const date = new Date(Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    12,
+    0,
+    0
+  ));
+
+  return new globalThis.Intl.DateTimeFormat(
+    "en-ZA",
+    {
+      timeZone: "UTC",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }
+  ).format(date);
+}
+
+function collectSignupIdentityKeys(signup = {}) {
+  return new Set([
+    signup.beneficiaryPlayerId,
+    signup.userId,
+    signup.playerId,
+    signup.firebaseUid,
+    signup.email,
+    signup.payerEmail,
+    signup.beneficiaryName,
+    signup.playerName,
+    signup.fullName,
+    signup.shortName,
+    signup.beneficiaryShortName,
+  ].map(normalizeNotificationIdentity).filter(Boolean));
+}
+
+function collectTeamPlayerKeys(player) {
+  if (typeof player === "string") {
+    return new Set([
+      normalizeNotificationIdentity(player),
+    ].filter(Boolean));
+  }
+
+  const value = player || {};
+
+  return new Set([
+    value.id,
+    value.uid,
+    value.userId,
+    value.playerId,
+    value.memberId,
+    value.email,
+    value.name,
+    value.displayName,
+    value.fullName,
+    value.shortName,
+  ].map(normalizeNotificationIdentity).filter(Boolean));
+}
+
+function setsIntersect(left = new Set(), right = new Set()) {
+  for (const value of left) {
+    if (right.has(value)) return true;
+  }
+
+  return false;
+}
+
+function getOfficialTeamsFromState(stateDocument = {}) {
+  const state = stateDocument.state || {};
+  const seasons = Array.isArray(state.seasons) ?
+    state.seasons :
+    [];
+
+  const activeSeason =
+    seasons.find(
+      (season) =>
+        String(season?.seasonId || "") ===
+        String(state.activeSeasonId || "")
+    ) ||
+    seasons[0] ||
+    {};
+
+  const leagueTeams = Array.isArray(activeSeason.teams) ?
+    activeSeason.teams :
+    [];
+
+  const friendlyTeams = Array.isArray(
+    activeSeason.fiveVFiveTeams
+  ) ?
+    activeSeason.fiveVFiveTeams :
+    [];
+
+  const matchType = safeString(
+    activeSeason.matchType ||
+    activeSeason.gameFormat
+  ).toLowerCase();
+
+  if (matchType.includes("league")) {
+    return leagueTeams;
+  }
+
+  return friendlyTeams.length ?
+    friendlyTeams :
+    leagueTeams;
+}
+
+function findSignupTeam(signup, teams = []) {
+  const signupKeys = collectSignupIdentityKeys(signup);
+
+  for (const team of teams) {
+    const players = Array.isArray(team?.players) ?
+      team.players :
+      [];
+
+    const matched = players.some((player) =>
+      setsIntersect(
+        signupKeys,
+        collectTeamPlayerKeys(player)
+      )
+    );
+
+    if (matched) {
+      return {
+        id: safeString(team.id),
+        name: safeString(
+          team.label ||
+          team.name ||
+          team.abbrev ||
+          "Team"
+        ),
+        colour: safeString(
+          team.teamColorName ||
+          team.colorName ||
+          team.teamColor ||
+          "club colours"
+        ),
+      };
+    }
+  }
+
+  return null;
+}
+
+async function claimMatchDayNotification({
+  clubId,
+  matchDayId,
+  notificationType,
+  recipientKey = "club",
+}) {
+  const safeKey = [
+    "match_day",
+    clubId,
+    matchDayId,
+    notificationType,
+    recipientKey,
+  ].map((part) =>
+    safeString(part)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "_")
+  ).join("__");
+
+  const deliveryRef = db
+    .collection("notificationDeliveries")
+    .doc(safeKey);
+
+  const claimed = await db.runTransaction(
+    async (transaction) => {
+      const snapshot = await transaction.get(deliveryRef);
+      const data = snapshot.exists ?
+        snapshot.data() || {} :
+        {};
+
+      const successCount = Number(data.successCount || 0);
+      const startedAtMs =
+        typeof data.startedAt?.toMillis === "function"
+          ? data.startedAt.toMillis()
+          : 0;
+      const processingIsFresh =
+        data.status === "processing" &&
+        startedAtMs > 0 &&
+        Date.now() - startedAtMs < 15 * 60 * 1000;
+
+      if (data.status === "completed" && successCount > 0) {
+        return {
+          claimed: false,
+          reason: "already_completed",
+          previousSuccessCount: successCount,
+        };
+      }
+
+      if (processingIsFresh) {
+        return {
+          claimed: false,
+          reason: "already_processing",
+          previousSuccessCount: successCount,
+        };
+      }
+
+      transaction.set(
+        deliveryRef,
+        {
+          type: notificationType,
+          clubId,
+          matchDayId,
+          recipientKey,
+          status: "processing",
+          startedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      return {
+        claimed: true,
+        reason:
+          data.status === "processing"
+            ? "stale_processing_reclaimed"
+            : data.status === "completed"
+              ? "failed_completion_retried"
+              : data.status === "failed"
+                ? "failed_delivery_retried"
+                : "new_claim",
+        previousSuccessCount: successCount,
+      };
+    }
+  );
+
+  return {
+    ...claimed,
+    deliveryRef,
+  };
+}
+
+async function completeMatchDayDelivery(
+  delivery,
+  result,
+  recipients
+) {
+  await delivery.deliveryRef.set(
+    {
+      status:
+        result.successCount > 0
+          ? "completed"
+          : "failed",
+      recipients,
+      successCount: result.successCount,
+      failureCount: result.failureCount,
+      invalidTokensRemoved:
+        result.invalidTokensRemoved,
+      completedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    {merge: true}
+  );
+}
+
+function collectAdminTokenRecords({
+  club,
+  deviceDocuments,
+}) {
+  const adminKeys = buildClubAdminIdentityKeys(club);
+  const records = [];
+  const seen = new Set();
+
+  deviceDocuments.forEach((snapshot) => {
+    const device = snapshot.data() || {};
+    const token = safeString(device.token);
+    const role = normalizeNotificationIdentity(device.role);
+
+    const isAdmin =
+      role === "admin" ||
+      deviceMatchesIdentityKeys(device, adminKeys);
+
+    if (
+      !device.enabled ||
+      !token ||
+      !isAdmin ||
+      seen.has(token)
+    ) {
+      return;
+    }
+
+    seen.add(token);
+    records.push({
+      token,
+      ref: snapshot.ref,
+    });
+  });
+
+  return records;
+}
+
+function collectPlayerTokenRecords({
+  signup,
+  deviceDocuments,
+}) {
+  const keys = collectSignupIdentityKeys(signup);
+  const records = [];
+  const seen = new Set();
+
+  deviceDocuments.forEach((snapshot) => {
+    const device = snapshot.data() || {};
+    const token = safeString(device.token);
+
+    if (
+      !device.enabled ||
+      !token ||
+      seen.has(token) ||
+      !deviceMatchesIdentityKeys(device, keys)
+    ) {
+      return;
+    }
+
+    seen.add(token);
+    records.push({
+      token,
+      ref: snapshot.ref,
+    });
+  });
+
+  return records;
+}
+
+async function sendAdminMatchDayReminder({
+  clubId,
+  clubName,
+  matchDayId,
+  notificationType,
+  title,
+  body,
+  tokenRecords,
+}) {
+  if (!tokenRecords.length) {
+    console.log("[MatchDayReminder] Admin reminder skipped.", {
+      clubId,
+      matchDayId,
+      notificationType,
+      reason: "no_admin_devices",
+    });
+    return;
+  }
+
+  const delivery = await claimMatchDayNotification({
+    clubId,
+    matchDayId,
+    notificationType,
+    recipientKey: "admins",
+  });
+
+  if (!delivery.claimed) {
+    console.log("[MatchDayReminder] Admin reminder skipped.", {
+      clubId,
+      matchDayId,
+      notificationType,
+      reason: delivery.reason,
+      previousSuccessCount:
+        delivery.previousSuccessCount || 0,
+    });
+    return;
+  }
+
+  try {
+    const result = await sendPaymentNotificationBatch({
+      tokenRecords,
+      title,
+      body,
+      data: {
+        type: notificationType,
+        route: "landing",
+        clubId,
+        clubName,
+        matchDayId,
+      },
+    });
+
+    await completeMatchDayDelivery(
+      delivery,
+      result,
+      tokenRecords.length
+    );
+
+    console.log("[MatchDayReminder] Admin delivery completed.", {
+      clubId,
+      matchDayId,
+      notificationType,
+      claimReason: delivery.reason,
+      recipients: tokenRecords.length,
+      successCount: result.successCount,
+      failureCount: result.failureCount,
+      invalidTokensRemoved:
+        result.invalidTokensRemoved,
+    });
+  } catch (error) {
+    await delivery.deliveryRef.set(
+      {
+        status: "failed",
+        error: safeString(error?.message || error),
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      {merge: true}
+    );
+
+    console.error("[MatchDayReminder] Admin delivery failed.", {
+      clubId,
+      matchDayId,
+      notificationType,
+      error: safeString(error?.message || error),
+    });
+
+    throw error;
+  }
+}
+
+async function processClubMatchDayReminders({
+  clubId,
+  matchDayId,
+  signups,
+  reminderDays,
+}) {
+  const clubRef = db.collection("clubs").doc(clubId);
+
+  const [
+    clubSnapshot,
+    stateSnapshot,
+    devicesSnapshot,
+    operationSnapshot,
+  ] = await Promise.all([
+    clubRef.get(),
+    clubRef.collection("state").doc("main").get(),
+    clubRef.collection("notificationDevices").get(),
+    clubRef
+      .collection("matchDayOperations")
+      .doc(matchDayId)
+      .get(),
+  ]);
+
+  const operation = operationSnapshot.exists ?
+    operationSnapshot.data() || {} :
+    {};
+
+  if (
+    safeString(operation.status).toLowerCase() ===
+    "cancelled"
+  ) {
+    console.log(
+      "[MatchDayReminder] Cancelled Match Day skipped.",
+      {
+        clubId,
+        matchDayId,
+      }
+    );
+    return;
+  }
+
+  const club = clubSnapshot.exists ?
+    clubSnapshot.data() || {} :
+    {};
+  const clubName = safeString(
+    club.name ||
+    club.clubName ||
+    clubId
+  );
+  const teams = stateSnapshot.exists ?
+    getOfficialTeamsFromState(
+      stateSnapshot.data() || {}
+    ) :
+    [];
+  const devices = devicesSnapshot.docs;
+  const adminTokens = collectAdminTokenRecords({
+    club,
+    deviceDocuments: devices,
+  });
+
+  const uniqueSignups = [];
+  const seenPlayers = new Set();
+
+  signups.forEach((signup) => {
+    const keys = collectSignupIdentityKeys(signup);
+    const identityKey = [...keys][0];
+
+    if (!identityKey || seenPlayers.has(identityKey)) return;
+
+    seenPlayers.add(identityKey);
+    uniqueSignups.push(signup);
+  });
+
+  const assignments = uniqueSignups.map((signup) => ({
+    signup,
+    team: findSignupTeam(signup, teams),
+  }));
+  const unassigned = assignments.filter(
+    (entry) => !entry.team
+  );
+
+  const matchLabel = formatMatchDayLabel(matchDayId);
+
+  console.log("[MatchDayReminder] Candidate inspected.", {
+    clubId,
+    matchDayId,
+    reminderDays,
+    registeredPlayers: uniqueSignups.length,
+    assignedPlayers:
+      assignments.length - unassigned.length,
+    unassignedPlayers: unassigned.length,
+    adminDevices: adminTokens.length,
+    totalDevices: devices.length,
+  });
+
+  if (reminderDays === 3 && unassigned.length) {
+    await sendAdminMatchDayReminder({
+      clubId,
+      clubName,
+      matchDayId,
+      notificationType: "match_day_squads_required",
+      title: `🧩 ${clubName} squads required`,
+      body:
+        `${unassigned.length} registered player` +
+        `${unassigned.length === 1 ? "" : "s"} still need ` +
+        `a team for ${matchLabel}.`,
+      tokenRecords: adminTokens,
+    });
+
+    return;
+  }
+
+  if (reminderDays !== 1) return;
+
+  if (unassigned.length) {
+    await sendAdminMatchDayReminder({
+      clubId,
+      clubName,
+      matchDayId,
+      notificationType: "match_day_squads_urgent",
+      title: `🧩 ${clubName} squads incomplete`,
+      body:
+        `${unassigned.length} player` +
+        `${unassigned.length === 1 ? "" : "s"} still need ` +
+        `a team before ${matchLabel}.`,
+      tokenRecords: adminTokens,
+    });
+  }
+
+  for (const assignment of assignments) {
+    if (!assignment.team) continue;
+
+    const signup = assignment.signup;
+    const team = assignment.team;
+    const recipientKey = safeString(
+      signup.beneficiaryPlayerId ||
+      signup.userId ||
+      signup.playerId ||
+      signup.email ||
+      signup.playerName ||
+      signup.fullName
+    );
+
+    if (!recipientKey) continue;
+
+    const tokenRecords = collectPlayerTokenRecords({
+      signup,
+      deviceDocuments: devices,
+    });
+
+    if (!tokenRecords.length) continue;
+
+    const delivery = await claimMatchDayNotification({
+      clubId,
+      matchDayId,
+      notificationType: "match_day_player_reminder",
+      recipientKey,
+    });
+
+    if (!delivery.claimed) continue;
+
+    const result = await sendPaymentNotificationBatch({
+      tokenRecords,
+      title: `⚽ ${clubName} Match Day`,
+      body:
+        `${matchLabel}: You are in ${team.name}. ` +
+        `Wear ${team.colour}.`,
+      data: {
+        type: "match_day_player_reminder",
+        route: "landing",
+        clubId,
+        clubName,
+        matchDayId,
+        teamId: team.id,
+        teamName: team.name,
+        teamColour: team.colour,
+      },
+    });
+
+    await completeMatchDayDelivery(
+      delivery,
+      result,
+      tokenRecords.length
+    );
+  }
+}
+
+exports.scheduleNativeMatchDayReminders = onSchedule(
+  {
+    schedule: "every 60 minutes",
+    timeZone: MATCH_DAY_TIME_ZONE,
+    region: REGION,
+  },
+  async () => {
+    const todayKey = getSouthAfricanDateKey();
+    const targets = new Map();
+
+    [
+      {days: 3, dateKey: shiftDateKey(todayKey, 3)},
+      {days: 1, dateKey: shiftDateKey(todayKey, 1)},
+    ].forEach((target) => {
+      targets.set(target.dateKey, target.days);
+    });
+
+    const snapshot = await db
+      .collectionGroup("pendingSignups")
+      .get();
+    const grouped = new Map();
+
+    snapshot.docs.forEach((document) => {
+      const signup = document.data() || {};
+      const pathParts = document.ref.path.split("/");
+
+      /*
+       * Official signups have exactly:
+       * clubs/{clubId}/pendingSignups/{signupId}
+       *
+       * Practice signups are deeper sandbox paths and are excluded.
+       */
+      if (
+        pathParts.length !== 4 ||
+        pathParts[0] !== "clubs" ||
+        pathParts[2] !== "pendingSignups"
+      ) {
+        return;
+      }
+
+      const clubId = safeString(pathParts[1]);
+      const selectedWeeks = Array.isArray(
+        signup.selectedWeeks
+      ) ?
+        signup.selectedWeeks.map(safeString) :
+        [];
+
+      if (!clubId) return;
+
+      selectedWeeks.forEach((matchDayId) => {
+        if (!targets.has(matchDayId)) return;
+
+        const key = `${clubId}__${matchDayId}`;
+
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            clubId,
+            matchDayId,
+            reminderDays: targets.get(matchDayId),
+            signups: [],
+          });
+        }
+
+        grouped.get(key).signups.push(signup);
+      });
+    });
+
+    for (const candidate of grouped.values()) {
+      try {
+        await processClubMatchDayReminders(candidate);
+      } catch (error) {
+        console.error(
+          "[MatchDayReminder] Candidate failed.",
+          {
+            clubId: candidate.clubId,
+            matchDayId: candidate.matchDayId,
+            error: safeString(error?.message || error),
+          }
+        );
+      }
+    }
+
+    console.log("[MatchDayReminder] Run completed.", {
+      todayKey,
+      candidateCount: grouped.size,
+    });
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Whole-Match-Day cancellation notifications
+// -----------------------------------------------------------------------------
+
+
+// -----------------------------------------------------------------------------
+// Native Match Ticket availability notifications
+// -----------------------------------------------------------------------------
+
+
+
+async function sendClubAdminEventNotification({
+  clubId,
+  eventId,
+  notificationType,
+  title,
+  body,
+  data = {},
+}) {
+  const delivery = await claimMatchDayNotification({
+    clubId,
+    matchDayId: eventId,
+    notificationType,
+    recipientKey: "admins",
+  });
+
+  if (!delivery.claimed) return;
+
+  try {
+    const clubRef = db.collection("clubs").doc(clubId);
+    const [clubSnapshot, devicesSnapshot] =
+      await Promise.all([
+        clubRef.get(),
+        clubRef.collection("notificationDevices").get(),
+      ]);
+
+    const club = clubSnapshot.exists
+      ? clubSnapshot.data() || {}
+      : {};
+
+    const tokenRecords = collectAdminTokenRecords({
+      club,
+      deviceDocuments: devicesSnapshot.docs,
+    });
+
+    if (!tokenRecords.length) {
+      await delivery.deliveryRef.set(
+        {
+          status: "completed",
+          recipients: 0,
+          successCount: 0,
+          failureCount: 0,
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      console.log("[AdminEventPush] No admin devices.", {
+        clubId,
+        eventId,
+        notificationType,
+      });
+      return;
+    }
+
+    const result = await sendPaymentNotificationBatch({
+      tokenRecords,
+      title,
+      body,
+      data: {
+        type: notificationType,
+        route: "admin-entry",
+        clubId,
+        eventId,
+        ...data,
+      },
+    });
+
+    await completeMatchDayDelivery(
+      delivery,
+      result,
+      tokenRecords.length
+    );
+
+    console.log("[AdminEventPush] Delivery completed.", {
+      clubId,
+      eventId,
+      notificationType,
+      recipients: tokenRecords.length,
+      successCount: result.successCount,
+      failureCount: result.failureCount,
+    });
+  } catch (error) {
+    await delivery.deliveryRef.set(
+      {
+        status: "failed",
+        error: safeString(error?.message || error),
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      {merge: true}
+    );
+
+    console.error("[AdminEventPush] Delivery failed.", {
+      clubId,
+      eventId,
+      notificationType,
+      error: safeString(error?.message || error),
+    });
+
+    throw error;
+  }
+}
+
+exports.onClubMemberPending = onDocumentWritten(
+  {
+    document: "clubs/{clubId}/members/{memberId}",
+    region: REGION,
+  },
+  async (event) => {
+    const before = event.data?.before?.data() || {};
+    const member = event.data?.after?.data() || {};
+
+    const wasPending =
+      safeString(before.status).toLowerCase() === "pending";
+    const isPending =
+      safeString(member.status).toLowerCase() === "pending";
+
+    if (wasPending || !isPending) return;
+
+    const clubId = safeString(event.params.clubId);
+    const memberId = safeString(event.params.memberId);
+    const playerName = safeString(
+      member.fullName ||
+      member.displayName ||
+      member.name ||
+      member.shortName ||
+      "A new player"
+    );
+
+    await sendClubAdminEventNotification({
+      clubId,
+      eventId: memberId,
+      notificationType: "club_member_pending",
+      title: "👤 New club membership request",
+      body: `${playerName} is waiting for your approval.`,
+      data: {
+        memberId,
+        playerName,
+      },
+    });
+  }
+);
+
+exports.onIncomingClubChallengeCreated = onDocumentCreated(
+  {
+    document:
+      "clubs/{clubId}/incomingChallenges/{challengeId}",
+    region: REGION,
+  },
+  async (event) => {
+    const challenge = event.data?.data() || {};
+    const clubId = safeString(event.params.clubId);
+    const challengeId = safeString(
+      event.params.challengeId
+    );
+    const challengerClubName = safeString(
+      challenge.challengerClubName ||
+      challenge.homeClubName ||
+      "Another club"
+    );
+    const proposedDate = safeString(
+      challenge.proposedDateLabel ||
+      challenge.matchDateLabel ||
+      challenge.dateLabel
+    );
+
+    await sendClubAdminEventNotification({
+      clubId,
+      eventId: challengeId,
+      notificationType: "incoming_club_challenge",
+      title: "⚔️ New club challenge",
+      body:
+        `${challengerClubName} challenged your club` +
+        `${proposedDate ? ` · ${proposedDate}` : ""}.`,
+      data: {
+        challengeId,
+        challengerClubId: safeString(
+          challenge.challengerClubId
+        ),
+        challengerClubName,
+      },
+    });
+  }
+);
+
+exports.onClubPollCreated = onDocumentCreated(
+  {
+    document: "newsPolls/{pollId}",
+    region: REGION,
+  },
+  async (event) => {
+    const poll = event.data?.data() || {};
+    const pollId = safeString(event.params.pollId);
+    const clubId = safeString(poll.clubId);
+    const question = safeString(poll.question);
+
+    if (!clubId || !question || poll.archived === true) {
+      console.log("[ClubPollPush] New poll skipped.", {
+        pollId,
+        clubId,
+        hasQuestion: Boolean(question),
+        archived: poll.archived === true,
+      });
+      return;
+    }
+
+    const delivery = await claimMatchDayNotification({
+      clubId,
+      matchDayId: pollId,
+      notificationType: "club_poll_created",
+      recipientKey: "club_devices",
+    });
+
+    if (!delivery.claimed) {
+      console.log("[ClubPollPush] Duplicate skipped.", {
+        clubId,
+        pollId,
+      });
+      return;
+    }
+
+    try {
+      const clubRef = db.collection("clubs").doc(clubId);
+      const [clubSnapshot, devicesSnapshot] =
+        await Promise.all([
+          clubRef.get(),
+          clubRef.collection("notificationDevices").get(),
+        ]);
+
+      const club = clubSnapshot.exists
+        ? clubSnapshot.data() || {}
+        : {};
+
+      const clubName = safeString(
+        club.name ||
+        club.clubName ||
+        poll.clubName ||
+        clubId
+      );
+
+      const tokenRecords = [];
+      const seen = new Set();
+
+      devicesSnapshot.docs.forEach((deviceSnapshot) => {
+        const device = deviceSnapshot.data() || {};
+        const token = safeString(device.token);
+
+        if (!device.enabled || !token || seen.has(token)) {
+          return;
+        }
+
+        seen.add(token);
+        tokenRecords.push({
+          token,
+          ref: deviceSnapshot.ref,
+        });
+      });
+
+      if (!tokenRecords.length) {
+        await delivery.deliveryRef.set(
+          {
+            status: "completed",
+            recipients: 0,
+            successCount: 0,
+            failureCount: 0,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        );
+
+        console.log("[ClubPollPush] No registered devices.", {
+          clubId,
+          pollId,
+        });
+        return;
+      }
+
+      const result = await sendPaymentNotificationBatch({
+        tokenRecords,
+        title:
+          `${safeString(poll.icon || "🗳️")} ` +
+          `${clubName} posted a new poll`,
+        body:
+          question.length > 140
+            ? `${question.slice(0, 137).trimEnd()}...`
+            : question,
+        data: {
+          type: "club_poll",
+          route: "club-poll",
+          clubId,
+          clubName,
+          pollId,
+        },
+      });
+
+      await completeMatchDayDelivery(
+        delivery,
+        result,
+        tokenRecords.length
+      );
+
+      console.log("[ClubPollPush] Delivery completed.", {
+        clubId,
+        pollId,
+        recipients: tokenRecords.length,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+      });
+    } catch (error) {
+      await delivery.deliveryRef.set(
+        {
+          status: "failed",
+          error: safeString(error?.message || error),
+          failedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      console.error("[ClubPollPush] Delivery failed.", {
+        clubId,
+        pollId,
+        error: safeString(error?.message || error),
+      });
+
+      throw error;
+    }
+  }
+);
+
+exports.onMatchTicketAvailable = onDocumentWritten(
+  {
+    document:
+      "clubs/{clubId}/matchCredits/{creditId}",
+    region: REGION,
+  },
+  async (event) => {
+    const before = event.data?.before?.data() || {};
+    const credit = event.data?.after?.data() || {};
+
+    const beforeStatus = safeString(
+      before.status
+    ).toLowerCase();
+    const afterStatus = safeString(
+      credit.status
+    ).toLowerCase();
+
+    if (
+      afterStatus !== "available" ||
+      beforeStatus === "available"
+    ) {
+      return;
+    }
+
+    const clubId = safeString(event.params.clubId);
+    const creditId = safeString(event.params.creditId);
+    const sourceType = safeString(credit.sourceType);
+    const playerId = safeString(credit.playerId);
+    const playerName = safeString(
+      credit.playerName || "Player"
+    );
+    const matchDayId = safeString(
+      credit.sourceWeekId
+    );
+
+    const allowedSources = new Set([
+      "player_early_cancellation",
+      "match_cancelled",
+      "admin_exception",
+    ]);
+
+    if (!allowedSources.has(sourceType)) {
+      console.log("[MatchTicketPush] Source skipped.", {
+        clubId,
+        creditId,
+        sourceType,
+      });
+      return;
+    }
+
+    const deliveryKey = [
+      "match_ticket_available",
+      clubId,
+      creditId,
+      safeString(event.id),
+    ].map((part) =>
+      part
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "_")
+    ).join("__");
+
+    const deliveryRef = db
+      .collection("notificationDeliveries")
+      .doc(deliveryKey);
+
+    const claimed = await db.runTransaction(
+      async (transaction) => {
+        const snapshot = await transaction.get(deliveryRef);
+
+        if (snapshot.exists) return false;
+
+        transaction.set(deliveryRef, {
+          type: "match_ticket_available",
+          clubId,
+          creditId,
+          matchDayId,
+          playerId,
+          sourceType,
+          status: "processing",
+          startedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        return true;
+      }
+    );
+
+    if (!claimed) return;
+
+    try {
+      const clubRef = db.collection("clubs").doc(clubId);
+
+      const [
+        clubSnapshot,
+        devicesSnapshot,
+      ] = await Promise.all([
+        clubRef.get(),
+        clubRef.collection("notificationDevices").get(),
+      ]);
+
+      const club = clubSnapshot.exists ?
+        clubSnapshot.data() || {} :
+        {};
+
+      const clubName = safeString(
+        credit.clubName ||
+        club.name ||
+        club.clubName ||
+        clubId
+      );
+
+      const recipientKeys = [
+        playerId,
+        credit.firebaseUid,
+        credit.authUid,
+        credit.uid,
+        credit.playerEmail,
+        credit.email,
+        playerName,
+      ].map(normalizeNotificationIdentity)
+        .filter(Boolean);
+
+      const tokenRecords = [];
+      const seenTokens = new Set();
+
+      devicesSnapshot.docs.forEach((snapshot) => {
+        const device = snapshot.data() || {};
+        const token = safeString(device.token);
+
+        if (!device.enabled || !token) return;
+
+        if (
+          !deviceMatchesIdentityKeys(
+            device,
+            recipientKeys
+          )
+        ) {
+          return;
+        }
+
+        if (seenTokens.has(token)) return;
+
+        seenTokens.add(token);
+        tokenRecords.push({
+          token,
+          ref: snapshot.ref,
+        });
+      });
+
+      if (!tokenRecords.length) {
+        await deliveryRef.set(
+          {
+            status: "completed",
+            recipients: 0,
+            successCount: 0,
+            failureCount: 0,
+            reason: "no_registered_player_device",
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        );
+
+        console.log(
+          "[MatchTicketPush] No registered player device.",
+          {
+            clubId,
+            creditId,
+            playerId,
+          }
+        );
+        return;
+      }
+
+      const body =
+        sourceType === "match_cancelled"
+          ? "A Match Ticket was added after the Match Day cancellation."
+          : beforeStatus === "redeemed"
+            ? "Your cancelled booking returned a Match Ticket to your wallet."
+            : "Your cancellation was eligible. 1 Match Ticket was added to your wallet.";
+
+      const result = await sendPaymentNotificationBatch({
+        tokenRecords,
+        title: `🎟️ ${clubName} Match Ticket issued`,
+        body,
+        data: {
+          type: "match_ticket_available",
+          route: "landing",
+          clubId,
+          clubName,
+          creditId,
+          matchDayId,
+          sourceType,
+        },
+      });
+
+      await deliveryRef.set(
+        {
+          status:
+            result.successCount > 0
+              ? "completed"
+              : "failed",
+          recipients: tokenRecords.length,
+          successCount: result.successCount,
+          failureCount: result.failureCount,
+          invalidTokensRemoved:
+            result.invalidTokensRemoved,
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      console.log("[MatchTicketPush] Delivery completed.", {
+        clubId,
+        creditId,
+        playerId,
+        sourceType,
+        recipients: tokenRecords.length,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+      });
+    } catch (error) {
+      await deliveryRef.set(
+        {
+          status: "failed",
+          error: safeString(error?.message || error),
+          failedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      console.error("[MatchTicketPush] Delivery failed.", {
+        clubId,
+        creditId,
+        playerId,
+        error: safeString(error?.message || error),
+      });
+
+      throw error;
+    }
+  }
+);
+
+exports.onMatchDayCancelled = onDocumentWritten(
+  {
+    document:
+      "clubs/{clubId}/matchDayOperations/{matchDayId}",
+    region: REGION,
+  },
+  async (event) => {
+    const before = event.data?.before?.data() || {};
+    const cancellation = event.data?.after?.data() || {};
+
+    const wasCancelled =
+      safeString(before.status).toLowerCase() ===
+      "cancelled";
+    const isCancelled =
+      safeString(cancellation.status).toLowerCase() ===
+      "cancelled";
+
+    if (wasCancelled || !isCancelled) return;
+
+    const clubId = safeString(event.params.clubId);
+    const matchDayId = safeString(event.params.matchDayId);
+    const clubRef = db.collection("clubs").doc(clubId);
+
+    const delivery = await claimMatchDayNotification({
+      clubId,
+      matchDayId,
+      notificationType: "match_day_cancelled",
+      recipientKey: "registered_players",
+    });
+
+    if (!delivery.claimed) return;
+
+    try {
+      const [
+        clubSnapshot,
+        devicesSnapshot,
+        signupsSnapshot,
+      ] = await Promise.all([
+        clubRef.get(),
+        clubRef.collection("notificationDevices").get(),
+        clubRef.collection("pendingSignups").get(),
+      ]);
+
+      const club = clubSnapshot.exists ?
+        clubSnapshot.data() || {} :
+        {};
+      const clubName = safeString(
+        cancellation.clubName ||
+        club.name ||
+        club.clubName ||
+        clubId
+      );
+      const reason = safeString(
+        cancellation.reasonLabel ||
+        "bad weather"
+      );
+      const matchLabel = safeString(
+        cancellation.matchDayLabel ||
+        formatMatchDayLabel(matchDayId)
+      );
+
+      const recordedRecipients = Array.isArray(
+        cancellation.affectedRecipients
+      ) ?
+        cancellation.affectedRecipients :
+        [];
+
+      const remainingSignups = signupsSnapshot.docs
+        .map((snapshot) => snapshot.data() || {})
+        .filter((signup) => {
+          const selectedWeeks = Array.isArray(
+            signup.selectedWeeks
+          ) ?
+            signup.selectedWeeks.map(safeString) :
+            [];
+
+          return selectedWeeks.includes(matchDayId);
+        });
+
+      const affectedSignups = [
+        ...recordedRecipients,
+        ...remainingSignups,
+      ];
+
+      const tokenRecords = [];
+      const seenTokens = new Set();
+
+      affectedSignups.forEach((signup) => {
+        const records = collectPlayerTokenRecords({
+          signup,
+          deviceDocuments: devicesSnapshot.docs,
+        });
+
+        records.forEach((record) => {
+          if (seenTokens.has(record.token)) return;
+
+          seenTokens.add(record.token);
+          tokenRecords.push(record);
+        });
+      });
+
+      if (!tokenRecords.length) {
+        await delivery.deliveryRef.set(
+          {
+            status: "completed",
+            recipients: 0,
+            successCount: 0,
+            failureCount: 0,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        );
+
+        console.log(
+          "[MatchDayCancellation] No registered devices.",
+          {
+            clubId,
+            matchDayId,
+          }
+        );
+        return;
+      }
+
+      const result = await sendPaymentNotificationBatch({
+        tokenRecords,
+        title:
+          `${
+            safeString(cancellation.reasonCode) ===
+            "bad_weather"
+              ? "🌧️"
+              : [
+                  "insufficient_players",
+                  "low_signups",
+                ].includes(
+                  safeString(cancellation.reasonCode)
+                )
+              ? "👥"
+              : "🚫"
+          } ${clubName} Match Day cancelled`,
+        body:
+          `${matchLabel} is cancelled due to ${reason}. ` +
+          "Match Tickets issued where eligible.",
+        data: {
+          type: "match_day_cancelled",
+          route: "landing",
+          clubId,
+          clubName,
+          matchDayId,
+          reason,
+        },
+      });
+
+      await completeMatchDayDelivery(
+        delivery,
+        result,
+        tokenRecords.length
+      );
+
+      console.log(
+        "[MatchDayCancellation] Delivery completed.",
+        {
+          clubId,
+          matchDayId,
+          recipients: tokenRecords.length,
+          successCount: result.successCount,
+          failureCount: result.failureCount,
+        }
+      );
+    } catch (error) {
+      await delivery.deliveryRef.set(
+        {
+          status: "failed",
+          error: safeString(error?.message || error),
+          failedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true}
+      );
+
+      console.error(
+        "[MatchDayCancellation] Delivery failed.",
+        error
+      );
+      throw error;
     }
   }
 );

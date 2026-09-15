@@ -7,8 +7,12 @@ import { removePlayerFromSavedLineups } from "../core/lineups.js";
 
 const FANM_HOME_LOGO = "/HomePage/Logo_icon.jpeg";
 
-import { auth, signInWithGoogle } from "../firebaseConfig";
-import { db } from "../firebaseConfig";
+import {
+  auth,
+  db,
+  reauthenticateWithGoogle,
+  signInWithGoogle,
+} from "../firebaseConfig";
 import {
   collection,
   onSnapshot,
@@ -31,8 +35,6 @@ import {
 } from "firebase/firestore";
 import {
   onAuthStateChanged,
-  GoogleAuthProvider,
-  reauthenticateWithPopup,
 } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
 import { ClubChatWidget } from "../components/ClubChat/ClubChatWidget.jsx";
@@ -2647,15 +2649,8 @@ export function EntryPage({
        * Google itself performs the account confirmation.
        */
       if (authenticatedUser) {
-        const provider = new GoogleAuthProvider();
-
-        provider.setCustomParameters({
-          prompt: "select_account",
-        });
-
-        await reauthenticateWithPopup(
-          authenticatedUser,
-          provider
+        await reauthenticateWithGoogle(
+          authenticatedUser
         );
 
         authenticatedUser = auth.currentUser;

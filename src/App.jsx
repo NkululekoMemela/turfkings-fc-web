@@ -1,5 +1,11 @@
 // src/App.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { ClubChatPage } from "./pages/ClubChat/ClubChatPage.jsx";
 import { ClubChatWidget } from "./components/ClubChat/ClubChatWidget.jsx";
@@ -66,6 +72,8 @@ import {
   buildAuthorizedCameraDeepLink,
 } from "./storage/cameraHandoffGateway.js";
 import { useAuth } from "./auth/AuthContext.jsx";
+import { Capacitor } from "@capacitor/core";
+import { initialiseNativePushNotifications } from "./core/notifications/nativePushNotifications.js";
 import { FANM_PRO_CLUBS } from "./data/fanm/fanmTeamLibrary.js";
 
 import {
@@ -2563,7 +2571,25 @@ export default function App() {
   }, []);
 
   const [entryPageIntent, setEntryPageIntent] = useState(null);
-  const [page, setPage] = useState(PAGE_HOME);
+  const [page, setPage] = useState(() =>
+    Capacitor.isNativePlatform() ? PAGE_ENTRY : PAGE_HOME
+  );
+  const nativeStartupRoutedRef = useRef(false);
+  const [nativeStartupReady, setNativeStartupReady] = useState(
+    () => !Capacitor.isNativePlatform()
+  );
+  const [landingVisualReady, setLandingVisualReady] =
+    useState(false);
+  const [nativeChatOpenRequest, setNativeChatOpenRequest] =
+    useState(null);
+  const [nativePollOpenRequest, setNativePollOpenRequest] =
+    useState(null);
+
+  useEffect(() => {
+    if (page !== PAGE_LANDING) {
+      setLandingVisualReady(false);
+    }
+  }, [page]);
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
@@ -2741,6 +2767,211 @@ export default function App() {
   ]);
 
   const activeClubId = activeClubIdentity.id;
+
+  /*
+   * Native startup:
+   * - signed-out users start at their club Entry page;
+   * - returning players, captains and spectators skip discovery/Entry;
+   * - real administrators remain on Entry so they can choose Official
+   *   or Practice intentionally.
+   *
+   * This runs once per native launch. Notification taps can still
+   * override it afterwards and open their requested destination.
+   */
+  useEffect(() => {
+    if (
+      !Capacitor.isNativePlatform() ||
+      authLoading ||
+      nativeStartupRoutedRef.current
+    ) {
+      return;
+    }
+
+    nativeStartupRoutedRef.current = true;
+
+    if (!authUser?.uid) {
+      setNativeStartupReady(true);
+      setEntryPageIntent(null);
+      setPage(PAGE_ENTRY);
+      return;
+    }
+
+    const storedEmail = String(identity?.email || "")
+      .trim()
+      .toLowerCase();
+    const authenticatedEmail = String(authUser?.email || "")
+      .trim()
+      .toLowerCase();
+
+    const identityMatchesAuthenticatedUser =
+      !storedEmail ||
+      !authenticatedEmail ||
+      storedEmail === authenticatedEmail;
+
+    if (!identity || !identityMatchesAuthenticatedUser) {
+      setNativeStartupReady(true);
+      setEntryPageIntent(null);
+      setPage(PAGE_ENTRY);
+      return;
+    }
+
+    const storedRealRole = getRealStoredRole(identity);
+
+    setSessionMode("official");
+    writeSessionModeIntent("official");
+    setShowSessionSelector(false);
+    setEntryPageIntent(null);
+
+    if (storedRealRole === "admin") {
+      setPage(PAGE_ENTRY);
+      setNativeStartupReady(true);
+      return;
+    }
+
+    setPage(PAGE_LANDING);
+    setNativeStartupReady(true);
+  }, [
+    authLoading,
+    authUser?.uid,
+    authUser?.email,
+    identity,
+  ]);
+
+  useEffect(() => {
+    if (authLoading || !authUser?.uid || !activeClubId) {
+      return undefined;
+    }
+
+    let disposed = false;
+    let removePushListeners = () => {};
+
+    initialiseNativePushNotifications({
+      authUser,
+      identity,
+      activeClubId,
+      onNotificationOpened: notification => {
+        const data = notification?.data || {};
+
+        const opensClubChat =
+          data.type === "club_chat" ||
+          data.route === "club-chat";
+
+        const opensClubPoll =
+          data.type === "club_poll" ||
+          data.route === "club-poll";
+
+        const opensAdminEntry =
+          data.type === "club_member_pending" ||
+          data.type === "incoming_club_challenge" ||
+          data.route === "admin-entry";
+
+        const opensLanding =
+          opensClubChat ||
+          opensClubPoll ||
+          opensAdminEntry ||
+          data.route === "landing" ||
+          data.type === "payment_confirmation" ||
+          data.type === "payment_received_admin" ||
+          data.type === "match_day_reminder" ||
+          data.type === "match_day_cancelled";
+
+        if (!opensLanding) return;
+
+        const notificationClubId = String(
+          data.clubId || ""
+        ).trim();
+
+        if (!notificationClubId) return;
+
+        if (notificationClubId !== activeClubId) {
+          setSelectedHomeClub(
+            buildClubIdentity({
+              id: notificationClubId,
+            })
+          );
+        }
+
+        if (opensAdminEntry) {
+          setNativeChatOpenRequest(null);
+          setNativePollOpenRequest(null);
+          setEntryPageIntent({
+            type: String(data.type || ""),
+            clubId: notificationClubId,
+            memberId: String(data.memberId || ""),
+            challengeId: String(data.challengeId || ""),
+            openedAt: Date.now(),
+          });
+          setSessionMode("official");
+          writeSessionModeIntent("official");
+          setShowSessionSelector(false);
+          setPage(PAGE_ENTRY);
+          return;
+        }
+
+        if (opensClubPoll) {
+          const pollId = String(data.pollId || "").trim();
+
+          if (!pollId) return;
+
+          setNativeChatOpenRequest(null);
+          setNativePollOpenRequest({
+            clubId: notificationClubId,
+            pollId,
+            openedAt: Date.now(),
+          });
+          setPage(PAGE_NEWS);
+          return;
+        }
+
+        setNativePollOpenRequest(null);
+        setPage(PAGE_LANDING);
+
+        if (opensClubChat) {
+          setNativeChatOpenRequest({
+            clubId: notificationClubId,
+            messageId: String(data.messageId || ""),
+            openedAt: Date.now(),
+          });
+        } else {
+          setNativeChatOpenRequest(null);
+        }
+      },
+    })
+      .then(cleanup => {
+        if (disposed) {
+          cleanup();
+          return;
+        }
+
+        removePushListeners = cleanup;
+      })
+      .catch(error => {
+        console.error(
+          "[NativePush] Initialisation failed:",
+          error
+        );
+      });
+
+    return () => {
+      disposed = true;
+      removePushListeners();
+    };
+  }, [
+    authLoading,
+    authUser?.uid,
+    authUser?.email,
+    authUser?.memberId,
+    authUser?.playerId,
+    authUser?.role,
+    identity?.memberId,
+    identity?.playerId,
+    identity?.email,
+    identity?.fullName,
+    identity?.shortName,
+    identity?.role,
+    identity?.actingRole,
+    activeClubId,
+  ]);
 
   useEffect(() => {
     practiceExpiryWarningAcknowledgedRef.current = false;
@@ -2998,6 +3229,15 @@ export default function App() {
   const [state, setState] = useState(() =>
     USE_V2 ? createDefaultStateV2() : loadState()
   );
+
+  /*
+   * Prevent the default Friendly state from appearing before the
+   * authoritative club configuration arrives from Firestore.
+   */
+  const [footballStateReady, setFootballStateReady] =
+    useState(false);
+  const authoritativeFootballStateReceivedRef =
+    useRef(false);
 
   /*
    * Protect optimistic local changes from an older Firestore
@@ -3496,11 +3736,16 @@ export default function App() {
 
   useEffect(() => {
     // Disabled localStorage bootstrap for V2.
+    authoritativeFootballStateReceivedRef.current = false;
+    setFootballStateReady(false);
 
     const unsubscribe = USE_V2
       ? subscribeToStateV2(
           (cloudState) => {
-            if (!cloudState) return;
+            if (!cloudState) {
+              setFootballStateReady(true);
+              return;
+            }
 
             const nextCloudState = ensureV2StateShape(cloudState);
 
@@ -3524,6 +3769,8 @@ export default function App() {
                   }))
                 : [],
             });
+            authoritativeFootballStateReceivedRef.current = true;
+
             setState((prev) => {
               const pendingWriteVersion =
                 pendingStateWriteUpdatedAtRef.current;
@@ -3591,6 +3838,19 @@ export default function App() {
     footballStateClubId,
     footballDataScope,
   ]);
+
+  /*
+   * Release the native splash only after React has committed the
+   * authoritative football state. A layout effect runs before paint,
+   * preventing even one frame of the default Friendly configuration.
+   */
+  useLayoutEffect(() => {
+    if (!authoritativeFootballStateReceivedRef.current) {
+      return;
+    }
+
+    setFootballStateReady(true);
+  }, [state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -8093,6 +8353,66 @@ export default function App() {
         page === PAGE_LANDING ? "app-root--landing" : ""
       }`}
     >
+      {Capacitor.isNativePlatform() &&
+        (
+          !nativeStartupReady ||
+          (
+            page === PAGE_LANDING &&
+            (!footballStateReady || !landingVisualReady)
+          )
+        ) && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Opening 5 Asides Near Me"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 25000,
+            display: "grid",
+            placeItems: "center",
+            padding: "1.5rem",
+            background:
+              "radial-gradient(circle at 50% 32%, rgba(14,165,233,0.22), transparent 32%), linear-gradient(180deg, #020617, #071426)",
+            color: "#f8fafc",
+          }}
+        >
+          <div style={{ textAlign: "center" }}>
+            <img
+              src="/favicon.png"
+              alt=""
+              aria-hidden="true"
+              style={{
+                width: "84px",
+                height: "84px",
+                borderRadius: "24px",
+                objectFit: "cover",
+                boxShadow: "0 18px 48px rgba(14,165,233,0.24)",
+              }}
+            loading="eager" decoding="sync" fetchPriority="high" />
+            <div
+              style={{
+                marginTop: "1rem",
+                fontSize: "1.05rem",
+                fontWeight: 800,
+                letterSpacing: "0.01em",
+              }}
+            >
+              5 Asides Near Me
+            </div>
+            <div
+              style={{
+                marginTop: "0.4rem",
+                color: "#94a3b8",
+                fontSize: "0.82rem",
+              }}
+            >
+              Opening your club…
+            </div>
+          </div>
+        </div>
+      )}
+
       {(practiceBootstrapping || practiceReadyForEntry) && (
         <div
           className="practice-startup-overlay"
@@ -9676,6 +9996,7 @@ export default function App() {
           isSpectator={isSpectator}
           canStartMatch={canStartMatch}
           hasRecordedMatchDayState={hasRecordedMatchDayState}
+          onReady={() => setLandingVisualReady(true)}
         />
       )}
 
@@ -10011,6 +10332,7 @@ export default function App() {
           isPracticeMode={isPracticeMode}
           practiceSessionId={practiceRuntime?.practiceSessionId || null}
           dataScope={footballDataScope}
+          initialPollOpen={nativePollOpenRequest}
         />
       )}
 
@@ -11216,6 +11538,7 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           members={members}
+          nativeOpenRequest={nativeChatOpenRequest}
           onOpenHighlight={handleGoToViewHighlights}
           variant="launcher"
         />

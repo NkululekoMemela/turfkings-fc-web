@@ -7,12 +7,14 @@ import React, {
   useMemo,
 } from "react";
 import {
-  GoogleAuthProvider,
   onAuthStateChanged,
-  signInWithPopup,
-  signOut as firebaseSignOut,
 } from "firebase/auth";
-import { auth, db } from "../firebaseConfig";
+import {
+  auth,
+  db,
+  logOut as logOutFirebase,
+  signInWithGoogle as signInWithGoogleFirebase,
+} from "../firebaseConfig";
 import {
   getPlayersCollection,
   getMembersCollection,
@@ -130,13 +132,12 @@ export function AuthProvider({ children }) {
   // ---- actions ----
 
   const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
+    const result = await signInWithGoogleFirebase();
     return result?.user || null;
   };
 
   const signOutUser = async () => {
-    await firebaseSignOut(auth);
+    await logOutFirebase();
   };
 
   /**

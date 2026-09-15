@@ -8,10 +8,15 @@ import {
 import {
   getAuth,
   GoogleAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  signInWithCredential,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
 import { getStorage } from "firebase/storage";
+import { Capacitor } from "@capacitor/core";
+import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 
 const productionConfig = {
   apiKey: "AIzaSyAZrrpMFISsCGOf9d-LXbFm4Yxr7CxdLx8",
@@ -79,12 +84,74 @@ if (
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
 
-export function signInWithGoogle() {
+async function getNativeGoogleCredential() {
+  const nativeResult =
+    await FirebaseAuthentication.signInWithGoogle();
+
+  const idToken =
+    nativeResult?.credential?.idToken || null;
+  const accessToken =
+    nativeResult?.credential?.accessToken || null;
+
+  if (!idToken) {
+    throw new Error(
+      "Native Google sign-in did not return an ID token."
+    );
+  }
+
+  return GoogleAuthProvider.credential(
+    idToken,
+    accessToken
+  );
+}
+
+export async function signInWithGoogle() {
+  if (Capacitor.isNativePlatform()) {
+    const credential = await getNativeGoogleCredential();
+    return signInWithCredential(auth, credential);
+  }
+
   return signInWithPopup(auth, provider);
 }
 
-export function logOut() {
-  return signOut(auth);
+export async function reauthenticateWithGoogle(user) {
+  const targetUser = user || auth.currentUser;
+
+  if (!targetUser) {
+    throw new Error(
+      "No authenticated Firebase user is available."
+    );
+  }
+
+  if (Capacitor.isNativePlatform()) {
+    const credential = await getNativeGoogleCredential();
+
+    return reauthenticateWithCredential(
+      targetUser,
+      credential
+    );
+  }
+
+  const webProvider = new GoogleAuthProvider();
+
+  webProvider.setCustomParameters({
+    prompt: "select_account",
+  });
+
+  return reauthenticateWithPopup(
+    targetUser,
+    webProvider
+  );
+}
+
+export async function logOut() {
+  try {
+    await signOut(auth);
+  } finally {
+    if (Capacitor.isNativePlatform()) {
+      await FirebaseAuthentication.signOut();
+    }
+  }
 }
 
 // Storage
