@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { createVenueSeason, confirmVenueClubParticipation, inviteClubToVenueSeason, scheduleVenueFixture, watchVenueSeason } from "../storage/leagueSeasonRepository.js";
+import { createVenueSeason, confirmVenueClubParticipation, inviteClubToVenueSeason, scheduleVenueFixture, startVenueFixture, watchVenueSeason } from "../storage/leagueSeasonRepository.js";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebaseConfig.js";
 import { createPortal } from "react-dom";
@@ -47,6 +47,8 @@ export default function VenueLandingPage({
   const [fixtureDate, setFixtureDate] = useState("");
   const [fixtureError, setFixtureError] = useState("");
   const [savingFixture, setSavingFixture] = useState(false);
+  const [startingMatch, setStartingMatch] = useState(false);
+  const [matchError, setMatchError] = useState("");
 
   useEffect(() => {
     if (!venue?.id) return undefined;
@@ -78,6 +80,23 @@ export default function VenueLandingPage({
     });
     return () => { active = false; };
   }, [managerVerified, role]);
+
+  async function startMatch() {
+    if (!nextFixture?.id) return;
+    setStartingMatch(true);
+    setMatchError("");
+    try {
+      await startVenueFixture({
+        venueId: venue.id,
+        fixtureId: nextFixture.id,
+      });
+      setArea("live");
+    } catch (error) {
+      setMatchError(error?.message || "Could not start this match.");
+    } finally {
+      setStartingMatch(false);
+    }
+  }
 
   async function saveFixture(event) {
     event.preventDefault();
@@ -153,12 +172,15 @@ export default function VenueLandingPage({
 
   const place = [venue.location?.suburb, venue.location?.city]
     .filter(Boolean).join(", ");
+  const activeMatch = Object.values(season?.liveMatches || {})
+    .find((item) => item.status === "live") || null;
   const confirmedClubs = (season?.clubIds || []).map((id) => ({
     id,
     name: season.invitations?.[id]?.clubName || id,
   }));
   const nextFixture = [...(season?.fixtures || [])]
-    .filter((fixture) => fixture.status === "scheduled")
+    .filter((fixture) => fixture.status === "scheduled" &&
+      !season?.liveMatches?.[fixture.id])
     .sort((a, b) => a.scheduledLocal.localeCompare(b.scheduledLocal))[0] || null;
   const identity = role === "manager" && managerVerified
     ? "Field manager"
@@ -242,6 +264,16 @@ export default function VenueLandingPage({
               </p>
 
               <div className="actions-row landing-actions venue-landing__tiles">
+                {managerVerified && role === "manager" && nextFixture &&
+                  !activeMatch && (
+                    <button type="button"
+                      className="venue-landing__start-match"
+                      disabled={startingMatch}
+                      onClick={startMatch}>
+                      {startingMatch ? "Starting…" : "Start venue match"}
+                    </button>
+                  )}
+                {matchError && <p role="alert">{matchError}</p>}
                 {areas.filter((item) => item.key !== "home")
                   .map((item) => tile(item))}
               </div>
@@ -379,6 +411,14 @@ export default function VenueLandingPage({
           </>
         ) : (
           <section className="venue-landing__match-card venue-landing__section">
+            {area === "live" && activeMatch && (
+              <div className="venue-landing__live-score" role="status">
+                <span>LIVE · {season?.name}</span>
+                <h2>{activeMatch.clubAName} {activeMatch.scoreA}
+                  <span className="venue-landing__versus"> – </span>
+                  {activeMatch.scoreB} {activeMatch.clubBName}</h2>
+              </div>
+            )}
             {area === "clubs" && season && (
               <div className="venue-landing__invited-clubs">
                 <h2>Season invitations</h2>

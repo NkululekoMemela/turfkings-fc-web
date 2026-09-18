@@ -7,6 +7,7 @@ import {
   onSnapshot,
   serverTimestamp,
   updateDoc,
+  runTransaction,
 } from "firebase/firestore";
 
 export function watchVenueSeason(venueId, onSeason, onError) {
@@ -193,4 +194,51 @@ export async function scheduleVenueFixture({
     serverTimestamp()
   );
   return fixture;
+}
+
+export async function startVenueFixture({ venueId, fixtureId }) {
+  const user = auth.currentUser;
+  if (!user?.uid) throw new Error("Sign in as the field manager.");
+  if (!venueId || !fixtureId) throw new Error("Select a scheduled fixture.");
+  const ref = doc(db, "leagueVenues", venueId);
+
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists()) throw new Error("Venue no longer exists.");
+    const venue = snapshot.data();
+    if (venue.ownerUid !== user.uid) {
+      throw new Error("Only this venue's field manager can start a match.");
+    }
+    const season = venue.league?.activeSeason;
+    const fixture = (season?.fixtures || []).find((item) =>
+      item.id === fixtureId && item.status === "scheduled");
+    if (!fixture || season.liveMatches?.[fixtureId]) {
+      throw new Error("This fixture is unavailable or already started.");
+    }
+    if (Object.values(season.liveMatches || {})
+      .some((match) => match.status === "live")) {
+      throw new Error("Finish the current live match first.");
+    }
+
+    const match = {
+      fixtureId,
+      clubAId: fixture.clubAId,
+      clubBId: fixture.clubBId,
+      clubAName: fixture.clubAName,
+      clubBName: fixture.clubBName,
+      scoreA: 0,
+      scoreB: 0,
+      status: "live",
+      startedByUid: user.uid,
+      startedAt: serverTimestamp(),
+    };
+    transaction.update(
+      ref,
+      new FieldPath("league", "activeSeason", "liveMatches", fixtureId),
+      match,
+      "updatedAt",
+      serverTimestamp()
+    );
+    return match;
+  });
 }
