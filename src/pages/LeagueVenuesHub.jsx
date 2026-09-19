@@ -17,7 +17,12 @@ export default function LeagueVenuesHub({ onBack, onViewVenue }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("all");
   const [draft, setDraft] = useState({
-    name: "", city: "", suburb: "", address: "", websiteUrl: "",
+    name: "",
+    city: "",
+    suburb: "",
+    address: "",
+    websiteUrl: "",
+    creatorRole: "",
   });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -57,7 +62,14 @@ export default function LeagueVenuesHub({ onBack, onViewVenue }) {
       setSaving(true);
       const created = await createLeagueVenue(draft);
       setRegistrationOpen(false);
-      setDraft({ name: "", city: "", suburb: "", address: "", websiteUrl: "" });
+      setDraft({
+        name: "",
+        city: "",
+        suburb: "",
+        address: "",
+        websiteUrl: "",
+        creatorRole: "",
+      });
       onViewVenue?.(created);
     } catch (error) {
       setFormError(error?.message || "Venue registration failed.");
@@ -103,7 +115,7 @@ export default function LeagueVenuesHub({ onBack, onViewVenue }) {
           }}>
             <span className="fanm-venues__plus">+</span>
             <strong>Register your league venue</strong>
-            <small>Setup for field managers</small>
+            <small>Setup for authorised field staff</small>
           </button>
 
           {visibleVenues.map((venue) => (
@@ -141,13 +153,25 @@ export default function LeagueVenuesHub({ onBack, onViewVenue }) {
               <h2 id="venue-register-title">Register a league venue</h2>
               {!authUser ? (
                 <>
-                  <p>Sign in as the field manager to create your venue.</p>
+                  <p>
+                    Sign in as the authorised staff member setting up this Field.
+                  </p>
                   <button type="button" onClick={() => signInWithGoogle()}>
                     Sign in with Google
                   </button>
                 </>
               ) : (
                 <form onSubmit={submitVenue}>
+                  <label>Your role at this Field
+                    <select required value={draft.creatorRole}
+                      onChange={(e) => updateDraft("creatorRole", e.target.value)}>
+                      <option value="">Select your role…</option>
+                      <option value="field_manager">Field Manager</option>
+                      <option value="assistant_manager">Assistant Manager</option>
+                      <option value="field_assistant">Field Assistant</option>
+                      <option value="other_staff">Other field staff</option>
+                    </select>
+                  </label>
                   <label>Venue name
                     <input required maxLength={80} value={draft.name}
                       onChange={(e) => updateDraft("name", e.target.value)} />

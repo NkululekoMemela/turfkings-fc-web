@@ -7,6 +7,11 @@
  */
 // src/pages/VenueEntryPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import VenueLandingPage from "./VenueLandingPage.jsx";
+import {
+  startVenueFixture,
+  watchVenueSeason,
+} from "../storage/leagueSeasonRepository.js";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 import { removePlayerFromSavedLineups } from "../core/lineups.js";
@@ -57,6 +62,7 @@ import {
   coordinatePlatformPlayer,
 } from "../core/platformPlayer/platformPlayerCoordinator.js";
 import LoadingSplash from "../components/LoadingSplash/LoadingSplash.jsx";
+import VenueLeagueAccessPanel from "../components/VenueLeagueAccessPanel.jsx";
 
 const GPI_PLATFORM_PLAYER_WRITE_ENABLED =
   import.meta.env.VITE_FANM_DEVELOPMENT_SITE === "true" &&
@@ -655,7 +661,7 @@ export default function VenueEntryPage({
   identity,
   venue,
   entryPageIntent = null,
-  onComplete,
+  onComplete: onCompleteExternal,
   onDevSkipToLanding,
   onBack,
   onVenueUpdated,
@@ -667,6 +673,36 @@ export default function VenueEntryPage({
   const [clubHeroError, setClubHeroError] = useState("");
   const [entryClubProfileOverride, setEntryClubProfileOverride] = useState(null);
   const [showEntryClubEditor, setShowEntryClubEditor] = useState(false);
+  const [enteredIdentity, setEnteredIdentity] = useState(null);
+  const [venueSeason, setVenueSeason] = useState(null);
+
+  useEffect(() => {
+    if (!venue?.id) {
+      setVenueSeason(null);
+      return undefined;
+    }
+
+    return watchVenueSeason(
+      venue.id,
+      (season) => setVenueSeason(season),
+      (error) => {
+        console.error(
+          "[VenueEntryPage] Could not load Venue League season:",
+          error
+        );
+        setVenueSeason(null);
+      }
+    );
+  }, [venue?.id]);
+
+  function onComplete(payload) {
+    setEnteredIdentity(payload || {
+      role: "spectator",
+      actingRole: "spectator",
+    });
+
+    onCompleteExternal?.(payload);
+  }
 
   const activeClub = useMemo(() => {
     const baseClub = venue || {
@@ -1071,7 +1107,8 @@ export default function VenueEntryPage({
   useEffect(() => {
     let timer = null;
 
-    if (loadingMembers) {
+
+  if (loadingMembers) {
       timer = window.setTimeout(() => {
         memberWelcomeShownAtRef.current = Date.now();
         memberWelcomeVisibleRef.current = true;
@@ -3911,9 +3948,11 @@ export default function VenueEntryPage({
   }, [clubChatOpen]);
 
   const handleContinueAsSpectator = () => {
-    onComplete({
+    const spectatorIdentity = {
       clubId: activeClubId,
       clubName: activeClubName,
+      venueId: activeClubId,
+      venueName: activeClubName,
       role: "spectator",
       actingRole: "spectator",
       memberId: null,
@@ -3922,6 +3961,15 @@ export default function VenueEntryPage({
       shortName: "",
       email: "",
       status: "guest",
+    };
+
+    setEnteredIdentity(spectatorIdentity);
+    onCompleteExternal?.(spectatorIdentity);
+
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
     });
   };
 
@@ -4823,6 +4871,194 @@ export default function VenueEntryPage({
     }
   };
 
+
+    if (enteredIdentity) {
+    const invitations = Object.values(
+      venueSeason?.invitations || {}
+    );
+
+    const clubMap = new Map();
+
+    const addClub = (id, name) => {
+      const cleanId = String(id || "").trim();
+      if (!cleanId || clubMap.has(cleanId)) return;
+
+      const cleanName = String(name || cleanId).trim();
+
+      clubMap.set(cleanId, {
+        id: cleanId,
+        name: cleanName,
+        label: cleanName,
+        captain: "Club representative",
+        players: [],
+      });
+    };
+
+    invitations.forEach((invitation) => {
+      addClub(
+        invitation.clubId,
+        invitation.clubName
+      );
+    });
+
+    (venueSeason?.fixtures || []).forEach((fixture) => {
+      addClub(fixture.clubAId, fixture.clubAName);
+      addClub(fixture.clubBId, fixture.clubBName);
+    });
+
+    const mappedTeams = Array.from(clubMap.values());
+
+    const awaitingTeams = [
+      {
+        id: "awaiting-club-1",
+        name: "Awaiting Club 1",
+        label: "Awaiting Club 1",
+        captain: "Club representative",
+        players: [],
+      },
+      {
+        id: "awaiting-club-2",
+        name: "Awaiting Club 2",
+        label: "Awaiting Club 2",
+        captain: "Club representative",
+        players: [],
+      },
+      {
+        id: "awaiting-club-3",
+        name: "Awaiting Club 3",
+        label: "Awaiting Club 3",
+        captain: "Club representative",
+        players: [],
+      },
+    ];
+
+    const teams = [...mappedTeams];
+
+    while (teams.length < 3) {
+      teams.push(awaitingTeams[teams.length]);
+    }
+
+    const liveMatch = Object.values(
+      venueSeason?.liveMatches || {}
+    ).find((match) => match?.status === "live") || null;
+
+    const scheduledFixtures = (
+      venueSeason?.fixtures || []
+    ).filter((fixture) =>
+      fixture?.status === "scheduled"
+    );
+
+    const nextFixture =
+      scheduledFixtures.find((fixture) =>
+        !venueSeason?.liveMatches?.[fixture.id]
+      ) || null;
+
+    const currentMatch = liveMatch
+      ? {
+          teamAId: liveMatch.clubAId,
+          teamBId: liveMatch.clubBId,
+          standbyId: null,
+        }
+      : nextFixture
+      ? {
+          teamAId: nextFixture.clubAId,
+          teamBId: nextFixture.clubBId,
+          standbyId: null,
+        }
+      : {
+          teamAId: teams[0]?.id || null,
+          teamBId: teams[1]?.id || null,
+          standbyId: teams[2]?.id || null,
+        };
+
+    const effectiveRole =
+      enteredIdentity?.actingRole ||
+      enteredIdentity?.role ||
+      "spectator";
+
+    const managerUids = new Set([
+      venue?.ownerUid,
+      ...(Array.isArray(venue?.adminUids)
+        ? venue.adminUids
+        : []),
+    ].filter(Boolean));
+
+    const permanentFieldRoles = new Set([
+      "field_manager",
+      "assistant_manager",
+      "field_assistant",
+      "other_staff",
+    ]);
+
+    const isFieldAdministrator =
+      enteredIdentity?.isAdministrator === true ||
+      managerUids.has(currentUser?.uid) ||
+      permanentFieldRoles.has(effectiveRole);
+
+    const canOperateFieldMatch =
+      isFieldAdministrator ||
+      effectiveRole === "referee";
+
+    return (
+      <VenueLandingPage
+        activeClub={venue}
+        activeClubId={venue?.id}
+        activeClubName={venue?.name}
+        teams={teams}
+        currentMatchNo={
+          Number(venueSeason?.currentMatchNo) || 1
+        }
+        currentMatch={currentMatch}
+        results={venueSeason?.results || []}
+        streaks={venueSeason?.streaks || {}}
+        hasLiveMatch={Boolean(liveMatch)}
+        matchType="league"
+        gameFormat={
+          venueSeason?.gameFormat || "5_V_5"
+        }
+        leagueMode={
+          venueSeason?.leagueMode || "venue_league"
+        }
+        matchMode={
+          venueSeason?.matchMode || "fixtured"
+        }
+        matchSeconds={
+          Number(venueSeason?.matchSeconds) || 3600
+        }
+        scheduledFixtures={scheduledFixtures}
+        identity={enteredIdentity}
+        activeRole={effectiveRole}
+        isAdmin={isFieldAdministrator}
+        isCaptain={false}
+        isPlayer={effectiveRole === "club_rep"}
+        isSpectator={effectiveRole === "spectator"}
+        canStartMatch={
+          canOperateFieldMatch &&
+          Boolean(nextFixture)
+        }
+        startMatchDeniedMessage={
+          "Only an authorized Field official or referee can start this match."
+        }
+        onStartMatch={async () => {
+          if (!nextFixture?.id) return;
+
+          try {
+            await startVenueFixture({
+              venueId: venue?.id,
+              fixtureId: nextFixture.id,
+            });
+          } catch (error) {
+            window.alert(
+              error?.message ||
+              "The Field match could not be started."
+            );
+          }
+        }}
+        onGoToEntryDev={() => setEnteredIdentity(null)}
+      />
+    );
+  }
+
   return (
     <div className="page entry-page">
       {showMemberLoadingWelcome && !showSigninLoading && (
@@ -5213,674 +5449,13 @@ export default function VenueEntryPage({
         </div>
       </section>
 
-      <section className="card" style={premiumPanelStyle}>
-        <h2 style={{ marginBottom: "0.35rem" }}>Who are you?</h2>
-
-
-        <div className="pill-toggle-group" style={{ marginTop: "0.9rem" }}>
-          <button
-            type="button"
-            className={
-              "pill-toggle" + (mode === "player" ? " pill-toggle-active" : "")
-            }
-            onClick={() => setMode("player")}
-            style={
-              mode === "player"
-                ? {
-                    background: "#ffffff",
-                    backgroundImage: "none",
-                    borderColor: "rgba(255,255,255,0.92)",
-                    boxShadow: "0 10px 24px rgba(255,255,255,0.12)",
-                    color: "#020617",
-                    WebkitTextFillColor: "#020617",
-                  }
-                : {
-                    color: "#f8fafc",
-                    WebkitTextFillColor: "#f8fafc",
-                  }
-            }
-          >
-            🏃‍♂️ {activeClubShortName} player
-          </button>
-
-          <button
-            type="button"
-            className={
-              "pill-toggle" +
-              (mode === "spectator" ? " pill-toggle-active" : "")
-            }
-            onClick={() => setMode("spectator")}
-            style={
-              mode === "spectator"
-                ? {
-                    background:
-                      "linear-gradient(90deg, rgba(148,163,184,0.12), rgba(51,65,85,0.16))",
-                    borderColor: "rgba(148,163,184,0.34)",
-                    color: "#f8fafc",
-                    WebkitTextFillColor: "#f8fafc",
-                  }
-                : {
-                    color: "#f8fafc",
-                    WebkitTextFillColor: "#f8fafc",
-                  }
-            }
-          >
-            👁️ I&apos;m a spectator
-          </button>
-        </div>
-      </section>
-
-      <VenueLeagueChatWidget
-        activeClubId={activeClubId}
-        activeClubName={activeClubName}
-        currentUser={currentUser}
-        selectedMember={selectedMember}
-        identity={identity}
-        isAdminViewer={isAdminViewer}
+      <VenueLeagueAccessPanel
+        venue={activeClub}
+        season={venueSeason}
+        onEnter={onComplete}
         premiumPanelStyle={premiumPanelStyle}
-        variant="launcher"
+        brightPrimaryStyle={brightPrimaryStyle}
       />
-
-      {mode === "player" && (
-        <section className="card" style={{ ...premiumPanelStyle, overflow: "hidden" }}>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "0.6rem",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <span style={labelCapsuleStyle}>Player entry</span>
-
-            {canOpenClubManagement && (
-              <button
-                type="button"
-                aria-label="Manage club administrator privileges"
-                title="Manage club administrators"
-                onClick={() => {
-                  setClubManagementSection(null);
-                  setProfileMemberId(
-                    isAdminViewer ? "" : signedInMember?.id || ""
-                  );
-                  setProfileError("");
-                  setProfileStatus("");
-                  setAdminPrivilegesMemberId("");
-                  setTerminationMemberId("");
-                  setAdminPrivilegesError("");
-                  setAdminPrivilegesStatus("");
-                  setTerminationError("");
-                  setIdentitySafetyAudit(null);
-                  setIdentitySafetyAuditError("");
-                  setShowAdminPrivilegesModal(true);
-                }}
-                style={{
-                  width: "2.35rem",
-                  height: "2.35rem",
-                  marginLeft: "auto",
-                  display: "inline-grid",
-                  placeItems: "center",
-                  borderRadius: "999px",
-                  border: "1px solid rgba(56,189,248,0.28)",
-                  background:
-                    "linear-gradient(180deg, rgba(56,189,248,0.13), rgba(15,23,42,0.18))",
-                  color: "#bae6fd",
-                  cursor: "pointer",
-                  boxShadow: "0 8px 22px rgba(2,6,23,0.18)",
-                }}
-              >
-                <svg
-                  width="19"
-                  height="19"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.36.36.68.64.94.29.26.67.4 1.06.4H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.66Z" />
-                </svg>
-              </button>
-            )}
-          </div>
-          <h2 style={{ marginTop: "0.85rem", marginBottom: "0.35rem" }}>
-            Confirm your player identity
-          </h2>
-          <p className="muted small" style={{ marginTop: 0 }}>
-            Verify yourself quickly, then we can personalize the app around your profile.
-          </p>
-
-          <div className="field-column" style={{ marginTop: "1rem" }}>
-            <label>Select your name ({activeClubName} player list)</label>
-            <p className="muted small" style={{ marginTop: "0.25rem" }}>
-              {loadingMembers
-                ? "Getting the latest player list."
-                : `There are ${activeMembers.length} players on the list – scroll down.`}
-            </p>
-
-            <select
-              className="text-input"
-              value={selectedMemberId}
-              disabled={loadingMembers}
-              aria-busy={loadingMembers}
-              onChange={(e) => {
-                setSelectedMemberId(e.target.value);
-                setVerifyError("");
-                setVerifyStatus("");
-              }}
-            >
-              <option value="">
-                {loadingMembers
-                  ? "Loading club players…"
-                  : "Select your name..."}
-              </option>
-
-              {activeMembers.map((m, idx) => (
-                <option key={m.id} value={m.id}>
-                  {idx + 1}. {m.fullName}
-                </option>
-              ))}
-
-              {pendingMembers.map((m, idx) => (
-                <option key={m.id} value={m.id}>
-                  {activeMembers.length + idx + 1}. {m.fullName} (pending
-                  approval)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {isAdminViewer && (
-            <div
-              style={{
-                marginTop: "1rem",
-                borderRadius: "18px",
-                border: "1px solid rgba(56,189,248,0.18)",
-                background:
-                  "linear-gradient(180deg, rgba(56,189,248,0.08), rgba(15,23,42,0.04))",
-                overflow: "hidden",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setShowAdminPreviewControls((prev) => !prev)}
-                style={{
-                  width: "100%",
-                  border: "none",
-                  background: "transparent",
-                  color: "#e0f2fe",
-                  cursor: "pointer",
-                  padding: "0.75rem 0.85rem",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.75rem",
-                  textAlign: "left",
-                }}
-              >
-                <span style={{ display: "flex", flexDirection: "column", gap: "0.18rem" }}>
-                  <strong style={{ fontSize: "0.9rem" }}>Admin view mode</strong>
-                  <span className="muted small">
-                    Current preview: <strong>{adminPreviewRole}</strong>
-                  </span>
-                </span>
-                <span
-                  style={{
-                    fontSize: "0.78rem",
-                    fontWeight: 800,
-                    borderRadius: "999px",
-                    padding: "0.25rem 0.55rem",
-                    background: "rgba(15,23,42,0.42)",
-                    border: "1px solid rgba(148,163,184,0.18)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {showAdminPreviewControls ? "Hide" : "Change"}
-                </span>
-              </button>
-
-              {showAdminPreviewControls && (
-                <div className="field-column" style={{ padding: "0 0.85rem 0.85rem" }}>
-                  <p className="muted small" style={{ marginTop: 0 }}>
-                    Default is admin. If you choose player, captain, or spectator,
-                    the rest of the app receives that selected role as the active identity.
-                  </p>
-                  <select
-                    className="text-input"
-                    value={adminPreviewRole}
-                    onChange={(e) => setAdminPreviewRole(e.target.value)}
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="captain">Captain</option>
-                    <option value="player">Player</option>
-                    <option value="spectator">Spectator</option>
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="actions-row" style={{ marginTop: "1rem" }}>
-            <button
-              type="button"
-              className="primary-btn"
-              style={brightPrimaryStyle}
-              onClick={handleVerifyPlayer}
-            >
-              Sign in with Gmail
-            </button>
-
-            {!showNewPlayerForm && (
-              <button
-                type="button"
-                className="secondary-btn join-club-flip-button"
-                onClick={() => {
-                  setShowNewPlayerForm(true);
-                  setNewReqError("");
-                  setNewReqStatus("");
-
-                  window.setTimeout(() => {
-                    document
-                      .getElementById("entry-join-request-panel")
-                      ?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                  }, 80);
-                }}
-              >
-                <span className="join-club-flip-button__stage">
-                  <span className="join-club-flip-button__face join-club-flip-button__face--front">
-                    My name is not on the list
-                  </span>
-                  <span className="join-club-flip-button__face join-club-flip-button__face--back">
-                    Click to join
-                  </span>
-                </span>
-              </button>
-            )}
-          </div>
-
-          {verifyError && (
-            <p className="error-text" style={{ marginTop: "0.5rem" }}>
-              {verifyError}
-            </p>
-          )}
-
-          {verifyStatus && (
-            <p className="success-text" style={{ marginTop: "0.5rem" }}>
-              {verifyStatus}
-            </p>
-          )}
-
-          {membersError && (
-            <p className="error-text" style={{ marginTop: "0.5rem" }}>
-              {membersError}
-            </p>
-          )}
-
-          {showNewPlayerForm && (
-            <div
-              id="entry-join-request-panel"
-              className="entry-join-request-panel"
-              style={joinPanelStyle}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "0.55rem",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span style={labelCapsuleStyle}>Join request</span>
-
-                <button
-                  type="button"
-                  className="secondary-btn entry-join-request-close"
-                  onClick={() => {
-                    setShowNewPlayerForm(false);
-                    setNewReqError("");
-                    setNewReqStatus("");
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-              <h3 style={{ marginBottom: "0.4rem", marginTop: "0.85rem" }}>
-                Request to join player list
-              </h3>
-              <p className="muted small" style={{ marginTop: 0, marginBottom: "0.95rem" }}>
-                New players can start here. Add your name, Gmail, and optional details in one clean step.
-              </p>
-
-              <div className="field-column">
-                <label>Full name</label>
-                <input
-                  type="text"
-                  className="text-input"
-                  placeholder="e.g. Nkululeko Memela"
-                  value={newFullName}
-                  onChange={(e) => setNewFullName(e.target.value)}
-                />
-              </div>
-
-              <div className="field-column">
-                <label>Gmail address</label>
-                <input
-                  type="email"
-                  className="text-input"
-                  placeholder="e.g. yourname@gmail.com"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                />
-              </div>
-
-              <div className="field-column">
-                <label>WhatsApp number (optional)</label>
-                <input
-                  type="tel"
-                  className="text-input"
-                  placeholder="e.g. 0821234567 or +27821234567"
-                  value={newWhatsApp}
-                  onChange={(e) => setNewWhatsApp(e.target.value)}
-                />
-                <p className="muted small" style={{ marginTop: "0.35rem" }}>
-                  Used only for {activeClubName} reminders and updates.
-                </p>
-              </div>
-
-              <div className="field-column">
-                <label>Profile photo (optional)</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="text-input"
-                  onChange={handleNewPhotoChange}
-                  style={compactFileInputStyle}
-                />
-                <p className="muted small" style={{ marginTop: "0.35rem" }}>
-                  Use a face-only portrait, like an ID photo. This helps future player cards look sharp.
-                </p>
-
-                {newPhotoPreview ? (
-                  <div
-                    style={previewCardStyle}
-                  >
-                    <img
-                      src={newPhotoPreview}
-                      alt="New player portrait preview"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
-                      }}
-                    />
-                  </div>
-                ) : null}
-
-                {newPhotoStatus ? (
-                  <p className="success-text" style={{ marginTop: "0.45rem" }}>
-                    {newPhotoStatus}
-                  </p>
-                ) : null}
-              </div>
-
-              {joinIdentityCandidate ? (
-                <div
-                  style={{
-                    marginTop: "0.9rem",
-                    padding: "1rem",
-                    borderRadius: "16px",
-                    border:
-                      "1px solid rgba(45,212,191,0.38)",
-                    background:
-                      "linear-gradient(180deg, rgba(16,185,129,0.13), rgba(15,23,42,0.08))",
-                  }}
-                >
-                  <span style={rejoiningBadgeStyle}>
-                    Existing player found
-                  </span>
-
-                  <h3 style={{ margin: "0.75rem 0 0.35rem" }}>
-                    Is this your profile?
-                  </h3>
-
-                  <p
-                    className="muted small"
-                    style={{ marginTop: 0 }}
-                  >
-                    We found a matching profile from{" "}
-                    <strong>
-                      {joinIdentityCandidate.clubName ||
-                        joinIdentityCandidate.clubId}
-                    </strong>
-                    .
-                  </p>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.8rem",
-                      marginTop: "0.8rem",
-                    }}
-                  >
-                    {(
-                      joinIdentityCandidate.photoData ||
-                      joinIdentityCandidate.photoUrl
-                    ) ? (
-                      <img
-                        src={
-                          joinIdentityCandidate.photoData ||
-                          joinIdentityCandidate.photoUrl
-                        }
-                        alt=""
-                        style={{
-                          width: "62px",
-                          height: "72px",
-                          borderRadius: "12px",
-                          objectFit: "cover",
-                        }}
-                      />
-                    ) : null}
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: "0.2rem",
-                      }}
-                    >
-                      <strong>
-                        {joinIdentityCandidate.fullName}
-                      </strong>
-                      <small>
-                        {joinIdentityCandidate.email}
-                      </small>
-                      <small>
-                        {joinIdentityCandidate.whatsappNumber ||
-                          joinIdentityCandidate.phoneNumber ||
-                          "No WhatsApp number saved"}
-                      </small>
-                    </div>
-                  </div>
-
-                  <p
-                    className="muted small"
-                    style={{ marginTop: "0.8rem" }}
-                  >
-                    Your contact details and profile photo can be
-                    reused. Statistics, roles, payments and match
-                    history remain separate for each club.
-                  </p>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "0.6rem",
-                      marginTop: "0.85rem",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={declineJoinIdentityCandidate}
-                    >
-                      No, create this request
-                    </button>
-
-                    <button
-                      type="button"
-                      className="primary-btn"
-                      onClick={acceptJoinIdentityCandidate}
-                    >
-                      Yes, use my profile
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-
-              {!joinIdentityCandidate ? (
-                <button
-                  type="button"
-                  className="primary-btn"
-                  style={{ marginTop: "0.75rem" }}
-                  onClick={handleSubmitNewPlayer}
-                  disabled={joinIdentityLookupPending}
-                >
-                  {joinIdentityLookupPending
-                    ? "Checking existing profiles..."
-                    : "Request to join player list"}
-                </button>
-              ) : null}
-
-              {newReqError && (
-                <p className="error-text" style={{ marginTop: "0.5rem" }}>
-                  {newReqError}
-                </p>
-              )}
-
-              {newReqStatus && (
-                <p className="success-text" style={{ marginTop: "0.5rem" }}>
-                  {newReqStatus}
-                </p>
-              )}
-
-              <p className="muted small" style={{ marginTop: "0.4rem" }}>
-                Your request will go to the {activeClubName} admin. Once approved
-                you&apos;ll appear under the Unseeded tab and can be placed into
-                a squad.
-              </p>
-            </div>
-          )}
-
-          <div style={leavePanelStyle}>
-            <button
-              type="button"
-              className="link-btn"
-              onClick={() => {
-                setShowWithdrawForm((prev) => !prev);
-                setWithdrawError("");
-                setWithdrawStatus("");
-              }}
-              style={{ fontSize: "0.88rem" }}
-            >
-              {showWithdrawForm ? "Close departure request" : `Need to leave ${activeClubName}?`}
-            </button>
-
-            {showWithdrawForm && (
-              <div style={leaveInnerBoxStyle}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.55rem", alignItems: "center", marginBottom: "0.55rem" }}>
-                  <span
-                    style={{
-                      ...labelCapsuleStyle,
-                      background: "rgba(245,158,11,0.10)",
-                      border: "1px solid rgba(245,158,11,0.22)",
-                      color: "#fcd34d",
-                    }}
-                  >
-                    Departure request
-                  </span>
-                </div>
-                <p className="muted small" style={{ marginBottom: "0.55rem", marginTop: 0 }}>
-                  You can request to leave at any time and you will always be welcome to return.
-                  If your departure is processed, your private contact details like email and WhatsApp
-                  can be cleared from the active system, while your name and match stats may remain in
-                  historical archives because they are part of public match records.
-                </p>
-
-                <div className="field-column">
-                  <label>Optional reason</label>
-                  <input
-                    type="text"
-                    className="text-input"
-                    placeholder="Optional note to admin"
-                    value={withdrawReason}
-                    onChange={(e) => setWithdrawReason(e.target.value)}
-                  />
-                </div>
-
-                <div className="actions-row" style={{ marginTop: "0.75rem" }}>
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={handleSubmitWithdrawalRequest}
-                    disabled={!selectedMember}
-                  >
-                    Send departure request
-                  </button>
-                </div>
-
-                {!selectedMember ? (
-                  <p className="muted small" style={{ marginTop: "0.45rem" }}>
-                    Select your name first so we know which player is requesting departure.
-                  </p>
-                ) : null}
-
-                {withdrawError ? (
-                  <p className="error-text" style={{ marginTop: "0.45rem" }}>
-                    {withdrawError}
-                  </p>
-                ) : null}
-
-                {withdrawStatus ? (
-                  <p className="success-text" style={{ marginTop: "0.45rem" }}>
-                    {withdrawStatus}
-                  </p>
-                ) : null}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {mode === "spectator" && (
-        <section className="card" style={premiumPanelStyle}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem", alignItems: "center" }}>
-            <span style={labelCapsuleStyle}>Spectator</span>
-          </div>
-          <h2 style={{ marginTop: "0.85rem", marginBottom: "0.35rem" }}>Spectator access</h2>
-          <p className="muted" style={{ marginTop: 0 }}>
-            Browse the experience without claiming a player identity.
-          </p>
-
-          <button
-            type="button"
-            className="primary-btn"
-            style={{ ...brightPrimaryStyle, marginTop: "1rem" }}
-            onClick={handleContinueAsSpectator}
-          >
-            Continue as spectator
-          </button>
-        </section>
-      )}
 
       {showWhatsAppReminderModal && whatsAppReminderContext && (
         <div className="modal-backdrop">

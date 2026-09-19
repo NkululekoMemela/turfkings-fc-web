@@ -123,7 +123,13 @@ function getIdentityRole(identity) {
     role === "admin" ||
     role === "captain" ||
     role === "player" ||
-    role === "spectator"
+    role === "spectator" ||
+    role === "club_rep" ||
+    role === "field_manager" ||
+    role === "assistant_manager" ||
+    role === "field_assistant" ||
+    role === "other_staff" ||
+    role === "referee"
   ) {
     return role;
   }
@@ -304,6 +310,8 @@ export default function VenueLandingPage({
   isPlayer = false,
   isSpectator = false,
   canStartMatch = false,
+  startMatchDeniedMessage =
+    "Only captains or admin can start a match.",
   hasRecordedMatchDayState = false,
   onReady,
 }) {
@@ -441,10 +449,20 @@ export default function VenueLandingPage({
   );
 
   const roleLabel = useMemo(() => {
-    if (resolvedRole === "admin") return "admin";
-    if (resolvedRole === "captain") return "captain";
-    if (resolvedRole === "player") return "player";
-    return "spectator";
+    const labels = {
+      admin: "admin",
+      captain: "captain",
+      player: "player",
+      spectator: "spectator",
+      club_rep: "club representative",
+      field_manager: "Field Manager",
+      assistant_manager: "Assistant Manager",
+      field_assistant: "Field Assistant",
+      other_staff: "Field staff",
+      referee: "referee",
+    };
+
+    return labels[resolvedRole] || "spectator";
   }, [resolvedRole]);
 
 
@@ -616,10 +634,27 @@ export default function VenueLandingPage({
     activeClub?.playTime ||
     "";
 
+  const structuredLocation =
+    activeClub?.location &&
+    typeof activeClub.location === "object"
+      ? activeClub.location
+      : null;
+
   const clubVenueLine =
     activeClub?.locationDetails?.venueName ||
     activeClub?.locationDetails?.displayLocation ||
-    activeClub?.location ||
+    activeClub?.address ||
+    structuredLocation?.address ||
+    structuredLocation?.displayLocation ||
+    [
+      activeClub?.suburb || structuredLocation?.suburb,
+      activeClub?.city || structuredLocation?.city,
+    ]
+      .filter(Boolean)
+      .join(", ") ||
+    (typeof activeClub?.location === "string"
+      ? activeClub.location
+      : "") ||
     activeClub?.venue ||
     "";
 
@@ -1092,7 +1127,7 @@ export default function VenueLandingPage({
 
   const handleStartMatchClick = () => {
     if (!canStartMatch) {
-      window.alert("Only captains or admin can start a match.");
+      window.alert(startMatchDeniedMessage);
       return;
     }
     onStartMatch();

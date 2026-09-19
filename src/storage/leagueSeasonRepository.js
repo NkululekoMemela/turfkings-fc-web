@@ -206,9 +206,35 @@ export async function startVenueFixture({ venueId, fixtureId }) {
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists()) throw new Error("Venue no longer exists.");
     const venue = snapshot.data();
-    if (venue.ownerUid !== user.uid) {
-      throw new Error("Only this venue's field manager can start a match.");
+
+    const staffRef = doc(
+      db,
+      "leagueVenues",
+      venueId,
+      "staff",
+      user.uid
+    );
+    const staffSnapshot = await transaction.get(staffRef);
+    const staff = staffSnapshot.exists()
+      ? staffSnapshot.data()
+      : null;
+
+    const isActiveFieldOperator =
+      venue.ownerUid === user.uid ||
+      (
+        staff?.status === "active" &&
+        (
+          staff?.isAdministrator === true ||
+          staff?.role === "referee"
+        )
+      );
+
+    if (!isActiveFieldOperator) {
+      throw new Error(
+        "Only an approved Field official or referee can start this match."
+      );
     }
+
     const season = venue.league?.activeSeason;
     const fixture = (season?.fixtures || []).find((item) =>
       item.id === fixtureId && item.status === "scheduled");
