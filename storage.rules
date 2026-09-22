@@ -86,5 +86,31 @@ service firebase.storage {
     match /clubs/{clubId}/video_highlights/{matchId}/{allPaths=**} {
       allow read: if signedIn();
     }
+
+    // ---------------------------------------------------------
+    // FIELD/VENUE BRANDING STORAGE
+    //
+    // Public read supports Field cards before sign-in.
+    // Only the authenticated Field creator may upload branding.
+    // ---------------------------------------------------------
+    match /leagueVenues/{venueId}/branding/{fileName} {
+      allow read: if true;
+
+      allow create, update:
+        if signedIn()
+           && !isCameraSession()
+           && request.resource.contentType.matches('image/.*')
+           && request.resource.size < 5 * 1024 * 1024
+           && (
+             firestore.get(
+               /databases/(default)/documents/leagueVenues/$(venueId)
+             ).data.ownerUid == request.auth.uid
+             ||
+             firestore.get(
+               /databases/(default)/documents/leagueVenues/$(venueId)
+             ).data.createdByUid == request.auth.uid
+           );
+    }
+
   }
 }

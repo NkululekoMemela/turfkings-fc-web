@@ -1,3 +1,9 @@
+import {
+  getDownloadURL,
+  getStorage,
+  ref,
+  uploadBytes,
+} from "firebase/storage";
 import { auth, db } from "../firebaseConfig.js";
 import {
   collection,
@@ -619,5 +625,225 @@ export async function createLeagueVenue({
     ...venue,
     id: venueId,
     creatorStaff,
+  };
+}
+
+
+function safeVenueFileName(name = "field-logo") {
+  return String(name || "field-logo")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9._-]/g, "");
+}
+
+async function dataUrlToVenueBlob(dataUrl) {
+  const response = await fetch(dataUrl);
+  return response.blob();
+}
+
+async function uploadVenueLogoAsset({
+  venueId,
+  file = null,
+  generatedLogoDataUrl = "",
+}) {
+  let blob = file;
+
+  if (!blob && generatedLogoDataUrl.startsWith("data:")) {
+    blob = await dataUrlToVenueBlob(generatedLogoDataUrl);
+  }
+
+  if (!blob) {
+    return clean(generatedLogoDataUrl);
+  }
+
+  const storage = getStorage();
+  const originalName =
+    file?.name ||
+    "generated-field-logo.svg";
+
+  const logoRef = ref(
+    storage,
+    `leagueVenues/${venueId}/branding/${Date.now()}_${safeVenueFileName(originalName)}`
+  );
+
+  await uploadBytes(logoRef, blob, {
+    contentType:
+      blob.type ||
+      file?.type ||
+      "application/octet-stream",
+  });
+
+  return getDownloadURL(logoRef);
+}
+
+export async function completeLeagueVenueRegistration({
+  venueId,
+  draft = {},
+  logoDraft = {},
+}) {
+  const user = auth.currentUser;
+  const cleanVenueId = clean(venueId);
+
+  if (!user?.uid) {
+    throw new Error(
+      "Sign in before completing Field setup."
+    );
+  }
+
+  if (!cleanVenueId) {
+    throw new Error(
+      "The Field reference is missing."
+    );
+  }
+
+  const venueRef = doc(
+    db,
+    "leagueVenues",
+    cleanVenueId
+  );
+
+  const snapshot = await getDoc(venueRef);
+
+  if (!snapshot.exists()) {
+    throw new Error(
+      "The newly registered Field could not be found."
+    );
+  }
+
+  const existingVenue = snapshot.data() || {};
+  const administrators = Array.isArray(
+    existingVenue.adminUids
+  )
+    ? existingVenue.adminUids
+    : [];
+
+  const canCompleteSetup =
+    existingVenue.ownerUid === user.uid ||
+    existingVenue.createdByUid === user.uid ||
+    administrators.includes(user.uid);
+
+  if (!canCompleteSetup) {
+    throw new Error(
+      "Only an authorised Field administrator can complete this setup."
+    );
+  }
+
+  const logoUrl = await uploadVenueLogoAsset({
+    venueId: cleanVenueId,
+    file: logoDraft.logoFile || null,
+    generatedLogoDataUrl:
+      clean(logoDraft.generatedLogoDataUrl) ||
+      clean(logoDraft.uploadedLogoUrl),
+  });
+
+  const firstName = clean(draft.staffFirstName);
+  const surname = clean(draft.staffSurname);
+  const staffName = `${firstName} ${surname}`
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const accent =
+    clean(draft.accent) ||
+    "#16a34a";
+
+  await updateDoc(venueRef, {
+    "location.province": clean(draft.province),
+    "location.country":
+      clean(draft.country) ||
+      "South Africa",
+    "location.latitude":
+      Number.isFinite(Number(draft.latitude))
+        ? Number(draft.latitude)
+        : null,
+    "location.longitude":
+      Number.isFinite(Number(draft.longitude))
+        ? Number(draft.longitude)
+        : null,
+    "location.googlePlaceId":
+      clean(draft.googlePlaceId),
+    managerContact: {
+      firstName,
+      surname,
+      name:
+        staffName ||
+        clean(user.displayName) ||
+        "Field Manager",
+      email:
+        clean(draft.staffEmail) ||
+        clean(user.email),
+      whatsappNumber:
+        clean(draft.staffWhatsApp),
+    },
+    branding: {
+      logoUrl,
+      accent,
+      logoText:
+        clean(draft.logoText) ||
+        clean(draft.name)
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((word) => word[0]?.toUpperCase())
+          .join(""),
+      logoSource: logoDraft.logoFile
+        ? "uploaded_file"
+        : logoDraft.selectedGeneratedLogoId
+          ? "starter_logo"
+          : logoUrl
+            ? "external_url"
+            : "initials",
+      selectedGeneratedLogo:
+        clean(
+          logoDraft.selectedGeneratedLogoId
+        ),
+    },
+    logoUrl,
+    image: logoUrl,
+    status: "active",
+    setupCompletedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  return {
+    ...existingVenue,
+    id: cleanVenueId,
+    location: {
+      ...(existingVenue.location || {}),
+      province: clean(draft.province),
+      country:
+        clean(draft.country) ||
+        "South Africa",
+      latitude:
+        Number.isFinite(Number(draft.latitude))
+          ? Number(draft.latitude)
+          : null,
+      longitude:
+        Number.isFinite(Number(draft.longitude))
+          ? Number(draft.longitude)
+          : null,
+      googlePlaceId:
+        clean(draft.googlePlaceId),
+    },
+    managerContact: {
+      firstName,
+      surname,
+      name:
+        staffName ||
+        clean(user.displayName) ||
+        "Field Manager",
+      email:
+        clean(draft.staffEmail) ||
+        clean(user.email),
+      whatsappNumber:
+        clean(draft.staffWhatsApp),
+    },
+    branding: {
+      logoUrl,
+      accent,
+    },
+    logoUrl,
+    image: logoUrl,
+    status: "active",
   };
 }

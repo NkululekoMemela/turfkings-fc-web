@@ -2,18 +2,7 @@
   min-height: 100vh;
   padding: 1rem 1rem 5.5rem;
   color: #f8fafc;
-  background:
-    radial-gradient(
-      circle at 85% 12%,
-      rgba(34, 197, 94, 0.32),
-      transparent 28rem
-    ),
-    linear-gradient(
-      135deg,
-      #0f4ed8 0%,
-      #071a48 48%,
-      #6524df 100%
-    );
+  background: transparent;
 }
 
 .venue-stats-header {
@@ -185,3 +174,194 @@
   font-size: 1rem;
 }
 
+
+
+/* Venue Stats responsive containment */
+.venue-stats-page,
+.venue-stats-page *,
+.venue-stats-page *::before,
+.venue-stats-page *::after {
+  box-sizing: border-box;
+}
+
+.venue-stats-page {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.venue-stats-header,
+.venue-stats-card {
+  width: min(100%, 1120px);
+  min-width: 0;
+}
+
+.venue-stats-card > *,
+.venue-stats-content > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.venue-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 640px) {
+  .venue-stats-page {
+    padding:
+      0.7rem
+      0.65rem
+      calc(5.5rem + env(safe-area-inset-bottom));
+  }
+
+  .venue-stats-header {
+    gap: 0.75rem;
+    margin-bottom: 0.7rem;
+  }
+
+  .venue-stats-header h1 {
+    min-width: 0;
+    font-size: clamp(1.65rem, 7.7vw, 2.1rem);
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .venue-stats-home {
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: 0 0 2.75rem;
+  }
+
+  .venue-stats-card {
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 0.8rem;
+    padding: 1rem;
+    border-radius: 1.1rem;
+    overflow: hidden;
+  }
+
+  .venue-stats-card h2 {
+    margin-bottom: 0.7rem;
+    font-size: clamp(1.25rem, 5.6vw, 1.55rem);
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .venue-stats-muted {
+    margin: 0 0 0.9rem;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .venue-stats-segment {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+    border-radius: 1rem;
+  }
+
+  .venue-stats-segment button {
+    min-width: 0;
+    padding: 0.62rem 0.55rem;
+    line-height: 1.2;
+    white-space: normal;
+  }
+
+  .venue-stats-tabs {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(0, 1fr);
+    width: 100%;
+    gap: 0.55rem;
+    margin-top: 1rem;
+  }
+
+  .venue-stats-tabs button {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.7rem;
+    padding: 0.58rem 0.45rem;
+    font-size: 0.82rem;
+    line-height: 1.15;
+    white-space: normal;
+  }
+
+  .venue-stats-tabs button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .venue-table-wrap {
+    margin: 0;
+    border-radius: 0.85rem;
+    touch-action: pan-x pan-y;
+  }
+
+  .venue-standings-table {
+    width: max-content;
+    min-width: 620px;
+    font-size: 0.82rem;
+  }
+
+  .venue-standings-table th,
+  .venue-standings-table td {
+    padding: 0.62rem 0.5rem;
+    white-space: nowrap;
+  }
+
+  .venue-standings-table th:first-child,
+  .venue-standings-table td:first-child {
+    width: 2rem;
+  }
+
+  .venue-standings-table th:nth-child(2),
+  .venue-standings-table td:nth-child(2) {
+    min-width: 9.5rem;
+  }
+
+  .venue-club-cell {
+    gap: 0.48rem;
+  }
+
+  .venue-club-logo {
+    width: 1.55rem;
+    height: 1.55rem;
+    flex: 0 0 1.55rem;
+  }
+
+  .venue-stats-next-stage {
+    width: 100%;
+    padding: 1.3rem 0.8rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .venue-stats-page {
+    padding-inline: 0.45rem;
+  }
+
+  .venue-stats-card {
+    padding: 0.8rem;
+  }
+
+  .venue-stats-tabs {
+    gap: 0.42rem;
+  }
+
+  .venue-stats-tabs button {
+    font-size: 0.76rem;
+  }
+
+  .venue-standings-table {
+    min-width: 590px;
+  }
+}

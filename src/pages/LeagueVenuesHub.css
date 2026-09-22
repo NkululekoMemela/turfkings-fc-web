@@ -295,3 +295,59 @@
     height: 235px;
   }
 }
+
+
+/* Field/Venue marketing footer */
+.fanm-venues--live .fanm-venues__marketing-footer {
+  width: 100%;
+  margin-top: 30px;
+}
+
+.fanm-venues--live .fanm-venues__closing-visual {
+  position: relative;
+  width: 100%;
+  margin: 24px 0 8px;
+  overflow: hidden;
+  border: 1px solid rgba(78, 236, 165, 0.24);
+  border-radius: 28px;
+  background: #06152b;
+  box-shadow:
+    0 25px 70px rgba(2, 8, 23, 0.3);
+}
+
+.fanm-venues--live .fanm-venues__closing-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 -70px 90px rgba(2, 8, 23, 0.18);
+}
+
+.fanm-venues--live .fanm-venues__closing-visual img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  object-position: center;
+}
+
+@media (max-width: 720px) {
+  .fanm-venues--live .fanm-venues__marketing-footer {
+    margin-top: 22px;
+  }
+
+  .fanm-venues--live .fanm-venues__closing-visual {
+    margin-top: 18px;
+    border-radius: 22px;
+  }
+
+  .fanm-venues--live .fanm-venues__closing-visual img {
+    height: auto;
+    aspect-ratio: auto;
+    object-fit: contain;
+    object-position: center;
+  }
+}
