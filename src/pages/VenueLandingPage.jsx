@@ -313,6 +313,8 @@ export default function VenueLandingPage({
   startMatchDeniedMessage =
     "Only captains or admin can start a match.",
   hasRecordedMatchDayState = false,
+  onManageFieldStaff,
+  pendingFieldStaffCount = 0,
   onReady,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
@@ -1855,6 +1857,67 @@ export default function VenueLandingPage({
                   border: "1px solid rgba(148,163,184,0.14)",
                 }}
               >
+            {onManageFieldStaff && isAdmin && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setShowSettingsPanel(false);
+                  onManageFieldStaff();
+                }}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  padding: "0.8rem 0.9rem",
+                  borderColor:
+                    pendingFieldStaffCount > 0
+                      ? "rgba(250,204,21,0.48)"
+                      : "rgba(56,189,248,0.3)",
+                  background:
+                    pendingFieldStaffCount > 0
+                      ? "linear-gradient(135deg, rgba(234,179,8,0.14), rgba(15,23,42,0.48))"
+                      : "linear-gradient(135deg, rgba(14,165,233,0.12), rgba(15,23,42,0.48))",
+                }}
+              >
+                <span
+                  style={{
+                    display: "grid",
+                    gap: "0.15rem",
+                    textAlign: "left",
+                  }}
+                >
+                  <strong>🦺 Manage Field Team</strong>
+                  <span className="muted small">
+                    Review staff applications and confirm roles
+                  </span>
+                </span>
+
+                <span
+                  style={{
+                    minWidth: "1.75rem",
+                    height: "1.75rem",
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: "999px",
+                    color:
+                      pendingFieldStaffCount > 0
+                        ? "#111827"
+                        : "#bae6fd",
+                    background:
+                      pendingFieldStaffCount > 0
+                        ? "#fde047"
+                        : "rgba(14,165,233,0.16)",
+                    fontWeight: 900,
+                  }}
+                >
+                  {pendingFieldStaffCount}
+                </span>
+              </button>
+            )}
+
             <div>
               <div
                 className="muted small"

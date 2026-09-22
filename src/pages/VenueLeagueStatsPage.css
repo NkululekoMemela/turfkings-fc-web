@@ -1,0 +1,187 @@
+.venue-stats-page {
+  min-height: 100vh;
+  padding: 1rem 1rem 5.5rem;
+  color: #f8fafc;
+  background:
+    radial-gradient(
+      circle at 85% 12%,
+      rgba(34, 197, 94, 0.32),
+      transparent 28rem
+    ),
+    linear-gradient(
+      135deg,
+      #0f4ed8 0%,
+      #071a48 48%,
+      #6524df 100%
+    );
+}
+
+.venue-stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1120px;
+  margin: 0 auto 0.8rem;
+}
+
+.venue-stats-header h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+}
+
+.venue-stats-home {
+  width: 3rem;
+  height: 3rem;
+  border: 0;
+  border-radius: 999px;
+  color: white;
+  background: #10233f;
+  font-size: 1.35rem;
+  cursor: pointer;
+}
+
+.venue-stats-card {
+  max-width: 1120px;
+  margin: 0 auto 1.1rem;
+  padding: 1.4rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 1.5rem;
+  background: rgba(4, 20, 52, 0.94);
+  box-shadow: 0 20px 55px rgba(2, 8, 23, 0.24);
+}
+
+.venue-stats-card h2 {
+  margin: 0 0 1rem;
+}
+
+.venue-stats-muted {
+  color: #aebbd1;
+}
+
+.venue-stats-segment {
+  display: inline-flex;
+  padding: 0.18rem;
+  border: 1px solid rgba(244, 114, 182, 0.34);
+  border-radius: 999px;
+  background: rgba(18, 8, 35, 0.88);
+}
+
+.venue-stats-segment button,
+.venue-stats-tabs button {
+  border: 0;
+  color: #e2e8f0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.venue-stats-segment button {
+  padding: 0.5rem 1.25rem;
+  border-radius: 999px;
+}
+
+.venue-stats-segment button.is-active {
+  color: #111827;
+  background: white;
+}
+
+.venue-stats-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.8rem;
+  margin-top: 1.2rem;
+}
+
+.venue-stats-tabs button {
+  min-width: 9.4rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid #64748b;
+  border-radius: 999px;
+}
+
+.venue-stats-tabs button.is-active {
+  color: #041426;
+  border-color: transparent;
+  background: linear-gradient(90deg, #25ddcb, #38bdf8);
+  box-shadow: 0 0 24px rgba(34, 211, 238, 0.45);
+}
+
+.venue-table-wrap {
+  overflow-x: auto;
+  border-radius: 1.2rem;
+}
+
+.venue-standings-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  overflow: hidden;
+  background: #071932;
+}
+
+.venue-standings-table th {
+  padding: 0.7rem;
+  text-align: center;
+  background: linear-gradient(180deg, #104a87, #082d58);
+}
+
+.venue-standings-table th:nth-child(2),
+.venue-standings-table td:nth-child(2) {
+  text-align: left;
+}
+
+.venue-standings-table td {
+  padding: 0.75rem;
+  text-align: center;
+  border-top: 1px solid rgba(148, 163, 184, 0.13);
+}
+
+.venue-club-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.venue-club-logo {
+  width: 1.8rem;
+  height: 1.8rem;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+.venue-stats-next-stage {
+  padding: 2rem;
+  text-align: center;
+  color: #aebbd1;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: 1rem;
+}
+
+@media (max-width: 640px) {
+  .venue-stats-page {
+    padding-inline: 0.65rem;
+  }
+
+  .venue-stats-card {
+    padding: 1rem;
+    border-radius: 1.1rem;
+  }
+
+  .venue-stats-tabs {
+    gap: 0.55rem;
+  }
+
+  .venue-stats-tabs button {
+    min-width: 0;
+    flex: 1 1 8rem;
+  }
+}
+
+.venue-club-logo-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 1rem;
+}
+

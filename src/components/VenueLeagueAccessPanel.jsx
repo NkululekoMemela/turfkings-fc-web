@@ -3,13 +3,20 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+} from "firebase/firestore";
 import {
   auth,
   db,
   signInWithGoogle,
 } from "../firebaseConfig";
 import {
+  claimApprovedVenueStaffProfile,
+  ensureVenueCreatorStaffProfile,
   requestVenueStaffAccess,
   watchVenueStaff,
 } from "../storage/leagueVenueRepository.js";
@@ -169,7 +176,7 @@ export default function VenueLeagueAccessPanel({
   );
 
   useEffect(() => {
-    if (!venue?.id || !auth.currentUser?.uid) {
+    if (!venue?.id) {
       setStaffMembers([]);
       return undefined;
     }
@@ -183,35 +190,153 @@ export default function VenueLeagueAccessPanel({
 
   const selectableStaff = useMemo(() => {
     const items = [...staffMembers];
-    const ownerUid = normalize(venue?.ownerUid);
+
+    const creatorUid = normalize(
+      venue?.ownerUid ||
+      venue?.createdByUid ||
+      (
+        Array.isArray(venue?.adminUids)
+          ? venue.adminUids[0]
+          : ""
+      )
+    );
+
+    const creatorEmail = normalizeEmail(
+      venue?.createdByEmail ||
+      venue?.ownerEmail ||
+      (
+        Array.isArray(venue?.adminEmails)
+          ? venue.adminEmails[0]
+          : ""
+      )
+    );
+
+    /*
+     * Legacy Fields may have the creator UID but not the
+     * creator's saved display name. Recover that name from a
+     * staff request made by the same authenticated identity.
+     */
+    const creatorIdentityRecord = items.find((item) => {
+      const identityUids = [
+        item.uid,
+        item.requestedByUid,
+        item.createdByUid,
+        item.applicantUid,
+      ]
+        .map(normalize)
+        .filter(Boolean);
+
+      const itemEmail = normalizeEmail(item.email);
+
+      return (
+        (creatorUid &&
+          identityUids.includes(creatorUid)) ||
+        (creatorEmail &&
+          itemEmail === creatorEmail)
+      );
+    });
+
+    /*
+     * One-time recovery for the legacy Wynberg MM creator.
+     * New Fields already save the creator's chosen name.
+     */
+    const recoveredLegacyCreatorName =
+      venue?.id === "wynberg-mm-dwYWJLwm" &&
+      creatorUid === "dwYWJLwmUHOZcuA1yipJNv8rTdh2"
+        ? "Nkululeko Memela"
+        : "";
+
+    const creatorDisplayName =
+      normalize(venue?.createdByName) ||
+      normalize(venue?.ownerName) ||
+      recoveredLegacyCreatorName ||
+      normalize(creatorIdentityRecord?.fullName) ||
+      normalize(creatorIdentityRecord?.name) ||
+      creatorEmail ||
+      "Field Manager";
+
+    const hasActiveCreator = items.some((item) => {
+      const itemUid = normalize(item.uid || item.id);
+      const itemEmail = normalizeEmail(item.email);
+
+      return (
+        item.status === "active" &&
+        (
+          (creatorUid && itemUid === creatorUid) ||
+          (
+            creatorEmail &&
+            itemEmail === creatorEmail
+          )
+        )
+      );
+    });
 
     if (
-      ownerUid &&
-      !items.some((item) =>
-        normalize(item.uid || item.id) === ownerUid
-      )
+      (creatorUid || creatorEmail) &&
+      !hasActiveCreator
     ) {
       items.unshift({
-        uid: ownerUid,
-        id: ownerUid,
-        name:
-          normalize(venue?.createdByName) ||
-          "Field administrator",
-        role: "field_manager",
+        uid: creatorUid,
+        id: `field-creator-${
+          creatorUid || creatorEmail
+        }`,
+        email: creatorEmail,
+        name: creatorDisplayName,
+        role:
+          normalize(venue?.creatorRole) ||
+          "field_manager",
         status: "active",
+        isAdministrator: true,
+        isCreator: true,
+        isLegacyCreatorFallback: true,
       });
     }
 
-    return items;
+    return items.map((item) => {
+      const itemUid = normalize(item.uid || item.id);
+
+      const isCreatorProfile =
+        item.status === "active" &&
+        (
+          item.isCreator === true ||
+          (creatorUid && itemUid === creatorUid)
+        );
+
+      if (!isCreatorProfile) {
+        return item;
+      }
+
+      return {
+        ...item,
+        name: creatorDisplayName,
+        fullName: creatorDisplayName,
+        role:
+          normalize(item.role) ||
+          normalize(venue?.creatorRole) ||
+          "field_manager",
+      };
+    });
   }, [
     staffMembers,
     venue?.ownerUid,
+    venue?.createdByUid,
+    venue?.adminUids,
     venue?.createdByName,
+    venue?.ownerName,
+    venue?.createdByEmail,
+    venue?.ownerEmail,
+    venue?.adminEmails,
+    venue?.creatorRole,
   ]);
 
   async function requestStaffAccess() {
-    const firstName = normalize(joinFirstName);
-    const surname = normalize(joinSurname);
+    const fullName = normalize(joinFirstName);
+    const nameParts = fullName
+      .replace(/\s+/g, " ")
+      .split(" ")
+      .filter(Boolean);
+    const firstName = nameParts[0] || "";
+    const surname = nameParts.slice(1).join(" ");
     const email = normalizeEmail(joinEmail);
     const phoneNumber = normalize(joinPhoneNumber);
 
@@ -220,13 +345,10 @@ export default function VenueLeagueAccessPanel({
       return;
     }
 
-    if (!firstName) {
-      setError("Enter your name.");
-      return;
-    }
-
-    if (!surname) {
-      setError("Enter your surname.");
+    if (nameParts.length < 2) {
+      setError(
+        "Please enter your first name and surname."
+      );
       return;
     }
 
@@ -250,19 +372,9 @@ export default function VenueLeagueAccessPanel({
 
     setBusy(true);
     setError("");
-    setStatus("Verifying your Google account…");
+    setStatus("Sending your Field Team request…");
 
     try {
-      const user = await googleUser();
-      const googleEmail = normalizeEmail(user.email);
-
-      if (email !== googleEmail) {
-        throw new Error(
-          "The email entered must match the Google account used to sign in."
-        );
-      }
-
-      setStatus("Sending your Field Team request…");
 
       await requestVenueStaffAccess({
         venueId: venue?.id,
@@ -274,7 +386,7 @@ export default function VenueLeagueAccessPanel({
       });
 
       setStatus(
-        "Request sent. A Field administrator must approve it before you can enter as staff."
+        "Request captured. A Field official will approve you, then your name will become available for entry."
       );
 
       setJoinStaffOpen(false);
@@ -385,19 +497,27 @@ export default function VenueLeagueAccessPanel({
       setError("Select your staff profile first.");
       return;
     }
+
+    const selectedProfile = selectableStaff.find(
+      (staff) =>
+        normalize(staff.id || staff.uid) ===
+        normalize(selectedStaffUid)
+    );
+
+    if (selectedProfile?.status === "pending") {
+      setError(
+        "This Field Team request is still awaiting approval."
+      );
+      return;
+    }
+
     setBusy(true);
     setError("");
-    setStatus("Verifying your field staff access…");
+    setStatus("Verifying your Field staff access…");
 
     try {
       const user = await googleUser();
       const uid = normalize(user.uid);
-
-      if (uid !== normalize(selectedStaffUid)) {
-        throw new Error(
-          "This Google account does not match the selected Field staff profile."
-        );
-      }
 
       const managerUids = [
         venue?.ownerUid,
@@ -413,21 +533,37 @@ export default function VenueLeagueAccessPanel({
       let staffName = user.displayName || "Field staff";
       let isAdministrator = false;
 
-      const staffSnapshot = await getDoc(
-        doc(
-          db,
-          "leagueVenues",
-          venue?.id,
-          "staff",
-          uid
-        )
-      );
-
       if (
-        staffSnapshot.exists() &&
-        staffSnapshot.data()?.status === "active"
+        selectedProfile?.isLegacyCreatorFallback === true
       ) {
-        const staff = staffSnapshot.data();
+        const staff =
+          await ensureVenueCreatorStaffProfile({
+            venue,
+            role:
+              selectedProfile.role ||
+              venue?.creatorRole ||
+              "field_manager",
+            name:
+              selectedProfile.name ||
+              "Field Manager",
+          });
+
+        staffRole =
+          normalize(staff.role) || "field_manager";
+        staffName =
+          normalize(staff.name) || staffName;
+        isAdministrator = true;
+      } else if (
+        selectedProfile &&
+        selectedProfile.status === "active"
+      ) {
+        const staff =
+          await claimApprovedVenueStaffProfile({
+            venueId: venue?.id,
+            requestId:
+              selectedProfile.id ||
+              selectedStaffUid,
+          });
 
         staffRole =
           normalize(staff.role) || "other_staff";
@@ -435,16 +571,21 @@ export default function VenueLeagueAccessPanel({
           normalize(staff.name) || staffName;
         isAdministrator =
           staff.isAdministrator === true;
-      } else if (managerUids.includes(uid)) {
-        // Compatibility for Fields created before staff records existed.
+      } else if (
+        managerUids.includes(uid) &&
+        normalize(selectedStaffUid) === uid
+      ) {
         staffRole =
-          uid === normalize(venue?.ownerUid)
-            ? "field_manager"
-            : "assistant_manager";
+          normalize(venue?.creatorRole) ||
+          (
+            uid === normalize(venue?.ownerUid)
+              ? "field_manager"
+              : "assistant_manager"
+          );
         isAdministrator = true;
       } else {
         throw new Error(
-          "This Gmail account is not registered as active field staff."
+          "This Gmail account is not registered as active Field staff."
         );
       }
 
@@ -464,7 +605,7 @@ export default function VenueLeagueAccessPanel({
       setStatus("");
       setError(
         signInError?.message ||
-        "Could not verify field staff access."
+        "Could not verify Field staff access."
       );
     } finally {
       setBusy(false);
@@ -894,8 +1035,9 @@ export default function VenueLeagueAccessPanel({
 
               {selectableStaff.map((staff) => (
                 <option
-                  key={staff.uid || staff.id}
-                  value={staff.uid || staff.id}
+                  key={staff.id || staff.uid}
+                  value={staff.id || staff.uid}
+                  disabled={staff.status !== "active"}
                 >
                   {staff.name || "Field staff"} — {
                     {
@@ -905,6 +1047,10 @@ export default function VenueLeagueAccessPanel({
                       other_staff: "Other field staff",
                       referee: "Referee",
                     }[staff.role] || "Field staff"
+                  }{
+                    staff.status === "pending"
+                      ? " · Awaiting approval"
+                      : ""
                   }
                 </option>
               ))}
@@ -1075,9 +1221,11 @@ export default function VenueLeagueAccessPanel({
                 <select
                   required
                   value={joinStaffRole}
-                  onChange={(event) =>
-                    setJoinStaffRole(event.target.value)
-                  }
+                  onChange={(event) => {
+                    setJoinStaffRole(event.target.value);
+                    setError("");
+                    setStatus("");
+                  }}
                   disabled={busy}
                   style={{
                     marginTop: "0.35rem",
@@ -1123,55 +1271,35 @@ export default function VenueLeagueAccessPanel({
                 )}
               </label>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: "0.75rem",
-                }}
-              >
-                <label className="field-column">
-                  <span>Name</span>
-                  <input
-                    type="text"
-                    className="text-input"
-                    placeholder="e.g. Nkululeko"
-                    value={joinFirstName}
-                    onChange={(event) =>
-                      setJoinFirstName(event.target.value)
-                    }
-                    autoComplete="given-name"
-                    disabled={busy}
-                  />
-                </label>
-
-                <label className="field-column">
-                  <span>Surname</span>
-                  <input
-                    type="text"
-                    className="text-input"
-                    placeholder="e.g. Memela"
-                    value={joinSurname}
-                    onChange={(event) =>
-                      setJoinSurname(event.target.value)
-                    }
-                    autoComplete="family-name"
-                    disabled={busy}
-                  />
-                </label>
-              </div>
+              <label className="field-column">
+                <span>Full name</span>
+                <input
+                  type="text"
+                  className="text-input"
+                  placeholder="e.g. Nkululeko Memela"
+                  value={joinFirstName}
+                  onChange={(event) => {
+                    setJoinFirstName(event.target.value);
+                    setError("");
+                    setStatus("");
+                  }}
+                  autoComplete="name"
+                  disabled={busy}
+                />
+              </label>
 
               <label className="field-column">
-                <span>Email address</span>
+                <span>Gmail address</span>
                 <input
                   type="email"
                   className="text-input"
                   placeholder="e.g. yourname@gmail.com"
                   value={joinEmail}
-                  onChange={(event) =>
-                    setJoinEmail(event.target.value)
-                  }
+                  onChange={(event) => {
+                    setJoinEmail(event.target.value);
+                    setError("");
+                    setStatus("");
+                  }}
                   autoComplete="email"
                   disabled={busy}
                 />
@@ -1179,16 +1307,18 @@ export default function VenueLeagueAccessPanel({
 
               <label className="field-column">
                 <span>
-                  Phone or WhatsApp number (optional)
+                  WhatsApp number (optional)
                 </span>
                 <input
                   type="tel"
                   className="text-input"
                   placeholder="e.g. 0821234567 or +27821234567"
                   value={joinPhoneNumber}
-                  onChange={(event) =>
-                    setJoinPhoneNumber(event.target.value)
-                  }
+                  onChange={(event) => {
+                    setJoinPhoneNumber(event.target.value);
+                    setError("");
+                    setStatus("");
+                  }}
                   autoComplete="tel"
                   disabled={busy}
                 />

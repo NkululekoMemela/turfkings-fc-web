@@ -8,10 +8,16 @@
 // src/pages/VenueEntryPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import VenueLandingPage from "./VenueLandingPage.jsx";
+import VenueLeagueStatsPage from "./VenueLeagueStatsPage.jsx";
+import VenueStaffApprovalPanel from "../components/VenueStaffApprovalPanel.jsx";
 import {
   startVenueFixture,
   watchVenueSeason,
 } from "../storage/leagueSeasonRepository.js";
+import {
+  reviewVenueStaffRequest,
+  watchVenueStaffRequests,
+} from "../storage/leagueVenueRepository.js";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 import { removePlayerFromSavedLineups } from "../core/lineups.js";
@@ -674,7 +680,13 @@ export default function VenueEntryPage({
   const [entryClubProfileOverride, setEntryClubProfileOverride] = useState(null);
   const [showEntryClubEditor, setShowEntryClubEditor] = useState(false);
   const [enteredIdentity, setEnteredIdentity] = useState(null);
+  const [venuePage, setVenuePage] = useState("landing");
   const [venueSeason, setVenueSeason] = useState(null);
+  const [pendingStaffRequests, setPendingStaffRequests] =
+    useState([]);
+  const [showStaffApprovalPanel, setShowStaffApprovalPanel] =
+    useState(false);
+  const promptedStaffRequestKeyRef = useRef("");
 
   useEffect(() => {
     if (!venue?.id) {
@@ -694,6 +706,68 @@ export default function VenueEntryPage({
       }
     );
   }, [venue?.id]);
+
+  useEffect(() => {
+    if (!venue?.id) {
+      setPendingStaffRequests([]);
+      return undefined;
+    }
+
+    return watchVenueStaffRequests(
+      venue.id,
+      setPendingStaffRequests,
+      (error) => {
+        console.error(
+          "[VenueEntryPage] Could not load Field Team requests:",
+          error
+        );
+        setPendingStaffRequests([]);
+      }
+    );
+  }, [venue?.id]);
+
+  useEffect(() => {
+    if (!pendingStaffRequests.length) {
+      promptedStaffRequestKeyRef.current = "";
+      return;
+    }
+
+    if (!enteredIdentity) return;
+
+    const role =
+      enteredIdentity.actingRole ||
+      enteredIdentity.role ||
+      "";
+
+    const permanentRoles = [
+      "field_manager",
+      "assistant_manager",
+      "field_assistant",
+      "other_staff",
+    ];
+
+    const canReviewRequests =
+      enteredIdentity.isAdministrator === true ||
+      permanentRoles.includes(role);
+
+    if (!canReviewRequests) return;
+
+    const requestKey = pendingStaffRequests
+      .map((request) => request.uid || request.id)
+      .filter(Boolean)
+      .sort()
+      .join("|");
+
+    if (
+      !requestKey ||
+      promptedStaffRequestKeyRef.current === requestKey
+    ) {
+      return;
+    }
+
+    promptedStaffRequestKeyRef.current = requestKey;
+    setShowStaffApprovalPanel(true);
+  }, [enteredIdentity, pendingStaffRequests]);
 
   function onComplete(payload) {
     setEnteredIdentity(payload || {
@@ -4999,7 +5073,19 @@ export default function VenueEntryPage({
       isFieldAdministrator ||
       effectiveRole === "referee";
 
+    if (venuePage === "stats") {
+      return (
+        <VenueLeagueStatsPage
+          venue={venue}
+          season={venueSeason}
+          clubs={mappedTeams}
+          onBack={() => setVenuePage("landing")}
+        />
+      );
+    }
+
     return (
+      <>
       <VenueLandingPage
         activeClub={venue}
         activeClubId={venue?.id}
@@ -5054,8 +5140,36 @@ export default function VenueEntryPage({
             );
           }
         }}
+        onGoToStats={() => setVenuePage("stats")}
+        pendingFieldStaffCount={
+          pendingStaffRequests.length
+        }
+        onManageFieldStaff={
+          isFieldAdministrator
+            ? () => setShowStaffApprovalPanel(true)
+            : undefined
+        }
         onGoToEntryDev={() => setEnteredIdentity(null)}
       />
+
+      {showStaffApprovalPanel && isFieldAdministrator && (
+        <VenueStaffApprovalPanel
+          requests={pendingStaffRequests}
+          venueName={venue?.name || "this Field"}
+          onClose={() =>
+            setShowStaffApprovalPanel(false)
+          }
+          onReview={({ staffUid, decision, role }) =>
+            reviewVenueStaffRequest({
+              venueId: venue?.id,
+              staffUid,
+              decision,
+              role,
+            })
+          }
+        />
+      )}
+      </>
     );
   }
 
@@ -5456,6 +5570,31 @@ export default function VenueEntryPage({
         premiumPanelStyle={premiumPanelStyle}
         brightPrimaryStyle={brightPrimaryStyle}
       />
+
+      {isAdminViewer &&
+        pendingStaffRequests.length > 0 && (
+          <VenueStaffApprovalPanel
+            requests={pendingStaffRequests}
+            venueName={
+              activeClub?.name || "this Field"
+            }
+            onClose={() =>
+              setShowStaffApprovalPanel(false)
+            }
+            onReview={({
+              staffUid,
+              decision,
+              role,
+            }) =>
+              reviewVenueStaffRequest({
+                venueId: activeClub?.id,
+                staffUid,
+                decision,
+                role,
+              })
+            }
+          />
+        )}
 
       {showWhatsAppReminderModal && whatsAppReminderContext && (
         <div className="modal-backdrop">

@@ -3,9 +3,11 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   serverTimestamp,
   setDoc,
+  updateDoc,
   writeBatch,
 } from "firebase/firestore";
 
@@ -36,6 +38,250 @@ export function watchLeagueVenues(onVenues, onError) {
   );
 }
 
+export function watchVenueStaffRequests(
+  venueId,
+  onRequests,
+  onError
+) {
+  if (!venueId) {
+    onRequests([]);
+    return () => {};
+  }
+
+  return onSnapshot(
+    collection(db, "leagueVenues", venueId, "staff"),
+    (snapshot) => {
+      const requests = snapshot.docs
+        .map((item) => ({
+          id: item.id,
+          ...item.data(),
+        }))
+        .filter((staff) => staff.status === "pending")
+        .sort((a, b) =>
+          String(a.name || "").localeCompare(
+            String(b.name || "")
+          )
+        );
+
+      onRequests(requests);
+    },
+    onError
+  );
+}
+
+export async function reviewVenueStaffRequest({
+  venueId,
+  staffUid,
+  decision,
+  role,
+}) {
+  const user = auth.currentUser;
+
+  if (!user?.uid) {
+    throw new Error(
+      "Sign in as a permanent Field official."
+    );
+  }
+
+  const cleanVenueId = clean(venueId);
+  const cleanStaffUid = clean(staffUid);
+  const selectedRole = clean(role);
+
+  const allowedRoles = [
+    "field_manager",
+    "assistant_manager",
+    "field_assistant",
+    "other_staff",
+    "referee",
+  ];
+
+  if (!cleanVenueId || !cleanStaffUid) {
+    throw new Error("The Field Team request is incomplete.");
+  }
+
+  if (!["approve", "reject"].includes(decision)) {
+    throw new Error("Select a valid review decision.");
+  }
+
+  if (!allowedRoles.includes(selectedRole)) {
+    throw new Error(
+      "Confirm the applicant's Field role."
+    );
+  }
+
+  const staffRef = doc(
+    db,
+    "leagueVenues",
+    cleanVenueId,
+    "staff",
+    cleanStaffUid
+  );
+
+  const snapshot = await getDoc(staffRef);
+
+  if (!snapshot.exists()) {
+    throw new Error(
+      "This Field Team request no longer exists."
+    );
+  }
+
+  if (snapshot.data()?.status !== "pending") {
+    throw new Error(
+      "This Field Team request has already been reviewed."
+    );
+  }
+
+  const approved = decision === "approve";
+  const permanentRole =
+    selectedRole !== "referee";
+
+  await updateDoc(staffRef, {
+    role: selectedRole,
+    status: approved ? "active" : "rejected",
+    isAdministrator:
+      approved && permanentRole,
+    approvedAt:
+      approved ? serverTimestamp() : null,
+    approvedByUid:
+      approved ? user.uid : "",
+    rejectedAt:
+      approved ? null : serverTimestamp(),
+    rejectedByUid:
+      approved ? "" : user.uid,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function ensureVenueCreatorStaffProfile({
+  venue,
+  role = "",
+  name = "",
+}) {
+  const user = auth.currentUser;
+
+  if (!user?.uid || !user?.email) {
+    throw new Error(
+      "Sign in with the Google account that created this Field."
+    );
+  }
+
+  const venueId = clean(venue?.id);
+  const signedInEmail =
+    clean(user.email).toLowerCase();
+
+  const creatorUids = [
+    venue?.ownerUid,
+    venue?.createdByUid,
+    ...(Array.isArray(venue?.adminUids)
+      ? venue.adminUids
+      : []),
+  ]
+    .map(clean)
+    .filter(Boolean);
+
+  const creatorEmails = [
+    venue?.createdByEmail,
+    venue?.ownerEmail,
+    ...(Array.isArray(venue?.adminEmails)
+      ? venue.adminEmails
+      : []),
+  ]
+    .map((value) => clean(value).toLowerCase())
+    .filter(Boolean);
+
+  const identityMatches =
+    creatorUids.includes(user.uid) ||
+    creatorEmails.includes(signedInEmail);
+
+  if (!venueId || !identityMatches) {
+    throw new Error(
+      "This Google account does not match the registered Field creator."
+    );
+  }
+
+  const permanentRoles = [
+    "field_manager",
+    "assistant_manager",
+    "field_assistant",
+    "other_staff",
+  ];
+
+  const requestedRole = clean(
+    venue?.creatorRole || role
+  );
+
+  const creatorRole = permanentRoles.includes(
+    requestedRole
+  )
+    ? requestedRole
+    : "field_manager";
+
+  const staffRef = doc(
+    db,
+    "leagueVenues",
+    venueId,
+    "staff",
+    user.uid
+  );
+
+  const existing = await getDoc(staffRef);
+
+  const creatorName =
+    clean(name) ||
+    clean(venue?.createdByName) ||
+    clean(venue?.ownerName) ||
+    clean(user.displayName) ||
+    "Field Manager";
+
+  if (
+    existing.exists() &&
+    existing.data()?.status === "active" &&
+    existing.data()?.isAdministrator === true
+  ) {
+    const existingData = existing.data();
+
+    if (clean(existingData.name) !== creatorName) {
+      await updateDoc(staffRef, {
+        name: creatorName,
+        fullName: creatorName,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return {
+      id: existing.id,
+      ...existingData,
+      name: creatorName,
+      fullName: creatorName,
+      uid: user.uid,
+    };
+  }
+
+  const creatorStaff = {
+    uid: user.uid,
+    email: signedInEmail,
+    name: creatorName,
+    fullName: creatorName,
+    role: creatorRole,
+    status: "active",
+    isAdministrator: true,
+    isCreator: true,
+    recoveredLegacyCreator: true,
+    requestedAt: serverTimestamp(),
+    approvedAt: serverTimestamp(),
+    approvedByUid: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  await setDoc(staffRef, creatorStaff);
+
+  return {
+    id: user.uid,
+    ...creatorStaff,
+  };
+}
+
 export function watchVenueStaff(
   venueId,
   onStaff,
@@ -54,7 +300,9 @@ export function watchVenueStaff(
           id: item.id,
           ...item.data(),
         }))
-        .filter((item) => item.status === "active")
+        .filter((item) =>
+          ["active", "pending"].includes(item.status)
+        )
         .sort((a, b) =>
           clean(a.name).localeCompare(clean(b.name))
         );
@@ -77,7 +325,7 @@ export async function requestVenueStaffAccess({
 
   if (!user?.uid) {
     throw new Error(
-      "Sign in before requesting Field staff access."
+      "Please sign in to 5 Asides Near Me before sending your request."
     );
   }
 
@@ -99,27 +347,17 @@ export async function requestVenueStaffAccess({
     throw new Error("This Field could not be identified.");
   }
 
-  if (!cleanFirstName) {
-    throw new Error("Enter your name.");
-  }
-
-  if (!cleanSurname) {
-    throw new Error("Enter your surname.");
+  if (!cleanFirstName || !cleanSurname) {
+    throw new Error(
+      "Please enter your first name and surname."
+    );
   }
 
   if (
     !cleanEmail ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)
   ) {
-    throw new Error("Enter a valid email address.");
-  }
-
-  if (
-    cleanEmail !== clean(user.email).toLowerCase()
-  ) {
-    throw new Error(
-      "The email entered must match the signed-in Google account."
-    );
+    throw new Error("Please enter a valid Gmail address.");
   }
 
   if (
@@ -127,7 +365,7 @@ export async function requestVenueStaffAccess({
     cleanPhoneNumber.replace(/\D/g, "").length < 7
   ) {
     throw new Error(
-      "Enter a valid phone or WhatsApp number."
+      "Please enter a valid WhatsApp number."
     );
   }
 
@@ -135,41 +373,38 @@ export async function requestVenueStaffAccess({
     throw new Error("Select your role at this Field.");
   }
 
-  const staffRef = doc(
-    db,
-    "leagueVenues",
-    venueId,
-    "staff",
-    user.uid
+  const existingSnapshot = await getDocs(
+    collection(db, "leagueVenues", venueId, "staff")
   );
 
-  const existing = await getDoc(staffRef);
+  const duplicate = existingSnapshot.docs.find((item) => {
+    const staff = item.data();
 
-  if (existing.exists()) {
-    const status = clean(existing.data()?.status);
+    return (
+      clean(staff.email).toLowerCase() === cleanEmail &&
+      ["pending", "active"].includes(clean(staff.status))
+    );
+  });
 
-    if (status === "active") {
-      throw new Error(
-        "You are already registered as active Field staff."
-      );
-    }
-
-    if (status === "pending") {
-      throw new Error(
-        "Your Field Team request is already awaiting approval."
-      );
-    }
-
+  if (duplicate) {
     throw new Error(
-      "A Field staff record already exists for this account."
+      duplicate.data()?.status === "pending"
+        ? "This Gmail already has a request awaiting approval."
+        : "This Gmail is already registered with the Field Team."
     );
   }
 
   const fullName =
     `${cleanFirstName} ${cleanSurname}`.trim();
 
+  const staffRef = doc(
+    collection(db, "leagueVenues", venueId, "staff")
+  );
+
   await setDoc(staffRef, {
-    uid: user.uid,
+    uid: staffRef.id,
+    requestId: staffRef.id,
+    requestedByUid: user.uid,
     firstName: cleanFirstName,
     surname: cleanSurname,
     fullName,
@@ -189,14 +424,99 @@ export async function requestVenueStaffAccess({
   });
 
   return {
-    uid: user.uid,
-    firstName: cleanFirstName,
-    surname: cleanSurname,
-    fullName,
+    id: staffRef.id,
+    uid: staffRef.id,
+    name: fullName,
     email: cleanEmail,
-    phoneNumber: cleanPhoneNumber,
     role: selectedRole,
     status: "pending",
+  };
+}
+
+export async function claimApprovedVenueStaffProfile({
+  venueId,
+  requestId,
+}) {
+  const user = auth.currentUser;
+
+  if (!user?.uid || !user?.email) {
+    throw new Error(
+      "Sign in with the Gmail address on the approved profile."
+    );
+  }
+
+  const sourceRef = doc(
+    db,
+    "leagueVenues",
+    venueId,
+    "staff",
+    requestId
+  );
+
+  const sourceSnapshot = await getDoc(sourceRef);
+
+  if (!sourceSnapshot.exists()) {
+    throw new Error(
+      "The selected Field staff profile no longer exists."
+    );
+  }
+
+  const source = sourceSnapshot.data();
+  const signedInEmail = clean(user.email).toLowerCase();
+
+  if (source.status !== "active") {
+    throw new Error(
+      source.status === "pending"
+        ? "This Field Team request is still awaiting approval."
+        : "This Field Team profile is not active."
+    );
+  }
+
+  if (clean(source.email).toLowerCase() !== signedInEmail) {
+    throw new Error(
+      "This Google account does not match the Gmail on the selected Field staff profile."
+    );
+  }
+
+  if (requestId === user.uid) {
+    return {
+      id: sourceSnapshot.id,
+      ...source,
+      uid: user.uid,
+    };
+  }
+
+  const claimedRef = doc(
+    db,
+    "leagueVenues",
+    venueId,
+    "staff",
+    user.uid
+  );
+
+  const claimedStaff = {
+    ...source,
+    uid: user.uid,
+    requestId,
+    claimedFromRequestId: requestId,
+    claimedAt: serverTimestamp(),
+    status: "active",
+    updatedAt: serverTimestamp(),
+  };
+
+  const batch = writeBatch(db);
+  batch.set(claimedRef, claimedStaff);
+  batch.update(sourceRef, {
+    status: "claimed",
+    claimedByUid: user.uid,
+    claimedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  await batch.commit();
+
+  return {
+    ...claimedStaff,
+    id: user.uid,
   };
 }
 
@@ -253,6 +573,9 @@ export async function createLeagueVenue({
     ownerUid: user.uid,
     createdByUid: user.uid,
     createdByEmail: clean(user.email),
+    createdByName:
+      clean(user.displayName) || "Field creator",
+    creatorRole: selectedRole,
     adminUids: [user.uid],
     adminEmails: clean(user.email)
       ? [clean(user.email).toLowerCase()]
