@@ -42,6 +42,246 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------
+    // LEAGUE VENUES
+    // Separate from club identities and club permissions.
+    // ---------------------------------------------------------
+    match /leagueVenues/{venueId} {
+      function venueAfterCreation() {
+        return getAfter(
+          /databases/$(database)/documents/leagueVenues/$(venueId)
+        );
+      }
+
+      function activeFieldAdministrator() {
+        return isSignedIn()
+          && (
+            resource.data.ownerUid == request.auth.uid
+            || (
+              exists(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              )
+              && get(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              ).data.status == "active"
+              && get(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              ).data.isAdministrator == true
+            )
+          );
+      }
+
+      function activeFieldMatchOperator() {
+        return isSignedIn()
+          && (
+            activeFieldAdministrator()
+            || (
+              exists(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              )
+              && get(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              ).data.status == "active"
+              && get(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              ).data.role == "referee"
+            )
+          );
+      }
+
+      function onlyUpdatesLiveMatches() {
+        return request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly(["league", "updatedAt"])
+          && request.resource.data.league
+            .diff(resource.data.league)
+            .affectedKeys()
+            .hasOnly(["activeSeason"])
+          && request.resource.data.league.activeSeason
+            .diff(resource.data.league.activeSeason)
+            .affectedKeys()
+            .hasOnly(["liveMatches"]);
+      }
+
+      allow read: if true;
+
+      allow create: if isSignedIn()
+                    && !isCameraSession()
+                    && request.resource.data.id == venueId
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.auth.uid in request.resource.data.adminUids;
+
+      allow update: if !isCameraSession()
+                    && request.resource.data.ownerUid
+                       == resource.data.ownerUid
+                    && request.resource.data.id == venueId
+                    && (
+                      activeFieldAdministrator()
+                      || (
+                        activeFieldMatchOperator()
+                        && onlyUpdatesLiveMatches()
+                      )
+                    );
+
+      allow delete: if false;
+
+      match /staff/{staffUid} {
+        function validStaffRole() {
+          return request.resource.data.role in [
+            "field_manager",
+            "assistant_manager",
+            "field_assistant",
+            "referee",
+            "other_staff"
+          ];
+        }
+
+        function validPermanentStaffRole() {
+          return request.resource.data.role in [
+            "field_manager",
+            "assistant_manager",
+            "field_assistant",
+            "other_staff"
+          ];
+        }
+
+        function registeredLegacyCreator() {
+          let venue =
+            get(
+              /databases/$(database)/documents/leagueVenues/$(venueId)
+            ).data;
+
+          return isSignedIn()
+            && (
+              venue.ownerUid == request.auth.uid
+              || venue.createdByUid == request.auth.uid
+              || (
+                request.auth.token.email != null
+                && (
+                  venue.createdByEmail
+                    == request.auth.token.email
+                  || venue.ownerEmail
+                    == request.auth.token.email
+                  || request.auth.token.email
+                    in venue.adminEmails
+                )
+              )
+            );
+        }
+
+        function validApprovedStaffClaim() {
+          let requestId =
+            request.resource.data.claimedFromRequestId;
+          let requestPath =
+            /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(requestId);
+
+          return exists(requestPath)
+            && get(requestPath).data.status == "active"
+            && get(requestPath).data.email
+               == request.auth.token.email
+            && get(requestPath).data.role
+               == request.resource.data.role
+            && get(requestPath).data.isAdministrator
+               == request.resource.data.isAdministrator;
+        }
+
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+                      && !isCameraSession()
+                      && validStaffRole()
+                      && (
+                        (
+                          request.resource.data.uid == staffUid
+                          && request.resource.data.requestId == staffUid
+                          && request.resource.data.requestedByUid
+                             == request.auth.uid
+                          && request.auth.token.email != null
+                          && request.resource.data.email
+                             == request.auth.token.email
+                          && request.resource.data.status == "pending"
+                          && request.resource.data.isAdministrator == false
+                          && request.resource.data.isCreator == false
+                        )
+                        || (
+                          staffUid == request.auth.uid
+                          && request.resource.data.uid
+                             == request.auth.uid
+                          && request.resource.data.status == "active"
+                          && request.resource.data.isCreator == false
+                          && validApprovedStaffClaim()
+                        )
+                        || (
+                          staffUid == request.auth.uid
+                          && request.resource.data.uid
+                             == request.auth.uid
+                          && registeredLegacyCreator()
+                          && validPermanentStaffRole()
+                          && request.resource.data.status
+                             == "active"
+                          && request.resource.data.isAdministrator
+                             == true
+                          && request.resource.data.isCreator
+                             == true
+                        )
+                      );
+
+        allow update: if isSignedIn()
+                      && !isCameraSession()
+                      && (
+                        (
+                          staffUid == request.auth.uid
+                          && registeredLegacyCreator()
+                          && validPermanentStaffRole()
+                          && request.resource.data.uid
+                             == request.auth.uid
+                          && request.resource.data.status
+                             == "active"
+                          && request.resource.data.isAdministrator
+                             == true
+                          && request.resource.data.isCreator
+                             == true
+                        )
+                        || (
+                          resource.data.status == "pending"
+                          && resource.data.isCreator == false
+                          && request.resource.data.uid
+                             == resource.data.uid
+                          && request.resource.data.isCreator == false
+                          && validStaffRole()
+                          && request.resource.data.status in [
+                            "active",
+                            "rejected"
+                          ]
+                          && request.resource.data.isAdministrator
+                             == (
+                               request.resource.data.status == "active"
+                               && request.resource.data.role != "referee"
+                             )
+                          && activeFieldAdministrator()
+                        )
+                        || (
+                          resource.data.status == "active"
+                          && resource.data.isCreator == false
+                          && resource.data.email
+                             == request.auth.token.email
+                          && request.resource.data.status == "claimed"
+                          && request.resource.data.role
+                             == resource.data.role
+                          && request.resource.data.email
+                             == resource.data.email
+                          && request.resource.data.isAdministrator
+                             == resource.data.isAdministrator
+                          && request.resource.data.claimedByUid
+                             == request.auth.uid
+                        )
+                      );
+
+        allow delete: if false;
+      }
+    }
+
+    // ---------------------------------------------------------
     // OFFICIAL CAMERA VIDEO-HIGHLIGHT DATA
     //
     // Camera may touch only the exact club + match encoded into
@@ -133,7 +373,8 @@ service cloud.firestore {
                          && !isCameraSession()
                          && topLevel != "practiceControl"
                          && topLevel != "practiceSessions"
-                         && topLevel != "sandboxes";
+                         && topLevel != "sandboxes"
+                         && topLevel != "leagueVenues";
     }
   }
 }

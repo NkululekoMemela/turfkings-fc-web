@@ -29,12 +29,12 @@ const productionConfig = {
 };
 
 const stagingConfig = {
-  apiKey: "AIzaSyBFcUukYHCtQSyA3J5TWfKBc-At7DXFhpE",
-  authDomain: "turfkings-staging.firebaseapp.com",
-  projectId: "turfkings-staging",
-  storageBucket: "turfkings-staging.firebasestorage.app",
-  messagingSenderId: "44422849668",
-  appId: "1:44422849668:web:03ef479658982972016ed1",
+  apiKey: "AIzaSyBUY_fCGBcWrdEnta_I-7bonL-Yg3VpjFk",
+  authDomain: "five-asides-near-me-staging.firebaseapp.com",
+  projectId: "five-asides-near-me-staging",
+  storageBucket: "five-asides-near-me-staging.firebasestorage.app",
+  messagingSenderId: "236261073578",
+  appId: "1:236261073578:web:0a7b12d95f85caad8b26d3",
 };
 
 // Production must be explicit.
