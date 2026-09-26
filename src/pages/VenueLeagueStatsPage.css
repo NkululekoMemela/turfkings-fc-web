@@ -365,3 +365,109 @@
     min-width: 590px;
   }
 }
+
+/* Field Match Results mirrors the club result row and expanded event layout. */
+.venue-match-results .venue-standings-table { width: 100%; table-layout: fixed; }
+.venue-match-results th:nth-child(1) { width: 18%; }
+.venue-match-results th:nth-child(2),
+.venue-match-results th:nth-child(4) { width: 25%; }
+.venue-match-results th:nth-child(3) { width: 13%; }
+.venue-match-results th:nth-child(5) { width: 19%; }
+.venue-match-results .match-row { cursor: pointer; }
+.venue-match-results .match-row:hover,
+.venue-match-results .match-row.expanded { background: #103052; }
+.venue-match-results .tk-match-no-inner { display: flex; align-items: center; gap: .3rem; }
+.venue-match-results .venue-result-club-badge {
+  display: inline-flex; align-items: center; gap: .38rem; min-width: 0;
+  font-weight: 700;
+}
+.venue-match-results .venue-result-club-badge img,
+.venue-match-results .venue-result-logo-fallback {
+  width: 29px; height: 29px; object-fit: contain; flex-shrink: 0;
+}
+.venue-match-results .match-details-row td { vertical-align: top; background: #06142b; }
+.venue-match-results .team-scorers { display: grid; gap: .42rem; }
+.venue-match-results .tk-expanded-goal-line {
+  display: grid; grid-template-columns: 1fr; gap: .08rem; line-height: 1.16;
+  white-space: normal;
+}
+.venue-match-results .tk-expanded-scorer {
+  display: block; font-size: .70rem; font-weight: 400;
+  color: rgba(226,232,240,.94); white-space: normal;
+}
+.venue-match-results .tk-expanded-goal-minute { margin-right: .25rem; }
+.venue-match-results .tk-expanded-assist {
+  display: block; font-size: .61rem; font-style: italic; font-weight: 400;
+  color: rgba(203,213,225,.72); white-space: normal;
+}
+
+/* Club-style Field match correction controls */
+.venue-stats-page .tk-mini-admin-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 0.35rem;
+  flex-wrap: nowrap;
+}
+.venue-stats-page .tk-mini-admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.46rem;
+  height: 1.46rem;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.72);
+  color: rgba(226, 232, 240, 0.94);
+  font-size: 0.7rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035);
+}
+.venue-stats-page .tk-mini-admin-btn.danger {
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #fecaca;
+  background: rgba(69, 10, 10, 0.38);
+}
+.venue-stats-page .tk-match-admin-box {
+  width: 100%;
+  min-width: 0;
+  padding: 0.38rem 0.32rem;
+  border-radius: 12px;
+  background: rgba(2, 8, 23, 0.28);
+}
+.venue-stats-page .tk-match-admin-label {
+  margin-bottom: 0.4rem;
+  color: #b9c7da;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+}
+.venue-stats-page .tk-match-admin-row {
+  display: grid;
+  gap: 0.42rem;
+}
+.venue-stats-page .tk-admin-compact-btn {
+  width: 100%;
+  min-height: 1.55rem;
+  padding: 0.34rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+.venue-stats-page .tk-admin-compact-btn.primary {
+  border: 1px solid rgba(56, 189, 248, 0.72);
+  background: rgba(8, 47, 73, 0.48);
+  color: #e0f2fe;
+}
+
+.venue-stats-page .tk-admin-compact-btn.danger {
+  border: 1px solid rgba(248, 113, 113, 0.68);
+  background: rgba(69, 10, 10, 0.45);
+  color: #fecaca;
+}

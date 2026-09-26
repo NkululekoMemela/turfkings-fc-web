@@ -283,6 +283,7 @@ export default function VenueLandingPage({
   smartOffset = 5,
   smartTarget = null,
   onUpdatePairing,
+  pairingRequiresCode = true,
   onStartMatch,
   onSetMatchType,
   onForceSetMatchType,
@@ -1108,13 +1109,17 @@ export default function VenueLandingPage({
   const confirmPairingChange = () => {
     if (!pendingMatch) return;
 
-    if (!CAPTAIN_CODES.includes(pairingCode.trim())) {
+    if (pairingRequiresCode && !CAPTAIN_CODES.includes(pairingCode.trim())) {
       setPairingError("Invalid captain code.");
       return;
     }
 
-    onUpdatePairing(pendingMatch);
-    cancelPairingChange();
+    Promise.resolve()
+      .then(() => onUpdatePairing(pendingMatch))
+      .then(cancelPairingChange)
+      .catch((error) => setPairingError(
+        error?.message || "Could not change the next pairing."
+      ));
   };
 
   const optionsForTeamA = teams.filter((t) => t.id !== teamBId);
@@ -2524,7 +2529,8 @@ export default function VenueLandingPage({
               })}
             </button>
 
-            {isThreeTeamLeague && isAdmin && (
+            {isThreeTeamLeague && isAdmin &&
+              typeof onOpenBackupModal === "function" && (
               <button
                 className="secondary-btn"
                 onClick={onOpenBackupModal}
@@ -3275,21 +3281,25 @@ export default function VenueLandingPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Match Override</h3>
-            <p>Changing the next pairing requires a captain code.</p>
+            <p>{pairingRequiresCode
+              ? "Changing the next pairing requires a captain code."
+              : "Confirm the next Field fixture pairing."}</p>
 
-            <div className="field-row">
-              <label>Captain code</label>
-              <input
-                type="password"
-                className="text-input"
-                value={pairingCode}
-                onChange={(e) => {
-                  setPairingCode(e.target.value);
-                  setPairingError("");
-                }}
-              />
-              {pairingError && <p className="error-text">{pairingError}</p>}
-            </div>
+            {pairingRequiresCode && (
+              <div className="field-row">
+                <label>Captain code</label>
+                <input
+                  type="password"
+                  className="text-input"
+                  value={pairingCode}
+                  onChange={(e) => {
+                    setPairingCode(e.target.value);
+                    setPairingError("");
+                  }}
+                />
+              </div>
+            )}
+            {pairingError && <p className="error-text">{pairingError}</p>}
 
             <div className="actions-row">
               <button className="secondary-btn" onClick={cancelPairingChange}>

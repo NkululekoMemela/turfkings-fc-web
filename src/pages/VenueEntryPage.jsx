@@ -8,11 +8,31 @@
 // src/pages/VenueEntryPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import VenueLandingPage from "./VenueLandingPage.jsx";
+import {
+  createCameraHandoff,
+  buildAuthorizedCameraDeepLink,
+} from "../storage/cameraHandoffGateway.js";
+import { loadVenueLeaguePlayers } from "../storage/venueLiveMatchRepository.js";
+import {
+  requestVenueCameraAccess,
+} from "../storage/venueCameraApprovalRepository.js";
+import { buildCurrentMatchFromFixture } from "../core/scheduledFixtures.js";
+import VenueLiveMatchRuntime from "../components/VenueLiveMatchRuntime.jsx";
+import {
+  getVenueRefereeDeviceId,
+  buildVenueRefereeController,
+} from "../core/venueRefereeController.js";
 import VenueLeagueStatsPage from "./VenueLeagueStatsPage.jsx";
+import VenueLeagueFormationsPage from "./VenueLeagueFormationsPage.jsx";
+import { NewsPage as VenueLeagueNewsPage } from "./VenueLeagueNewsPage.jsx";
+import VenueLeagueVideoHighlightsPage from "./VenueLeagueVideoHighlightsPage.jsx";
 import VenueStaffApprovalPanel from "../components/VenueStaffApprovalPanel.jsx";
 import {
   startVenueFixture,
+  prepareVenueSeasonForMatch,
   watchVenueSeason,
+  archiveVenueMatchDay,
+  endVenueSeason,
 } from "../storage/leagueSeasonRepository.js";
 import {
   reviewVenueStaffRequest,
@@ -682,11 +702,34 @@ export default function VenueEntryPage({
   const [enteredIdentity, setEnteredIdentity] = useState(null);
   const [venuePage, setVenuePage] = useState("landing");
   const [venueSeason, setVenueSeason] = useState(null);
+  const [showEndMatchDayModal, setShowEndMatchDayModal] = useState(false);
+  const [endingMatchDay, setEndingMatchDay] = useState(false);
+  const [endMatchDayError, setEndMatchDayError] = useState("");
+  const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
+  const [endingSeason, setEndingSeason] = useState(false);
+  const [endSeasonError, setEndSeasonError] = useState("");
+  const [authenticatedFieldStaff, setAuthenticatedFieldStaff] = useState(null);
   const [pendingStaffRequests, setPendingStaffRequests] =
     useState([]);
   const [showStaffApprovalPanel, setShowStaffApprovalPanel] =
     useState(false);
   const promptedStaffRequestKeyRef = useRef("");
+
+  useEffect(() => {
+    setAuthenticatedFieldStaff(null);
+    if (!venue?.id || !currentUser?.uid) return undefined;
+
+    return onSnapshot(
+      doc(db, "leagueVenues", venue.id, "staff", currentUser.uid),
+      (snapshot) => setAuthenticatedFieldStaff(
+        snapshot.exists() ? snapshot.data() : null
+      ),
+      (error) => {
+        console.error("[Field staff access]", error);
+        setAuthenticatedFieldStaff(null);
+      }
+    );
+  }, [venue?.id, currentUser?.uid]);
 
   useEffect(() => {
     if (!venue?.id) {
@@ -696,7 +739,22 @@ export default function VenueEntryPage({
 
     return watchVenueSeason(
       venue.id,
-      (season) => setVenueSeason(season),
+      (season) => {
+        console.info("[Field season check]", {
+          venueId: venue.id,
+          seasonId: season?.id || null,
+          status: season?.status || null,
+          confirmedClubIds: season?.clubIds || [],
+          invitations: Object.values(season?.invitations || {}).map(
+            ({ clubId, status }) => ({ clubId, status })
+          ),
+          fixtures: (season?.fixtures || []).map(
+            ({ id, status, clubAId, clubBId }) =>
+              ({ id, status, clubAId, clubBId })
+          ),
+        });
+        setVenueSeason(season);
+      },
       (error) => {
         console.error(
           "[VenueEntryPage] Could not load Venue League season:",
@@ -5024,31 +5082,41 @@ export default function VenueEntryPage({
 
     const nextFixture =
       scheduledFixtures.find((fixture) =>
+        fixture.id === venueSeason?.selectedFixtureId &&
+        !venueSeason?.liveMatches?.[fixture.id]
+      ) ||
+      scheduledFixtures.find((fixture) =>
         !venueSeason?.liveMatches?.[fixture.id]
       ) || null;
 
+    const confirmedTeams = teams.filter((team) =>
+      (venueSeason?.clubIds || []).includes(team.id)
+    );
+
     const currentMatch = liveMatch
-      ? {
+      ? buildCurrentMatchFromFixture({
           teamAId: liveMatch.clubAId,
           teamBId: liveMatch.clubBId,
-          standbyId: null,
-        }
+        }, confirmedTeams)
       : nextFixture
-      ? {
+      ? buildCurrentMatchFromFixture({
           teamAId: nextFixture.clubAId,
           teamBId: nextFixture.clubBId,
-          standbyId: null,
-        }
+        }, confirmedTeams)
       : {
           teamAId: teams[0]?.id || null,
           teamBId: teams[1]?.id || null,
           standbyId: teams[2]?.id || null,
         };
 
-    const effectiveRole =
+    const effectiveRole = String(
       enteredIdentity?.actingRole ||
       enteredIdentity?.role ||
-      "spectator";
+      "spectator"
+    )
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
 
     const managerUids = new Set([
       venue?.ownerUid,
@@ -5064,14 +5132,131 @@ export default function VenueEntryPage({
       "other_staff",
     ]);
 
+    const isClubRepresentative = effectiveRole === "club_rep";
+    const isReadOnlyFieldRole =
+      isClubRepresentative || effectiveRole === "spectator";
+    const isVenueOwner = Boolean(
+      currentUser?.uid && venue?.ownerUid === currentUser.uid
+    );
+    const hasActiveFieldRole =
+      authenticatedFieldStaff?.status === "active" &&
+      authenticatedFieldStaff?.role === effectiveRole;
+
     const isFieldAdministrator =
-      enteredIdentity?.isAdministrator === true ||
-      managerUids.has(currentUser?.uid) ||
-      permanentFieldRoles.has(effectiveRole);
+      !isReadOnlyFieldRole &&
+      (
+        isVenueOwner ||
+        (hasActiveFieldRole &&
+          authenticatedFieldStaff?.isAdministrator === true)
+      );
 
     const canOperateFieldMatch =
-      isFieldAdministrator ||
-      effectiveRole === "referee";
+      !isReadOnlyFieldRole &&
+      (
+        isFieldAdministrator ||
+        (hasActiveFieldRole && effectiveRole === "referee")
+      );
+
+    console.info("[Field Start Match access]", {
+      actingRole: enteredIdentity?.actingRole || null,
+      role: enteredIdentity?.role || null,
+      effectiveRole,
+      isAdministrator: enteredIdentity?.isAdministrator === true,
+      ownerMatchesUser: venue?.ownerUid === currentUser?.uid,
+      isFieldAdministrator,
+      canOperateFieldMatch,
+    });
+
+    if (venuePage === "videos") {
+      const latestResult = (venueSeason?.results || []).at(-1) || null;
+      const videoFixtureId =
+        liveMatch?.fixtureId ||
+        latestResult?.fixtureId ||
+        nextFixture?.id ||
+        "";
+      const videoMatchId = videoFixtureId && venueSeason?.id
+        ? `venue__${venue.id}__${venueSeason.id}__${videoFixtureId}`
+        : "";
+      const videoCurrentMatch = latestResult && videoFixtureId === latestResult.fixtureId
+        ? buildCurrentMatchFromFixture({
+            teamAId: latestResult.teamAId,
+            teamBId: latestResult.teamBId,
+          }, mappedTeams)
+        : currentMatch;
+
+      return (
+        <VenueLeagueVideoHighlightsPage
+          matchId={videoMatchId}
+          activeClubId={venue.id}
+          activeSeasonId={venueSeason?.id}
+          currentMatchNo={
+            Number(liveMatch?.matchNo || latestResult?.matchNo ||
+              venueSeason?.currentMatchNo) || 1
+          }
+          matchType="LEAGUE"
+          gameFormat={venueSeason?.gameFormat || "5_V_5"}
+          identity={enteredIdentity}
+          activeRole={effectiveRole}
+          isAdmin={isFieldAdministrator}
+          isCaptain={false}
+          isPlayer={effectiveRole === "player"}
+          teams={mappedTeams}
+          currentMatch={videoCurrentMatch}
+          members={[]}
+          onBack={() => setVenuePage("landing")}
+        />
+      );
+    }
+
+    if (venuePage === "news") {
+      return (
+        <VenueLeagueNewsPage
+          matchType="LEAGUE"
+          teams={mappedTeams}
+          results={venueSeason?.results || []}
+          allEvents={venueSeason?.allEvents || []}
+          currentResults={venueSeason?.results || []}
+          currentEvents={venueSeason?.allEvents || []}
+          matchDayHistory={[]}
+          playerPhotosByName={{}}
+          members={[]}
+          identity={enteredIdentity}
+          activeClub={venue}
+          activeClubId={venue?.id}
+          fieldSeason={venueSeason}
+          canManageFieldNews={isFieldAdministrator}
+          onBack={() => setVenuePage("landing")}
+          onGoToSignIn={() => setEnteredIdentity(null)}
+        />
+      );
+    }
+
+    if (venuePage === "formations") {
+      return (
+        <VenueLeagueFormationsPage
+          activeClubId={venue.id}
+          activeClub={venue}
+          fieldLeagueScope={{
+            kind: "venueLeague",
+            environment: "official",
+            venueId: venue.id,
+            seasonId: venueSeason?.id,
+          }}
+          savedFieldLineups={venueSeason?.savedLineups || {}}
+          canManageFieldFormations={isFieldAdministrator}
+          teams={mappedTeams}
+          currentMatch={currentMatch}
+          currentEvents={[]}
+          allEvents={venueSeason?.allEvents || []}
+          results={venueSeason?.results || []}
+          identity={enteredIdentity}
+          authUser={currentUser}
+          matchType="LEAGUE"
+          gameFormat={venueSeason?.gameFormat || "5_V_5"}
+          onBack={() => setVenuePage("landing")}
+        />
+      );
+    }
 
     if (venuePage === "stats") {
       return (
@@ -5079,7 +5264,27 @@ export default function VenueEntryPage({
           venue={venue}
           season={venueSeason}
           clubs={mappedTeams}
+          canCorrectResults={Boolean(
+            currentUser?.uid && venue?.ownerUid === currentUser.uid
+          )}
           onBack={() => setVenuePage("landing")}
+        />
+      );
+    }
+
+    if (venuePage === "live") {
+      return (
+        <VenueLiveMatchRuntime
+          venue={venue}
+          season={venueSeason}
+          teams={teams}
+          identity={enteredIdentity}
+          activeRole={effectiveRole}
+          isAdmin={isFieldAdministrator}
+          canOperateMatch={canOperateFieldMatch}
+          viewerOnly={!canOperateFieldMatch}
+          onBack={() => setVenuePage("landing")}
+          onGoToStats={() => setVenuePage("stats")}
         />
       );
     }
@@ -5116,31 +5321,247 @@ export default function VenueEntryPage({
         activeRole={effectiveRole}
         isAdmin={isFieldAdministrator}
         isCaptain={false}
-        isPlayer={effectiveRole === "club_rep"}
-        isSpectator={effectiveRole === "spectator"}
-        canStartMatch={
-          canOperateFieldMatch &&
-          Boolean(nextFixture)
-        }
+        isPlayer={false}
+        isSpectator={isReadOnlyFieldRole}
+        canStartMatch={canOperateFieldMatch}
+        pairingRequiresCode={false}
+        onUpdatePairing={async ({ teamAId, teamBId }) => {
+          if (!canOperateFieldMatch || liveMatch || !venueSeason?.id) {
+            throw new Error("Only a Field official can change an unplayed pairing.");
+          }
+          const fixture = scheduledFixtures.find((item) =>
+            (item.clubAId === teamAId && item.clubBId === teamBId) ||
+            (item.clubAId === teamBId && item.clubBId === teamAId)
+          );
+          if (!fixture) {
+            throw new Error("No scheduled fixture exists for these two clubs.");
+          }
+          await updateDoc(doc(db, "leagueVenues", venue.id), {
+            "league.activeSeason.selectedFixtureId": fixture.id,
+            updatedAt: serverTimestamp(),
+          });
+        }}
         startMatchDeniedMessage={
           "Only an authorized Field official or referee can start this match."
         }
         onStartMatch={async () => {
-          if (!nextFixture?.id) return;
-
+          if (liveMatch) {
+            setVenuePage("live");
+            return;
+          }
+          let startStep = "Prepare Field season";
           try {
+            let fixtureId = nextFixture?.id;
+            if (
+              !venueSeason?.id ||
+              (venueSeason.clubIds || []).length < 3 ||
+              !fixtureId
+            ) {
+              const prepared = await prepareVenueSeasonForMatch({
+                venueId: venue?.id,
+              });
+              fixtureId = prepared.fixtureId;
+            }
+
+            startStep = "Start Field fixture";
             await startVenueFixture({
               venueId: venue?.id,
-              fixtureId: nextFixture.id,
+              fixtureId,
+              controller: buildVenueRefereeController({
+                deviceId: getVenueRefereeDeviceId(),
+                identity: enteredIdentity,
+                user: auth.currentUser || currentUser,
+                role: effectiveRole,
+              }),
+              teams,
+              matchSeconds: Number(venueSeason?.matchSeconds) || 3600,
+              currentMatchNo: Number(venueSeason?.currentMatchNo) || 1,
             });
+
+            setVenuePage("live");
           } catch (error) {
+            console.error("[Field Start Match]", startStep, error);
             window.alert(
-              error?.message ||
-              "The Field match could not be started."
+              `${startStep}: ${error?.message || "The Field match could not be started."}`
             );
           }
         }}
+        onGoToLiveAsSpectator={() => {
+          if (!venueSeason?.id) {
+            window.alert("No Field match is live yet.");
+            return;
+          }
+          setVenuePage("live");
+        }}
         onGoToStats={() => setVenuePage("stats")}
+        onGoToFormations={() => setVenuePage("formations")}
+        onGoToNews={() => setVenuePage("news")}
+        onGoToHighlights={() => setVenuePage("videos")}
+        onOpenHighlightsCamera={async () => {
+          if (!/Android/i.test(window.navigator.userAgent || "")) {
+            window.alert(
+              "Highlights Camera opens on Android with the 5 Asides Near Me Camera app installed."
+            );
+            return;
+          }
+
+          const fixture = liveMatch
+            ? (venueSeason?.fixtures || []).find(
+                (item) => item.id === liveMatch.fixtureId
+              )
+            : nextFixture;
+          if (!fixture?.id || !venueSeason?.id) {
+            window.alert("Select a Field fixture before opening the camera.");
+            return;
+          }
+
+          const matchId =
+            `venue__${venue.id}__${venueSeason.id}__${fixture.id}`;
+          const playerSnapshot = await loadVenueLeaguePlayers({
+            firestore: db,
+            teams: mappedTeams.filter((team) =>
+              [fixture.clubAId, fixture.clubBId].includes(team.id)
+            ),
+          });
+          const players = playerSnapshot.docs.map((snap) => ({
+            id: snap.id,
+            ...(snap.data() || {}),
+          }));
+          const cameraTeam = (clubId, fallbackName) => {
+            const club = mappedTeams.find((team) => team.id === clubId);
+            return {
+              teamId: clubId,
+              clubId,
+              teamName: club?.name || fallbackName || clubId,
+              abbrev: club?.abbrev || club?.shortName || "",
+              logoUrl: club?.logoUrl || club?.image || "",
+              players: players.filter((player) =>
+                player.clubId === clubId &&
+                String(player.status || "active").toLowerCase() === "active"
+              ).map((player) => ({
+                id: player.id,
+                name: player.shortName || player.fullName ||
+                  player.displayName || player.name || "",
+                teamId: clubId,
+                clubId,
+                photoUrl: player.photoUrl || "",
+              })),
+            };
+          };
+
+          const teamA = cameraTeam(fixture.clubAId, fixture.clubAName);
+          const teamB = cameraTeam(fixture.clubBId, fixture.clubBName);
+          const matchNo = Number(liveMatch?.matchNo ||
+            venueSeason.currentMatchNo) || 1;
+          const fixtureContext = {
+            fixtureId: fixture.id,
+            organisingVenueId: venue.id,
+            competitionType: "venue_league",
+            matchType: "LEAGUE",
+            gameFormat: venueSeason.gameFormat || "5_V_5",
+            matchNo,
+            seasonId: venueSeason.id,
+            refereeMatchStarted: Boolean(liveMatch),
+            teamA,
+            teamB,
+          };
+
+          const openPhoneOnlyCamera = (message) => {
+            window.alert(message);
+            const payload = {
+              sourceApp: "5 Asides Near Me",
+              canUseOutsideOfficialMatch: true,
+              matchIsLive: Boolean(liveMatch),
+              matchId,
+              seasonId: venueSeason.id,
+              matchNo,
+              gameFormat: fixtureContext.gameFormat,
+              teamAId: teamA.teamId,
+              teamBId: teamB.teamId,
+              teamAName: teamA.teamName,
+              teamBName: teamB.teamName,
+              teamAAbbrev: teamA.abbrev,
+              teamBAbbrev: teamB.abbrev,
+              teamALogoUrl: teamA.logoUrl,
+              teamBLogoUrl: teamB.logoUrl,
+              teamAPlayers: teamA.players,
+              teamBPlayers: teamB.players,
+            };
+            window.location.href =
+              "fiveasidesnearmecamera://open?payload=" +
+              encodeURIComponent(JSON.stringify(payload));
+          };
+
+          if (!auth.currentUser?.uid) {
+            openPhoneOnlyCamera(
+              "Sign in to request server recording. This recording will stay on your device."
+            );
+            return;
+          }
+
+          try {
+            const handoff = await createCameraHandoff({
+              venueId: venue.id,
+              matchId,
+              dataScope: "official",
+              fixtureContext,
+            });
+            window.location.href = buildAuthorizedCameraDeepLink({
+              handoffId: handoff.handoffId,
+            });
+          } catch (error) {
+            if (error?.code !== "camera/not-authorized") {
+              console.error("[Field Camera] handoff failed", error);
+              window.alert(error?.message || "Could not open the Field camera.");
+              return;
+            }
+
+            if (!liveMatch) {
+              openPhoneOnlyCamera(
+                "This fixture is not live. Your recording will stay on your device."
+              );
+              return;
+            }
+
+            try {
+              const request = await requestVenueCameraAccess({
+                venueId: venue.id,
+                seasonId: venueSeason.id,
+                fixtureId: fixture.id,
+                requesterName: enteredIdentity?.shortName ||
+                  enteredIdentity?.fullName ||
+                  auth.currentUser.displayName || "Cameraman",
+              });
+              const message = request.status === "approved"
+                ? "The match official must renew your camera approval. Your recording will stay on your device for now."
+                : request.status === "denied"
+                  ? "The match official denied server recording. Your recording will stay on your device."
+                  : "Camera approval requested from the match official. Until approved, your recording will stay on your device. Open Camera again after approval to save to the Field.";
+              openPhoneOnlyCamera(message);
+            } catch (requestError) {
+              console.error("[Field Camera] approval request failed", requestError);
+              openPhoneOnlyCamera(
+                "Could not submit a camera request. Your recording will stay on your device."
+              );
+            }
+          }
+        }}
+        onOpenBackupModal={
+          venue?.ownerUid === currentUser?.uid
+            ? () => {
+                setEndMatchDayError("");
+                setShowEndMatchDayModal(true);
+              }
+            : undefined
+        }
+        onOpenEndSeasonModal={
+          venue?.ownerUid === currentUser?.uid
+            ? () => {
+                setEndSeasonError("");
+                setShowEndSeasonModal(true);
+              }
+            : undefined
+        }
         pendingFieldStaffCount={
           pendingStaffRequests.length
         }
@@ -5151,6 +5572,112 @@ export default function VenueEntryPage({
         }
         onGoToEntryDev={() => setEnteredIdentity(null)}
       />
+
+      {showEndMatchDayModal && isFieldAdministrator && (
+        <div className="modal-backdrop">
+          <div className="modal" role="dialog" aria-modal="true"
+            aria-labelledby="field-end-day-title">
+            <h3 id="field-end-day-title">End Match Day</h3>
+            <p>
+              Archive this Field match day and keep every result in the
+              current season standings.
+            </p>
+            <p className="muted">
+              Completed matches not yet archived: {
+                (venueSeason?.results || []).filter((result) =>
+                  result?.status === "completed" &&
+                  !(venueSeason?.matchDayHistory || []).some((day) =>
+                    (day.results || []).some((saved) =>
+                      saved.fixtureId === result.fixtureId
+                    )
+                  )
+                ).length
+              }
+            </p>
+            {endMatchDayError && (
+              <p className="error-text" role="alert">{endMatchDayError}</p>
+            )}
+            <div className="actions-row">
+              <button type="button" className="secondary-btn"
+                disabled={endingMatchDay}
+                onClick={() => setShowEndMatchDayModal(false)}>
+                Cancel
+              </button>
+              <button type="button" className="primary-btn"
+                disabled={endingMatchDay}
+                onClick={async () => {
+                  if (endingMatchDay) return;
+                  setEndingMatchDay(true);
+                  setEndMatchDayError("");
+                  try {
+                    await archiveVenueMatchDay({
+                      venueId: venue?.id,
+                      seasonId: venueSeason?.id,
+                    });
+                    setShowEndMatchDayModal(false);
+                  } catch (error) {
+                    setEndMatchDayError(
+                      error?.message || "Could not end this match day."
+                    );
+                  } finally {
+                    setEndingMatchDay(false);
+                  }
+                }}>
+                {endingMatchDay ? "Archiving…" : "End Match Day"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEndSeasonModal && venue?.ownerUid === currentUser?.uid && (
+        <div className="modal-backdrop">
+          <div className="modal" role="dialog" aria-modal="true"
+            aria-labelledby="field-end-season-title">
+            <h3 id="field-end-season-title">End Season</h3>
+            <p>
+              Archive this Field season and create a new active season.
+              Results and match days remain available in Previous Stats.
+            </p>
+            <p className="muted">
+              Clubs will need to be invited for the new season.
+              End every completed Match Day first.
+            </p>
+            {endSeasonError && (
+              <p className="error-text" role="alert">{endSeasonError}</p>
+            )}
+            <div className="actions-row">
+              <button type="button" className="secondary-btn"
+                disabled={endingSeason}
+                onClick={() => setShowEndSeasonModal(false)}>
+                Cancel
+              </button>
+              <button type="button" className="primary-btn"
+                disabled={endingSeason || !venueSeason?.id}
+                onClick={async () => {
+                  if (endingSeason) return;
+                  setEndingSeason(true);
+                  setEndSeasonError("");
+                  try {
+                    await endVenueSeason({
+                      venueId: venue.id,
+                      seasonId: venueSeason.id,
+                    });
+                    setShowEndSeasonModal(false);
+                  } catch (error) {
+                    setEndSeasonError(
+                      error?.message || "Could not end this Field season."
+                    );
+                  } finally {
+                    setEndingSeason(false);
+                  }
+                }}>
+                {endingSeason ? "Creating…" : "End Season & Create New"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showStaffApprovalPanel && isFieldAdministrator && (
         <VenueStaffApprovalPanel

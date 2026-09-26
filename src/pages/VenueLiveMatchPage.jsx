@@ -1,11 +1,10 @@
 // src/pages/LiveMatchPage.jsx
 import React from "react";
-import ThreeTeamLeagueLiveMatchPage from "./ThreeTeamLeague_LiveMatchPage.jsx";
-import FriendlyLiveMatchPage from "./Friendly_LiveMatchPage";
-import { MATCH_MODE, buildMatchClassification } from "../core/matchConfig.js";
+import VenueLeagueLiveMatchPage from "./VenueLeagueLiveMatchPage.jsx";
+import { buildMatchClassification } from "../core/matchConfig.js";
 import RefereeVarReview from "../components/RefereeVarReview.jsx";
 
-export function LiveMatchPage(props) {
+export function VenueLiveMatchPage(props) {
   const liveCurrentMatch =
     props.pendingMatchStartContext?.currentMatch ||
     props.currentMatch ||
@@ -49,13 +48,13 @@ export function LiveMatchPage(props) {
     playersPerSide: classification.playersPerSide,
   };
 
-  const LeagueMatchComponent =
-    props.leagueMatchComponent || ThreeTeamLeagueLiveMatchPage;
-
-  const routedLivePage =
-    classification.matchMode === MATCH_MODE.LEAGUE
-      ? <LeagueMatchComponent {...sharedProps} />
-      : <FriendlyLiveMatchPage {...sharedProps} />;
+  /*
+   * A Field season is always a League competition.
+   * Never fall through to the Club Friendly runtime.
+   */
+  const routedLivePage = (
+    <VenueLeagueLiveMatchPage {...sharedProps} />
+  );
 
   return (
     <>
@@ -74,4 +73,4 @@ export function LiveMatchPage(props) {
   );
 }
 
-export default LiveMatchPage;
+export default VenueLiveMatchPage;

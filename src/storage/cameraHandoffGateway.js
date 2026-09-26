@@ -42,16 +42,18 @@ async function readJsonResponse(response) {
 
 export async function createCameraHandoff({
   clubId,
+  venueId,
   matchId,
   fixtureContext = {},
   dataScope = "official",
 } = {}) {
   const safeClubId = safeString(clubId);
+  const safeVenueId = safeString(venueId);
   const safeMatchId = safeString(matchId);
 
-  if (!safeClubId) {
+  if (Boolean(safeClubId) === Boolean(safeVenueId)) {
     throw new Error(
-      "[CameraHandoffGateway] clubId is required."
+      "[CameraHandoffGateway] Supply one clubId or venueId."
     );
   }
 
@@ -96,7 +98,9 @@ export async function createCameraHandoff({
         Authorization: `Bearer ${idToken}`,
       },
       body: JSON.stringify({
-        clubId: safeClubId,
+        ...(safeVenueId
+          ? { venueId: safeVenueId }
+          : { clubId: safeClubId }),
         matchId: safeMatchId,
         fixtureContext:
           fixtureContext &&

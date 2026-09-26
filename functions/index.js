@@ -3140,6 +3140,10 @@ exports.createCameraHandoff = onRequest(
         parseRequestValue(req, "clubId")
       );
 
+      const venueId = safeString(
+        parseRequestValue(req, "venueId")
+      );
+
       const matchId = safeString(
         parseRequestValue(req, "matchId")
       );
@@ -3155,6 +3159,7 @@ exports.createCameraHandoff = onRequest(
         db,
         authenticatedUser,
         clubId,
+        venueId,
         matchId,
         fixtureContext,
         dataScope,

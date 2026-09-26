@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --mode staging",
     "dev:staging": "vite --mode staging",
-    "build": "vite build --mode production",
+    "build": "vite build --mode staging",
     "build:staging": "vite build --mode staging",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -17,7 +17,9 @@
     "build:production": "vite build --mode production",
     "build:native": "FANM_NATIVE_BUILD=1 vite build --mode production",
     "native:sync:android": "npm run build:native && cap sync android",
-    "native:open:android": "cap open android"
+    "native:open:android": "cap open android",
+    "preview:staging": "npm run build:staging && vite preview --host 0.0.0.0 --port 5178",
+    "preview:production": "npm run build:production && vite preview --host 0.0.0.0 --port 5178"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.1",
