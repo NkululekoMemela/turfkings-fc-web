@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 
 const venueId = "wynberg-mm-rule-test";
 const seasonId = "season-rule-test";
@@ -148,5 +148,13 @@ test("referee writes, spectator reads, outsider is denied", async () => {
   assert.equal(
     snapshot.data().league.activeSeason.currentMatch.standbyId,
     "club-b"
+  );
+
+  await assertFails(deleteDoc(doc(outsiderDb, ...matchPath)));
+  const ownerDb = env.authenticatedContext("owner").firestore();
+  await assertSucceeds(deleteDoc(doc(ownerDb, ...matchPath)));
+  assert.equal(
+    (await getDoc(doc(spectatorDb, ...matchPath))).exists(),
+    false
   );
 });

@@ -705,9 +705,11 @@ export default function VenueEntryPage({
   const [showEndMatchDayModal, setShowEndMatchDayModal] = useState(false);
   const [endingMatchDay, setEndingMatchDay] = useState(false);
   const [endMatchDayError, setEndMatchDayError] = useState("");
+  const [confirmEndMatchDay, setConfirmEndMatchDay] = useState(false);
   const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
   const [endingSeason, setEndingSeason] = useState(false);
   const [endSeasonError, setEndSeasonError] = useState("");
+  const [endSeasonConfirmText, setEndSeasonConfirmText] = useState("");
   const [authenticatedFieldStaff, setAuthenticatedFieldStaff] = useState(null);
   const [pendingStaffRequests, setPendingStaffRequests] =
     useState([]);
@@ -5550,6 +5552,7 @@ export default function VenueEntryPage({
           venue?.ownerUid === currentUser?.uid
             ? () => {
                 setEndMatchDayError("");
+                setConfirmEndMatchDay(false);
                 setShowEndMatchDayModal(true);
               }
             : undefined
@@ -5558,6 +5561,7 @@ export default function VenueEntryPage({
           venue?.ownerUid === currentUser?.uid
             ? () => {
                 setEndSeasonError("");
+                setEndSeasonConfirmText("");
                 setShowEndSeasonModal(true);
               }
             : undefined
@@ -5579,8 +5583,9 @@ export default function VenueEntryPage({
             aria-labelledby="field-end-day-title">
             <h3 id="field-end-day-title">End Match Day</h3>
             <p>
-              Archive this Field match day and keep every result in the
-              current season standings.
+              Review the completed matches, then save this match day to the
+              server and clear the finished live board. Season standings
+              and results remain available.
             </p>
             <p className="muted">
               Completed matches not yet archived: {
@@ -5594,19 +5599,58 @@ export default function VenueEntryPage({
                 ).length
               }
             </p>
+            {confirmEndMatchDay && (
+              <>
+                <p role="status">
+                  Confirm saving these matches and clearing the finished
+                  live board. This cannot be undone from here.
+                </p>
+                <ul>
+                  {(venueSeason?.results || [])
+                    .filter((result) =>
+                      result?.status === "completed" &&
+                      !(venueSeason?.matchDayHistory || []).some((day) =>
+                        (day.results || []).some((saved) =>
+                          saved.fixtureId === result.fixtureId
+                        )
+                      )
+                    )
+                    .map((result) => (
+                      <li key={result.fixtureId || result.id}>
+                        {result.teamAName || result.teamALabel ||
+                          result.teamAId || "Team A"}
+                        {" "}
+                        {result.goalsA ?? result.scoreA ?? 0}
+                        {"–"}
+                        {result.goalsB ?? result.scoreB ?? 0}
+                        {" "}
+                        {result.teamBName || result.teamBLabel ||
+                          result.teamBId || "Team B"}
+                      </li>
+                    ))}
+                </ul>
+              </>
+            )}
             {endMatchDayError && (
               <p className="error-text" role="alert">{endMatchDayError}</p>
             )}
             <div className="actions-row">
               <button type="button" className="secondary-btn"
                 disabled={endingMatchDay}
-                onClick={() => setShowEndMatchDayModal(false)}>
-                Cancel
+                onClick={() => {
+                  if (confirmEndMatchDay) setConfirmEndMatchDay(false);
+                  else setShowEndMatchDayModal(false);
+                }}>
+                {confirmEndMatchDay ? "Back" : "Cancel"}
               </button>
               <button type="button" className="primary-btn"
                 disabled={endingMatchDay}
                 onClick={async () => {
                   if (endingMatchDay) return;
+                  if (!confirmEndMatchDay) {
+                    setConfirmEndMatchDay(true);
+                    return;
+                  }
                   setEndingMatchDay(true);
                   setEndMatchDayError("");
                   try {
@@ -5623,7 +5667,11 @@ export default function VenueEntryPage({
                     setEndingMatchDay(false);
                   }
                 }}>
-                {endingMatchDay ? "Archiving…" : "End Match Day"}
+                {endingMatchDay
+                  ? "Saving…"
+                  : confirmEndMatchDay
+                    ? "Confirm & Save to server"
+                    : "Review & Continue"}
               </button>
             </div>
           </div>
@@ -5643,6 +5691,18 @@ export default function VenueEntryPage({
               Clubs will need to be invited for the new season.
               End every completed Match Day first.
             </p>
+            <label htmlFor="field-end-season-confirm">
+              Type {venue?.name || "the Field name"} to confirm
+            </label>
+            <input
+              id="field-end-season-confirm"
+              className="text-input"
+              value={endSeasonConfirmText}
+              onChange={(event) =>
+                setEndSeasonConfirmText(event.target.value)
+              }
+              autoComplete="off"
+            />
             {endSeasonError && (
               <p className="error-text" role="alert">{endSeasonError}</p>
             )}
@@ -5653,7 +5713,10 @@ export default function VenueEntryPage({
                 Cancel
               </button>
               <button type="button" className="primary-btn"
-                disabled={endingSeason || !venueSeason?.id}
+                disabled={
+                  endingSeason || !venueSeason?.id ||
+                  endSeasonConfirmText.trim() !== venue?.name?.trim()
+                }
                 onClick={async () => {
                   if (endingSeason) return;
                   setEndingSeason(true);

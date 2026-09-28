@@ -822,13 +822,21 @@ export async function archiveVenueMatchDay({ venueId, seasonId }) {
   if (!user?.uid) throw new Error("Sign in as the Field Manager.");
 
   const venueRef = doc(db, "leagueVenues", venueId);
+  const liveRef = doc(
+    db, "leagueVenues", venueId, "seasons", seasonId,
+    "matches", "current"
+  );
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(venueRef);
+    const liveSnapshot = await transaction.get(liveRef);
     if (!snapshot.exists()) throw new Error("Field no longer exists.");
 
     const venue = snapshot.data();
     if (venue.ownerUid !== user.uid) {
       throw new Error("Only the Field Manager can end the match day.");
+    }
+    if (liveSnapshot.exists() && liveSnapshot.data().status === "live") {
+      throw new Error("Finish the live match before ending the match day.");
     }
 
     const season = venue.league?.activeSeason;
@@ -880,6 +888,7 @@ export async function archiveVenueMatchDay({ venueId, seasonId }) {
       "league.activeSeason.updatedAtMs": now,
       updatedAt: serverTimestamp(),
     });
+    if (liveSnapshot.exists()) transaction.delete(liveRef);
     return day;
   });
 }
