@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import VenueRegistrationModal from "../components/VenueRegistrationModal.jsx";
 import VenueMarketingFooter from "../components/VenueMarketingFooter.jsx";
+import VenueCarouselCard from "../components/VenueCarouselCard.jsx";
 import {
   watchLeagueVenues,
 } from "../storage/leagueVenueRepository.js";
@@ -192,58 +193,13 @@ export default function LeagueVenuesHub({
               </small>
             </button>
 
-            {visibleVenues.map((venue) => {
-              const logoUrl =
-                venue.branding?.logoUrl ||
-                venue.logoUrl ||
-                venue.image ||
-                "";
-
-              return (
-                <button
-                  className="fanm-venues__venue-card"
-                  type="button"
-                  key={venue.id}
-                  onClick={() =>
-                    onViewVenue?.(venue)
-                  }
-                >
-                  <span
-                    className="fanm-venues__badge"
-                    style={{
-                      "--venue-accent":
-                        venue.branding?.accent ||
-                        "#16a34a",
-                    }}
-                  >
-                    {logoUrl ? (
-                      <img
-                        src={logoUrl}
-                        alt={`${venue.name} logo`}
-                      />
-                    ) : (
-                      venue.name
-                        .trim()
-                        .charAt(0)
-                        .toUpperCase()
-                    )}
-                  </span>
-
-                  <strong>{venue.name}</strong>
-
-                  <small>
-                    {[
-                      venue.location?.suburb,
-                      venue.location?.city,
-                    ]
-                      .filter(Boolean)
-                      .join(", ")}
-                  </small>
-
-                  <span>Tap to enter ↗</span>
-                </button>
-              );
-            })}
+            {visibleVenues.map((venue) => (
+              <VenueCarouselCard
+                key={venue.id}
+                venue={venue}
+                onEnter={onViewVenue}
+              />
+            ))}
 
             {!loading &&
             !loadError &&

@@ -1,0 +1,18 @@
+.field-landing-page {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 86% 4%, rgba(144, 71, 113, .18), transparent 32%),
+    radial-gradient(circle at 12% 85%, rgba(190, 120, 67, .12), transparent 36%),
+    #14131e;
+}
+
+.field-landing-page .landing-first-card,
+.field-landing-page .team-photo-card,
+.field-landing-page .website-card {
+  border-color: rgba(232, 179, 112, .24);
+  background: linear-gradient(155deg, #27212f, #171722 78%);
+}
+
+.field-landing-page .landing-header-sticky .tk-ribbon-mode-label {
+  color: #ffe1ae;
+}

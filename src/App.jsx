@@ -2598,6 +2598,7 @@ export default function App() {
   }, [page]);
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
   const [selectedLeagueVenue, setSelectedLeagueVenue] = useState(null);
+  const [portalOriginClubId, setPortalOriginClubId] = useState("");
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
   const {
@@ -9580,6 +9581,7 @@ export default function App() {
         <LeagueVenuesHub
           onBack={() => setPage(PAGE_WELCOME)}
           onViewVenue={(venue) => {
+            setPortalOriginClubId("");
             setSelectedLeagueVenue(venue);
             setPage(PAGE_VENUE_ENTRY);
           }}
@@ -9587,10 +9589,39 @@ export default function App() {
       )}
 
       {page === PAGE_VENUE_ENTRY && (
-        <VenueEntryPage
-          venue={selectedLeagueVenue}
-          onBack={() => setPage(PAGE_LEAGUE_VENUES)}
-        />
+        <>
+          <VenueEntryPage
+            venue={selectedLeagueVenue}
+            portalClubIdentity={portalOriginClubId ? {
+              clubId: portalOriginClubId,
+              clubName: activeClubName,
+              memberId: pageIdentity?.memberId || "",
+            } : null}
+            onBack={() => setPage(
+              portalOriginClubId ? PAGE_LANDING : PAGE_LEAGUE_VENUES
+            )}
+          />
+          {portalOriginClubId && (
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => setPage(PAGE_LANDING)}
+              style={{
+                position: "fixed",
+                left: "max(1rem, env(safe-area-inset-left))",
+                bottom: "max(1rem, env(safe-area-inset-bottom))",
+                zIndex: 1000,
+                padding: ".65rem .9rem",
+                border: "1px solid rgba(251,191,36,.65)",
+                background: "#241a30",
+                color: "#fff",
+                boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+              }}
+            >
+              ← Return to {activeClubName || "club"}
+            </button>
+          )}
+        </>
       )}
 
       {page === PAGE_HOME && (
@@ -9982,6 +10013,15 @@ export default function App() {
           activeClubId={activeClubId}
           activeClubName={activeClubName}
           clubIdentity={activeClubIdentity}
+          onEnterField={(field) => {
+            setPortalOriginClubId(activeClubId);
+            setSelectedLeagueVenue(field);
+            setPage(PAGE_VENUE_ENTRY);
+          }}
+          onExploreFields={() => {
+            setPortalOriginClubId("");
+            setPage(PAGE_LEAGUE_VENUES);
+          }}
           teams={teams}
           currentMatchNo={activeMatchNo}
           currentMatch={effectiveLiveMatch}

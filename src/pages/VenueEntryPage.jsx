@@ -694,6 +694,7 @@ export default function VenueEntryPage({
   onBack,
   onVenueUpdated,
   onOpenVenueChat,
+  portalClubIdentity = null,
 }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [clubHeroOverride, setClubHeroOverride] = useState("");
@@ -702,8 +703,66 @@ export default function VenueEntryPage({
   const [entryClubProfileOverride, setEntryClubProfileOverride] = useState(null);
   const [showEntryClubEditor, setShowEntryClubEditor] = useState(false);
   const [enteredIdentity, setEnteredIdentity] = useState(null);
+  const [portalStatus, setPortalStatus] = useState("");
+
   const [venuePage, setVenuePage] = useState("landing");
   const [venueSeason, setVenueSeason] = useState(null);
+  useEffect(() => {
+    if (!portalClubIdentity) return undefined;
+    let cancelled = false;
+    setEnteredIdentity(null);
+    setPortalStatus("Checking club membership...");
+
+    async function enterFromClub() {
+      if (!venueSeason?.id) return;
+      const user = auth.currentUser;
+      const clubId = String(portalClubIdentity.clubId || "");
+      const memberId = String(portalClubIdentity.memberId || "");
+      if (!user?.uid || !user.email || !clubId || !memberId ||
+          !(venueSeason.clubIds || []).includes(clubId)) {
+        throw new Error("This club is not confirmed in this Field league.");
+      }
+      const snap = await getDoc(
+        doc(db, "clubs", clubId, "members", memberId)
+      );
+      if (!snap.exists()) throw new Error("Club member profile not found.");
+      const member = snap.data();
+      if (String(member.email || "").trim().toLowerCase() !==
+          user.email.trim().toLowerCase() ||
+          (member.uid && member.uid !== user.uid)) {
+        throw new Error("Sign in with your club member account.");
+      }
+      if (["rejected", "inactive"].includes(member.status)) {
+        throw new Error("This club membership is not active.");
+      }
+      if (cancelled) return;
+      setEnteredIdentity({
+        role: "club_member",
+        actingRole: "club_member",
+        isAdministrator: false,
+        venueId: venue.id,
+        clubId,
+        clubName: portalClubIdentity.clubName || clubId,
+        memberId,
+        uid: user.uid,
+        email: user.email,
+        fullName: member.fullName || member.name || user.displayName || "",
+      });
+      setVenuePage("landing");
+      setPortalStatus("");
+    }
+
+    enterFromClub().catch((cause) => {
+      if (!cancelled) setPortalStatus(cause.message || "Could not enter Field.");
+    });
+    return () => { cancelled = true; };
+  }, [
+    venue?.id,
+    venueSeason?.id,
+    venueSeason?.clubIds?.join("|"),
+    portalClubIdentity?.clubId,
+    portalClubIdentity?.memberId,
+  ]);
   const [showEndMatchDayModal, setShowEndMatchDayModal] = useState(false);
   const [endingMatchDay, setEndingMatchDay] = useState(false);
   const [endMatchDayError, setEndMatchDayError] = useState("");
@@ -5012,6 +5071,20 @@ export default function VenueEntryPage({
   };
 
 
+    if (portalClubIdentity && !enteredIdentity) {
+      return (
+        <main className="page entry-page" style={{ padding: "2rem 1rem" }}>
+          <section className="card">
+            <h2>Opening {venue?.name || "Field"}</h2>
+            <p role="status">{portalStatus || "Checking club membership..."}</p>
+            <button type="button" className="secondary-btn" onClick={onBack}>
+              ← Return to club
+            </button>
+          </section>
+        </main>
+      );
+    }
+
     if (enteredIdentity) {
     const invitations = Object.values(
       venueSeason?.invitations || {}
@@ -5142,7 +5215,9 @@ export default function VenueEntryPage({
 
     const isClubRepresentative = effectiveRole === "club_rep";
     const isReadOnlyFieldRole =
-      isClubRepresentative || effectiveRole === "spectator";
+      isClubRepresentative ||
+      effectiveRole === "spectator" ||
+      effectiveRole === "club_member";
     const isVenueOwner = Boolean(
       currentUser?.uid && venue?.ownerUid === currentUser.uid
     );

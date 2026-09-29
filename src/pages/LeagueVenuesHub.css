@@ -351,3 +351,117 @@
     object-position: center;
   }
 }
+
+/* Field identity: warm night palette */
+.fanm-venues--live {
+  background:
+    radial-gradient(ellipse at 85% 7%, rgba(151, 72, 123, .38), transparent 38%),
+    radial-gradient(ellipse at 12% 88%, rgba(196, 124, 62, .19), transparent 42%),
+    linear-gradient(145deg, #12111e 0%, #211827 49%, #11131c 100%);
+}
+
+.fanm-venues--live .fanm-venues__shell > header,
+.fanm-venues--live .fanm-venues__panel {
+  background: linear-gradient(145deg, #27202f, #171722 78%);
+  border: 1px solid rgba(232, 179, 112, .15);
+}
+
+.fanm-venues--live .fanm-venues__intro span {
+  color: #f6d39b;
+  background: rgba(185, 112, 54, .16);
+  border-color: rgba(232, 179, 112, .36);
+}
+
+.fanm-venues--live .fanm-venues__tools,
+.fanm-venues--live .fanm-venues__tools input {
+  background: #171722;
+}
+
+.fanm-venues--live .fanm-venues__tools button[aria-pressed="true"] {
+  color: #ffe1ae;
+  background: rgba(185, 112, 54, .21);
+}
+
+.fanm-venues--live .fanm-venues__carousel > button:first-child {
+  border-color: rgba(232, 179, 112, .45);
+  background: linear-gradient(145deg, #372336, #24202f 58%, #5a372e);
+}
+
+/* Match the Club carousel's two-card mobile footprint */
+@media (max-width: 640px) {
+  .fanm-venues--live .fanm-venues__carousel {
+    gap: 12px;
+    padding: 8px 4px 20px;
+    scroll-padding-left: 4px;
+  }
+
+  .fanm-venues--live .fanm-venues__carousel > button {
+    flex: 0 0 calc((100% - 18px) / 2);
+    width: calc((100% - 18px) / 2);
+    height: 252px;
+    min-height: 252px;
+    padding: 12px;
+    border-radius: 22px;
+  }
+
+  .fanm-venues--live .fanm-venues__carousel strong {
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+
+  .fanm-venues__badge {
+    width: 72px;
+    height: 72px;
+    font-size: 30px;
+  }
+}
+
+.fanm-venues--live .fanm-venues__rotating-card {
+  overflow: hidden;
+  background: linear-gradient(155deg, #fffaf3, #f1e7df);
+  color: #332234;
+}
+
+.fanm-venues--live .fanm-venues__rotating-card .fanm-venues__rotating-face {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #332234;
+  animation: field-card-turn .55s ease-out both;
+}
+
+.fanm-venues--live .fanm-venues__rotating-card small {
+  color: #6f5965;
+}
+
+.fanm-venues__face-icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  background: #f0dfcf;
+  color: #6e3d62;
+  font-size: 2.2rem;
+}
+
+.fanm-venues--live .fanm-venues__rotating-card .fanm-venues__enter-hint {
+  margin-top: 12px;
+  color: #875c38;
+  font-size: 12px;
+}
+
+@keyframes field-card-turn {
+  from { opacity: .25; transform: perspective(600px) rotateY(-65deg); }
+  to { opacity: 1; transform: perspective(600px) rotateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fanm-venues--live .fanm-venues__rotating-face {
+    animation: none;
+  }
+}

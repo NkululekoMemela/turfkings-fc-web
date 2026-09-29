@@ -1,5 +1,6 @@
 // src/pages/LandingPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import ClubFieldPortal from "../components/ClubFieldPortal.jsx";
 import { getTeamById } from "../core/teams.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 import { GLOBAL_CAPTAIN_CODES } from "../core/accessCodes.js";
@@ -249,6 +250,8 @@ export function LandingPage({
   activeClubId = null,
   activeClubName = null,
   clubIdentity = null,
+  onEnterField,
+  onExploreFields,
   teams,
   currentMatchNo,
   currentMatch,
@@ -1761,6 +1764,14 @@ export function LandingPage({
         </div>
       </header>
 
+      {currentUser && identity?.memberId &&
+        typeof onEnterField === "function" && (
+        <ClubFieldPortal
+          clubId={activeClubId}
+          onEnterField={onEnterField}
+          onExploreFields={onExploreFields}
+        />
+      )}
       <section className="card landing-first-card">
         {canSeeCaptainStyleControls && (
           <div style={{ marginBottom: "0.9rem" }}>
