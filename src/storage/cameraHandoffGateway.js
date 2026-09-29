@@ -1,3 +1,4 @@
+import { getActiveFirebaseFunctionsBaseUrl } from "../firebaseConfig.js";
 import {
   auth,
   activeFirebaseProjectId,
@@ -8,24 +9,7 @@ function safeString(value = "") {
 }
 
 function getFunctionsBaseUrl() {
-  const explicit = safeString(
-    import.meta.env.VITE_FUNCTIONS_BASE_URL
-  );
-
-  if (explicit) {
-    return explicit.replace(/\/+$/, "");
-  }
-
-  const projectId =
-    safeString(activeFirebaseProjectId);
-
-  if (!projectId) {
-    throw new Error(
-      "[CameraHandoffGateway] Active Firebase project ID is unavailable."
-    );
-  }
-
-  return `https://us-central1-${projectId}.cloudfunctions.net`;
+  return getActiveFirebaseFunctionsBaseUrl({ allowEmulator: false });
 }
 
 async function readJsonResponse(response) {

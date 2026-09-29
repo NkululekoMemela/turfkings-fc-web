@@ -1,3 +1,4 @@
+import FirebaseEnvironmentControl from "../components/FirebaseEnvironmentControl.jsx";
 import { LEGAL } from "../legal/policies.js";
 import LegalSignature from "../components/LegalSignature.jsx";
 const CLUB_POLICY = LEGAL.club;
@@ -1562,6 +1563,10 @@ export default function HomePage_HUB({
           ) : null}
         </div>
       </section>
+
+      {isSuperAdmin(currentUser) && (
+        <FirebaseEnvironmentControl user={currentUser} />
+      )}
 
       <footer className="hub-footer-brand">
         <div className="hub-footer-logo-stage">

@@ -1,3 +1,4 @@
+import { getActiveFirebaseFunctionsBaseUrl } from "../firebaseConfig.js";
 // src/pages/PaymentPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -98,32 +99,7 @@ function derivePaymentStatus(amountDue, amountPaid, fallbackStatus = "unpaid") {
 }
 
 function getFunctionsBaseUrl() {
-  const viteEnv =
-    typeof import.meta !== "undefined" && import.meta.env
-      ? import.meta.env
-      : {};
-
-  const explicit = String(viteEnv.VITE_FUNCTIONS_BASE_URL || "").trim();
-  if (explicit) return explicit.replace(/\/$/, "");
-
-  const projectId = String(
-    viteEnv.VITE_FIREBASE_PROJECT_ID || activeFirebaseProjectId || ""
-  ).trim();
-  if (!projectId) return "";
-
-  const useFunctionsEmulator =
-    String(viteEnv.VITE_USE_FUNCTIONS_EMULATOR || "").trim() === "true";
-
-  if (
-    useFunctionsEmulator &&
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1")
-  ) {
-    return `http://127.0.0.1:5001/${projectId}/${FUNCTIONS_REGION}`;
-  }
-
-  return `https://${FUNCTIONS_REGION}-${projectId}.cloudfunctions.net`;
+  return getActiveFirebaseFunctionsBaseUrl({});
 }
 
 async function postJson(url, body) {

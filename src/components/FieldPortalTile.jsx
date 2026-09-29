@@ -80,8 +80,8 @@ export default function FieldPortalTile({
       }}>
       {clubId ? (
         <span style={{
-          width: "clamp(72px, 6vw, 96px)",
-          height: "clamp(72px, 6vw, 96px)",
+          width: "clamp(104px, 8vw, 128px)",
+          height: "clamp(104px, 8vw, 128px)",
           flexShrink: 0,
           display: "grid", placeItems: "center",
           filter: "drop-shadow(0 5px 12px rgba(0,0,0,.35))",

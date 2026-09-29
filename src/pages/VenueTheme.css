@@ -107,3 +107,10 @@
   border: 0 !important;
   box-shadow: none !important;
 }
+
+/* Field entry identity block floats on the main canvas. */
+.app-root--field .page.entry-page > header.header {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
