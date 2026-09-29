@@ -465,3 +465,40 @@
     animation: none;
   }
 }
+
+/* Use the Field appearance selected on the entry page. */
+.fanm-venues--live[data-field-theme="pearl"] {
+  background:
+    radial-gradient(ellipse at 82% 8%, rgba(202, 146, 153, .35), transparent 40%),
+    radial-gradient(ellipse at 12% 88%, rgba(205, 153, 104, .28), transparent 42%),
+    linear-gradient(145deg, #55445d 0%, #765367 52%, #936b62 100%) !important;
+}
+
+/* Wider mobile Field hub, matching the approved zoomed view. */
+@media (max-width: 640px) {
+  .fanm-venues--live {
+    padding-inline: 4px;
+    font-size: 18px;
+  }
+
+  .fanm-venues--live .fanm-venues__panel {
+    padding: 22px;
+  }
+
+  .fanm-venues--live .fanm-venues__carousel > button {
+    height: 268px;
+    min-height: 268px;
+  }
+
+  .fanm-venues--live .fanm-venues__carousel strong {
+    font-size: 15px;
+  }
+}
+
+/* Full-width Field marketing section on mobile. */
+@media (max-width: 640px) {
+  .fanm-venues--live .fanm-venues__marketing-footer {
+    width: 100% !important;
+    max-width: none !important;
+  }
+}

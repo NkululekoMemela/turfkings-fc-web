@@ -703,6 +703,26 @@ export default function VenueEntryPage({
   const [entryClubProfileOverride, setEntryClubProfileOverride] = useState(null);
   const [showEntryClubEditor, setShowEntryClubEditor] = useState(false);
   const [enteredIdentity, setEnteredIdentity] = useState(null);
+  const [fieldTheme, setFieldTheme] = useState(() => {
+    try {
+      return localStorage.getItem("field-theme") === "pearl" ? "pearl" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  useEffect(() => {
+    const root = document.querySelector(".app-root--field");
+    if (root) root.dataset.fieldTheme = fieldTheme;
+    try {
+      localStorage.setItem("field-theme", fieldTheme);
+    } catch {
+      // The theme still works when storage is unavailable.
+    }
+    return () => {
+      if (root) delete root.dataset.fieldTheme;
+    };
+  }, [fieldTheme]);
   const [portalStatus, setPortalStatus] = useState("");
 
   const [venuePage, setVenuePage] = useState("landing");
@@ -6203,6 +6223,14 @@ export default function VenueEntryPage({
           )}
         </div>
       </header>
+
+      <div className="field-theme-picker" role="group" aria-label="Field theme">
+        <span>Field appearance</span>
+        <button type="button" aria-pressed={fieldTheme === "dark"}
+          onClick={() => setFieldTheme("dark")}>Dark</button>
+        <button type="button" aria-pressed={fieldTheme === "pearl"}
+          onClick={() => setFieldTheme("pearl")}>Rosewood</button>
+      </div>
 
       <section className="card" style={heroCardStyle}>
         <div

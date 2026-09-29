@@ -33,6 +33,13 @@ export default function LeagueVenuesHub({
   ] = useState(false);
   const [query, setQuery] = useState("");
   const [view, setView] = useState("all");
+  const [fieldTheme] = useState(() => {
+    try {
+      return localStorage.getItem("field-theme") === "pearl" ? "pearl" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
 
   useEffect(() => {
     return watchLeagueVenues(
@@ -96,7 +103,7 @@ export default function LeagueVenuesHub({
   }
 
   return createPortal(
-    <main className="fanm-venues fanm-venues--live">
+    <main className="fanm-venues fanm-venues--live" data-field-theme={fieldTheme}>
       <div className="fanm-venues__shell">
         <header>
           <button

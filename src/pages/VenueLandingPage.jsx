@@ -1540,9 +1540,9 @@ export default function VenueLandingPage({
             background:
               linear-gradient(
                 90deg,
-                #633554 0%,
-                #1c1828 42%,
-                #b77949 100%
+                #1d4ed8 0%,
+                #071329 42%,
+                #22c55e 100%
               );
           }
 
@@ -1617,14 +1617,14 @@ export default function VenueLandingPage({
           >
             <defs>
               <linearGradient id="tkLandingRibbonWaveGradient" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#633554" />
-                <stop offset="42%" stopColor="#1c1828" />
-                <stop offset="100%" stopColor="#b77949" />
+                <stop offset="0%" stopColor="#1d4ed8" />
+                <stop offset="42%" stopColor="#071329" />
+                <stop offset="100%" stopColor="#22c55e" />
               </linearGradient>
               <radialGradient id="tkLandingRibbonModeGlow" cx="22%" cy="86%" r="56%">
-                <stop offset="0%" stopColor="rgba(246,196,132,0.30)" />
-                <stop offset="58%" stopColor="rgba(246,196,132,0.08)" />
-                <stop offset="100%" stopColor="rgba(246,196,132,0)" />
+                <stop offset="0%" stopColor="rgba(34,211,238,0.34)" />
+                <stop offset="58%" stopColor="rgba(34,211,238,0.08)" />
+                <stop offset="100%" stopColor="rgba(34,211,238,0)" />
               </radialGradient>
             </defs>
 
@@ -1660,7 +1660,7 @@ export default function VenueLandingPage({
             <path
               d="M 28 86 C 38 86, 43 119, 55 119 H 144 C 164 119, 171 86, 190 86"
               fill="none"
-              stroke="rgba(246,196,132,0.35)"
+              stroke="rgba(34,211,238,0.35)"
               strokeWidth="1.2"
             />
 
@@ -1682,9 +1682,9 @@ export default function VenueLandingPage({
                 x2="1200"
                 y2="0"
               >
-                <stop offset="0%" stopColor="#633554" />
-                <stop offset="42%" stopColor="#1c1828" />
-                <stop offset="100%" stopColor="#b77949" />
+                <stop offset="0%" stopColor="#1d4ed8" />
+                <stop offset="42%" stopColor="#071329" />
+                <stop offset="100%" stopColor="#22c55e" />
               </linearGradient>
             </defs>
 
@@ -1716,7 +1716,7 @@ export default function VenueLandingPage({
                 C 207 119, 216 86, 240 86
               "
               fill="none"
-              stroke="rgba(246,196,132,0.38)"
+              stroke="rgba(34,211,238,0.38)"
               strokeWidth="1.2"
               vectorEffect="non-scaling-stroke"
             />
@@ -2899,7 +2899,7 @@ export default function VenueLandingPage({
                   borderRadius: "999px",
                   background:
                     idx === photoIndex
-                      ? "linear-gradient(90deg, #22d3ee, #b77949)"
+                      ? "linear-gradient(90deg, #22d3ee, #22c55e)"
                       : "rgba(255,255,255,0.35)",
                   transition: "all 0.2s ease",
                 }}

@@ -1,18 +1,68 @@
-.field-landing-page {
-  min-height: 100dvh;
+/* The Field backdrop sits behind the existing floating page content. */
+.app-root--field {
   background:
-    radial-gradient(circle at 86% 4%, rgba(144, 71, 113, .18), transparent 32%),
-    radial-gradient(circle at 12% 85%, rgba(190, 120, 67, .12), transparent 36%),
-    #14131e;
+    radial-gradient(ellipse at 85% 7%, rgba(151, 72, 123, .38), transparent 38%),
+    radial-gradient(ellipse at 12% 88%, rgba(196, 124, 62, .19), transparent 42%),
+    linear-gradient(145deg, #12111e 0%, #211827 49%, #11131c 100%) !important;
 }
 
-.field-landing-page .landing-first-card,
-.field-landing-page .team-photo-card,
-.field-landing-page .website-card {
-  border-color: rgba(232, 179, 112, .24);
-  background: linear-gradient(155deg, #27212f, #171722 78%);
+.app-root--field .page,
+.app-root--field .venue-stats-page {
+  background: transparent !important;
 }
 
-.field-landing-page .landing-header-sticky .tk-ribbon-mode-label {
-  color: #ffe1ae;
+/* Rosewood: a brighter, richer Field canvas; cards retain their depth. */
+.app-root--field[data-field-theme="pearl"] {
+  background:
+    radial-gradient(ellipse at 82% 8%, rgba(202, 146, 153, .35), transparent 40%),
+    radial-gradient(ellipse at 12% 88%, rgba(205, 153, 104, .28), transparent 42%),
+    linear-gradient(145deg, #55445d 0%, #765367 52%, #936b62 100%) !important;
+  color: #f8f2ee;
+}
+
+.app-root--field[data-field-theme="pearl"] .page,
+.app-root--field[data-field-theme="pearl"] .venue-stats-page,
+.app-root--field[data-field-theme="pearl"] .entry-page > .header,
+.app-root--field[data-field-theme="pearl"] .venue-stats-header {
+  color: #f8f2ee;
+}
+
+.app-root--field[data-field-theme="pearl"] .card,
+.app-root--field[data-field-theme="pearl"] .venue-stats-card {
+  color: #f8fafc;
+}
+
+.app-root--field[data-field-theme="pearl"] .entry-page > .header .muted {
+  color: #eadde0;
+}
+
+.field-theme-picker {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: .45rem;
+  margin: .35rem 0 1rem;
+  color: #e5e7eb;
+  font-size: .8rem;
+}
+
+.field-theme-picker button {
+  border: 1px solid rgba(232, 179, 112, .35);
+  border-radius: 999px;
+  padding: .4rem .8rem;
+  background: #211c2b;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.field-theme-picker button[aria-pressed="true"] {
+  background: #f2c489;
+  border-color: #f2c489;
+  color: #201827;
+  font-weight: 700;
+}
+
+.app-root--field[data-field-theme="pearl"] .field-theme-picker {
+  color: #f8f2ee;
 }

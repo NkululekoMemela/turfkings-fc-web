@@ -8359,7 +8359,7 @@ export default function App() {
     <div
       className={`app-root ${showBottomNav ? "has-bottom-nav" : ""} ${
         page === PAGE_LANDING ? "app-root--landing" : ""
-      }`}
+      } ${page === PAGE_VENUE_ENTRY ? "app-root--field" : ""}`}
     >
       {Capacitor.isNativePlatform() &&
         (
