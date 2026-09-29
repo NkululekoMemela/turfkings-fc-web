@@ -51,7 +51,11 @@ export const defaultFirebaseEnvironment =
     : "staging";
 
 export const firebaseEnvironmentSwitchEnabled =
-  (import.meta.env.DEV || import.meta.env.MODE === "staging") &&
+  (
+    import.meta.env.DEV ||
+    import.meta.env.MODE === "staging" ||
+    import.meta.env.VITE_FANM_DEVELOPMENT_SITE === "true"
+  ) &&
   !Capacitor.isNativePlatform() &&
   import.meta.env.VITE_USE_FIRESTORE_EMULATOR !== "true" &&
   import.meta.env.VITE_USE_FUNCTIONS_EMULATOR !== "true";
