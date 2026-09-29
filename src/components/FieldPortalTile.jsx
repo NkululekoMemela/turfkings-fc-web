@@ -1,12 +1,45 @@
+import {
+  buildClubIdentity, DEFAULT_PLATFORM_LOGO,
+} from "../core/clubIdentity.js";
+import { readPortalClub } from "../storage/clubFieldPortalReadClient.js";
 import FieldTravelSplash from "./FieldTravelSplash.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export default function FieldPortalTile({
-  style, label, subtitle, onClick, destination, disabled = false,
+  style, label, subtitle, onClick, destination, disabled = false, clubId,
 }) {
   const [travelling, setTravelling] = useState(false);
   const actionRef = useRef(null);
+  const [returnClub, setReturnClub] = useState(null);
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLogoFailed(false);
+    setReturnClub(null);
+    if (!clubId) return undefined;
+
+    setReturnClub(buildClubIdentity({ id: clubId, name: destination }));
+    readPortalClub(clubId).then(snapshot => {
+      if (cancelled) return;
+      setLogoFailed(false);
+      setReturnClub(buildClubIdentity({
+        ...(snapshot.data() || {}),
+        id: clubId,
+      }));
+    }).catch(error => {
+      console.error("[Field return Club logo]", error);
+    });
+
+    return () => { cancelled = true; };
+  }, [clubId, destination]);
+
+  const clubLogo = returnClub?.transparentLogoUrl || returnClub?.logoUrl;
+  const showClubLogo = clubLogo && clubLogo !== DEFAULT_PLATFORM_LOGO && !logoFailed;
+  const clubInitials = String(destination || "Club")
+    .split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(word => word[0]).join("").toUpperCase();
 
   useEffect(() => {
     if (!travelling) return undefined;
@@ -45,14 +78,41 @@ export default function FieldPortalTile({
         border: "1px solid rgba(167,139,250,.65)",
         boxShadow: "inset 0 0 24px rgba(139,92,246,.12), 0 0 20px rgba(34,211,238,.1)",
       }}>
-      <span aria-hidden="true" style={{
-        width: "58px", height: "68px", borderRadius: "50%",
-        display: "grid", placeItems: "center",
-        border: "3px solid #a78bfa",
-        background: "radial-gradient(ellipse,#020617 25%,#164e63 65%,#8b5cf6)",
-        boxShadow: "0 0 14px rgba(167,139,250,.7), inset 0 0 14px #22d3ee",
-        fontSize: "28px", color: "#a5f3fc",
-      }}>🏟️</span>
+      {clubId ? (
+        <span style={{
+          width: "clamp(72px, 6vw, 96px)",
+          height: "clamp(72px, 6vw, 96px)",
+          flexShrink: 0,
+          display: "grid", placeItems: "center",
+          filter: "drop-shadow(0 5px 12px rgba(0,0,0,.35))",
+        }}>
+          {showClubLogo ? (
+            <img src={clubLogo} alt={`${destination || "Your Club"} logo`}
+              onError={() => setLogoFailed(true)}
+              style={{
+                display: "block", width: "100%", height: "100%",
+                objectFit: "contain", objectPosition: "center",
+              }} />
+          ) : (
+            <span aria-hidden="true" style={{
+              width: "100%", height: "100%", borderRadius: "20px",
+              display: "grid", placeItems: "center",
+              border: "1px solid rgba(196,181,253,.5)",
+              background: "rgba(139,92,246,.18)",
+              color: "#fff", fontSize: "32px", fontWeight: 900,
+            }}>{clubInitials}</span>
+          )}
+        </span>
+      ) : (
+        <span aria-hidden="true" style={{
+          width: "58px", height: "68px", borderRadius: "50%",
+          display: "grid", placeItems: "center",
+          border: "3px solid #a78bfa",
+          background: "radial-gradient(ellipse,#020617 25%,#164e63 65%,#8b5cf6)",
+          boxShadow: "0 0 14px rgba(167,139,250,.7), inset 0 0 14px #22d3ee",
+          fontSize: "28px", color: "#a5f3fc",
+        }}>🏟️</span>
+      )}
       <strong style={{ lineHeight: 1.3, textAlign: "center" }}>{label}</strong>
       {subtitle && <small style={{
         maxWidth: "100%", overflowWrap: "anywhere",

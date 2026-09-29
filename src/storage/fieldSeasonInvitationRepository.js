@@ -1,3 +1,6 @@
+import {
+  FIELD_GAME_FORMATS, fieldSeasonHasPlayRecords, fieldSeasonPrizeAmounts,
+} from "../core/fieldSeasonLifecycle.js";
 import { auth, db } from "../firebaseConfig.js";
 import {
   collection, doc, getDocs, query, where, runTransaction,
@@ -6,21 +9,23 @@ import {
 import { canManageClubField } from "./clubFieldMembershipRepository.js";
 
 export function fieldSeasonNeedsAnnouncement(season) {
-  return !season?.announcedAtMs &&
-    !(season?.results || []).length &&
-    !(season?.matchDayHistory || []).length &&
-    !Object.keys(season?.liveMatches || {}).length &&
-    !(season?.allEvents || []).length;
+  return !season?.announcedAtMs && !fieldSeasonHasPlayRecords(season);
 }
 
 export async function announceFieldSeason({
-  venueId, name, startsOn, entryFee, prizeMoney,
+  venueId, name, startsOn, entryFee, prizes, gameFormat,
 }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as a Field administrator.");
   const title = String(name || "").trim();
   const fee = Number(entryFee);
-  const prize = Number(prizeMoney);
+  const podium = fieldSeasonPrizeAmounts(prizes);
+  const prize = Math.round(
+    (podium.first + podium.second + podium.third) * 100
+  ) / 100;
+  if (!FIELD_GAME_FORMATS.some(([format]) => format === gameFormat)) {
+    throw new Error("Choose 5, 6, 7 or 11-a-side.");
+  }
   const date = String(startsOn || "");
   const parsedDate = new Date(`${date}T12:00:00Z`);
   if (!title || title.length > 80) throw new Error("Enter a season name.");
@@ -29,7 +34,7 @@ export async function announceFieldSeason({
       parsedDate.toISOString().slice(0, 10) !== date) {
     throw new Error("Enter a valid season start date.");
   }
-  if (entryFee === "" || prizeMoney === "" ||
+  if (entryFee === "" ||
       !Number.isFinite(fee) || !Number.isFinite(prize) ||
       fee < 0 || prize < 0 ||
       fee > 100000000 || prize > 100000000) {
@@ -105,7 +110,9 @@ export async function announceFieldSeason({
         name: title,
         startsOn: date,
         entryFee: Math.round(fee * 100) / 100,
-        prizeMoney: Math.round(prize * 100) / 100,
+        prizeMoney: prize,
+        prizes: podium,
+        gameFormat,
         currency: "ZAR",
         status: "active",
         registrationOpen: true,

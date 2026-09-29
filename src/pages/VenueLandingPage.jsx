@@ -2562,6 +2562,7 @@ export default function VenueLandingPage({
 
               {typeof onReturnToClub === "function" && (
                 <FieldPortalTile style={tileButtonStyle(isMobile)}
+                  clubId={identity?.clubId}
                   label={`Return to ${portalClubName || "your Club"}`}
                   subtitle=""
                   destination={portalClubName || "your Club"}
@@ -2830,6 +2831,7 @@ export default function VenueLandingPage({
 
               {typeof onReturnToClub === "function" && (
                 <FieldPortalTile style={tileButtonStyle(isMobile)}
+                  clubId={identity?.clubId}
                   label={`Return to ${portalClubName || "your Club"}`}
                   subtitle=""
                   destination={portalClubName || "your Club"}

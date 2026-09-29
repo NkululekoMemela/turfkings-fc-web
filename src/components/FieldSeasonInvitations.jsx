@@ -1,3 +1,7 @@
+import {
+  FIELD_GAME_FORMATS, fieldSeasonHasPlayRecords,
+} from "../core/fieldSeasonLifecycle.js";
+import { endVenueSeason } from "../storage/leagueSeasonRepository.js";
 import "./FieldSeasonInvitations.css";
 import React, { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -26,7 +30,7 @@ function SeasonDialog({ title, children, busy, onClose, premium = false }) {
   const ref = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
-    ref.current?.querySelector("input, button")?.focus();
+    ref.current?.querySelector("input, select, textarea, button")?.focus();
     return () => previous?.isConnected && previous.focus?.();
   }, []);
   return (
@@ -34,7 +38,7 @@ function SeasonDialog({ title, children, busy, onClose, premium = false }) {
       if (event.key === "Escape" && !busy) onClose();
       if (event.key === "Tab") {
         const elements = [...ref.current.querySelectorAll(
-          "input:not(:disabled), button:not(:disabled)"
+          "input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled)"
         )];
         const first = elements[0];
         const last = elements[elements.length - 1];
@@ -76,7 +80,10 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
   const [name, setName] = useState(season?.name || "Field League Season");
   const [date, setDate] = useState(season?.startsOn || "");
   const [fee, setFee] = useState("");
-  const [prize, setPrize] = useState("");
+  const [firstPrize, setFirstPrize] = useState("");
+  const [secondPrize, setSecondPrize] = useState("");
+  const [thirdPrize, setThirdPrize] = useState("");
+  const [gameFormat, setGameFormat] = useState(season?.gameFormat || "5_V_5");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(0);
@@ -98,7 +105,8 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
           try {
             setSent(await announceFieldSeason({
               venueId: venue.id, name, startsOn: date,
-              entryFee: fee, prizeMoney: prize,
+              entryFee: fee, gameFormat,
+              prizes: { first: firstPrize, second: secondPrize, third: thirdPrize },
             }));
           } catch (failure) {
             setError(failure.message || "Could not announce this season.");
@@ -109,7 +117,9 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
             ["Season name", "text", name, setName],
             ["Season start date", "date", date, setDate],
             ["Entry fee per Club (R)", "number", fee, setFee],
-            ["Prize money (R)", "number", prize, setPrize],
+            ["First place prize (R)", "number", firstPrize, setFirstPrize],
+            ["Second place prize (R)", "number", secondPrize, setSecondPrize],
+            ["Third place prize (R)", "number", thirdPrize, setThirdPrize],
           ].map(([label, type, value, setter]) => (
             <label key={label} style={{ display: "grid", gap: ".3rem", margin: ".8rem 0" }}>
               {label}
@@ -120,6 +130,15 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
                 onChange={event => setter(event.target.value)} />
             </label>
           ))}
+          <label style={{ display: "grid", gap: ".3rem", margin: ".8rem 0" }}>
+            League size
+            <select className="text-input" value={gameFormat} disabled={busy}
+              onChange={event => setGameFormat(event.target.value)}>
+              {FIELD_GAME_FORMATS.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
           <p>Club signup confirms participation. It does not collect payment.</p>
           {error && <p role="alert" className="error-text">{error}</p>}
           <div className="actions-row">
@@ -207,7 +226,19 @@ export function ClubFieldSeasonInvitation({ clubId }) {
       <h3>{season.name}</h3>
       <p>Season starts: <strong>{season.startsOn}</strong></p>
       <p>Entry fee per Club: <strong>{money(season.entryFee)}</strong></p>
-      <p>Prize money: <strong>{money(season.prizeMoney)}</strong></p>
+      <p>League size: <strong>{
+        FIELD_GAME_FORMATS.find(([value]) => value === season.gameFormat)?.[1]
+          || "To be confirmed by Field management"
+      }</strong></p>
+      {season.prizes ? (
+        <div className="field-season-prizes">
+          <p>🥇 First place: <strong>{money(season.prizes.first)}</strong></p>
+          <p>🥈 Second place: <strong>{money(season.prizes.second)}</strong></p>
+          <p>🥉 Third place: <strong>{money(season.prizes.third)}</strong></p>
+        </div>
+      ) : (
+        <p>Prize money: <strong>{money(season.prizeMoney)}</strong></p>
+      )}
       <p>Sign up your Club and start mobilising your players.
         Signup confirms participation; it does not collect payment.</p>
       {error && <p className="error-text" role="alert">{error}</p>}
@@ -226,5 +257,64 @@ export function ClubFieldSeasonInvitation({ clubId }) {
       </SeasonDialog>
       )}
     </>
+  );
+}
+
+export function FieldSeasonEndModal({ venue, season, onClose }) {
+  const cancelling = !fieldSeasonHasPlayRecords(season);
+  const [reason, setReason] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const action = cancelling ? "Cancel Season" : "End Season";
+
+  return (
+    <SeasonDialog title={action} busy={busy} onClose={onClose}>
+      <form onSubmit={async event => {
+        event.preventDefault();
+        if (busy) return;
+        setBusy(true); setError("");
+        try {
+          await endVenueSeason({
+            venueId: venue.id, seasonId: season.id,
+            mode: cancelling ? "cancel" : "complete",
+            cancellationReason: reason,
+          });
+          onClose();
+        } catch (failure) {
+          setError(failure.message || "Could not close this season.");
+        } finally { setBusy(false); }
+      }}>
+        <p>{cancelling
+          ? "No play is recorded. Cancel this season with an explanation, such as insufficient Club signups."
+          : "Archive the completed season. End every completed Match Day first."
+        }</p>
+        <p>The season remains in the archive and a new draft season is created.</p>
+        {cancelling && (
+          <label style={{ display: "grid", gap: ".4rem", margin: "1rem 0" }}>
+            Cancellation reason
+            <textarea className="text-input" rows={4}
+              value={reason} required minLength={10} maxLength={500}
+              disabled={busy} placeholder="Explain why the season is being cancelled"
+              onChange={event => setReason(event.target.value)} />
+          </label>
+        )}
+        <label style={{ display: "grid", gap: ".4rem", margin: "1rem 0" }}>
+          Type {venue.name} to confirm
+          <input className="text-input" value={confirmation}
+            disabled={busy} autoComplete="off"
+            onChange={event => setConfirmation(event.target.value)} />
+        </label>
+        {error && <p role="alert" className="error-text">{error}</p>}
+        <div className="actions-row">
+          <button type="button" className="secondary-btn"
+            disabled={busy} onClick={onClose}>Go back</button>
+          <button type="submit" className="primary-btn" disabled={
+            busy || confirmation.trim() !== venue.name?.trim()
+            || (cancelling && reason.trim().length < 10)
+          }>{busy ? "Saving…" : action}</button>
+        </div>
+      </form>
+    </SeasonDialog>
   );
 }

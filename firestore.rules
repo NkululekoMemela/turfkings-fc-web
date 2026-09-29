@@ -295,7 +295,6 @@ service cloud.firestore {
           && clubSeasonMembershipIsActive(clubId)
           && clubAdministrator(clubId);
       }
-      allow update: if clubSeasonResponse();
 
       function venueAfterCreation() {
         return getAfter(
@@ -429,13 +428,15 @@ service cloud.firestore {
                     && request.resource.data.id == venueId
                     && (
                       activeFieldAdministrator()
-                      || (
-                        activeFieldMatchOperator()
-                        && (
-                          onlyUpdatesLiveMatches()
-                          || onlyCompletesCurrentFieldMatch()
+                        ? true
+                        : (
+                          activeFieldMatchOperator()
+                            ? (
+                              onlyUpdatesLiveMatches()
+                              || onlyCompletesCurrentFieldMatch()
+                            )
+                            : clubSeasonResponse()
                         )
-                      )
                     );
 
       allow delete: if false;
@@ -504,7 +505,7 @@ service cloud.firestore {
           && request.resource.data.fixtureId is string
           && request.resource.data.action in [
             "season_created", "season_started", "match_started", "match_completed",
-            "match_day_saved", "match_day_discarded", "season_ended",
+            "match_day_saved", "match_day_discarded", "season_ended", "season_cancelled",
             "empty_season_deleted"
           ]
           && request.resource.data.label is string
@@ -518,6 +519,34 @@ service cloud.firestore {
       }
 
       match /seasons/{seasonId} {
+        function validUnplayedSeasonCancellation() {
+          let venuePath =
+            /databases/$(database)/documents/leagueVenues/$(venueId);
+          let season = get(venuePath).data.league.activeSeason;
+          let archive = request.resource.data;
+          return archive.status == "cancelled"
+            && season.id == seasonId
+            && season.status == "active"
+            && season.get("results", []).size() == 0
+            && season.get("matchDayHistory", []).size() == 0
+            && season.get("allEvents", []).size() == 0
+            && season.get("currentEvents", []).size() == 0
+            && season.get("liveMatches", {}).keys().size() == 0
+            && !exists(
+              /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
+            )
+            && archive.diff(season).affectedKeys().hasOnly([
+              "status", "registrationOpen", "cancellationReason",
+              "endedAtMs", "endedByUid"
+            ])
+            && archive.registrationOpen == false
+            && archive.cancellationReason is string
+            && archive.cancellationReason.size() >= 10
+            && archive.cancellationReason.size() <= 500
+            && archive.endedAtMs is int
+            && getAfter(venuePath).data.league.activeSeason.id != seasonId
+            && getAfter(venuePath).data.league.activeSeason.previousSeasonId == seasonId;
+        }
         allow read: if true;
         allow create: if isSignedIn()
           && !isCameraSession()
@@ -525,7 +554,10 @@ service cloud.firestore {
             /databases/$(database)/documents/leagueVenues/$(venueId)
           ).data.ownerUid == request.auth.uid
           && request.resource.data.id == seasonId
-          && request.resource.data.status == "completed"
+          && (
+            request.resource.data.status == "completed"
+            || validUnplayedSeasonCancellation()
+          )
           && request.resource.data.endedByUid == request.auth.uid;
         allow update: if false;
         allow delete: if isSignedIn()

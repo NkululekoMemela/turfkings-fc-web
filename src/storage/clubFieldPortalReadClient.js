@@ -15,3 +15,7 @@ export const readPortalMember = (clubId, memberId) =>
   getDoc(doc(portalDb, "clubs", clubId, "members", memberId));
 export const readPortalMembers = clubId =>
   getDocs(collection(portalDb, "clubs", clubId, "members"));
+
+export function readPortalClub(clubId) {
+  return getDoc(doc(portalDb, "clubs", clubId));
+}

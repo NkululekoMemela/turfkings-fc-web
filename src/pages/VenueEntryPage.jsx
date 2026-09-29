@@ -3,7 +3,9 @@ import FieldChatBoundary from "../components/FieldChatBoundary.jsx";
 import {
   readPortalMembership, readPortalMember, readPortalMembers,
 } from "../storage/clubFieldPortalReadClient.js";
-import { FieldSeasonStartModal } from "../components/FieldSeasonInvitations.jsx";
+import {
+  FieldSeasonStartModal, FieldSeasonEndModal,
+} from "../components/FieldSeasonInvitations.jsx";
 import { fieldSeasonNeedsAnnouncement } from "../storage/fieldSeasonInvitationRepository.js";
 /*
  * FIELD LEAGUE CLONE WORKBENCH
@@ -6012,67 +6014,8 @@ export default function VenueEntryPage({
       )}
 
       {showEndSeasonModal && venue?.ownerUid === currentUser?.uid && (
-        <div className="modal-backdrop">
-          <div className="modal" role="dialog" aria-modal="true"
-            aria-labelledby="field-end-season-title">
-            <h3 id="field-end-season-title">End Season</h3>
-            <p>
-              Archive this Field season and create a new active season.
-              Results and match days remain available in Previous Stats.
-            </p>
-            <p className="muted">
-              Clubs will need to be invited for the new season.
-              End every completed Match Day first.
-            </p>
-            <label htmlFor="field-end-season-confirm">
-              Type {venue?.name || "the Field name"} to confirm
-            </label>
-            <input
-              id="field-end-season-confirm"
-              className="text-input"
-              value={endSeasonConfirmText}
-              onChange={(event) =>
-                setEndSeasonConfirmText(event.target.value)
-              }
-              autoComplete="off"
-            />
-            {endSeasonError && (
-              <p className="error-text" role="alert">{endSeasonError}</p>
-            )}
-            <div className="actions-row">
-              <button type="button" className="secondary-btn"
-                disabled={endingSeason}
-                onClick={() => setShowEndSeasonModal(false)}>
-                Cancel
-              </button>
-              <button type="button" className="primary-btn"
-                disabled={
-                  endingSeason || !venueSeason?.id ||
-                  endSeasonConfirmText.trim() !== venue?.name?.trim()
-                }
-                onClick={async () => {
-                  if (endingSeason) return;
-                  setEndingSeason(true);
-                  setEndSeasonError("");
-                  try {
-                    await endVenueSeason({
-                      venueId: venue.id,
-                      seasonId: venueSeason.id,
-                    });
-                    setShowEndSeasonModal(false);
-                  } catch (error) {
-                    setEndSeasonError(
-                      error?.message || "Could not end this Field season."
-                    );
-                  } finally {
-                    setEndingSeason(false);
-                  }
-                }}>
-                {endingSeason ? "Creating…" : "End Season & Create New"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <FieldSeasonEndModal venue={venue} season={venueSeason}
+          onClose={() => setShowEndSeasonModal(false)} />
       )}
 
       {showStaffApprovalPanel && isFieldAdministrator && (

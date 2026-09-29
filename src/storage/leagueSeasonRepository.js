@@ -1,3 +1,6 @@
+import {
+  fieldSeasonHasPlayRecords, fieldSeasonCancellationReason,
+} from "../core/fieldSeasonLifecycle.js";
 import { auth, db } from "../firebaseConfig.js";
 import {
   doc,
@@ -1071,7 +1074,9 @@ export async function discardVenueMatchDay({ venueId, seasonId }) {
   });
 }
 
-export async function endVenueSeason({ venueId, seasonId }) {
+export async function endVenueSeason({
+  venueId, seasonId, mode = "complete", cancellationReason = "",
+}) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the Field Manager.");
 
@@ -1081,6 +1086,9 @@ export async function endVenueSeason({ venueId, seasonId }) {
   return runTransaction(db, async (transaction) => {
     const venueSnapshot = await transaction.get(venueRef);
     const archiveSnapshot = await transaction.get(archiveRef);
+    const currentSnapshot = await transaction.get(doc(
+      db, "leagueVenues", venueId, "seasons", seasonId, "matches", "current"
+    ));
     if (!venueSnapshot.exists()) throw new Error("Field no longer exists.");
 
     const venue = venueSnapshot.data();
@@ -1100,6 +1108,23 @@ export async function endVenueSeason({ venueId, seasonId }) {
     )) {
       throw new Error("Finish the live match before ending the season.");
     }
+
+    if (!["cancel", "complete"].includes(mode)) {
+      throw new Error("Choose whether to cancel or complete the season.");
+    }
+    const cancelling = mode === "cancel";
+    const hasPlay = fieldSeasonHasPlayRecords(season) || currentSnapshot.exists();
+    if (currentSnapshot.data()?.status === "live") {
+      throw new Error("Finish the live match before ending the season.");
+    }
+    if (cancelling && hasPlay) {
+      throw new Error("Play is recorded. This season must be ended, not cancelled.");
+    }
+    if (!cancelling && !hasPlay) {
+      throw new Error("No play is recorded. Cancel the season with an explanation.");
+    }
+    const reason = cancelling
+      ? fieldSeasonCancellationReason(cancellationReason) : "";
 
     const archivedIds = new Set(
       (season.matchDayHistory || []).flatMap((day) =>
@@ -1137,7 +1162,9 @@ export async function endVenueSeason({ venueId, seasonId }) {
 
     transaction.set(archiveRef, {
       ...season,
-      status: "completed",
+      status: cancelling ? "cancelled" : "completed",
+      registrationOpen: false,
+      ...(cancelling ? { cancellationReason: reason } : {}),
       endedAtMs: now,
       endedByUid: user.uid,
     });
@@ -1148,9 +1175,11 @@ export async function endVenueSeason({ venueId, seasonId }) {
     );
     recordVenueAction(transaction, {
       venueId, seasonId,
-      action: "season_ended",
-      label: "Season ended",
-      details: `${season.name || season.id} archived; new season: ${nextId}`,
+      action: cancelling ? "season_cancelled" : "season_ended",
+      label: cancelling ? "Season cancelled" : "Season ended",
+      details: cancelling
+        ? `${season.name || season.id}: ${reason}`.slice(0, 500)
+        : `${season.name || season.id} archived; new season: ${nextId}`,
     });
     return nextSeason;
   });
