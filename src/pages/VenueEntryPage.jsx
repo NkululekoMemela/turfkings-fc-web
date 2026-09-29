@@ -695,6 +695,8 @@ export default function VenueEntryPage({
   onVenueUpdated,
   onOpenVenueChat,
   portalClubIdentity = null,
+  onFieldNavState,
+  fieldNavTarget,
 }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [clubHeroOverride, setClubHeroOverride] = useState("");
@@ -726,6 +728,21 @@ export default function VenueEntryPage({
   const [portalStatus, setPortalStatus] = useState("");
 
   const [venuePage, setVenuePage] = useState("landing");
+
+  useEffect(() => {
+    onFieldNavState?.({
+      ready: Boolean(enteredIdentity),
+      page: venuePage,
+    });
+    return () => onFieldNavState?.({
+      ready: false,
+      page: "landing",
+    });
+  }, [enteredIdentity, venuePage, onFieldNavState]);
+
+  useEffect(() => {
+    if (fieldNavTarget?.page) setVenuePage(fieldNavTarget.page);
+  }, [fieldNavTarget]);
   const [venueSeason, setVenueSeason] = useState(null);
   useEffect(() => {
     if (!portalClubIdentity) return undefined;

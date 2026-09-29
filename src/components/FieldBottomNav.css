@@ -1,0 +1,52 @@
+.app-root--field {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
+.field-bottom-nav {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 200;
+  padding: 5px 10px calc(5px + env(safe-area-inset-bottom));
+  color: #f9eee4;
+  background: rgba(20, 19, 30, .96);
+  border-top: 1px solid rgba(232, 179, 112, .4);
+  backdrop-filter: blur(14px);
+}
+
+.field-bottom-nav__items {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  max-width: 700px;
+  margin: auto;
+  scrollbar-width: none;
+}
+
+.field-bottom-nav__items button {
+  flex: 1 0 54px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 5px 6px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.field-bottom-nav__icon {
+  font-size: 21px;
+  line-height: 1;
+}
+
+.field-bottom-nav__items button[aria-current="page"] {
+  color: #ffe1ae;
+  background: rgba(232, 179, 112, .2);
+}
+
+.field-bottom-nav__items button:focus-visible {
+  outline: 2px solid #ffe1ae;
+}

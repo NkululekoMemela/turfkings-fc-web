@@ -29,6 +29,8 @@ import LeagueVenuesHub from "./pages/LeagueVenuesHub.jsx";
 import VenueEntryPage from "./pages/VenueEntryPage.jsx";
 import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
 import BottomNav from "./components/BottomNav.jsx";
+import FieldBottomNav from "./components/FieldBottomNav.jsx";
+import LegalAcceptanceGate from "./components/LegalAcceptanceGate.jsx";
 import { buildClubIdentity, DEFAULT_CLUB_ID } from "./core/clubIdentity.js";
 import {
   MATCH_MODE as MATCH_TYPE,
@@ -2599,6 +2601,8 @@ export default function App() {
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
   const [selectedLeagueVenue, setSelectedLeagueVenue] = useState(null);
   const [portalOriginClubId, setPortalOriginClubId] = useState("");
+  const [fieldNav, setFieldNav] = useState({ ready: false, page: "landing" });
+  const [fieldNavTarget, setFieldNavTarget] = useState(null);
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
   const {
@@ -9596,6 +9600,8 @@ export default function App() {
         <>
           <VenueEntryPage
             venue={selectedLeagueVenue}
+            onFieldNavState={setFieldNav}
+            fieldNavTarget={fieldNavTarget}
             portalClubIdentity={portalOriginClubId ? {
               clubId: portalOriginClubId,
               clubName: activeClubName,
@@ -11619,6 +11625,25 @@ export default function App() {
           variant="launcher"
         />
       ) : null}
+
+      {!authLoading && authUser?.uid && page !== PAGE_WELCOME &&
+        page !== PAGE_LEAGUE_VENUES && (
+        <LegalAcceptanceGate
+          user={authUser}
+          scope={page === PAGE_VENUE_ENTRY ? "field" : "club"}
+        />
+      )}
+
+      {page === PAGE_VENUE_ENTRY &&
+        fieldNav.ready &&
+        fieldNav.page !== "live" && (
+          <FieldBottomNav
+            currentPage={fieldNav.page}
+            onNavigate={(target) =>
+              setFieldNavTarget({ page: target, id: Date.now() })
+            }
+          />
+        )}
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav

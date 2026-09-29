@@ -711,6 +711,29 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------
+    // Versioned, immutable evidence of authenticated agreement.
+    match /legalAcceptances/{uid}/records/{recordId} {
+      allow read: if isSignedIn() && !isCameraSession()
+        && request.auth.uid == uid;
+      allow create: if isSignedIn() && !isCameraSession()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly([
+          "uid", "scope", "version", "documentHash", "acceptedAt"
+        ])
+        && request.resource.data.keys().hasAll([
+          "uid", "scope", "version", "documentHash", "acceptedAt"
+        ])
+        && request.resource.data.uid == uid
+        && request.resource.data.scope in ["club", "field"]
+        && request.resource.data.version == recordId
+        && request.resource.data.version is string
+        && request.resource.data.version.size() <= 80
+        && request.resource.data.documentHash is string
+        && request.resource.data.documentHash.size() == 64
+        && request.resource.data.acceptedAt == request.time;
+      allow update, delete: if false;
+    }
+
     // TEMPORARY LEGACY BOOTSTRAP
     //
     // Preserve existing signed-in access for all non-Practice
@@ -726,7 +749,8 @@ service cloud.firestore {
                          && topLevel != "practiceControl"
                          && topLevel != "practiceSessions"
                          && topLevel != "sandboxes"
-                         && topLevel != "leagueVenues";
+                         && topLevel != "leagueVenues"
+                         && topLevel != "legalAcceptances";
     }
   }
 }

@@ -1,3 +1,7 @@
+import { LEGAL } from "../legal/policies.js";
+import LegalSignature from "./LegalSignature.jsx";
+const FIELD_POLICY = LEGAL.field;
+import { ABOUT_RELEASE } from "../content/aboutRelease.js";
 import React, {
   useMemo,
   useState,
@@ -42,18 +46,11 @@ const INFO = {
   },
   about: {
     title: "About 5 Asides Near Me",
-    body: [
-      "5 Asides Near Me connects Fields, clubs, players and match officials.",
-      "It helps local football communities discover one another and manage their football in one place.",
-    ],
+    body: ABOUT_RELEASE,
   },
   terms: {
-    title: "Terms & Privacy",
-    body: [
-      "Only authorised people should register or administer a Field.",
-      "Personal and operational information must be used only for legitimate platform activities.",
-      "Field access can be reviewed or removed when permissions are no longer appropriate.",
-    ],
+    title: FIELD_POLICY.title,
+    body: FIELD_POLICY.sections.map(([heading, detail]) => `${heading}: ${detail}`),
   },
 };
 
@@ -453,12 +450,18 @@ export default function VenueMarketingFooter() {
             <h2>{infoModal.title}</h2>
 
             <div className="hub-info-modal__body">
-              {infoModal.body.map(
-                (item, index) => (
-                  <p key={index}>{item}</p>
-                )
-              )}
+              {infoModal.body === ABOUT_RELEASE ? (
+                <ul>
+                  {ABOUT_RELEASE.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              ) : infoModal.body.map((item, index) => (
+                <p key={index}>{item}</p>
+              ))}
             </div>
+            {infoModal === INFO.terms &&
+              <LegalSignature scope="field" />}
           </section>
         </div>
       ) : null}
