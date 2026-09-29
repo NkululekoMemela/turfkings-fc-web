@@ -84,8 +84,8 @@
 .app-root--field .tk-ribbon-wave-svg stop:last-child {
   stop-color: var(--field-ribbon-end) !important;
 }
-.app-root--field .page > .header,
-.app-root--field .page > header,
+.app-root--field .page:not(.field-landing-page) > .header,
+.app-root--field .page:not(.field-landing-page) > header,
 .app-root--field .venue-stats-header {
   background: linear-gradient(
     110deg, var(--field-ribbon-start), var(--field-ribbon-end)
@@ -98,4 +98,12 @@
     110deg, var(--field-ribbon-start), var(--field-ribbon-end)
   ) !important;
   color: #fff !important;
+}
+
+/* Landing profile information floats on the main Field canvas. */
+.app-root--field .field-landing-page > .header,
+.app-root--field .field-landing-page > header {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
