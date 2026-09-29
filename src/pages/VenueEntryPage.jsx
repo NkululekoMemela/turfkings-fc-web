@@ -23,6 +23,7 @@ import {
   buildVenueRefereeController,
 } from "../core/venueRefereeController.js";
 import VenueLeagueStatsPage from "./VenueLeagueStatsPage.jsx";
+import VenueActionLogPage from "./VenueActionLogPage.jsx";
 import VenueLeagueFormationsPage from "./VenueLeagueFormationsPage.jsx";
 import { NewsPage as VenueLeagueNewsPage } from "./VenueLeagueNewsPage.jsx";
 import VenueLeagueVideoHighlightsPage from "./VenueLeagueVideoHighlightsPage.jsx";
@@ -32,6 +33,7 @@ import {
   prepareVenueSeasonForMatch,
   watchVenueSeason,
   archiveVenueMatchDay,
+  discardVenueMatchDay,
   endVenueSeason,
 } from "../storage/leagueSeasonRepository.js";
 import {
@@ -706,6 +708,10 @@ export default function VenueEntryPage({
   const [endingMatchDay, setEndingMatchDay] = useState(false);
   const [endMatchDayError, setEndMatchDayError] = useState("");
   const [confirmEndMatchDay, setConfirmEndMatchDay] = useState(false);
+  const [showDiscardFieldDayConfirm, setShowDiscardFieldDayConfirm] =
+    useState(false);
+  const [discardFieldDayText, setDiscardFieldDayText] = useState("");
+  const [discardingFieldDay, setDiscardingFieldDay] = useState(false);
   const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
   const [endingSeason, setEndingSeason] = useState(false);
   const [endSeasonError, setEndSeasonError] = useState("");
@@ -5260,6 +5266,11 @@ export default function VenueEntryPage({
       );
     }
 
+    if (venuePage === "actionLog") {
+      return <VenueActionLogPage venueId={venue?.id}
+        onBack={() => setVenuePage("landing")} />;
+    }
+
     if (venuePage === "stats") {
       return (
         <VenueLeagueStatsPage
@@ -5291,6 +5302,21 @@ export default function VenueEntryPage({
       );
     }
 
+    const archivedFixtureIds = new Set(
+      (venueSeason?.matchDayHistory || []).flatMap((day) =>
+        (day.results || []).map((result) =>
+          String(result.fixtureId || result.id || "")
+        )
+      )
+    );
+    const currentDayMatchNo = 1 + (venueSeason?.results || [])
+      .filter((result) =>
+        result?.status === "completed" &&
+        !archivedFixtureIds.has(
+          String(result.fixtureId || result.id || "")
+        )
+      ).length;
+
     return (
       <>
       <VenueLandingPage
@@ -5298,9 +5324,7 @@ export default function VenueEntryPage({
         activeClubId={venue?.id}
         activeClubName={venue?.name}
         teams={teams}
-        currentMatchNo={
-          Number(venueSeason?.currentMatchNo) || 1
-        }
+        currentMatchNo={currentDayMatchNo}
         currentMatch={currentMatch}
         results={venueSeason?.results || []}
         streaks={venueSeason?.streaks || {}}
@@ -5566,6 +5590,11 @@ export default function VenueEntryPage({
               }
             : undefined
         }
+        onOpenActionLog={
+          isFieldAdministrator || canOperateFieldMatch
+            ? () => setVenuePage("actionLog")
+            : undefined
+        }
         pendingFieldStaffCount={
           pendingStaffRequests.length
         }
@@ -5580,7 +5609,9 @@ export default function VenueEntryPage({
       {showEndMatchDayModal && isFieldAdministrator && (
         <div className="modal-backdrop">
           <div className="modal" role="dialog" aria-modal="true"
-            aria-labelledby="field-end-day-title">
+            aria-labelledby="field-end-day-title"
+            style={{ width: "min(95vw, 780px)", maxWidth: "780px",
+              maxHeight: "92vh", overflowY: "auto" }}>
             <h3 id="field-end-day-title">End Match Day</h3>
             <p>
               Review the completed matches, then save this match day to the
@@ -5634,7 +5665,20 @@ export default function VenueEntryPage({
             {endMatchDayError && (
               <p className="error-text" role="alert">{endMatchDayError}</p>
             )}
-            <div className="actions-row">
+            <div className="actions-row" style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+              gap: "0.75rem",
+            }}>
+              <button type="button" className="secondary-btn"
+                style={{ background: "#a91f27", color: "#fff" }}
+                disabled={endingMatchDay}
+                onClick={() => {
+                  setDiscardFieldDayText("");
+                  setShowDiscardFieldDayConfirm(true);
+                }}>
+                Delete day's games
+              </button>
               <button type="button" className="secondary-btn"
                 disabled={endingMatchDay}
                 onClick={() => {
@@ -5644,6 +5688,13 @@ export default function VenueEntryPage({
                 {confirmEndMatchDay ? "Back" : "Cancel"}
               </button>
               <button type="button" className="primary-btn"
+                style={{
+                  gridColumn: "1 / -1",
+                  width: "100%",
+                  minWidth: 0,
+                  whiteSpace: "normal",
+                  overflowWrap: "anywhere",
+                }}
                 disabled={endingMatchDay}
                 onClick={async () => {
                   if (endingMatchDay) return;
@@ -5672,6 +5723,73 @@ export default function VenueEntryPage({
                   : confirmEndMatchDay
                     ? "Confirm & Save to server"
                     : "Review & Continue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDiscardFieldDayConfirm &&
+        venue?.ownerUid === currentUser?.uid && (
+        <div className="modal-backdrop" style={{ zIndex: 10060 }}>
+          <div className="modal" role="dialog" aria-modal="true"
+            aria-labelledby="field-discard-day-title"
+            style={{ width: "min(92vw, 520px)" }}>
+            <h3 id="field-discard-day-title">
+              Delete day's games
+            </h3>
+            <p>
+              This removes unarchived completed Field games, their goals
+              and events, and restores their fixtures to scheduled.
+              Earlier archived match days remain saved.
+            </p>
+            <p className="error-text">
+              Use this only for test games. To keep real results, go back
+              and choose Save to server & clear.
+            </p>
+            <label htmlFor="field-discard-confirm">
+              Type DELETE to confirm
+            </label>
+            <input id="field-discard-confirm" className="text-input"
+              value={discardFieldDayText}
+              onChange={(event) =>
+                setDiscardFieldDayText(event.target.value)}
+              autoComplete="off" />
+            {endMatchDayError && (
+              <p className="error-text" role="alert">
+                {endMatchDayError}
+              </p>
+            )}
+            <div className="actions-row">
+              <button type="button" className="secondary-btn"
+                disabled={discardingFieldDay}
+                onClick={() => setShowDiscardFieldDayConfirm(false)}>
+                Back
+              </button>
+              <button type="button" className="primary-btn"
+                style={{ background: "#a91f27" }}
+                disabled={discardingFieldDay ||
+                  discardFieldDayText !== "DELETE"}
+                onClick={async () => {
+                  setDiscardingFieldDay(true);
+                  setEndMatchDayError("");
+                  try {
+                    await discardVenueMatchDay({
+                      venueId: venue.id,
+                      seasonId: venueSeason.id,
+                    });
+                    setShowDiscardFieldDayConfirm(false);
+                    setShowEndMatchDayModal(false);
+                  } catch (error) {
+                    setEndMatchDayError(
+                      error?.message || "Could not delete these games."
+                    );
+                  } finally {
+                    setDiscardingFieldDay(false);
+                  }
+                }}>
+                {discardingFieldDay
+                  ? "Deleting…" : "Confirm delete"}
               </button>
             </div>
           </div>

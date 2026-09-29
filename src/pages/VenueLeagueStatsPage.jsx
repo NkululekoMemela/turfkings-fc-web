@@ -17,6 +17,7 @@ import { buildPlayerEventStats } from "../core/playerEventStats.js";
 import {
   correctVenueRecordedGoal,
   deleteVenueRecordedMatch,
+  deleteCurrentEmptyVenueSeason,
 } from "../storage/leagueSeasonRepository.js";
 import { loadVenueLeaguePlayers } from "../storage/venueLiveMatchRepository.js";
 import "./VenueLeagueStatsPage.css";
@@ -60,6 +61,8 @@ export default function VenueLeagueStatsPage({
   const [seasonMode, setSeasonMode] = useState("current");
   const [archivedSeasons, setArchivedSeasons] = useState([]);
   const [selectedArchiveId, setSelectedArchiveId] = useState("");
+  const [deletingEmptySeason, setDeletingEmptySeason] = useState(false);
+  const [deleteSeasonError, setDeleteSeasonError] = useState("");
 
   useEffect(() => {
     if (!venue?.id) {
@@ -188,21 +191,25 @@ export default function VenueLeagueStatsPage({
   }, [clubs]);
 
   const visibleResults = useMemo(() => {
-    if (viewMode === "season") return results;
+    if (viewMode === "season" || seasonMode === "previous") {
+      return results;
+    }
 
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
-    const end = new Date(start);
-    end.setDate(end.getDate() + 7);
+    const archivedFixtureIds = new Set(
+      (season?.matchDayHistory || []).flatMap((day) =>
+        (day.results || []).map((result) =>
+          String(result.fixtureId || result.id || "")
+        )
+      )
+    );
 
-    return results.filter((result) => {
-      const when = Number(result.completedAtMs);
-      return Number.isFinite(when) && when >= start.getTime()
-        && when < end.getTime();
-    });
-  }, [results, seasonMode, viewMode]);
+    return results.filter((result) =>
+      result?.status === "completed" &&
+      !archivedFixtureIds.has(
+        String(result.fixtureId || result.id || "")
+      )
+    );
+  }, [results, season?.matchDayHistory, seasonMode, viewMode]);
 
   const standings = useMemo(
     () => buildVenueLeagueStandings({
@@ -334,7 +341,10 @@ export default function VenueLeagueStatsPage({
             className={
               seasonMode === "previous" ? "is-active" : ""
             }
-            onClick={() => setSeasonMode("previous")}
+            onClick={() => {
+              setSeasonMode("previous");
+              setViewMode("season");
+            }}
           >
             Previous
           </button>
@@ -351,6 +361,57 @@ export default function VenueLeagueStatsPage({
             </select>
           )}
         </div>
+
+      {canCorrectResults &&
+        seasonMode === "current" &&
+        currentSeason?.status === "active" &&
+        archivedSeasons.some((item) =>
+          item.id === currentSeason.previousSeasonId
+        ) &&
+        ![
+          "clubIds", "fixtures", "results", "allEvents",
+          "matchDayHistory", "currentEvents",
+        ].some((key) => (currentSeason[key] || []).length > 0) &&
+        !Object.keys(currentSeason.invitations || {}).length &&
+        !Object.keys(currentSeason.liveMatches || {}).length && (
+          <div className="venue-stats-danger-row">
+            <button
+              type="button"
+              className="tk-danger-btn"
+              disabled={deletingEmptySeason}
+              onClick={async () => {
+                if (!window.confirm(
+                  "Delete this empty current season and restore the previous season? The Field will return to the previous season."
+                )) return;
+                setDeletingEmptySeason(true);
+                setDeleteSeasonError("");
+                try {
+                  await deleteCurrentEmptyVenueSeason({
+                    venueId: venue.id,
+                    seasonId: currentSeason.id,
+                  });
+                  setSeasonMode("current");
+                  setViewMode("season");
+                } catch (error) {
+                  setDeleteSeasonError(
+                    error?.message || "Could not restore the previous season."
+                  );
+                } finally {
+                  setDeletingEmptySeason(false);
+                }
+              }}
+            >
+              {deletingEmptySeason
+                ? "Restoring previous season…"
+                : "Delete current empty season"}
+            </button>
+            {deleteSeasonError && (
+              <p className="error-text" role="alert">
+                {deleteSeasonError}
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="venue-stats-card">
@@ -363,6 +424,7 @@ export default function VenueLeagueStatsPage({
               viewMode === "current" ? "is-active" : ""
             }
             onClick={() => setViewMode("current")}
+            disabled={seasonMode === "previous"}
           >
             Current week
           </button>
@@ -398,9 +460,11 @@ export default function VenueLeagueStatsPage({
         <h2>
           {activeTabLabel}
           {activeTab === "teams"
-            ? seasonMode === "current"
-              ? " — Current Season"
-              : " — Previous Season"
+            ? seasonMode === "previous"
+              ? " — Previous Season"
+              : viewMode === "current"
+                ? " — Current Week"
+                : " — Current Season"
             : ""}
         </h2>
 

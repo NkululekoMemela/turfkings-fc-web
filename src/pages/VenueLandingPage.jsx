@@ -315,6 +315,7 @@ export default function VenueLandingPage({
     "Only captains or admin can start a match.",
   hasRecordedMatchDayState = false,
   onManageFieldStaff,
+  onOpenActionLog,
   pendingFieldStaffCount = 0,
   onReady,
 }) {
@@ -1811,6 +1812,24 @@ export default function VenueLandingPage({
       </header>
 
       <section className="card landing-first-card">
+        {!canSeeCaptainStyleControls &&
+          typeof onOpenActionLog === "function" && (
+          <div style={{ marginBottom: "0.9rem" }}>
+            <button type="button" className="secondary-btn"
+              onClick={() => setShowSettingsPanel((value) => !value)}
+              aria-expanded={showSettingsPanel}
+              style={{ width: "100%", textAlign: "left" }}>
+              ⚙️ Match Settings ▾
+            </button>
+            {showSettingsPanel && (
+              <button type="button" className="secondary-btn"
+                onClick={onOpenActionLog}
+                style={{ width: "100%", marginTop: "0.6rem" }}>
+                📋 Action Log
+              </button>
+            )}
+          </div>
+        )}
         {canSeeCaptainStyleControls && (
           <div style={{ marginBottom: "0.9rem" }}>
             <button
@@ -1920,6 +1939,13 @@ export default function VenueLandingPage({
                 >
                   {pendingFieldStaffCount}
                 </span>
+              </button>
+            )}
+
+            {typeof onOpenActionLog === "function" && (
+              <button type="button" className="secondary-btn"
+                onClick={onOpenActionLog}>
+                📋 Action Log
               </button>
             )}
 

@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, runTransaction, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 
 const venueId = "wynberg-mm-rule-test";
 const seasonId = "season-rule-test";
@@ -155,6 +155,105 @@ test("referee writes, spectator reads, outsider is denied", async () => {
   await assertSucceeds(deleteDoc(doc(ownerDb, ...matchPath)));
   assert.equal(
     (await getDoc(doc(spectatorDb, ...matchPath))).exists(),
+    false
+  );
+});
+
+test("Field Action Log is staff-readable and immutable", async () => {
+  const ownerDb = env.authenticatedContext("owner").firestore();
+  const refereeDb = env.authenticatedContext("referee").firestore();
+  const outsiderDb = env.authenticatedContext("outsider").firestore();
+  const path = [...venuePath, "actionLog", "test-entry"];
+  const entry = {
+    venueId,
+    seasonId,
+    fixtureId,
+    action: "match_started",
+    label: "Match started",
+    details: "Test fixture; referee UID: referee",
+    actorUid: "referee",
+    actorEmail: "",
+    actorName: "Test Referee",
+    at: serverTimestamp(),
+  };
+
+  await assertFails(getDoc(doc(outsiderDb, ...path)));
+  await assertSucceeds(setDoc(doc(refereeDb, ...path), entry));
+  await assertSucceeds(getDoc(doc(ownerDb, ...path)));
+  await assertSucceeds(getDoc(doc(refereeDb, ...path)));
+  await assertFails(updateDoc(doc(refereeDb, ...path), { details: "Changed" }));
+  await assertFails(deleteDoc(doc(ownerDb, ...path)));
+});
+
+test("empty Field season rollback restores only its archived predecessor", async () => {
+  const rollbackId = "rollback-rule-test";
+  const previousId = "previous-rule-test";
+  const newId = "new-rule-test";
+  const venueRefPath = ["leagueVenues", rollbackId];
+  const archivePath = [...venueRefPath, "seasons", previousId];
+  const ownerDb = env.authenticatedContext("owner").firestore();
+  const outsiderDb = env.authenticatedContext("outsider").firestore();
+
+  const previous = {
+    id: previousId,
+    status: "completed",
+    endedByUid: "owner",
+    results: [{ fixtureId: "saved-match" }],
+  };
+  const current = {
+    id: newId,
+    status: "active",
+    previousSeasonId: previousId,
+    clubIds: [],
+    fixtures: [],
+    results: [{ fixtureId: "unsaved-match" }],
+    allEvents: [],
+    matchDayHistory: [],
+    liveMatches: {},
+    invitations: {},
+  };
+
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, ...venueRefPath), {
+      id: rollbackId,
+      ownerUid: "owner",
+      adminUids: ["owner"],
+      league: { activeSeason: current },
+    });
+    await setDoc(doc(db, ...archivePath), previous);
+  });
+
+  async function rollback(db) {
+    const venueRef = doc(db, ...venueRefPath);
+    const archiveRef = doc(db, ...archivePath);
+    return runTransaction(db, async (tx) => {
+      tx.update(venueRef, {
+        "league.activeSeason": {
+          ...previous,
+          status: "active",
+        },
+      });
+      tx.delete(archiveRef);
+    });
+  }
+
+  await assertFails(deleteDoc(doc(ownerDb, ...archivePath)));
+  await assertFails(rollback(ownerDb));
+  await assertFails(rollback(outsiderDb));
+
+  await assertSucceeds(updateDoc(doc(ownerDb, ...venueRefPath), {
+    "league.activeSeason.results": [],
+  }));
+  await assertSucceeds(rollback(ownerDb));
+
+  assert.equal(
+    (await getDoc(doc(ownerDb, ...venueRefPath)))
+      .data().league.activeSeason.id,
+    previousId
+  );
+  assert.equal(
+    (await getDoc(doc(ownerDb, ...archivePath))).exists(),
     false
   );
 });

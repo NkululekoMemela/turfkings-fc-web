@@ -471,3 +471,14 @@
   background: rgba(69, 10, 10, 0.45);
   color: #fecaca;
 }
+
+.venue-stats-danger-row {
+  margin-top: 0.85rem;
+}
+
+.venue-stats-danger-row .tk-danger-btn {
+  max-width: 100%;
+  padding: 0.42rem 0.7rem;
+  font-size: 0.8rem;
+  white-space: normal;
+}

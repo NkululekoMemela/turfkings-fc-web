@@ -218,6 +218,60 @@ service cloud.firestore {
           );
       }
 
+      match /actionLog/{entryId} {
+        function venueDoc() {
+          return get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data;
+        }
+
+        function activeStaff() {
+          let staffPath =
+            /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid);
+          return isSignedIn()
+            && !isCameraSession()
+            && (
+              venueDoc().ownerUid == request.auth.uid
+              || (
+                exists(staffPath)
+                && get(staffPath).data.status == "active"
+              )
+            );
+        }
+
+        allow read: if activeStaff();
+
+        allow create: if activeStaff()
+          && request.resource.data.keys().hasOnly([
+            "venueId", "seasonId", "fixtureId", "action", "label",
+            "details", "actorUid", "actorEmail", "actorName", "at"
+          ])
+          && request.resource.data.keys().hasAll([
+            "venueId", "seasonId", "fixtureId", "action", "label",
+            "details", "actorUid", "actorEmail", "actorName", "at"
+          ])
+          && request.resource.data.venueId == venueId
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.actorEmail ==
+            request.auth.token.get("email", "")
+          && request.resource.data.at == request.time
+          && request.resource.data.seasonId is string
+          && request.resource.data.fixtureId is string
+          && request.resource.data.action in [
+            "season_created", "season_started", "match_started", "match_completed",
+            "match_day_saved", "match_day_discarded", "season_ended",
+            "empty_season_deleted"
+          ]
+          && request.resource.data.label is string
+          && request.resource.data.label.size() <= 100
+          && request.resource.data.details is string
+          && request.resource.data.details.size() <= 500
+          && request.resource.data.actorName is string
+          && request.resource.data.actorName.size() <= 100;
+
+        allow update, delete: if false;
+      }
+
       match /seasons/{seasonId} {
         allow read: if true;
         allow create: if isSignedIn()
@@ -228,7 +282,50 @@ service cloud.firestore {
           && request.resource.data.id == seasonId
           && request.resource.data.status == "completed"
           && request.resource.data.endedByUid == request.auth.uid;
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isSignedIn()
+          && !isCameraSession()
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.ownerUid == request.auth.uid
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.previousSeasonId == seasonId
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("clubIds", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("fixtures", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("results", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("allEvents", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("matchDayHistory", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("currentEvents", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("invitations", {}).keys().size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("liveMatches", {}).keys().size() == 0
+          && !exists(
+            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(get(
+              /databases/$(database)/documents/leagueVenues/$(venueId)
+            ).data.league.activeSeason.id)/matches/current
+          )
+          && getAfter(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.id == seasonId
+          && getAfter(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.status == "active";
       }
 
       match /seasons/{seasonId}/matches/{matchId} {
