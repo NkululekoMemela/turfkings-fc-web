@@ -361,3 +361,255 @@
     font-size: clamp(29px, 7.5vw, 46px);
   }
 }
+
+
+/* Welcome destinations and nearby club picker */
+#fanm-welcome-hero .fanm-hero__action-icon {
+  flex: 0 0 44px;
+  width: 44px;
+  font-size: 20px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+#fanm-welcome-hero .fanm-nearby-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(4, 13, 28, .78);
+}
+
+#fanm-welcome-hero .fanm-nearby-dialog {
+  width: min(960px, 100%);
+  max-height: min(90dvh, 900px);
+  overflow: auto;
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px solid rgba(181, 245, 208, .35);
+  border-radius: 24px;
+  background: #102638;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .5);
+}
+
+#fanm-welcome-hero .fanm-nearby-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+#fanm-welcome-hero .fanm-nearby-header h2 { margin: 0 0 6px; }
+#fanm-welcome-hero .fanm-nearby-header p { margin: 0; color: #c9dbe0; }
+#fanm-welcome-hero .fanm-nearby-header button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #71929a;
+  border-radius: 50%;
+  background: transparent;
+  color: white;
+  font-size: 25px;
+  cursor: pointer;
+}
+#fanm-welcome-hero .fanm-nearby-intro button {
+  margin-top: 10px;
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 12px;
+  background: #b9efc6;
+  color: #17382e;
+  font-weight: 800;
+  cursor: pointer;
+}
+#fanm-welcome-hero .fanm-nearby-grid {
+  display: grid;
+  grid-template-rows: repeat(2, 290px);
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 16px) / 2);
+  gap: 16px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: x mandatory;
+  padding: 4px 4px 18px;
+}
+#fanm-welcome-hero .fanm-nearby-grid .hub-club-card {
+  scroll-snap-align: start;
+}
+
+#fanm-welcome-hero .fanm-nearby-grid .hub-club-card {
+  width: 100%;
+  min-width: 0;
+  min-height: 290px;
+}
+#fanm-welcome-hero .fanm-nearby-grid .hub-club-card__menu-wrap {
+  display: none;
+}
+
+#fanm-welcome-hero .fanm-nearby-controls {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 16px;
+}
+#fanm-welcome-hero .fanm-nearby-controls input {
+  width: 100%;
+  accent-color: #b9efc6;
+}
+#fanm-welcome-hero .fanm-nearby-controls small {
+  color: #c9dbe0;
+  line-height: 1.4;
+}
+
+
+#fanm-welcome-hero .fanm-nearby-loading {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  padding: 24px 12px 30px;
+  text-align: center;
+}
+#fanm-welcome-hero .fanm-nearby-loading__pitch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 62px;
+  overflow: hidden;
+  border: 1px solid rgba(185, 239, 198, .55);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #174a45, #113342);
+  box-shadow: 0 0 25px rgba(78, 216, 167, .15);
+}
+#fanm-welcome-hero .fanm-nearby-loading__pitch::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(231, 255, 246, .4);
+  border-radius: 3px;
+}
+#fanm-welcome-hero .fanm-nearby-loading__pitch::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  bottom: 8px;
+  border-left: 1px solid rgba(231, 255, 246, .4);
+}
+#fanm-welcome-hero .fanm-nearby-loading__pitch span {
+  z-index: 1;
+  font-size: 23px;
+  animation: fanm-ball-search 1.5s ease-in-out infinite alternate;
+}
+#fanm-welcome-hero .fanm-nearby-loading small {
+  max-width: 280px;
+  color: #bbd1d5;
+}
+@keyframes fanm-ball-search {
+  from { transform: translateX(-22px) rotate(-25deg); }
+  to { transform: translateX(22px) rotate(25deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #fanm-welcome-hero .fanm-nearby-loading__pitch span {
+    animation: none;
+  }
+}
+
+
+#fanm-welcome-hero .fanm-nearby-accuracy-warning {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(251, 191, 36, .45);
+  border-radius: 12px;
+  background: rgba(120, 72, 19, .22);
+  color: #ffe7b7;
+  font-size: 12px;
+  line-height: 1.4;
+}
+#fanm-welcome-hero .fanm-nearby-accuracy-warning button {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: #ffe7b7;
+  text-decoration: underline;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+@media (max-width: 560px) {
+  #fanm-welcome-hero .fanm-nearby-dialog {
+    width: 100%;
+    padding: 12px;
+  }
+  #fanm-welcome-hero .fanm-nearby-grid {
+    gap: 8px;
+    grid-auto-columns: calc((100% - 8px) / 2);
+  }
+  #fanm-welcome-hero .fanm-nearby-grid .hub-club-card {
+    min-height: 290px;
+  }
+  #fanm-welcome-hero .fanm-nearby-grid .tk-trust-face {
+    padding-inline: 5px;
+  }
+  #fanm-welcome-hero .fanm-nearby-grid .tk-trust-face__info {
+    font-size: 10px;
+  }
+}
+
+
+/* Each horizontal page contains a 2×2 club grid. */
+#fanm-welcome-hero .fanm-nearby-dialog {
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+#fanm-welcome-hero .fanm-nearby-grid {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  padding: 4px 4px 22px;
+}
+#fanm-welcome-hero .fanm-nearby-grid__page {
+  flex: 0 0 calc(100% - 4px);
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 310px;
+  gap: 16px;
+  scroll-snap-align: start;
+}
+#fanm-welcome-hero .fanm-nearby-grid__page .hub-club-card,
+#fanm-welcome-hero .fanm-nearby-grid__page .hub-club-card__cube {
+  width: 100%;
+  height: 310px;
+  min-height: 310px;
+}
+@media (max-width: 560px) {
+  #fanm-welcome-hero .fanm-nearby-grid__page {
+    gap: 10px;
+  }
+  #fanm-welcome-hero .fanm-nearby-grid__page .hub-club-card,
+  #fanm-welcome-hero .fanm-nearby-grid__page .hub-club-card__cube {
+    height: 290px;
+    min-height: 290px;
+  }
+}
+
+/* Nearby picker: green pitch and white markings */
+#fanm-welcome-hero .fanm-nearby-loading__pitch {
+  border-color: #fff;
+  background:
+    linear-gradient(#fff, #fff) left 8px center / 8px 2px no-repeat,
+    linear-gradient(#fff, #fff) right 8px center / 8px 2px no-repeat,
+    repeating-linear-gradient(90deg, #16853e 0 20px, #117738 20px 40px);
+  box-shadow: 0 0 25px rgba(34, 197, 94, .25);
+}
+
+#fanm-welcome-hero .fanm-nearby-loading__pitch::before {
+  border-color: #fff;
+}
+
+#fanm-welcome-hero .fanm-nearby-loading__pitch::after {
+  border-left-color: #fff;
+}

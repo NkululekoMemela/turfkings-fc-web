@@ -9573,7 +9573,11 @@ export default function App() {
         <WelcomePage
           onExploreClubs={() => setPage(PAGE_HOME)}
           onExploreLeagues={() => setPage(PAGE_LEAGUE_VENUES)}
-          onFindClub={() => setPage(PAGE_HOME)}
+          onJoinNearbyClub={(club) => {
+            setSelectedHomeClub(buildClubIdentity(club));
+            setEntryPageIntent("join-club");
+            setPage(PAGE_ENTRY);
+          }}
         />
       )}
 

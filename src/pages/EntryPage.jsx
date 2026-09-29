@@ -1259,7 +1259,13 @@ export function EntryPage({
       setShowNewPlayerForm(true);
       setNewReqError("");
       setNewReqStatus("");
+      const timer = window.setTimeout(() => {
+        document.getElementById("entry-join-request-panel")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 180);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [entryPageIntent]);
   const [newFullName, setNewFullName] = useState("");
   const [newEmail, setNewEmail] = useState("");

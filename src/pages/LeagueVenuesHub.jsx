@@ -150,15 +150,18 @@ export default function LeagueVenuesHub({
               </button>
             </div>
 
-            <input
-              type="search"
-              value={query}
-              onChange={(event) =>
-                setQuery(event.target.value)
-              }
-              placeholder="Search Field, suburb or city"
-              aria-label="Search Fields"
-            />
+            <label className="fanm-venues__search">
+              <input
+                type="search"
+                value={query}
+                onChange={(event) =>
+                  setQuery(event.target.value)
+                }
+                placeholder="Search Field, suburb or city"
+                aria-label="Search Fields"
+              />
+              <span aria-hidden="true">🔎</span>
+            </label>
           </div>
 
           {loading ? (
