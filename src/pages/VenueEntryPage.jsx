@@ -1,3 +1,10 @@
+import FieldTravelSplash from "../components/FieldTravelSplash.jsx";
+import FieldChatBoundary from "../components/FieldChatBoundary.jsx";
+import {
+  readPortalMembership, readPortalMember, readPortalMembers,
+} from "../storage/clubFieldPortalReadClient.js";
+import { FieldSeasonStartModal } from "../components/FieldSeasonInvitations.jsx";
+import { fieldSeasonNeedsAnnouncement } from "../storage/fieldSeasonInvitationRepository.js";
 /*
  * FIELD LEAGUE CLONE WORKBENCH
  *
@@ -77,6 +84,7 @@ import {
 } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
 import { VenueLeagueChatWidget } from "../components/VenueLeagueChat/VenueLeagueChatWidget.jsx";
+import VenueFieldChatPage from "./VenueFieldChatPage.jsx";
 import {
   findCandidatePlatformIdentity,
 } from "../storage/platformIdentityRepository.js";
@@ -726,6 +734,7 @@ export default function VenueEntryPage({
     };
   }, [fieldTheme]);
   const [portalStatus, setPortalStatus] = useState("");
+  const [portalRetry, setPortalRetry] = useState(0);
 
   const [venuePage, setVenuePage] = useState("landing");
 
@@ -744,61 +753,115 @@ export default function VenueEntryPage({
     if (fieldNavTarget?.page) setVenuePage(fieldNavTarget.page);
   }, [fieldNavTarget]);
   const [venueSeason, setVenueSeason] = useState(null);
+
   useEffect(() => {
-    if (!portalClubIdentity) return undefined;
+    if (!portalClubIdentity || !venue?.id) return undefined;
     let cancelled = false;
+    let generation = 0;
+    let timer;
     setEnteredIdentity(null);
-    setPortalStatus("Checking club membership...");
+    setPortalStatus("Connecting your Club account...");
 
-    async function enterFromClub() {
-      if (!venueSeason?.id) return;
-      const user = auth.currentUser;
-      const clubId = String(portalClubIdentity.clubId || "");
-      const memberId = String(portalClubIdentity.memberId || "");
-      if (!user?.uid || !user.email || !clubId || !memberId ||
-          !(venueSeason.clubIds || []).includes(clubId)) {
-        throw new Error("This club is not confirmed in this Field league.");
+    const stopAuth = onAuthStateChanged(auth, user => {
+      const attempt = ++generation;
+      window.clearTimeout(timer);
+      setEnteredIdentity(null);
+      if (!user?.uid || !user.email) {
+        setPortalStatus("Sign in with your Club player account.");
+        return;
       }
-      const snap = await getDoc(
-        doc(db, "clubs", clubId, "members", memberId)
-      );
-      if (!snap.exists()) throw new Error("Club member profile not found.");
-      const member = snap.data();
-      if (String(member.email || "").trim().toLowerCase() !==
-          user.email.trim().toLowerCase() ||
-          (member.uid && member.uid !== user.uid)) {
-        throw new Error("Sign in with your club member account.");
+      setPortalStatus("Checking club membership...");
+      timer = window.setTimeout(() => {
+        if (!cancelled && attempt === generation) {
+          ++generation;
+          setPortalStatus("The membership check timed out. Check your connection and retry.");
+        }
+      }, 15000);
+
+      async function enter() {
+        const clubId = String(portalClubIdentity.clubId || "").trim();
+        if (!clubId) throw new Error("The originating Club is missing.");
+        const membershipSnapshot = await readPortalMembership(clubId);
+        const membership = membershipSnapshot.data();
+        if (!membershipSnapshot.exists() || membership.status !== "active" ||
+            membership.venueId !== venue.id) {
+          throw new Error("Your Club is not a member of this Field.");
+        }
+
+        const email = user.email.trim().toLowerCase();
+        const matchesAccount = member =>
+          member?.status === "active" &&
+          String(member.email || "").trim().toLowerCase() === email &&
+          (!member.uid || member.uid === user.uid);
+
+        let memberId = String(portalClubIdentity.memberId || "").trim();
+        let snapshot = memberId
+          ? await readPortalMember(clubId, memberId)
+          : null;
+
+        if (!snapshot?.exists() || !matchesAccount(snapshot.data())) {
+          const candidates = await readPortalMembers(clubId);
+          const matches = candidates.docs.filter(candidate =>
+            matchesAccount(candidate.data()));
+          if (matches.length !== 1) {
+            throw new Error("Could not identify one active Club player profile for this account.");
+          }
+          snapshot = matches[0];
+          memberId = snapshot.id;
+        }
+
+        const member = snapshot.data();
+        if (cancelled || attempt !== generation ||
+            auth.currentUser?.uid !== user.uid) return;
+        window.clearTimeout(timer);
+        setEnteredIdentity({
+          role: "club_member",
+          actingRole: "club_member",
+          isAdministrator: false,
+          venueId: venue.id,
+          clubId,
+          clubName: portalClubIdentity.clubName || clubId,
+          memberId,
+          uid: user.uid,
+          email: user.email,
+          fullName: member.fullName || member.name || user.displayName || "",
+        });
+        setVenuePage("landing");
+        setPortalStatus("");
       }
-      if (["rejected", "inactive"].includes(member.status)) {
-        throw new Error("This club membership is not active.");
-      }
-      if (cancelled) return;
-      setEnteredIdentity({
-        role: "club_member",
-        actingRole: "club_member",
-        isAdministrator: false,
-        venueId: venue.id,
-        clubId,
-        clubName: portalClubIdentity.clubName || clubId,
-        memberId,
-        uid: user.uid,
-        email: user.email,
-        fullName: member.fullName || member.name || user.displayName || "",
+
+      enter().catch(cause => {
+        if (cancelled || attempt !== generation) return;
+        window.clearTimeout(timer);
+        console.error("[Club to Field portal]", cause);
+        setPortalStatus(
+          cause.code === "permission-denied"
+            ? "Field access was denied. Check that staging has the current membership rules."
+            : cause.code === "unavailable"
+              ? "Could not reach the Field. Check your connection and retry."
+              : cause.message?.includes("INTERNAL ASSERTION")
+                ? "The database connection needs a browser refresh. Refresh and retry."
+                : cause.message || "Could not enter this Field."
+        );
       });
-      setVenuePage("landing");
-      setPortalStatus("");
-    }
-
-    enterFromClub().catch((cause) => {
-      if (!cancelled) setPortalStatus(cause.message || "Could not enter Field.");
+    }, cause => {
+      window.clearTimeout(timer);
+      console.error("[Club portal authentication]", cause);
+      if (!cancelled) setPortalStatus("Could not verify your signed-in account. Refresh and retry.");
     });
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+      ++generation;
+      window.clearTimeout(timer);
+      stopAuth();
+    };
   }, [
     venue?.id,
-    venueSeason?.id,
-    venueSeason?.clubIds?.join("|"),
     portalClubIdentity?.clubId,
     portalClubIdentity?.memberId,
+    portalClubIdentity?.clubName,
+    portalRetry,
   ]);
   const [showEndMatchDayModal, setShowEndMatchDayModal] = useState(false);
   const [endingMatchDay, setEndingMatchDay] = useState(false);
@@ -808,6 +871,7 @@ export default function VenueEntryPage({
     useState(false);
   const [discardFieldDayText, setDiscardFieldDayText] = useState("");
   const [discardingFieldDay, setDiscardingFieldDay] = useState(false);
+  const [showStartSeasonModal, setShowStartSeasonModal] = useState(false);
   const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
   const [endingSeason, setEndingSeason] = useState(false);
   const [endSeasonError, setEndSeasonError] = useState("");
@@ -5110,15 +5174,13 @@ export default function VenueEntryPage({
 
     if (portalClubIdentity && !enteredIdentity) {
       return (
-        <main className="page entry-page" style={{ padding: "2rem 1rem" }}>
-          <section className="card">
-            <h2>Opening {venue?.name || "Field"}</h2>
-            <p role="status">{portalStatus || "Checking club membership..."}</p>
-            <button type="button" className="secondary-btn" onClick={onBack}>
-              ← Return to club
-            </button>
-          </section>
-        </main>
+        <FieldTravelSplash
+          key={`${venue?.id}:${portalRetry}`}
+          destination={venue?.name || "your Field"}
+          status={portalStatus}
+          onRetry={() => setPortalRetry(value => value + 1)}
+          onReturn={onBack}
+        />
       );
     }
 
@@ -5397,6 +5459,23 @@ export default function VenueEntryPage({
       );
     }
 
+    if (venuePage === "chat") {
+      return (
+        <FieldChatBoundary key={venue?.id}
+          onBack={() => setVenuePage("landing")}>
+        <VenueFieldChatPage
+          venue={venue}
+          season={venueSeason}
+          identity={enteredIdentity}
+          currentUser={currentUser}
+          staff={authenticatedFieldStaff}
+          isAdmin={isFieldAdministrator}
+          onBack={() => setVenuePage("landing")}
+        />
+        </FieldChatBoundary>
+      );
+    }
+
     if (venuePage === "live") {
       return (
         <VenueLiveMatchRuntime
@@ -5432,6 +5511,13 @@ export default function VenueEntryPage({
     return (
       <>
       <VenueLandingPage
+        portalClubName={enteredIdentity?.clubName}
+        onReturnToClub={
+          portalClubIdentity?.clubId &&
+          enteredIdentity?.role === "club_member" &&
+          enteredIdentity?.clubId === portalClubIdentity.clubId
+            ? onBack : undefined
+        }
         activeClub={venue}
         activeClubId={venue?.id}
         activeClubName={venue?.name}
@@ -5693,12 +5779,21 @@ export default function VenueEntryPage({
               }
             : undefined
         }
+        seasonActionLabel={
+          fieldSeasonNeedsAnnouncement(venueSeason) ? "Start Season" : "End Season"
+        }
         onOpenEndSeasonModal={
-          venue?.ownerUid === currentUser?.uid
+          (fieldSeasonNeedsAnnouncement(venueSeason)
+            ? isFieldAdministrator
+            : venue?.ownerUid === currentUser?.uid)
             ? () => {
-                setEndSeasonError("");
-                setEndSeasonConfirmText("");
-                setShowEndSeasonModal(true);
+                if (fieldSeasonNeedsAnnouncement(venueSeason)) {
+                  setShowStartSeasonModal(true);
+                } else {
+                  setEndSeasonError("");
+                  setEndSeasonConfirmText("");
+                  setShowEndSeasonModal(true);
+                }
               }
             : undefined
         }
@@ -5908,6 +6003,14 @@ export default function VenueEntryPage({
         </div>
       )}
 
+      {showStartSeasonModal && isFieldAdministrator && (
+        <FieldSeasonStartModal
+          venue={venue}
+          season={venueSeason}
+          onClose={() => setShowStartSeasonModal(false)}
+        />
+      )}
+
       {showEndSeasonModal && venue?.ownerUid === currentUser?.uid && (
         <div className="modal-backdrop">
           <div className="modal" role="dialog" aria-modal="true"
@@ -6092,7 +6195,7 @@ export default function VenueEntryPage({
                     : "",
             },
           ]}
-          footerLead="Club-first football. Built for players."
+          footerLead="Field football. Built for the community."
           footerStrong=" Powered by community."
         />
       ) : null}

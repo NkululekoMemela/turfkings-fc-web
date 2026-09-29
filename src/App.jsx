@@ -9611,26 +9611,7 @@ export default function App() {
               portalOriginClubId ? PAGE_LANDING : PAGE_LEAGUE_VENUES
             )}
           />
-          {portalOriginClubId && (
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => setPage(PAGE_LANDING)}
-              style={{
-                position: "fixed",
-                left: "max(1rem, env(safe-area-inset-left))",
-                bottom: "max(1rem, env(safe-area-inset-bottom))",
-                zIndex: 1000,
-                padding: ".65rem .9rem",
-                border: "1px solid rgba(251,191,36,.65)",
-                background: "#241a30",
-                color: "#fff",
-                boxShadow: "0 8px 24px rgba(0,0,0,.35)",
-              }}
-            >
-              ← Return to {activeClubName || "club"}
-            </button>
-          )}
+
         </>
       )}
 
@@ -11636,13 +11617,28 @@ export default function App() {
 
       {page === PAGE_VENUE_ENTRY &&
         fieldNav.ready &&
-        fieldNav.page !== "live" && (
-          <FieldBottomNav
-            currentPage={fieldNav.page}
-            onNavigate={(target) =>
-              setFieldNavTarget({ page: target, id: Date.now() })
-            }
-          />
+        fieldNav.page !== "live" &&
+        fieldNav.page !== "chat" && (
+          <>
+            <FieldBottomNav
+              currentPage={fieldNav.page}
+              onNavigate={(target) =>
+                setFieldNavTarget({ page: target, id: Date.now() })
+              }
+            />
+            {fieldNav.page !== "chat" && (
+              <button
+                type="button"
+                className="field-chat-launcher"
+                aria-label="Open Field chat"
+                onClick={() =>
+                  setFieldNavTarget({ page: "chat", id: Date.now() })
+                }
+              >
+                <span aria-hidden="true">💬</span>
+              </button>
+            )}
+          </>
         )}
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (

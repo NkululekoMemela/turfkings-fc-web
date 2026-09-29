@@ -1,68 +1,186 @@
+import FieldPortalTile, { FieldPortalDialog } from "./FieldPortalTile.jsx";
 import React, { useEffect, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, onSnapshot } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig.js";
 import { watchLeagueVenues } from "../storage/leagueVenueRepository.js";
+import {
+  canManageClubField, watchClubFieldMembership, joinClubToField,
+} from "../storage/clubFieldMembershipRepository.js";
 
-export default function ClubFieldPortal({ clubId, onEnterField, onExploreFields }) {
+export default function ClubFieldPortal({
+  clubId, onEnterField, onExploreFields, tileStyle,
+}) {
+  const [portalOpen, setPortalOpen] = useState(false);
+  const [user, setUser] = useState(auth.currentUser);
+  const [club, setClub] = useState(null);
+  const [membership, setMembership] = useState(null);
+  const [field, setField] = useState(null);
   const [fields, setFields] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [changing, setChanging] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => onAuthStateChanged(auth, setUser), []);
   useEffect(() => {
-    if (!clubId) {
-      setFields([]);
-      return undefined;
-    }
-
-    return watchLeagueVenues(
-      (venues) => {
-        setFields(venues.filter((venue) =>
-          (venue.league?.activeSeason?.clubIds || []).includes(clubId)
-        ));
-        setError("");
-      },
-      () => setError("Could not load this club's Fields right now.")
-    );
+    if (!clubId) return undefined;
+    setLoading(true);
+    setMembership(null);
+    setChanging(false);
+    setError("");
+    const fail = cause => {
+      setError(cause.message || "Could not load Field membership.");
+      setLoading(false);
+    };
+    const stopClub = onSnapshot(doc(db, "clubs", clubId),
+      snapshot => setClub(snapshot.data() || null), fail);
+    const stopMembership = watchClubFieldMembership(clubId, value => {
+      setMembership(value);
+      setLoading(false);
+    }, fail);
+    const stopFields = watchLeagueVenues(setFields, fail);
+    return () => {
+      stopClub();
+      stopMembership();
+      stopFields();
+    };
   }, [clubId]);
 
-  if (!clubId || !fields.length) return null;
+  useEffect(() => {
+    setField(null);
+    if (!membership?.venueId) return undefined;
+    return onSnapshot(doc(db, "leagueVenues", membership.venueId),
+      snapshot => setField(snapshot.exists()
+        ? { ...snapshot.data(), id: snapshot.id } : null),
+      cause => setError(cause.message || "Could not load your Field."));
+  }, [membership?.venueId]);
+
+  if (!clubId) return null;
+  const canManage = canManageClubField(club, user);
+  const hasMembership = membership?.status === "active";
+  const chooseField = !hasMembership || changing;
+
+  async function saveMembership() {
+    if (busy || !selectedId) return;
+    const target = fields.find(item => item.id === selectedId);
+    if (hasMembership && selectedId !== membership.venueId &&
+        !window.confirm(`Move this Club to ${target?.name || "this Field"}? Previous season records will remain available.`)) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await joinClubToField({ clubId, venueId: selectedId });
+      setChanging(false);
+      setSelectedId("");
+    } catch (cause) {
+      setError(cause.message || "Could not join the Field.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <div
-      aria-label="Enter your club's Field league"
-      style={{ display: "grid", gap: ".6rem", marginBottom: "1rem" }}
-    >
-      {fields.map((field) => (
-        <button
-          key={field.id}
-          type="button"
-          onClick={() => onEnterField?.(field)}
+    <>
+      <div className="field-travel-tile-slot" style={{ position: "relative", minWidth: 0 }}>
+        <FieldPortalTile
           style={{
-            width: "100%",
-            minHeight: "82px",
-            padding: ".8rem 1rem",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: ".8rem",
-            textAlign: "left",
-            color: "#fff",
-            border: "1px solid rgba(251,191,36,.65)",
-            borderRadius: "20px",
-            background:
-              "radial-gradient(circle at 88% 50%, rgba(251,191,36,.3), transparent 30%), linear-gradient(110deg, #16172d, #35203e)",
-            boxShadow: "inset 0 0 22px rgba(251,191,36,.08), 0 12px 28px rgba(0,0,0,.2)",
-            cursor: "pointer",
+            ...tileStyle, width: "100%",
+            ...(canManage ? { paddingBottom: "40px" } : {}),
           }}
-        >
-          <span style={{ display: "grid", gap: ".2rem" }}>
-            <small style={{ color: "#fbbf24", fontWeight: 800, letterSpacing: ".12em" }}>
-              FIELD PORTAL
-            </small>
-            <strong style={{ fontSize: "1.12rem" }}>{field.name}</strong>
-          </span>
-          <span aria-hidden="true" style={{ fontSize: "1.6rem", color: "#fbbf24" }}>
-            ↗
-          </span>
+          label={hasMembership ? `Go to ${field?.name || "your Field"}` : "Your Club's Field"}
+          subtitle={hasMembership ? "" : "Choose where your Club plays"}
+          disabled={loading || busy || (hasMembership && !field)}
+          destination={hasMembership && field ? field.name : undefined}
+          onClick={hasMembership && field
+            ? () => onEnterField?.(field)
+            : () => setPortalOpen(true)}
+        />
+        {canManage && (
+          <button type="button" className="secondary-btn"
+            disabled={busy} onClick={() => setPortalOpen(true)}
+            style={{
+              position: "absolute", bottom: "8px", left: "50%",
+              transform: "translateX(-50%)", zIndex: 1,
+              padding: "4px 10px", minHeight: "26px",
+              fontSize: ".75rem", whiteSpace: "nowrap",
+            }}>
+            Manage Field
+          </button>
+        )}
+      </div>
+      {portalOpen && (
+        <FieldPortalDialog onClose={() => { if (!busy) setPortalOpen(false); }}>
+    <section aria-label="Field portal" style={{
+      display: "grid", gap: ".65rem", marginBottom: "1rem",
+      padding: "1rem", border: "1px solid rgba(251,191,36,.5)",
+      borderRadius: "20px", color: "#fff",
+      background: "linear-gradient(110deg, #16172d, #35203e)",
+    }}>
+      <strong style={{ color: "#fbbf24" }}>Field portal</strong>
+      {loading ? <p role="status">Loading your Club's Field…</p> : (
+        <>
+          {hasMembership ? (
+            <>
+              <strong>{field?.name || "Your Club's Field"}</strong>
+              <button type="button" className="primary-btn"
+                disabled={!field || busy}
+                onClick={() => onEnterField?.(field)}>
+                Enter Field ↗
+              </button>
+              {canManage && !changing && (
+                <button type="button" className="secondary-btn"
+                  onClick={() => setChanging(true)}>
+                  Change Field
+                </button>
+              )}
+            </>
+          ) : (
+            <p style={{ margin: 0 }}>
+              {canManage
+                ? "Choose the Field your Club belongs to. You only need to join once."
+                : "Your Club admin can choose the Field your Club belongs to."}
+            </p>
+          )}
+          {canManage && chooseField && (
+            <>
+              <label htmlFor="club-field-choice">Your Club's Field</label>
+              <select id="club-field-choice" className="text-input"
+                value={selectedId} disabled={busy}
+                onChange={event => setSelectedId(event.target.value)}>
+                <option value="">Choose a Field</option>
+                {fields.map(item => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="primary-btn"
+                disabled={busy || !selectedId}
+                onClick={saveMembership}>
+                {busy ? "Saving…" : hasMembership ? "Confirm Field Change" : "Join Field"}
+              </button>
+              {changing && (
+                <button type="button" className="secondary-btn"
+                  disabled={busy} onClick={() => setChanging(false)}>
+                  Cancel
+                </button>
+              )}
+            </>
+          )}
+        </>
+      )}
+      {error && <p role="alert" className="error-text">{error}</p>}
+      {canManage && typeof onExploreFields === "function" && (
+        <button type="button" className="secondary-btn" onClick={onExploreFields}>
+          Explore Fields ↗
         </button>
-      ))}
-    </div>
+      )}
+    </section>
+        </FieldPortalDialog>
+      )}
+    </>
   );
 }

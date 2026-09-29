@@ -1764,14 +1764,6 @@ export function LandingPage({
         </div>
       </header>
 
-      {currentUser && identity?.memberId &&
-        typeof onEnterField === "function" && (
-        <ClubFieldPortal
-          clubId={activeClubId}
-          onEnterField={onEnterField}
-          onExploreFields={onExploreFields}
-        />
-      )}
       <section className="card landing-first-card">
         {canSeeCaptainStyleControls && (
           <div style={{ marginBottom: "0.9rem" }}>
@@ -2464,6 +2456,16 @@ export function LandingPage({
                 })}
               </button>
             )}
+
+            {currentUser && activeClubId &&
+              typeof onEnterField === "function" && (
+              <ClubFieldPortal
+                clubId={activeClubId}
+                onEnterField={onEnterField}
+                onExploreFields={onExploreFields}
+                tileStyle={tileButtonStyle(isMobile)}
+              />
+            )}
           </div>
         ) : (
           <>
@@ -2687,6 +2689,17 @@ export function LandingPage({
                   mobileLines: ["Video", "Highlights"],
                 })}
               </button>
+
+            {currentUser && activeClubId &&
+              typeof onEnterField === "function" && (
+              <ClubFieldPortal
+                clubId={activeClubId}
+                onEnterField={onEnterField}
+                onExploreFields={onExploreFields}
+                tileStyle={tileButtonStyle(isMobile)}
+              />
+            )}
+
             </div>
           </>
         )}

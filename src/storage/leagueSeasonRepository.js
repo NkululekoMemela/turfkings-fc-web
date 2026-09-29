@@ -132,21 +132,30 @@ export async function prepareVenueSeasonForMatch({ venueId }) {
 
     const clubs = new Map();
     for (const invitation of Object.values(existing.invitations || {})) {
-      if (invitation?.clubId) {
+      if (invitation?.clubId &&
+          (!existing.announcedAtMs || invitation.status === "accepted")) {
         clubs.set(invitation.clubId, invitation.clubName || invitation.clubId);
       }
     }
     for (const fixture of existing.fixtures || []) {
-      if (fixture?.clubAId) {
+      if (fixture?.clubAId &&
+          (!existing.announcedAtMs || clubs.has(fixture.clubAId))) {
         clubs.set(fixture.clubAId, fixture.clubAName || fixture.clubAId);
       }
-      if (fixture?.clubBId) {
+      if (fixture?.clubBId &&
+          (!existing.announcedAtMs || clubs.has(fixture.clubBId))) {
         clubs.set(fixture.clubBId, fixture.clubBName || fixture.clubBId);
       }
     }
 
     if (clubs.size < 3) {
       throw new Error("List at least three clubs before starting the season.");
+    }
+
+    if (existing.announcedAtMs && (existing.fixtures || []).some(
+      fixture => !clubs.has(fixture.clubAId) || !clubs.has(fixture.clubBId)
+    )) {
+      throw new Error("Every scheduled Club must accept its season invitation first.");
     }
 
     const seasonId = existing.id || `season-${Date.now()}`;
@@ -191,6 +200,7 @@ export async function prepareVenueSeasonForMatch({ venueId }) {
       ...existing,
       id: seasonId,
       name: existing.name || "Field League Season",
+      ...(existing.announcedAtMs ? { registrationOpen: false } : {}),
       startsOn: existing.startsOn || new Date().toISOString().slice(0, 10),
       status: "active",
       clubIds,
@@ -314,6 +324,9 @@ export async function confirmVenueClubParticipation({ venueId, clubId }) {
   const venue = snapshot.data();
   if (venue.ownerUid !== user.uid) {
     throw new Error("Only this venue's field manager can confirm participation.");
+  }
+  if (venue.league?.activeSeason?.announcedAtMs) {
+    throw new Error("The Club administrator must accept this invitation from their Club entry page.");
   }
   const invitation = venue.league?.activeSeason?.invitations?.[clubId];
   if (invitation?.status !== "pending") {

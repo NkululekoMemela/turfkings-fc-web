@@ -42,16 +42,261 @@ service cloud.firestore {
     // FANM users. Camera identities are deliberately excluded here
     // so they cannot inherit unrestricted Official-club writes.
     // ---------------------------------------------------------
-    match /clubs/{clubId}/{document=**} {
+    function clubRootPath(clubId) {
+      return /databases/$(database)/documents/clubs/$(clubId);
+    }
+
+    function clubAdministrator(clubId) {
+      let clubPath = clubRootPath(clubId);
+      return isSignedIn()
+        && !isCameraSession()
+        && exists(clubPath)
+        && (
+          get(clubPath).data.get("ownerUid", "") == request.auth.uid
+          || get(clubPath).data.get("createdByUid", "") == request.auth.uid
+          || request.auth.uid in get(clubPath).data.get("adminUids", [])
+          || (
+            request.auth.token.get("email_verified", false) == true
+            && request.auth.token.get("email", "") != ""
+            && request.auth.token.email in
+              get(clubPath).data.get("adminEmails", [])
+          )
+        );
+    }
+
+    match /clubs/{clubId} {
       allow read: if true;
-      allow write: if isSignedIn() && !isCameraSession();
+
+      allow create: if isSignedIn()
+        && !isCameraSession()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.auth.uid in request.resource.data.adminUids;
+
+      allow update: if isSignedIn()
+        && !isCameraSession()
+        && request.resource.data.get("ownerUid", "") ==
+          resource.data.get("ownerUid", "")
+        && request.resource.data.get("createdByUid", "") ==
+          resource.data.get("createdByUid", "")
+        && (
+          clubAdministrator(clubId)
+          || (
+            request.auth.token.get("email_verified", false) == true
+            && request.auth.token.get("email", "") ==
+              "nkululekolerato@gmail.com"
+            && request.resource.data.get("status", "") == "deleted"
+            && request.resource.data.get("deleted", false) == true
+            && request.resource.data.get("deletedByUid", "") ==
+              request.auth.uid
+            && request.resource.data.get("deletedByEmail", "") ==
+              request.auth.token.email
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                "status", "deleted", "deletedAt",
+                "deletedByUid", "deletedByEmail"
+              ])
+          )
+          || !request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny([
+              "id", "clubId", "name", "ownerUid", "ownerEmail",
+              "createdByUid", "createdByEmail", "createdBy",
+              "adminUids", "adminEmails", "adminNames",
+              "captain", "captainEmail", "captainEmails",
+              "status", "deleted", "deletedAt", "deletedByUid",
+              "deletedByEmail"
+            ])
+        );
+
+      allow delete: if false;
+    }
+
+    match /clubs/{clubId}/members/{memberId} {
+      function ownMembership() {
+        return isSignedIn()
+          && !isCameraSession()
+          && request.auth.token.get("email_verified", false) == true
+          && request.auth.token.get("email", "") != ""
+          && (
+            resource.data.get("uid", "") == request.auth.uid
+            || resource.data.get("email", "") ==
+              request.auth.token.email
+          );
+      }
+
+      allow read: if true;
+
+      allow create: if clubAdministrator(clubId)
+        || (
+          isSignedIn()
+          && !isCameraSession()
+          && request.auth.token.get("email_verified", false) == true
+          && request.resource.data.get("email", "") ==
+            request.auth.token.get("email", "")
+          && request.resource.data.get("uid", request.auth.uid) ==
+            request.auth.uid
+          && request.resource.data.get("status", "") == "pending"
+          && request.resource.data.get("role", "") == "player"
+        );
+
+      allow update: if clubAdministrator(clubId)
+        || (
+          ownMembership()
+          && (
+            request.resource.data.get("uid", "") ==
+              resource.data.get("uid", "")
+            || (
+              resource.data.get("uid", "") == ""
+              && request.resource.data.get("uid", "") ==
+                request.auth.uid
+            )
+          )
+          && request.resource.data.get("role", "") ==
+            resource.data.get("role", "")
+          && request.resource.data.get("email", "") ==
+            request.auth.token.get("email", "")
+          && (
+            (
+              request.resource.data.get("status", "") ==
+                resource.data.get("status", "")
+              && request.resource.data.diff(resource.data)
+                .affectedKeys().hasOnly([
+                  "fullName", "shortName", "email",
+                  "whatsappNumber", "phoneNumber",
+                  "photoData", "photoUrl", "profileUpdatedAt",
+                  "profileUpdatedByUid", "profileUpdatedByRole",
+                  "updatedAt"
+                ])
+            )
+            || (
+              resource.data.get("uid", "") == ""
+              && request.resource.data.get("uid", "") ==
+                request.auth.uid
+              && request.resource.data.get("status", "") ==
+                resource.data.get("status", "")
+              && request.resource.data.get(
+                "platformIdentityUid", ""
+              ) in [
+                request.auth.uid,
+                resource.data.get("platformIdentityUid", "")
+              ]
+              && request.resource.data.diff(resource.data)
+                .affectedKeys().hasOnly([
+                  "email", "uid", "platformIdentityUid",
+                  "updatedAt"
+                ])
+            )
+            || (
+              resource.data.get("status", "") == "withdrawn"
+              && request.resource.data.get("status", "") == "pending"
+              && request.resource.data.get("role", "") == "player"
+              && request.resource.data.get(
+                "platformIdentityUid", request.auth.uid
+              ) == request.auth.uid
+            )
+          )
+        );
+
+      allow delete: if clubAdministrator(clubId);
+    }
+
+    // Preserve the legacy access of unrelated Club subcollections.
+    // The root and members are governed by the rules above.
+    match /clubs/{clubId}/{collectionName}/{document=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+        && !isCameraSession()
+        && collectionName != "members";
     }
 
     // ---------------------------------------------------------
     // LEAGUE VENUES
     // Separate from club identities and club permissions.
     // ---------------------------------------------------------
+    match /clubFieldMemberships/{clubId} {
+      function validFieldMembership() {
+        return request.resource.data.keys().hasOnly([
+            "clubId", "venueId", "status", "previousVenueId",
+            "joinedAt", "updatedAt", "changedByUid"
+          ])
+          && request.resource.data.clubId == clubId
+          && request.resource.data.venueId is string
+          && request.resource.data.venueId.size() > 0
+          && exists(
+            /databases/$(database)/documents/leagueVenues/$(request.resource.data.venueId)
+          )
+          && request.resource.data.status == "active"
+          && request.resource.data.changedByUid == request.auth.uid
+          && request.resource.data.updatedAt == request.time;
+      }
+      allow read: if isSignedIn() && !isCameraSession();
+      allow create: if clubAdministrator(clubId)
+        && validFieldMembership()
+        && request.resource.data.joinedAt == request.time
+        && request.resource.data.previousVenueId == "";
+      allow update: if clubAdministrator(clubId)
+        && validFieldMembership()
+        && request.resource.data.joinedAt == resource.data.joinedAt
+        && request.resource.data.previousVenueId == (
+          request.resource.data.venueId == resource.data.venueId
+            ? resource.data.previousVenueId
+            : resource.data.venueId
+        );
+      allow delete: if false;
+    }
+
     match /leagueVenues/{venueId} {
+
+      // Club consent applies only to this Club's pending season invitation.
+      function clubSeasonMembershipIsActive(clubId) {
+        let membership = get(
+          /databases/$(database)/documents/clubFieldMemberships/$(clubId)
+        ).data;
+        return membership.status == "active"
+          && membership.venueId == venueId;
+      }
+
+      function clubSeasonResponse() {
+        let before = resource.data.league.activeSeason;
+        let after = request.resource.data.league.activeSeason;
+        let clubId = after.get("lastRespondingClubId", "");
+
+        return isSignedIn() && !isCameraSession()
+          && clubId is string
+          && clubId.size() > 0
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["league", "updatedAt"])
+          && request.resource.data.league.diff(resource.data.league)
+            .affectedKeys().hasOnly(["activeSeason"])
+          && after.diff(before).affectedKeys().hasOnly([
+            "invitations", "clubIds", "lastRespondingClubId"
+          ])
+          && before.get("registrationOpen", false) == true
+          && clubId in before.get("invitations", {})
+          && clubId in after.get("invitations", {})
+          && before.invitations[clubId].status == "pending"
+          && after.invitations[clubId].status in ["accepted", "declined"]
+          && after.invitations[clubId].confirmedByUid == request.auth.uid
+          && after.invitations[clubId].confirmedAt == request.time
+          && after.invitations[clubId]
+            .diff(before.invitations[clubId]).affectedKeys().hasOnly([
+              "status", "confirmedByUid", "confirmedAt"
+            ])
+          && after.invitations.diff(before.invitations)
+            .affectedKeys().hasOnly([clubId])
+          && (
+            (after.invitations[clubId].status == "accepted"
+              && !(clubId in before.clubIds)
+              && after.clubIds == before.clubIds.concat([clubId]))
+            || (after.invitations[clubId].status == "declined"
+              && after.clubIds == before.clubIds)
+          )
+          && request.resource.data.updatedAt == request.time
+          && clubSeasonMembershipIsActive(clubId)
+          && clubAdministrator(clubId);
+      }
+      allow update: if clubSeasonResponse();
+
       function venueAfterCreation() {
         return getAfter(
           /databases/$(database)/documents/leagueVenues/$(venueId)
@@ -477,6 +722,263 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Field chat participation points to an existing Club member record.
+      // The pointer itself confers no access unless that record and the
+      // Field's current season still qualify on every request.
+      function chatVenue() {
+        return get(
+          /databases/$(database)/documents/leagueVenues/$(venueId)
+        ).data;
+      }
+
+      function chatStaffPath(uid) {
+        return /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(uid);
+      }
+
+      function chatParticipantPath(uid) {
+        return /databases/$(database)/documents/leagueVenues/$(venueId)/chatParticipants/$(uid);
+      }
+
+      function chatRestrictionPath(uid) {
+        return /databases/$(database)/documents/leagueVenues/$(venueId)/chatRestrictions/$(uid);
+      }
+
+      function chatClubPath(clubId) {
+        return /databases/$(database)/documents/clubs/$(clubId);
+      }
+
+      function chatMemberPath(clubId, memberId) {
+        return /databases/$(database)/documents/clubs/$(clubId)/members/$(memberId);
+      }
+
+      function chatActiveClubMember(clubId, memberId) {
+        let memberPath = chatMemberPath(clubId, memberId);
+        return isSignedIn()
+          && !isCameraSession()
+          && clubId is string
+          && memberId is string
+          && clubId.size() > 0
+          && memberId.size() > 0
+          && exists(
+            /databases/$(database)/documents/clubFieldMemberships/$(clubId)
+          )
+          && get(
+            /databases/$(database)/documents/clubFieldMemberships/$(clubId)
+          ).data.status == "active"
+          && get(
+            /databases/$(database)/documents/clubFieldMemberships/$(clubId)
+          ).data.venueId == venueId
+          && request.auth.token.get("email_verified", false) == true
+          && exists(memberPath)
+          && get(memberPath).data.get("status", "") == "active"
+          && get(memberPath).data.get("email", "") ==
+            request.auth.token.get("email", "")
+          && request.auth.token.get("email", "") != ""
+          && get(memberPath).data.get("uid", request.auth.uid) ==
+            request.auth.uid;
+      }
+
+      function chatClubParticipant() {
+        let participantPath = chatParticipantPath(request.auth.uid);
+        return isSignedIn()
+          && !isCameraSession()
+          && exists(participantPath)
+          && chatActiveClubMember(
+            get(participantPath).data.clubId,
+            get(participantPath).data.memberId
+          );
+      }
+
+      function chatActiveStaff() {
+        let staffPath = chatStaffPath(request.auth.uid);
+        return isSignedIn()
+          && !isCameraSession()
+          && (
+            chatVenue().ownerUid == request.auth.uid
+            || (
+              exists(staffPath)
+              && get(staffPath).data.status == "active"
+            )
+          );
+      }
+
+      function chatAdministrator() {
+        let staffPath = chatStaffPath(request.auth.uid);
+        return isSignedIn()
+          && !isCameraSession()
+          && (
+            chatVenue().ownerUid == request.auth.uid
+            || (
+              exists(staffPath)
+              && get(staffPath).data.status == "active"
+              && get(staffPath).data.isAdministrator == true
+            )
+          );
+      }
+
+      function chatCanRead() {
+        return chatActiveStaff() || chatClubParticipant();
+      }
+
+      function chatCanPost() {
+        return chatCanRead()
+          && (
+            !exists(chatRestrictionPath(request.auth.uid))
+            || get(chatRestrictionPath(request.auth.uid)).data.muted != true
+          );
+      }
+
+      function chatUsesClubIdentity() {
+        return request.resource.data.get("senderRole", "") == "club_member";
+      }
+
+      function chatSelectedIdentityIsValid() {
+        return chatUsesClubIdentity()
+          ? chatClubParticipant()
+          : chatActiveStaff();
+      }
+
+      function chatActorName() {
+        let staffPath = chatStaffPath(request.auth.uid);
+        let participantPath = chatParticipantPath(request.auth.uid);
+        return !chatUsesClubIdentity()
+          ? (
+              exists(staffPath)
+                ? get(staffPath).data.get("fullName", "")
+                : request.auth.token.get("email", "")
+            )
+          : get(chatMemberPath(
+              get(participantPath).data.clubId,
+              get(participantPath).data.memberId
+            )).data.get("fullName", "");
+      }
+
+      function chatActorRole() {
+        let staffPath = chatStaffPath(request.auth.uid);
+        return !chatUsesClubIdentity()
+          ? (
+              exists(staffPath)
+                ? get(staffPath).data.get("role", "field_manager")
+                : "field_manager"
+            )
+          : "club_member";
+      }
+
+      function chatActorClubId() {
+        return !chatUsesClubIdentity()
+          ? ""
+          : get(chatParticipantPath(request.auth.uid)).data.clubId;
+      }
+
+      function chatActorClubName() {
+        let clubId = chatActorClubId();
+        return clubId == ""
+          ? ""
+          : get(chatClubPath(clubId)).data.get("name", clubId);
+      }
+
+      match /chatParticipants/{participantUid} {
+        allow get: if isSignedIn()
+          && !isCameraSession()
+          && (
+            participantUid == request.auth.uid
+            || chatAdministrator()
+          );
+        allow list: if chatAdministrator();
+
+        allow create, update: if isSignedIn()
+          && !isCameraSession()
+          && participantUid == request.auth.uid
+          && request.resource.data.keys().hasOnly(["clubId", "memberId"])
+          && request.resource.data.keys().hasAll(["clubId", "memberId"])
+          && chatActiveClubMember(
+            request.resource.data.clubId,
+            request.resource.data.memberId
+          );
+        allow delete: if participantUid == request.auth.uid
+          || chatAdministrator();
+      }
+
+      match /chatRestrictions/{targetUid} {
+        allow get: if chatCanRead()
+          && (
+            targetUid == request.auth.uid
+            || chatAdministrator()
+          );
+        allow list: if chatAdministrator();
+        allow create, update: if chatAdministrator()
+          && request.resource.data.keys().hasOnly([
+            "uid", "muted", "reason", "updatedAt"
+          ])
+          && request.resource.data.keys().hasAll([
+            "uid", "muted", "reason", "updatedAt"
+          ])
+          && request.resource.data.uid == targetUid
+          && request.resource.data.muted is bool
+          && request.resource.data.reason is string
+          && request.resource.data.reason.size() <= 300
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if chatAdministrator();
+      }
+
+      match /chatMessages/{messageId} {
+        allow read: if chatCanRead();
+
+        allow create: if isSignedIn()
+          && !isCameraSession()
+          && chatSelectedIdentityIsValid()
+          && (
+            !exists(chatRestrictionPath(request.auth.uid))
+            || get(chatRestrictionPath(request.auth.uid)).data.muted != true
+          )
+          && request.resource.data.keys().hasOnly([
+            "text", "senderUid", "senderName", "senderRole",
+            "clubId", "clubName", "createdAt", "createdAtMs",
+            "replyToId", "replyToSenderName", "replyToText",
+            "reactionsByUser"
+          ])
+          && request.resource.data.keys().hasAll([
+            "text", "senderUid", "senderName", "senderRole",
+            "clubId", "clubName", "createdAt", "createdAtMs",
+            "reactionsByUser"
+          ])
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.senderName == chatActorName()
+          && request.resource.data.senderName is string
+          && request.resource.data.senderName.size() > 0
+          && request.resource.data.senderName.size() <= 100
+          && request.resource.data.senderRole == chatActorRole()
+          && request.resource.data.clubId == chatActorClubId()
+          && request.resource.data.clubName == chatActorClubName()
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.createdAtMs is int
+          && request.resource.data.reactionsByUser == {}
+          && request.resource.data.get("replyToId", "") is string
+          && request.resource.data.get("replyToId", "").size() <= 120
+          && request.resource.data.get("replyToSenderName", "") is string
+          && request.resource.data.get("replyToSenderName", "").size() <= 100
+          && request.resource.data.get("replyToText", "") is string
+          && request.resource.data.get("replyToText", "").size() <= 300;
+
+        allow update: if chatCanPost()
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["reactionsByUser"])
+          && request.resource.data.reactionsByUser is map
+          && request.resource.data.reactionsByUser
+            .diff(resource.data.get("reactionsByUser", {}))
+            .affectedKeys().hasOnly([request.auth.uid])
+          && request.resource.data.reactionsByUser
+            .get(request.auth.uid, "") in [
+              "", "⚽", "🔥", "🧤", "👏", "😂",
+              "❤️", "👍", "👎", "😩", "🤯"
+            ];
+
+        allow delete: if chatAdministrator();
+      }
+
       match /staff/{staffUid} {
         function validStaffRole() {
           return request.resource.data.role in [
@@ -750,7 +1252,9 @@ service cloud.firestore {
                          && topLevel != "practiceSessions"
                          && topLevel != "sandboxes"
                          && topLevel != "leagueVenues"
-                         && topLevel != "legalAcceptances";
+                         && topLevel != "legalAcceptances"
+                         && topLevel != "clubs"
+                         && topLevel != "clubFieldMemberships";
     }
   }
 }

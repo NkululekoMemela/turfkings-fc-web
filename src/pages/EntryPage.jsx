@@ -1,3 +1,4 @@
+import { ClubFieldSeasonInvitation } from "../components/FieldSeasonInvitations.jsx";
 // src/pages/EntryPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
@@ -4796,6 +4797,7 @@ export function EntryPage({
 
   return (
     <div className="page entry-page">
+      <ClubFieldSeasonInvitation clubId={activeClubId} />
       {showMemberLoadingWelcome && !showSigninLoading && (
         <div
           className="entry-member-loading-backdrop"

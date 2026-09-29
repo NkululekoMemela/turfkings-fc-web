@@ -1,0 +1,177 @@
+/* Reuse Club chat visuals; viewport overrides apply only to Field chat. */
+.field-chat-page,
+.field-chat-page *,
+.field-chat-page *::before,
+.field-chat-page *::after {
+  box-sizing: border-box;
+}
+.field-chat-page {
+  position: fixed !important;
+  top: var(--field-chat-top, 0px) !important;
+  right: 0 !important;
+  bottom: auto !important;
+  left: 0 !important;
+  z-index: 10001;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: var(--field-chat-height, 100dvh) !important;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+.field-chat-page .field-chat-card {
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  padding: max(10px, env(safe-area-inset-top, 0px))
+    max(10px, env(safe-area-inset-right, 0px))
+    max(10px, env(safe-area-inset-bottom, 0px))
+    max(10px, env(safe-area-inset-left, 0px)) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+.field-chat-page .field-chat-heading {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+.field-chat-heading .fanm-club-chat-launcher-text {
+  flex: 1;
+  min-width: 0;
+}
+.field-chat-heading .fanm-club-chat-launcher-text strong,
+.field-chat-heading .fanm-club-chat-launcher-text small {
+  overflow-wrap: anywhere;
+}
+.field-chat-heading .fanm-club-chat-header-actions {
+  flex: 0 0 auto;
+}
+.field-chat-heading button {
+  cursor: pointer;
+}
+.field-chat-page .field-chat-messages {
+  flex: 1 1 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+}
+.field-chat-page .field-chat-message {
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: 88%;
+  overflow-wrap: anywhere;
+}
+.field-chat-message.is-mine { align-self: flex-end; }
+.field-chat-message p { white-space: pre-wrap; }
+.field-chat-meta,
+.field-chat-message-footer,
+.field-chat-actions,
+.field-chat-reaction-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.field-chat-meta span { font-size: .75rem; opacity: .8; }
+.field-chat-quote { margin-inline: 0; min-width: 0; }
+.field-chat-empty { margin: auto; text-align: center; }
+.field-chat-page .field-chat-compose {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  margin-top: 8px;
+}
+.field-chat-compose .fanm-club-chat-input-wrap {
+  flex: 1;
+  min-width: 0;
+}
+.field-chat-compose textarea {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  font-size: 16px;
+  resize: none;
+}
+.field-chat-compose .fanm-premium-send-btn {
+  flex: 0 0 auto;
+}
+.field-chat-reply {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+.field-chat-error,
+.field-chat-muted {
+  flex: 0 0 auto;
+  max-height: 15dvh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  margin: 6px 0;
+  padding: 8px;
+}
+.field-chat-error { color: #fca5a5; }
+.field-chat-page .field-chat-emoji-tray {
+  flex: 0 0 auto;
+  max-height: 20dvh;
+  overflow-y: auto;
+}
+
+/* Field-only emoji tray and send polish */
+.field-chat-page .field-chat-card .field-chat-emoji-tray {
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  flex: 0 1 auto !important;
+  min-height: 0 !important;
+  max-height: 30% !important;
+  width: calc(100% - 1rem) !important;
+  margin: 8px auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+  isolation: isolate;
+}
+.field-chat-page .field-chat-card .field-chat-compose {
+  position: relative !important;
+  inset: auto !important;
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+  background: #020617 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose .fanm-premium-send-btn {
+  display: grid !important;
+  place-items: center;
+  font-size: 0 !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose .fanm-premium-send-btn::before {
+  content: "➤" !important;
+  font-size: 1.15rem !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose .fanm-premium-send-btn::after {
+  content: none !important;
+}

@@ -1,3 +1,4 @@
+import FieldPortalTile from "../components/FieldPortalTile.jsx";
 /*
  * FIELD LEAGUE CLONE WORKBENCH
  *
@@ -298,6 +299,9 @@ export default function VenueLandingPage({
   onGoToStats,
   onOpenBackupModal,
   onOpenEndSeasonModal,
+  seasonActionLabel = "End Season",
+  onReturnToClub,
+  portalClubName,
   onGoToLiveAsSpectator,
   onGoToFormations,
   onGoToNews,
@@ -2556,6 +2560,15 @@ export default function VenueLandingPage({
               })}
             </button>
 
+              {typeof onReturnToClub === "function" && (
+                <FieldPortalTile style={tileButtonStyle(isMobile)}
+                  label={`Return to ${portalClubName || "your Club"}`}
+                  subtitle=""
+                  destination={portalClubName || "your Club"}
+                  onClick={onReturnToClub} />
+              )}
+
+
             {isThreeTeamLeague && isAdmin &&
               typeof onOpenBackupModal === "function" && (
               <button
@@ -2573,7 +2586,7 @@ export default function VenueLandingPage({
               </button>
             )}
 
-            {isThreeTeamLeague && isAdmin && typeof onOpenEndSeasonModal === "function" && (
+            {isAdmin && typeof onOpenEndSeasonModal === "function" && (
               <button
                 className="secondary-btn"
                 onClick={onOpenEndSeasonModal}
@@ -2586,8 +2599,8 @@ export default function VenueLandingPage({
                 {renderTileContent({
                   isMobile,
                   icon: "🏆",
-                  desktopLines: ["End Season"],
-                  mobileLines: ["End", "Season"],
+                  desktopLines: [seasonActionLabel],
+                  mobileLines: seasonActionLabel.split(" "),
                 })}
               </button>
             )}
@@ -2814,6 +2827,15 @@ export default function VenueLandingPage({
                   mobileLines: ["Video", "Highlights"],
                 })}
               </button>
+
+              {typeof onReturnToClub === "function" && (
+                <FieldPortalTile style={tileButtonStyle(isMobile)}
+                  label={`Return to ${portalClubName || "your Club"}`}
+                  subtitle=""
+                  destination={portalClubName || "your Club"}
+                  onClick={onReturnToClub} />
+              )}
+
             </div>
           </>
         )}
