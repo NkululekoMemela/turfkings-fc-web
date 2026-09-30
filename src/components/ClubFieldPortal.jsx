@@ -1,3 +1,4 @@
+import FieldChoiceCards from "./FieldChoiceCards.jsx";
 import FieldPortalTile, { FieldPortalDialog } from "./FieldPortalTile.jsx";
 import React, { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -113,13 +114,13 @@ export default function ClubFieldPortal({
       </div>
       {portalOpen && (
         <FieldPortalDialog onClose={() => { if (!busy) setPortalOpen(false); }}>
-    <section aria-label="Field portal" style={{
+    <section className="field-discovery-panel" aria-label="Club Field membership" style={{
       display: "grid", gap: ".65rem", marginBottom: "1rem",
       padding: "1rem", border: "1px solid rgba(251,191,36,.5)",
       borderRadius: "20px", color: "#fff",
       background: "linear-gradient(110deg, #16172d, #35203e)",
     }}>
-      <strong style={{ color: "#fbbf24" }}>Field portal</strong>
+      <h2 className="field-discovery-title">Fields near you</h2>
       {loading ? <p role="status">Loading your Club's Field…</p> : (
         <>
           {hasMembership ? (
@@ -146,17 +147,12 @@ export default function ClubFieldPortal({
           )}
           {canManage && chooseField && (
             <>
-              <label htmlFor="club-field-choice">Your Club's Field</label>
-              <select id="club-field-choice" className="text-input"
-                value={selectedId} disabled={busy}
-                onChange={event => setSelectedId(event.target.value)}>
-                <option value="">Choose a Field</option>
-                {fields.map(item => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+              <FieldChoiceCards
+                fields={fields}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                disabled={busy}
+              />
               <button type="button" className="primary-btn"
                 disabled={busy || !selectedId}
                 onClick={saveMembership}>

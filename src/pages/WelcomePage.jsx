@@ -1,3 +1,4 @@
+import FiveAsideLoadingPitch from "../components/FiveAsideLoadingPitch.jsx";
 import React, { useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebaseConfig";
@@ -266,9 +267,7 @@ export default function WelcomePage({
 
               {pickerStatus === "loading" && (
                 <div className="fanm-nearby-loading" role="status">
-                  <span className="fanm-nearby-loading__pitch" aria-hidden="true">
-                    <span>⚽</span>
-                  </span>
+                  <FiveAsideLoadingPitch />
                   <strong>
                     {loadPhase === "location"
                       ? "Finding your position"

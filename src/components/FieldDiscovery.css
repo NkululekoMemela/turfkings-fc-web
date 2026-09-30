@@ -1,0 +1,57 @@
+.field-discovery-panel {
+  background: #102735 !important;
+  border: 1px solid rgba(153,246,228,.3) !important;
+  border-radius: 24px !important;
+  padding: 18px !important;
+  min-width: 0;
+}
+.field-discovery-title {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 22px;
+  letter-spacing: -.03em;
+}
+.field-choice { display: grid; gap: 12px; min-width: 0; }
+.field-choice-hint { margin: 0; color: #cbd5e1; line-height: 1.5; font-size: 14px; }
+.field-choice-location {
+  border: 1px solid #4f817c; border-radius: 14px;
+  background: #183b46; color: #d1fae5; min-height: 44px;
+}
+.field-choice-radius { display: grid; gap: 8px; color: #e2e8f0; font-size: 14px; }
+.field-choice-radius input { width: 100%; accent-color: #a7f3d0; }
+.field-choice-grid {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 10px; max-height: 46dvh; overflow-y: auto; padding: 3px;
+}
+.field-choice-card {
+  width: 100%; min-width: 0; min-height: 230px; padding: 14px 9px;
+  border: 1px solid #28505d; border-radius: 22px;
+  color: #f8fafc; background: linear-gradient(155deg,#113746,#111b31 65%,#30203e);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  text-align: center; cursor: pointer; box-sizing: border-box;
+}
+.field-choice-card.is-selected {
+  border-color: #a7f3d0; color: #102735;
+  background: linear-gradient(145deg,#effcf5,#dbe9ef);
+  box-shadow: 0 0 0 2px rgba(167,243,208,.2);
+}
+.field-choice-card strong { font-size: 15px; overflow-wrap: anywhere; }
+.field-choice-badge {
+  width: 82px; height: 82px; max-width: 100%; border-radius: 22px;
+  display: grid; place-items: center; background: rgba(255,255,255,.9);
+}
+.field-choice-badge img { width: 72px; height: 72px; max-width: 100%; object-fit: contain; }
+.field-choice-badge > span { font-size: 42px; }
+.field-choice-meta { font-size: 12px; opacity: .85; overflow-wrap: anywhere; }
+.field-choice-distance { font-size: 12px; font-weight: 800; }
+.field-choice-action { margin-top: auto; font-size: 12px; font-weight: 800; }
+.field-choice-card:focus-visible { outline: 3px solid #67e8f9; outline-offset: 2px; }
+.field-choice-card:disabled { opacity: .6; cursor: wait; }
+.five-aside-loading-pitch {
+  display: block; width: 190px; max-width: 100%; height: auto;
+  margin: 14px auto; border-radius: 15px;
+  box-shadow: 0 0 28px rgba(34,197,94,.2);
+}
+@media (max-width: 300px) {
+  .field-choice-grid { grid-template-columns: minmax(0,1fr); }
+}
