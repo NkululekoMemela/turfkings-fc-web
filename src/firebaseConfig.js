@@ -2,7 +2,7 @@ import {
   FIREBASE_ENVIRONMENT_KEY, resolveFirebaseEnvironment,
   isFirebaseEnvironmentAdmin, buildFirebaseFunctionsUrl,
   moveFirebaseBrowserState, initializeFirebaseBrowserState,
-} from "./core/firebaseEnvironmentPolicy.js";
+} from "./core/firebaseEnvironmentArchive.js";
 // src/firebaseConfig.js
 import { initializeApp } from "firebase/app";
 import {
@@ -77,7 +77,7 @@ export const activeFirebaseEnvironment = resolveFirebaseEnvironment(
 const firebaseEnv = activeFirebaseEnvironment;
 
 if (typeof window !== "undefined") {
-  initializeFirebaseBrowserState(
+  await initializeFirebaseBrowserState(
     window.localStorage, window.sessionStorage, firebaseEnv,
   );
 }
@@ -253,14 +253,14 @@ export async function switchFirebaseEnvironment(nextEnvironment) {
       throw new Error("Your signed-in account changed. Please retry.");
     }
 
-    moveFirebaseBrowserState(
+    await moveFirebaseBrowserState(
       window.localStorage, window.sessionStorage,
       activeFirebaseEnvironment, nextEnvironment,
     );
     try {
       window.localStorage.setItem(FIREBASE_ENVIRONMENT_KEY, nextEnvironment);
     } catch (error) {
-      moveFirebaseBrowserState(
+      await moveFirebaseBrowserState(
         window.localStorage, window.sessionStorage,
         nextEnvironment, activeFirebaseEnvironment,
       );
@@ -273,9 +273,9 @@ export async function switchFirebaseEnvironment(nextEnvironment) {
   }
 }
 
-export function returnToConfiguredFirebaseEnvironment() {
+export async function returnToConfiguredFirebaseEnvironment() {
   if (!firebaseEnvironmentSwitchEnabled) return;
-  moveFirebaseBrowserState(
+  await moveFirebaseBrowserState(
     window.localStorage, window.sessionStorage,
     activeFirebaseEnvironment, defaultFirebaseEnvironment,
   );

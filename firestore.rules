@@ -272,6 +272,24 @@ service cloud.firestore {
             "invitations", "clubIds", "lastRespondingClubId"
           ])
           && before.get("registrationOpen", false) == true
+          && before.get("firstPlayAtMs", 0) == 0
+          && before.get("results", []).size() == 0
+          && before.get("matchDayHistory", []).size() == 0
+          && (
+            !("signupDeadlineAtMs" in before)
+            || (
+              before.signupDeadlineAtMs is int
+              && request.time <= timestamp.value(before.signupDeadlineAtMs)
+            )
+          )
+          && (
+            !exists(
+              /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(before.id)/matches/current
+            )
+            || get(
+              /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(before.id)/matches/current
+            ).data.get("confirmedLineupSnapshot", null) == null
+          )
           && clubId in before.get("invitations", {})
           && clubId in after.get("invitations", {})
           && before.invitations[clubId].status == "pending"

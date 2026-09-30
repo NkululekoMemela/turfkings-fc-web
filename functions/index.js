@@ -5609,3 +5609,10 @@ exports.onMatchDayCancelled = onDocumentWritten(
     }
   }
 );
+
+// Field season notifications reuse delivery transport without modifying Club handlers.
+Object.assign(exports, require("./fieldSeasonInvitationHandlers").buildHandlers({
+  db,
+  region: REGION,
+  sendBatch: sendPaymentNotificationBatch,
+}));

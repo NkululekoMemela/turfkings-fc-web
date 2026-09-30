@@ -69,3 +69,107 @@
   border-radius: 14px;
   background: rgba(251,191,36,.06);
 }
+
+/* Season registration presentation, scoped to these dialogs. */
+.field-season-dialog { box-sizing: border-box; }
+.field-season-dialog input,
+.field-season-dialog select { width: 100%; min-width: 0; box-sizing: border-box; }
+.field-season-details {
+  margin: 1rem 0; padding: .9rem;
+  border: 1px solid rgba(125,211,252,.22);
+  border-radius: 16px; background: rgba(15,23,42,.5);
+}
+.field-season-details summary {
+  cursor: pointer; color: #bae6fd; font-weight: 800;
+}
+.field-season-details p, .field-season-note {
+  font-size: .9rem; line-height: 1.55; color: #cbd5e1;
+}
+.field-season-prize-row {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: .7rem; border: 0; padding: .8rem 0; margin: 0;
+}
+.field-season-prize-row legend { color: #fde68a; font-weight: 700; }
+.field-season-prize-row label { display: grid; gap: .4rem; font-size: .85rem; }
+.field-season-essential {
+  padding: .6rem 1rem; border-radius: 16px;
+  border: 1px solid rgba(34,211,238,.25);
+  background: rgba(8,145,178,.08);
+}
+.field-season-essential strong { color: #fef3c7; }
+@media(max-width:380px) {
+  .field-season-prize-row { grid-template-columns: 1fr; }
+}
+
+/* Field season dialog spacing and viewport isolation */
+.field-season-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100dvh !important;
+  box-sizing: border-box !important;
+  padding: 16px !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow-y: auto !important;
+}
+.field-season-backdrop > .field-season-dialog {
+  width: min(100%, 540px) !important;
+  max-width: 540px !important;
+  max-height: calc(100dvh - 32px) !important;
+  margin: 0 !important;
+  padding: clamp(18px, 4vw, 28px) !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  border-radius: 24px !important;
+  box-shadow: 0 24px 80px rgba(0,0,0,.55) !important;
+}
+.field-season-dialog .tk-admin-notification-topline {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  margin-bottom: 20px !important;
+}
+.field-season-dialog .tk-admin-notification-icon {
+  width: 48px !important;
+  height: 48px !important;
+  flex: 0 0 48px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 16px !important;
+  background: rgba(34,211,238,.12) !important;
+  font-size: 25px !important;
+}
+.field-season-dialog .tk-admin-notification-title {
+  font-size: clamp(20px, 4vw, 25px) !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+}
+.field-season-dialog .tk-admin-notification-tag {
+  display: block !important;
+  margin-top: 5px !important;
+  font-size: 12px !important;
+  color: #7dd3fc !important;
+}
+.field-season-dialog .tk-admin-notification-body {
+  padding: 0 !important;
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+}
+.field-season-dialog .text-input {
+  min-height: 46px !important;
+  padding: 10px 12px !important;
+  border-radius: 12px !important;
+  font-size: 16px !important;
+}
+.field-season-dialog .actions-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  margin-top: 20px !important;
+}
+.field-season-dialog .actions-row button {
+  min-height: 44px !important;
+  padding: 10px 16px !important;
+  white-space: normal !important;
+}

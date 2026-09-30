@@ -1,3 +1,4 @@
+import { reconcileFieldSeasonFixtures } from "../core/fieldSeasonFixtures.js";
 import {
   fieldSeasonHasPlayRecords, fieldSeasonCancellationReason,
 } from "../core/fieldSeasonLifecycle.js";
@@ -151,8 +152,12 @@ export async function prepareVenueSeasonForMatch({ venueId }) {
       }
     }
 
-    if (clubs.size < 3) {
-      throw new Error("List at least three clubs before starting the season.");
+    const minimum = Number(existing.minimumClubs) || 3;
+    if (clubs.size < minimum) {
+      throw new Error(
+        `This season needs ${minimum} registered Clubs; ${clubs.size} have signed up. ` +
+        "Wait for more signups or cancel the season with an explanation."
+      );
     }
 
     if (existing.announcedAtMs && (existing.fixtures || []).some(
@@ -174,22 +179,11 @@ export async function prepareVenueSeasonForMatch({ venueId }) {
       };
     }
 
-    const existingFixtures = Array.isArray(existing.fixtures)
-      ? existing.fixtures : [];
-    const fixtures = existingFixtures.length
-      ? existingFixtures
-      : clubIds.flatMap((clubAId, index) =>
-          clubIds.slice(index + 1).map((clubBId) => ({
-            id: `fixture-${seasonId}-${index}-${clubIds.indexOf(clubBId)}`,
-            clubAId,
-            clubBId,
-            clubAName: clubs.get(clubAId),
-            clubBName: clubs.get(clubBId),
-            status: "scheduled",
-            createdByUid: user.uid,
-            createdAtMs: Date.now(),
-          }))
-        );
+    const fixtures = reconcileFieldSeasonFixtures({
+      season: { ...existing, id: seasonId },
+      clubs,
+      actorUid: user.uid,
+    });
 
     const nextFixture = fixtures.find((fixture) =>
       fixture?.status === "scheduled" &&
@@ -203,7 +197,6 @@ export async function prepareVenueSeasonForMatch({ venueId }) {
       ...existing,
       id: seasonId,
       name: existing.name || "Field League Season",
-      ...(existing.announcedAtMs ? { registrationOpen: false } : {}),
       startsOn: existing.startsOn || new Date().toISOString().slice(0, 10),
       status: "active",
       clubIds,
@@ -456,7 +449,26 @@ export async function startVenueFixture({
     }
 
     const season = venue.league?.activeSeason;
-    const fixture = (season?.fixtures || []).find((item) =>
+    const minimum = Number(season?.minimumClubs) || 3;
+    if ((season?.clubIds || []).length < minimum) {
+      throw new Error(`At least ${minimum} registered Clubs are required before play.`);
+    }
+    const registeredClubs = new Map(
+      (season.clubIds || []).map(clubId => [
+        clubId, season.invitations?.[clubId]?.clubName || clubId,
+      ])
+    );
+    const reconciledFixtures = reconcileFieldSeasonFixtures({
+      season,
+      clubs: registeredClubs,
+      actorUid: user.uid,
+    });
+    if (reconciledFixtures.length !== (season.fixtures || []).length) {
+      transaction.update(ref, {
+        "league.activeSeason.fixtures": reconciledFixtures,
+      });
+    }
+    const fixture = reconciledFixtures.find((item) =>
       item.id === fixtureId && item.status === "scheduled");
     if (!fixture || season.liveMatches?.[fixtureId]) {
       throw new Error("This fixture is unavailable or already started.");

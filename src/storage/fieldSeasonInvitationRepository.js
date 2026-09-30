@@ -1,5 +1,7 @@
 import {
   FIELD_GAME_FORMATS, fieldSeasonHasPlayRecords, fieldSeasonPrizeAmounts,
+  fieldSeasonRegistrationOpen, fieldSeasonSignupDeadline,
+  fieldSeasonMinimumClubs,
 } from "../core/fieldSeasonLifecycle.js";
 import { auth, db } from "../firebaseConfig.js";
 import {
@@ -14,6 +16,7 @@ export function fieldSeasonNeedsAnnouncement(season) {
 
 export async function announceFieldSeason({
   venueId, name, startsOn, entryFee, prizes, gameFormat,
+  signupClosesOn, minimumClubs, prizeIncreasePerClub,
 }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as a Field administrator.");
@@ -27,6 +30,9 @@ export async function announceFieldSeason({
     throw new Error("Choose 5, 6, 7 or 11-a-side.");
   }
   const date = String(startsOn || "");
+  const signupDeadlineAtMs = fieldSeasonSignupDeadline(signupClosesOn, date);
+  const minimum = fieldSeasonMinimumClubs(minimumClubs);
+  const increments = fieldSeasonPrizeAmounts(prizeIncreasePerClub);
   const parsedDate = new Date(`${date}T12:00:00Z`);
   if (!title || title.length > 80) throw new Error("Enter a season name.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -112,6 +118,10 @@ export async function announceFieldSeason({
         entryFee: Math.round(fee * 100) / 100,
         prizeMoney: prize,
         prizes: podium,
+        signupClosesOn,
+        signupDeadlineAtMs,
+        minimumClubs: minimum,
+        prizeIncreasePerClub: increments,
         gameFormat,
         currency: "ZAR",
         status: "active",
@@ -154,7 +164,7 @@ export async function respondToFieldSeason({ venueId, clubId, seasonId, status }
     }
     const season = venueSnapshot.data()?.league?.activeSeason;
     const invitation = season?.invitations?.[clubId];
-    if (season?.id !== seasonId || season.registrationOpen !== true ||
+    if (season?.id !== seasonId || !fieldSeasonRegistrationOpen(season) ||
         invitation?.status !== "pending") {
       throw new Error("This invitation has changed or registration has closed.");
     }

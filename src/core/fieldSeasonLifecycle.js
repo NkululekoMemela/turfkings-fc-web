@@ -35,3 +35,47 @@ export function fieldSeasonPrizeAmounts(prizes) {
   }
   return result;
 }
+
+export function fieldSeasonRegistrationOpen(season, now = Date.now()) {
+  if (!season?.id || !season.announcedAtMs ||
+      season.status !== "active" || season.registrationOpen !== true ||
+      season.firstPlayAtMs ||
+      (season.results || []).length ||
+      (season.matchDayHistory || []).length) return false;
+  const deadline = season.signupDeadlineAtMs;
+  return deadline == null || (
+    Number.isFinite(deadline) && now <= deadline
+  );
+}
+
+export function fieldSeasonSignupDeadline(signupClosesOn, startsOn) {
+  const date = String(signupClosesOn || "");
+  const at = Date.parse(`${date}T23:59:59.999+02:00`);
+  const check = new Date(`${date}T12:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !Number.isFinite(at) || !Number.isFinite(check.getTime()) ||
+      check.toISOString().slice(0, 10) !== date ||
+      date > startsOn || at <= Date.now()) {
+    throw new Error("Choose a future signup deadline on or before the season start date.");
+  }
+  return at;
+}
+
+export function fieldSeasonMinimumClubs(value) {
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < 3 || count > 200) {
+    throw new Error("Set the minimum to between 3 and 200 Clubs.");
+  }
+  return count;
+}
+
+export function fieldSeasonProjectedPrizes(season, count) {
+  const extra = Math.max(0, count - (Number(season.minimumClubs) || 3));
+  return Object.fromEntries(["first", "second", "third"].map(place => [
+    place,
+    Math.round((
+      Number(season.prizes?.[place] || 0) +
+      extra * Number(season.prizeIncreasePerClub?.[place] || 0)
+    ) * 100) / 100,
+  ]));
+}

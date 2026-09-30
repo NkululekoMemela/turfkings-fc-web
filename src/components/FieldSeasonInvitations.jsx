@@ -1,5 +1,7 @@
+import { createPortal } from "react-dom";
 import {
   FIELD_GAME_FORMATS, fieldSeasonHasPlayRecords,
+  fieldSeasonRegistrationOpen, fieldSeasonProjectedPrizes,
 } from "../core/fieldSeasonLifecycle.js";
 import { endVenueSeason } from "../storage/leagueSeasonRepository.js";
 import "./FieldSeasonInvitations.css";
@@ -33,7 +35,7 @@ function SeasonDialog({ title, children, busy, onClose, premium = false }) {
     ref.current?.querySelector("input, select, textarea, button")?.focus();
     return () => previous?.isConnected && previous.focus?.();
   }, []);
-  return (
+  return createPortal(
     <div className="field-season-backdrop" style={backdropStyle} onKeyDown={event => {
       if (event.key === "Escape" && !busy) onClose();
       if (event.key === "Tab") {
@@ -72,7 +74,8 @@ function SeasonDialog({ title, children, busy, onClose, premium = false }) {
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -80,6 +83,11 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
   const [name, setName] = useState(season?.name || "Field League Season");
   const [date, setDate] = useState(season?.startsOn || "");
   const [fee, setFee] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [minimum, setMinimum] = useState("3");
+  const [firstIncrease, setFirstIncrease] = useState("0");
+  const [secondIncrease, setSecondIncrease] = useState("0");
+  const [thirdIncrease, setThirdIncrease] = useState("0");
   const [firstPrize, setFirstPrize] = useState("");
   const [secondPrize, setSecondPrize] = useState("");
   const [thirdPrize, setThirdPrize] = useState("");
@@ -89,7 +97,7 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
   const [sent, setSent] = useState(0);
 
   return (
-    <SeasonDialog title={sent ? "Season invitations sent" : "Start Season"}
+    <SeasonDialog premium title={sent ? "Invitations sent" : "Announce your season"}
       busy={busy} onClose={onClose}>
       {sent ? (
         <>
@@ -98,14 +106,21 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
           <button type="button" className="primary-btn" onClick={onClose}>Done</button>
         </>
       ) : (
-        <form onSubmit={async event => {
+        <form onInvalidCapture={event => {
+          const details = event.target.closest("details");
+          if (details) details.open = true;
+        }} onSubmit={async event => {
           event.preventDefault();
           if (busy) return;
           setBusy(true); setError("");
           try {
             setSent(await announceFieldSeason({
               venueId: venue.id, name, startsOn: date,
-              entryFee: fee, gameFormat,
+              entryFee: fee, gameFormat, signupClosesOn: deadline,
+              minimumClubs: minimum,
+              prizeIncreasePerClub: {
+                first: firstIncrease, second: secondIncrease, third: thirdIncrease,
+              },
               prizes: { first: firstPrize, second: secondPrize, third: thirdPrize },
             }));
           } catch (failure) {
@@ -116,10 +131,9 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
           {[
             ["Season name", "text", name, setName],
             ["Season start date", "date", date, setDate],
+            ["Signup deadline · closes at 23:59 SAST", "date", deadline, setDeadline],
+            ["Minimum Clubs required", "number", minimum, setMinimum],
             ["Entry fee per Club (R)", "number", fee, setFee],
-            ["First place prize (R)", "number", firstPrize, setFirstPrize],
-            ["Second place prize (R)", "number", secondPrize, setSecondPrize],
-            ["Third place prize (R)", "number", thirdPrize, setThirdPrize],
           ].map(([label, type, value, setter]) => (
             <label key={label} style={{ display: "grid", gap: ".3rem", margin: ".8rem 0" }}>
               {label}
@@ -139,13 +153,41 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
               ))}
             </select>
           </label>
-          <p>Club signup confirms participation. It does not collect payment.</p>
+          <details className="field-season-details">
+            <summary>Prizes & participation conditions</summary>
+            <p>Base prizes apply when the minimum number of Clubs signs up.
+              Each additional registered Club increases the prizes by the amounts below.</p>
+            {[
+              ["🥇 First prize", firstPrize, setFirstPrize, firstIncrease, setFirstIncrease],
+              ["🥈 Second prize", secondPrize, setSecondPrize, secondIncrease, setSecondIncrease],
+              ["🥉 Third prize", thirdPrize, setThirdPrize, thirdIncrease, setThirdIncrease],
+            ].map(([label, base, setBase, increase, setIncrease]) => (
+              <fieldset className="field-season-prize-row" key={label}>
+                <legend>{label}</legend>
+                <label>Base prize (R)
+                  <input className="text-input" type="number" min="0" step=".01"
+                    required disabled={busy} value={base}
+                    onChange={event => setBase(event.target.value)} />
+                </label>
+                <label>Increase per extra Club (R)
+                  <input className="text-input" type="number" min="0" step=".01"
+                    required disabled={busy} value={increase}
+                    onChange={event => setIncrease(event.target.value)} />
+                </label>
+              </fieldset>
+            ))}
+            <p>If fewer than {minimum || "the required number of"} Clubs sign up,
+              the season cannot start and will need to be cancelled or revised
+              by Field management.</p>
+          </details>
+          <p className="field-season-note">Registration closes at the deadline or when
+            play begins, whichever comes first. Signup does not collect payment.</p>
           {error && <p role="alert" className="error-text">{error}</p>}
           <div className="actions-row">
             <button type="button" className="secondary-btn" disabled={busy}
               onClick={onClose}>Cancel</button>
             <button className="primary-btn" type="submit" disabled={busy}>
-              {busy ? "Sending…" : "Start Season & Invite Clubs"}
+              {busy ? "Sending invitations…" : "Open Registration & Invite Clubs"}
             </button>
           </div>
         </form>
@@ -159,6 +201,11 @@ export function ClubFieldSeasonInvitation({ clubId }) {
   const [club, setClub] = useState(null);
   const [venue, setVenue] = useState(null);
   const [dismissed, setDismissed] = useState([]);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -190,10 +237,16 @@ export function ClubFieldSeasonInvitation({ clubId }) {
   const invitation = season?.invitations?.[clubId];
   const key = `${venue?.id}:${season?.id}`;
   if (!canManageClubField(club, user) ||
-      !season?.announcedAtMs || season.registrationOpen !== true ||
+      !fieldSeasonRegistrationOpen(season, now) ||
       invitation?.status !== "pending") return null;
 
-  const later = () => { setDismissed(previous => [...previous, key]); setError(""); };
+  const storageKey = `field-season-invitation-seen:${clubId}:${key}`;
+  let previouslySeen = false;
+  try { previouslySeen = localStorage.getItem(storageKey) === "yes"; } catch {}
+  const later = () => {
+    try { localStorage.setItem(storageKey, "yes"); } catch {}
+    setDismissed(previous => [...previous, key]); setError("");
+  };
   const respond = async status => {
     if (busy) return;
     setBusy(true); setError("");
@@ -213,6 +266,7 @@ export function ClubFieldSeasonInvitation({ clubId }) {
           aria-label="Open Field season invitation"
           title="Field season invitation"
           onClick={() => {
+            try { localStorage.removeItem(storageKey); } catch {}
             setDismissed(previous => previous.filter(value => value !== key));
             setError("");
           }}>
@@ -220,25 +274,42 @@ export function ClubFieldSeasonInvitation({ clubId }) {
           <em className="tk-admin-notification-count">1</em>
         </button>
       </div>
-      {!dismissed.includes(key) && (
+      {!previouslySeen && !dismissed.includes(key) && (
       <SeasonDialog title="Your Club is invited" premium busy={busy} onClose={later}>
       <p><strong>{venue.name}</strong> invites {club?.name || "your Club"} to:</p>
       <h3>{season.name}</h3>
-      <p>Season starts: <strong>{season.startsOn}</strong></p>
+      <div className="field-season-essential">
+        <p>Season starts <strong>{season.startsOn}</strong></p>
+        <p>Sign up by <strong>{season.signupClosesOn || "Before play begins"}</strong>
+          {season.signupClosesOn ? " · 23:59 SAST" : ""}</p>
+      </div>
       <p>Entry fee per Club: <strong>{money(season.entryFee)}</strong></p>
       <p>League size: <strong>{
         FIELD_GAME_FORMATS.find(([value]) => value === season.gameFormat)?.[1]
           || "To be confirmed by Field management"
       }</strong></p>
-      {season.prizes ? (
-        <div className="field-season-prizes">
-          <p>🥇 First place: <strong>{money(season.prizes.first)}</strong></p>
-          <p>🥈 Second place: <strong>{money(season.prizes.second)}</strong></p>
-          <p>🥉 Third place: <strong>{money(season.prizes.third)}</strong></p>
-        </div>
-      ) : (
-        <p>Prize money: <strong>{money(season.prizeMoney)}</strong></p>
-      )}
+      <details className="field-season-details">
+        <summary>Prizes & season details</summary>
+        {["first", "second", "third"].map((place, index) => (
+          <p key={place}>{["🥇 First", "🥈 Second", "🥉 Third"][index]} place:
+            <strong> {money(fieldSeasonProjectedPrizes(
+              season, (season.clubIds || []).length
+            )[place])}</strong>
+          </p>
+        ))}
+        <p>Minimum required: <strong>{season.minimumClubs || 3} Clubs</strong>.
+          Registered so far: <strong>{(season.clubIds || []).length}</strong>.</p>
+        <p>Below the minimum, the season cannot start.
+          Field management must cancel or revise it.</p>
+        {season.prizeIncreasePerClub && (
+          <p>For each additional registered Club above the minimum, prizes increase by
+            {" "}{money(season.prizeIncreasePerClub.first)} for first place,
+            {" "}{money(season.prizeIncreasePerClub.second)} for second and
+            {" "}{money(season.prizeIncreasePerClub.third)} for third.</p>
+        )}
+        <p>Registration closes at the deadline or when play begins,
+          whichever comes first.</p>
+      </details>
       <p>Sign up your Club and start mobilising your players.
         Signup confirms participation; it does not collect payment.</p>
       {error && <p className="error-text" role="alert">{error}</p>}

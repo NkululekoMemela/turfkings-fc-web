@@ -129,8 +129,8 @@ export function FirebaseEnvironmentGate({ children }) {
                 {busy ? "Signing in…" : "Sign in as superadmin"}
               </button>
               <button type="button"
-                onClick={() => {
-                  try { returnToConfiguredFirebaseEnvironment(); }
+                onClick={async () => {
+                  try { await returnToConfiguredFirebaseEnvironment(); }
                   catch (failure) { setError(failure.message); }
                 }}
                 style={{ ...buttonStyle, background: "#211c2b", color: "#fff" }}>
