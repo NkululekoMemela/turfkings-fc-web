@@ -8765,3 +8765,53 @@
     max-width: 100%;
   }
 }
+
+/* Approved wider mobile Club hub scale. */
+@media (max-width: 640px) {
+  .homepage-hub-shell {
+    font-size: 18px;
+  }
+
+  .homepage-hub-shell .hub-topbar,
+  .homepage-hub-shell .hub-clubs-section,
+  .homepage-hub-shell .hub-map-section,
+  .homepage-hub-shell .hub-footer-brand {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .homepage-hub-shell .hub-clubs-section {
+    padding-left: 22px !important;
+    padding-right: 22px !important;
+  }
+
+  .homepage-hub-shell .hub-register-card,
+  .homepage-hub-shell .hub-club-card,
+  .homepage-hub-shell .hub-club-card__cube {
+    min-height: 268px !important;
+  }
+}
+
+/* Club hub mobile width: size the shell before sizing its sections. */
+@media (max-width: 640px) {
+  .homepage-hub-shell.homepage-hub-shell--clubs-first {
+    box-sizing: border-box;
+    flex: 0 0 100vw;
+    width: 100vw;
+    max-width: none;
+    margin-inline: 0;
+    padding-inline: 4px !important;
+    background: transparent !important;
+    background-image: none !important;
+  }
+
+  .homepage-hub-shell--clubs-first > .hub-topbar,
+  .homepage-hub-shell--clubs-first > .hub-clubs-section,
+  .homepage-hub-shell--clubs-first > .hub-map-section,
+  .homepage-hub-shell--clubs-first > .hub-footer-brand {
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: none !important;
+    margin-inline: auto !important;
+  }
+}

@@ -1,0 +1,221 @@
+
+.football-travel {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: max(20px, env(safe-area-inset-top)) 18px
+    max(24px, env(safe-area-inset-bottom));
+  color: #fff;
+  background: radial-gradient(ellipse at 50% 38%, #123b49, #11152c 48%, #020617 85%);
+}
+.football-travel *, .football-travel *::before,
+.football-travel *::after { box-sizing: border-box; }
+.football-travel__content { width: min(100%, 760px); text-align: center; }
+.football-travel__scene {
+  position: relative;
+  width: 100%;
+  height: clamp(230px, 43dvh, 430px);
+  overflow: hidden;
+  isolation: isolate;
+}
+.football-travel__glow {
+  position: absolute;
+  inset: 8% 12%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(34,211,238,.25), transparent 65%);
+  animation: football-portal-glow 3s ease-in-out infinite alternate;
+}
+.football-travel__pitch {
+  position: absolute;
+  bottom: -32%;
+  left: 7%;
+  width: 86%;
+  height: 78%;
+  border: 2px solid rgba(167,243,208,.5);
+  background:
+    linear-gradient(90deg, transparent 49.7%, rgba(167,243,208,.55) 50%, transparent 50.3%),
+    repeating-linear-gradient(0deg, rgba(16,185,129,.1) 0 32px, rgba(16,185,129,.2) 32px 64px);
+  transform: perspective(350px) rotateX(57deg);
+  box-shadow: 0 0 30px rgba(34,211,238,.1);
+}
+.football-travel__centre {
+  position: absolute;
+  inset: 20% 30%;
+  border: 2px solid rgba(167,243,208,.45);
+  border-radius: 50%;
+}
+.football-travel__gate {
+  position: absolute;
+  width: 58%;
+  height: 77%;
+  left: 21%;
+  top: 5%;
+  border-radius: 48% 48% 12% 12%;
+  background: radial-gradient(ellipse at center, #081827 25%, rgba(34,211,238,.22) 70%, transparent 75%);
+  perspective: 600px;
+}
+.football-travel__net {
+  position: absolute;
+  inset: 12%;
+  border-radius: 45% 45% 8% 8%;
+  opacity: .3;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 17px, #67e8f9 18px 19px),
+    repeating-linear-gradient(90deg, transparent 0 17px, #67e8f9 18px 19px);
+  mask-image: radial-gradient(ellipse, black, transparent 72%);
+}
+.football-travel__ring {
+  position: absolute;
+  inset: 0;
+  border: 3px solid #67e8f9;
+  border-radius: 48% 48% 12% 12%;
+  box-shadow: 0 0 12px #22d3ee, inset 0 0 16px rgba(34,211,238,.45);
+}
+.football-travel__ring--one {
+  animation: football-portal-tilt 4s ease-in-out infinite alternate;
+}
+.football-travel__ring--two {
+  inset: 5%;
+  border: 3px dashed #c4b5fd;
+  box-shadow: 0 0 15px rgba(167,139,250,.7);
+  animation: football-portal-orbit 8s linear infinite;
+}
+.football-travel__ring--three {
+  inset: 12%;
+  border-color: #a7f3d0;
+  opacity: .7;
+  animation: football-portal-tilt 3s ease-in-out infinite alternate-reverse;
+}
+.football-travel__wave {
+  position: absolute;
+  inset: 14%;
+  border: 1px solid #a5f3fc;
+  border-radius: 48% 48% 12% 12%;
+  animation: football-portal-wave 2.6s ease-out infinite;
+  pointer-events: none;
+}
+.football-travel__ball-flight {
+  position: absolute;
+  left: calc(50% - 35px);
+  bottom: 9%;
+  width: 70px;
+  height: 70px;
+  animation: football-portal-shot 2.8s cubic-bezier(.3,.1,.45,1) infinite;
+  filter: drop-shadow(0 8px 12px rgba(0,0,0,.6));
+}
+.football-travel__ball {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: football-portal-orbit 2.8s linear infinite;
+}
+.football-travel__eyebrow {
+  margin: 8px 0;
+  color: #a5f3fc;
+  font-size: 12px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+.football-travel__message h2 {
+  margin: 10px 0;
+  color: #fff;
+  font-size: clamp(25px, 5vw, 42px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.football-travel__caption { color: #cbd5e1; font-size: 14px; }
+.football-travel__delayed { margin-top: 20px; }
+.football-travel__delayed p { color: #e2e8f0; line-height: 1.5; }
+.football-travel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+.football-travel__actions button { min-height: 44px; }
+@keyframes football-portal-shot {
+  0% { transform: translate(-45px, 20px) scale(1.25); opacity: 0; }
+  12% { opacity: 1; }
+  76% { transform: translate(8px, -125px) scale(.23); opacity: 1; }
+  90%, 100% { transform: translate(8px, -140px) scale(.08); opacity: 0; }
+}
+@keyframes football-portal-orbit { to { transform: rotate(360deg); } }
+@keyframes football-portal-tilt {
+  from { transform: rotateY(-12deg); }
+  to { transform: rotateY(12deg); }
+}
+@keyframes football-portal-wave {
+  from { transform: scale(.5); opacity: 0; }
+  25% { opacity: .65; }
+  to { transform: scale(1.35); opacity: 0; }
+}
+@keyframes football-portal-glow {
+  from { opacity: .5; transform: scale(.95); }
+  to { opacity: 1; transform: scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .football-travel * { animation: none !important; }
+  .football-travel__wave { display: none; }
+  .football-travel__ball-flight { transform: translateY(-40px); }
+}
+
+/* Stable football gateway: inward movement without rotation */
+.football-travel__ring--one,
+.football-travel__ring--two,
+.football-travel__ring--three,
+.football-travel__ball {
+  animation: none !important;
+  transform: none;
+}
+.football-travel__ring--two {
+  border-style: solid;
+  opacity: .75;
+}
+.football-travel__caption {
+  margin-top: 14px;
+  color: #a5f3fc;
+  font-size: 13px;
+  letter-spacing: .04em;
+}
+
+/* Calm official Field transition */
+.football-travel__scene * {
+  animation: none !important;
+}
+.football-travel__wave {
+  display: none;
+}
+.football-travel__ball-flight {
+  transform: translateY(-65px) scale(.65);
+}
+.football-travel__eyebrow {
+  max-width: 420px;
+  margin: 12px auto;
+  font-size: 13px;
+  letter-spacing: .08em;
+  line-height: 1.6;
+}
+
+/* Official League headline hierarchy */
+.football-travel__message h2 {
+  font-size: clamp(36px, 7vw, 64px);
+  font-weight: 900;
+  letter-spacing: -.035em;
+  color: #f0fdfa;
+  text-shadow: 0 0 24px rgba(34,211,238,.25);
+}
+.football-travel__field-name {
+  margin: 14px auto 0;
+  max-width: 600px;
+  font-size: clamp(20px, 3.5vw, 30px);
+  font-weight: 700;
+  line-height: 1.3;
+  color: #c4b5fd;
+  overflow-wrap: anywhere;
+}

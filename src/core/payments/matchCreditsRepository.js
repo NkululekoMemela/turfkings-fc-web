@@ -314,6 +314,76 @@ function sumWeekCostsFromSignup(data = {}, weekIds = []) {
   );
 }
 
+function normalisePaymentEvidence(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isTicketBackedWeek(data = {}, weekId = "") {
+  const safeWeekId = String(weekId || "").trim();
+
+  return (
+    normalisePaymentEvidence(data.paymentMethod) ===
+      "match_ticket" &&
+    String(data.lastMatchTicketWeekId || "").trim() ===
+      safeWeekId &&
+    Boolean(String(data.lastMatchTicketId || "").trim())
+  );
+}
+
+function isMoneyBackedWeek(data = {}, weekId = "") {
+  const safeWeekId = String(weekId || "").trim();
+
+  const moneyBackedWeeks = uniqueWeekIds(
+    data.moneyBackedWeeks || []
+  );
+  const accessOverrideWeeks = uniqueWeekIds(
+    data.accessOverrideWeeks || []
+  );
+
+  if (moneyBackedWeeks.includes(safeWeekId)) {
+    return true;
+  }
+
+  if (accessOverrideWeeks.includes(safeWeekId)) {
+    return false;
+  }
+
+  if (data.paymentSimulation === true) {
+    return false;
+  }
+
+  const method = normalisePaymentEvidence(
+    data.paymentMethod
+  );
+  const verifiedBy = normalisePaymentEvidence(
+    data.verifiedBy
+  );
+  const provider = normalisePaymentEvidence(
+    data.provider
+  );
+
+  if (
+    [
+      "manual_admin_add_paid_week",
+      "practice_manual_admin_paid",
+      "practice simulation",
+      "match_ticket",
+    ].includes(method)
+  ) {
+    return false;
+  }
+
+  return (
+    data.paymentActuallyReceived === true ||
+    ["yoco", "paystack", "manual_admin_verify"].includes(
+      method
+    ) ||
+    ["yoco", "paystack"].includes(provider) ||
+    verifiedBy === "yoco_webhook" ||
+    verifiedBy === "paystack_webhook"
+  );
+}
+
 /*
  * Cancel one already-paid Official Match Signup entitlement and return it
  * as exactly one Golden Match Credit.
@@ -336,12 +406,15 @@ export async function cancelPaidMatchAndIssueCredit({
   weekId,
   sourceType = MATCH_CREDIT_SOURCE.PLAYER_EARLY_CANCELLATION,
   issuedBy = "",
+  issueMatchCredit = true,
+  preservePaidEntitlement = false,
 } = {}) {
   const safeClubId = String(clubId || "").trim();
   const safePlayerId = String(playerId || "").trim();
   const safeSignupDocId = String(signupDocId || "").trim();
   const safeWeekId = String(weekId || "").trim();
   const safeSourceType = String(sourceType || "").trim();
+  const shouldIssueMatchCredit = issueMatchCredit !== false;
 
   if (!safeClubId) throw new Error("Missing clubId.");
   if (!safePlayerId) throw new Error("Missing playerId.");
@@ -407,7 +480,7 @@ export async function cancelPaidMatchAndIssueCredit({
       throw new Error("Match Credits are not enabled for this club.");
     }
 
-    if (existingCreditSnap.exists()) {
+    if (shouldIssueMatchCredit && existingCreditSnap.exists()) {
       return {
         creditId,
         alreadyCompleted: true,
@@ -440,22 +513,40 @@ export async function cancelPaidMatchAndIssueCredit({
       );
     }
 
-    const nextSelectedWeeks = selectedWeeks.filter(
-      (id) => id !== safeWeekId
-    );
-
-    const nextPaidWeeks = paidWeeks.filter(
-      (id) => id !== safeWeekId
-    );
-
-    const nextUnpaidWeeks = nextSelectedWeeks.filter(
-      (id) => !nextPaidWeeks.includes(id)
-    );
-
     const sourceData =
       Object.keys(matchData).length > 0
         ? { ...pendingData, ...matchData }
         : pendingData;
+
+    if (
+      shouldIssueMatchCredit &&
+      isTicketBackedWeek(sourceData, safeWeekId)
+    ) {
+      throw new Error(
+        "This booking used a Match Ticket. Return the same ticket instead."
+      );
+    }
+
+    if (
+      shouldIssueMatchCredit &&
+      !isMoneyBackedWeek(sourceData, safeWeekId)
+    ) {
+      throw new Error(
+        "This booking is an access override and is not eligible for a Match Ticket."
+      );
+    }
+
+    const nextSelectedWeeks = selectedWeeks.filter(
+      (id) => id !== safeWeekId
+    );
+
+    const nextPaidWeeks = preservePaidEntitlement
+      ? paidWeeks
+      : paidWeeks.filter((id) => id !== safeWeekId);
+
+    const nextUnpaidWeeks = nextSelectedWeeks.filter(
+      (id) => !nextPaidWeeks.includes(id)
+    );
 
     const nextPaymentStatus = statusFromWeekState(
       nextSelectedWeeks,
@@ -486,6 +577,22 @@ export async function cancelPaidMatchAndIssueCredit({
 
       paymentStatus: nextPaymentStatus,
       isUnpaid: nextUnpaidWeeks.length > 0,
+
+      moneyBackedWeeks: uniqueWeekIds(
+        sourceData.moneyBackedWeeks || []
+      ).filter((id) => id !== safeWeekId),
+      accessOverrideWeeks: uniqueWeekIds(
+        sourceData.accessOverrideWeeks || []
+      ).filter((id) => id !== safeWeekId),
+
+      lateCancelledWeeks: preservePaidEntitlement
+        ? uniqueWeekIds([
+            ...(sourceData.lateCancelledWeeks || []),
+            safeWeekId,
+          ])
+        : uniqueWeekIds(
+            sourceData.lateCancelledWeeks || []
+          ).filter((id) => id !== safeWeekId),
 
       lastMatchCreditCancellationWeekId: safeWeekId,
       lastMatchCreditCancellationAt: serverTimestamp(),
@@ -534,12 +641,14 @@ export async function cancelPaidMatchAndIssueCredit({
       voidedAt: null,
     };
 
-    transaction.set(creditRef, creditPayload);
+    if (shouldIssueMatchCredit) {
+      transaction.set(creditRef, creditPayload);
+    }
 
     return {
-      creditId,
+      creditId: shouldIssueMatchCredit ? creditId : "",
       alreadyCompleted: false,
-      credit: creditPayload,
+      credit: shouldIssueMatchCredit ? creditPayload : null,
       nextSelectedWeeks,
       nextPaidWeeks,
       nextUnpaidWeeks,
@@ -778,6 +887,8 @@ export async function returnRedeemedMatchTicketToWallet({
   signupDocId,
   weekId,
   returnedBy = "",
+  returnToWallet = true,
+  preservePaidEntitlement = false,
 } = {}) {
   const safeClubId = String(clubId || "").trim();
   const safeCreditId = String(creditId || "").trim();
@@ -888,7 +999,11 @@ export async function returnRedeemedMatchTicketToWallet({
       ...(pendingData.primaryPaidWeeks || []),
       ...(matchData.paidWeeks || []),
       ...(matchData.primaryPaidWeeks || []),
-    ]).filter((id) => id !== safeWeekId);
+    ]).filter(
+      (id) =>
+        preservePaidEntitlement ||
+        id !== safeWeekId
+    );
 
     const unpaidWeeks = selectedWeeks.filter(
       (id) => !paidWeeks.includes(id)
@@ -929,8 +1044,21 @@ export async function returnRedeemedMatchTicketToWallet({
       paymentStatus,
       isUnpaid: unpaidWeeks.length > 0,
 
-      lastMatchTicketReturnWeekId: safeWeekId,
-      lastMatchTicketReturnedAt: serverTimestamp(),
+      lateCancelledWeeks: preservePaidEntitlement
+        ? uniqueWeekIds([
+            ...(sourceData.lateCancelledWeeks || []),
+            safeWeekId,
+          ])
+        : uniqueWeekIds(
+            sourceData.lateCancelledWeeks || []
+          ).filter((id) => id !== safeWeekId),
+
+      lastMatchTicketReturnWeekId:
+        preservePaidEntitlement ? null : safeWeekId,
+      lastMatchTicketReturnedAt:
+        preservePaidEntitlement
+          ? null
+          : serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
@@ -969,26 +1097,180 @@ export async function returnRedeemedMatchTicketToWallet({
       safeWeekId,
     ]);
 
-    transaction.update(creditRef, {
-      status: MATCH_CREDIT_STATUS.AVAILABLE,
+    const shouldReturnToWallet = returnToWallet !== false;
+    const actor =
+      String(returnedBy || "").trim() ||
+      safePlayerId;
+
+    if (!preservePaidEntitlement) {
+      transaction.update(creditRef, {
+      status: shouldReturnToWallet
+        ? MATCH_CREDIT_STATUS.AVAILABLE
+        : MATCH_CREDIT_STATUS.VOIDED,
 
       withdrawalWeekIds,
 
-      lastReturnedWeekId: safeWeekId,
-      returnedAt: serverTimestamp(),
-      returnedBy:
-        String(returnedBy || "").trim() ||
-        safePlayerId,
+      lastReturnedWeekId: shouldReturnToWallet
+        ? safeWeekId
+        : null,
+      returnedAt: shouldReturnToWallet
+        ? serverTimestamp()
+        : null,
+      returnedBy: shouldReturnToWallet
+        ? actor
+        : null,
+
+      voidedAt: shouldReturnToWallet
+        ? null
+        : serverTimestamp(),
+      voidedBy: shouldReturnToWallet
+        ? null
+        : actor,
+      voidReason: shouldReturnToWallet
+        ? null
+        : "late_player_cancellation",
 
       redeemedWeekId: null,
       redeemedAt: null,
       redeemedBy: null,
 
-      updatedAt: serverTimestamp(),
-    });
+        updatedAt: serverTimestamp(),
+      });
+    }
 
     return {
       creditId: safeCreditId,
+      selectedWeeks,
+      paidWeeks,
+      unpaidWeeks,
+    };
+  });
+}
+
+export async function reclaimLateCancelledMatch({
+  clubId,
+  playerId,
+  signupDocId,
+  weekId,
+  reclaimedBy = "",
+} = {}) {
+  const safeClubId = String(clubId || "").trim();
+  const safePlayerId = String(playerId || "").trim();
+  const safeSignupDocId = String(signupDocId || "").trim();
+  const safeWeekId = String(weekId || "").trim();
+
+  if (!safeClubId) throw new Error("Missing clubId.");
+  if (!safePlayerId) throw new Error("Missing playerId.");
+  if (!safeSignupDocId) throw new Error("Missing signupDocId.");
+  if (!safeWeekId) throw new Error("Missing match.");
+
+  const pendingRef = doc(
+    db,
+    "clubs",
+    safeClubId,
+    CLUB_COLLECTIONS.pendingSignups,
+    safeSignupDocId
+  );
+  const matchSignupRef = doc(
+    db,
+    "clubs",
+    safeClubId,
+    CLUB_COLLECTIONS.matchSignups,
+    safeSignupDocId
+  );
+
+  return runTransaction(db, async (transaction) => {
+    const [pendingSnap, matchSignupSnap] = await Promise.all([
+      transaction.get(pendingRef),
+      transaction.get(matchSignupRef),
+    ]);
+
+    if (!pendingSnap.exists() && !matchSignupSnap.exists()) {
+      throw new Error("Match Signup record not found.");
+    }
+
+    const pendingData = pendingSnap.exists()
+      ? pendingSnap.data() || {}
+      : {};
+    const matchData = matchSignupSnap.exists()
+      ? matchSignupSnap.data() || {}
+      : {};
+    const sourceData = {
+      ...pendingData,
+      ...matchData,
+    };
+
+    const lateCancelledWeeks = uniqueWeekIds(
+      sourceData.lateCancelledWeeks || []
+    );
+    const refundedWeeks = uniqueWeekIds(
+      sourceData.lateCancellationRefundedWeeks || []
+    );
+
+    if (!lateCancelledWeeks.includes(safeWeekId)) {
+      throw new Error(
+        "This match is not recorded as a late cancellation."
+      );
+    }
+
+    if (refundedWeeks.includes(safeWeekId)) {
+      throw new Error(
+        "This place was refunded after a replacement was found."
+      );
+    }
+
+    const selectedWeeks = uniqueWeekIds([
+      ...(pendingData.selectedWeeks || []),
+      ...(matchData.selectedWeeks || []),
+      safeWeekId,
+    ]);
+    const paidWeeks = uniqueWeekIds([
+      ...(pendingData.paidWeeks || []),
+      ...(pendingData.primaryPaidWeeks || []),
+      ...(matchData.paidWeeks || []),
+      ...(matchData.primaryPaidWeeks || []),
+      safeWeekId,
+    ]);
+    const unpaidWeeks = selectedWeeks.filter(
+      (id) => !paidWeeks.includes(id)
+    );
+
+    const commonPatch = {
+      selectedWeeks,
+      paidWeeks,
+      primaryPaidWeeks: paidWeeks,
+      unpaidWeeks,
+      unpaidPrimaryWeeks: unpaidWeeks,
+      weeksToPayNow: unpaidWeeks,
+      paymentStatus: statusFromWeekState(
+        selectedWeeks,
+        paidWeeks
+      ),
+      isUnpaid: unpaidWeeks.length > 0,
+      lateCancelledWeeks: lateCancelledWeeks.filter(
+        (id) => id !== safeWeekId
+      ),
+      lastLateCancellationReclaimedWeekId: safeWeekId,
+      lastLateCancellationReclaimedAt: serverTimestamp(),
+      lastLateCancellationReclaimedBy:
+        String(reclaimedBy || "").trim() ||
+        safePlayerId,
+      updatedAt: serverTimestamp(),
+    };
+
+    if (pendingSnap.exists()) {
+      transaction.set(pendingRef, commonPatch, {
+        merge: true,
+      });
+    }
+
+    if (matchSignupSnap.exists()) {
+      transaction.set(matchSignupRef, commonPatch, {
+        merge: true,
+      });
+    }
+
+    return {
       selectedWeeks,
       paidWeeks,
       unpaidWeeks,

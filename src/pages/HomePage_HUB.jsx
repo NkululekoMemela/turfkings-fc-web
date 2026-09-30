@@ -1,3 +1,8 @@
+import FirebaseEnvironmentControl from "../components/FirebaseEnvironmentControl.jsx";
+import { LEGAL } from "../legal/policies.js";
+import LegalSignature from "../components/LegalSignature.jsx";
+const CLUB_POLICY = LEGAL.club;
+import { ABOUT_RELEASE } from "../content/aboutRelease.js";
 // src/pages/HomePage_HUB.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -399,29 +404,11 @@ const HUB_INFO_CONTENT = {
   },
   about: {
     title: "About 5 Asides Near Me",
-    body: [
-      "September 2026 · Matchday Intelligence Edition",
-      "This release makes match-day planning, player development and club presentation smarter and clearer.",
-      "• Smarter lineup placement using player mentality and shooting profiles.",
-      "• Fairer goalkeeper, substitute, and positional rotations.",
-      "• Dedicated Mentality & Shooting player profiles.",
-      "• Improved club-badge visibility across cards, formations, tables, and team sheets.",
-      "• Unlimited isolated 15-minute Practice sessions.",
-      "• Improved News archiving and the renamed Video Highlights experience.",
-    ],
+    body: ABOUT_RELEASE,
   },
   terms: {
-    title: "Terms & Privacy",
-    body: [
-      "5 Asides Near Me is a football discovery, club management and match coordination platform.",
-      "Players and captains must provide honest and accurate information when joining or creating clubs.",
-      "Captains confirm that they are authorised to manage the club they create and must not create fake clubs, impersonate other clubs or collect money dishonestly.",
-      "Captains are responsible for using player contributions for legitimate football-related club costs, including field bookings and agreed club expenses.",
-      "The platform must not be used for fraud, money laundering, unlawful fundraising, fake club creation or any illegal financial activity.",
-      "5 Asides Near Me may suspend, hide, investigate or remove clubs that appear fraudulent, misleading, abusive or unlawful.",
-      "User information is used to operate the platform, manage club membership, support match coordination and communicate important club or support updates.",
-      "This is a starter platform policy and should be reviewed by a qualified legal professional before full commercial launch.",
-    ],
+    title: CLUB_POLICY.title,
+    body: CLUB_POLICY.sections.map(([heading, detail]) => `${heading}: ${detail}`),
   },
 };
 
@@ -482,6 +469,7 @@ export default function HomePage_HUB({
   onJoinClub,
   onChallengeClub,
   onNavigateToEntryPage,
+  onBackToWelcome,
 }) {
   const [showTour, setShowTour] = React.useState(false);
   const [clubFeaturedVideos, setClubFeaturedVideos] = useState({});
@@ -1425,6 +1413,9 @@ export default function HomePage_HUB({
         <div className="hub-section-head hub-section-head--clubs-first">
           <div>
             <span className="hub-kicker">Discover clubs near you</span>
+            <div style={{
+              display: "flex", alignItems: "center", gap: "10px",
+            }}>
             {isSuperAdmin(currentUser) ? (
               <button
                 type="button"
@@ -1437,6 +1428,24 @@ export default function HomePage_HUB({
                 Admin
               </button>
             ) : null}
+              <button
+                type="button"
+                onClick={() => onBackToWelcome?.()}
+                aria-label="Back to welcome"
+                title="Back to welcome"
+                style={{
+                  width: "44px", height: "44px", flexShrink: 0,
+                  display: "grid", placeItems: "center",
+                  borderRadius: "50%",
+                  border: "1px solid rgba(148,163,184,.3)",
+                  background: "rgba(15,23,42,.6)",
+                  color: "#a7f3d0", fontSize: "30px",
+                  lineHeight: 1, cursor: "pointer",
+                }}
+              >
+                <span aria-hidden="true">↶</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1576,6 +1585,10 @@ export default function HomePage_HUB({
           ) : null}
         </div>
       </section>
+
+      {isSuperAdmin(currentUser) && (
+        <FirebaseEnvironmentControl user={currentUser} />
+      )}
 
       <footer className="hub-footer-brand">
         <div className="hub-footer-logo-stage">
@@ -1729,10 +1742,18 @@ export default function HomePage_HUB({
             <span className="hub-kicker">5 Asides Near Me</span>
             <h2>{hubInfoModal.title}</h2>
             <div className="hub-info-modal__body">
-              {hubInfoModal.body.map((item, index) => (
+              {hubInfoModal.body === ABOUT_RELEASE ? (
+                <ul>
+                  {ABOUT_RELEASE.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              ) : hubInfoModal.body.map((item, index) => (
                 <p key={index}>{item}</p>
               ))}
             </div>
+            {hubInfoModal === HUB_INFO_CONTENT.terms &&
+              <LegalSignature scope="club" />}
           </section>
         </div>
       ) : null}

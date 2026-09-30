@@ -29,6 +29,12 @@ service cloud.firestore {
              && request.auth.token.get("matchId", "") == matchId;
     }
 
+    function cameraCanAccessVenueMatch(venueId, matchId) {
+      return isCameraSession()
+             && request.auth.token.get("venueId", "") == venueId
+             && request.auth.token.get("matchId", "") == matchId;
+    }
+
     // ---------------------------------------------------------
     // OFFICIAL CLUB DATA
     //
@@ -36,9 +42,1147 @@ service cloud.firestore {
     // FANM users. Camera identities are deliberately excluded here
     // so they cannot inherit unrestricted Official-club writes.
     // ---------------------------------------------------------
-    match /clubs/{clubId}/{document=**} {
+    function clubRootPath(clubId) {
+      return /databases/$(database)/documents/clubs/$(clubId);
+    }
+
+    function clubAdministrator(clubId) {
+      let clubPath = clubRootPath(clubId);
+      return isSignedIn()
+        && !isCameraSession()
+        && exists(clubPath)
+        && (
+          get(clubPath).data.get("ownerUid", "") == request.auth.uid
+          || get(clubPath).data.get("createdByUid", "") == request.auth.uid
+          || request.auth.uid in get(clubPath).data.get("adminUids", [])
+          || (
+            request.auth.token.get("email_verified", false) == true
+            && request.auth.token.get("email", "") != ""
+            && request.auth.token.email in
+              get(clubPath).data.get("adminEmails", [])
+          )
+        );
+    }
+
+    match /clubs/{clubId} {
       allow read: if true;
-      allow write: if isSignedIn() && !isCameraSession();
+
+      allow create: if isSignedIn()
+        && !isCameraSession()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.auth.uid in request.resource.data.adminUids;
+
+      allow update: if isSignedIn()
+        && !isCameraSession()
+        && request.resource.data.get("ownerUid", "") ==
+          resource.data.get("ownerUid", "")
+        && request.resource.data.get("createdByUid", "") ==
+          resource.data.get("createdByUid", "")
+        && (
+          clubAdministrator(clubId)
+          || (
+            request.auth.token.get("email_verified", false) == true
+            && request.auth.token.get("email", "") ==
+              "nkululekolerato@gmail.com"
+            && request.resource.data.get("status", "") == "deleted"
+            && request.resource.data.get("deleted", false) == true
+            && request.resource.data.get("deletedByUid", "") ==
+              request.auth.uid
+            && request.resource.data.get("deletedByEmail", "") ==
+              request.auth.token.email
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                "status", "deleted", "deletedAt",
+                "deletedByUid", "deletedByEmail"
+              ])
+          )
+          || !request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny([
+              "id", "clubId", "name", "ownerUid", "ownerEmail",
+              "createdByUid", "createdByEmail", "createdBy",
+              "adminUids", "adminEmails", "adminNames",
+              "captain", "captainEmail", "captainEmails",
+              "status", "deleted", "deletedAt", "deletedByUid",
+              "deletedByEmail"
+            ])
+        );
+
+      allow delete: if false;
+    }
+
+    match /clubs/{clubId}/members/{memberId} {
+      function ownMembership() {
+        return isSignedIn()
+          && !isCameraSession()
+          && request.auth.token.get("email_verified", false) == true
+          && request.auth.token.get("email", "") != ""
+          && (
+            resource.data.get("uid", "") == request.auth.uid
+            || resource.data.get("email", "") ==
+              request.auth.token.email
+          );
+      }
+
+      allow read: if true;
+
+      allow create: if clubAdministrator(clubId)
+        || (
+          isSignedIn()
+          && !isCameraSession()
+          && request.auth.token.get("email_verified", false) == true
+          && request.resource.data.get("email", "") ==
+            request.auth.token.get("email", "")
+          && request.resource.data.get("uid", request.auth.uid) ==
+            request.auth.uid
+          && request.resource.data.get("status", "") == "pending"
+          && request.resource.data.get("role", "") == "player"
+        );
+
+      allow update: if clubAdministrator(clubId)
+        || (
+          ownMembership()
+          && (
+            request.resource.data.get("uid", "") ==
+              resource.data.get("uid", "")
+            || (
+              resource.data.get("uid", "") == ""
+              && request.resource.data.get("uid", "") ==
+                request.auth.uid
+            )
+          )
+          && request.resource.data.get("role", "") ==
+            resource.data.get("role", "")
+          && request.resource.data.get("email", "") ==
+            request.auth.token.get("email", "")
+          && (
+            (
+              request.resource.data.get("status", "") ==
+                resource.data.get("status", "")
+              && request.resource.data.diff(resource.data)
+                .affectedKeys().hasOnly([
+                  "fullName", "shortName", "email",
+                  "whatsappNumber", "phoneNumber",
+                  "photoData", "photoUrl", "profileUpdatedAt",
+                  "profileUpdatedByUid", "profileUpdatedByRole",
+                  "updatedAt"
+                ])
+            )
+            || (
+              resource.data.get("uid", "") == ""
+              && request.resource.data.get("uid", "") ==
+                request.auth.uid
+              && request.resource.data.get("status", "") ==
+                resource.data.get("status", "")
+              && request.resource.data.get(
+                "platformIdentityUid", ""
+              ) in [
+                request.auth.uid,
+                resource.data.get("platformIdentityUid", "")
+              ]
+              && request.resource.data.diff(resource.data)
+                .affectedKeys().hasOnly([
+                  "email", "uid", "platformIdentityUid",
+                  "updatedAt"
+                ])
+            )
+            || (
+              resource.data.get("status", "") == "withdrawn"
+              && request.resource.data.get("status", "") == "pending"
+              && request.resource.data.get("role", "") == "player"
+              && request.resource.data.get(
+                "platformIdentityUid", request.auth.uid
+              ) == request.auth.uid
+            )
+          )
+        );
+
+      allow delete: if clubAdministrator(clubId);
+    }
+
+    // Preserve the legacy access of unrelated Club subcollections.
+    // The root and members are governed by the rules above.
+    match /clubs/{clubId}/{collectionName}/{document=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+        && !isCameraSession()
+        && collectionName != "members";
+    }
+
+    // ---------------------------------------------------------
+    // LEAGUE VENUES
+    // Separate from club identities and club permissions.
+    // ---------------------------------------------------------
+    match /clubFieldMemberships/{clubId} {
+      function validFieldMembership() {
+        return request.resource.data.keys().hasOnly([
+            "clubId", "venueId", "status", "previousVenueId",
+            "joinedAt", "updatedAt", "changedByUid"
+          ])
+          && request.resource.data.clubId == clubId
+          && request.resource.data.venueId is string
+          && request.resource.data.venueId.size() > 0
+          && exists(
+            /databases/$(database)/documents/leagueVenues/$(request.resource.data.venueId)
+          )
+          && request.resource.data.status == "active"
+          && request.resource.data.changedByUid == request.auth.uid
+          && request.resource.data.updatedAt == request.time;
+      }
+      allow read: if isSignedIn() && !isCameraSession();
+      allow create: if clubAdministrator(clubId)
+        && validFieldMembership()
+        && request.resource.data.joinedAt == request.time
+        && request.resource.data.previousVenueId == "";
+      allow update: if clubAdministrator(clubId)
+        && validFieldMembership()
+        && request.resource.data.joinedAt == resource.data.joinedAt
+        && request.resource.data.previousVenueId == (
+          request.resource.data.venueId == resource.data.venueId
+            ? resource.data.previousVenueId
+            : resource.data.venueId
+        );
+      allow delete: if false;
+    }
+
+    match /leagueVenues/{venueId} {
+
+      // Club consent applies only to this Club's pending season invitation.
+      function clubSeasonMembershipIsActive(clubId) {
+        let membership = get(
+          /databases/$(database)/documents/clubFieldMemberships/$(clubId)
+        ).data;
+        return membership.status == "active"
+          && membership.venueId == venueId;
+      }
+
+      function clubSeasonResponse() {
+        let before = resource.data.league.activeSeason;
+        let after = request.resource.data.league.activeSeason;
+        let clubId = after.get("lastRespondingClubId", "");
+
+        return isSignedIn() && !isCameraSession()
+          && clubId is string
+          && clubId.size() > 0
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["league", "updatedAt"])
+          && request.resource.data.league.diff(resource.data.league)
+            .affectedKeys().hasOnly(["activeSeason"])
+          && after.diff(before).affectedKeys().hasOnly([
+            "invitations", "clubIds", "lastRespondingClubId"
+          ])
+          && before.get("registrationOpen", false) == true
+          && before.get("firstPlayAtMs", 0) == 0
+          && before.get("results", []).size() == 0
+          && before.get("matchDayHistory", []).size() == 0
+          && (
+            !("signupDeadlineAtMs" in before)
+            || (
+              before.signupDeadlineAtMs is int
+              && request.time <= timestamp.value(before.signupDeadlineAtMs)
+            )
+          )
+          && (
+            !exists(
+              /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(before.id)/matches/current
+            )
+            || get(
+              /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(before.id)/matches/current
+            ).data.get("confirmedLineupSnapshot", null) == null
+          )
+          && clubId in before.get("invitations", {})
+          && clubId in after.get("invitations", {})
+          && before.invitations[clubId].status == "pending"
+          && after.invitations[clubId].status in ["accepted", "declined"]
+          && after.invitations[clubId].confirmedByUid == request.auth.uid
+          && after.invitations[clubId].confirmedAt == request.time
+          && after.invitations[clubId]
+            .diff(before.invitations[clubId]).affectedKeys().hasOnly([
+              "status", "confirmedByUid", "confirmedAt"
+            ])
+          && after.invitations.diff(before.invitations)
+            .affectedKeys().hasOnly([clubId])
+          && (
+            (after.invitations[clubId].status == "accepted"
+              && !(clubId in before.clubIds)
+              && after.clubIds == before.clubIds.concat([clubId]))
+            || (after.invitations[clubId].status == "declined"
+              && after.clubIds == before.clubIds)
+          )
+          && request.resource.data.updatedAt == request.time
+          && clubSeasonMembershipIsActive(clubId)
+          && clubAdministrator(clubId);
+      }
+
+      function venueAfterCreation() {
+        return getAfter(
+          /databases/$(database)/documents/leagueVenues/$(venueId)
+        );
+      }
+
+      function activeFieldAdministrator() {
+        return isSignedIn()
+          && (
+            resource.data.ownerUid == request.auth.uid
+            || (
+              exists(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              )
+              && get(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              ).data.status == "active"
+              && get(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              ).data.isAdministrator == true
+            )
+          );
+      }
+
+      function activeFieldMatchOperator() {
+        return isSignedIn()
+          && (
+            activeFieldAdministrator()
+            || (
+              exists(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              )
+              && get(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              ).data.status == "active"
+              && get(
+                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              ).data.role == "referee"
+            )
+          );
+      }
+
+      function onlyUpdatesLiveMatches() {
+        return request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly(["league", "updatedAt"])
+          && request.resource.data.league
+            .diff(resource.data.league)
+            .affectedKeys()
+            .hasOnly(["activeSeason"])
+          && request.resource.data.league.activeSeason
+            .diff(resource.data.league.activeSeason)
+            .affectedKeys()
+            .hasOnly(["liveMatches"]);
+      }
+
+      function onlyCompletesCurrentFieldMatch() {
+        let old = resource.data.league.activeSeason;
+        let next = request.resource.data.league.activeSeason;
+        let prior = old.get("results", []);
+        let result = next.results[prior.size()];
+        let fixtureId = result.fixtureId;
+        let removed = old.fixtures.removeAll(next.fixtures);
+        let added = next.fixtures.removeAll(old.fixtures);
+
+        return request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(["league", "updatedAt"])
+          && request.resource.data.league.diff(resource.data.league)
+            .affectedKeys().hasOnly(["activeSeason"])
+          && next.diff(old).affectedKeys().hasOnly([
+            "status", "fixtures", "liveMatches", "results",
+            "allEvents", "currentMatchNo", "currentMatch",
+            "streaks", "updatedAtMs"
+          ])
+          && next.id == old.id
+          && next.status == "active"
+          && next.results.size() == prior.size() + 1
+          && next.results.hasAll(prior)
+          && result.id == fixtureId
+          && result.completedByUid == request.auth.uid
+          && result.matchNo == old.get("currentMatchNo", prior.size() + 1)
+          && next.currentMatchNo == result.matchNo + 1
+          && old.liveMatches[fixtureId].status == "live"
+          && result.teamAId == old.liveMatches[fixtureId].clubAId
+          && result.teamBId == old.liveMatches[fixtureId].clubBId
+          && result.standbyId == old.liveMatches[fixtureId].standbyId
+          && result.standbyId in next.clubIds
+          && next.streaks.diff(old.get("streaks", {}))
+            .affectedKeys().hasOnly([
+              result.teamAId, result.teamBId, result.standbyId
+            ])
+          && next.currentMatch.teamAId in next.clubIds
+          && next.currentMatch.teamBId in next.clubIds
+          && next.currentMatch.standbyId in next.clubIds
+          && next.currentMatch.teamAId != next.currentMatch.teamBId
+          && next.currentMatch.teamAId != next.currentMatch.standbyId
+          && next.currentMatch.teamBId != next.currentMatch.standbyId
+          && next.liveMatches.diff(old.liveMatches)
+            .affectedKeys().hasOnly([fixtureId])
+          && next.liveMatches[fixtureId].status == "completed"
+          && next.liveMatches[fixtureId].completedByUid == request.auth.uid
+          && next.liveMatches[fixtureId].scoreA == result.goalsA
+          && next.liveMatches[fixtureId].scoreB == result.goalsB
+          && next.fixtures.size() == old.fixtures.size()
+          && removed.size() == 1
+          && added.size() == 1
+          && removed[0].id == fixtureId
+          && removed[0].status == "scheduled"
+          && added[0].id == fixtureId
+          && added[0].status == "completed"
+          && added[0].clubAId == removed[0].clubAId
+          && added[0].clubBId == removed[0].clubBId
+          && added[0].goalsA == result.goalsA
+          && added[0].goalsB == result.goalsB
+          && next.allEvents.hasAll(old.get("allEvents", []));
+      }
+
+      allow read: if true;
+
+      allow create: if isSignedIn()
+                    && !isCameraSession()
+                    && request.resource.data.id == venueId
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.auth.uid in request.resource.data.adminUids;
+
+      allow update: if !isCameraSession()
+                    && request.resource.data.ownerUid
+                       == resource.data.ownerUid
+                    && request.resource.data.id == venueId
+                    && (
+                      activeFieldAdministrator()
+                        ? true
+                        : (
+                          activeFieldMatchOperator()
+                            ? (
+                              onlyUpdatesLiveMatches()
+                              || onlyCompletesCurrentFieldMatch()
+                            )
+                            : clubSeasonResponse()
+                        )
+                    );
+
+      allow delete: if false;
+
+      function activeFieldOperatorForSeason(seasonId) {
+        let venue = get(
+          /databases/$(database)/documents/leagueVenues/$(venueId)
+        ).data;
+        let staffPath =
+          /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid);
+
+        return isSignedIn()
+          && !isCameraSession()
+          && venue.league.activeSeason.id == seasonId
+          && (
+            venue.ownerUid == request.auth.uid
+            || (
+              exists(staffPath)
+              && get(staffPath).data.status == "active"
+              && (
+                get(staffPath).data.isAdministrator == true
+                || get(staffPath).data.role == "referee"
+              )
+            )
+          );
+      }
+
+      match /actionLog/{entryId} {
+        function venueDoc() {
+          return get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data;
+        }
+
+        function activeStaff() {
+          let staffPath =
+            /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid);
+          return isSignedIn()
+            && !isCameraSession()
+            && (
+              venueDoc().ownerUid == request.auth.uid
+              || (
+                exists(staffPath)
+                && get(staffPath).data.status == "active"
+              )
+            );
+        }
+
+        allow read: if activeStaff();
+
+        allow create: if activeStaff()
+          && request.resource.data.keys().hasOnly([
+            "venueId", "seasonId", "fixtureId", "action", "label",
+            "details", "actorUid", "actorEmail", "actorName", "at"
+          ])
+          && request.resource.data.keys().hasAll([
+            "venueId", "seasonId", "fixtureId", "action", "label",
+            "details", "actorUid", "actorEmail", "actorName", "at"
+          ])
+          && request.resource.data.venueId == venueId
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.actorEmail ==
+            request.auth.token.get("email", "")
+          && request.resource.data.at == request.time
+          && request.resource.data.seasonId is string
+          && request.resource.data.fixtureId is string
+          && request.resource.data.action in [
+            "season_created", "season_started", "match_started", "match_completed",
+            "match_day_saved", "match_day_discarded", "season_ended", "season_cancelled",
+            "empty_season_deleted"
+          ]
+          && request.resource.data.label is string
+          && request.resource.data.label.size() <= 100
+          && request.resource.data.details is string
+          && request.resource.data.details.size() <= 500
+          && request.resource.data.actorName is string
+          && request.resource.data.actorName.size() <= 100;
+
+        allow update, delete: if false;
+      }
+
+      match /seasons/{seasonId} {
+        function validUnplayedSeasonCancellation() {
+          let venuePath =
+            /databases/$(database)/documents/leagueVenues/$(venueId);
+          let season = get(venuePath).data.league.activeSeason;
+          let archive = request.resource.data;
+          return archive.status == "cancelled"
+            && season.id == seasonId
+            && season.status == "active"
+            && season.get("results", []).size() == 0
+            && season.get("matchDayHistory", []).size() == 0
+            && season.get("allEvents", []).size() == 0
+            && season.get("currentEvents", []).size() == 0
+            && season.get("liveMatches", {}).keys().size() == 0
+            && !exists(
+              /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
+            )
+            && archive.diff(season).affectedKeys().hasOnly([
+              "status", "registrationOpen", "cancellationReason",
+              "endedAtMs", "endedByUid"
+            ])
+            && archive.registrationOpen == false
+            && archive.cancellationReason is string
+            && archive.cancellationReason.size() >= 10
+            && archive.cancellationReason.size() <= 500
+            && archive.endedAtMs is int
+            && getAfter(venuePath).data.league.activeSeason.id != seasonId
+            && getAfter(venuePath).data.league.activeSeason.previousSeasonId == seasonId;
+        }
+        allow read: if true;
+        allow create: if isSignedIn()
+          && !isCameraSession()
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.ownerUid == request.auth.uid
+          && request.resource.data.id == seasonId
+          && (
+            request.resource.data.status == "completed"
+            || validUnplayedSeasonCancellation()
+          )
+          && request.resource.data.endedByUid == request.auth.uid;
+        allow update: if false;
+        allow delete: if isSignedIn()
+          && !isCameraSession()
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.ownerUid == request.auth.uid
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.previousSeasonId == seasonId
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("clubIds", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("fixtures", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("results", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("allEvents", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("matchDayHistory", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("currentEvents", []).size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("invitations", {}).keys().size() == 0
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.get("liveMatches", {}).keys().size() == 0
+          && !exists(
+            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(get(
+              /databases/$(database)/documents/leagueVenues/$(venueId)
+            ).data.league.activeSeason.id)/matches/current
+          )
+          && getAfter(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.id == seasonId
+          && getAfter(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.status == "active";
+      }
+
+      match /seasons/{seasonId}/matches/{matchId} {
+        allow read: if true;
+
+        allow create: if matchId == "current"
+          && activeFieldOperatorForSeason(seasonId)
+          && request.resource.data.venueId == venueId
+          && request.resource.data.seasonId == seasonId
+          && request.resource.data.status == "live";
+
+        allow update: if matchId == "current"
+          && activeFieldOperatorForSeason(seasonId)
+          && resource.data.venueId == venueId
+          && resource.data.seasonId == seasonId
+          && request.resource.data.venueId == venueId
+          && request.resource.data.seasonId == seasonId
+          && (
+            request.resource.data.fixtureId == resource.data.fixtureId
+            || (
+              resource.data.status == "completed"
+              && request.resource.data.status == "live"
+              && request.resource.data.startedByUid == request.auth.uid
+            )
+          );
+
+        allow delete: if matchId == "current"
+          && activeFieldOperatorForSeason(seasonId);
+      }
+
+      match /seasons/{seasonId}/cameraRequests/{requestId} {
+        function currentLiveMatch() {
+          return get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
+          ).data;
+        }
+
+        allow read: if isSignedIn()
+          && !isCameraSession()
+          && (
+            activeFieldOperatorForSeason(seasonId)
+            || resource.data.requestedByUid == request.auth.uid
+          );
+
+        allow create: if isSignedIn()
+          && !isCameraSession()
+          && requestId ==
+            request.resource.data.fixtureId + "__" + request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            "venueId", "seasonId", "fixtureId",
+            "requestedByUid", "requesterName", "status", "requestedAtMs"
+          ])
+          && request.resource.data.venueId == venueId
+          && request.resource.data.seasonId == seasonId
+          && request.resource.data.requestedByUid == request.auth.uid
+          && request.resource.data.requesterName is string
+          && request.resource.data.requesterName.size() <= 80
+          && request.resource.data.status == "pending"
+          && exists(
+            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
+          )
+          && currentLiveMatch().status == "live"
+          && currentLiveMatch().fixtureId ==
+            request.resource.data.fixtureId;
+
+        allow update: if (
+          isSignedIn()
+          && !isCameraSession()
+          && resource.data.requestedByUid == request.auth.uid
+          && resource.data.status != "pending"
+          && currentLiveMatch().status == "live"
+          && currentLiveMatch().fixtureId == resource.data.fixtureId
+          && request.resource.data.keys().hasOnly([
+            "venueId", "seasonId", "fixtureId",
+            "requestedByUid", "requesterName", "status", "requestedAtMs"
+          ])
+          && request.resource.data.venueId == resource.data.venueId
+          && request.resource.data.seasonId == resource.data.seasonId
+          && request.resource.data.fixtureId == resource.data.fixtureId
+          && request.resource.data.requestedByUid == request.auth.uid
+          && request.resource.data.requesterName is string
+          && request.resource.data.requesterName.size() <= 80
+          && request.resource.data.status == "pending"
+          && request.resource.data.requestedAtMs > resource.data.requestedAtMs
+        ) || (
+          activeFieldOperatorForSeason(seasonId)
+          && currentLiveMatch().status == "live"
+          && currentLiveMatch().fixtureId == resource.data.fixtureId
+          && currentLiveMatch().liveMatchController.uid == request.auth.uid
+          && resource.data.status == "pending"
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              "status", "approvedByUid", "decidedAtMs"
+            ])
+          && request.resource.data.status in ["approved", "denied"]
+          && request.resource.data.approvedByUid == request.auth.uid
+        );
+
+        allow delete: if false;
+      }
+
+      match /seasons/{seasonId}/goalkeeperRestrictions/{clubId} {
+        allow read: if isSignedIn();
+
+        allow create, update: if activeFieldOperatorForSeason(seasonId)
+          && request.resource.data.clubId == clubId;
+
+        allow delete: if false;
+      }
+
+      match /video_highlights/{matchId} {
+        function fieldVideoWriter() {
+          let seasonId = get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)
+          ).data.league.activeSeason.id;
+          return matchId.matches('^venue__' + venueId + '__.*')
+            && activeFieldOperatorForSeason(seasonId);
+        }
+
+        allow read: if true;
+        allow create, update, delete:
+          if cameraCanAccessVenueMatch(venueId, matchId)
+          || fieldVideoWriter();
+
+        match /{document=**} {
+          allow read: if true;
+          allow create, update, delete:
+            if cameraCanAccessVenueMatch(venueId, matchId)
+            || fieldVideoWriter();
+        }
+      }
+
+      match /newsStories/{storyId} {
+        allow read: if true;
+        allow create, update, delete: if activeFieldAdministrator();
+      }
+
+      match /newsPolls/{pollId} {
+        allow read: if true;
+        allow create, update, delete: if activeFieldAdministrator();
+      }
+
+      match /newsPollVotes/{voteId} {
+        allow read: if true;
+        allow create, update: if isSignedIn()
+          && !isCameraSession()
+          && request.resource.data.voterId == request.auth.uid
+          && voteId == request.resource.data.pollId + "__" + request.auth.uid;
+        allow delete: if false;
+      }
+
+      // Field chat participation points to an existing Club member record.
+      // The pointer itself confers no access unless that record and the
+      // Field's current season still qualify on every request.
+      function chatVenue() {
+        return get(
+          /databases/$(database)/documents/leagueVenues/$(venueId)
+        ).data;
+      }
+
+      function chatStaffPath(uid) {
+        return /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(uid);
+      }
+
+      function chatParticipantPath(uid) {
+        return /databases/$(database)/documents/leagueVenues/$(venueId)/chatParticipants/$(uid);
+      }
+
+      function chatRestrictionPath(uid) {
+        return /databases/$(database)/documents/leagueVenues/$(venueId)/chatRestrictions/$(uid);
+      }
+
+      function chatClubPath(clubId) {
+        return /databases/$(database)/documents/clubs/$(clubId);
+      }
+
+      function chatMemberPath(clubId, memberId) {
+        return /databases/$(database)/documents/clubs/$(clubId)/members/$(memberId);
+      }
+
+      function chatActiveClubMember(clubId, memberId) {
+        let memberPath = chatMemberPath(clubId, memberId);
+        return isSignedIn()
+          && !isCameraSession()
+          && clubId is string
+          && memberId is string
+          && clubId.size() > 0
+          && memberId.size() > 0
+          && exists(
+            /databases/$(database)/documents/clubFieldMemberships/$(clubId)
+          )
+          && get(
+            /databases/$(database)/documents/clubFieldMemberships/$(clubId)
+          ).data.status == "active"
+          && get(
+            /databases/$(database)/documents/clubFieldMemberships/$(clubId)
+          ).data.venueId == venueId
+          && request.auth.token.get("email_verified", false) == true
+          && exists(memberPath)
+          && get(memberPath).data.get("status", "") == "active"
+          && get(memberPath).data.get("email", "") ==
+            request.auth.token.get("email", "")
+          && request.auth.token.get("email", "") != ""
+          && get(memberPath).data.get("uid", request.auth.uid) ==
+            request.auth.uid;
+      }
+
+      function chatClubParticipant() {
+        let participantPath = chatParticipantPath(request.auth.uid);
+        return isSignedIn()
+          && !isCameraSession()
+          && exists(participantPath)
+          && chatActiveClubMember(
+            get(participantPath).data.clubId,
+            get(participantPath).data.memberId
+          );
+      }
+
+      function chatActiveStaff() {
+        let staffPath = chatStaffPath(request.auth.uid);
+        return isSignedIn()
+          && !isCameraSession()
+          && (
+            chatVenue().ownerUid == request.auth.uid
+            || (
+              exists(staffPath)
+              && get(staffPath).data.status == "active"
+            )
+          );
+      }
+
+      function chatAdministrator() {
+        let staffPath = chatStaffPath(request.auth.uid);
+        return isSignedIn()
+          && !isCameraSession()
+          && (
+            chatVenue().ownerUid == request.auth.uid
+            || (
+              exists(staffPath)
+              && get(staffPath).data.status == "active"
+              && get(staffPath).data.isAdministrator == true
+            )
+          );
+      }
+
+      function chatCanRead() {
+        return chatActiveStaff() || chatClubParticipant();
+      }
+
+      function chatCanPost() {
+        return chatCanRead()
+          && (
+            !exists(chatRestrictionPath(request.auth.uid))
+            || get(chatRestrictionPath(request.auth.uid)).data.muted != true
+          );
+      }
+
+      function chatUsesClubIdentity() {
+        return request.resource.data.get("senderRole", "") == "club_member";
+      }
+
+      function chatSelectedIdentityIsValid() {
+        return chatUsesClubIdentity()
+          ? chatClubParticipant()
+          : chatActiveStaff();
+      }
+
+      function chatActorName() {
+        let staffPath = chatStaffPath(request.auth.uid);
+        let participantPath = chatParticipantPath(request.auth.uid);
+        return !chatUsesClubIdentity()
+          ? (
+              exists(staffPath)
+                ? get(staffPath).data.get("fullName", "")
+                : request.auth.token.get("email", "")
+            )
+          : get(chatMemberPath(
+              get(participantPath).data.clubId,
+              get(participantPath).data.memberId
+            )).data.get("fullName", "");
+      }
+
+      function chatActorRole() {
+        let staffPath = chatStaffPath(request.auth.uid);
+        return !chatUsesClubIdentity()
+          ? (
+              exists(staffPath)
+                ? get(staffPath).data.get("role", "field_manager")
+                : "field_manager"
+            )
+          : "club_member";
+      }
+
+      function chatActorClubId() {
+        return !chatUsesClubIdentity()
+          ? ""
+          : get(chatParticipantPath(request.auth.uid)).data.clubId;
+      }
+
+      function chatActorClubName() {
+        let clubId = chatActorClubId();
+        return clubId == ""
+          ? ""
+          : get(chatClubPath(clubId)).data.get("name", clubId);
+      }
+
+      match /chatParticipants/{participantUid} {
+        allow get: if isSignedIn()
+          && !isCameraSession()
+          && (
+            participantUid == request.auth.uid
+            || chatAdministrator()
+          );
+        allow list: if chatAdministrator();
+
+        allow create, update: if isSignedIn()
+          && !isCameraSession()
+          && participantUid == request.auth.uid
+          && request.resource.data.keys().hasOnly(["clubId", "memberId"])
+          && request.resource.data.keys().hasAll(["clubId", "memberId"])
+          && chatActiveClubMember(
+            request.resource.data.clubId,
+            request.resource.data.memberId
+          );
+        allow delete: if participantUid == request.auth.uid
+          || chatAdministrator();
+      }
+
+      match /chatRestrictions/{targetUid} {
+        allow get: if chatCanRead()
+          && (
+            targetUid == request.auth.uid
+            || chatAdministrator()
+          );
+        allow list: if chatAdministrator();
+        allow create, update: if chatAdministrator()
+          && request.resource.data.keys().hasOnly([
+            "uid", "muted", "reason", "updatedAt"
+          ])
+          && request.resource.data.keys().hasAll([
+            "uid", "muted", "reason", "updatedAt"
+          ])
+          && request.resource.data.uid == targetUid
+          && request.resource.data.muted is bool
+          && request.resource.data.reason is string
+          && request.resource.data.reason.size() <= 300
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if chatAdministrator();
+      }
+
+      match /chatMessages/{messageId} {
+        allow read: if chatCanRead();
+
+        allow create: if isSignedIn()
+          && !isCameraSession()
+          && chatSelectedIdentityIsValid()
+          && (
+            !exists(chatRestrictionPath(request.auth.uid))
+            || get(chatRestrictionPath(request.auth.uid)).data.muted != true
+          )
+          && request.resource.data.keys().hasOnly([
+            "text", "senderUid", "senderName", "senderRole",
+            "clubId", "clubName", "createdAt", "createdAtMs",
+            "replyToId", "replyToSenderName", "replyToText",
+            "reactionsByUser"
+          ])
+          && request.resource.data.keys().hasAll([
+            "text", "senderUid", "senderName", "senderRole",
+            "clubId", "clubName", "createdAt", "createdAtMs",
+            "reactionsByUser"
+          ])
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.senderName == chatActorName()
+          && request.resource.data.senderName is string
+          && request.resource.data.senderName.size() > 0
+          && request.resource.data.senderName.size() <= 100
+          && request.resource.data.senderRole == chatActorRole()
+          && request.resource.data.clubId == chatActorClubId()
+          && request.resource.data.clubName == chatActorClubName()
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.createdAtMs is int
+          && request.resource.data.reactionsByUser == {}
+          && request.resource.data.get("replyToId", "") is string
+          && request.resource.data.get("replyToId", "").size() <= 120
+          && request.resource.data.get("replyToSenderName", "") is string
+          && request.resource.data.get("replyToSenderName", "").size() <= 100
+          && request.resource.data.get("replyToText", "") is string
+          && request.resource.data.get("replyToText", "").size() <= 300;
+
+        allow update: if chatCanPost()
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["reactionsByUser"])
+          && request.resource.data.reactionsByUser is map
+          && request.resource.data.reactionsByUser
+            .diff(resource.data.get("reactionsByUser", {}))
+            .affectedKeys().hasOnly([request.auth.uid])
+          && request.resource.data.reactionsByUser
+            .get(request.auth.uid, "") in [
+              "", "⚽", "🔥", "🧤", "👏", "😂",
+              "❤️", "👍", "👎", "😩", "🤯"
+            ];
+
+        allow delete: if chatAdministrator();
+      }
+
+      match /staff/{staffUid} {
+        function validStaffRole() {
+          return request.resource.data.role in [
+            "field_manager",
+            "assistant_manager",
+            "field_assistant",
+            "referee",
+            "other_staff"
+          ];
+        }
+
+        function validPermanentStaffRole() {
+          return request.resource.data.role in [
+            "field_manager",
+            "assistant_manager",
+            "field_assistant",
+            "other_staff"
+          ];
+        }
+
+        function registeredLegacyCreator() {
+          let venue =
+            get(
+              /databases/$(database)/documents/leagueVenues/$(venueId)
+            ).data;
+
+          return isSignedIn()
+            && (
+              venue.ownerUid == request.auth.uid
+              || venue.createdByUid == request.auth.uid
+              || (
+                request.auth.token.email != null
+                && (
+                  venue.createdByEmail
+                    == request.auth.token.email
+                  || venue.ownerEmail
+                    == request.auth.token.email
+                  || request.auth.token.email
+                    in venue.adminEmails
+                )
+              )
+            );
+        }
+
+        function validApprovedStaffClaim() {
+          let requestId =
+            request.resource.data.claimedFromRequestId;
+          let requestPath =
+            /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(requestId);
+
+          return exists(requestPath)
+            && get(requestPath).data.status == "active"
+            && get(requestPath).data.email
+               == request.auth.token.email
+            && get(requestPath).data.role
+               == request.resource.data.role
+            && get(requestPath).data.isAdministrator
+               == request.resource.data.isAdministrator;
+        }
+
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+                      && !isCameraSession()
+                      && validStaffRole()
+                      && (
+                        (
+                          request.resource.data.uid == staffUid
+                          && request.resource.data.requestId == staffUid
+                          && request.resource.data.requestedByUid
+                             == request.auth.uid
+                          && request.auth.token.email != null
+                          && request.resource.data.email
+                             == request.auth.token.email
+                          && request.resource.data.status == "pending"
+                          && request.resource.data.isAdministrator == false
+                          && request.resource.data.isCreator == false
+                        )
+                        || (
+                          staffUid == request.auth.uid
+                          && request.resource.data.uid
+                             == request.auth.uid
+                          && request.resource.data.status == "active"
+                          && request.resource.data.isCreator == false
+                          && validApprovedStaffClaim()
+                        )
+                        || (
+                          staffUid == request.auth.uid
+                          && request.resource.data.uid
+                             == request.auth.uid
+                          && registeredLegacyCreator()
+                          && validPermanentStaffRole()
+                          && request.resource.data.status
+                             == "active"
+                          && request.resource.data.isAdministrator
+                             == true
+                          && request.resource.data.isCreator
+                             == true
+                        )
+                      );
+
+        allow update: if isSignedIn()
+                      && !isCameraSession()
+                      && (
+                        (
+                          staffUid == request.auth.uid
+                          && registeredLegacyCreator()
+                          && validPermanentStaffRole()
+                          && request.resource.data.uid
+                             == request.auth.uid
+                          && request.resource.data.status
+                             == "active"
+                          && request.resource.data.isAdministrator
+                             == true
+                          && request.resource.data.isCreator
+                             == true
+                        )
+                        || (
+                          resource.data.status == "pending"
+                          && resource.data.isCreator == false
+                          && request.resource.data.uid
+                             == resource.data.uid
+                          && request.resource.data.isCreator == false
+                          && validStaffRole()
+                          && request.resource.data.status in [
+                            "active",
+                            "rejected"
+                          ]
+                          && request.resource.data.isAdministrator
+                             == (
+                               request.resource.data.status == "active"
+                               && request.resource.data.role != "referee"
+                             )
+                          && activeFieldAdministrator()
+                        )
+                        || (
+                          resource.data.status == "active"
+                          && resource.data.isCreator == false
+                          && resource.data.email
+                             == request.auth.token.email
+                          && request.resource.data.status == "claimed"
+                          && request.resource.data.role
+                             == resource.data.role
+                          && request.resource.data.email
+                             == resource.data.email
+                          && request.resource.data.isAdministrator
+                             == resource.data.isAdministrator
+                          && request.resource.data.claimedByUid
+                             == request.auth.uid
+                        )
+                      );
+
+        allow delete: if false;
+      }
     }
 
     // ---------------------------------------------------------
@@ -119,6 +1263,29 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------
+    // Versioned, immutable evidence of authenticated agreement.
+    match /legalAcceptances/{uid}/records/{recordId} {
+      allow read: if isSignedIn() && !isCameraSession()
+        && request.auth.uid == uid;
+      allow create: if isSignedIn() && !isCameraSession()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly([
+          "uid", "scope", "version", "documentHash", "acceptedAt"
+        ])
+        && request.resource.data.keys().hasAll([
+          "uid", "scope", "version", "documentHash", "acceptedAt"
+        ])
+        && request.resource.data.uid == uid
+        && request.resource.data.scope in ["club", "field"]
+        && request.resource.data.version == recordId
+        && request.resource.data.version is string
+        && request.resource.data.version.size() <= 80
+        && request.resource.data.documentHash is string
+        && request.resource.data.documentHash.size() == 64
+        && request.resource.data.acceptedAt == request.time;
+      allow update, delete: if false;
+    }
+
     // TEMPORARY LEGACY BOOTSTRAP
     //
     // Preserve existing signed-in access for all non-Practice
@@ -133,7 +1300,11 @@ service cloud.firestore {
                          && !isCameraSession()
                          && topLevel != "practiceControl"
                          && topLevel != "practiceSessions"
-                         && topLevel != "sandboxes";
+                         && topLevel != "sandboxes"
+                         && topLevel != "leagueVenues"
+                         && topLevel != "legalAcceptances"
+                         && topLevel != "clubs"
+                         && topLevel != "clubFieldMemberships";
     }
   }
 }

@@ -55,6 +55,7 @@ export function ClubChatWidget({
   gameFormat = "5_V_5",
   members = [],
   variant = "inline",
+  nativeOpenRequest = null,
   onOpenFullChat,
   onOpenHighlight,
 }) {
@@ -105,6 +106,25 @@ export function ClubChatWidget({
   const [clubChatDraft, setClubChatDraft] = useState("");
   const [clubChatOpen, setClubChatOpen] = useState(isPageMode);
   const [clubChatTeaseOpen, setClubChatTeaseOpen] = useState(false);
+
+  useEffect(() => {
+    if (!nativeOpenRequest) return;
+
+    const requestedClubId = String(
+      nativeOpenRequest.clubId || ""
+    ).trim();
+
+    if (
+      requestedClubId &&
+      requestedClubId !== activeClubId
+    ) {
+      return;
+    }
+
+    setActiveChatRoom("club");
+    setClubChatTeaseOpen(false);
+    setClubChatOpen(true);
+  }, [nativeOpenRequest, activeClubId]);
   const [clubChatEmojiOpen, setClubChatEmojiOpen] = useState(false);
   const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
   const [availableHighlights, setAvailableHighlights] = useState([]);

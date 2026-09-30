@@ -1,3 +1,4 @@
+import { ClubFieldSeasonInvitation } from "../components/FieldSeasonInvitations.jsx";
 // src/pages/EntryPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
@@ -7,8 +8,12 @@ import { removePlayerFromSavedLineups } from "../core/lineups.js";
 
 const FANM_HOME_LOGO = "/HomePage/Logo_icon.jpeg";
 
-import { auth, signInWithGoogle } from "../firebaseConfig";
-import { db } from "../firebaseConfig";
+import {
+  auth,
+  db,
+  reauthenticateWithGoogle,
+  signInWithGoogle,
+} from "../firebaseConfig";
 import {
   collection,
   onSnapshot,
@@ -31,8 +36,6 @@ import {
 } from "firebase/firestore";
 import {
   onAuthStateChanged,
-  GoogleAuthProvider,
-  reauthenticateWithPopup,
 } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
 import { ClubChatWidget } from "../components/ClubChat/ClubChatWidget.jsx";
@@ -1257,7 +1260,13 @@ export function EntryPage({
       setShowNewPlayerForm(true);
       setNewReqError("");
       setNewReqStatus("");
+      const timer = window.setTimeout(() => {
+        document.getElementById("entry-join-request-panel")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 180);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [entryPageIntent]);
   const [newFullName, setNewFullName] = useState("");
   const [newEmail, setNewEmail] = useState("");
@@ -2647,15 +2656,8 @@ export function EntryPage({
        * Google itself performs the account confirmation.
        */
       if (authenticatedUser) {
-        const provider = new GoogleAuthProvider();
-
-        provider.setCustomParameters({
-          prompt: "select_account",
-        });
-
-        await reauthenticateWithPopup(
-          authenticatedUser,
-          provider
+        await reauthenticateWithGoogle(
+          authenticatedUser
         );
 
         authenticatedUser = auth.currentUser;
@@ -4795,6 +4797,7 @@ export function EntryPage({
 
   return (
     <div className="page entry-page">
+      <ClubFieldSeasonInvitation clubId={activeClubId} />
       {showMemberLoadingWelcome && !showSigninLoading && (
         <div
           className="entry-member-loading-backdrop"

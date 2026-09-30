@@ -398,18 +398,20 @@ async function createCameraHandoff({
   db,
   authenticatedUser,
   clubId,
+  venueId,
   matchId,
   fixtureContext = {},
   dataScope = "official",
   now = new Date(),
 }) {
   const safeClubId = safeString(clubId);
+  const safeVenueId = safeString(venueId);
   const safeMatchId = safeString(matchId);
   const safeDataScope = safeString(dataScope).toLowerCase();
 
-  if (!safeClubId) {
-    const error = new Error("clubId is required.");
-    error.code = "camera/club-required";
+  if (Boolean(safeClubId) === Boolean(safeVenueId)) {
+    const error = new Error("Supply exactly one clubId or venueId.");
+    error.code = "camera/scope-required";
     throw error;
   }
 
@@ -432,11 +434,79 @@ async function createCameraHandoff({
     throw error;
   }
 
-  await assertCameraAuthority({
-    db,
-    clubId: safeClubId,
-    authenticatedUser,
-  });
+  let fieldFixture = null;
+  let fieldSeason = null;
+
+  if (safeVenueId) {
+    const venueSnap = await db.collection("leagueVenues").doc(safeVenueId).get();
+    if (!venueSnap.exists) {
+      const error = new Error("Field was not found.");
+      error.code = "camera/venue-not-found";
+      throw error;
+    }
+
+    const venue = venueSnap.data() || {};
+    const uid = safeString(authenticatedUser?.uid);
+    const staffSnap = uid
+      ? await venueSnap.ref.collection("staff").doc(uid).get()
+      : null;
+    const staff = staffSnap?.exists ? staffSnap.data() || {} : {};
+    const authorized =
+      venue.ownerUid === uid ||
+      (staff.status === "active" &&
+        (staff.isAdministrator === true || staff.role === "referee"));
+
+    fieldSeason = venue.league?.activeSeason;
+    fieldFixture = (fieldSeason?.fixtures || []).find((fixture) =>
+      fixture.id &&
+      safeMatchId ===
+        `venue__${safeVenueId}__${fieldSeason.id}__${fixture.id}` &&
+      ["scheduled", "live"].includes(fixture.status)
+    );
+
+    if (!fieldFixture || fieldSeason?.status !== "active") {
+      const error = new Error("This Field fixture is not available for recording.");
+      error.code = "camera/fixture-unavailable";
+      throw error;
+    }
+
+    if (!authorized) {
+      const liveSnap = await venueSnap.ref
+        .collection("seasons").doc(fieldSeason.id)
+        .collection("matches").doc("current").get();
+      const live = liveSnap.exists ? liveSnap.data() || {} : {};
+      const approvalSnap = await venueSnap.ref
+        .collection("seasons").doc(fieldSeason.id)
+        .collection("cameraRequests")
+        .doc(`${fieldFixture.id}__${uid}`).get();
+      const approval = approvalSnap.exists ? approvalSnap.data() || {} : {};
+
+      const approved =
+        live.status === "live" &&
+        live.fixtureId === fieldFixture.id &&
+        live.liveMatchController?.uid &&
+        approval.status === "approved" &&
+        approval.venueId === safeVenueId &&
+        approval.seasonId === fieldSeason.id &&
+        approval.fixtureId === fieldFixture.id &&
+        approval.requestedByUid === uid &&
+        approval.approvedByUid === live.liveMatchController.uid;
+
+      if (!approved) {
+        const error = new Error(
+          "Ask the officiating Field official to approve your camera request."
+        );
+        error.code = "camera/not-authorized";
+        throw error;
+      }
+    }
+  } else {
+    await assertCameraAuthority({
+      db,
+      clubId: safeClubId,
+      authenticatedUser,
+    });
+  }
 
   const safeFixtureContext =
     normalizeCameraFixtureContext(
@@ -444,6 +514,21 @@ async function createCameraHandoff({
       safeClubId,
       safeMatchId
     );
+
+  if (fieldFixture) {
+    safeFixtureContext.organisingClubId = "";
+    safeFixtureContext.organisingVenueId = safeVenueId;
+    safeFixtureContext.competitionType = "venue_league";
+    safeFixtureContext.seasonId = fieldSeason.id;
+    safeFixtureContext.teamA.clubId = fieldFixture.clubAId;
+    safeFixtureContext.teamA.teamId = fieldFixture.clubAId;
+    safeFixtureContext.teamB.clubId = fieldFixture.clubBId;
+    safeFixtureContext.teamB.teamId = fieldFixture.clubBId;
+    safeFixtureContext.participatingClubIds = [
+      fieldFixture.clubAId,
+      fieldFixture.clubBId,
+    ];
+  }
 
   const handoffId = crypto.randomBytes(32).toString("hex");
 
@@ -457,7 +542,8 @@ async function createCameraHandoff({
 
   await handoffRef.set({
     handoffId,
-    clubId: safeClubId,
+    clubId: safeClubId || null,
+    venueId: safeVenueId || null,
     matchId: safeMatchId,
 
     dataScope: "official",
@@ -487,7 +573,8 @@ async function createCameraHandoff({
 
   return {
     handoffId,
-    clubId: safeClubId,
+    clubId: safeClubId || null,
+    venueId: safeVenueId || null,
     matchId: safeMatchId,
     dataScope: "official",
     fixtureContext: safeFixtureContext,
@@ -567,10 +654,11 @@ async function redeemCameraHandoff({
     }
 
     const clubId = safeString(data.clubId);
+    const venueId = safeString(data.venueId);
     const matchId = safeString(data.matchId);
     const authorizedUid = safeString(data.authorizedUid);
 
-    if (!clubId || !matchId || !authorizedUid) {
+    if (Boolean(clubId) === Boolean(venueId) || !matchId || !authorizedUid) {
       const error = new Error(
         "Camera handoff is incomplete."
       );
@@ -586,6 +674,7 @@ async function redeemCameraHandoff({
 
     return {
       clubId,
+      venueId,
       matchId,
       authorizedUid,
       authorizedEmail: normalizeEmail(data.authorizedEmail),
@@ -612,7 +701,9 @@ async function redeemCameraHandoff({
     {
       cameraSession: true,
       cameraHandoffId: safeHandoffId,
-      clubId: handoff.clubId,
+      ...(handoff.venueId
+        ? { venueId: handoff.venueId }
+        : { clubId: handoff.clubId }),
       matchId: handoff.matchId,
       dataScope: "official",
       launchedByUid: handoff.authorizedUid,
@@ -626,7 +717,8 @@ async function redeemCameraHandoff({
   return {
     customToken,
     cameraUid,
-    clubId: handoff.clubId,
+    clubId: handoff.clubId || null,
+    venueId: handoff.venueId || null,
     matchId: handoff.matchId,
     dataScope: "official",
     fixtureContext: handoff.fixtureContext || {},

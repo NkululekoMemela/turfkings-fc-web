@@ -285,6 +285,7 @@ export function NewsPage({
   practiceSessionId = null,
   dataScope = null,
   activeClub = null,
+  initialPollOpen = null,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
   const isTurfKingsClub = safeActiveClubId === "turf-kings";
@@ -1982,12 +1983,8 @@ This will remove it from live news and archives for everyone.`
   // ---------------- CUSTOM POLL STATE ----------------
   const createEmptyPollDraft = () => ({
     question: "",
-    tag: "Poll",
-    optionA: "",
-    optionB: "",
-    playerName: "",
-    imageUrl: "",
-    publishDate: makeDateInputValue(Date.now()),
+    icon: "🗳️",
+    options: ["", ""],
   });
 
   const [customPolls, setCustomPolls] = useState([]);
@@ -1997,6 +1994,50 @@ This will remove it from live news and archives for everyone.`
   const [pollFormError, setPollFormError] = useState("");
   const [pollFormNotice, setPollFormNotice] = useState("");
   const [editingPollId, setEditingPollId] = useState("");
+  const [focusedPollId, setFocusedPollId] = useState("");
+
+  useEffect(() => {
+    const requestedClubId = String(
+      initialPollOpen?.clubId || ""
+    ).trim();
+    const requestedPollId = String(
+      initialPollOpen?.pollId || ""
+    ).trim();
+
+    if (
+      !requestedPollId ||
+      requestedClubId !== safeActiveClubId ||
+      !customPolls.some((poll) => poll?.id === requestedPollId)
+    ) {
+      return undefined;
+    }
+
+    setFocusedPollId(requestedPollId);
+
+    const scrollTimer = window.setTimeout(() => {
+      document
+        .getElementById(`club-poll-${requestedPollId}`)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+    }, 150);
+
+    const highlightTimer = window.setTimeout(() => {
+      setFocusedPollId((current) =>
+        current === requestedPollId ? "" : current
+      );
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(highlightTimer);
+    };
+  }, [
+    initialPollOpen,
+    safeActiveClubId,
+    customPolls,
+  ]);
 
   useEffect(() => {
     if (isPracticeMode) {
@@ -2009,10 +2050,23 @@ This will remove it from live news and archives for everyone.`
     const unsubscribe = onSnapshot(
       pollsRef,
       (snapshot) => {
-        const nextPolls = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...(docSnap.data() || {}),
-        }));
+        const nextPolls = snapshot.docs
+          .map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() || {}),
+          }))
+          .filter((poll) => {
+            const pollClubId = String(
+              poll?.clubId || ""
+            ).trim();
+
+            if (pollClubId) {
+              return pollClubId === safeActiveClubId;
+            }
+
+            return safeActiveClubId === "turf-kings";
+          });
+
         setCustomPolls(nextPolls);
       },
       (error) => {
@@ -2022,7 +2076,11 @@ This will remove it from live news and archives for everyone.`
     );
 
     return () => unsubscribe();
-  }, [isPracticeMode, practiceSessionId]);
+  }, [
+    isPracticeMode,
+    practiceSessionId,
+    safeActiveClubId,
+  ]);
 
   useEffect(() => {
     if (isPracticeMode) {
@@ -2167,9 +2225,14 @@ This will remove it from live news and archives for everyone.`
       const pollId = String(vote?.pollId || "");
       const choice = String(vote?.choice || "");
       if (!pollId || !choice) return;
-      if (!out[pollId]) out[pollId] = { A: 0, B: 0, byVoter: {} };
-      if (choice === "A" || choice === "B") out[pollId][choice] += 1;
-      if (vote?.voterId) out[pollId].byVoter[vote.voterId] = choice;
+      if (!out[pollId]) {
+        out[pollId] = { byVoter: {} };
+      }
+      out[pollId][choice] =
+        Number(out[pollId][choice] || 0) + 1;
+      if (vote?.voterId) {
+        out[pollId].byVoter[vote.voterId] = choice;
+      }
     });
     return out;
   }, [pollVotes]);
@@ -2183,6 +2246,38 @@ This will remove it from live news and archives for everyone.`
     setPollFormNotice("");
   };
 
+  const handlePollOptionChange = (index, value) => {
+    setPollDraft((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) =>
+        optionIndex === index ? value : option
+      ),
+    }));
+    setPollFormError("");
+  };
+
+  const addPollOption = () => {
+    setPollDraft((current) => ({
+      ...current,
+      options:
+        current.options.length >= 6
+          ? current.options
+          : [...current.options, ""],
+    }));
+  };
+
+  const removePollOption = (index) => {
+    setPollDraft((current) => ({
+      ...current,
+      options:
+        current.options.length <= 2
+          ? current.options
+          : current.options.filter(
+              (_, optionIndex) => optionIndex !== index
+            ),
+    }));
+  };
+
   const resetPollDraft = () => {
     setPollDraft(createEmptyPollDraft());
     setEditingPollId("");
@@ -2193,14 +2288,20 @@ This will remove it from live news and archives for everyone.`
   const handleEditCustomPoll = (poll) => {
     if (!canManageCustomStories || !poll) return;
     setEditingPollId(poll.id || "");
+    const existingOptions =
+      Array.isArray(poll.options) && poll.options.length >= 2
+        ? poll.options.map((option) =>
+            String(option?.label ?? option ?? "")
+          )
+        : [
+            String(poll.optionA || ""),
+            String(poll.optionB || ""),
+          ];
+
     setPollDraft({
       question: String(poll.question || ""),
-      tag: String(poll.tag || "Poll"),
-      optionA: String(poll.optionA || ""),
-      optionB: String(poll.optionB || ""),
-      playerName: String(poll.playerName || ""),
-      imageUrl: String(poll.imageUrl || ""),
-      publishDate: makeDateInputValue(poll.publishDateMs || poll.createdAtMs || Date.now()),
+      icon: String(poll.icon || "🗳️"),
+      options: existingOptions.slice(0, 6),
     });
     setShowCreatePollForm(true);
     setPollFormError("");
@@ -2211,19 +2312,22 @@ This will remove it from live news and archives for everyone.`
     if (!canManageCustomStories) return;
 
     const question = String(pollDraft.question || "").trim();
-    const tag = String(pollDraft.tag || "").trim() || "Poll";
-    const optionA = String(pollDraft.optionA || "").trim();
-    const optionB = String(pollDraft.optionB || "").trim();
-    const playerName = String(pollDraft.playerName || "").trim();
-    const imageUrl = String(pollDraft.imageUrl || "").trim();
-    const publishDateMs = dateInputToMs(pollDraft.publishDate, Date.now());
+    const icon = String(pollDraft.icon || "🗳️").trim() || "🗳️";
+    const options = (pollDraft.options || [])
+      .map((label, index) => ({
+        id: String.fromCharCode(65 + index),
+        label: String(label || "").trim(),
+      }))
+      .filter((option) => option.label)
+      .slice(0, 6);
+    const publishDateMs = Date.now();
 
     if (!question) {
       setPollFormError("Please add a poll question.");
       return;
     }
-    if (!optionA || !optionB) {
-      setPollFormError("Please add two poll options.");
+    if (options.length < 2) {
+      setPollFormError("Please add at least two poll choices.");
       return;
     }
     if (!editingPollId && hasReachedCustomPollLimit) {
@@ -2243,11 +2347,10 @@ This will remove it from live news and archives for everyone.`
         const practicePoll = {
           id: pollId,
           question,
-          tag,
-          optionA,
-          optionB,
-          playerName,
-          imageUrl,
+          icon,
+          options,
+          optionA: options[0]?.label || "",
+          optionB: options[1]?.label || "",
           archived: false,
           createdAtMs,
           publishDateMs,
@@ -2277,12 +2380,12 @@ This will remove it from live news and archives for everyone.`
       await setDoc(
         doc(db, CUSTOM_POLLS_COLLECTION, pollId),
         {
+          clubId: safeActiveClubId,
           question,
-          tag,
-          optionA,
-          optionB,
-          playerName,
-          imageUrl,
+          icon,
+          options,
+          optionA: options[0]?.label || "",
+          optionB: options[1]?.label || "",
           archived: false,
           createdAtMs,
           publishDateMs,
@@ -2455,10 +2558,36 @@ Votes for this poll will no longer be shown.`
     const displayImageUrl = playerPhotoUrl || String(poll.imageUrl || "").trim() || null;
     const pollDateMs = resolveDateMs(poll.publishDateMs || poll.createdAtMs, Date.now());
     const freshness = getFreshnessBadge(pollDateMs, archivedView || poll.archived);
-    const counts = pollVotesByPollId[poll.id] || { A: 0, B: 0, byVoter: {} };
-    const totalVotes = Number(counts.A || 0) + Number(counts.B || 0);
+    const pollOptions =
+      Array.isArray(poll.options) && poll.options.length >= 2
+        ? poll.options
+            .map((option, index) => ({
+              id: String(
+                option?.id ||
+                String.fromCharCode(65 + index)
+              ),
+              label: String(option?.label ?? option ?? ""),
+            }))
+            .filter((option) => option.label)
+        : [
+            { id: "A", label: poll.optionA || "Option A" },
+            { id: "B", label: poll.optionB || "Option B" },
+          ];
+
+    const counts =
+      pollVotesByPollId[poll.id] || { byVoter: {} };
+    const totalVotes = pollOptions.reduce(
+      (sum, option) =>
+        sum + Number(counts[option.id] || 0),
+      0
+    );
     const voterId = makeVoterId(identity);
-    const myChoice = voterId ? counts.byVoter?.[voterId] : "";
+    const myChoice = voterId
+      ? counts.byVoter?.[voterId]
+      : "";
+    const myChoiceLabel =
+      pollOptions.find((option) => option.id === myChoice)
+        ?.label || myChoice;
 
     const optionButton = (choice, label, count) => {
       const pct = totalVotes > 0 ? Math.round((Number(count || 0) / totalVotes) * 100) : 0;
@@ -2485,7 +2614,24 @@ Votes for this poll will no longer be shown.`
     };
 
     return (
-      <section key={poll.id} className="card" style={{ overflow: "hidden" }}>
+      <section
+        id={`club-poll-${poll.id}`}
+        key={poll.id}
+        className="card"
+        style={{
+          overflow: "hidden",
+          outline:
+            focusedPollId === poll.id
+              ? "2px solid #f6c945"
+              : "2px solid transparent",
+          boxShadow:
+            focusedPollId === poll.id
+              ? "0 0 28px rgba(246, 201, 69, 0.32)"
+              : undefined,
+          transition:
+            "outline-color 220ms ease, box-shadow 220ms ease",
+        }}
+      >
         <div
           style={{
             display: "grid",
@@ -2561,17 +2707,46 @@ Votes for this poll will no longer be shown.`
               </span>
             </div>
 
-            <h2 style={{ marginTop: 0 }}>{poll.question}</h2>
-            {playerName ? <p className="muted small">Featuring {playerName}</p> : null}
+            <div
+              style={{
+                display: "flex",
+                gap: "0.7rem",
+                alignItems: "flex-start",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  fontSize: "1.7rem",
+                  lineHeight: 1,
+                }}
+              >
+                {poll.icon || "🗳️"}
+              </span>
+              <h2 style={{ margin: 0 }}>{poll.question}</h2>
+            </div>
 
-            <div style={{ display: "grid", gap: "0.55rem", marginTop: "0.9rem" }}>
-              {optionButton("A", poll.optionA || "Option A", counts.A || 0)}
-              {optionButton("B", poll.optionB || "Option B", counts.B || 0)}
+            <div
+              style={{
+                display: "grid",
+                gap: "0.55rem",
+                marginTop: "0.9rem",
+              }}
+            >
+              {pollOptions.map((option) =>
+                optionButton(
+                  option.id,
+                  option.label,
+                  counts[option.id] || 0
+                )
+              )}
             </div>
 
             <p className="muted small" style={{ marginTop: "0.65rem" }}>
               Total votes: <strong>{totalVotes}</strong>
-              {myChoice ? ` · You voted ${myChoice}` : ""}
+              {myChoiceLabel
+                ? ` · You voted ${myChoiceLabel}`
+                : ""}
             </p>
 
             {canManageCustomStories && (
@@ -3174,7 +3349,7 @@ Votes for this poll will no longer be shown.`
             <div style={{ minWidth: 0 }}>
               <h2 style={{ marginTop: 0, marginBottom: "0.35rem" }}>Custom poll studio</h2>
               <p className="muted" style={{ margin: 0 }}>
-                Create up to 2 active polls. Votes are saved in Firebase, not local storage.
+                Create a quick club vote with up to 6 choices.
               </p>
             </div>
 
@@ -3242,89 +3417,90 @@ Votes for this poll will no longer be shown.`
                 </label>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Poll tag</span>
-                  <input
-                    type="text"
-                    value={pollDraft.tag}
-                    onChange={(e) => handlePollDraftChange("tag", e.target.value)}
-                    placeholder="Poll / Vote / Fan choice"
-                    style={newsInputStyle}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Option A</span>
-                  <input
-                    type="text"
-                    value={pollDraft.optionA}
-                    onChange={(e) => handlePollDraftChange("optionA", e.target.value)}
-                    placeholder="First option"
-                    style={newsInputStyle}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Option B</span>
-                  <input
-                    type="text"
-                    value={pollDraft.optionB}
-                    onChange={(e) => handlePollDraftChange("optionB", e.target.value)}
-                    placeholder="Second option"
-                    style={newsInputStyle}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Player picture (optional)</span>
+                  <span style={{ fontWeight: 700 }}>Poll icon</span>
                   <select
-                    value={pollDraft.playerName}
-                    onChange={(e) => handlePollDraftChange("playerName", e.target.value)}
+                    value={pollDraft.icon}
+                    onChange={(e) =>
+                      handlePollDraftChange("icon", e.target.value)
+                    }
                     style={newsInputStyle}
                   >
-                    <option value="">No player selected</option>
-                    {allKnownPlayers.map((playerName) => (
-                      <option key={playerName} value={playerName}>
-                        {playerName}
-                      </option>
-                    ))}
+                    <option value="🗳️">🗳️ General vote</option>
+                    <option value="⚽">⚽ Football</option>
+                    <option value="🔥">🔥 Hot topic</option>
+                    <option value="🏆">🏆 Award</option>
+                    <option value="👥">👥 Team decision</option>
+                    <option value="📣">📣 Club announcement</option>
                   </select>
                 </label>
 
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Outside image URL (optional)</span>
-                  <input
-                    type="text"
-                    value={pollDraft.imageUrl}
-                    onChange={(e) => handlePollDraftChange("imageUrl", e.target.value)}
-                    placeholder="https://..."
-                    style={newsInputStyle}
-                  />
-                </label>
+                <div style={{ display: "grid", gap: "0.65rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                    }}
+                  >
+                    <strong>Choices</strong>
+                    <small className="muted">
+                      {pollDraft.options.length}/6
+                    </small>
+                  </div>
 
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Publish date</span>
-                  <input
-                    type="date"
-                    value={pollDraft.publishDate}
-                    onChange={(e) => handlePollDraftChange("publishDate", e.target.value)}
-                    style={newsInputStyle}
-                  />
-                </label>
-              </div>
+                  {pollDraft.options.map((option, index) => (
+                    <div
+                      key={`poll-option-${index}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          index >= 2 ? "1fr auto" : "1fr",
+                        gap: "0.5rem",
+                        alignItems: "center",
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={option}
+                        onChange={(e) =>
+                          handlePollOptionChange(
+                            index,
+                            e.target.value
+                          )
+                        }
+                        placeholder={`Choice ${index + 1}`}
+                        style={newsInputStyle}
+                      />
 
-              {pollFormError && (
-                <div style={{ marginTop: "0.85rem", color: "#fca5a5", fontWeight: 600 }}>
-                  {pollFormError}
+                      {index >= 2 ? (
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={() => removePollOption(index)}
+                          aria-label={`Remove choice ${index + 1}`}
+                          style={{
+                            minWidth: "2.6rem",
+                            padding: "0.65rem",
+                          }}
+                        >
+                          ×
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+
+                  {pollDraft.options.length < 6 ? (
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={addPollOption}
+                    >
+                      + Add choice
+                    </button>
+                  ) : null}
                 </div>
-              )}
 
-              {pollFormNotice && !pollFormError && (
-                <div style={{ marginTop: "0.85rem", color: "#86efac", fontWeight: 600 }}>
-                  {pollFormNotice}
-                </div>
-              )}
-
-              <div style={{ display: "flex", gap: "0.65rem", flexWrap: "wrap", marginTop: "1rem" }}>
                 <button type="button" className="primary-btn" onClick={handleSaveCustomPoll}>
                   {editingPollId ? "Update poll" : "Save poll"}
                 </button>

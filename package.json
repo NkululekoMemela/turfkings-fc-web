@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --mode staging",
     "dev:staging": "vite --mode staging",
-    "build": "vite build --mode production",
+    "build": "vite build --mode staging",
     "build:staging": "vite build --mode staging",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -14,13 +14,26 @@
     "inspect:appearances": "node src/scripts/inspectSeasonAppearances.js",
     "backfill:participation": "node src/scripts/backfillHistoricalParticipation.js",
     "dev:production": "vite --mode production",
-    "build:production": "vite build --mode production"
+    "build:production": "vite build --mode production",
+    "build:native": "FANM_NATIVE_BUILD=1 vite build --mode production",
+    "native:sync:android": "npm run build:native && cap sync android",
+    "native:open:android": "cap open android",
+    "preview:staging": "npm run build:staging && vite preview --host 0.0.0.0 --port 5178",
+    "preview:production": "npm run build:production && vite preview --host 0.0.0.0 --port 5178",
+    "build:native:dev": "FANM_NATIVE_BUILD=1 VITE_FIREBASE_ENV=staging vite build --mode staging",
+    "native:sync:android:dev": "npm run build:native:dev && cap sync android"
   },
   "dependencies": {
+    "@capacitor-firebase/authentication": "^8.5.1",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/push-notifications": "^8.1.2",
     "@vis.gl/react-google-maps": "^1.8.3",
     "archiver": "^8.0.0",
     "dotenv": "^17.3.1",
-    "firebase": "^12.6.0",
+    "firebase": "12.13.0",
     "firebase-admin": "^13.10.0",
     "googleapis": "^173.0.0",
     "html-to-image": "^1.11.13",
@@ -31,6 +44,7 @@
     "twilio": "^5.13.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@eslint/js": "^9.39.1",
     "@firebase/rules-unit-testing": "^5.0.1",
     "@types/react": "^19.2.2",

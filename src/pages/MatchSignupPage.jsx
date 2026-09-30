@@ -35,6 +35,7 @@ import {
   listAvailablePlayerMatchCredits,
   listClubMatchCredits,
   redeemMatchCreditForMatch,
+  reclaimLateCancelledMatch,
   returnRedeemedMatchTicketToWallet,
   MATCH_CREDIT_SOURCE,
   MATCH_CREDIT_STATUS,
@@ -2273,6 +2274,30 @@ export default function MatchSignupPage({
     [effectivePaidWeeks]
   );
 
+  const effectiveLateCancelledWeeks = useMemo(
+    () =>
+      uniqueWeekIds(
+        currentBeneficiaryLiveRecords.flatMap((user) => {
+          const direct = Array.isArray(user?.lateCancelledWeeks)
+            ? user.lateCancelledWeeks
+            : [];
+          const raw = Array.isArray(
+            user?.rawData?.lateCancelledWeeks
+          )
+            ? user.rawData.lateCancelledWeeks
+            : [];
+
+          return [...direct, ...raw];
+        })
+      ),
+    [currentBeneficiaryLiveRecords]
+  );
+
+  const effectiveLateCancelledWeekSet = useMemo(
+    () => new Set(effectiveLateCancelledWeeks),
+    [effectiveLateCancelledWeeks]
+  );
+
   const paidWeeksFromAllKnownRecords = useMemo(
     () =>
       uniqueWeekIds([
@@ -2772,8 +2797,32 @@ export default function MatchSignupPage({
       .map(normKey)
       .filter(Boolean);
 
-    return keys.some((key) =>
-      withdrawnPlayerWeekKeys.has(`${key}::${weekId}`)
+    const currentPlayerKeys = uniqueStrings([
+      beneficiary?.playerId,
+      beneficiary?.stableKey,
+      beneficiary?.fullName,
+      beneficiary?.shortName,
+      firstNameOf(
+        beneficiary?.fullName ||
+        beneficiary?.shortName ||
+        ""
+      ),
+    ])
+      .map(normKey)
+      .filter(Boolean);
+
+    const isCurrentPlayer = keys.some((key) =>
+      currentPlayerKeys.includes(key)
+    );
+
+    return (
+      keys.some((key) =>
+        withdrawnPlayerWeekKeys.has(`${key}::${weekId}`)
+      ) ||
+      (
+        isCurrentPlayer &&
+        effectiveLateCancelledWeekSet.has(weekId)
+      )
     );
   };
 
@@ -2858,7 +2907,10 @@ export default function MatchSignupPage({
     effectiveMatchSignupSettings,
   ]);
 
-  const handleAdminWeatherCancellation = async (week) => {
+  const handleAdminWeatherCancellation = async (
+    week,
+    reasonCode = "bad_weather"
+  ) => {
     if (
       !canManageSignupsAsAdmin ||
       !week?.id ||
@@ -2867,34 +2919,111 @@ export default function MatchSignupPage({
       return;
     }
 
+    const reasonConfig =
+      reasonCode === "insufficient_players"
+        ? {
+            code: "insufficient_players",
+            label: "insufficient player sign-ups",
+            icon: "👥",
+          }
+        : {
+            code: "bad_weather",
+            label: "bad weather",
+            icon: "🌧️",
+          };
+
     const paidPlayers = adminCleanupCandidates.filter(
-      (player) =>
-        Array.isArray(player?.paidWeeks) &&
-        player.paidWeeks.includes(week.id)
+      (player) => {
+        if (
+          !Array.isArray(player?.paidWeeks) ||
+          !player.paidWeeks.includes(week.id)
+        ) {
+          return false;
+        }
+
+        const data = {
+          ...(player?.rawData || {}),
+          ...player,
+        };
+        const method = String(
+          data.paymentMethod || ""
+        ).trim().toLowerCase();
+        const moneyBackedWeeks = uniqueWeekIds(
+          data.moneyBackedWeeks || []
+        );
+        const accessOverrideWeeks = uniqueWeekIds(
+          data.accessOverrideWeeks || []
+        );
+
+        const isTicketBooking =
+          method === "match_ticket" &&
+          String(data.lastMatchTicketWeekId || "").trim() ===
+            week.id &&
+          Boolean(
+            String(data.lastMatchTicketId || "").trim()
+          );
+
+        if (isTicketBooking) return true;
+        if (moneyBackedWeeks.includes(week.id)) return true;
+        if (accessOverrideWeeks.includes(week.id)) return false;
+        if (data.paymentSimulation === true) return false;
+
+        if (
+          [
+            "manual_admin_add_paid_week",
+            "practice_manual_admin_paid",
+            "practice simulation",
+          ].includes(method)
+        ) {
+          return false;
+        }
+
+        return (
+          data.paymentActuallyReceived === true ||
+          [
+            "yoco",
+            "paystack",
+            "manual_admin_verify",
+          ].includes(method) ||
+          ["yoco_webhook", "paystack_webhook"].includes(
+            String(data.verifiedBy || "")
+              .trim()
+              .toLowerCase()
+          )
+        );
+      }
     );
 
     const fixtureLabel =
       week.shortLabel || week.label || week.id;
 
-    if (!paidPlayers.length) {
+    const affectedPlayers = adminCleanupCandidates.filter(
+      (player) =>
+        Array.isArray(player?.selectedWeeks) &&
+        player.selectedWeeks.includes(week.id)
+    );
+
+    if (!affectedPlayers.length) {
       setAdminWeatherMessage("");
       setAdminWeatherError(
-        `${fixtureLabel} has no recorded paid bookings to return.`
+        `${fixtureLabel} has no registered players to notify.`
       );
       return;
     }
 
     const confirmed = await showPremiumConfirm({
-      icon: "🌧️",
-      title: `Weather cancellation · ${fixtureLabel}`,
+      icon: reasonConfig.icon,
+      title: `Cancel Match Day · ${fixtureLabel}`,
       message:
-        `${paidPlayers.length} paid booking${
-          paidPlayers.length === 1 ? "" : "s"
-        } will be released.`,
+        `${affectedPlayers.length} registered player${
+          affectedPlayers.length === 1 ? "" : "s"
+        } will be notified that the entire Match Day is cancelled due to ${reasonConfig.label}.`,
       detail:
-        `Each paid player will receive one Match Ticket. Unpaid bookings will not receive tickets.`,
-      confirmText: "Cancel match",
-      cancelText: "Keep Match",
+        `${paidPlayers.length} eligible paid booking${
+          paidPlayers.length === 1 ? "" : "s"
+        } will receive Match Tickets. Free-access and unpaid bookings will not receive tickets.`,
+      confirmText: "Cancel Match Day",
+      cancelText: "Keep Match Day",
       variant: "danger",
     });
 
@@ -2925,22 +3054,55 @@ export default function MatchSignupPage({
         }
 
         try {
-          await cancelPaidMatchAndIssueCredit({
-            clubId: activeClubId,
-            playerId,
-            playerName:
-              player?.fullName ||
-              player?.shortName ||
-              "",
-            signupDocId,
-            weekId: week.id,
-            sourceType: MATCH_CREDIT_SOURCE.MATCH_CANCELLED,
-            issuedBy:
-              currentUser?.uid ||
-              identity?.uid ||
-              identity?.userId ||
-              "admin",
-          });
+          const playerData = {
+            ...(player?.rawData || {}),
+            ...player,
+          };
+          const redeemedTicketId = String(
+            playerData.lastMatchTicketId || ""
+          ).trim();
+          const redeemedTicketWeekId = String(
+            playerData.lastMatchTicketWeekId || ""
+          ).trim();
+
+          if (
+            redeemedTicketId &&
+            redeemedTicketWeekId === week.id &&
+            String(playerData.paymentMethod || "")
+              .trim()
+              .toLowerCase() === "match_ticket"
+          ) {
+            await returnRedeemedMatchTicketToWallet({
+              clubId: activeClubId,
+              creditId: redeemedTicketId,
+              playerId,
+              signupDocId,
+              weekId: week.id,
+              returnedBy:
+                currentUser?.uid ||
+                identity?.uid ||
+                identity?.userId ||
+                "admin",
+            });
+          } else {
+            await cancelPaidMatchAndIssueCredit({
+              clubId: activeClubId,
+              playerId,
+              playerName:
+                player?.fullName ||
+                player?.shortName ||
+                "",
+              signupDocId,
+              weekId: week.id,
+              sourceType:
+                MATCH_CREDIT_SOURCE.MATCH_CANCELLED,
+              issuedBy:
+                currentUser?.uid ||
+                identity?.uid ||
+                identity?.userId ||
+                "admin",
+            });
+          }
 
           completed += 1;
         } catch (error) {
@@ -2952,6 +3114,77 @@ export default function MatchSignupPage({
           failures.push(player?.fullName || "Unknown player");
         }
       }
+
+      await setDoc(
+        getClubDoc(
+          db,
+          "matchDayOperations",
+          week.id,
+          activeClubId
+        ),
+        {
+          clubId: activeClubId,
+          clubName: activeClubName,
+          matchDayId: week.id,
+          matchDayLabel:
+            week.fullLabel ||
+            week.label ||
+            fixtureLabel,
+          status: "cancelled",
+          scope: "entire_match_day",
+          reasonCode: reasonConfig.code,
+          reasonLabel: reasonConfig.label,
+          affectedRecipients: affectedPlayers.map((player) => {
+            const data = {
+              ...(player?.rawData || {}),
+              ...player,
+            };
+
+            return {
+              playerId: String(
+                data.beneficiaryPlayerId ||
+                data.userId ||
+                data.playerId ||
+                ""
+              ),
+              firebaseUid: String(
+                data.firebaseUid ||
+                data.authUid ||
+                data.uid ||
+                ""
+              ),
+              email: String(
+                data.email ||
+                data.payerEmail ||
+                ""
+              ),
+              playerName: String(
+                data.beneficiaryName ||
+                data.playerName ||
+                data.fullName ||
+                data.shortName ||
+                ""
+              ),
+            };
+          }),
+          affectedPlayerCount: affectedPlayers.length,
+          ticketEligibleCount: paidPlayers.length,
+          ticketsIssuedCount: completed,
+          ticketFailureCount: failures.length,
+          cancelledByUid:
+            currentUser?.uid ||
+            identity?.uid ||
+            identity?.userId ||
+            "",
+          cancelledByEmail:
+            currentUser?.email ||
+            identity?.email ||
+            "",
+          cancelledAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
       if (completed > 0) {
         setAdminWeatherMessage(
@@ -3329,36 +3562,110 @@ export default function MatchSignupPage({
       return;
     }
 
-    if (!eligible) {
-      await showPremiumConfirm({
-        icon: "⏱️",
-        title: "Inside the 48-hour window",
+    const isReclaiming =
+      effectiveLateCancelledWeekSet.has(week.id);
+
+    if (isReclaiming) {
+      const confirmed = await showPremiumConfirm({
+        icon: "↩️",
+        title: "Reclaim your paid spot?",
         message:
-          "Automatic Match Ticket returns close 48 hours before kickoff.",
+          "Your availability has changed and you want to return to this match.",
         detail:
-          "An admin can still grant an exception when appropriate.",
-        confirmText: "OK",
-        cancelText: "",
+          "Your existing payment will be restored to the booking. You will not pay again.",
+        confirmText: "Reclaim Spot",
+        cancelText: "Keep Withdrawn",
+        variant: "success",
       });
+
+      if (!confirmed) return;
+
+      setMatchCreditBusyWeekId(week.id);
+      setMatchCreditMessage("");
+
+      try {
+        if (isPracticeMode) {
+          throw new Error(
+            "Reclaim testing is available in the Official club."
+          );
+        }
+
+        await reclaimLateCancelledMatch({
+          clubId: activeClubId,
+          playerId: beneficiary.playerId,
+          signupDocId: pendingId,
+          weekId: week.id,
+          reclaimedBy:
+            currentUser?.uid ||
+            currentUser?.email ||
+            beneficiary.playerId,
+        });
+
+        const nextSelectedWeeks = uniqueWeekIds([
+          ...effectiveSelectedWeeks,
+          week.id,
+        ]);
+
+        setSelectedWeeks(nextSelectedWeeks);
+        setPaidWeeks(effectivePaidWeeks);
+
+        writeSignupCache(pendingId, {
+          selectedWeeks: nextSelectedWeeks,
+          paidWeeks: effectivePaidWeeks,
+          reminderPreference,
+        });
+
+        setMatchCreditMessage(
+          "Your paid spot has been reclaimed. No new payment was required."
+        );
+      } catch (error) {
+        console.error(
+          "Failed to reclaim late-cancelled match:",
+          error
+        );
+
+        await showPremiumConfirm({
+          title: "Spot not reclaimed",
+          message:
+            error?.message ||
+            "Nothing was changed. Please try again.",
+          confirmText: "OK",
+          cancelText: "",
+        });
+      } finally {
+        setMatchCreditBusyWeekId("");
+      }
+
       return;
     }
+
+    const isLateCancellation = !eligible;
 
     const redeemedTicket =
       getRedeemedMatchTicketForWeek(week.id);
 
     const confirmed = await showPremiumConfirm({
-      icon: "🎟️",
-      title: redeemedTicket
+      icon: isLateCancellation ? "⏱️" : "🎟️",
+      title: isLateCancellation
+        ? "Late cancellation — no Match Ticket"
+        : redeemedTicket
         ? "Return your Match Ticket?"
         : "Cancel this match?",
-      message: redeemedTicket
+      message: isLateCancellation
+        ? "Your place will be released, but you will not receive a Match Ticket or an automatic refund because the funds have already booked the field."
+        : redeemedTicket
         ? "Your place will be released and your Match Ticket will return to your wallet."
         : "Your place will be released and a Match Ticket will be added to your wallet.",
-      confirmText: redeemedTicket
+      detail: isLateCancellation
+        ? "A refund can only be arranged if a replacement player is found."
+        : "",
+      confirmText: isLateCancellation
+        ? "Cancel Without Refund"
+        : redeemedTicket
         ? "Return Ticket"
         : "Cancel Match",
       cancelText: "Keep Booking",
-      variant: "success",
+      variant: isLateCancellation ? "danger" : "success",
     });
 
     if (!confirmed) return;
@@ -3381,6 +3688,8 @@ export default function MatchSignupPage({
           playerId: beneficiary.playerId,
           signupDocId: pendingId,
           weekId: week.id,
+          returnToWallet: !isLateCancellation,
+          preservePaidEntitlement: isLateCancellation,
           returnedBy:
             currentUser?.uid ||
             currentUser?.email ||
@@ -3402,6 +3711,8 @@ export default function MatchSignupPage({
           weekId: week.id,
           sourceType:
             MATCH_CREDIT_SOURCE.PLAYER_EARLY_CANCELLATION,
+          issueMatchCredit: !isLateCancellation,
+          preservePaidEntitlement: isLateCancellation,
           issuedBy:
             currentUser?.uid ||
             currentUser?.email ||
@@ -3414,10 +3725,11 @@ export default function MatchSignupPage({
           (id) => id !== week.id
         );
 
-      const nextPaidWeeks =
-        effectivePaidWeeks.filter(
-          (id) => id !== week.id
-        );
+      const nextPaidWeeks = isLateCancellation
+        ? effectivePaidWeeks
+        : effectivePaidWeeks.filter(
+            (id) => id !== week.id
+          );
 
       setSelectedWeeks(nextSelectedWeeks);
       setPaidWeeks(nextPaidWeeks);
@@ -3456,7 +3768,9 @@ export default function MatchSignupPage({
       }
 
       setMatchCreditMessage(
-        redeemedTicket
+        isLateCancellation
+          ? "Late cancellation completed — no Match Ticket or automatic refund was issued."
+          : redeemedTicket
           ? "Match Ticket returned to your wallet."
           : "Match cancelled — Match Ticket added."
       );
@@ -4232,6 +4546,47 @@ export default function MatchSignupPage({
       pendingData
     );
 
+    const isGenuinePaymentConfirmation =
+      paymentMethod === "manual_admin_verify";
+
+    const paymentVerificationEventId =
+      isGenuinePaymentConfirmation
+        ? globalThis.crypto?.randomUUID?.() ||
+          `manual_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2)}`
+        : "";
+
+    const paymentConfirmedAmount =
+      isGenuinePaymentConfirmation
+        ? sumWeekCosts(addWeeks)
+        : 0;
+
+    const existingMoneyBackedWeeks = uniqueWeekIds(
+      pendingData.moneyBackedWeeks || []
+    );
+    const existingAccessOverrideWeeks = uniqueWeekIds(
+      pendingData.accessOverrideWeeks || []
+    );
+
+    const nextMoneyBackedWeeks =
+      isGenuinePaymentConfirmation
+        ? uniqueWeekIds([
+            ...existingMoneyBackedWeeks,
+            ...addWeeks,
+          ])
+        : existingMoneyBackedWeeks;
+
+    const nextAccessOverrideWeeks =
+      isGenuinePaymentConfirmation
+        ? existingAccessOverrideWeeks.filter(
+            (weekId) => !addWeeks.includes(weekId)
+          )
+        : uniqueWeekIds([
+            ...existingAccessOverrideWeeks,
+            ...addWeeks,
+          ]);
+
     await setDoc(
       pendingRef,
       {
@@ -4254,6 +4609,20 @@ export default function MatchSignupPage({
         verifiedBy: verifier,
         verifiedAt: serverTimestamp(),
         paymentMethod,
+        paymentSimulation: false,
+        paymentActuallyReceived:
+          isGenuinePaymentConfirmation,
+        paymentProviderContacted: false,
+        paymentVerificationEventId,
+        paymentConfirmedAmount,
+        paymentConfirmedWeeks:
+          isGenuinePaymentConfirmation ? addWeeks : [],
+        moneyBackedWeeks: nextMoneyBackedWeeks,
+        accessOverrideWeeks: nextAccessOverrideWeeks,
+        paymentActuallyReceivedAt:
+          isGenuinePaymentConfirmation
+            ? serverTimestamp()
+            : null,
         updatedAt: serverTimestamp(),
         createdAt:
           pendingData.createdAt || serverTimestamp(),
@@ -4278,6 +4647,20 @@ export default function MatchSignupPage({
         verifiedAt: serverTimestamp(),
         paymentVerifiedAt: serverTimestamp(),
         paymentMethod,
+        paymentSimulation: false,
+        paymentActuallyReceived:
+          isGenuinePaymentConfirmation,
+        paymentProviderContacted: false,
+        paymentVerificationEventId,
+        paymentConfirmedAmount,
+        paymentConfirmedWeeks:
+          isGenuinePaymentConfirmation ? addWeeks : [],
+        moneyBackedWeeks: nextMoneyBackedWeeks,
+        accessOverrideWeeks: nextAccessOverrideWeeks,
+        paymentActuallyReceivedAt:
+          isGenuinePaymentConfirmation
+            ? serverTimestamp()
+            : null,
         updatedAt: serverTimestamp(),
         createdAt:
           pendingData.createdAt || serverTimestamp(),
@@ -4354,9 +4737,8 @@ export default function MatchSignupPage({
         bulkPaidTargetWeek?.fullLabel ||
         bulkPaidTargetWeek?.label ||
         targetWeekId,
-      detail: isPracticeMode
-        ? "Practice only — no real payment is taken. The player will be treated as paid inside this Practice session."
-        : "Use this for cash, EFT, or another payment you have personally verified.",
+      detail:
+        "Launch access only — no real payment is recorded and no payment confirmation will be sent.",
       confirmText: "Mark selected as paid",
       variant: "success",
     });
@@ -5303,6 +5685,8 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                     ? "Match pull out"
                     : matchTicketWalletMode === "weather"
                     ? "Weather cancellation"
+                    : matchTicketWalletMode === "low-signups"
+                    ? "Low sign-up cancellation"
                     : matchTicketWalletMode === "danger"
                     ? "Danger Zone"
                     : "Use Ticket"}
@@ -5437,6 +5821,10 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
 
                       const redeemedTicket =
                         getRedeemedMatchTicketForWeek(week.id);
+                      const isLateCancelled =
+                        effectiveLateCancelledWeekSet.has(
+                          week.id
+                        );
 
                       return (
                         <button
@@ -5444,32 +5832,35 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                           type="button"
                           className="tk-match-ticket-match"
                           onClick={() => {
-                            if (!eligible) return;
                             setShowMatchTicketWallet(false);
                             setMatchTicketWalletMode("menu");
                             handlePaidMatchCreditCancellation(week);
                           }}
-                          disabled={!eligible || matchTicketBusy}
+                          disabled={matchTicketBusy}
                         >
                           <span>
                             <strong>
                               {week.shortLabel || week.label || week.id}
                             </strong>
                             <small>
-                              {eligible
+                              {isLateCancelled
+                                ? "Paid spot released — reclaim before kickoff"
+                                : eligible
                                 ? redeemedTicket
                                   ? "Ticket returns to wallet"
                                   : "Receive a Match Ticket"
-                                : "Inside 48 hours"}
+                                : "Late cancellation — no Match Ticket"}
                             </small>
                           </span>
 
                           <span className="tk-match-ticket-match-cta">
-                            {eligible
+                            {isLateCancelled
+                              ? "Reclaim spot →"
+                              : eligible
                               ? redeemedTicket
                                 ? "Return Ticket →"
                                 : "Cancel →"
-                              : "Locked"}
+                              : "Cancel late →"}
                           </span>
                         </button>
                       );
@@ -5525,6 +5916,27 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                         type="button"
                         className="tk-match-ticket-match"
                         onClick={() =>
+                          setMatchTicketWalletMode("low-signups")
+                        }
+                        disabled={adminWeatherBusy || dangerZoneBusy}
+                      >
+                        <span>
+                          <strong>
+                            👥 Low sign-up cancellation
+                          </strong>
+                          <small>
+                            Cancel when too few players have signed up
+                          </small>
+                        </span>
+                        <span className="tk-match-ticket-match-cta">
+                          Open →
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="tk-match-ticket-match"
+                        onClick={() =>
                           setMatchTicketWalletMode("danger")
                         }
                         disabled={adminWeatherBusy || dangerZoneBusy}
@@ -5558,11 +5970,17 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               </>
             ) : null}
 
-            {matchTicketWalletMode === "weather" &&
+            {[
+              "weather",
+              "low-signups",
+            ].includes(matchTicketWalletMode) &&
             canManageSignupsAsAdmin ? (
               <>
                 <p className="tk-match-ticket-help">
-                  🌧️ Choose the match cancelled because of weather.
+                  {matchTicketWalletMode === "weather"
+                    ? "Cancel an entire Match Day because of bad weather or rain."
+                    : "Cancel an entire Match Day because too few players signed up."}
+                  {" "}Every registered player will be notified.
                 </p>
 
                 <div className="tk-match-ticket-match-list">
@@ -5576,14 +5994,9 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                         ).length;
 
                       return (
-                        <button
-                          key={`weather-${week.id}`}
-                          type="button"
+                        <div
+                          key={`cancellation-${week.id}`}
                           className="tk-match-ticket-match"
-                          onClick={() =>
-                            handleAdminWeatherCancellation(week)
-                          }
-                          disabled={adminWeatherBusy}
                         >
                           <span>
                             <strong>
@@ -5597,10 +6010,33 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                             </small>
                           </span>
 
-                          <span className="tk-match-ticket-match-cta">
-                            Cancel →
+                          <span
+                            className="tk-match-ticket-match-cta"
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              justifyContent: "flex-end",
+                              gap: "0.45rem",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleAdminWeatherCancellation(
+                                  week,
+                                  matchTicketWalletMode === "weather"
+                                    ? "bad_weather"
+                                    : "insufficient_players"
+                                )
+                              }
+                              disabled={adminWeatherBusy}
+                            >
+                              {matchTicketWalletMode === "weather"
+                                ? "🌧️ Cancel for weather"
+                                : "👥 Cancel for low sign-ups"}
+                            </button>
                           </span>
-                        </button>
+                        </div>
                       );
                     })
                   ) : (

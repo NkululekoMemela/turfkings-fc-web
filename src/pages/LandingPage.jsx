@@ -1,5 +1,6 @@
 // src/pages/LandingPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import ClubFieldPortal from "../components/ClubFieldPortal.jsx";
 import { getTeamById } from "../core/teams.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 import { GLOBAL_CAPTAIN_CODES } from "../core/accessCodes.js";
@@ -249,6 +250,8 @@ export function LandingPage({
   activeClubId = null,
   activeClubName = null,
   clubIdentity = null,
+  onEnterField,
+  onExploreFields,
   teams,
   currentMatchNo,
   currentMatch,
@@ -298,6 +301,7 @@ export function LandingPage({
   isSpectator = false,
   canStartMatch = false,
   hasRecordedMatchDayState = false,
+  onReady,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
 
@@ -360,6 +364,12 @@ export function LandingPage({
   }, [resolvedClubIdentity, resolvedClubLogo]);
 
   const [photoIndex, setPhotoIndex] = useState(0);
+
+  useEffect(() => {
+    if (!teamPhotos.length) {
+      onReady?.();
+    }
+  }, [teamPhotos.length, onReady]);
 
   useEffect(() => {
     if (teamPhotos.length <= 1) return;
@@ -1462,9 +1472,57 @@ export function LandingPage({
           box-shadow: none;
         }
 
+        .tk-ribbon-desktop-lip {
+          display: none;
+        }
+
         @media (min-width: 760px) {
+          /*
+           * Desktop ribbon:
+           * the main bar follows the central page width,
+           * while the mode lip remains a fixed premium size.
+           */
+          .landing-wave-header::before {
+            display: none;
+            content: "";
+            position: absolute;
+            z-index: 0;
+            inset: 0 0 auto;
+            height: 86px;
+            background:
+              linear-gradient(
+                90deg,
+                #1d4ed8 0%,
+                #071329 42%,
+                #22c55e 100%
+              );
+          }
+
+          .tk-ribbon-wave-svg--mobile {
+            display: none;
+          }
+
+          .tk-ribbon-desktop-lip {
+            position: absolute;
+            display: block;
+            z-index: 1;
+            top: -1px;
+            left: 0;
+            width: 100%;
+            height: 123px;
+            overflow: visible;
+            pointer-events: none;
+            filter:
+              drop-shadow(
+                0 13px 22px rgba(2, 6, 23, 0.24)
+              );
+          }
+
           .tk-ribbon-mode-label {
-            font-size: clamp(0.58rem, 0.52vw, 0.72rem);
+            left: 67px;
+            top: 103px;
+            transform: translateY(-50%);
+            font-size: 0.62rem;
             letter-spacing: 0.08em;
           }
         }
@@ -1503,7 +1561,7 @@ export function LandingPage({
       >
         <header className="landing-wave-header">
           <svg
-            className="tk-ribbon-wave-svg"
+            className="tk-ribbon-wave-svg tk-ribbon-wave-svg--mobile"
             viewBox="0 0 390 122"
             preserveAspectRatio="none"
             aria-hidden="true"
@@ -1558,6 +1616,62 @@ export function LandingPage({
               strokeWidth="1.2"
             />
 
+          </svg>
+
+          <svg
+            className="tk-ribbon-desktop-lip"
+            viewBox="0 0 1200 122"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <defs>
+              <linearGradient
+                id="tkLandingDesktopLipGradient"
+                gradientUnits="userSpaceOnUse"
+                x1="0"
+                y1="0"
+                x2="1200"
+                y2="0"
+              >
+                <stop offset="0%" stopColor="#1d4ed8" />
+                <stop offset="42%" stopColor="#071329" />
+                <stop offset="100%" stopColor="#22c55e" />
+              </linearGradient>
+            </defs>
+
+            {/*
+             * One continuous desktop path:
+             * full-width header and compact mode lip share
+             * the same fill, with no join between them.
+             */}
+            <path
+              d="
+                M 0 0
+                H 1200
+                V 86
+                H 240
+                C 216 86, 207 119, 182 119
+                H 69
+                C 54 119, 48 86, 35 86
+                H 0
+                Z
+              "
+              fill="url(#tkLandingDesktopLipGradient)"
+            />
+
+            <path
+              d="
+                M 35 86
+                C 48 86, 54 119, 69 119
+                H 182
+                C 207 119, 216 86, 240 86
+              "
+              fill="none"
+              stroke="rgba(34,211,238,0.38)"
+              strokeWidth="1.2"
+              vectorEffect="non-scaling-stroke"
+            />
           </svg>
 
           <div className="tk-ribbon-mode-label" aria-label={modeLipLabel}>
@@ -2342,6 +2456,16 @@ export function LandingPage({
                 })}
               </button>
             )}
+
+            {currentUser && activeClubId &&
+              typeof onEnterField === "function" && (
+              <ClubFieldPortal
+                clubId={activeClubId}
+                onEnterField={onEnterField}
+                onExploreFields={onExploreFields}
+                tileStyle={tileButtonStyle(isMobile)}
+              />
+            )}
           </div>
         ) : (
           <>
@@ -2565,6 +2689,17 @@ export function LandingPage({
                   mobileLines: ["Video", "Highlights"],
                 })}
               </button>
+
+            {currentUser && activeClubId &&
+              typeof onEnterField === "function" && (
+              <ClubFieldPortal
+                clubId={activeClubId}
+                onEnterField={onEnterField}
+                onExploreFields={onExploreFields}
+                tileStyle={tileButtonStyle(isMobile)}
+              />
+            )}
+
             </div>
           </>
         )}
@@ -2596,6 +2731,8 @@ export function LandingPage({
           src={teamPhotos[photoIndex]}
           alt={`${resolvedClubName} club image ${photoIndex + 1}`}
           className="team-photo"
+          onLoad={() => onReady?.()}
+          onError={() => onReady?.()}
           style={{
             width: "100%",
             height: "100%",

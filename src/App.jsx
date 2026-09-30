@@ -1,5 +1,11 @@
 // src/App.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { ClubChatPage } from "./pages/ClubChat/ClubChatPage.jsx";
 import { ClubChatWidget } from "./components/ClubChat/ClubChatWidget.jsx";
@@ -18,8 +24,13 @@ import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import VideoHighlightsPage from "./pages/VideoHighlightsPage.jsx";
 import HomePage_HUB from "./pages/HomePage_HUB.jsx";
+import WelcomePage from "./pages/WelcomePage.jsx";
+import LeagueVenuesHub from "./pages/LeagueVenuesHub.jsx";
+import VenueEntryPage from "./pages/VenueEntryPage.jsx";
 import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
 import BottomNav from "./components/BottomNav.jsx";
+import FieldBottomNav from "./components/FieldBottomNav.jsx";
+import LegalAcceptanceGate from "./components/LegalAcceptanceGate.jsx";
 import { buildClubIdentity, DEFAULT_CLUB_ID } from "./core/clubIdentity.js";
 import {
   MATCH_MODE as MATCH_TYPE,
@@ -66,6 +77,8 @@ import {
   buildAuthorizedCameraDeepLink,
 } from "./storage/cameraHandoffGateway.js";
 import { useAuth } from "./auth/AuthContext.jsx";
+import { Capacitor } from "@capacitor/core";
+import { initialiseNativePushNotifications } from "./core/notifications/nativePushNotifications.js";
 import { FANM_PRO_CLUBS } from "./data/fanm/fanmTeamLibrary.js";
 
 import {
@@ -86,6 +99,9 @@ import {
 import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 
 // Page constants
+const PAGE_WELCOME = "welcome";
+const PAGE_LEAGUE_VENUES = "league-venues";
+const PAGE_VENUE_ENTRY = "venue-entry";
 const PAGE_HOME = "home";
 const PAGE_ENTRY = "entry";
 const PAGE_SESSION_SELECTOR = "session-selector";
@@ -2563,8 +2579,30 @@ export default function App() {
   }, []);
 
   const [entryPageIntent, setEntryPageIntent] = useState(null);
-  const [page, setPage] = useState(PAGE_HOME);
+  const [page, setPage] = useState(() =>
+    Capacitor.isNativePlatform() ? PAGE_ENTRY : PAGE_WELCOME
+  );
+  const nativeStartupRoutedRef = useRef(false);
+  const [nativeStartupReady, setNativeStartupReady] = useState(
+    () => !Capacitor.isNativePlatform()
+  );
+  const [landingVisualReady, setLandingVisualReady] =
+    useState(false);
+  const [nativeChatOpenRequest, setNativeChatOpenRequest] =
+    useState(null);
+  const [nativePollOpenRequest, setNativePollOpenRequest] =
+    useState(null);
+
+  useEffect(() => {
+    if (page !== PAGE_LANDING) {
+      setLandingVisualReady(false);
+    }
+  }, [page]);
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
+  const [selectedLeagueVenue, setSelectedLeagueVenue] = useState(null);
+  const [portalOriginClubId, setPortalOriginClubId] = useState("");
+  const [fieldNav, setFieldNav] = useState({ ready: false, page: "landing" });
+  const [fieldNavTarget, setFieldNavTarget] = useState(null);
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
   const {
@@ -2741,6 +2779,211 @@ export default function App() {
   ]);
 
   const activeClubId = activeClubIdentity.id;
+
+  /*
+   * Native startup:
+   * - signed-out users start at their club Entry page;
+   * - returning players, captains and spectators skip discovery/Entry;
+   * - real administrators remain on Entry so they can choose Official
+   *   or Practice intentionally.
+   *
+   * This runs once per native launch. Notification taps can still
+   * override it afterwards and open their requested destination.
+   */
+  useEffect(() => {
+    if (
+      !Capacitor.isNativePlatform() ||
+      authLoading ||
+      nativeStartupRoutedRef.current
+    ) {
+      return;
+    }
+
+    nativeStartupRoutedRef.current = true;
+
+    if (!authUser?.uid) {
+      setNativeStartupReady(true);
+      setEntryPageIntent(null);
+      setPage(PAGE_ENTRY);
+      return;
+    }
+
+    const storedEmail = String(identity?.email || "")
+      .trim()
+      .toLowerCase();
+    const authenticatedEmail = String(authUser?.email || "")
+      .trim()
+      .toLowerCase();
+
+    const identityMatchesAuthenticatedUser =
+      !storedEmail ||
+      !authenticatedEmail ||
+      storedEmail === authenticatedEmail;
+
+    if (!identity || !identityMatchesAuthenticatedUser) {
+      setNativeStartupReady(true);
+      setEntryPageIntent(null);
+      setPage(PAGE_ENTRY);
+      return;
+    }
+
+    const storedRealRole = getRealStoredRole(identity);
+
+    setSessionMode("official");
+    writeSessionModeIntent("official");
+    setShowSessionSelector(false);
+    setEntryPageIntent(null);
+
+    if (storedRealRole === "admin") {
+      setPage(PAGE_ENTRY);
+      setNativeStartupReady(true);
+      return;
+    }
+
+    setPage(PAGE_LANDING);
+    setNativeStartupReady(true);
+  }, [
+    authLoading,
+    authUser?.uid,
+    authUser?.email,
+    identity,
+  ]);
+
+  useEffect(() => {
+    if (authLoading || !authUser?.uid || !activeClubId) {
+      return undefined;
+    }
+
+    let disposed = false;
+    let removePushListeners = () => {};
+
+    initialiseNativePushNotifications({
+      authUser,
+      identity,
+      activeClubId,
+      onNotificationOpened: notification => {
+        const data = notification?.data || {};
+
+        const opensClubChat =
+          data.type === "club_chat" ||
+          data.route === "club-chat";
+
+        const opensClubPoll =
+          data.type === "club_poll" ||
+          data.route === "club-poll";
+
+        const opensAdminEntry =
+          data.type === "club_member_pending" ||
+          data.type === "incoming_club_challenge" ||
+          data.route === "admin-entry";
+
+        const opensLanding =
+          opensClubChat ||
+          opensClubPoll ||
+          opensAdminEntry ||
+          data.route === "landing" ||
+          data.type === "payment_confirmation" ||
+          data.type === "payment_received_admin" ||
+          data.type === "match_day_reminder" ||
+          data.type === "match_day_cancelled";
+
+        if (!opensLanding) return;
+
+        const notificationClubId = String(
+          data.clubId || ""
+        ).trim();
+
+        if (!notificationClubId) return;
+
+        if (notificationClubId !== activeClubId) {
+          setSelectedHomeClub(
+            buildClubIdentity({
+              id: notificationClubId,
+            })
+          );
+        }
+
+        if (opensAdminEntry) {
+          setNativeChatOpenRequest(null);
+          setNativePollOpenRequest(null);
+          setEntryPageIntent({
+            type: String(data.type || ""),
+            clubId: notificationClubId,
+            memberId: String(data.memberId || ""),
+            challengeId: String(data.challengeId || ""),
+            openedAt: Date.now(),
+          });
+          setSessionMode("official");
+          writeSessionModeIntent("official");
+          setShowSessionSelector(false);
+          setPage(PAGE_ENTRY);
+          return;
+        }
+
+        if (opensClubPoll) {
+          const pollId = String(data.pollId || "").trim();
+
+          if (!pollId) return;
+
+          setNativeChatOpenRequest(null);
+          setNativePollOpenRequest({
+            clubId: notificationClubId,
+            pollId,
+            openedAt: Date.now(),
+          });
+          setPage(PAGE_NEWS);
+          return;
+        }
+
+        setNativePollOpenRequest(null);
+        setPage(PAGE_LANDING);
+
+        if (opensClubChat) {
+          setNativeChatOpenRequest({
+            clubId: notificationClubId,
+            messageId: String(data.messageId || ""),
+            openedAt: Date.now(),
+          });
+        } else {
+          setNativeChatOpenRequest(null);
+        }
+      },
+    })
+      .then(cleanup => {
+        if (disposed) {
+          cleanup();
+          return;
+        }
+
+        removePushListeners = cleanup;
+      })
+      .catch(error => {
+        console.error(
+          "[NativePush] Initialisation failed:",
+          error
+        );
+      });
+
+    return () => {
+      disposed = true;
+      removePushListeners();
+    };
+  }, [
+    authLoading,
+    authUser?.uid,
+    authUser?.email,
+    authUser?.memberId,
+    authUser?.playerId,
+    authUser?.role,
+    identity?.memberId,
+    identity?.playerId,
+    identity?.email,
+    identity?.fullName,
+    identity?.shortName,
+    identity?.role,
+    identity?.actingRole,
+    activeClubId,
+  ]);
 
   useEffect(() => {
     practiceExpiryWarningAcknowledgedRef.current = false;
@@ -2998,6 +3241,15 @@ export default function App() {
   const [state, setState] = useState(() =>
     USE_V2 ? createDefaultStateV2() : loadState()
   );
+
+  /*
+   * Prevent the default Friendly state from appearing before the
+   * authoritative club configuration arrives from Firestore.
+   */
+  const [footballStateReady, setFootballStateReady] =
+    useState(false);
+  const authoritativeFootballStateReceivedRef =
+    useRef(false);
 
   /*
    * Protect optimistic local changes from an older Firestore
@@ -3496,11 +3748,16 @@ export default function App() {
 
   useEffect(() => {
     // Disabled localStorage bootstrap for V2.
+    authoritativeFootballStateReceivedRef.current = false;
+    setFootballStateReady(false);
 
     const unsubscribe = USE_V2
       ? subscribeToStateV2(
           (cloudState) => {
-            if (!cloudState) return;
+            if (!cloudState) {
+              setFootballStateReady(true);
+              return;
+            }
 
             const nextCloudState = ensureV2StateShape(cloudState);
 
@@ -3524,6 +3781,8 @@ export default function App() {
                   }))
                 : [],
             });
+            authoritativeFootballStateReceivedRef.current = true;
+
             setState((prev) => {
               const pendingWriteVersion =
                 pendingStateWriteUpdatedAtRef.current;
@@ -3591,6 +3850,19 @@ export default function App() {
     footballStateClubId,
     footballDataScope,
   ]);
+
+  /*
+   * Release the native splash only after React has committed the
+   * authoritative football state. A layout effect runs before paint,
+   * preventing even one frame of the default Friendly configuration.
+   */
+  useLayoutEffect(() => {
+    if (!authoritativeFootballStateReceivedRef.current) {
+      return;
+    }
+
+    setFootballStateReady(true);
+  }, [state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -8091,8 +8363,68 @@ export default function App() {
     <div
       className={`app-root ${showBottomNav ? "has-bottom-nav" : ""} ${
         page === PAGE_LANDING ? "app-root--landing" : ""
-      }`}
+      } ${page === PAGE_VENUE_ENTRY ? "app-root--field" : ""}`}
     >
+      {Capacitor.isNativePlatform() &&
+        (
+          !nativeStartupReady ||
+          (
+            page === PAGE_LANDING &&
+            (!footballStateReady || !landingVisualReady)
+          )
+        ) && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Opening 5 Asides Near Me"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 25000,
+            display: "grid",
+            placeItems: "center",
+            padding: "1.5rem",
+            background:
+              "radial-gradient(circle at 50% 32%, rgba(14,165,233,0.22), transparent 32%), linear-gradient(180deg, #020617, #071426)",
+            color: "#f8fafc",
+          }}
+        >
+          <div style={{ textAlign: "center" }}>
+            <img
+              src="/favicon.png"
+              alt=""
+              aria-hidden="true"
+              style={{
+                width: "84px",
+                height: "84px",
+                borderRadius: "24px",
+                objectFit: "cover",
+                boxShadow: "0 18px 48px rgba(14,165,233,0.24)",
+              }}
+            loading="eager" decoding="sync" fetchPriority="high" />
+            <div
+              style={{
+                marginTop: "1rem",
+                fontSize: "1.05rem",
+                fontWeight: 800,
+                letterSpacing: "0.01em",
+              }}
+            >
+              5 Asides Near Me
+            </div>
+            <div
+              style={{
+                marginTop: "0.4rem",
+                color: "#94a3b8",
+                fontSize: "0.82rem",
+              }}
+            >
+              Opening your club…
+            </div>
+          </div>
+        </div>
+      )}
+
       {(practiceBootstrapping || practiceReadyForEntry) && (
         <div
           className="practice-startup-overlay"
@@ -9241,8 +9573,51 @@ export default function App() {
         </button>
       )}
 
+      {page === PAGE_WELCOME && (
+        <WelcomePage
+          onExploreClubs={() => setPage(PAGE_HOME)}
+          onExploreLeagues={() => setPage(PAGE_LEAGUE_VENUES)}
+          onJoinNearbyClub={(club) => {
+            setSelectedHomeClub(buildClubIdentity(club));
+            setEntryPageIntent("join-club");
+            setPage(PAGE_ENTRY);
+          }}
+        />
+      )}
+
+      {page === PAGE_LEAGUE_VENUES && (
+        <LeagueVenuesHub
+          onBack={() => setPage(PAGE_WELCOME)}
+          onViewVenue={(venue) => {
+            setPortalOriginClubId("");
+            setSelectedLeagueVenue(venue);
+            setPage(PAGE_VENUE_ENTRY);
+          }}
+        />
+      )}
+
+      {page === PAGE_VENUE_ENTRY && (
+        <>
+          <VenueEntryPage
+            venue={selectedLeagueVenue}
+            onFieldNavState={setFieldNav}
+            fieldNavTarget={fieldNavTarget}
+            portalClubIdentity={portalOriginClubId ? {
+              clubId: portalOriginClubId,
+              clubName: activeClubName,
+              memberId: pageIdentity?.memberId || "",
+            } : null}
+            onBack={() => setPage(
+              portalOriginClubId ? PAGE_LANDING : PAGE_LEAGUE_VENUES
+            )}
+          />
+
+        </>
+      )}
+
       {page === PAGE_HOME && (
         <HomePage_HUB
+          onBackToWelcome={() => setPage(PAGE_WELCOME)}
           identity={identity}
           onRegisterClub={() => {
             window.alert("Club registration wizard is coming next.");
@@ -9630,6 +10005,15 @@ export default function App() {
           activeClubId={activeClubId}
           activeClubName={activeClubName}
           clubIdentity={activeClubIdentity}
+          onEnterField={(field) => {
+            setPortalOriginClubId(activeClubId);
+            setSelectedLeagueVenue(field);
+            setPage(PAGE_VENUE_ENTRY);
+          }}
+          onExploreFields={() => {
+            setPortalOriginClubId("");
+            setPage(PAGE_LEAGUE_VENUES);
+          }}
           teams={teams}
           currentMatchNo={activeMatchNo}
           currentMatch={effectiveLiveMatch}
@@ -9676,6 +10060,7 @@ export default function App() {
           isSpectator={isSpectator}
           canStartMatch={canStartMatch}
           hasRecordedMatchDayState={hasRecordedMatchDayState}
+          onReady={() => setLandingVisualReady(true)}
         />
       )}
 
@@ -10011,6 +10396,7 @@ export default function App() {
           isPracticeMode={isPracticeMode}
           practiceSessionId={practiceRuntime?.practiceSessionId || null}
           dataScope={footballDataScope}
+          initialPollOpen={nativePollOpenRequest}
         />
       )}
 
@@ -11216,10 +11602,45 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           members={members}
+          nativeOpenRequest={nativeChatOpenRequest}
           onOpenHighlight={handleGoToViewHighlights}
           variant="launcher"
         />
       ) : null}
+
+      {!authLoading && authUser?.uid && page !== PAGE_WELCOME &&
+        page !== PAGE_LEAGUE_VENUES && (
+        <LegalAcceptanceGate
+          user={authUser}
+          scope={page === PAGE_VENUE_ENTRY ? "field" : "club"}
+        />
+      )}
+
+      {page === PAGE_VENUE_ENTRY &&
+        fieldNav.ready &&
+        fieldNav.page !== "live" &&
+        fieldNav.page !== "chat" && (
+          <>
+            <FieldBottomNav
+              currentPage={fieldNav.page}
+              onNavigate={(target) =>
+                setFieldNavTarget({ page: target, id: Date.now() })
+              }
+            />
+            {fieldNav.page !== "chat" && (
+              <button
+                type="button"
+                className="field-chat-launcher"
+                aria-label="Open Field chat"
+                onClick={() =>
+                  setFieldNavTarget({ page: "chat", id: Date.now() })
+                }
+              >
+                <span aria-hidden="true">💬</span>
+              </button>
+            )}
+          </>
+        )}
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav

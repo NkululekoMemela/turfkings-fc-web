@@ -49,9 +49,12 @@ export function LiveMatchPage(props) {
     playersPerSide: classification.playersPerSide,
   };
 
+  const LeagueMatchComponent =
+    props.leagueMatchComponent || ThreeTeamLeagueLiveMatchPage;
+
   const routedLivePage =
     classification.matchMode === MATCH_MODE.LEAGUE
-      ? <ThreeTeamLeagueLiveMatchPage {...sharedProps} />
+      ? <LeagueMatchComponent {...sharedProps} />
       : <FriendlyLiveMatchPage {...sharedProps} />;
 
   return (

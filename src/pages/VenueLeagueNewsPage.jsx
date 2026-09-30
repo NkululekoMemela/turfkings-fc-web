@@ -1,0 +1,4393 @@
+// src/pages/NewsPage.jsx
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import JerseyImage from "../assets/Jersey.jpeg";
+import { RSVPModal } from "../components/RSVPModal.jsx";
+import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
+import { useMemberNameMap } from "../core/nameMapping.js";
+import { auth, db } from "../firebaseConfig.js";
+import {
+  loadVenueLeaguePlayers,
+  loadVenueLeaguePlayerPhotos,
+} from "../storage/venueLiveMatchRepository.js";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
+
+import {
+  subscribeToKitOrders,
+  upsertKitOrder,
+  removeKitOrder,
+} from "../storage/firebaseRepository.js";
+
+const BAD_MATCH_NUMBERS = new Set();
+
+const VENUE_MAP_URL =
+  "https://www.google.com/maps/search/?api=1&query=Haveva%20Lower%20Main%20Road%20Observatory";
+
+const CUSTOM_NEWS_STORIES_COLLECTION = "newsStories";
+const CUSTOM_STORY_LIMIT = 5;
+const CUSTOM_POLLS_COLLECTION = "newsPolls";
+const CUSTOM_POLL_VOTES_COLLECTION = "newsPollVotes";
+const CUSTOM_POLL_LIMIT = 2;
+const JERSEY_POLL_CONTROL_ID =
+  "turf-kings-jersey-orders";
+
+const STORY_IMAGE_SIZE_OPTIONS = [
+  { value: "100", label: "Full", scale: 1, mode: "image" },
+  { value: "90", label: "Large", scale: 0.9, mode: "image" },
+  { value: "80", label: "Standard", scale: 0.8, mode: "image" },
+  { value: "70", label: "Compact", scale: 0.7, mode: "image" },
+  { value: "50", label: "Medium Avatar", scale: 0.5, mode: "medium-avatar" },
+  { value: "30", label: "MVP Avatar", scale: 1, mode: "mvp-avatar" },
+];
+
+const STORY_IMAGE_FIT_OPTIONS = [
+  { value: "auto", label: "Smart Auto" },
+  { value: "crop", label: "Crop to frame" },
+  { value: "fit", label: "Fit full portrait" },
+];
+
+const CUSTOM_STORY_SLOT_OPTIONS = [
+  { value: "after-jersey", label: "Below jersey story" },
+  { value: "after-hero", label: "Below tournament recap" },
+  { value: "after-headlines", label: "Below headlines / match feature" },
+  { value: "after-mvp", label: "Below MVP story" },
+  { value: "after-streak", label: "Below streak watch" },
+  { value: "before-old-stories", label: "Above old stories" },
+  { value: "before-recap", label: "Above match-by-match recap" },
+
+];
+
+function toTitleCase(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function slugFromName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function safeLower(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function firstNameOf(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[0] : "";
+}
+
+function levenshteinDistance(a, b) {
+  const s = String(a || "");
+  const t = String(b || "");
+  const dp = Array.from({ length: s.length + 1 }, () => []);
+
+  for (let i = 0; i <= s.length; i += 1) dp[i][0] = i;
+  for (let j = 0; j <= t.length; j += 1) dp[0][j] = j;
+
+  for (let i = 1; i <= s.length; i += 1) {
+    for (let j = 1; j <= t.length; j += 1) {
+      const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return dp[s.length][t.length];
+}
+
+function buildPlayersRegistry(playersSnap) {
+  const mapNameToCanon = {};
+
+  const addKey = (keys, value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return;
+
+    const pretty = toTitleCase(raw);
+    keys.add(safeLower(raw));
+    keys.add(safeLower(pretty));
+    keys.add(slugFromName(raw));
+    keys.add(slugFromName(pretty));
+
+    const first = safeLower(firstNameOf(pretty));
+    if (first) keys.add(first);
+  };
+
+  playersSnap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+
+    const fullName = toTitleCase(
+      data.fullName ||
+        data.displayName ||
+        data.name ||
+        data.playerName ||
+        ""
+    );
+
+    if (!fullName) return;
+
+    const keys = new Set();
+    addKey(keys, fullName);
+    addKey(keys, data.shortName);
+    addKey(keys, data.displayName);
+    addKey(keys, data.name);
+    addKey(keys, data.playerName);
+    addKey(keys, docSnap.id);
+
+    const aliases = Array.isArray(data.aliases) ? data.aliases : [];
+    aliases.forEach((alias) => addKey(keys, alias));
+
+    keys.forEach((key) => {
+      if (!key) return;
+      if (!mapNameToCanon[key]) mapNameToCanon[key] = fullName;
+    });
+  });
+
+  return mapNameToCanon;
+}
+
+function resolveCanonicalNameFromMap(rawName, map) {
+  if (!rawName || typeof rawName !== "string") return "";
+
+  const tc = toTitleCase(rawName);
+  if (!tc) return "";
+
+  const direct = map[safeLower(tc)];
+  if (direct) return direct;
+
+  const bySlug = map[slugFromName(tc)];
+  if (bySlug) return bySlug;
+
+  const fn = safeLower(firstNameOf(tc));
+  if (fn && map[fn]) return map[fn];
+
+  return tc;
+}
+
+function buildCloudPhotosIndex(photoSnap) {
+  const idx = {};
+
+  photoSnap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const docId = docSnap.id;
+    const name = toTitleCase(data.name || "");
+
+    if (!data.photoData) return;
+
+    const addKey = (key) => {
+      const normalized = safeLower(key);
+      if (!normalized) return;
+      if (!idx[normalized]) idx[normalized] = data.photoData;
+    };
+
+    if (name) {
+      addKey(name);
+      addKey(slugFromName(name));
+      const fn = firstNameOf(name);
+      if (fn) addKey(fn);
+    }
+
+    if (docId) addKey(docId);
+  });
+
+  return idx;
+}
+
+
+function getStoryImageSizeMeta(value) {
+  const match = STORY_IMAGE_SIZE_OPTIONS.find(
+    (option) => String(option.value) === String(value || "")
+  );
+  return match || STORY_IMAGE_SIZE_OPTIONS[0];
+}
+
+function resolveDateMs(rawMs, fallback = Date.now()) {
+  const n = Number(rawMs || 0);
+  if (Number.isFinite(n) && n > 0) return n;
+  return fallback;
+}
+
+function makeDateInputValue(ms) {
+  const d = new Date(resolveDateMs(ms));
+  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
+function dateInputToMs(value, fallback = Date.now()) {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  const parsed = new Date(`${raw}T12:00:00`);
+  const ms = parsed.getTime();
+  return Number.isNaN(ms) ? fallback : ms;
+}
+
+function getFreshnessBadge(createdAtMs, archived = false) {
+  if (archived) return { label: "ARCHIVE", tone: "rgba(148,163,184,0.16)", border: "rgba(148,163,184,0.3)", color: "#cbd5e1" };
+  const now = Date.now();
+  const ms = resolveDateMs(createdAtMs, now);
+  const ageDays = Math.max(0, (now - ms) / (1000 * 60 * 60 * 24));
+  const d = new Date(ms);
+  const current = new Date(now);
+  const sameMonth = d.getFullYear() === current.getFullYear() && d.getMonth() === current.getMonth();
+  if (ageDays <= 1) return { label: "NEW", tone: "rgba(34,197,94,0.16)", border: "rgba(34,197,94,0.34)", color: "#86efac" };
+  if (ageDays <= 7) return { label: "THIS WEEK", tone: "rgba(59,130,246,0.16)", border: "rgba(59,130,246,0.34)", color: "#bfdbfe" };
+  if (sameMonth) return { label: "THIS SEASON", tone: "rgba(250,204,21,0.13)", border: "rgba(250,204,21,0.3)", color: "#fde68a" };
+  return { label: "ARCHIVE", tone: "rgba(148,163,184,0.16)", border: "rgba(148,163,184,0.3)", color: "#cbd5e1" };
+}
+
+function makeVoterId() {
+  return auth.currentUser?.uid || "";
+}
+
+export function NewsPage({
+  matchType = "LEAGUE",
+  teams,
+  results,
+  allEvents,
+  currentResults,
+  currentEvents,
+  onBack,
+  playerPhotosByName,
+  identity,
+  yearEndAttendance,
+  onUpdateYearEndAttendance,
+  onGoToSignIn,
+  members,
+  initialProgramOpen,
+  matchDayHistory,
+  activeClubId = "turf-kings",
+  isPracticeMode = false,
+  practiceSessionId = null,
+  dataScope = null,
+  activeClub = null,
+  fieldSeason = null,
+  canManageFieldNews = false,
+  initialPollOpen = null,
+}) {
+  const safeActiveClubId = activeClubId || "";
+  const isTurfKingsClub = false;
+  const fieldNewsCollection = (name) =>
+    collection(db, "leagueVenues", safeActiveClubId, name);
+  const fieldNewsDoc = (name, id) =>
+    doc(db, "leagueVenues", safeActiveClubId, name, id);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+  const [playerCanonicalMap, setPlayerCanonicalMap] = useState({});
+  const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
+  const [newsSeasonState, setNewsSeasonState] = useState(null);
+
+  const { normalizeName } = useMemberNameMap(
+    Array.isArray(members) ? members : []
+  );
+
+  const shortDisplayByNormalized = useMemo(() => {
+    const out = {};
+
+    const add = (rawName, shortName = "") => {
+      const canonical = normalizeName(rawName);
+      if (!canonical) return;
+
+      const shortPretty = toTitleCase(shortName || "").trim();
+      const canonicalPretty = toTitleCase(canonical).trim();
+      const chosen = shortPretty || canonicalPretty;
+
+      if (!out[safeLower(canonical)]) out[safeLower(canonical)] = chosen;
+    };
+
+    (Array.isArray(members) ? members : []).forEach((member) => {
+      if (!member) return;
+      if (typeof member === "string") {
+        add(member, member);
+        return;
+      }
+
+      add(
+        member.fullName || member.displayName || member.name || member.playerName || member.shortName || "",
+        member.shortName || member.displayName || member.name || ""
+      );
+    });
+
+    (teams || []).forEach((team) => {
+      (team?.players || []).forEach((player) => {
+        if (!player) return;
+        if (typeof player === "string") {
+          add(player, player);
+          return;
+        }
+
+        add(
+          player.fullName || player.name || player.displayName || player.playerName || player.shortName || "",
+          player.shortName || player.name || player.displayName || ""
+        );
+      });
+    });
+
+    return out;
+  }, [members, teams, normalizeName]);
+
+  const resolveShortDisplay = useCallback((rawName) => {
+    const canonical = normalizeName(rawName);
+    if (!canonical) return "";
+    return shortDisplayByNormalized[safeLower(canonical)] || canonical;
+  }, [normalizeName, shortDisplayByNormalized]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPlayerPhotoData() {
+      try {
+        const alreadyLoaded =
+          playerPhotosByName &&
+          Object.keys(playerPhotosByName).length > 20;
+
+        const playersSnap = await loadVenueLeaguePlayers({
+          firestore: db,
+          teams,
+        });
+        const photosSnap = alreadyLoaded
+          ? null
+          : await loadVenueLeaguePlayerPhotos({
+              firestore: db,
+              teams,
+            });
+
+        if (!isMounted) return;
+
+        setPlayerCanonicalMap(buildPlayersRegistry(playersSnap));
+        setCloudPhotosIndex(photosSnap ? buildCloudPhotosIndex(photosSnap) : {});
+      } catch (error) {
+        console.error("[NewsPage] failed to load player photo helpers:", error);
+        if (!isMounted) return;
+        setPlayerCanonicalMap({});
+        setCloudPhotosIndex({});
+      }
+    }
+
+    loadPlayerPhotoData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [teams, playerPhotosByName]);
+
+  useEffect(() => {
+    setNewsSeasonState(fieldSeason?.id ? {
+      activeSeasonId: fieldSeason.id,
+      seasons: [{
+        ...fieldSeason,
+        seasonId: fieldSeason.id,
+      }],
+    } : null);
+  }, [fieldSeason]);
+
+  const newsSeasonContext = useMemo(() => {
+    const state = newsSeasonState || {};
+    const seasons = Array.isArray(state.seasons) ? state.seasons : [];
+    const activeSeasonId = String(state.activeSeasonId || "").trim();
+    const activeIndex = seasons.findIndex(
+      (season) => String(season?.seasonId || "").trim() === activeSeasonId
+    );
+    const activeSeason = activeIndex >= 0 ? seasons[activeIndex] : seasons[0] || null;
+    const previousSeason = activeIndex > 0 ? seasons[activeIndex - 1] : null;
+
+    const hasMatchDayData = (history = []) =>
+      (Array.isArray(history) ? history : []).some((day) => {
+        const dayResults = Array.isArray(day?.results) ? day.results.length : 0;
+        const dayEvents = Array.isArray(day?.allEvents) ? day.allEvents.length : 0;
+        return dayResults > 0 || dayEvents > 0;
+      });
+
+    const seasonHasStarted = (season) => {
+      if (!season || typeof season !== "object") return false;
+      return (
+        (Array.isArray(season.results) && season.results.length > 0) ||
+        (Array.isArray(season.allEvents) && season.allEvents.length > 0) ||
+        (Array.isArray(season.currentEvents) && season.currentEvents.length > 0) ||
+        hasMatchDayData(season.matchDayHistory)
+      );
+    };
+
+    const activePropsHaveStarted =
+      (Array.isArray(results) && results.length > 0) ||
+      (Array.isArray(allEvents) && allEvents.length > 0) ||
+      (Array.isArray(currentResults) && currentResults.length > 0) ||
+      (Array.isArray(currentEvents) && currentEvents.length > 0) ||
+      hasMatchDayData(matchDayHistory);
+
+    const previousSeasonHasNews = seasonHasStarted(previousSeason);
+    const shouldUsePreviousSeasonNews =
+      Boolean(previousSeason && previousSeasonHasNews) &&
+      !activePropsHaveStarted &&
+      !seasonHasStarted(activeSeason);
+
+    const carrySeason = shouldUsePreviousSeasonNews ? previousSeason : null;
+    const carryNo = Number(carrySeason?.seasonNo || 0);
+    const activeNo = Number(activeSeason?.seasonNo || 0);
+
+    return {
+      seasons,
+      activeSeason,
+      previousSeason,
+      shouldUsePreviousSeasonNews,
+      seasonForNews: carrySeason,
+      seasonLabel: shouldUsePreviousSeasonNews
+        ? carryNo
+          ? `Season ${carryNo}`
+          : String(carrySeason?.seasonId || "Previous season")
+        : activeNo
+          ? `Season ${activeNo}`
+          : "Current season",
+      pageContextLabel: shouldUsePreviousSeasonNews
+        ? `${activeNo ? `Season ${activeNo}` : "New season"} · showing previous-season news until first match`
+        : activeNo
+          ? `Season ${activeNo}`
+          : "Current season",
+    };
+  }, [
+    newsSeasonState,
+    results,
+    allEvents,
+    currentResults,
+    currentEvents,
+    matchDayHistory,
+  ]);
+
+  const effectiveTeams = useMemo(() => {
+    const season = newsSeasonContext.seasonForNews;
+    if (newsSeasonContext.shouldUsePreviousSeasonNews && season) {
+      if (Array.isArray(season.teamsSnapshot) && season.teamsSnapshot.length > 0) {
+        return season.teamsSnapshot;
+      }
+      if (Array.isArray(season.teams) && season.teams.length > 0) {
+        return season.teams;
+      }
+    }
+
+    return Array.isArray(teams) ? teams : [];
+  }, [newsSeasonContext, teams]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 6);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // ---------- Helpers ----------
+  const teamById = useMemo(() => {
+    const map = new Map();
+    (effectiveTeams || []).forEach((t) => map.set(t.id, t));
+    return map;
+  }, [effectiveTeams]);
+
+  const getTeamName = (id) => teamById.get(id)?.label || "Unknown";
+
+  const getTeamAbbrev = (teamName) => {
+    if (!teamName || typeof teamName !== "string") return "";
+    const trimmed = teamName.trim();
+    if (!trimmed) return "";
+    return trimmed.slice(0, 3).toUpperCase();
+  };
+
+  // Map player -> team label (first team that contains the player)
+  const playerTeamMap = useMemo(() => {
+    const map = {};
+    (effectiveTeams || []).forEach((t) => {
+      (t.players || []).forEach((p) => {
+        const rawName = typeof p === "string" ? p : p?.name || p?.displayName || p?.shortName;
+        const name = normalizeName(rawName);
+        if (name && !map[name]) {
+          map[name] = t.label;
+        }
+      });
+    });
+    return map;
+  }, [effectiveTeams, normalizeName]);
+
+  const getPlayerTeamAbbrev = (playerName) => {
+    const teamName = playerTeamMap[normalizeName(playerName)];
+    if (!teamName) return "";
+    return getTeamAbbrev(teamName);
+  };
+
+  // Map player -> photo URL (Firebase + team metadata + Firestore photo collection)
+  const mergedPhotoMap = useMemo(() => {
+    const map = {};
+
+    const addPhotoKey = (key, url) => {
+      const normalizedKey = safeLower(key);
+      if (!normalizedKey || !url) return;
+      if (!map[normalizedKey]) map[normalizedKey] = url;
+    };
+
+    Object.entries(playerPhotosByName || {}).forEach(([name, url]) => {
+      if (!name || !url) return;
+      const pretty = toTitleCase(name);
+      addPhotoKey(name, url);
+      addPhotoKey(pretty, url);
+      addPhotoKey(slugFromName(name), url);
+      addPhotoKey(slugFromName(pretty), url);
+      addPhotoKey(firstNameOf(name), url);
+      addPhotoKey(firstNameOf(pretty), url);
+    });
+
+    Object.entries(cloudPhotosIndex || {}).forEach(([key, url]) => {
+      addPhotoKey(key, url);
+    });
+
+    (effectiveTeams || []).forEach((t) => {
+      if (t.playerPhotos) {
+        Object.entries(t.playerPhotos).forEach(([name, url]) => {
+          if (!name || !url) return;
+          const pretty = toTitleCase(name);
+          addPhotoKey(name, url);
+          addPhotoKey(pretty, url);
+          addPhotoKey(slugFromName(name), url);
+          addPhotoKey(slugFromName(pretty), url);
+          addPhotoKey(firstNameOf(name), url);
+          addPhotoKey(firstNameOf(pretty), url);
+        });
+      }
+
+      (t.players || []).forEach((p) => {
+        if (!p || typeof p !== "object") return;
+        const photoUrl = p.photoUrl || p.photo || p.image || "";
+        if (!photoUrl) return;
+
+        [p.fullName, p.name, p.displayName, p.playerName, p.shortName]
+          .filter(Boolean)
+          .forEach((candidateName) => {
+            const pretty = toTitleCase(candidateName);
+            addPhotoKey(candidateName, photoUrl);
+            addPhotoKey(pretty, photoUrl);
+            addPhotoKey(slugFromName(candidateName), photoUrl);
+            addPhotoKey(slugFromName(pretty), photoUrl);
+            addPhotoKey(firstNameOf(candidateName), photoUrl);
+            addPhotoKey(firstNameOf(pretty), photoUrl);
+          });
+      });
+    });
+
+    return map;
+  }, [effectiveTeams, playerPhotosByName, cloudPhotosIndex]);
+
+  const resolveCanonicalPlayerName = useCallback(
+    (name) => resolveCanonicalNameFromMap(name, playerCanonicalMap),
+    [playerCanonicalMap]
+  );
+
+  const getPlayerPhoto = useCallback((name, shortName = "") => {
+    const raw = String(name || "").trim();
+    const shortRaw = String(shortName || "").trim();
+    if (!raw && !shortRaw) return null;
+
+    const canonical = normalizeName(raw || shortRaw);
+    const resolvedCanonical = resolveCanonicalPlayerName(canonical || raw || shortRaw);
+    const resolvedShort = resolveShortDisplay(resolvedCanonical || raw || shortRaw);
+
+    const candidates = [];
+
+    const cn = toTitleCase(resolvedCanonical || raw || shortRaw);
+    const sn = toTitleCase(shortRaw || resolvedShort || "");
+
+    if (cn) candidates.push(cn);
+    if (sn && sn !== cn) candidates.push(sn);
+
+    const fn1 = firstNameOf(cn);
+    const fn2 = firstNameOf(sn);
+    if (fn1) candidates.push(fn1);
+    if (fn2 && fn2 !== fn1) candidates.push(fn2);
+
+    if (cn) candidates.push(slugFromName(cn));
+    if (sn) candidates.push(slugFromName(sn));
+
+    const rawPretty = toTitleCase(raw);
+    const shortPretty = toTitleCase(shortRaw);
+    [raw, rawPretty, shortRaw, shortPretty, canonical, resolvedCanonical, resolvedShort,
+     firstNameOf(raw), firstNameOf(rawPretty), firstNameOf(shortRaw), firstNameOf(shortPretty),
+     slugFromName(raw), slugFromName(rawPretty), slugFromName(shortRaw), slugFromName(shortPretty)]
+      .filter(Boolean)
+      .forEach((value) => candidates.push(value));
+
+    const seen = new Set();
+    for (const candidate of candidates) {
+      const key = safeLower(candidate);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      if (mergedPhotoMap[key]) return mergedPhotoMap[key];
+    }
+
+    return null;
+  }, [mergedPhotoMap, normalizeName, resolveCanonicalPlayerName, resolveShortDisplay]);
+
+  const canManageCustomStories = Boolean(canManageFieldNews);
+
+  const allKnownPlayers = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+
+    const pushName = (raw) => {
+      const name = String(raw || "").trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push(name);
+    };
+
+    (members || []).forEach((member) => {
+      if (typeof member === "string") {
+        pushName(member);
+        return;
+      }
+      pushName(
+        member?.shortName ||
+          member?.fullName ||
+          member?.name ||
+          member?.displayName ||
+          member?.nickname
+      );
+    });
+
+    (teams || []).forEach((team) => {
+      (team?.players || []).forEach((player) => {
+        if (typeof player === "string") {
+          pushName(player);
+          return;
+        }
+        pushName(player?.name || player?.displayName || player?.shortName);
+      });
+    });
+
+    return list.sort((a, b) => a.localeCompare(b));
+  }, [members, effectiveTeams]);
+
+  const createEmptyStoryDraft = () => ({
+    title: "",
+    tag: "Story",
+    body: "",
+    slotKey: "after-hero",
+    playerName: "",
+    imageUrl: "",
+    imageSize: "100",
+    imageFit: "auto",
+    publishDate: makeDateInputValue(Date.now()),
+  });
+
+  const [customStories, setCustomStories] = useState([]);
+  const [showCreateStoryForm, setShowCreateStoryForm] = useState(false);
+  const [storyDraft, setStoryDraft] = useState(createEmptyStoryDraft);
+  const [storyFormError, setStoryFormError] = useState("");
+  const [storyFormNotice, setStoryFormNotice] = useState("");
+  const [editingStoryId, setEditingStoryId] = useState("");
+  const [loadingStories, setLoadingStories] = useState(true);
+  const [storyImageAspectById, setStoryImageAspectById] = useState({});
+  const storyStudioRef = useRef(null);
+
+  useEffect(() => {
+    // Practice custom stories are disposable session-local News state.
+    // Never subscribe Practice to the real shared newsStories collection.
+    if (isPracticeMode) {
+      setCustomStories([]);
+      setLoadingStories(false);
+      return undefined;
+    }
+
+    const storiesRef = fieldNewsCollection(CUSTOM_NEWS_STORIES_COLLECTION);
+    const unsubscribe = onSnapshot(
+      storiesRef,
+      (snapshot) => {
+        const nextStories = snapshot.docs
+          .map((docSnap) => {
+            const data = docSnap.data() || {};
+            return {
+              id: docSnap.id,
+              ...data,
+            };
+          })
+          .filter(Boolean);
+
+        setCustomStories(nextStories);
+        setLoadingStories(false);
+      },
+      (error) => {
+        console.error("[NewsPage] failed to subscribe to news stories:", error);
+        setStoryFormError("Could not load shared custom stories.");
+        setLoadingStories(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [isPracticeMode, practiceSessionId]);
+
+  const activeCustomStories = useMemo(
+    () => customStories.filter((story) => story && !story.archived),
+    [customStories]
+  );
+
+  const archivedCustomStories = useMemo(
+    () => customStories.filter((story) => story && story.archived),
+    [customStories]
+  );
+
+  const activeCustomStoryCount = activeCustomStories.length;
+  const hasReachedCustomStoryLimit = activeCustomStoryCount >= CUSTOM_STORY_LIMIT;
+
+  const getSlotLabel = (slotKey) =>
+    CUSTOM_STORY_SLOT_OPTIONS.find((option) => option.value === slotKey)?.label ||
+    "Custom slot";
+
+  const sortedActiveCustomStories = useMemo(() => {
+    return activeCustomStories.slice().sort((a, b) => {
+      const slotCompare = String(a?.slotKey || "").localeCompare(
+        String(b?.slotKey || "")
+      );
+      if (slotCompare !== 0) return slotCompare;
+      return Number(a?.createdAtMs || 0) - Number(b?.createdAtMs || 0);
+    });
+  }, [activeCustomStories]);
+
+  const handleStoryDraftChange = (field, value) => {
+    setStoryDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setStoryFormError("");
+    setStoryFormNotice("");
+  };
+
+  const resetStoryDraft = () => {
+    setStoryDraft(createEmptyStoryDraft());
+    setEditingStoryId("");
+    setStoryFormError("");
+    setStoryFormNotice("");
+  };
+
+  const handleEditCustomStory = (story) => {
+    if (!canManageCustomStories || !story) return;
+    setEditingStoryId(story.id || "");
+    setStoryDraft({
+      title: String(story.title || ""),
+      tag: String(story.tag || "Story"),
+      body: String(story.body || ""),
+      slotKey: String(story.slotKey || "after-hero"),
+      playerName: String(story.playerName || ""),
+      imageUrl: String(story.imageUrl || ""),
+      imageSize: String(story.imageSize || "100"),
+      imageFit: String(story.imageFit || "auto"),
+      publishDate: makeDateInputValue(story.publishDateMs || story.createdAtMs || Date.now()),
+    });
+    setShowCreateStoryForm(true);
+    setStoryFormError("");
+    setStoryFormNotice(`Editing "${story.title || "story"}".`);
+
+    window.setTimeout(() => {
+      storyStudioRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+  };
+
+  const handleSaveCustomStory = async () => {
+    if (!canManageCustomStories) return;
+
+    const title = String(storyDraft.title || "").trim();
+    const body = String(storyDraft.body || "").trim();
+    const tag = String(storyDraft.tag || "").trim() || "Story";
+    const playerName = String(storyDraft.playerName || "").trim();
+    const imageUrl = String(storyDraft.imageUrl || "").trim();
+    const imageSize = String(storyDraft.imageSize || "100");
+    const imageFit = String(storyDraft.imageFit || "auto");
+    const slotKey = String(storyDraft.slotKey || "after-hero");
+    const publishDateMs = dateInputToMs(storyDraft.publishDate, Date.now());
+
+    if (!title) {
+      setStoryFormError("Please add a story title.");
+      return;
+    }
+
+    if (!body) {
+      setStoryFormError("Please add the story text.");
+      return;
+    }
+
+    if (!editingStoryId && hasReachedCustomStoryLimit) {
+      setStoryFormError(
+        "You already have 5 active custom stories. Archive or delete one before adding another."
+      );
+      return;
+    }
+
+    try {
+      const storyId = editingStoryId || `story-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      if (isPracticeMode) {
+        const existingStory =
+          customStories.find((story) => story?.id === editingStoryId) || null;
+        const createdAtMs = editingStoryId
+          ? Number(existingStory?.createdAtMs || Date.now())
+          : Date.now();
+
+        const practiceStory = {
+          id: storyId,
+          title,
+          body,
+          tag,
+          slotKey,
+          playerName,
+          imageUrl,
+          imageSize,
+          imageFit,
+          archived: false,
+          createdAtMs: publishDateMs || createdAtMs,
+          publishDateMs: publishDateMs || createdAtMs,
+          updatedAtMs: Date.now(),
+          createdBy:
+            identity?.shortName || identity?.fullName || identity?.name || "Admin",
+        };
+
+        setCustomStories((current) => {
+          const withoutCurrent = current.filter(
+            (story) => story?.id !== storyId
+          );
+          return [...withoutCurrent, practiceStory];
+        });
+
+        setStoryFormNotice(
+          editingStoryId
+            ? "Story updated."
+            : "Story created and published."
+        );
+        setStoryDraft(createEmptyStoryDraft());
+        setEditingStoryId("");
+        setShowCreateStoryForm(false);
+        setStoryFormError("");
+        return;
+      }
+
+      const storyRef = fieldNewsDoc(CUSTOM_NEWS_STORIES_COLLECTION, storyId);
+      const createdAtMs = editingStoryId
+        ? Number(
+            customStories.find((story) => story?.id === editingStoryId)?.createdAtMs ||
+              Date.now()
+          )
+        : Date.now();
+
+      await setDoc(
+        storyRef,
+        {
+          title,
+          body,
+          tag,
+          slotKey,
+          playerName,
+          imageUrl,
+          imageSize,
+          imageFit,
+          archived: false,
+          createdAtMs: publishDateMs || createdAtMs,
+          publishDateMs: publishDateMs || createdAtMs,
+          updatedAtMs: Date.now(),
+          createdBy:
+            identity?.shortName || identity?.fullName || identity?.name || "Admin",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setStoryFormNotice(editingStoryId ? "Story updated." : "Story created and published.");
+      setStoryDraft(createEmptyStoryDraft());
+      setEditingStoryId("");
+      setShowCreateStoryForm(false);
+      setStoryFormError("");
+    } catch (error) {
+      console.error("[NewsPage] failed to save custom story:", error);
+      setStoryFormError("Could not publish the story. Please try again.");
+    }
+  };
+
+  const handleArchiveToggleCustomStory = async (storyId) => {
+    if (!canManageCustomStories || !storyId) return;
+
+    const targetStory = customStories.find((story) => story?.id === storyId);
+    if (!targetStory) return;
+
+    if (targetStory.archived && activeCustomStories.length >= CUSTOM_STORY_LIMIT) {
+      setStoryFormError(
+        "You already have 5 active custom stories. Delete or archive one before restoring another."
+      );
+      return;
+    }
+
+    try {
+      if (isPracticeMode) {
+        setCustomStories((current) =>
+          current.map((story) =>
+            story?.id === storyId
+              ? {
+                  ...story,
+                  archived: !targetStory.archived,
+                  archivedAtMs: !targetStory.archived ? Date.now() : null,
+                  updatedAtMs: Date.now(),
+                }
+              : story
+          )
+        );
+        setStoryFormError("");
+        setStoryFormNotice(
+          targetStory.archived ? "Story restored." : "Story archived."
+        );
+        return;
+      }
+
+      await setDoc(
+        fieldNewsDoc(CUSTOM_NEWS_STORIES_COLLECTION, storyId),
+        {
+          archived: !targetStory.archived,
+          archivedAtMs: !targetStory.archived ? Date.now() : null,
+          updatedAtMs: Date.now(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setStoryFormError("");
+      setStoryFormNotice(targetStory.archived ? "Story restored." : "Story archived.");
+    } catch (error) {
+      console.error("[NewsPage] failed to archive story:", error);
+      setStoryFormError("Could not update archive status.");
+    }
+  };
+
+  const handleDeleteCustomStory = async (storyId) => {
+    if (!canManageCustomStories || !storyId) return;
+
+    const storyToDelete = customStories.find((story) => story?.id === storyId);
+    if (!storyToDelete) return;
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        `Delete "${storyToDelete.title || "this story"}" permanently?
+
+This will remove it from live news and archives for everyone.`
+      );
+      if (!confirmed) return;
+    }
+
+    try {
+      if (isPracticeMode) {
+        setCustomStories((current) =>
+          current.filter((story) => story?.id !== storyId)
+        );
+        if (editingStoryId === storyId) resetStoryDraft();
+        setStoryFormError("");
+        setStoryFormNotice(`Deleted "${storyToDelete.title}" permanently.`);
+        return;
+      }
+
+      await deleteDoc(fieldNewsDoc(CUSTOM_NEWS_STORIES_COLLECTION, storyId));
+      if (editingStoryId === storyId) resetStoryDraft();
+      setStoryFormError("");
+      setStoryFormNotice(`Deleted "${storyToDelete.title}" permanently.`);
+    } catch (error) {
+      console.error("[NewsPage] failed to delete story:", error);
+      setStoryFormError("Could not delete this story. Please try again.");
+    }
+  };
+
+
+
+  // ---------- RAW DATA SPLIT ----------
+  const effectiveMatchDayHistory = useMemo(() => {
+    const season = newsSeasonContext.seasonForNews;
+    if (newsSeasonContext.shouldUsePreviousSeasonNews && season) {
+      return Array.isArray(season.matchDayHistory) ? season.matchDayHistory : [];
+    }
+
+    return Array.isArray(matchDayHistory) ? matchDayHistory : [];
+  }, [newsSeasonContext, matchDayHistory]);
+
+  const fullResultsRaw = useMemo(() => {
+    if (newsSeasonContext.shouldUsePreviousSeasonNews) {
+      return effectiveMatchDayHistory.flatMap((day) =>
+        Array.isArray(day?.results) ? day.results : []
+      );
+    }
+
+    return Array.isArray(results) ? results : [];
+  }, [newsSeasonContext.shouldUsePreviousSeasonNews, effectiveMatchDayHistory, results]);
+
+  const fullEventsRaw = useMemo(() => {
+    if (newsSeasonContext.shouldUsePreviousSeasonNews) {
+      return effectiveMatchDayHistory.flatMap((day) =>
+        Array.isArray(day?.allEvents) ? day.allEvents : []
+      );
+    }
+
+    return Array.isArray(allEvents) ? allEvents : [];
+  }, [newsSeasonContext.shouldUsePreviousSeasonNews, effectiveMatchDayHistory, allEvents]);
+
+  const latestSavedMatchDay = useMemo(() => {
+    const days = Array.isArray(effectiveMatchDayHistory) ? effectiveMatchDayHistory.filter(Boolean) : [];
+    if (!days.length) return null;
+
+    const withData = days.filter((day) => {
+      const resultsCount = Array.isArray(day?.results) ? day.results.length : 0;
+      const eventsCount = Array.isArray(day?.allEvents) ? day.allEvents.length : 0;
+      return resultsCount > 0 || eventsCount > 0;
+    });
+
+    const source = withData.length ? withData : days;
+
+    return source.slice().sort((a, b) => {
+      const aStamp = a?.createdAt || a?.updatedAt || a?.id || 0;
+      const bStamp = b?.createdAt || b?.updatedAt || b?.id || 0;
+      const aTime = new Date(aStamp).getTime() || 0;
+      const bTime = new Date(bStamp).getTime() || 0;
+      return bTime - aTime;
+    })[0];
+  }, [effectiveMatchDayHistory]);
+
+  const weekResultsRaw = Array.isArray(latestSavedMatchDay?.results) && latestSavedMatchDay.results.length
+    ? latestSavedMatchDay.results
+    : (currentResults || []);
+  const weekEventsRaw = Array.isArray(latestSavedMatchDay?.allEvents)
+    ? latestSavedMatchDay.allEvents
+    : (currentEvents || []);
+
+  const latestMatchDayLabel = useMemo(() => {
+    if (latestSavedMatchDay?.createdAt) return formatMatchDayDate(latestSavedMatchDay.createdAt);
+    if (latestSavedMatchDay?.id) return formatMatchDayDate(latestSavedMatchDay.id);
+    return formatMatchDayDate(new Date());
+  }, [latestSavedMatchDay]);
+
+  // ---------- CLEAN DATA (FULL TOURNAMENT) ----------
+  const cleanTournamentResults = useMemo(
+    () => fullResultsRaw.filter((r) => r && !BAD_MATCH_NUMBERS.has(r.matchNo)),
+    [fullResultsRaw]
+  );
+
+  const cleanTournamentEvents = useMemo(
+    () => fullEventsRaw.filter((e) => e && !BAD_MATCH_NUMBERS.has(e.matchNo)),
+    [fullEventsRaw]
+  );
+
+  // ---------- CLEAN DATA (THIS MATCH-DAY) ----------
+  const cleanWeekResults = useMemo(
+    () => weekResultsRaw.filter((r) => r && !BAD_MATCH_NUMBERS.has(r.matchNo)),
+    [weekResultsRaw]
+  );
+
+  const cleanWeekEvents = useMemo(
+    () => weekEventsRaw.filter((e) => e && !BAD_MATCH_NUMBERS.has(e.matchNo)),
+    [weekEventsRaw]
+  );
+
+  // ---------- TEAM TABLE (full tournament so far) ----------
+  const teamStats = useMemo(() => {
+    const base = {};
+    (effectiveTeams || []).forEach((t) => {
+      base[t.id] = {
+        teamId: t.id,
+        name: t.label,
+        played: 0,
+        won: 0,
+        drawn: 0,
+        lost: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        goalDiff: 0,
+        points: 0,
+      };
+    });
+
+    cleanTournamentResults.forEach((r) => {
+      const a = base[r.teamAId];
+      const b = base[r.teamBId];
+      if (!a || !b) return;
+
+      const gA = r.goalsA || 0;
+      const gB = r.goalsB || 0;
+
+      a.played += 1;
+      b.played += 1;
+
+      a.goalsFor += gA;
+      a.goalsAgainst += gB;
+      b.goalsFor += gB;
+      b.goalsAgainst += gA;
+
+      if (r.isDraw) {
+        a.drawn += 1;
+        b.drawn += 1;
+        a.points += 1;
+        b.points += 1;
+      } else {
+        if (r.winnerId === r.teamAId) {
+          a.won += 1;
+          b.lost += 1;
+          a.points += 3;
+        } else if (r.winnerId === r.teamBId) {
+          b.won += 1;
+          a.lost += 1;
+          b.points += 3;
+        }
+      }
+    });
+
+    Object.values(base).forEach((t) => {
+      t.goalDiff = t.goalsFor - t.goalsAgainst;
+    });
+
+    const arr = Object.values(base);
+    arr.sort((x, y) => {
+      if (y.points !== x.points) return y.points - x.points;
+      if (y.goalDiff !== x.goalDiff) return y.goalDiff - x.goalDiff;
+      if (y.goalsFor !== x.goalsFor) return y.goalsFor - x.goalsFor;
+      return x.name.localeCompare(y.name);
+    });
+
+    return arr;
+  }, [effectiveTeams, cleanTournamentResults]);
+
+  const tableLeader = teamStats[0] || null;
+
+  const newsMatchTypeForStats = String(
+    newsSeasonContext.shouldUsePreviousSeasonNews
+      ? newsSeasonContext.seasonForNews?.matchType || matchType
+      : matchType
+  )
+    .trim()
+    .toUpperCase();
+
+  const isFriendlyNewsStats =
+    newsMatchTypeForStats === "FRIENDLY";
+
+  // ---------- PLAYER STATS (full tournament) ----------
+  const playerStats = useMemo(() => {
+    const stats = {};
+
+    const getOrCreate = (rawName) => {
+      const name = normalizeName(rawName);
+      if (!name) return null;
+
+      if (!stats[name]) {
+        stats[name] = {
+          name,
+          goals: 0,
+          assists: 0,
+          cleanSheets: 0,
+          defensiveBlocks: 0,
+        };
+      }
+
+      return stats[name];
+    };
+
+    cleanTournamentEvents.forEach((e) => {
+      if (e?.type === "goal" && e?.scorer) {
+        const scorer = getOrCreate(e.scorer);
+        if (scorer) scorer.goals += 1;
+      }
+
+      if (e?.assist) {
+        const assister = getOrCreate(e.assist);
+        if (assister) assister.assists += 1;
+      }
+
+      if (e?.type === "clean_sheet") {
+        const holder = getOrCreate(
+          e.playerName || e.scorer || ""
+        );
+        if (holder) holder.cleanSheets += 1;
+      }
+
+      if (e?.type === "defensive_block") {
+        const holder = getOrCreate(
+          e.playerName || e.scorer || ""
+        );
+
+        if (holder) {
+          const blockCount = Math.max(
+            1,
+            Number(e.blockCount || 1)
+          );
+          holder.defensiveBlocks += blockCount;
+        }
+      }
+    });
+
+    const arr = Object.values(stats);
+
+    arr.forEach((p) => {
+      p.teamName = playerTeamMap[p.name] || "—";
+
+      const defensiveContribution = isFriendlyNewsStats
+        ? p.defensiveBlocks
+        : p.cleanSheets;
+
+      p.total =
+        p.goals +
+        p.assists +
+        defensiveContribution;
+    });
+
+    return arr;
+  }, [
+    cleanTournamentEvents,
+    playerTeamMap,
+    normalizeName,
+    isFriendlyNewsStats,
+  ]);
+
+  const topScorer = useMemo(() => {
+    let best = null;
+    playerStats.forEach((p) => {
+      if (p.goals <= 0) return;
+      if (
+        !best ||
+        p.goals > best.goals ||
+        (p.goals === best.goals && p.name.localeCompare(best.name) < 0)
+      ) {
+        best = p;
+      }
+    });
+    return best;
+  }, [playerStats]);
+
+  const topPlaymaker = useMemo(() => {
+    let best = null;
+    playerStats.forEach((p) => {
+      if (p.assists <= 0) return;
+      if (
+        !best ||
+        p.assists > best.assists ||
+        (p.assists === best.assists && p.name.localeCompare(best.name) < 0)
+      ) {
+        best = p;
+      }
+    });
+    return best;
+  }, [playerStats]);
+
+  const bestOverall = useMemo(() => {
+    let best = null;
+    playerStats.forEach((p) => {
+      if (p.total <= 0) return;
+      if (
+        !best ||
+        p.total > best.total ||
+        (p.total === best.total && p.goals > best.goals) ||
+        (p.total === best.total &&
+          p.goals === best.goals &&
+          p.name.localeCompare(best.name) < 0)
+      ) {
+        best = p;
+      }
+    });
+    return best;
+  }, [playerStats]);
+
+  const mvpShortName = bestOverall ? resolveShortDisplay(bestOverall.name) : "";
+  const mvpPhotoUrl = bestOverall ? getPlayerPhoto(bestOverall.name, mvpShortName) : null;
+
+  // ---------- STREAK STATS (full tournament) ----------
+  const streakStats = useMemo(() => {
+    const byMatch = new Map();
+    cleanTournamentResults.forEach((r) => {
+      byMatch.set(r.matchNo, { scorers: new Set(), assisters: new Set() });
+    });
+
+    cleanTournamentEvents.forEach((e) => {
+      const rec = byMatch.get(e.matchNo);
+      if (!rec) return;
+      if (e.scorer && e.type === "goal") rec.scorers.add(e.scorer);
+      if (e.assist) rec.assisters.add(e.assist);
+    });
+
+    const matchNos = Array.from(byMatch.keys()).sort((a, b) => a - b);
+
+    const goalStreaks = new Map();
+    const assistStreaks = new Map();
+
+    const updateStreaksForMatch = (set, map) => {
+      set.forEach((name) => {
+        let st = map.get(name);
+        if (!st) st = { current: 0, best: 0 };
+        st.current += 1;
+        if (st.current > st.best) st.best = st.current;
+        map.set(name, st);
+      });
+      map.forEach((st, name) => {
+        if (!set.has(name)) st.current = 0;
+      });
+    };
+
+    matchNos.forEach((m) => {
+      const rec = byMatch.get(m);
+      if (!rec) return;
+      updateStreaksForMatch(rec.scorers, goalStreaks);
+      updateStreaksForMatch(rec.assisters, assistStreaks);
+    });
+
+    let bestGoal = null;
+    goalStreaks.forEach((st, name) => {
+      if (st.best <= 0) return;
+      if (!bestGoal || st.best > bestGoal.length) {
+        bestGoal = { name, length: st.best };
+      }
+    });
+
+    let bestAssist = null;
+    assistStreaks.forEach((st, name) => {
+      if (st.best <= 0) return;
+      if (!bestAssist || st.best > bestAssist.length) {
+        bestAssist = { name, length: st.best };
+      }
+    });
+
+    if (bestGoal) bestGoal.teamName = playerTeamMap[bestGoal.name] || "—";
+    if (bestAssist) bestAssist.teamName = playerTeamMap[bestAssist.name] || "—";
+
+    return { bestGoal, bestAssist };
+  }, [cleanTournamentResults, cleanTournamentEvents, playerTeamMap]);
+
+  // ---------- GLOBAL NUMBERS ----------
+  const totalMatches = cleanTournamentResults.length;
+  const totalGoals = cleanTournamentResults.reduce(
+    (acc, r) => acc + (r.goalsA || 0) + (r.goalsB || 0),
+    0
+  );
+
+  const biggestWin = useMemo(() => {
+    let best = null;
+    cleanTournamentResults.forEach((r) => {
+      const gA = r.goalsA || 0;
+      const gB = r.goalsB || 0;
+      const diff = Math.abs(gA - gB);
+      const goals = gA + gB;
+      if (diff === 0) return;
+      if (!best || diff > best.diff || (diff === best.diff && goals > best.goals)) {
+        best = { ...r, diff, goals };
+      }
+    });
+    return best;
+  }, [cleanTournamentResults]);
+
+  const completedSeasonSummaries = useMemo(() => {
+    const summarizeSeason = (season) => {
+      if (!season) return null;
+      const seasonTeams =
+        Array.isArray(season?.teamsSnapshot) && season.teamsSnapshot.length > 0
+          ? season.teamsSnapshot
+          : Array.isArray(season?.teams)
+            ? season.teams
+            : [];
+      const history = Array.isArray(season?.matchDayHistory) ? season.matchDayHistory : [];
+      const seasonResults = history.flatMap((day) =>
+        Array.isArray(day?.results) ? day.results : []
+      );
+      const seasonEvents = history.flatMap((day) =>
+        Array.isArray(day?.allEvents) ? day.allEvents : []
+      );
+      if (!seasonResults.length && !seasonEvents.length) return null;
+
+      const standingsBase = {};
+      seasonTeams.forEach((team) => {
+        if (!team?.id) return;
+        standingsBase[team.id] = {
+          teamId: team.id,
+          name: team.label || team.id,
+          points: 0,
+          goalDiff: 0,
+          goalsFor: 0,
+          played: 0,
+        };
+      });
+
+      seasonResults.forEach((result) => {
+        const a = standingsBase[result?.teamAId];
+        const b = standingsBase[result?.teamBId];
+        if (!a || !b) return;
+        const gA = Number(result?.goalsA || 0);
+        const gB = Number(result?.goalsB || 0);
+        a.played += 1;
+        b.played += 1;
+        a.goalsFor += gA;
+        b.goalsFor += gB;
+        a.goalDiff += gA - gB;
+        b.goalDiff += gB - gA;
+        if (result?.isDraw) {
+          a.points += 1;
+          b.points += 1;
+        } else if (result?.winnerId === result?.teamAId) {
+          a.points += 3;
+        } else if (result?.winnerId === result?.teamBId) {
+          b.points += 3;
+        }
+      });
+
+      const standings = Object.values(standingsBase).sort((x, y) => {
+        if (y.points !== x.points) return y.points - x.points;
+        if (y.goalDiff !== x.goalDiff) return y.goalDiff - x.goalDiff;
+        if (y.goalsFor !== x.goalsFor) return y.goalsFor - x.goalsFor;
+        return String(x.name || "").localeCompare(String(y.name || ""));
+      });
+
+      const seasonMatchType = String(
+        season?.matchType || "LEAGUE"
+      )
+        .trim()
+        .toUpperCase();
+
+      const seasonIsFriendly =
+        seasonMatchType === "FRIENDLY";
+
+      const playerTotals = {};
+
+      const ensurePlayer = (rawName) => {
+        const name = normalizeName(rawName);
+        if (!name) return null;
+
+        if (!playerTotals[name]) {
+          playerTotals[name] = {
+            name,
+            goals: 0,
+            assists: 0,
+            cleanSheets: 0,
+            defensiveBlocks: 0,
+            total: 0,
+          };
+        }
+
+        return playerTotals[name];
+      };
+
+      seasonEvents.forEach((event) => {
+        if (event?.type === "goal" && event?.scorer) {
+          const scorer = ensurePlayer(event.scorer);
+          if (scorer) scorer.goals += 1;
+        }
+
+        if (event?.assist) {
+          const assister = ensurePlayer(event.assist);
+          if (assister) assister.assists += 1;
+        }
+
+        if (event?.type === "clean_sheet") {
+          const holder = ensurePlayer(
+            event.playerName || event.scorer || ""
+          );
+          if (holder) holder.cleanSheets += 1;
+        }
+
+        if (event?.type === "defensive_block") {
+          const holder = ensurePlayer(
+            event.playerName || event.scorer || ""
+          );
+
+          if (holder) {
+            holder.defensiveBlocks += Math.max(
+              1,
+              Number(event.blockCount || 1)
+            );
+          }
+        }
+      });
+
+      const players = Object.values(playerTotals).map((player) => ({
+        ...player,
+        total:
+          player.goals +
+          player.assists +
+          (seasonIsFriendly
+            ? player.defensiveBlocks
+            : player.cleanSheets),
+      }));
+
+      const topGoals = players.slice().sort((a, b) => {
+        if (b.goals !== a.goals) return b.goals - a.goals;
+        return a.name.localeCompare(b.name);
+      })[0] || null;
+
+      const mvp = players.slice().sort((a, b) => {
+        if (b.total !== a.total) return b.total - a.total;
+        if (b.goals !== a.goals) return b.goals - a.goals;
+        return a.name.localeCompare(b.name);
+      })[0] || null;
+
+      return {
+        seasonId: season?.seasonId || "",
+        seasonNo: Number(season?.seasonNo || 0),
+        label: Number(season?.seasonNo || 0)
+          ? `Season ${Number(season.seasonNo)}`
+          : String(season?.seasonId || "Season"),
+        matches: seasonResults.length,
+        goals: seasonResults.reduce(
+          (sum, result) => sum + Number(result?.goalsA || 0) + Number(result?.goalsB || 0),
+          0
+        ),
+        champion: standings[0] || null,
+        topGoals,
+        mvp,
+      };
+    };
+
+    return (newsSeasonContext.seasons || [])
+      .map(summarizeSeason)
+      .filter(Boolean)
+      .sort((a, b) => Number(b.seasonNo || 0) - Number(a.seasonNo || 0));
+  }, [newsSeasonContext.seasons, normalizeName]);
+
+  const previousSeasonSummary = useMemo(() => {
+    if (!newsSeasonContext.seasonForNews) return null;
+    return completedSeasonSummaries.find(
+      (summary) => String(summary.seasonId || "") === String(newsSeasonContext.seasonForNews?.seasonId || "")
+    ) || completedSeasonSummaries[0] || null;
+  }, [completedSeasonSummaries, newsSeasonContext.seasonForNews]);
+
+  const earlierSeasonSummary = useMemo(() => {
+    if (!previousSeasonSummary) return null;
+    return completedSeasonSummaries.find(
+      (summary) => String(summary.seasonId || "") !== String(previousSeasonSummary.seasonId || "")
+    ) || null;
+  }, [completedSeasonSummaries, previousSeasonSummary]);
+
+  // ---------- RECAP (LATEST SAVED MATCH-DAY ONLY) ----------
+  const recapResults = useMemo(() => {
+    const arr = cleanWeekResults.slice();
+    arr.sort((a, b) => a.matchNo - b.matchNo);
+    return arr;
+  }, [cleanWeekResults]);
+
+  const recapEventsByMatch = useMemo(() => {
+    const map = new Map();
+    cleanWeekEvents.forEach((e) => {
+      if (e?.matchNo == null) return;
+      const key = String(e.matchNo);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push({
+        ...e,
+        scorer: normalizeName(e?.scorer),
+        assist: normalizeName(e?.assist),
+        playerName: normalizeName(e?.playerName),
+      });
+    });
+    map.forEach((list) =>
+      list.sort((a, b) => Number(a?.timeSeconds || 0) - Number(b?.timeSeconds || 0))
+    );
+    return map;
+  }, [cleanWeekEvents, normalizeName]);
+
+  const getDisplayEventsForRecapMatch = useCallback((result) => {
+    const rawEvents = recapEventsByMatch.get(String(result?.matchNo)) || [];
+    const scoringEvents = rawEvents.filter((e) => e?.type === "goal" || e?.type === "shibobo" || !e?.type);
+
+    const teamAEvents = scoringEvents
+      .filter((e) => e?.teamId === result?.teamAId)
+      .slice(0, Number(result?.goalsA || 0));
+
+    const teamBEvents = scoringEvents
+      .filter((e) => e?.teamId === result?.teamBId)
+      .slice(0, Number(result?.goalsB || 0));
+
+    return [...teamAEvents, ...teamBEvents].sort(
+      (a, b) => Number(a?.timeSeconds || 0) - Number(b?.timeSeconds || 0)
+    );
+  }, [recapEventsByMatch]);
+
+  // ---------- RESPONSIVE FLAG ----------
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    const handleResize = () => {
+      if (typeof window !== "undefined") setIsNarrow(window.innerWidth < 640);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // RSVP modal state
+  const [showRSVP, setShowRSVP] = useState(false);
+  const handleOpenRSVP = () => setShowRSVP(true);
+
+  // Year-end program modal state
+  const [showProgramModal, setShowProgramModal] = useState(false);
+  useEffect(() => {
+    if (initialProgramOpen) setShowProgramModal(true);
+  }, [initialProgramOpen]);
+
+  // ---------- STYLE OBJECTS ----------
+  const yearEndCardStyle = {
+    display: isNarrow ? "flex" : "grid",
+    flexDirection: isNarrow ? "column" : undefined,
+    gridTemplateColumns: isNarrow ? undefined : "minmax(0, 3fr) minmax(0, 2fr)",
+    gap: isNarrow ? "1rem" : "1.5rem",
+    padding: isNarrow ? "1.2rem" : "1.8rem",
+    borderRadius: "1.5rem",
+    background:
+      "radial-gradient(circle at top left, rgba(248,250,252,0.22), transparent 55%)," +
+      "radial-gradient(circle at bottom right, rgba(248,250,252,0.18), transparent 60%)," +
+      "linear-gradient(135deg, #020617, #111827 45%, #0b1120 100%)",
+    boxShadow:
+      "0 18px 45px rgba(15,23,42,0.85), 0 0 0 1px rgba(148,163,184,0.18)",
+    color: "#e5e7eb",
+    alignItems: "stretch",
+    marginBottom: "1.75rem",
+  };
+
+  const yearEndPillStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    padding: "0.22rem 0.8rem",
+    borderRadius: "999px",
+    background: "rgba(15,23,42,0.9)",
+    border: "1px solid rgba(148,163,184,0.45)",
+    fontSize: "0.8rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: "#e5e7eb",
+  };
+
+  const yearEndHeadingStyle = {
+    fontSize: isNarrow ? "1.3rem" : "1.5rem",
+    fontWeight: 700,
+    margin: "0.6rem 0 0.25rem",
+    color: "#f9fafb",
+  };
+
+  const yearEndSubStyle = {
+    fontSize: "0.92rem",
+    color: "#cbd5f5",
+    marginBottom: "0.7rem",
+  };
+
+  const yearEndMetaRowStyle = {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "0.55rem",
+    margin: "0.5rem 0 0.9rem",
+    fontSize: "0.85rem",
+    color: "#e5e7eb",
+  };
+
+  const metaChipStyle = {
+    padding: "0.28rem 0.75rem",
+    borderRadius: "999px",
+    background: "rgba(15,23,42,0.85)",
+    border: "1px solid rgba(148,163,184,0.4)",
+  };
+
+  const bulletListStyle = {
+    listStyle: "none",
+    paddingLeft: 0,
+    margin: "0.4rem 0 0",
+    fontSize: "0.88rem",
+    color: "#e5e7eb",
+  };
+
+  const artContainerStyle = {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: "1.25rem",
+    background:
+      "radial-gradient(circle at 20% 0%, rgba(251,191,36,0.27), transparent 55%)," +
+      "radial-gradient(circle at 90% 80%, rgba(251,113,133,0.32), transparent 60%)," +
+      "linear-gradient(145deg, #020617, #111827)",
+    minHeight: isNarrow ? "170px" : "210px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: isNarrow ? "0.4rem" : 0,
+  };
+
+  const artGlassHaloStyle = {
+    position: "absolute",
+    width: isNarrow ? "170px" : "210px",
+    height: isNarrow ? "170px" : "210px",
+    borderRadius: "999px",
+    border: "1px solid rgba(248,250,252,0.2)",
+    boxShadow: "0 0 60px rgba(251,191,36,0.22), 0 0 120px rgba(251,113,133,0.18)",
+    opacity: 0.9,
+  };
+
+  const artInnerOrbStyle = {
+    position: "absolute",
+    width: isNarrow ? "120px" : "140px",
+    height: isNarrow ? "120px" : "140px",
+    borderRadius: "999px",
+    background:
+      "radial-gradient(circle, rgba(15,23,42,0.9) 0%, rgba(15,23,42,0.1) 70%, transparent 100%)",
+  };
+
+  const suitCardStyle = {
+    position: "relative",
+    zIndex: 2,
+    padding: isNarrow ? "0.7rem 0.9rem" : "0.9rem 1.15rem",
+    borderRadius: "1rem",
+    background:
+      "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(15,23,42,0.75))",
+    border: "1px solid rgba(148,163,184,0.6)",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 14px 35px rgba(15,23,42,0.9)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "0.35rem",
+    maxWidth: isNarrow ? "80%" : "100%",
+  };
+
+  const suitTitleRowStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.45rem",
+    fontSize: "0.9rem",
+    color: "#f9fafb",
+  };
+
+  const suitEmojiStyle = { fontSize: "1.4rem" };
+  const glassesRowStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.35rem",
+    fontSize: "1.35rem",
+    marginTop: "0.15rem",
+  };
+
+  const glassesLabelStyle = {
+    fontSize: "0.8rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#e5e7eb",
+    opacity: 0.9,
+  };
+
+  const sparkleRowStyle = {
+    display: "flex",
+    gap: "0.4rem",
+    marginTop: "0.1rem",
+    fontSize: "0.8rem",
+    color: "#e5e7eb",
+    opacity: 0.9,
+  };
+
+  const artCornerBadgeStyle = {
+    position: "absolute",
+    right: "0.9rem",
+    top: "0.9rem",
+    padding: "0.3rem 0.7rem",
+    borderRadius: "999px",
+    border: "1px solid rgba(248,250,252,0.65)",
+    background: "rgba(15,23,42,0.9)",
+    fontSize: "0.7rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.12em",
+    color: "#f9fafb",
+  };
+
+  const artBottomRibbonStyle = {
+    position: "absolute",
+    left: "-12%",
+    bottom: "14%",
+    width: "140%",
+    height: "40px",
+    background:
+      "linear-gradient(90deg, rgba(251,191,36,0.95), rgba(251,113,133,0.95))",
+    transform: "rotate(-4deg)",
+    opacity: 0.85,
+  };
+
+  const artBottomRibbonInnerStyle = {
+    position: "absolute",
+    inset: "6px 10px",
+    borderRadius: "999px",
+    border: "1px solid rgba(248,250,252,0.6)",
+  };
+
+  const artBottomTextStyle = {
+    position: "absolute",
+    left: "14%",
+    bottom: "21%",
+    fontSize: "0.78rem",
+    fontWeight: 600,
+    letterSpacing: "0.18em",
+    textTransform: "uppercase",
+    padding: "0.0rem 0.2rem",
+    color: "#f9fafb",
+    zIndex: 2,
+  };
+
+  const newsInputStyle = {
+    width: "100%",
+    borderRadius: "0.9rem",
+    border: "1px solid rgba(148,163,184,0.22)",
+    background: "rgba(2,6,23,0.68)",
+    color: "#f8fafc",
+    padding: "0.78rem 0.9rem",
+    outline: "none",
+  };
+
+  const renderVenueChip = () => (
+    <a
+      href={VENUE_MAP_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        ...metaChipStyle,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.35rem",
+        cursor: "pointer",
+        textDecoration: "none",
+        color: "#e5e7eb",
+      }}
+    >
+      <span role="img" aria-label="Location pin">
+        📍
+      </span>
+      <span>Haveva · Lower Main Road · Observatory</span>
+    </a>
+  );
+
+
+  const renderStoryDateBadges = (dateValue = Date.now(), archived = false) => {
+    const dateMs = resolveDateMs(dateValue, Date.now());
+    const freshness = getFreshnessBadge(dateMs, archived);
+
+    return (
+      <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", alignItems: "center", margin: "0.35rem 0 0.65rem" }}>
+        <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(dateMs))}</span>
+        <span
+          style={{
+            ...metaChipStyle,
+            background: freshness.tone,
+            border: `1px solid ${freshness.border}`,
+            color: freshness.color,
+            fontWeight: 900,
+            letterSpacing: "0.04em",
+          }}
+        >
+          {freshness.label}
+        </span>
+      </div>
+    );
+  };
+
+  // ---------------- KIT POLL STATE ----------------
+  const [kitOrders, setKitOrders] = useState([]);
+  const [kitOrdersError, setKitOrdersError] = useState("");
+
+  const myKitOrderName = useMemo(() => {
+    if (!identity || identity.role === "spectator") return "";
+    return (identity.shortName || identity.fullName || "").trim();
+  }, [identity]);
+
+  const myKitOrderId = identity?.memberId || "";
+
+  const isInKitOrders = useMemo(() => {
+    if (!myKitOrderId) return false;
+    return kitOrders.some((o) => o && o.memberId === myKitOrderId);
+  }, [kitOrders, myKitOrderId]);
+
+  useEffect(() => {
+    // Kit ordering is a real operational effect. Practice keeps the exact
+    // interaction locally and never subscribes to the real order list.
+    if (isPracticeMode || safeActiveClubId) {
+      setKitOrders([]);
+      setKitOrdersError("");
+      return undefined;
+    }
+
+    try {
+      const unsub = subscribeToKitOrders((list) => {
+        setKitOrders(Array.isArray(list) ? list : []);
+        setKitOrdersError("");
+      });
+      return () => {
+        if (unsub) unsub();
+      };
+    } catch (err) {
+      console.error("[NewsPage] kit orders subscribe failed:", err);
+      setKitOrdersError("Could not load kit orders.");
+    }
+  }, [isPracticeMode, practiceSessionId]);
+
+  const handleToggleKitOrder = async () => {
+    if (safeActiveClubId) return;
+    if (!identity || identity.role === "spectator") {
+      onGoToSignIn?.();
+      return;
+    }
+    if (!myKitOrderId || !myKitOrderName) return;
+
+    try {
+      if (isPracticeMode) {
+        setKitOrders((current) => {
+          const safeCurrent = Array.isArray(current) ? current : [];
+
+          if (safeCurrent.some((order) => order?.memberId === myKitOrderId)) {
+            return safeCurrent.filter(
+              (order) => order?.memberId !== myKitOrderId
+            );
+          }
+
+          return [
+            ...safeCurrent,
+            {
+              memberId: myKitOrderId,
+              name: myKitOrderName,
+            },
+          ];
+        });
+        setKitOrdersError("");
+        return;
+      }
+
+      if (isInKitOrders) {
+        await removeKitOrder(myKitOrderId);
+      } else {
+        await upsertKitOrder({ memberId: myKitOrderId, name: myKitOrderName });
+      }
+    } catch (err) {
+      console.error("[NewsPage] kit order update failed:", err);
+      setKitOrdersError("Failed to update your vote. Try again.");
+    }
+  };
+
+
+  // ---------------- CUSTOM POLL STATE ----------------
+  const createEmptyPollDraft = () => ({
+    question: "",
+    icon: "🗳️",
+    options: ["", ""],
+  });
+
+  const [customPolls, setCustomPolls] = useState([]);
+  const [pollVotes, setPollVotes] = useState([]);
+  const [showCreatePollForm, setShowCreatePollForm] = useState(false);
+  const [pollDraft, setPollDraft] = useState(createEmptyPollDraft);
+  const [pollFormError, setPollFormError] = useState("");
+  const [pollFormNotice, setPollFormNotice] = useState("");
+  const [editingPollId, setEditingPollId] = useState("");
+  const [focusedPollId, setFocusedPollId] = useState("");
+
+  useEffect(() => {
+    const requestedClubId = String(
+      initialPollOpen?.clubId || ""
+    ).trim();
+    const requestedPollId = String(
+      initialPollOpen?.pollId || ""
+    ).trim();
+
+    if (
+      !requestedPollId ||
+      requestedClubId !== safeActiveClubId ||
+      !customPolls.some((poll) => poll?.id === requestedPollId)
+    ) {
+      return undefined;
+    }
+
+    setFocusedPollId(requestedPollId);
+
+    const scrollTimer = window.setTimeout(() => {
+      document
+        .getElementById(`club-poll-${requestedPollId}`)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+    }, 150);
+
+    const highlightTimer = window.setTimeout(() => {
+      setFocusedPollId((current) =>
+        current === requestedPollId ? "" : current
+      );
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(highlightTimer);
+    };
+  }, [
+    initialPollOpen,
+    safeActiveClubId,
+    customPolls,
+  ]);
+
+  useEffect(() => {
+    if (isPracticeMode) {
+      setCustomPolls([]);
+      setPollFormError("");
+      return undefined;
+    }
+
+    const pollsRef = fieldNewsCollection(CUSTOM_POLLS_COLLECTION);
+    const unsubscribe = onSnapshot(
+      pollsRef,
+      (snapshot) => {
+        const nextPolls = snapshot.docs
+          .map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() || {}),
+          }))
+          .filter((poll) => {
+            const pollClubId = String(
+              poll?.clubId || ""
+            ).trim();
+
+            if (pollClubId) {
+              return pollClubId === safeActiveClubId;
+            }
+
+            return safeActiveClubId === "turf-kings";
+          });
+
+        setCustomPolls(nextPolls);
+      },
+      (error) => {
+        console.error("[NewsPage] failed to subscribe to custom polls:", error);
+        setPollFormError("Could not load custom polls.");
+      }
+    );
+
+    return () => unsubscribe();
+  }, [
+    isPracticeMode,
+    practiceSessionId,
+    safeActiveClubId,
+  ]);
+
+  useEffect(() => {
+    if (isPracticeMode) {
+      setPollVotes([]);
+      return undefined;
+    }
+
+    const votesRef = fieldNewsCollection(CUSTOM_POLL_VOTES_COLLECTION);
+    const unsubscribe = onSnapshot(
+      votesRef,
+      (snapshot) => {
+        const nextVotes = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() || {}),
+        }));
+        setPollVotes(nextVotes);
+      },
+      (error) => {
+        console.error("[NewsPage] failed to subscribe to custom poll votes:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [isPracticeMode, practiceSessionId]);
+
+  const activeCustomPolls = useMemo(
+    () =>
+      customPolls.filter(
+        (poll) =>
+          poll &&
+          poll.id !== JERSEY_POLL_CONTROL_ID &&
+          !poll.archived
+      ),
+    [customPolls]
+  );
+
+  const archivedCustomPolls = useMemo(
+    () =>
+      customPolls.filter(
+        (poll) =>
+          poll &&
+          poll.id !== JERSEY_POLL_CONTROL_ID &&
+          poll.archived
+      ),
+    [customPolls]
+  );
+
+  const jerseyPollControl = useMemo(
+    () =>
+      customPolls.find(
+        (poll) =>
+          poll?.id === JERSEY_POLL_CONTROL_ID
+      ) || null,
+    [customPolls]
+  );
+
+  /*
+   * The jersey poll is being retired now, so absence of a control
+   * document means archived. Restoring it creates the persistent
+   * control document with archived: false.
+   */
+  const jerseyPollArchived =
+    jerseyPollControl
+      ? jerseyPollControl.archived !== false
+      : true;
+
+  const handleToggleJerseyPollArchive = async () => {
+    if (!canManageCustomStories) return;
+
+    const nextArchived = !jerseyPollArchived;
+    const nowMs = Date.now();
+
+    const control = {
+      id: JERSEY_POLL_CONTROL_ID,
+      kind: "builtin_jersey_poll",
+      question: "TurfKings jersey orders",
+      tag: "Jersey poll",
+      archived: nextArchived,
+      archivedAtMs: nextArchived ? nowMs : null,
+      updatedAtMs: nowMs,
+    };
+
+    try {
+      if (isPracticeMode) {
+        setCustomPolls((current) => [
+          ...(Array.isArray(current)
+            ? current.filter(
+                (poll) =>
+                  poll?.id !==
+                  JERSEY_POLL_CONTROL_ID
+              )
+            : []),
+          control,
+        ]);
+      } else {
+        await setDoc(
+          fieldNewsDoc(CUSTOM_POLLS_COLLECTION, JERSEY_POLL_CONTROL_ID
+          ),
+          {
+            kind: control.kind,
+            question: control.question,
+            tag: control.tag,
+            archived: control.archived,
+            archivedAtMs: control.archivedAtMs,
+            updatedAtMs: control.updatedAtMs,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      setPollFormError("");
+      setPollFormNotice(
+        nextArchived
+          ? "Jersey poll archived."
+          : "Jersey poll restored."
+      );
+    } catch (error) {
+      console.error(
+        "[NewsPage] failed to update jersey poll archive:",
+        error
+      );
+      setPollFormError(
+        "Could not update the jersey poll archive status."
+      );
+    }
+  };
+
+  const sortedActiveCustomPolls = useMemo(() => {
+    return activeCustomPolls.slice().sort((a, b) =>
+      Number(b?.publishDateMs || b?.createdAtMs || 0) -
+      Number(a?.publishDateMs || a?.createdAtMs || 0)
+    );
+  }, [activeCustomPolls]);
+
+  const pollVotesByPollId = useMemo(() => {
+    const out = {};
+    (pollVotes || []).forEach((vote) => {
+      const pollId = String(vote?.pollId || "");
+      const choice = String(vote?.choice || "");
+      if (!pollId || !choice) return;
+      if (!out[pollId]) {
+        out[pollId] = { byVoter: {} };
+      }
+      out[pollId][choice] =
+        Number(out[pollId][choice] || 0) + 1;
+      if (vote?.voterId) {
+        out[pollId].byVoter[vote.voterId] = choice;
+      }
+    });
+    return out;
+  }, [pollVotes]);
+
+  const activeCustomPollCount = activeCustomPolls.length;
+  const hasReachedCustomPollLimit = activeCustomPollCount >= CUSTOM_POLL_LIMIT;
+
+  const handlePollDraftChange = (field, value) => {
+    setPollDraft((current) => ({ ...current, [field]: value }));
+    setPollFormError("");
+    setPollFormNotice("");
+  };
+
+  const handlePollOptionChange = (index, value) => {
+    setPollDraft((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) =>
+        optionIndex === index ? value : option
+      ),
+    }));
+    setPollFormError("");
+  };
+
+  const addPollOption = () => {
+    setPollDraft((current) => ({
+      ...current,
+      options:
+        current.options.length >= 6
+          ? current.options
+          : [...current.options, ""],
+    }));
+  };
+
+  const removePollOption = (index) => {
+    setPollDraft((current) => ({
+      ...current,
+      options:
+        current.options.length <= 2
+          ? current.options
+          : current.options.filter(
+              (_, optionIndex) => optionIndex !== index
+            ),
+    }));
+  };
+
+  const resetPollDraft = () => {
+    setPollDraft(createEmptyPollDraft());
+    setEditingPollId("");
+    setPollFormError("");
+    setPollFormNotice("");
+  };
+
+  const handleEditCustomPoll = (poll) => {
+    if (!canManageCustomStories || !poll) return;
+    setEditingPollId(poll.id || "");
+    const existingOptions =
+      Array.isArray(poll.options) && poll.options.length >= 2
+        ? poll.options.map((option) =>
+            String(option?.label ?? option ?? "")
+          )
+        : [
+            String(poll.optionA || ""),
+            String(poll.optionB || ""),
+          ];
+
+    setPollDraft({
+      question: String(poll.question || ""),
+      icon: String(poll.icon || "🗳️"),
+      options: existingOptions.slice(0, 6),
+    });
+    setShowCreatePollForm(true);
+    setPollFormError("");
+    setPollFormNotice(`Editing "${poll.question || "poll"}".`);
+  };
+
+  const handleSaveCustomPoll = async () => {
+    if (!canManageCustomStories) return;
+
+    const question = String(pollDraft.question || "").trim();
+    const icon = String(pollDraft.icon || "🗳️").trim() || "🗳️";
+    const options = (pollDraft.options || [])
+      .map((label, index) => ({
+        id: String.fromCharCode(65 + index),
+        label: String(label || "").trim(),
+      }))
+      .filter((option) => option.label)
+      .slice(0, 6);
+    const publishDateMs = Date.now();
+
+    if (!question) {
+      setPollFormError("Please add a poll question.");
+      return;
+    }
+    if (options.length < 2) {
+      setPollFormError("Please add at least two poll choices.");
+      return;
+    }
+    if (!editingPollId && hasReachedCustomPollLimit) {
+      setPollFormError("You already have 2 active polls. Archive or delete one first.");
+      return;
+    }
+
+    try {
+      const pollId = editingPollId || `poll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const existing = customPolls.find((poll) => poll?.id === editingPollId);
+
+      if (isPracticeMode) {
+        const createdAtMs = editingPollId
+          ? Number(existing?.createdAtMs || Date.now())
+          : Date.now();
+
+        const practicePoll = {
+          id: pollId,
+          question,
+          icon,
+          options,
+          optionA: options[0]?.label || "",
+          optionB: options[1]?.label || "",
+          archived: false,
+          createdAtMs,
+          publishDateMs,
+          updatedAtMs: Date.now(),
+          createdBy:
+            identity?.shortName || identity?.fullName || identity?.name || "Admin",
+        };
+
+        setCustomPolls((current) => {
+          const withoutCurrent = current.filter(
+            (poll) => poll?.id !== pollId
+          );
+          return [...withoutCurrent, practicePoll];
+        });
+
+        setPollFormNotice(
+          editingPollId ? "Poll updated." : "Poll created."
+        );
+        setPollDraft(createEmptyPollDraft());
+        setEditingPollId("");
+        setShowCreatePollForm(false);
+        setPollFormError("");
+        return;
+      }
+      const createdAtMs = editingPollId ? Number(existing?.createdAtMs || Date.now()) : Date.now();
+
+      await setDoc(
+        fieldNewsDoc(CUSTOM_POLLS_COLLECTION, pollId),
+        {
+          clubId: safeActiveClubId,
+          question,
+          icon,
+          options,
+          optionA: options[0]?.label || "",
+          optionB: options[1]?.label || "",
+          archived: false,
+          createdAtMs,
+          publishDateMs,
+          updatedAtMs: Date.now(),
+          createdBy: identity?.shortName || identity?.fullName || identity?.name || "Admin",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setPollFormNotice(editingPollId ? "Poll updated." : "Poll created.");
+      setPollDraft(createEmptyPollDraft());
+      setEditingPollId("");
+      setShowCreatePollForm(false);
+      setPollFormError("");
+    } catch (error) {
+      console.error("[NewsPage] failed to save custom poll:", error);
+      setPollFormError("Could not save the poll. Please try again.");
+    }
+  };
+
+  const handleArchiveToggleCustomPoll = async (pollId) => {
+    if (!canManageCustomStories || !pollId) return;
+    const targetPoll = customPolls.find((poll) => poll?.id === pollId);
+    if (!targetPoll) return;
+
+    if (targetPoll.archived && activeCustomPolls.length >= CUSTOM_POLL_LIMIT) {
+      setPollFormError("You already have 2 active polls. Archive or delete one before restoring another.");
+      return;
+    }
+
+    try {
+      if (isPracticeMode) {
+        setCustomPolls((current) =>
+          current.map((poll) =>
+            poll?.id === pollId
+              ? {
+                  ...poll,
+                  archived: !targetPoll.archived,
+                  archivedAtMs: !targetPoll.archived ? Date.now() : null,
+                  updatedAtMs: Date.now(),
+                }
+              : poll
+          )
+        );
+        setPollFormError("");
+        setPollFormNotice(
+          targetPoll.archived ? "Poll restored." : "Poll archived."
+        );
+        return;
+      }
+
+      await setDoc(
+        fieldNewsDoc(CUSTOM_POLLS_COLLECTION, pollId),
+        {
+          archived: !targetPoll.archived,
+          archivedAtMs: !targetPoll.archived ? Date.now() : null,
+          updatedAtMs: Date.now(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setPollFormError("");
+      setPollFormNotice(targetPoll.archived ? "Poll restored." : "Poll archived.");
+    } catch (error) {
+      console.error("[NewsPage] failed to archive poll:", error);
+      setPollFormError("Could not update poll archive status.");
+    }
+  };
+
+  const handleDeleteCustomPoll = async (pollId) => {
+    if (!canManageCustomStories || !pollId) return;
+    const pollToDelete = customPolls.find((poll) => poll?.id === pollId);
+    if (!pollToDelete) return;
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        `Delete "${pollToDelete.question || "this poll"}" permanently?
+
+Votes for this poll will no longer be shown.`
+      );
+      if (!confirmed) return;
+    }
+
+    try {
+      if (isPracticeMode) {
+        setCustomPolls((current) =>
+          current.filter((poll) => poll?.id !== pollId)
+        );
+        setPollVotes((current) =>
+          current.filter((vote) => vote?.pollId !== pollId)
+        );
+        if (editingPollId === pollId) resetPollDraft();
+        setPollFormError("");
+        setPollFormNotice("Poll deleted.");
+        return;
+      }
+
+      await deleteDoc(fieldNewsDoc(CUSTOM_POLLS_COLLECTION, pollId));
+      if (editingPollId === pollId) resetPollDraft();
+      setPollFormError("");
+      setPollFormNotice("Poll deleted.");
+    } catch (error) {
+      console.error("[NewsPage] failed to delete poll:", error);
+      setPollFormError("Could not delete this poll. Please try again.");
+    }
+  };
+
+  const handleVoteCustomPoll = async (poll, choice) => {
+    if (!poll?.id) return;
+    if (!identity || identity.role === "spectator") {
+      onGoToSignIn?.();
+      return;
+    }
+
+    const voterId = makeVoterId(identity);
+    if (!voterId || voterId === "guest") {
+      onGoToSignIn?.();
+      return;
+    }
+
+    try {
+      if (isPracticeMode) {
+        const voteId = `${poll.id}__${voterId}`;
+        const practiceVote = {
+          id: voteId,
+          pollId: poll.id,
+          voterId,
+          voterName:
+            identity?.shortName ||
+            identity?.fullName ||
+            identity?.name ||
+            "Player",
+          choice,
+          updatedAtMs: Date.now(),
+        };
+
+        setPollVotes((current) => {
+          const withoutCurrent = current.filter(
+            (vote) => vote?.id !== voteId
+          );
+          return [...withoutCurrent, practiceVote];
+        });
+        return;
+      }
+
+      await setDoc(
+        fieldNewsDoc(CUSTOM_POLL_VOTES_COLLECTION, `${poll.id}__${voterId}`),
+        {
+          pollId: poll.id,
+          voterId,
+          voterName: identity?.shortName || identity?.fullName || identity?.name || "Player",
+          choice,
+          updatedAtMs: Date.now(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("[NewsPage] failed to vote in custom poll:", error);
+    }
+  };
+
+  const renderCustomPollCard = (poll, { archivedView = false } = {}) => {
+    if (!poll) return null;
+
+    const playerName = String(poll.playerName || "").trim();
+    const playerPhotoUrl = playerName ? getPlayerPhoto(playerName) : null;
+    const displayImageUrl = playerPhotoUrl || String(poll.imageUrl || "").trim() || null;
+    const pollDateMs = resolveDateMs(poll.publishDateMs || poll.createdAtMs, Date.now());
+    const freshness = getFreshnessBadge(pollDateMs, archivedView || poll.archived);
+    const pollOptions =
+      Array.isArray(poll.options) && poll.options.length >= 2
+        ? poll.options
+            .map((option, index) => ({
+              id: String(
+                option?.id ||
+                String.fromCharCode(65 + index)
+              ),
+              label: String(option?.label ?? option ?? ""),
+            }))
+            .filter((option) => option.label)
+        : [
+            { id: "A", label: poll.optionA || "Option A" },
+            { id: "B", label: poll.optionB || "Option B" },
+          ];
+
+    const counts =
+      pollVotesByPollId[poll.id] || { byVoter: {} };
+    const totalVotes = pollOptions.reduce(
+      (sum, option) =>
+        sum + Number(counts[option.id] || 0),
+      0
+    );
+    const voterId = makeVoterId(identity);
+    const myChoice = voterId
+      ? counts.byVoter?.[voterId]
+      : "";
+    const myChoiceLabel =
+      pollOptions.find((option) => option.id === myChoice)
+        ?.label || myChoice;
+
+    const optionButton = (choice, label, count) => {
+      const pct = totalVotes > 0 ? Math.round((Number(count || 0) / totalVotes) * 100) : 0;
+      const selected = myChoice === choice;
+      return (
+        <button
+          type="button"
+          className={selected ? "primary-btn" : "secondary-btn"}
+          onClick={() => handleVoteCustomPoll(poll, choice)}
+          disabled={archivedView || poll.archived}
+          style={{
+            width: "100%",
+            justifyContent: "space-between",
+            display: "flex",
+            gap: "0.7rem",
+            alignItems: "center",
+            padding: "0.7rem 0.9rem",
+          }}
+        >
+          <span>{label}</span>
+          <strong>{count} vote{Number(count || 0) === 1 ? "" : "s"} · {pct}%</strong>
+        </button>
+      );
+    };
+
+    return (
+      <section
+        id={`club-poll-${poll.id}`}
+        key={poll.id}
+        className="card"
+        style={{
+          overflow: "hidden",
+          outline:
+            focusedPollId === poll.id
+              ? "2px solid #f6c945"
+              : "2px solid transparent",
+          boxShadow:
+            focusedPollId === poll.id
+              ? "0 0 28px rgba(246, 201, 69, 0.32)"
+              : undefined,
+          transition:
+            "outline-color 220ms ease, box-shadow 220ms ease",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: displayImageUrl || playerName ? (isNarrow ? "1fr" : "0.8fr 1.2fr") : "1fr",
+            gap: "1rem",
+            alignItems: "stretch",
+          }}
+        >
+          {(displayImageUrl || playerName) && (
+            <div
+              style={{
+                minHeight: isNarrow ? 180 : 220,
+                borderRadius: "1rem",
+                overflow: "hidden",
+                position: "relative",
+                background:
+                  "radial-gradient(circle at top left, rgba(250,204,21,0.18), transparent 55%), linear-gradient(135deg, #020617, #111827 55%, #0f172a 100%)",
+                border: "1px solid rgba(148,163,184,0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {displayImageUrl ? (
+                <img
+                  src={displayImageUrl}
+                  alt={playerName || poll.question}
+                  style={{
+                    width: playerPhotoUrl ? 116 : "100%",
+                    height: playerPhotoUrl ? 116 : "100%",
+                    borderRadius: playerPhotoUrl ? "999px" : "0",
+                    objectFit: playerPhotoUrl ? "cover" : "contain",
+                    display: "block",
+                    border: playerPhotoUrl ? "1px solid rgba(255,255,255,0.22)" : "none",
+                    boxShadow: playerPhotoUrl ? "0 0 0 4px rgba(250,204,21,0.12), 0 18px 45px rgba(15,23,42,0.55)" : "none",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 116,
+                    height: 116,
+                    borderRadius: "999px",
+                    background: "linear-gradient(135deg, rgba(250,204,21,0.95), rgba(245,158,11,0.86))",
+                    color: "#0f172a",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "2rem",
+                    fontWeight: 900,
+                  }}
+                >
+                  {getInitials(playerName || poll.question)}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem", marginBottom: "0.7rem" }}>
+              <span style={metaChipStyle}>🗳️ {poll.tag || "Poll"}</span>
+              <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(pollDateMs))}</span>
+              <span
+                style={{
+                  ...metaChipStyle,
+                  background: freshness.tone,
+                  border: `1px solid ${freshness.border}`,
+                  color: freshness.color,
+                  fontWeight: 900,
+                }}
+              >
+                {freshness.label}
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "0.7rem",
+                alignItems: "flex-start",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  fontSize: "1.7rem",
+                  lineHeight: 1,
+                }}
+              >
+                {poll.icon || "🗳️"}
+              </span>
+              <h2 style={{ margin: 0 }}>{poll.question}</h2>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gap: "0.55rem",
+                marginTop: "0.9rem",
+              }}
+            >
+              {pollOptions.map((option) =>
+                optionButton(
+                  option.id,
+                  option.label,
+                  counts[option.id] || 0
+                )
+              )}
+            </div>
+
+            <p className="muted small" style={{ marginTop: "0.65rem" }}>
+              Total votes: <strong>{totalVotes}</strong>
+              {myChoiceLabel
+                ? ` · You voted ${myChoiceLabel}`
+                : ""}
+            </p>
+
+            {canManageCustomStories && (
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.8rem" }}>
+                {!archivedView && (
+                  <button type="button" className="secondary-btn" onClick={() => handleEditCustomPoll(poll)} style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}>
+                    Edit
+                  </button>
+                )}
+                <button type="button" className="secondary-btn" onClick={() => handleArchiveToggleCustomPoll(poll.id)} style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}>
+                  {poll.archived ? "Restore" : "Archive"}
+                </button>
+                <button type="button" className="secondary-btn" onClick={() => handleDeleteCustomPoll(poll.id)} style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem", borderColor: "rgba(248,113,113,0.4)", color: "#fecaca" }}>
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+
+  const renderCustomStoryCard = (story, { archivedView = false } = {}) => {
+    if (!story) return null;
+
+    const playerName = String(story.playerName || "").trim();
+    const playerPhotoUrl = playerName ? getPlayerPhoto(playerName) : null;
+    const displayImageUrl = playerPhotoUrl || String(story.imageUrl || "").trim() || null;
+    const imageSizeMeta = getStoryImageSizeMeta(story.imageSize || "100");
+    const requestedImageFit = ["auto", "crop", "fit"].includes(String(story.imageFit || "auto"))
+      ? String(story.imageFit || "auto")
+      : "auto";
+    const measuredAspect = storyImageAspectById[story.id];
+    const resolvedImageFit = requestedImageFit === "auto"
+      ? Number(measuredAspect || 0) > 0 && Number(measuredAspect) < 0.92
+        ? "fit"
+        : "crop"
+      : requestedImageFit;
+    const storyDateMs = resolveDateMs(story.publishDateMs || story.createdAtMs, Date.now());
+    const freshness = getFreshnessBadge(storyDateMs, archivedView || story.archived);
+    const isMvpAvatarImage = imageSizeMeta.mode === "mvp-avatar";
+    const isMediumAvatarImage = imageSizeMeta.mode === "medium-avatar";
+    const isAvatarImage = isMvpAvatarImage || isMediumAvatarImage;
+    const imageScale = Number(imageSizeMeta.scale || 1);
+    const baseImageHeight = isNarrow ? 220 : 260;
+    const imagePanelHeight = isMvpAvatarImage
+      ? 126
+      : isMediumAvatarImage
+        ? 184
+        : Math.max(145, Math.round(baseImageHeight * imageScale));
+    const imageColumnWidth = isMvpAvatarImage
+      ? "150px"
+      : isMediumAvatarImage
+        ? "220px"
+        : imageScale >= 0.95
+          ? "0.95fr"
+          : imageScale >= 0.85
+            ? "0.86fr"
+            : imageScale >= 0.75
+              ? "0.76fr"
+              : "0.66fr";
+    const imageInnerSize = isMvpAvatarImage ? 92 : isMediumAvatarImage ? 150 : "100%";
+    const usePortraitFrame = !isAvatarImage && resolvedImageFit === "fit";
+    const panelWidthPercent = Math.round(imageScale * 100);
+
+    return (
+      <section key={story.id} className="card" style={{ overflow: "hidden" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              displayImageUrl || playerName ? (isNarrow ? "1fr" : `${imageColumnWidth} minmax(0, 1fr)`) : "1fr",
+            gap: "1rem",
+            alignItems: "stretch",
+          }}
+        >
+          {(displayImageUrl || playerName) && (
+            <div
+              style={{
+                width: "100%",
+                maxWidth: isAvatarImage ? imageColumnWidth : `${panelWidthPercent}%`,
+                height: usePortraitFrame ? "auto" : imagePanelHeight,
+                minHeight: usePortraitFrame ? undefined : imagePanelHeight,
+                aspectRatio: usePortraitFrame ? "4 / 5" : undefined,
+                justifySelf: "center",
+                alignSelf: "start",
+                borderRadius: isMvpAvatarImage ? "999px" : "1rem",
+                overflow: "hidden",
+                position: "relative",
+                background:
+                  "radial-gradient(circle at top left, rgba(59,130,246,0.22), transparent 55%), linear-gradient(135deg, #020617, #111827 55%, #0f172a 100%)",
+                border: "1px solid rgba(148,163,184,0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: isAvatarImage
+                  ? "0 0 0 4px rgba(59,130,246,0.12), 0 18px 45px rgba(15,23,42,0.55)"
+                  : "none",
+              }}
+            >
+              {displayImageUrl ? (
+                <img
+                  src={displayImageUrl}
+                  alt={playerName || story.title}
+                  onLoad={(event) => {
+                    const img = event.currentTarget;
+                    const naturalWidth = Number(img?.naturalWidth || 0);
+                    const naturalHeight = Number(img?.naturalHeight || 0);
+                    if (!story?.id || !naturalWidth || !naturalHeight) return;
+                    const aspect = naturalWidth / naturalHeight;
+                    setStoryImageAspectById((current) => {
+                      if (Math.abs(Number(current[story.id] || 0) - aspect) < 0.01) return current;
+                      return { ...current, [story.id]: aspect };
+                    });
+                  }}
+                  style={{
+                    width: imageInnerSize,
+                    height: imageInnerSize,
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    borderRadius: isAvatarImage ? "999px" : "0",
+                    objectFit: "cover",
+                    objectPosition: "center center",
+                    display: "block",
+                    transform: "none",
+                    boxShadow: isAvatarImage ? "0 0 0 4px rgba(59,130,246,0.12)" : "none",
+                    border: isAvatarImage ? "1px solid rgba(255,255,255,0.22)" : "none",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 140,
+                    height: 140,
+                    borderRadius: "999px",
+                    background:
+                      "linear-gradient(135deg, rgba(250,204,21,0.95), rgba(245,158,11,0.86))",
+                    color: "#0f172a",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "2rem",
+                    fontWeight: 900,
+                    boxShadow:
+                      "0 18px 45px rgba(15,23,42,0.6), 0 0 0 5px rgba(255,255,255,0.12)",
+                  }}
+                >
+                  {getInitials(playerName || story.title)}
+                </div>
+              )}
+
+              {playerName && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: isAvatarImage ? "50%" : "0.8rem",
+                    bottom: isAvatarImage ? "0.35rem" : "0.8rem",
+                    transform: isAvatarImage ? "translateX(-50%)" : "none",
+                    padding: "0.4rem 0.7rem",
+                    borderRadius: "999px",
+                    background: "rgba(2,6,23,0.8)",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  {playerName}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ minWidth: 0, position: "relative" }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.5rem",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "0.7rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.45rem",
+                  padding: "0.25rem 0.65rem",
+                  borderRadius: "999px",
+                  background: "rgba(59,130,246,0.16)",
+                  border: "1px solid rgba(59,130,246,0.28)",
+                  fontWeight: 700,
+                  maxWidth: "100%",
+                }}
+              >
+                <span>📰</span>
+                <span>{story.tag || "Story"}</span>
+              </div>
+
+              <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", alignItems: "center" }}>
+                <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(storyDateMs))}</span>
+                <span
+                  style={{
+                    ...metaChipStyle,
+                    background: freshness.tone,
+                    border: `1px solid ${freshness.border}`,
+                    color: freshness.color,
+                    fontWeight: 900,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {freshness.label}
+                </span>
+              </div>
+
+              {!archivedView && canManageCustomStories && (
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleEditCustomStory(story)}
+                    style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleArchiveToggleCustomStory(story.id)}
+                    style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}
+                  >
+                    Archive
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleDeleteCustomStory(story.id)}
+                    style={{
+                      padding: "0.48rem 0.8rem",
+                      fontSize: "0.82rem",
+                      borderColor: "rgba(248,113,113,0.4)",
+                      color: "#fecaca",
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+
+              {archivedView && canManageCustomStories && (
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleArchiveToggleCustomStory(story.id)}
+                    style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}
+                  >
+                    Restore
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() => handleDeleteCustomStory(story.id)}
+                    style={{
+                      padding: "0.48rem 0.8rem",
+                      fontSize: "0.82rem",
+                      borderColor: "rgba(248,113,113,0.4)",
+                      color: "#fecaca",
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <h2 style={{ marginTop: 0 }}>{story.title}</h2>
+            <p style={{ marginTop: "0.35rem", whiteSpace: "pre-wrap" }}>{story.body}</p>
+
+            {canManageCustomStories && (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.55rem",
+                  marginTop: "0.9rem",
+                  fontSize: "0.82rem",
+                  opacity: 0.92,
+                }}
+              >
+                <span style={metaChipStyle}>📍 {getSlotLabel(story.slotKey)}</span>
+                {story.createdBy ? <span style={metaChipStyle}>✍️ {story.createdBy}</span> : null}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  const renderCustomStoriesAt = (slotKey) => {
+    const stories = sortedActiveCustomStories.filter((story) => story?.slotKey === slotKey);
+    if (!stories.length) return null;
+    return stories.map((story) => renderCustomStoryCard(story));
+  };
+
+  // ---------- RENDER ----------
+  return (
+    <div className="page news-page">
+      <div
+        className={`landing-header-sticky ${
+          headerScrolled ? "is-scrolled" : ""
+        }`}
+      >
+        <header className="header">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              width: "100%",
+            }}
+          >
+            <div className="header-title" style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0 }}>News &amp; highlights</h1>
+              <div
+                style={{
+                  marginTop: "0.18rem",
+                  fontSize: "0.72rem",
+                  fontWeight: 800,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.76)",
+                }}
+              >
+                {newsSeasonContext.pageContextLabel}
+              </div>
+            </div>
+
+            <button
+              className="secondary-btn"
+              onClick={onBack}
+              aria-label="Home"
+              title="Home"
+              style={{
+                minWidth: "46px",
+                width: "46px",
+                height: "46px",
+                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.05rem",
+                flexShrink: 0,
+              }}
+            >
+              🏠
+            </button>
+          </div>
+        </header>
+      </div>
+
+      <header className="header">
+        <p className="subtitle">
+          {newsSeasonContext.shouldUsePreviousSeasonNews ? "Previous-season stories stay here until the new season kicks off." : "Automatic recap built from this Field League's match history."}
+        </p>
+      </header>
+
+      {canManageCustomStories && (
+        <section ref={storyStudioRef} className="card" style={{ overflow: "hidden" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+              gap: "1rem",
+              alignItems: "center",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ marginTop: 0, marginBottom: "0.35rem" }}>Custom story studio</h2>
+              <p className="muted" style={{ margin: 0 }}>
+                Create a story without coding, publish it to everyone,
+                and manage only the stories created here.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.55rem" }}>
+              <span style={metaChipStyle}>
+                Active custom stories: <strong>{activeCustomStoryCount}</strong> / {CUSTOM_STORY_LIMIT}
+              </span>
+              {loadingStories && <span style={metaChipStyle}>Loading shared stories…</span>}
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setShowCreateStoryForm((current) => !current);
+                  setStoryFormError("");
+                  setStoryFormNotice("");
+                }}
+                disabled={hasReachedCustomStoryLimit && !showCreateStoryForm}
+                style={{ opacity: hasReachedCustomStoryLimit && !showCreateStoryForm ? 0.65 : 1 }}
+              >
+                {showCreateStoryForm ? "Close story form" : "Create story"}
+              </button>
+            </div>
+          </div>
+
+          {hasReachedCustomStoryLimit && (
+            <div
+              style={{
+                marginTop: "0.9rem",
+                padding: "0.85rem 1rem",
+                borderRadius: "1rem",
+                background: "rgba(245, 158, 11, 0.12)",
+                border: "1px solid rgba(245, 158, 11, 0.25)",
+                color: "#fde68a",
+              }}
+            >
+              You have reached the limit of 5 active custom stories. Archive or delete one of
+              your older custom stories first.
+            </div>
+          )}
+
+          {showCreateStoryForm && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                borderRadius: "1rem",
+                background: "rgba(15,23,42,0.4)",
+                border: "1px solid rgba(148,163,184,0.18)",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isNarrow ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                  gap: "0.85rem",
+                }}
+              >
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Story title</span>
+                  <input
+                    type="text"
+                    value={storyDraft.title}
+                    onChange={(e) => handleStoryDraftChange("title", e.target.value)}
+                    placeholder="Headline"
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Story tag</span>
+                  <input
+                    type="text"
+                    value={storyDraft.tag}
+                    onChange={(e) => handleStoryDraftChange("tag", e.target.value)}
+                    placeholder="Story / Transfer / Spotlight"
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Where should this story appear?</span>
+                  <select
+                    value={storyDraft.slotKey}
+                    onChange={(e) => handleStoryDraftChange("slotKey", e.target.value)}
+                    style={newsInputStyle}
+                  >
+                    {CUSTOM_STORY_SLOT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Player in the group (optional)</span>
+                  <select
+                    value={storyDraft.playerName}
+                    onChange={(e) => handleStoryDraftChange("playerName", e.target.value)}
+                    style={newsInputStyle}
+                  >
+                    <option value="">No player selected</option>
+                    {allKnownPlayers.map((playerName) => (
+                      <option key={playerName} value={playerName}>
+                        {playerName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Custom image URL (optional)</span>
+                  <input
+                    type="text"
+                    value={storyDraft.imageUrl}
+                    onChange={(e) => handleStoryDraftChange("imageUrl", e.target.value)}
+                    placeholder="https://..."
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Photo size</span>
+                  <select
+                    value={storyDraft.imageSize}
+                    onChange={(e) => handleStoryDraftChange("imageSize", e.target.value)}
+                    style={newsInputStyle}
+                  >
+                    {STORY_IMAGE_SIZE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Photo framing</span>
+                  <select
+                    value={storyDraft.imageFit}
+                    onChange={(e) => handleStoryDraftChange("imageFit", e.target.value)}
+                    style={newsInputStyle}
+                  >
+                    {STORY_IMAGE_FIT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Publish date</span>
+                  <input
+                    type="date"
+                    value={storyDraft.publishDate}
+                    onChange={(e) => handleStoryDraftChange("publishDate", e.target.value)}
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem", gridColumn: "1 / -1" }}>
+                  <span style={{ fontWeight: 700 }}>Story body</span>
+                  <textarea
+                    value={storyDraft.body}
+                    onChange={(e) => handleStoryDraftChange("body", e.target.value)}
+                    rows={5}
+                    placeholder="Write the story..."
+                    style={{ ...newsInputStyle, resize: "vertical", minHeight: 140 }}
+                  />
+                </label>
+              </div>
+
+              {storyFormError && (
+                <div style={{ marginTop: "0.85rem", color: "#fca5a5", fontWeight: 600 }}>
+                  {storyFormError}
+                </div>
+              )}
+
+              {storyFormNotice && !storyFormError && (
+                <div style={{ marginTop: "0.85rem", color: "#86efac", fontWeight: 600 }}>
+                  {storyFormNotice}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "0.65rem", flexWrap: "wrap", marginTop: "1rem" }}>
+                <button type="button" className="primary-btn" onClick={handleSaveCustomStory}>
+                  {editingStoryId ? "Update story" : "Save story"}
+                </button>
+                <button type="button" className="secondary-btn" onClick={resetStoryDraft}>
+                  Reset
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+
+      {canManageCustomStories && (
+        <section className="card" style={{ overflow: "hidden" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+              gap: "1rem",
+              alignItems: "center",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ marginTop: 0, marginBottom: "0.35rem" }}>Custom poll studio</h2>
+              <p className="muted" style={{ margin: 0 }}>
+                Create a quick Field League vote with up to 6 choices.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.55rem" }}>
+              <span style={metaChipStyle}>
+                Active polls: <strong>{activeCustomPollCount}</strong> / {CUSTOM_POLL_LIMIT}
+              </span>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  setShowCreatePollForm((current) => !current);
+                  setPollFormError("");
+                  setPollFormNotice("");
+                }}
+                disabled={hasReachedCustomPollLimit && !showCreatePollForm}
+                style={{ opacity: hasReachedCustomPollLimit && !showCreatePollForm ? 0.65 : 1 }}
+              >
+                {showCreatePollForm ? "Close poll form" : "Create poll"}
+              </button>
+            </div>
+          </div>
+
+          {hasReachedCustomPollLimit && (
+            <div
+              style={{
+                marginTop: "0.9rem",
+                padding: "0.85rem 1rem",
+                borderRadius: "1rem",
+                background: "rgba(245, 158, 11, 0.12)",
+                border: "1px solid rgba(245, 158, 11, 0.25)",
+                color: "#fde68a",
+              }}
+            >
+              You have reached the limit of 2 active polls. Archive or delete one first.
+            </div>
+          )}
+
+          {showCreatePollForm && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                borderRadius: "1rem",
+                background: "rgba(15,23,42,0.4)",
+                border: "1px solid rgba(148,163,184,0.18)",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isNarrow ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                  gap: "0.85rem",
+                }}
+              >
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Poll question</span>
+                  <input
+                    type="text"
+                    value={pollDraft.question}
+                    onChange={(e) => handlePollDraftChange("question", e.target.value)}
+                    placeholder="Who deserves the spotlight this week?"
+                    style={newsInputStyle}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Poll icon</span>
+                  <select
+                    value={pollDraft.icon}
+                    onChange={(e) =>
+                      handlePollDraftChange("icon", e.target.value)
+                    }
+                    style={newsInputStyle}
+                  >
+                    <option value="🗳️">🗳️ General vote</option>
+                    <option value="⚽">⚽ Football</option>
+                    <option value="🔥">🔥 Hot topic</option>
+                    <option value="🏆">🏆 Award</option>
+                    <option value="👥">👥 Team decision</option>
+                    <option value="📣">📣 Field announcement</option>
+                  </select>
+                </label>
+
+                <div style={{ display: "grid", gap: "0.65rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                    }}
+                  >
+                    <strong>Choices</strong>
+                    <small className="muted">
+                      {pollDraft.options.length}/6
+                    </small>
+                  </div>
+
+                  {pollDraft.options.map((option, index) => (
+                    <div
+                      key={`poll-option-${index}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          index >= 2 ? "1fr auto" : "1fr",
+                        gap: "0.5rem",
+                        alignItems: "center",
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={option}
+                        onChange={(e) =>
+                          handlePollOptionChange(
+                            index,
+                            e.target.value
+                          )
+                        }
+                        placeholder={`Choice ${index + 1}`}
+                        style={newsInputStyle}
+                      />
+
+                      {index >= 2 ? (
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={() => removePollOption(index)}
+                          aria-label={`Remove choice ${index + 1}`}
+                          style={{
+                            minWidth: "2.6rem",
+                            padding: "0.65rem",
+                          }}
+                        >
+                          ×
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+
+                  {pollDraft.options.length < 6 ? (
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={addPollOption}
+                    >
+                      + Add choice
+                    </button>
+                  ) : null}
+                </div>
+
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "0.65rem",
+                  }}
+                >
+                  <button type="button" className="secondary-btn" onClick={resetPollDraft}>
+                    Reset
+                  </button>
+                  <button type="button" className="primary-btn" onClick={handleSaveCustomPoll}>
+                    {editingPollId ? "Update poll" : "Save poll"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {sortedActiveCustomPolls.length > 0 && (
+        <div style={{ display: "grid", gap: "1rem" }}>
+          {sortedActiveCustomPolls.map((poll) => renderCustomPollCard(poll))}
+        </div>
+      )}
+
+      {isTurfKingsClub && !jerseyPollArchived && (
+        <>
+      {/* ✅ JERSEY STORY */}
+      <section className="card" style={{ overflow: "hidden" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isNarrow ? "1fr" : "1.1fr 0.9fr",
+            gap: "1rem",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                display: "inline-flex",
+                gap: "0.5rem",
+                alignItems: "center",
+                padding: "0.25rem 0.6rem",
+                borderRadius: "999px",
+                background: "rgba(59,130,246,0.18)",
+                border: "1px solid rgba(59,130,246,0.35)",
+                marginBottom: "0.6rem",
+              }}
+            >
+              <span>👕</span>
+              <span style={{ fontWeight: 700 }}>New kit drop</span>
+              <span style={{ opacity: 0.85 }}>(~R300 For the top)</span>
+            </div>
+
+            <h2 style={{ marginTop: 0 }}>TurfKings jersey orders</h2>
+
+            {canManageCustomStories && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleToggleJerseyPollArchive}
+                style={{
+                  padding: "0.48rem 0.8rem",
+                  marginBottom: "0.65rem",
+                  fontSize: "0.82rem",
+                }}
+              >
+                Archive poll
+              </button>
+            )}
+
+            {renderStoryDateBadges(Date.now())}
+            <p style={{ marginTop: "0.35rem" }}>
+              We&apos;re about to place an order for the new TurfKings team kit.
+              If you want one, vote below so we can count numbers. Price is
+              around <strong>R300</strong> for the Jersey, no short for now.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.6rem",
+                marginTop: "0.8rem",
+                alignItems: "center",
+              }}
+            >
+              <button
+                type="button"
+                className={
+                  identity && identity.role !== "spectator"
+                    ? "primary-btn"
+                    : "secondary-btn"
+                }
+                onClick={handleToggleKitOrder}
+                style={{ padding: "0.6rem 1rem", fontSize: "0.9rem" }}
+              >
+                {identity && identity.role !== "spectator"
+                  ? isInKitOrders
+                    ? "✅ I'm in (remove me)"
+                    : "✅ I'm in for a jersey"
+                  : "Sign in to vote"}
+              </button>
+
+              <span style={{ opacity: 0.9, fontSize: "0.9rem" }}>
+                Votes: <strong>{kitOrders?.length || 0}</strong>
+              </span>
+
+              {kitOrdersError && (
+                <span style={{ color: "#fca5a5", fontSize: "0.85rem" }}>
+                  {kitOrdersError}
+                </span>
+              )}
+            </div>
+
+            <div style={{ marginTop: "0.9rem" }}>
+              <div style={{ fontWeight: 700, marginBottom: "0.35rem" }}>
+                Who&apos;s buying? :
+              </div>
+
+              {!kitOrders || kitOrders.length === 0 ? (
+                <div className="muted">No votes yet. Be the first 👑</div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
+                  {kitOrders
+                    .slice()
+                    .sort((a, b) =>
+                      String(a?.name || "").localeCompare(String(b?.name || ""))
+                    )
+                    .map((o) => (
+                      <span
+                        key={o.memberId}
+                        style={{
+                          padding: "0.22rem 0.55rem",
+                          borderRadius: "999px",
+                          background: "rgba(15, 23, 42, 0.6)",
+                          border: "1px solid rgba(148, 163, 184, 0.25)",
+                          fontSize: "0.88rem",
+                        }}
+                      >
+                        {o.name}
+                      </span>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
+            <img
+              src={JerseyImage}
+              alt="TurfKings jersey"
+              style={{
+                width: "100%",
+                maxWidth: 420,
+                borderRadius: "1rem",
+                border: "1px solid rgba(148,163,184,0.2)",
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
+        </>
+      )}
+
+      {renderCustomStoriesAt("after-jersey")}
+
+      {/* HERO SUMMARY */}
+      <section className="card news-hero-card">
+        <div className="news-hero-main">
+          <h2>{newsSeasonContext.shouldUsePreviousSeasonNews ? `${newsSeasonContext.seasonLabel} recap` : "Tournament recap"}</h2>
+          {renderStoryDateBadges(Date.now())}
+          <p className="news-hero-text">
+            {newsSeasonContext.shouldUsePreviousSeasonNews ? "Last season finished with" : "So far we\'ve logged"}{" "}
+            <strong>{totalMatches || 0}</strong> matches and{" "}
+            <strong>{totalGoals || 0}</strong> goals in this Field League.
+          </p>
+          {tableLeader && (
+            <p className="news-hero-text">
+              <strong>{tableLeader.name}</strong>{" "}
+              {newsSeasonContext.shouldUsePreviousSeasonNews ? "finished top of the table with" : "currently lead the table with"}{" "}
+              <strong>{tableLeader.points}</strong> points and a goal difference of{" "}
+              <strong>{tableLeader.goalDiff}</strong> from {tableLeader.played} games.
+            </p>
+          )}
+        </div>
+
+        <div className="news-hero-side">
+          <div className="news-stat-chips">
+            <div className="news-stat-chip">
+              Matches
+              <span>{totalMatches || 0}</span>
+            </div>
+            <div className="news-stat-chip">
+              Goals scored
+              <span>{totalGoals || 0}</span>
+            </div>
+            {topScorer && (
+              <div className="news-stat-chip">
+                Top scorer
+                <span>
+                  {topScorer.name} ({topScorer.goals})
+                </span>
+              </div>
+            )}
+            {topPlaymaker && (
+              <div className="news-stat-chip">
+                Top playmaker
+                <span>
+                  {topPlaymaker.name} ({topPlaymaker.assists})
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {renderCustomStoriesAt("after-hero")}
+
+      {newsSeasonContext.shouldUsePreviousSeasonNews && previousSeasonSummary && (
+        <section className="card" style={{ overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div>
+              <h2 style={{ marginTop: 0 }}>Previous season honours</h2>
+              <p className="muted" style={{ marginTop: "0.25rem" }}>
+                These stories stay alive until the first match of the new season is played.
+              </p>
+            </div>
+            <span style={metaChipStyle}>{previousSeasonSummary.label}</span>
+          </div>
+
+          <div className="news-stat-chips" style={{ marginTop: "0.9rem" }}>
+            <div className="news-stat-chip">
+              Champion
+              <span>{previousSeasonSummary.champion?.name || "—"}</span>
+            </div>
+            <div className="news-stat-chip">
+              MVP
+              <span>{previousSeasonSummary.mvp ? `${previousSeasonSummary.mvp.name} (${previousSeasonSummary.mvp.total})` : "—"}</span>
+            </div>
+            <div className="news-stat-chip">
+              Top scorer
+              <span>{previousSeasonSummary.topGoals ? `${previousSeasonSummary.topGoals.name} (${previousSeasonSummary.topGoals.goals})` : "—"}</span>
+            </div>
+            <div className="news-stat-chip">
+              Season output
+              <span>{previousSeasonSummary.matches} matches · {previousSeasonSummary.goals} goals</span>
+            </div>
+          </div>
+
+          {earlierSeasonSummary && (
+            <p className="muted" style={{ marginTop: "0.9rem" }}>
+              Compared with {earlierSeasonSummary.label}: {previousSeasonSummary.matches - earlierSeasonSummary.matches >= 0 ? "+" : ""}
+              {previousSeasonSummary.matches - earlierSeasonSummary.matches} matches and {previousSeasonSummary.goals - earlierSeasonSummary.goals >= 0 ? "+" : ""}
+              {previousSeasonSummary.goals - earlierSeasonSummary.goals} goals.
+              {earlierSeasonSummary.champion?.name ? ` Previous champion: ${earlierSeasonSummary.champion.name}.` : ""}
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* HEADLINES + BIGGEST WIN */}
+      <section className="card news-grid">
+        <div className="news-column">
+          <h2>Headlines</h2>
+          {renderStoryDateBadges(Date.now())}
+          <ul className="news-list">
+            {tableLeader && (
+              <li className="news-list-item">
+                <span className="news-tag">Standings</span>
+                <span>
+                  <strong>{tableLeader.name}</strong>{" "}
+                  {newsSeasonContext.shouldUsePreviousSeasonNews ? "finished on top with" : "sit on top with"}{" "}
+                  {tableLeader.points} points ({tableLeader.won}W {tableLeader.drawn}D{" "}
+                  {tableLeader.lost}L).
+                </span>
+              </li>
+            )}
+
+            {topScorer && (
+              <li className="news-list-item">
+                <span className="news-tag">Goals</span>
+                <span>
+                  <strong>{topScorer.name}</strong>{" "}
+                  {newsSeasonContext.shouldUsePreviousSeasonNews ? "won the golden boot with" : "leads the golden-boot race with"}{" "}
+                  {topScorer.goals} goals{newsSeasonContext.shouldUsePreviousSeasonNews ? "." : " so far."}
+                </span>
+              </li>
+            )}
+
+            {topPlaymaker && (
+              <li className="news-list-item">
+                <span className="news-tag">Assists</span>
+                <span>
+                  <strong>{topPlaymaker.name}</strong> has created {topPlaymaker.assists}{" "}
+                  goals, {newsSeasonContext.shouldUsePreviousSeasonNews ? "finishing top of the playmaker chart." : "topping the playmaker chart."}
+                </span>
+              </li>
+            )}
+
+            {!tableLeader && !topScorer && !topPlaymaker && (
+              <li className="news-list-item">
+                <span className="news-tag">Info</span>
+                <span>
+                  No stats yet – start a live match to generate your first round of club news.
+                </span>
+              </li>
+            )}
+          </ul>
+        </div>
+
+        <div className="news-column">
+          <h2>Match of the Tournament</h2>
+          {renderStoryDateBadges(Date.now())}
+          {biggestWin ? (
+            <div className="news-match-feature">
+              <p className="news-match-label">Match #{biggestWin.matchNo}</p>
+              <p className="news-match-scoreline">
+                <span>{getTeamName(biggestWin.teamAId)}</span>
+                <span className="score">
+                  {biggestWin.goalsA} – {biggestWin.goalsB}
+                </span>
+                <span>{getTeamName(biggestWin.teamBId)}</span>
+              </p>
+              <p className="news-match-note">
+                Margin of <strong>{biggestWin.diff}</strong> goals with{" "}
+                <strong>{biggestWin.goals}</strong> total on the board.
+              </p>
+            </div>
+          ) : (
+            <p className="muted">
+              We&apos;ll highlight the biggest win once a few games have been played.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {renderCustomStoriesAt("after-headlines")}
+
+      {/* TOURNAMENT MVP CARD */}
+      {bestOverall && (
+        <section className="card news-mvp-card">
+          <div className="mvp-hero">
+            <div
+              className="mvp-avatar"
+              style={{
+                width: 92,
+                height: 92,
+                minWidth: 92,
+                borderRadius: "999px",
+                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "1px solid rgba(255,255,255,0.22)",
+                boxShadow: "0 0 0 4px rgba(59,130,246,0.12)",
+                background: "linear-gradient(135deg, #0f172a, #1e3a8a)",
+              }}
+            >
+              {mvpPhotoUrl ? (
+                <img
+                  src={mvpPhotoUrl}
+                  alt={bestOverall.name}
+                  className="mvp-photo"
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              ) : (
+                <span className="mvp-initials">{getInitials(bestOverall.name)}</span>
+              )}
+            </div>
+            <div>
+              <p className="mvp-label">{newsSeasonContext.shouldUsePreviousSeasonNews ? "MVP 💎" : "Tournament MVP (so far)"}</p>
+              {renderStoryDateBadges(Date.now())}
+              <h2 className="mvp-name">{bestOverall.name}</h2>
+              <p className="mvp-team">
+                {bestOverall.teamName && bestOverall.teamName !== "—"
+                  ? `Team: ${bestOverall.teamName}`
+                  : "Flying free agent mode."}
+              </p>
+            </div>
+          </div>
+          <div className="mvp-stats">
+            <div className="mvp-stat-pill">
+              <span>
+                {isFriendlyNewsStats ? "Total G+A+DB" : "Total G+A+CS"}
+              </span>
+              <strong>{bestOverall.total}</strong>
+            </div>
+            <div className="mvp-stat-pill">
+              <span>Goals</span>
+              <strong>{bestOverall.goals}</strong>
+            </div>
+            <div className="mvp-stat-pill">
+              <span>Assists</span>
+              <strong>{bestOverall.assists}</strong>
+            </div>
+            <div className="mvp-stat-pill">
+              <span>
+                {isFriendlyNewsStats
+                  ? "5-min Defensive Blocks"
+                  : "Clean Sheets"}
+              </span>
+              <strong>
+                {isFriendlyNewsStats
+                  ? bestOverall.defensiveBlocks
+                  : bestOverall.cleanSheets}
+              </strong>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {renderCustomStoriesAt("after-mvp")}
+
+      {/* STREAK WATCH */}
+      <section className="card news-streak-card">
+        <h2>Streak watch</h2>
+        {renderStoryDateBadges(Date.now())}
+        {!streakStats.bestGoal && !streakStats.bestAssist ? (
+          <p className="muted">
+            No streaks yet – once players start scoring and assisting in back-to-back games,
+            their names will light up here.
+          </p>
+        ) : (
+          <div className="streak-grid">
+            {streakStats.bestGoal && (
+              <div className="streak-pill">
+                <span className="streak-tag">Goal streak</span>
+                <p className="streak-main">
+                  <strong>{streakStats.bestGoal.name}</strong> has scored in{" "}
+                  <strong>{streakStats.bestGoal.length}</strong>{" "}
+                  match{streakStats.bestGoal.length > 1 ? "es" : ""} in a row.
+                </p>
+                <p className="streak-sub">
+                  {streakStats.bestGoal.teamName && streakStats.bestGoal.teamName !== "—"
+                    ? `Flying for ${streakStats.bestGoal.teamName}.`
+                    : "Free roaming finisher energy."}
+                </p>
+              </div>
+            )}
+
+            {streakStats.bestAssist && (
+              <div className="streak-pill">
+                <span className="streak-tag">Assist streak</span>
+                <p className="streak-main">
+                  <strong>{streakStats.bestAssist.name}</strong> has dropped assists in{" "}
+                  <strong>{streakStats.bestAssist.length}</strong> straight game
+                  {streakStats.bestAssist.length > 1 ? "s" : ""}.
+                </p>
+                <p className="streak-sub">
+                  {streakStats.bestAssist.teamName && streakStats.bestAssist.teamName !== "—"
+                    ? `Playmaking for ${streakStats.bestAssist.teamName}.`
+                    : "Sharing the shine with everyone."}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {renderCustomStoriesAt("after-streak")}
+
+      {renderCustomStoriesAt("before-old-stories")}
+
+      {canManageCustomStories && (
+      /* OLD STORIES FOLDER */
+      <details className="card">
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+          🗂️ Old stories (tap to expand)
+        </summary>
+
+        {archivedCustomStories.length > 0 && (
+          <details style={{ marginTop: "0.8rem" }}>
+            <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+              📰 Archived custom stories ({archivedCustomStories.length})
+            </summary>
+
+            <div style={{ marginTop: "0.8rem", display: "grid", gap: "0.8rem" }}>
+              {archivedCustomStories
+                .slice()
+                .sort((a, b) => Number(b?.archivedAt || 0) - Number(a?.archivedAt || 0))
+                .map((story) => (
+                  <details key={story.id}>
+                    <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+                      📰 {story.title || "Untitled story"}
+                    </summary>
+                    <div style={{ marginTop: "0.8rem" }}>
+                      {renderCustomStoryCard(story, { archivedView: true })}
+                    </div>
+                  </details>
+                ))}
+            </div>
+          </details>
+        )}
+
+
+        {isTurfKingsClub && jerseyPollArchived && (
+          <details style={{ marginTop: "0.8rem" }}>
+            <summary
+              style={{
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              👕 TurfKings jersey orders
+            </summary>
+
+            <section
+              className="card"
+              style={{
+                marginTop: "0.8rem",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isNarrow
+                    ? "1fr"
+                    : "0.85fr 1.15fr",
+                  gap: "1rem",
+                  alignItems: "center",
+                }}
+              >
+                <img
+                  src={JerseyImage}
+                  alt="TurfKings jersey"
+                  style={{
+                    width: "100%",
+                    maxWidth: 320,
+                    justifySelf: "center",
+                    borderRadius: "1rem",
+                    objectFit: "contain",
+                    border:
+                      "1px solid rgba(148,163,184,0.2)",
+                  }}
+                />
+
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.45rem",
+                      flexWrap: "wrap",
+                      marginBottom: "0.65rem",
+                    }}
+                  >
+                    <span style={metaChipStyle}>
+                      👕 Jersey poll
+                    </span>
+                    <span style={metaChipStyle}>
+                      ARCHIVE
+                    </span>
+                  </div>
+
+                  <h2 style={{ marginTop: 0 }}>
+                    TurfKings jersey orders
+                  </h2>
+
+                  <p className="muted small">
+                    This jersey-order poll has ended. Its
+                    existing responses remain preserved.
+                  </p>
+
+                  <p>
+                    Votes:{" "}
+                    <strong>
+                      {kitOrders?.length || 0}
+                    </strong>
+                  </p>
+
+                  {kitOrders?.length > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "0.45rem",
+                        marginTop: "0.65rem",
+                      }}
+                    >
+                      {kitOrders
+                        .slice()
+                        .sort((a, b) =>
+                          String(a?.name || "").localeCompare(
+                            String(b?.name || "")
+                          )
+                        )
+                        .map((order) => (
+                          <span
+                            key={order.memberId}
+                            style={metaChipStyle}
+                          >
+                            {order.name}
+                          </span>
+                        ))}
+                    </div>
+                  )}
+
+                  {canManageCustomStories && (
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={
+                        handleToggleJerseyPollArchive
+                      }
+                      style={{
+                        padding: "0.48rem 0.8rem",
+                        marginTop: "0.9rem",
+                        fontSize: "0.82rem",
+                      }}
+                    >
+                      Restore poll
+                    </button>
+                  )}
+                </div>
+              </div>
+            </section>
+          </details>
+        )}
+
+        {archivedCustomPolls.length > 0 && (
+          <details style={{ marginTop: "0.8rem" }}>
+            <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+              🗳️ Archived custom polls ({archivedCustomPolls.length})
+            </summary>
+
+            <div style={{ marginTop: "0.8rem", display: "grid", gap: "0.8rem" }}>
+              {archivedCustomPolls
+                .slice()
+                .sort((a, b) => Number(b?.archivedAtMs || 0) - Number(a?.archivedAtMs || 0))
+                .map((poll) => (
+                  <details key={poll.id}>
+                    <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+                      🗳️ {poll.question || "Untitled poll"}
+                    </summary>
+                    <div style={{ marginTop: "0.8rem" }}>
+                      {renderCustomPollCard(poll, { archivedView: true })}
+                    </div>
+                  </details>
+                ))}
+            </div>
+          </details>
+        )}
+
+        {/* Year-End story inside Old stories */}
+        <details style={{ marginTop: "0.8rem", display: isTurfKingsClub ? undefined : "none" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+            ✨ Year-End Function (tap to expand)
+          </summary>
+
+          <section className="card year-end-premium-card" style={yearEndCardStyle}>
+            <div style={{ minWidth: 0 }}>
+              <div style={yearEndPillStyle}>
+                <span>✨ Special Event</span>
+                <span style={{ fontSize: "0.9rem" }}>• Year-End Function</span>
+              </div>
+
+              <h2 style={yearEndHeadingStyle}>TurfKings Year-End Function</h2>
+              <p style={yearEndSubStyle}>
+                We&apos;re closing off the season in proper TurfKings style – full
+                squad night out. 🏆
+              </p>
+
+              <div style={yearEndMetaRowStyle}>
+                <span style={metaChipStyle}>📅 Friday · 5 December</span>
+                <span style={metaChipStyle}>⏰ 18:00 arrival · 19:30 program</span>
+                {renderVenueChip()}
+              </div>
+
+              <ul style={bulletListStyle}>
+                <li>• Dress code: Smart / suit vibes – leave the bibs at home.</li>
+              </ul>
+
+              <p style={{ marginTop: "0.7rem", fontSize: "0.85rem", opacity: 0.95 }}>
+                🧊 <strong>Coolerboxes &amp; bottles are encouraged</strong> – bring
+                your own drinks. There&apos;s a small fee for walking in with them,
+                but it works out cheaper and keeps the vibe relaxed for the whole
+                night. (<strong>R180</strong> per coolerbox) and (
+                <strong>R80</strong> per whisky/brandy/gin bottle).
+              </p>
+
+              <p style={{ marginTop: "0.7rem", fontSize: "0.85rem", opacity: 0.95 }}>
+                💰 <strong>Cover charge:</strong> <strong>R100</strong> per player +{" "}
+                <strong>R75</strong> per friend (max 3) for food/bites. Use the RSVP
+                list to confirm your spot and who you&apos;re bringing. If you&apos;re
+                not drinking and you&apos;re coming solo, it&apos;s basically{" "}
+                <strong>R100</strong> for a full night out with the squad.
+              </p>
+
+              <div
+                style={{
+                  marginTop: "1rem",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.6rem",
+                }}
+              >
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={handleOpenRSVP}
+                  style={{ padding: "0.65rem 1.2rem", fontSize: "0.9rem" }}
+                >
+                  🎟️ Manage RSVP
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => setShowProgramModal(true)}
+                  style={{ padding: "0.65rem 1.1rem", fontSize: "0.9rem" }}
+                >
+                  📋 View Program
+                </button>
+              </div>
+
+              {!identity && (
+                <p style={{ fontSize: "0.8rem", marginTop: "0.35rem", opacity: 0.8 }}>
+                  Please sign in on the main page to RSVP and see who&apos;s in.
+                </p>
+              )}
+            </div>
+
+            <div style={artContainerStyle} aria-hidden="true">
+              <div style={artGlassHaloStyle} />
+              <div style={artInnerOrbStyle} />
+
+              <div style={suitCardStyle}>
+                <div style={suitTitleRowStyle}>
+                  <span style={suitEmojiStyle}>🎩</span>
+                  <div>
+                    <div style={{ fontSize: "0.78rem", opacity: 0.8 }}>Dress Code</div>
+                    <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
+                      Suits &amp; Smart Fits
+                    </div>
+                  </div>
+                </div>
+
+                <div style={glassesRowStyle}>
+                  <span>🥂</span>
+                  <span>🥂</span>
+                  <div style={glassesLabelStyle}>TurfKings Toast</div>
+                </div>
+
+                <div style={sparkleRowStyle}>
+                  <span>✦ Photos</span>
+                  <span>✦ Stories</span>
+                  <span>✦ Drinks</span>
+                </div>
+              </div>
+
+              <div style={artCornerBadgeStyle}>Year-End 2025</div>
+
+              {!isNarrow && (
+                <>
+                  <div style={artBottomRibbonStyle}>
+                    <div style={artBottomRibbonInnerStyle} />
+                  </div>
+                  <div style={artBottomTextStyle}>5 DECEMBER · 18:00 · HAVEVA</div>
+                </>
+              )}
+            </div>
+          </section>
+        </details>
+</details>
+      )}
+
+      {renderCustomStoriesAt("before-recap")}
+
+      {/* MATCH-BY-MATCH RECAP */}
+      <section className="card">
+        <div className="news-recap-header">
+          <h2>Match-by-match recap</h2>
+          <span className="news-recap-subtitle">Match-day {latestMatchDayLabel}</span>
+        </div>
+
+        {recapResults.length === 0 ? (
+          <p className="muted">No matches recorded for the latest saved match-day yet.</p>
+        ) : (
+          <ul className="news-match-list">
+            {recapResults.map((r) => {
+              const events = getDisplayEventsForRecapMatch(r);
+              return (
+                <li key={r.matchNo} className="news-match-item">
+                  <div className="news-match-header">
+                    <span className="news-match-number">
+                      Match #{r.matchNo} – {latestMatchDayLabel}
+                    </span>
+                    <span className="news-match-scoreline">
+                      <span>{getTeamName(r.teamAId)}</span>
+                      <span className="score">
+                        {r.goalsA} – {r.goalsB}
+                      </span>
+                      <span>{getTeamName(r.teamBId)}</span>
+                    </span>
+                  </div>
+
+                  {events.length === 0 ? (
+                    <p className="muted small">No event breakdown stored for this match.</p>
+                  ) : (
+                    <ul className="news-event-list">
+                      {events.map((e) => {
+                        const abbr = getPlayerTeamAbbrev(e.scorer);
+                        const assistPart = e.assist ? ` (assist: ${normalizeName(e.assist)})` : "";
+                        const teamSuffix = abbr ? `, ${abbr}` : "";
+                        return (
+                          <li key={e.id} className="news-event-item">
+                            <span className="news-event-time">
+                              {formatSecondsSafe(e.timeSeconds)}
+                            </span>
+                            <span className="news-event-text">
+                              <strong>{e.type === "shibobo" ? "Shibobo" : "Goal"}</strong> –{" "}
+                              {normalizeName(e.scorer)}
+                              {assistPart}
+                              {teamSuffix}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {isTurfKingsClub && showRSVP && (
+        <RSVPModal
+          identity={identity}
+          onClose={() => setShowRSVP(false)}
+        />
+      )}
+
+      {isTurfKingsClub && showProgramModal && (
+        <YearEndProgramModal
+          identity={identity}
+          onClose={() => setShowProgramModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function formatSecondsSafe(s) {
+  const v = typeof s === "number" && !Number.isNaN(s) && s >= 0 ? s : 0;
+  const m = Math.floor(v / 60)
+    .toString()
+    .padStart(2, "0");
+  const sec = (v % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${m}:${sec}`;
+}
+
+function getInitials(name) {
+  if (!name || typeof name !== "string") return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function formatMatchDayDate(input) {
+  let d = null;
+  if (input instanceof Date) d = input;
+  else if (typeof input === "string") {
+    const tmp = new Date(input);
+    if (!Number.isNaN(tmp.getTime())) d = tmp;
+  }
+  if (!d) return "";
+
+  const day = d.getDate().toString().padStart(2, "0");
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const month = months[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+}

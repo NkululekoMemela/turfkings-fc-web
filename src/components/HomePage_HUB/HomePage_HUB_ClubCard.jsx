@@ -98,8 +98,11 @@ export default function HomePage_HUB_ClubCard({
   canJoin = true,
   canChallenge = false,
   canDelete = false,
+  initialFace = 0,
+  freezeFace = false,
+  faceCount = 3,
 }) {
-  const [faceIndex, setFaceIndex] = useState(0);
+  const [faceIndex, setFaceIndex] = useState(initialFace);
   const [isPaused, setIsPaused] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
 
@@ -121,9 +124,12 @@ export default function HomePage_HUB_ClubCard({
   const highlightPreview = getHighlightPreview(club);
   const videoUrl = getClubVideoUrl(club);
   const playerCount = club?.playerCount ?? club?.memberCount ?? club?.playersCount ?? 0;
-  const distanceValue = Number.isFinite(Number(club?.distanceKm))
-    ? `${Number(club.distanceKm).toFixed(Number(club.distanceKm) < 10 ? 1 : 0)} km`
-    : "Near you";
+  const distanceValue = club?.distanceKm != null &&
+    Number.isFinite(Number(club.distanceKm))
+      ? `${club.distanceUncertain ? "~" : ""}${Number(club.distanceKm).toFixed(
+          Number(club.distanceKm) < 10 ? 1 : 0
+        )} km`
+      : "Distance unavailable";
   const gamesPlayed = Number(
     club?.weeksPlayed ??
       club?.matchWeeksPlayed ??
@@ -142,14 +148,14 @@ export default function HomePage_HUB_ClubCard({
     : "Local Club";
 
   useEffect(() => {
-    if (isPaused) return undefined;
+    if (isPaused || freezeFace) return undefined;
 
     const timer = window.setInterval(() => {
-      setFaceIndex((current) => (current + 1) % 3);
+      setFaceIndex((current) => (current + 1) % faceCount);
     }, 7000);
 
     return () => window.clearInterval(timer);
-  }, [isPaused]);
+  }, [isPaused, freezeFace, faceCount]);
 
   if (!club) return null;
 
