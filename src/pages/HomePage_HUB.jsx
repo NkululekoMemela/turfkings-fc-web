@@ -469,6 +469,7 @@ export default function HomePage_HUB({
   onJoinClub,
   onChallengeClub,
   onNavigateToEntryPage,
+  onBackToWelcome,
 }) {
   const [showTour, setShowTour] = React.useState(false);
   const [clubFeaturedVideos, setClubFeaturedVideos] = useState({});
@@ -1412,6 +1413,9 @@ export default function HomePage_HUB({
         <div className="hub-section-head hub-section-head--clubs-first">
           <div>
             <span className="hub-kicker">Discover clubs near you</span>
+            <div style={{
+              display: "flex", alignItems: "center", gap: "10px",
+            }}>
             {isSuperAdmin(currentUser) ? (
               <button
                 type="button"
@@ -1424,6 +1428,24 @@ export default function HomePage_HUB({
                 Admin
               </button>
             ) : null}
+              <button
+                type="button"
+                onClick={() => onBackToWelcome?.()}
+                aria-label="Back to welcome"
+                title="Back to welcome"
+                style={{
+                  width: "44px", height: "44px", flexShrink: 0,
+                  display: "grid", placeItems: "center",
+                  borderRadius: "50%",
+                  border: "1px solid rgba(148,163,184,.3)",
+                  background: "rgba(15,23,42,.6)",
+                  color: "#a7f3d0", fontSize: "30px",
+                  lineHeight: 1, cursor: "pointer",
+                }}
+              >
+                <span aria-hidden="true">↶</span>
+              </button>
+            </div>
           </div>
         </div>
 

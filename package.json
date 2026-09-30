@@ -19,7 +19,9 @@
     "native:sync:android": "npm run build:native && cap sync android",
     "native:open:android": "cap open android",
     "preview:staging": "npm run build:staging && vite preview --host 0.0.0.0 --port 5178",
-    "preview:production": "npm run build:production && vite preview --host 0.0.0.0 --port 5178"
+    "preview:production": "npm run build:production && vite preview --host 0.0.0.0 --port 5178",
+    "build:native:dev": "FANM_NATIVE_BUILD=1 VITE_FIREBASE_ENV=staging vite build --mode staging",
+    "native:sync:android:dev": "npm run build:native:dev && cap sync android"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.1",

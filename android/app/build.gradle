@@ -17,6 +17,16 @@ android {
         }
     }
     buildTypes {
+        dev {
+            initWith debug
+            applicationIdSuffix '.dev'
+            versionNameSuffix '-dev'
+            matchingFallbacks = ['debug']
+            resValue 'string', 'app_name', (project.findProperty('nativeAppLabel') ?: '5 Asides Near Me - DEV')
+            resValue 'string', 'title_activity_main', (project.findProperty('nativeAppLabel') ?: '5 Asides Near Me - DEV')
+            resValue 'string', 'package_name', 'com.fiveasidesnearme.app.dev'
+            resValue 'string', 'custom_url_scheme', 'com.fiveasidesnearme.app.dev'
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

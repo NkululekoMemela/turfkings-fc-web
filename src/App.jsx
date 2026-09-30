@@ -9617,6 +9617,7 @@ export default function App() {
 
       {page === PAGE_HOME && (
         <HomePage_HUB
+          onBackToWelcome={() => setPage(PAGE_WELCOME)}
           identity={identity}
           onRegisterClub={() => {
             window.alert("Club registration wizard is coming next.");
