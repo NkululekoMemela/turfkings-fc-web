@@ -5637,7 +5637,28 @@ export default function VenueEntryPage({
               )
             : nextFixture;
           if (!fixture?.id || !venueSeason?.id) {
-            window.alert("Select a Field fixture before opening the camera.");
+            if (liveMatch) {
+              window.alert(
+                "The live match's fixture could not be loaded. Return to the live match and retry Camera."
+              );
+              return;
+            }
+
+            const proceed = window.confirm(
+              "No Field fixture is ready yet. Open Camera for phone-only recording? " +
+              "This recording will not be uploaded to the Field League."
+            );
+            if (!proceed) return;
+
+            const payload = {
+              sourceApp: "5 Asides Near Me",
+              canUseOutsideOfficialMatch: true,
+              matchIsLive: false,
+              gameFormat: venueSeason?.gameFormat || "5_V_5",
+            };
+            window.location.href =
+              "fiveasidesnearmecamera://open?payload=" +
+              encodeURIComponent(JSON.stringify(payload));
             return;
           }
 

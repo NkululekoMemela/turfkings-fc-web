@@ -120,7 +120,7 @@ export default function FieldPortalTile({
       }}>{subtitle}</small>}
     </button>
     {travelling && createPortal(
-      <FieldTravelSplash destination={destination} />,
+      <FieldTravelSplash destination={destination} destinationKind={clubId ? "club" : "field"} />,
       document.body
     )}
 
@@ -128,7 +128,7 @@ export default function FieldPortalTile({
   );
 }
 
-export function FieldPortalDialog({ children, onClose }) {
+export function FieldPortalDialog({ children, onClose, fullscreen = false }) {
   const ref = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -137,7 +137,7 @@ export function FieldPortalDialog({ children, onClose }) {
   }, []);
 
   return createPortal(
-    <div role="presentation" style={{
+    <div className={fullscreen ? "field-discovery-screen" : undefined} role="presentation" style={{
       position: "fixed", inset: 0, zIndex: 11000,
       display: "grid", placeItems: "center", padding: "12px",
       background: "rgba(2,6,23,.85)",
@@ -155,7 +155,7 @@ export function FieldPortalDialog({ children, onClose }) {
         }
       }
     }}>
-      <div ref={ref} role="dialog" aria-modal="true" aria-label="Field portal"
+      <div ref={ref} className={fullscreen ? "field-discovery-screen__body" : undefined} role="dialog" aria-modal="true" aria-label="Club Field membership"
         style={{
           boxSizing: "border-box", width: "min(100%,460px)",
           minWidth: 0, maxHeight: "calc(100dvh - 24px)",
@@ -163,7 +163,7 @@ export function FieldPortalDialog({ children, onClose }) {
           background: "#111827", color: "#fff", padding: "12px",
         }}>
         <button type="button" className="secondary-btn"
-          onClick={onClose} style={{ marginBottom: "12px" }}>Close portal ×</button>
+          onClick={onClose} style={{ marginBottom: "12px" }}>Close ×</button>
         {children}
       </div>
     </div>,

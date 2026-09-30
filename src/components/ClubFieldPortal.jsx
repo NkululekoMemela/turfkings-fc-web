@@ -42,7 +42,10 @@ export default function ClubFieldPortal({
       setLoading(false);
     }, fail);
     const stopFields = watchLeagueVenues(setFields, fail);
-    return () => {
+    // Club visitors travel only after their Club joins a Field.
+
+
+  return () => {
       stopClub();
       stopMembership();
       stopFields();
@@ -83,6 +86,8 @@ export default function ClubFieldPortal({
     }
   }
 
+  if (!hasMembership && !canManage) return null;
+
   return (
     <>
       <div className="field-travel-tile-slot" style={{ position: "relative", minWidth: 0 }}>
@@ -113,7 +118,7 @@ export default function ClubFieldPortal({
         )}
       </div>
       {portalOpen && (
-        <FieldPortalDialog onClose={() => { if (!busy) setPortalOpen(false); }}>
+        <FieldPortalDialog fullscreen onClose={() => { if (!busy) setPortalOpen(false); }}>
     <section className="field-discovery-panel" aria-label="Club Field membership" style={{
       display: "grid", gap: ".65rem", marginBottom: "1rem",
       padding: "1rem", border: "1px solid rgba(251,191,36,.5)",
@@ -123,7 +128,7 @@ export default function ClubFieldPortal({
       <h2 className="field-discovery-title">Fields near you</h2>
       {loading ? <p role="status">Loading your Club's Field…</p> : (
         <>
-          {hasMembership ? (
+          {hasMembership && !chooseField ? (
             <>
               <strong>{field?.name || "Your Club's Field"}</strong>
               <button type="button" className="primary-btn"
@@ -169,7 +174,7 @@ export default function ClubFieldPortal({
         </>
       )}
       {error && <p role="alert" className="error-text">{error}</p>}
-      {canManage && typeof onExploreFields === "function" && (
+      {canManage && !chooseField && typeof onExploreFields === "function" && (
         <button type="button" className="secondary-btn" onClick={onExploreFields}>
           Explore Fields ↗
         </button>

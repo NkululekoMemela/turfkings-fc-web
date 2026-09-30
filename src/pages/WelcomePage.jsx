@@ -1,3 +1,4 @@
+import { buildClubIdentity } from "../core/clubIdentity.js";
 import FiveAsideLoadingPitch from "../components/FiveAsideLoadingPitch.jsx";
 import React, { useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
@@ -120,7 +121,14 @@ export default function WelcomePage({
         const distanceKm = 6371 * 2 *
           Math.atan2(Math.sqrt(halfChord), Math.sqrt(1 - halfChord));
 
-        return [{ ...data, id: item.id, distanceKm }];
+        const identity = buildClubIdentity({ ...data, id: item.id });
+        return [{
+          ...data,
+          id: item.id,
+          distanceKm,
+          image: identity.logoUrl,
+          logoUrl: identity.logoUrl,
+        }];
       }).sort((left, right) => left.distanceKm - right.distanceKm);
 
       setClubsWithoutCoordinates(
@@ -236,7 +244,7 @@ export default function WelcomePage({
 
         {pickerOpen && (
           <div
-            className="fanm-nearby-backdrop"
+            className={`fanm-nearby-backdrop nearby-discovery-screen${pickerStatus === "loading" ? " is-loading" : ""}`}
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) closePicker();
             }}

@@ -631,7 +631,7 @@ export default function VenueLeagueAccessPanel({
   }
 
   const tabs = [
-    ["club_rep", "🏟️ Club rep"],
+    ["club_rep", "🛡️ Club rep"],
     ["field_staff", "🦺 Field staff"],
     ["spectator", "👁️ Spectator"],
   ];
