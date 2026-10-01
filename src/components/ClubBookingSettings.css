@@ -1,0 +1,212 @@
+.card.signup-summary-card.club-booking-settings {
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  color: #e2e8f0;
+  border: 1px solid rgba(148,163,184,.25);
+  background: linear-gradient(145deg, #101e32, #0b1425);
+  box-shadow: 0 12px 32px rgba(2,6,23,.18);
+}
+.club-booking-settings * { box-sizing: border-box; }
+.club-booking-settings__header {
+  display: flex; align-items: center; gap: 14px;
+  padding: 20px; cursor: pointer; list-style: none;
+}
+.club-booking-settings__header::-webkit-details-marker { display: none; }
+.club-booking-settings__header:focus-visible {
+  outline: 2px solid #5eead4; outline-offset: -3px;
+}
+.club-booking-settings__icon {
+  width: 44px; height: 44px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 14px;
+  color: #5eead4; background: rgba(45,212,191,.09);
+  border: 1px solid rgba(45,212,191,.22);
+}
+.club-booking-settings__heading {
+  display: grid; gap: 4px; flex: 1; min-width: 0;
+}
+.club-booking-settings__eyebrow {
+  color: #5eead4; font-size: 9px; font-weight: 800; letter-spacing: .13em;
+}
+.club-booking-settings__heading strong { font-size: 17px; line-height: 1.3; }
+.club-booking-settings__heading small { color: #94a3b8; font-size: 12px; }
+.club-booking-settings__badge {
+  padding: 7px 11px; border-radius: 999px; white-space: nowrap;
+  color: #cbd5e1; background: rgba(148,163,184,.08);
+  border: 1px solid rgba(148,163,184,.17);
+  font-size: 11px; font-weight: 700;
+}
+.club-booking-settings__chevron { color: #94a3b8; font-size: 22px; }
+.club-booking-settings[open] .club-booking-settings__chevron { transform: rotate(180deg); }
+.club-booking-settings__form {
+  padding: 0 20px 20px;
+  border-top: 1px solid rgba(148,163,184,.12);
+}
+.club-booking-settings__grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 14px; padding-top: 18px;
+}
+.club-booking-settings__tile {
+  padding: 18px; min-width: 0; border-radius: 14px;
+  background: rgba(148,163,184,.04);
+  border: 1px solid rgba(148,163,184,.13);
+}
+.club-booking-settings__tile label { color: #f1f5f9; font-size: 14px; font-weight: 750; }
+.club-booking-settings__tile p {
+  margin: 7px 0 14px; color: #94a3b8; font-size: 12px; line-height: 1.5;
+}
+.club-booking-settings__tile small {
+  display: block; margin-top: 12px; color: #94a3b8; font-size: 11px; line-height: 1.6;
+}
+.club-booking-settings__input-wrap {
+  display: flex; align-items: center; gap: 10px;
+  height: 52px; padding: 0 14px; border-radius: 12px;
+  background: #091323; border: 1px solid rgba(148,163,184,.25);
+}
+.club-booking-settings__input-wrap:focus-within { border-color: #5eead4; }
+.club-booking-settings__input-wrap input {
+  width: 100%; min-width: 0; height: 100%;
+  margin: 0; padding: 0; color: #f8fafc;
+  background: transparent; border: 0; outline: none;
+  font-size: 23px; font-weight: 800; box-shadow: none;
+}
+.club-booking-settings__input-wrap span {
+  color: #94a3b8; font-size: 12px; white-space: nowrap;
+}
+.club-booking-settings__fee-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.club-booking-settings__switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+.club-booking-settings__switch input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  margin: 0; opacity: 0; z-index: 1; cursor: pointer;
+}
+.club-booking-settings__switch > span {
+  display: block; width: 42px; height: 24px; border-radius: 999px;
+  background: #334155; border: 1px solid #475569;
+}
+.club-booking-settings__switch > span::after {
+  content: ""; display: block; width: 18px; height: 18px;
+  margin: 2px; border-radius: 50%; background: #cbd5e1;
+}
+.club-booking-settings__switch input:checked + span {
+  background: #0f766e; border-color: #2dd4bf;
+}
+.club-booking-settings__switch input:checked + span::after {
+  transform: translateX(18px); background: #f0fdfa;
+}
+.club-booking-settings__switch input:focus-visible + span {
+  outline: 2px solid #5eead4; outline-offset: 3px;
+}
+.club-booking-settings__deadline {
+  display: flex; gap: 12px; padding: 16px 0; margin-top: 4px;
+}
+.club-booking-settings__deadline > span { color: #fbbf24; font-size: 22px; }
+.club-booking-settings__deadline strong { font-size: 12px; color: #e2e8f0; }
+.club-booking-settings__deadline p {
+  margin: 5px 0 0; color: #94a3b8; font-size: 11px; line-height: 1.6;
+}
+.club-booking-settings__footer {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; border-top: 1px solid rgba(148,163,184,.12); padding-top: 16px;
+}
+.club-booking-settings__footer > span { color: #94a3b8; font-size: 11px; }
+.club-booking-settings__footer button {
+  width: auto; min-height: 42px; padding: 10px 22px;
+  border-radius: 12px; font-weight: 750;
+}
+.club-booking-settings__message { margin: 14px 0 0; font-size: 12px; color: #cbd5e1; }
+@media (max-width: 600px) {
+  .club-booking-settings__header { padding: 16px; gap: 10px; }
+  .club-booking-settings__heading strong { font-size: 15px; }
+  .club-booking-settings__heading small { font-size: 11px; }
+  .club-booking-settings__badge { display: none; }
+  .club-booking-settings__form { padding: 0 16px 16px; }
+  .club-booking-settings__grid { grid-template-columns: 1fr; }
+}
+
+/* Compact player booking notice */
+.card.signup-summary-card.booking-notice {
+  padding: 20px;
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 22px;
+  background: linear-gradient(140deg, #142238, #0b1425);
+  color: #e2e8f0;
+}
+.booking-notice__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.booking-notice__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 13px;
+  background: rgba(56,189,248,.1);
+  color: #7dd3fc;
+}
+.booking-notice__icon svg { width: 23px; height: 23px; }
+.booking-notice__eyebrow {
+  color: #94a3b8;
+  font-size: 9px;
+  letter-spacing: .15em;
+  font-weight: 750;
+}
+.booking-notice__header h3 {
+  margin: 4px 0 0;
+  font-size: 17px;
+  letter-spacing: -.02em;
+}
+.booking-notice__dates {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.booking-notice__date {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.booking-notice__date strong { font-size: 15px; }
+.booking-notice__date > span {
+  font-size: 11px;
+  color: #7dd3fc;
+  font-weight: 700;
+}
+.booking-notice__copy,
+.booking-notice__dates p {
+  margin: 12px 0 0;
+  color: #a8b6c9;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.booking-notice__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid rgba(148,163,184,.14);
+}
+.booking-notice__total > div {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.booking-notice__total small {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+}
+.booking-notice__total > strong {
+  color: #fcd34d;
+  font-size: 16px;
+  letter-spacing: -.02em;
+}

@@ -34,10 +34,6 @@ import {
   normalizeGameFormat,
 } from "../core/matchConfig.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
-import {
-  isCaptainCode,
-  isAdminCode,
-} from "../core/accessCodes.js";
 
 import {
   FANM_NATIONAL_TEAMS,
@@ -47,7 +43,6 @@ import TeamIdentityPicker from "../components/TeamIdentityPicker/TeamIdentityPic
 
 
 import TeamIdentityEditor from "../components/TeamIdentityEditor";
-const MASTER_CODE = "3333"; // Platform admin fallback
 const UNSEEDED_ID = "__unseeded__";
 const GUEST_OPPONENT_ID = "guest_opponent";
 const TURF_KINGS_CHALLENGE_ID = "turf_kings_challenge";
@@ -2660,8 +2655,8 @@ export function SquadsPage({
       return;
     }
 
-    if (deleteCode.trim() !== MASTER_CODE) {
-      setDeletePlayerError("Invalid admin code. Membership was not terminated.");
+    if (!isAdmin || deleteCode.trim().toUpperCase() !== "DELETE") {
+      setDeletePlayerError("Type DELETE to confirm. Membership was not terminated.");
       return;
     }
 
@@ -2734,11 +2729,11 @@ export function SquadsPage({
 
     const trimmedCode = String(saveCode || "").trim();
 
-    const validAdmin = isAdminCode(trimmedCode, MASTER_CODE);
-    const validCaptain = isCaptainCode(trimmedCode);
+    const validAdmin = isAdmin;
+    const validCaptain = canEdit && !isAdmin;
 
-    if (!validAdmin && !validCaptain) {
-      setSaveError("Invalid access code.");
+    if (trimmedCode.toUpperCase() !== "CONFIRM") {
+      setSaveError("Type CONFIRM to save squad changes.");
       return;
     }
 
@@ -4042,7 +4037,7 @@ export function SquadsPage({
                   <strong style={{ color: "#ffffff" }}>Captain edit control</strong>
                   <div style={{ marginTop: "0.25rem" }}>
                     This is your admin control. Keep captains locked when you do not want them changing squads.
-                    Unlock captains when you want them to help set teams, edit squads, and save using a captain code.
+                    Unlock captains when you want them to help set teams, edit squads, and save using a typed confirmation.
                   </div>
                   </div>
                 </div>
@@ -4650,16 +4645,16 @@ export function SquadsPage({
             </p>
 
             <div className="field-row">
-              <label>Admin code</label>
+              <label>Type DELETE to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={deleteCode}
                 onChange={(e) => {
                   setDeleteCode(e.target.value);
                   setDeletePlayerError("");
                 }}
-                placeholder="Enter admin code to confirm"
+                placeholder="Type DELETE to confirm"
               />
             </div>
 
@@ -4699,12 +4694,12 @@ export function SquadsPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Squad Changes</h3>
-            <p>Enter the ${activeClubName} admin code to apply squad changes.</p>
+            <p>Type CONFIRM to apply squad changes.</p>
 
             <div className="field-row">
-              <label>Admin code</label>
+              <label>Type CONFIRM to save</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={saveCode}
                 onChange={(e) => {

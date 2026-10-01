@@ -1124,10 +1124,41 @@ exports.createYocoCheckout = onRequest(
       const signupData = signupSnap.exists ? (signupSnap.data() || {}) : {};
       console.log("[createYocoCheckout] signup read ms:", Date.now() - tSignupRead0);
 
+      const clubSnap = await db.collection("clubs").doc(activeClubId).get();
+      const clubData = clubSnap.data() || {};
+      const policy = clubData.bookingSettings?.lateBookingFee || {};
+      if (policy.enabled === true && !signupSnap.exists) {
+        return res.status(400).json({
+          ok: false, error: "Return to signup before creating a payment.",
+        });
+      }
       const paymentState = computeSignupPaymentState({
         signup: signupData,
-        requestBody: body,
+        requestBody: policy.enabled === true ? {
+          serviceFeePerGame:
+            clubData.paymentSettings?.pricingModel?.serviceFeePerPlayer ?? 7.5,
+        } : body,
       });
+      const {calculateLateBookingFee} = await import("./lateBookingPolicy.mjs");
+      const lateBookingFee = calculateLateBookingFee({
+        policy,
+        games: [
+          ...paymentState.unpaidPrimaryWeeks.map((id) => ({
+            id: `primary:${id}`, monthKey: String(id).slice(0, 7),
+          })),
+          ...paymentState.unpaidSecondWeeks.map((id) => ({
+            id: `second:${id}`, monthKey: String(id).slice(0, 7),
+          })),
+        ],
+      });
+      if (policy.enabled === true &&
+          Number(body.quotedLateBookingFee) !== lateBookingFee.amount) {
+        return res.status(409).json({
+          ok: false,
+          error: "Booking fees changed. Refresh the payment page and review the total.",
+        });
+      }
+      paymentState.outstandingAmount += lateBookingFee.amount;
 
       if (paymentState.outstandingAmount <= 0) {
         return res.status(200).json({
@@ -1289,6 +1320,10 @@ exports.createYocoCheckout = onRequest(
       }
 
       const paymentRecord = {
+        lateBookingFee: lateBookingFee.amount,
+        lateBookingGameCount: lateBookingFee.lateGameCount,
+        lateBookingGames: lateBookingFee.lateGames,
+        serviceFeePerGame: paymentState.serviceFeePerGame,
         provider: "yoco",
         status: "checkout_created",
         signupDocId,

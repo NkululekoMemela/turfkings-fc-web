@@ -155,7 +155,6 @@ function writeSessionModeIntent(mode) {
   }
 }
 
-const MASTER_CODE = "3333";
 const DEFAULT_LEAGUE_MATCH_SECONDS = 5 * 60;
 const DEFAULT_FRIENDLY_MATCH_SECONDS = 60 * 60;
 const DEFAULT_MATCH_SECONDS = DEFAULT_FRIENDLY_MATCH_SECONDS;
@@ -7199,8 +7198,8 @@ export default function App() {
   };
 
   const requireAdminCode = () => {
-    if (backupCode.trim() !== MASTER_CODE) {
-      setBackupError("Invalid admin code.");
+    if (!isAdmin || backupCode.trim().toUpperCase() !== "ADMIN") {
+      setBackupError("Type ADMIN to confirm.");
       return false;
     }
     return true;
@@ -7259,8 +7258,8 @@ export default function App() {
   };
 
   const handleConfirmClearOnly = () => {
-    if (clearOnlyConfirmCode.trim() !== MASTER_CODE) {
-      setClearOnlyConfirmError("Invalid admin code. Nothing has been cleared.");
+    if (!isAdmin || clearOnlyConfirmCode.trim().toUpperCase() !== "DELETE") {
+      setClearOnlyConfirmError("Type DELETE to confirm. Nothing has been cleared.");
       return;
     }
 
@@ -7344,8 +7343,8 @@ export default function App() {
   };
 
   const handleSaveAndClearMatchDay = async () => {
-    if (saveConfirmCode.trim() !== MASTER_CODE) {
-      setSaveConfirmError("Invalid admin code. Nothing has been saved or cleared.");
+    if (!isAdmin || saveConfirmCode.trim().toUpperCase() !== "ADMIN") {
+      setSaveConfirmError("Type ADMIN to confirm. Nothing has been saved or cleared.");
       return;
     }
 
@@ -7643,8 +7642,8 @@ export default function App() {
   };
 
   const requireAdminCodeEndSeason = () => {
-    if (endSeasonCode.trim() !== MASTER_CODE) {
-      setEndSeasonError("Invalid admin code.");
+    if (!isAdmin || endSeasonCode.trim().toUpperCase() !== "ADMIN") {
+      setEndSeasonError("Type ADMIN to confirm.");
       return false;
     }
     return true;
@@ -11255,10 +11254,10 @@ export default function App() {
 
             <div className="field-row">
               <label>
-  Admin code {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}
+  Type ADMIN to confirm {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}
 </label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 style={{
                   width: "100%",
@@ -11353,15 +11352,15 @@ export default function App() {
               go back and use <strong>Save to server &amp; clear</strong> instead.
             </p>
             <p style={{ lineHeight: 1.5, color: "#fde68a", fontWeight: 800 }}>
-              Do not enter the code unless you are intentionally deleting test data.
+              Type DELETE only if you intend to discard this match-day data.
             </p>
 
             <div className="field-row">
               <label>
-  Re-enter admin code {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""} to confirm discard
+  Type DELETE {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""} to confirm discard
 </label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 style={{
                   width: "100%",
@@ -11519,9 +11518,9 @@ export default function App() {
               Match Day is separate.)
             </p>
             <div className="field-row">
-              <label>Admin code {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}</label>
+              <label>Type ADMIN to confirm {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 style={{
                   width: "100%",

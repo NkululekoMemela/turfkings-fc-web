@@ -1,9 +1,9 @@
+import MatchTeamChooser from "../components/MatchTeamChooser.jsx";
 // src/pages/LandingPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import ClubFieldPortal from "../components/ClubFieldPortal.jsx";
 import { getTeamById } from "../core/teams.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
-import { GLOBAL_CAPTAIN_CODES } from "../core/accessCodes.js";
 import {
   FANM_PRO_CLUBS,
 } from "../data/fanm/fanmTeamLibrary.js";
@@ -20,7 +20,6 @@ import {
   normalizeMatchMode,
 } from "../core/matchConfig.js";
 
-const CAPTAIN_CODES = GLOBAL_CAPTAIN_CODES;
 
 function landingTeamIdentityKey(value) {
   return String(value || "")
@@ -443,14 +442,6 @@ export function LandingPage({
     return "spectator";
   }, [resolvedRole]);
 
-
-  const activeCaptainCodes = useMemo(() => {
-    const code = String(adminCode || "3333").trim() || "3333";
-    return Array.from(new Set([...CAPTAIN_CODES, code]));
-  }, [adminCode]);
-
-  const isAdminCode = (value) =>
-    String(value || "").trim() === (String(adminCode || "3333").trim() || "3333");
 
   const closeSettingsPanelAfterPopup = () => {
     setShowSettingsPanel(false);
@@ -1067,8 +1058,8 @@ export function LandingPage({
   const confirmPairingChange = () => {
     if (!pendingMatch) return;
 
-    if (!CAPTAIN_CODES.includes(pairingCode.trim())) {
-      setPairingError("Invalid captain code.");
+    if (!canStartMatch || pairingCode.trim().toUpperCase() !== "CONFIRM") {
+      setPairingError("Type CONFIRM to continue.");
       return;
     }
 
@@ -1227,8 +1218,8 @@ export function LandingPage({
   const confirmGameFormatChange = () => {
     if (!pendingGameFormat) return;
 
-    if (!activeCaptainCodes.includes(formatCode.trim())) {
-      setFormatError("Invalid captain code.");
+    if (!canSeeCaptainStyleControls || formatCode.trim().toUpperCase() !== "CONFIRM") {
+      setFormatError("Type CONFIRM to continue.");
       return;
     }
 
@@ -1313,55 +1304,6 @@ export function LandingPage({
     );
     onUpdateMatchSeconds?.(resolvedDefaultMatchSeconds, resolvedMatchType);
     closeDurationModal();
-  };
-
-  const generateAdminCode = () => {
-    if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
-      const values = new Uint32Array(1);
-      window.crypto.getRandomValues(values);
-      return String(1000 + (values[0] % 9000));
-    }
-
-    return String(Math.floor(1000 + Math.random() * 9000));
-  };
-
-  const handleRegenerateAdminCode = async () => {
-    if (!isAdmin) return;
-
-    if (typeof onUpdateAdminCode !== "function") {
-      setAdminCodeStatus("Admin code updater is not connected yet.");
-      return;
-    }
-
-    const ok = window.confirm(
-      "Generate a new admin code?\n\nThe old admin code will stop working for admin-only actions."
-    );
-    if (!ok) return;
-
-    const nextCode = generateAdminCode();
-    setAdminCodeStatus("");
-    setAdminCodeBusy(true);
-
-    try {
-      const result = await onUpdateAdminCode({
-        currentCode: adminCode,
-        nextCode,
-      });
-
-      if (!result?.ok) {
-        setAdminCodeStatus(result?.message || "Could not update admin code.");
-        return;
-      }
-
-      setShowCodes(true);
-      setCodeCopyStatus("");
-      setAdminCodeStatus(`New admin code generated: ${nextCode}`);
-    } catch (error) {
-      console.error("[TK SETTINGS] Admin code update failed:", error);
-      setAdminCodeStatus("Could not update admin code.");
-    } finally {
-      setAdminCodeBusy(false);
-    }
   };
 
   return (
@@ -2066,48 +2008,7 @@ export function LandingPage({
               <span aria-hidden="true" className="muted small">Edit</span>
             </button>
 
-            {(isAdmin || isCaptain) && (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => {
-                  setAdminCodeStatus("");
-                  setCodeCopyStatus("");
-                  setShowCodes(true);
-                  setShowAdminCodeModal(true);
-                }}
-                style={{
-                  width: "100%",
-                  minHeight: "42px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.75rem",
-                  borderRadius: "1rem",
-                  padding: "0.55rem 0.78rem",
-                  border: "1px solid rgba(148,163,184,0.18)",
-                  background: "rgba(15,23,42,0.42)",
-                  color: "#e5e7eb",
-                  textAlign: "left",
-                }}
-              >
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.55rem",
-                    minWidth: 0,
-                    fontWeight: 800,
-                  }}
-                >
-                  <span aria-hidden="true">🔐</span>
-                  <span>Click for password update</span>
-                </span>
-                <span className="muted small" style={{ whiteSpace: "nowrap" }}>
-                  View
-                </span>
-              </button>
-            )}
+
               </div>
             )}
           </div>
@@ -2144,11 +2045,23 @@ export function LandingPage({
           </section>
         )}
 
-        <h2>
-          {isThreeTeamLeague
-            ? `Upcoming League ${activeGameFormatLabel} Match #${currentMatchNo}`
-            : `Upcoming Friendly ${activeGameFormatLabel} Match`}
-        </h2>
+        <header className="match-preview-heading">
+          <div className="match-preview-heading__title">
+            <span className="match-preview-heading__eyebrow">NEXT ON THE PITCH</span>
+            <h2>Upcoming match:</h2>
+          </div>
+          <div className="match-preview-heading__details">
+            <span className="match-preview-heading__mode">
+              {isThreeTeamLeague ? "League" : "Friendly"}
+            </span>
+            <span>{activeGameFormatLabel}</span>
+            {isThreeTeamLeague && (
+              <span className="match-preview-heading__number">
+                Match #{currentMatchNo}
+              </span>
+            )}
+          </div>
+        </header>
 
 
         {isFriendlyMatch && (
@@ -2168,37 +2081,27 @@ export function LandingPage({
                 : ""
             }`}
           >
-            <div className="team-select">
-              <label>On-field Team 1</label>
-              <select
-                value={teamAId || ""}
-                onChange={handleTeamAChange}
-                disabled={!canSeeCaptainStyleControls || fixturedMode}
-              >
-                {optionsForTeamA.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {renderOptionLabel(team)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <MatchTeamChooser
+              label="On-field Team 1"
+              value={teamAId || ""}
+              teams={optionsForTeamA}
+              renderLabel={renderOptionLabel}
+              onChange={handleTeamAChange}
+              disabled={!canSeeCaptainStyleControls || fixturedMode}
+              side="a"
+            />
 
-            <span className="vs-label">vs</span>
+            <span className="vs-label match-team-versus">VS</span>
 
-            <div className="team-select">
-              <label>On-field Team 2</label>
-              <select
-                value={teamBId || ""}
-                onChange={handleTeamBChange}
-                disabled={!canSeeCaptainStyleControls || fixturedMode}
-              >
-                {optionsForTeamB.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {renderOptionLabel(team)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <MatchTeamChooser
+              label="On-field Team 2"
+              value={teamBId || ""}
+              teams={optionsForTeamB}
+              renderLabel={renderOptionLabel}
+              onChange={handleTeamBChange}
+              disabled={!canSeeCaptainStyleControls || fixturedMode}
+              side="b"
+            />
           </div>
         )}
 
@@ -2939,187 +2842,70 @@ export function LandingPage({
 
       {showAdminCodeModal && (
         <div className="modal-backdrop">
-          <div
-            className="modal"
-            style={{
-              width: "min(92vw, 360px)",
-              padding: isMobile ? "0.92rem" : "1rem",
-              borderRadius: "1.05rem",
-              border: "1px solid rgba(148,163,184,0.20)",
-              background:
-                "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "0.75rem",
-                marginBottom: "0.65rem",
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: "1rem" }}>🔐 Access codes</h3>
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => setShowCodes((prev) => !prev)}
-                style={{ fontSize: "0.78rem", fontWeight: 850 }}
-              >
-                {showCodes ? "Hide" : "Show"}
-              </button>
-            </div>
-
-            <div style={{ display: "grid", gap: "0.5rem" }}>
-              {isAdmin && renderCodeRow("Admin", adminCode, "rgba(34,197,94,0.22)")}
-
-              {CAPTAIN_CODES.map((code, index) => (
-                <React.Fragment key={`captain-code-${code}-${index}`}>
-                  {renderCodeRow(`Captain ${index + 1}`, code)}
-                </React.Fragment>
-              ))}
-            </div>
-
-            {isAdmin && (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={handleRegenerateAdminCode}
-                disabled={adminCodeBusy}
-                style={{
-                  width: "100%",
-                  marginTop: "0.7rem",
-                  minHeight: "40px",
-                  borderRadius: "999px",
-                }}
-              >
-                {adminCodeBusy ? "Generating…" : "Generate new admin code"}
-              </button>
-            )}
-
-            {(adminCodeStatus || codeCopyStatus) && (
-              <p
-                className="muted small"
-                style={{
-                  margin: "0.58rem 0 0",
-                  color: (adminCodeStatus || codeCopyStatus).includes("copied") || (adminCodeStatus || codeCopyStatus).includes("generated") ? "#86efac" : "#fecaca",
-                  fontWeight: 750,
-                  lineHeight: 1.35,
-                }}
-              >
-                {adminCodeStatus || codeCopyStatus}
-              </p>
-            )}
-
-            <button
-              type="button"
-              className="primary-btn"
-              onClick={closeAdminCodeModal}
-              style={{
-                width: "100%",
-                marginTop: "0.75rem",
-                minHeight: "42px",
-                borderRadius: "999px",
-              }}
-            >
-              Done
-            </button>
+          <div className="modal">
+            <h3>Account permissions</h3>
+            <p>Admin and captain access follows your current account role.
+              Remembered access codes are no longer required.</p>
+            <p>For protected actions, type the confirmation word shown.</p>
+            <button type="button" className="primary-btn"
+              onClick={closeAdminCodeModal}>Done</button>
           </div>
         </div>
       )}
 
       {showDurationModal && (
-        <div className="modal-backdrop">
-          <div
-            className="modal"
-            style={{
-              width: "min(92vw, 420px)",
-              padding: isMobile ? "1rem" : "1.15rem",
-            }}
-          >
-            <h3 style={{ marginTop: 0, marginBottom: "0.35rem" }}>⏱️ Match Length</h3>
-            <p className="muted small" style={{ marginTop: 0 }}>
-              Default for {isThreeTeamLeague ? "League" : "Friendly"}: <strong>{defaultDurationLabel}</strong>
+        <div className="modal-backdrop duration-sheet-backdrop">
+          <div className="modal duration-sheet" role="dialog"
+            aria-modal="true" aria-labelledby="duration-sheet-title">
+            <header className="duration-sheet__header">
+              <div>
+                <span className="duration-sheet__eyebrow">MATCH SETTINGS</span>
+                <h3 id="duration-sheet-title">Time on the pitch</h3>
+              </div>
+              <button type="button" className="duration-sheet__close"
+                aria-label="Close match length" onClick={closeDurationModal}>×</button>
+            </header>
+
+            <label className="duration-sheet__display">
+              <span>Match duration</span>
+              <div>
+                <input type="number" min="1" max="180" step="0.5"
+                  aria-label="Match duration in minutes"
+                  value={durationDraftMinutes}
+                  onChange={event => setDurationDraftMinutes(event.target.value)}
+                  disabled={durationSwitchLocked} autoFocus />
+                <span>MINUTES</span>
+              </div>
+            </label>
+
+            <div className="duration-sheet__presets" aria-label="Quick durations">
+              {[5, 10, 15, 20].map(minutes => (
+                <button type="button" key={minutes}
+                  className={Number(durationDraftMinutes) === minutes ? "is-selected" : ""}
+                  aria-pressed={Number(durationDraftMinutes) === minutes}
+                  disabled={durationSwitchLocked}
+                  onClick={() => setDurationDraftMinutes(String(minutes))}>
+                  {minutes}<span>min</span>
+                </button>
+              ))}
+            </div>
+
+            <p className="duration-sheet__hint">
+              {durationSwitchLocked
+                ? "Match duration is locked for this match day."
+                : "Choose a quick duration or enter your own."}
             </p>
 
-            <div className="field-row">
-              <label>Minutes</label>
-              <div style={{ position: "relative" }}>
-                <input
-                  type="number"
-                  min="1"
-                  max="180"
-                  step="0.5"
-                  className="text-input"
-                  value={durationDraftMinutes}
-                  onChange={(e) => setDurationDraftMinutes(e.target.value)}
-                  disabled={durationSwitchLocked}
-                  autoFocus
-                  style={{
-                    width: "100%",
-                    paddingRight: "3.15rem",
-                    boxSizing: "border-box",
-                  }}
-                />
-                <span
-                  className="muted small"
-                  style={{
-                    position: "absolute",
-                    right: "0.75rem",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    pointerEvents: "none",
-                  }}
-                >
-                  min
-                </span>
-              </div>
-            </div>
-
-            {durationIsCustom && (
-              <p className="muted small" style={{ color: "#facc15", marginTop: "0.35rem" }}>
-                Custom length active.
-              </p>
-            )}
-
-            <div
-              className="actions-row"
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                gap: "0.55rem",
-                marginTop: "0.9rem",
-              }}
-            >
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={closeDurationModal}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="primary-btn"
+            <div className="duration-sheet__actions">
+              <button type="button" className="duration-sheet__cancel"
+                onClick={closeDurationModal}>Cancel</button>
+              <button type="button" className="duration-sheet__apply"
                 onClick={handleApplyMatchDuration}
-                disabled={durationSwitchLocked}
-              >
-                Apply
-              </button>
+                disabled={durationSwitchLocked}>Apply duration</button>
             </div>
-
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={handleResetMatchDuration}
-              disabled={durationSwitchLocked}
-              style={{
-                width: "100%",
-                marginTop: "0.55rem",
-                borderRadius: "999px",
-              }}
-            >
-              Reset to {defaultDurationLabel}
+            <button type="button" className="duration-sheet__reset"
+              onClick={handleResetMatchDuration} disabled={durationSwitchLocked}>
+              Restore {isThreeTeamLeague ? "League" : "Friendly"} default · {defaultDurationLabel}
             </button>
           </div>
         </div>
@@ -3159,9 +2945,9 @@ export function LandingPage({
             </p>
 
             <div className="field-row">
-              <label>Captain code</label>
+              <label>Type CONFIRM to continue</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={formatCode}
                 onChange={(e) => {
@@ -3194,12 +2980,12 @@ export function LandingPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Match Override</h3>
-            <p>Changing the next pairing requires a captain code.</p>
+            <p>Type CONFIRM to change the next pairing.</p>
 
             <div className="field-row">
-              <label>Captain code</label>
+              <label>Type CONFIRM to continue</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={pairingCode}
                 onChange={(e) => {
