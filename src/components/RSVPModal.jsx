@@ -17,8 +17,8 @@ const FRIEND_FEE = 75;
 // 🔐 True app admins (not just captains)
 const ADMIN_EMAILS = ["nkululekolerato@gmail.com"];
 
-// same code as your MASTER_CODE in App.jsx
-const ADMIN_CODE = "3333";
+// Explicit confirmation for destructive administrative actions
+// Administrative actions use explicit typed confirmation.
 
 export function RSVPModal({ identity, onClose }) {
   const [attendees, setAttendees] = useState([]);
@@ -253,7 +253,7 @@ export function RSVPModal({ identity, onClose }) {
     );
   }
 
-  // 🔥 ADMIN-ONLY: hard remove an attendee using admin code
+  // ADMIN-ONLY: remove an attendee after typed confirmation
   async function handleAdminRemove(attendee) {
     if (!isAdmin) return;
     if (!attendee?.name) return;
@@ -264,12 +264,12 @@ export function RSVPModal({ identity, onClose }) {
     if (!ok) return;
 
     const code = window.prompt(
-      "Enter admin code to remove this RSVP (this action cannot be undone):"
+      "Type DELETE to remove this RSVP. This action cannot be undone."
     );
     if (code === null) return; // cancelled
 
-    if (code !== ADMIN_CODE) {
-      alert("Incorrect admin code. RSVP not removed.");
+    if (String(code).trim().toUpperCase() !== "DELETE") {
+      alert("Type DELETE to confirm. RSVP not removed.");
       return;
     }
 

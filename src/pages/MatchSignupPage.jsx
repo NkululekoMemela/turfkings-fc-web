@@ -1,3 +1,6 @@
+import { saveSignupWithCapacity } from "../core/payments/saveSignupWithCapacity.js";
+import ClubBookingSettings from "../components/ClubBookingSettings.jsx";
+import { bookingDeadline, calculateLateBookingFee } from "../../functions/lateBookingPolicy.mjs";
 // src/pages/MatchSignupPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -8,7 +11,7 @@ import {
   getDocs,
   onSnapshot,
   query,
-  setDoc,
+  setDoc as firestoreSetDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
@@ -302,6 +305,9 @@ function mergeMatchSignupSettings(raw = {}) {
       ? weeklyDay
       : DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyDay,
     weeklyStartTime,
+    maxPlayers: Number.isInteger(Number(raw.maxPlayers)) &&
+      Number(raw.maxPlayers) >= 1 && Number(raw.maxPlayers) <= 100
+      ? Number(raw.maxPlayers) : MAX_PLAYERS,
     weeklyPrice: Number.isFinite(weeklyPrice) && weeklyPrice > 0
       ? weeklyPrice
       : DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyPrice,
@@ -480,7 +486,7 @@ function buildMatchDayFromDate(date, overrides = {}) {
 function getPrimarySignupScopeMonth() {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const shouldShiftToNextMonth = today.getDate() >= 25;
+  const shouldShiftToNextMonth = today.getDate() >= 24;
   const targetYear = shouldShiftToNextMonth
     ? now.getMonth() === 11
       ? now.getFullYear() + 1
@@ -500,7 +506,7 @@ function getMonthWednesdays({ visibleOnly = true, settings = DEFAULT_MATCH_SIGNU
   const mergedSettings = mergeMatchSignupSettings(settings);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const shouldShiftToNextMonth = today.getDate() >= 25;
+  const shouldShiftToNextMonth = today.getDate() >= 24;
 
   const monthTargets = [];
 
@@ -532,7 +538,7 @@ function getMonthWednesdays({ visibleOnly = true, settings = DEFAULT_MATCH_SIGNU
         const matchDay = buildMatchDayFromDate(candidate, {
           type: "weekly",
           title: getWeekdayName(mergedSettings.weeklyDay),
-          maxPlayers: MAX_PLAYERS,
+          maxPlayers: mergedSettings.maxPlayers,
           costPerGame: mergedSettings.weeklyPrice,
         });
         byId.set(matchDay.id, matchDay);
@@ -1093,9 +1099,20 @@ export default function MatchSignupPage({
     resolveClubPaymentSettings(activeClub || {})
   );
 
+  const [clubBookingSettings, setClubBookingSettings] = useState({});
+
+  useEffect(() => {
+    return onSnapshot(doc(db, "clubs", activeClubId), snapshot => {
+      setClubBookingSettings(snapshot.data()?.bookingSettings || {});
+    }, error => {
+      console.error("Could not load Club booking settings:", error);
+    });
+  }, [activeClubId]);
+
   const effectiveMatchSignupSettings = useMemo(
     () => ({
       ...matchSignupSettings,
+      maxPlayers: clubBookingSettings.maxPlayers || MAX_PLAYERS,
       weeklyDay:
         clubWeeklySchedule?.day ??
         matchSignupSettings.weeklyDay,
@@ -1104,7 +1121,7 @@ export default function MatchSignupPage({
         matchSignupSettings.weeklyStartTime ||
         DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyStartTime,
     }),
-    [matchSignupSettings, clubWeeklySchedule]
+    [clubBookingSettings, matchSignupSettings, clubWeeklySchedule]
   );
 
   const [sharedChallengeFixtures, setSharedChallengeFixtures] = useState([]);
@@ -2385,6 +2402,31 @@ export default function MatchSignupPage({
   }, [allMonthWeeks, weeks]);
 
   const getCostForWeekId = (weekId) => Number(weekById.get(weekId)?.costPerGame || matchSignupSettings.weeklyPrice || COST_PER_GAME);
+
+  async function setDoc(ref, data, options) {
+    const signupCollections = [
+      pendingSignupDocRef(pendingId).parent,
+      matchSignupDocRef(pendingId).parent,
+    ];
+    if (isPracticeMode ||
+        !signupCollections.some(collection => collection.path === ref.parent.path) ||
+        !Array.isArray(data.selectedWeeks)) {
+      return options
+        ? firestoreSetDoc(ref, data, options)
+        : firestoreSetDoc(ref, data);
+    }
+    const fixtureLimits = {};
+    allMonthWeeks.filter(week => week.isChallenge).forEach(week => {
+      fixtureLimits[week.id] = week.maxPlayers;
+    });
+    return saveSignupWithCapacity({
+      db, clubId: activeClubId, ref, data, options,
+      pendingCollection: signupCollections[0],
+      matchCollection: signupCollections[1],
+      defaultLimit: MAX_PLAYERS,
+      fixtureLimits,
+    });
+  }
 
   const sumWeekCosts = (weekIds = []) =>
     uniqueWeekIds(weekIds).reduce((sum, weekId) => sum + getCostForWeekId(weekId), 0);
@@ -3798,7 +3840,29 @@ export default function MatchSignupPage({
     clubPaymentSettings?.pricingModel?.serviceFeePerPlayer ?? 7.5
   );
   const serviceFeeDueNow = weeksToPayNow.length * serviceFeePerGame;
-  const totalAmount = fieldContributionDueNow + serviceFeeDueNow;
+  /* Booking notice outside the monthly payment window */
+  const bookingNoticeDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  const bookingNoticeDay = bookingNoticeDate.getUTCDate();
+  const bookingNoticeLastDay = new Date(Date.UTC(
+    bookingNoticeDate.getUTCFullYear(),
+    bookingNoticeDate.getUTCMonth() + 1,
+    0
+  )).getUTCDate();
+  const showBookingDeadlineNotice =
+    bookingNoticeDay < 24 ||
+    bookingNoticeDay > Math.min(30, bookingNoticeLastDay);
+
+  const lateBookingFee = calculateLateBookingFee({
+    policy: isPracticeMode ? {} : clubBookingSettings.lateBookingFee,
+    games: weeksToPayNow.map(id => {
+      const date = weekById.get(id)?.date;
+      const monthKey = date instanceof Date
+        ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+        : String(id).slice(0, 7);
+      return { id, monthKey };
+    }),
+  });
+  const totalAmount = fieldContributionDueNow + serviceFeeDueNow + lateBookingFee.amount;
   const selectedCount = selectedWeeks.length;
 
   const signupStatusText = isFullyPaidSelection
@@ -4328,6 +4392,7 @@ export default function MatchSignupPage({
       });
     } catch (error) {
       console.error("Failed to prepare payment:", error);
+      window.alert(error?.message || "Your signup could not be saved. Please retry.");
     }
   }
 
@@ -4398,8 +4463,7 @@ export default function MatchSignupPage({
       onBack?.();
     } catch (error) {
       console.error("Pay later save failed", error);
-      setShowLeavePrompt(false);
-      onBack?.();
+      window.alert(error?.message || "Your signup could not be saved. Please retry.");
     }
   };
 
@@ -4557,9 +4621,32 @@ export default function MatchSignupPage({
             .slice(2)}`
         : "";
 
+    const manuallyConfirmedLateFee = calculateLateBookingFee({
+      policy: isPracticeMode ? {} : clubBookingSettings.lateBookingFee,
+      games: addWeeks.filter(id => !existingPaidWeeks.includes(id)).map(id => {
+        const date = weekById.get(id)?.date;
+        return {
+          id,
+          monthKey: date instanceof Date
+            ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+            : String(id).slice(0, 7),
+        };
+      }),
+    });
+    if (isGenuinePaymentConfirmation && manuallyConfirmedLateFee.amount > 0) {
+      const confirmed = await showPremiumConfirm({
+        icon: "💳",
+        title: "Confirm the late booking payment",
+        message: `Game contribution: R${sumWeekCosts(addWeeks).toFixed(2)}. Late booking fee: R${manuallyConfirmedLateFee.amount.toFixed(2)}.`,
+        detail: "Confirm only after receiving both amounts. Existing paid games are excluded.",
+        confirmText: "Both amounts received",
+        variant: "warning",
+      });
+      if (!confirmed) return false;
+    }
     const paymentConfirmedAmount =
       isGenuinePaymentConfirmation
-        ? sumWeekCosts(addWeeks)
+        ? sumWeekCosts(addWeeks) + manuallyConfirmedLateFee.amount
         : 0;
 
     const existingMoneyBackedWeeks = uniqueWeekIds(
@@ -4615,6 +4702,8 @@ export default function MatchSignupPage({
         paymentProviderContacted: false,
         paymentVerificationEventId,
         paymentConfirmedAmount,
+        paymentConfirmedLateBookingFee: isGenuinePaymentConfirmation
+          ? manuallyConfirmedLateFee.amount : 0,
         paymentConfirmedWeeks:
           isGenuinePaymentConfirmation ? addWeeks : [],
         moneyBackedWeeks: nextMoneyBackedWeeks,
@@ -4653,6 +4742,8 @@ export default function MatchSignupPage({
         paymentProviderContacted: false,
         paymentVerificationEventId,
         paymentConfirmedAmount,
+        paymentConfirmedLateBookingFee: isGenuinePaymentConfirmation
+          ? manuallyConfirmedLateFee.amount : 0,
         paymentConfirmedWeeks:
           isGenuinePaymentConfirmation ? addWeeks : [],
         moneyBackedWeeks: nextMoneyBackedWeeks,
@@ -6339,6 +6430,67 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
         ) : null}
       </section>
 
+      {!isPracticeMode && clubBookingSettings.lateBookingFee?.enabled && showBookingDeadlineNotice && (
+        <section className="card signup-summary-card booking-notice">
+          <header className="booking-notice__header">
+            <span className="booking-notice__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="1.6">
+                <rect x="3" y="5" width="18" height="16" rx="4" />
+                <path d="M7 3v4M17 3v4M3 10h18M8 15h3M8 18h7" />
+              </svg>
+            </span>
+            <div>
+              <span className="booking-notice__eyebrow">PLAN YOUR GAMES</span>
+              <h3>Booking deadline</h3>
+            </div>
+          </header>
+
+          <div className="booking-notice__dates">
+            {[...new Set(weeksToPayNow.map(id => {
+              const date = weekById.get(id)?.date;
+              return date instanceof Date
+                ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+                : String(id).slice(0, 7);
+            }))].map(month => {
+              const deadline = bookingDeadline(
+                month, clubBookingSettings.lateBookingFee.deadlineDay ?? 30
+              );
+              const closingDate = new Date(deadline.closesAtMs - 60000);
+              const dateLabel = new Intl.DateTimeFormat("en-ZA", {
+                day: "numeric", month: "long", year: "numeric",
+                timeZone: "Africa/Johannesburg",
+              }).format(closingDate);
+              return (
+                <div key={month} className="booking-notice__date">
+                  <strong>{dateLabel}</strong>
+                  <span>23:59 SAST</span>
+                </div>
+              );
+            })}
+            {weeksToPayNow.length === 0 && (
+              <p>Select games to see their booking deadline.</p>
+            )}
+          </div>
+
+          <p className="booking-notice__copy">
+            Book and pay before the deadline.
+            {" "}R{lateBookingFee.feePerGame.toFixed(2)} per game paid after it.
+            {" "}Late bookings depend on availability.
+          </p>
+
+          {lateBookingFee.amount > 0 && (
+            <div className="booking-notice__total">
+              <div>
+                <span>Late booking fee</span>
+                <small>{lateBookingFee.lateGameCount} late game{lateBookingFee.lateGameCount === 1 ? "" : "s"}</small>
+              </div>
+              <strong>+R{lateBookingFee.amount.toFixed(2)}</strong>
+            </div>
+          )}
+        </section>
+      )}
+
       {canManageSignupsAsAdmin ? (
         <section className="card signup-summary-card" style={{ paddingTop: 14, paddingBottom: 14 }}>
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -7584,6 +7736,11 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
         </div>
       </section>
 
+      {!isPracticeMode && canManageSignupsAsAdmin && (
+        <ClubBookingSettings clubId={activeClubId}
+          settings={clubBookingSettings} defaultLimit={MAX_PLAYERS} />
+      )}
+
       <section className="card signup-summary-card">
         {historicalViewMode ? (
           <>
@@ -7720,6 +7877,12 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                 </strong>
               </div>
 
+              {lateBookingFee.amount > 0 && (
+                <div className="summary-row">
+                  <span>Late booking fee ({lateBookingFee.lateGameCount} games)</span>
+                  <strong>R{lateBookingFee.amount.toFixed(2)}</strong>
+                </div>
+              )}
               <div className="summary-row total">
                 <span>Total due now</span>
                 <div style={{ textAlign: "right" }}>

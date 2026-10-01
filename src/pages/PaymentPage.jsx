@@ -1,3 +1,4 @@
+import { calculateLateBookingFee } from "../../functions/lateBookingPolicy.mjs";
 import { getActiveFirebaseFunctionsBaseUrl } from "../firebaseConfig.js";
 // src/pages/PaymentPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
@@ -491,7 +492,14 @@ export default function PaymentPage({
       ? recomputedFullAmount
       : Number(signup?.amountDue ?? contextAmountDue ?? 0);
 
-  const amountToPayNow = unpaidTotalGames * costPerGame;
+  const lateBookingFee = calculateLateBookingFee({
+    policy: clubProfile?.bookingSettings?.lateBookingFee || {},
+    games: [
+      ...unpaidPrimaryWeeks.map(id => ({ id: `primary:${id}`, monthKey: String(id).slice(0, 7) })),
+      ...unpaidSecondWeeks.map(id => ({ id: `second:${id}`, monthKey: String(id).slice(0, 7) })),
+    ],
+  });
+  const amountToPayNow = unpaidTotalGames * costPerGame + lateBookingFee.amount;
   const captainContributionToPayNow = unpaidTotalGames * captainContributionPerGame;
   const platformUpliftToPayNow = unpaidTotalGames * platformUpliftPerGame;
   const fanmBookingFee = platformUpliftToPayNow;
@@ -667,6 +675,7 @@ export default function PaymentPage({
           unpaidSecondWeeks,
           costPerGame: captainContributionPerGame,
           serviceFeePerGame: platformUpliftPerGame,
+          quotedLateBookingFee: lateBookingFee.amount,
           paymentReference: buildReferenceLabel(primaryDisplayName),
           returnUrl,
           successUrl: returnUrl
@@ -937,6 +946,12 @@ export default function PaymentPage({
                       <strong>{formatCurrency(fanmBookingFee)}</strong>
                     </div>
                   ) : null}
+                  {lateBookingFee.amount > 0 && (
+                    <div className="summary-row">
+                      <span>Late booking fee ({lateBookingFee.lateGameCount} games)</span>
+                      <strong>{formatCurrency(lateBookingFee.amount)}</strong>
+                    </div>
+                  )}
                   <div className="summary-row">
                     <span>Paid so far</span>
                     <strong>{formatCurrency(amountPaid)}</strong>

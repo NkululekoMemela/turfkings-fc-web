@@ -104,7 +104,7 @@ service cloud.firestore {
               "adminUids", "adminEmails", "adminNames",
               "captain", "captainEmail", "captainEmails",
               "status", "deleted", "deletedAt", "deletedByUid",
-              "deletedByEmail"
+              "deletedByEmail", "bookingSettings", "paymentSettings"
             ])
         );
 
