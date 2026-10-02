@@ -193,13 +193,11 @@ export default function LeagueVenuesHub({
               </span>
 
               <strong>
-                Register a new 5 Asides
-                Field/Venue
+                Register your<br />field
               </strong>
 
               <small>
-                Create your Field identity
-                and start building leagues
+                Free setup for<br />field managers
               </small>
             </button>
 
