@@ -112,6 +112,85 @@ export function watchVenueSeason(venueId, onSeason, onError) {
   );
 }
 
+export async function chooseVenueFixturePairing({
+  venueId, seasonId, clubAId, clubBId,
+}) {
+  const user = auth.currentUser;
+  if (!user?.uid || !venueId || !seasonId ||
+      !clubAId || !clubBId || clubAId === clubBId) {
+    throw new Error("Choose two different registered Clubs.");
+  }
+
+  const venueRef = doc(db, "leagueVenues", venueId);
+  const staffRef = doc(db, "leagueVenues", venueId, "staff", user.uid);
+  const newFixtureId = crypto.randomUUID();
+
+  return runTransaction(db, async transaction => {
+    const venueSnap = await transaction.get(venueRef);
+    const staffSnap = await transaction.get(staffRef);
+    if (!venueSnap.exists()) throw new Error("Field no longer exists.");
+
+    const venue = venueSnap.data();
+    const staff = staffSnap.data();
+    const administrator = venue.ownerUid === user.uid ||
+      (staff?.status === "active" && staff.isAdministrator === true);
+    const operator = administrator ||
+      (staff?.status === "active" && staff.role === "referee");
+    if (!operator) throw new Error("Only an approved Field official can change the pairing.");
+
+    const season = venue.league?.activeSeason;
+    if (season?.id !== seasonId || season.status !== "active") {
+      throw new Error("The active season changed. Refresh and try again.");
+    }
+    if (Object.values(season.liveMatches || {}).some(match => match?.status === "live")) {
+      throw new Error("Finish the live match before changing the pairing.");
+    }
+
+    const registered = new Set(season.clubIds || []);
+    if (!registered.has(clubAId) || !registered.has(clubBId)) {
+      throw new Error("Both Clubs must be registered for this season.");
+    }
+    const clubs = new Map([...registered].map(id => [
+      id, season.invitations?.[id]?.clubName || id,
+    ]));
+    const fixtures = reconcileFieldSeasonFixtures({
+      season, clubs, actorUid: user.uid,
+    });
+    let fixture = fixtures.find(item =>
+      item.status === "scheduled" && !season.liveMatches?.[item.id] &&
+      ((item.clubAId === clubAId && item.clubBId === clubBId) ||
+       (item.clubAId === clubBId && item.clubBId === clubAId))
+    );
+
+    let updatedFixtures = fixtures;
+    if (!fixture) {
+      if (!administrator) {
+        throw new Error("A Field administrator must arrange this additional pairing.");
+      }
+      fixture = {
+        id: newFixtureId, clubAId, clubBId,
+        clubAName: clubs.get(clubAId), clubBName: clubs.get(clubBId),
+        status: "scheduled", source: "admin_pairing",
+        createdByUid: user.uid, createdAtMs: Date.now(),
+      };
+      updatedFixtures = [...fixtures, fixture];
+    }
+
+    transaction.update(venueRef, {
+      "league.activeSeason.fixtures": updatedFixtures,
+      "league.activeSeason.selectedFixtureId": fixture.id,
+      updatedAt: serverTimestamp(),
+    });
+    recordVenueAction(transaction, {
+      venueId, seasonId, fixtureId: fixture.id,
+      action: "fixture_pairing_selected",
+      label: "Fixture pairing changed",
+      details: `${fixture.clubAName} vs ${fixture.clubBName}`,
+    });
+    return fixture.id;
+  });
+}
+
 export async function prepareVenueSeasonForMatch({ venueId }) {
   const user = auth.currentUser;
   if (!user?.uid || !venueId) {
@@ -894,6 +973,22 @@ export async function completeVenueFixture({
   );
 }
 
+async function requireVenueStaffPower(transaction, venue, venueId, uid, power) {
+  if (venue.ownerUid === uid) return;
+  const staffSnapshot = await transaction.get(
+    doc(db, "leagueVenues", venueId, "staff", uid)
+  );
+  const permissionSnapshot = await transaction.get(
+    doc(db, "leagueVenues", venueId, "staffPermissions", uid)
+  );
+  if (!staffSnapshot.exists() ||
+      staffSnapshot.data().status !== "active" ||
+      !permissionSnapshot.exists() ||
+      permissionSnapshot.data()[power] !== true) {
+    throw new Error("The Field creator has not assigned you this power.");
+  }
+}
+
 export async function archiveVenueMatchDay({ venueId, seasonId }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the Field Manager.");
@@ -909,9 +1004,9 @@ export async function archiveVenueMatchDay({ venueId, seasonId }) {
     if (!snapshot.exists()) throw new Error("Field no longer exists.");
 
     const venue = snapshot.data();
-    if (venue.ownerUid !== user.uid) {
-      throw new Error("Only the Field Manager can end the match day.");
-    }
+    await requireVenueStaffPower(
+      transaction, venue, venueId, user.uid, "endMatchDay"
+    );
     if (liveSnapshot.exists() && liveSnapshot.data().status === "live") {
       throw new Error("Finish the live match before ending the match day.");
     }
@@ -1104,9 +1199,9 @@ export async function endVenueSeason({
     if (!venueSnapshot.exists()) throw new Error("Field no longer exists.");
 
     const venue = venueSnapshot.data();
-    if (venue.ownerUid !== user.uid) {
-      throw new Error("Only the Field Manager can end the season.");
-    }
+    await requireVenueStaffPower(
+      transaction, venue, venueId, user.uid, "endSeason"
+    );
     const season = venue.league?.activeSeason;
     if (!season?.id || season.id !== seasonId ||
         season.status !== "active") {

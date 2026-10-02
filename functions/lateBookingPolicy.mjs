@@ -46,10 +46,63 @@ export function bookingDeadline(monthKey, deadlineDay = 30) {
   return { closesAtMs, label };
 }
 
+// Membership dates must come from the Club member record.
+function membershipTime(value) {
+  if (value == null || value === "") return NaN;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  const seconds = value.seconds ?? value._seconds;
+  if (Number.isFinite(seconds)) return seconds * 1000;
+  return typeof value === "string" ? Date.parse(value) : NaN;
+}
+
+export function isNewTurfKingsMember({
+  clubId,
+  joinedAt,
+  nowMs = Date.now(),
+} = {}) {
+  if (clubId !== "turf-kings") return false;
+  const joinedMs = membershipTime(joinedAt);
+  if (!Number.isFinite(joinedMs) || !Number.isFinite(nowMs) ||
+      joinedMs > nowMs) return false;
+
+  // Calculate the anniversary in South African local time.
+  const offset = 2 * 60 * 60 * 1000;
+  const joined = new Date(joinedMs + offset);
+  const year = joined.getUTCFullYear();
+  const nextMonth = joined.getUTCMonth() + 1;
+  const lastDay = new Date(Date.UTC(year, nextMonth + 1, 0)).getUTCDate();
+  const anniversary = Date.UTC(
+    year, nextMonth, Math.min(joined.getUTCDate(), lastDay),
+    joined.getUTCHours(), joined.getUTCMinutes(),
+    joined.getUTCSeconds(), joined.getUTCMilliseconds()
+  ) - offset;
+  return nowMs < anniversary;
+}
+
+export function findBookingMember(members = [], playerId = "") {
+  const id = String(playerId || "").trim();
+  if (!id) return null;
+  // Prefer a player/member ID before considering an account UID.
+  const exact = members.filter(member =>
+    String(member.playerId || "") === id ||
+    String(member.id || "") === id
+  );
+  const matches = exact.length ? exact : members.filter(member =>
+    String(member.uid || "") === id ||
+    String(member.platformIdentityUid || "") === id
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
 export function calculateLateBookingFee({
   policy = {},
   games = [],
   paidGameIds = [],
+  clubId = "",
+  members = [],
   nowMs = Date.now(),
 } = {}) {
   const settings = normalizeLateBookingPolicy(policy);
@@ -63,6 +116,12 @@ export function calculateLateBookingFee({
       if (!id) throw new Error("A game reference is required.");
       if (seen.has(id) || paid.has(id)) continue;
       seen.add(id);
+      const member = findBookingMember(members, game.playerId);
+      if (member && isNewTurfKingsMember({
+        clubId,
+        joinedAt: member.joinedAt || member.createdAt,
+        nowMs,
+      })) continue;
       const deadline = bookingDeadline(game.monthKey, settings.deadlineDay);
       if (nowMs >= deadline.closesAtMs) {
         lateGames.push({ id, monthKey: game.monthKey, deadline: deadline.label });

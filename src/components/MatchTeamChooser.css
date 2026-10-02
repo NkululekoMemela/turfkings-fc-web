@@ -459,3 +459,91 @@ summary.match-team-chooser__card:focus-visible,
   .modal.duration-sheet { padding: 20px; }
   .duration-sheet__header h3 { font-size: 20px; }
 }
+
+/* Larger match pairing badges */
+.match-team-chooser .match-team-chooser__card > .match-team-chooser__badge {
+  flex: 0 0 88px;
+  width: 88px;
+  height: 96px;
+}
+.match-team-chooser__options .match-team-chooser__badge {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 54px;
+}
+@media (max-width: 480px) {
+  .match-team-chooser .match-team-chooser__card > .match-team-chooser__badge {
+    flex: 0 0 84px;
+    width: 84px;
+    height: 90px;
+  }
+}
+
+/* Clear central VS and left selection chevrons */
+.match-setup-row:has(.match-team-chooser) .match-team-versus {
+  display: grid;
+  place-items: center;
+  flex: 0 0 48px;
+  min-height: 48px;
+  padding: 0;
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .04em;
+  color: #f8fafc;
+  text-shadow: 0 2px 16px rgba(125,211,252,.35);
+}
+.match-team-chooser summary.match-team-chooser__card {
+  position: relative;
+  padding-left: 36px;
+}
+.match-team-chooser .match-team-chooser__arrow {
+  position: absolute;
+  left: 10px;
+  right: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 24px;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--team-accent);
+}
+@media (max-width: 480px) {
+  .match-setup-row:has(.match-team-chooser) .match-team-versus {
+    flex-basis: 38px;
+    min-height: 42px;
+    font-size: 23px;
+  }
+  .match-team-chooser summary.match-team-chooser__card {
+    padding-left: 9px;
+  }
+  .match-team-chooser .match-team-chooser__arrow {
+    left: 3px;
+    right: auto;
+    top: 12px;
+    transform: none;
+  }
+}
+
+/* Team selection arrows on the outer edges */
+.match-team-chooser--b summary.match-team-chooser__card {
+  padding-left: 16px;
+  padding-right: 36px;
+}
+.match-team-chooser--b .match-team-chooser__arrow {
+  left: auto;
+  right: 10px;
+}
+@media (max-width: 480px) {
+  .match-team-chooser--b summary.match-team-chooser__card {
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+  .match-team-chooser--b .match-team-chooser__arrow {
+    left: auto;
+    right: 3px;
+  }
+}

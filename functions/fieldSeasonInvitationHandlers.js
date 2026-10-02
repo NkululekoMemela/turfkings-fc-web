@@ -3,6 +3,16 @@ const {onDocumentWritten, onDocumentUpdated} =
 const {FieldValue, FieldPath} = require("firebase-admin/firestore");
 const crypto = require("node:crypto");
 
+function invitationDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return "to be confirmed";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
+  }).format(new Date(Date.UTC(
+    Number(match[1]), Number(match[2]) - 1, Number(match[3])
+  )));
+}
+
 function registrationOpen(season, now = Date.now(), current = null) {
   return Boolean(
     season?.id && season.announcedAtMs &&
@@ -111,14 +121,18 @@ function buildHandlers({db, sendBatch, region}) {
     try {
       const result = await sendBatch({
         tokenRecords,
-        title: `${venue.name || "Your Field"} · season signup`,
-        body: `${season.name}. Starts ${season.startsOn}. ` +
-          `Sign up by ${season.signupClosesOn || "the start of play"}. ` +
-          `Entry: R${Number(season.entryFee || 0).toFixed(2)} per Club.`,
+        title: `${venue.name || "Your Field"} invites your Club`,
+        body: `${season.name} · Starts ${invitationDate(season.startsOn)}. ` +
+          (season.signupClosesOn
+            ? `Sign up by ${invitationDate(season.signupClosesOn)}.`
+            : "Tap to view the invitation."),
+        imageUrl: String(venue.branding?.logoUrl || venue.logoUrl || venue.image || ""),
         data: {
           type: "field_season_invitation", route: "admin-entry",
           clubId, venueId, seasonId: season.id,
           signupClosesOn: String(season.signupClosesOn || ""),
+          fieldLogoUrl: String(venue.branding?.logoUrl || venue.logoUrl || venue.image || ""),
+          fieldName: String(venue.name || "Your Field"),
         },
       });
       await deliveryRef.set({

@@ -2903,6 +2903,21 @@ export default function App() {
         }
 
         if (opensAdminEntry) {
+          if (data.type === "field_season_invitation" &&
+              data.venueId && data.seasonId) {
+            try {
+              window.localStorage.removeItem(
+                `field-season-invitation-seen:${notificationClubId}:${data.venueId}:${data.seasonId}`
+              );
+            } catch {}
+            window.dispatchEvent(new CustomEvent("field-season-invitation-open", {
+              detail: {
+                clubId: notificationClubId,
+                venueId: String(data.venueId),
+                seasonId: String(data.seasonId),
+              },
+            }));
+          }
           setNativeChatOpenRequest(null);
           setNativePollOpenRequest(null);
           setEntryPageIntent({
@@ -2910,6 +2925,8 @@ export default function App() {
             clubId: notificationClubId,
             memberId: String(data.memberId || ""),
             challengeId: String(data.challengeId || ""),
+            venueId: String(data.venueId || ""),
+            seasonId: String(data.seasonId || ""),
             openedAt: Date.now(),
           });
           setSessionMode("official");

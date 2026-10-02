@@ -320,6 +320,77 @@ service cloud.firestore {
         );
       }
 
+      function fieldStaffHasPower(power) {
+        let venuePath =
+          /databases/$(database)/documents/leagueVenues/$(venueId);
+        let staffPath =
+          /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid);
+        let permissionPath =
+          /databases/$(database)/documents/leagueVenues/$(venueId)/staffPermissions/$(request.auth.uid);
+        return isSignedIn() && !isCameraSession() && (
+          get(venuePath).data.ownerUid == request.auth.uid
+          || (
+            exists(staffPath)
+            && get(staffPath).data.status == "active"
+            && exists(permissionPath)
+            && get(permissionPath).data.get(power, false) == true
+          )
+        );
+      }
+
+      function fieldClosurePowersRespected() {
+        let old = resource.data.get("league", {}).get("activeSeason", {});
+        let next = request.resource.data.get("league", {}).get("activeSeason", {});
+        return resource.data.ownerUid == request.auth.uid || (
+          (
+            old.get("id", "") == next.get("id", "")
+            || fieldStaffHasPower("endSeason")
+          )
+          && (
+            old.get("matchDayHistory", []) == next.get("matchDayHistory", [])
+            || (
+              old.get("id", "") == next.get("id", "")
+                ? fieldStaffHasPower("endMatchDay")
+                : fieldStaffHasPower("endSeason")
+            )
+          )
+        );
+      }
+
+      function delegatedFieldClosure() {
+        let old = resource.data.league.activeSeason;
+        let next = request.resource.data.league.activeSeason;
+        let archivePath =
+          /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(old.id);
+        return request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["league", "updatedAt"])
+          && request.resource.data.league.diff(resource.data.league)
+            .affectedKeys().hasOnly(["activeSeason"])
+          && (
+            (
+              fieldStaffHasPower("endMatchDay")
+              && next.diff(old).affectedKeys()
+                .hasOnly(["matchDayHistory", "updatedAtMs"])
+              && next.matchDayHistory.size() == old.get("matchDayHistory", []).size() + 1
+              && next.matchDayHistory[old.get("matchDayHistory", []).size()]
+                .endedByUid == request.auth.uid
+            )
+            || (
+              fieldStaffHasPower("endSeason")
+              && next.id != old.id
+              && next.previousSeasonId == old.id
+              && next.status == "active"
+              && existsAfter(archivePath)
+              && getAfter(archivePath).data.endedByUid == request.auth.uid
+              && getAfter(archivePath).data.status in ["completed", "cancelled"]
+              && next.results.size() == 0
+              && next.matchDayHistory.size() == 0
+              && next.fixtures.size() == 0
+              && next.clubIds.size() == 0
+            )
+          );
+      }
+
       function activeFieldAdministrator() {
         return isSignedIn()
           && (
@@ -444,16 +515,18 @@ service cloud.firestore {
                     && request.resource.data.ownerUid
                        == resource.data.ownerUid
                     && request.resource.data.id == venueId
+                    && isSignedIn()
+                    && fieldClosurePowersRespected()
                     && (
                       activeFieldAdministrator()
                         ? true
                         : (
                           activeFieldMatchOperator()
                             ? (
-                              onlyUpdatesLiveMatches()
+                              delegatedFieldClosure() || onlyUpdatesLiveMatches()
                               || onlyCompletesCurrentFieldMatch()
                             )
-                            : clubSeasonResponse()
+                            : (delegatedFieldClosure() || clubSeasonResponse())
                         )
                     );
 
@@ -524,7 +597,7 @@ service cloud.firestore {
           && request.resource.data.action in [
             "season_created", "season_started", "match_started", "match_completed",
             "match_day_saved", "match_day_discarded", "season_ended", "season_cancelled",
-            "empty_season_deleted"
+            "empty_season_deleted", "fixture_pairing_selected"
           ]
           && request.resource.data.label is string
           && request.resource.data.label.size() <= 100
@@ -568,9 +641,7 @@ service cloud.firestore {
         allow read: if true;
         allow create: if isSignedIn()
           && !isCameraSession()
-          && get(
-            /databases/$(database)/documents/leagueVenues/$(venueId)
-          ).data.ownerUid == request.auth.uid
+          && fieldStaffHasPower("endSeason")
           && request.resource.data.id == seasonId
           && (
             request.resource.data.status == "completed"
@@ -1027,6 +1098,36 @@ service cloud.firestore {
             ];
 
         allow delete: if chatAdministrator();
+      }
+
+      match /staffPermissions/{staffUid} {
+        function creator() {
+          return isSignedIn() && !isCameraSession()
+            && get(
+              /databases/$(database)/documents/leagueVenues/$(venueId)
+            ).data.ownerUid == request.auth.uid;
+        }
+        allow read: if isSignedIn() && !isCameraSession()
+          && (staffUid == request.auth.uid || creator());
+        allow create, update: if creator()
+          && request.resource.data.keys().hasOnly([
+            "uid", "endMatchDay", "endSeason", "updatedByUid", "updatedAt"
+          ])
+          && request.resource.data.uid == staffUid
+          && request.resource.data.endMatchDay is bool
+          && request.resource.data.endSeason is bool
+          && request.resource.data.updatedByUid == request.auth.uid
+          && request.resource.data.updatedAt == request.time
+          && exists(
+            /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(staffUid)
+          )
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(staffUid)
+          ).data.status == "active"
+          && get(
+            /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(staffUid)
+          ).data.uid == staffUid;
+        allow delete: if creator();
       }
 
       match /staff/{staffUid} {

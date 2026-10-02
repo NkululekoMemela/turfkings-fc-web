@@ -319,6 +319,7 @@ export default function VenueLandingPage({
     "Only captains or admin can start a match.",
   hasRecordedMatchDayState = false,
   onManageFieldStaff,
+  onManageFieldPowers,
   onOpenActionLog,
   pendingFieldStaffCount = 0,
   onReady,
@@ -1778,7 +1779,7 @@ export default function VenueLandingPage({
           </div>
         )}
         {canSeeCaptainStyleControls && (
-          <div style={{ marginBottom: "0.9rem" }}>
+          <div className="field-settings-panel" style={{ marginBottom: "0.9rem" }}>
             <button
               type="button"
               className="secondary-btn"
@@ -1828,6 +1829,17 @@ export default function VenueLandingPage({
                   border: "1px solid rgba(148,163,184,0.14)",
                 }}
               >
+            {typeof onManageFieldPowers === "function" && (
+              <button type="button" className="secondary-btn"
+                onClick={() => {
+                  setShowSettingsPanel(false);
+                  onManageFieldPowers();
+                }}>
+                <span>Staff powers</span>
+                <span aria-hidden="true">›</span>
+              </button>
+            )}
+
             {onManageFieldStaff && isAdmin && (
               <button
                 type="button"
@@ -1903,7 +1915,7 @@ export default function VenueLandingPage({
               >
                 Match Type
               </div>
-              <div
+              <div className="field-settings-segments"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -1918,7 +1930,7 @@ export default function VenueLandingPage({
                 {MATCH_MODE_OPTIONS.map((option) => {
                   const active = resolvedMatchType === option.value;
                   return (
-                    <button
+                    <button aria-pressed={active}
                       key={option.value}
                       type="button"
                       className="secondary-btn"
@@ -1986,7 +1998,7 @@ export default function VenueLandingPage({
                 >
                   League Mode
                 </div>
-                <div
+                <div className="field-settings-segments"
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -1997,7 +2009,7 @@ export default function VenueLandingPage({
                     gap: "4px",
                   }}
                 >
-                  <button
+                  <button aria-pressed={!fixturedMode}
                     type="button"
                     className="secondary-btn"
                     onClick={() => requestLeagueModeChange("round_robin")}
@@ -2019,7 +2031,7 @@ export default function VenueLandingPage({
                     Round Robin
                   </button>
 
-                  <button
+                  <button aria-pressed={fixturedMode}
                     type="button"
                     className="secondary-btn"
                     onClick={() => requestLeagueModeChange("scheduled_target")}
@@ -2051,7 +2063,7 @@ export default function VenueLandingPage({
               >
                 Game Format
               </div>
-              <div
+              <div className="field-settings-segments"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -2066,7 +2078,7 @@ export default function VenueLandingPage({
                 {GAME_FORMAT_OPTIONS.map((option) => {
                   const active = resolvedGameFormat === option.value;
                   return (
-                    <button
+                    <button aria-pressed={active}
                       key={option.value}
                       type="button"
                       className="secondary-btn"
@@ -2185,7 +2197,6 @@ export default function VenueLandingPage({
 
         <header className="match-preview-heading">
           <div className="match-preview-heading__title">
-            <span className="match-preview-heading__eyebrow">NEXT ON THE PITCH</span>
             <h2>Upcoming match:</h2>
           </div>
           <div className="match-preview-heading__details">
@@ -2202,14 +2213,7 @@ export default function VenueLandingPage({
         </header>
 
 
-        {isFriendlyMatch && (
-          <p
-            className="muted small"
-            style={{ marginTop: "-0.25rem", marginBottom: "0.9rem" }}
-          >
-            Friendly {activeGameFormatLabel} is active. Squads and live match flow should follow the {activeGameFormatLabel} format.
-          </p>
-        )}
+
 
         {isThreeTeamLeague && (
           <div
@@ -2243,14 +2247,7 @@ export default function VenueLandingPage({
           </div>
         )}
 
-        {isThreeTeamLeague && standbyTeam && (
-          <p className="standby-label">
-            Standby Team:{" "}
-            <strong>
-              {standbyTeam.label} (c: {standbyTeam.captain})
-            </strong>
-          </p>
-        )}
+
 
 
         {canStartMatch ? (
@@ -2266,7 +2263,42 @@ export default function VenueLandingPage({
               alignItems: "stretch",
             }}
           >
-            <button
+            {typeof onOpenEndSeasonModal === "function" && (
+              <button
+                className="secondary-btn"
+                onClick={onOpenEndSeasonModal}
+                type="button"
+                style={tileButtonStyle(isMobile, {
+                  border: "1px solid rgba(250,204,21,0.34)",
+                  boxShadow: "0 0 18px rgba(250,204,21,0.10)",
+                })}
+              >
+                {renderTileContent({
+                  isMobile,
+                  icon: "🏆",
+                  desktopLines: [seasonActionLabel],
+                  mobileLines: seasonActionLabel.split(" "),
+                })}
+              </button>
+            )}
+
+{typeof onOpenBackupModal === "function" && (
+<button
+              className="secondary-btn"
+              onClick={onOpenBackupModal}
+              type="button"
+              style={tileButtonStyle(isMobile)}
+            >
+              {renderTileContent({
+                isMobile,
+                icon: "🏁",
+                desktopLines: ["End Match Day"],
+                mobileLines: ["End Match", "Day"],
+              })}
+            </button>
+)}
+
+<button
               className="primary-btn"
               style={tileButtonStyle(isMobile, activePrimaryStyle)}
               onClick={handleStartMatchClick}
@@ -2280,7 +2312,7 @@ export default function VenueLandingPage({
               })}
             </button>
 
-            <button
+<button
               className="secondary-btn"
               onClick={() => onGoToStats()}
               type="button"
@@ -2473,41 +2505,9 @@ export default function VenueLandingPage({
               )}
 
 
-            {isThreeTeamLeague && isAdmin &&
-              typeof onOpenBackupModal === "function" && (
-              <button
-                className="secondary-btn"
-                onClick={onOpenBackupModal}
-                type="button"
-                style={tileButtonStyle(isMobile)}
-              >
-                {renderTileContent({
-                  isMobile,
-                  icon: "🏁",
-                  desktopLines: ["End Match Day"],
-                  mobileLines: ["End Match", "Day"],
-                })}
-              </button>
-            )}
 
-            {isAdmin && typeof onOpenEndSeasonModal === "function" && (
-              <button
-                className="secondary-btn"
-                onClick={onOpenEndSeasonModal}
-                type="button"
-                style={tileButtonStyle(isMobile, {
-                  border: "1px solid rgba(250,204,21,0.34)",
-                  boxShadow: "0 0 18px rgba(250,204,21,0.10)",
-                })}
-              >
-                {renderTileContent({
-                  isMobile,
-                  icon: "🏆",
-                  desktopLines: [seasonActionLabel],
-                  mobileLines: seasonActionLabel.split(" "),
-                })}
-              </button>
-            )}
+
+
           </div>
         ) : (
           <>
