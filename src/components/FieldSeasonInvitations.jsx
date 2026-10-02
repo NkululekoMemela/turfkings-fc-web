@@ -28,7 +28,16 @@ const money = value => new Intl.NumberFormat("en-ZA", {
   style: "currency", currency: "ZAR",
 }).format(Number(value) || 0);
 
-function SeasonDialog({ title, children, busy, onClose, premium = false }) {
+function invitationDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return "To be confirmed";
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
+  }).format(date);
+}
+
+function SeasonDialog({ title, children, busy, onClose, premium = false, logoUrl = "" }) {
   const ref = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -62,7 +71,12 @@ function SeasonDialog({ title, children, busy, onClose, premium = false }) {
         {premium ? (
           <div className="tk-admin-notification-topline">
             <span className="tk-admin-notification-icon" aria-hidden="true">
-              <span>🔔</span>
+              {logoUrl
+                ? <img src={logoUrl} alt="" className="field-invitation-logo"
+                    onError={event => {
+                      event.currentTarget.style.display = "none";
+                    }} />
+                : <span>🔔</span>}
             </span>
             <div className="tk-admin-notification-title-wrap">
               <div className="tk-admin-notification-title">{title}</div>
@@ -236,6 +250,20 @@ export function ClubFieldSeasonInvitation({ clubId }) {
   const season = venue?.league?.activeSeason;
   const invitation = season?.invitations?.[clubId];
   const key = `${venue?.id}:${season?.id}`;
+
+  useEffect(() => {
+    const reopen = event => {
+      const target = event.detail;
+      if (target?.clubId !== clubId ||
+          target?.venueId !== venue?.id ||
+          target?.seasonId !== season?.id) return;
+      setDismissed(previous => previous.filter(value => value !== key));
+      setError("");
+      setNow(Date.now());
+    };
+    window.addEventListener("field-season-invitation-open", reopen);
+    return () => window.removeEventListener("field-season-invitation-open", reopen);
+  }, [clubId, venue?.id, season?.id, key]);
   if (!canManageClubField(club, user) ||
       !fieldSeasonRegistrationOpen(season, now) ||
       invitation?.status !== "pending") return null;
@@ -275,19 +303,27 @@ export function ClubFieldSeasonInvitation({ clubId }) {
         </button>
       </div>
       {!previouslySeen && !dismissed.includes(key) && (
-      <SeasonDialog title="Your Club is invited" premium busy={busy} onClose={later}>
-      <p><strong>{venue.name}</strong> invites {club?.name || "your Club"} to:</p>
-      <h3>{season.name}</h3>
-      <div className="field-season-essential">
-        <p>Season starts <strong>{season.startsOn}</strong></p>
-        <p>Sign up by <strong>{season.signupClosesOn || "Before play begins"}</strong>
-          {season.signupClosesOn ? " · 23:59 SAST" : ""}</p>
+      <SeasonDialog title="Your Club is invited" premium busy={busy} onClose={later}
+        logoUrl={venue.branding?.logoUrl || venue.logoUrl || venue.image || ""}>
+      <div className="field-invite-intro">
+        <span>{venue.name}</span>
+        <h3>{season.name}</h3>
+        <p>An invitation for {club?.name || "your Club"}</p>
       </div>
-      <p>Entry fee per Club: <strong>{money(season.entryFee)}</strong></p>
-      <p>League size: <strong>{
-        FIELD_GAME_FORMATS.find(([value]) => value === season.gameFormat)?.[1]
-          || "To be confirmed by Field management"
-      }</strong></p>
+      <div className="field-invite-facts">
+        <div><span>Starts</span>
+          <strong>{invitationDate(season.startsOn)}</strong></div>
+        <div><span>Sign up by</span>
+          <strong>{season.signupClosesOn
+            ? invitationDate(season.signupClosesOn) : "Before play begins"}</strong>
+          {season.signupClosesOn && <small>23:59 SAST</small>}</div>
+        <div><span>Entry per Club</span>
+          <strong>{money(season.entryFee)}</strong></div>
+        <div><span>Format</span>
+          <strong>{FIELD_GAME_FORMATS.find(
+            ([value]) => value === season.gameFormat
+          )?.[1] || "To be confirmed"}</strong></div>
+      </div>
       <details className="field-season-details">
         <summary>Prizes & season details</summary>
         {["first", "second", "third"].map((place, index) => (
@@ -310,14 +346,13 @@ export function ClubFieldSeasonInvitation({ clubId }) {
         <p>Registration closes at the deadline or when play begins,
           whichever comes first.</p>
       </details>
-      <p>Sign up your Club and start mobilising your players.
-        Signup confirms participation; it does not collect payment.</p>
+      <p className="field-invite-note">Confirm your Club’s place. Payment is separate.</p>
       {error && <p className="error-text" role="alert">{error}</p>}
       <div className="actions-row">
         <button type="button" className="tk-admin-notification-primary" disabled={busy}
           onClick={() => respond("accepted")}>{busy ? "Saving…" : "Sign up Club"}</button>
         <button type="button" className="tk-admin-notification-secondary" disabled={busy}
-          onClick={later}>Remind me later</button>
+          onClick={later}>Not now</button>
         <button type="button" className="tk-admin-notification-secondary" disabled={busy}
           onClick={() => {
             if (window.confirm("Decline this season invitation for your Club?")) {

@@ -2101,6 +2101,7 @@ async function sendPaymentNotificationBatch({
   title,
   body,
   data,
+  imageUrl = "",
 }) {
   let successCount = 0;
   let failureCount = 0;
@@ -2118,6 +2119,7 @@ async function sendPaymentNotificationBatch({
       notification: {
         title,
         body,
+        ...(/^https:\/\//i.test(imageUrl) ? {imageUrl} : {}),
       },
       data,
       android: {

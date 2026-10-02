@@ -1,7 +1,10 @@
+import VenueStaffPowersPanel from "../components/VenueStaffPowersPanel.jsx";
+import { watchVenueStaffPermissions } from "../storage/venueStaffPermissionsRepository.js";
+import { buildClubIdentity, DEFAULT_PLATFORM_LOGO } from "../core/clubIdentity.js";
 import FieldTravelSplash from "../components/FieldTravelSplash.jsx";
 import FieldChatBoundary from "../components/FieldChatBoundary.jsx";
 import {
-  readPortalMembership, readPortalMember, readPortalMembers,
+  readPortalMembership, readPortalMember, readPortalMembers, readPortalClub,
 } from "../storage/clubFieldPortalReadClient.js";
 import {
   FieldSeasonStartModal, FieldSeasonEndModal,
@@ -39,6 +42,7 @@ import VenueLeagueVideoHighlightsPage from "./VenueLeagueVideoHighlightsPage.jsx
 import VenueStaffApprovalPanel from "../components/VenueStaffApprovalPanel.jsx";
 import {
   startVenueFixture,
+  chooseVenueFixturePairing,
   prepareVenueSeasonForMatch,
   watchVenueSeason,
   archiveVenueMatchDay,
@@ -755,6 +759,33 @@ export default function VenueEntryPage({
     if (fieldNavTarget?.page) setVenuePage(fieldNavTarget.page);
   }, [fieldNavTarget]);
   const [venueSeason, setVenueSeason] = useState(null);
+  const [fieldClubProfiles, setFieldClubProfiles] = useState({});
+  const fieldClubIdsKey = JSON.stringify([...new Set([
+    ...(venueSeason?.clubIds || []),
+    ...Object.values(venueSeason?.invitations || {}).map(item => item?.clubId),
+    ...(venueSeason?.fixtures || []).flatMap(item => [item.clubAId, item.clubBId]),
+  ].filter(Boolean))].sort());
+
+  useEffect(() => {
+    let cancelled = false;
+    setFieldClubProfiles({});
+    const ids = JSON.parse(fieldClubIdsKey);
+    Promise.all(ids.map(async id => {
+      try {
+        const snapshot = await readPortalClub(id);
+        return [id, buildClubIdentity({
+          ...(snapshot.data() || {}), id,
+        })];
+      } catch (error) {
+        console.error("[Field Club badge]", id, error);
+        return [id, buildClubIdentity({ id })];
+      }
+    })).then(entries => {
+      if (!cancelled) setFieldClubProfiles(Object.fromEntries(entries));
+    });
+    return () => { cancelled = true; };
+  }, [venue?.id, fieldClubIdsKey]);
+
 
   useEffect(() => {
     if (!portalClubIdentity || !venue?.id) return undefined;
@@ -879,6 +910,24 @@ export default function VenueEntryPage({
   const [endSeasonError, setEndSeasonError] = useState("");
   const [endSeasonConfirmText, setEndSeasonConfirmText] = useState("");
   const [authenticatedFieldStaff, setAuthenticatedFieldStaff] = useState(null);
+  const [fieldStaffPowers, setFieldStaffPowers] = useState(null);
+  const [showStaffPowersPanel, setShowStaffPowersPanel] = useState(false);
+
+  useEffect(() => {
+    setFieldStaffPowers(null);
+    if (!venue?.id || !currentUser?.uid) return undefined;
+    return watchVenueStaffPermissions(
+      venue.id, currentUser.uid,
+      permissions => setFieldStaffPowers({
+        venueId: venue.id, uid: currentUser.uid, ...permissions,
+      }),
+      error => {
+        console.error("[Field staff powers]", error);
+        setFieldStaffPowers(null);
+      },
+    );
+  }, [venue?.id, currentUser?.uid]);
+
   const [pendingStaffRequests, setPendingStaffRequests] =
     useState([]);
   const [showStaffApprovalPanel, setShowStaffApprovalPanel] =
@@ -5205,6 +5254,10 @@ export default function VenueEntryPage({
         label: cleanName,
         captain: "Club representative",
         players: [],
+        logoUrl: fieldClubProfiles[cleanId]?.logoUrl === DEFAULT_PLATFORM_LOGO
+          ? "" : fieldClubProfiles[cleanId]?.logoUrl || "",
+        transparentLogoUrl: fieldClubProfiles[cleanId]?.transparentLogoUrl === DEFAULT_PLATFORM_LOGO
+          ? "" : fieldClubProfiles[cleanId]?.transparentLogoUrl || "",
       });
     };
 
@@ -5333,6 +5386,20 @@ export default function VenueEntryPage({
         (hasActiveFieldRole &&
           authenticatedFieldStaff?.isAdministrator === true)
       );
+
+    const assignedPowersMatchUser =
+      fieldStaffPowers?.venueId === venue?.id &&
+      fieldStaffPowers?.uid === currentUser?.uid;
+    const canEndFieldMatchDay = !isReadOnlyFieldRole && (
+      isVenueOwner ||
+      (hasActiveFieldRole && assignedPowersMatchUser &&
+        fieldStaffPowers?.endMatchDay === true)
+    );
+    const canEndFieldSeason = !isReadOnlyFieldRole && (
+      isVenueOwner ||
+      (hasActiveFieldRole && assignedPowersMatchUser &&
+        fieldStaffPowers?.endSeason === true)
+    );
 
     const canOperateFieldMatch =
       !isReadOnlyFieldRole &&
@@ -5555,16 +5622,9 @@ export default function VenueEntryPage({
           if (!canOperateFieldMatch || liveMatch || !venueSeason?.id) {
             throw new Error("Only a Field official can change an unplayed pairing.");
           }
-          const fixture = scheduledFixtures.find((item) =>
-            (item.clubAId === teamAId && item.clubBId === teamBId) ||
-            (item.clubAId === teamBId && item.clubBId === teamAId)
-          );
-          if (!fixture) {
-            throw new Error("No scheduled fixture exists for these two clubs.");
-          }
-          await updateDoc(doc(db, "leagueVenues", venue.id), {
-            "league.activeSeason.selectedFixtureId": fixture.id,
-            updatedAt: serverTimestamp(),
+          await chooseVenueFixturePairing({
+            venueId: venue.id, seasonId: venueSeason.id,
+            clubAId: teamAId, clubBId: teamBId,
           });
         }}
         startMatchDeniedMessage={
@@ -5794,7 +5854,7 @@ export default function VenueEntryPage({
           }
         }}
         onOpenBackupModal={
-          venue?.ownerUid === currentUser?.uid
+          canEndFieldMatchDay
             ? () => {
                 setEndMatchDayError("");
                 setConfirmEndMatchDay(false);
@@ -5808,7 +5868,7 @@ export default function VenueEntryPage({
         onOpenEndSeasonModal={
           (fieldSeasonNeedsAnnouncement(venueSeason)
             ? isFieldAdministrator
-            : venue?.ownerUid === currentUser?.uid)
+            : canEndFieldSeason)
             ? () => {
                 if (fieldSeasonNeedsAnnouncement(venueSeason)) {
                   setShowStartSeasonModal(true);
@@ -5828,6 +5888,11 @@ export default function VenueEntryPage({
         pendingFieldStaffCount={
           pendingStaffRequests.length
         }
+        onManageFieldPowers={
+          isVenueOwner && !isReadOnlyFieldRole
+            ? () => setShowStaffPowersPanel(true)
+            : undefined
+        }
         onManageFieldStaff={
           isFieldAdministrator
             ? () => setShowStaffApprovalPanel(true)
@@ -5836,7 +5901,7 @@ export default function VenueEntryPage({
         onGoToEntryDev={() => setEnteredIdentity(null)}
       />
 
-      {showEndMatchDayModal && isFieldAdministrator && (
+      {showEndMatchDayModal && canEndFieldMatchDay && (
         <div className="modal-backdrop">
           <div className="modal" role="dialog" aria-modal="true"
             aria-labelledby="field-end-day-title"
@@ -6034,9 +6099,15 @@ export default function VenueEntryPage({
         />
       )}
 
-      {showEndSeasonModal && venue?.ownerUid === currentUser?.uid && (
+      {showEndSeasonModal && canEndFieldSeason && (
         <FieldSeasonEndModal venue={venue} season={venueSeason}
           onClose={() => setShowEndSeasonModal(false)} />
+      )}
+
+      {showStaffPowersPanel && isVenueOwner && !isReadOnlyFieldRole && (
+        <VenueStaffPowersPanel venueId={venue.id}
+          ownerUid={venue.ownerUid}
+          onClose={() => setShowStaffPowersPanel(false)} />
       )}
 
       {showStaffApprovalPanel && isFieldAdministrator && (

@@ -2047,7 +2047,6 @@ export function LandingPage({
 
         <header className="match-preview-heading">
           <div className="match-preview-heading__title">
-            <span className="match-preview-heading__eyebrow">NEXT ON THE PITCH</span>
             <h2>Upcoming match:</h2>
           </div>
           <div className="match-preview-heading__details">
@@ -2064,14 +2063,7 @@ export function LandingPage({
         </header>
 
 
-        {isFriendlyMatch && (
-          <p
-            className="muted small"
-            style={{ marginTop: "-0.25rem", marginBottom: "0.9rem" }}
-          >
-            Friendly {activeGameFormatLabel} is active. Squads and live match flow should follow the {activeGameFormatLabel} format.
-          </p>
-        )}
+
 
         {isThreeTeamLeague && (
           <div
@@ -2105,14 +2097,7 @@ export function LandingPage({
           </div>
         )}
 
-        {isThreeTeamLeague && standbyTeam && (
-          <p className="standby-label">
-            Standby Team:{" "}
-            <strong>
-              {standbyTeam.label} (c: {standbyTeam.captain})
-            </strong>
-          </p>
-        )}
+
 
 
         {canStartMatch ? (
