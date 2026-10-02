@@ -579,3 +579,63 @@
   text-underline-offset: 3px;
   cursor: pointer;
 }
+
+/* Field hub panels retain the Club navy palette */
+.fanm-venues--live .hub-topbar,
+.fanm-venues--live .hub-clubs-section,
+.fanm-venues--live .hub-map-section,
+.fanm-venues--live .hub-footer-brand {
+  background: linear-gradient(145deg, #101c35, #060b1d) !important;
+  border-color: rgba(148, 163, 184, .18) !important;
+  color: #f1f5f9;
+}
+.fanm-venues--live .fanm-venues__tools {
+  background: rgba(2, 6, 23, .65) !important;
+}
+.fanm-venues--live .fanm-venues__register-card {
+  background:
+    radial-gradient(circle at top left, rgba(8,145,178,.22), transparent 55%),
+    radial-gradient(circle at bottom right, rgba(126,34,206,.24), transparent 55%),
+    #071225 !important;
+  border-color: rgba(56,189,248,.4) !important;
+  color: #f1f5f9 !important;
+}
+.fanm-venues--live .fanm-venues__venue-card {
+  background: linear-gradient(145deg, #f4f8f7, #e8edf3) !important;
+  border-color: #dce4ec !important;
+  color: #183046 !important;
+}
+.fanm-venues--live .fanm-venues__venue-card small {
+  color: #586d80 !important;
+}
+.fanm-venues--live .fanm-venues__venue-card > span:last-child {
+  color: #607a8a !important;
+}
+
+/* Field registration typography matches the Club tile */
+.fanm-venues--live .fanm-venues__register-card > strong {
+  display: block;
+  margin-top: 12px;
+  color: #f1f5f9;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.15;
+  text-align: center;
+}
+.fanm-venues--live .fanm-venues__register-card > small {
+  display: block;
+  margin-top: 12px;
+  color: #aeb8c8;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+}
+
+/* Navy Field hub ribbon and discovery panel */
+.fanm-venues.fanm-venues--live .fanm-venues__shell > header,
+.fanm-venues.fanm-venues--live .fanm-venues__shell > .fanm-venues__panel {
+  background: linear-gradient(145deg, #101c35, #060b1d) !important;
+  border-color: rgba(148, 163, 184, .18) !important;
+  color: #f1f5f9;
+}
