@@ -1,3 +1,7 @@
+import { db as notificationFieldDb } from "./firebaseConfig.js";
+import {
+  doc as notificationFieldDoc, getDoc as loadNotificationFieldDoc,
+} from "firebase/firestore";
 // src/App.jsx
 import React, {
   useEffect,
@@ -2860,8 +2864,40 @@ export default function App() {
       authUser,
       identity,
       activeClubId,
-      onNotificationOpened: notification => {
+      onNotificationOpened: async notification => {
         const data = notification?.data || {};
+        if (data.type === "field_match_day_review") {
+          const venueId = String(data.venueId || "").trim();
+          if (!/^[A-Za-z0-9_-]{1,150}$/.test(venueId)) return;
+          try {
+            const snapshot = await loadNotificationFieldDoc(
+              notificationFieldDoc(notificationFieldDb, "leagueVenues", venueId)
+            );
+            if (!snapshot.exists()) {
+              window.alert("This Field is no longer available.");
+              return;
+            }
+            if (data.seasonId && data.matchDayId) {
+              try {
+                sessionStorage.setItem(
+                  `field-review-open:${venueId}:${data.seasonId}:${data.matchDayId}`,
+                  "1"
+                );
+              } catch {}
+            }
+            setNativeChatOpenRequest(null);
+            setNativePollOpenRequest(null);
+            setSessionMode("official");
+            writeSessionModeIntent("official");
+            setFieldNavTarget({ page: "landing", id: Date.now() });
+            setSelectedLeagueVenue({...snapshot.data(), id: snapshot.id});
+            setPage(PAGE_VENUE_ENTRY);
+          } catch (error) {
+            console.error("[Field review navigation]", error);
+            window.alert("Could not open this Field. Please try again.");
+          }
+          return;
+        }
 
         const opensClubChat =
           data.type === "club_chat" ||
@@ -9615,6 +9651,7 @@ export default function App() {
       {page === PAGE_VENUE_ENTRY && (
         <>
           <VenueEntryPage
+            key={selectedLeagueVenue?.id || "field-entry"}
             venue={selectedLeagueVenue}
             onFieldNavState={setFieldNav}
             fieldNavTarget={fieldNavTarget}

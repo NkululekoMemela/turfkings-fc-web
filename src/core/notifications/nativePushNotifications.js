@@ -75,7 +75,8 @@ async function showForegroundNotification(notification = {}) {
     "You have a new notification."
   );
 
-  if (notification.data?.type === "field_season_invitation" &&
+  if (["field_season_invitation", "field_match_day_review"]
+      .includes(notification.data?.type) &&
       Capacitor.getPlatform() === "android" &&
       Capacitor.isPluginAvailable("FieldNotifications")) {
     try {

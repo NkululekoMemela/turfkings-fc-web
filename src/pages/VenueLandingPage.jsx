@@ -259,6 +259,9 @@ function secondsToEditableMinutes(seconds, fallbackSeconds = 60 * 60) {
 }
 
 export default function VenueLandingPage({
+  fieldScheduleControls = null,
+  fieldScheduleView = null,
+  fieldSeason = null,
   activeClub = null,
   activeClubId = null,
   activeClubName = null,
@@ -1760,26 +1763,13 @@ export default function VenueLandingPage({
       </header>
 
       <section className="card landing-first-card">
-        {!canSeeCaptainStyleControls &&
-          typeof onOpenActionLog === "function" && (
-          <div style={{ marginBottom: "0.9rem" }}>
-            <button type="button" className="secondary-btn"
-              onClick={() => setShowSettingsPanel((value) => !value)}
-              aria-expanded={showSettingsPanel}
-              style={{ width: "100%", textAlign: "left" }}>
-              ⚙️ Match Settings ▾
-            </button>
-            {showSettingsPanel && (
-              <button type="button" className="secondary-btn"
-                onClick={onOpenActionLog}
-                style={{ width: "100%", marginTop: "0.6rem" }}>
-                📋 Action Log
-              </button>
-            )}
-          </div>
-        )}
+        {!canSeeCaptainStyleControls && fieldScheduleView}
         {canSeeCaptainStyleControls && (
-          <div className="field-settings-panel" style={{ marginBottom: "0.9rem" }}>
+          <div className="field-settings-panel" style={{
+            marginBottom: "0.9rem", padding: "0.65rem",
+            border: "2px solid rgba(56,189,248,.65)",
+            borderRadius: "1.2rem",
+          }}>
             <button
               type="button"
               className="secondary-btn"
@@ -1800,9 +1790,11 @@ export default function VenueLandingPage({
               }}
             >
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.16rem" }}>
-                <span style={{ fontWeight: 850 }}>⚙️ Match Settings</span>
+                <span style={{ fontWeight: 850 }}>⚙️ Season settings</span>
                 <span className="muted small">
-                  {settingsSummary}
+                  {"League · Fixtured · " +
+                    String(gameFormat).replaceAll("_V_", " v ") +
+                    " · " + matchDurationLabel}
                 </span>
               </span>
               <span
@@ -1908,255 +1900,35 @@ export default function VenueLandingPage({
               </button>
             )}
 
-            <div>
-              <div
-                className="muted small"
-                style={{ marginBottom: "0.35rem", fontWeight: 700 }}
-              >
-                Match Type
-              </div>
-              <div className="field-settings-segments"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  padding: "4px",
-                  borderRadius: "999px",
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  gap: "4px",
-                  flexWrap: "wrap",
-                }}
-              >
-                {MATCH_MODE_OPTIONS.map((option) => {
-                  const active = resolvedMatchType === option.value;
-                  return (
-                    <button aria-pressed={active}
-                      key={option.value}
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() => {
-                        if (isFormatLocked) return;
-                        requestMatchTypeChange(option.value);
-                      }}
-                      disabled={isFormatLocked}
-                      style={{
-                        borderRadius: "999px",
-                        padding: "0.45rem 0.9rem",
-                        color: "#ffffff",
-                        border: active
-                          ? "1px solid rgba(34, 211, 238, 0.55)"
-                          : "1px solid transparent",
-                        background: active
-                          ? "linear-gradient(180deg, rgba(8,145,178,0.98), rgba(37,99,235,0.96))"
-                          : "transparent",
-                        boxShadow: active
-                          ? "0 0 18px rgba(34,211,238,0.28)"
-                          : "none",
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <p className="muted small" style={{ marginTop: "0.45rem" }}>
-                {isFormatLocked && (
-                  <span style={{ color: "#f87171", fontWeight: 600 }}>
-                    🔒 Format locked for this match day.
-                  </span>
-                )}
-                {isFormatLocked ? <br /> : null}
-                {formatHasLiveRisk
-                  ? " Match day data already exists, so switching match type or format should only be done deliberately."
-                  : " "}
+            <section aria-label="Season rules"
+              style={{ padding: "0.9rem", borderRadius: "0.9rem",
+                border: "1px solid rgba(56,189,248,.4)" }}>
+              <strong>League · Fixtured</strong>
+              <p style={{ margin: "0.6rem 0" }}>
+                Format: {String(gameFormat).replaceAll("_V_", " v ")}
               </p>
-
-              {isFormatLocked && canSeeCaptainStyleControls && (
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  style={{ marginTop: "0.5rem" }}
-                  onClick={() =>
-                    requestMatchTypeChange(
-                      resolvedMatchType === MATCH_MODE.LEAGUE
-                        ? MATCH_MODE.FRIENDLY
-                        : MATCH_MODE.LEAGUE
-                    )
-                  }
-                >
-                  🔑 Override Format Lock
-                </button>
+              {fieldSeason?.scheduleVersion === 1 ? (
+                <p className="muted small" style={{ margin: 0 }}>
+                  {Number(fieldSeason.scheduleSettings?.matchMinutes ??
+                    (Number(matchSeconds) / 60)) / 2} minutes per half
+                  {" · "}{Number(fieldSeason.scheduleSettings?.halftimeMinutes ?? 5)}
+                  {" "}minutes at halftime
+                  {" · "}{Number(fieldSeason.scheduleSettings?.turnaroundMinutes ?? 5)}
+                  {" "}minutes between games
+                </p>
+              ) : (
+                <p className="muted small" style={{ margin: 0 }}>
+                  Older season: recorded match length is {matchDurationLabel}.
+                  The new dated schedule uses the duration selected when
+                  announcing the season.
+                </p>
               )}
-            </div>
+              <p className="muted small" style={{ marginBottom: 0 }}>
+                Format and playing duration are chosen before the season starts.
+              </p>
+            </section>
+            {fieldScheduleControls}
 
-            {isThreeTeamLeague && (
-              <div>
-                <div
-                  className="muted small"
-                  style={{ marginBottom: "0.35rem", fontWeight: 700 }}
-                >
-                  League Mode
-                </div>
-                <div className="field-settings-segments"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    padding: "4px",
-                    borderRadius: "999px",
-                    background: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    gap: "4px",
-                  }}
-                >
-                  <button aria-pressed={!fixturedMode}
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => requestLeagueModeChange("round_robin")}
-                    style={{
-                      borderRadius: "999px",
-                      padding: "0.45rem 0.9rem",
-                      color: "#ffffff",
-                      border: !fixturedMode
-                        ? "1px solid rgba(255, 90, 90, 0.55)"
-                        : "1px solid transparent",
-                      background: !fixturedMode
-                        ? "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))"
-                        : "transparent",
-                      boxShadow: !fixturedMode
-                        ? "0 0 18px rgba(255,60,60,0.35)"
-                        : "none",
-                    }}
-                  >
-                    Round Robin
-                  </button>
-
-                  <button aria-pressed={fixturedMode}
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => requestLeagueModeChange("scheduled_target")}
-                    style={{
-                      borderRadius: "999px",
-                      padding: "0.45rem 0.9rem",
-                      color: "#ffffff",
-                      border: fixturedMode
-                        ? "1px solid rgba(255, 90, 90, 0.55)"
-                        : "1px solid transparent",
-                      background: fixturedMode
-                        ? "linear-gradient(180deg, rgba(255,80,80,0.95), rgba(210,35,35,0.95))"
-                        : "transparent",
-                      boxShadow: fixturedMode
-                        ? "0 0 18px rgba(255,60,60,0.35)"
-                        : "none",
-                    }}
-                  >
-                    Fixtured
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div>
-              <div
-                className="muted small"
-                style={{ marginBottom: "0.35rem", fontWeight: 700 }}
-              >
-                Game Format
-              </div>
-              <div className="field-settings-segments"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  padding: "4px",
-                  borderRadius: "999px",
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  gap: "4px",
-                  flexWrap: "wrap",
-                }}
-              >
-                {GAME_FORMAT_OPTIONS.map((option) => {
-                  const active = resolvedGameFormat === option.value;
-                  return (
-                    <button aria-pressed={active}
-                      key={option.value}
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() => {
-                        if (isFormatLocked) return;
-                        requestGameFormatChange(option.value);
-                      }}
-                      disabled={isFormatLocked}
-                      style={{
-                        borderRadius: "999px",
-                        padding: "0.45rem 0.9rem",
-                        color: "#ffffff",
-                        border: active
-                          ? "1px solid rgba(34, 197, 94, 0.55)"
-                          : "1px solid transparent",
-                        background: active
-                          ? "linear-gradient(180deg, rgba(22,163,74,0.96), rgba(21,128,61,0.94))"
-                          : "transparent",
-                        boxShadow: active
-                          ? "0 0 18px rgba(34,197,94,0.24)"
-                          : "none",
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => {
-                setDurationDraftMinutes(
-                  secondsToEditableMinutes(resolvedMatchSeconds, resolvedDefaultMatchSeconds)
-                );
-                setShowDurationModal(true);
-              }}
-              disabled={durationSwitchLocked}
-              style={{
-                width: "100%",
-                minHeight: "48px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "0.75rem",
-                borderRadius: "1rem",
-                padding: "0.65rem 0.78rem",
-                border: durationIsCustom
-                  ? "1px solid rgba(250,204,21,0.38)"
-                  : "1px solid rgba(148,163,184,0.20)",
-                background: durationIsCustom
-                  ? "linear-gradient(180deg, rgba(250,204,21,0.10), rgba(15,23,42,0.70))"
-                  : "rgba(15,23,42,0.50)",
-                color: "#e5e7eb",
-                textAlign: "left",
-              }}
-            >
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.6rem",
-                  minWidth: 0,
-                }}
-              >
-                <span aria-hidden="true" style={{ fontSize: "1.2rem" }}>⏱️</span>
-                <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                  <span style={{ fontWeight: 800 }}>Match Length</span>
-                  <span className="muted small">
-                    {matchDurationLabel}
-                    {durationIsCustom ? " • custom" : ` • default ${defaultDurationLabel}`}
-                  </span>
-                </span>
-              </span>
-              <span aria-hidden="true" className="muted small">Edit</span>
-            </button>
 
 
               </div>

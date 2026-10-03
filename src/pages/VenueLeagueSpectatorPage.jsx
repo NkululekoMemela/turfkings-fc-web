@@ -1,3 +1,4 @@
+import { fieldHalfSecondsLeft } from "../core/fieldMatchClock.js";
 // src/pages/SpectatorPage.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -752,6 +753,8 @@ export function VenueLeagueSpectatorPage(props) {
     const id = setInterval(() => {
       setLocalSecondsLeft((prev) => {
         if (prev == null) return prev;
+        if (matchDoc?.clockVersion === 1 &&
+            matchDoc?.clockPhase === "halftime") return prev;
         const next = prev - 1;
         return next >= 0 ? next : 0;
       });
@@ -763,7 +766,14 @@ export function VenueLeagueSpectatorPage(props) {
   const hasLiveTimer =
     localSecondsLeft != null && Number.isFinite(localSecondsLeft);
 
-  const timerText = hasLiveTimer ? formatSeconds(localSecondsLeft) : "--:--";
+  const halfClockDocument = displayMatchDoc || matchDoc || {};
+  const timerText = hasLiveTimer
+    ? formatSeconds(halfClockDocument.clockVersion === 1
+        ? fieldHalfSecondsLeft({
+            ...halfClockDocument, secondsLeft: localSecondsLeft,
+          })
+        : localSecondsLeft)
+    : "--:--";
   const regulationTimeComplete =
     !isFinished &&
     hasLiveTimer &&
@@ -859,7 +869,13 @@ export function VenueLeagueSpectatorPage(props) {
                 <>
                   <div className="timer-display">{timerText}</div>
                   <span className="muted" style={{ marginLeft: "0.75rem" }}>
-                    Match in progress – updates are live.
+                    {halfClockDocument.clockPhase === "halftime"
+                      ? "Halftime · playing time paused"
+                      : halfClockDocument.clockPhase === "first_half"
+                      ? "First half · live"
+                      : halfClockDocument.clockPhase === "second_half"
+                      ? "Second half · live"
+                      : "Match in progress – updates are live."}
                   </span>
                 </>
               )}

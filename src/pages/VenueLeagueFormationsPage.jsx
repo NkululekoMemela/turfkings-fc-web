@@ -471,8 +471,10 @@ function sanitizeLineupShapeLocal(
   return {
     formationId: formation.id,
     positions: cleanPositions,
-    guestPlayers: uniqueByLower(lineup.guestPlayers || []),
-    benchSnapshot: buildOrderedBenchPool(remaining, lineup?.benchSnapshot || []),
+    guestPlayers: uniqueByLower(lineup.guestPlayers || [])
+      .filter(name => validSet.has(normKey(name))),
+    benchSnapshot: buildOrderedBenchPool(remaining, lineup?.benchSnapshot || [])
+      .filter(name => validSet.has(normKey(name)) && !used.has(normKey(name))),
     meta: {
       savedByRole: lineup?.meta?.savedByRole || LINEUP_SAVE_ROLE_GENERAL,
       savedByEmail: lineup?.meta?.savedByEmail || null,
@@ -1455,12 +1457,9 @@ export function FormationsPage({
 
   const canonicalTeams = useMemo(() => {
     return (sourceTeams || []).map((t) => {
-      const supplied = Array.isArray(t.players) && t.players.length
-        ? t.players
-        : players
-            .filter((player) => String(player.clubId) === String(t.id))
-            .sort((a, b) => a.fullName.localeCompare(b.fullName))
-            .slice(0, 12);
+      const supplied = players
+        .filter((player) => String(player.clubId) === String(t.id))
+        .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
       return {
         ...t,
@@ -1660,7 +1659,7 @@ export function FormationsPage({
     const targetDefaultFormationId = getDefaultFormationIdForGameType(targetGameType);
 
     const targetPlayerPool =
-      targetGameType === GAME_TYPE_11 ? clubPlayers : targetTeam?.players || [];
+      targetTeam?.players || [];
 
     const next = resolveLatestPreferredTeamLineup(
       targetTeam,

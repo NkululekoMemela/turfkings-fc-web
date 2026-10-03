@@ -1,3 +1,6 @@
+import { doc, getDoc } from "firebase/firestore";
+import { getPlayerDoc } from "../core/clubFirestorePaths.js";
+import { leagueBookingScope, paidLeagueManifest } from "../core/leagueBookingPolicy.js";
 import {
   getDocs,
   onSnapshot,
@@ -233,6 +236,44 @@ export function loadVenueLeaguePlayers({
     teams,
     collectionForClub: getPlayersCollection,
   });
+}
+
+export async function loadVenuePaidMatchPlayers({
+  firestore, scope, fixtureId,
+}) {
+  if (!scope?.venueId || !scope?.seasonId || !fixtureId) {
+    throw new Error("The paid league roster needs a Field, season and fixture.");
+  }
+  const venueSnap = await getDoc(doc(firestore, "leagueVenues", scope.venueId));
+  const season = venueSnap.data()?.league?.activeSeason;
+  const fixture = (season?.fixtures || []).find(item => item.id === fixtureId);
+  if (season?.id !== scope.seasonId || !fixture?.matchDayId ||
+      !season.schedulePublishedAtMs) {
+    throw new Error("Publish dated fixtures and confirm league payments before selecting lineups.");
+  }
+
+  const entries = await Promise.all(
+    [fixture.clubAId, fixture.clubBId].map(async clubId => {
+      const bookingScope = {
+        venueId: scope.venueId, seasonId: scope.seasonId,
+        matchDayId: fixture.matchDayId, clubId,
+      };
+      const bookingSnap = await getDoc(doc(
+        firestore, "leagueClubBookings", leagueBookingScope(bookingScope)));
+      const manifest = paidLeagueManifest({
+        booking: bookingSnap.data(), scope: bookingScope,
+      });
+      const profiles = await Promise.all(manifest.map(player =>
+        getDoc(getPlayerDoc(firestore, player.sourcePlayerId, clubId))));
+      const docs = profiles.filter(profile => profile.exists() &&
+        String(profile.data().status || "active").toLowerCase() === "active");
+      return {
+        clubId,
+        snapshot: { docs, forEach: callback => docs.forEach(callback) },
+      };
+    })
+  );
+  return combineClubSnapshots(entries);
 }
 
 export function loadVenueLeaguePlayerPhotos({

@@ -1,3 +1,17 @@
+import { selectDatedFieldPairing } from "../core/fieldDatedPairing.js";
+import { rescheduleRemainingKickoffs } from "../core/fieldRemainingKickoffs.js";
+import { assertFieldMatchDayProgression } from "../../functions/fieldMatchDayProgression.mjs";
+import { buildDatedMatchDayArchive } from "../core/fieldMatchDayArchive.js";
+import { getDoc as startGetDoc } from "firebase/firestore";
+import {
+  getActiveFirebaseFunctionsBaseUrl as startFunctionsUrl,
+} from "../firebaseConfig.js";
+import {
+  leagueBookingScope as startBookingScope,
+  paidLeagueManifest as startPaidManifest,
+} from "../core/leagueBookingPolicy.js";
+import { getPlayerDoc as startPlayerDoc } from "../core/clubFirestorePaths.js";
+import { buildFieldLeagueSchedule } from "../core/fieldLeagueSchedule.js";
 import { reconcileFieldSeasonFixtures } from "../core/fieldSeasonFixtures.js";
 import {
   fieldSeasonHasPlayRecords, fieldSeasonCancellationReason,
@@ -73,11 +87,9 @@ export async function cancelVenueFixtureStart({ scope }) {
       season?.id !== seasonId ||
       !fixtureId ||
       season.liveMatches?.[fixtureId]?.status !== "live" ||
-      live.status !== "live" ||
-      live.confirmedLineupSnapshot ||
-      (live.currentEvents || []).length
+      live.status !== "live"
     ) {
-      throw new Error("This match can no longer be cancelled before play.");
+      throw new Error("This match is no longer live and cannot be cancelled.");
     }
 
     transaction.update(
@@ -116,76 +128,44 @@ export async function chooseVenueFixturePairing({
   venueId, seasonId, clubAId, clubBId,
 }) {
   const user = auth.currentUser;
-  if (!user?.uid || !venueId || !seasonId ||
-      !clubAId || !clubBId || clubAId === clubBId) {
-    throw new Error("Choose two different registered Clubs.");
+  if (!user?.uid || !venueId || !seasonId) {
+    throw new Error("Sign in as a Field official.");
   }
-
   const venueRef = doc(db, "leagueVenues", venueId);
-  const staffRef = doc(db, "leagueVenues", venueId, "staff", user.uid);
-  const newFixtureId = crypto.randomUUID();
-
   return runTransaction(db, async transaction => {
     const venueSnap = await transaction.get(venueRef);
-    const staffSnap = await transaction.get(staffRef);
-    if (!venueSnap.exists()) throw new Error("Field no longer exists.");
-
+    const staffSnap = await transaction.get(
+      doc(db, "leagueVenues", venueId, "staff", user.uid));
+    const liveSnap = await transaction.get(
+      doc(db, "leagueVenues", venueId, "seasons", seasonId, "matches", "current"));
     const venue = venueSnap.data();
     const staff = staffSnap.data();
-    const administrator = venue.ownerUid === user.uid ||
-      (staff?.status === "active" && staff.isAdministrator === true);
-    const operator = administrator ||
-      (staff?.status === "active" && staff.role === "referee");
-    if (!operator) throw new Error("Only an approved Field official can change the pairing.");
-
+    if (!venue || (venue.ownerUid !== user.uid &&
+        !(staff?.status === "active" &&
+          (staff.isAdministrator === true || staff.role === "referee")))) {
+      throw new Error("Only an approved Field official can select the pairing.");
+    }
     const season = venue.league?.activeSeason;
     if (season?.id !== seasonId || season.status !== "active") {
-      throw new Error("The active season changed. Refresh and try again.");
+      throw new Error("The active season changed.");
     }
-    if (Object.values(season.liveMatches || {}).some(match => match?.status === "live")) {
-      throw new Error("Finish the live match before changing the pairing.");
+    if (liveSnap.data()?.status === "live" ||
+        Object.values(season.liveMatches || {}).some(item => item.status === "live")) {
+      throw new Error("Finish the live match before selecting another pairing.");
     }
-
-    const registered = new Set(season.clubIds || []);
-    if (!registered.has(clubAId) || !registered.has(clubBId)) {
-      throw new Error("Both Clubs must be registered for this season.");
-    }
-    const clubs = new Map([...registered].map(id => [
-      id, season.invitations?.[id]?.clubName || id,
-    ]));
-    const fixtures = reconcileFieldSeasonFixtures({
-      season, clubs, actorUid: user.uid,
+    const {fixture, fixtureIndex, matchDayIndex} = selectDatedFieldPairing({
+      season, clubAId, clubBId,
     });
-    let fixture = fixtures.find(item =>
-      item.status === "scheduled" && !season.liveMatches?.[item.id] &&
-      ((item.clubAId === clubAId && item.clubBId === clubBId) ||
-       (item.clubAId === clubBId && item.clubBId === clubAId))
-    );
-
-    let updatedFixtures = fixtures;
-    if (!fixture) {
-      if (!administrator) {
-        throw new Error("A Field administrator must arrange this additional pairing.");
-      }
-      fixture = {
-        id: newFixtureId, clubAId, clubBId,
-        clubAName: clubs.get(clubAId), clubBName: clubs.get(clubBId),
-        status: "scheduled", source: "admin_pairing",
-        createdByUid: user.uid, createdAtMs: Date.now(),
-      };
-      updatedFixtures = [...fixtures, fixture];
-    }
-
     transaction.update(venueRef, {
-      "league.activeSeason.fixtures": updatedFixtures,
       "league.activeSeason.selectedFixtureId": fixture.id,
+      "league.activeSeason.selectedFixtureIndex": fixtureIndex,
+      "league.activeSeason.selectedMatchDayIndex": matchDayIndex,
       updatedAt: serverTimestamp(),
     });
     recordVenueAction(transaction, {
       venueId, seasonId, fixtureId: fixture.id,
-      action: "fixture_pairing_selected",
-      label: "Fixture pairing changed",
-      details: `${fixture.clubAName} vs ${fixture.clubBName}`,
+      action: "fixture_pairing_selected", label: "Fixture pairing selected",
+      details: `${fixture.clubAName || clubAId} vs ${fixture.clubBName || clubBId}`,
     });
     return fixture.id;
   });
@@ -258,7 +238,14 @@ export async function prepareVenueSeasonForMatch({ venueId }) {
       };
     }
 
-    const fixtures = reconcileFieldSeasonFixtures({
+    const datedSchedule =
+      existing.scheduleVersion === 1 && !(existing.fixtures || []).length
+        ? buildFieldLeagueSchedule({
+            seasonId, clubs, startsOn: existing.startsOn,
+            ...existing.scheduleSettings,
+          })
+        : null;
+    const fixtures = datedSchedule?.fixtures || reconcileFieldSeasonFixtures({
       season: { ...existing, id: seasonId },
       clubs,
       actorUid: user.uid,
@@ -281,6 +268,9 @@ export async function prepareVenueSeasonForMatch({ venueId }) {
       clubIds,
       invitations,
       fixtures,
+      matchDays: datedSchedule?.matchDays || existing.matchDays || [],
+      registrationOpen: datedSchedule ? false : (existing.registrationOpen ?? false),
+      schedulePublishedAtMs: datedSchedule ? Date.now() : (existing.schedulePublishedAtMs || null),
       liveMatches: existing.liveMatches || {},
       results: existing.results || [],
       allEvents: existing.allEvents || [],
@@ -423,6 +413,154 @@ export async function confirmVenueClubParticipation({ venueId, clubId }) {
   );
 }
 
+export async function setVenueScheduleTesting({
+  venueId, seasonId, enabled,
+}) {
+  const uid = auth.currentUser?.uid;
+  if (!uid || typeof enabled !== "boolean") {
+    throw new Error("Sign in and choose a valid testing setting.");
+  }
+  const venueRef = doc(db, "leagueVenues", venueId);
+  return runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(venueRef);
+    if (!snapshot.exists()) throw new Error("Field no longer exists.");
+    const venue = snapshot.data();
+    if (venue.ownerUid !== uid) {
+      throw new Error("Only the Field creator can change testing mode.");
+    }
+    if (venue.league?.activeSeason?.id !== seasonId) {
+      throw new Error("The season has changed.");
+    }
+    transaction.update(venueRef, {
+      "league.activeSeason.allowEarlyStarts": enabled,
+      "league.activeSeason.testingChangedByUid": uid,
+      "league.activeSeason.testingChangedAt": serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+export async function rescheduleRemainingVenueKickoffs({
+  venueId, seasonId, matchDayId, startTime,
+}) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error("Sign in as a Field administrator.");
+  const venueRef = doc(db, "leagueVenues", venueId);
+  return runTransaction(db, async transaction => {
+    const venueSnap = await transaction.get(venueRef);
+    const staffSnap = await transaction.get(
+      doc(db, "leagueVenues", venueId, "staff", uid));
+    const liveSnap = await transaction.get(
+      doc(db, "leagueVenues", venueId, "seasons", seasonId, "matches", "current"));
+    const venue = venueSnap.data();
+    const staff = staffSnap.data();
+    if (!venue || (venue.ownerUid !== uid &&
+        !(staff?.status === "active" && staff.isAdministrator === true))) {
+      throw new Error("Only a Field administrator can change kickoff times.");
+    }
+    const season = venue.league?.activeSeason;
+    if (season?.id !== seasonId) throw new Error("The season has changed.");
+    const updated = rescheduleRemainingKickoffs({
+      season, matchDayId, startTime, actorUid: uid,
+      liveMatch: liveSnap.exists() ? liveSnap.data() : null,
+    });
+    transaction.update(venueRef, {
+      "league.activeSeason.fixtures": updated.fixtures,
+      "league.activeSeason.matchDays": updated.matchDays,
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+export async function rescheduleVenueMatchDay({
+  venueId, seasonId, matchDayId, dateLocal, startTime,
+}) {
+  const user = auth.currentUser;
+  if (!user?.uid) throw new Error("Sign in as a Field administrator.");
+  if (!venueId || !seasonId || !matchDayId ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(String(dateLocal || "")) ||
+      !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(startTime || ""))) {
+    throw new Error("Choose a valid match date and first kickoff.");
+  }
+  const date = new Date(`${dateLocal}T12:00:00Z`);
+  if (!Number.isFinite(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== dateLocal) {
+    throw new Error("Choose a valid match date.");
+  }
+  const venueRef = doc(db, "leagueVenues", venueId);
+  const staffRef = doc(db, "leagueVenues", venueId, "staff", user.uid);
+
+  return runTransaction(db, async transaction => {
+    const venueSnap = await transaction.get(venueRef);
+    const staffSnap = await transaction.get(staffRef);
+    if (!venueSnap.exists()) throw new Error("Field no longer exists.");
+    const venue = venueSnap.data();
+    const staff = staffSnap.data();
+    if (venue.ownerUid !== user.uid &&
+        !(staff?.status === "active" && staff.isAdministrator === true)) {
+      throw new Error("Only a Field administrator can change the schedule.");
+    }
+    const season = venue.league?.activeSeason;
+    if (season?.id !== seasonId) throw new Error("The season has changed.");
+    const day = (season.matchDays || []).find(item => item.id === matchDayId);
+    if (!day || day.status !== "scheduled") {
+      throw new Error("This match day is no longer available for rescheduling.");
+    }
+
+    const fixtures = season.fixtures || [];
+    const dayFixtures = fixtures.filter(item => item.matchDayId === matchDayId);
+    if (!dayFixtures.length) throw new Error("This match day has no fixtures.");
+    if (dayFixtures.some(item => item.status !== "scheduled" ||
+        season.liveMatches?.[item.id])) {
+      throw new Error("This day has already started. Its recorded schedule is locked.");
+    }
+    if ((season.matchDays || []).some(item =>
+        item.id !== matchDayId && item.dateLocal === dateLocal)) {
+      throw new Error("Another match day already uses this date.");
+    }
+
+    const settings = season.scheduleSettings || {};
+    const play = Number(settings.matchMinutes ?? 40);
+    const halftime = Number(settings.halftimeMinutes ?? 5);
+    const turnaround = Number(settings.turnaroundMinutes ?? 5);
+    if (![play, halftime, turnaround].every(Number.isFinite) ||
+        play < 2 || halftime < 0 || turnaround < 0) {
+      throw new Error("The season duration settings need correcting.");
+    }
+    const [hour, minute] = startTime.split(":").map(Number);
+    const firstMinute = hour * 60 + minute;
+    const ordered = [...dayFixtures].sort((a, b) =>
+      String(a.scheduledLocal).localeCompare(String(b.scheduledLocal)));
+    const replacements = new Map();
+    ordered.forEach((fixture, index) => {
+      const kickoff = firstMinute + index * (play + halftime + turnaround);
+      if (kickoff + play + halftime >= 1440) {
+        throw new Error("These games will not fit before midnight. Start earlier.");
+      }
+      const time = `${String(Math.floor(kickoff / 60)).padStart(2, "0")}:` +
+        String(kickoff % 60).padStart(2, "0");
+      replacements.set(fixture.id, {
+        ...fixture,
+        scheduledLocal: `${dateLocal}T${time}`,
+        rescheduledByUid: user.uid,
+        rescheduledAtMs: Date.now(),
+      });
+    });
+
+    transaction.update(venueRef, {
+      "league.activeSeason.fixtures":
+        fixtures.map(item => replacements.get(item.id) || item),
+      "league.activeSeason.matchDays": season.matchDays.map(item =>
+        item.id === matchDayId ? {
+          ...item, dateLocal, startTime,
+          opensAtMs: Date.parse(`${dateLocal}T00:00:00+02:00`),
+          rescheduledByUid: user.uid, rescheduledAtMs: Date.now(),
+        } : item),
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
 export async function scheduleVenueFixture({
   venueId,
   clubAId,
@@ -493,8 +631,36 @@ export async function startVenueFixture({
   if (!user?.uid) throw new Error("Sign in as the field manager.");
   if (!venueId || !fixtureId) throw new Error("Select a scheduled fixture.");
   const ref = doc(db, "leagueVenues", venueId);
+  const preliminary = await startGetDoc(ref);
+  const approvalSeasonId = preliminary.data()?.league?.activeSeason?.id;
+  if (!approvalSeasonId) throw new Error("The active season is missing.");
+  const token = await user.getIdToken();
+  const response = await fetch(
+    `${startFunctionsUrl().replace(/\/$/, "")}/approveFieldMatchStart`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({venueId, seasonId: approvalSeasonId, fixtureId}),
+    }
+  );
+  const approvalResponse = await response.json();
+  if (!response.ok || !approvalResponse.approvalId) {
+    throw new Error(approvalResponse.error || "Server match approval failed.");
+  }
+  const approvalRef = doc(db, "leagueVenues", venueId, "seasons",
+    approvalSeasonId, "startApprovals", approvalResponse.approvalId);
 
   return runTransaction(db, async (transaction) => {
+    const approvalSnapshot = await transaction.get(approvalRef);
+    const approval = approvalSnapshot.data();
+    if (!approvalSnapshot.exists() || approval.used ||
+        approval.actorUid !== user.uid ||
+        approval.expiresAt?.toMillis() <= Date.now()) {
+      throw new Error("Match approval expired. Please try again.");
+    }
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists()) throw new Error("Venue no longer exists.");
     const venue = snapshot.data();
@@ -528,6 +694,9 @@ export async function startVenueFixture({
     }
 
     const season = venue.league?.activeSeason;
+    if (season?.id !== approvalSeasonId) {
+      throw new Error("The season changed. Please reopen the fixture.");
+    }
     const minimum = Number(season?.minimumClubs) || 3;
     if ((season?.clubIds || []).length < minimum) {
       throw new Error(`At least ${minimum} registered Clubs are required before play.`);
@@ -542,11 +711,6 @@ export async function startVenueFixture({
       clubs: registeredClubs,
       actorUid: user.uid,
     });
-    if (reconciledFixtures.length !== (season.fixtures || []).length) {
-      transaction.update(ref, {
-        "league.activeSeason.fixtures": reconciledFixtures,
-      });
-    }
     const fixture = reconciledFixtures.find((item) =>
       item.id === fixtureId && item.status === "scheduled");
     if (!fixture || season.liveMatches?.[fixtureId]) {
@@ -555,6 +719,67 @@ export async function startVenueFixture({
     if (Object.values(season.liveMatches || {})
       .some((match) => match.status === "live")) {
       throw new Error("Finish the current live match first.");
+    }
+
+    if (season.scheduleVersion === 1) {
+      const day = (season.matchDays || []).find(item =>
+        item.id === fixture.matchDayId);
+      if (!day || day.status !== "scheduled") {
+        throw new Error("This fixture needs an available scheduled match day.");
+      }
+      assertFieldMatchDayProgression({season, matchDayId: day.id});
+      const opensAtMs = Date.parse(`${day.dateLocal}T00:00:00+02:00`);
+      if (!Number.isFinite(opensAtMs)) {
+        throw new Error("This match day has an invalid date.");
+      }
+      if (season.allowEarlyStarts !== true && Date.now() < opensAtMs) {
+        throw new Error(`This match day opens on ${day.dateLocal}.`);
+      }
+    }
+
+    if (season.scheduleVersion !== 1 || !fixture.matchDayId) {
+      throw new Error("Publish dated league fixtures before starting this match.");
+    }
+
+    const requiredPlayers = {
+      "5_V_5": 5, "6_V_6": 6, "7_V_7": 7, "11_V_11": 11,
+    }[season.gameFormat];
+    if (!requiredPlayers) {
+      throw new Error("Choose a supported league game format.");
+    }
+
+    const paidSquadsForStart = {};
+    for (const clubId of [fixture.clubAId, fixture.clubBId]) {
+      const bookingScope = {
+        venueId, seasonId: season.id,
+        matchDayId: fixture.matchDayId, clubId,
+      };
+      const bookingSnapshot = await transaction.get(
+        doc(db, "leagueClubBookings", startBookingScope(bookingScope))
+      );
+      const manifest = startPaidManifest({
+        scope: bookingScope,
+        booking: bookingSnapshot.exists() ? bookingSnapshot.data() : null,
+      });
+      const eligible = [];
+      for (const player of manifest) {
+        const profile = await transaction.get(
+          startPlayerDoc(db, player.sourcePlayerId, clubId)
+        );
+        if (profile.exists() &&
+            String(profile.data().status || "active").toLowerCase() === "active") {
+          eligible.push(player);
+        }
+      }
+      if (eligible.length < requiredPlayers) {
+        const clubName = clubId === fixture.clubAId
+          ? fixture.clubAName : fixture.clubBName;
+        throw new Error(
+          `${clubName || clubId} has ${eligible.length} active paid players. ` +
+          `${requiredPlayers} are required for this match day.`
+        );
+      }
+      paidSquadsForStart[clubId] = eligible;
     }
 
     const confirmedTeams = teams.filter((team) =>
@@ -582,6 +807,11 @@ export async function startVenueFixture({
       startedByUid: user.uid,
       startedAt: serverTimestamp(),
     };
+    if (reconciledFixtures.length !== (season.fixtures || []).length) {
+      transaction.update(ref, {
+        "league.activeSeason.fixtures": reconciledFixtures,
+      });
+    }
     transaction.update(
       ref,
       new FieldPath("league", "activeSeason", "liveMatches", fixtureId),
@@ -608,7 +838,18 @@ export async function startVenueFixture({
       startedByUid: user.uid,
       controller,
     });
-    transaction.set(getVenueLiveMatchDoc(db, scope, "current"), data);
+    transaction.set(getVenueLiveMatchDoc(db, scope, "current"), {
+      ...data,
+      startApprovalId: approvalResponse.approvalId,
+      clockVersion: 1,
+      clockPhase: "first_half",
+      halftimeSeconds: Number(season.scheduleSettings?.halftimeMinutes ?? 5) * 60,
+      halftimeEndsAtMs: 0,
+      fixtureIndex: reconciledFixtures.findIndex(item => item.id === fixture.id),
+      matchDayIndex: (season.matchDays || []).findIndex(item =>
+        item.id === fixture.matchDayId),
+    });
+    transaction.update(approvalRef, {used: true});
     recordVenueAction(transaction, {
       venueId,
       seasonId: season.id,
@@ -989,7 +1230,7 @@ async function requireVenueStaffPower(transaction, venue, venueId, uid, power) {
   }
 }
 
-export async function archiveVenueMatchDay({ venueId, seasonId }) {
+export async function archiveVenueMatchDay({ venueId, seasonId, matchDayId = "" }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the Field Manager.");
 
@@ -1023,37 +1264,11 @@ export async function archiveVenueMatchDay({ venueId, seasonId }) {
 
     const history = Array.isArray(season.matchDayHistory)
       ? season.matchDayHistory : [];
-    const archivedFixtureIds = new Set(history.flatMap(
-      (day) => (day.results || []).map(
-        (result) => String(result.fixtureId || result.id || "")
-      )
-    ));
-    const dayResults = (season.results || []).filter(
-      (result) => result?.status === "completed" &&
-        result.fixtureId && !archivedFixtureIds.has(String(result.fixtureId))
-    );
-    if (!dayResults.length) {
-      throw new Error("There are no unarchived completed matches.");
-    }
-
-    const matchNumbers = new Set(dayResults.map(
-      (result) => Number(result.matchNo)
-    ));
-    const dayEvents = (season.allEvents || []).filter(
-      (event) => matchNumbers.has(Number(event.matchNo))
-    );
     const now = Date.now();
-    const day = {
-      id: `venue-day-${now}`,
-      createdAt: new Date(now).toISOString(),
-      endedAtMs: now,
-      endedByUid: user.uid,
-      matchType: "LEAGUE",
-      gameFormat: season.gameFormat || "5_V_5",
-      results: dayResults,
-      allEvents: dayEvents,
-      clubIds: season.clubIds || [],
-    };
+    const day = buildDatedMatchDayArchive({
+      season, matchDayId, actorUid: user.uid, now,
+    });
+    const dayResults = day.results;
 
     transaction.update(venueRef, {
       "league.activeSeason.matchDayHistory": [...history, day],

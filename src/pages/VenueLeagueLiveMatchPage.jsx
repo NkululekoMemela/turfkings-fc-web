@@ -1,3 +1,4 @@
+import { fieldHalfSecondsLeft } from "../core/fieldMatchClock.js";
 // src/pages/ThreeTeamLeague_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -9,7 +10,7 @@ import { db } from "../firebaseConfig.js";
 import {
   getVenueLiveMatchDoc,
   loadVenueLeaguePlayerPhotos,
-  loadVenueLeaguePlayers,
+  loadVenuePaidMatchPlayers,
   saveVenueClubGoalkeeperRestrictions,
   subscribeVenueGoalkeeperRestrictions,
 } from "../storage/venueLiveMatchRepository.js";
@@ -327,19 +328,11 @@ function getLineupPlayerNames(lineup = {}, canonicalName) {
 }
 
 function buildRegisteredFallbackPlayers(teamPlayers = [], lineup = {}, canonicalName) {
-  const fromTeam = uniqueNames(
+  return uniqueNames(
     (Array.isArray(teamPlayers) ? teamPlayers : [])
-      .map((name) => canonicalName(name))
+      .map(name => canonicalName(name))
       .filter(Boolean)
   );
-
-  if (fromTeam.length) return fromTeam;
-
-  // Important for League 5s/6s/7s:
-  // If Manage Squads has not been fully seeded for the chosen side yet,
-  // do not wipe the FormationPage lineup. Use the saved formation players
-  // as the temporary registered pool for the pre-match verification screen.
-  return getLineupPlayerNames(lineup, canonicalName);
 }
 
 function sanitizeLiveLineupToRegisteredPlayers(
@@ -361,26 +354,29 @@ function sanitizeLiveLineupToRegisteredPlayers(
     playerKeyFor
   );
 
+  const registeredKeys = new Set(
+    validRegistered.map((name) => playerKeyFor(name))
+  );
+
+  const paidOnly = names => (Array.isArray(names) ? names : [])
+    .filter(name => registeredKeys.has(playerKeyFor(canonicalName(name))));
+
   const guestPlayers = uniquePlayersNormalized(
-    lineup?.guestPlayers || [],
+    paidOnly(lineup?.guestPlayers),
     canonicalName,
     playerKeyFor
   );
 
   const borrowedGoalkeepers = uniquePlayersNormalized(
-    lineup?.borrowedGoalkeepers || [],
+    paidOnly(lineup?.borrowedGoalkeepers),
     canonicalName,
     playerKeyFor
   );
 
   const latePlayers = uniquePlayersNormalized(
-    lineup?.latePlayers || [],
+    paidOnly(lineup?.latePlayers),
     canonicalName,
     playerKeyFor
-  );
-
-  const registeredKeys = new Set(
-    validRegistered.map((name) => playerKeyFor(name))
   );
 
   const guestKeys = new Set(
@@ -467,7 +463,7 @@ function sanitizeLiveLineupToRegisteredPlayers(
    * have not yet been moved onto the pitch.
    */
   const existingBench = uniquePlayersNormalized(
-    lineup?.benchSnapshot || [],
+    paidOnly(lineup?.benchSnapshot),
     canonicalName,
     playerKeyFor
   );
@@ -487,7 +483,8 @@ function sanitizeLiveLineupToRegisteredPlayers(
       key &&
       !usedKeys.has(key) &&
       !lateKeys.has(key) &&
-      !borrowedKeys.has(key)
+      !borrowedKeys.has(key) &&
+      registeredKeys.has(key)
     );
   });
 
@@ -2840,6 +2837,8 @@ export function VenueLeagueLiveMatchPage({
   secondsLeft,
   timeUp,
   running,
+  fieldClockVersion = 0,
+  fieldClockPhase = "legacy",
   teams,
   currentMatchNo,
   currentMatch,
@@ -2901,6 +2900,16 @@ export function VenueLeagueLiveMatchPage({
       : Array.isArray(teams)
       ? teams
       : [];
+
+  // Keep player loading stable across timer snapshots.
+  const playerLoadClubIdsKey = JSON.stringify(
+    [...new Set(liveTeams.map(team => String(team?.id || "").trim())
+      .filter(id => id && id !== "awaiting-club"))].sort()
+  );
+  const playerLoadTeams = useMemo(
+    () => JSON.parse(playerLoadClubIdsKey).map(id => ({ id })),
+    [playerLoadClubIdsKey]
+  );
 
   const rawLiveCurrentMatch =
     pendingMatchStartContext?.currentMatch ||
@@ -2980,9 +2989,10 @@ export function VenueLeagueLiveMatchPage({
       setPlayersLoading(true);
 
       try {
-        const snap = await loadVenueLeaguePlayers({
+        const snap = await loadVenuePaidMatchPlayers({
           firestore: db,
-          teams: liveTeams,
+          scope: dataScope,
+          fixtureId: rawLiveCurrentMatch?.fixtureId,
         });
         if (cancelled) return;
 
@@ -3068,7 +3078,7 @@ export function VenueLeagueLiveMatchPage({
     return () => {
       cancelled = true;
     };
-  }, [liveTeams]);
+  }, [dataScope?.venueId, dataScope?.seasonId, rawLiveCurrentMatch?.fixtureId]);
 
   const playersReady = !playersLoading;
 
@@ -3091,17 +3101,9 @@ export function VenueLeagueLiveMatchPage({
 
   const canonicalTeams = useMemo(() => {
     return (liveTeams || []).map((team) => {
-      const suppliedPlayers =
-        Array.isArray(team?.players) &&
-        team.players.length
-          ? team.players
-          : (players || [])
-              .filter(
-                (player) =>
-                  String(player?.clubId || "") ===
-                  String(team?.id || "")
-              )
-              .slice(0, 12);
+      const suppliedPlayers = (players || []).filter(player =>
+        String(player?.clubId || "") === String(team?.id || "")
+      );
 
       return {
         ...team,
@@ -6783,39 +6785,29 @@ export function VenueLeagueLiveMatchPage({
     setBackError("");
   };
 
-  const handleConfirmDiscardAndBack = () => {
+  const handleConfirmDiscardAndBack = async () => {
     if (!canControlMatch) {
-      setBackError("Only captains or admin can discard a live match.");
+      setBackError("Only the controlling Field official can cancel this match.");
+      return;
+    }
+    if (backPassword.trim().toUpperCase() !== "CANCEL") {
+      setBackError("Type CANCEL to confirm.");
+      return;
+    }
+    if (typeof onCancelPreMatchLineups !== "function") {
+      setBackError("Match cancellation is unavailable. Please reopen the match.");
       return;
     }
 
-    const password = backPassword.trim();
-    if (!CAPTAIN_PASSWORDS.includes(password)) {
-      setBackError("Invalid captain password.");
-      return;
+    try {
+      await onCancelPreMatchLineups();
+      stopAlarmLoop(alarmLoopRef);
+      setShowBackModal(false);
+      setBackPassword("");
+      setBackError("");
+    } catch (error) {
+      setBackError(error?.message || "Could not cancel the match.");
     }
-
-    stopAlarmLoop(alarmLoopRef);
-
-    setShowBackModal(false);
-    setBackPassword("");
-    setBackError("");
-
-    overwriteEventsInFirestore(
-      [],
-      basicSummary,
-      displaySeconds,
-      matchSeconds,
-      dataScope,
-      activeClubId
-    );
-
-    if (mustVerifyBeforePlay && typeof onCancelPreMatchLineups === "function") {
-      onCancelPreMatchLineups();
-      return;
-    }
-
-    onBackToLanding();
   };
 
   const handleUndoClick = () => {
@@ -6952,7 +6944,12 @@ export function VenueLeagueLiveMatchPage({
         <div className="timer-row">
           <div className="live-timer-main-row">
             <div className={`timer-display ${additionalTimeRunning ? "timer-display-added-time" : ""}`}>
-              {liveFormattedTime}
+              {fieldClockVersion === 1 && !additionalTimeRunning
+                ? formatSeconds(fieldHalfSecondsLeft({
+                    matchSeconds, secondsLeft: displaySeconds,
+                    clockPhase: fieldClockPhase,
+                  }))
+                : liveFormattedTime}
               {additionalTimeRunning ? (
                 <span className="added-time-sup">
                   +ADDED TIME
@@ -7015,7 +7012,11 @@ export function VenueLeagueLiveMatchPage({
                 : "⏱️ Time is up – end match!"}
             </span>
           ) : (
-            <span className="muted small">Match not running yet</span>
+            <span className="muted small">
+              {fieldClockPhase === "halftime"
+                ? "Halftime · playing time paused"
+                : "Match not running yet"}
+            </span>
           )}
         </div>
 
@@ -9042,16 +9043,16 @@ export function VenueLeagueLiveMatchPage({
               and return to the main screen.
             </p>
             <div className="field-row">
-              <label>Captain password</label>
+              <label>Type CANCEL to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={backPassword}
                 onChange={(e) => {
                   setBackPassword(e.target.value);
                   setBackError("");
                 }}
-                maxLength={4}
+                maxLength={6}
               />
               {backError && <p className="error-text">{backError}</p>}
             </div>
@@ -9068,7 +9069,7 @@ export function VenueLeagueLiveMatchPage({
                 type="button"
                 onClick={handleConfirmDiscardAndBack}
               >
-                ⚠️ Don&apos;t save this game
+                Cancel game
               </button>
             </div>
           </div>

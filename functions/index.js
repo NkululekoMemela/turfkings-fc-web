@@ -5653,3 +5653,20 @@ Object.assign(exports, require("./fieldSeasonInvitationHandlers").buildHandlers(
   region: REGION,
   sendBatch: sendPaymentNotificationBatch,
 }));
+
+exports.approveFieldMatchStart =
+  require("./fieldMatchStartApproval").approveFieldMatchStart;
+
+Object.assign(exports, require("./fieldMatchDayHandlers").buildHandlers({
+  db, region: REGION, sendBatch: sendPaymentNotificationBatch,
+}));
+
+exports.deleteFieldTestSeason =
+  require("./fieldTestSeasonDeletion").deleteFieldTestSeason;
+exports.fieldTestSeasonDeletionCreated =
+  require("./fieldTestSeasonDeletion").fieldTestSeasonDeletionCreated;
+
+exports.submitFieldDecision =
+  require("./fieldDecisionService").submitFieldDecision;
+exports.reviewFieldDecision =
+  require("./fieldDecisionService").reviewFieldDecision;

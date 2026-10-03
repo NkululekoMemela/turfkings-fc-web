@@ -1,3 +1,6 @@
+import FieldTestSeasonDeletion from "../components/FieldTestSeasonDeletion.jsx";
+import FieldMatchDayReview from "../components/FieldMatchDayReview.jsx";
+import FieldMatchDaySchedule from "../components/FieldMatchDaySchedule.jsx";
 import VenueStaffPowersPanel from "../components/VenueStaffPowersPanel.jsx";
 import { watchVenueStaffPermissions } from "../storage/venueStaffPermissionsRepository.js";
 import { buildClubIdentity, DEFAULT_PLATFORM_LOGO } from "../core/clubIdentity.js";
@@ -24,7 +27,7 @@ import {
   createCameraHandoff,
   buildAuthorizedCameraDeepLink,
 } from "../storage/cameraHandoffGateway.js";
-import { loadVenueLeaguePlayers } from "../storage/venueLiveMatchRepository.js";
+import { loadVenuePaidMatchPlayers } from "../storage/venueLiveMatchRepository.js";
 import {
   requestVenueCameraAccess,
 } from "../storage/venueCameraApprovalRepository.js";
@@ -5485,6 +5488,7 @@ export default function VenueEntryPage({
     if (venuePage === "formations") {
       return (
         <VenueLeagueFormationsPage
+          paidFixtureId={liveMatch?.fixtureId || nextFixture?.id || ""}
           activeClubId={venue.id}
           activeClub={venue}
           fieldLeagueScope={{
@@ -5579,7 +5583,28 @@ export default function VenueEntryPage({
 
     return (
       <>
+      {canEndFieldMatchDay && (
+        <FieldMatchDayReview
+          key={`${venue.id}:${venueSeason?.id}:${currentUser?.uid}`}
+          venueId={venue.id}
+          season={venueSeason}
+          onReviewStats={() => setVenuePage("stats")}
+        />
+      )}
       <VenueLandingPage
+        fieldSeason={venueSeason}
+        fieldScheduleView={
+          <FieldMatchDaySchedule venueId={venue.id} season={venueSeason} readOnly />
+        }
+        fieldScheduleControls={isFieldAdministrator ? (
+          <>
+            <FieldMatchDaySchedule venueId={venue.id} season={venueSeason}
+              isCreator={isVenueOwner} readOnly={false} />
+            {isVenueOwner && (
+              <FieldTestSeasonDeletion venueId={venue.id} season={venueSeason} />
+            )}
+          </>
+        ) : null}
         portalClubName={enteredIdentity?.clubName}
         onReturnToClub={
           portalClubIdentity?.clubId &&
@@ -5724,11 +5749,13 @@ export default function VenueEntryPage({
 
           const matchId =
             `venue__${venue.id}__${venueSeason.id}__${fixture.id}`;
-          const playerSnapshot = await loadVenueLeaguePlayers({
+          const playerSnapshot = await loadVenuePaidMatchPlayers({
             firestore: db,
-            teams: mappedTeams.filter((team) =>
-              [fixture.clubAId, fixture.clubBId].includes(team.id)
-            ),
+            scope: {
+              kind: "venueLeague", environment: "official",
+              venueId: venue.id, seasonId: venueSeason.id,
+            },
+            fixtureId: fixture.id,
           });
           const players = playerSnapshot.docs.map((snap) => ({
             id: snap.id,

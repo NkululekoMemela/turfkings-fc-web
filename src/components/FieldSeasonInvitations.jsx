@@ -96,6 +96,10 @@ function SeasonDialog({ title, children, busy, onClose, premium = false, logoUrl
 export function FieldSeasonStartModal({ venue, season, onClose }) {
   const [name, setName] = useState(season?.name || "Field League Season");
   const [date, setDate] = useState(season?.startsOn || "");
+  const [startTime, setStartTime] = useState(season?.scheduleSettings?.startTime || "18:00");
+  const [matchMinutes, setMatchMinutes] = useState(String(season?.scheduleSettings?.matchMinutes || 40));
+  const [halftimeMinutes, setHalftimeMinutes] = useState(String(season?.scheduleSettings?.halftimeMinutes ?? 5));
+  const [turnaroundMinutes, setTurnaroundMinutes] = useState(String(season?.scheduleSettings?.turnaroundMinutes ?? 5));
   const [fee, setFee] = useState("");
   const [deadline, setDeadline] = useState("");
   const [minimum, setMinimum] = useState("3");
@@ -130,6 +134,7 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
           try {
             setSent(await announceFieldSeason({
               venueId: venue.id, name, startsOn: date,
+              startTime, matchMinutes, halftimeMinutes, turnaroundMinutes,
               entryFee: fee, gameFormat, signupClosesOn: deadline,
               minimumClubs: minimum,
               prizeIncreasePerClub: {
@@ -144,7 +149,11 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
           <p>Invite all member Clubs at {venue.name} to the upcoming season.</p>
           {[
             ["Season name", "text", name, setName],
-            ["Season start date", "date", date, setDate],
+            ["First match day", "date", date, setDate],
+            ["First kickoff · SAST", "time", startTime, setStartTime],
+            ["Match duration · total minutes", "number", matchMinutes, setMatchMinutes],
+            ["Halftime break · minutes", "number", halftimeMinutes, setHalftimeMinutes],
+            ["Between matches · minutes", "number", turnaroundMinutes, setTurnaroundMinutes],
             ["Signup deadline · closes at 23:59 SAST", "date", deadline, setDeadline],
             ["Minimum Clubs required", "number", minimum, setMinimum],
             ["Entry fee per Club (R)", "number", fee, setFee],
