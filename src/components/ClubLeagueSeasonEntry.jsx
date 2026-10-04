@@ -1,4 +1,5 @@
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
+import LeagueSeasonInvitationPopup from "./LeagueSeasonInvitationPopup.jsx";
 import {onAuthStateChanged} from "firebase/auth";
 import {doc, getDoc} from "firebase/firestore";
 import {auth, db} from "../firebaseConfig.js";
@@ -8,6 +9,8 @@ export default function ClubLeagueSeasonEntry({clubId, onOpen}) {
   const [entry, setEntry] = useState(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const [dismissed, setDismissed] = useState("");
+  const responding = useRef(false);
 
   useEffect(() => {
     let disposed = false;
@@ -32,13 +35,25 @@ export default function ClubLeagueSeasonEntry({clubId, onOpen}) {
         const status = view.invitation?.invitationStatus;
         if (view.canManage) setEntry({label: "League squad", icon: "🏆"});
         else if (status === "accepted") setEntry({label: "My League", icon: "🏆"});
-        else if (status === "pending") setEntry({label: "League invitation", icon: "✉️"});
+        else if (status === "pending") setEntry({
+          label: "League invitation", icon: "✉️",
+          invitation: view.invitation,
+          uid: user.uid,
+          scope: {clubId, venueId: link.venueId, seasonId: season.id},
+          seasonName: season.name || "League season",
+          invitationKey: JSON.stringify([
+            user.uid, clubId, link.venueId, season.id,
+            view.invitation.memberId,
+          ]),
+        });
       } catch (failure) {
         if (!disposed && request === generation) setError(failure.message);
       }
     }
     const stop = onAuthStateChanged(auth, load);
-    const refresh = () => load(auth.currentUser);
+    const refresh = () => {
+      if (!responding.current) load(auth.currentUser);
+    };
     const visible = () => {
       if (document.visibilityState === "visible") refresh();
     };
@@ -60,6 +75,23 @@ export default function ClubLeagueSeasonEntry({clubId, onOpen}) {
   );
   if (!entry) return null;
   return (
+    <>
+    {entry.invitation && entry.uid === auth.currentUser?.uid &&
+      dismissed !== entry.invitationKey && (
+      <LeagueSeasonInvitationPopup
+        key={entry.invitationKey}
+        invitation={entry.invitation}
+        seasonName={entry.seasonName}
+        scope={entry.scope}
+        uid={entry.uid}
+        onBusy={value => { responding.current = value; }}
+        onLater={() => setDismissed(entry.invitationKey)}
+        onResponded={() => {
+          setDismissed(entry.invitationKey);
+          setRevision(value => value + 1);
+        }}
+      />
+    )}
     <button type="button" className="website-btn" onClick={onOpen}
       style={{
         minHeight: 48, width: "100%", display: "flex",
@@ -71,5 +103,6 @@ export default function ClubLeagueSeasonEntry({clubId, onOpen}) {
       <span aria-hidden="true">{entry.icon}</span>
       <span>{entry.label}</span>
     </button>
+    </>
   );
 }

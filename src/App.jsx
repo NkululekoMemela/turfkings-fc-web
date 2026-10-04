@@ -2869,6 +2869,46 @@ export default function App() {
       activeClubId,
       onNotificationOpened: async notification => {
         const data = notification?.data || {};
+
+        if (data.type === "field_season_squad_invitation") {
+          const scope = {
+            clubId: String(data.clubId || "").trim(),
+            venueId: String(data.venueId || "").trim(),
+            seasonId: String(data.seasonId || "").trim(),
+          };
+          const memberId = String(data.memberId || "").trim();
+          if (![...Object.values(scope), memberId].every(
+            value => /^[A-Za-z0-9_-]{1,150}$/.test(value)
+          )) return;
+
+          try {
+            const {getSeasonSquadView} = await import(
+              "./storage/fieldSeasonSquadRepository.js"
+            );
+            const view = await getSeasonSquadView(scope);
+            if (!view.canManage && view.invitation?.memberId !== memberId) {
+              window.alert("This league invitation is not available for your account.");
+              return;
+            }
+
+            setNativeChatOpenRequest(null);
+            setNativePollOpenRequest(null);
+            setSessionMode("official");
+            writeSessionModeIntent("official");
+            setShowSessionSelector(false);
+            if (scope.clubId !== activeClubId) {
+              setSelectedHomeClub(buildClubIdentity({id: scope.clubId}));
+            }
+            setPage(PAGE_CLUB_LEAGUE_SEASON);
+          } catch (error) {
+            console.error("[League invitation navigation]", error);
+            window.alert(
+              "Could not open this invitation. It may belong to a previous season. " +
+              "Please check your Club’s league page."
+            );
+          }
+          return;
+        }
         if (data.type === "field_match_day_review" ||
             data.type === "field_manager_approval") {
           const venueId = String(data.venueId || "").trim();

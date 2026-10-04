@@ -5685,3 +5685,7 @@ exports.confirmFieldSeasonSquadPayment =
   require("./fieldSeasonSquadService").confirmFieldSeasonSquadPayment;
 exports.getFieldSeasonSquad =
   require("./fieldSeasonSquadService").getFieldSeasonSquad;
+
+Object.assign(exports, require("./fieldSeasonSquadNotifications").buildHandlers({
+  db, region: REGION, sendBatch: sendPaymentNotificationBatch,
+}));
