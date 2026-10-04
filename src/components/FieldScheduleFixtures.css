@@ -1,0 +1,117 @@
+.field-schedule-day { margin-top: 18px; }
+.field-schedule-day h4 { margin: 0 0 12px; }
+.field-fixture-card {
+  margin: 10px 0; padding: 14px; border-radius: 16px;
+  border: 1px solid rgba(56,189,248,.35);
+  background: linear-gradient(135deg, #182b45, #0b1425);
+  color: #f8fafc; box-shadow: 0 6px 18px rgba(0,0,0,.18);
+}
+.field-fixture-meta {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 11px; color: #bae6fd; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.field-fixture-pair {
+  display: grid; grid-template-columns: minmax(0,1fr) 32px minmax(0,1fr);
+  align-items: center; gap: 8px; margin-top: 14px;
+}
+.field-fixture-club {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 9px; text-align: center; min-width: 0;
+}
+.field-fixture-club strong { font-size: 13px; overflow-wrap: anywhere; }
+.field-fixture-badge {
+  width: 64px; height: 64px; display: grid; place-items: center;
+  border-radius: 16px; background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.14); font-weight: 900;
+}
+.field-fixture-badge img { width: 52px; height: 52px; object-fit: contain; }
+.field-fixture-vs { font-size: 11px; font-weight: 900; color: #7dd3fc; text-align: center; }
+.field-fixture-live { color: #86efac; }
+.field-schedule-download {
+  display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 14px 0;
+}
+.field-schedule-download label { display: grid; gap: 5px; flex: 1; }
+.field-schedule-download small { width: 100%; color: #94a3b8; }
+@media (max-width: 480px) {
+  .field-fixture-card { padding: 12px 9px; }
+  .field-fixture-badge { width: 54px; height: 54px; }
+  .field-fixture-badge img { width: 44px; height: 44px; }
+}
+
+.field-fixture-card {
+  cursor: pointer; touch-action: pan-y;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
+.field-fixture-card:focus-visible {
+  outline: 2px solid #7dd3fc; outline-offset: 3px;
+}
+.field-fixture-meta > span { min-width: 0; }
+.field-fixture-meta > span:last-child { text-align: right; }
+
+/* Fixtures page and export controls */
+.field-fixtures-open {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 18px;
+  color: #f8fafc;
+  text-align: left;
+  border: 2px solid rgba(56,189,248,.65);
+  border-radius: 18px;
+  background: linear-gradient(125deg, #18385a, #102139);
+  cursor: pointer;
+}
+.field-fixtures-open strong {
+  display: block;
+  font-size: 20px;
+}
+.field-fixtures-open small {
+  display: block;
+  margin-top: 5px;
+  color: #bae6fd;
+  line-height: 1.4;
+}
+.field-fixtures-open__icon {
+  font-size: 34px;
+  color: #7dd3fc;
+}
+.field-fixtures .field-fixtures-download {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+.field-fixtures-download .field-fixtures-export {
+  min-height: 86px;
+  padding: 16px;
+  border: 1px solid rgba(125,211,252,.55);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #1c4168, #14253f);
+  color: #f0f9ff;
+  font-size: 16px;
+  font-weight: 800;
+  box-shadow: 0 6px 18px rgba(0,0,0,.16);
+}
+.field-fixtures-export::before {
+  content: "↓";
+  display: block;
+  margin-bottom: 7px;
+  color: #7dd3fc;
+  font-size: 26px;
+  line-height: 1;
+}
+.field-fixtures-export:disabled {
+  opacity: .6;
+}
+.field-fixtures-download > small {
+  grid-column: 1 / -1;
+  line-height: 1.5;
+}
+.field-fixtures-page .header h1 {
+  margin-bottom: 6px;
+}

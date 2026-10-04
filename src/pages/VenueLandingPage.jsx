@@ -262,6 +262,8 @@ export default function VenueLandingPage({
   fieldScheduleControls = null,
   fieldScheduleView = null,
   fieldSeason = null,
+  fieldDecisionControls = null,
+  fieldStaffRequestControls = null,
   activeClub = null,
   activeClubId = null,
   activeClubName = null,
@@ -1763,7 +1765,14 @@ export default function VenueLandingPage({
       </header>
 
       <section className="card landing-first-card">
-        {!canSeeCaptainStyleControls && fieldScheduleView}
+        {fieldScheduleView}
+        {!canSeeCaptainStyleControls && (
+          <div style={{minWidth: 0, width: "100%"}}>
+
+            {fieldDecisionControls}
+            {fieldStaffRequestControls}
+          </div>
+        )}
         {canSeeCaptainStyleControls && (
           <div className="field-settings-panel" style={{
             marginBottom: "0.9rem", padding: "0.65rem",
@@ -1821,89 +1830,63 @@ export default function VenueLandingPage({
                   border: "1px solid rgba(148,163,184,0.14)",
                 }}
               >
-            {typeof onManageFieldPowers === "function" && (
-              <button type="button" className="secondary-btn"
-                onClick={() => {
-                  setShowSettingsPanel(false);
-                  onManageFieldPowers();
-                }}>
-                <span>Staff powers</span>
-                <span aria-hidden="true">›</span>
-              </button>
+            {(typeof onManageFieldPowers === "function" ||
+              (onManageFieldStaff && isAdmin)) && (
+              <details style={{
+                padding: 14, borderRadius: "0.9rem",
+                border: "1px solid rgba(56,189,248,.3)",
+              }}>
+                <summary style={{cursor: "pointer", fontWeight: 800}}>
+                  Field team
+                  {pendingFieldStaffCount > 0
+                    ? ` · ${pendingFieldStaffCount} applications pending` : ""}
+                </summary>
+                <div style={{display: "grid", gap: 10, marginTop: 12}}>
+                  {onManageFieldStaff && isAdmin && (
+                    <button type="button" className="secondary-btn"
+                      onClick={() => {
+                        setShowSettingsPanel(false);
+                        onManageFieldStaff();
+                      }}>
+                      Staff applications and roles
+                    </button>
+                  )}
+                  {typeof onManageFieldPowers === "function" && (
+                    <button type="button" className="secondary-btn"
+                      onClick={() => {
+                        setShowSettingsPanel(false);
+                        onManageFieldPowers();
+                      }}>
+                      Staff permissions
+                    </button>
+                  )}
+                </div>
+              </details>
             )}
-
-            {onManageFieldStaff && isAdmin && (
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => {
-                  setShowSettingsPanel(false);
-                  onManageFieldStaff();
-                }}
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  padding: "0.8rem 0.9rem",
-                  borderColor:
-                    pendingFieldStaffCount > 0
-                      ? "rgba(250,204,21,0.48)"
-                      : "rgba(56,189,248,0.3)",
-                  background:
-                    pendingFieldStaffCount > 0
-                      ? "linear-gradient(135deg, rgba(234,179,8,0.14), rgba(15,23,42,0.48))"
-                      : "linear-gradient(135deg, rgba(14,165,233,0.12), rgba(15,23,42,0.48))",
-                }}
-              >
-                <span
-                  style={{
-                    display: "grid",
-                    gap: "0.15rem",
-                    textAlign: "left",
-                  }}
-                >
-                  <strong>🦺 Manage Field Team</strong>
-                  <span className="muted small">
-                    Review staff applications and confirm roles
-                  </span>
-                </span>
-
-                <span
-                  style={{
-                    minWidth: "1.75rem",
-                    height: "1.75rem",
-                    display: "grid",
-                    placeItems: "center",
-                    borderRadius: "999px",
-                    color:
-                      pendingFieldStaffCount > 0
-                        ? "#111827"
-                        : "#bae6fd",
-                    background:
-                      pendingFieldStaffCount > 0
-                        ? "#fde047"
-                        : "rgba(14,165,233,0.16)",
-                    fontWeight: 900,
-                  }}
-                >
-                  {pendingFieldStaffCount}
-                </span>
-              </button>
-            )}
-
+            {fieldDecisionControls}
             {typeof onOpenActionLog === "function" && (
-              <button type="button" className="secondary-btn"
-                onClick={onOpenActionLog}>
-                📋 Action Log
-              </button>
+              <details style={{
+                padding: 14, borderRadius: "0.9rem",
+                border: "1px solid rgba(148,163,184,.25)",
+              }}>
+                <summary style={{cursor: "pointer", fontWeight: 800}}>
+                  History
+                </summary>
+                <p className="muted small">
+                  Review recorded Field actions and changes.
+                </p>
+                <button type="button" className="secondary-btn"
+                  onClick={onOpenActionLog}>Open action log</button>
+              </details>
             )}
 
-            <section aria-label="Season rules"
+            <details aria-label="Season details"
               style={{ padding: "0.9rem", borderRadius: "0.9rem",
                 border: "1px solid rgba(56,189,248,.4)" }}>
-              <strong>League · Fixtured</strong>
+              <summary style={{cursor: "pointer", fontWeight: 800}}>
+                Season details
+              </summary>
+              <p>League · Fixtured</p>
               <p style={{ margin: "0.6rem 0" }}>
                 Format: {String(gameFormat).replaceAll("_V_", " v ")}
               </p>
@@ -1926,7 +1909,7 @@ export default function VenueLandingPage({
               <p className="muted small" style={{ marginBottom: 0 }}>
                 Format and playing duration are chosen before the season starts.
               </p>
-            </section>
+            </details>
             {fieldScheduleControls}
 
 

@@ -1,5 +1,7 @@
+import FieldScheduleFixtures, {FieldFixtureCard} from "./FieldScheduleFixtures.jsx";
 import React, { useState } from "react";
-import { rescheduleRemainingVenueKickoffs, rescheduleVenueMatchDay, setVenueScheduleTesting, prepareVenueSeasonForMatch } from "../storage/leagueSeasonRepository.js";
+import { setVenueScheduleTesting, prepareVenueSeasonForMatch } from "../storage/leagueSeasonRepository.js";
+import {submitFieldDecision} from "../storage/fieldDecisionRepository.js";
 
 function RemainingKickoffEditor({venueId, season, day, fixtures}) {
   const remaining = fixtures.filter(item =>
@@ -8,6 +10,7 @@ function RemainingKickoffEditor({venueId, season, day, fixtures}) {
     remaining[0]?.scheduledLocal?.slice(11, 16) || "18:00");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [reason, setReason] = useState("");
   if (!remaining.length || (season.matchDayHistory || []).some(item =>
       (item.scheduledMatchDayId || item.id) === day.id)) return null;
   return (
@@ -15,10 +18,12 @@ function RemainingKickoffEditor({venueId, season, day, fixtures}) {
       event.preventDefault();
       setBusy(true); setMessage("");
       try {
-        await rescheduleRemainingVenueKickoffs({
-          venueId, seasonId: season.id, matchDayId: day.id, startTime: time,
+        await submitFieldDecision({
+          venueId, seasonId: season.id, action: "delay_remaining", reason,
+          parameters: {matchDayId: day.id, startTime: time},
         });
-        setMessage("Remaining kickoff times updated.");
+        setMessage("Request sent. Times change after the Field creator approves.");
+        setReason("");
       } catch (error) {
         setMessage(error.message || "Could not move the remaining games.");
       } finally {setBusy(false);}
@@ -27,15 +32,21 @@ function RemainingKickoffEditor({venueId, season, day, fixtures}) {
         <input type="time" className="text-input" required disabled={busy}
           value={time} onChange={event => setTime(event.target.value)} />
       </label>
+      <label>Reason for changing the schedule
+        <textarea className="text-input" required minLength={10} maxLength={500}
+          disabled={busy} value={reason}
+          placeholder="For example: heavy rain has made the pitch unsafe."
+          onChange={event => setReason(event.target.value)} />
+      </label>
       <button type="submit" className="secondary-btn" disabled={busy}>
-        {busy ? "Saving…" : "Move remaining kickoffs"}
+        {busy ? "Sending…" : "Request new kickoff times"}
       </button>
       {message && <p role="status">{message}</p>}
     </form>
   );
 }
 
-function MatchDayEditor({ venueId, season, day }) {
+function MatchDayEditor({ venueId, season, day, teams }) {
   const fixtures = (season.fixtures || [])
     .filter(item => item.matchDayId === day.id)
     .sort((a, b) => String(a.scheduledLocal).localeCompare(String(b.scheduledLocal)));
@@ -45,6 +56,7 @@ function MatchDayEditor({ venueId, season, day }) {
   );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [reason, setReason] = useState("");
   const locked = day.status !== "scheduled" || fixtures.some(item =>
     item.status !== "scheduled" || season.liveMatches?.[item.id]);
 
@@ -57,12 +69,7 @@ function MatchDayEditor({ venueId, season, day }) {
       </summary>
       <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
         {fixtures.map(item => (
-          <div key={item.id} style={{ display: "flex", gap: 12 }}>
-            <strong style={{ color: "#fbbf24" }}>
-              {item.scheduledLocal?.slice(11, 16)}
-            </strong>
-            <span>{item.clubAName} vs {item.clubBName}</span>
-          </div>
+          <FieldFixtureCard key={item.id} fixture={item} teams={teams} season={season} />
         ))}
         {!!day.byeClubIds?.length && (
           <small className="muted">Bye: {day.byeClubIds.map(id =>
@@ -80,11 +87,14 @@ function MatchDayEditor({ venueId, season, day }) {
             if (busy) return;
             setBusy(true); setMessage("");
             try {
-              await rescheduleVenueMatchDay({
-                venueId, seasonId: season.id, matchDayId: day.id,
-                dateLocal: date, startTime: time,
+              await submitFieldDecision({
+                venueId, seasonId: season.id, action: "reschedule_day", reason,
+                parameters: {
+                  matchDayId: day.id, dateLocal: date, startTime: time,
+                },
               });
-              setMessage("Schedule updated.");
+              setMessage("Request sent. The schedule changes after the Field creator approves.");
+              setReason("");
             } catch (error) {
               setMessage(error.message || "Could not update the schedule.");
             } finally { setBusy(false); }
@@ -99,8 +109,14 @@ function MatchDayEditor({ venueId, season, day }) {
                 value={time} disabled={busy}
                 onChange={event => setTime(event.target.value)} />
             </label>
-            <button className="secondary-btn" type="submit" disabled={busy}>
-              {busy ? "Saving…" : "Save this match day"}
+            <label>Reason for changing the schedule
+        <textarea className="text-input" required minLength={10} maxLength={500}
+          disabled={busy} value={reason}
+          placeholder="For example: heavy rain has made the pitch unsafe."
+          onChange={event => setReason(event.target.value)} />
+      </label>
+      <button className="secondary-btn" type="submit" disabled={busy}>
+              {busy ? "Sending…" : "Request schedule change"}
             </button>
           </form>
         )}
@@ -111,77 +127,33 @@ function MatchDayEditor({ venueId, season, day }) {
 }
 
 export default function FieldMatchDaySchedule({
-  venueId, season, isCreator = false, readOnly = true,
+  venueId, season, isCreator = false, readOnly = true, teams = [], myClubId = "",
 }) {
   const [savingTesting, setSavingTesting] = useState(false);
   const [testingError, setTestingError] = useState("");
   if (readOnly) {
-    const days = season?.matchDays || [];
-    const fixtures = season?.fixtures || [];
-    const dateLabel = value => {
-      const date = new Date(`${value}T12:00:00Z`);
-      return Number.isFinite(date.getTime())
-        ? new Intl.DateTimeFormat("en-GB", {
-            day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
-          }).format(date)
-        : "Date to be announced";
-    };
     return (
       <details style={{
         marginBottom: "0.9rem", padding: "14px",
         border: "2px solid rgba(56,189,248,.65)", borderRadius: "1rem",
       }}>
         <summary style={{cursor: "pointer", fontWeight: 800}}>
-          League settings
+          League fixtures
         </summary>
         <p className="muted small">Kickoff times are shown in South African time.</p>
-        {days.length ? days.map(day => (
-          <section key={day.id} style={{
-            padding: "12px 0", borderTop: "1px solid rgba(148,163,184,.2)",
-          }}>
-            <strong>Match day {day.roundNo} · {dateLabel(day.dateLocal)}</strong>
-            {fixtures.filter(item => item.matchDayId === day.id)
-              .sort((a, b) => String(a.scheduledLocal).localeCompare(
-                String(b.scheduledLocal)))
-              .map(item => (
-                <p key={item.id} style={{margin: "8px 0"}}>
-                  <strong style={{color: "#fbbf24"}}>
-                    {item.scheduledLocal?.slice(11, 16) || "Time TBC"}
-                  </strong>
-                  {" · "}{item.clubAName || item.clubAId}
-                  {" vs "}{item.clubBName || item.clubBId}
-                  {item.status === "completed" ? " · Completed" :
-                    season.liveMatches?.[item.id]?.status === "live" ? " · Live" : ""}
-                </p>
-              ))}
-            {!!day.byeClubIds?.length && (
-              <p className="muted small">
-                Not playing this day: {day.byeClubIds.map(id =>
-                  season.invitations?.[id]?.clubName || id).join(", ")}
-              </p>
-            )}
-          </section>
-        )) : fixtures.length ? (
-          <>
-            <p className="muted small">Dates and kickoff times have not been published.</p>
-            {fixtures.map(item => (
-              <p key={item.id}>
-                {item.clubAName || item.clubAId}
-                {" vs "}{item.clubBName || item.clubBId}
-                {item.status === "completed" ? " · Completed" : ""}
-              </p>
-            ))}
-          </>
-        ) : (
-          <p className="muted small">The Field has not published the schedule yet.</p>
-        )}
+        <FieldScheduleFixtures season={season} teams={teams} myClubId={myClubId} />
       </details>
     );
   }
   if (!season) return null;
   if (season.scheduleVersion !== 1) {
     return (
-      <details style={{ padding: "12px 14px" }}>
+      <details style={{
+      padding: "14px",
+      border: "2px solid rgba(56,189,248,.65)",
+      borderRadius: "1rem",
+      marginBottom: "0.9rem",
+    }}>
         <summary style={{ cursor: "pointer", fontWeight: 800 }}>
           League settings
         </summary>
@@ -195,7 +167,12 @@ export default function FieldMatchDaySchedule({
   }
   if (!season.matchDays?.length) {
     return (
-      <details style={{ padding: "12px 14px" }}>
+      <details style={{
+      padding: "14px",
+      border: "2px solid rgba(56,189,248,.65)",
+      borderRadius: "1rem",
+      marginBottom: "0.9rem",
+    }}>
         <summary style={{ cursor: "pointer", fontWeight: 800 }}>League settings</summary>
         <p className="muted small">
           Publish dated fixtures when Club registration is complete.
@@ -221,9 +198,15 @@ export default function FieldMatchDaySchedule({
     );
   }
   return (
-    <details style={{ padding: "12px 14px" }}>
+    <details style={{
+      padding: "14px",
+      border: "2px solid rgba(56,189,248,.65)",
+      borderRadius: "1rem",
+      marginBottom: "0.9rem",
+    }}>
       <summary style={{ cursor: "pointer", fontWeight: 800 }}>League settings</summary>
-      <small className="muted">Kickoff times shown in South African time.</small>
+      <p className="muted small">View the published games using Fixtures on Field Home.</p>
+      <small className="muted">Schedule change requests</small>
       {season.allowEarlyStarts === true && (
         <p role="status" style={{ color: "#fbbf24", fontWeight: 700 }}>
           Testing mode · early match starts allowed
@@ -252,7 +235,7 @@ export default function FieldMatchDaySchedule({
       {season.matchDays.map(day => (
         <MatchDayEditor key={`${season.id}-${day.id}-${day.dateLocal}-${
           day.startTime || season.fixtures?.find(f => f.matchDayId === day.id)?.scheduledLocal
-        }`} venueId={venueId} season={season} day={day} />
+        }`} venueId={venueId} season={season} day={day} teams={teams} />
       ))}
     </details>
   );

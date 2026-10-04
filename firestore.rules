@@ -711,6 +711,16 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      match /decisionRequests/{requestId} {
+        allow read: if isSignedIn() && !isCameraSession()
+          && (
+            get(/databases/$(database)/documents/leagueVenues/$(venueId))
+              .data.ownerUid == request.auth.uid
+            || resource.data.requestedByUid == request.auth.uid
+          );
+        allow write: if false;
+      }
+
       match /seasonDeletionJobs/{seasonId} {
         allow read: if isSignedIn() && !isCameraSession()
           && get(/databases/$(database)/documents/leagueVenues/$(venueId))

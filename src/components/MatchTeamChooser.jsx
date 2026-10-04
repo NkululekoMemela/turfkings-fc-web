@@ -65,7 +65,7 @@ export default function MatchTeamChooser({
             role="group" aria-label={`Choose ${label.toLowerCase()}`}>
             <p>Select your team</p>
             {teams.map(team => (
-              <button key={team.id} type="button"
+              <button key={team.id} type="button" className="match-team-chooser__option"
                 aria-pressed={String(team.id) === String(value)}
                 onClick={event => {
                   const details = event.currentTarget.closest("details");

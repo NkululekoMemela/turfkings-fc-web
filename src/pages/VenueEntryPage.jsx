@@ -1,3 +1,5 @@
+import VenueFixturesPage from "./VenueFixturesPage.jsx";
+import FieldDecisionReview from "../components/FieldDecisionReview.jsx";
 import FieldTestSeasonDeletion from "../components/FieldTestSeasonDeletion.jsx";
 import FieldMatchDayReview from "../components/FieldMatchDayReview.jsx";
 import FieldMatchDaySchedule from "../components/FieldMatchDaySchedule.jsx";
@@ -5518,6 +5520,20 @@ export default function VenueEntryPage({
         onBack={() => setVenuePage("landing")} />;
     }
 
+    if (venuePage === "fixtures") {
+      return (
+        <VenueFixturesPage
+          venue={venue}
+          season={venueSeason}
+          teams={teams}
+          myClubId={currentUser?.uid && (
+            isClubRepresentative || effectiveRole === "club_member"
+          ) ? enteredIdentity?.clubId || "" : ""}
+          onBack={() => setVenuePage("landing")}
+        />
+      );
+    }
+
     if (venuePage === "stats") {
       return (
         <VenueLeagueStatsPage
@@ -5592,13 +5608,42 @@ export default function VenueEntryPage({
         />
       )}
       <VenueLandingPage
+        fieldDecisionControls={
+          <>{isVenueOwner && !isReadOnlyFieldRole && effectiveRole === "field_manager" && (
+        <FieldDecisionReview
+          venueId={venue.id} seasonId={venueSeason?.id}
+          isCreator={isVenueOwner} />
+      )}</>
+        }
+        fieldStaffRequestControls={
+          <>{hasActiveFieldRole && !isReadOnlyFieldRole && !isFieldAdministrator && (
+        <FieldMatchDaySchedule venueId={venue.id} season={venueSeason}
+              teams={teams}
+              myClubId={currentUser?.uid && (
+                isClubRepresentative || effectiveRole === "club_member"
+              ) ? enteredIdentity?.clubId || "" : ""}
+          readOnly={false} />
+      )}</>
+        }
         fieldSeason={venueSeason}
         fieldScheduleView={
-          <FieldMatchDaySchedule venueId={venue.id} season={venueSeason} readOnly />
+          <button type="button" className="field-fixtures-open"
+            onClick={() => setVenuePage("fixtures")}>
+            <span className="field-fixtures-open__icon" aria-hidden="true">▦</span>
+            <span>
+              <strong>Fixtures</strong>
+              <small>Match days, opponents and kickoff times</small>
+            </span>
+            <span aria-hidden="true">→</span>
+          </button>
         }
         fieldScheduleControls={isFieldAdministrator ? (
           <>
             <FieldMatchDaySchedule venueId={venue.id} season={venueSeason}
+              teams={teams}
+              myClubId={currentUser?.uid && (
+                isClubRepresentative || effectiveRole === "club_member"
+              ) ? enteredIdentity?.clubId || "" : ""}
               isCreator={isVenueOwner} readOnly={false} />
             {isVenueOwner && (
               <FieldTestSeasonDeletion venueId={venue.id} season={venueSeason} />

@@ -95,57 +95,81 @@ function LeagueMatrix({ clubId, club, venue, players, beneficiary }) {
       !(season.clubIds || []).includes(clubId)) return null;
 
   return (
-    <section className="card league-booking-matrix">
-      <header>
+    <section className="card signup-grid-card league-booking-matrix">
+      <div className="signup-grid-title-row">
         <div>
           <span className="league-booking-matrix__eyebrow">FIELD LEAGUE</span>
           <h3>{season.name}</h3>
-          <p>{venue.name} · Bookings separate from ordinary Club games</p>
         </div>
-      </header>
+      </div>
+      <p className="muted small">{venue.name} · Pick your league match days</p>
       {!selected && !administrator && (
         <p className="muted small">Choose a registered player under Booking owner to reserve a place.</p>
       )}
-      <div className="league-booking-matrix__scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Player</th>
-              {days.map(day => {
-                const booking = bookings[day.id];
-                const fixture = season.fixtures.find(f =>
-                  f.matchDayId === day.id && [f.clubAId, f.clubBId].includes(clubId));
-                const locked = day.status !== "scheduled" ||
-                  fixture.status !== "scheduled" || !!season.liveMatches?.[fixture.id];
-                return (
-                  <th key={day.id}>
-                    <strong>{new Intl.DateTimeFormat("en-GB", {
-                      day: "numeric", month: "short", timeZone: "UTC",
-                    }).format(new Date(`${day.dateLocal}T12:00:00Z`))}</strong>
-                    <small>{fixture.scheduledLocal?.slice(11, 16)} SAST</small>
-                    <small>{Object.keys(booking?.entries || {}).length} / {booking?.limit || "—"} booked</small>
-                    {administrator && !locked && (
-                      <div className="league-booking-matrix__limit">
-                        <input type="number" min={minimum} max={maximum}
-                          aria-label={`Player limit for match day ${day.roundNo}`}
-                          value={limits[day.id] ?? booking?.limit ?? Math.min(maximum, minimum * 2)}
-                          disabled={!!busy}
-                          onChange={event => setLimits(previous => ({
-                            ...previous, [day.id]: event.target.value,
-                          }))} />
-                        <button type="button" disabled={!!busy}
-                          onClick={() => act(day, "configure")}>Set limit</button>
+      <div className="signup-matrix-wrap league-booking-matrix__scroll">
+        <div className="signup-matrix league-booking-matrix__grid"
+          style={{"--league-days": days.length}}>
+          <div className="matrix-corner-cell">Players</div>
+          {days.map(day => {
+            const booking = bookings[day.id];
+            const fixture = season.fixtures.find(f =>
+              f.matchDayId === day.id && [f.clubAId, f.clubBId].includes(clubId));
+            const locked = day.status !== "scheduled" ||
+              fixture.status !== "scheduled" || !!season.liveMatches?.[fixture.id];
+            const count = Object.keys(booking?.entries || {}).length;
+            const full = booking && count >= booking.limit;
+            return (
+              <div className="matrix-week-head" key={day.id}>
+                <div className="matrix-week-date">
+                  {new Intl.DateTimeFormat("en-GB", {
+                    day: "numeric", month: "short", timeZone: "UTC",
+                  }).format(new Date(`${day.dateLocal}T12:00:00Z`))}
+                </div>
+                <div className="matrix-week-count">
+                  {fixture.scheduledLocal?.slice(11, 16)} SAST
+                </div>
+                <span className={`matrix-week-status ${locked ? "closed" : full ? "full" : "low"}`}>
+                  {locked ? "Closed" : full ? "Full" : "Open"}
+                </span>
+                <div className="matrix-week-count">
+                  {count} / {booking?.limit || "—"} booked
+                </div>
+                {administrator && !locked && (
+                  <details className="league-booking-matrix__limit">
+                    <summary>Player limit</summary>
+                    <input type="number" min={minimum} max={maximum}
+                      aria-label={`Player limit for match day ${day.roundNo}`}
+                      value={limits[day.id] ?? booking?.limit ?? Math.min(maximum, minimum * 2)}
+                      disabled={!!busy}
+                      onChange={event => setLimits(previous => ({
+                        ...previous, [day.id]: event.target.value,
+                      }))} />
+                    <button type="button" disabled={!!busy}
+                      onClick={() => act(day, "configure")}>Save</button>
+                  </details>
+                )}
+              </div>
+            );
+          })}
+          {rows.map(player => {
+            const current = selected?.id === player.id;
+            return (
+              <React.Fragment key={player.docId}>
+                <div className={`matrix-player-cell ${current ? "is-current-player" : ""}`}
+                  title={player.fullName}>
+                  <div className="matrix-player-info">
+                    <div className="matrix-player-avatar" aria-hidden="true">
+                      <span>{String(player.shortName || player.fullName || "P")
+                        .charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div className="matrix-player-text">
+                      <div className="matrix-player-name">
+                        {player.shortName || player.fullName}
                       </div>
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(player => (
-              <tr key={player.docId}>
-                <th>{player.fullName}</th>
+                      {current && <div className="matrix-player-tag">Booking owner</div>}
+                    </div>
+                  </div>
+                </div>
                 {days.map(day => {
                   const booking = bookings[day.id];
                   const entry = booking?.entries?.[player.id];
@@ -154,42 +178,62 @@ function LeagueMatrix({ clubId, club, venue, players, beneficiary }) {
                     f.matchDayId === day.id && [f.clubAId, f.clubBId].includes(clubId));
                   const locked = day.status !== "scheduled" ||
                     fixture.status !== "scheduled" || !!season.liveMatches?.[fixture.id];
-                  const canBook = administrator ||
-                    (selected?.id === player.id && !!actorMemberId);
+                  const canBook = administrator || (current && !!actorMemberId);
                   const canCancel = administrator || entry?.bookedByUid === user?.uid;
+                  const full = booking &&
+                    Object.keys(booking.entries || {}).length >= booking.limit;
+                  const label = `${player.fullName}, ${day.dateLocal}`;
+                  if (!entry) {
+                    return (
+                      <button key={day.id} type="button"
+                        className={`matrix-pick-cell ${current ? "is-current-row" : ""}`}
+                        aria-label={`Book ${label}`}
+                        disabled={!!busy || locked || !booking || !canBook || full}
+                        onClick={() => act(day, "reserve", player)}>
+                        <span className="matrix-pick-inner">
+                          <span className="matrix-pick-mark">
+                            {!locked && booking && canBook && !full ? "+" : ""}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  }
                   return (
-                    <td key={day.id}>
-                      <span className={paid ? "league-booking-matrix__paid" : "muted"}>
-                        {paid ? "Paid" : entry ? "Booked · unpaid" : "—"}
-                      </span>
-                      {!locked && booking && (
-                        <div className="league-booking-matrix__cell-actions">
-                          {!entry && canBook && (
-                            <button type="button" disabled={!!busy}
-                              onClick={() => act(day, "reserve", player)}>Book</button>
-                          )}
-                          {entry && !paid && canCancel && (
-                            <button type="button" disabled={!!busy}
-                              onClick={() => act(day, "cancel", player)}>Remove</button>
-                          )}
-                          {entry && administrator && (
-                            <button type="button" disabled={!!busy}
-                              onClick={() => {
-                                if (paid && !window.confirm("Reverse this league payment confirmation?")) return;
-                                act(day, paid ? "unpaid" : "paid", player);
-                              }}>{paid ? "Reverse paid" : "Confirm paid"}</button>
-                          )}
-                        </div>
-                      )}
-                    </td>
+                    <div key={day.id}
+                      className={`matrix-view-cell is-signed ${paid ? "is-paid" : "is-unpaid"} ${current ? "is-current-row" : ""}`}>
+                      <div className="league-booking-matrix__booking">
+                        <span className="matrix-view-inner" aria-hidden="true">
+                          <span className="matrix-pick-mark">✓</span>
+                        </span>
+                        <span className="league-booking-matrix__state">
+                          {paid ? "Paid" : "Unpaid"}
+                        </span>
+                        {!locked && (administrator || (!paid && canCancel)) && (
+                          <details className="league-booking-matrix__actions">
+                            <summary aria-label={`Manage booking for ${label}`}>Manage</summary>
+                            {!paid && canCancel && (
+                              <button type="button" disabled={!!busy}
+                                onClick={() => act(day, "cancel", player)}>Remove</button>
+                            )}
+                            {administrator && (
+                              <button type="button" disabled={!!busy}
+                                onClick={() => {
+                                  if (paid && !window.confirm("Reverse this league payment confirmation?")) return;
+                                  act(day, paid ? "unpaid" : "paid", player);
+                                }}>{paid ? "Reverse paid" : "Confirm paid"}</button>
+                            )}
+                          </details>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
-      <p className="muted small">Only confirmed paid players are eligible for the Field manifest.</p>
+      <p className="muted small">Amber: booked, unpaid · Green: paid and eligible to play.</p>
       {message && <p role="status">{message}</p>}
     </section>
   );

@@ -547,3 +547,34 @@ summary.match-team-chooser__card:focus-visible,
     right: 3px;
   }
 }
+
+/* Team names below badges */
+.match-team-chooser .match-team-chooser__options
+.match-team-chooser__option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  gap: 10px;
+  min-width: 0;
+  min-height: 116px;
+  padding: 16px 10px;
+  text-align: center;
+}
+.match-team-chooser .match-team-chooser__options
+.match-team-chooser__option strong {
+  display: block;
+  width: 100%;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+.match-team-chooser .match-team-chooser__options
+.match-team-chooser__option > span:last-child {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
