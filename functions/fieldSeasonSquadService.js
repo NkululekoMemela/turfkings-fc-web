@@ -216,6 +216,261 @@ exports.createSeasonSquad = createSeasonSquad;
 exports.respondSeasonInvitation = respondSeasonInvitation;
 exports.confirmSeasonPayment = confirmSeasonPayment;
 
+async function setSeasonMatchDayAvailability({db, user, body}) {
+  if (!user?.uid) throw new Error("Sign in first.");
+  const {
+    venueId, seasonId, clubId, matchDayId, memberId, available,
+  } = body || {};
+  const scope = {venueId, seasonId, clubId};
+  squadId(scope);
+  if (!validId(matchDayId) || !validId(memberId) ||
+      typeof available !== "boolean") {
+    throw new Error("Choose a player, match day and availability.");
+  }
+  const policy = await import("./fieldSeasonAvailabilityPolicy.mjs");
+  return db.runTransaction(async tx => {
+    const context = await loadContext(tx, db, scope);
+    const squad = context.squad;
+    if (!squad || squad.version !== 1 || squad.status !== "active" ||
+        ["venueId", "seasonId", "clubId"].some(
+          key => squad[key] !== scope[key]
+        )) {
+      throw new Error("An active season squad is required.");
+    }
+    const liveSnap = await tx.get(db.doc(
+      `leagueVenues/${venueId}/seasons/${seasonId}/matches/current`
+    ));
+    policy.assertClubMatchDayEditable({
+      season: context.season, clubId, matchDayId,
+      liveMatch: liveSnap.data() || null,
+    });
+
+    const entry = squad.entries?.[memberId];
+    if (!entry || entry.memberId !== memberId ||
+        !validId(entry.sourcePlayerId)) {
+      throw new Error("This player is not in the season squad.");
+    }
+    const memberSnap = await tx.get(
+      context.clubRef.collection("members").doc(memberId)
+    );
+    const profileSnap = await tx.get(
+      context.clubRef.collection("players").doc(entry.sourcePlayerId)
+    );
+    const member = memberSnap.data();
+    const profile = profileSnap.data();
+    const manager = canManageSquad(context.club, user);
+    if (!manager && !ownsMember(member, user)) {
+      throw new Error("Only this player or their Club captain/admin can change availability.");
+    }
+    if (member?.status !== "active" ||
+        member.playerId !== entry.sourcePlayerId || !profile ||
+        String(profile.status || "active").toLowerCase() !== "active") {
+      throw new Error("The player needs an active matching Club membership.");
+    }
+
+    const status = policy.nextPlayerAvailability({
+      entry, available, actorMemberId: memberId,
+    });
+    const replacement = squad.matchDayReplacements?.[matchDayId]?.[memberId];
+    if (available && replacement &&
+        ["pending", "accepted"].includes(replacement.invitationStatus)) {
+      throw new Error("Ask your captain to remove the replacement before returning to this game.");
+    }
+    const previous = squad.matchDayAvailability?.[matchDayId]?.[memberId];
+    if (previous?.status === status) return {status, unchanged: true};
+
+    tx.update(context.squadRef, {
+      [`matchDayAvailability.${matchDayId}.${memberId}`]: {
+        status, changedByUid: user.uid,
+        changedAt: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return {status};
+  });
+}
+
+async function loadReplacementContext(tx, db, scope, matchDayId) {
+  if (!validId(matchDayId)) throw new Error("Choose a valid match day.");
+  const context = await loadContext(tx, db, scope);
+  const squad = context.squad;
+  if (!squad || squad.version !== 1 || squad.status !== "active" ||
+      ["venueId", "seasonId", "clubId"].some(key => squad[key] !== scope[key])) {
+    throw new Error("An active season squad is required.");
+  }
+  const liveSnap = await tx.get(db.doc(
+    `leagueVenues/${scope.venueId}/seasons/${scope.seasonId}/matches/current`
+  ));
+  const policy = await import("./fieldSeasonAvailabilityPolicy.mjs");
+  policy.assertClubMatchDayEditable({
+    season: context.season, clubId: scope.clubId, matchDayId,
+    liveMatch: liveSnap.data() || null,
+  });
+  return {...context, policy};
+}
+
+async function assertReplacementPlace(tx, context, scope, matchDayId, originalMemberId) {
+  const original = context.squad.entries?.[originalMemberId];
+  if (!original || original.memberId !== originalMemberId ||
+      original.invitationStatus !== "accepted" ||
+      original.paymentStatus !== "paid" ||
+      context.squad.matchDayAvailability?.[matchDayId]?.[originalMemberId]
+        ?.status !== "unavailable") {
+    throw new Error("Choose an unavailable player with a confirmed season payment.");
+  }
+  const receiptSnap = await tx.get(context.squadRef
+    .collection("paymentConfirmations").doc(originalMemberId));
+  const receipt = receiptSnap.data();
+  if (!receipt || ["venueId", "seasonId", "clubId"]
+    .some(key => receipt[key] !== scope[key]) ||
+      receipt.memberId !== originalMemberId ||
+      receipt.sourcePlayerId !== original.sourcePlayerId ||
+      receipt.currency !== "ZAR" ||
+      !Number.isSafeInteger(original.contributionCents) ||
+      original.contributionCents <= 0 ||
+      original.paidCents !== original.contributionCents ||
+      receipt.amountCents !== original.contributionCents ||
+      !original.paymentConfirmedByUid ||
+      receipt.confirmedByUid !== original.paymentConfirmedByUid) {
+    throw new Error("The original season payment receipt does not match this place.");
+  }
+  return original;
+}
+
+async function loadReplacementPlayer(tx, context, memberId, sourcePlayerId) {
+  if (!validId(memberId) || !validId(sourcePlayerId)) {
+    throw new Error("Choose a registered replacement player.");
+  }
+  const memberSnap = await tx.get(
+    context.clubRef.collection("members").doc(memberId)
+  );
+  const profileSnap = await tx.get(
+    context.clubRef.collection("players").doc(sourcePlayerId)
+  );
+  const member = memberSnap.data();
+  const profile = profileSnap.data();
+  if (member?.status !== "active" || member.playerId !== sourcePlayerId ||
+      !profile || String(profile.status || "active").toLowerCase() !== "active") {
+    throw new Error("The replacement needs an active matching Club membership.");
+  }
+  const fullName = String(profile.fullName || profile.displayName ||
+    profile.name || profile.playerName || "").trim();
+  if (!fullName) throw new Error("The replacement needs a registered name.");
+  return {member, player: {memberId, sourcePlayerId, fullName}};
+}
+
+async function inviteSeasonMatchDayReplacement({db, user, body}) {
+  if (!user?.uid) throw new Error("Sign in first.");
+  const {venueId, seasonId, clubId, matchDayId, originalMemberId,
+    memberId, sourcePlayerId} = body || {};
+  const scope = {venueId, seasonId, clubId};
+  squadId(scope);
+  if (!validId(originalMemberId)) throw new Error("Choose the unavailable player.");
+  return db.runTransaction(async tx => {
+    const context = await loadReplacementContext(tx, db, scope, matchDayId);
+    if (!canManageSquad(context.club, user)) {
+      throw new Error("Only this Club's captain or administrator can invite cover.");
+    }
+    const original = await assertReplacementPlace(
+      tx, context, scope, matchDayId, originalMemberId
+    );
+    const {player} = await loadReplacementPlayer(tx, context, memberId, sourcePlayerId);
+    const existing = context.squad.matchDayReplacements?.[matchDayId] || {};
+    const previous = existing[originalMemberId];
+    if (previous && ["pending", "accepted"].includes(previous.invitationStatus)) {
+      if (previous.memberId === memberId &&
+          previous.sourcePlayerId === sourcePlayerId) {
+        return {status: previous.invitationStatus, unchanged: true};
+      }
+      throw new Error("Remove the existing replacement before selecting another.");
+    }
+    if (Object.values(context.squad.entries || {}).some(entry =>
+      entry.memberId === memberId || entry.sourcePlayerId === sourcePlayerId)) {
+      throw new Error("Choose cover from outside the season squad.");
+    }
+    if (Object.values(existing).some(entry =>
+      ["pending", "accepted"].includes(entry.invitationStatus) &&
+      (entry.memberId === memberId || entry.sourcePlayerId === sourcePlayerId))) {
+      throw new Error("This player already covers another place on this match day.");
+    }
+    const replacement = context.policy.createMatchDayReplacement({
+      original, originalAvailability: "unavailable",
+      replacement: player, actorUid: user.uid,
+    });
+    tx.update(context.squadRef, {
+      [`matchDayReplacements.${matchDayId}.${originalMemberId}`]: {
+        ...replacement, invitedAt: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return {status: "pending"};
+  });
+}
+
+async function respondSeasonMatchDayReplacement({db, user, body}) {
+  if (!user?.uid) throw new Error("Sign in first.");
+  const {venueId, seasonId, clubId, matchDayId, originalMemberId,
+    response} = body || {};
+  const scope = {venueId, seasonId, clubId};
+  squadId(scope);
+  if (!validId(originalMemberId) || !["accepted", "declined"].includes(response)) {
+    throw new Error("Choose a valid invitation response.");
+  }
+  return db.runTransaction(async tx => {
+    const context = await loadReplacementContext(tx, db, scope, matchDayId);
+    await assertReplacementPlace(tx, context, scope, matchDayId, originalMemberId);
+    const replacement = context.squad.matchDayReplacements?.[matchDayId]?.[originalMemberId];
+    if (!replacement) throw new Error("This replacement invitation no longer exists.");
+    const {member} = await loadReplacementPlayer(
+      tx, context, replacement.memberId, replacement.sourcePlayerId
+    );
+    if (!ownsMember(member, user)) {
+      throw new Error("Only the invited replacement can respond.");
+    }
+    if (replacement.invitationStatus === response) {
+      return {status: response, unchanged: true};
+    }
+    if (replacement.invitationStatus !== "pending") {
+      throw new Error("This invitation has already been answered or cancelled.");
+    }
+    tx.update(context.squadRef, {
+      [`matchDayReplacements.${matchDayId}.${originalMemberId}`]: {
+        ...replacement, invitationStatus: response,
+        respondedByUid: user.uid, respondedAt: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return {status: response};
+  });
+}
+
+async function cancelSeasonMatchDayReplacement({db, user, body}) {
+  if (!user?.uid) throw new Error("Sign in first.");
+  const {venueId, seasonId, clubId, matchDayId, originalMemberId} = body || {};
+  const scope = {venueId, seasonId, clubId};
+  squadId(scope);
+  if (!validId(originalMemberId)) throw new Error("Choose a valid squad place.");
+  return db.runTransaction(async tx => {
+    const context = await loadReplacementContext(tx, db, scope, matchDayId);
+    if (!canManageSquad(context.club, user)) {
+      throw new Error("Only this Club's captain or administrator can remove cover.");
+    }
+    const replacement = context.squad.matchDayReplacements?.[matchDayId]?.[originalMemberId];
+    if (!replacement) throw new Error("No replacement exists for this place.");
+    if (replacement.invitationStatus === "cancelled") {
+      return {status: "cancelled", unchanged: true};
+    }
+    tx.update(context.squadRef, {
+      [`matchDayReplacements.${matchDayId}.${originalMemberId}`]: {
+        ...replacement, invitationStatus: "cancelled",
+        cancelledByUid: user.uid, cancelledAt: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return {status: "cancelled"};
+  });
+}
+
 async function getSeasonSquadView({db, user, body}) {
   if (!user?.uid) throw new Error("Sign in first.");
   const {venueId, seasonId, clubId} = body || {};
@@ -288,3 +543,16 @@ exports.createFieldSeasonSquad = squadEndpoint(createSeasonSquad);
 exports.respondFieldSeasonSquad = squadEndpoint(respondSeasonInvitation);
 exports.confirmFieldSeasonSquadPayment = squadEndpoint(confirmSeasonPayment);
 exports.getFieldSeasonSquad = squadEndpoint(getSeasonSquadView);
+
+exports.setSeasonMatchDayAvailability = setSeasonMatchDayAvailability;
+exports.setFieldSeasonMatchDayAvailability =
+  squadEndpoint(setSeasonMatchDayAvailability);
+
+exports.inviteSeasonMatchDayReplacement = inviteSeasonMatchDayReplacement;
+exports.inviteFieldMatchDayReplacement = squadEndpoint(inviteSeasonMatchDayReplacement);
+
+exports.respondSeasonMatchDayReplacement = respondSeasonMatchDayReplacement;
+exports.respondFieldMatchDayReplacement = squadEndpoint(respondSeasonMatchDayReplacement);
+
+exports.cancelSeasonMatchDayReplacement = cancelSeasonMatchDayReplacement;
+exports.cancelFieldMatchDayReplacement = squadEndpoint(cancelSeasonMatchDayReplacement);

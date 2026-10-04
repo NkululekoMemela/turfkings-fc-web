@@ -5689,3 +5689,15 @@ exports.getFieldSeasonSquad =
 Object.assign(exports, require("./fieldSeasonSquadNotifications").buildHandlers({
   db, region: REGION, sendBatch: sendPaymentNotificationBatch,
 }));
+
+exports.setFieldSeasonMatchDayAvailability =
+  require("./fieldSeasonSquadService").setFieldSeasonMatchDayAvailability;
+
+exports.inviteFieldMatchDayReplacement =
+  require("./fieldSeasonSquadService").inviteFieldMatchDayReplacement;
+
+exports.respondFieldMatchDayReplacement =
+  require("./fieldSeasonSquadService").respondFieldMatchDayReplacement;
+
+exports.cancelFieldMatchDayReplacement =
+  require("./fieldSeasonSquadService").cancelFieldMatchDayReplacement;
