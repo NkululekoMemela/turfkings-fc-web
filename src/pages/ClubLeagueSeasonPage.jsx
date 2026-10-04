@@ -1,3 +1,4 @@
+import LeagueSeasonMarkPaid from "../components/LeagueSeasonMarkPaid.jsx";
 import React, {useEffect, useState} from "react";
 import {onAuthStateChanged} from "firebase/auth";
 import {doc, getDoc, getDocs, collection} from "firebase/firestore";
@@ -174,6 +175,15 @@ export default function ClubLeagueSeasonPage({clubId, onBack}) {
       {!loading && squad && (
         <section className="card" style={{padding: 18}}>
           <h3>Season squad</h3>
+          <LeagueSeasonMarkPaid
+            scope={context.scope}
+            entries={entries}
+            seasonName={context.season.name || "League season"}
+            onConfirmed={report => {
+              setMessage(report);
+              setRevision(value => value + 1);
+            }}
+          />
           <p>{money(squad.plan.totalCents)} total · {entries.length} players</p>
           {entries.map(entry => (
             <div key={entry.memberId} style={{

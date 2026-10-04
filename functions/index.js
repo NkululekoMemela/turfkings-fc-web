@@ -5656,6 +5656,8 @@ Object.assign(exports, require("./fieldSeasonInvitationHandlers").buildHandlers(
 
 exports.approveFieldMatchStart =
   require("./fieldMatchStartApproval").approveFieldMatchStart;
+exports.getFieldFixtureRoster =
+  require("./fieldMatchStartApproval").getFieldFixtureRoster;
 
 Object.assign(exports, require("./fieldMatchDayHandlers").buildHandlers({
   db, region: REGION, sendBatch: sendPaymentNotificationBatch,

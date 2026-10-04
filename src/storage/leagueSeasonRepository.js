@@ -748,38 +748,14 @@ export async function startVenueFixture({
       throw new Error("Choose a supported league game format.");
     }
 
-    const paidSquadsForStart = {};
+    const paidSquadsForStart = approval.squads || {};
     for (const clubId of [fixture.clubAId, fixture.clubBId]) {
-      const bookingScope = {
-        venueId, seasonId: season.id,
-        matchDayId: fixture.matchDayId, clubId,
-      };
-      const bookingSnapshot = await transaction.get(
-        doc(db, "leagueClubBookings", startBookingScope(bookingScope))
-      );
-      const manifest = startPaidManifest({
-        scope: bookingScope,
-        booking: bookingSnapshot.exists() ? bookingSnapshot.data() : null,
-      });
-      const eligible = [];
-      for (const player of manifest) {
-        const profile = await transaction.get(
-          startPlayerDoc(db, player.sourcePlayerId, clubId)
-        );
-        if (profile.exists() &&
-            String(profile.data().status || "active").toLowerCase() === "active") {
-          eligible.push(player);
-        }
+      const players = paidSquadsForStart[clubId];
+      if (!Array.isArray(players) || players.length < requiredPlayers ||
+          players.some(player => player.clubId !== clubId ||
+            !player.playerId || !player.sourcePlayerId || !player.fullName)) {
+        throw new Error("The approved league lineup is incomplete. Try again.");
       }
-      if (eligible.length < requiredPlayers) {
-        const clubName = clubId === fixture.clubAId
-          ? fixture.clubAName : fixture.clubBName;
-        throw new Error(
-          `${clubName || clubId} has ${eligible.length} active paid players. ` +
-          `${requiredPlayers} are required for this match day.`
-        );
-      }
-      paidSquadsForStart[clubId] = eligible;
     }
 
     const confirmedTeams = teams.filter((team) =>
@@ -841,6 +817,7 @@ export async function startVenueFixture({
     transaction.set(getVenueLiveMatchDoc(db, scope, "current"), {
       ...data,
       startApprovalId: approvalResponse.approvalId,
+      paidSquads: paidSquadsForStart,
       clockVersion: 1,
       clockPhase: "first_half",
       halftimeSeconds: Number(season.scheduleSettings?.halftimeMinutes ?? 5) * 60,

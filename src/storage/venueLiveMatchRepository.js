@@ -1,3 +1,7 @@
+import {
+  auth as rosterAuth,
+  getActiveFirebaseFunctionsBaseUrl as rosterFunctionsUrl,
+} from "../firebaseConfig.js";
 import { doc, getDoc } from "firebase/firestore";
 import { getPlayerDoc } from "../core/clubFirestorePaths.js";
 import { leagueBookingScope, paidLeagueManifest } from "../core/leagueBookingPolicy.js";
@@ -242,34 +246,44 @@ export async function loadVenuePaidMatchPlayers({
   firestore, scope, fixtureId,
 }) {
   if (!scope?.venueId || !scope?.seasonId || !fixtureId) {
-    throw new Error("The paid league roster needs a Field, season and fixture.");
+    throw new Error("The league roster needs a Field, season and fixture.");
   }
-  const venueSnap = await getDoc(doc(firestore, "leagueVenues", scope.venueId));
-  const season = venueSnap.data()?.league?.activeSeason;
-  const fixture = (season?.fixtures || []).find(item => item.id === fixtureId);
-  if (season?.id !== scope.seasonId || !fixture?.matchDayId ||
-      !season.schedulePublishedAtMs) {
-    throw new Error("Publish dated fixtures and confirm league payments before selecting lineups.");
-  }
-
+  const user = rosterAuth.currentUser;
+  if (!user) throw new Error("Sign in to load the league lineup.");
+  const token = await user.getIdToken();
+  const baseUrl = rosterFunctionsUrl();
+  const base = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 25000);
+  let result;
+  try {
+    const response = await fetch(`${base}/getFieldFixtureRoster`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
+      body: JSON.stringify({
+        venueId: scope.venueId, seasonId: scope.seasonId, fixtureId,
+      }),
+      signal: controller.signal,
+    });
+    result = await response.json();
+    if (!response.ok || !result.squads) {
+      throw new Error(result.error || "Could not load eligible league players.");
+    }
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("The league lineup took too long to load. Try again.");
+    }
+    throw error;
+  } finally {window.clearTimeout(timeout);}
   const entries = await Promise.all(
-    [fixture.clubAId, fixture.clubBId].map(async clubId => {
-      const bookingScope = {
-        venueId: scope.venueId, seasonId: scope.seasonId,
-        matchDayId: fixture.matchDayId, clubId,
-      };
-      const bookingSnap = await getDoc(doc(
-        firestore, "leagueClubBookings", leagueBookingScope(bookingScope)));
-      const manifest = paidLeagueManifest({
-        booking: bookingSnap.data(), scope: bookingScope,
-      });
+    Object.entries(result.squads).map(async ([clubId, manifest]) => {
       const profiles = await Promise.all(manifest.map(player =>
         getDoc(getPlayerDoc(firestore, player.sourcePlayerId, clubId))));
       const docs = profiles.filter(profile => profile.exists() &&
         String(profile.data().status || "active").toLowerCase() === "active");
       return {
         clubId,
-        snapshot: { docs, forEach: callback => docs.forEach(callback) },
+        snapshot: {docs, forEach: callback => docs.forEach(callback)},
       };
     })
   );

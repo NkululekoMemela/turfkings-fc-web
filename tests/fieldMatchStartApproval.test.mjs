@@ -32,6 +32,7 @@ beforeEach(async () => {
     league: {activeSeason: {
       id: "season-one", status: "active", scheduleVersion: 1,
       gameFormat: "5_V_5", liveMatches: {},
+      clubIds: ["club-a", "club-b"],
       fixtures: [{
         id: "fixture-one", status: "scheduled", matchDayId: "day-one",
         clubAId: "club-a", clubBId: "club-b",
@@ -162,4 +163,99 @@ test("an unarchived previous day blocks server approval even in testing", async 
     ],
   });
   assert.equal((await request()).status, 200);
+});
+
+test("unregistered fixture Clubs cannot receive approval", async () => {
+  await db.doc(venuePath).update({
+    "league.activeSeason.clubIds": ["club-a"],
+  });
+  const result = await request();
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /registered/);
+});
+
+async function seedPaidSeasonSquads() {
+  const batch = db.batch();
+  for (const clubId of ["club-a", "club-b"]) {
+    batch.set(db.doc(`clubs/${clubId}`), {ownerUid: `captain-${clubId}`});
+    batch.set(db.doc(`clubFieldMemberships/${clubId}`), {
+      status: "active", venueId: "field-one",
+    });
+    const scope = {venueId: "field-one", seasonId: "season-one", clubId};
+    const ref = db.doc(`leagueSeasonSquads/field-one~season-one~${clubId}`);
+    const entries = {};
+    for (let i = 1; i <= 5; i++) {
+      const memberId = `member-${i}`;
+      const sourcePlayerId = `player-${i}`;
+      entries[memberId] = {
+        memberId, sourcePlayerId, fullName: `Player ${i}`,
+        invitationStatus: "accepted", paymentStatus: "paid",
+        currency: "ZAR", contributionCents: 75000, paidCents: 75000,
+        paymentConfirmedByUid: `captain-${clubId}`,
+      };
+      batch.set(db.doc(`clubs/${clubId}/members/${memberId}`), {
+        status: "active", playerId: sourcePlayerId,
+      });
+      batch.set(ref.collection("paymentConfirmations").doc(memberId), {
+        ...scope, memberId, sourcePlayerId,
+        amountCents: 75000, currency: "ZAR",
+        confirmedByUid: `captain-${clubId}`,
+      });
+    }
+    batch.set(ref, {
+      ...scope, version: 1, status: "active", entries,
+      updatedAt: Timestamp.now(),
+    });
+  }
+  await batch.commit();
+}
+
+test("paid season squads approve a fixture without daily bookings", async () => {
+  await seedPaidSeasonSquads();
+  for (const clubId of ["club-a", "club-b"]) {
+    await db.doc(bookingPath(clubId)).delete();
+  }
+  const result = await request();
+  assert.equal(result.status, 200);
+  const approval = (await db.doc(
+    `${venuePath}/seasons/season-one/startApprovals/${result.body.approvalId}`
+  ).get()).data();
+  assert.equal(approval.squads["club-a"].length, 5);
+  assert.equal(approval.squads["club-a"][0].playerId, "club-a::player-1");
+  assert.equal(Object.keys(approval.squadVersions).length, 2);
+  assert.deepEqual(approval.bookingVersions, {});
+  assert.equal(Object.hasOwn(approval.squads["club-a"][0], "contributionCents"), false);
+});
+
+test("an unpaid season squad cannot fall back to old paid daily bookings", async () => {
+  await seedPaidSeasonSquads();
+  await db.doc("leagueSeasonSquads/field-one~season-one~club-a").update({
+    "entries.member-1.paymentStatus": "pending",
+    updatedAt: Timestamp.now(),
+  });
+  const result = await request();
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /eligible/);
+});
+
+test("a season player without a matching receipt cannot receive approval", async () => {
+  await seedPaidSeasonSquads();
+  await db.doc(
+    "leagueSeasonSquads/field-one~season-one~club-a/paymentConfirmations/member-1"
+  ).delete();
+  const result = await request();
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /receipt/);
+});
+
+test("one season squad and one legacy daily squad can approve during migration", async () => {
+  await seedPaidSeasonSquads();
+  await db.doc("leagueSeasonSquads/field-one~season-one~club-b").delete();
+  const result = await request();
+  assert.equal(result.status, 200);
+  const approval = (await db.doc(
+    `${venuePath}/seasons/season-one/startApprovals/${result.body.approvalId}`
+  ).get()).data();
+  assert.deepEqual(Object.keys(approval.squadVersions), ["club-a"]);
+  assert.deepEqual(Object.keys(approval.bookingVersions), ["club-b"]);
 });

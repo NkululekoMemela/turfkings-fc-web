@@ -230,3 +230,74 @@ test("referees may select a current dated fixture but cannot alter its opponents
     updatedAt: serverTimestamp(),
   }));
 });
+
+async function seedSeasonRosterApproval() {
+  await seed({future: false});
+  const version = Timestamp.fromMillis(Date.now() - 2000);
+  await environment.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    for (const clubId of ["club-a", "club-b"]) {
+      await setDoc(doc(db,
+        `leagueSeasonSquads/schedule-test~season-one~${clubId}`), {
+        status: "active", updatedAt: version,
+      });
+    }
+    await updateDoc(doc(db, approvalPath("referee")), {
+      squadVersions: {"club-a": version, "club-b": version},
+      bookingVersions: {},
+    });
+  });
+}
+
+test("current season squad revisions permit an approved match start", async () => {
+  await seedSeasonRosterApproval();
+  await assertSucceeds(start());
+});
+
+test("a changed season squad invalidates an unused approval", async () => {
+  await seedSeasonRosterApproval();
+  await environment.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(),
+      "leagueSeasonSquads/schedule-test~season-one~club-a"), {
+      updatedAt: Timestamp.fromMillis(Date.now()),
+    });
+  });
+  await assertFails(start());
+});
+
+test("a cancelled season squad invalidates an unused approval", async () => {
+  await seedSeasonRosterApproval();
+  await environment.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(),
+      "leagueSeasonSquads/schedule-test~season-one~club-a"), {
+      status: "cancelled",
+    });
+  });
+  await assertFails(start());
+});
+
+test("creating a season squad invalidates an older daily-booking approval", async () => {
+  await seed({future: false});
+  await environment.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(),
+      "leagueSeasonSquads/schedule-test~season-one~club-a"), {
+      status: "active", updatedAt: Timestamp.fromMillis(Date.now()),
+    });
+  });
+  await assertFails(start());
+});
+
+test("the live lineup must match the approved server lineup", async () => {
+  await seedSeasonRosterApproval();
+  const squads = {
+    "club-a": [{playerId: "club-a::player", sourcePlayerId: "player",
+      fullName: "Player One", clubId: "club-a"}],
+    "club-b": [],
+  };
+  await changeApproval({squads});
+  await assertFails(start("referee", {paidSquads: {}}));
+  await assertSucceeds(start("referee", {paidSquads: squads}));
+  await assertFails(updateDoc(doc(database("referee"), matchPath), {
+    paidSquads: {},
+  }));
+});

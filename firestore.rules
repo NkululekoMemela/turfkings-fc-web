@@ -683,17 +683,28 @@ service cloud.firestore {
           );
       }
 
+      function fieldRosterRevisionCurrent(approval, seasonId, clubId) {
+        let squadPath =
+          /databases/$(database)/documents/leagueSeasonSquads/$(venueId + "~" + seasonId + "~" + clubId);
+        let squadVersions = approval.get("squadVersions", {});
+        return clubId in squadVersions
+          ? (
+            get(squadPath).data.status == "active"
+            && get(squadPath).data.updatedAt == squadVersions[clubId]
+          )
+          : (
+            !exists(squadPath)
+            && get(
+              /databases/$(database)/documents/leagueClubBookings/$(venueId + "~" + seasonId + "~" + approval.matchDayId + "~" + clubId)
+            ).data.updatedAt == approval.bookingVersions[clubId]
+          );
+      }
+
       function paidFieldStartApproved(seasonId) {
         let data = request.resource.data;
         let approvalPath =
           /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/startApprovals/$(data.get("startApprovalId", ""));
         let approval = get(approvalPath).data;
-        let bookingA = get(
-          /databases/$(database)/documents/leagueClubBookings/$(venueId + "~" + seasonId + "~" + approval.matchDayId + "~" + approval.clubAId)
-        ).data;
-        let bookingB = get(
-          /databases/$(database)/documents/leagueClubBookings/$(venueId + "~" + seasonId + "~" + approval.matchDayId + "~" + approval.clubBId)
-        ).data;
         let season = get(
           /databases/$(database)/documents/leagueVenues/$(venueId)
         ).data.league.activeSeason;
@@ -701,6 +712,7 @@ service cloud.firestore {
         return approval.actorUid == request.auth.uid
           && approval.venueId == venueId && approval.seasonId == seasonId
           && approval.fixtureId == data.fixtureId
+          && data.get("paidSquads", {}) == approval.get("squads", {})
           && approval.matchDayId == fixture.matchDayId
           && approval.clubAId == fixture.clubAId
           && approval.clubBId == fixture.clubBId
@@ -710,8 +722,8 @@ service cloud.firestore {
           && approval.expiresAt > request.time
           && approval.used == false
           && getAfter(approvalPath).data.used == true
-          && bookingA.updatedAt == approval.bookingVersions[approval.clubAId]
-          && bookingB.updatedAt == approval.bookingVersions[approval.clubBId];
+          && fieldRosterRevisionCurrent(approval, seasonId, approval.clubAId)
+          && fieldRosterRevisionCurrent(approval, seasonId, approval.clubBId);
       }
 
       match /seasons/{seasonId}/matchDayReviews/{matchDayId} {
@@ -966,6 +978,8 @@ service cloud.firestore {
                 && request.resource.data.status == "live")
               && request.resource.data.get("startApprovalId", "")
                 == resource.data.get("startApprovalId", "")
+              && request.resource.data.get("paidSquads", {})
+                == resource.data.get("paidSquads", {})
               && request.resource.data.get("fixtureIndex", -1)
                 == resource.data.get("fixtureIndex", -1)
               && request.resource.data.get("matchDayIndex", -1)
