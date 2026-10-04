@@ -292,6 +292,7 @@ export function LandingPage({
   onGoToHighlights,
   onGoToEntryDev,
   onGoToPayments,
+  leagueSeasonEntry = null,
   identity,
   activeRole,
   isAdmin = false,
@@ -2685,6 +2686,7 @@ export function LandingPage({
 
       <section className="card website-card">
         <div className="website-links">
+          {leagueSeasonEntry}
           <button
             type="button"
             className="website-btn"

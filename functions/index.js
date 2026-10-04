@@ -5670,3 +5670,16 @@ exports.submitFieldDecision =
   require("./fieldDecisionService").submitFieldDecision;
 exports.reviewFieldDecision =
   require("./fieldDecisionService").reviewFieldDecision;
+
+Object.assign(exports, require("./fieldDecisionNotifications").buildHandlers({
+  db, region: REGION, sendBatch: sendPaymentNotificationBatch,
+}));
+
+exports.createFieldSeasonSquad =
+  require("./fieldSeasonSquadService").createFieldSeasonSquad;
+exports.respondFieldSeasonSquad =
+  require("./fieldSeasonSquadService").respondFieldSeasonSquad;
+exports.confirmFieldSeasonSquadPayment =
+  require("./fieldSeasonSquadService").confirmFieldSeasonSquadPayment;
+exports.getFieldSeasonSquad =
+  require("./fieldSeasonSquadService").getFieldSeasonSquad;

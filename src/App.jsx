@@ -1,3 +1,5 @@
+import ClubLeagueSeasonPage from "./pages/ClubLeagueSeasonPage.jsx";
+import ClubLeagueSeasonEntry from "./components/ClubLeagueSeasonEntry.jsx";
 import { db as notificationFieldDb } from "./firebaseConfig.js";
 import {
   doc as notificationFieldDoc, getDoc as loadNotificationFieldDoc,
@@ -122,6 +124,7 @@ const PAGE_PLAYER_CARDS = "player-cards";
 const PAGE_PEER_REVIEW = "peer-review";
 const PAGE_MIGRATION = "migration";
 const PAGE_MATCH_SIGNUP = "match-signup";
+const PAGE_CLUB_LEAGUE_SEASON = "club-league-season";
 const PAGE_PAYMENT = "payment";
 const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 
@@ -2866,7 +2869,8 @@ export default function App() {
       activeClubId,
       onNotificationOpened: async notification => {
         const data = notification?.data || {};
-        if (data.type === "field_match_day_review") {
+        if (data.type === "field_match_day_review" ||
+            data.type === "field_manager_approval") {
           const venueId = String(data.venueId || "").trim();
           if (!/^[A-Za-z0-9_-]{1,150}$/.test(venueId)) return;
           try {
@@ -10054,6 +10058,13 @@ export default function App() {
 
       {page === PAGE_LANDING && (
         <LandingPage
+          leagueSeasonEntry={!isPracticeMode ? (
+            <ClubLeagueSeasonEntry
+              key={activeClubId}
+              clubId={activeClubId}
+              onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}
+            />
+          ) : null}
           activeClub={activeClubIdentity}
           activeClubId={activeClubId}
           activeClubName={activeClubName}
@@ -10114,6 +10125,14 @@ export default function App() {
           canStartMatch={canStartMatch}
           hasRecordedMatchDayState={hasRecordedMatchDayState}
           onReady={() => setLandingVisualReady(true)}
+        />
+      )}
+
+      {page === PAGE_CLUB_LEAGUE_SEASON && !isPracticeMode && (
+        <ClubLeagueSeasonPage
+          key={activeClubId}
+          clubId={activeClubId}
+          onBack={() => setPage(PAGE_LANDING)}
         />
       )}
 

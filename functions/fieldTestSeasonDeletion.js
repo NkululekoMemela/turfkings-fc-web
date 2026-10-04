@@ -64,6 +64,24 @@ async function requestDeletion({db, actorUid, body}) {
     );
     const bookings = bookingSnaps.docs
       .filter(snapshot => snapshot.data().venueId === venueId);
+    const squadSnaps = await transaction.get(
+      db.collection("leagueSeasonSquads").where("seasonId", "==", seasonId)
+    );
+    const seasonSquads = squadSnaps.docs.filter(
+      snapshot => snapshot.data().venueId === venueId
+    );
+    for (const snapshot of seasonSquads) {
+      const receipts = await transaction.get(
+        snapshot.ref.collection("paymentConfirmations").limit(1)
+      );
+      if (!receipts.empty || Object.values(snapshot.data().entries || {})
+        .some(entry => entry?.paymentStatus === "paid" ||
+          Number(entry?.paidCents || 0) > 0)) {
+        throw new Error(
+          "This season has confirmed squad payments. Preserve these payment records."
+        );
+      }
+    }
     const venue = {...venueSnap.data(), id: venueId};
     const season = assertTestSeasonDeletion({
       venue, actorUid, seasonId, confirmation, confirmedTest,
@@ -98,12 +116,14 @@ async function requestDeletion({db, actorUid, body}) {
       requestedByUid: actorUid, requestedAtMs: now,
       status: "pending",
       bookingIds: bookings.map(snapshot => snapshot.id),
+      seasonSquadIds: seasonSquads.map(snapshot => snapshot.id),
       summary: {
         seasonName: String(season.name || season.id),
         fixtures: (season.fixtures || []).length,
         results: (season.results || []).length,
         matchDays: (season.matchDayHistory || []).length,
         bookingDocuments: bookings.length,
+        seasonSquadDocuments: seasonSquads.length,
       },
     });
     transaction.set(venueRef.collection("actionLog").doc(), {
@@ -132,6 +152,31 @@ async function cleanDeletion({db, venueId, seasonId}) {
     throw new Error("Deletion job does not refer to a retired test season.");
   }
   const seasonRef = venueRef.collection("seasons").doc(seasonId);
+  for (const squadId of job.seasonSquadIds || []) {
+    if (typeof squadId !== "string" || squadId.includes("/")) {
+      throw new Error("Invalid season squad deletion reference.");
+    }
+    const squadRef = db.collection("leagueSeasonSquads").doc(squadId);
+    await db.runTransaction(async transaction => {
+      const snapshot = await transaction.get(squadRef);
+      const receipts = await transaction.get(
+        squadRef.collection("paymentConfirmations").limit(1)
+      );
+      if (!receipts.empty) {
+        throw new Error("Season payment receipts cannot be removed.");
+      }
+      if (!snapshot.exists) return;
+      const squad = snapshot.data();
+      if (squad.venueId !== venueId || squad.seasonId !== seasonId ||
+          Object.values(squad.entries || {}).some(entry =>
+            entry?.paymentStatus === "paid" || Number(entry?.paidCents || 0) > 0)) {
+        throw new Error("A season squad cannot be safely removed.");
+      }
+      transaction.delete(squadRef);
+    });
+    // The season is retired; squad service operations reject further changes.
+    await db.recursiveDelete(squadRef);
+  }
   const collections = await checkCollections(seasonRef);
   for (const collection of collections) {
     await db.recursiveDelete(collection);

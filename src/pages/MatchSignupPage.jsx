@@ -1,4 +1,3 @@
-import ClubLeagueBookingMatrix from "../components/ClubLeagueBookingMatrix.jsx";
 import { saveSignupWithCapacity } from "../core/payments/saveSignupWithCapacity.js";
 import ClubBookingSettings from "../components/ClubBookingSettings.jsx";
 import { bookingDeadline, calculateLateBookingFee } from "../../functions/lateBookingPolicy.mjs";
@@ -7402,11 +7401,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
           ) : null}
         </section>
       ) : null}
-
-      {!isPracticeMode && (
-        <ClubLeagueBookingMatrix clubId={activeClubId}
-          players={directoryPlayers} beneficiary={beneficiary} />
-      )}
 
       <section className="card signup-grid-card">
         <div className="signup-grid-title-row">

@@ -213,6 +213,14 @@ service cloud.firestore {
     // LEAGUE VENUES
     // Separate from club identities and club permissions.
     // ---------------------------------------------------------
+    match /leagueSeasonSquads/{squadId} {
+      // Access is through authenticated server operations.
+      allow read, write: if false;
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
     match /leagueClubBookings/{bookingId} {
       function validBooking() {
         let data = request.resource.data;
@@ -1659,7 +1667,8 @@ service cloud.firestore {
                          && topLevel != "legalAcceptances"
                          && topLevel != "clubs"
                          && topLevel != "clubFieldMemberships"
-                          && topLevel != "leagueClubBookings";
+                          && topLevel != "leagueClubBookings"
+                          && topLevel != "leagueSeasonSquads";
     }
   }
 }
