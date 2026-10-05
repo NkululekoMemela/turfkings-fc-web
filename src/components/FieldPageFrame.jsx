@@ -38,7 +38,7 @@ export default function FieldPageFrame({
 
   return (
     <div className="field-ribbon-frame" data-field-page={page}>
-      <div
+      {page !== "entry" && <div
         className={`landing-header-sticky ${
           headerScrolled ? "is-scrolled" : ""
         }`}
@@ -176,7 +176,7 @@ export default function FieldPageFrame({
                   event.currentTarget.src = "/favicon_nobackground.png";
                 }} />
               <div className="field-ribbon-title-copy">
-                <small>{page === "landing" ? "FIELD LEAGUE" : venue?.name || "Your Field"}</small>
+                <small>{page === "landing" ? "FIELD MANAGEMENT CENTER" : venue?.name || "Your Field"}</small>
                 <h1>{title}</h1>
               </div>
               {page !== "landing" && page !== "entry" && (
@@ -191,7 +191,7 @@ export default function FieldPageFrame({
           <div className="landing-header-divider" />
 
         </header>
-      </div>
+      </div>}
       <div className="field-ribbon-content">{children}</div>
     </div>
   );
