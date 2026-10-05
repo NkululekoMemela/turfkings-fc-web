@@ -6423,23 +6423,34 @@ export default function VenueEntryPage({
         @media (max-width: 520px) { .tk-admin-notification-dock { right: 0.62rem; top: calc(4.45rem + env(safe-area-inset-top)); } .tk-admin-notification-card { width: min(330px, calc(100vw - 1.24rem)); border-radius: 19px; } }
       `}</style>
       <header className="header">
+        <div className="field-entry-heading-row">
+          <img
+            src={activeClubLogoSrc || "/favicon_nobackground.png"}
+            alt=""
+            className="field-entry-heading-logo"
+            onError={event => {
+              event.currentTarget.onerror = null;
+              event.currentTarget.src = "/favicon_nobackground.png";
+            }}
+          />
+          <div className="header-title">
+            <small className="field-entry-eyebrow">ENTRY PAGE</small>
+            <h1>{activeClubName}</h1>
+          </div>
         {isAdminViewer ? (
           <div className="field-entry-edit-row">
           <button
             type="button"
             className="tk-entry-club-edit-btn"
             onClick={() => setShowEntryClubEditor(true)}
-            title="Edit club profile"
-            aria-label="Edit club profile"
+            title="Edit Field profile"
+            aria-label="Edit Field profile"
           >
             ✎
           </button>
           </div>
         ) : null}
 
-        <div className="header-title">
-
-          <h1>{activeClubName}</h1>
         </div>
 
         {!currentUser && (
