@@ -1,16 +1,31 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import "./FieldBottomNav.css";
 
 const items = [
   { key: "landing", emoji: "🏡", label: "Home" },
   { key: "stats", emoji: "📊", label: "Stats" },
+  { key: "squads", emoji: "👥", label: "Squads" },
   { key: "formations", image: "/formations-icon.png", label: "Lineups" },
   { key: "news", emoji: "📰", label: "News" },
   { key: "videos", image: "/videotape.png", label: "Videos" },
+  { key: "lostFound", emoji: "🔎", label: "Lost & Found" },
 ];
 
 export default function FieldBottomNav({ currentPage, onNavigate }) {
   const [isHidden, setIsHidden] = useState(false);
+  const navScroller = useRef(null);
+
+  useEffect(() => {
+    const scroller = navScroller.current;
+    const current = scroller?.querySelector('[aria-current="page"]');
+    if (!scroller || !current) return;
+    scroller.scrollTo({
+      left: current.offsetLeft - scroller.clientWidth / 2 + current.offsetWidth / 2,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto" : "smooth",
+    });
+  }, [currentPage]);
+
 
   useEffect(() => {
     let timer;
@@ -45,7 +60,8 @@ export default function FieldBottomNav({ currentPage, onNavigate }) {
       className={`field-bottom-nav ${isHidden ? "is-hidden" : ""}`}
       aria-label="Field navigation"
     >
-      <div className="field-bottom-nav__inner">
+      <div ref={navScroller} className="field-bottom-nav__inner"
+        style={{gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`}}>
         {items.map(({ key, emoji, image, label }) => {
           const current = currentPage === key;
           return (
@@ -53,6 +69,7 @@ export default function FieldBottomNav({ currentPage, onNavigate }) {
               key={key}
               type="button"
               className={`field-bottom-nav__pill ${current ? "is-current" : ""}`}
+              style={{flex: "1 1 0", minWidth: 0}}
               aria-current={current ? "page" : undefined}
               onClick={() => {
                 setIsHidden(false);

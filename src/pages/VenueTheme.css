@@ -195,3 +195,115 @@
   outline: 2px solid #7dd3fc;
   outline-offset: 3px;
 }
+
+
+/* Sandstone: warm lighter canvas, softer slate surfaces and clear contrast. */
+.app-root--field[data-field-theme="sandstone"],
+.fanm-venues--live[data-field-theme="sandstone"],
+[data-field-theme="sandstone"] .fanm-venues--live {
+  --field-ribbon-start: #88716c;
+  --field-ribbon-end: #c3a687;
+  --field-ribbon-border: rgba(255,235,205,.55);
+  background:
+    radial-gradient(ellipse at 85% 8%, rgba(226,193,157,.3), transparent 43%),
+    radial-gradient(ellipse at 8% 90%, rgba(183,161,174,.28), transparent 45%),
+    linear-gradient(145deg, #927f86 0%, #b49b8c 52%, #c2a88d 100%) !important;
+  color: #fffaf4;
+}
+.app-root--field[data-field-theme="sandstone"] .page,
+.app-root--field[data-field-theme="sandstone"] .venue-stats-page {
+  background: transparent !important;
+  color: #fffaf4;
+}
+.app-root--field[data-field-theme="sandstone"] .tk-ribbon-desktop-lip stop:first-child {
+  stop-color: var(--field-ribbon-start) !important;
+}
+.app-root--field[data-field-theme="sandstone"] .tk-ribbon-desktop-lip stop:last-child {
+  stop-color: var(--field-ribbon-end) !important;
+}
+
+/* Sandstone identity text on the exposed canvas */
+.app-root--field[data-field-theme="sandstone"] .entry-page > header.header,
+.app-root--field[data-field-theme="sandstone"] .field-canvas-identity {
+  color: #0f2038 !important;
+}
+
+.app-root--field[data-field-theme="sandstone"] .entry-page > header.header :is(
+  p, p strong, .subtitle
+),
+.app-root--field[data-field-theme="sandstone"] .field-canvas-identity :is(
+  .subtitle,
+  .auth-text,
+  .auth-text span,
+  .auth-text strong,
+  .auth-status > .muted > span,
+  .auth-status > .muted > span strong
+),
+.app-root--field[data-field-theme="sandstone"] .field-theme-picker > span {
+  color: #0f2038 !important;
+}
+
+/* Entry edit control occupies a separate row above hub navigation. */
+.app-root--field .entry-page > header.header {
+  display: block !important;
+}
+.app-root--field .field-entry-edit-row {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin-bottom: 12px;
+}
+.app-root--field .field-entry-edit-row .tk-entry-club-edit-btn {
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  flex: 0 0 auto;
+  margin: 0 !important;
+}
+.app-root--field .tk-entry-signedin-row {
+  width: 100%;
+  min-width: 0;
+}
+.app-root--field .tk-entry-signedin-row > p {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.app-root--field .tk-entry-signedin-row .tk-entry-home-btn {
+  position: static !important;
+  flex: 0 0 46px;
+}
+
+/* Chat opened inside a Field follows its selected canvas theme. */
+.app-root--field {
+  --field-chat-canvas: linear-gradient(145deg, #12111e, #211827, #11131c);
+  --field-chat-canvas-text: #f8fafc;
+}
+.app-root--field[data-field-theme="pearl"] {
+  --field-chat-canvas: linear-gradient(145deg, #55445d, #765367, #936b62);
+}
+.app-root--field[data-field-theme="sandstone"] {
+  --field-chat-canvas: linear-gradient(145deg, #927f86, #b49b8c, #c2a88d);
+  --field-chat-canvas-text: #0f2038;
+}
+.app-root--field .fanm-club-chat-card.is-modal-open,
+.app-root--field .fanm-club-chat-card.is-modal-open .fanm-club-chat-messages,
+.app-root--field .fanm-club-chat-card.is-modal-open .fanm-club-chat-compose,
+.app-root--field .fanm-club-chat-card.is-modal-open .fanm-club-chat-head {
+  background: var(--field-chat-canvas) !important;
+}
+.app-root--field .fanm-club-chat-card.is-modal-open > .fanm-club-chat-launcher,
+.app-root--field .field-chat-return-controls {
+  color: var(--field-chat-canvas-text) !important;
+}
+.app-root--field .fanm-club-chat-card.is-modal-open
+.fanm-club-chat-launcher-text small {
+  color: var(--field-chat-canvas-text) !important;
+}
+.app-root--field .fanm-club-chat-card.is-modal-open .fanm-club-chat-message {
+  background: #10233f !important;
+  color: #f8fafc !important;
+}
+.app-root--field .fanm-club-chat-card.is-modal-open .fanm-club-chat-messages::before {
+  color: var(--field-chat-canvas-text) !important;
+}

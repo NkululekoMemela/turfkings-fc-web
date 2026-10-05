@@ -1,0 +1,98 @@
+.field-lost-found {
+  padding-bottom: calc(100px + env(safe-area-inset-bottom));
+}
+.field-lost-found > .header,
+.lf-record-heading, .lf-actions, .lf-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+}
+.lf-card { margin-top: .9rem; padding: 1rem; }
+.lf-card h3 { margin: 0 0 .45rem; }
+.lf-form, .lf-list, .lf-review { display: grid; gap: .75rem; }
+.lf-form label, .lf-review > label {
+  display: grid; gap: .35rem; font-size: .82rem;
+}
+.field-lost-found input:not([type="checkbox"]),
+.field-lost-found textarea, .field-lost-found select {
+  width: 100%; min-width: 0; box-sizing: border-box;
+  padding: .7rem .8rem; border-radius: 12px;
+  border: 1px solid rgba(148,163,184,.25);
+  background: rgba(8,19,39,.8); color: #f1f5f9;
+  font: inherit;
+}
+.lf-form-row, .lf-inventory {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem;
+}
+.lf-record {
+  min-width: 0; padding: .85rem; border-radius: 15px;
+  border: 1px solid rgba(148,163,184,.18);
+  background: linear-gradient(145deg,rgba(19,39,66,.85),rgba(5,17,34,.92));
+}
+.lf-record p { margin: .45rem 0; font-size: .85rem; overflow-wrap: anywhere; }
+.lf-record-heading strong { overflow-wrap: anywhere; }
+.lf-status {
+  flex-shrink: 0; font-size: .65rem; padding: .3rem .5rem;
+  border-radius: 999px; background: rgba(148,163,184,.13); color: #cbd5e1;
+}
+.lf-status--approved, .lf-status--collected { color: #a7f3d0; background: rgba(16,185,129,.14); }
+.lf-status--pending { color: #fde68a; background: rgba(245,158,11,.12); }
+.lf-review { margin-top: .85rem; }
+.lf-review .lf-checkbox { display: flex; align-items: flex-start; line-height: 1.5; }
+.lf-checkbox input { margin-top: .25rem; flex-shrink: 0; }
+.lf-actions { justify-content: flex-start; flex-wrap: wrap; margin-top: .5rem; }
+.lf-actions button, .lf-tabs button { font-size: .8rem; padding: .6rem .8rem; }
+.lf-tabs { justify-content: flex-start; margin: .9rem 0; }
+.lf-tabs button {
+  border: 1px solid rgba(148,163,184,.3); border-radius: 999px;
+  background: rgba(8,19,39,.85); color: #cbd5e1; cursor: pointer;
+}
+.lf-tabs button[aria-pressed="true"] { color: #fde6b6; border-color: #b89559; }
+.lf-message { color: #a7f3d0; font-size: .85rem; }
+.lf-alert { color: #fda4af; font-size: .85rem; }
+.lf-photo { display: block; width: 100%; max-width: 360px; max-height: 300px;
+  object-fit: contain; border-radius: 12px; margin-top: .7rem; }
+.lf-record > button { margin-top: .6rem; }
+.field-lost-found button:disabled { opacity: .45; cursor: default; }
+@media (max-width: 540px) {
+  .lf-inventory { grid-template-columns: 1fr; }
+  .lf-record-heading { align-items: flex-start; }
+}
+
+
+/* Compact ticket layout: transparent page over the existing Field canvas. */
+.field-lost-found .lf-card { border-radius: 20px; }
+.field-lost-found .lf-record {
+  background:
+    radial-gradient(ellipse at 90% 0%, rgba(77,126,189,.13), transparent 55%),
+    linear-gradient(150deg, #122a48, #08182e 70%);
+  border-color: rgba(120,157,201,.22);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.055), 0 5px 16px rgba(0,0,0,.12);
+}
+.field-lost-found .lf-form { gap: .65rem; }
+.field-lost-found .lf-form input:not([type="checkbox"]),
+.field-lost-found .lf-form select,
+.field-lost-found .lf-form textarea { padding: .6rem .7rem; }
+.field-lost-found .lf-checkbox {
+  display: flex; align-items: center; gap: .4rem; font-size: .75rem;
+}
+.lf-tabs { flex-wrap: wrap; }
+.lf-tabs b {
+  display: inline-grid; place-items: center;
+  min-width: 18px; height: 18px; margin-left: 4px;
+  border-radius: 999px; background: #cf354b; color: white; font-size: 10px;
+}
+.lf-response {
+  margin-top: .7rem; padding: .7rem .8rem; border-radius: 12px;
+  background: rgba(46,84,123,.2); border-left: 2px solid #d1ad74;
+}
+.lf-response > small { color: #e5c698; font-weight: 700; }
+.lf-details { color: #bed1e7; }
+.lf-loading { display: flex; align-items: center; gap: .8rem; min-height: 80px; }
+.lf-loading > span {
+  display: grid; place-items: center; width: 48px; height: 48px;
+  border-radius: 16px; background: rgba(91,131,180,.13); font-size: 24px;
+}
+.lf-loading p { margin: .3rem 0 0; }
+.lf-status--responded { background: rgba(245,158,11,.12); color: #fde68a; }

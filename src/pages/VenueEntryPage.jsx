@@ -1,3 +1,10 @@
+import VenueLostFoundPage from "./VenueLostFoundPage.jsx";
+import VenueSquadsPage from "./VenueSquadsPage.jsx";
+import VenueFixturesPage from "./VenueFixturesPage.jsx";
+import FieldDecisionReview from "../components/FieldDecisionReview.jsx";
+import FieldTestSeasonDeletion from "../components/FieldTestSeasonDeletion.jsx";
+import FieldMatchDayReview from "../components/FieldMatchDayReview.jsx";
+import FieldMatchDaySchedule from "../components/FieldMatchDaySchedule.jsx";
 import VenueStaffPowersPanel from "../components/VenueStaffPowersPanel.jsx";
 import { watchVenueStaffPermissions } from "../storage/venueStaffPermissionsRepository.js";
 import { buildClubIdentity, DEFAULT_PLATFORM_LOGO } from "../core/clubIdentity.js";
@@ -24,7 +31,7 @@ import {
   createCameraHandoff,
   buildAuthorizedCameraDeepLink,
 } from "../storage/cameraHandoffGateway.js";
-import { loadVenueLeaguePlayers } from "../storage/venueLiveMatchRepository.js";
+import { loadVenuePaidMatchPlayers } from "../storage/venueLiveMatchRepository.js";
 import {
   requestVenueCameraAccess,
 } from "../storage/venueCameraApprovalRepository.js";
@@ -721,7 +728,7 @@ export default function VenueEntryPage({
   const [enteredIdentity, setEnteredIdentity] = useState(null);
   const [fieldTheme, setFieldTheme] = useState(() => {
     try {
-      return localStorage.getItem("field-theme") === "pearl" ? "pearl" : "dark";
+      return (["dark", "pearl", "sandstone"].includes(localStorage.getItem("field-theme")) ? localStorage.getItem("field-theme") : "dark");
     } catch {
       return "dark";
     }
@@ -5418,6 +5425,19 @@ export default function VenueEntryPage({
       canOperateFieldMatch,
     });
 
+
+    if (venuePage === "lostFound") {
+      return (
+        <VenueLostFoundPage
+          key={venue.id}
+          venueId={venue.id}
+          venueName={venue.name}
+          adminView={isFieldAdministrator}
+          onBack={() => setVenuePage("landing")}
+        />
+      );
+    }
+
     if (venuePage === "videos") {
       const latestResult = (venueSeason?.results || []).at(-1) || null;
       const videoFixtureId =
@@ -5482,9 +5502,15 @@ export default function VenueEntryPage({
       );
     }
 
+    if (venuePage === "squads") {
+      return <VenueSquadsPage venue={venue} season={venueSeason}
+        onBack={() => setVenuePage("landing")} />;
+    }
+
     if (venuePage === "formations") {
       return (
         <VenueLeagueFormationsPage
+          paidFixtureId={liveMatch?.fixtureId || nextFixture?.id || ""}
           activeClubId={venue.id}
           activeClub={venue}
           fieldLeagueScope={{
@@ -5512,6 +5538,20 @@ export default function VenueEntryPage({
     if (venuePage === "actionLog") {
       return <VenueActionLogPage venueId={venue?.id}
         onBack={() => setVenuePage("landing")} />;
+    }
+
+    if (venuePage === "fixtures") {
+      return (
+        <VenueFixturesPage
+          venue={venue}
+          season={venueSeason}
+          teams={teams}
+          myClubId={currentUser?.uid && (
+            isClubRepresentative || effectiveRole === "club_member"
+          ) ? enteredIdentity?.clubId || "" : ""}
+          onBack={() => setVenuePage("landing")}
+        />
+      );
     }
 
     if (venuePage === "stats") {
@@ -5579,7 +5619,58 @@ export default function VenueEntryPage({
 
     return (
       <>
+      {canEndFieldMatchDay && (
+        <FieldMatchDayReview
+          key={`${venue.id}:${venueSeason?.id}:${currentUser?.uid}`}
+          venueId={venue.id}
+          season={venueSeason}
+          onReviewStats={() => setVenuePage("stats")}
+        />
+      )}
       <VenueLandingPage
+        onGoToSquads={() => setVenuePage("squads")}
+        fieldDecisionControls={
+          <>{isVenueOwner && !isReadOnlyFieldRole && effectiveRole === "field_manager" && (
+        <FieldDecisionReview
+          venueId={venue.id} seasonId={venueSeason?.id}
+          isCreator={isVenueOwner} />
+      )}</>
+        }
+        fieldStaffRequestControls={
+          <>{hasActiveFieldRole && !isReadOnlyFieldRole && !isFieldAdministrator && (
+        <FieldMatchDaySchedule venueId={venue.id} season={venueSeason}
+              teams={teams}
+              myClubId={currentUser?.uid && (
+                isClubRepresentative || effectiveRole === "club_member"
+              ) ? enteredIdentity?.clubId || "" : ""}
+          readOnly={false} />
+      )}</>
+        }
+        fieldSeason={venueSeason}
+        fieldScheduleView={
+          <button type="button" className="field-fixtures-open"
+            onClick={() => setVenuePage("fixtures")}>
+            <span className="field-fixtures-open__icon" aria-hidden="true">▦</span>
+            <span>
+              <strong>Fixtures</strong>
+              <small>Match days, opponents and kickoff times</small>
+            </span>
+            <span aria-hidden="true">→</span>
+          </button>
+        }
+        fieldScheduleControls={isFieldAdministrator ? (
+          <>
+            <FieldMatchDaySchedule venueId={venue.id} season={venueSeason}
+              teams={teams}
+              myClubId={currentUser?.uid && (
+                isClubRepresentative || effectiveRole === "club_member"
+              ) ? enteredIdentity?.clubId || "" : ""}
+              isCreator={isVenueOwner} readOnly={false} />
+            {isVenueOwner && (
+              <FieldTestSeasonDeletion venueId={venue.id} season={venueSeason} />
+            )}
+          </>
+        ) : null}
         portalClubName={enteredIdentity?.clubName}
         onReturnToClub={
           portalClubIdentity?.clubId &&
@@ -5681,6 +5772,7 @@ export default function VenueEntryPage({
         }}
         onGoToStats={() => setVenuePage("stats")}
         onGoToFormations={() => setVenuePage("formations")}
+        onGoToLostFound={() => setVenuePage("lostFound")}
         onGoToNews={() => setVenuePage("news")}
         onGoToHighlights={() => setVenuePage("videos")}
         onOpenHighlightsCamera={async () => {
@@ -5724,11 +5816,13 @@ export default function VenueEntryPage({
 
           const matchId =
             `venue__${venue.id}__${venueSeason.id}__${fixture.id}`;
-          const playerSnapshot = await loadVenueLeaguePlayers({
+          const playerSnapshot = await loadVenuePaidMatchPlayers({
             firestore: db,
-            teams: mappedTeams.filter((team) =>
-              [fixture.clubAId, fixture.clubBId].includes(team.id)
-            ),
+            scope: {
+              kind: "venueLeague", environment: "official",
+              venueId: venue.id, seasonId: venueSeason.id,
+            },
+            fixtureId: fixture.id,
           });
           const players = playerSnapshot.docs.map((snap) => ({
             id: snap.id,
@@ -6330,6 +6424,7 @@ export default function VenueEntryPage({
       `}</style>
       <header className="header">
         {isAdminViewer ? (
+          <div className="field-entry-edit-row">
           <button
             type="button"
             className="tk-entry-club-edit-btn"
@@ -6339,10 +6434,11 @@ export default function VenueEntryPage({
           >
             ✎
           </button>
+          </div>
         ) : null}
 
         <div className="header-title">
-          <img src={activeClubLogoSrc} alt={`${activeClubName} logo`} className="tk-logo" />
+
           <h1>{activeClubName}</h1>
         </div>
 
@@ -6385,6 +6481,9 @@ export default function VenueEntryPage({
           onClick={() => setFieldTheme("dark")}>Dark</button>
         <button type="button" aria-pressed={fieldTheme === "pearl"}
           onClick={() => setFieldTheme("pearl")}>Rosewood</button>
+        <button type="button" aria-pressed={fieldTheme === "sandstone"}
+          onClick={() => setFieldTheme("sandstone")}>Sandstone</button>
+
       </div>
 
       <section className="card" style={heroCardStyle}>

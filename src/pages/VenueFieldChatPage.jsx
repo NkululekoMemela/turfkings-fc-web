@@ -304,19 +304,14 @@ export default function VenueFieldChatPage({
   return (
     <main ref={pageRef} className="field-chat-page">
       <section className="card fanm-club-chat-card is-open is-modal-open field-chat-card">
-        <div className="fanm-club-chat-launcher field-chat-heading">
-          <span className="fanm-club-chat-launcher-icon" aria-hidden="true">💬</span>
-          <span className="fanm-club-chat-launcher-text">
-            <strong>{venue?.name || "Field"} Chat</strong>
-            <small>Member Clubs and Field officials</small>
-          </span>
-          <span className="fanm-club-chat-header-actions">
-            <span className="fanm-club-chat-live-pill">Live</span>
-            <button type="button" className="fanm-club-chat-minimize-icon"
-              aria-label="Return to Field landing page"
-              title="Return to Field" onClick={onBack}>−</button>
-          </span>
+        <div className="field-chat-return-controls">
+          <strong>{venue?.name || "Field"} Chat</strong>
+          <button type="button" className="secondary-btn"
+            onClick={onBack} aria-label="Minimize Field chat">−</button>
+          <button type="button" className="secondary-btn"
+            onClick={onBack} aria-label="Close Field chat">×</button>
         </div>
+
 
         {accessError && <p className="field-chat-error" role="alert">{accessError}</p>}
         {muted && <p className="field-chat-muted">You can read chat, but sending and reactions are restricted.</p>}

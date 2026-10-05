@@ -471,8 +471,10 @@ function sanitizeLineupShapeLocal(
   return {
     formationId: formation.id,
     positions: cleanPositions,
-    guestPlayers: uniqueByLower(lineup.guestPlayers || []),
-    benchSnapshot: buildOrderedBenchPool(remaining, lineup?.benchSnapshot || []),
+    guestPlayers: uniqueByLower(lineup.guestPlayers || [])
+      .filter(name => validSet.has(normKey(name))),
+    benchSnapshot: buildOrderedBenchPool(remaining, lineup?.benchSnapshot || [])
+      .filter(name => validSet.has(normKey(name)) && !used.has(normKey(name))),
     meta: {
       savedByRole: lineup?.meta?.savedByRole || LINEUP_SAVE_ROLE_GENERAL,
       savedByEmail: lineup?.meta?.savedByEmail || null,
@@ -1455,12 +1457,9 @@ export function FormationsPage({
 
   const canonicalTeams = useMemo(() => {
     return (sourceTeams || []).map((t) => {
-      const supplied = Array.isArray(t.players) && t.players.length
-        ? t.players
-        : players
-            .filter((player) => String(player.clubId) === String(t.id))
-            .sort((a, b) => a.fullName.localeCompare(b.fullName))
-            .slice(0, 12);
+      const supplied = players
+        .filter((player) => String(player.clubId) === String(t.id))
+        .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
       return {
         ...t,
@@ -1660,7 +1659,7 @@ export function FormationsPage({
     const targetDefaultFormationId = getDefaultFormationIdForGameType(targetGameType);
 
     const targetPlayerPool =
-      targetGameType === GAME_TYPE_11 ? clubPlayers : targetTeam?.players || [];
+      targetTeam?.players || [];
 
     const next = resolveLatestPreferredTeamLineup(
       targetTeam,
@@ -2234,66 +2233,16 @@ export function FormationsPage({
 
   const renderTopHeader = (isEmpty = false) => (
     <>
-      <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
-        <header className="header">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              width: "100%",
-            }}
-          >
-            <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>Lineups &amp; Formations</h1>
-            </div>
 
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={onBack}
-              aria-label="Home"
-              title="Home"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.05rem",
-                flexShrink: 0,
-              }}
-            >
-              🏠
-            </button>
-          </div>
-        </header>
-      </div>
 
-      <header className="header" style={{ marginBottom: isEmpty ? undefined : "0.35rem" }}>
+      <div className="field-page-context" style={{ marginBottom: isEmpty ? undefined : "0.35rem" }}>
         <div className="header-top-row">
-          <button
-            className="secondary-btn"
-            type="button"
-            onClick={onGoToSquads}
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(20, 35, 63, 0.98), rgba(11, 23, 48, 0.98))",
-              color: "#f8fafc",
-              border: "1px solid rgba(148, 163, 184, 0.28)",
-              boxShadow: "0 10px 24px rgba(2, 6, 23, 0.35)",
-            }}
-          >
-            Manage Squads
-          </button>
+
         </div>
         <p className="muted small" style={{ marginTop: "0.65rem" }}>
           Match day format: <strong>{isFriendlyMatch ? `Friendly ${getGameTypeLabel(gameType)}` : `League ${getGameTypeLabel(gameType)}`}</strong>
         </p>
-      </header>
+      </div>
     </>
   );
 

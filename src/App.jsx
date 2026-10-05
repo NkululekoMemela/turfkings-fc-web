@@ -1,3 +1,10 @@
+import FieldPageFrame from "./components/FieldPageFrame.jsx";
+import ClubLeagueSeasonPage from "./pages/ClubLeagueSeasonPage.jsx";
+import ClubLeagueSeasonEntry from "./components/ClubLeagueSeasonEntry.jsx";
+import { db as notificationFieldDb } from "./firebaseConfig.js";
+import {
+  doc as notificationFieldDoc, getDoc as loadNotificationFieldDoc,
+} from "firebase/firestore";
 // src/App.jsx
 import React, {
   useEffect,
@@ -118,6 +125,7 @@ const PAGE_PLAYER_CARDS = "player-cards";
 const PAGE_PEER_REVIEW = "peer-review";
 const PAGE_MIGRATION = "migration";
 const PAGE_MATCH_SIGNUP = "match-signup";
+const PAGE_CLUB_LEAGUE_SEASON = "club-league-season";
 const PAGE_PAYMENT = "payment";
 const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 
@@ -2860,8 +2868,99 @@ export default function App() {
       authUser,
       identity,
       activeClubId,
-      onNotificationOpened: notification => {
+      onNotificationOpened: async notification => {
         const data = notification?.data || {};
+
+        if ([
+          "field_season_squad_invitation",
+          "field_squad_ready_reminder",
+          "field_squad_fixtures_released",
+        ].includes(data.type)) {
+          const scope = {
+            clubId: String(data.clubId || "").trim(),
+            venueId: String(data.venueId || "").trim(),
+            seasonId: String(data.seasonId || "").trim(),
+          };
+          const memberId = String(data.memberId || "").trim();
+          if (!Object.values(scope).every(
+            value => /^[A-Za-z0-9_-]{1,150}$/.test(value)
+          ) || (data.type === "field_season_squad_invitation" &&
+            !/^[A-Za-z0-9_-]{1,150}$/.test(memberId))) return;
+
+          try {
+            const {getSeasonSquadView} = await import(
+              "./storage/fieldSeasonSquadRepository.js"
+            );
+            const view = await getSeasonSquadView(scope);
+            if ((data.type === "field_squad_ready_reminder" && !view.canManage) ||
+                (!view.canManage && (
+                  view.invitation?.memberId !== memberId ||
+                  (data.type !== "field_season_squad_invitation" &&
+                    view.invitation?.invitationStatus !== "accepted")
+                ))) {
+              window.alert("This league invitation is not available for your account.");
+              return;
+            }
+
+            setNativeChatOpenRequest(null);
+            setNativePollOpenRequest(null);
+            setSessionMode("official");
+            writeSessionModeIntent("official");
+            setShowSessionSelector(false);
+            if (scope.clubId !== activeClubId) {
+              setSelectedHomeClub(buildClubIdentity({id: scope.clubId}));
+            }
+            if (data.type !== "field_season_squad_invitation") {
+              try {
+                sessionStorage.setItem(`league-squad-focus:${scope.clubId}`, JSON.stringify({
+                  seasonId: scope.seasonId,
+                  matchDayId: String(data.matchDayId || ""),
+                }));
+              } catch {}
+            }
+            setPage(PAGE_CLUB_LEAGUE_SEASON);
+          } catch (error) {
+            console.error("[League invitation navigation]", error);
+            window.alert(
+              "Could not open this invitation. It may belong to a previous season. " +
+              "Please check your Club’s league page."
+            );
+          }
+          return;
+        }
+        if (data.type === "field_match_day_review" ||
+            data.type === "field_manager_approval") {
+          const venueId = String(data.venueId || "").trim();
+          if (!/^[A-Za-z0-9_-]{1,150}$/.test(venueId)) return;
+          try {
+            const snapshot = await loadNotificationFieldDoc(
+              notificationFieldDoc(notificationFieldDb, "leagueVenues", venueId)
+            );
+            if (!snapshot.exists()) {
+              window.alert("This Field is no longer available.");
+              return;
+            }
+            if (data.seasonId && data.matchDayId) {
+              try {
+                sessionStorage.setItem(
+                  `field-review-open:${venueId}:${data.seasonId}:${data.matchDayId}`,
+                  "1"
+                );
+              } catch {}
+            }
+            setNativeChatOpenRequest(null);
+            setNativePollOpenRequest(null);
+            setSessionMode("official");
+            writeSessionModeIntent("official");
+            setFieldNavTarget({ page: "landing", id: Date.now() });
+            setSelectedLeagueVenue({...snapshot.data(), id: snapshot.id});
+            setPage(PAGE_VENUE_ENTRY);
+          } catch (error) {
+            console.error("[Field review navigation]", error);
+            window.alert("Could not open this Field. Please try again.");
+          }
+          return;
+        }
 
         const opensClubChat =
           data.type === "club_chat" ||
@@ -8308,7 +8407,8 @@ export default function App() {
   }, [isRefereeStatsView]);
 
   const showBottomNav =
-    pagesWithBottomNav.has(page) &&
+    (pagesWithBottomNav.has(page) ||
+      (page === PAGE_CLUB_LEAGUE_SEASON && !isPracticeMode)) &&
     !hideBottomNavForSquadAdmin &&
     page !== PAGE_LIVE;
 
@@ -9614,7 +9714,19 @@ export default function App() {
 
       {page === PAGE_VENUE_ENTRY && (
         <>
-          <VenueEntryPage
+          <FieldPageFrame
+            venue={selectedLeagueVenue}
+            page={fieldNav.ready ? fieldNav.page : "entry"}
+            onHome={() => {
+              if (fieldNav.ready) {
+                setFieldNavTarget({page: "landing", id: Date.now()});
+              } else {
+                setPage(PAGE_LEAGUE_VENUES);
+              }
+            }}
+          >
+            <VenueEntryPage
+            key={selectedLeagueVenue?.id || "field-entry"}
             venue={selectedLeagueVenue}
             onFieldNavState={setFieldNav}
             fieldNavTarget={fieldNavTarget}
@@ -9627,6 +9739,7 @@ export default function App() {
               portalOriginClubId ? PAGE_LANDING : PAGE_LEAGUE_VENUES
             )}
           />
+          </FieldPageFrame>
 
         </>
       )}
@@ -10017,6 +10130,13 @@ export default function App() {
 
       {page === PAGE_LANDING && (
         <LandingPage
+          leagueSeasonEntry={!isPracticeMode ? (
+            <ClubLeagueSeasonEntry
+              key={activeClubId}
+              clubId={activeClubId}
+              onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}
+            />
+          ) : null}
           activeClub={activeClubIdentity}
           activeClubId={activeClubId}
           activeClubName={activeClubName}
@@ -10077,6 +10197,22 @@ export default function App() {
           canStartMatch={canStartMatch}
           hasRecordedMatchDayState={hasRecordedMatchDayState}
           onReady={() => setLandingVisualReady(true)}
+        />
+      )}
+
+      {page === PAGE_CLUB_LEAGUE_SEASON && !isPracticeMode && (
+        <ClubLeagueSeasonPage
+          key={activeClubId}
+          clubId={activeClubId}
+          playerPhotosByName={effectivePlayerPhotosByName}
+          activeRole={activeRole}
+          identity={pageIdentity}
+          onOpenField={(field) => {
+            setPortalOriginClubId(activeClubId);
+            setSelectedLeagueVenue(field);
+            setPage(PAGE_VENUE_ENTRY);
+          }}
+          onBack={() => setPage(PAGE_LANDING)}
         />
       )}
 

@@ -482,3 +482,1975 @@
   font-size: 0.8rem;
   white-space: normal;
 }
+
+/* Field Stats presentation from Club Stats */
+.venue-stats-page .tk-friendly-admin-ethics-banner{
+
+          margin: 0 0 0.9rem;
+          padding: 0.72rem 0.88rem;
+          border-radius: 18px;
+          border: 1px solid rgba(251, 191, 36, 0.42);
+          background: linear-gradient(135deg, rgba(69, 26, 3, 0.48), rgba(8, 47, 73, 0.38));
+          color: rgba(254, 243, 199, 0.95);
+          font-size: 0.82rem;
+          line-height: 1.35;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035), 0 12px 28px rgba(2, 8, 23, 0.28);
+
+}
+.venue-stats-page .tk-friendly-admin-ethics-banner strong{
+
+          color: #fde68a;
+
+}
+@media (max-width: 520px){
+.venue-stats-page .tk-friendly-admin-ethics-banner{
+
+            margin: 0.2rem 0 0.85rem;
+            padding: 0.68rem 0.78rem;
+            font-size: 0.76rem;
+
+}
+}
+.venue-stats-page .tk-edit-goal-modal-backdrop{
+
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+          background: rgba(2, 6, 23, 0.62);
+          backdrop-filter: blur(8px);
+
+}
+.venue-stats-page .tk-edit-goal-modal{
+
+          width: min(92vw, 430px);
+          border-radius: 24px;
+          padding: 1rem;
+          border: 1px solid rgba(125, 211, 252, 0.32);
+          background:
+            radial-gradient(circle at 20% 0%, rgba(34, 211, 238, 0.16), transparent 35%),
+            linear-gradient(180deg, #081B3A 0%, #06142F 58%, #020B1F 100%);
+          box-shadow:
+            0 24px 60px rgba(0, 0, 0, 0.48),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+
+}
+.venue-stats-page .tk-edit-goal-modal-head{
+
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 0.8rem;
+          margin-bottom: 0.9rem;
+
+}
+.venue-stats-page .tk-edit-goal-kicker{
+
+          color: rgba(125, 211, 252, 0.92);
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+
+}
+.venue-stats-page .tk-edit-goal-modal h3{
+
+          margin: 0.1rem 0 0;
+          font-size: 1.25rem;
+
+}
+.venue-stats-page .tk-edit-goal-modal-close{
+
+          width: 2rem;
+          height: 2rem;
+          border-radius: 999px;
+          border: 1px solid rgba(148, 163, 184, 0.32);
+          background: rgba(15, 23, 42, 0.86);
+          color: #e2e8f0;
+          cursor: pointer;
+          font-size: 1.15rem;
+          line-height: 1;
+
+}
+.venue-stats-page .tk-edit-goal-modal-grid{
+
+          display: grid;
+          gap: 0.75rem;
+
+}
+.venue-stats-page .tk-edit-goal-modal .tk-small-label{
+
+          display: block;
+          margin-bottom: 0.28rem;
+          font-size: 0.78rem;
+          font-weight: 900;
+          color: rgba(226, 232, 240, 0.86);
+
+}
+.venue-stats-page .tk-modal-select{
+
+          width: 100% !important;
+          min-height: 2.45rem;
+          border-radius: 14px !important;
+          background: rgba(15, 23, 42, 0.92) !important;
+          color: #e5eefb !important;
+          border: 1px solid rgba(125, 211, 252, 0.30) !important;
+          padding: 0.5rem 0.65rem !important;
+
+}
+.venue-stats-page .tk-edit-goal-modal-actions{
+
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.65rem;
+          margin-top: 1rem;
+          flex-wrap: wrap;
+
+}
+.venue-stats-page .tk-edit-goal-save-btn,
+.venue-stats-page .tk-edit-goal-cancel-btn{
+
+          border-radius: 999px;
+          padding: 0.58rem 0.9rem;
+          font-weight: 900;
+          cursor: pointer;
+          white-space: nowrap;
+
+}
+.venue-stats-page .tk-edit-goal-save-btn{
+
+          border: 1px solid rgba(125, 211, 252, 0.55);
+          background: linear-gradient(135deg, #22c55e, #38bdf8);
+          color: #02111f;
+          box-shadow: 0 0 18px rgba(56, 189, 248, 0.22);
+
+}
+.venue-stats-page .tk-edit-goal-cancel-btn{
+
+          border: 1px solid rgba(148, 163, 184, 0.32);
+          background: rgba(15, 23, 42, 0.86);
+          color: #e2e8f0;
+
+}
+.venue-stats-page .tk-delete-goal-modal{
+
+          border-color: rgba(248, 113, 113, 0.38);
+
+}
+.venue-stats-page .tk-delete-goal-summary{
+
+          display: grid;
+          gap: 0.62rem;
+          margin: 0.2rem 0 0.75rem;
+          padding: 0.78rem;
+          border-radius: 16px;
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          background: rgba(2, 8, 23, 0.28);
+
+}
+.venue-stats-page .tk-delete-goal-line{
+
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 0.9rem;
+          min-width: 0;
+
+}
+.venue-stats-page .tk-delete-goal-line span{
+
+          color: rgba(203, 213, 225, 0.70);
+          font-size: 0.72rem;
+          font-weight: 900;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          flex-shrink: 0;
+
+}
+.venue-stats-page .tk-delete-goal-line strong,
+.venue-stats-page .tk-delete-goal-line em{
+
+          color: rgba(248, 250, 252, 0.95);
+          font-size: 0.86rem;
+          text-align: right;
+          min-width: 0;
+          overflow-wrap: anywhere;
+
+}
+.venue-stats-page .tk-delete-goal-line em{
+
+          font-size: 0.78rem;
+          color: rgba(203, 213, 225, 0.82);
+
+}
+.venue-stats-page .tk-delete-goal-warning{
+
+          margin: 0.2rem 0 0.9rem;
+          color: rgba(254, 202, 202, 0.90);
+          font-size: 0.76rem;
+          line-height: 1.35;
+
+}
+.venue-stats-page .tk-delete-goal-confirm-btn{
+
+          flex: 1 1 0;
+          min-height: 2.35rem;
+          border: 1px solid rgba(248, 113, 113, 0.68);
+          border-radius: 999px;
+          background: linear-gradient(135deg, rgba(127, 29, 29, 0.92), rgba(248, 113, 113, 0.76));
+          color: #fff7f7;
+          font-weight: 900;
+          cursor: pointer;
+
+}
+@media (max-width: 520px){
+.venue-stats-page .tk-edit-goal-modal-backdrop{
+
+            align-items: center;
+            justify-content: center;
+            padding: 0.85rem;
+
+}
+.venue-stats-page .tk-edit-goal-modal{
+
+            width: 100%;
+            max-height: calc(100dvh - 7.5rem);
+            overflow-y: auto;
+            border-radius: 22px;
+            transform: translateY(-1.2rem);
+
+}
+.venue-stats-page .tk-edit-goal-modal-actions{
+
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+
+}
+}
+.venue-stats-page .tk-friendly-recap-wrap{
+
+          margin-top: 0.85rem;
+          overflow: visible;
+
+}
+.venue-stats-page .tk-friendly-recap-list{
+
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: grid;
+          gap: 0.95rem;
+
+}
+.venue-stats-page .tk-friendly-recap-item{
+
+          border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+          padding-bottom: 0.85rem;
+
+}
+.venue-stats-page .tk-friendly-recap-item:last-child{
+
+          border-bottom: 0;
+          padding-bottom: 0;
+
+}
+.venue-stats-page .news-match-header{
+
+          display: flex;
+          justify-content: space-between;
+          gap: 0.8rem;
+          align-items: flex-start;
+          flex-wrap: wrap;
+
+}
+.venue-stats-page .news-match-number{
+
+          color: rgba(226, 232, 240, 0.86);
+          font-size: 0.92rem;
+
+}
+.venue-stats-page .news-match-scoreline{
+
+          display: inline-flex;
+          gap: 0.45rem;
+          align-items: baseline;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          font-weight: 800;
+
+}
+.venue-stats-page .news-match-scoreline .score{
+
+          font-size: 1.25rem;
+          color: #f8fafc;
+          white-space: nowrap;
+
+}
+.venue-stats-page .news-event-list{
+
+          list-style: none;
+          padding: 0;
+          margin: 0.55rem 0 0;
+          display: grid;
+          gap: 0.35rem;
+
+}
+.venue-stats-page .news-event-item{
+
+          display: grid;
+          grid-template-columns: 3.3rem minmax(0, 1fr);
+          gap: 0.45rem;
+          align-items: start;
+          line-height: 1.45;
+
+}
+.venue-stats-page .news-event-time{
+
+          color: rgba(203, 213, 225, 0.78);
+          font-variant-numeric: tabular-nums;
+
+}
+.venue-stats-page .news-event-text{
+
+          min-width: 0;
+          overflow-wrap: anywhere;
+
+}
+.venue-stats-page .tk-friendly-view-header-row{
+
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1rem;
+          margin-bottom: 1rem;
+          flex-wrap: nowrap;
+          width: 100%;
+
+}
+.venue-stats-page .tk-friendly-view-header-row h2{
+
+          margin:0;
+          line-height: 1;
+
+}
+.venue-stats-page .tk-results-header-row{
+
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.8rem;
+          flex-wrap: wrap;
+
+}
+.venue-stats-page .tk-results-header-row h2{
+
+          margin-bottom: 0;
+
+}
+.venue-stats-page .tk-manage-friendly-btn{
+
+          margin: 0;
+          animation: tk-dim-admin-pulse 2.8s ease-in-out infinite;
+          border: 1px solid rgba(125, 211, 252, 0.7);
+          background: linear-gradient(
+            135deg,
+            rgba(15, 23, 42, 0.9),
+            rgba(14, 165, 233, 0.22)
+          );
+          color: #e0f2fe;
+          border-radius: 999px;
+          padding: 0.5rem 0.82rem;
+          font-weight: 800;
+          cursor: pointer;
+          box-shadow:
+            inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+            0 0 0 0 rgba(56, 189, 248, 0.0);
+          white-space: nowrap;
+          line-height: 1;
+
+}
+.venue-stats-page .tk-manage-friendly-btn.active{
+
+          animation: none;
+          background: linear-gradient(135deg, #22c55e, #38bdf8);
+          color: #02111f;
+          box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+
+}
+.venue-stats-page .tk-friendly-event-actions{
+
+          margin-left: 0.55rem;
+
+}
+.venue-stats-page .tk-friendly-event-editing{
+
+          align-items: start;
+
+}
+.venue-stats-page .tk-friendly-inline-edit{
+
+          margin-top: 0.5rem;
+
+}
+.venue-stats-page .tk-friendly-manage-panel{
+
+          margin: 0.85rem 0 1rem;
+          padding: 0.85rem;
+          border: 1px solid rgba(56, 189, 248, 0.22);
+          border-radius: 16px;
+          background: rgba(2, 25, 40, 0.35);
+
+}
+.venue-stats-page .tk-friendly-manage-title{
+
+          font-weight: 900;
+          margin-bottom: 0.55rem;
+          color: rgba(226, 232, 240, 0.92);
+
+}
+.venue-stats-page .tk-friendly-manage-actions{
+
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.65rem;
+          flex-wrap: wrap;
+
+}
+@media (max-width: 520px){
+.venue-stats-page .tk-friendly-view-header-row{
+
+            gap:0.75rem;
+
+}
+.venue-stats-page .tk-manage-friendly-btn{
+
+            padding: 0.45rem 0.7rem;
+            font-size: 0.82rem;
+
+}
+.venue-stats-page .tk-results-header-row{
+
+            align-items: flex-start;
+            flex-direction: column;
+
+}
+.venue-stats-page .tk-manage-friendly-btn{
+
+            align-self: flex-end;
+
+}
+.venue-stats-page .tk-friendly-manage-actions{
+
+            justify-content: stretch;
+
+}
+.venue-stats-page .tk-friendly-manage-actions button{
+
+            flex: 1 1 auto;
+
+}
+}
+.venue-stats-page .table-wrapper{
+
+          border-radius: 18px;
+          overflow: hidden;
+          background: linear-gradient(
+            180deg,
+            #081B3A 0%,
+            #06142F 55%,
+            #020B1F 100%
+          );
+          box-shadow:
+            inset 0 0 0 1px rgba(96, 165, 250, 0.14),
+            0 8px 28px rgba(2, 12, 27, 0.45);
+
+}
+.venue-stats-page .stats-table{
+
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+          overflow: hidden;
+          border-radius: 18px;
+          background: linear-gradient(
+            180deg,
+            #081B3A 0%,
+            #06142F 55%,
+            #020B1F 100%
+          );
+          box-shadow:
+            inset 0 0 0 1px rgba(96, 165, 250, 0.14),
+            0 8px 28px rgba(2, 12, 27, 0.45);
+
+}
+.venue-stats-page .stats-table thead th{
+
+          background: linear-gradient(
+            180deg,
+            rgba(17, 65, 120, 0.92),
+            rgba(10, 34, 72, 0.96)
+          );
+          color: #EAF4FF;
+          font-weight: 900;
+          border-bottom: 1px solid rgba(125, 211, 252, 0.2);
+
+}
+.venue-stats-page .stats-table tbody tr{
+
+          background: transparent;
+          transition: background 0.18s ease;
+
+}
+.venue-stats-page .stats-table tbody tr:nth-child(even){
+
+          background: rgba(255, 255, 255, 0.018);
+
+}
+.venue-stats-page .stats-table tbody tr:hover{
+
+          background: rgba(56, 189, 248, 0.08);
+
+}
+.venue-stats-page .stats-table td{
+
+          color: #E2E8F0;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+
+}
+.venue-stats-page .stats-table tbody tr:last-child td{
+
+          border-bottom: none;
+
+}
+.venue-stats-page .match-details-row td{
+
+          background: rgba(2, 11, 31, 0.74);
+
+}
+.venue-stats-page .match-row.expanded td,
+.venue-stats-page .match-row:hover td{
+
+          background: rgba(56, 189, 248, 0.08);
+
+}
+.venue-stats-page .news-event-item{
+
+          padding-bottom: 0.7rem;
+          margin-bottom: 0.7rem;
+          border-bottom: 1px solid rgba(94, 234, 212, 0.18);
+
+}
+.venue-stats-page .news-event-item:last-child{
+
+          border-bottom: none;
+          margin-bottom: 0;
+          padding-bottom: 0;
+
+}
+.venue-stats-page .news-event-time{
+
+          color: rgba(186, 230, 253, 0.86);
+          font-weight: 800;
+
+}
+.venue-stats-page > .card{
+
+          background: linear-gradient(
+            180deg,
+            #081B3A 0%,
+            #06142F 55%,
+            #020B1F 100%
+          ) !important;
+          border: 1px solid rgba(96, 165, 250, 0.22) !important;
+          box-shadow:
+            inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+            0 12px 30px rgba(2, 12, 27, 0.48) !important;
+
+}
+.venue-stats-page .tk-friendly-recap-wrap,
+.venue-stats-page .tk-friendly-recap-list,
+.venue-stats-page .tk-friendly-recap-item,
+.venue-stats-page .news-match-item{
+
+          background: transparent !important;
+
+}
+.venue-stats-page .tk-friendly-recap-item{
+
+          border-bottom: 1px solid rgba(96, 165, 250, 0.18) !important;
+
+}
+.venue-stats-page .tk-friendly-recap-item:last-child{
+
+          border-bottom: 0 !important;
+
+}
+.venue-stats-page .news-match-scoreline .score{
+
+          color: #f8fafc !important;
+
+}
+.venue-stats-page .news-match-number,
+.venue-stats-page .muted{
+
+          color: rgba(203, 213, 225, 0.82);
+
+}
+.venue-stats-page .news-event-item{
+
+          padding-bottom: 0.7rem;
+          margin-bottom: 0.7rem;
+          border-bottom: 1px solid rgba(125, 211, 252, 0.16) !important;
+
+}
+.venue-stats-page .news-event-item:last-child{
+
+          border-bottom: none !important;
+          margin-bottom: 0;
+          padding-bottom: 0;
+
+}
+.venue-stats-page .news-event-time{
+
+          color: rgba(186, 230, 253, 0.9) !important;
+          font-weight: 900;
+
+}
+.venue-stats-page .table-wrapper{
+
+          max-width: 100%;
+          border-radius: 18px;
+          overflow-x: auto !important;
+          overflow-y: visible !important;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-x: contain;
+          scrollbar-width: thin;
+          position: relative;
+          isolation: isolate;
+          background: linear-gradient(
+            180deg,
+            #081B3A 0%,
+            #06142F 55%,
+            #020B1F 100%
+          );
+
+}
+.venue-stats-page .table-wrapper::after{
+
+          content: "";
+          position: sticky;
+          right: 0;
+          top: 0;
+          float: right;
+          width: 14px;
+          height: 1px;
+          pointer-events: none;
+          box-shadow: -12px 0 18px rgba(2, 8, 23, 0.72);
+          z-index: 12;
+
+}
+.venue-stats-page .stats-table{
+
+          width: auto !important;
+          min-width: 0 !important;
+          max-width: none !important;
+          table-layout: fixed !important;
+          border-collapse: separate !important;
+          border-spacing: 0 !important;
+          border-radius: 18px;
+          overflow: visible !important;
+          background: transparent !important;
+          box-shadow: none !important;
+
+}
+.venue-stats-page .stats-table th,
+.venue-stats-page .stats-table td{
+
+          padding: 0.42rem 0.32rem !important;
+          white-space: nowrap !important;
+          overflow-wrap: normal !important;
+          word-break: normal !important;
+          vertical-align: middle;
+          line-height: 1.18;
+          text-align: center;
+          box-sizing: border-box;
+
+}
+.venue-stats-page .stats-table th{
+
+          font-size: 0.70rem;
+          letter-spacing: 0;
+
+}
+.venue-stats-page .stats-table td{
+
+          font-size: 0.76rem;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper .stats-table th:first-child,
+.venue-stats-page .tk-scroll-table-wrapper .stats-table td:first-child{
+
+          min-width: 1.55rem !important;
+          width: 1.55rem !important;
+          max-width: 1.55rem !important;
+          padding-left: 0.08rem !important;
+          padding-right: 0.08rem !important;
+          text-align: center !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(2),
+.venue-stats-page .tk-team-identity-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-team-identity-table .stats-table td:nth-child(2){
+
+          min-width: 5.95rem !important;
+          width: 5.95rem !important;
+          max-width: 5.95rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(3){
+
+          min-width: 4.35rem !important;
+          width: 4.35rem !important;
+          max-width: 4.35rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-team-identity-table .stats-table th:nth-child(n+3),
+.venue-stats-page .tk-team-identity-table .stats-table td:nth-child(n+3){
+
+          min-width: 2.55rem !important;
+          width: 2.55rem !important;
+          max-width: 2.55rem !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(n+4),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(n+4){
+
+          min-width: 3.15rem !important;
+          width: 3.15rem !important;
+          max-width: 3.15rem !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(6),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(6){
+
+          min-width: 2.45rem !important;
+          width: 2.45rem !important;
+          max-width: 2.45rem !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(7),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(7){
+
+          min-width: 3.8rem !important;
+          width: 3.8rem !important;
+          max-width: 3.8rem !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table{
+
+          width: 100% !important;
+          min-width: 100% !important;
+          table-layout: fixed !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:first-child,
+.venue-stats-page .tk-player-small-table .stats-table td:first-child{
+
+          min-width: 1.55rem !important;
+          width: 1.55rem !important;
+          max-width: 1.55rem !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(2){
+
+          min-width: 0 !important;
+          width: auto !important;
+          max-width: none !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(3){
+
+          min-width: 5.1rem !important;
+          width: 5.1rem !important;
+          max-width: 5.1rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(4){
+
+          min-width: 3.25rem !important;
+          width: 3.25rem !important;
+          max-width: 3.25rem !important;
+          text-align: center !important;
+          font-weight: 900;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table{
+
+          width: max-content !important;
+          min-width: 0 !important;
+          table-layout: fixed !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:first-child,
+.venue-stats-page .tk-player-summary-table .stats-table td:first-child{
+
+          min-width: 1.55rem !important;
+          width: 1.55rem !important;
+          max-width: 1.55rem !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(2){
+
+          min-width: 5.95rem !important;
+          width: 5.95rem !important;
+          max-width: 5.95rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(3){
+
+          min-width: 5.55rem !important;
+          width: 5.55rem !important;
+          max-width: 5.55rem !important;
+          text-align: left !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(4),
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(5),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(5){
+
+          min-width: 3.1rem !important;
+          width: 3.1rem !important;
+          max-width: 3.1rem !important;
+          text-align: center !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(6),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(6){
+
+          min-width: 2.25rem !important;
+          width: 2.25rem !important;
+          max-width: 2.25rem !important;
+          text-align: center !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(7),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(7){
+
+          min-width: 3.45rem !important;
+          width: 3.45rem !important;
+          max-width: 3.45rem !important;
+          text-align: center !important;
+
+}
+@media (min-width: 769px){
+.venue-stats-page .tk-player-summary-table .stats-table{
+
+            width: 100% !important;
+            min-width: 100% !important;
+            table-layout: fixed !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:first-child,
+.venue-stats-page .tk-player-summary-table .stats-table td:first-child{
+
+            width: 3.5% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(2){
+
+            width: 24% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(3){
+
+            width: 24% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(4),
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(5),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(5),
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(7),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(7){
+
+            width: 14% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(6),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(6){
+
+            width: 6.5% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+
+}
+}
+.venue-stats-page .tk-match-results-table .stats-table{
+
+          table-layout: fixed !important;
+          width: 100% !important;
+          min-width: 27rem !important;
+
+}
+.venue-stats-page .tk-match-results-table .stats-table th,
+.venue-stats-page .tk-match-results-table .stats-table td{
+
+          padding: 0.44rem 0.34rem !important;
+
+}
+.venue-stats-page .tk-match-results-table .stats-table th:first-child,
+.venue-stats-page .tk-match-results-table .stats-table td:first-child{
+
+          min-width: 3.15rem !important;
+          width: 3.15rem !important;
+          max-width: 3.15rem !important;
+          text-align: center !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+
+}
+.venue-stats-page .tk-match-results-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-match-results-table .stats-table td:nth-child(2),
+.venue-stats-page .tk-match-results-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-match-results-table .stats-table td:nth-child(4){
+
+          min-width: 4.9rem !important;
+          width: 4.9rem !important;
+          max-width: 4.9rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-match-results-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-match-results-table .stats-table td:nth-child(3){
+
+          min-width: 3.25rem !important;
+          width: 3.25rem !important;
+          max-width: 3.25rem !important;
+          text-align: center !important;
+          font-weight: 900;
+
+}
+.venue-stats-page .tk-match-results-table .stats-table th:nth-child(5),
+.venue-stats-page .tk-match-results-table .stats-table td:nth-child(5){
+
+          min-width: 5.9rem !important;
+          width: 5.9rem !important;
+          max-width: 5.9rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-match-no-cell{
+
+          vertical-align: middle !important;
+
+}
+.venue-stats-page .tk-match-no-inner{
+
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.16rem;
+          width: 100%;
+          line-height: 1;
+
+}
+.venue-stats-page .tk-match-no-main{
+
+          font-weight: 900;
+          font-variant-numeric: tabular-nums;
+
+}
+.venue-stats-page .tk-match-date-mini{
+
+          display: block;
+          margin-top: 0.14rem;
+          font-size: 0.58rem;
+          line-height: 1;
+          opacity: 0.62;
+          letter-spacing: -0.02em;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:first-child,
+.venue-stats-page .tk-player-identity-table .stats-table td:first-child,
+.venue-stats-page .tk-team-identity-table .stats-table th:first-child,
+.venue-stats-page .tk-team-identity-table .stats-table td:first-child{
+
+          position: sticky !important;
+          left: 0 !important;
+          z-index: 30 !important;
+          background: #071833 !important;
+          background-clip: padding-box !important;
+          box-shadow: 1px 0 0 rgba(125, 211, 252, 0.12);
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(2),
+.venue-stats-page .tk-team-identity-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-team-identity-table .stats-table td:nth-child(2){
+
+          position: sticky !important;
+          left: 1.55rem !important;
+          z-index: 29 !important;
+          background: #071833 !important;
+          background-clip: padding-box !important;
+          box-shadow: 7px 0 11px rgba(2, 8, 23, 0.46);
+
+}
+.venue-stats-page .tk-match-identity-table .stats-table th:first-child,
+.venue-stats-page .tk-match-identity-table .stats-table td:first-child{
+
+          position: sticky !important;
+          left: 0 !important;
+          z-index: 30 !important;
+          background: #071833 !important;
+          background-clip: padding-box !important;
+          box-shadow: 7px 0 11px rgba(2, 8, 23, 0.46);
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table thead th:first-child,
+.venue-stats-page .tk-player-identity-table .stats-table thead th:nth-child(2),
+.venue-stats-page .tk-team-identity-table .stats-table thead th:first-child,
+.venue-stats-page .tk-team-identity-table .stats-table thead th:nth-child(2),
+.venue-stats-page .tk-match-identity-table .stats-table thead th:first-child{
+
+          z-index: 40 !important;
+          background: linear-gradient(
+            180deg,
+            rgba(17, 65, 120, 1),
+            rgba(10, 34, 72, 1)
+          ) !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table tbody tr:nth-child(even) td:first-child,
+.venue-stats-page .tk-player-identity-table .stats-table tbody tr:nth-child(even) td:nth-child(2),
+.venue-stats-page .tk-team-identity-table .stats-table tbody tr:nth-child(even) td:first-child,
+.venue-stats-page .tk-team-identity-table .stats-table tbody tr:nth-child(even) td:nth-child(2),
+.venue-stats-page .tk-match-identity-table .stats-table tbody tr:nth-child(even) td:first-child{
+
+          background: #08203f !important;
+
+}
+@media (max-width: 520px){
+.venue-stats-page .card{
+
+            padding-left: 0.68rem;
+            padding-right: 0.68rem;
+
+}
+.venue-stats-page .stats-table th,
+.venue-stats-page .stats-table td{
+
+            padding: 0.38rem 0.24rem !important;
+
+}
+.venue-stats-page .stats-table th{
+
+            font-size: 0.66rem;
+
+}
+.venue-stats-page .stats-table td{
+
+            font-size: 0.70rem;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper .stats-table th:first-child,
+.venue-stats-page .tk-scroll-table-wrapper .stats-table td:first-child{
+
+            min-width: 1.36rem !important;
+            width: 1.36rem !important;
+            max-width: 1.36rem !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(2),
+.venue-stats-page .tk-team-identity-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-team-identity-table .stats-table td:nth-child(2){
+
+            left: 1.36rem !important;
+            min-width: 5.35rem !important;
+            width: 5.35rem !important;
+            max-width: 5.35rem !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(3){
+
+            min-width: 4rem !important;
+            width: 4rem !important;
+            max-width: 4rem !important;
+
+}
+.venue-stats-page .tk-team-identity-table .stats-table th:nth-child(n+3),
+.venue-stats-page .tk-team-identity-table .stats-table td:nth-child(n+3){
+
+            min-width: 2.35rem !important;
+            width: 2.35rem !important;
+            max-width: 2.35rem !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(n+4),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(n+4){
+
+            min-width: 2.85rem !important;
+            width: 2.85rem !important;
+            max-width: 2.85rem !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(6),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(6){
+
+            min-width: 2.2rem !important;
+            width: 2.2rem !important;
+            max-width: 2.2rem !important;
+
+}
+.venue-stats-page .tk-player-identity-table .stats-table th:nth-child(7),
+.venue-stats-page .tk-player-identity-table .stats-table td:nth-child(7){
+
+            min-width: 3.45rem !important;
+            width: 3.45rem !important;
+            max-width: 3.45rem !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table{
+
+            width: 100% !important;
+            min-width: 100% !important;
+            table-layout: fixed !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:first-child,
+.venue-stats-page .tk-player-small-table .stats-table td:first-child{
+
+            min-width: 1.36rem !important;
+            width: 1.36rem !important;
+            max-width: 1.36rem !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(2){
+
+            left: 1.36rem !important;
+            min-width: 0 !important;
+            width: auto !important;
+            max-width: none !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(3){
+
+            min-width: 4.75rem !important;
+            width: 4.75rem !important;
+            max-width: 4.75rem !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(4){
+
+            min-width: 3rem !important;
+            width: 3rem !important;
+            max-width: 3rem !important;
+
+}
+}
+.venue-stats-page .tk-player-summary-table .stats-table{
+
+            width: max-content !important;
+            min-width: 0 !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:first-child,
+.venue-stats-page .tk-player-summary-table .stats-table td:first-child{
+
+            min-width: 1.36rem !important;
+            width: 1.36rem !important;
+            max-width: 1.36rem !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(2){
+
+            left: 1.36rem !important;
+            min-width: 5.35rem !important;
+            width: 5.35rem !important;
+            max-width: 5.35rem !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(3){
+
+            min-width: 5.55rem !important;
+            width: 5.55rem !important;
+            max-width: 5.55rem !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(4),
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(5),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(5){
+
+            min-width: 2.75rem !important;
+            width: 2.75rem !important;
+            max-width: 2.75rem !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(6),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(6){
+
+            min-width: 2rem !important;
+            width: 2rem !important;
+            max-width: 2rem !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(7),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(7){
+
+            min-width: 3.25rem !important;
+            width: 3.25rem !important;
+            max-width: 3.25rem !important;
+
+}
+@media (max-width: 380px){
+.venue-stats-page .card{
+
+            padding-left: 0.56rem;
+            padding-right: 0.56rem;
+
+}
+.venue-stats-page .stats-table th,
+.venue-stats-page .stats-table td{
+
+            padding: 0.34rem 0.2rem !important;
+
+}
+.venue-stats-page .stats-table th{
+
+            font-size: 0.62rem;
+
+}
+.venue-stats-page .stats-table td{
+
+            font-size: 0.66rem;
+
+}
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table{
+
+          table-layout: fixed !important;
+          width: 100% !important;
+          min-width: 24.25rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th,
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td{
+
+          padding: 0.38rem 0.32rem !important;
+          white-space: nowrap !important;
+          text-align: center !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child,
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:first-child{
+
+          min-width: 3.75rem !important;
+          width: 3.75rem !important;
+          max-width: 3.75rem !important;
+          text-align: left !important;
+          padding-left: 0.36rem !important;
+          padding-right: 0.2rem !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(2),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(4){
+
+          min-width: 4.15rem !important;
+          width: 4.15rem !important;
+          max-width: 4.15rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(3){
+
+          min-width: 3.15rem !important;
+          width: 3.15rem !important;
+          max-width: 3.15rem !important;
+          text-align: center !important;
+          font-weight: 900 !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(5),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(5){
+
+          min-width: 6.7rem !important;
+          width: 6.7rem !important;
+          max-width: 6.7rem !important;
+          text-align: left !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .tk-match-no-inner{
+
+          justify-content: flex-start !important;
+          gap: 0.18rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .tk-match-date-mini{
+
+          margin-left: 1.06rem !important;
+
+}
+@media (max-width: 520px){
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table{
+
+            min-width: 23.65rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th,
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td{
+
+            padding: 0.36rem 0.28rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child,
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:first-child{
+
+            min-width: 3.68rem !important;
+            width: 3.68rem !important;
+            max-width: 3.68rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(2),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(4){
+
+            min-width: 4rem !important;
+            width: 4rem !important;
+            max-width: 4rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(3){
+
+            min-width: 3.05rem !important;
+            width: 3.05rem !important;
+            max-width: 3.05rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:nth-child(5),
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:nth-child(5){
+
+            min-width: 6.55rem !important;
+            width: 6.55rem !important;
+            max-width: 6.55rem !important;
+
+}
+}
+.venue-stats-page .tk-player-small-table .stats-table{
+
+          width: 100% !important;
+          min-width: 100% !important;
+          table-layout: fixed !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:first-child,
+.venue-stats-page .tk-player-small-table .stats-table td:first-child{
+
+          min-width: 1.45rem !important;
+          width: 1.45rem !important;
+          max-width: 1.45rem !important;
+          padding-left: 0.1rem !important;
+          padding-right: 0.1rem !important;
+          text-align: center !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(2),
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(3),
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(4){
+
+          min-width: 0 !important;
+          width: calc((100% - 1.45rem) / 3) !important;
+          max-width: none !important;
+          padding-left: 0.32rem !important;
+          padding-right: 0.32rem !important;
+          overflow: hidden !important;
+          text-overflow: clip !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(2){
+
+          left: 1.45rem !important;
+          text-align: left !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(3){
+
+          text-align: left !important;
+
+}
+.venue-stats-page .tk-player-small-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-player-small-table .stats-table td:nth-child(4){
+
+          text-align: center !important;
+          font-weight: 900 !important;
+
+}
+.venue-stats-page .match-details-row td{
+
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: unset !important;
+          vertical-align: top;
+
+}
+.venue-stats-page .match-details-row .team-scorers{
+
+          display: grid;
+          gap: 0.42rem;
+          min-width: 0;
+          max-width: 100%;
+
+}
+.venue-stats-page .match-details-row .scorer-line{
+
+          min-width: 0;
+          max-width: 100%;
+
+}
+.venue-stats-page .match-details-row .tk-event-line{
+
+          display: block;
+          min-width: 0;
+          max-width: 100%;
+
+}
+.venue-stats-page .tk-expanded-goal-line{
+
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.08rem;
+          min-width: 0;
+          max-width: 100%;
+          line-height: 1.16;
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: unset !important;
+
+}
+.venue-stats-page .tk-expanded-scorer{
+
+          display: block;
+          min-width: 0;
+          max-width: 100%;
+          font-weight: 400;
+          font-size: 0.70rem;
+          color: rgba(226, 232, 240, 0.94);
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: unset !important;
+          overflow-wrap: anywhere;
+
+}
+.venue-stats-page .tk-expanded-assist{
+
+          display: block;
+          min-width: 0;
+          max-width: 100%;
+          font-style: italic;
+          font-weight: 400;
+          font-size: 0.61rem;
+          color: rgba(203, 213, 225, 0.72);
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: unset !important;
+          overflow-wrap: anywhere;
+
+}
+.venue-stats-page .tk-match-admin-box{
+
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          padding: 0.38rem 0.32rem;
+          border-radius: 12px;
+          background: rgba(2, 8, 23, 0.28);
+          overflow: hidden;
+
+}
+.venue-stats-page .tk-match-admin-title{
+
+          font-size: 0.68rem;
+          line-height: 1.05;
+          letter-spacing: 0.06em;
+          white-space: normal;
+          overflow-wrap: anywhere;
+          margin-bottom: 0.34rem;
+
+}
+.venue-stats-page .tk-match-admin-row{
+
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.35rem;
+          align-items: stretch;
+
+}
+.venue-stats-page .tk-match-admin-row .tk-edit-btn,
+.venue-stats-page .tk-match-admin-row .tk-danger-btn{
+
+          width: 100%;
+          min-width: 0;
+          max-width: 100%;
+          padding: 0.38rem 0.42rem;
+          font-size: 0.68rem;
+          line-height: 1.05;
+          white-space: nowrap;
+          text-align: center;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table{
+
+          min-width: 24.95rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child,
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:first-child{
+
+          min-width: 4.25rem !important;
+          width: 4.25rem !important;
+          max-width: 4.25rem !important;
+          padding-left: 0.44rem !important;
+          padding-right: 0.42rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child{
+
+          letter-spacing: -0.01em;
+
+}
+@media (max-width: 520px){
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table{
+
+            min-width: 24.65rem !important;
+
+}
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table th:first-child,
+.venue-stats-page .tk-scroll-table-wrapper.tk-match-results-table .stats-table td:first-child{
+
+            min-width: 4.15rem !important;
+            width: 4.15rem !important;
+            max-width: 4.15rem !important;
+
+}
+}
+@media (min-width: 769px){
+.venue-stats-page .tk-player-summary-table{
+
+            overflow-x: hidden !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table{
+
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th,
+.venue-stats-page .tk-player-summary-table .stats-table td{
+
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:first-child,
+.venue-stats-page .tk-player-summary-table .stats-table td:first-child{
+
+            width: 4% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(2),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(2){
+
+            width: 24% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: left !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(3),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(3){
+
+            width: 24% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: left !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(4),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(4),
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(5),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(5){
+
+            width: 12% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(6),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(6){
+
+            width: 7% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center !important;
+
+}
+.venue-stats-page .tk-player-summary-table .stats-table th:nth-child(7),
+.venue-stats-page .tk-player-summary-table .stats-table td:nth-child(7){
+
+            width: 17% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            text-align: center !important;
+
+}
+}
+@media (min-width: 769px){
+.venue-stats-page .tk-defensive-stats-table-wrap{
+
+            display: block !important;
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+
+}
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table.tk-defensive-stats-table{
+
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed !important;
+
+}
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table.tk-defensive-stats-table
+            th,
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table.tk-defensive-stats-table
+            td{
+
+            min-width: 0 !important;
+            max-width: none !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+
+}
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(1),
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(1){
+
+            width: 4% !important;
+            text-align: center !important;
+
+}
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(2),
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(2){
+
+            width: 24% !important;
+            text-align: left !important;
+
+}
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(3),
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(3){
+
+            width: 22% !important;
+            text-align: left !important;
+
+}
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(4),
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(4){
+
+            width: 16% !important;
+            text-align: center !important;
+
+}
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(5),
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(5){
+
+            width: 16% !important;
+            text-align: center !important;
+
+}
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            th:nth-child(6),
+.venue-stats-page
+            .tk-defensive-stats-table-wrap
+            .stats-table
+            td:nth-child(6){
+
+            width: 18% !important;
+            text-align: center !important;
+
+}
+}
+.venue-stats-page .tk-mini-admin-actions{
+
+          display: inline-flex;
+          align-items: center;
+          gap: 0.7rem;
+          margin-top: 0.35rem;
+          flex-wrap: nowrap;
+
+}
+.venue-stats-page .tk-mini-admin-btn{
+
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 1.46rem;
+          height: 1.46rem;
+          margin: 0;
+          padding: 0;
+          border-radius: 999px;
+          border: 1px solid rgba(148, 163, 184, 0.45);
+          background: rgba(15, 23, 42, 0.72);
+          color: rgba(226, 232, 240, 0.94);
+          font-size: 0.7rem;
+          font-weight: 900;
+          line-height: 1;
+          cursor: pointer;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035);
+
+}
+.venue-stats-page .tk-mini-admin-btn.danger{
+
+          border-color: rgba(248, 113, 113, 0.55);
+          color: #fecaca;
+          background: rgba(69, 10, 10, 0.38);
+
+}
+.venue-stats-page .tk-match-admin-row{
+
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.42rem;
+          align-items: stretch;
+
+}
+@media (min-width: 769px){
+.venue-stats-page .tk-team-identity-table .stats-table,
+.venue-stats-page .tk-player-identity-table:not(.tk-player-small-table):not(.tk-player-summary-table) .stats-table{
+
+            width: 100% !important;
+            min-width: 100% !important;
+            table-layout: fixed !important;
+
+}
+}
+.venue-stats-page .tk-admin-compact-btn{
+
+          width: 100%;
+          min-height: 1.55rem;
+          padding: 0.34rem 0.55rem;
+          border-radius: 999px;
+          font-size: 0.68rem;
+          font-weight: 900;
+          letter-spacing: 0.01em;
+          line-height: 1;
+          white-space: nowrap;
+          cursor: pointer;
+          text-align: center;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.045);
+
+}
+.venue-stats-page .tk-admin-compact-btn.primary{
+
+          border: 1px solid rgba(56, 189, 248, 0.72);
+          background: rgba(8, 47, 73, 0.48);
+          color: #e0f2fe;
+
+}
+.venue-stats-page .tk-admin-compact-btn.danger{
+
+          border: 1px solid rgba(248, 113, 113, 0.68);
+          background: rgba(69, 10, 10, 0.45);
+          color: #fecaca;
+
+}
+@media (max-width: 520px){
+.venue-stats-page .tk-mini-admin-actions{
+
+            gap: 0.78rem;
+
+}
+.venue-stats-page .tk-mini-admin-btn{
+
+            width: 1.48rem;
+            height: 1.48rem;
+            font-size: 0.62rem;
+
+}
+.venue-stats-page .tk-admin-compact-btn{
+
+            min-height: 1.38rem;
+            padding: 0.28rem 0.42rem;
+            font-size: 0.58rem;
+
+}
+.venue-stats-page .tk-match-admin-title{
+
+            font-size: 0.62rem;
+            letter-spacing: 0.08em;
+
+}
+}
+@media (max-width: 768px){
+.venue-stats-page .clean-sheets-table .stats-table{
+
+            width: 100% !important;
+            min-width: 100% !important;
+            table-layout: fixed !important;
+
+}
+}
+/* Remove the recreated card and control presentation. */
+.venue-stats-page .venue-stats-card {
+  width: 100%;
+  max-width: none;
+}
+.venue-stats-page .venue-stats-segment {
+  border: 0;
+  background: transparent;
+}
+.venue-stats-page .venue-stats-tabs {
+  justify-content: flex-start;
+}
+.venue-stats-page .venue-stats-tabs .secondary-btn {
+  min-width: 0;
+}
+.venue-stats-page .venue-stats-muted {
+  color: #94a3b8;
+}
+.venue-stats-page .venue-club-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  max-width: 100%;
+  min-width: 0;
+}
+.venue-stats-page .venue-club-cell strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.venue-stats-page .venue-club-logo {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+}
+/* Club and rank remain visible while standings scroll horizontally. */
+.venue-stats-page .tk-team-identity-table .stats-table :is(th, td):nth-child(2) {
+  position: sticky !important;
+  left: 1.55rem !important;
+  background: #071833 !important;
+  z-index: 31 !important;
+}

@@ -120,12 +120,7 @@ export default function VenueActionLogPage({ venueId, onBack }) {
 
   return (
     <main className="venue-stats-page">
-      <header className="venue-stats-header">
-        <h1>Action Log</h1>
-        <button type="button" className="secondary-btn" onClick={onBack}>
-          Back to Field
-        </button>
-      </header>
+
       <section className="venue-stats-card">
         <p>Major Field and match actions, including who performed them.</p>
         {error && <p className="error-text" role="alert">{error}</p>}

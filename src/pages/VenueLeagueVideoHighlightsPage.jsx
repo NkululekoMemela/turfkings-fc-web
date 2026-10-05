@@ -5354,27 +5354,7 @@ export function VideoHighlightsPage({
         }
       `}</style>
 
-      <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
-        <header className="header">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", width: "100%" }}>
-            <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>Video Highlights</h1>
-              <p className="subtitle tkh-ribbon-subtitle-line">
-                <strong>{isLeagueMode ? "League highlights" : "Friendly highlights"}</strong> • {teamContextText}
-              </p>
-            </div>
-            <button
-              className="secondary-btn"
-              onClick={onBack}
-              aria-label="Home"
-              title="Home"
-              style={{ minWidth: "46px", width: "46px", height: "46px", padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "1.05rem", flexShrink: 0 }}
-            >
-              🏠
-            </button>
-          </div>
-        </header>
-      </div>
+
 
       {!splashDismissed &&
         typeof document !== "undefined" &&
@@ -5383,7 +5363,7 @@ export function VideoHighlightsPage({
             className="tkh-premium-splash"
             role="status"
             aria-live="polite"
-            aria-label="Preparing video highlights"
+            aria-label="Preparing highlights"
           >
             <div className="tkh-splash-orb tkh-splash-orb-one" />
             <div className="tkh-splash-orb tkh-splash-orb-two" />
@@ -5391,7 +5371,7 @@ export function VideoHighlightsPage({
             <div className="tkh-splash-content">
               <div className="tkh-splash-kicker">
                 {isLeagueMode
-                  ? "Video Highlights"
+                  ? "Match Highlights"
                   : "Monthly Highlight Awards"}
               </div>
 
@@ -5442,7 +5422,7 @@ export function VideoHighlightsPage({
           document.body
         )}
 
-      <header className="header tkh-page-intro">
+      <div className="field-page-context tkh-page-intro">
         {canUpload && (
           <div className="tkh-header-actions">
           <button
@@ -5478,7 +5458,7 @@ export function VideoHighlightsPage({
           </button>
           </div>
         )}
-      </header>
+      </div>
 
       {loadError && <section className="card tkh-error-box">{loadError}</section>}
 
@@ -5572,7 +5552,7 @@ export function VideoHighlightsPage({
             ref={categorySelectorRef}
             className="pill-toggle-group tkh-view-toggle"
             role="tablist"
-            aria-label="Video highlights view"
+            aria-label="Highlights view"
           >
             <button
               type="button"

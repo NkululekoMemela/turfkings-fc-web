@@ -163,3 +163,36 @@
   box-shadow: 0 12px 32px rgba(0, 0, 0, .4);
   cursor: pointer;
 }
+
+
+/* Field navigation scrolls horizontally without compressing its buttons. */
+.field-bottom-nav .field-bottom-nav__inner {
+  position: relative;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.field-bottom-nav__inner::-webkit-scrollbar { display: none; }
+.field-bottom-nav .field-bottom-nav__pill {
+  flex: 0 0 60px !important;
+  width: 60px !important;
+  min-width: 60px !important;
+  max-width: 60px !important;
+  box-sizing: border-box;
+}
+.field-bottom-nav .field-bottom-nav__label {
+  white-space: normal;
+  text-align: center;
+  line-height: 1.1;
+}

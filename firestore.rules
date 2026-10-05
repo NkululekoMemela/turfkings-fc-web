@@ -213,6 +213,125 @@ service cloud.firestore {
     // LEAGUE VENUES
     // Separate from club identities and club permissions.
     // ---------------------------------------------------------
+    // Lost property is accessible only through verified server operations.
+    match /fieldLostFoundItems/{document=**} {
+      allow read, write: if false;
+    }
+    match /fieldLostFoundClaims/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /leagueSeasonSquads/{squadId} {
+      // Access is through authenticated server operations.
+      allow read, write: if false;
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /leagueClubBookings/{bookingId} {
+      function validBooking() {
+        let data = request.resource.data;
+        let venue = get(
+          /databases/$(database)/documents/leagueVenues/$(data.venueId)
+        ).data;
+        let season = venue.league.activeSeason;
+        let membership = get(
+          /databases/$(database)/documents/clubFieldMemberships/$(data.clubId)
+        ).data;
+        let di = data.matchDayIndex;
+        let fi = data.fixtureIndex;
+        let minimum = season.gameFormat == "11_V_11" ? 11 :
+          (season.gameFormat == "7_V_7" ? 7 :
+          (season.gameFormat == "6_V_6" ? 6 : 5));
+        return data.keys().hasOnly([
+            "venueId", "seasonId", "matchDayId", "clubId",
+            "matchDayIndex", "fixtureId", "fixtureIndex",
+            "limit", "entries", "changedPlayerId", "updatedByUid", "updatedAt"
+          ])
+          && bookingId == data.venueId + "~" + data.seasonId
+            + "~" + data.matchDayId + "~" + data.clubId
+          && membership.status == "active" && membership.venueId == data.venueId
+          && season.id == data.seasonId && season.status == "active"
+          && season.get("schedulePublishedAtMs", 0) > 0
+          && data.clubId in season.clubIds
+          && di is int && fi is int && di >= 0 && fi >= 0
+          && di < season.matchDays.size() && fi < season.fixtures.size()
+          && season.matchDays[di].id == data.matchDayId
+          && season.matchDays[di].status == "scheduled"
+          && season.fixtures[fi].id == data.fixtureId
+          && season.fixtures[fi].matchDayId == data.matchDayId
+          && data.fixtureId in season.matchDays[di].fixtureIds
+          && data.clubId in [
+            season.fixtures[fi].clubAId, season.fixtures[fi].clubBId
+          ]
+          && season.fixtures[fi].status == "scheduled"
+          && !(data.fixtureId in season.get("liveMatches", {}))
+          && data.limit is int && data.limit >= minimum
+          && data.limit <= season.get("maxPlayersPerClubPerDay", 30)
+          && data.entries is map && data.entries.size() <= data.limit
+          && data.updatedByUid == request.auth.uid
+          && data.updatedAt == request.time;
+      }
+
+      function ownPendingChange() {
+        let next = request.resource.data;
+        let old = resource.data;
+        let changed = next.entries.diff(old.entries).affectedKeys();
+        let key = next.get("changedPlayerId", "");
+        let removed = !(key in next.entries);
+        let entry = removed ? old.entries.get(key, {}) : next.entries.get(key, {});
+        let member = get(
+          /databases/$(database)/documents/clubs/$(old.clubId)/members/$(entry.actorMemberId)
+        ).data;
+        let profilePath =
+          /databases/$(database)/documents/clubs/$(old.clubId)/players/$(entry.sourcePlayerId);
+        return next.diff(old).affectedKeys().hasOnly([
+            "entries", "changedPlayerId", "updatedByUid", "updatedAt"
+          ])
+          && changed.size() == 1 && changed.hasOnly([key])
+          && entry.playerId == key
+          && entry.bookedByUid == request.auth.uid
+          && entry.paymentStatus == "pending"
+          && member.status == "active"
+          && (
+            member.get("uid", "") == request.auth.uid
+            || (
+              request.auth.token.get("email_verified", false)
+              && request.auth.token.get("email", "") != ""
+              && member.get("email", "") == request.auth.token.email
+            )
+          )
+          && (
+            removed
+            || (
+              !(key in old.entries)
+              && entry.keys().hasOnly([
+                "playerId", "sourcePlayerId", "fullName", "paymentStatus",
+                "bookedByUid", "actorMemberId", "bookedAt"
+              ])
+              && entry.bookedAt == request.time
+              && entry.fullName is string && entry.fullName.size() > 0
+              && exists(profilePath)
+              && get(profilePath).data.get("status", "active") == "active"
+            )
+          );
+      }
+
+      allow read: if isSignedIn() && !isCameraSession();
+      allow create: if isSignedIn() && !isCameraSession()
+        && validBooking()
+        && clubAdministrator(request.resource.data.clubId);
+      allow update: if isSignedIn() && !isCameraSession()
+        && validBooking()
+        && request.resource.data.clubId == resource.data.clubId
+        && (
+          clubAdministrator(resource.data.clubId)
+          || ownPendingChange()
+        );
+      allow delete: if false;
+    }
+
     match /clubFieldMemberships/{clubId} {
       function validFieldMembership() {
         return request.resource.data.keys().hasOnly([
@@ -427,6 +546,32 @@ service cloud.firestore {
           );
       }
 
+      function onlySelectsDatedFixture() {
+        let old = resource.data.league.activeSeason;
+        let next = request.resource.data.league.activeSeason;
+        let fi = next.get("selectedFixtureIndex", -1);
+        let di = next.get("selectedMatchDayIndex", -1);
+        let livePath =
+          /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(old.id)/matches/current;
+        return request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["league", "updatedAt"])
+          && request.resource.data.league.diff(resource.data.league)
+            .affectedKeys().hasOnly(["activeSeason"])
+          && next.diff(old).affectedKeys().hasOnly([
+            "selectedFixtureId", "selectedFixtureIndex", "selectedMatchDayIndex"
+          ])
+          && old.get("scheduleVersion", 0) == 1
+          && fi is int && di is int && fi >= 0 && di >= 0
+          && fi < old.fixtures.size() && di < old.matchDays.size()
+          && di == old.get("matchDayHistory", []).size()
+          && old.fixtures[fi].id == next.selectedFixtureId
+          && old.fixtures[fi].status == "scheduled"
+          && old.fixtures[fi].matchDayId == old.matchDays[di].id
+          && next.selectedFixtureId in old.matchDays[di].fixtureIds
+          && !(next.selectedFixtureId in old.get("liveMatches", {}))
+          && (!exists(livePath) || get(livePath).data.status != "live");
+      }
+
       function onlyUpdatesLiveMatches() {
         return request.resource.data
           .diff(resource.data)
@@ -517,13 +662,14 @@ service cloud.firestore {
                     && request.resource.data.id == venueId
                     && isSignedIn()
                     && fieldClosurePowersRespected()
+                    && fieldTestingSettingProtected()
                     && (
                       activeFieldAdministrator()
                         ? true
                         : (
                           activeFieldMatchOperator()
                             ? (
-                              delegatedFieldClosure() || onlyUpdatesLiveMatches()
+                              delegatedFieldClosure() || onlyUpdatesLiveMatches() || onlySelectsDatedFixture()
                               || onlyCompletesCurrentFieldMatch()
                             )
                             : (delegatedFieldClosure() || clubSeasonResponse())
@@ -531,6 +677,129 @@ service cloud.firestore {
                     );
 
       allow delete: if false;
+
+      function fieldTestingSettingProtected() {
+        let oldValue = resource.data.get("league", {}).get("activeSeason", {});
+        let newValue = request.resource.data.get("league", {}).get("activeSeason", {});
+        let old = oldValue is map ? oldValue : {};
+        let next = newValue is map ? newValue : {};
+        return resource.data.ownerUid == request.auth.uid
+          || (
+            next.get("allowEarlyStarts", false) == old.get("allowEarlyStarts", false)
+            && next.get("testingChangedByUid", null) == old.get("testingChangedByUid", null)
+            && next.get("testingChangedAt", null) == old.get("testingChangedAt", null)
+          );
+      }
+
+      function fieldRosterRevisionCurrent(approval, seasonId, clubId) {
+        let squadPath =
+          /databases/$(database)/documents/leagueSeasonSquads/$(venueId + "~" + seasonId + "~" + clubId);
+        let squadVersions = approval.get("squadVersions", {});
+        return clubId in squadVersions
+          ? (
+            get(squadPath).data.status == "active"
+            && get(squadPath).data.updatedAt == squadVersions[clubId]
+          )
+          : (
+            !exists(squadPath)
+            && get(
+              /databases/$(database)/documents/leagueClubBookings/$(venueId + "~" + seasonId + "~" + approval.matchDayId + "~" + clubId)
+            ).data.updatedAt == approval.bookingVersions[clubId]
+          );
+      }
+
+      function paidFieldStartApproved(seasonId) {
+        let data = request.resource.data;
+        let approvalPath =
+          /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/startApprovals/$(data.get("startApprovalId", ""));
+        let approval = get(approvalPath).data;
+        let season = get(
+          /databases/$(database)/documents/leagueVenues/$(venueId)
+        ).data.league.activeSeason;
+        let fixture = season.fixtures[data.fixtureIndex];
+        return approval.actorUid == request.auth.uid
+          && approval.venueId == venueId && approval.seasonId == seasonId
+          && approval.fixtureId == data.fixtureId
+          && data.get("paidSquads", {}) == approval.get("squads", {})
+          && approval.matchDayId == fixture.matchDayId
+          && approval.clubAId == fixture.clubAId
+          && approval.clubBId == fixture.clubBId
+          && approval.gameFormat == season.gameFormat
+          && approval.matchDayHistory == season.get("matchDayHistory", [])
+          && approval.matchDays == season.get("matchDays", [])
+          && approval.expiresAt > request.time
+          && approval.used == false
+          && getAfter(approvalPath).data.used == true
+          && fieldRosterRevisionCurrent(approval, seasonId, approval.clubAId)
+          && fieldRosterRevisionCurrent(approval, seasonId, approval.clubBId);
+      }
+
+      match /seasons/{seasonId}/matchDayReviews/{matchDayId} {
+        allow read: if isSignedIn() && !isCameraSession();
+        allow write: if false;
+      }
+
+      match /decisionRequests/{requestId} {
+        allow read: if isSignedIn() && !isCameraSession()
+          && (
+            get(/databases/$(database)/documents/leagueVenues/$(venueId))
+              .data.ownerUid == request.auth.uid
+            || resource.data.requestedByUid == request.auth.uid
+          );
+        allow write: if false;
+      }
+
+      match /seasonDeletionJobs/{seasonId} {
+        allow read: if isSignedIn() && !isCameraSession()
+          && get(/databases/$(database)/documents/leagueVenues/$(venueId))
+            .data.ownerUid == request.auth.uid;
+        allow write: if false;
+      }
+
+      match /seasons/{seasonId}/startApprovals/{approvalId} {
+        allow read: if isSignedIn()
+          && resource.data.actorUid == request.auth.uid;
+        allow create, delete: if false;
+        allow update: if activeFieldOperatorForSeason(seasonId)
+          && resource.data.actorUid == request.auth.uid
+          && resource.data.used == false
+          && request.resource.data.used == true
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["used"])
+          && getAfter(
+            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
+          ).data.startApprovalId == approvalId
+          && getAfter(
+            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
+          ).data.fixtureId == resource.data.fixtureId;
+      }
+
+      function datedFieldMatchCanStart(seasonId) {
+        let season = get(
+          /databases/$(database)/documents/leagueVenues/$(venueId)
+        ).data.league.activeSeason;
+        let data = request.resource.data;
+        let fi = data.get("fixtureIndex", -1);
+        let di = data.get("matchDayIndex", -1);
+        return season.id == seasonId && (
+          season.get("scheduleVersion", 0) != 1
+          || (
+            fi is int && di is int && fi >= 0 && di >= 0
+            && fi < season.get("fixtures", []).size()
+            && di < season.get("matchDays", []).size()
+            && season.fixtures[fi].id == data.fixtureId
+            && season.fixtures[fi].status == "scheduled"
+            && season.fixtures[fi].matchDayId == season.matchDays[di].id
+            && data.fixtureId in season.matchDays[di].fixtureIds
+            && season.matchDays[di].status == "scheduled"
+            && season.matchDays[di].opensAtMs is int
+            && (
+              season.get("allowEarlyStarts", false) == true
+              || request.time >= timestamp.value(season.matchDays[di].opensAtMs)
+            )
+          )
+        );
+      }
 
       function activeFieldOperatorForSeason(seasonId) {
         let venue = get(
@@ -701,7 +970,9 @@ service cloud.firestore {
           && activeFieldOperatorForSeason(seasonId)
           && request.resource.data.venueId == venueId
           && request.resource.data.seasonId == seasonId
-          && request.resource.data.status == "live";
+          && request.resource.data.status == "live"
+          && datedFieldMatchCanStart(seasonId)
+          && paidFieldStartApproved(seasonId);
 
         allow update: if matchId == "current"
           && activeFieldOperatorForSeason(seasonId)
@@ -710,11 +981,23 @@ service cloud.firestore {
           && request.resource.data.venueId == venueId
           && request.resource.data.seasonId == seasonId
           && (
-            request.resource.data.fixtureId == resource.data.fixtureId
+            (request.resource.data.fixtureId == resource.data.fixtureId
+              && !(resource.data.status == "completed"
+                && request.resource.data.status == "live")
+              && request.resource.data.get("startApprovalId", "")
+                == resource.data.get("startApprovalId", "")
+              && request.resource.data.get("paidSquads", {})
+                == resource.data.get("paidSquads", {})
+              && request.resource.data.get("fixtureIndex", -1)
+                == resource.data.get("fixtureIndex", -1)
+              && request.resource.data.get("matchDayIndex", -1)
+                == resource.data.get("matchDayIndex", -1))
             || (
               resource.data.status == "completed"
               && request.resource.data.status == "live"
               && request.resource.data.startedByUid == request.auth.uid
+              && datedFieldMatchCanStart(seasonId)
+              && paidFieldStartApproved(seasonId)
             )
           );
 
@@ -1405,7 +1688,11 @@ service cloud.firestore {
                          && topLevel != "leagueVenues"
                          && topLevel != "legalAcceptances"
                          && topLevel != "clubs"
-                         && topLevel != "clubFieldMemberships";
+                         && topLevel != "clubFieldMemberships"
+                          && topLevel != "leagueClubBookings"
+                          && topLevel != "leagueSeasonSquads"
+                          && topLevel != "fieldLostFoundItems"
+                          && topLevel != "fieldLostFoundClaims";
     }
   }
 }

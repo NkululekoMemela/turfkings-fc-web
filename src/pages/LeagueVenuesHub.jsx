@@ -35,7 +35,7 @@ export default function LeagueVenuesHub({
   const [view, setView] = useState("all");
   const [fieldTheme] = useState(() => {
     try {
-      return localStorage.getItem("field-theme") === "pearl" ? "pearl" : "dark";
+      return (["dark", "pearl", "sandstone"].includes(localStorage.getItem("field-theme")) ? localStorage.getItem("field-theme") : "dark");
     } catch {
       return "dark";
     }

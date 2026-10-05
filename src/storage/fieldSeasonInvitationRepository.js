@@ -17,7 +17,18 @@ export function fieldSeasonNeedsAnnouncement(season) {
 export async function announceFieldSeason({
   venueId, name, startsOn, entryFee, prizes, gameFormat,
   signupClosesOn, minimumClubs, prizeIncreasePerClub,
+  startTime = "18:00", matchMinutes = 40,
+  halftimeMinutes = 5, turnaroundMinutes = 5,
 }) {
+  const duration = Number(matchMinutes);
+  const halftime = Number(halftimeMinutes);
+  const turnaround = Number(turnaroundMinutes);
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(startTime) ||
+      !Number.isInteger(duration) || duration < 2 || duration > 180 ||
+      !Number.isInteger(halftime) || halftime < 0 || halftime > 30 ||
+      !Number.isInteger(turnaround) || turnaround < 0 || turnaround > 30) {
+    throw new Error("Enter a valid start time and match durations.");
+  }
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as a Field administrator.");
   const title = String(name || "").trim();
@@ -115,6 +126,13 @@ export async function announceFieldSeason({
         id: existing?.id || seasonId,
         name: title,
         startsOn: date,
+        scheduleVersion: 1,
+        scheduleSettings: {
+          startTime, matchMinutes: duration,
+          halftimeMinutes: halftime, turnaroundMinutes: turnaround,
+          intervalDays: 7,
+        },
+        matchSeconds: duration * 60,
         entryFee: Math.round(fee * 100) / 100,
         prizeMoney: prize,
         prizes: podium,

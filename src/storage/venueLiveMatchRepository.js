@@ -1,4 +1,11 @@
 import {
+  auth as rosterAuth,
+  getActiveFirebaseFunctionsBaseUrl as rosterFunctionsUrl,
+} from "../firebaseConfig.js";
+import { doc, getDoc } from "firebase/firestore";
+import { getPlayerDoc } from "../core/clubFirestorePaths.js";
+import { leagueBookingScope, paidLeagueManifest } from "../core/leagueBookingPolicy.js";
+import {
   getDocs,
   onSnapshot,
   serverTimestamp,
@@ -233,6 +240,54 @@ export function loadVenueLeaguePlayers({
     teams,
     collectionForClub: getPlayersCollection,
   });
+}
+
+export async function loadVenuePaidMatchPlayers({
+  firestore, scope, fixtureId,
+}) {
+  if (!scope?.venueId || !scope?.seasonId || !fixtureId) {
+    throw new Error("The league roster needs a Field, season and fixture.");
+  }
+  const user = rosterAuth.currentUser;
+  if (!user) throw new Error("Sign in to load the league lineup.");
+  const token = await user.getIdToken();
+  const baseUrl = rosterFunctionsUrl();
+  const base = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 25000);
+  let result;
+  try {
+    const response = await fetch(`${base}/getFieldFixtureRoster`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
+      body: JSON.stringify({
+        venueId: scope.venueId, seasonId: scope.seasonId, fixtureId,
+      }),
+      signal: controller.signal,
+    });
+    result = await response.json();
+    if (!response.ok || !result.squads) {
+      throw new Error(result.error || "Could not load eligible league players.");
+    }
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("The league lineup took too long to load. Try again.");
+    }
+    throw error;
+  } finally {window.clearTimeout(timeout);}
+  const entries = await Promise.all(
+    Object.entries(result.squads).map(async ([clubId, manifest]) => {
+      const profiles = await Promise.all(manifest.map(player =>
+        getDoc(getPlayerDoc(firestore, player.sourcePlayerId, clubId))));
+      const docs = profiles.filter(profile => profile.exists() &&
+        String(profile.data().status || "active").toLowerCase() === "active");
+      return {
+        clubId,
+        snapshot: {docs, forEach: callback => docs.forEach(callback)},
+      };
+    })
+  );
+  return combineClubSnapshots(entries);
 }
 
 export function loadVenueLeaguePlayerPhotos({

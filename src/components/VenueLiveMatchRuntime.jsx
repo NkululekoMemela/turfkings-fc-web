@@ -1,3 +1,5 @@
+import FieldMatchHalfClock from "./FieldMatchHalfClock.jsx";
+import { tickFieldMatchClock, startFieldSecondHalf } from "../core/fieldMatchClock.js";
 import React, {
   useCallback,
   useEffect,
@@ -231,19 +233,8 @@ export default function VenueLiveMatchRuntime({
             return previous;
           }
 
-          const nextSeconds = Math.max(
-            0,
-            Number(
-              previous.secondsLeft
-            ) - 1
-          );
+          return tickFieldMatchClock(previous);
 
-          return {
-            ...previous,
-            secondsLeft: nextSeconds,
-            running: nextSeconds > 0,
-            timeUp: nextSeconds <= 0,
-          };
         });
       },
       1000
@@ -277,6 +268,10 @@ export default function VenueLiveMatchRuntime({
         saveVenueLiveMatchState({
           scope,
           patch: {
+            clockVersion: snapshot.clockVersion || 0,
+            clockPhase: snapshot.clockPhase || "legacy",
+            halftimeSeconds: snapshot.halftimeSeconds || 0,
+            halftimeEndsAtMs: snapshot.halftimeEndsAtMs || 0,
             secondsLeft: Math.max(
               0,
               Number(
@@ -315,6 +310,31 @@ export default function VenueLiveMatchRuntime({
     },
     [scope]
   );
+
+  useEffect(() => {
+    if (!canControlCurrentLiveMatch || liveState?.clockVersion !== 1 ||
+        !["halftime", "full_time"].includes(liveState?.clockPhase)) return;
+    const state = liveStateRef.current;
+    persistPatch({
+      clockPhase: state.clockPhase,
+      halftimeEndsAtMs: state.halftimeEndsAtMs || 0,
+      secondsLeft: state.secondsLeft,
+      running: false,
+      timeUp: state.clockPhase === "full_time",
+    }).catch(error => console.error("[Field half clock]", error));
+  }, [
+    canControlCurrentLiveMatch, liveState?.clockVersion,
+    liveState?.clockPhase, liveState?.halftimeEndsAtMs, persistPatch,
+  ]);
+
+  const handleStartSecondHalf = useCallback(async () => {
+    if (!canControlCurrentLiveMatch) {
+      throw new Error("Only the controlling referee can start the second half.");
+    }
+    const patch = startFieldSecondHalf(liveStateRef.current);
+    await persistPatch(patch);
+    setLiveState(previous => previous ? {...previous, ...patch} : previous);
+  }, [canControlCurrentLiveMatch, persistPatch]);
 
   const handleAddEvent = useCallback(
     (event) => {
@@ -445,22 +465,25 @@ export default function VenueLiveMatchRuntime({
 
   const handleCancelLineups =
     useCallback(async () => {
-      if (!canControlCurrentLiveMatch) return;
+      if (!canControlCurrentLiveMatch) {
+        throw new Error("Only the controlling Field official can cancel this match.");
+      }
 
       try {
         await cancelVenueFixtureStart({ scope });
         onBack?.();
       } catch (error) {
         console.error("[VenueLiveMatch] Cancel failed:", error);
-        window.alert(
-          error?.message || "The Field match could not be cancelled."
-        );
+        throw error;
       }
     }, [canControlCurrentLiveMatch, onBack, scope]);
 
   const handleUpdateMatchSeconds =
     useCallback(
       (nextMatchSeconds) => {
+        if (liveStateRef.current?.clockVersion === 1) {
+          return;
+        }
         const safeSeconds = Math.max(
           60,
           Number(nextMatchSeconds) ||
@@ -745,6 +768,8 @@ export default function VenueLiveMatchRuntime({
   }
 
   const sharedProps = {
+    fieldClockVersion: liveState.clockVersion || 0,
+    fieldClockPhase: liveState.clockPhase || "legacy",
     matchSeconds:
       Number(liveState.matchSeconds) ||
       Number(season?.matchSeconds) ||
@@ -797,19 +822,27 @@ export default function VenueLiveMatchRuntime({
     onGoToStats,
   };
 
+  const halfClock = (
+    <FieldMatchHalfClock state={liveState}
+      canControl={canControlCurrentLiveMatch}
+      onStartSecondHalf={handleStartSecondHalf} />
+  );
+
   if (
     viewerOnly ||
     !canOperateMatch
   ) {
     return (
-      <VenueLeagueSpectatorPage
-        {...sharedProps}
-      />
+      <>
+        {halfClock}
+        <VenueLeagueSpectatorPage {...sharedProps} />
+      </>
     );
   }
 
   return (
     <>
+    {halfClock}
     <LiveMatchPage
       {...sharedProps}
       leagueMatchComponent={VenueLeagueLiveMatchPage}
@@ -884,7 +917,7 @@ export default function VenueLiveMatchRuntime({
         handleConfirmEndMatch
       }
       onUpdateMatchSeconds={
-        handleUpdateMatchSeconds
+        liveState.clockVersion === 1 ? undefined : handleUpdateMatchSeconds
       }
       matchTeamColorOverrides={
         matchTeamColorOverrides

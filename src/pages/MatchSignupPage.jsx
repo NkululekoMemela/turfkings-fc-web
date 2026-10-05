@@ -1,3 +1,5 @@
+import useSignupPlayerPhotos from "../hooks/useSignupPlayerPhotos.js";
+import SignupHeroHeader from "../components/SignupHeroHeader.jsx";
 import { saveSignupWithCapacity } from "../core/payments/saveSignupWithCapacity.js";
 import ClubBookingSettings from "../components/ClubBookingSettings.jsx";
 import { bookingDeadline, calculateLateBookingFee } from "../../functions/lateBookingPolicy.mjs";
@@ -1068,7 +1070,7 @@ export default function MatchSignupPage({
   const [dangerZoneError, setDangerZoneError] = useState("");
   const [matchTicketMinimized, setMatchTicketMinimized] = useState(false);
   const [directoryPlayers, setDirectoryPlayers] = useState([]);
-  const [playerPhotos, setPlayerPhotos] = useState({});
+
   const [attendanceBadge, setAttendanceBadge] = useState({
     loading: true,
     percent: null,
@@ -1548,44 +1550,7 @@ export default function MatchSignupPage({
     }
   }
 
-  useEffect(() => {
-    let cancelled = false;
 
-    async function loadPhotos() {
-      try {
-        const snap = await getDocs(getPlayerPhotosCollection(db, activeClubId));
-        if (cancelled) return;
-
-        const loaded = {};
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          const photoData = data?.photoData || "";
-          const rawName = data?.name || docSnap.id || "";
-          if (!photoData) return;
-
-          const title = toTitleCaseLoose(rawName);
-          const first = firstNameOf(rawName);
-          const slug = slugFromLooseName(rawName);
-
-          [rawName, title, first, slug]
-            .map((x) => String(x || "").trim())
-            .filter(Boolean)
-            .forEach((key) => {
-              loaded[key] = photoData;
-            });
-        });
-
-        setPlayerPhotos(loaded);
-      } catch (err) {
-        console.error("Failed to load player photos in MatchSignupPage:", err);
-      }
-    }
-
-    loadPhotos();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2466,31 +2431,7 @@ export default function MatchSignupPage({
   const isFullyPaidSelection =
     effectiveSelectedWeeks.length > 0 && weeksToPayNow.length === 0;
 
-  const getPlayerPhoto = useMemo(() => {
-    return (playerName = "") => {
-      const raw = String(playerName || "").trim();
-      if (!raw) return null;
-
-      const title = toTitleCaseLoose(raw);
-      const first = firstNameOf(raw);
-      const slug = slugFromLooseName(raw);
-
-      const candidates = [raw, title, first, slug]
-        .map((x) => String(x || "").trim())
-        .filter(Boolean);
-
-      for (const key of candidates) {
-        if (playerPhotos[key]) return playerPhotos[key];
-
-        const matchedKey = Object.keys(playerPhotos).find(
-          (k) => normKey(k) === normKey(key)
-        );
-        if (matchedKey && playerPhotos[matchedKey]) return playerPhotos[matchedKey];
-      }
-
-      return null;
-    };
-  }, [playerPhotos]);
+  const getPlayerPhoto = useSignupPlayerPhotos(activeClubId);
 
   const photoData =
     getPlayerPhoto(beneficiary.fullName) || getPlayerPhoto(beneficiary.shortName);
@@ -5524,149 +5465,23 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
       className="page match-signup-page"
       style={{ maxWidth: contentMaxWidth, margin: "0 auto" }}
     >
-      <section className="card signup-hero-card">
-        <div className="signup-hero-compact">
-          <div className="signup-hero-left">
-            <div className="signup-player-avatar signup-player-avatar-hero">
-              {photoData ? (
-                <img
-                  src={photoData}
-                  alt={beneficiary.fullName}
-                  className="signup-player-avatar-img"
-                  loading="eager"
-                />
-              ) : (
-                <span className="signup-player-avatar-fallback">
-                  {String(beneficiary.shortName || "P")
-                    .charAt(0)
-                    .toUpperCase()}
-                </span>
-              )}
-            </div>
-
-            <div className="signup-hero-copy">
-              <div className="signup-hero-title-row">
-                <h2>Pay for upcoming games</h2>
-              </div>
-
-              <p className="muted signup-hero-subtext">
-                Select the remaining current games, next month games, and any special Challenge fixture.
-              </p>
-
-              <div className="signup-top-meta">
-                <div className="signup-attendance-badge">
-                  <span className="signup-attendance-badge-label">
-                    Attendance Badge 🛡️
-                  </span>
-                  <strong>{attendanceBadgeText}</strong>
-                  {attendanceSubtext ? <small>{attendanceSubtext}</small> : null}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="signup-hero-actions"
-            style={{
-              display: "flex",
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: isMobile ? "flex-start" : "flex-end",
-              gap: isMobile ? 8 : 10,
-              flexWrap: "wrap",
-            }}
-          >
-            {!beneficiary?.isGuest ? (
-              <button
-                type="button"
-                className={[
-                  "tk-match-pull-out-btn",
-                  isPracticeMode ? "is-practice-ticket" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={() => {
-                  setMatchTicketWalletMode("cancel");
-                  setShowMatchTicketWallet(true);
-                }}
-                disabled={matchTicketBusy}
-                title={
-                  isPracticeMode
-                    ? "Pull out of an upcoming Practice match"
-                    : "Pull out of an upcoming match"
-                }
-                style={{ touchAction: "manipulation" }}
-              >
-                <span
-                  className="tk-match-pull-out-icon"
-                  aria-hidden="true"
-                >
-                  ↩
-                </span>
-
-                <span className="tk-match-pull-out-copy">
-                  <strong>Match pull out</strong>
-                  <small>Can't make it this week?</small>
-                </span>
-
-                {isPracticeMode ? (
-                  <span className="tk-practice-feature-tag">
-                    Practice
-                  </span>
-                ) : null}
-              </button>
-            ) : null}
-
-            <button
-              type="button"
-              className="secondary-btn signup-calendar-btn"
-              onClick={() => {
-                setCalendarMonthPage(getDefaultCalendarMonthPage());
-                setShowCalendarPopup(true);
-              }}
-              aria-label="Open next month calendar"
-              title="Open next month calendar"
-              style={{ touchAction: "manipulation" }}
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden="true"
-              >
-                <path
-                  d="M8 2V5"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M16 2V5"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M3.5 9H20.5"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-                <rect
-                  x="3"
-                  y="4.5"
-                  width="18"
-                  height="16.5"
-                  rx="3"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </section>
+      <SignupHeroHeader
+        photoData={photoData}
+        beneficiary={beneficiary}
+        attendanceBadgeText={attendanceBadgeText}
+        attendanceSubtext={attendanceSubtext}
+        isMobile={isMobile}
+        isPracticeMode={isPracticeMode}
+        matchTicketBusy={matchTicketBusy}
+        onPullOut={() => {
+          setMatchTicketWalletMode("cancel");
+          setShowMatchTicketWallet(true);
+        }}
+        onOpenCalendar={() => {
+          setCalendarMonthPage(getDefaultCalendarMonthPage());
+          setShowCalendarPopup(true);
+        }}
+      />
 
       {matchCreditMessage ? (
         <div

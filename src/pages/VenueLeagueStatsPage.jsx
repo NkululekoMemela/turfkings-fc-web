@@ -294,21 +294,9 @@ export default function VenueLeagueStatsPage({
 
   return (
     <main className="venue-stats-page">
-      <header className="venue-stats-header">
-        <h1>Stats &amp; Leaderboards</h1>
 
-        <button
-          type="button"
-          className="venue-stats-home"
-          onClick={onBack}
-          aria-label="Return to Field home"
-          title="Return to Field home"
-        >
-          🏠
-        </button>
-      </header>
 
-      <section className="venue-stats-card">
+      <section className="venue-stats-card card">
         <h2>Season</h2>
 
         <p className="venue-stats-muted">
@@ -325,11 +313,11 @@ export default function VenueLeagueStatsPage({
           {seasonLabel(season)}
         </p>
 
-        <div className="venue-stats-segment">
+        <div className="venue-stats-segment segmented-toggle">
           <button
             type="button"
             className={
-              seasonMode === "current" ? "is-active" : ""
+              seasonMode === "current" ? "segmented-option active" : "segmented-option"
             }
             onClick={() => setSeasonMode("current")}
           >
@@ -339,7 +327,7 @@ export default function VenueLeagueStatsPage({
           <button
             type="button"
             className={
-              seasonMode === "previous" ? "is-active" : ""
+              seasonMode === "previous" ? "segmented-option active" : "segmented-option"
             }
             onClick={() => {
               setSeasonMode("previous");
@@ -414,14 +402,14 @@ export default function VenueLeagueStatsPage({
         )}
       </section>
 
-      <section className="venue-stats-card">
+      <section className="venue-stats-card card">
         <h2>View</h2>
 
-        <div className="venue-stats-segment">
+        <div className="venue-stats-segment segmented-toggle">
           <button
             type="button"
             className={
-              viewMode === "current" ? "is-active" : ""
+              viewMode === "current" ? "segmented-option active" : "segmented-option"
             }
             onClick={() => setViewMode("current")}
             disabled={seasonMode === "previous"}
@@ -432,7 +420,7 @@ export default function VenueLeagueStatsPage({
           <button
             type="button"
             className={
-              viewMode === "season" ? "is-active" : ""
+              viewMode === "season" ? "segmented-option active" : "segmented-option"
             }
             onClick={() => setViewMode("season")}
           >
@@ -440,14 +428,15 @@ export default function VenueLeagueStatsPage({
           </button>
         </div>
 
-        <nav className="venue-stats-tabs">
+        <nav className="venue-stats-tabs actions-row stats-tabs">
           {TABS.map(([id, label]) => (
             <button
               key={id}
               type="button"
               className={
-                activeTab === id ? "is-active" : ""
+                activeTab === id ? "secondary-btn active" : "secondary-btn"
               }
+              aria-current={activeTab === id ? "page" : undefined}
               onClick={() => setActiveTab(id)}
             >
               {label}
@@ -456,7 +445,7 @@ export default function VenueLeagueStatsPage({
         </nav>
       </section>
 
-      <section className="venue-stats-card venue-stats-content">
+      <section className="venue-stats-card card venue-stats-content">
         <h2>
           {activeTabLabel}
           {activeTab === "teams"
@@ -475,8 +464,8 @@ export default function VenueLeagueStatsPage({
         </p>
 
         {activeTab === "teams" ? (
-          <div className="venue-table-wrap">
-            <table className="venue-standings-table">
+          <div className="venue-table-wrap table-wrapper tk-scroll-table-wrapper tk-team-identity-table">
+            <table className="venue-standings-table stats-table">
               <thead>
                 <tr>
                   <th>#</th>
@@ -496,7 +485,7 @@ export default function VenueLeagueStatsPage({
                 {standings.map((club, index) => (
                   <tr key={club.id}>
                     <td>{index + 1}</td>
-                    <td className="venue-club-cell">
+                    <td><span className="venue-club-cell" title={club.name}>
                       {(
                         clubLogos[club.id] ||
                         club.logo
@@ -518,7 +507,7 @@ export default function VenueLeagueStatsPage({
                         </span>
                       )}
 
-                      <strong>{club.name}</strong>
+                      <strong>{club.name}</strong></span>
                     </td>
                     <td>{club.points}</td>
                     <td>{club.played}</td>
@@ -542,8 +531,8 @@ export default function VenueLeagueStatsPage({
             </table>
           </div>
         ) : activeTab === "results" ? (
-          <div className="venue-table-wrap venue-match-results">
-            <table className="venue-standings-table">
+          <div className="venue-table-wrap venue-match-results table-wrapper tk-scroll-table-wrapper tk-match-results-table">
+            <table className="venue-standings-table stats-table">
               <thead>
                 <tr>
                   <th>Match #</th><th>Club A</th><th>Score</th>
@@ -830,8 +819,12 @@ export default function VenueLeagueStatsPage({
             </table>
           </div>
         ) : (
-          <div className="venue-table-wrap">
-            <table className="venue-standings-table">
+          <div className={`venue-table-wrap table-wrapper tk-scroll-table-wrapper tk-player-identity-table ${
+            activeTab === "combined"
+              ? "tk-player-summary-table"
+              : "tk-player-small-table"
+          }`}>
+            <table className="venue-standings-table stats-table">
               <thead>
                 <tr>
                   <th>#</th><th>Player</th><th>Club</th>
