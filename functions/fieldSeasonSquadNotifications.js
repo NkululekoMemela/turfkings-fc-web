@@ -37,7 +37,7 @@ function buildHandlers({
     const venue = venueSnap.data();
     const membership = membershipSnap.data();
     const season = venue?.league?.activeSeason;
-    if (member?.status !== "active" ||
+    if ((!member || (member.status || "active") !== "active") ||
         member.playerId !== entry.sourcePlayerId ||
         !player || String(player.status || "active").toLowerCase() !== "active" ||
         !club || club.status === "deleted" ||

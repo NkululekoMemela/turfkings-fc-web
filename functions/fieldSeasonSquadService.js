@@ -27,7 +27,7 @@ function canManageSquad(club, user) {
 }
 
 function ownsMember(member, user) {
-  return Boolean(user?.uid && member?.status === "active" && (
+  return Boolean(user?.uid && (member && (member.status || "active") === "active") && (
     member.uid === user.uid ||
     (user.email_verified === true && email(user.email) &&
       email(member.email) === email(user.email))
@@ -39,12 +39,11 @@ async function loadContext(tx, db, scope) {
   const clubRef = db.doc(`clubs/${scope.clubId}`);
   const venueRef = db.doc(`leagueVenues/${scope.venueId}`);
   const squadRef = db.collection("leagueSeasonSquads").doc(id);
-  const clubSnap = await tx.get(clubRef);
-  const venueSnap = await tx.get(venueRef);
-  const membershipSnap = await tx.get(
-    db.doc(`clubFieldMemberships/${scope.clubId}`)
-  );
-  const squadSnap = await tx.get(squadRef);
+  const [clubSnap, venueSnap, membershipSnap, squadSnap] =
+    await tx.getAll(
+      clubRef, venueRef,
+      db.doc(`clubFieldMemberships/${scope.clubId}`), squadRef
+    );
   const club = clubSnap.data();
   const venue = venueSnap.data();
   const membership = membershipSnap.data();
@@ -81,6 +80,7 @@ async function createSeasonSquad({db, user, body, now = Date.now()}) {
       maximum: context.season.maxPlayersPerClubPerDay ?? 30,
     });
     const verifiedPlayers = [];
+    const memberLinkRepairs = [];
     for (const selected of players) {
       const memberSnap = await tx.get(context.clubRef.collection("members")
         .doc(selected.memberId));
@@ -88,15 +88,23 @@ async function createSeasonSquad({db, user, body, now = Date.now()}) {
         .doc(selected.sourcePlayerId));
       const member = memberSnap.data();
       const player = playerSnap.data();
-      if (member?.status !== "active" || !player ||
+      if ((!member || (member.status || "active") !== "active") || !player ||
           String(player.status || "active").toLowerCase() !== "active" ||
-          member.playerId !== selected.sourcePlayerId) {
+          (member.playerId
+            ? member.playerId !== selected.sourcePlayerId
+            : player.sourceMemberId !== selected.memberId)) {
         throw new Error(
           "Each selected player needs an active Club member with a matching player link."
         );
       }
       const fullName = String(player.fullName || player.displayName ||
         player.name || player.playerName || "").trim();
+      if (!member.playerId) {
+        memberLinkRepairs.push({
+          ref: context.clubRef.collection("members").doc(selected.memberId),
+          playerId: selected.sourcePlayerId,
+        });
+      }
       verifiedPlayers.push({
         sourcePlayerId: selected.sourcePlayerId,
         memberId: selected.memberId, fullName,
@@ -115,6 +123,12 @@ async function createSeasonSquad({db, user, body, now = Date.now()}) {
       throw new Error(
         "Season invitations already exist. Agreed amounts cannot be overwritten."
       );
+    }
+    for (const repair of memberLinkRepairs) {
+      tx.update(repair.ref, {
+        playerId: repair.playerId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
     tx.set(context.squadRef, {
       ...scope, version: 1, status: "active",
@@ -184,14 +198,36 @@ async function confirmSeasonPayment({db, user, body, now = Date.now()}) {
       .doc(memberId));
     const playerSnap = await tx.get(context.clubRef.collection("players")
       .doc(invitation.sourcePlayerId));
-    if (memberSnap.data()?.status !== "active" ||
+    if ((memberSnap.data()?.status || "active") !== "active" ||
         memberSnap.data()?.playerId !== invitation.sourcePlayerId ||
         !playerSnap.exists ||
         String(playerSnap.data().status || "active").toLowerCase() !== "active") {
       throw new Error("Check this player's active Club membership.");
     }
+    if (!["pending", "accepted"].includes(
+      invitation.invitationStatus
+    )) {
+      throw new Error("A declined invitation cannot be marked paid.");
+    }
+    if (invitation.seasonCheckoutPaymentId) {
+      const checkout = await tx.get(db.collection("payments")
+        .doc(invitation.seasonCheckoutPaymentId));
+      if (["initializing", "checkout_created"].includes(
+        checkout.data()?.status
+      )) {
+        throw new Error(
+          "An online checkout is open. Finish that payment first."
+        );
+      }
+    }
+    const committed = invitation.invitationStatus === "pending"
+      ? {
+        ...invitation, invitationStatus: "accepted",
+        respondedAtMs: now, acceptedByUid: user.uid,
+        acceptanceMethod: "captain_recorded_offline_commitment",
+      } : invitation;
     const next = policy.confirmSeasonSquadPayment({
-      invitation, confirmedByUid: user.uid, now,
+      invitation: committed, confirmedByUid: user.uid, now,
     });
     if (next !== invitation) {
       tx.update(context.squadRef, {
@@ -262,7 +298,7 @@ async function setSeasonMatchDayAvailability({db, user, body}) {
     if (!manager && !ownsMember(member, user)) {
       throw new Error("Only this player or their Club captain/admin can change availability.");
     }
-    if (member?.status !== "active" ||
+    if ((!member || (member.status || "active") !== "active") ||
         member.playerId !== entry.sourcePlayerId || !profile ||
         String(profile.status || "active").toLowerCase() !== "active") {
       throw new Error("The player needs an active matching Club membership.");
@@ -349,7 +385,7 @@ async function loadReplacementPlayer(tx, context, memberId, sourcePlayerId) {
   );
   const member = memberSnap.data();
   const profile = profileSnap.data();
-  if (member?.status !== "active" || member.playerId !== sourcePlayerId ||
+  if ((!member || (member.status || "active") !== "active") || member.playerId !== sourcePlayerId ||
       !profile || String(profile.status || "active").toLowerCase() !== "active") {
     throw new Error("The replacement needs an active matching Club membership.");
   }
@@ -362,7 +398,10 @@ async function loadReplacementPlayer(tx, context, memberId, sourcePlayerId) {
 async function inviteSeasonMatchDayReplacement({db, user, body}) {
   if (!user?.uid) throw new Error("Sign in first.");
   const {venueId, seasonId, clubId, matchDayId, originalMemberId,
-    memberId, sourcePlayerId} = body || {};
+    memberId, sourcePlayerId, captainConfirmed = false} = body || {};
+  if (typeof captainConfirmed !== "boolean") {
+    throw new Error("Choose a valid replacement confirmation.");
+  }
   const scope = {venueId, seasonId, clubId};
   squadId(scope);
   if (!validId(originalMemberId)) throw new Error("Choose the unavailable player.");
@@ -399,11 +438,18 @@ async function inviteSeasonMatchDayReplacement({db, user, body}) {
     });
     tx.update(context.squadRef, {
       [`matchDayReplacements.${matchDayId}.${originalMemberId}`]: {
-        ...replacement, invitedAt: FieldValue.serverTimestamp(),
+        ...replacement,
+        invitationStatus: captainConfirmed ? "accepted" : "pending",
+        ...(captainConfirmed ? {
+          confirmedByCaptainUid: user.uid,
+          confirmationMethod: "captain_attested",
+          respondedAt: FieldValue.serverTimestamp(),
+        } : {}),
+        invitedAt: FieldValue.serverTimestamp(),
       },
       updatedAt: FieldValue.serverTimestamp(),
     });
-    return {status: "pending"};
+    return {status: captainConfirmed ? "accepted" : "pending"};
   });
 }
 
@@ -479,31 +525,45 @@ async function getSeasonSquadView({db, user, body}) {
   return db.runTransaction(async tx => {
     const context = await loadContext(tx, db, scope);
     const manager = canManageSquad(context.club, user);
-    if (manager) {
-      return {
-        squadId: context.squadRef.id, canManage: true,
-        squad: context.squad || null,
-      };
-    }
-    if (!context.squad) return {canManage: false, invitation: null};
+    if (!context.squad) return {
+      canManage: manager, squad: null, invitation: null,
+    };
 
     const entries = Object.values(context.squad.entries || {});
     const own = [];
-    for (const entry of entries) {
-      if (!validId(entry.memberId)) continue;
-      const memberSnap = await tx.get(
-        context.clubRef.collection("members").doc(entry.memberId)
-      );
-      const member = memberSnap.data();
+    const validEntries = entries.filter(entry =>
+      validId(entry.memberId));
+    const members = validEntries.length
+      ? await tx.getAll(...validEntries.map(entry =>
+        context.clubRef.collection("members").doc(entry.memberId)))
+      : [];
+    validEntries.forEach((entry, index) => {
+      const member = members[index].data();
       if (ownsMember(member, user) &&
           member.playerId === entry.sourcePlayerId) own.push(entry);
-    }
+    });
     if (own.length > 1) {
       throw new Error("Your account matches multiple squad members. Ask the Club admin to fix the links.");
     }
     return {
-      squadId: context.squadRef.id, canManage: false,
+      squadId: context.squadRef.id, canManage: manager,
+      attendancePlayers: manager || own[0]?.invitationStatus === "accepted"
+        ? require("./fieldSeasonAttendanceView").attendanceView(
+            context.squad,
+            validEntries.filter((entry, index) => {
+              const member = members[index].data();
+              return entry.invitationStatus === "accepted" &&
+                member && (member.status || "active") === "active" &&
+                member.playerId === entry.sourcePlayerId;
+            })
+          ) : [],
+      ...(manager ? {squad: context.squad} : {}),
       invitation: own[0] || null,
+      availability: own[0] ? Object.fromEntries(
+        Object.entries(context.squad.matchDayAvailability || {}).map(
+          ([dayId, entries]) => [dayId, entries[own[0].memberId] || null]
+        )
+      ) : {},
     };
   });
 }
@@ -556,3 +616,6 @@ exports.respondFieldMatchDayReplacement = squadEndpoint(respondSeasonMatchDayRep
 
 exports.cancelSeasonMatchDayReplacement = cancelSeasonMatchDayReplacement;
 exports.cancelFieldMatchDayReplacement = squadEndpoint(cancelSeasonMatchDayReplacement);
+
+exports.loadContext = loadContext;
+exports.squadEndpoint = squadEndpoint;

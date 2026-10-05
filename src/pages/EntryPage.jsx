@@ -492,7 +492,7 @@ async function upsertPlayerFromMember(member, clubId = DEFAULT_CLUB_ID) {
     return null;
   }
 
-  const playerId = slugFromName(displayName);
+  const playerId = member.playerId || slugFromName(displayName);
 
   try {
     await setDoc(
@@ -530,6 +530,10 @@ async function upsertPlayerFromMember(member, clubId = DEFAULT_CLUB_ID) {
       { merge: true }
     );
 
+    await updateDoc(memberDocRef(clubId, member.id), {
+      playerId,
+      updatedAt: serverTimestamp(),
+    });
     return playerId;
   } catch (err) {
     console.error(

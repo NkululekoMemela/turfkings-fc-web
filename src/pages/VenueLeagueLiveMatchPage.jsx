@@ -6864,8 +6864,8 @@ export function VenueLeagueLiveMatchPage({
         transition: "opacity 0.8s ease",
       }}
     >
-      <header className="header">
-        <h1>Match #{currentMatchNo}</h1>
+      <div className="field-page-context">
+        <p className="muted small">Match #{currentMatchNo}</p>
 
         <p className="muted small">
           Signed in as <strong>{getIdentityDisplayName(identity)}</strong> •{" "}
@@ -6873,7 +6873,7 @@ export function VenueLeagueLiveMatchPage({
           {isCaptain ? " 👑" : ""}
           {isAdmin ? " 🛠️" : ""}
         </p>
-      </header>
+      </div>
 
       <section className="card" style={{ marginBottom: 12 }}>
         <div

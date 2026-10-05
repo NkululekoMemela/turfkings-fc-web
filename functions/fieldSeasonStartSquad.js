@@ -35,7 +35,7 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
     );
     const member = memberSnap.data();
     const profile = profileSnap.data();
-    if (member?.status !== "active" ||
+    if ((!member || (member.status || "active") !== "active") ||
         member.playerId !== player.sourcePlayerId ||
         !profile || String(profile.status || "active").toLowerCase() !== "active") {
       continue;

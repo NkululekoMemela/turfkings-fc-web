@@ -52,3 +52,24 @@ export const respondSeasonInvitation = details =>
 
 export const confirmSeasonPayment = details =>
   requestSeasonSquad("confirmFieldSeasonSquadPayment", details);
+
+export const setSeasonAvailability = details =>
+  requestSeasonSquad("setFieldSeasonMatchDayAvailability", details);
+
+export const createSeasonCheckout = details =>
+  requestSeasonSquad("createYocoCheckout", {
+    ...details, purpose: "field_season",
+  });
+
+export const getClubMatchDaySquad = details =>
+  requestSeasonSquad("getClubFieldMatchDaySquad", details);
+export const submitClubMatchDaySquad = details =>
+  requestSeasonSquad("submitClubFieldMatchDaySquad", details);
+export const getFieldMatchDaySquads = details =>
+  requestSeasonSquad("getFieldMatchDaySquads", details);
+export const confirmMatchDayCover = details =>
+  requestSeasonSquad("inviteFieldMatchDayReplacement", {
+    ...details, captainConfirmed: true,
+  });
+export const cancelMatchDayCover = details =>
+  requestSeasonSquad("cancelFieldMatchDayReplacement", details);

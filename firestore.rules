@@ -213,6 +213,14 @@ service cloud.firestore {
     // LEAGUE VENUES
     // Separate from club identities and club permissions.
     // ---------------------------------------------------------
+    // Lost property is accessible only through verified server operations.
+    match /fieldLostFoundItems/{document=**} {
+      allow read, write: if false;
+    }
+    match /fieldLostFoundClaims/{document=**} {
+      allow read, write: if false;
+    }
+
     match /leagueSeasonSquads/{squadId} {
       // Access is through authenticated server operations.
       allow read, write: if false;
@@ -1682,7 +1690,9 @@ service cloud.firestore {
                          && topLevel != "clubs"
                          && topLevel != "clubFieldMemberships"
                           && topLevel != "leagueClubBookings"
-                          && topLevel != "leagueSeasonSquads";
+                          && topLevel != "leagueSeasonSquads"
+                          && topLevel != "fieldLostFoundItems"
+                          && topLevel != "fieldLostFoundClaims";
     }
   }
 }

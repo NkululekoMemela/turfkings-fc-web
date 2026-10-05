@@ -1,3 +1,4 @@
+import { onAuthStateChanged } from "firebase/auth";
 import React, {
   useEffect,
   useMemo,
@@ -71,7 +72,14 @@ export default function VenueLeagueAccessPanel({
   premiumPanelStyle,
   brightPrimaryStyle,
 }) {
-  const [mode, setMode] = useState("club_rep");
+  const [mode, setMode] = useState("field_staff");
+  const [recallUser, setRecallUser] = useState(auth.currentUser);
+
+  useEffect(() => onAuthStateChanged(auth, setRecallUser), []);
+
+  useEffect(() => {
+    setSelectedStaffUid("");
+  }, [venue?.id, recallUser?.uid]);
   const [selectedClubId, setSelectedClubId] =
     useState("");
   const [clubPickerOpen, setClubPickerOpen] =
@@ -406,6 +414,32 @@ export default function VenueLeagueAccessPanel({
     }
   }
 
+  useEffect(() => {
+    if (!venue?.id || selectedStaffUid) return;
+    const active = selectableStaff.filter(staff => staff.status === "active");
+    const userUid = normalize(recallUser?.uid);
+    const userEmail = normalizeEmail(recallUser?.email);
+    const ownProfile = active.find(staff =>
+      (userUid && [staff.id, staff.uid, staff.requestedByUid]
+        .some(value => normalize(value) === userUid)) ||
+      (userEmail && normalizeEmail(staff.email) === userEmail)
+    );
+
+    let remembered = "";
+    try {
+      remembered = localStorage.getItem(
+        `field-staff-profile:${venue.id}:${userUid || "last"}`
+      ) || "";
+    } catch {}
+
+    const profile = ownProfile || active.find(staff =>
+      normalize(staff.id || staff.uid) === remembered
+    );
+    if (profile) {
+      setSelectedStaffUid(normalize(profile.id || profile.uid));
+    }
+  }, [venue?.id, recallUser, selectableStaff, selectedStaffUid]);
+
   function chooseMode(nextMode) {
     setMode(nextMode);
     setError("");
@@ -589,6 +623,16 @@ export default function VenueLeagueAccessPanel({
         );
       }
 
+      try {
+        const profileId = normalize(selectedStaffUid);
+        localStorage.setItem(
+          `field-staff-profile:${venue.id}:${uid}`, profileId
+        );
+        localStorage.setItem(
+          `field-staff-profile:${venue.id}:last`, profileId
+        );
+      } catch {}
+
       onEnter({
         role: staffRole,
         actingRole: staffRole,
@@ -631,7 +675,7 @@ export default function VenueLeagueAccessPanel({
   }
 
   const tabs = [
-    ["club_rep", "🛡️ Club rep"],
+    ["club_rep", "🛡️ Club admin / leader"],
     ["field_staff", "🦺 Field staff"],
     ["spectator", "👁️ Spectator"],
   ];

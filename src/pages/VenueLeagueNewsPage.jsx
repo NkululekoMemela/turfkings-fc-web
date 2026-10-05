@@ -3053,65 +3053,13 @@ Votes for this poll will no longer be shown.`
   // ---------- RENDER ----------
   return (
     <div className="page news-page">
-      <div
-        className={`landing-header-sticky ${
-          headerScrolled ? "is-scrolled" : ""
-        }`}
-      >
-        <header className="header">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              width: "100%",
-            }}
-          >
-            <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>News &amp; highlights</h1>
-              <div
-                style={{
-                  marginTop: "0.18rem",
-                  fontSize: "0.72rem",
-                  fontWeight: 800,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  color: "rgba(255,255,255,0.76)",
-                }}
-              >
-                {newsSeasonContext.pageContextLabel}
-              </div>
-            </div>
 
-            <button
-              className="secondary-btn"
-              onClick={onBack}
-              aria-label="Home"
-              title="Home"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.05rem",
-                flexShrink: 0,
-              }}
-            >
-              🏠
-            </button>
-          </div>
-        </header>
-      </div>
 
-      <header className="header">
+      <div className="field-page-context">
         <p className="subtitle">
           {newsSeasonContext.shouldUsePreviousSeasonNews ? "Previous-season stories stay here until the new season kicks off." : "Automatic recap built from this Field League's match history."}
         </p>
-      </header>
+      </div>
 
       {canManageCustomStories && (
         <section ref={storyStudioRef} className="card" style={{ overflow: "hidden" }}>

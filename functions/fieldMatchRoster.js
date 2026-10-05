@@ -15,7 +15,22 @@ async function loadFieldMatchRoster({
       throw new Error("Both Clubs must be registered for this season.");
     }
     const scope = {venueId, seasonId: season.id, clubId};
-    const seasonSquad = await loadSeasonStartSquad({transaction, db, scope});
+    let seasonSquad;
+    if (season.gameFormat === "5_V_5") {
+      const {loadDay} = require("./fieldMatchDaySquad");
+      const data = await loadDay({
+        tx: transaction, db, scope, matchDayId: fixture.matchDayId,
+      });
+      if (requireMinimum && !data.submission.confirmed) {
+        throw new Error(`${clubId}: the captain must send its confirmed six-player squad.`);
+      }
+      seasonSquad = {
+        eligible: data.submission.players,
+        updatedAt: data.squad?.updatedAt,
+      };
+    } else {
+      seasonSquad = await loadSeasonStartSquad({transaction, db, scope});
+    }
     let eligible = [];
     if (seasonSquad) {
       eligible = seasonSquad.eligible.map(player => ({

@@ -1,3 +1,5 @@
+import VenueLostFoundPage from "./VenueLostFoundPage.jsx";
+import VenueSquadsPage from "./VenueSquadsPage.jsx";
 import VenueFixturesPage from "./VenueFixturesPage.jsx";
 import FieldDecisionReview from "../components/FieldDecisionReview.jsx";
 import FieldTestSeasonDeletion from "../components/FieldTestSeasonDeletion.jsx";
@@ -726,7 +728,7 @@ export default function VenueEntryPage({
   const [enteredIdentity, setEnteredIdentity] = useState(null);
   const [fieldTheme, setFieldTheme] = useState(() => {
     try {
-      return localStorage.getItem("field-theme") === "pearl" ? "pearl" : "dark";
+      return (["dark", "pearl", "sandstone"].includes(localStorage.getItem("field-theme")) ? localStorage.getItem("field-theme") : "dark");
     } catch {
       return "dark";
     }
@@ -5423,6 +5425,19 @@ export default function VenueEntryPage({
       canOperateFieldMatch,
     });
 
+
+    if (venuePage === "lostFound") {
+      return (
+        <VenueLostFoundPage
+          key={venue.id}
+          venueId={venue.id}
+          venueName={venue.name}
+          adminView={isFieldAdministrator}
+          onBack={() => setVenuePage("landing")}
+        />
+      );
+    }
+
     if (venuePage === "videos") {
       const latestResult = (venueSeason?.results || []).at(-1) || null;
       const videoFixtureId =
@@ -5485,6 +5500,11 @@ export default function VenueEntryPage({
           onGoToSignIn={() => setEnteredIdentity(null)}
         />
       );
+    }
+
+    if (venuePage === "squads") {
+      return <VenueSquadsPage venue={venue} season={venueSeason}
+        onBack={() => setVenuePage("landing")} />;
     }
 
     if (venuePage === "formations") {
@@ -5608,6 +5628,7 @@ export default function VenueEntryPage({
         />
       )}
       <VenueLandingPage
+        onGoToSquads={() => setVenuePage("squads")}
         fieldDecisionControls={
           <>{isVenueOwner && !isReadOnlyFieldRole && effectiveRole === "field_manager" && (
         <FieldDecisionReview
@@ -5751,6 +5772,7 @@ export default function VenueEntryPage({
         }}
         onGoToStats={() => setVenuePage("stats")}
         onGoToFormations={() => setVenuePage("formations")}
+        onGoToLostFound={() => setVenuePage("lostFound")}
         onGoToNews={() => setVenuePage("news")}
         onGoToHighlights={() => setVenuePage("videos")}
         onOpenHighlightsCamera={async () => {
@@ -6402,6 +6424,7 @@ export default function VenueEntryPage({
       `}</style>
       <header className="header">
         {isAdminViewer ? (
+          <div className="field-entry-edit-row">
           <button
             type="button"
             className="tk-entry-club-edit-btn"
@@ -6411,10 +6434,11 @@ export default function VenueEntryPage({
           >
             ✎
           </button>
+          </div>
         ) : null}
 
         <div className="header-title">
-          <img src={activeClubLogoSrc} alt={`${activeClubName} logo`} className="tk-logo" />
+
           <h1>{activeClubName}</h1>
         </div>
 
@@ -6457,6 +6481,9 @@ export default function VenueEntryPage({
           onClick={() => setFieldTheme("dark")}>Dark</button>
         <button type="button" aria-pressed={fieldTheme === "pearl"}
           onClick={() => setFieldTheme("pearl")}>Rosewood</button>
+        <button type="button" aria-pressed={fieldTheme === "sandstone"}
+          onClick={() => setFieldTheme("sandstone")}>Sandstone</button>
+
       </div>
 
       <section className="card" style={heroCardStyle}>

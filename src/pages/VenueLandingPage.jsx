@@ -1,3 +1,4 @@
+import {useLostFoundSummary} from "../storage/fieldLostFoundRepository.js";
 import MatchTeamChooser from "../components/MatchTeamChooser.jsx";
 import FieldPortalTile from "../components/FieldPortalTile.jsx";
 /*
@@ -308,7 +309,9 @@ export default function VenueLandingPage({
   portalClubName,
   onGoToLiveAsSpectator,
   onGoToFormations,
+  onGoToSquads,
   onGoToNews,
+  onGoToLostFound,
   onOpenHighlightsCamera,
   onGoToHighlights,
   onGoToEntryDev,
@@ -331,6 +334,9 @@ export default function VenueLandingPage({
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
 
+  const lostFoundOpenCount = useLostFoundSummary(
+    activeClubId || activeClub?.id, isAdmin
+  );
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [pendingMatch, setPendingMatch] = useState(null);
   const [pairingCode, setPairingCode] = useState("");
@@ -349,7 +355,7 @@ export default function VenueLandingPage({
   );
   const [downloadingFixtures, setDownloadingFixtures] =
     useState(false);
-  const [headerScrolled, setHeaderScrolled] = useState(false);
+
 
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showDurationModal, setShowDurationModal] = useState(false);
@@ -414,15 +420,7 @@ export default function VenueLandingPage({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  useEffect(() => {
-    const handleScroll = () => {
-      setHeaderScrolled(window.scrollY > 6);
-    };
 
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -1366,350 +1364,10 @@ export default function VenueLandingPage({
 
   return (
     <div className="page landing-page field-landing-page">
-      <style>{`
-        /*
-          Pure SVG ribbon: no dim rectangular shell.
-          The bright SVG wave is the only visible top-ribbon shape and is pulled
-          to the page edge so it does not feel bulky or boxed-in.
-        */
-        .landing-page {
-          padding-top: 0 !important;
-        }
 
-        .landing-header-sticky {
-          overflow: visible;
-          margin: -1rem -0.75rem 0.34rem -0.75rem;
-          padding: 0 !important;
-          background: transparent !important;
-          border: 0 !important;
-          box-shadow: none !important;
-        }
 
-        .landing-header-sticky > .landing-wave-header {
-          position: relative;
-          overflow: visible;
-          height: 122px;
-          min-height: 122px;
-          margin: 0 !important;
-          padding: 0 !important;
-          background: transparent !important;
-          border: none !important;
-          border-radius: 0 !important;
-          box-shadow: none !important;
-          isolation: isolate;
-        }
 
-        .tk-ribbon-wave-svg {
-          position: absolute;
-          top: -1px;
-          left: 0;
-          width: 100%;
-          height: 123px;
-          z-index: 0;
-          overflow: visible;
-          pointer-events: none;
-          filter: drop-shadow(0 13px 22px rgba(2, 6, 23, 0.24));
-        }
-
-        .landing-wave-header .header-title,
-        .landing-wave-header .landing-header-divider {
-          position: relative;
-          z-index: 2;
-        }
-
-        .landing-wave-header .header-title {
-          min-height: 76px;
-          padding: 16px 12px 0 12px;
-          box-sizing: border-box;
-          width: 100%;
-          max-width: 920px;
-          margin: 0 auto;
-        }
-
-        @media (min-width: 760px) {
-          .landing-header-sticky {
-            margin-left: 0;
-            margin-right: 0;
-          }
-
-          .landing-wave-header .header-title {
-            padding-left: 18px;
-            padding-right: 18px;
-          }
-        }
-
-        .landing-wave-header .landing-header-divider {
-          display: none;
-        }
-
-        .tk-ribbon-mode-label {
-          position: absolute;
-          z-index: 3;
-          left: 14.9%;
-          top: 85.25%;
-          transform: translateY(-50%);
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          pointer-events: none;
-          user-select: none;
-          color: #f8fafc;
-          font-size: clamp(0.48rem, 0.62vw, 0.68rem);
-          font-weight: 900;
-          line-height: 1;
-          letter-spacing: clamp(0.045em, 0.08vw, 0.085em);
-          text-transform: uppercase;
-          white-space: nowrap;
-          text-shadow: none;
-        }
-
-        .tk-ribbon-mode-label-dot {
-          width: 6px;
-          height: 6px;
-          flex: 0 0 auto;
-          border-radius: 999px;
-          background: currentColor;
-          box-shadow: none;
-        }
-
-        .tk-ribbon-desktop-lip {
-          display: none;
-        }
-
-        @media (min-width: 760px) {
-          /*
-           * Desktop ribbon:
-           * the main bar follows the central page width,
-           * while the mode lip remains a fixed premium size.
-           */
-          .landing-wave-header::before {
-            display: none;
-            content: "";
-            position: absolute;
-            z-index: 0;
-            inset: 0 0 auto;
-            height: 86px;
-            background:
-              linear-gradient(
-                90deg,
-                #1d4ed8 0%,
-                #071329 42%,
-                #22c55e 100%
-              );
-          }
-
-          .tk-ribbon-wave-svg--mobile {
-            display: none;
-          }
-
-          .tk-ribbon-desktop-lip {
-            position: absolute;
-            display: block;
-            z-index: 1;
-            top: -1px;
-            left: 0;
-            width: 100%;
-            height: 123px;
-            overflow: visible;
-            pointer-events: none;
-            filter:
-              drop-shadow(
-                0 13px 22px rgba(2, 6, 23, 0.24)
-              );
-          }
-
-          .tk-ribbon-mode-label {
-            left: 67px;
-            top: 103px;
-            transform: translateY(-50%);
-            font-size: 0.62rem;
-            letter-spacing: 0.08em;
-          }
-        }
-
-        @media (max-width: 480px) {
-          .tk-ribbon-mode-label {
-            font-size: 0.47rem;
-            letter-spacing: 0.075em;
-          }
-
-          .landing-header-sticky {
-            margin: -1rem -0.75rem 0.28rem -0.75rem;
-          }
-
-          .landing-header-sticky > .landing-wave-header {
-            height: 120px;
-            min-height: 120px;
-          }
-
-          .tk-ribbon-wave-svg {
-            top: -1px;
-            height: 121px;
-          }
-
-          .landing-wave-header .header-title {
-            min-height: 74px;
-            padding: 14px 11px 0 11px;
-          }
-
-        }
-      `}</style>
-      <div
-        className={`landing-header-sticky ${
-          headerScrolled ? "is-scrolled" : ""
-        }`}
-      >
-        <header className="landing-wave-header">
-          <svg
-            className="tk-ribbon-wave-svg tk-ribbon-wave-svg--mobile"
-            viewBox="0 0 390 122"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <defs>
-              <linearGradient id="tkLandingRibbonWaveGradient" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#1d4ed8" />
-                <stop offset="42%" stopColor="#071329" />
-                <stop offset="100%" stopColor="#22c55e" />
-              </linearGradient>
-              <radialGradient id="tkLandingRibbonModeGlow" cx="22%" cy="86%" r="56%">
-                <stop offset="0%" stopColor="rgba(34,211,238,0.34)" />
-                <stop offset="58%" stopColor="rgba(34,211,238,0.08)" />
-                <stop offset="100%" stopColor="rgba(34,211,238,0)" />
-              </radialGradient>
-            </defs>
-
-            <path
-              d="
-                M 0 0
-                H 390
-                V 86
-                H 190
-                C 171 86, 164 119, 144 119
-                H 55
-                C 43 119, 38 86, 28 86
-                H 0
-                Z
-              "
-              fill="url(#tkLandingRibbonWaveGradient)"
-            />
-            <path
-              d="
-                M 0 0
-                H 390
-                V 86
-                H 190
-                C 171 86, 164 119, 144 119
-                H 55
-                C 43 119, 38 86, 28 86
-                H 0
-                Z
-              "
-              fill="url(#tkLandingRibbonModeGlow)"
-              opacity="0.9"
-            />
-            <path
-              d="M 28 86 C 38 86, 43 119, 55 119 H 144 C 164 119, 171 86, 190 86"
-              fill="none"
-              stroke="rgba(34,211,238,0.35)"
-              strokeWidth="1.2"
-            />
-
-          </svg>
-
-          <svg
-            className="tk-ribbon-desktop-lip"
-            viewBox="0 0 1200 122"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <defs>
-              <linearGradient
-                id="tkLandingDesktopLipGradient"
-                gradientUnits="userSpaceOnUse"
-                x1="0"
-                y1="0"
-                x2="1200"
-                y2="0"
-              >
-                <stop offset="0%" stopColor="#1d4ed8" />
-                <stop offset="42%" stopColor="#071329" />
-                <stop offset="100%" stopColor="#22c55e" />
-              </linearGradient>
-            </defs>
-
-            {/*
-             * One continuous desktop path:
-             * full-width header and compact mode lip share
-             * the same fill, with no join between them.
-             */}
-            <path
-              d="
-                M 0 0
-                H 1200
-                V 86
-                H 240
-                C 216 86, 207 119, 182 119
-                H 69
-                C 54 119, 48 86, 35 86
-                H 0
-                Z
-              "
-              fill="url(#tkLandingDesktopLipGradient)"
-            />
-
-            <path
-              d="
-                M 35 86
-                C 48 86, 54 119, 69 119
-                H 182
-                C 207 119, 216 86, 240 86
-              "
-              fill="none"
-              stroke="rgba(34,211,238,0.38)"
-              strokeWidth="1.2"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-
-          <div className="tk-ribbon-mode-label" aria-label={modeLipLabel}>
-            <span
-              className="tk-ribbon-mode-label-dot"
-              style={{ color: modeLipDotColor }}
-              aria-hidden="true"
-            />
-            <span>{modeLipLabel}</span>
-          </div>
-
-          <div className="header-title">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "12px",
-                minWidth: 0,
-                width: "100%",
-              }}
-            >
-              <img
-                src={resolvedClubLogo}
-                alt={`${resolvedClubName} logo`}
-                className="tk-logo"
-              />
-              <div style={{ minWidth: 0 }}>
-                <h1 style={{ margin: 0 }}>{resolvedClubName} 5-A-Side</h1>
-              </div>
-            </div>
-          </div>
-
-          <div className="landing-header-divider" />
-
-        </header>
-      </div>
-
-      <header className="header" style={{ marginTop: "1.15rem" }}>
+      <header className="header field-canvas-identity" style={{ marginTop: "1.15rem" }}>
         <p className="subtitle">{clubHeaderInfoLine || resolvedClubSubtitle}</p>
 
         <div className="header-top-row" style={{ width: "100%" }}>
@@ -2081,6 +1739,8 @@ export default function VenueLandingPage({
               })}
             </button>
 
+
+
             <button
               type="button"
               className="secondary-btn"
@@ -2130,6 +1790,8 @@ export default function VenueLandingPage({
                 mobileLines: ["News &", "Highlights"],
               })}
             </button>
+
+
 
             <button
               type="button"
@@ -2245,19 +1907,49 @@ export default function VenueLandingPage({
                   mobileSize: 31,
                   desktopSize: 28,
                 }),
-                desktopLines: ["Video", "Highlights"],
-                mobileLines: ["Video", "Highlights"],
+                desktopLines: ["Match", "Highlights"],
+                mobileLines: ["Match", "Highlights"],
               })}
             </button>
 
-              {typeof onReturnToClub === "function" && (
+
+              <div style={{
+                gridColumn: "1 / -1", display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: isMobile ? "0.65rem" : "0.85rem",
+              }}>
+                {typeof onReturnToClub === "function" ? (
                 <FieldPortalTile style={tileButtonStyle(isMobile)}
                   clubId={identity?.clubId}
                   label={`Return to ${portalClubName || "your Club"}`}
                   subtitle=""
                   destination={portalClubName || "your Club"}
                   onClick={onReturnToClub} />
-              )}
+              ) : <span aria-hidden="true" />}
+                <button type="button" className="secondary-btn"
+                  onClick={onGoToLostFound}
+                  aria-label={`Lost and Found${lostFoundOpenCount ?
+                    `, ${lostFoundOpenCount} open tickets` : ""}`}
+                  style={{...tileButtonStyle(isMobile), position: "relative",
+                    width: "100%", minWidth: 0}}>
+                  {renderTileContent({
+                    isMobile,
+                    icon: <span aria-hidden="true"
+                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
+                    desktopLines: ["Lost &", "Found"],
+                    mobileLines: ["Lost &", "Found"],
+                  })}
+                  {lostFoundOpenCount > 0 && <span style={{
+                    position: "absolute", top: 7, right: 8,
+                    minWidth: 21, height: 21, padding: "0 4px",
+                    display: "grid", placeItems: "center", borderRadius: 999,
+                    color: "#fff", background: "#dc354b",
+                    fontSize: 11, fontWeight: 800,
+                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
+                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
+                </button>
+              </div>
+
 
 
 
@@ -2318,7 +2010,9 @@ export default function VenueLandingPage({
                 })}
               </button>
 
-              <button
+
+
+            <button
                 type="button"
                 className="secondary-btn"
                 onClick={onGoToFormations}
@@ -2367,6 +2061,8 @@ export default function VenueLandingPage({
                   mobileLines: ["News &", "Highlights"],
                 })}
               </button>
+
+
 
               <button
                 type="button"
@@ -2482,19 +2178,49 @@ export default function VenueLandingPage({
                     mobileSize: 31,
                     desktopSize: 28,
                   }),
-                  desktopLines: ["Video", "Highlights"],
-                  mobileLines: ["Video", "Highlights"],
+                  desktopLines: ["Match", "Highlights"],
+                  mobileLines: ["Match", "Highlights"],
                 })}
               </button>
 
-              {typeof onReturnToClub === "function" && (
+
+              <div style={{
+                gridColumn: "1 / -1", display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: isMobile ? "0.65rem" : "0.85rem",
+              }}>
+                {typeof onReturnToClub === "function" ? (
                 <FieldPortalTile style={tileButtonStyle(isMobile)}
                   clubId={identity?.clubId}
                   label={`Return to ${portalClubName || "your Club"}`}
                   subtitle=""
                   destination={portalClubName || "your Club"}
                   onClick={onReturnToClub} />
-              )}
+              ) : <span aria-hidden="true" />}
+                <button type="button" className="secondary-btn"
+                  onClick={onGoToLostFound}
+                  aria-label={`Lost and Found${lostFoundOpenCount ?
+                    `, ${lostFoundOpenCount} open tickets` : ""}`}
+                  style={{...tileButtonStyle(isMobile), position: "relative",
+                    width: "100%", minWidth: 0}}>
+                  {renderTileContent({
+                    isMobile,
+                    icon: <span aria-hidden="true"
+                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
+                    desktopLines: ["Lost &", "Found"],
+                    mobileLines: ["Lost &", "Found"],
+                  })}
+                  {lostFoundOpenCount > 0 && <span style={{
+                    position: "absolute", top: 7, right: 8,
+                    minWidth: 21, height: 21, padding: "0 4px",
+                    display: "grid", placeItems: "center", borderRadius: 999,
+                    color: "#fff", background: "#dc354b",
+                    fontSize: 11, fontWeight: 800,
+                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
+                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
+                </button>
+              </div>
+
 
             </div>
           </>

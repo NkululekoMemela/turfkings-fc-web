@@ -1,9 +1,8 @@
 import React, {useEffect, useRef, useState} from "react";
 import LeagueSeasonInvitationPopup from "./LeagueSeasonInvitationPopup.jsx";
 import {onAuthStateChanged} from "firebase/auth";
-import {doc, getDoc} from "firebase/firestore";
-import {auth, db} from "../firebaseConfig.js";
-import {getSeasonSquadView} from "../storage/fieldSeasonSquadRepository.js";
+import {auth} from "../firebaseConfig.js";
+import {loadClubLeagueSeason} from "../storage/clubLeagueSeasonLoader.js";
 
 export default function ClubLeagueSeasonEntry({clubId, onOpen}) {
   const [entry, setEntry] = useState(null);
@@ -21,22 +20,16 @@ export default function ClubLeagueSeasonEntry({clubId, onOpen}) {
       setEntry(null); setError("");
       if (!user || !clubId) return;
       try {
-        const membership = await getDoc(doc(db, "clubFieldMemberships", clubId));
-        const link = membership.data();
-        if (link?.status !== "active" || !link.venueId) return;
-        const field = await getDoc(doc(db, "leagueVenues", link.venueId));
-        const season = field.data()?.league?.activeSeason;
-        if (!season?.id || season.status !== "active" ||
-            !season.clubIds?.includes(clubId)) return;
-        const view = await getSeasonSquadView({
-          clubId, venueId: link.venueId, seasonId: season.id,
-        });
+        const loaded = await loadClubLeagueSeason(clubId, user);
+        if (!loaded) return;
+        const {scope, season, view} = loaded;
+        const link = {venueId: scope.venueId};
         if (disposed || request !== generation) return;
         const status = view.invitation?.invitationStatus;
-        if (view.canManage) setEntry({label: "League squad", icon: "🏆"});
-        else if (status === "accepted") setEntry({label: "My League", icon: "🏆"});
+        if (view.canManage) setEntry({label: "Official League Squad", icon: "🏆"});
+        else if (status === "accepted") setEntry({label: "Official League Squad", icon: "🏆"});
         else if (status === "pending") setEntry({
-          label: "League invitation", icon: "✉️",
+          label: "Official League Squad", icon: "✉️",
           invitation: view.invitation,
           uid: user.uid,
           scope: {clubId, venueId: link.venueId, seasonId: season.id},

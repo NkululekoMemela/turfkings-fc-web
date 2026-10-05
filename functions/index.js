@@ -856,6 +856,14 @@ async function settleVerifiedPayment({
   paymentData,
   yocoPayload = {},
 }) {
+  if (paymentData.purpose === "field_season") {
+    const received = Number(
+      deepFindFirst(yocoPayload, ["amount", "totalAmount", "amountPaid"])
+    );
+    return require("./fieldSeasonCheckout").settle({
+      db, paymentRef, receivedCents: received, FieldValue,
+    });
+  }
   const signupDocId = safeString(paymentData.signupDocId);
   if (!signupDocId) {
     throw new Error("Payment record missing signupDocId.");
@@ -1099,6 +1107,14 @@ exports.createYocoCheckout = onRequest(
 
     try {
       const body = req.body && typeof req.body === "object" ? req.body : {};
+      if (body.purpose === "field_season") {
+        const result = await require("./fieldSeasonCheckout").checkout({
+          db, admin, req, body, FieldValue,
+          secret: YOCO_SECRET_KEY, baseUrl: YOCO_BASE_URL,
+          fetchJson, buildYocoCheckoutPayload, resolveCheckoutUrlSet,
+        });
+        return res.status(200).json(result);
+      }
       const signupDocId = deriveSignupDocIdFromBody(body);
 
       if (!signupDocId) {
@@ -5701,3 +5717,19 @@ exports.respondFieldMatchDayReplacement =
 
 exports.cancelFieldMatchDayReplacement =
   require("./fieldSeasonSquadService").cancelFieldMatchDayReplacement;
+
+
+// Confirmed six-player Field matchday squads
+exports.getClubFieldMatchDaySquad = require("./fieldSeasonSquadService")
+  .squadEndpoint(require("./fieldMatchDaySquad").getClubDay);
+exports.submitClubFieldMatchDaySquad = require("./fieldSeasonSquadService")
+  .squadEndpoint(require("./fieldMatchDaySquad").submit);
+exports.getFieldMatchDaySquads = require("./fieldSeasonSquadService")
+  .squadEndpoint(require("./fieldMatchDaySquad").getFieldDay);
+Object.assign(exports, require("./fieldSquadReadyNotifications").buildHandlers({
+  db, region: REGION, sendBatch: sendPaymentNotificationBatch,
+}));
+
+// Private Field lost-property service.
+exports.fieldLostFound = require("./fieldSeasonSquadService")
+  .squadEndpoint(require("./fieldLostFoundService").operate);

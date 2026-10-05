@@ -1,0 +1,39 @@
+.league-send-panel { padding: 14px; }
+.league-send-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; }
+.league-send-heading h3 { margin: 0 0 4px; }
+.league-send-panel small { font-size: .72rem; }
+.league-send-panel select, .league-send-panel input[type="search"] {
+  max-width: 100%; background: #102746; color: #eef6ff;
+  border: 1px solid #365373; border-radius: 9px; padding: 7px;
+}
+.league-send-players { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.league-send-players label {
+  display: flex; align-items: center; gap: 7px; padding: 8px;
+  border: 1px solid #294260; border-radius: 10px; font-size: .78rem;
+  background: linear-gradient(145deg,#102e53,#081b34);
+}
+.league-send-players label span { min-width: 0; overflow-wrap: anywhere; flex: 1; }
+.league-send-players small { display: block; color: #a8c5df; }
+.league-send-players strong { color: #f0ca84; font-size: .65rem; }
+.league-send-players .is-selected { border-color: #5d91bd; }
+.league-send-order { padding: 0; list-style: none; }
+.league-send-order li { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: .78rem; }
+.league-send-order li > span { flex: 1; }
+.league-send-order button, .league-send-vacancy button, .league-cover-picker button {
+  background: #183655; color: #edf6ff; border: 1px solid #426485;
+  border-radius: 8px; padding: 6px 9px; cursor: pointer;
+}
+.league-send-vacancy { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0; font-size: .78rem; }
+.league-cover-picker { display: grid; gap: 8px; margin: 12px 0; }
+.league-send-button { margin-top: 10px; }
+.league-send-button.is-ready {
+  border-color: #f0ca84; background: linear-gradient(130deg,#8b602c,#c29450);
+  color: #fff; animation: league-send-glow 2.2s ease-in-out infinite;
+}
+@keyframes league-send-glow {
+  0%,100% { box-shadow: 0 0 0 0 rgba(230,180,95,.15); }
+  50% { box-shadow: 0 0 22px 3px rgba(230,180,95,.38); }
+}
+@media(prefers-reduced-motion:reduce) {
+  .league-send-button.is-ready { animation: none; box-shadow: 0 0 12px rgba(230,180,95,.3); }
+}

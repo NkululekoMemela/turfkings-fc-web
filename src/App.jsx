@@ -1,3 +1,4 @@
+import FieldPageFrame from "./components/FieldPageFrame.jsx";
 import ClubLeagueSeasonPage from "./pages/ClubLeagueSeasonPage.jsx";
 import ClubLeagueSeasonEntry from "./components/ClubLeagueSeasonEntry.jsx";
 import { db as notificationFieldDb } from "./firebaseConfig.js";
@@ -2870,23 +2871,33 @@ export default function App() {
       onNotificationOpened: async notification => {
         const data = notification?.data || {};
 
-        if (data.type === "field_season_squad_invitation") {
+        if ([
+          "field_season_squad_invitation",
+          "field_squad_ready_reminder",
+          "field_squad_fixtures_released",
+        ].includes(data.type)) {
           const scope = {
             clubId: String(data.clubId || "").trim(),
             venueId: String(data.venueId || "").trim(),
             seasonId: String(data.seasonId || "").trim(),
           };
           const memberId = String(data.memberId || "").trim();
-          if (![...Object.values(scope), memberId].every(
+          if (!Object.values(scope).every(
             value => /^[A-Za-z0-9_-]{1,150}$/.test(value)
-          )) return;
+          ) || (data.type === "field_season_squad_invitation" &&
+            !/^[A-Za-z0-9_-]{1,150}$/.test(memberId))) return;
 
           try {
             const {getSeasonSquadView} = await import(
               "./storage/fieldSeasonSquadRepository.js"
             );
             const view = await getSeasonSquadView(scope);
-            if (!view.canManage && view.invitation?.memberId !== memberId) {
+            if ((data.type === "field_squad_ready_reminder" && !view.canManage) ||
+                (!view.canManage && (
+                  view.invitation?.memberId !== memberId ||
+                  (data.type !== "field_season_squad_invitation" &&
+                    view.invitation?.invitationStatus !== "accepted")
+                ))) {
               window.alert("This league invitation is not available for your account.");
               return;
             }
@@ -2898,6 +2909,14 @@ export default function App() {
             setShowSessionSelector(false);
             if (scope.clubId !== activeClubId) {
               setSelectedHomeClub(buildClubIdentity({id: scope.clubId}));
+            }
+            if (data.type !== "field_season_squad_invitation") {
+              try {
+                sessionStorage.setItem(`league-squad-focus:${scope.clubId}`, JSON.stringify({
+                  seasonId: scope.seasonId,
+                  matchDayId: String(data.matchDayId || ""),
+                }));
+              } catch {}
             }
             setPage(PAGE_CLUB_LEAGUE_SEASON);
           } catch (error) {
@@ -8388,7 +8407,8 @@ export default function App() {
   }, [isRefereeStatsView]);
 
   const showBottomNav =
-    pagesWithBottomNav.has(page) &&
+    (pagesWithBottomNav.has(page) ||
+      (page === PAGE_CLUB_LEAGUE_SEASON && !isPracticeMode)) &&
     !hideBottomNavForSquadAdmin &&
     page !== PAGE_LIVE;
 
@@ -9694,7 +9714,18 @@ export default function App() {
 
       {page === PAGE_VENUE_ENTRY && (
         <>
-          <VenueEntryPage
+          <FieldPageFrame
+            venue={selectedLeagueVenue}
+            page={fieldNav.ready ? fieldNav.page : "entry"}
+            onHome={() => {
+              if (fieldNav.ready) {
+                setFieldNavTarget({page: "landing", id: Date.now()});
+              } else {
+                setPage(PAGE_LEAGUE_VENUES);
+              }
+            }}
+          >
+            <VenueEntryPage
             key={selectedLeagueVenue?.id || "field-entry"}
             venue={selectedLeagueVenue}
             onFieldNavState={setFieldNav}
@@ -9708,6 +9739,7 @@ export default function App() {
               portalOriginClubId ? PAGE_LANDING : PAGE_LEAGUE_VENUES
             )}
           />
+          </FieldPageFrame>
 
         </>
       )}
@@ -10172,6 +10204,14 @@ export default function App() {
         <ClubLeagueSeasonPage
           key={activeClubId}
           clubId={activeClubId}
+          playerPhotosByName={effectivePlayerPhotosByName}
+          activeRole={activeRole}
+          identity={pageIdentity}
+          onOpenField={(field) => {
+            setPortalOriginClubId(activeClubId);
+            setSelectedLeagueVenue(field);
+            setPage(PAGE_VENUE_ENTRY);
+          }}
           onBack={() => setPage(PAGE_LANDING)}
         />
       )}

@@ -784,23 +784,16 @@ export function VenueLeagueSpectatorPage(props) {
 
   return (
     <div className="page live-page">
-      <header className="header">
-        <button
-          className="secondary-btn"
-          type="button"
-          onClick={goBack}
-          style={{ marginBottom: "0.75rem" }}
-        >
-          ← Back to Home
-        </button>
+      <div className="field-page-context">
 
-        <h1>Spectator View</h1>
+
+
         {matchNumber ? (
           <p>Watching match #{matchNumber}</p>
         ) : (
           <p>Live score tracker</p>
         )}
-      </header>
+      </div>
 
       <section className="card">
         {loading && (

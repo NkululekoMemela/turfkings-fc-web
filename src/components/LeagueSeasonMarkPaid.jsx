@@ -13,7 +13,8 @@ export default function LeagueSeasonMarkPaid({
     style: "currency", currency: "ZAR",
   }).format(Number(cents) / 100);
   const available = entries.filter(entry =>
-    entry.invitationStatus === "accepted" && entry.paymentStatus !== "paid");
+    ["pending", "accepted"].includes(entry.invitationStatus) &&
+    entry.paymentStatus !== "paid");
   const chosen = available.filter(entry => selected.includes(entry.memberId));
 
   async function markPaid() {
@@ -60,15 +61,23 @@ export default function LeagueSeasonMarkPaid({
         <div>
           <strong>Manual payment confirmation</strong>
           <p className="muted small" style={{margin: "6px 0 0"}}>
-            Confirm whole-season contributions received from your squad.
+            Confirm club contributions received. The R79 platform fee is paid separately online.
           </p>
         </div>
         <button type="button" className="primary-btn"
-          disabled={busy} style={{touchAction: "manipulation"}}
+          disabled={busy}
+          style={{touchAction: "manipulation"}}
           onClick={() => {setSelected([]); setError(""); setOpen(true);}}>
           Mark players paid
         </button>
       </div>
+      {!available.length && (
+        <p className="muted small" role="status">
+          {entries.some(entry => entry.invitationStatus === "pending")
+            ? "Pending invitations can be confirmed after an offline commitment."
+            : "No accepted unpaid players need confirmation."}
+        </p>
+      )}
       {open && (
         <div className="modal-backdrop" style={{zIndex: 14000}}
           onClick={() => {if (!working.current) setOpen(false);}}>
@@ -98,7 +107,8 @@ export default function LeagueSeasonMarkPaid({
             }}>
               {entries.map(entry => {
                 const paid = entry.paymentStatus === "paid";
-                const accepted = entry.invitationStatus === "accepted";
+                const accepted = ["pending", "accepted"].includes(
+                  entry.invitationStatus);
                 const picked = selected.includes(entry.memberId);
                 return (
                   <button key={entry.memberId} type="button"

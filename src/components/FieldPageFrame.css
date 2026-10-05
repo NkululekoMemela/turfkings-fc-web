@@ -1,0 +1,400 @@
+/*
+          Pure SVG ribbon: no dim rectangular shell.
+          The bright SVG wave is the only visible top-ribbon shape and is pulled
+          to the page edge so it does not feel bulky or boxed-in.
+        */
+        .field-ribbon-frame .landing-page {
+          padding-top: 0 !important;
+        }
+
+        .field-ribbon-frame .landing-header-sticky {
+          overflow: visible;
+          margin: -1rem -0.75rem 0.34rem -0.75rem;
+          padding: 0 !important;
+          background: transparent !important;
+          border: 0 !important;
+          box-shadow: none !important;
+        }
+
+        .field-ribbon-frame .landing-header-sticky > .landing-wave-header {
+          position: relative;
+          overflow: visible;
+          height: 122px;
+          min-height: 122px;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          border: none !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          isolation: isolate;
+        }
+
+        .field-ribbon-frame .tk-ribbon-wave-svg {
+          position: absolute;
+          top: -1px;
+          left: 0;
+          width: 100%;
+          height: 123px;
+          z-index: 0;
+          overflow: visible;
+          pointer-events: none;
+          filter: drop-shadow(0 13px 22px rgba(2, 6, 23, 0.24));
+        }
+
+        .field-ribbon-frame .landing-wave-header .header-title,
+        .field-ribbon-frame .landing-wave-header .landing-header-divider {
+          position: relative;
+          z-index: 2;
+        }
+
+        .field-ribbon-frame .landing-wave-header .header-title {
+          min-height: 76px;
+          padding: 16px 12px 0 12px;
+          box-sizing: border-box;
+          width: 100%;
+          max-width: 920px;
+          margin: 0 auto;
+        }
+
+        @media (min-width: 760px) {
+          .field-ribbon-frame .landing-header-sticky {
+            margin-left: 0;
+            margin-right: 0;
+          }
+
+          .field-ribbon-frame .landing-wave-header .header-title {
+            padding-left: 18px;
+            padding-right: 18px;
+          }
+        }
+
+        .field-ribbon-frame .landing-wave-header .landing-header-divider {
+          display: none;
+        }
+
+        .field-ribbon-frame .tk-ribbon-mode-label {
+          position: absolute;
+          z-index: 3;
+          left: 14.9%;
+          top: 85.25%;
+          transform: translateY(-50%);
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          pointer-events: none;
+          user-select: none;
+          color: #f8fafc;
+          font-size: clamp(0.48rem, 0.62vw, 0.68rem);
+          font-weight: 900;
+          line-height: 1;
+          letter-spacing: clamp(0.045em, 0.08vw, 0.085em);
+          text-transform: uppercase;
+          white-space: nowrap;
+          text-shadow: none;
+        }
+
+        .field-ribbon-frame .tk-ribbon-mode-label-dot {
+          width: 6px;
+          height: 6px;
+          flex: 0 0 auto;
+          border-radius: 999px;
+          background: currentColor;
+          box-shadow: none;
+        }
+
+        .field-ribbon-frame .tk-ribbon-desktop-lip {
+          display: none;
+        }
+
+        @media (min-width: 760px) {
+          /*
+           * Desktop ribbon:
+           * the main bar follows the central page width,
+           * while the mode lip remains a fixed premium size.
+           */
+          .field-ribbon-frame .landing-wave-header::before {
+            display: none;
+            content: "";
+            position: absolute;
+            z-index: 0;
+            inset: 0 0 auto;
+            height: 86px;
+            background:
+              linear-gradient(
+                90deg,
+                #1d4ed8 0%,
+                #071329 42%,
+                #22c55e 100%
+              );
+          }
+
+          .field-ribbon-frame .tk-ribbon-wave-svg--mobile {
+            display: none;
+          }
+
+          .field-ribbon-frame .tk-ribbon-desktop-lip {
+            position: absolute;
+            display: block;
+            z-index: 1;
+            top: -1px;
+            left: 0;
+            width: 100%;
+            height: 123px;
+            overflow: visible;
+            pointer-events: none;
+            filter:
+              drop-shadow(
+                0 13px 22px rgba(2, 6, 23, 0.24)
+              );
+          }
+
+          .field-ribbon-frame .tk-ribbon-mode-label {
+            left: 67px;
+            top: 103px;
+            transform: translateY(-50%);
+            font-size: 0.62rem;
+            letter-spacing: 0.08em;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .field-ribbon-frame .tk-ribbon-mode-label {
+            font-size: 0.47rem;
+            letter-spacing: 0.075em;
+          }
+
+          .field-ribbon-frame .landing-header-sticky {
+            margin: -1rem -0.75rem 0.28rem -0.75rem;
+          }
+
+          .field-ribbon-frame .landing-header-sticky > .landing-wave-header {
+            height: 120px;
+            min-height: 120px;
+          }
+
+          .field-ribbon-frame .tk-ribbon-wave-svg {
+            top: -1px;
+            height: 121px;
+          }
+
+          .field-ribbon-frame .landing-wave-header .header-title {
+            min-height: 74px;
+            padding: 14px 11px 0 11px;
+          }
+
+        }
+
+
+.field-ribbon-frame {
+  min-width: 0;
+  background: transparent;
+}
+.field-ribbon-frame .landing-header-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  margin: 0 0 .35rem !important;
+}
+.field-ribbon-frame .field-ribbon-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+}
+.field-ribbon-frame .field-ribbon-logo {
+  width: 45px;
+  height: 45px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.field-ribbon-title-copy {
+  flex: 1;
+  min-width: 0;
+}
+.field-ribbon-title-copy small {
+  display: block;
+  color: rgba(255,255,255,.8);
+  font-size: .65rem;
+  line-height: 1.3;
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field-ribbon-frame .field-ribbon-title-copy h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.05rem, 2.2vw, 1.65rem);
+  line-height: 1.15;
+  letter-spacing: -.025em;
+}
+.field-ribbon-home {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  padding: 0;
+  border-radius: 13px;
+  border: 1px solid rgba(255,255,255,.28);
+  background: rgba(4,14,29,.22);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.1);
+}
+.field-ribbon-home:hover { background: rgba(255,255,255,.16); }
+.field-ribbon-home:focus-visible {
+  outline: 2px solid #f2c489;
+  outline-offset: 3px;
+}
+.field-ribbon-content { min-width: 0; }
+.field-ribbon-content > .page,
+.field-ribbon-content > .venue-stats-page {
+  padding-top: 0 !important;
+}
+.field-ribbon-content > .page > header h1,
+.field-ribbon-content > .page > header h2,
+.field-ribbon-content > .venue-stats-page > header h1,
+.field-ribbon-content > .venue-stats-page > header h2,
+.field-ribbon-content .field-chat-heading h1,
+.field-ribbon-content .field-chat-heading h2 {
+  display: none;
+}
+/* Retain identity information and page-specific controls below the ribbon. */
+.app-root--field .field-ribbon-content > .page > .header,
+.app-root--field .field-ribbon-content > .page > header,
+.app-root--field .field-ribbon-content .venue-stats-header,
+.app-root--field .field-ribbon-content .field-chat-heading {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  margin-top: 0 !important;
+}
+@media (max-width: 480px) {
+  .field-ribbon-frame .field-ribbon-logo { width: 38px; height: 38px; }
+  .field-ribbon-frame .field-ribbon-title-row { gap: 9px; }
+  .field-ribbon-frame .field-ribbon-title-copy h1 { font-size: 1.08rem; }
+}
+
+
+/* Shared Field frame reaches the top and has an explicit full page width. */
+.app-root.app-root--field {
+  padding-top: 0 !important;
+  align-items: flex-start;
+}
+.app-root--field > .field-ribbon-frame {
+  width: 100%;
+  max-width: var(--fanm-page-max-width);
+  min-width: 0;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+.app-root--field .field-ribbon-frame > .landing-header-sticky {
+  top: 0 !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+.field-ribbon-content {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.field-ribbon-content > .page,
+.field-ribbon-content > .venue-stats-page {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.field-page-context {
+  margin: 0 0 .7rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.field-page-context > .subtitle {
+  margin-top: 0;
+}
+
+
+/* Full-width ribbon and Sandstone appearance */
+.app-root.app-root--field {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  padding-top: 0 !important;
+}
+.app-root--field > .field-ribbon-frame {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0;
+}
+.app-root--field .field-ribbon-frame > .landing-header-sticky {
+  width: 100%;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  box-sizing: border-box;
+}
+.app-root--field .field-ribbon-content {
+  width: 100%;
+  max-width: var(--fanm-page-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 8px;
+  padding-right: 8px;
+  box-sizing: border-box;
+}
+@media (min-width: 760px) {
+  .app-root--field .field-ribbon-content {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* Compact non-sticky Field Entry ribbon */
+.app-root--field .field-ribbon-frame[data-field-page="entry"] > .landing-header-sticky {
+  position: relative !important;
+  top: auto !important;
+}
+.field-ribbon-frame[data-field-page="entry"] .tk-ribbon-mode-label,
+.field-ribbon-frame[data-field-page="entry"] .tk-ribbon-wave-svg,
+.field-ribbon-frame[data-field-page="entry"] .tk-ribbon-desktop-lip {
+  display: none !important;
+}
+.field-ribbon-frame[data-field-page="entry"] .landing-wave-header {
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 16px !important;
+  background: linear-gradient(
+    110deg, var(--field-ribbon-start), var(--field-ribbon-end)
+  ) !important;
+}
+.field-ribbon-frame[data-field-page="entry"] .header-title {
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  margin: 0 !important;
+}
+.field-ribbon-frame[data-field-page="entry"] .landing-header-divider {
+  display: none !important;
+}
+
+/* Entry plain header and accessible chat layout */
+.app-root--field .field-ribbon-frame[data-field-page="entry"] .landing-wave-header {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+.field-ribbon-frame[data-field-page="entry"] .landing-wave-header::before,
+.field-ribbon-frame[data-field-page="entry"] .landing-wave-header::after {
+  display: none !important;
+}
+.app-root--field[data-field-theme="sandstone"]
+.field-ribbon-frame[data-field-page="entry"] .field-ribbon-title-copy :is(h1, small) {
+  color: #0f2038 !important;
+}
