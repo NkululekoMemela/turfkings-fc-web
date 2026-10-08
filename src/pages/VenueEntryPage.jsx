@@ -1093,11 +1093,37 @@ export default function VenueEntryPage({
   const activeClubShortName = activeClubIdentity.shortName;
   const isTurfKingsClub = activeClubIdentity.isTurfKings;
   const activeClubLogoSrc = activeClubIdentity.logoUrl;
-  const activeClubHeroImage =
+  // Field photos take precedence over the rotating stock artwork.
+  const fieldUploadedHeroImage =
     clubHeroOverride ||
     activeClub?.heroImage ||
     activeClub?.teamPhoto ||
-    (isTurfKingsClub ? TeamPhoto : "");
+    activeClub?.media?.coverImageUrl ||
+    "";
+
+  const fieldEntryStockImages = [
+    "/HomePage/fieldManager1.jpeg",
+    "/HomePage/fieldManager2.jpeg",
+  ];
+  const [fieldEntryStockIndex, setFieldEntryStockIndex] = useState(0);
+  const fieldEntryStockCount = fieldEntryStockImages.length;
+
+  useEffect(() => {
+    setFieldEntryStockIndex(0);
+    if (fieldUploadedHeroImage || fieldEntryStockCount < 2) return;
+
+    const timer = window.setInterval(() => {
+      setFieldEntryStockIndex((index) =>
+        (index + 1) % fieldEntryStockCount
+      );
+    }, 6000);
+
+    return () => window.clearInterval(timer);
+  }, [activeClubId, fieldUploadedHeroImage, fieldEntryStockCount]);
+
+  const activeClubHeroImage =
+    fieldUploadedHeroImage ||
+    fieldEntryStockImages[fieldEntryStockIndex];
 
   const canEditClubHero = false;
 
@@ -6377,7 +6403,9 @@ export default function VenueEntryPage({
               {activeClubHeroImage ? (
                 <img
                   src={activeClubHeroImage}
-                  alt={`${activeClubName} club`}
+                  alt={fieldUploadedHeroImage
+                    ? `${activeClubName} field`
+                    : "5 Asides Near Me field management"}
                   style={{
                     width: "100%",
                     height: "auto",

@@ -735,7 +735,7 @@
 
 /* Nearby logo pin hop */
 #fanm-welcome-hero .fanm-nearby-brand-pin {
-  animation: fanm-pin-hop 5s ease-in-out 5s infinite;
+  animation: fanm-pin-hop 3s ease-in-out 3s infinite;
 }
 @keyframes fanm-pin-hop {
   0%, 12%, 100% {transform: translateY(0);}
