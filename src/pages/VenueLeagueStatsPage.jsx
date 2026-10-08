@@ -1,3 +1,9 @@
+import "./VenueStatsToggles.css";
+import {
+  normalizeVenueLeagueScope,
+  createOfficialVenueLeagueScope,
+  venueLeagueRootPath,
+} from "../core/venueLeaguePaths.js";
 import React, {
   useEffect,
   useMemo,
@@ -7,6 +13,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig.js";
@@ -47,11 +54,31 @@ function seasonLabel(season) {
 
 export default function VenueLeagueStatsPage({
   venue = null,
+  scope = null,
   season: currentSeason = null,
   clubs = [],
   canCorrectResults = false,
   onBack,
 }) {
+  const resolvedScope = scope
+    ? normalizeVenueLeagueScope(scope)
+    : venue?.id
+      ? createOfficialVenueLeagueScope({venueId: venue.id})
+      : null;
+  if (resolvedScope && resolvedScope.venueId !== venue?.id) {
+    throw new Error("Stats session does not belong to this Field.");
+  }
+  const dataRoot = resolvedScope
+    ? venueLeagueRootPath(resolvedScope) : "";
+  const isPractice = resolvedScope?.environment === "practice";
+  const requireOfficialWrite = () => {
+    if (isPractice) {
+      throw new Error(
+        "This correction needs its sandbox adapter. Official data was not changed."
+      );
+    }
+  };
+
   const [activeTab, setActiveTab] = useState("teams");
   const [expandedResultId, setExpandedResultId] = useState(null);
   const [goalDraft, setGoalDraft] = useState(null);
@@ -70,7 +97,7 @@ export default function VenueLeagueStatsPage({
       return undefined;
     }
     return onSnapshot(
-      collection(db, "leagueVenues", venue.id, "seasons"),
+      collection(db, `${dataRoot}/seasons`),
       (snapshot) => setArchivedSeasons(
         snapshot.docs.map((item) => item.data())
           .filter((item) => item.status === "completed")
@@ -79,7 +106,7 @@ export default function VenueLeagueStatsPage({
       ),
       (error) => console.error("[Field archived seasons]", error)
     );
-  }, [venue?.id]);
+  }, [venue?.id, dataRoot]);
 
   const selectedArchive = archivedSeasons.find(
     (item) => item.id === selectedArchiveId
@@ -131,7 +158,9 @@ export default function VenueLeagueStatsPage({
       uniqueClubs.map(async (club) => {
         try {
           const snapshot = await getDoc(
-            doc(db, "clubs", clean(club.id))
+            isPractice
+              ? doc(db, `${dataRoot}/clubs/${clean(club.id)}`)
+              : doc(db, "clubs", clean(club.id))
           );
 
           if (!snapshot.exists()) {
@@ -161,11 +190,20 @@ export default function VenueLeagueStatsPage({
     return () => {
       cancelled = true;
     };
-  }, [displayClubs]);
+  }, [displayClubs, dataRoot, isPractice]);
 
   useEffect(() => {
     let cancelled = false;
-    loadVenueLeaguePlayers({ firestore: db, teams: clubs })
+    const rosterRequest = isPractice
+      ? getDocs(collection(db, `${dataRoot}/clubs`)).then(snapshot => ({
+          docs: snapshot.docs.flatMap(club =>
+            (club.data().players || []).map(player => ({
+              data: () => ({...player, clubId: club.id}),
+            }))
+          ),
+        }))
+      : loadVenueLeaguePlayers({ firestore: db, teams: clubs });
+    rosterRequest
       .then((snapshot) => {
         if (cancelled) return;
         const grouped = {};
@@ -188,7 +226,7 @@ export default function VenueLeagueStatsPage({
       })
       .catch((error) => console.error("[Field stats players]", error));
     return () => { cancelled = true; };
-  }, [clubs]);
+  }, [clubs, dataRoot, isPractice]);
 
   const visibleResults = useMemo(() => {
     if (viewMode === "season" || seasonMode === "previous") {
@@ -231,6 +269,7 @@ export default function VenueLeagueStatsPage({
     setSavingCorrection(true);
     setCorrectionError("");
     try {
+      requireOfficialWrite();
       await correctVenueRecordedGoal({
         venueId: venue.id,
         fixtureId: draft.fixtureId,
@@ -374,7 +413,8 @@ export default function VenueLeagueStatsPage({
                 setDeletingEmptySeason(true);
                 setDeleteSeasonError("");
                 try {
-                  await deleteCurrentEmptyVenueSeason({
+                  requireOfficialWrite();
+      await deleteCurrentEmptyVenueSeason({
                     venueId: venue.id,
                     seasonId: currentSeason.id,
                   });
@@ -788,7 +828,8 @@ export default function VenueLeagueStatsPage({
                                       );
                                       if (!ok) return;
                                       try {
-                                        await deleteVenueRecordedMatch({
+                                        requireOfficialWrite();
+      await deleteVenueRecordedMatch({
                                           venueId: venue.id,
                                           fixtureId: resultId,
                                         });

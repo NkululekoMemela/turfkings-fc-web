@@ -10,6 +10,7 @@ async function loadFieldMatchRoster({
   const squads = {};
   const bookingVersions = {};
   const squadVersions = {};
+  const squadFingerprints = {};
   for (const clubId of [fixture.clubAId, fixture.clubBId]) {
     if (!(season.clubIds || []).includes(clubId)) {
       throw new Error("Both Clubs must be registered for this season.");
@@ -22,8 +23,9 @@ async function loadFieldMatchRoster({
         tx: transaction, db, scope, matchDayId: fixture.matchDayId,
       });
       if (requireMinimum && !data.submission.confirmed) {
-        throw new Error(`${clubId}: the captain must send its confirmed six-player squad.`);
+        throw new Error(`${clubId}: the captain must send its confirmed five or six-player squad.`);
       }
+      squadFingerprints[clubId] = data.submission.fingerprint;
       seasonSquad = {
         eligible: data.submission.players,
         updatedAt: data.squad?.updatedAt,
@@ -81,6 +83,6 @@ async function loadFieldMatchRoster({
     }
     squads[clubId] = eligible;
   }
-  return {squads, bookingVersions, squadVersions};
+  return {squads, bookingVersions, squadVersions, squadFingerprints};
 }
 exports.loadFieldMatchRoster = loadFieldMatchRoster;

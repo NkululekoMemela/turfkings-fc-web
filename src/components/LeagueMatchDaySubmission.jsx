@@ -7,7 +7,6 @@ import {
 } from "../storage/fieldSeasonSquadRepository.js";
 import "./LeagueMatchDaySubmission.css";
 
-const roles = ["GK", "DEF", "DEF", "MID", "ST", "SUB"];
 const testMode = import.meta.env.MODE === "staging";
 const today = () => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Africa/Johannesburg", year: "numeric",
@@ -104,26 +103,18 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
     finally {setBusy(false);}
   }
 
-  const ready = !busy && !loading && selected.length === 6 &&
-    new Set(selected).size === 6 &&
+  const ready = !busy && !loading &&
+    selected.length >= 5 && selected.length <= 6 &&
+    new Set(selected).size === selected.length &&
     selected.every(id => data?.candidates?.some(player => player.memberId === id));
   const unchanged = data?.confirmed &&
     JSON.stringify(selected) === JSON.stringify(data.selectedMemberIds);
-  const move = (index, offset) => {
-    setSelected(current => {
-      const next = [...current];
-      const target = index + offset;
-      if (target < 0 || target >= next.length) return current;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  };
   if (!upcoming.length) return null;
 
   return (
     <section className="card league-send-panel" aria-label="Send matchday squad">
       <div className="league-send-heading">
-        <div><h3>Matchday six</h3><small>Five starters · one substitute</small></div>
+        <div><h3>Match-day squad</h3><small>5 players · optional sixth player</small></div>
         <select aria-label="Match day" value={dayId}
           disabled={busy} onChange={event => setDayId(event.target.value)}>
           {upcoming.map(({day}) => (
@@ -137,8 +128,13 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
         <>
           <p className="muted small">
             {unchanged ? "✓ Confirmed with the Field." :
-              ready ? "Your six are ready. Review the order and send." :
-              `${selected.length}/6 selected. Fill any vacancies or choose your six.`}
+              ready ? "Your squad is ready to send." :
+              `${selected.length}/6 selected. Choose 5 or 6 players.`}
+          </p>
+          <p className="muted small">
+            Check player mentality and shooting settings on the Club side before
+            sending. These settings help determine positions.
+            Set your Club’s formation on the Field side before the match.
           </p>
           <div className="league-send-players">
             {data.candidates.map(player => {
@@ -154,25 +150,10 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
                   <span>{player.fullName}
                     {player.isFillIn && <small>Fill-in · no season charge</small>}
                   </span>
-                  {index >= 0 && <strong>{roles[index]}</strong>}
                 </label>
               );
             })}
           </div>
-          {selected.length > 0 && (
-            <ol className="league-send-order" aria-label="Lineup order">
-              {selected.map((id, index) => (
-                <li key={id}>
-                  <small>{roles[index]}</small>
-                  <span>{data.candidates.find(player => player.memberId === id)?.fullName}</span>
-                  <button type="button" disabled={busy || index === 0}
-                    aria-label="Move player up" onClick={() => move(index, -1)}>↑</button>
-                  <button type="button" disabled={busy || index === selected.length - 1}
-                    aria-label="Move player down" onClick={() => move(index, 1)}>↓</button>
-                </li>
-              ))}
-            </ol>
-          )}
           {data.vacancies.map(player => (
             <div className="league-send-vacancy" key={player.memberId}>
               <span>{player.fullName} · unavailable</span>

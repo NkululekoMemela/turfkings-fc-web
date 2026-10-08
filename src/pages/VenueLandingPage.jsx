@@ -260,6 +260,7 @@ function secondsToEditableMinutes(seconds, fallbackSeconds = 60 * 60) {
 }
 
 export default function VenueLandingPage({
+  dataScope = null,
   fieldScheduleControls = null,
   fieldScheduleView = null,
   fieldSeason = null,
@@ -334,9 +335,7 @@ export default function VenueLandingPage({
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
 
-  const lostFoundOpenCount = useLostFoundSummary(
-    activeClubId || activeClub?.id, isAdmin
-  );
+  const lostFoundOpenCount = useLostFoundSummary(activeClubId || activeClub?.id, isAdmin, dataScope?.environment || "official");
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [pendingMatch, setPendingMatch] = useState(null);
   const [pairingCode, setPairingCode] = useState("");

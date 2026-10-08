@@ -5733,3 +5733,102 @@ Object.assign(exports, require("./fieldSquadReadyNotifications").buildHandlers({
 // Private Field lost-property service.
 exports.fieldLostFound = require("./fieldSeasonSquadService")
   .squadEndpoint(require("./fieldLostFoundService").operate);
+
+// Authenticated Field banking setup and manager approval.
+exports.fieldTeamPayments = require("./fieldSeasonSquadService")
+  .squadEndpoint(require("./fieldTeamPaymentService").operate);
+
+exports.fieldBankingActivationSubmitted = onDocumentWritten({
+  document: "leagueVenues/{venueId}/bankingRequests/{requestId}",
+  region: REGION,
+  retry: true,
+}, event => {
+  const after = event.data?.after.data();
+  const before = event.data?.before.data();
+  if (!after || after.status !== "pending" || (
+    before?.status === "pending" &&
+    before.submittedAtMs === after.submittedAtMs
+  )) return null;
+  return require("./fieldTeamPaymentNotifications").notifyManager({
+    db, sendBatch: sendPaymentNotificationBatch,
+    venueId: event.params.venueId,
+    requestId: event.params.requestId,
+  });
+});
+
+// Save a captain's own confirmed Field match-day formation.
+exports.saveFieldMatchDayFormation = require("./fieldSeasonSquadService")
+  .squadEndpoint(require("./fieldMatchDayFormation").save);
+
+// Field Practice: authorized session and isolated squad snapshot.
+exports.startFieldPracticeSession = onRequest(
+  {region: REGION},
+  async (req, res) => {
+    setCors(res);
+    if (handleOptions(req, res)) return;
+    if (req.method !== "POST") {
+      return res.status(405).json({error: "POST is required."});
+    }
+    const bearer = String(req.headers.authorization || "")
+      .match(/^Bearer (.+)$/);
+    if (!bearer) return res.status(401).json({error: "Sign in first."});
+    let user;
+    try {
+      user = await admin.auth().verifyIdToken(bearer[1], true);
+    } catch {
+      return res.status(401).json({error: "Sign in again."});
+    }
+    try {
+      const session = await require("./fieldPracticeSessionService").start({
+        db, user, venueId: req.body?.venueId,
+      });
+      return res.status(200).json({ok: true, session});
+    } catch (error) {
+      console.error("[Field Practice start]", error);
+      return res.status(400).json({
+        ok: false, error: error.message || "Practice could not start.",
+      });
+    }
+  }
+);
+
+exports.cleanupFieldPracticeSessions =
+  require("firebase-functions/v2/scheduler").onSchedule(
+    {schedule: "every 10 minutes", region: REGION, timeoutSeconds: 540},
+    async () => {
+      const result = await require("./fieldPracticeCleanup").cleanExpired({db});
+      console.info("[Field Practice cleanup]", result);
+    }
+  );
+
+exports.announceFieldPracticeSeason = onRequest(
+  {region: REGION},
+  async (req, res) => {
+    setCors(res);
+    if (handleOptions(req, res)) return;
+    if (req.method !== "POST") {
+      return res.status(405).json({error: "POST is required."});
+    }
+    const bearer = String(req.headers.authorization || "")
+      .match(/^Bearer (.+)$/);
+    if (!bearer) return res.status(401).json({error: "Sign in first."});
+    let user;
+    try {
+      user = await admin.auth().verifyIdToken(bearer[1], true);
+    } catch {
+      return res.status(401).json({error: "Sign in again."});
+    }
+    try {
+      const result = await require("./fieldPracticeInvitations").announce({
+        db, user, venueId: req.body?.venueId,
+        sessionId: req.body?.sessionId, settings: req.body?.settings,
+      });
+      return res.status(200).json({ok: true, ...result});
+    } catch (error) {
+      console.error("[Field Practice invitation]", error);
+      return res.status(400).json({
+        ok: false, error: error.message || "Practice invitation failed.",
+      });
+    }
+  }
+);

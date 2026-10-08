@@ -240,7 +240,8 @@ async function startPracticeSession({
    */
   const creditsRemaining = null;
 
-  await refs.sessionRef.set({
+  await db.runTransaction(async (transaction) => {
+    transaction.set(refs.sessionRef, {
     sessionId,
     clubId: safeClubId,
     userId: uid,
@@ -262,6 +263,14 @@ async function startPracticeSession({
         }
       : {}),
     controlPlaneVersion: 2,
+  });
+    transaction.set(refs.entitlementRef, {
+      clubId: safeClubId,
+      userId: uid,
+      weekKey,
+      activeSessionId: sessionId,
+      updatedAt: startedAt,
+    }, {merge: true});
   });
 
   return {

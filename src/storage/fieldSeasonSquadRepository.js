@@ -73,3 +73,6 @@ export const confirmMatchDayCover = details =>
   });
 export const cancelMatchDayCover = details =>
   requestSeasonSquad("cancelFieldMatchDayReplacement", details);
+
+export const saveFieldMatchDayFormation = details =>
+  requestSeasonSquad("saveFieldMatchDayFormation", details);

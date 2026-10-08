@@ -11,9 +11,8 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
   if (!squad.updatedAt) throw new Error("The season squad needs a valid revision.");
 
   const clubRef = db.doc(`clubs/${clubId}`);
-  const clubSnap = await transaction.get(clubRef);
-  const membershipSnap = await transaction.get(
-    db.doc(`clubFieldMemberships/${clubId}`)
+  const [clubSnap, membershipSnap] = await transaction.getAll(
+    clubRef, db.doc(`clubFieldMemberships/${clubId}`)
   );
   const club = clubSnap.data();
   const membership = membershipSnap.data();
@@ -23,16 +22,16 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
   }
 
   const eligible = [];
-  for (const player of manifest) {
-    const memberSnap = await transaction.get(
-      clubRef.collection("members").doc(player.memberId)
-    );
-    const profileSnap = await transaction.get(
-      clubRef.collection("players").doc(player.sourcePlayerId)
-    );
-    const receiptSnap = await transaction.get(
-      squadRef.collection("paymentConfirmations").doc(player.memberId)
-    );
+  const playerRefs = manifest.flatMap(player => [
+    clubRef.collection("members").doc(player.memberId),
+    clubRef.collection("players").doc(player.sourcePlayerId),
+    squadRef.collection("paymentConfirmations").doc(player.memberId),
+  ]);
+  const playerSnapshots = playerRefs.length
+    ? await transaction.getAll(...playerRefs) : [];
+  for (const [index, player] of manifest.entries()) {
+    const [memberSnap, profileSnap, receiptSnap] =
+      playerSnapshots.slice(index * 3, index * 3 + 3);
     const member = memberSnap.data();
     const profile = profileSnap.data();
     if ((!member || (member.status || "active") !== "active") ||
@@ -60,6 +59,10 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
       memberId: player.memberId,
       sourcePlayerId: player.sourcePlayerId,
       fullName, clubId,
+      photoData: profile.photoData || profile.photoUrl ||
+        profile.photoURL || profile.avatarUrl || "",
+      mentality: profile.mentality ?? null,
+      shooting: profile.shooting ?? null,
     });
   }
   return {squadId: squadRef.id, updatedAt: squad.updatedAt, eligible};

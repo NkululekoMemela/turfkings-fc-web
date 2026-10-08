@@ -93,7 +93,10 @@ function SeasonDialog({ title, children, busy, onClose, premium = false, logoUrl
   );
 }
 
-export function FieldSeasonStartModal({ venue, season, onClose }) {
+export function FieldSeasonStartModal({
+  venue, season, onClose, onAnnounce = announceFieldSeason,
+  isPractice = false,
+}) {
   const [name, setName] = useState(season?.name || "Field League Season");
   const [date, setDate] = useState(season?.startsOn || "");
   const [startTime, setStartTime] = useState(season?.scheduleSettings?.startTime || "18:00");
@@ -120,7 +123,9 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
       {sent ? (
         <>
           <p>{sent} member Clubs have received an invitation.</p>
-          <p>Their administrators can sign up from their Club entry page.</p>
+          <p>{isPractice
+            ? "Sandbox captains have accepted. No real Clubs were contacted."
+            : "Their administrators can sign up from their Club entry page."}</p>
           <button type="button" className="primary-btn" onClick={onClose}>Done</button>
         </>
       ) : (
@@ -132,7 +137,7 @@ export function FieldSeasonStartModal({ venue, season, onClose }) {
           if (busy) return;
           setBusy(true); setError("");
           try {
-            setSent(await announceFieldSeason({
+            setSent(await onAnnounce({
               venueId: venue.id, name, startsOn: date,
               startTime, matchMinutes, halftimeMinutes, turnaroundMinutes,
               entryFee: fee, gameFormat, signupClosesOn: deadline,
@@ -375,7 +380,9 @@ export function ClubFieldSeasonInvitation({ clubId }) {
   );
 }
 
-export function FieldSeasonEndModal({ venue, season, onClose }) {
+export function FieldSeasonEndModal({
+  venue, season, onClose, scope = null,
+}) {
   const cancelling = !fieldSeasonHasPlayRecords(season);
   const [reason, setReason] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -391,6 +398,7 @@ export function FieldSeasonEndModal({ venue, season, onClose }) {
         setBusy(true); setError("");
         try {
           await endVenueSeason({
+            scope,
             venueId: venue.id, seasonId: season.id,
             mode: cancelling ? "cancel" : "complete",
             cancellationReason: reason,

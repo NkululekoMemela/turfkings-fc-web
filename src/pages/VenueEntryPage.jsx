@@ -1,3 +1,9 @@
+import {buildFieldClubTeam} from "../core/fieldClubTeam.js";
+import FieldEndMatchDay from "../components/FieldEndMatchDay.jsx";
+import {resolveFieldUpcomingMatch} from "../core/fieldUpcomingMatch.js";
+import FieldPracticeEntry from "../components/FieldPracticeEntry.jsx";
+import FieldPracticePage from "./FieldPracticePage.jsx";
+import VenueSignupPage from "./VenueSignupPage.jsx";
 import VenueLostFoundPage from "./VenueLostFoundPage.jsx";
 import VenueSquadsPage from "./VenueSquadsPage.jsx";
 import VenueFixturesPage from "./VenueFixturesPage.jsx";
@@ -52,8 +58,6 @@ import {
   chooseVenueFixturePairing,
   prepareVenueSeasonForMatch,
   watchVenueSeason,
-  archiveVenueMatchDay,
-  discardVenueMatchDay,
   endVenueSeason,
 } from "../storage/leagueSeasonRepository.js";
 import {
@@ -750,17 +754,27 @@ export default function VenueEntryPage({
   const [portalRetry, setPortalRetry] = useState(0);
 
   const [venuePage, setVenuePage] = useState("landing");
+  const [fieldSessionChoice, setFieldSessionChoice] = useState("official");
+  const [fieldPracticeSession, setFieldPracticeSession] = useState(null);
+  const [practicePage, setPracticePage] = useState("landing");
+
+  useEffect(() => {
+    setFieldSessionChoice("official");
+    setFieldPracticeSession(null);
+    setVenuePage("landing");
+    setPracticePage("landing");
+  }, [venue?.id, enteredIdentity?.uid, Boolean(enteredIdentity)]);
 
   useEffect(() => {
     onFieldNavState?.({
-      ready: Boolean(enteredIdentity),
-      page: venuePage,
+      ready: Boolean(enteredIdentity) && Boolean(fieldSessionChoice),
+      page: fieldSessionChoice === "practice" ? practicePage : venuePage,
     });
     return () => onFieldNavState?.({
       ready: false,
       page: "landing",
     });
-  }, [enteredIdentity, venuePage, onFieldNavState]);
+  }, [enteredIdentity, venuePage, onFieldNavState, fieldSessionChoice, practicePage]);
 
   useEffect(() => {
     if (fieldNavTarget?.page) setVenuePage(fieldNavTarget.page);
@@ -904,13 +918,6 @@ export default function VenueEntryPage({
     portalRetry,
   ]);
   const [showEndMatchDayModal, setShowEndMatchDayModal] = useState(false);
-  const [endingMatchDay, setEndingMatchDay] = useState(false);
-  const [endMatchDayError, setEndMatchDayError] = useState("");
-  const [confirmEndMatchDay, setConfirmEndMatchDay] = useState(false);
-  const [showDiscardFieldDayConfirm, setShowDiscardFieldDayConfirm] =
-    useState(false);
-  const [discardFieldDayText, setDiscardFieldDayText] = useState("");
-  const [discardingFieldDay, setDiscardingFieldDay] = useState(false);
   const [showStartSeasonModal, setShowStartSeasonModal] = useState(false);
   const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
   const [endingSeason, setEndingSeason] = useState(false);
@@ -5255,17 +5262,10 @@ export default function VenueEntryPage({
 
       const cleanName = String(name || cleanId).trim();
 
-      clubMap.set(cleanId, {
-        id: cleanId,
-        name: cleanName,
-        label: cleanName,
-        captain: "Club representative",
-        players: [],
-        logoUrl: fieldClubProfiles[cleanId]?.logoUrl === DEFAULT_PLATFORM_LOGO
-          ? "" : fieldClubProfiles[cleanId]?.logoUrl || "",
-        transparentLogoUrl: fieldClubProfiles[cleanId]?.transparentLogoUrl === DEFAULT_PLATFORM_LOGO
-          ? "" : fieldClubProfiles[cleanId]?.transparentLogoUrl || "",
-      });
+      clubMap.set(cleanId, buildFieldClubTeam({
+        ...fieldClubProfiles[cleanId]?.raw,
+        id: cleanId, name: cleanName,
+      }));
     };
 
     invitations.forEach((invitation) => {
@@ -5312,44 +5312,10 @@ export default function VenueEntryPage({
       teams.push(awaitingTeams[teams.length]);
     }
 
-    const liveMatch = Object.values(
-      venueSeason?.liveMatches || {}
-    ).find((match) => match?.status === "live") || null;
-
-    const scheduledFixtures = (
-      venueSeason?.fixtures || []
-    ).filter((fixture) =>
-      fixture?.status === "scheduled"
-    );
-
-    const nextFixture =
-      scheduledFixtures.find((fixture) =>
-        fixture.id === venueSeason?.selectedFixtureId &&
-        !venueSeason?.liveMatches?.[fixture.id]
-      ) ||
-      scheduledFixtures.find((fixture) =>
-        !venueSeason?.liveMatches?.[fixture.id]
-      ) || null;
-
-    const confirmedTeams = teams.filter((team) =>
-      (venueSeason?.clubIds || []).includes(team.id)
-    );
-
-    const currentMatch = liveMatch
-      ? buildCurrentMatchFromFixture({
-          teamAId: liveMatch.clubAId,
-          teamBId: liveMatch.clubBId,
-        }, confirmedTeams)
-      : nextFixture
-      ? buildCurrentMatchFromFixture({
-          teamAId: nextFixture.clubAId,
-          teamBId: nextFixture.clubBId,
-        }, confirmedTeams)
-      : {
-          teamAId: teams[0]?.id || null,
-          teamBId: teams[1]?.id || null,
-          standbyId: teams[2]?.id || null,
-        };
+    const {
+      liveMatch, scheduledFixtures, nextFixture,
+      confirmedTeams, currentMatch,
+    } = resolveFieldUpcomingMatch({season: venueSeason, teams});
 
     const effectiveRole = String(
       enteredIdentity?.actingRole ||
@@ -5394,6 +5360,19 @@ export default function VenueEntryPage({
           authenticatedFieldStaff?.isAdministrator === true)
       );
 
+    if (fieldSessionChoice === "practice" && fieldPracticeSession && isFieldAdministrator) {
+      return <FieldPracticePage
+        venue={venue} session={fieldPracticeSession}
+        onPageChange={setPracticePage} fieldNavTarget={fieldNavTarget}
+        onExit={() => {
+          setFieldPracticeSession(null);
+          setFieldSessionChoice("official");
+          setVenuePage("landing");
+          setPracticePage("landing");
+        }}
+      />;
+    }
+
     const assignedPowersMatchUser =
       fieldStaffPowers?.venueId === venue?.id &&
       fieldStaffPowers?.uid === currentUser?.uid;
@@ -5429,6 +5408,7 @@ export default function VenueEntryPage({
     if (venuePage === "lostFound") {
       return (
         <VenueLostFoundPage
+          clubId={enteredIdentity?.clubId || ""}
           key={venue.id}
           venueId={venue.id}
           venueName={venue.name}
@@ -5502,6 +5482,22 @@ export default function VenueEntryPage({
       );
     }
 
+    if (venuePage === "signup") {
+      return (
+        <VenueSignupPage
+          key={`${venue.id}:${currentUser?.uid}`}
+          venue={venue}
+          clubId={(isClubRepresentative || effectiveRole === "club_member")
+            ? enteredIdentity?.clubId || "" : ""}
+          canManageBanking={
+            !isReadOnlyFieldRole && (isVenueOwner || hasActiveFieldRole)
+          }
+          openBanking={fieldNavTarget?.openBanking === true}
+          onBack={() => setVenuePage("landing")}
+        />
+      );
+    }
+
     if (venuePage === "squads") {
       return <VenueSquadsPage venue={venue} season={venueSeason}
         onBack={() => setVenuePage("landing")} />;
@@ -5510,7 +5506,8 @@ export default function VenueEntryPage({
     if (venuePage === "formations") {
       return (
         <VenueLeagueFormationsPage
-          paidFixtureId={liveMatch?.fixtureId || nextFixture?.id || ""}
+          fieldSeason={venueSeason}
+          paidFixtureId=""
           activeClubId={venue.id}
           activeClub={venue}
           fieldLeagueScope={{
@@ -5619,6 +5616,15 @@ export default function VenueEntryPage({
 
     return (
       <>
+      {isFieldAdministrator && <FieldPracticeEntry
+        key={`${venue.id}:${currentUser?.uid}`}
+        venue={venue} userId={currentUser?.uid}
+        onPractice={session => {
+          setFieldPracticeSession(session);
+          setPracticePage("landing");
+          setFieldSessionChoice("practice");
+        }}
+      />}
       {canEndFieldMatchDay && (
         <FieldMatchDayReview
           key={`${venue.id}:${venueSeason?.id}:${currentUser?.uid}`}
@@ -5628,9 +5634,11 @@ export default function VenueEntryPage({
         />
       )}
       <VenueLandingPage
+        onGoToPayments={() => setVenuePage("signup")}
         onGoToSquads={() => setVenuePage("squads")}
         fieldDecisionControls={
-          <>{isVenueOwner && !isReadOnlyFieldRole && effectiveRole === "field_manager" && (
+          <>
+          {isVenueOwner && !isReadOnlyFieldRole && effectiveRole === "field_manager" && (
         <FieldDecisionReview
           venueId={venue.id} seasonId={venueSeason?.id}
           isCreator={isVenueOwner} />
@@ -5950,8 +5958,6 @@ export default function VenueEntryPage({
         onOpenBackupModal={
           canEndFieldMatchDay
             ? () => {
-                setEndMatchDayError("");
-                setConfirmEndMatchDay(false);
                 setShowEndMatchDayModal(true);
               }
             : undefined
@@ -5996,193 +6002,9 @@ export default function VenueEntryPage({
       />
 
       {showEndMatchDayModal && canEndFieldMatchDay && (
-        <div className="modal-backdrop">
-          <div className="modal" role="dialog" aria-modal="true"
-            aria-labelledby="field-end-day-title"
-            style={{ width: "min(95vw, 780px)", maxWidth: "780px",
-              maxHeight: "92vh", overflowY: "auto" }}>
-            <h3 id="field-end-day-title">End Match Day</h3>
-            <p>
-              Review the completed matches, then save this match day to the
-              server and clear the finished live board. Season standings
-              and results remain available.
-            </p>
-            <p className="muted">
-              Completed matches not yet archived: {
-                (venueSeason?.results || []).filter((result) =>
-                  result?.status === "completed" &&
-                  !(venueSeason?.matchDayHistory || []).some((day) =>
-                    (day.results || []).some((saved) =>
-                      saved.fixtureId === result.fixtureId
-                    )
-                  )
-                ).length
-              }
-            </p>
-            {confirmEndMatchDay && (
-              <>
-                <p role="status">
-                  Confirm saving these matches and clearing the finished
-                  live board. This cannot be undone from here.
-                </p>
-                <ul>
-                  {(venueSeason?.results || [])
-                    .filter((result) =>
-                      result?.status === "completed" &&
-                      !(venueSeason?.matchDayHistory || []).some((day) =>
-                        (day.results || []).some((saved) =>
-                          saved.fixtureId === result.fixtureId
-                        )
-                      )
-                    )
-                    .map((result) => (
-                      <li key={result.fixtureId || result.id}>
-                        {result.teamAName || result.teamALabel ||
-                          result.teamAId || "Team A"}
-                        {" "}
-                        {result.goalsA ?? result.scoreA ?? 0}
-                        {"–"}
-                        {result.goalsB ?? result.scoreB ?? 0}
-                        {" "}
-                        {result.teamBName || result.teamBLabel ||
-                          result.teamBId || "Team B"}
-                      </li>
-                    ))}
-                </ul>
-              </>
-            )}
-            {endMatchDayError && (
-              <p className="error-text" role="alert">{endMatchDayError}</p>
-            )}
-            <div className="actions-row" style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              gap: "0.75rem",
-            }}>
-              <button type="button" className="secondary-btn"
-                style={{ background: "#a91f27", color: "#fff" }}
-                disabled={endingMatchDay}
-                onClick={() => {
-                  setDiscardFieldDayText("");
-                  setShowDiscardFieldDayConfirm(true);
-                }}>
-                Delete day's games
-              </button>
-              <button type="button" className="secondary-btn"
-                disabled={endingMatchDay}
-                onClick={() => {
-                  if (confirmEndMatchDay) setConfirmEndMatchDay(false);
-                  else setShowEndMatchDayModal(false);
-                }}>
-                {confirmEndMatchDay ? "Back" : "Cancel"}
-              </button>
-              <button type="button" className="primary-btn"
-                style={{
-                  gridColumn: "1 / -1",
-                  width: "100%",
-                  minWidth: 0,
-                  whiteSpace: "normal",
-                  overflowWrap: "anywhere",
-                }}
-                disabled={endingMatchDay}
-                onClick={async () => {
-                  if (endingMatchDay) return;
-                  if (!confirmEndMatchDay) {
-                    setConfirmEndMatchDay(true);
-                    return;
-                  }
-                  setEndingMatchDay(true);
-                  setEndMatchDayError("");
-                  try {
-                    await archiveVenueMatchDay({
-                      venueId: venue?.id,
-                      seasonId: venueSeason?.id,
-                    });
-                    setShowEndMatchDayModal(false);
-                  } catch (error) {
-                    setEndMatchDayError(
-                      error?.message || "Could not end this match day."
-                    );
-                  } finally {
-                    setEndingMatchDay(false);
-                  }
-                }}>
-                {endingMatchDay
-                  ? "Saving…"
-                  : confirmEndMatchDay
-                    ? "Confirm & Save to server"
-                    : "Review & Continue"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showDiscardFieldDayConfirm &&
-        venue?.ownerUid === currentUser?.uid && (
-        <div className="modal-backdrop" style={{ zIndex: 10060 }}>
-          <div className="modal" role="dialog" aria-modal="true"
-            aria-labelledby="field-discard-day-title"
-            style={{ width: "min(92vw, 520px)" }}>
-            <h3 id="field-discard-day-title">
-              Delete day's games
-            </h3>
-            <p>
-              This removes unarchived completed Field games, their goals
-              and events, and restores their fixtures to scheduled.
-              Earlier archived match days remain saved.
-            </p>
-            <p className="error-text">
-              Use this only for test games. To keep real results, go back
-              and choose Save to server & clear.
-            </p>
-            <label htmlFor="field-discard-confirm">
-              Type DELETE to confirm
-            </label>
-            <input id="field-discard-confirm" className="text-input"
-              value={discardFieldDayText}
-              onChange={(event) =>
-                setDiscardFieldDayText(event.target.value)}
-              autoComplete="off" />
-            {endMatchDayError && (
-              <p className="error-text" role="alert">
-                {endMatchDayError}
-              </p>
-            )}
-            <div className="actions-row">
-              <button type="button" className="secondary-btn"
-                disabled={discardingFieldDay}
-                onClick={() => setShowDiscardFieldDayConfirm(false)}>
-                Back
-              </button>
-              <button type="button" className="primary-btn"
-                style={{ background: "#a91f27" }}
-                disabled={discardingFieldDay ||
-                  discardFieldDayText !== "DELETE"}
-                onClick={async () => {
-                  setDiscardingFieldDay(true);
-                  setEndMatchDayError("");
-                  try {
-                    await discardVenueMatchDay({
-                      venueId: venue.id,
-                      seasonId: venueSeason.id,
-                    });
-                    setShowDiscardFieldDayConfirm(false);
-                    setShowEndMatchDayModal(false);
-                  } catch (error) {
-                    setEndMatchDayError(
-                      error?.message || "Could not delete these games."
-                    );
-                  } finally {
-                    setDiscardingFieldDay(false);
-                  }
-                }}>
-                {discardingFieldDay
-                  ? "Deleting…" : "Confirm delete"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <FieldEndMatchDay venue={venue} season={venueSeason}
+          canDiscard={Boolean(currentUser?.uid) && venue?.ownerUid === currentUser.uid}
+          onClose={() => setShowEndMatchDayModal(false)}/>
       )}
 
       {showStartSeasonModal && isFieldAdministrator && (

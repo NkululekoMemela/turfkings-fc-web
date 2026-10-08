@@ -1,3 +1,5 @@
+import {subscribeFieldManifest} from "../storage/fieldManifestSubscription.js";
+import {fieldPageKey, readFieldPage, saveFieldPage} from "../storage/fieldPageMemory.js";
 import "./VenueSquadsPage.css";
 import React, {useEffect, useRef, useState} from "react";
 import {toPng} from "html-to-image";
@@ -13,12 +15,15 @@ const today = () => new Intl.DateTimeFormat("en-CA", {
   timeZone:"Africa/Johannesburg",year:"numeric",month:"2-digit",day:"2-digit",
 }).format(new Date());
 
-export default function VenueSquadsPage({venue, season, onBack}) {
+export default function VenueSquadsPage({
+  venue, season, onBack, scope = null,
+}) {
   const days = (season?.matchDays || []).filter(day =>
     day.status === "scheduled" && day.dateLocal >= today()
   ).sort((a,b) => a.dateLocal.localeCompare(b.dateLocal));
   const [dayId,setDayId] = useState(days[0]?.id || "");
-  const [data,setData] = useState(null);
+  const memoryKey = fieldPageKey("squads", venue.id, season?.id, dayId);
+  const [data,setData] = useState(() => readFieldPage(memoryKey));
   const [error,setError] = useState("");
   const teamsheetRef = useRef(null);
   async function downloadTeamsheet() {
@@ -39,30 +44,19 @@ export default function VenueSquadsPage({venue, season, onBack}) {
     setDayId(current => days.some(day => day.id === current) ? current : days[0]?.id || "");
   }, [season?.id, days.map(day => day.id).join("|")]);
   useEffect(() => {
+    setError("");
+    setData(null);
     if (!dayId) return undefined;
-    let disposed = false;
-    let inFlight = false;
-    async function load() {
-      if (inFlight || document.visibilityState === "hidden") return;
-      inFlight = true;
-      try {
-        const result = await getFieldMatchDaySquads({
-          venueId:venue.id,seasonId:season.id,matchDayId:dayId,
-        });
-        if (!disposed) {setData(result);setError("");}
-      } catch(failure) {if(!disposed)setError(failure.message);}
-      finally {inFlight=false;}
-    }
-    setData(null); load();
-    const timer = window.setInterval(load,30000);
-    window.addEventListener("focus",load);
-    document.addEventListener("visibilitychange",load);
-    return () => {
-      disposed=true; window.clearInterval(timer);
-      window.removeEventListener("focus",load);
-      document.removeEventListener("visibilitychange",load);
-    };
-  }, [venue.id,season.id,dayId]);
+    return subscribeFieldManifest({
+      venueId: venue.id, season, matchDayId: dayId, scope,
+      onData: result => {setData(result); setError("");},
+      onError: failure => setError(failure.message),
+    });
+  }, [
+    venue.id, season, dayId,
+    scope?.environment, scope?.practiceSessionId,
+  ]);
+
   const clubs = data?.clubs || [];
   const teams = clubs.filter(club => club.status !== "bye").map(club => ({
     ...club,id:club.clubId,

@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { setVenueScheduleTesting, prepareVenueSeasonForMatch } from "../storage/leagueSeasonRepository.js";
 import {submitFieldDecision} from "../storage/fieldDecisionRepository.js";
 
-function RemainingKickoffEditor({venueId, season, day, fixtures}) {
+function RemainingKickoffEditor({scope, venueId, season, day, fixtures}) {
   const remaining = fixtures.filter(item =>
     item.status === "scheduled" && !season.liveMatches?.[item.id]);
   const [time, setTime] = useState(
@@ -19,7 +19,7 @@ function RemainingKickoffEditor({venueId, season, day, fixtures}) {
       setBusy(true); setMessage("");
       try {
         await submitFieldDecision({
-          venueId, seasonId: season.id, action: "delay_remaining", reason,
+          scope, venueId, seasonId: season.id, action: "delay_remaining", reason,
           parameters: {matchDayId: day.id, startTime: time},
         });
         setMessage("Request sent. Times change after the Field creator approves.");
@@ -46,7 +46,7 @@ function RemainingKickoffEditor({venueId, season, day, fixtures}) {
   );
 }
 
-function MatchDayEditor({ venueId, season, day, teams }) {
+function MatchDayEditor({ scope, venueId, season, day, teams }) {
   const fixtures = (season.fixtures || [])
     .filter(item => item.matchDayId === day.id)
     .sort((a, b) => String(a.scheduledLocal).localeCompare(String(b.scheduledLocal)));
@@ -78,7 +78,7 @@ function MatchDayEditor({ venueId, season, day, teams }) {
         {locked ? (
           <>
             <small className="muted">Played and live fixture times are preserved.</small>
-            <RemainingKickoffEditor venueId={venueId} season={season}
+            <RemainingKickoffEditor scope={scope} venueId={venueId} season={season}
               day={day} fixtures={fixtures} />
           </>
         ) : (
@@ -88,7 +88,7 @@ function MatchDayEditor({ venueId, season, day, teams }) {
             setBusy(true); setMessage("");
             try {
               await submitFieldDecision({
-                venueId, seasonId: season.id, action: "reschedule_day", reason,
+                scope, venueId, seasonId: season.id, action: "reschedule_day", reason,
                 parameters: {
                   matchDayId: day.id, dateLocal: date, startTime: time,
                 },
@@ -127,6 +127,7 @@ function MatchDayEditor({ venueId, season, day, teams }) {
 }
 
 export default function FieldMatchDaySchedule({
+  scope = null, onPublish = null,
   venueId, season, isCreator = false, readOnly = true, teams = [], myClubId = "",
 }) {
   const [savingTesting, setSavingTesting] = useState(false);
@@ -185,7 +186,12 @@ export default function FieldMatchDaySchedule({
               setSavingTesting(true);
               setTestingError("");
               try {
-                await prepareVenueSeasonForMatch({ venueId });
+                if (scope?.environment === "practice") {
+                  if (!onPublish) throw new Error("Practice publishing adapter required.");
+                  await onPublish();
+                } else {
+                  await prepareVenueSeasonForMatch({ venueId });
+                }
               } catch (error) {
                 setTestingError(error.message || "Could not publish fixtures.");
               } finally { setSavingTesting(false); }
@@ -222,7 +228,7 @@ export default function FieldMatchDaySchedule({
               setTestingError("");
               try {
                 await setVenueScheduleTesting({
-                  venueId, seasonId: season.id, enabled,
+                  scope, venueId, seasonId: season.id, enabled,
                 });
               } catch (error) {
                 setTestingError(error.message || "Could not change testing mode.");
@@ -235,7 +241,7 @@ export default function FieldMatchDaySchedule({
       {season.matchDays.map(day => (
         <MatchDayEditor key={`${season.id}-${day.id}-${day.dateLocal}-${
           day.startTime || season.fixtures?.find(f => f.matchDayId === day.id)?.scheduledLocal
-        }`} venueId={venueId} season={season} day={day} teams={teams} />
+        }`} scope={scope} venueId={venueId} season={season} day={day} teams={teams} />
       ))}
     </details>
   );

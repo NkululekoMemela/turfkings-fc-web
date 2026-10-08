@@ -1,3 +1,10 @@
+import {saveFieldPracticeFormation} from "../storage/fieldPracticeFormationRepository.js";
+import {subscribeFieldManifest} from "../storage/fieldManifestSubscription.js";
+import {fieldPageKey, readFieldPage, saveFieldPage} from "../storage/fieldPageMemory.js";
+import {
+  getFieldMatchDaySquads, saveFieldMatchDayFormation,
+} from "../storage/fieldSeasonSquadRepository.js";
+import {getFormationSlotFamily, buildBestOutfieldAssignment} from "../core/playerPositioning.js";
 // src/pages/FormationsPage.jsx
 import { FANM_PRO_CLUBS } from "../data/fanm/fanmTeamLibrary.js";
 import {
@@ -506,6 +513,10 @@ function pickLatestStoredVariant(modeEntry) {
   }
 
   const variants = modeEntry.variants || {};
+  if (variants[LINEUP_SAVE_ROLE_CAPTAIN]) {
+    return variants[LINEUP_SAVE_ROLE_CAPTAIN];
+  }
+
   const candidates = Object.entries(variants)
     .map(([role, lineup]) => ({
       role,
@@ -959,6 +970,8 @@ const LONG_PRESS_MS = 650;
 const MAX_SUBS = 6;
 
 export function FormationsPage({
+  fieldSeason = null,
+  paidFixtureId = "",
   activeClubId = "turf-kings",
   fieldLeagueScope = null,
   isPracticeMode = false,
@@ -1053,11 +1066,12 @@ export function FormationsPage({
   );
 
   const visibleGameTypeOptions = useMemo(
-    () => [selectedSmallSidedGameType, GAME_TYPE_11],
+    () => [selectedSmallSidedGameType],
     [selectedSmallSidedGameType]
   );
 
   const [players, setPlayers] = useState([]);
+  const [manifestClubs, setManifestClubs] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [
     goalkeeperRestrictionsByTeam,
@@ -1109,11 +1123,21 @@ export function FormationsPage({
 
   useEffect(() => {
     let cancelled = false;
+    let latest = null;
+    const permissions = new Map();
+    const season = fieldSeason || activeClub?.league?.activeSeason;
+    const fixture = season?.fixtures?.find(item => item.id === paidFixtureId);
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Johannesburg",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    const nextDay = (season?.matchDays || [])
+      .filter(day => day.status === "scheduled" && day.dateLocal >= today)
+      .sort((a, b) => a.dateLocal.localeCompare(b.dateLocal))[0];
+    const matchDayId = fixture?.matchDayId || nextDay?.id;
 
-    loadVenueLeaguePlayers({ firestore: db, teams: sourceTeams })
-      .then((snap) => {
-        if (cancelled) return;
-
+    function consumeSnap(snap) {
+      if (cancelled) return;
         const list = snap.docs.map((d) => {
           const data = d.data() || {};
           const fullName = toTitleCase(
@@ -1136,10 +1160,12 @@ export function FormationsPage({
             id: d.id,
             clubId: data.clubId || "",
             sourcePlayerId: data.sourcePlayerId || "",
+            photoData: data.photoData || "",
             fullName,
             shortName,
             aliases,
             status: data.status || "active",
+            squadOrder: data.squadOrder ?? null,
             mentality: rating(data.mentality),
             shooting: rating(data.shooting),
           };
@@ -1152,16 +1178,81 @@ export function FormationsPage({
           a.fullName.localeCompare(b.fullName)
         );
         setPlayers(active);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error("[Field Formations] Could not load club players:", error);
-          setPlayers([]);
-        }
+    }
+    function consumeResult(result) {
+      if (cancelled) return;
+      latest = result;
+      setManifestClubs(result.clubs || []);
+      const clubs = (result.clubs || []).map(club => ({
+        ...club,
+        canManageFormation: permissions.get(club.clubId) === true,
+      }));
+      fieldFormationContext.current = {
+        venueId: fieldLeagueScope.venueId,
+        seasonId: fieldLeagueScope.seasonId, matchDayId, clubs,
+      };
+      consumeSnap({docs: clubs
+        .filter(club => club.confirmed === true)
+        .flatMap(club => (club.players || []).map((player, index) => ({
+          id: `${club.clubId}::${player.sourcePlayerId}`,
+          data: () => ({
+            ...player, clubId: club.clubId,
+            squadOrder: index, status: "active",
+          }),
+        }))),
       });
+    }
+    const failed = error => {
+      if (!cancelled) {
+        console.error("[Field Formations] Squad loading failed:", error);
+        setFieldFormationMessage(error.message || "Could not load the squad.");
+      }
+    };
 
-    return () => { cancelled = true; };
-  }, [sourceTeams]);
+    let unsubscribe = () => {};
+    if (fieldLeagueScope) {
+      setPlayers([]);
+      fieldFormationContext.current = null;
+      if (matchDayId && season) {
+        unsubscribe = subscribeFieldManifest({
+          venueId: fieldLeagueScope.venueId,
+          season, matchDayId, scope: fieldLeagueScope,
+          onData: consumeResult, onError: failed,
+        });
+        // Permission lookup runs separately and never holds up the players.
+        if (fieldLeagueScope.environment !== "practice") getFieldMatchDaySquads({
+          venueId: fieldLeagueScope.venueId,
+          seasonId: fieldLeagueScope.seasonId, matchDayId,
+        }).then(result => {
+          if (cancelled) return;
+          for (const club of result.clubs || []) {
+            permissions.set(club.clubId, club.canManageFormation === true);
+          }
+          if (latest) consumeResult(latest);
+        }).catch(() => {});
+      }
+    } else {
+      loadVenueLeaguePlayers({firestore: db, teams: sourceTeams})
+        .then(consumeSnap).catch(failed);
+    }
+    return () => {cancelled = true; unsubscribe();};
+  }, [
+    paidFixtureId,
+    fieldLeagueScope?.venueId, fieldLeagueScope?.seasonId,
+    fieldLeagueScope?.environment, fieldLeagueScope?.practiceSessionId,
+    JSON.stringify((sourceTeams || []).map(team => team.id)),
+    JSON.stringify({
+      id: (fieldSeason || activeClub?.league?.activeSeason)?.id,
+      days: (fieldSeason || activeClub?.league?.activeSeason)?.matchDays,
+      fixtures: (fieldSeason || activeClub?.league?.activeSeason)?.fixtures,
+      clubs: (fieldSeason || activeClub?.league?.activeSeason)?.clubIds,
+    }),
+  ]);
+
+  const [fieldFormationMessage, setFieldFormationMessage] = useState("");
+  const fieldFormationContext = useRef(null);
+  const fieldFormationSaves = useRef(new Map());
+  const fieldFormationSaveKeys = useRef(new Map());
 
   const playerResolver = useMemo(() => {
     const byAny = new Map();
@@ -1259,6 +1350,7 @@ export function FormationsPage({
   }, [playerPhotosByName]);
 
   useEffect(() => {
+    if (fieldLeagueScope) return;
     const alreadyLoaded =
       playerPhotosByName &&
       Object.keys(playerPhotosByName).length > 20;
@@ -1456,10 +1548,28 @@ export function FormationsPage({
   }, [activeDbPlayers]);
 
   const canonicalTeams = useMemo(() => {
-    return (sourceTeams || []).map((t) => {
+    const fieldTeams = manifestClubs
+      .filter(club => club.status !== "bye")
+      .map(club => {
+        const original = (sourceTeams || []).find(team =>
+          String(team.id) === String(club.clubId)
+        );
+        return {
+          ...original,
+          id: club.clubId,
+          name: club.name,
+          label: club.name,
+          logoUrl: club.logoUrl || original?.logoUrl || "",
+        };
+      });
+    const displayTeams = fieldLeagueScope && fieldTeams.length
+      ? fieldTeams : sourceTeams || [];
+    return displayTeams.map((t) => {
       const supplied = players
         .filter((player) => String(player.clubId) === String(t.id))
-        .sort((a, b) => a.fullName.localeCompare(b.fullName));
+        .sort((a, b) => fieldLeagueScope
+          ? (a.squadOrder ?? 999) - (b.squadOrder ?? 999)
+          : a.fullName.localeCompare(b.fullName));
 
       return {
         ...t,
@@ -1475,10 +1585,20 @@ export function FormationsPage({
         captainId: t.captainId || null,
       };
     });
-  }, [sourceTeams, players, playerResolver]);
+  }, [sourceTeams, players, playerResolver, manifestClubs, fieldLeagueScope]);
 
   const selectedTeamCanonical =
     canonicalTeams.find((t) => t.id === selectedTeamId) || canonicalTeams[0] || null;
+
+  useEffect(() => {
+    if (!fieldLeagueScope) return;
+    setPlayerPhotos(Object.fromEntries(players
+      .filter(player =>
+        String(player.clubId) === String(selectedTeamCanonical?.id) &&
+        player.photoData
+      )
+      .map(player => [player.fullName, player.photoData])));
+  }, [players, selectedTeamCanonical?.id, Boolean(fieldLeagueScope)]);
 
   const isTemporaryOpponentTeam = useMemo(() => {
     return Boolean(
@@ -1661,7 +1781,7 @@ export function FormationsPage({
     const targetPlayerPool =
       targetTeam?.players || [];
 
-    const next = resolveLatestPreferredTeamLineup(
+    let next = resolveLatestPreferredTeamLineup(
       targetTeam,
       targetGameType,
       lineupsByTeam,
@@ -1669,6 +1789,69 @@ export function FormationsPage({
       targetDefaultFormationId,
       targetPlayerPool
     );
+
+    const savedEntry = lineupsByTeam?.[targetTeam?.id];
+    const savedMode = savedEntry?.[targetGameType];
+    const hasSavedFormation = Boolean(
+      savedEntry?.formationId || savedMode?.formationId ||
+      savedMode?.variants?.captain || savedMode?.variants?.admin ||
+      savedMode?.default?.meta?.savedByRole === LINEUP_SAVE_ROLE_CAPTAIN ||
+      savedMode?.default?.meta?.savedByRole === LINEUP_SAVE_ROLE_ADMIN
+    );
+
+    const fieldMode = savedEntry?.[targetGameType];
+    const fieldSaved = fieldMode?.variants?.captain ||
+      fieldMode?.variants?.admin ||
+      ([LINEUP_SAVE_ROLE_CAPTAIN, LINEUP_SAVE_ROLE_ADMIN].includes(
+        fieldMode?.default?.meta?.savedByRole
+      ) ? fieldMode.default : null);
+    const manifest = fieldFormationContext.current?.clubs.find(
+      club => club.clubId === targetTeam?.id
+    );
+    const hasCurrentFieldFormation = Boolean(
+      fieldSaved && manifest?.confirmed &&
+      fieldSaved.matchDayId === fieldFormationContext.current?.matchDayId &&
+      fieldSaved.squadFingerprint === manifest.fingerprint &&
+      ["p1", "p2", "p3", "p4", "p5"].every(slot =>
+        targetPlayerPool.some(name =>
+          normKey(name) === normKey(fieldSaved.positions?.[slot])
+        )
+      ) &&
+      new Set(["p1", "p2", "p3", "p4", "p5"].map(slot =>
+        normKey(fieldSaved.positions?.[slot])
+      )).size === 5
+    );
+
+    if (fieldLeagueScope && !hasCurrentFieldFormation) {
+      const formation = targetFormationsMap[next.formationId] ||
+        targetFormationsMap[targetDefaultFormationId];
+      const starters = targetPlayerPool.slice(0, formation.positions.length);
+      const positions = {};
+      const goalkeeper = formation.positions.find(position =>
+        getFormationSlotFamily(position) === "goalkeeper");
+      const keeperName = goalkeeper ? starters[0] : null;
+      if (goalkeeper) positions[goalkeeper.id] = keeperName || null;
+
+      const outfield = starters.filter(name => name !== keeperName).map(name => ({
+        ...(players.find(player =>
+          String(player.clubId) === String(targetTeam?.id) &&
+          normKey(player.fullName) === normKey(name)) || {}),
+        fullName: name,
+      }));
+      const assignment = buildBestOutfieldAssignment(
+        outfield, formation.positions
+      );
+      for (const item of assignment.assignments) {
+        positions[item.position.id] = item.player.fullName;
+      }
+      for (const position of formation.positions) {
+        if (!(position.id in positions)) positions[position.id] = null;
+      }
+      next = {
+        ...next, positions,
+        benchSnapshot: targetPlayerPool.slice(formation.positions.length),
+      };
+    }
 
     const canonPositions = {};
     Object.keys(next.positions || {}).forEach((posId) => {
@@ -1902,6 +2085,67 @@ export function FormationsPage({
       gameType
     );
 
+    if (fieldLeagueScope) {
+      const context = fieldFormationContext.current;
+      const club = context?.clubs.find(item => item.clubId === teamId);
+      if (!club?.confirmed ||
+          context.venueId !== fieldLeagueScope.venueId ||
+          context.seasonId !== fieldLeagueScope.seasonId) return;
+      if (!club.canManageFormation && !canManageFieldFormations) return;
+      if (gameType !== "5") return;
+
+      const details = {
+        venueId: context.venueId,
+        seasonId: context.seasonId,
+        matchDayId: context.matchDayId,
+        clubId: teamId,
+        expectedFingerprint: club.fingerprint,
+        lineup: previewLineup,
+      };
+      const saveKey = JSON.stringify([
+        context.seasonId, context.matchDayId, club.fingerprint,
+        previewLineup.formationId,
+        ["p1", "p2", "p3", "p4", "p5"].map(slot =>
+          previewLineup.positions?.[slot] || null
+        ),
+        previewLineup.benchSnapshot || [],
+      ]);
+      if (fieldFormationSaveKeys.current.get(teamId) === saveKey) return;
+      fieldFormationSaveKeys.current.set(teamId, saveKey);
+      setFieldFormationMessage("Saving formation…");
+      const previous = fieldFormationSaves.current.get(teamId) ||
+        Promise.resolve();
+
+      // Keep rapid changes in order; publish only server-confirmed saves.
+      const pending = previous.catch(() => {}).then(async () => {
+        try {
+          const result = fieldLeagueScope.environment === "practice"
+            ? await saveFieldPracticeFormation({
+                ...details, scope: fieldLeagueScope,
+              })
+            : await saveFieldMatchDayFormation(details);
+          if (fieldFormationContext.current !== context) return;
+          setLineupsByTeam(current => writeLineupVariant(
+            current, teamId, "5", result.lineup, result.role
+          ));
+          setFieldFormationMessage("✓ Starting formation saved.");
+        } catch (error) {
+          if (fieldFormationSaveKeys.current.get(teamId) === saveKey) {
+            fieldFormationSaveKeys.current.delete(teamId);
+          }
+
+          console.error("[Field formations save]", error);
+          if (fieldFormationContext.current === context) {
+            setFieldFormationMessage(
+              error.message || "Could not save this formation."
+            );
+          }
+        }
+      });
+      fieldFormationSaves.current.set(teamId, pending);
+      return;
+    }
+
     if (fieldLeagueScope && canManageFieldFormations) {
       previewLineup = {
         ...previewLineup,
@@ -1976,6 +2220,26 @@ export function FormationsPage({
       return updatedMap;
     });
   };
+
+  useEffect(() => {
+    if (!fieldLeagueScope || gameType !== "5") return;
+    const context = fieldFormationContext.current;
+    const club = context?.clubs.find(item =>
+      item.clubId === selectedTeamCanonical?.id);
+    if (!club?.confirmed ||
+        !(club.canManageFormation || canManageFieldFormations)) return;
+    const names = ["p1", "p2", "p3", "p4", "p5"]
+      .map(slot => lineup.positions?.[slot]);
+    if (names.some(name => !name) || new Set(names).size !== 5) return;
+    const mode = lineupsByTeam?.[club.clubId]?.["5"];
+    const saved = mode?.variants?.captain || mode?.variants?.admin;
+    if (saved?.matchDayId === context.matchDayId &&
+        saved?.squadFingerprint === club.fingerprint) return;
+    saveTeamLineup(club.clubId, lineup);
+  }, [
+    lineup, selectedTeamCanonical?.id, manifestClubs,
+    canManageFieldFormations, lineupsByTeam, gameType,
+  ]);
 
   const handleFormationChange = (e) => {
     if (!canEditLineups) return;
@@ -2302,6 +2566,10 @@ export function FormationsPage({
     <div className="page lineups-page">
       {renderTopHeader()}
 
+      {fieldLeagueScope && fieldFormationMessage && (
+        <p role="status" className="muted small">{fieldFormationMessage}</p>
+      )}
+
       <section
         ref={exportRef}
         className="card lineups-card"
@@ -2318,34 +2586,47 @@ export function FormationsPage({
         title="Double-click to save. On mobile, long-press to save."
       >
         <div className="lineups-controls">
-          <div className="field-row inline-field">
-            <label>Game type</label>
-            <div className="segmented-toggle">
-              {visibleGameTypeOptions.map((type) => (
-                <button
-                  key={`game-type-${type}`}
-                  type="button"
-                  className={`segmented-option ${gameType === type ? "active" : ""}`}
-                  onClick={() => handleGameTypeClick(type)}
-                >
-                  {getGameTypeLabel(type)}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {isSmallSidedGameType(gameType) ? (
             <div className="field-row inline-field">
               <label>Team ({getGameTypeLabel(gameType)})</label>
-              <div className="team-pill-row">
+              <div className="team-pill-row" style={{
+                display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 10, width: "100%",
+              }}>
                 {canonicalTeams.map((t) => (
                   <button
                     key={`team-pill-${gameFormat}-${t.id}`}
                     type="button"
                     className={`team-pill-btn ${t.id === selectedTeamCanonical.id ? "active" : ""}`}
                     onClick={() => handleTeamClick(t.id)}
+                    aria-pressed={t.id === selectedTeamCanonical.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      minHeight: 60, height: "100%", width: "100%",
+                      minWidth: 0, boxSizing: "border-box", textAlign: "left",
+                      padding: "9px 14px", borderRadius: 16,
+                      border: t.id === selectedTeamCanonical.id
+                        ? "1px solid #e7b974" : "1px solid rgba(255,255,255,.14)",
+                      background: t.id === selectedTeamCanonical.id
+                        ? "linear-gradient(135deg,#293549,#152239)" : "#101b2d",
+                      color: "#f8fafc", fontWeight: 700,
+                    }}
                   >
-                    {renderTeamIdentityLabel(t, t.label)}
+                    {t.logoUrl ? (
+                      <img src={t.logoUrl} alt="" style={{
+                        width: 32, height: 32, objectFit: "contain",
+                        borderRadius: 8, flexShrink: 0,
+                      }} />
+                    ) : (
+                      <span aria-hidden="true" style={{
+                        width: 32, height: 32, display: "grid",
+                        placeItems: "center", borderRadius: 8,
+                        background: "rgba(231,185,116,.12)", color: "#e7b974",
+                      }}>{String(t.label || t.name || "C").slice(0,1)}</span>
+                    )}
+                    <span style={{minWidth: 0, overflowWrap: "anywhere"}}>
+                      {t.label || t.name}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -2845,77 +3126,6 @@ export function FormationsPage({
               </>
             ) : null}
 
-            <div className="photo-toggle-row" style={{ marginTop: "0.25rem" }}>
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => setShowPhotoPanel((v) => !v)}
-              >
-                {showPhotoPanel ? "Hide player photos" : "Show player photos"}
-              </button>
-            </div>
-
-            {showPhotoPanel && (
-              <div className="photo-upload-block">
-                <h4>Player photo</h4>
-                <p className="muted small">
-                  Upload a profile picture for the selected player card.
-                </p>
-
-                {isTemporaryOpponentTeam ? (
-                  <div className="field-row">
-                    <label>Guest player</label>
-                    <select
-                      className="lineups-select"
-                      value={selectedPhotoPlayerName}
-                      onChange={(e) => {
-                        setSelectedPhotoPlayerName(e.target.value);
-                        setPhotoMessage("");
-                      }}
-                      disabled={uploadingPhoto || teamPhotoUploadPlayers.length === 0}
-                    >
-                      {teamPhotoUploadPlayers.length === 0 ? (
-                        <option value="">No guest players yet</option>
-                      ) : (
-                        teamPhotoUploadPlayers.map((name) => (
-                          <option key={`guest-photo-${name}`} value={name}>
-                            {displayCompactName(name)}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                    <p className="muted small">
-                      Guest photos are saved for this temporary opponent list only. They do not create permanent Turf Kings player records.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="field-row">
-                    {isVerifiedPlayer ? (
-                      <p className="muted small">
-                        Uploading as <strong>{verifiedPlayerName}</strong>.
-                      </p>
-                    ) : (
-                      <p className="error-text small">
-                        We can&apos;t tell which player you are. Please verify your player identity on the home screen before uploading a photo.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div className="field-row">
-                  <label>Upload image</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePhotoFileChange}
-                    disabled={uploadingPhoto || !canUploadPhotoForCurrentSelection}
-                  />
-                </div>
-
-                {uploadingPhoto && <p className="muted small">Uploading photo…</p>}
-                {photoMessage && <p className="muted small">{photoMessage}</p>}
-              </div>
-            )}
           </div>
         </div>
       </section>

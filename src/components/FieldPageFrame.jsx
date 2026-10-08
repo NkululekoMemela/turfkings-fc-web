@@ -1,3 +1,4 @@
+import {FieldRibbonContext} from "./FieldRibbonContext.jsx";
 import React, {useEffect, useId, useState} from "react";
 import "./FieldPageFrame.css";
 
@@ -5,6 +6,7 @@ const titles = {
   entry: "Field Access",
   landing: "Home",
   stats: "League Stats",
+  signup: "Signup",
   squads: "Matchday Squads",
   formations: "Lineups & Formations",
   news: "Field News",
@@ -20,6 +22,7 @@ export default function FieldPageFrame({
   venue, page = "landing", onHome, children,
 }) {
   const [headerScrolled, setHeaderScrolled] = useState(false);
+  const [ribbonHost, setRibbonHost] = useState(null);
   const ribbonId = useId().replace(/:/g, "");
   const title = page === "landing"
     ? venue?.name || "Your Field"
@@ -37,6 +40,7 @@ export default function FieldPageFrame({
   }, []);
 
   return (
+    <FieldRibbonContext.Provider value={ribbonHost}>
     <div className="field-ribbon-frame" data-field-page={page}>
       {page !== "entry" && <div
         className={`landing-header-sticky ${
@@ -185,6 +189,7 @@ export default function FieldPageFrame({
                 <span aria-hidden="true" style={{fontSize: "24px", lineHeight: 1}}>🏡</span>
               </button>
               )}
+              <div className="field-ribbon-practice-slot" ref={setRibbonHost}/>
             </div>
           </div>
 
@@ -194,5 +199,6 @@ export default function FieldPageFrame({
       </div>}
       <div className="field-ribbon-content">{children}</div>
     </div>
+    </FieldRibbonContext.Provider>
   );
 }

@@ -12,7 +12,7 @@ const actionLabel = action => ({
 
 const timeLabel = value => String(value || "Time not published").replace("T", " · ");
 
-export default function FieldDecisionReview({venueId, seasonId, isCreator}) {
+export default function FieldDecisionReview({scope = null, venueId, seasonId, isCreator}) {
   const [requests, setRequests] = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [dismissed, setDismissed] = useState([]);
@@ -25,11 +25,11 @@ export default function FieldDecisionReview({venueId, seasonId, isCreator}) {
     setDismissed([]);
     setError("");
     return watchFieldDecisions({
-      venueId, isCreator,
+      scope, venueId, isCreator,
       onData: setRequests,
       onError: failure => setError(failure.message || "Could not load Field requests."),
     });
-  }, [venueId, isCreator, seasonId]);
+  }, [venueId, isCreator, seasonId, scope?.environment, scope?.practiceSessionId]);
 
   const current = requests.filter(item => item.seasonId === seasonId);
   const pending = current.filter(item => item.status === "pending");
@@ -52,7 +52,7 @@ export default function FieldDecisionReview({venueId, seasonId, isCreator}) {
     setBusy(true);
     setError("");
     try {
-      await reviewFieldDecision({venueId, requestId: selected.id, response});
+      await reviewFieldDecision({scope, venueId, requestId: selected.id, response});
       setDismissed(previous => [...previous, selected.id]);
       setSelectedId("");
     } catch (failure) {

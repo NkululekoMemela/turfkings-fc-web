@@ -245,6 +245,10 @@ export function loadVenueLeaguePlayers({
 export async function loadVenuePaidMatchPlayers({
   firestore, scope, fixtureId,
 }) {
+  if (scope?.environment === "practice") {
+    const {loadPracticeMatchPlayers} = await import("./fieldPracticeMatchRepository.js");
+    return loadPracticeMatchPlayers({firestore, scope, fixtureId});
+  }
   if (!scope?.venueId || !scope?.seasonId || !fixtureId) {
     throw new Error("The league roster needs a Field, season and fixture.");
   }
@@ -277,10 +281,17 @@ export async function loadVenuePaidMatchPlayers({
   } finally {window.clearTimeout(timeout);}
   const entries = await Promise.all(
     Object.entries(result.squads).map(async ([clubId, manifest]) => {
-      const profiles = await Promise.all(manifest.map(player =>
-        getDoc(getPlayerDoc(firestore, player.sourcePlayerId, clubId))));
-      const docs = profiles.filter(profile => profile.exists() &&
-        String(profile.data().status || "active").toLowerCase() === "active");
+      // The server already validates membership, profile and payment.
+      // Use its squad projection instead of re-reading private Club profiles.
+      const docs = manifest.map(player => ({
+        id: player.sourcePlayerId,
+        exists: () => true,
+        data: () => ({
+          ...player,
+          fullName: player.fullName,
+          status: "active",
+        }),
+      }));
       return {
         clubId,
         snapshot: {docs, forEach: callback => docs.forEach(callback)},

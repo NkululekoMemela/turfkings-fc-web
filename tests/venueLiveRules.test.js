@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { deleteDoc, doc, getDoc, runTransaction, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, runTransaction, serverTimestamp, setDoc, updateDoc, Timestamp, writeBatch } from "firebase/firestore";
 
 const venueId = "wynberg-mm-rule-test";
 const seasonId = "season-rule-test";
@@ -15,8 +15,44 @@ const venuePath = ["leagueVenues", venueId];
 const matchPath = [...venuePath, "seasons", seasonId, "matches", "current"];
 const staffPath = [...venuePath, "staff", "referee"];
 
+const approvalId = "approved-start";
+const matchDayId = "day-one";
+const revision = Timestamp.fromMillis(1000);
+const startingLineups = Object.fromEntries(["club-a", "club-b"].map(clubId => [
+  clubId, {
+    formationId: "1-2-1",
+    positions: Object.fromEntries(
+      [1, 2, 3, 4, 5].map(i => [`p${i}`, `${clubId} Player ${i}`])
+    ),
+    benchSnapshot: [`${clubId} Player 6`],
+    matchDayId,
+    squadFingerprint: `${clubId}-fingerprint`,
+    meta: {savedByRole: "captain"},
+  },
+]));
+const sourceFormations = Object.fromEntries(
+  Object.entries(startingLineups).map(([clubId, lineup]) => [
+    clubId, {variants: {captain: lineup}},
+  ])
+);
+const paidSquads = Object.fromEntries(["club-a", "club-b"].map(clubId => [
+  clubId, [1, 2, 3, 4, 5, 6].map(i => ({
+    playerId: `${clubId}-p${i}`,
+    fullName: `${clubId} Player ${i}`,
+    mentality: 3,
+    shooting: 3,
+  })),
+]));
+const matchDays = [{
+  id: matchDayId,
+  status: "scheduled",
+  opensAtMs: 1000,
+  fixtureIds: [fixtureId],
+}];
+
 const fixture = {
   id: fixtureId,
+  matchDayId,
   clubAId: "club-a",
   clubBId: "club-b",
   status: "scheduled",
@@ -31,6 +67,15 @@ const live = {
 };
 const season = {
   id: seasonId,
+  gameFormat: "5_V_5",
+  scheduleVersion: 1,
+  matchDays,
+  matchDayHistory: [],
+  savedLineups: Object.fromEntries(
+    Object.entries(sourceFormations).map(([clubId, entry]) => [
+      clubId, {"5": entry},
+    ])
+  ),
   status: "active",
   clubIds: ["club-a", "club-b", "club-c"],
   streaks: { "club-a": 0, "club-b": 0, "club-c": 0 },
@@ -62,6 +107,28 @@ test.before(async () => {
       adminUids: ["owner"],
       league: { activeSeason: season },
     });
+    for (const clubId of ["club-a", "club-b"]) {
+      await setDoc(doc(db, "leagueSeasonSquads",
+        `${venueId}~${seasonId}~${clubId}`), {
+        status: "active", updatedAt: revision,
+      });
+    }
+    await setDoc(doc(db, ...venuePath, "seasons", seasonId,
+      "startApprovals", approvalId), {
+      actorUid: "referee",
+      venueId, seasonId, fixtureId, matchDayId,
+      clubAId: "club-a", clubBId: "club-b",
+      gameFormat: "5_V_5",
+      squads: paidSquads,
+      startingLineups,
+      sourceFormations,
+      squadVersions: {"club-a": revision, "club-b": revision},
+      bookingVersions: {},
+      matchDays,
+      matchDayHistory: [],
+      expiresAt: Timestamp.fromMillis(Date.now() + 600000),
+      used: false,
+    });
     await setDoc(doc(db, ...staffPath), {
       uid: "referee",
       role: "referee",
@@ -86,10 +153,29 @@ test("referee writes, spectator reads, outsider is denied", async () => {
     status: "live",
     currentEvents: [],
     events: [],
+    fixtureIndex: 0,
+    matchDayIndex: 0,
+    startedByUid: "referee",
+    startApprovalId: approvalId,
+    paidSquads,
+    confirmedLineupSnapshot: startingLineups,
   };
 
-  await assertFails(setDoc(doc(outsiderDb, ...matchPath), match));
-  await assertSucceeds(setDoc(doc(refereeDb, ...matchPath), match));
+  const start = (db, value) => {
+    const batch = writeBatch(db);
+    batch.set(doc(db, ...matchPath), value);
+    batch.update(doc(db, ...venuePath, "seasons", seasonId,
+      "startApprovals", approvalId), {used: true});
+    return batch.commit();
+  };
+
+  await assertFails(start(outsiderDb, match));
+  await assertFails(setDoc(doc(refereeDb, ...matchPath), match));
+  const changed = structuredClone(match);
+  changed.confirmedLineupSnapshot["club-a"].positions.p2 =
+    "club-a Player 6";
+  await assertFails(start(refereeDb, changed));
+  await assertSucceeds(start(refereeDb, match));
   await assertSucceeds(getDoc(doc(spectatorDb, ...matchPath)));
   await assertFails(updateDoc(doc(outsiderDb, ...matchPath), {
     events: [{ type: "goal" }],
@@ -256,4 +342,42 @@ test("empty Field season rollback restores only its archived predecessor", async
     (await getDoc(doc(ownerDb, ...archivePath))).exists(),
     false
   );
+});
+
+test("approved kickoff works without saved formations and rejects an altered lineup", async () => {
+  const fallbackApproval = "automatic-start";
+  await env.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, ...venuePath), {
+      id: venueId, ownerUid: "owner", adminUids: ["owner"],
+      league: {activeSeason: {...season, savedLineups: {}}},
+    });
+    await setDoc(doc(db, ...venuePath, "seasons", seasonId,
+      "startApprovals", fallbackApproval), {
+      actorUid: "referee", venueId, seasonId, fixtureId, matchDayId,
+      clubAId: "club-a", clubBId: "club-b", gameFormat: "5_V_5",
+      squads: paidSquads, startingLineups, sourceFormations: {},
+      squadVersions: {"club-a": revision, "club-b": revision},
+      bookingVersions: {}, matchDays, matchDayHistory: [],
+      expiresAt: Timestamp.fromMillis(Date.now() + 600000), used: false,
+    });
+  });
+  const db = env.authenticatedContext("referee").firestore();
+  const match = {
+    venueId, seasonId, fixtureId, status: "live",
+    currentEvents: [], events: [], fixtureIndex: 0, matchDayIndex: 0,
+    startedByUid: "referee", startApprovalId: fallbackApproval,
+    paidSquads, confirmedLineupSnapshot: startingLineups,
+  };
+  const start = value => {
+    const batch = writeBatch(db);
+    batch.set(doc(db, ...matchPath), value);
+    batch.update(doc(db, ...venuePath, "seasons", seasonId,
+      "startApprovals", fallbackApproval), {used: true});
+    return batch.commit();
+  };
+  const changed = structuredClone(match);
+  changed.confirmedLineupSnapshot["club-a"].positions.p1 = "Outsider";
+  await assertFails(start(changed));
+  await assertSucceeds(start(match));
 });

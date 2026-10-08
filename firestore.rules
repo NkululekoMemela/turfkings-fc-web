@@ -366,6 +366,30 @@ service cloud.firestore {
 
     match /leagueVenues/{venueId} {
 
+      // Public teamsheet projection; only the server can submit or replace it.
+      match /seasons/{seasonId}/fieldMatchDayManifests/{matchDayId}/clubs/{clubId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // Banking and team payments are accessed through the authenticated service.
+      match /paymentConfig/{document=**} {
+        allow read, write: if false;
+      }
+      match /bankingRequests/{document=**} {
+        allow read, write: if false;
+      }
+      match /paymentAudit/{document=**} {
+        allow read, write: if false;
+      }
+      match /paymentLocks/{document=**} {
+        allow read, write: if false;
+      }
+      match /teamPayments/{document=**} {
+        allow read, write: if false;
+      }
+
+
       // Club consent applies only to this Club's pending season invitation.
       function clubSeasonMembershipIsActive(clubId) {
         let membership = get(
@@ -529,19 +553,18 @@ service cloud.firestore {
       }
 
       function activeFieldMatchOperator() {
+        let staffPath =
+          /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid);
         return isSignedIn()
           && (
-            activeFieldAdministrator()
+            resource.data.ownerUid == request.auth.uid
             || (
-              exists(
-                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
+              exists(staffPath)
+              && get(staffPath).data.status == "active"
+              && (
+                get(staffPath).data.get("isAdministrator", false) == true
+                || get(staffPath).data.get("role", "") == "referee"
               )
-              && get(
-                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
-              ).data.status == "active"
-              && get(
-                /databases/$(database)/documents/leagueVenues/$(venueId)/staff/$(request.auth.uid)
-              ).data.role == "referee"
             )
           );
       }
@@ -669,8 +692,15 @@ service cloud.firestore {
                         : (
                           activeFieldMatchOperator()
                             ? (
-                              delegatedFieldClosure() || onlyUpdatesLiveMatches() || onlySelectsDatedFixture()
-                              || onlyCompletesCurrentFieldMatch()
+                              (
+                                 request.resource.data.league.activeSeason
+                                   .diff(resource.data.league.activeSeason)
+                                   .affectedKeys().hasAny(["results"])
+                                 && onlyCompletesCurrentFieldMatch()
+                               )
+                               || onlyUpdatesLiveMatches()
+                               || onlySelectsDatedFixture()
+                               || delegatedFieldClosure()
                             )
                             : (delegatedFieldClosure() || clubSeasonResponse())
                         )
@@ -721,6 +751,14 @@ service cloud.firestore {
           && approval.venueId == venueId && approval.seasonId == seasonId
           && approval.fixtureId == data.fixtureId
           && data.get("paidSquads", {}) == approval.get("squads", {})
+          && (
+            season.gameFormat != "5_V_5"
+            || (
+              data.get("confirmedLineupSnapshot", {}) ==
+                approval.get("startingLineups", {})
+              && approval.get("startingLineups", {}).size() == 2
+            )
+          )
           && approval.matchDayId == fixture.matchDayId
           && approval.clubAId == fixture.clubAId
           && approval.clubBId == fixture.clubBId
@@ -1642,6 +1680,29 @@ service cloud.firestore {
     }
 
     // Everything else under sandboxes remains closed.
+
+    function hasActiveFieldPracticeSession(venueId, sessionId) {
+      let sessionPath =
+        /databases/$(database)/documents/practiceSessions/$(sessionId);
+      let session = get(sessionPath).data;
+      return isSignedIn() && !isCameraSession()
+        && session.kind == "venueLeague"
+        && session.environment == "practice"
+        && session.venueId == venueId
+        && session.userId == request.auth.uid
+        && session.status == "active"
+        && request.time < session.expiresAt;
+    }
+
+    match /sandboxes/practice/leagueVenues/{venueId}/sessions/{sessionId} {
+      allow read, write:
+        if hasActiveFieldPracticeSession(venueId, sessionId);
+      match /{document=**} {
+        allow read, write:
+          if hasActiveFieldPracticeSession(venueId, sessionId);
+      }
+    }
+
     match /sandboxes/{document=**} {
       allow read, write: if false;
     }
