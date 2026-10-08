@@ -105,22 +105,76 @@ export default function LeagueVenuesHub({
   return createPortal(
     <main className="fanm-venues fanm-venues--live" data-field-theme={fieldTheme}>
       <div className="fanm-venues__shell">
-        <header>
+        <header className="hub-topbar">
           <button
             type="button"
-            onClick={onBack}
+            className="hub-brand"
+            onClick={(event) =>
+              event.currentTarget.closest("main")?.scrollTo({
+                top: 0, behavior: "smooth",
+              })
+            }
           >
-            ← Welcome
+            <span>
+              <img
+                src="/HomePage_Hub/5_AsidesNearMe_light_logo.png"
+                alt=""
+                onError={(event) => {
+                  event.currentTarget.onerror = null;
+                  event.currentTarget.src = "/HomePage/Logo_icon.jpeg";
+                }}
+              />
+            </span>
+            <strong>5 Asides Near Me</strong>
           </button>
 
-          <strong>5 Asides Near Me</strong>
+          <nav className="hub-nav" aria-label="Field account">
+            {authUser ? (
+              <span
+                className="hub-user-avatar"
+                title={authUser.displayName || "Signed in"}
+                aria-label={authUser.displayName || "Signed in"}
+              >
+                {authUser.photoURL ? (
+                  <img
+                    src={authUser.photoURL}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <strong>
+                    {(authUser.displayName || "U").trim().charAt(0).toUpperCase()}
+                  </strong>
+                )}
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="hub-nav__primary"
+                onClick={openRegistration}
+              >
+                Sign up free
+              </button>
+            )}
+          </nav>
         </header>
 
         <section className="fanm-venues__panel">
           <div className="fanm-venues__intro">
-            <span>
-              DISCOVER 5 ASIDE FIELDS NEAR YOU
-            </span>
+            <div className="fanm-venues__discovery-row">
+              <span className="hub-kicker">
+                DISCOVER 5 ASIDE FIELDS NEAR YOU
+              </span>
+              <button
+                type="button"
+                className="fanm-venues__welcome-return"
+                onClick={onBack}
+                aria-label="Back to welcome"
+                title="Back to welcome"
+              >
+                ↶
+              </button>
+            </div>
             <h1>Fields & League Venues</h1>
             <p>
               Find a Field, enter its league
@@ -128,13 +182,15 @@ export default function LeagueVenuesHub({
             </p>
           </div>
 
-          <div className="fanm-venues__tools">
+          <div className="hub-club-filter-ribbon">
             <div
+              className="hub-club-filter-ribbon__scroll"
               role="group"
               aria-label="Field views"
             >
               <button
                 type="button"
+                className={`hub-club-filter-ribbon__pill ${view === "all" ? "hub-club-filter-ribbon__pill--active" : ""}`}
                 aria-pressed={view === "all"}
                 onClick={() => setView("all")}
               >
@@ -143,6 +199,7 @@ export default function LeagueVenuesHub({
 
               <button
                 type="button"
+                className={`hub-club-filter-ribbon__pill ${view === "mine" ? "hub-club-filter-ribbon__pill--active" : ""}`}
                 aria-pressed={view === "mine"}
                 onClick={() => setView("mine")}
               >
@@ -150,7 +207,7 @@ export default function LeagueVenuesHub({
               </button>
             </div>
 
-            <label className="fanm-venues__search">
+            <label className="hub-club-filter-ribbon__search">
               <input
                 type="search"
                 value={query}
