@@ -8,6 +8,23 @@ import "../styles/HomePage_HUB.css";
 import { createPortal } from "react-dom";
 import "./WelcomeHero.css";
 
+function WelcomeIcon({kind}) {
+  return <svg viewBox="0 0 24 24" width="24" height="24" fill="none"
+    stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"
+    strokeLinejoin="round" aria-hidden="true" focusable="false">
+    {kind === "club" ? <>
+      <circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3"/>
+      <path d="M17 4a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-4-5.65"/>
+    </> : kind === "field" ? <>
+      <rect x="3" y="4" width="18" height="16" rx="2"/>
+      <path d="M12 4v16M3 9h3v6H3M21 9h-3v6h3"/><circle cx="12" cy="12" r="3"/>
+    </> : <>
+      <path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z"/>
+      <circle cx="12" cy="10" r="3"/>
+    </>}
+  </svg>;
+}
+
 export default function WelcomePage({
   onExploreClubs,
   onExploreLeagues,
@@ -188,7 +205,7 @@ export default function WelcomePage({
         <header className="fanm-hero__header">
           <div className="fanm-hero__brand">
             <img
-              src="/favicon_nobackground.png"
+              src="/pwa/fanm-app-icon.png"
               alt=""
               onError={(event) => { event.currentTarget.style.display = "none"; }}
             />
@@ -202,28 +219,28 @@ export default function WelcomePage({
             <span className="fanm-hero__eyebrow">
               A home for the five-a-side game
             </span>
-            <h1>5 Asides Near Me<br /><em>.com</em></h1>
+            <h1>Your next game<br /><em>starts here.</em></h1>
             <p>
-              Find your club. Follow the leagues that bring them together.
+              Find your club. Join the football community.
               Make your next match part of something bigger.
             </p>
           </section>
 
           <nav className="fanm-hero__actions" aria-label="Choose your destination">
-            <span className="fanm-hero__prompt">WHERE DO YOU WANT TO GO?</span>
+
             <button type="button" onClick={onExploreClubs}>
-              <span className="fanm-hero__action-icon" aria-hidden="true">🏃‍♂️⚽</span>
+              <span className="fanm-hero__action-icon" aria-hidden="true"><WelcomeIcon kind="club"/></span>
               <span className="fanm-hero__action-copy">
-                <strong>Clubs Futsal</strong>
+                <strong>Clubs</strong>
                 <small>Find a team near you or create one.</small>
               </span>
               <span className="fanm-hero__arrow" aria-hidden="true">↗</span>
             </button>
             <button type="button" onClick={onExploreLeagues}>
-              <span className="fanm-hero__action-icon" aria-hidden="true">🏟️</span>
+              <span className="fanm-hero__action-icon" aria-hidden="true"><WelcomeIcon kind="field"/></span>
               <span className="fanm-hero__action-copy">
-                <strong>Fields (venues)</strong>
-                <small>Field managers: register your venue and manage its clubs.</small>
+                <strong>Fields &amp; leagues</strong>
+                <small>Explore fields or register and manage your venue.</small>
               </span>
               <span className="fanm-hero__arrow" aria-hidden="true">↗</span>
             </button>
@@ -232,9 +249,9 @@ export default function WelcomePage({
               type="button"
               onClick={openNearbyPicker}
             >
-              <span className="fanm-hero__action-icon" aria-hidden="true">⚽</span>
+              <span className="fanm-hero__action-icon" aria-hidden="true"><img src="/favicon_nobackground.png" alt="" className="fanm-nearby-brand-pin"/></span>
               <span className="fanm-hero__action-copy">
-                <strong>Sign me to a club</strong>
+                <strong>Find me a club near me</strong>
                 <small>Get matched with a five-a-side club near you.</small>
               </span>
               <span className="fanm-hero__arrow" aria-hidden="true">↗</span>
