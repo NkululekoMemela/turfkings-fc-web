@@ -1,3 +1,5 @@
+import {venueLeagueRootPath} from "../core/venueLeaguePaths.js";
+import {submitPracticeDecision, reviewPracticeDecision} from "./fieldPracticeDecisionRepository.js";
 import {collection, onSnapshot, query, where} from "firebase/firestore";
 import {auth, db, getActiveFirebaseFunctionsBaseUrl} from "../firebaseConfig.js";
 
@@ -25,27 +27,43 @@ async function callDecision(name, body) {
 }
 
 export function submitFieldDecision({
-  venueId, seasonId, action, reason, parameters,
+  scope = null, venueId, seasonId, action, reason, parameters,
   requestId = crypto.randomUUID(),
 }) {
+  if (scope?.environment === "practice") return submitPracticeDecision({
+    scope, venueId, seasonId, action, reason, parameters, requestId,
+  });
+  if (scope) {
+    venueLeagueRootPath(scope);
+    if (scope.venueId !== venueId) throw new Error("Decision scope mismatch.");
+  }
   return callDecision("submitFieldDecision", {
     venueId, seasonId, action, reason, parameters, requestId,
   });
 }
 
-export function reviewFieldDecision({venueId, requestId, response}) {
+export function reviewFieldDecision({scope = null, venueId, requestId, response}) {
+  if (scope?.environment === "practice") return reviewPracticeDecision({
+    scope, venueId, requestId, response,
+  });
+  if (scope) {
+    venueLeagueRootPath(scope);
+    if (scope.venueId !== venueId) throw new Error("Decision scope mismatch.");
+  }
   return callDecision("reviewFieldDecision", {venueId, requestId, response});
 }
 
 export function watchFieldDecisions({
-  venueId, isCreator = false, onData, onError,
+  scope = null, venueId, isCreator = false, onData, onError,
 }) {
   const uid = auth.currentUser?.uid;
   if (!venueId || !uid) {
     onData([]);
     return () => {};
   }
-  const requests = collection(db, "leagueVenues", venueId, "decisionRequests");
+  if (scope && scope.venueId !== venueId) throw new Error("Decision scope mismatch.");
+  const root = scope ? venueLeagueRootPath(scope) : `leagueVenues/${venueId}`;
+  const requests = collection(db, `${root}/decisionRequests`);
   const source = isCreator ? requests :
     query(requests, where("requestedByUid", "==", uid));
   return onSnapshot(source, snapshot => {

@@ -41,9 +41,15 @@ export async function lostFoundRequest(venueId, action, details = {}, signal) {
   }
 }
 
-export function useLostFoundSummary(venueId, adminView) {
+export function useLostFoundSummary(
+  venueId, adminView, environment = "official"
+) {
   const [count, setCount] = useState(0);
   useEffect(() => {
+    if (environment === "practice") {
+      setCount(0);
+      return undefined;
+    }
     let alive = true;
     let currentKey = "";
     async function refresh() {
@@ -89,6 +95,6 @@ export function useLostFoundSummary(venueId, adminView) {
       window.removeEventListener("field-lost-found-updated", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [venueId, adminView]);
+  }, [venueId, adminView, environment]);
   return count;
 }

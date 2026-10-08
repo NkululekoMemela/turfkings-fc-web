@@ -1,3 +1,4 @@
+import {venueLeagueRootPath} from "../core/venueLeaguePaths.js";
 import { selectDatedFieldPairing } from "../core/fieldDatedPairing.js";
 import { rescheduleRemainingKickoffs } from "../core/fieldRemainingKickoffs.js";
 import { assertFieldMatchDayProgression } from "../../functions/fieldMatchDayProgression.mjs";
@@ -37,15 +38,18 @@ import { buildCurrentMatchFromFixture } from "../core/scheduledFixtures.js";
 import { computeNextFromResult } from "../core/rotation.js";
 
 export function recordVenueAction(transaction, {
+  scope = null,
   venueId, seasonId = "", fixtureId = "", action, label, details = "",
 }) {
   const user = auth.currentUser;
   if (!user?.uid || !venueId) {
     throw new Error("Sign in to record this Field action.");
   }
-  const entryRef = doc(
-    db, "leagueVenues", venueId, "actionLog", crypto.randomUUID()
-  );
+  if (scope && scope.venueId !== venueId) {
+    throw new Error("Action log Field scope mismatch.");
+  }
+  const root = scope ? venueLeagueRootPath(scope) : `leagueVenues/${venueId}`;
+  const entryRef = doc(db, `${root}/actionLog/${crypto.randomUUID()}`);
   transaction.set(entryRef, {
     venueId,
     seasonId: String(seasonId || ""),
@@ -70,10 +74,14 @@ export async function cancelVenueFixtureStart({ scope }) {
     throw new Error("The Field match reference is missing.");
   }
 
-  const venueRef = doc(db, "leagueVenues", venueId);
+  const root = venueLeagueRootPath(scope);
+  const venueRef = doc(db, root);
   const liveRef = getVenueLiveMatchDoc(db, scope, "current");
 
   await runTransaction(db, async (transaction) => {
+    if (scope.environment === "practice") {
+      await requireFieldPracticeMatchSession(transaction, scope, user.uid);
+    }
     const venueSnap = await transaction.get(venueRef);
     const liveSnap = await transaction.get(liveRef);
     if (!venueSnap.exists() || !liveSnap.exists()) {
@@ -125,25 +133,35 @@ export function watchVenueSeason(venueId, onSeason, onError) {
 }
 
 export async function chooseVenueFixturePairing({
-  venueId, seasonId, clubAId, clubBId,
+  scope = null, venueId, seasonId, clubAId, clubBId,
 }) {
   const user = auth.currentUser;
   if (!user?.uid || !venueId || !seasonId) {
     throw new Error("Sign in as a Field official.");
   }
-  const venueRef = doc(db, "leagueVenues", venueId);
+  const practice = scope?.environment === "practice";
+  if (scope && (scope.venueId !== venueId || scope.seasonId !== seasonId)) {
+    throw new Error("Pairing session scope mismatch.");
+  }
+  const root = scope ? venueLeagueRootPath(scope) : `leagueVenues/${venueId}`;
+  const venueRef = doc(db, root);
   return runTransaction(db, async transaction => {
     const venueSnap = await transaction.get(venueRef);
-    const staffSnap = await transaction.get(
-      doc(db, "leagueVenues", venueId, "staff", user.uid));
     const liveSnap = await transaction.get(
-      doc(db, "leagueVenues", venueId, "seasons", seasonId, "matches", "current"));
+      doc(db, `${root}/seasons/${seasonId}/matches/current`));
     const venue = venueSnap.data();
-    const staff = staffSnap.data();
-    if (!venue || (venue.ownerUid !== user.uid &&
-        !(staff?.status === "active" &&
-          (staff.isAdministrator === true || staff.role === "referee")))) {
-      throw new Error("Only an approved Field official can select the pairing.");
+    if (!venue) throw new Error("Field no longer exists.");
+    if (practice) {
+      await requireFieldPracticeMatchSession(transaction, scope, user.uid);
+    } else {
+      const staffSnap = await transaction.get(
+        doc(db, "leagueVenues", venueId, "staff", user.uid));
+      const staff = staffSnap.data();
+      if (venue.ownerUid !== user.uid &&
+          !(staff?.status === "active" &&
+            (staff.isAdministrator === true || staff.role === "referee"))) {
+        throw new Error("Only an approved Field official can select the pairing.");
+      }
     }
     const season = venue.league?.activeSeason;
     if (season?.id !== seasonId || season.status !== "active") {
@@ -163,7 +181,7 @@ export async function chooseVenueFixturePairing({
       updatedAt: serverTimestamp(),
     });
     recordVenueAction(transaction, {
-      venueId, seasonId, fixtureId: fixture.id,
+      scope, venueId, seasonId, fixtureId: fixture.id,
       action: "fixture_pairing_selected", label: "Fixture pairing selected",
       details: `${fixture.clubAName || clubAId} vs ${fixture.clubBName || clubBId}`,
     });
@@ -414,18 +432,24 @@ export async function confirmVenueClubParticipation({ venueId, clubId }) {
 }
 
 export async function setVenueScheduleTesting({
-  venueId, seasonId, enabled,
+  scope = null, venueId, seasonId, enabled,
 }) {
   const uid = auth.currentUser?.uid;
   if (!uid || typeof enabled !== "boolean") {
     throw new Error("Sign in and choose a valid testing setting.");
   }
-  const venueRef = doc(db, "leagueVenues", venueId);
+  const practice = scope?.environment === "practice";
+  if (scope && (scope.venueId !== venueId || scope.seasonId !== seasonId)) {
+    throw new Error("Testing session scope mismatch.");
+  }
+  const root = scope ? venueLeagueRootPath(scope) : `leagueVenues/${venueId}`;
+  const venueRef = doc(db, root);
   return runTransaction(db, async transaction => {
     const snapshot = await transaction.get(venueRef);
     if (!snapshot.exists()) throw new Error("Field no longer exists.");
     const venue = snapshot.data();
-    if (venue.ownerUid !== uid) {
+    if (practice) await requireFieldPracticeMatchSession(transaction, scope, uid);
+    if (!practice && venue.ownerUid !== uid) {
       throw new Error("Only the Field creator can change testing mode.");
     }
     if (venue.league?.activeSeason?.id !== seasonId) {
@@ -749,6 +773,11 @@ export async function startVenueFixture({
     }
 
     const paidSquadsForStart = approval.squads || {};
+    if (season.gameFormat === "5_V_5" &&
+        [fixture.clubAId, fixture.clubBId].some(clubId =>
+          !approval.startingLineups?.[clubId])) {
+      throw new Error("The approved starting lineup is missing. Try again.");
+    }
     for (const clubId of [fixture.clubAId, fixture.clubBId]) {
       const players = paidSquadsForStart[clubId];
       if (!Array.isArray(players) || players.length < requiredPlayers ||
@@ -818,6 +847,8 @@ export async function startVenueFixture({
       ...data,
       startApprovalId: approvalResponse.approvalId,
       paidSquads: paidSquadsForStart,
+      confirmedLineupSnapshot: season.gameFormat === "5_V_5"
+        ? approval.startingLineups : null,
       clockVersion: 1,
       clockPhase: "first_half",
       halftimeSeconds: Number(season.scheduleSettings?.halftimeMinutes ?? 5) * 60,
@@ -851,6 +882,7 @@ function normalizedEventList(events) {
 }
 
 export async function completeVenueFixture({
+  scope = null,
   venueId,
   fixtureId,
   summary = {},
@@ -872,15 +904,21 @@ export async function completeVenueFixture({
     );
   }
 
-  const venueRef = doc(
-    db,
-    "leagueVenues",
-    venueId
-  );
+  const practice = scope?.environment === "practice";
+  const root = scope
+    ? venueLeagueRootPath(scope)
+    : `leagueVenues/${venueId}`;
+  if (scope && scope.venueId !== venueId) {
+    throw new Error("The match scope belongs to another Field.");
+  }
+  const venueRef = doc(db, root);
 
   return runTransaction(
     db,
     async (transaction) => {
+      if (practice) {
+        await requireFieldPracticeMatchSession(transaction, scope, user.uid);
+      }
       const venueSnapshot =
         await transaction.get(venueRef);
 
@@ -892,30 +930,17 @@ export async function completeVenueFixture({
 
       const venue = venueSnapshot.data();
 
-      const staffRef = doc(
-        db,
-        "leagueVenues",
-        venueId,
-        "staff",
-        user.uid
-      );
-
-      const staffSnapshot =
-        await transaction.get(staffRef);
-
-      const staff = staffSnapshot.exists()
-        ? staffSnapshot.data()
-        : null;
-
-      const isActiveFieldOperator =
-        venue.ownerUid === user.uid ||
-        (
-          staff?.status === "active" &&
-          (
-            staff?.isAdministrator === true ||
-            staff?.role === "referee"
-          )
+      let isActiveFieldOperator = practice;
+      if (!practice) {
+        const staffSnapshot = await transaction.get(
+          doc(db, "leagueVenues", venueId, "staff", user.uid)
         );
+        const staff = staffSnapshot.exists() ? staffSnapshot.data() : null;
+        isActiveFieldOperator = venue.ownerUid === user.uid || (
+          staff?.status === "active" &&
+          (staff.isAdministrator === true || staff.role === "referee")
+        );
+      }
 
       if (!isActiveFieldOperator) {
         throw new Error(
@@ -926,6 +951,9 @@ export async function completeVenueFixture({
       const season =
         venue.league?.activeSeason;
 
+      if (practice && season?.id !== scope.seasonId) {
+        throw new Error("The Practice season changed.");
+      }
       if (!season?.id) {
         throw new Error(
           "The active Field season is missing."
@@ -1175,6 +1203,16 @@ export async function completeVenueFixture({
         }
       );
 
+      if (practice) {
+        transaction.set(doc(db, `${root}/actionLog/${crypto.randomUUID()}`), {
+          environment: "practice",
+          practiceSessionId: scope.practiceSessionId,
+          seasonId: season.id, fixtureId,
+          action: "match_completed",
+          actorUid: user.uid, createdAtMs: completedAtMs,
+          details: `${result.teamAName} ${goalsA}–${goalsB} ${result.teamBName}`,
+        });
+      } else {
       recordVenueAction(transaction, {
         venueId,
         seasonId: season.id,
@@ -1183,6 +1221,7 @@ export async function completeVenueFixture({
         label: "Match completed",
         details: `${result.teamAName} ${goalsA}–${goalsB} ${result.teamBName}; completed by UID: ${user.uid}`,
       });
+      }
       return {
         result,
         season: nextSeason,
@@ -1207,14 +1246,18 @@ async function requireVenueStaffPower(transaction, venue, venueId, uid, power) {
   }
 }
 
-export async function archiveVenueMatchDay({ venueId, seasonId, matchDayId = "" }) {
+export async function archiveVenueMatchDay({ scope = null, venueId, seasonId, matchDayId = "" }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the Field Manager.");
 
-  const venueRef = doc(db, "leagueVenues", venueId);
-  const liveRef = doc(
-    db, "leagueVenues", venueId, "seasons", seasonId,
-    "matches", "current"
+  const practice = scope?.environment === "practice";
+  if (scope && (scope.venueId !== venueId || scope.seasonId !== seasonId)) {
+    throw new Error("Season action scope mismatch.");
+  }
+  const root = scope ? venueLeagueRootPath(scope) : `leagueVenues/${venueId}`;
+  const venueRef = doc(db, root);
+  const liveRef = doc(db,
+    `${root}/seasons/${seasonId}/matches/current`
   );
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(venueRef);
@@ -1222,9 +1265,13 @@ export async function archiveVenueMatchDay({ venueId, seasonId, matchDayId = "" 
     if (!snapshot.exists()) throw new Error("Field no longer exists.");
 
     const venue = snapshot.data();
+    if (practice) {
+      await requireFieldPracticeMatchSession(transaction, scope, user.uid);
+    } else {
     await requireVenueStaffPower(
       transaction, venue, venueId, user.uid, "endMatchDay"
     );
+    }
     if (liveSnapshot.exists() && liveSnapshot.data().status === "live") {
       throw new Error("Finish the live match before ending the match day.");
     }
@@ -1254,7 +1301,7 @@ export async function archiveVenueMatchDay({ venueId, seasonId, matchDayId = "" 
     });
     if (liveSnapshot.exists()) transaction.delete(liveRef);
     recordVenueAction(transaction, {
-      venueId, seasonId,
+      scope, venueId, seasonId,
       action: "match_day_saved",
       label: "Match Day saved",
       details: `${dayResults.length} completed match(es) archived; day ID: ${day.id}`,
@@ -1263,15 +1310,17 @@ export async function archiveVenueMatchDay({ venueId, seasonId, matchDayId = "" 
   });
 }
 
-export async function discardVenueMatchDay({ venueId, seasonId }) {
+export async function discardVenueMatchDay({ scope = null, venueId, seasonId }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the Field Manager.");
 
-  const venueRef = doc(db, "leagueVenues", venueId);
-  const liveRef = doc(
-    db, "leagueVenues", venueId, "seasons", seasonId,
-    "matches", "current"
-  );
+  const practice = scope?.environment === "practice";
+  if (scope && (scope.venueId !== venueId || scope.seasonId !== seasonId)) {
+    throw new Error("Discard session scope mismatch.");
+  }
+  const root = scope ? venueLeagueRootPath(scope) : `leagueVenues/${venueId}`;
+  const venueRef = doc(db, root);
+  const liveRef = doc(db, `${root}/seasons/${seasonId}/matches/current`);
 
   return runTransaction(db, async (transaction) => {
     const venueSnapshot = await transaction.get(venueRef);
@@ -1279,7 +1328,10 @@ export async function discardVenueMatchDay({ venueId, seasonId }) {
     if (!venueSnapshot.exists()) throw new Error("Field no longer exists.");
 
     const venue = venueSnapshot.data();
-    if (venue.ownerUid !== user.uid) {
+    if (practice) {
+      await requireFieldPracticeMatchSession(transaction, scope, user.uid);
+    }
+    if (!practice && venue.ownerUid !== user.uid) {
       throw new Error("Only the Field Manager can discard this match day.");
     }
     const season = venue.league?.activeSeason;
@@ -1364,7 +1416,7 @@ export async function discardVenueMatchDay({ venueId, seasonId }) {
       transaction.delete(liveRef);
     }
     recordVenueAction(transaction, {
-      venueId, seasonId,
+      scope, venueId, seasonId,
       action: "match_day_discarded",
       label: "Day's games deleted",
       details: `${discardResults.length} completed match(es) removed: ${[...discardIds].join(", ")}`,
@@ -1374,32 +1426,43 @@ export async function discardVenueMatchDay({ venueId, seasonId }) {
 }
 
 export async function endVenueSeason({
-  venueId, seasonId, mode = "complete", cancellationReason = "",
+  scope = null, venueId, seasonId, mode = "complete", cancellationReason = "",
 }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the Field Manager.");
 
-  const venueRef = doc(db, "leagueVenues", venueId);
-  const archiveRef = doc(db, "leagueVenues", venueId, "seasons", seasonId);
+  const practice = scope?.environment === "practice";
+  if (scope && (scope.venueId !== venueId || scope.seasonId !== seasonId)) {
+    throw new Error("Season action scope mismatch.");
+  }
+  const root = scope ? venueLeagueRootPath(scope) : `leagueVenues/${venueId}`;
+  const venueRef = doc(db, root);
+  const archiveRef = doc(db, `${root}/seasons/${seasonId}`);
 
   return runTransaction(db, async (transaction) => {
     const venueSnapshot = await transaction.get(venueRef);
     const archiveSnapshot = await transaction.get(archiveRef);
-    const currentSnapshot = await transaction.get(doc(
-      db, "leagueVenues", venueId, "seasons", seasonId, "matches", "current"
-    ));
+    const currentSnapshot = await transaction.get(
+      doc(db, `${root}/seasons/${seasonId}/matches/current`)
+    );
     if (!venueSnapshot.exists()) throw new Error("Field no longer exists.");
 
     const venue = venueSnapshot.data();
+    if (practice) {
+      await requireFieldPracticeMatchSession(transaction, scope, user.uid);
+    } else {
     await requireVenueStaffPower(
       transaction, venue, venueId, user.uid, "endSeason"
     );
+    }
     const season = venue.league?.activeSeason;
     if (!season?.id || season.id !== seasonId ||
         season.status !== "active") {
       throw new Error("The active Field season has changed. Reload and try again.");
     }
-    if (archiveSnapshot.exists()) {
+    if (archiveSnapshot.exists() && (
+      !practice || ["completed", "cancelled"].includes(archiveSnapshot.data().status)
+    )) {
       throw new Error("This Field season is already archived.");
     }
     if (Object.values(season.liveMatches || {}).some(
@@ -1473,7 +1536,7 @@ export async function endVenueSeason({
       "updatedAt", serverTimestamp()
     );
     recordVenueAction(transaction, {
-      venueId, seasonId,
+      scope, venueId, seasonId,
       action: cancelling ? "season_cancelled" : "season_ended",
       label: cancelling ? "Season cancelled" : "Season ended",
       details: cancelling
@@ -1833,4 +1896,29 @@ export async function deleteVenueRecordedMatch({ venueId, fixtureId }) {
 
     if (matchSnap.exists()) transaction.delete(matchRef);
   });
+}
+
+
+async function requireFieldPracticeMatchSession(transaction, scope, uid) {
+  // The resolver rejects Club scopes, invalid environments and missing IDs.
+  venueLeagueRootPath(scope);
+  if (scope.environment !== "practice" || !scope.seasonId) {
+    throw new Error("An explicit Field Practice season is required.");
+  }
+  const snapshot = await transaction.get(
+    doc(db, "practiceSessions", scope.practiceSessionId)
+  );
+  const session = snapshot.data();
+  if (
+    session?.kind !== "venueLeague" ||
+    session.environment !== "practice" ||
+    session.sessionId !== scope.practiceSessionId ||
+    session.venueId !== scope.venueId ||
+    session.userId !== uid ||
+    session.status !== "active" ||
+    typeof session.expiresAt?.toMillis !== "function" ||
+    session.expiresAt.toMillis() <= Date.now()
+  ) {
+    throw new Error("This Field Practice session is unavailable or expired.");
+  }
 }

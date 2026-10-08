@@ -1,3 +1,4 @@
+import {normalizeVenueLeagueScope} from "../core/venueLeaguePaths.js";
 import FieldMatchHalfClock from "./FieldMatchHalfClock.jsx";
 import { tickFieldMatchClock, startFieldSecondHalf } from "../core/fieldMatchClock.js";
 import React, {
@@ -31,6 +32,7 @@ function safeArray(value) {
 }
 
 export default function VenueLiveMatchRuntime({
+  dataScope = null,
   venue,
   season,
   teams = [],
@@ -42,17 +44,21 @@ export default function VenueLiveMatchRuntime({
   onBack,
   onGoToStats,
 }) {
-  const scope = useMemo(
-    () => ({
-      kind: "venueLeague",
-      environment: "official",
-      venueId:
-        String(venue?.id || "").trim(),
-      seasonId:
-        String(season?.id || "").trim(),
-    }),
-    [venue?.id, season?.id]
-  );
+  const scope = useMemo(() => {
+    const value = dataScope || {
+      kind: "venueLeague", environment: "official",
+      venueId: String(venue?.id || "").trim(),
+      seasonId: String(season?.id || "").trim(),
+    };
+    normalizeVenueLeagueScope(value, {requireSeason: true});
+    if (value.venueId !== venue?.id || value.seasonId !== season?.id) {
+      throw new Error("Live match session scope mismatch.");
+    }
+    return value;
+  }, [
+    venue?.id, season?.id, dataScope?.environment,
+    dataScope?.practiceSessionId, dataScope?.venueId, dataScope?.seasonId,
+  ]);
 
   const refereeDeviceId = useMemo(
     () => getVenueRefereeDeviceId(),
@@ -701,6 +707,7 @@ export default function VenueLiveMatchRuntime({
 
         try {
           await completeVenueFixture({
+            scope,
             venueId: scope.venueId,
             fixtureId,
             summary,
@@ -768,6 +775,8 @@ export default function VenueLiveMatchRuntime({
   }
 
   const sharedProps = {
+    isPracticeMode: scope.environment === "practice",
+    practiceSessionId: scope.practiceSessionId || null,
     fieldClockVersion: liveState.clockVersion || 0,
     fieldClockPhase: liveState.clockPhase || "legacy",
     matchSeconds:
@@ -929,7 +938,7 @@ export default function VenueLiveMatchRuntime({
         handleResetTeamColors
       }
     />
-    {canControlCurrentLiveMatch &&
+    {scope.environment !== "practice" && canControlCurrentLiveMatch &&
       liveState.status === "live" &&
       liveController?.uid === auth.currentUser?.uid && (
         <VenueCameraApprovalPanel

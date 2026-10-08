@@ -2952,7 +2952,11 @@ export default function App() {
             setNativePollOpenRequest(null);
             setSessionMode("official");
             writeSessionModeIntent("official");
-            setFieldNavTarget({ page: "landing", id: Date.now() });
+            setFieldNavTarget({
+              page: data.approvalKind === "banking_activation" ? "signup" : "landing",
+              openBanking: data.approvalKind === "banking_activation",
+              id: Date.now(),
+            });
             setSelectedLeagueVenue({...snapshot.data(), id: snapshot.id});
             setPage(PAGE_VENUE_ENTRY);
           } catch (error) {

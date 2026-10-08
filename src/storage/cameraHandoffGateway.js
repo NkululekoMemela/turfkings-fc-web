@@ -128,7 +128,9 @@ export function buildAuthorizedCameraDeepLink({
   }
 
   return (
-    "fiveasidesnearmecamera://open" +
+    (activeFirebaseProjectId === "five-asides-near-me-staging"
+      ? "fiveasidesnearmecamera-staging://open"
+      : "fiveasidesnearmecamera://open") +
     `?handoff=${encodeURIComponent(safeHandoffId)}`
   );
 }

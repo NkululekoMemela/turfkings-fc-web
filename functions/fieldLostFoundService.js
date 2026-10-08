@@ -138,7 +138,13 @@ async function operate({db, user, body = {}, photoBucket}) {
     const query = managingView ?
       db.collection(CLAIMS).where("venueId", "==", venueId) :
       db.collection(CLAIMS).where("claimantUid", "==", user.uid);
-    const claims = (await query.get()).docs
+    const [claimsSnapshot, itemsSnapshot] = await Promise.all([
+      query.get(),
+      managingView
+        ? db.collection(ITEMS).where("venueId", "==", venueId).get()
+        : Promise.resolve(null),
+    ]);
+    const claims = claimsSnapshot.docs
       .filter(doc => doc.data().venueId === venueId)
       .map(doc => ({
         ...safeClaim(doc.id, doc.data()),
@@ -146,8 +152,7 @@ async function operate({db, user, body = {}, photoBucket}) {
       }))
       .sort((a, b) => b.createdAtMs - a.createdAtMs);
     const items = managingView ?
-      (await db.collection(ITEMS).where("venueId", "==", venueId).get())
-        .docs.map(doc => {
+      itemsSnapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id, description: data.description,
@@ -185,10 +190,15 @@ async function operate({db, user, body = {}, photoBucket}) {
       createdAtMs: Date.now(),
     };
     if (action === "claim") {
+      const identity = await require("./fieldLostFoundIdentity").resolve({
+        db, user, venueId, clubId: body.clubId, staff: staffData,
+      });
       const id = randomUUID();
       await db.collection(CLAIMS).doc(id).create({
         ...data, claimantUid: user.uid,
-        claimantName: String(user.name || user.email || "Field visitor").slice(0, 160),
+        claimantName: identity.name,
+        claimantClubId: identity.clubId,
+        claimantMemberId: identity.memberId,
         status: "pending",
       });
       return {id};

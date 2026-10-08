@@ -3078,7 +3078,10 @@ export function VenueLeagueLiveMatchPage({
     return () => {
       cancelled = true;
     };
-  }, [dataScope?.venueId, dataScope?.seasonId, rawLiveCurrentMatch?.fixtureId]);
+  }, [
+    dataScope?.venueId, dataScope?.seasonId, dataScope?.environment,
+    dataScope?.practiceSessionId, rawLiveCurrentMatch?.fixtureId,
+  ]);
 
   const playersReady = !playersLoading;
 
@@ -3420,17 +3423,21 @@ export function VenueLeagueLiveMatchPage({
     async function loadPhotos() {
       try {
         const snap =
-          await loadVenueLeaguePlayerPhotos({
-            firestore: db,
-            teams: liveTeams,
-          });
+          await (dataScope?.environment === "practice"
+            ? loadVenuePaidMatchPlayers({
+                firestore: db, scope: dataScope,
+                fixtureId: rawLiveCurrentMatch?.fixtureId,
+              })
+            : loadVenueLeaguePlayerPhotos({
+                firestore: db, teams: liveTeams,
+              }));
         if (cancelled) return;
 
         const loaded = {};
         snap.forEach((docSnap) => {
           const data = docSnap.data() || {};
           const photoData = data?.photoData || "";
-          const rawName = data?.name || docSnap.id || "";
+          const rawName = data?.fullName || data?.name || docSnap.id || "";
           if (!photoData) return;
 
           const canonical = canonicalName(rawName);
@@ -3609,12 +3616,16 @@ export function VenueLeagueLiveMatchPage({
 
   const savedLineups = useMemo(
     () =>
-      loadSavedLineups(activeClubId, {
+      dataScope?.kind === "venueLeague"
+        ? activeClub?.league?.activeSeason?.savedLineups || {}
+        : loadSavedLineups(activeClubId, {
         isPracticeMode: dataScope?.environment === "practice",
         practiceSessionId: dataScope?.practiceSessionId || null,
       }),
     [
       activeClubId,
+      dataScope?.kind,
+      activeClub?.league?.activeSeason?.savedLineups,
       dataScope?.environment,
       dataScope?.practiceSessionId,
     ]

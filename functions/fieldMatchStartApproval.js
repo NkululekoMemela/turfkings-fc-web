@@ -69,16 +69,27 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
         }[season.gameFormat];
         if (!minimum) throw new Error("Unsupported game format.");
 
+        for (const clubId of [fixture.clubAId, fixture.clubBId]) {
+          if (season.invitations?.[clubId]?.status !== "accepted") {
+            throw new Error("Both Clubs must accept the league invitation before playing.");
+          }
+        }
+
         const {loadFieldMatchRoster} = require("./fieldMatchRoster.js");
-        const {squads, bookingVersions, squadVersions} =
+        const {squads, bookingVersions, squadVersions, squadFingerprints} =
           await loadFieldMatchRoster({
             transaction, db, venueId, season, fixture,
+          });
+        const {startingLineups, sourceFormations} =
+          await require("./fieldStartingFormation").build({
+            season, fixture, squads, squadFingerprints,
           });
         transaction.set(approvalRef, {
           venueId, seasonId, fixtureId, matchDayId: day.id,
           actorUid: user.uid, gameFormat: season.gameFormat,
           clubAId: fixture.clubAId, clubBId: fixture.clubBId,
           bookingVersions, squadVersions, squads, used: false,
+          startingLineups, sourceFormations,
           matchDayHistory: season.matchDayHistory || [],
           matchDays: season.matchDays || [],
           expiresAt: Timestamp.fromMillis(Date.now() + 60000),

@@ -508,7 +508,27 @@ export function VenueLeagueSpectatorPage(props) {
       ref,
       (snap) => {
         if (snap.exists()) {
-          const data = snap.data() || {};
+          const raw = snap.data() || {};
+          const current = raw.currentMatch || {};
+          const liveTeams = Array.isArray(raw.teams) ? raw.teams : props.teams || [];
+          const teamAId = raw.teamAId ?? current.teamAId ?? current.clubAId;
+          const teamBId = raw.teamBId ?? current.teamBId ?? current.clubBId;
+          const teamA = liveTeams.find(team => team.id === teamAId);
+          const teamB = liveTeams.find(team => team.id === teamBId);
+          const data = {
+            ...raw,
+            teamAId,
+            teamBId,
+            teamALabel: raw.teamALabel || current.teamALabel ||
+              teamA?.label || teamA?.name || "",
+            teamBLabel: raw.teamBLabel || current.teamBLabel ||
+              teamB?.label || teamB?.name || "",
+            matchType: raw.matchType || current.matchType || "LEAGUE",
+            matchNo: raw.matchNo ?? raw.currentMatchNo ??
+              current.matchNo ?? current.matchNumber,
+            events: Array.isArray(raw.currentEvents)
+              ? raw.currentEvents : raw.events || [],
+          };
 
           const isSelectedFixture = isSameSpectatorFixture({
             liveData: data,

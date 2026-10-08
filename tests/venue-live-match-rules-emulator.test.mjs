@@ -19,7 +19,7 @@ const fixtureId = "fixture-one";
 
 before(async () => {
   env = await initializeTestEnvironment({
-    projectId: "demo-fanm-venue-live",
+    projectId: "demo-fanm-venue-fixture-access",
     firestore: { rules: fs.readFileSync("firestore.rules", "utf8") },
   });
 });

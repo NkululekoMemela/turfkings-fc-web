@@ -56,9 +56,14 @@ beforeEach(async()=>{
 });
 const six=Array.from({length:6},(_,index)=>`member-${index}`);
 
-test("only captain/admin sends exactly six",async()=>{
+test("only captain/admin sends five or six, never more than six",async()=>{
   await assert.rejects(submit({now:Date.parse("2030-10-09T09:00:00+02:00"),db,user:{uid:"outsider"},body:{...body,memberIds:six}}));
-  await assert.rejects(submit({now:Date.parse("2030-10-09T09:00:00+02:00"),db,user,body:{...body,memberIds:six.slice(0,5)}}));
+  await assert.rejects(submit({now:Date.parse("2030-10-09T09:00:00+02:00"),db,user,body:{...body,memberIds:six.slice(0,4)}}));
+  await assert.rejects(submit({now:Date.parse("2030-10-09T09:00:00+02:00"),db,user,body:{...body,memberIds:[...six,"member-6"]}}));
+  await submit({now:Date.parse("2030-10-09T09:00:00+02:00"),db,user,body:{...body,memberIds:six.slice(0,5)}});
+  const five=await getClubDay({db,user,body});
+  assert.equal(five.confirmed,true);
+  assert.equal(five.players.length,5);
   await submit({now:Date.parse("2030-10-09T09:00:00+02:00"),db,user,body:{...body,memberIds:six}});
   const result=await getClubDay({db,user,body});
   assert.equal(result.confirmed,true);
@@ -125,4 +130,61 @@ test("production cannot use the staging early-send exception", async()=>{
     day,fixture,now:Date.parse("2030-10-10T18:00:00+02:00"),
     projectId:"five-asides-near-me",
   }).sendAllowed,false);
+});
+
+// Field manifest snapshot regression tests
+const manifestRef = () => db.doc(
+  "leagueVenues/field/seasons/season/fieldMatchDayManifests/day/clubs/club"
+);
+const submissionTime = Date.parse("2030-10-09T09:00:00+02:00");
+
+test("Field manifest stores the selected players and Club mentality values", async () => {
+  await db.doc("clubs/club/players/player-0").update({
+    mentality: 4, shooting: 5,
+  });
+  await submit({
+    db, user, now: submissionTime,
+    body: {...body, memberIds: six},
+  });
+  const saved = (await manifestRef().get()).data();
+  assert.equal(saved.confirmed, true);
+  assert.equal(saved.clubId, "club");
+  assert.equal(saved.matchDayId, "day");
+  assert.equal(saved.players.length, 6);
+  assert.deepEqual(saved.selectedMemberIds, six);
+  const player = saved.players.find(p => p.memberId === "member-0");
+  assert.equal(player.mentality, 4);
+  assert.equal(player.shooting, 5);
+  assert.equal(Object.hasOwn(player, "paidCents"), false);
+  assert.equal(saved.submittedByUid, user.uid);
+});
+
+test("Captain resubmission replaces the Field list, including removed players", async () => {
+  await submit({
+    db, user, now: submissionTime,
+    body: {...body, memberIds: six},
+  });
+  const replacement = six.slice(1).reverse();
+  await submit({
+    db, user, now: submissionTime + 1000,
+    body: {...body, memberIds: replacement},
+  });
+  const saved = (await manifestRef().get()).data();
+  assert.equal(saved.players.length, 5);
+  assert.deepEqual(saved.selectedMemberIds, replacement);
+  assert.deepEqual(saved.players.map(p => p.memberId), replacement);
+  assert.equal(saved.players.some(p => p.memberId === "member-0"), false);
+});
+
+test("Unauthorized resubmission cannot overwrite the Field manifest", async () => {
+  await submit({
+    db, user, now: submissionTime,
+    body: {...body, memberIds: six},
+  });
+  const before = (await manifestRef().get()).data();
+  await assert.rejects(submit({
+    db, user: {uid: "outsider"}, now: submissionTime + 1000,
+    body: {...body, memberIds: six.slice(0, 5)},
+  }));
+  assert.deepEqual((await manifestRef().get()).data(), before);
 });

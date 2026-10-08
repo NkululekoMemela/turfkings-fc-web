@@ -20,8 +20,9 @@ function project({scope, day, fixture, candidates, saved}) {
   });
   const selected = Array.isArray(saved?.memberIds) ? saved.memberIds : [];
   const byId = new Map(candidates.map(player => [player.memberId, player]));
-  const validSelection = selected.length === 6 &&
-    new Set(selected).size === 6 && selected.every(id => byId.has(id));
+  const validSelection = selected.length >= 5 && selected.length <= 6 &&
+    new Set(selected).size === selected.length &&
+    selected.every(id => byId.has(id));
   const confirmed = validSelection && saved?.fingerprint === revision;
   const draftIds = validSelection ? selected :
     candidates.length <= 6 ? candidates.map(player => player.memberId) : [];
@@ -55,7 +56,7 @@ async function loadDay({tx, db, scope, matchDayId}) {
   if (!validId(matchDayId)) throw new Error("Choose a valid match day.");
   const context = await service.loadContext(tx, db, scope);
   if (context.season.gameFormat !== "5_V_5") {
-    throw new Error("Six-player squads apply to five-a-side leagues.");
+    throw new Error("Five or six-player squads apply to five-a-side leagues.");
   }
   if (!context.season.schedulePublishedAtMs) {
     throw new Error("The Field must release its fixtures first.");
@@ -116,6 +117,8 @@ async function loadDay({tx, db, scope, matchDayId}) {
       player = {
         memberId: cover.memberId, sourcePlayerId: cover.sourcePlayerId,
         fullName, clubId: scope.clubId,
+        mentality: profile.mentality ?? null,
+        shooting: profile.shooting ?? null,
         originalMemberId: original.memberId, isFillIn: true,
       };
     }
@@ -155,9 +158,11 @@ async function getClubDay({db, user, body}) {
 async function submit({db, user, body, now = Date.now()}) {
   const {venueId, seasonId, clubId, matchDayId, memberIds} = body || {};
   const scope = {venueId, seasonId, clubId};
-  if (!Array.isArray(memberIds) || memberIds.length !== 6 ||
-      new Set(memberIds).size !== 6 || !memberIds.every(validId)) {
-    throw new Error("Select exactly six different players: five starters and one substitute.");
+  if (!Array.isArray(memberIds) || memberIds.length < 5 ||
+      memberIds.length > 6 ||
+      new Set(memberIds).size !== memberIds.length ||
+      !memberIds.every(validId)) {
+    throw new Error("Select five or six different players. Six is the maximum.");
   }
   return db.runTransaction(async tx => {
     const data = await loadDay({tx, db, scope, matchDayId});
@@ -174,6 +179,41 @@ async function submit({db, user, body, now = Date.now()}) {
     if (!memberIds.every(id => eligible.has(id))) {
       throw new Error("A selected player is unavailable or no longer eligible. Review the matrix.");
     }
+    // Field-owned copy of the captain's submitted match-day roster.
+    const selectedPlayers = memberIds.map(memberId =>
+      data.candidates.find(player => player.memberId === memberId)
+    ).map(player => ({
+      clubId,
+      memberId: player.memberId,
+      sourcePlayerId: player.sourcePlayerId,
+      fullName: player.fullName,
+      photoData: player.photoData || "",
+      mentality: player.mentality ?? null,
+      shooting: player.shooting ?? null,
+      originalMemberId: player.originalMemberId || "",
+      isFillIn: player.isFillIn === true,
+    }));
+    tx.set(db.doc(
+      `leagueVenues/${venueId}/seasons/${seasonId}/` +
+      `fieldMatchDayManifests/${matchDayId}/clubs/${clubId}`
+    ), {
+      version: 1,
+      venueId, seasonId, clubId, matchDayId,
+      fixtureId: data.fixture.id,
+      dateLocal: data.day.dateLocal,
+      scheduledLocal: data.fixture.scheduledLocal || "",
+      name: data.club.name || data.club.shortName || clubId,
+      logoUrl: data.club.branding?.logoUrl ||
+        data.club.transparentLogoUrl || data.club.logoUrl || "",
+      fingerprint: data.submission.fingerprint,
+      selectedMemberIds: memberIds,
+      players: selectedPlayers,
+      confirmed: true,
+      status: "confirmed",
+      submittedByUid: user.uid,
+      submittedAtMs: now,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     tx.update(data.squadRef, {
       [`matchDaySubmissions.${matchDayId}`]: {
         memberIds, fingerprint: data.submission.fingerprint,
@@ -210,13 +250,23 @@ async function getFieldDay({db, user, body}) {
     const clubs = [];
     for (const clubId of clubIds) {
       service.squadId({venueId, seasonId, clubId});
-      const clubSnap = await tx.get(db.doc(`clubs/${clubId}`));
+    }
+    const clubSnapshots = clubIds.length
+      ? await tx.getAll(...clubIds.map(clubId => db.doc(`clubs/${clubId}`)))
+      : [];
+    if (clubSnapshots.some(snapshot =>
+      service.canManageSquad(snapshot.data(), user))) allowed = true;
+    const squadSnapshots = !allowed && clubIds.length
+      ? await tx.getAll(...clubIds.map(clubId => db.doc(
+          `leagueSeasonSquads/${venueId}~${seasonId}~${clubId}`
+        )))
+      : [];
+    for (const [index, clubId] of clubIds.entries()) {
+      const clubSnap = clubSnapshots[index];
       const club = clubSnap.data();
       if (service.canManageSquad(club, user)) allowed = true;
       if (!allowed) {
-        const squadSnap = await tx.get(db.doc(
-          `leagueSeasonSquads/${venueId}~${seasonId}~${clubId}`
-        ));
+        const squadSnap = squadSnapshots[index];
         const entries = Object.values(squadSnap.data()?.entries || {})
           .filter(entry => validId(entry.memberId) &&
             entry.invitationStatus === "accepted");
@@ -231,34 +281,47 @@ async function getFieldDay({db, user, body}) {
       }
       clubs.push({
         clubId, name: club?.name || club?.shortName || clubId,
+        canManageFormation: service.canManageSquad(club, user),
         logoUrl: club?.branding?.logoUrl || club?.transparentLogoUrl || club?.logoUrl || "",
       });
     }
     if (!allowed) throw new Error("Sign in as Field staff or a participating Club member.");
-    const result = [];
-    for (const club of clubs) {
+    const snapshots = clubs.length
+      ? await tx.getAll(...clubs.map(club => db.doc(
+          `leagueVenues/${venueId}/seasons/${seasonId}/` +
+          `fieldMatchDayManifests/${matchDayId}/clubs/${club.clubId}`
+        )))
+      : [];
+    const result = clubs.map((club, index) => {
       const fixtures = (season.fixtures || []).filter(fixture =>
         fixture.matchDayId === matchDayId &&
         [fixture.clubAId, fixture.clubBId].includes(club.clubId));
-      if (!fixtures.length) {
-        result.push({...club, status: "bye", players: []});
-        continue;
-      }
-      try {
-        const data = await loadDay({
-          tx, db, scope: {venueId, seasonId, clubId: club.clubId}, matchDayId,
-        });
-        result.push({
-          ...club, ...data.submission,
-          status: data.submission.confirmed ? "confirmed" :
-            data.submission.players.length === 6 ? "awaiting_confirmation" : "incomplete",
-          candidateCount: data.candidates.length,
-          vacancies: data.vacancies.length,
-        });
-      } catch {
-        result.push({...club, status: "incomplete", players: []});
-      }
-    }
+      if (!fixtures.length) return {...club, status: "bye", players: []};
+      const manifest = snapshots[index].data();
+      const fixture = fixtures.find(item => item.id === manifest?.fixtureId);
+      const valid = manifest?.version === 1 &&
+        manifest.venueId === venueId && manifest.seasonId === seasonId &&
+        manifest.clubId === club.clubId && manifest.matchDayId === matchDayId &&
+        manifest.confirmed === true && Boolean(fixture) &&
+        manifest.dateLocal === day.dateLocal &&
+        manifest.scheduledLocal === (fixture.scheduledLocal || "") &&
+        Array.isArray(manifest.players) &&
+        manifest.players.length >= 5 && manifest.players.length <= 6;
+      if (!valid) return {
+        ...club, confirmed: false, status: "awaiting_confirmation", players: [],
+      };
+      return {
+        ...club,
+        matchDayId, dateLocal: day.dateLocal,
+        fixtureId: manifest.fixtureId,
+        fingerprint: manifest.fingerprint,
+        selectedMemberIds: manifest.selectedMemberIds,
+        players: manifest.players,
+        submittedAtMs: manifest.submittedAtMs,
+        confirmed: true, status: "confirmed",
+        candidateCount: manifest.players.length, vacancies: 0,
+      };
+    });
     return {matchDayId, dateLocal: day.dateLocal, clubs: result};
   });
 }

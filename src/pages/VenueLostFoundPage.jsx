@@ -1,3 +1,4 @@
+import {fieldPageKey, readFieldPage, saveFieldPage} from "../storage/fieldPageMemory.js";
 
 import React, {useEffect, useRef, useState} from "react";
 import {lostFoundRequest as request} from "../storage/fieldLostFoundRepository.js";
@@ -41,9 +42,14 @@ const labels = {
 };
 
 export default function VenueLostFoundPage({
-  venueId, venueName, adminView, onBack,
+  venueId, venueName, adminView, clubId = "", onBack,
 }) {
-  const [view, setView] = useState(null);
+  const memoryKey = fieldPageKey("lostFound", venueId, adminView);
+  const [view, setViewState] = useState(() => readFieldPage(memoryKey));
+  const setView = result => {
+    saveFieldPage(memoryKey, result);
+    setViewState(result);
+  };
   const [mode, setMode] = useState(adminView ? "tickets" : "report");
   const [category, setCategory] = useState("Footwear");
   const [busy, setBusy] = useState(false);
@@ -58,6 +64,7 @@ export default function VenueLostFoundPage({
 
   useEffect(() => {
     alive.current = true;
+    setViewState(readFieldPage(memoryKey));
     const controller = new AbortController();
     async function refresh() {
       if (loading.current || document.hidden) return;
@@ -81,7 +88,7 @@ export default function VenueLostFoundPage({
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [venueId, adminView]);
+  }, [venueId, adminView, memoryKey]);
 
   async function run(action, details = {}, success = "") {
     if (busy) return false;
@@ -116,6 +123,7 @@ export default function VenueLostFoundPage({
     try {
       const photo = found ? await compressPhoto(data.get("photo")) : "";
       await request(venueId, found ? "found" : "claim", {
+        clubId,
         description: data.get("description"),
         itemType: data.get("itemType"), colour: data.get("colour"),
         size: data.get("size"), specifics: data.get("specifics"),
