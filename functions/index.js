@@ -5832,3 +5832,12 @@ exports.announceFieldPracticeSeason = onRequest(
     }
   }
 );
+
+// Field logo stock and atomic registration.
+const {installFieldLogoStudio} = require("./fieldLogoStudio.cjs");
+installFieldLogoStudio(exports, {
+  admin,
+  db,
+  onRequest,
+  region: REGION,
+});

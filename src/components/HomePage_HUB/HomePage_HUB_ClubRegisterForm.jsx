@@ -21,6 +21,7 @@ export default function HomePage_HUB_ClubRegisterForm({
   clubDraft,
   onChange,
   onQuickFill,
+  showPlaySchedule = true,
 }) {
   const clubId = useMemo(
     () => slugifyClubName(clubDraft?.clubName),
@@ -215,6 +216,7 @@ export default function HomePage_HUB_ClubRegisterForm({
           />
         </label>
 
+        {showPlaySchedule && <>
         <label className="hub-field">
           <span>Playing day</span>
 
@@ -254,6 +256,8 @@ export default function HomePage_HUB_ClubRegisterForm({
             }
           />
         </label>
+
+        </>}
 
         <label className="hub-field">
           <span>First name</span>

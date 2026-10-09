@@ -1,0 +1,12 @@
+/* Fields use the Club carousel's responsive grid and unscaled card dimensions. */
+.fanm-venues--live .fanm-venues__carousel.hub-club-carousel {display:grid;}
+.fanm-venues .field-carousel-shared {display:contents !important;}
+.fanm-venues--live .fanm-venues__carousel.hub-club-carousel > button {width:auto;flex:none;height:auto;min-height:0;align-self:stretch;}
+
+/* Keep Field registration available as the first snap position */
+.fanm-venues .fanm-venues__register-card {
+  scroll-snap-align: start;
+}
+.fanm-venues .fanm-venues__carousel {
+  overflow-anchor: none;
+}

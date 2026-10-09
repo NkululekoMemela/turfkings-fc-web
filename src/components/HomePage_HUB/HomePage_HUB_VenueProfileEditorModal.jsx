@@ -8,11 +8,11 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import HomePage_HUB_ClubRegisterForm from "./HomePage_HUB_ClubRegisterForm";
-import HomePage_HUB_LogoGenerator from "./HomePage_HUB_LogoGenerator";
+import FieldLogoDesigner from "../FieldLogoDesigner.jsx";
+import FieldScheduleInputs from "../FieldScheduleInputs.jsx";
+import {fieldLogoStudioRequest} from "../../storage/fieldLogoStudioGateway.js";
 import HomePage_HUB_CaptainVerification from "./HomePage_HUB_CaptainVerification";
-import {
-  updateVenueLeagueProfile,
-} from "../../storage/venueLeagueEntryRepository.js";
+
 
 function parseWeeklyPlayTime(value = "") {
   const text = String(value || "").trim();
@@ -30,7 +30,8 @@ function parseWeeklyPlayTime(value = "") {
 }
 
 function getDraftFromClub(club = {}, adminIdentity = {}) {
-  const source = club?.raw || club || {};
+  const raw = {...(club?.raw || {}), ...(club || {})};
+  const source = {...raw, locationDetails: raw.location || raw.locationDetails};
   const admin = adminIdentity || {};
   const weeklyPlayTime =
     source?.weeklyPlayTime ||
@@ -66,8 +67,11 @@ function getDraftFromClub(club = {}, adminIdentity = {}) {
     longitude: source?.locationDetails?.longitude ?? source.longitude ?? source?.geo?.lng ?? null,
     googlePlaceId: source?.locationDetails?.placeId || source.googlePlaceId || "",
     venueVerificationStatus: source?.locationDetails?.verificationStatus || "",
+    operatingHours: source.operatingHours || source.schedule?.operatingHours || {},
+    websiteUrl: source.websiteUrl || source.website || "",
     playDay: source?.schedule?.playDay || source.playDay || parsedWeekly.playDay,
     playTime: source?.schedule?.playTime || source.playTime || parsedWeekly.playTime,
+    playEndTime: source?.schedule?.playEndTime || source.playEndTime || "",
     weeklyPlayTime,
     timezone: source?.schedule?.timezone || source.timezone || "Africa/Johannesburg",
     captainName,
@@ -88,7 +92,7 @@ function getDraftFromClub(club = {}, adminIdentity = {}) {
 
 
 function getBankingDraftFromClub(club = {}) {
-  const source = club?.raw || club || {};
+  const source = {...(club?.raw || {}), ...(club || {})};
   return {
     bankName: source?.banking?.bankName || "",
     accountHolder: source?.banking?.accountHolder || "",
@@ -100,9 +104,11 @@ function getBankingDraftFromClub(club = {}) {
 }
 
 function getLogoDraftFromClub(club = {}) {
-  const source = club?.raw || club || {};
+  const source = {...(club?.raw || {}), ...(club || {})};
 
   return {
+    localDesignSpec: source?.branding?.spec,
+    logoChanged: false,
     logoFile: null,
     uploadedLogoUrl:
       source.logoUrl ||
@@ -165,12 +171,13 @@ export default function HomePage_HUB_VenueProfileEditorModal({
     try {
       setSaving(true);
 
-      const updatedClub = await updateVenueLeagueProfile({
-        venueId: clubId,
-        venueDraft: clubDraft,
-        logoDraft,
-        bankingDraft,
+      if (logoDraft.isPreparingUpload) throw new Error("Wait for the logo image to finish preparing.");
+      const result = await fieldLogoStudioRequest({
+        action:"update", venueId:clubId, draft:clubDraft, bankingDraft,
+        logo:{unchanged:!logoDraft.logoChanged, spec:logoDraft.localDesignSpec,
+          stockId:logoDraft.stockDesignId || "", uploadDataUrl:logoDraft.preparedUploadDataUrl || ""},
       });
+      const updatedClub = result.venue;
 
       onSaved?.({
         ...club,
@@ -210,7 +217,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
             type="button"
             onClick={onClose}
             aria-label="Close club profile editor"
-            disabled={saving}
+            disabled={saving || Boolean(logoDraft.isPreparingUpload)}
           >
             ×
           </button>
@@ -223,7 +230,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
               type="button"
               className={step === item ? "is-active" : ""}
               onClick={() => setStep(item)}
-              disabled={saving}
+              disabled={saving || Boolean(logoDraft.isPreparingUpload)}
             >
               {item}
             </button>
@@ -231,10 +238,11 @@ export default function HomePage_HUB_VenueProfileEditorModal({
         </div>
 
         {step === 1 ? (
-          <HomePage_HUB_ClubRegisterForm
-            clubDraft={clubDraft}
-            onChange={setClubDraft}
-          />
+          <>
+            <HomePage_HUB_ClubRegisterForm clubDraft={clubDraft} onChange={setClubDraft} showPlaySchedule={false}/>
+            <label className="hub-field"><span>Field website (optional)</span><input value={clubDraft.websiteUrl || ""} onChange={event => setClubDraft({...clubDraft,websiteUrl:event.target.value})} placeholder="https://yourfield.co.za"/></label>
+            <FieldScheduleInputs draft={clubDraft} onChange={setClubDraft}/>
+          </>
         ) : null}
 
         {step === 2 ? (
@@ -247,7 +255,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
         ) : null}
 
         {step === 3 ? (
-          <HomePage_HUB_LogoGenerator
+          <FieldLogoDesigner
             clubDraft={{ ...clubDraft, clubId }}
             logoDraft={logoDraft}
             onChange={setLogoDraft}
@@ -288,7 +296,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
           <button
             type="button"
             className="hub-secondary-button"
-            disabled={saving}
+            disabled={saving || Boolean(logoDraft.isPreparingUpload)}
             onClick={() => (step === 1 ? onClose?.() : setStep((current) => Math.max(1, current - 1)))}
           >
             {step === 1 ? "Cancel" : "Back"}
@@ -298,7 +306,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
             <button
               type="button"
               className="hub-primary-button"
-              disabled={saving}
+              disabled={saving || Boolean(logoDraft.isPreparingUpload)}
               onClick={() => setStep((current) => Math.min(4, current + 1))}
             >
               Continue
@@ -307,7 +315,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
             <button
               type="button"
               className="hub-primary-button"
-              disabled={saving}
+              disabled={saving || Boolean(logoDraft.isPreparingUpload)}
               onClick={saveClubProfile}
             >
               {saving ? "Saving..." : "Save club"}
