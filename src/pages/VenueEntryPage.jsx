@@ -5660,6 +5660,8 @@ export default function VenueEntryPage({
         />
       )}
       <VenueLandingPage
+        fieldSettingsOnly={venuePage === "settings"}
+        onSettingsBack={() => setVenuePage("landing")}
         onGoToPayments={() => setVenuePage("signup")}
         onGoToSquads={() => setVenuePage("squads")}
         fieldDecisionControls={

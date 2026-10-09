@@ -8,7 +8,7 @@ const items = [
   { key: "formations", image: "/formations-icon.png", label: "Lineups" },
   { key: "news", emoji: "📰", label: "News" },
   { key: "videos", image: "/videotape.png", label: "Videos" },
-  { key: "lostFound", emoji: "🔎", label: "Lost & Found" },
+  { key: "settings", emoji: "⚙️", label: "Settings" },
 ];
 
 export default function FieldBottomNav({ currentPage, onNavigate }) {

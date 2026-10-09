@@ -1,3 +1,4 @@
+import PoolTablePage from "./PoolTablePage.jsx";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 import FiveAsideLoadingPitch from "../components/FiveAsideLoadingPitch.jsx";
 import React, { useRef, useState } from "react";
@@ -30,6 +31,7 @@ export default function WelcomePage({
   onExploreLeagues,
   onJoinNearbyClub,
 }) {
+  const [poolOpen, setPoolOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerStatus, setPickerStatus] = useState("intro");
   const [loadPhase, setLoadPhase] = useState("location");
@@ -199,6 +201,8 @@ export default function WelcomePage({
     }
   }
 
+  if (poolOpen) return createPortal(<PoolTablePage onBack={() => setPoolOpen(false)}/>, document.body);
+
   return createPortal(
     <main id="fanm-welcome-hero">
       <div className="fanm-hero__content">
@@ -212,6 +216,11 @@ export default function WelcomePage({
             <span>5 Asides Near Me</span>
           </div>
           <span className="fanm-hero__edition">FOOTBALL. TOGETHER.</span>
+        <button type="button" onClick={() => setPoolOpen(true)} aria-label="Open Pool Table" title="Pool Table"
+            style={{flexShrink:0,border:0,background:"transparent",padding:0,cursor:"pointer",display:"flex",alignItems:"center",gap:7,color:"#fff",fontWeight:800}}>
+            <span className="pool-ball" style={{width:36,height:36}} aria-hidden="true"><i style={{width:19,height:19,fontSize:15}}>8</i></span>
+            <span style={{fontSize:11}}>Pool Table</span>
+          </button>
         </header>
 
         <div className="fanm-hero__main">

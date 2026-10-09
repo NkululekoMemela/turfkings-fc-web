@@ -228,8 +228,10 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   let content;
   if (!practiceVenue) {
     content = <FieldPracticeStartupSplash practiceBootstrapping/>;
-  } else if (page === "landing") {
+  } else if (page === "landing" || page === "settings") {
     content = <VenueLandingPage
+      fieldSettingsOnly={page === "settings"}
+      onSettingsBack={() => navigate("landing")}
       dataScope={scope}
       fieldSeason={season}
       fieldScheduleControls={
@@ -354,7 +356,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   }
 
   return <div style={{paddingBottom: 90}}>
-    <FieldPracticeTimer expiresAt={session.expiresAt} onExit={onExit}/>
+    {page !== "live" && <FieldPracticeTimer expiresAt={session.expiresAt} onExit={onExit}/>}
     {error && <p role="alert">{error}</p>}
     {busy && <p role="status">Preparing sandbox fixtures and squads…</p>}
     {content}
@@ -362,10 +364,10 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       scope={scope} venueId={venue.id} seasonId={season.id} isCreator
     />}
 
-    <FieldBottomNav currentPage={page} onNavigate={next => {
+    {page !== "live" && <FieldBottomNav currentPage={page} onNavigate={next => {
       if (["news", "videos", "lostFound"].includes(next)) unavailable();
       else navigate(next);
-    }}/>
+    }}/>}
     {showEndDay && season && <FieldPracticeEndMatchDay
       venue={practiceVenue} season={season} scope={scope}
       onClose={() => setShowEndDay(false)}

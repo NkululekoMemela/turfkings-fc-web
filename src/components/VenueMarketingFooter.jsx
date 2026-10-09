@@ -112,6 +112,16 @@ export default function VenueMarketingFooter() {
 
   return (
     <>
+      <section
+        className="fanm-venues__closing-visual"
+        aria-label="5 Asides Near Me Field experience"
+      >
+        <img
+          src={FIELD_MARKETING_IMAGE}
+          alt="5 Asides Near Me Field and league experience"
+        />
+      </section>
+
       <footer className="hub-footer-brand fanm-venues__marketing-footer">
         <div className="hub-footer-logo-stage">
           {footerLogos.map((logo, index) => (
@@ -407,15 +417,7 @@ export default function VenueMarketingFooter() {
         </details>
       </footer>
 
-      <section
-        className="fanm-venues__closing-visual"
-        aria-label="5 Asides Near Me Field experience"
-      >
-        <img
-          src={FIELD_MARKETING_IMAGE}
-          alt="5 Asides Near Me Field and league experience"
-        />
-      </section>
+
 
       {infoModal ? (
         <div
