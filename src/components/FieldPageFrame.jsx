@@ -16,6 +16,7 @@ const titles = {
   fixtures: "League Fixtures",
   actionLog: "Action Log",
   lostFound: "Lost & Found",
+  settings: "Settings",
 };
 
 export default function FieldPageFrame({
@@ -38,6 +39,8 @@ export default function FieldPageFrame({
     window.addEventListener("scroll", handleScroll, {passive: true});
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  if (page === "live") return <FieldRibbonContext.Provider value={null}><div className="field-referee-booth">{children}</div></FieldRibbonContext.Provider>;
 
   return (
     <FieldRibbonContext.Provider value={ribbonHost}>

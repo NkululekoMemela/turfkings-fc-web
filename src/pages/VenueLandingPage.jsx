@@ -313,6 +313,8 @@ export default function VenueLandingPage({
   onGoToSquads,
   onGoToNews,
   onGoToLostFound,
+  fieldSettingsOnly = false,
+  onSettingsBack,
   onOpenHighlightsCamera,
   onGoToHighlights,
   onGoToEntryDev,
@@ -356,7 +358,7 @@ export default function VenueLandingPage({
     useState(false);
 
 
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [, setShowSettingsPanel] = useState(false);
   const [showDurationModal, setShowDurationModal] = useState(false);
   const [showAdminCodeModal, setShowAdminCodeModal] = useState(false);
   const [durationDraftMinutes, setDurationDraftMinutes] = useState(() =>
@@ -1361,121 +1363,17 @@ export default function VenueLandingPage({
     closeDurationModal();
   };
 
-  return (
-    <div className="page landing-page field-landing-page">
-
-
-
-      <header className="header field-canvas-identity" style={{ marginTop: "1.15rem" }}>
-        <p className="subtitle">{clubHeaderInfoLine || resolvedClubSubtitle}</p>
-
-        <div className="header-top-row" style={{ width: "100%" }}>
-          <div className="auth-status" style={{ width: "100%" }}>
-            <span className="auth-text">
-              Viewing as <strong>{identityName}</strong>
-              <span className="muted small">
-                {" "}• Role: <strong>{roleLabel}</strong>
-              </span>
-            </span>
-
-            <div
-              className="muted small"
-              style={{
-                marginTop: "0.2rem",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "0.75rem",
-                width: "100%",
-                flexWrap: "nowrap",
-              }}
-            >
-              <span>
-                {currentUser ? (
-                  <>
-                    Google account:{" "}
-                    <strong>{currentUser.displayName || currentUser.email}</strong>
-                  </>
-                ) : (
-                  <>Browse as a spectator</>
-                )}
-              </span>
-
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => onGoToEntryDev?.()}
-                style={{
-                  minHeight: "30px",
-                  padding: "0.28rem 0.68rem",
-                  borderRadius: "999px",
-                  fontSize: "0.76rem",
-                  fontWeight: 800,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                👤 Change Profile
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <section className="card landing-first-card">
-        {fieldScheduleView}
-        {!canSeeCaptainStyleControls && (
-          <div style={{minWidth: 0, width: "100%"}}>
-
-            {fieldDecisionControls}
-            {fieldStaffRequestControls}
-          </div>
-        )}
-        {canSeeCaptainStyleControls && (
-          <div className="field-settings-panel" style={{
-            marginBottom: "0.9rem", padding: "0.65rem",
+  if (fieldSettingsOnly) return <div className="page landing-page field-landing-page">
+    {canSeeCaptainStyleControls && (
+          <div id="field-season-settings" className="field-settings-panel" style={{
+            gridColumn: "1 / -1", marginBottom: "0.9rem", padding: "0.65rem",
             border: "2px solid rgba(56,189,248,.65)",
             borderRadius: "1.2rem",
           }}>
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => setShowSettingsPanel((prev) => !prev)}
-              aria-expanded={showSettingsPanel}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "0.75rem",
-                borderRadius: "1rem",
-                padding: "0.75rem 0.9rem",
-                background:
-                  "linear-gradient(145deg, rgba(15,23,42,0.92), rgba(2,6,23,0.92))",
-                border: "1px solid rgba(148,163,184,0.18)",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
-              }}
-            >
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.16rem" }}>
-                <span style={{ fontWeight: 850 }}>⚙️ Season settings</span>
-                <span className="muted small">
-                  {"League · Fixtured · " +
-                    String(gameFormat).replaceAll("_V_", " v ") +
-                    " · " + matchDurationLabel}
-                </span>
-              </span>
-              <span
-                aria-hidden="true"
-                style={{
-                  fontSize: "1rem",
-                  transform: showSettingsPanel ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "transform 0.18s ease",
-                }}
-              >
-                ▾
-              </span>
-            </button>
-
-            {showSettingsPanel && (
+            <h3>Season settings</h3>
+            <button type="button" className="secondary-btn"
+              onClick={onSettingsBack}>Close settings</button>
+            {true && (
               <div
                 style={{
                   marginTop: "0.75rem",
@@ -1575,7 +1473,78 @@ export default function VenueLandingPage({
             )}
           </div>
         )}
+    {!canSeeCaptainStyleControls && <section className="card"><h2>Settings</h2><p>Season settings are available to authorized Field administrators.</p><button type="button" className="secondary-btn" onClick={onSettingsBack}>Back to Home</button></section>}
+  </div>;
 
+  return (
+    <div className="page landing-page field-landing-page">
+
+
+
+      <header className="header field-canvas-identity" style={{ marginTop: "1.15rem" }}>
+        <p className="subtitle">{clubHeaderInfoLine || resolvedClubSubtitle}</p>
+
+        <div className="header-top-row" style={{ width: "100%" }}>
+          <div className="auth-status" style={{ width: "100%" }}>
+            <span className="auth-text">
+              Viewing as <strong>{identityName}</strong>
+              <span className="muted small">
+                {" "}• Role: <strong>{roleLabel}</strong>
+              </span>
+            </span>
+
+            <div
+              className="muted small"
+              style={{
+                marginTop: "0.2rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                width: "100%",
+                flexWrap: "nowrap",
+              }}
+            >
+              <span>
+                {currentUser ? (
+                  <>
+                    Google account:{" "}
+                    <strong>{currentUser.displayName || currentUser.email}</strong>
+                  </>
+                ) : (
+                  <>Browse as a spectator</>
+                )}
+              </span>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => onGoToEntryDev?.()}
+                style={{
+                  minHeight: "30px",
+                  padding: "0.28rem 0.68rem",
+                  borderRadius: "999px",
+                  fontSize: "0.76rem",
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                👤 Change Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section className="card landing-first-card">
+        {fieldScheduleView}
+        {!canSeeCaptainStyleControls && (
+          <div style={{minWidth: 0, width: "100%"}}>
+
+            {fieldDecisionControls}
+            {fieldStaffRequestControls}
+          </div>
+        )}
         {isThreeTeamLeague && fixturedMode && (
           <section className="fixture-premium-summary">
             <div className="fixture-premium-summary-icon">
@@ -1765,30 +1734,28 @@ export default function VenueLandingPage({
               })}
             </button>
 
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={onGoToNews}
-              style={tileButtonStyle(isMobile)}
-            >
-              {renderTileContent({
-                isMobile,
-                icon: (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      fontSize: isMobile ? "1.55rem" : "1.38rem",
-                      lineHeight: 1,
-                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
-                    }}
-                  >
-                    📰
-                  </span>
-                ),
-                desktopLines: ["News &", "Highlights"],
-                mobileLines: ["News &", "Highlights"],
-              })}
-            </button>
+            <button type="button" className="secondary-btn"
+                  onClick={onGoToLostFound}
+                  aria-label={`Lost and Found${lostFoundOpenCount ?
+                    `, ${lostFoundOpenCount} open tickets` : ""}`}
+                  style={{...tileButtonStyle(isMobile), position: "relative",
+                    width: "100%", minWidth: 0}}>
+                  {renderTileContent({
+                    isMobile,
+                    icon: <span aria-hidden="true"
+                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
+                    desktopLines: ["Lost &", "Found"],
+                    mobileLines: ["Lost &", "Found"],
+                  })}
+                  {lostFoundOpenCount > 0 && <span style={{
+                    position: "absolute", top: 7, right: 8,
+                    minWidth: 21, height: 21, padding: "0 4px",
+                    display: "grid", placeItems: "center", borderRadius: 999,
+                    color: "#fff", background: "#dc354b",
+                    fontSize: 11, fontWeight: 800,
+                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
+                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
+                </button>
 
 
 
@@ -1912,42 +1879,19 @@ export default function VenueLandingPage({
             </button>
 
 
-              <div style={{
-                gridColumn: "1 / -1", display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: isMobile ? "0.65rem" : "0.85rem",
-              }}>
-                {typeof onReturnToClub === "function" ? (
+
+                {typeof onReturnToClub === "function" && (
                 <FieldPortalTile style={tileButtonStyle(isMobile)}
                   clubId={identity?.clubId}
                   label={`Return to ${portalClubName || "your Club"}`}
                   subtitle=""
                   destination={portalClubName || "your Club"}
                   onClick={onReturnToClub} />
-              ) : <span aria-hidden="true" />}
-                <button type="button" className="secondary-btn"
-                  onClick={onGoToLostFound}
-                  aria-label={`Lost and Found${lostFoundOpenCount ?
-                    `, ${lostFoundOpenCount} open tickets` : ""}`}
-                  style={{...tileButtonStyle(isMobile), position: "relative",
-                    width: "100%", minWidth: 0}}>
-                  {renderTileContent({
-                    isMobile,
-                    icon: <span aria-hidden="true"
-                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
-                    desktopLines: ["Lost &", "Found"],
-                    mobileLines: ["Lost &", "Found"],
-                  })}
-                  {lostFoundOpenCount > 0 && <span style={{
-                    position: "absolute", top: 7, right: 8,
-                    minWidth: 21, height: 21, padding: "0 4px",
-                    display: "grid", placeItems: "center", borderRadius: 999,
-                    color: "#fff", background: "#dc354b",
-                    fontSize: 11, fontWeight: 800,
-                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
-                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
-                </button>
-              </div>
+              )}
+
+
+
+
 
 
 
@@ -2036,30 +1980,28 @@ export default function VenueLandingPage({
               })}
               </button>
 
-              <button
-                className="secondary-btn"
-                type="button"
-                onClick={onGoToNews}
-                style={tileButtonStyle(isMobile)}
-              >
-                {renderTileContent({
-                  isMobile,
-                  icon: (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      fontSize: isMobile ? "1.55rem" : "1.38rem",
-                      lineHeight: 1,
-                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
-                    }}
-                  >
-                    📰
-                  </span>
-                ),
-                  desktopLines: ["News &", "Highlights"],
-                  mobileLines: ["News &", "Highlights"],
-                })}
-              </button>
+              <button type="button" className="secondary-btn"
+                  onClick={onGoToLostFound}
+                  aria-label={`Lost and Found${lostFoundOpenCount ?
+                    `, ${lostFoundOpenCount} open tickets` : ""}`}
+                  style={{...tileButtonStyle(isMobile), position: "relative",
+                    width: "100%", minWidth: 0}}>
+                  {renderTileContent({
+                    isMobile,
+                    icon: <span aria-hidden="true"
+                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
+                    desktopLines: ["Lost &", "Found"],
+                    mobileLines: ["Lost &", "Found"],
+                  })}
+                  {lostFoundOpenCount > 0 && <span style={{
+                    position: "absolute", top: 7, right: 8,
+                    minWidth: 21, height: 21, padding: "0 4px",
+                    display: "grid", placeItems: "center", borderRadius: 999,
+                    color: "#fff", background: "#dc354b",
+                    fontSize: 11, fontWeight: 800,
+                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
+                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
+                </button>
 
 
 
@@ -2183,42 +2125,14 @@ export default function VenueLandingPage({
               </button>
 
 
-              <div style={{
-                gridColumn: "1 / -1", display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: isMobile ? "0.65rem" : "0.85rem",
-              }}>
-                {typeof onReturnToClub === "function" ? (
+              {typeof onReturnToClub === "function" && (
                 <FieldPortalTile style={tileButtonStyle(isMobile)}
                   clubId={identity?.clubId}
                   label={`Return to ${portalClubName || "your Club"}`}
                   subtitle=""
                   destination={portalClubName || "your Club"}
                   onClick={onReturnToClub} />
-              ) : <span aria-hidden="true" />}
-                <button type="button" className="secondary-btn"
-                  onClick={onGoToLostFound}
-                  aria-label={`Lost and Found${lostFoundOpenCount ?
-                    `, ${lostFoundOpenCount} open tickets` : ""}`}
-                  style={{...tileButtonStyle(isMobile), position: "relative",
-                    width: "100%", minWidth: 0}}>
-                  {renderTileContent({
-                    isMobile,
-                    icon: <span aria-hidden="true"
-                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
-                    desktopLines: ["Lost &", "Found"],
-                    mobileLines: ["Lost &", "Found"],
-                  })}
-                  {lostFoundOpenCount > 0 && <span style={{
-                    position: "absolute", top: 7, right: 8,
-                    minWidth: 21, height: 21, padding: "0 4px",
-                    display: "grid", placeItems: "center", borderRadius: 999,
-                    color: "#fff", background: "#dc354b",
-                    fontSize: 11, fontWeight: 800,
-                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
-                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
-                </button>
-              </div>
+               )}
 
 
             </div>
