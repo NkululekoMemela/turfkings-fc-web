@@ -2561,8 +2561,14 @@ const FANM_ENVIRONMENT_BADGE = FANM_DEVELOPMENT_DEPLOYMENT
     : null;
 
 export default function App() {
+
+
+  const [entryPageIntent, setEntryPageIntent] = useState(null);
+  const [page, setPage] = useState(() =>
+    Capacitor.isNativePlatform() ? PAGE_ENTRY : PAGE_WELCOME
+  );
   useEffect(() => {
-    if (!FANM_ENVIRONMENT_BADGE || typeof document === "undefined") {
+    if (!FANM_ENVIRONMENT_BADGE || typeof document === "undefined" || page === PAGE_WELCOME) {
       return undefined;
     }
 
@@ -2583,12 +2589,8 @@ export default function App() {
     return () => {
       badge.remove();
     };
-  }, []);
+  }, [page]);
 
-  const [entryPageIntent, setEntryPageIntent] = useState(null);
-  const [page, setPage] = useState(() =>
-    Capacitor.isNativePlatform() ? PAGE_ENTRY : PAGE_WELCOME
-  );
   const nativeStartupRoutedRef = useRef(false);
   const [nativeStartupReady, setNativeStartupReady] = useState(
     () => !Capacitor.isNativePlatform()

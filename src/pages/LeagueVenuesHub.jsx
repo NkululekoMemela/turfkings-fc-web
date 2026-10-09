@@ -10,6 +10,7 @@ import VenueMarketingFooter from "../components/VenueMarketingFooter.jsx";
 import VenueCarouselCard from "../components/VenueCarouselCard.jsx";
 import {
   watchLeagueVenues,
+  readLeagueVenueCache,
 } from "../storage/leagueVenueRepository.js";
 import "../styles/HomePage_HUB.css";
 import "./WelcomePage.css";
@@ -24,8 +25,8 @@ export default function LeagueVenuesHub({
     signInWithGoogle,
   } = useAuth();
 
-  const [venues, setVenues] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [venues, setVenues] = useState(readLeagueVenueCache);
+  const [loading, setLoading] = useState(() => venues.length === 0);
   const [loadError, setLoadError] = useState("");
   const [
     registrationOpen,

@@ -29,6 +29,37 @@ function slug(value) {
     .slice(0, 48);
 }
 
+// Keep the public Field hub ready between visits.
+const FIELD_HUB_CACHE_KEY =
+  `fanm-field-hub-v1:${db.app.options.projectId}`;
+let fieldHubCache = null;
+
+export function readLeagueVenueCache() {
+  if (fieldHubCache) return fieldHubCache;
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(FIELD_HUB_CACHE_KEY));
+    if (cached && Array.isArray(cached.venues) &&
+        Date.now() - cached.savedAt < 300000) {
+      fieldHubCache = cached.venues;
+      return fieldHubCache;
+    }
+  } catch {
+    // Storage may be unavailable; live loading still works.
+  }
+  return [];
+}
+
+function rememberLeagueVenues(venues) {
+  fieldHubCache = venues;
+  try {
+    sessionStorage.setItem(FIELD_HUB_CACHE_KEY, JSON.stringify({
+      savedAt: Date.now(), venues,
+    }));
+  } catch {
+    // The in-memory cache remains available.
+  }
+}
+
 export function watchLeagueVenues(onVenues, onError) {
   return onSnapshot(
     collection(db, "leagueVenues"),
@@ -38,6 +69,7 @@ export function watchLeagueVenues(onVenues, onError) {
         .filter((venue) => venue.visibility?.listed === true)
         .sort((a, b) => a.name.localeCompare(b.name));
 
+      rememberLeagueVenues(venues);
       onVenues(venues);
     },
     onError
