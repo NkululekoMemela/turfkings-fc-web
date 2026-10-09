@@ -396,7 +396,7 @@ export default function WelcomePage({
 
         <footer className="fanm-hero__footer">
           <span>PLAY LOCAL. BELONG EVERYWHERE.</span>
-          <span>Players · Clubs · Field managers</span>
+
         </footer>
       </div>
     </main>,

@@ -1,63 +1,37 @@
-import React, { useEffect, useState } from "react";
+import React, {useEffect, useState} from "react";
+import {onAuthStateChanged} from "firebase/auth";
+import {auth} from "../firebaseConfig.js";
+import HomePage_HUB_ClubCard from "./HomePage_HUB/HomePage_HUB_ClubCard.jsx";
+import "./VenueCarouselCard.css";
+import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
 
-export default function VenueCarouselCard({ venue, onEnter }) {
-  const [face, setFace] = useState(0);
-  const [paused, setPaused] = useState(false);
-
-  useEffect(() => {
-    if (paused) return undefined;
-    const timer = window.setInterval(() => {
-      setFace((current) => (current + 1) % 3);
-    }, 7000);
-    return () => window.clearInterval(timer);
-  }, [paused]);
-
-  const logoUrl =
-    venue.branding?.logoUrl || venue.logoUrl || venue.image || "";
-  const location = [
-    venue.location?.suburb,
-    venue.location?.city,
-  ].filter(Boolean).join(", ");
-  const clubCount = venue.league?.activeSeason?.clubIds?.length || 0;
-
-  return (
-    <button
-      className="fanm-venues__venue-card fanm-venues__rotating-card"
-      type="button"
-      onClick={() => onEnter?.(venue)}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onTouchStart={() => setPaused(true)}
-      onTouchEnd={() => setPaused(false)}
-      onTouchCancel={() => setPaused(false)}
-      aria-label={`Enter ${venue.name}`}
-    >
-      <span
-        className="fanm-venues__rotating-face"
-        key={face}
-        aria-hidden="true"
-      >
-        {face === 0 ? (
-          <span
-            className="fanm-venues__badge"
-            style={{ "--venue-accent": venue.branding?.accent || "#b98653" }}
-          >
-            {logoUrl ? <img src={logoUrl} alt="" /> :
-              venue.name.trim().charAt(0).toUpperCase()}
-          </span>
-        ) : face === 1 ? (
-          <span className="fanm-venues__face-icon">⌖</span>
-        ) : (
-          <span className="fanm-venues__face-icon">⚽</span>
-        )}
-        <strong>{venue.name}</strong>
-        <small>
-          {face === 0 ? (location || "Field league") :
-            face === 1 ? (location || "Find your Field") :
-            `${clubCount} ${clubCount === 1 ? "club" : "clubs"} in this season`}
-        </small>
-        <span className="fanm-venues__enter-hint">Enter Field ↗</span>
-      </span>
-    </button>
-  );
+export default function VenueCarouselCard({venue, onEnter}) {
+  const [user, setUser] = useState(auth.currentUser);
+  const [deleting, setDeleting] = useState(false);
+  useEffect(() => onAuthStateChanged(auth, setUser), []);
+  const canDelete = Boolean(user && (venue.ownerUid === user.uid || venue.createdByUid === user.uid ||
+    user.emailVerified && String(user.email || "").toLowerCase() === "nkululekolerato@gmail.com"));
+  async function deleteField() {
+    if (!canDelete || deleting) return;
+    if (window.prompt(`Type DELETE to remove ${venue.name} from the public hub. A record will be kept for audit purposes.`) !== "DELETE") return;
+    setDeleting(true);
+    try {await fieldLogoStudioRequest({action: "delete", venueId: venue.id});}
+    catch (error) {window.alert(error.message || "Could not delete this Field. Please try again.");}
+    finally {setDeleting(false);}
+  }
+  const location = [venue.location?.suburb, venue.location?.city].filter(Boolean).join(", ");
+  const clubCount = venue.league?.activeSeason?.clubIds?.length;
+  const profile = {
+    ...venue,
+    image: venue.branding?.logoUrl || venue.logoUrl || venue.image || "",
+    accent: venue.branding?.accent || "#16a34a",
+    locationDetails: {suburb: location},
+    weeklyPlayTime: venue.operatingHoursSummary || venue.schedule?.operatingHoursSummary || "Contact Field for opening hours",
+    displayLeaderName: venue.managerContact?.firstName || venue.createdByName || "",
+    playerCount: venue.clubCount ?? clubCount ?? 0,
+    featuredVideoUrl: venue.featuredVideoUrl || venue.media?.featuredVideoUrl || venue.highlightVideoUrl || "",
+  };
+  return <div className="homepage-hub-shell field-carousel-shared"><HomePage_HUB_ClubCard club={profile} onViewClub={() => onEnter?.(venue)}
+    canJoin={false} canChallenge={false} canDelete={canDelete} onDeleteClub={deleteField}
+    entityLabel="Field" participantLabel="Clubs" activityLabel="Get involved" websiteUrl={venue.websiteUrl || venue.website || ""} busy={deleting} freezeFace={deleting}/></div>;
 }

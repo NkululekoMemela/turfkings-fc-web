@@ -70,7 +70,7 @@ function compactPlayTime(value = "") {
     .trim();
 }
 
-function getVerificationBadge(club = {}) {
+function getVerificationBadge(club = {}, entityLabel = "Club") {
   const level = Number(club.verificationLevel ?? club.trustLevel ?? 0);
 
   if (level >= 3) {
@@ -82,10 +82,10 @@ function getVerificationBadge(club = {}) {
   }
 
   if (level >= 1 || club.verified === true) {
-    return { label: "Verified Club", className: "tk-trust-face--verified" };
+    return { label: `Verified ${entityLabel}`, className: "tk-trust-face--verified" };
   }
 
-  return { label: "New Club", className: "tk-trust-face--new" };
+  return { label: `New ${entityLabel}`, className: "tk-trust-face--new" };
 }
 
 export default function HomePage_HUB_ClubCard({
@@ -101,6 +101,11 @@ export default function HomePage_HUB_ClubCard({
   initialFace = 0,
   freezeFace = false,
   faceCount = 3,
+  entityLabel = "Club",
+  participantLabel = "Players",
+  busy = false,
+  activityLabel,
+  websiteUrl = "",
 }) {
   const [faceIndex, setFaceIndex] = useState(initialFace);
   const [isPaused, setIsPaused] = useState(false);
@@ -143,9 +148,15 @@ export default function HomePage_HUB_ClubCard({
 
   const clubLeaderFirstName = getClubLeaderFirstName(club);
 
-  const clubActivityLabel = clubLeaderFirstName
-    ? `${clubLeaderFirstName}'s Club`
-    : "Local Club";
+  let fieldWebsite = null;
+  if (entityLabel === "Field" && websiteUrl) {
+    try {const url = new URL(/^https?:\/\//i.test(websiteUrl) ? websiteUrl : `https://${websiteUrl}`);
+      if (["https:", "http:"].includes(url.protocol) && !url.username && !url.password) fieldWebsite = url;
+    } catch { /* Keep the useful fallback for invalid legacy URLs. */ }
+  }
+  const clubActivityLabel = activityLabel || (clubLeaderFirstName
+    ? `${clubLeaderFirstName}'s ${entityLabel}`
+    : `Local ${entityLabel}`);
 
   useEffect(() => {
     if (isPaused || freezeFace) return undefined;
@@ -179,7 +190,7 @@ export default function HomePage_HUB_ClubCard({
       onTouchEnd={() => setIsPaused(false)}
       aria-label={`Open ${club.name || "club"}`}
     >
-      <div className="hub-club-card__menu-wrap" onClick={(event) => event.stopPropagation()}>
+      <div className="hub-club-card__menu-wrap" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
         <button
           type="button"
           className="hub-club-card__menu-button"
@@ -223,12 +234,13 @@ export default function HomePage_HUB_ClubCard({
                 type="button"
                 role="menuitem"
                 className="hub-club-card__menu-danger"
+                disabled={busy}
                 onClick={() => {
                   setActionsOpen(false);
                   onDeleteClub?.(club);
                 }}
               >
-                Delete Club
+                {busy ? "Deleting…" : `Delete ${entityLabel}`}
               </button>
             ) : null}
           </div>
@@ -251,15 +263,15 @@ export default function HomePage_HUB_ClubCard({
             )}
           </div>
 
-          <strong>{club.name || "Football Club"}</strong>
+          <strong>{club.name || `Football ${entityLabel}`}</strong>
           <small>Tap to enter</small>
         </section>
 
         <section className="hub-club-card__face hub-club-card__face--details hub-club-card__face--trust">
-          <div className={`tk-trust-face ${getVerificationBadge(club).className}`}>
+          <div className={`tk-trust-face ${getVerificationBadge(club, entityLabel).className}`}>
             <div className="tk-trust-face__header">
               <span />
-              <strong>{getVerificationBadge(club).label}</strong>
+              <strong>{getVerificationBadge(club, entityLabel).label}</strong>
               <span />
             </div>
 
@@ -268,7 +280,7 @@ export default function HomePage_HUB_ClubCard({
               <path d="m8.8 12.1 2.1 2.1 4.4-4.8" />
             </svg>
 
-            <h3>{club.name || "Football Club"}</h3>
+            <h3>{club.name || `Football ${entityLabel}`}</h3>
 
             <div className="tk-trust-face__stats tk-trust-face__stats--hero">
               <div className="tk-trust-face__stat tk-trust-face__stat--players">
@@ -279,7 +291,7 @@ export default function HomePage_HUB_ClubCard({
                   <path d="M11 19.2c.4-3.1 2.4-5.1 4.8-5.1s4.4 2 4.8 5.1" />
                 </svg>
                 <b>{playerCount}</b>
-                <small>Players</small>
+                <small>{participantLabel}</small>
               </div>
 
               <div className="tk-trust-face__stat tk-trust-face__stat--distance">
@@ -314,7 +326,9 @@ export default function HomePage_HUB_ClubCard({
                   <circle cx="12" cy="12" r="8.5" />
                   <path d="m12 3.5 2.6 5.2 5.7.8-4.1 4 1 5.6L12 16.5 6.9 19.1l1-5.6-4.1-4 5.7-.8L12 3.5Z" />
                 </svg>
-                <span>{clubActivityLabel}</span>
+                {fieldWebsite ? <a href={fieldWebsite.href} target="_blank" rel="noopener noreferrer" title={fieldWebsite.href}
+                  onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}
+                  style={{color:"inherit",maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fieldWebsite.host}</a> : <span>{clubActivityLabel}</span>}
               </p>
             </div>
 
@@ -347,7 +361,7 @@ export default function HomePage_HUB_ClubCard({
               <div className="hub-club-card__highlight-overlay">
                 <span className="hub-club-card__eyebrow">Highlights</span>
                 <div className="hub-club-card__play">▶</div>
-                <h3>{highlightPreview === "Highlights coming soon" ? "Club highlight" : highlightPreview}</h3>
+                <h3>{highlightPreview === "Highlights coming soon" ? `${entityLabel} highlight` : highlightPreview}</h3>
               </div>
             </>
           ) : (
@@ -355,7 +369,7 @@ export default function HomePage_HUB_ClubCard({
               <span className="hub-club-card__eyebrow">Highlights</span>
               <div className="hub-club-card__play">▶</div>
               <h3>{highlightPreview}</h3>
-              <p>Goals, saves and skills from this club will live here.</p>
+              <p>Goals, saves and skills from this {entityLabel.toLowerCase()} will live here.</p>
             </>
           )}
         </section>

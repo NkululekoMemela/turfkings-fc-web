@@ -746,3 +746,10 @@
 @media (prefers-reduced-motion: reduce) {
   #fanm-welcome-hero .fanm-nearby-brand-pin {animation: none;}
 }
+
+/* Reclaim the empty mobile welcome footer space */
+@media (max-width: 640px) {
+  #fanm-welcome-hero .fanm-hero__footer {
+    display: none;
+  }
+}

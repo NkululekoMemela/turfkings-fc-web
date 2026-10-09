@@ -1473,7 +1473,7 @@ service cloud.firestore {
 
         function registeredLegacyCreator() {
           let venue =
-            get(
+            getAfter(
               /databases/$(database)/documents/leagueVenues/$(venueId)
             ).data;
 

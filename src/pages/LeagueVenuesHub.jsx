@@ -237,7 +237,7 @@ export default function LeagueVenuesHub({
           ) : null}
 
           <div
-            className="fanm-venues__carousel"
+            className="fanm-venues__carousel hub-club-carousel"
             aria-label="5-a-side Field carousel"
           >
             <button

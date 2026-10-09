@@ -464,3 +464,16 @@
 .app-root--field[data-field-theme="sandstone"] .field-entry-heading-row :is(h1, .field-entry-eyebrow) {
   color: #0f2038 !important;
 }
+
+/* Field header logo visibility */
+.app-root--field .field-entry-heading-logo {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+}
+.field-ribbon-frame .field-ribbon-logo {
+  width: 56px !important;
+  height: 56px !important;
+  flex: 0 0 56px;
+  object-fit: contain;
+}

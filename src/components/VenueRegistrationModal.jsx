@@ -4,14 +4,14 @@ import React, {
 } from "react";
 import { auth } from "../firebaseConfig.js";
 import HomePage_HUB_GoogleVenueInput from "./HomePage_HUB/HomePage_HUB_GoogleVenueInput.jsx";
-import HomePage_HUB_LogoGenerator from "./HomePage_HUB/HomePage_HUB_LogoGenerator.jsx";
-import {
-  completeLeagueVenueRegistration,
-  createLeagueVenue,
-} from "../storage/leagueVenueRepository.js";
+import FieldScheduleInputs from "./FieldScheduleInputs.jsx";
+import FieldLogoDesigner from "./FieldLogoDesigner.jsx";
+import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
+
 
 const INITIAL_DRAFT = {
   name: "",
+  operatingHours: {}, timezone: "Africa/Johannesburg",
   city: "",
   suburb: "",
   address: "",
@@ -65,6 +65,7 @@ export default function VenueRegistrationModal({
     staffEmail: auth.currentUser?.email || "",
   }));
   const [logoDraft, setLogoDraft] = useState({});
+  const [registrationRequestId, setRegistrationRequestId] = useState(() => crypto.randomUUID());
   const [createdVenueId, setCreatedVenueId] =
     useState("");
   const [submitting, setSubmitting] =
@@ -174,18 +175,6 @@ export default function VenueRegistrationModal({
       }
     }
 
-    if (stepNumber === 3) {
-      const hasLogo =
-        logoDraft.logoFile ||
-        logoDraft.selectedGeneratedLogoId ||
-        logoDraft.generatedLogoDataUrl ||
-        logoDraft.uploadedLogoUrl;
-
-      if (!hasLogo) {
-        return "Upload a Field logo or choose a starter logo before continuing.";
-      }
-    }
-
     return "";
   }
 
@@ -225,78 +214,37 @@ export default function VenueRegistrationModal({
     });
     setLogoDraft({});
     setCreatedVenueId("");
+    setRegistrationRequestId(crypto.randomUUID());
     setErrorText("");
     onClose?.();
   }
 
   async function createField() {
-    const validationError =
-      validateStep(1) ||
-      validateStep(2) ||
-      validateStep(3);
-
-    if (validationError) {
-      setErrorText(validationError);
-      return;
-    }
-
+    if (submitting || logoDraft.isPreparingUpload) return;
+    const validationError = validateStep(1) || validateStep(2);
+    if (validationError) {setErrorText(validationError); return;}
     setSubmitting(true);
     setErrorText("");
-
     try {
-      let venueId = createdVenueId;
-      let createdVenue = null;
-
-      if (!venueId) {
-        createdVenue = await createLeagueVenue({
-          name: draft.name,
-          city: draft.city,
-          suburb: draft.suburb,
-          address: draft.address,
-          websiteUrl: draft.websiteUrl,
-          creatorRole: draft.creatorRole,
-        });
-
-        venueId = createdVenue.id;
-        setCreatedVenueId(venueId);
-      }
-
-      const completedVenue =
-        await completeLeagueVenueRegistration({
-          venueId,
-          draft,
-          logoDraft,
-        });
-
-      onVenueCreated?.({
-        ...(createdVenue || {}),
-        ...completedVenue,
-        id: venueId,
+      const result = await fieldLogoStudioRequest({
+        action: "register", requestId: registrationRequestId, draft,
+        logo: {
+          spec: logoDraft.localDesignSpec,
+          stockId: logoDraft.stockDesignId || "",
+          uploadDataUrl: logoDraft.preparedUploadDataUrl || "",
+        },
       });
-
+      onVenueCreated?.(result.venue);
       setSubmitting(false);
       setStep(1);
-      setDraft({
-        ...INITIAL_DRAFT,
-        staffEmail:
-          auth.currentUser?.email || "",
-      });
+      setDraft({...INITIAL_DRAFT, staffEmail: auth.currentUser?.email || ""});
       setLogoDraft({});
       setCreatedVenueId("");
+      setRegistrationRequestId(crypto.randomUUID());
       onClose?.();
     } catch (error) {
-      console.error(
-        "[VenueRegistration] Could not register Field:",
-        error
-      );
-
-      setErrorText(
-        createdVenueId
-          ? error?.message ||
-              "The Field is safe, but branding could not be completed. Try again."
-          : error?.message ||
-              "Field registration failed. Check the details and try again."
-      );
+      console.error("[VenueRegistration]", error);
+      setErrorText(error.message || "Field registration failed. Please try again.");
       setSubmitting(false);
     }
   }
@@ -331,7 +279,7 @@ export default function VenueRegistrationModal({
             type="button"
             aria-label="Close Field registration"
             onClick={resetAndClose}
-            disabled={submitting}
+            disabled={submitting || Boolean(logoDraft.isPreparingUpload)}
           >
             ×
           </button>
@@ -349,7 +297,7 @@ export default function VenueRegistrationModal({
                 step === item ? "is-active" : ""
               }
               onClick={() => goToStep(item)}
-              disabled={submitting}
+              disabled={submitting || Boolean(logoDraft.isPreparingUpload)}
             >
               {item}
             </button>
@@ -366,6 +314,8 @@ export default function VenueRegistrationModal({
                 exact location.
               </p>
             </div>
+
+            <FieldScheduleInputs draft={draft} onChange={setDraft}/>
 
             <div className="hub-form-grid">
               <label className="hub-field hub-field--wide">
@@ -627,7 +577,7 @@ export default function VenueRegistrationModal({
         ) : null}
 
         {step === 3 ? (
-          <HomePage_HUB_LogoGenerator
+          <FieldLogoDesigner
             clubDraft={venueIdentity}
             logoDraft={logoDraft}
             onChange={setLogoDraft}
@@ -663,7 +613,7 @@ export default function VenueRegistrationModal({
             <button
               type="button"
               className="hub-primary-button"
-              disabled={submitting}
+              disabled={submitting || Boolean(logoDraft.isPreparingUpload)}
               onClick={() =>
                 goToStep(
                   Math.min(3, step + 1)
@@ -676,7 +626,7 @@ export default function VenueRegistrationModal({
             <button
               type="button"
               className="hub-primary-button"
-              disabled={submitting}
+              disabled={submitting || Boolean(logoDraft.isPreparingUpload)}
               onClick={createField}
             >
               {submitting
