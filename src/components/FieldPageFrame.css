@@ -477,3 +477,11 @@
   flex: 0 0 56px;
   object-fit: contain;
 }
+
+/* Larger Field entry badge */
+.app-root--field .field-entry-heading-logo {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  object-fit: contain;
+}

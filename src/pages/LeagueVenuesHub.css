@@ -700,3 +700,46 @@
 .fanm-venues--live .hub-club-filter-ribbon {
   margin-top: 16px;
 }
+
+/* Show the complete rotating advert without empty image frames. */
+.fanm-venues--live .fanm-venues__closing-visual img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+
+/* Flush Field hub footer logo */
+.fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+.fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer > .hub-footer-logo-stage {
+  grid-column: 1 / -1;
+  width: 100% !important;
+  max-width: none !important;
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 5 / 3;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer > .hub-footer-logo-stage img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  object-fit: cover !important;
+}
+.fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer > section,
+.fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer > .hub-premium-footer-panels,
+.fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer > details {
+  margin: 16px !important;
+}

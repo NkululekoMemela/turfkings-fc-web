@@ -269,3 +269,23 @@ test("A live fixture blocks another approval", async () => {
   });
   assert.equal((await request()).status, 400);
 });
+
+for (const role of ["field_manager", "assistant_manager", "field_assistant", "other_staff", "referee"]) {
+  test(`Approved ${role} can request match start without administrator powers`, async () => {
+    await db.doc(`${venuePath}/staff/standin`).set({role, status: "active", isAdministrator: false});
+    const result = await request("standin");
+    assert.equal(result.status, 200, result.body?.error);
+    const receipt = (await db.doc(`${venuePath}/seasons/season-one/startApprovals/${result.body.approvalId}`).get()).data();
+    assert.equal(receipt.actorUid, "standin");
+  });
+}
+for (const role of ["club_rep", "spectator", "club_member"]) {
+  test(`${role} cannot request match start`, async () => {
+    await db.doc(`${venuePath}/staff/standin`).set({role, status: "active", isAdministrator: true});
+    assert.equal((await request("standin")).status, 400);
+  });
+}
+test("Pending Field staff cannot request match start", async () => {
+  await db.doc(`${venuePath}/staff/standin`).set({role: "field_assistant", status: "pending", isAdministrator: false});
+  assert.equal((await request("standin")).status, 400);
+});

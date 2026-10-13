@@ -43,6 +43,7 @@ import {
 } from "../storage/venueCameraApprovalRepository.js";
 import { buildCurrentMatchFromFixture } from "../core/scheduledFixtures.js";
 import VenueLiveMatchRuntime from "../components/VenueLiveMatchRuntime.jsx";
+import { canAccessFieldStaffSettings } from "../core/fieldStaffUiAccess.mjs";
 import {
   getVenueRefereeDeviceId,
   buildVenueRefereeController,
@@ -765,20 +766,6 @@ export default function VenueEntryPage({
     setPracticePage("landing");
   }, [venue?.id, enteredIdentity?.uid, Boolean(enteredIdentity)]);
 
-  useEffect(() => {
-    onFieldNavState?.({
-      ready: Boolean(enteredIdentity) && Boolean(fieldSessionChoice),
-      page: fieldSessionChoice === "practice" ? practicePage : venuePage,
-    });
-    return () => onFieldNavState?.({
-      ready: false,
-      page: "landing",
-    });
-  }, [enteredIdentity, venuePage, onFieldNavState, fieldSessionChoice, practicePage]);
-
-  useEffect(() => {
-    if (fieldNavTarget?.page) setVenuePage(fieldNavTarget.page);
-  }, [fieldNavTarget]);
   const [venueSeason, setVenueSeason] = useState(null);
   const [fieldClubProfiles, setFieldClubProfiles] = useState({});
   const fieldClubIdsKey = JSON.stringify([...new Set([
@@ -948,6 +935,29 @@ export default function VenueEntryPage({
     useState(false);
   const promptedStaffRequestKeyRef = useRef("");
 
+  const canAccessFieldSettings = canAccessFieldStaffSettings({
+    identity: enteredIdentity, user: currentUser,
+    venue, staff: authenticatedFieldStaff,
+  });
+
+  useEffect(() => {
+    const requestedPage = fieldSessionChoice === "practice" ? practicePage : venuePage;
+    onFieldNavState?.({
+      ready: Boolean(enteredIdentity) && Boolean(fieldSessionChoice),
+      page: requestedPage === "settings" && !canAccessFieldSettings ? "landing" : requestedPage,
+      canAccessSettings: canAccessFieldSettings,
+    });
+    return () => onFieldNavState?.({ready: false, page: "landing", canAccessSettings: false});
+  }, [enteredIdentity, venuePage, onFieldNavState, fieldSessionChoice, practicePage, canAccessFieldSettings]);
+
+  useEffect(() => {
+    if (venuePage === "settings" && !canAccessFieldSettings) setVenuePage("landing");
+    if (fieldNavTarget?.page) {
+      setVenuePage(fieldNavTarget.page === "settings" && !canAccessFieldSettings ? "landing" : fieldNavTarget.page);
+    }
+  }, [fieldNavTarget, canAccessFieldSettings]);
+
+
   useEffect(() => {
     setAuthenticatedFieldStaff(null);
     if (!venue?.id || !currentUser?.uid) return undefined;
@@ -955,7 +965,7 @@ export default function VenueEntryPage({
     return onSnapshot(
       doc(db, "leagueVenues", venue.id, "staff", currentUser.uid),
       (snapshot) => setAuthenticatedFieldStaff(
-        snapshot.exists() ? snapshot.data() : null
+        snapshot.exists() ? { ...snapshot.data(), uid: currentUser.uid, venueId: venue.id } : null
       ),
       (error) => {
         console.error("[Field staff access]", error);
@@ -5413,12 +5423,7 @@ export default function VenueEntryPage({
         fieldStaffPowers?.endSeason === true)
     );
 
-    const canOperateFieldMatch =
-      !isReadOnlyFieldRole &&
-      (
-        isFieldAdministrator ||
-        (hasActiveFieldRole && effectiveRole === "referee")
-      );
+    const canOperateFieldMatch = canAccessFieldSettings;
 
     console.info("[Field Start Match access]", {
       actingRole: enteredIdentity?.actingRole || null,
@@ -5660,7 +5665,7 @@ export default function VenueEntryPage({
         />
       )}
       <VenueLandingPage
-        fieldSettingsOnly={venuePage === "settings"}
+        fieldSettingsOnly={venuePage === "settings" && canAccessFieldSettings}
         onSettingsBack={() => setVenuePage("landing")}
         onGoToPayments={() => setVenuePage("signup")}
         onGoToSquads={() => setVenuePage("squads")}
@@ -6347,16 +6352,9 @@ export default function VenueEntryPage({
 
       </div>
 
-      <section className="card" style={heroCardStyle}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: "1rem",
-            alignItems: "center",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
+      <section className="card" style={{ ...heroCardStyle, padding: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }}>
+          <div className="entry-marketing-copy" style={{ minWidth: 0 }}>
             <div style={labelCapsuleStyle}>{activeClubShortName} Entry</div>
             <h2
               style={{
@@ -6385,12 +6383,12 @@ export default function VenueEntryPage({
 
           <div
             style={{
-              borderRadius: "22px",
+              borderRadius: "0",
               overflow: "hidden",
-              border: "1px solid rgba(148,163,184,0.16)",
+              border: "none",
               boxShadow: "0 18px 42px rgba(2,6,23,0.32)",
               background: "#020617",
-              padding: "0.5rem",
+              padding: 0,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -6411,11 +6409,11 @@ export default function VenueEntryPage({
                   style={{
                     width: "100%",
                     height: "auto",
-                    maxHeight: "320px",
+                    maxHeight: "none",
                     objectFit: "contain",
                     objectPosition: "center",
                     display: "block",
-                    borderRadius: "16px",
+                    borderRadius: "0",
                   }}
                 />
               ) : (
@@ -6440,7 +6438,7 @@ export default function VenueEntryPage({
               )}
 
               {realCanEditClubHero ? (
-                <div style={{ marginTop: "0.75rem" }}>
+                <div style={{ marginTop: 0 }}>
                   <label
                     title="Change main club photo"
                     style={{

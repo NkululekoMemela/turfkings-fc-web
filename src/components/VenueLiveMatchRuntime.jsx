@@ -774,6 +774,52 @@ export default function VenueLiveMatchRuntime({
     );
   }
 
+  /*
+   * The shared Live Match page validates every lineup name
+   * against team.players. Field squads are stored on the live
+   * match as paidSquads, so join them to their club here.
+   *
+   * Pipeline:
+   * Squads -> Formations -> confirmedLineupSnapshot
+   *         -> paidSquads/team.players -> Live Match
+   */
+  const fieldLiveTeams = safeArray(teams).map((team) => {
+    const teamId = String(team?.id || "").trim();
+    const squadPlayers = safeArray(
+      liveState?.paidSquads?.[teamId]
+    );
+
+    return {
+      ...team,
+      players: squadPlayers.map((player) => {
+        const fullName = String(
+          player?.fullName ||
+          player?.displayName ||
+          player?.name ||
+          player?.playerName ||
+          ""
+        ).trim();
+
+        return {
+          ...player,
+          id:
+            player?.id ||
+            player?.playerId ||
+            player?.sourcePlayerId ||
+            fullName,
+          name: fullName,
+          fullName,
+          shortName:
+            String(
+              player?.shortName ||
+              fullName.split(/\s+/)[0] ||
+              ""
+            ).trim(),
+        };
+      }),
+    };
+  });
+
   const sharedProps = {
     isPracticeMode: scope.environment === "practice",
     practiceSessionId: scope.practiceSessionId || null,
@@ -887,6 +933,7 @@ export default function VenueLiveMatchRuntime({
         handleRejectTakeOver
       }
       pendingMatchStartContext={{
+        teams: fieldLiveTeams,
         currentMatch:
           liveState.currentMatch,
         matchType: "LEAGUE",

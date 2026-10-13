@@ -1,8 +1,10 @@
+import FIELD_MARKETING_IMAGE_TWO from "../assets/marketing/field-venue-advert-2.jpeg";
 import { LEGAL } from "../legal/policies.js";
 import LegalSignature from "./LegalSignature.jsx";
 const FIELD_POLICY = LEGAL.field;
 import { ABOUT_RELEASE } from "../content/aboutRelease.js";
 import React, {
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -12,6 +14,10 @@ import HOME_FOOTER_LOGO_DARK from "../assets/branding/logo-main-dark.jpeg";
 import FIELD_MARKETING_IMAGE from "../assets/marketing/field-venue-marketing.png";
 
 const INFO = {
+  help: {
+    title: "How can we help?",
+    body: [],
+  },
   tour: {
     title: "Your Field. Your football community.",
     body: [
@@ -55,14 +61,32 @@ const INFO = {
 };
 
 export default function VenueMarketingFooter() {
+  const [secondAdvertReady, setSecondAdvertReady] = useState(false);
+  const [advertIndex, setAdvertIndex] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const preload = new Image();
+    preload.onload = () => {
+      if (active) setSecondAdvertReady(true);
+    };
+    preload.src = FIELD_MARKETING_IMAGE_TWO;
+    return () => {
+      active = false;
+      preload.onload = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!secondAdvertReady) return;
+    const timer = window.setInterval(() => {
+      setAdvertIndex(index => (index + 1) % 2);
+    }, 6000);
+    return () => window.clearInterval(timer);
+  }, [secondAdvertReady]);
+
   const [infoModal, setInfoModal] =
     useState(null);
-  const [feedbackOpen, setFeedbackOpen] =
-    useState(false);
-  const [subject, setSubject] = useState(
-    "5 Asides Near Me Field Feedback"
-  );
-  const [message, setMessage] = useState("");
 
   const footerLogos = useMemo(() => {
     const logos = [
@@ -89,81 +113,8 @@ export default function VenueMarketingFooter() {
     setInfoModal(INFO[key] || null);
   }
 
-  function openFeedback() {
-    setSubject(
-      "5 Asides Near Me Field Feedback"
-    );
-    setMessage("");
-    setFeedbackOpen(true);
-  }
-
-  function sendFeedback() {
-    const mailSubject = encodeURIComponent(
-      subject ||
-        "5 Asides Near Me Field Feedback"
-    );
-    const mailBody = encodeURIComponent(
-      message || ""
-    );
-
-    window.location.href =
-      `mailto:support@5asidesnearme.com?subject=${mailSubject}&body=${mailBody}`;
-  }
-
-  return (
-    <>
-      <section
-        className="fanm-venues__closing-visual"
-        aria-label="5 Asides Near Me Field experience"
-      >
-        <img
-          src={FIELD_MARKETING_IMAGE}
-          alt="5 Asides Near Me Field and league experience"
-        />
-      </section>
-
-      <footer className="hub-footer-brand fanm-venues__marketing-footer">
-        <div className="hub-footer-logo-stage">
-          {footerLogos.map((logo, index) => (
-            <img
-              key={logo.label}
-              src={logo.src}
-              alt="5 Asides Near Me"
-              className={`hub-footer-logo-static hub-footer-logo-static--${
-                ["one", "two", "three"][index]
-              }`}
-            />
-          ))}
-        </div>
-
-        <section>
-          <span className="hub-kicker">
-            Field-first football
-          </span>
-
-          <h2>
-            Find your Field. Join the game.
-          </h2>
-
-          <p>
-            5 Asides Near Me connects Fields,
-            clubs, leagues, match officials
-            and players in one football
-            platform.
-          </p>
-
-          <div className="hub-footer-actions">
-            <button
-              type="button"
-              className="hub-footer-tour-button"
-              onClick={() => openInfo("tour")}
-            >
-              Take the tour
-            </button>
-          </div>
-        </section>
-
-        <div
+  const helpContent = (
+<div
           className="hub-premium-footer-panels"
           aria-label="Field support, FAQs and quick links"
         >
@@ -316,112 +267,88 @@ export default function VenueMarketingFooter() {
               <em>›</em>
             </button>
 
-            <button
-              type="button"
-              className="hub-premium-footer-row"
-              onClick={openFeedback}
-            >
-              <span className="hub-premium-footer-icon">
-                💬
-              </span>
 
-              <span>
-                <strong>Send feedback</strong>
-              </span>
-
-              <em>›</em>
-            </button>
           </section>
         </div>
+  );
 
-        <details className="hub-mobile-help-accordion">
-          <summary>
-            Help? <span>🎧</span>
-          </summary>
+  return (
+    <>
+      <section
+        className="fanm-venues__closing-visual"
+        aria-label="5 Asides Near Me Field experience"
+      >
+        <img
+          src={secondAdvertReady && advertIndex === 1
+            ? FIELD_MARKETING_IMAGE_TWO
+            : FIELD_MARKETING_IMAGE}
+          onError={() => {
+            setSecondAdvertReady(false);
+            setAdvertIndex(0);
+          }}
+          alt="5 Asides Near Me Field and league experience"
+        />
+      </section>
 
-          <details className="hub-mobile-help-group">
-            <summary>✉️ Need help?</summary>
+      <footer className="hub-footer-brand fanm-venues__marketing-footer">
+        <div className="hub-footer-logo-stage">
+          {footerLogos.map((logo, index) => (
+            <img
+              key={logo.label}
+              src={logo.src}
+              alt="5 Asides Near Me"
+              className={`hub-footer-logo-static hub-footer-logo-static--${
+                ["one", "two", "three"][index]
+              }`}
+            />
+          ))}
+        </div>
 
-            <a href="mailto:support@5asidesnearme.com">
-              Email support
-            </a>
+        <section>
+          <span className="hub-kicker">
+            Field-first football
+          </span>
 
-            <a
-              href="https://wa.me/27762849740"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Chat on WhatsApp
-            </a>
+          <h2>
+            Find your Field. Join the game.
+          </h2>
 
-            <span>
-              Mon–Fri: 08:00–18:00 SAST
-            </span>
-          </details>
+          <p>
+            5 Asides Near Me connects Fields,
+            clubs, leagues, match officials
+            and players in one football
+            platform.
+          </p>
 
-          <details className="hub-mobile-help-group">
-            <summary>❔ Field FAQs</summary>
-
+          <div className="hub-footer-actions">
             <button
               type="button"
-              onClick={() =>
-                openInfo("joinLeague")
-              }
+              className="hub-footer-tour-button"
+              onClick={() => openInfo("tour")}
             >
-              How does my club join?
+              Take the tour
             </button>
-
             <button
               type="button"
-              onClick={() =>
-                openInfo("fieldManagement")
-              }
+              className="hub-footer-help-button"
+              aria-haspopup="dialog"
+              onClick={() => openInfo("help")}
             >
-              What can a Field Manager do?
+              Help? <span aria-hidden="true">🎧</span>
             </button>
+          </div>
+        </section>
 
-            <button
-              type="button"
-              onClick={() =>
-                openInfo("matchdays")
-              }
-            >
-              How do matchdays work?
-            </button>
-          </details>
+        {helpContent}
 
-          <details className="hub-mobile-help-group">
-            <summary>🔗 Quick links</summary>
 
-            <button
-              type="button"
-              onClick={() => openInfo("about")}
-            >
-              About 5 Asides Near Me
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openInfo("terms")}
-            >
-              Terms & Privacy
-            </button>
-
-            <button
-              type="button"
-              onClick={openFeedback}
-            >
-              Send feedback
-            </button>
-          </details>
-        </details>
       </footer>
 
 
 
       {infoModal ? (
         <div
-          className="hub-action-sheet-backdrop"
+          className="hub-action-sheet-backdrop field-support-backdrop"
           onMouseDown={(event) => {
             if (
               event.target ===
@@ -432,8 +359,15 @@ export default function VenueMarketingFooter() {
           }}
         >
           <section
-            className="hub-info-modal"
+            className={`hub-info-modal field-support-modal ${
+              infoModal === INFO.help ? "field-support-modal--help" : ""
+            }`}
+            role="dialog"
+            aria-modal="true"
             aria-label={infoModal.title}
+            onKeyDown={event => {
+              if (event.key === "Escape") setInfoModal(null);
+            }}
           >
             <button
               type="button"
@@ -450,9 +384,14 @@ export default function VenueMarketingFooter() {
             </span>
 
             <h2>{infoModal.title}</h2>
+            {infoModal === INFO.help && (
+              <p className="field-support-intro">
+                Support, answers and everything you need to get started.
+              </p>
+            )}
 
             <div className="hub-info-modal__body">
-              {infoModal.body === ABOUT_RELEASE ? (
+              {infoModal === INFO.help ? helpContent : infoModal.body === ABOUT_RELEASE ? (
                 <ul>
                   {ABOUT_RELEASE.map((item, index) => (
                     <li key={index}>{item}</li>
@@ -468,70 +407,7 @@ export default function VenueMarketingFooter() {
         </div>
       ) : null}
 
-      {feedbackOpen ? (
-        <div
-          className="hub-action-sheet-backdrop"
-          onMouseDown={(event) => {
-            if (
-              event.target ===
-              event.currentTarget
-            ) {
-              setFeedbackOpen(false);
-            }
-          }}
-        >
-          <section
-            className="hub-info-modal"
-            aria-label="Send Field feedback"
-          >
-            <button
-              type="button"
-              className="hub-action-sheet__close"
-              onClick={() =>
-                setFeedbackOpen(false)
-              }
-            >
-              ×
-            </button>
 
-            <span className="hub-kicker">
-              Feedback
-            </span>
-
-            <h2>Send feedback</h2>
-
-            <label className="hub-contact-field">
-              <span>Subject</span>
-              <input
-                value={subject}
-                onChange={(event) =>
-                  setSubject(event.target.value)
-                }
-              />
-            </label>
-
-            <label className="hub-contact-field">
-              <span>Message</span>
-              <textarea
-                value={message}
-                onChange={(event) =>
-                  setMessage(event.target.value)
-                }
-                rows={6}
-                placeholder="Write your message here..."
-              />
-            </label>
-
-            <button
-              type="button"
-              className="hub-primary-button"
-              onClick={sendFeedback}
-            >
-              Open email to send
-            </button>
-          </section>
-        </div>
-      ) : null}
     </>
   );
 }

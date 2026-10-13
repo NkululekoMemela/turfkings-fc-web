@@ -20157,3 +20157,960 @@ button.fanm-chat-highlight-card {
   flex: 0 0 44px;
   min-height: 44px;
 }
+
+/* Marketing image is full bleed; entry copy retains the shared card inset. */
+.entry-marketing-copy { padding: 20px 22px; }
+@media (max-width: 768px) { .entry-marketing-copy { padding: 18px 16px; } }
+
+/* Landing photos fill the card without an inner frame. */
+.card.team-photo-card {
+  position: relative !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+.card.team-photo-card > img.team-photo {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  display: block !important;
+}
+
+/* Field access and footer polish v1 */
+.field-staff-picker {
+  display: grid;
+  gap: 8px;
+  margin-top: 1rem;
+  min-width: 0;
+}
+.field-staff-picker__label {
+  font-size: .82rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+.field-staff-picker__trigger,
+.field-staff-picker__option {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(125,211,252,.3);
+  background: linear-gradient(135deg, #162638, #101b2d);
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+}
+.field-staff-picker__trigger > span:first-child,
+.field-staff-picker__identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.field-staff-picker small {
+  color: #a5bed4;
+  font-size: .76rem;
+}
+.field-staff-picker__options {
+  display: grid;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid rgba(125,211,252,.22);
+  border-radius: 18px;
+  background: #0b1524;
+  box-shadow: 0 14px 32px rgba(0,0,0,.24);
+}
+.field-staff-picker__option {
+  border-color: transparent;
+  background: #142033;
+}
+.field-staff-picker__option[aria-pressed="true"] {
+  border-color: #67e8f9;
+  background: #163649;
+}
+.field-staff-picker__avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #155e75, #3730a3);
+  color: #e0f2fe;
+  font-weight: 800;
+}
+.field-staff-picker button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.field-staff-picker button:focus-visible {
+  outline: 2px solid #67e8f9;
+  outline-offset: 3px;
+}
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) > section,
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-actions {
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  align-items: start !important;
+  gap: 12px !important;
+  width: 100% !important;
+}
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-actions > details.hub-mobile-help-accordion {
+  display: contents !important;
+}
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-tour-button,
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-actions > details > summary {
+  box-sizing: border-box !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 48px !important;
+  margin: 0 !important;
+  padding: 8px !important;
+  border: 1px solid rgba(134,239,172,.35) !important;
+  border-radius: 14px !important;
+  font-size: .84rem !important;
+  font-weight: 800 !important;
+  cursor: pointer;
+  list-style: none !important;
+}
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-actions > details > summary {
+  background: linear-gradient(135deg, #14382b, #0c241e) !important;
+  color: #dcfce7 !important;
+}
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-actions > details > summary::-webkit-details-marker {
+  display: none;
+}
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-actions > details > .hub-mobile-help-group {
+  grid-column: 1 / -1 !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 12px !important;
+  overflow-wrap: anywhere;
+}
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-actions > details:not([open]) > .hub-mobile-help-group {
+  display: none !important;
+}
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-mobile-help-group > * {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+/* Field Help popup v2 */
+footer:is(.fanm-venues__marketing-footer, .club-marketing-footer) .hub-footer-help-button {
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 48px !important;
+  margin: 0 !important;
+  padding: 8px !important;
+  border: 1px solid rgba(134,239,172,.35) !important;
+  border-radius: 14px !important;
+  background: linear-gradient(135deg, #14382b, #0c241e) !important;
+  color: #dcfce7 !important;
+  font-size: .84rem !important;
+  font-weight: 800 !important;
+  cursor: pointer;
+}
+.hub-info-modal .hub-premium-footer-panels {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 14px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+.hub-info-modal .hub-premium-footer-card {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+}
+.hub-info-modal .hub-premium-footer-row {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+.hub-info-modal .hub-premium-footer-row > span {
+  min-width: 0;
+}
+
+/* Field support and chat visual refinement v3 */
+.field-support-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: max(16px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left)) !important;
+  background: rgba(2, 8, 18, .78) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-sizing: border-box !important;
+}
+.field-support-backdrop .field-support-modal {
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  box-sizing: border-box !important;
+  width: min(100%, 520px) !important;
+  max-width: 520px !important;
+  max-height: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 26px 22px !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(148, 192, 203, .2) !important;
+  border-radius: 26px !important;
+  background:
+    radial-gradient(ellipse at top left, rgba(16,185,129,.12), transparent 55%),
+    linear-gradient(155deg, #122032, #0b1422 70%) !important;
+  color: #f1f5f9 !important;
+  box-shadow: 0 28px 80px rgba(0,0,0,.5) !important;
+}
+.field-support-modal > .hub-kicker {
+  display: block !important;
+  margin: 0 48px 10px 0 !important;
+  color: #6ee7b7 !important;
+  font-size: .66rem !important;
+  font-weight: 800 !important;
+  letter-spacing: .16em !important;
+  text-transform: uppercase;
+}
+.field-support-modal > h2 {
+  margin: 0 38px 10px 0 !important;
+  color: #f8fafc !important;
+  font-size: clamp(1.5rem, 6vw, 2rem) !important;
+  line-height: 1.15 !important;
+  letter-spacing: -.035em !important;
+  font-weight: 800 !important;
+}
+.field-support-modal .field-support-intro {
+  margin: 0 0 22px !important;
+  color: #9cb0c5 !important;
+  font-size: .85rem !important;
+  line-height: 1.6 !important;
+}
+.field-support-modal > .hub-action-sheet__close {
+  position: absolute !important;
+  top: 16px !important;
+  right: 16px !important;
+  width: 36px !important;
+  height: 36px !important;
+  display: grid !important;
+  place-items: center;
+  padding: 0 !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  border-radius: 12px !important;
+  background: rgba(255,255,255,.05) !important;
+  color: #cbd5e1 !important;
+  font-size: 1.4rem !important;
+}
+.field-support-modal--help .hub-info-modal__body {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.field-support-modal--help .hub-premium-footer-panels {
+  gap: 18px !important;
+}
+.field-support-modal--help .hub-premium-footer-card {
+  display: grid !important;
+  gap: 7px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.field-support-modal--help .hub-premium-footer-card h3 {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin: 0 2px 3px !important;
+  color: #91a7be !important;
+  font-size: .68rem !important;
+  line-height: 1.4 !important;
+  letter-spacing: .12em !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+}
+.field-support-modal--help .hub-premium-footer-card h3 > span {
+  display: none;
+}
+.field-support-modal--help .hub-premium-footer-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-height: 52px !important;
+  padding: 12px 14px !important;
+  margin: 0 !important;
+  border: 1px solid rgba(148,163,184,.12) !important;
+  border-radius: 14px !important;
+  background: rgba(255,255,255,.035) !important;
+  color: #e2e8f0 !important;
+  text-align: left !important;
+  text-decoration: none !important;
+  box-shadow: none !important;
+}
+.field-support-modal--help .hub-premium-footer-row > span:not(.hub-premium-footer-icon) {
+  display: grid !important;
+  flex: 1 !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+}
+.field-support-modal--help .hub-premium-footer-row strong {
+  color: #eaf2f8 !important;
+  font-size: .85rem !important;
+  font-weight: 650 !important;
+  line-height: 1.4 !important;
+}
+.field-support-modal--help .hub-premium-footer-row small {
+  color: #8ea5bc !important;
+  font-size: .72rem !important;
+  line-height: 1.5 !important;
+}
+.field-support-modal--help .hub-premium-footer-icon {
+  flex: 0 0 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  display: grid !important;
+  place-items: center;
+  border-radius: 10px !important;
+  background: rgba(52,211,153,.08) !important;
+  font-size: 1rem !important;
+}
+.field-support-modal--help .hub-premium-footer-row em {
+  margin-left: auto !important;
+  color: #6ee7b7 !important;
+  font-style: normal !important;
+  font-size: 1.25rem !important;
+}
+.field-support-modal--help .hub-premium-footer-row--static {
+  min-height: 40px !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.field-support-modal--help a.hub-premium-footer-row:hover,
+.field-support-modal--help button.hub-premium-footer-row:hover {
+  background: rgba(52,211,153,.08) !important;
+  border-color: rgba(52,211,153,.3) !important;
+}
+.field-support-modal button:focus-visible,
+.field-support-modal a:focus-visible {
+  outline: 2px solid #6ee7b7;
+  outline-offset: 3px;
+}
+
+/* Field Chat keeps Club Chat's heading classes with a Field accent. */
+.field-chat-page .field-chat-card .field-chat-premium-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  flex: 0 0 auto !important;
+  min-height: 78px !important;
+  margin: 0 0 10px !important;
+  padding: 12px !important;
+  border: 1px solid rgba(103,232,249,.16) !important;
+  border-radius: 20px !important;
+  background:
+    radial-gradient(ellipse at top left, rgba(6,182,212,.14), transparent 65%),
+    linear-gradient(135deg, #13273a, #101b2c) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.15) !important;
+}
+.field-chat-page .field-chat-brand {
+  display: grid !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  gap: 5px !important;
+}
+.field-chat-page .field-chat-brand strong {
+  font-size: clamp(1.3rem, 5vw, 1.7rem) !important;
+  font-weight: 850 !important;
+  line-height: 1.1 !important;
+  letter-spacing: -.035em !important;
+  color: #e0f7ff !important;
+}
+.field-chat-page .field-chat-brand small {
+  display: block !important;
+  color: #8faec3 !important;
+  font-size: .7rem !important;
+  line-height: 1.4 !important;
+  overflow-wrap: anywhere !important;
+}
+.field-chat-page .field-chat-brand-icon {
+  display: grid !important;
+  place-items: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 14px !important;
+  background: rgba(34,211,238,.09) !important;
+  border: 1px solid rgba(103,232,249,.18) !important;
+  font-size: 1.25rem !important;
+}
+.field-chat-page .field-chat-premium-header > button {
+  flex: 0 0 34px !important;
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 1px solid rgba(148,163,184,.18) !important;
+  border-radius: 11px !important;
+  background: rgba(255,255,255,.04) !important;
+  color: #cbd5e1 !important;
+  font-size: 1.2rem !important;
+}
+.field-chat-page .field-chat-card .field-chat-messages {
+  border: 1px solid rgba(148,163,184,.08) !important;
+  border-radius: 20px !important;
+  padding: 16px 12px !important;
+  background:
+    radial-gradient(ellipse at top left, rgba(8,145,178,.09), transparent 55%),
+    linear-gradient(160deg, #0c1929, #09121f) !important;
+}
+.field-chat-page .field-chat-card .field-chat-message {
+  border: 1px solid rgba(148,163,184,.13) !important;
+  border-radius: 16px !important;
+  background: #17283b !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,.12) !important;
+}
+.field-chat-page .field-chat-card .field-chat-message.is-mine {
+  background: linear-gradient(135deg, #124358, #14364a) !important;
+  border-color: rgba(103,232,249,.2) !important;
+}
+.field-chat-page .field-chat-meta strong {
+  color: #a5e9f5 !important;
+}
+.field-chat-page .field-chat-message p {
+  color: #e8f0f7 !important;
+  font-size: .9rem !important;
+  line-height: 1.55 !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose {
+  padding: 10px 0 0 !important;
+  background: transparent !important;
+}
+@media (max-width: 360px) {
+  .field-chat-page .field-chat-card .field-chat-premium-header {
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+  .field-chat-page .field-chat-brand-icon {
+    display: none !important;
+  }
+}
+
+/* Club hub parity and Field chat details v4 */
+footer.club-marketing-footer > section {
+  margin: 16px !important;
+  min-width: 0 !important;
+}
+.field-chat-page .field-chat-brand strong {
+  overflow-wrap: anywhere !important;
+  font-size: clamp(1.2rem, 4.8vw, 1.65rem) !important;
+}
+.field-chat-page .field-chat-brand small {
+  color: #8ed8e8 !important;
+  letter-spacing: .025em !important;
+}
+.field-chat-page .field-chat-message-row {
+  flex: 0 0 auto;
+  align-items: flex-end !important;
+  gap: 8px !important;
+  margin: 0 0 8px !important;
+}
+.field-chat-page .field-chat-message-row.is-mine {
+  flex-direction: row-reverse !important;
+}
+.field-chat-page .field-chat-avatar,
+.field-chat-page .fanm-chat-sender-avatar-spacer {
+  flex: 0 0 32px !important;
+  width: 32px !important;
+}
+.field-chat-page .field-chat-avatar {
+  height: 32px !important;
+  border: 1px solid rgba(103,232,249,.24) !important;
+  background: linear-gradient(135deg, #146078, #243958) !important;
+  color: #e0f7ff !important;
+  font-size: .68rem !important;
+  font-weight: 800 !important;
+}
+.field-chat-page .field-chat-card .field-chat-message-row .field-chat-message {
+  flex: 0 1 auto !important;
+  max-width: calc(100% - 42px) !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 12px 14px !important;
+}
+.field-chat-page .field-chat-meta {
+  display: grid !important;
+  gap: 3px !important;
+}
+.field-chat-page .field-chat-meta strong {
+  font-size: .76rem !important;
+}
+.field-chat-page .field-chat-meta span {
+  font-size: .65rem !important;
+  color: #8ea5bc !important;
+}
+.field-chat-page .field-chat-date-chip {
+  flex: 0 0 auto;
+  align-self: center;
+  width: fit-content;
+  margin: 12px auto !important;
+  padding: 5px 12px !important;
+  border: 1px solid rgba(148,163,184,.15);
+  border-radius: 999px;
+  background: rgba(16,30,46,.9);
+  color: #a5bacd;
+  font-size: .68rem;
+  font-weight: 700;
+}
+.field-chat-page .field-chat-message-footer {
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.field-chat-page .field-chat-message-footer small {
+  color: #94afc0;
+  font-size: .62rem;
+}
+.field-chat-page .field-chat-actions {
+  gap: 5px !important;
+  margin-top: 8px !important;
+}
+.field-chat-page .field-chat-actions button,
+.field-chat-page .field-chat-message-footer button {
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 28px !important;
+  margin: 0 !important;
+  padding: 4px 8px !important;
+  border: 1px solid rgba(148,163,184,.14) !important;
+  border-radius: 999px !important;
+  background: rgba(255,255,255,.04) !important;
+  color: #b4cedd !important;
+  font-size: .65rem !important;
+}
+.field-chat-page .field-chat-reply {
+  margin-top: 8px;
+  padding: 10px 12px !important;
+  border: 1px solid rgba(103,232,249,.14);
+  border-left: 3px solid #67e8f9;
+  border-radius: 14px;
+  background: #132739;
+}
+.field-chat-page .field-chat-reply > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.field-chat-page .field-chat-reply strong {
+  color: #a5e9f5;
+  font-size: .75rem;
+}
+.field-chat-page .field-chat-reply small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #9db4c5;
+  font-size: .72rem;
+}
+.field-chat-page .field-chat-card .field-chat-compose {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 48px !important;
+  align-items: end !important;
+  gap: 10px !important;
+}
+.field-chat-page .field-chat-compose .fanm-club-chat-input-wrap {
+  min-height: 48px !important;
+  border: 1px solid rgba(103,232,249,.16) !important;
+  border-radius: 18px !important;
+  background: #142438 !important;
+}
+.field-chat-page .field-chat-compose textarea {
+  min-height: 48px !important;
+  background: transparent !important;
+  border: 0 !important;
+  color: #eaf2f8 !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose .fanm-premium-send-btn {
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, #22d3ee, #0891b2) !important;
+  color: #06202b !important;
+}
+
+/* Field composer stable layout v5 */
+.field-chat-page .field-chat-card form.field-chat-compose {
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 48px !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 12px 0 0 !important;
+  border: 0 !important;
+  background: #0b1422 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: isolate;
+}
+.field-chat-page .field-chat-card form.field-chat-compose::before,
+.field-chat-page .field-chat-card form.field-chat-compose::after,
+.field-chat-page .field-chat-compose .fanm-club-chat-input-wrap::before,
+.field-chat-page .field-chat-compose .fanm-club-chat-input-wrap::after {
+  content: none !important;
+  display: none !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose .fanm-club-chat-input-wrap {
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 52px !important;
+  min-height: 52px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid #2b4358 !important;
+  border-radius: 18px !important;
+  background: #16283a !important;
+  box-shadow: none !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose textarea.text-input {
+  position: static !important;
+  transform: none !important;
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 50px !important;
+  min-height: 50px !important;
+  max-height: 50px !important;
+  margin: 0 !important;
+  padding: 14px 48px 12px 14px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: none;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #edf5fa !important;
+  font-size: 16px !important;
+  line-height: 24px !important;
+  resize: none !important;
+}
+.field-chat-page .field-chat-compose textarea::placeholder {
+  color: #91a9bb !important;
+}
+.field-chat-page .field-chat-compose .fanm-club-chat-input-wrap:focus-within {
+  border-color: #67e8f9 !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose .fanm-club-chat-emoji-btn {
+  position: absolute !important;
+  inset: 7px 7px auto auto !important;
+  transform: none !important;
+  display: grid !important;
+  place-items: center !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 20px !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose button.fanm-premium-send-btn {
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  display: grid !important;
+  place-items: center !important;
+  box-sizing: border-box !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1px solid rgba(165,243,252,.35) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(145deg, #39d8ed, #129cba) !important;
+  box-shadow: none !important;
+  color: #062532 !important;
+  opacity: 1 !important;
+}
+.field-chat-page .field-chat-card .field-chat-compose button.fanm-premium-send-btn:disabled {
+  background: #1d3548 !important;
+  border-color: #2b4358 !important;
+  color: #809aad !important;
+}
+
+/* Field growing composer v6 */
+.field-chat-page .field-chat-card {
+  background: #0b1422 !important;
+  background-image: none !important;
+}
+.field-chat-page .field-chat-card::before,
+.field-chat-page .field-chat-card::after {
+  content: none !important;
+  display: none !important;
+}
+.field-chat-page .field-chat-card form.field-chat-compose {
+  align-items: end !important;
+  background: transparent !important;
+  background-image: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+}
+.field-chat-page .field-chat-card form.field-chat-compose .fanm-club-chat-input-wrap {
+  height: auto !important;
+  min-height: 52px !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+.field-chat-page .field-chat-card form.field-chat-compose textarea.field-growing-input {
+  height: auto;
+  min-height: 50px !important;
+  max-height: min(180px, 28vh) !important;
+  padding-bottom: 12px !important;
+  filter: none !important;
+  box-shadow: none !important;
+}
+/* Override earlier fixed-height rules so JS can set the actual height. */
+.field-chat-page .field-chat-card form.field-chat-compose textarea.text-input.field-growing-input {
+  height: var(--field-unused-height, auto) !important;
+}
+
+
+/* Field video composer v8 — Club chat placement */
+.field-chat-page .field-chat-card form.field-chat-compose {
+  grid-template-columns:
+    minmax(0, 1fr) 48px !important;
+  gap: 8px !important;
+  background: transparent !important;
+}
+
+.field-chat-page
+  .field-chat-card
+  form.field-chat-compose
+  .field-chat-attach {
+  position: absolute !important;
+  right: 3.3rem !important;
+  bottom: 0.75rem !important;
+  display: grid;
+  place-items: center;
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1px solid rgba(148, 163, 184, 0.34) !important;
+  border-radius: 999px !important;
+  background: rgba(15, 23, 42, 0.84) !important;
+  color: #cbd5e1;
+  box-shadow: none !important;
+}
+
+.field-chat-page
+  .field-chat-card
+  form.field-chat-compose
+  .field-chat-attach:hover:not(:disabled) {
+  color: #67e8f9;
+  border-color: rgba(103, 232, 249, 0.7) !important;
+  background: rgba(14, 116, 144, 0.24) !important;
+}
+
+.field-chat-page .field-chat-selected-clip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  border: 1px solid #2b4358;
+  border-radius: 14px;
+  background: #142638;
+}
+
+.field-chat-selected-clip > span {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.field-chat-selected-clip small {
+  color: #9db6c9;
+  overflow-wrap: anywhere;
+}
+
+.field-chat-selected-clip button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #cbd5e1;
+}
+
+.field-chat-page .field-chat-video {
+  max-width: 100%;
+}
+
+.field-chat-page .field-chat-video video {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  margin-top: 8px;
+  border-radius: 12px;
+  background: #000;
+}
+
+.field-chat-clip-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(2, 8, 18, 0.85);
+}
+
+.field-chat-clip-picker {
+  box-sizing: border-box;
+  width: min(100%, 520px);
+  max-height: 85dvh;
+  overflow-y: auto;
+  padding: 20px;
+  border: 1px solid #2b4358;
+  border-radius: 24px;
+  background: #101e2f;
+  color: #edf5fa;
+}
+
+.field-chat-clip-picker header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.field-chat-clip-picker header > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-chat-clip-picker header small {
+  color: #67e8f9;
+}
+
+.field-chat-clip-picker h2 {
+  margin: 6px 0 0;
+  font-size: 1.4rem;
+}
+
+.field-chat-clip-picker header button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: #1c3045;
+  border: 0;
+  border-radius: 12px;
+  color: #edf5fa;
+}
+
+.field-chat-clip-list {
+  display: grid;
+  gap: 8px;
+}
+
+.field-chat-clip-list > button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  text-align: left;
+  border: 1px solid #2b4358;
+  border-radius: 14px;
+  background: #16283a;
+  color: #edf5fa;
+}
+
+.field-chat-clip-list > button:hover {
+  border-color: #38bdf8;
+  background: #1a3045;
+}
+
+.field-chat-clip-list > button > span:nth-child(2) {
+  display: grid;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.field-chat-clip-list small {
+  color: #9db6c9;
+}
+
+@media (max-width: 520px) {
+  .field-chat-clip-picker {
+    padding: 16px;
+    border-radius: 20px;
+  }
+}

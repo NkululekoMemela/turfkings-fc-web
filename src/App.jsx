@@ -11780,6 +11780,7 @@ export default function App() {
         fieldNav.page !== "chat" && (
           <>
             <FieldBottomNav
+              canAccessSettings={fieldNav.canAccessSettings === true}
               currentPage={fieldNav.page}
               onNavigate={(target) =>
                 setFieldNavTarget({ page: target, id: Date.now() })

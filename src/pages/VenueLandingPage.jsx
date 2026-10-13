@@ -1134,12 +1134,45 @@ export default function VenueLandingPage({
     onGoToLiveAsSpectator();
   };
 
-  const handleStartMatchClick = () => {
+  const handleStartMatchClick = async (event) => {
+    const button = event.currentTarget;
+    console.info("[Field Start Trace] tap", JSON.stringify({
+      canStartMatch: Boolean(canStartMatch),
+      hasLiveMatch: Boolean(hasLiveMatch),
+      handlerType: typeof onStartMatch,
+    }));
+
     if (!canStartMatch) {
       window.alert(startMatchDeniedMessage);
       return;
     }
-    onStartMatch();
+    if (typeof onStartMatch !== "function") {
+      window.alert("The Field match start handler is missing.");
+      return;
+    }
+
+    const originalLabel = button.innerHTML;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.textContent = "Starting…";
+    const timer = window.setTimeout(() => {
+      console.warn("[Field Start Trace] still waiting after 15 seconds");
+      button.textContent = "Still starting…";
+    }, 15000);
+
+    try {
+      await onStartMatch();
+      console.info("[Field Start Trace] handler completed");
+    } catch (error) {
+      console.error("[Field Start Trace] failed",
+        error?.code || "", error?.message || String(error));
+      window.alert(error?.message || "The Field match could not start.");
+    } finally {
+      window.clearTimeout(timer);
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      button.innerHTML = originalLabel;
+    }
   };
 
   const canSeeCaptainStyleControls = isCaptain || isAdmin;

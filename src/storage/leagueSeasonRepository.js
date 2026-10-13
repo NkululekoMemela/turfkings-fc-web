@@ -159,7 +159,7 @@ export async function chooseVenueFixturePairing({
       const staff = staffSnap.data();
       if (venue.ownerUid !== user.uid &&
           !(staff?.status === "active" &&
-            (staff.isAdministrator === true || staff.role === "referee"))) {
+            (["field_manager", "assistant_manager", "field_assistant", "other_staff", "referee"].includes(staff.role)))) {
         throw new Error("Only an approved Field official can select the pairing.");
       }
     }
@@ -706,8 +706,7 @@ export async function startVenueFixture({
       (
         staff?.status === "active" &&
         (
-          staff?.isAdministrator === true ||
-          staff?.role === "referee"
+          ["field_manager", "assistant_manager", "field_assistant", "other_staff", "referee"].includes(staff.role)
         )
       );
 
@@ -938,7 +937,7 @@ export async function completeVenueFixture({
         const staff = staffSnapshot.exists() ? staffSnapshot.data() : null;
         isActiveFieldOperator = venue.ownerUid === user.uid || (
           staff?.status === "active" &&
-          (staff.isAdministrator === true || staff.role === "referee")
+          (["field_manager", "assistant_manager", "field_assistant", "other_staff", "referee"].includes(staff.role))
         );
       }
 

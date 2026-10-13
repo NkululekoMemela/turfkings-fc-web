@@ -562,8 +562,7 @@ service cloud.firestore {
               exists(staffPath)
               && get(staffPath).data.status == "active"
               && (
-                get(staffPath).data.get("isAdministrator", false) == true
-                || get(staffPath).data.get("role", "") == "referee"
+                get(staffPath).data.get("role", "") in ["field_manager", "assistant_manager", "field_assistant", "other_staff", "referee"]
               )
             )
           );
@@ -855,8 +854,7 @@ service cloud.firestore {
               exists(staffPath)
               && get(staffPath).data.status == "active"
               && (
-                get(staffPath).data.isAdministrator == true
-                || get(staffPath).data.role == "referee"
+                get(staffPath).data.get("role", "") in ["field_manager", "assistant_manager", "field_assistant", "other_staff", "referee"]
               )
             )
           );
@@ -1377,7 +1375,7 @@ service cloud.firestore {
             "text", "senderUid", "senderName", "senderRole",
             "clubId", "clubName", "createdAt", "createdAtMs",
             "replyToId", "replyToSenderName", "replyToText",
-            "reactionsByUser"
+            "reactionsByUser", "attachment"
           ])
           && request.resource.data.keys().hasAll([
             "text", "senderUid", "senderName", "senderRole",
@@ -1403,7 +1401,51 @@ service cloud.firestore {
           && request.resource.data.get("replyToSenderName", "") is string
           && request.resource.data.get("replyToSenderName", "").size() <= 100
           && request.resource.data.get("replyToText", "") is string
-          && request.resource.data.get("replyToText", "").size() <= 300;
+          && request.resource.data.get("replyToText", "").size() <= 300
+          && (
+            !("attachment" in request.resource.data)
+            || (
+              request.resource.data.attachment is map
+              && request.resource.data.attachment
+                .keys().hasOnly([
+                  "venueId",
+                  "clipId",
+                  "matchId",
+                  "title",
+                  "mediaUrl"
+                ])
+              && request.resource.data.attachment
+                .keys().hasAll([
+                  "venueId",
+                  "clipId",
+                  "matchId",
+                  "title",
+                  "mediaUrl"
+                ])
+              && request.resource.data.attachment
+                .venueId == venueId
+              && request.resource.data.attachment
+                .clipId is string
+              && request.resource.data.attachment
+                .clipId.size() > 0
+              && request.resource.data.attachment
+                .clipId.size() <= 200
+              && request.resource.data.attachment
+                .matchId is string
+              && request.resource.data.attachment
+                .matchId.size() <= 300
+              && request.resource.data.attachment
+                .title is string
+              && request.resource.data.attachment
+                .title.size() <= 160
+              && request.resource.data.attachment
+                .mediaUrl is string
+              && request.resource.data.attachment
+                .mediaUrl.size() <= 8000
+              && request.resource.data.attachment
+                .mediaUrl.matches("https://.*")
+            )
+          );
 
         allow update: if chatCanPost()
           && request.resource.data.diff(resource.data)

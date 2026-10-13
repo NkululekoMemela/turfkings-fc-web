@@ -37,7 +37,7 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
         const staff = staffSnap.data();
         if (venue.ownerUid !== user.uid &&
             !(staff?.status === "active" &&
-              (staff.isAdministrator === true || staff.role === "referee"))) {
+              (["field_manager", "assistant_manager", "field_assistant", "other_staff", "referee"].includes(staff.role)))) {
           throw new Error("Only an approved Field official can start a match.");
         }
 

@@ -1590,7 +1590,7 @@ export default function HomePage_HUB({
         <FirebaseEnvironmentControl user={currentUser} />
       )}
 
-      <footer className="hub-footer-brand">
+      <footer className="hub-footer-brand hub-footer-brand--flush-photo club-marketing-footer">
         <div className="hub-footer-logo-stage">
           {footerLogoRotation.map((logo, index) => (
             <img
@@ -1620,129 +1620,48 @@ export default function HomePage_HUB({
             >
               Take the tour
             </button>
+            <button type="button" className="hub-footer-help-button"
+              aria-haspopup="dialog"
+              onClick={() => setHubInfoModal({
+                title: "How can we help?", body: [], isHelp: true,
+              })}>
+              Help? <span aria-hidden="true">🎧</span>
+            </button>
           </div>
 
         </section>
 
-        <div className="hub-premium-footer-panels" aria-label="5 Asides Near Me support, FAQs and quick links">
-          <section className="hub-premium-footer-card">
-            <h3>Need help? <span>🎧</span></h3>
+        <ClubHubSupport openHubInfoModal={openHubInfoModal} />
 
-            <a className="hub-premium-footer-row" href="mailto:support@5asidesnearme.com">
-              <span className="hub-premium-footer-icon">✉️</span>
-              <span>
-                <strong>Email us</strong>
-                <small>support@5asidesnearme.com</small>
-              </span>
-              <em>›</em>
-            </a>
 
-            <a className="hub-premium-footer-row" href="https://wa.me/27762849740" target="_blank" rel="noreferrer">
-              <span className="hub-premium-footer-icon">💬</span>
-              <span>
-                <strong>Chat on WhatsApp</strong>
-                <small>We’re here to help</small>
-              </span>
-              <em>›</em>
-            </a>
-
-            <div className="hub-premium-footer-row hub-premium-footer-row--static">
-              <span className="hub-premium-footer-icon">🕒</span>
-              <span>
-                <strong>Support hours</strong>
-                <small>Mon–Fri: 08:00–18:00 SAST</small>
-              </span>
-            </div>
-          </section>
-
-          <section className="hub-premium-footer-card">
-            <h3>FAQs <span>❔</span></h3>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("joinClub")}>
-              <span><strong>How do I join a club?</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("payments")}>
-              <span><strong>How do payments work?</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("challengeClub")}>
-              <span><strong>How do I challenge another club?</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-view-all" onClick={() => openHubInfoModal("joinClub")}>
-              View FAQs <span>›</span>
-            </button>
-          </section>
-
-          <section className="hub-premium-footer-card">
-            <h3>Quick links <span>🔗</span></h3>
-            <button
-              type="button"
-              className="hub-premium-footer-row"
-              onClick={() => openHubInfoModal("about")}
-            >
-              <span className="hub-premium-footer-icon">👥</span>
-              <span><strong>About 5 Asides Near Me</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("terms")}>
-              <span className="hub-premium-footer-icon">📄</span>
-              <span><strong>Terms & Privacy</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubContactModal("feedback")}>
-              <span className="hub-premium-footer-icon">💬</span>
-              <span><strong>Send feedback</strong></span>
-              <em>›</em>
-            </button>
-          </section>
-        </div>
-
-        <details className="hub-mobile-help-accordion">
-          <summary>Help? <span>🎧</span></summary>
-
-          <details className="hub-mobile-help-group">
-            <summary>✉️ Need help?</summary>
-            <a href="mailto:support@5asidesnearme.com">Email support</a>
-            <a href="https://wa.me/27762849740" target="_blank" rel="noreferrer">Chat on WhatsApp</a>
-            <span>Mon–Fri: 08:00–18:00 SAST</span>
-          </details>
-
-          <details className="hub-mobile-help-group">
-            <summary>❔ FAQs</summary>
-            <button type="button" onClick={() => openHubInfoModal("joinClub")}>How do I join a club?</button>
-            <button type="button" onClick={() => openHubInfoModal("payments")}>How do payments work?</button>
-            <button type="button" onClick={() => openHubInfoModal("challengeClub")}>How do I challenge another club?</button>
-          </details>
-
-          <details className="hub-mobile-help-group">
-            <summary>🔗 Quick links</summary>
-            <button
-              type="button"
-              onClick={() => openHubInfoModal("about")}
-            >
-              About 5 Asides Near Me
-            </button>
-            <button type="button" onClick={() => openHubInfoModal("terms")}>Terms & Privacy</button>
-            <button type="button" onClick={() => openHubContactModal("feedback")}>Send feedback</button>
-          </details>
-        </details>
 
       </footer>
 
 
       {hubInfoModal ? (
-        <div className="hub-action-sheet-backdrop" onMouseDown={(event) => {
+        <div className="hub-action-sheet-backdrop field-support-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setHubInfoModal(null);
         }}>
-          <section className="hub-info-modal" aria-label={hubInfoModal.title}>
+          <section
+            className={`hub-info-modal field-support-modal ${
+              hubInfoModal.isHelp ? "field-support-modal--help" : ""
+            }`}
+            role="dialog" aria-modal="true"
+            aria-label={hubInfoModal.title}>
             <button type="button" className="hub-action-sheet__close" onClick={() => setHubInfoModal(null)}>
               ×
             </button>
             <span className="hub-kicker">5 Asides Near Me</span>
             <h2>{hubInfoModal.title}</h2>
+            {hubInfoModal.isHelp && (
+              <p className="field-support-intro">
+                Support, answers and everything you need to get started.
+              </p>
+            )}
             <div className="hub-info-modal__body">
-              {hubInfoModal.body === ABOUT_RELEASE ? (
+              {hubInfoModal.isHelp ? (
+                <ClubHubSupport openHubInfoModal={openHubInfoModal} />
+              ) : hubInfoModal.body === ABOUT_RELEASE ? (
                 <ul>
                   {ABOUT_RELEASE.map((item, index) => (
                     <li key={index}>{item}</li>
@@ -2055,7 +1974,7 @@ export default function HomePage_HUB({
         onClose={() => setProfileEditorClub(null)}
         onSaved={handleClubUpdated}
       />
-    
+
       {showTour ? (
         <div className="hub-tour-modal-backdrop" onClick={() => setShowTour(false)}>
           <section className="hub-tour-modal" onClick={(event) => event.stopPropagation()}>
@@ -2095,5 +2014,80 @@ export default function HomePage_HUB({
       ) : null}
 
     </main>
+  );
+}
+
+
+function ClubHubSupport({ openHubInfoModal }) {
+  return (
+<div className="hub-premium-footer-panels" aria-label="5 Asides Near Me support, FAQs and quick links">
+          <section className="hub-premium-footer-card">
+            <h3>Need help? <span>🎧</span></h3>
+
+            <a className="hub-premium-footer-row" href="mailto:support@5asidesnearme.com">
+              <span className="hub-premium-footer-icon">✉️</span>
+              <span>
+                <strong>Email us</strong>
+                <small>support@5asidesnearme.com</small>
+              </span>
+              <em>›</em>
+            </a>
+
+            <a className="hub-premium-footer-row" href="https://wa.me/27762849740" target="_blank" rel="noreferrer">
+              <span className="hub-premium-footer-icon">💬</span>
+              <span>
+                <strong>Chat on WhatsApp</strong>
+                <small>We’re here to help</small>
+              </span>
+              <em>›</em>
+            </a>
+
+            <div className="hub-premium-footer-row hub-premium-footer-row--static">
+              <span className="hub-premium-footer-icon">🕒</span>
+              <span>
+                <strong>Support hours</strong>
+                <small>Mon–Fri: 08:00–18:00 SAST</small>
+              </span>
+            </div>
+          </section>
+
+          <section className="hub-premium-footer-card">
+            <h3>FAQs <span>❔</span></h3>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("joinClub")}>
+              <span><strong>How do I join a club?</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("payments")}>
+              <span><strong>How do payments work?</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("challengeClub")}>
+              <span><strong>How do I challenge another club?</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-view-all" onClick={() => openHubInfoModal("joinClub")}>
+              View FAQs <span>›</span>
+            </button>
+          </section>
+
+          <section className="hub-premium-footer-card">
+            <h3>Quick links <span>🔗</span></h3>
+            <button
+              type="button"
+              className="hub-premium-footer-row"
+              onClick={() => openHubInfoModal("about")}
+            >
+              <span className="hub-premium-footer-icon">👥</span>
+              <span><strong>About 5 Asides Near Me</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("terms")}>
+              <span className="hub-premium-footer-icon">📄</span>
+              <span><strong>Terms & Privacy</strong></span>
+              <em>›</em>
+            </button>
+
+          </section>
+        </div>
   );
 }
