@@ -11,7 +11,8 @@ const items = [
   { key: "settings", emoji: "⚙️", label: "Settings" },
 ];
 
-export default function FieldBottomNav({ currentPage, onNavigate }) {
+export default function FieldBottomNav({ currentPage, onNavigate, canAccessSettings = false }) {
+  const visibleItems = items.filter(item => item.key !== "settings" || canAccessSettings);
   const [isHidden, setIsHidden] = useState(false);
   const navScroller = useRef(null);
 
@@ -61,8 +62,8 @@ export default function FieldBottomNav({ currentPage, onNavigate }) {
       aria-label="Field navigation"
     >
       <div ref={navScroller} className="field-bottom-nav__inner"
-        style={{gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`}}>
-        {items.map(({ key, emoji, image, label }) => {
+        style={{gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))`}}>
+        {visibleItems.map(({ key, emoji, image, label }) => {
           const current = currentPage === key;
           return (
             <button

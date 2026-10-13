@@ -5,6 +5,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import "./VenueFieldChatPage.css";
+import FieldVideoRepository from "../storage/venueVideoHighlightsRepository.js";
 
 const reactions = ["⚽", "🔥", "🧤", "👏", "😂", "❤️", "👍", "👎", "😩", "🤯"];
 const path = (venueId, collectionName, id) =>
@@ -15,6 +16,27 @@ function timeLabel(value) {
   return date ? date.toLocaleTimeString([], {
     hour: "2-digit", minute: "2-digit",
   }) : "";
+}
+
+
+function fieldChatMessageDate(message) {
+  const value = message?.createdAt;
+  const date = typeof value?.toDate === "function"
+    ? value.toDate()
+    : new Date(message?.createdAtMs || 0);
+  return Number.isFinite(date.getTime()) && date.getTime() > 0 ? date : null;
+}
+
+function fieldChatDateLabel(date) {
+  if (!date) return "";
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString([], {
+    day: "numeric", month: "short", year: "numeric",
+  });
 }
 
 export default function VenueFieldChatPage({
@@ -29,6 +51,124 @@ export default function VenueFieldChatPage({
   const [accessError, setAccessError] = useState("");
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
+  const [fieldClipPickerOpen, setFieldClipPickerOpen] =
+    useState(false);
+  const [fieldClips, setFieldClips] = useState([]);
+  const [fieldClipsLoading, setFieldClipsLoading] =
+    useState(false);
+  const [fieldClipsError, setFieldClipsError] =
+    useState("");
+  const [fieldSelectedClip, setFieldSelectedClip] =
+    useState(null);
+
+  async function openFieldClipPicker() {
+    setFieldClipPickerOpen(true);
+    setFieldClipsLoading(true);
+    setFieldClipsError("");
+
+    try {
+      const results = await Promise.allSettled([
+        typeof FieldVideoRepository
+          .loadAllClubHighlightsForAudit === "function"
+          ? FieldVideoRepository
+              .loadAllClubHighlightsForAudit(venueId)
+          : Promise.resolve([]),
+        typeof FieldVideoRepository
+          .loadClubArchivedHighlightsFromFirebase ===
+            "function"
+          ? FieldVideoRepository
+              .loadClubArchivedHighlightsFromFirebase(
+                venueId
+              )
+          : Promise.resolve([]),
+      ]);
+
+      const seen = new Set();
+
+      const clips = results
+        .flatMap((result) =>
+          result.status === "fulfilled" &&
+          Array.isArray(result.value)
+            ? result.value
+            : []
+        )
+        .map((clip) => ({
+          venueId,
+          clipId: String(
+            clip.clipId ||
+            clip.id ||
+            clip.highlightId ||
+            ""
+          ),
+          matchId: String(
+            clip.matchId ||
+            clip.fixtureId ||
+            ""
+          ),
+          title: String(
+            clip.title ||
+            clip.playerName ||
+            "Field highlight"
+          ).slice(0, 160),
+          mediaUrl: String(
+            clip.videoUrl ||
+            clip.downloadUrl ||
+            clip.mediaUrl ||
+            clip.fileUrl ||
+            clip.uri ||
+            ""
+          ),
+        }))
+        .filter((clip) => {
+          if (
+            !clip.clipId ||
+            !/^https:\/\//i.test(clip.mediaUrl)
+          ) {
+            return false;
+          }
+
+          const key =
+            `${clip.matchId}:${clip.clipId}`;
+
+          if (seen.has(key)) {
+            return false;
+          }
+
+          seen.add(key);
+          return true;
+        });
+
+      setFieldClips(clips);
+
+      const failed = results.find(
+        (result) => result.status === "rejected"
+      );
+
+      if (failed) {
+        setFieldClipsError(
+          failed.reason?.message ||
+          "Some Field videos could not load."
+        );
+      }
+    } catch (error) {
+      setFieldClipsError(
+        error?.message ||
+        "Could not load Field videos."
+      );
+    } finally {
+      setFieldClipsLoading(false);
+    }
+  }
+  const fieldDraftRef = useRef(null);
+
+  useEffect(() => {
+    const input = fieldDraftRef.current;
+    if (!input) return;
+    input.style.setProperty("--field-unused-height", "auto");
+    const maximum = Math.min(180, window.innerHeight * 0.28);
+    input.style.setProperty("--field-unused-height", `${Math.max(50, Math.min(input.scrollHeight, maximum))}px`);
+    input.style.overflowY = input.scrollHeight > maximum ? "auto" : "hidden";
+  }, [draft]);
   const [replyTo, setReplyTo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -228,14 +368,26 @@ export default function VenueFieldChatPage({
   const send = async (event) => {
     event.preventDefault();
     const text = draft.trim();
-    if (!actor || muted || busy || !text) return;
+    if (
+      !actor ||
+      muted ||
+      busy ||
+      (!text && !fieldSelectedClip)
+    ) return;
     setBusy(true);
     try {
       const messageRef = doc(
         collection(db, "leagueVenues", venueId, "chatMessages"),
       );
       await setDoc(messageRef, {
-        text: text.slice(0, 2000),
+        text: (
+          text ||
+          fieldSelectedClip?.title ||
+          "Field highlight"
+        ).slice(0, 2000),
+        ...(fieldSelectedClip
+          ? { attachment: fieldSelectedClip }
+          : {}),
         senderUid: actor.uid,
         senderName: actor.name,
         senderRole: actor.role,
@@ -253,6 +405,7 @@ export default function VenueFieldChatPage({
       followLatestRef.current = true;
       setEmojiOpen(false);
       setDraft("");
+      setFieldSelectedClip(null);
       setReplyTo(null);
     } catch (error) {
       setAccessError(error.message || "Could not send this message.");
@@ -304,8 +457,13 @@ export default function VenueFieldChatPage({
   return (
     <main ref={pageRef} className="field-chat-page">
       <section className="card fanm-club-chat-card is-open is-modal-open field-chat-card">
-        <div className="field-chat-return-controls">
-          <strong>{venue?.name || "Field"} Chat</strong>
+        <div className="field-chat-return-controls field-chat-premium-header">
+          <span className="fanm-club-chat-launcher-icon field-chat-brand-icon"
+            aria-hidden="true">💬</span>
+          <span className="fanm-club-chat-launcher-text field-chat-brand">
+            <strong>{venue?.name || "Your Field"}</strong>
+            <small>Field Chat · Football community</small>
+          </span>
           <button type="button" className="secondary-btn"
             onClick={onBack} aria-label="Minimize Field chat">−</button>
           <button type="button" className="secondary-btn"
@@ -326,26 +484,76 @@ export default function VenueFieldChatPage({
           {messages.length === 0 && !accessError && (
             <p className="fanm-club-chat-empty field-chat-empty">No messages yet. Start the conversation.</p>
           )}
-          {messages.map((message) => {
+          {messages.map((message, index) => {
             const mine = message.senderUid === uid;
+            const previous = messages[index - 1];
+            const date = fieldChatMessageDate(message);
+            const previousDate = fieldChatMessageDate(previous);
+            const dateLabel = fieldChatDateLabel(date);
+            const showDate = Boolean(dateLabel && (
+              !previousDate || date.toDateString() !== previousDate.toDateString()
+            ));
+            const grouped = Boolean(
+              !showDate && previous &&
+              message.senderUid &&
+              previous.senderUid === message.senderUid &&
+              date && previousDate &&
+              Math.abs(date.getTime() - previousDate.getTime()) <= 300000 &&
+              !message.replyToId && !previous.replyToId
+            );
             const counts = Object.values(message.reactionsByUser || {})
               .reduce((totals, emoji) => {
                 if (emoji) totals[emoji] = (totals[emoji] || 0) + 1;
                 return totals;
               }, {});
             return (
-              <article key={message.id}
-                className={`fanm-club-chat-message field-chat-message ${mine ? "is-mine" : ""}`}>
-                <div className="fanm-club-chat-message-meta field-chat-meta">
-                  <strong>{message.senderName}</strong>
-                  <span>{message.clubName || "Field team"}</span>
-                </div>
+              <React.Fragment key={message.id}>
+                {showDate && (
+                  <div className="fanm-chat-date-chip field-chat-date-chip">
+                    {dateLabel}
+                  </div>
+                )}
+                <div className={`fanm-chat-message-row field-chat-message-row ${mine ? "is-mine" : ""}`}>
+                  {grouped ? (
+                    <span className="fanm-chat-sender-avatar-spacer" />
+                  ) : (
+                    <span className="fanm-chat-sender-avatar field-chat-avatar"
+                      aria-hidden="true">
+                      {String(message.senderName || "Field member")
+                        .trim().split(/\s+/).slice(0, 2)
+                        .map(part => part[0]).join("").toUpperCase()}
+                    </span>
+                  )}
+              <article
+                className={`fanm-club-chat-message field-chat-message ${mine ? "is-mine" : ""} ${grouped ? "is-grouped" : ""}`}>
+                {!grouped && (
+                  <div className="fanm-club-chat-message-meta field-chat-meta">
+                    <strong>{message.senderName}</strong>
+                    <span>{message.clubName || "Field team"}</span>
+                  </div>
+                )}
                 {message.replyToId && (
                   <blockquote className="fanm-chat-reply-quote field-chat-quote">
                     <strong>{message.replyToSenderName}</strong>
                     <span>{message.replyToText}</span>
                   </blockquote>
                 )}
+                {message.attachment?.mediaUrl && (
+                  <div className="field-chat-video">
+                    <strong>
+                      {message.attachment.title ||
+                        "Field highlight"}
+                    </strong>
+
+                    <video
+                      controls
+                      playsInline
+                      preload="none"
+                      src={message.attachment.mediaUrl}
+                    />
+                  </div>
+                )}
+
                 <p>{message.text}</p>
                 <div className="field-chat-message-footer">
                   <small>{timeLabel(message.createdAt)}</small>
@@ -386,6 +594,8 @@ export default function VenueFieldChatPage({
                   </div>
                 )}
               </article>
+                </div>
+              </React.Fragment>
             );
           })}
           <div ref={endRef} />
@@ -393,7 +603,10 @@ export default function VenueFieldChatPage({
 
         {replyTo && (
           <div className="field-chat-reply">
-            Replying to {replyTo.senderName}
+            <div>
+              <strong>Replying to {replyTo.senderName}</strong>
+              <small>{replyTo.text || "Message"}</small>
+            </div>
             <button type="button" onClick={() => setReplyTo(null)}
               aria-label="Cancel reply">×</button>
           </div>
@@ -409,9 +622,29 @@ export default function VenueFieldChatPage({
             ))}
           </div>
         )}
-        <form className="fanm-club-chat-compose field-chat-compose" onSubmit={send}>
+        {fieldSelectedClip && (
+          <div className="field-chat-selected-clip">
+            <span>
+              <strong>Video attached</strong>
+              <small>{fieldSelectedClip.title}</small>
+            </span>
+
+            <button
+              type="button"
+              aria-label="Remove attached video"
+              onClick={() => setFieldSelectedClip(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        <form
+          className="fanm-club-chat-compose field-chat-compose"
+          onSubmit={send}
+        >
           <div className="fanm-club-chat-input-wrap">
-            <textarea className="text-input" rows={1}
+            <textarea ref={fieldDraftRef} className="text-input field-growing-input" rows={1}
               aria-label="Field chat message" value={draft}
               maxLength={2000} disabled={!actor || muted}
               onChange={event => setDraft(event.target.value)}
@@ -421,12 +654,116 @@ export default function VenueFieldChatPage({
               disabled={!actor || muted} aria-label="Add emoji"
               aria-expanded={emojiOpen}
               onClick={() => setEmojiOpen(value => !value)}>😀</button>
+            <button
+              type="button"
+              className="fanm-club-chat-attach-btn field-chat-attach"
+              disabled={!actor || muted || busy}
+              aria-label="Attach Field video"
+              title="Attach Field video"
+              onClick={openFieldClipPicker}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="19"
+                height="19"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m8 13 7-7a3 3 0 0 1 4 4L9 20a5 5 0 0 1-7-7L13 2a2 2 0 0 1 3 3L5 16" />
+              </svg>
+            </button>
           </div>
           <button type="submit" className="primary-btn fanm-premium-send-btn"
             aria-label="Send message"
-            disabled={!actor || muted || busy || !draft.trim()}>Send</button>
+            disabled={
+              !actor ||
+              muted ||
+              busy ||
+              (!draft.trim() && !fieldSelectedClip)
+            }>Send</button>
         </form>
       </section>
+
+      {fieldClipPickerOpen && (
+        <div
+          className="field-chat-clip-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setFieldClipPickerOpen(false);
+            }
+          }}
+        >
+          <section
+            className="field-chat-clip-picker"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Attach Field video"
+          >
+            <header>
+              <div>
+                <small>
+                  {venue?.name || "Your Field"}
+                </small>
+                <h2>Attach a highlight</h2>
+              </div>
+
+              <button
+                type="button"
+                aria-label="Close video picker"
+                onClick={() =>
+                  setFieldClipPickerOpen(false)
+                }
+              >
+                ×
+              </button>
+            </header>
+
+            {fieldClipsLoading && (
+              <p>Loading Field videos…</p>
+            )}
+
+            {fieldClipsError && (
+              <p role="alert">{fieldClipsError}</p>
+            )}
+
+            {!fieldClipsLoading &&
+              !fieldClips.length && (
+                <p>
+                  No playable Field videos are
+                  available yet.
+                </p>
+              )}
+
+            <div className="field-chat-clip-list">
+              {fieldClips.map((clip) => (
+                <button
+                  type="button"
+                  key={`${clip.matchId}:${clip.clipId}`}
+                  onClick={() => {
+                    setFieldSelectedClip(clip);
+                    setFieldClipPickerOpen(false);
+                  }}
+                >
+                  <span aria-hidden="true">▶</span>
+
+                  <span>
+                    <strong>{clip.title}</strong>
+                    <small>
+                      Attach to your message
+                    </small>
+                  </span>
+
+                  <span aria-hidden="true">＋</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

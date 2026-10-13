@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 import { buildClubIdentity } from "../core/clubIdentity.js";
+import { isClubJoinAdministrator, resolveClubJoinIdentity } from "../core/clubJoinRequestPolicy.mjs";
 import { removePlayerFromSavedLineups } from "../core/lineups.js";
 
 const FANM_HOME_LOGO = "/HomePage/Logo_icon.jpeg";
@@ -2132,7 +2133,7 @@ export function EntryPage({
     setNewPhotoStatus("");
 
     const fullName = newFullName.trim();
-    const email = newEmail.trim();
+    let email = newEmail.trim();
 
     const inheritedWhatsApp =
       confirmedIdentity?.whatsappNumber ||
@@ -2143,7 +2144,7 @@ export function EntryPage({
       newWhatsApp || inheritedWhatsApp
     );
 
-    const platformIdentityUid =
+    let platformIdentityUid =
       confirmedIdentity?.platformIdentityUid ||
       confirmedIdentity?.uid ||
       "";
@@ -2159,6 +2160,30 @@ export function EntryPage({
     }
     if (!email || !email.includes("@")) {
       setNewReqError("Please enter a valid email address.");
+      return;
+    }
+
+    let joinSubjectUid = "";
+    try {
+      const clubSnapshot = await getDoc(doc(db, "clubs", activeClubId));
+      if (!clubSnapshot.exists()) throw new Error("This club could not be found. Your request has not been sent.");
+      const club = clubSnapshot.data();
+      let applicant = auth.currentUser;
+      const matchesEmail = String(applicant?.email || "").trim().toLowerCase() === email.toLowerCase();
+      if (!isClubJoinAdministrator(club, applicant) && (!applicant || !matchesEmail || !applicant.emailVerified)) {
+        setNewReqStatus("Verify your Google account to send this request.");
+        await signInWithGoogle();
+        applicant = auth.currentUser;
+      }
+      if (applicant) await applicant.getIdToken(true);
+      const identity = resolveClubJoinIdentity(club, applicant, email);
+      email = identity.email;
+      joinSubjectUid = identity.uid;
+      if (!identity.delegated) platformIdentityUid = identity.uid;
+      setNewReqStatus("");
+    } catch (error) {
+      setNewReqStatus("");
+      setNewReqError(error?.message || "Google verification failed. Your request has not been sent.");
       return;
     }
 
@@ -2178,6 +2203,7 @@ export function EntryPage({
       if (existingMember.status === "withdrawn") {
         try {
           await updateDoc(memberDocRef(activeClubId, existingMember.id), {
+            ...(joinSubjectUid ? { uid: existingMember.uid || joinSubjectUid } : {}),
             fullName,
             shortName,
             email,
@@ -2196,6 +2222,7 @@ export function EntryPage({
           });
 
           if (newPhotoFile || inheritedPhoto) {
+            try {
             const portraitData = newPhotoFile
               ? await makePortraitPhotoDataUrl(newPhotoFile)
               : inheritedPhoto;
@@ -2211,11 +2238,16 @@ export function EntryPage({
               sourceMemberId: existingMember.id,
               photoData: portraitData,
             });
+              setNewPhotoStatus("Photo saved for admin review.");
+            } catch (photoError) {
+              console.warn("Join request saved; optional photo failed:", photoError);
+              setNewPhotoStatus("Your request was sent, but the photo could not be saved. You can add it after approval.");
+            }
           }
 
           setNewReqStatus(
             newPhotoFile || inheritedPhoto
-              ? "Rejoin request captured and your profile photo has been saved for admin review."
+              ? "Rejoin request captured for admin review. Check the photo status below."
               : "Rejoin request captured. An admin will approve you again."
           );
           setNewFullName("");
@@ -2241,6 +2273,7 @@ export function EntryPage({
 
     try {
       const requestRef = await addDoc(membersCollectionRef(activeClubId), {
+        ...(joinSubjectUid ? { uid: joinSubjectUid } : {}),
         fullName,
         shortName,
         email,
@@ -2258,6 +2291,7 @@ export function EntryPage({
       });
 
       if (newPhotoFile || inheritedPhoto) {
+        try {
         const portraitData = newPhotoFile
           ? await makePortraitPhotoDataUrl(newPhotoFile)
           : inheritedPhoto;
@@ -2273,11 +2307,16 @@ export function EntryPage({
           sourceMemberId: requestRef.id,
           photoData: portraitData,
         });
+          setNewPhotoStatus("Photo saved for admin review.");
+        } catch (photoError) {
+          console.warn("Join request saved; optional photo failed:", photoError);
+          setNewPhotoStatus("Your request was sent, but the photo could not be saved. You can add it after approval.");
+        }
       }
 
       setNewReqStatus(
         newPhotoFile || inheritedPhoto
-          ? "Request captured and your profile photo has been copied into this club for admin review."
+          ? "Request captured for admin review. Check the photo status below."
           : "Request captured. An admin will approve you and you’ll appear on the list."
       );
       setNewFullName("");
@@ -5048,16 +5087,9 @@ export function EntryPage({
         </div>
       </header>
 
-      <section className="card" style={heroCardStyle}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: "1rem",
-            alignItems: "center",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
+      <section className="card" style={{ ...heroCardStyle, padding: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }}>
+          <div className="entry-marketing-copy" style={{ minWidth: 0 }}>
             <div style={labelCapsuleStyle}>{activeClubShortName} Entry</div>
             <h2
               style={{
@@ -5086,12 +5118,12 @@ export function EntryPage({
 
           <div
             style={{
-              borderRadius: "22px",
+              borderRadius: "0",
               overflow: "hidden",
-              border: "1px solid rgba(148,163,184,0.16)",
+              border: "none",
               boxShadow: "0 18px 42px rgba(2,6,23,0.32)",
               background: "#020617",
-              padding: "0.5rem",
+              padding: 0,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -5110,11 +5142,11 @@ export function EntryPage({
                   style={{
                     width: "100%",
                     height: "auto",
-                    maxHeight: "320px",
+                    maxHeight: "none",
                     objectFit: "contain",
                     objectPosition: "center",
                     display: "block",
-                    borderRadius: "16px",
+                    borderRadius: "0",
                   }}
                 />
               ) : (
@@ -5139,7 +5171,7 @@ export function EntryPage({
               )}
 
               {realCanEditClubHero ? (
-                <div style={{ marginTop: "0.75rem" }}>
+                <div style={{ marginTop: 0 }}>
                   <label
                     title="Change main club photo"
                     style={{

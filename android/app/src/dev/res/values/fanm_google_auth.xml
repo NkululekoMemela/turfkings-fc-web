@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dev Google tokens must be issued for the staging Firebase project. -->
+    <string name="default_web_client_id" translatable="false">236261073578-k9lspugbjlhkjegiv1ljholdepos4vh3.apps.googleusercontent.com</string>
+</resources>

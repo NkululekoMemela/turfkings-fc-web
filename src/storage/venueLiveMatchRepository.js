@@ -2,7 +2,7 @@ import {
   auth as rosterAuth,
   getActiveFirebaseFunctionsBaseUrl as rosterFunctionsUrl,
 } from "../firebaseConfig.js";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, Timestamp } from "firebase/firestore";
 import { getPlayerDoc } from "../core/clubFirestorePaths.js";
 import { leagueBookingScope, paidLeagueManifest } from "../core/leagueBookingPolicy.js";
 import {
@@ -367,6 +367,151 @@ export async function saveVenueLiveMatchState({
   );
 }
 
+
+// Recreate copied timestamps with the SDK used by this writer.
+// Preserve dates and SDK values; recurse only through plain data.
+function normalizeFieldTeamSnapshot(value) {
+  if (value == null) return null;
+  if (value instanceof Timestamp || value instanceof Date) return value;
+
+  if (
+    typeof value === "object" &&
+    typeof value.toDate === "function" &&
+    Number.isInteger(value.seconds) &&
+    Number.isInteger(value.nanoseconds)
+  ) {
+    return new Timestamp(value.seconds, value.nanoseconds);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(normalizeFieldTeamSnapshot);
+  }
+
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === Object.prototype || prototype === null) {
+      return Object.fromEntries(
+        Object.entries(value)
+          .filter(([, item]) => item !== undefined)
+          .map(([key, item]) => [
+            key, normalizeFieldTeamSnapshot(item),
+          ])
+      );
+    }
+  }
+
+  return value;
+}
+
+
+function compactFieldMatchValue(value) {
+  if (typeof value === "string") {
+    if (
+      /^\s*(data:|blob:)/i.test(value) ||
+      value.length > 16000
+    ) {
+      return undefined;
+    }
+
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(compactFieldMatchValue)
+      .filter((item) => item !== undefined);
+  }
+
+  if (value && typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+
+    if (
+      prototype === Object.prototype ||
+      prototype === null
+    ) {
+      const omitted = new Set([
+        "gallery",
+        "heroImage",
+        "teamPhoto",
+        "coverImageUrl",
+        "coverImage",
+        "featuredVideo",
+        "featuredVideos",
+      ]);
+
+      return Object.fromEntries(
+        Object.entries(value)
+          .filter(([key]) => !omitted.has(key))
+          .map(([key, item]) => [
+            key,
+            compactFieldMatchValue(item),
+          ])
+          .filter(([, item]) => item !== undefined)
+      );
+    }
+  }
+
+  return value;
+}
+
+function compactFieldMatchTeam(team) {
+  if (!team) {
+    return null;
+  }
+
+  const keys = [
+    "id",
+    "clubId",
+    "name",
+    "label",
+    "shortName",
+    "abbrev",
+    "abbr",
+    "captain",
+    "captainName",
+    "players",
+    "playerIds",
+    "playerKeys",
+    "goalkeeper",
+    "goalkeeperId",
+    "goalkeeperName",
+    "color",
+    "colour",
+    "colors",
+    "colours",
+    "primaryColor",
+    "secondaryColor",
+    "kitColor",
+    "kit",
+    "kitColors",
+    "teamColor",
+    "logoUrl",
+    "logo",
+    "image",
+    "badgeUrl",
+    "branding",
+    "teamIdentity",
+    "teamIdentityId",
+    "identity",
+    "identityId",
+    "isTurfKings",
+    "isNationalTeam",
+    "countryCode",
+  ];
+
+  const result = Object.fromEntries(
+    keys
+      .filter((key) => team[key] !== undefined)
+      .map((key) => [
+        key,
+        compactFieldMatchValue(team[key]),
+      ])
+      .filter(([, value]) => value !== undefined)
+  );
+
+  return normalizeFieldTeamSnapshot(result);
+}
+
 export function buildVenueLiveMatchDocument({
   scope,
   match,
@@ -439,18 +584,18 @@ export function buildVenueLiveMatchDocument({
       teamBId,
       standbyId,
       standbyLabel: standbyTeam?.label || standbyId,
-      standbySnapshot: standbyTeam || null,
+      standbySnapshot: compactFieldMatchTeam(standbyTeam),
       teamALabel: teamA?.label || match?.clubAName || teamAId,
       teamBLabel: teamB?.label || match?.clubBName || teamBId,
-      teamASnapshot: teamA || null,
-      teamBSnapshot: teamB || null,
+      teamASnapshot: compactFieldMatchTeam(teamA),
+      teamBSnapshot: compactFieldMatchTeam(teamB),
       events: [],
       goalsA: 0,
       goalsB: 0,
       finalSummary: null,
       isFinished: false,
       teams: Array.isArray(teams)
-        ? teams
+        ? teams.map(compactFieldMatchTeam)
         : [],
       currentEvents: [],
       liveMatchController: controller,

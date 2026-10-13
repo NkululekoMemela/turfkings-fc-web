@@ -73,12 +73,14 @@ export default function VenueLeagueAccessPanel({
   brightPrimaryStyle,
 }) {
   const [mode, setMode] = useState("field_staff");
+  const [staffPickerOpen, setStaffPickerOpen] = useState(false);
   const [recallUser, setRecallUser] = useState(auth.currentUser);
 
   useEffect(() => onAuthStateChanged(auth, setRecallUser), []);
 
   useEffect(() => {
     setSelectedStaffUid("");
+    setStaffPickerOpen(false);
   }, [venue?.id, recallUser?.uid]);
   const [selectedClubId, setSelectedClubId] =
     useState("");
@@ -383,7 +385,24 @@ export default function VenueLeagueAccessPanel({
     setStatus("Sending your Field Team request…");
 
     try {
+      // Verify the applicant before submitting their own staff request.
+      if (!auth.currentUser?.uid) {
+        setStatus("Sign in with the Google account used on your form.");
+        await signInWithGoogle();
+      }
 
+      const applicant = auth.currentUser;
+      if (!applicant?.uid || !applicant?.email) {
+        throw new Error("Sign-in was not completed. Your form is still here; please try again.");
+      }
+
+      if (normalizeEmail(applicant.email) !== email) {
+        throw new Error(
+          `You are signed in as ${applicant.email}. Use that email on your form, or sign out and use the account you entered.`
+        );
+      }
+
+      setStatus("Sending your Field Team request…");
       await requestVenueStaffAccess({
         venueId: venue?.id,
         role: joinStaffRole,
@@ -429,6 +448,8 @@ export default function VenueLeagueAccessPanel({
     try {
       remembered = localStorage.getItem(
         `field-staff-profile:${venue.id}:${userUid || "last"}`
+      ) || localStorage.getItem(
+        `field-staff-profile:${venue.id}:last`
       ) || "";
     } catch {}
 
@@ -675,9 +696,9 @@ export default function VenueLeagueAccessPanel({
   }
 
   const tabs = [
-    ["club_rep", "🛡️ Club admin / leader"],
-    ["field_staff", "🦺 Field staff"],
-    ["spectator", "👁️ Spectator"],
+    ["field_staff", "Field staff member"],
+    ["club_rep", "Member club"],
+    ["spectator", "👁️ I am a spectator"],
   ];
 
   return (
@@ -1058,48 +1079,101 @@ export default function VenueLeagueAccessPanel({
             Select your registered staff profile, then verify it with your Google account.
           </p>
 
-          <label style={{
-            display: "grid",
-            gap: "0.45rem",
-            marginTop: "1rem",
-          }}>
-            Registered Field staff
-            <select
-              value={selectedStaffUid}
-              onChange={(event) => {
-                setSelectedStaffUid(event.target.value);
-                setError("");
-                setStatus("");
-              }}
+          <div className="field-staff-picker">
+            <span className="field-staff-picker__label">
+              Registered Field staff
+            </span>
+            <button
+              type="button"
+              className="field-staff-picker__trigger"
               disabled={busy}
+              aria-expanded={staffPickerOpen}
+              aria-controls="field-staff-profile-options"
+              onClick={() => setStaffPickerOpen(open => !open)}
+              onKeyDown={event => {
+                if (event.key === "Escape") setStaffPickerOpen(false);
+              }}
             >
-              <option value="">
-                Select staff profile…
-              </option>
-
-              {selectableStaff.map((staff) => (
-                <option
-                  key={staff.id || staff.uid}
-                  value={staff.id || staff.uid}
-                  disabled={staff.status !== "active"}
-                >
-                  {staff.name || "Field staff"} — {
-                    {
-                      field_manager: "Field Manager",
-                      assistant_manager: "Assistant Manager",
-                      field_assistant: "Field Assistant",
-                      other_staff: "Other field staff",
-                      referee: "Referee",
-                    }[staff.role] || "Field staff"
-                  }{
-                    staff.status === "pending"
-                      ? " · Awaiting approval"
-                      : ""
+              <span>
+                <strong>
+                  {selectableStaff.find(staff =>
+                    normalize(staff.id || staff.uid) === normalize(selectedStaffUid)
+                  )?.name || "Select staff profile"}
+                </strong>
+                <small>
+                  {selectedStaffUid
+                    ? "Your profile · Tap to switch"
+                    : "Choose your registered Field identity"}
+                </small>
+              </span>
+              <span aria-hidden="true">
+                {staffPickerOpen ? "▴" : "▾"}
+              </span>
+            </button>
+            {staffPickerOpen && (
+              <div
+                id="field-staff-profile-options"
+                className="field-staff-picker__options"
+                onKeyDown={event => {
+                  if (event.key === "Escape") {
+                    setStaffPickerOpen(false);
+                    event.currentTarget.previousElementSibling?.focus();
                   }
-                </option>
-              ))}
-            </select>
-          </label>
+                }}
+              >
+                {!selectableStaff.length && (
+                  <p>No registered staff profiles yet.</p>
+                )}
+                {selectableStaff.map(staff => {
+                  const id = normalize(staff.id || staff.uid);
+                  const selected = id === normalize(selectedStaffUid);
+                  const role = {
+                    field_manager: "Field Manager",
+                    assistant_manager: "Assistant Manager",
+                    field_assistant: "Field Assistant",
+                    other_staff: "Other field staff",
+                    referee: "Referee",
+                  }[staff.role] || "Field staff";
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className="field-staff-picker__option"
+                      aria-pressed={selected}
+                      disabled={busy || staff.status !== "active"}
+                      onClick={() => {
+                        setSelectedStaffUid(id);
+                        setStaffPickerOpen(false);
+                        setError("");
+                        setStatus("");
+                      }}
+                    >
+                      <span
+                        className="field-staff-picker__avatar"
+                        aria-hidden="true"
+                      >
+                        {String(staff.name || "Field staff")
+                          .trim().split(/\s+/).slice(0, 2)
+                          .map(part => part[0]).join("").toUpperCase()}
+                      </span>
+                      <span className="field-staff-picker__identity">
+                        <strong>{staff.name || "Field staff"}</strong>
+                        <small>
+                          {role}
+                          {staff.status !== "active"
+                            ? " · Awaiting approval"
+                            : ""}
+                        </small>
+                      </span>
+                      <span aria-hidden="true">
+                        {selected ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           <div
             className="actions-row"
@@ -1141,11 +1215,11 @@ export default function VenueLeagueAccessPanel({
               >
                 <span className="join-club-flip-button__stage">
                   <span className="join-club-flip-button__face join-club-flip-button__face--front">
-                    My name is not on the Field Team list
+                    Not on the list?
                   </span>
 
                   <span className="join-club-flip-button__face join-club-flip-button__face--back">
-                    Click to join this Field Team.
+                    Join Field Team
                   </span>
                 </span>
               </button>

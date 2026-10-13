@@ -3104,9 +3104,26 @@ export function VenueLeagueLiveMatchPage({
 
   const canonicalTeams = useMemo(() => {
     return (liveTeams || []).map((team) => {
-      const suppliedPlayers = (players || []).filter(player =>
-        String(player?.clubId || "") === String(team?.id || "")
+      /*
+       * Prefer the freshly loaded eligible roster, but never erase
+       * the immutable paidSquads snapshot supplied by Start Match.
+       *
+       * The live document is the authoritative recovery source when
+       * the roster endpoint is slow, unavailable or returns no rows.
+       */
+      const loadedPlayers = (players || []).filter(
+        (player) =>
+          String(player?.clubId || "") ===
+          String(team?.id || "")
       );
+
+      const snapshotPlayers = Array.isArray(team?.players)
+        ? team.players
+        : [];
+
+      const suppliedPlayers = loadedPlayers.length
+        ? loadedPlayers
+        : snapshotPlayers;
 
       return {
         ...team,
@@ -3115,6 +3132,7 @@ export function VenueLeagueLiveMatchPage({
             typeof player === "string"
               ? player
               : player?.id ||
+                player?.playerId ||
                 player?.sourcePlayerId ||
                 ""
           )
@@ -3128,6 +3146,7 @@ export function VenueLeagueLiveMatchPage({
                   player?.shortName ||
                   player?.name ||
                   player?.displayName ||
+                  player?.playerName ||
                   "";
 
             return canonicalName(raw);

@@ -40,12 +40,12 @@ export default function FieldPageFrame({
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  if (page === "live") return <FieldRibbonContext.Provider value={null}><div className="field-referee-booth">{children}</div></FieldRibbonContext.Provider>;
+
 
   return (
-    <FieldRibbonContext.Provider value={ribbonHost}>
-    <div className="field-ribbon-frame" data-field-page={page}>
-      {page !== "entry" && <div
+    <FieldRibbonContext.Provider value={page === "live" ? null : ribbonHost}>
+    <div className={page === "live" ? "field-referee-booth" : "field-ribbon-frame"} data-field-page={page}>
+      {page !== "entry" && page !== "live" && <div
         className={`landing-header-sticky ${
           headerScrolled ? "is-scrolled" : ""
         }`}
@@ -200,7 +200,7 @@ export default function FieldPageFrame({
 
         </header>
       </div>}
-      <div className="field-ribbon-content">{children}</div>
+      <div className={page === "live" ? "field-referee-booth-content" : "field-ribbon-content"}>{children}</div>
     </div>
     </FieldRibbonContext.Provider>
   );

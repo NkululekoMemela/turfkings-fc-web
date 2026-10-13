@@ -8815,3 +8815,65 @@
     margin-inline: auto !important;
   }
 }
+
+/* Club hub marketing image reaches the card edges. */
+.homepage-hub-shell .hub-footer-brand {
+  padding: 0 !important;
+  overflow: hidden;
+}
+.homepage-hub-shell .hub-footer-brand > .hub-footer-logo-stage {
+  grid-column: 1 / -1;
+  width: 100% !important;
+  max-width: none !important;
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 5 / 3;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.homepage-hub-shell .hub-footer-logo-stage img.hub-footer-logo-static {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center;
+}
+.homepage-hub-shell .hub-footer-brand > section,
+.homepage-hub-shell .hub-footer-brand > .hub-premium-footer-panels,
+.homepage-hub-shell .hub-footer-brand > details {
+  margin: 16px !important;
+}
+
+/* Flush Club marketing photo v2 */
+.homepage-hub-shell footer.hub-footer-brand--flush-photo {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+.homepage-hub-shell footer.hub-footer-brand--flush-photo > .hub-footer-logo-stage {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  grid-column: 1 / -1;
+  min-height: 0 !important;
+  aspect-ratio: 5 / 3;
+}
+.homepage-hub-shell footer.hub-footer-brand--flush-photo > .hub-footer-logo-stage img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  object-fit: cover !important;
+}
+.homepage-hub-shell footer.hub-footer-brand--flush-photo > section,
+.homepage-hub-shell footer.hub-footer-brand--flush-photo > .hub-premium-footer-panels,
+.homepage-hub-shell footer.hub-footer-brand--flush-photo > details {
+  margin: 16px !important;
+}
