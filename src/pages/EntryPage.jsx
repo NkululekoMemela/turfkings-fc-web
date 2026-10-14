@@ -1234,8 +1234,12 @@ export function EntryPage({
     return "";
   });
 
+  const [playerPickerOpen, setPlayerPickerOpen] =
+    useState(false);
+
   useEffect(() => {
     setSelectedMemberId(identity?.clubId === activeClubId && identity?.memberId ? identity.memberId : "");
+    setPlayerPickerOpen(false);
     setVerifyError("");
     setVerifyStatus("");
 
@@ -5363,44 +5367,160 @@ export function EntryPage({
             Verify yourself quickly, then we can personalize the app around your profile.
           </p>
 
-          <div className="field-column" style={{ marginTop: "1rem" }}>
-            <label>Select your name ({activeClubName} player list)</label>
-            <p className="muted small" style={{ marginTop: "0.25rem" }}>
-              {loadingMembers
-                ? "Getting the latest player list."
-                : `There are ${activeMembers.length} players on the list – scroll down.`}
-            </p>
+          <div
+            className="field-staff-picker"
+            style={{ marginTop: "1rem" }}
+          >
+            <span className="field-staff-picker__label">
+              Select your name ({activeClubName} player list)
+            </span>
 
-            <select
-              className="text-input"
-              value={selectedMemberId}
+            <button
+              type="button"
+              className="field-staff-picker__trigger"
               disabled={loadingMembers}
               aria-busy={loadingMembers}
-              onChange={(e) => {
-                setSelectedMemberId(e.target.value);
-                setVerifyError("");
-                setVerifyStatus("");
+              aria-haspopup="listbox"
+              aria-expanded={playerPickerOpen}
+              aria-controls="club-player-profile-options"
+              onClick={() =>
+                setPlayerPickerOpen(open => !open)
+              }
+              onKeyDown={event => {
+                if (event.key === "Escape") {
+                  setPlayerPickerOpen(false);
+                }
               }}
             >
-              <option value="">
-                {loadingMembers
-                  ? "Loading club players…"
-                  : "Select your name..."}
-              </option>
+              <span>
+                <strong>
+                  {selectedMember?.fullName ||
+                    selectedMember?.shortName ||
+                    (
+                      loadingMembers
+                        ? "Loading club players…"
+                        : "Select your name"
+                    )}
+                </strong>
 
-              {activeMembers.map((m, idx) => (
-                <option key={m.id} value={m.id}>
-                  {idx + 1}. {m.fullName}
-                </option>
-              ))}
+                <small>
+                  {selectedMember
+                    ? selectedMember.status === "pending"
+                      ? "Pending approval · Tap to switch"
+                      : selectedMember.role === "admin"
+                        ? "Club administrator · Tap to switch"
+                        : selectedMember.role === "captain"
+                          ? "Club captain · Tap to switch"
+                          : "Registered player · Tap to switch"
+                    : loadingMembers
+                      ? "Getting the latest player list"
+                      : `${activeMembers.length} registered player${
+                          activeMembers.length === 1 ? "" : "s"
+                        }`}
+                </small>
+              </span>
 
-              {pendingMembers.map((m, idx) => (
-                <option key={m.id} value={m.id}>
-                  {activeMembers.length + idx + 1}. {m.fullName} (pending
-                  approval)
-                </option>
-              ))}
-            </select>
+              <span aria-hidden="true">
+                {playerPickerOpen ? "▴" : "▾"}
+              </span>
+            </button>
+
+            {playerPickerOpen && (
+              <div
+                id="club-player-profile-options"
+                className="field-staff-picker__options"
+                role="listbox"
+                aria-label={`${activeClubName} player list`}
+                onKeyDown={event => {
+                  if (event.key === "Escape") {
+                    setPlayerPickerOpen(false);
+                    event.currentTarget
+                      .previousElementSibling
+                      ?.focus();
+                  }
+                }}
+              >
+                {!loadingMembers &&
+                !activeMembers.length &&
+                !pendingMembers.length && (
+                  <p>No registered player profiles yet.</p>
+                )}
+
+                {[
+                  ...activeMembers.map(member => ({
+                    ...member,
+                    entryStatus: "active",
+                  })),
+                  ...pendingMembers.map(member => ({
+                    ...member,
+                    entryStatus: "pending",
+                  })),
+                ].map((member, index) => {
+                  const selected =
+                    member.id === selectedMemberId;
+
+                  const initials = String(
+                    member.fullName ||
+                    member.shortName ||
+                    "Player"
+                  )
+                    .trim()
+                    .split(/\s+/)
+                    .slice(0, 2)
+                    .map(part => part[0])
+                    .join("")
+                    .toUpperCase();
+
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      role="option"
+                      className="field-staff-picker__option"
+                      aria-selected={selected}
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setSelectedMemberId(member.id);
+                        setPlayerPickerOpen(false);
+                        setVerifyError("");
+                        setVerifyStatus("");
+                      }}
+                    >
+                      <span
+                        className="field-staff-picker__avatar"
+                        aria-hidden="true"
+                      >
+                        {initials}
+                      </span>
+
+                      <span className="field-staff-picker__identity">
+                        <strong>
+                          {index + 1}. {
+                            member.fullName ||
+                            member.shortName ||
+                            "Player"
+                          }
+                        </strong>
+
+                        <small>
+                          {member.entryStatus === "pending"
+                            ? "Pending approval"
+                            : member.role === "admin"
+                              ? "Club administrator"
+                              : member.role === "captain"
+                                ? "Club captain"
+                                : "Registered player"}
+                        </small>
+                      </span>
+
+                      <span aria-hidden="true">
+                        {selected ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {isAdminViewer && (

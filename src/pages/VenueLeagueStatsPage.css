@@ -2497,3 +2497,62 @@
   outline: 2px solid #f2c489;
   outline-offset: 3px;
 }
+
+
+/* PLAYER STATS COMPACT CLUB IDENTITY COLUMN */
+.tk-player-identity-table
+  .venue-standings-table th:nth-child(3),
+.tk-player-identity-table
+  .venue-standings-table td:nth-child(3) {
+  width: var(--venue-player-club-width, 7rem);
+  min-width: var(--venue-player-club-width, 7rem);
+  max-width: var(--venue-player-club-width, 7rem);
+  padding-inline: 0.4rem;
+  text-align: left;
+}
+
+.venue-player-club-logo-cell {
+  width: var(--venue-player-club-width, 7rem);
+  min-width: var(--venue-player-club-width, 7rem);
+  max-width: var(--venue-player-club-width, 7rem);
+  padding-inline: 0.4rem !important;
+  text-align: left !important;
+}
+
+.venue-player-club-identity {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.venue-player-club-logo-cell .venue-club-logo {
+  width: 1.4rem;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  display: inline-flex;
+  flex: 0 0 1.4rem;
+  object-fit: contain;
+}
+
+.venue-player-club-logo-cell
+  .venue-club-logo-fallback {
+  align-items: center;
+  justify-content: center;
+}
+
+.venue-player-club-short-name {
+  display: inline-block;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  overflow: visible;
+  color: #e2e8f0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: clip;
+  white-space: nowrap;
+}
