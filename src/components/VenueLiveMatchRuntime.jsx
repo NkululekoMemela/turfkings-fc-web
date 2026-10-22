@@ -413,61 +413,20 @@ export default function VenueLiveMatchRuntime({
       });
     }, [persistPatch]);
 
-  const handleConfirmLineups =
-    useCallback(
-      (snapshot) => {
-        const matchNo =
-          Number(
-            liveStateRef.current
-              ?.currentMatchNo
-          ) || 1;
-
-        setConfirmedLineupSnapshot(
-          snapshot
-        );
-
-        setConfirmedLineupsByMatchNo(
-          (previous) => {
-            const next = {
-              ...previous,
-              [matchNo]: snapshot,
-            };
-
-            const live = liveStateRef.current;
-            const previousTimeline = safeArray(live?.lineupTimeline);
-            const elapsedSeconds = previousTimeline.length === 0
-              ? 0
-              : Math.max(
-                  0,
-                  Number(live?.matchSeconds || 0) -
-                    Number(live?.secondsLeft || 0)
-                );
-            const lineupTimeline = [
-              ...previousTimeline.filter(
-                (entry) => Number(entry?.timeSeconds) !== elapsedSeconds
-              ),
-              { timeSeconds: elapsedSeconds, snapshots: snapshot },
-            ].sort((x, y) => x.timeSeconds - y.timeSeconds);
-
-            persistPatch({
-              confirmedLineupSnapshot:
-                snapshot,
-              confirmedLineupsByMatchNo:
-                next,
-              lineupTimeline,
-            }).catch((error) => {
-              console.error(
-                "[VenueLiveMatch] Lineup save failed:",
-                error
-              );
-            });
-
-            return next;
-          }
-        );
-      },
-      [persistPatch]
-    );
+  const handleConfirmLineups = useCallback(async snapshot=>{
+    if(!canControlCurrentLiveMatch || !auth.currentUser?.emailVerified)throw new Error("Sign in as the controlling referee.");
+    if(!snapshot || Object.values(snapshot).some(team=>!team.kitVerification))throw new Error("Verify both teams' kit before confirming lineups.");
+    const live=liveStateRef.current,matchNo=Number(live?.currentMatchNo) || 1;
+    const next={...(live?.confirmedLineupsByMatchNo || {}),[matchNo]:snapshot};
+    const previous=safeArray(live?.lineupTimeline);
+    const elapsed=previous.length===0?0:Math.max(0,Number(live?.matchSeconds || 0)-Number(live?.secondsLeft || 0));
+    const lineupTimeline=[...previous.filter(item=>Number(item?.timeSeconds)!==elapsed),{timeSeconds:elapsed,snapshots:snapshot}].sort((a,b)=>a.timeSeconds-b.timeSeconds);
+    const kickoff=live?.awaitingKitVerification?{awaitingKitVerification:false,running:true,startedAtMs:Date.now(),startedAtISO:new Date().toISOString()}:{};
+    const patch={confirmedLineupSnapshot:snapshot,confirmedLineupsByMatchNo:next,lineupTimeline,...kickoff};
+    await persistPatch(patch);
+    setLiveState(previous=>({...previous,...patch}));
+    setConfirmedLineupSnapshot(snapshot);setConfirmedLineupsByMatchNo(next);
+  },[persistPatch,canControlCurrentLiveMatch]);
 
   const handleCancelLineups =
     useCallback(async () => {
@@ -822,6 +781,7 @@ export default function VenueLiveMatchRuntime({
 
   const sharedProps = {
     isPracticeMode: scope.environment === "practice",
+    awaitingKitVerification: liveState.awaitingKitVerification === true,
     practiceSessionId: scope.practiceSessionId || null,
     fieldClockVersion: liveState.clockVersion || 0,
     fieldClockPhase: liveState.clockPhase || "legacy",

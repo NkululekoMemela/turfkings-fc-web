@@ -47,6 +47,8 @@ function getDraftFromClub(club = {}, adminIdentity = {}) {
 
   return {
     clubName: source.name || source.clubName || club.name || "",
+    homeColor: source.homeColor || club.homeColor || "",
+    awayColor: source.awayColor || club.awayColor || "",
     clubId: source.id || source.clubId || club.id || "",
     venueName: source?.locationDetails?.venueName || source.venueName || "",
     address: source?.locationDetails?.address || source.address || "",
@@ -150,6 +152,7 @@ export default function HomePage_HUB_ClubProfileEditorModal({
   }, [isOpen, club?.id, adminIdentity?.email, adminIdentity?.fullName, adminIdentity?.whatsappNumber]);
 
   if (!isOpen || !club?.id) return null;
+
 
   async function saveClubProfile() {
     setErrorText("");

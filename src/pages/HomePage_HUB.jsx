@@ -1,3 +1,4 @@
+import {ownMembershipSnapshots} from "../storage/playerPrivacyGateway.js";
 import FirebaseEnvironmentControl from "../components/FirebaseEnvironmentControl.jsx";
 import { LEGAL } from "../legal/policies.js";
 import LegalSignature from "../components/LegalSignature.jsx";
@@ -579,9 +580,7 @@ export default function HomePage_HUB({
         if (!clubId) continue;
 
         try {
-          const membersSnap = await getDocs(
-            collection(db, "clubs", clubId, "members")
-          );
+          const membersSnap = await ownMembershipSnapshots(clubId);
 
           const matchedMemberDoc = membersSnap.docs.find((memberDoc) => {
             const member = memberDoc.data() || {};
@@ -714,7 +713,7 @@ export default function HomePage_HUB({
 
             try {
               const membersSnap = await getDocs(
-                collection(db, "clubs", clubId, "members")
+                collection(db, "clubs", clubId, "publicMembers")
               );
 
               const platformSuperAdminEmail =

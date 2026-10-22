@@ -1,3 +1,7 @@
+import BookingPageBoundary from "./components/BookingPageBoundary.jsx";
+import {preloadOwnPlayerProfile, cachedOwnPlayerProfile} from "./storage/playerProfileRepository.js";
+import NumberOfferNotification from "./components/NumberOfferNotification.jsx";
+import {finalizePlayerProfileVideoAwards} from "./storage/playerProfileAwardsRepository.js";
 import FieldPageFrame from "./components/FieldPageFrame.jsx";
 import ClubLeagueSeasonPage from "./pages/ClubLeagueSeasonPage.jsx";
 import ClubLeagueSeasonEntry from "./components/ClubLeagueSeasonEntry.jsx";
@@ -35,6 +39,7 @@ import WelcomePage from "./pages/WelcomePage.jsx";
 import LeagueVenuesHub from "./pages/LeagueVenuesHub.jsx";
 import VenueEntryPage from "./pages/VenueEntryPage.jsx";
 import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
+import PlayerProfilePage from "./pages/PlayerProfilePage.jsx";
 import BottomNav from "./components/BottomNav.jsx";
 import FieldBottomNav from "./components/FieldBottomNav.jsx";
 import LegalAcceptanceGate from "./components/LegalAcceptanceGate.jsx";
@@ -96,7 +101,7 @@ import {
   markScheduledFixtureCompleted,
 } from "./core/scheduledFixtures.js";
 
-import { db } from "./firebaseConfig.js";
+import { db, auth } from "./firebaseConfig.js";
 import { clubCollectionPath, clubDocPath } from "./core/clubPaths.js";
 import { getPlayerPhotosCollection } from "./core/clubFirestorePaths.js";
 import {
@@ -121,6 +126,7 @@ const PAGE_FORMATIONS = "formations";
 const PAGE_PLAYER_MENTALITIES = "player-mentalities";
 const PAGE_SPECTATOR = "spectator";
 const PAGE_NEWS = "news";
+const PAGE_PLAYER_PROFILE = "player-profile";
 const PAGE_PLAYER_CARDS = "player-cards";
 const PAGE_PEER_REVIEW = "peer-review";
 const PAGE_MIGRATION = "migration";
@@ -1533,6 +1539,8 @@ async function saveParticipationForMatchDay({
         )
       : doc(
           db,
+          "clubs",
+          dataScope?.clubId || DEFAULT_CLUB_ID,
           "seasons",
           safeSeasonId,
           "attendance",
@@ -3309,7 +3317,13 @@ export default function App() {
     }
   }, [activeClubId]);
 
-  const members = useMembers();
+  const members = useMembers(activeClubId);
+  useEffect(()=>{
+    // Warm the private portrait and kit before the player opens Profile.
+    if(!authUser){cachedOwnPlayerProfile(activeClubId);return;}
+    if(!isPracticeMode && identity?.memberId && auth.currentUser?.emailVerified)
+      preloadOwnPlayerProfile(activeClubId,identity.memberId).catch(()=>{});
+  },[activeClubId,identity?.memberId,authUser,isPracticeMode]);
   const [showAdminReclaimNudge, setShowAdminReclaimNudge] = useState(true);
   const [preloadedPlayerPhotosByName, setPreloadedPlayerPhotosByName] = useState({});
 
@@ -3736,6 +3750,8 @@ export default function App() {
   });
 
   const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
+  const endingProfileSeason = useRef(false);
+  const [finalizingProfileAwards, setFinalizingProfileAwards] = useState(false);
   const [endSeasonCode, setEndSeasonCode] = useState("");
   const [endSeasonError, setEndSeasonError] = useState("");
   const [showSeasonCompleteModal, setShowSeasonCompleteModal] = useState(false);
@@ -5104,7 +5120,7 @@ export default function App() {
     );
     setSecondsLeft(Math.max(0, safeSeconds));
     setTimeUp(safeSeconds <= 0);
-    setRunning(safeSeconds > 0);
+    setRunning(safeSeconds > 0 && !draft.awaitingKitVerification);
     setHasLiveMatch(true);
     setPage(PAGE_LIVE);
   };
@@ -5772,6 +5788,7 @@ export default function App() {
     const liveDraft = {
       id: `live-${activeSeasonId || "season"}-${activeMatchNo}-${Date.now()}`,
       status: "running",
+      awaitingKitVerification: true,
       activeSeasonId,
       activeClubId,
       matchNo: activeMatchNo,
@@ -5817,13 +5834,16 @@ export default function App() {
     setPendingMatchStartContext(startContext);
     setSecondsLeft(initialSecondsLeft);
     setTimeUp(initialSecondsLeft <= 0);
-    setRunning(true);
+    setRunning(false);
     setHasLiveMatch(true);
     setPage(PAGE_LIVE);
   };
 
   const handleConfirmPreMatchLineups = (snapshot) => {
     const safeSnapshot = snapshot || null;
+    if(!auth.currentUser?.uid || !auth.currentUser.emailVerified || !canControlCurrentLiveMatch)throw new Error("Sign in as the controlling referee before confirming lineups.");
+    if(!safeSnapshot || Object.values(safeSnapshot).some(team=>!team.kitVerification))throw new Error("Verify every player's kit before confirming lineups.");
+    if(pendingMatchStartContext || liveMatchDraft?.awaitingKitVerification)setRunning(true);
     setCurrentConfirmedLineupSnapshot(safeSnapshot);
 
     if (safeSnapshot) {
@@ -5907,6 +5927,9 @@ export default function App() {
             prevSeason.liveMatchDraft,
             {
               confirmedLineupSnapshot: safeSnapshot,
+              awaitingKitVerification: false,
+              ...(prevSeason.liveMatchDraft?.awaitingKitVerification && matchType===MATCH_TYPE.LEAGUE
+                ? {expectedEndAtISO:addSecondsToISO(new Date().toISOString(),matchSeconds),startedAtISO:new Date().toISOString()} : {}),
               lineupTimeline: nextTimeline,
             }
           ),
@@ -5959,6 +5982,19 @@ export default function App() {
   const handleGoToFormations = () => setPage(PAGE_FORMATIONS);
 
   const handleAddEvent = (event) => {
+    const resolveEventMember = value => {
+      const key = String(value || "").trim().toLowerCase();
+      if (!key) return null;
+      const matches = members.filter(member => [member.fullName,member.shortName,...(member.profileNameAliases || [])]
+        .some(name => String(name || "").trim().toLowerCase() === key));
+      return matches.length === 1 ? matches[0] : null;
+    };
+    event = {...event,
+      scorerMemberId: event.scorerMemberId || resolveEventMember(event.scorer)?.id || null,
+      assistMemberId: event.assistMemberId || resolveEventMember(event.assist)?.id || null,
+      playerMemberId: event.playerMemberId || resolveEventMember(event.playerName)?.id || null,
+    };
+
     if (USE_V2) {
       updateActiveSeason((prevSeason) => {
         const eventMeta = buildMatchMetadata({
@@ -7771,12 +7807,25 @@ export default function App() {
     return true;
   };
 
-  const handleEndSeasonAndCreateNew = () => {
-    if (!USE_V2) return;
+  const handleEndSeasonAndCreateNew = async () => {
+    if (!USE_V2 || endingProfileSeason.current) return;
     if (!requireAdminCodeEndSeason()) return;
+    const endingSeasonId = safeV2ForStats?.activeSeasonId;
+    let profileSeasonAwards = [];
+    endingProfileSeason.current = true;
+    setFinalizingProfileAwards(true);
+    try {
+      if (!isPracticeMode) profileSeasonAwards = await finalizePlayerProfileVideoAwards({clubId: activeClubId, seasonId: endingSeasonId, members});
+    } catch (error) {
+      endingProfileSeason.current = false;
+      setFinalizingProfileAwards(false);
+      setEndSeasonError(error.message || "Video awards could not be preserved. The season has not been ended.");
+      return;
+    }
 
     updateState((prev) => {
       const safePrev = ensureV2StateShape(prev);
+      if (safePrev.activeSeasonId !== endingSeasonId) return safePrev;
 
       setRunning(false);
       setTimeUp(false);
@@ -7800,6 +7849,8 @@ export default function App() {
 
       const archivedActiveSeason = {
         ...activeSeason,
+        profileSeasonAwards,
+        profileAwardsFinalizedAt: new Date().toISOString(),
         finalPlayerCardSnapshot,
         finalPlayerCardSnapshotCreatedAt:
           finalPlayerCardSnapshot?.createdAt || new Date().toISOString(),
@@ -7871,6 +7922,8 @@ export default function App() {
       };
     });
 
+    endingProfileSeason.current = false;
+    setFinalizingProfileAwards(false);
     closeEndSeasonModal();
     setShowSeasonCompleteModal(false);
     setSeasonCompleteDismissedKey(null);
@@ -8375,6 +8428,7 @@ export default function App() {
   }, [page, isPracticeMode, activeSeasonId, matchType, teams, fiveVFiveTeams]);
 
   const pagesWithBottomNav = new Set([
+    PAGE_PLAYER_PROFILE,
     PAGE_LANDING,
     PAGE_MATCH_SIGNUP,
     PAGE_PAYMENT,
@@ -10223,6 +10277,7 @@ export default function App() {
       )}
 
       {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (
+        <BookingPageBoundary key={activeClubId} onBack={() => setPage(PAGE_LANDING)}>
         <MatchSignupPage
           identity={pageIdentity}
           activeRole={activeRole}
@@ -10238,6 +10293,7 @@ export default function App() {
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
         />
+        </BookingPageBoundary>
       )}
 
       {page === PAGE_MATCH_SIGNUP && !canAccessMatchSignup && (
@@ -10274,6 +10330,7 @@ export default function App() {
 
       {page === PAGE_LIVE && (
         <LiveMatchPage
+          activeSeasonId={activeSeasonId}
           matchSeconds={matchSeconds}
           secondsLeft={secondsLeft}
           timeUp={timeUp}
@@ -10447,6 +10504,24 @@ export default function App() {
           matchType={matchType}
           isPracticeMode={isPracticeMode}
           dataScope={footballDataScope}
+        />
+      )}
+
+      {page === PAGE_PLAYER_PROFILE && (
+        <PlayerProfilePage
+          key={`${activeClubId}:${authUser?.uid || "guest"}`}
+          clubId={activeClubId}
+          clubName={activeClubName}
+          clubLogo={activeClubIdentity?.logoUrl || activeClubIdentity?.logo || ""}
+          identity={identity}
+          user={authUser}
+          isPracticeMode={isPracticeMode}
+          onBack={handleBackToLanding}
+          onProfileUpdated={patch => setIdentity(previous =>
+            previous?.memberId === patch.memberId
+              ? {...previous, ...patch}
+              : previous
+          )}
         />
       )}
 
@@ -11716,8 +11791,9 @@ export default function App() {
               <button
                 className="primary-btn"
                 onClick={handleEndSeasonAndCreateNew}
+                disabled={finalizingProfileAwards}
               >
-                Create new season
+                {finalizingProfileAwards ? "Preserving season awards…" : "Create new season"}
               </button>
             </div>
           </div>
@@ -11800,6 +11876,8 @@ export default function App() {
             )}
           </>
         )}
+
+      {authUser?.uid&&page!==PAGE_PLAYER_PROFILE&&page!==PAGE_VENUE_ENTRY&&<NumberOfferNotification clubId={activeClubId} enabled={!isPracticeMode} onOpen={()=>setPage(PAGE_PLAYER_PROFILE)}/>}
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav

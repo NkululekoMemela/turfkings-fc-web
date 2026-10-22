@@ -848,6 +848,8 @@ export async function startVenueFixture({
       paidSquads: paidSquadsForStart,
       confirmedLineupSnapshot: season.gameFormat === "5_V_5"
         ? approval.startingLineups : null,
+      running: false,
+      awaitingKitVerification: true,
       clockVersion: 1,
       clockPhase: "first_half",
       halftimeSeconds: Number(season.scheduleSettings?.halftimeMinutes ?? 5) * 60,

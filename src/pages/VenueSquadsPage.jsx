@@ -104,10 +104,10 @@ export default function VenueSquadsPage({
             getPreviewTeamName={team=>team.name}
             getTeamIdentityVisual={()=>null}
             resolveSquadTeamIdentity={()=>null}
-            displayNameOf={id=>{
+            displayNameOf={(id,teamId)=>{
               const player = people.get(id);
               const team = teams.find(item=>item.players.includes(id));
-              return `${player?.fullName || ""}${
+              return `${player?.jerseyNumber==null?"":`#${player.jerseyNumber} · `}${player?.fullName || ""}${
                 team?.players.indexOf(id) === 5 ? " (Sub)" : ""
               }${player?.isFillIn ? " · Fill-in" : ""}`;
             }}

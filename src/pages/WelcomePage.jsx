@@ -180,7 +180,7 @@ export default function WelcomePage({
         let playerCount = "—";
         try {
           const members = await getDocs(
-            collection(db, "clubs", club.id, "members")
+            collection(db, "clubs", club.id, "publicMembers")
           );
           playerCount = members.size;
         } catch (error) {

@@ -7,6 +7,7 @@
 import React, { useEffect, useState } from "react";
 
 const items = [
+  { key: "player-profile", emoji: "👤", label: "Profile" },
   { key: "landing", emoji: "🏡", label: "Home" },
   { key: "stats", emoji: "📊", label: "Stats" },
   //{ key: "live", emoji: "⚽", label: "Live" },

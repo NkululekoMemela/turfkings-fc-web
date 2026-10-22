@@ -1,5 +1,4 @@
 /* eslint-env node */
-/* global require, process, exports */
 // FILE: functions/index.js
 // PURPOSE:
 // - Yoco checkout session creation
@@ -153,9 +152,7 @@ const PAYSTACK_SECRET_KEY =
   process.env.PAYSTACK_SECRET_KEY ||
   "";
 
-const PAYSTACK_PUBLIC_KEY =
-  process.env.PAYSTACK_PUBLIC_KEY ||
-  "";
+
 
 const PAYSTACK_BASE_URL =
   process.env.PAYSTACK_BASE_URL ||
@@ -1038,7 +1035,7 @@ async function settleVerifiedPayment({
   }
 
   const adminMessage =
-    `✅ TurfKings payment verified.\n` +
+    "✅ TurfKings payment verified.\n" +
     `${safeString(paymentData.displayName || "Player")}` +
     (safeString(paymentData.secondDisplayName) ?
       ` + ${safeString(paymentData.secondDisplayName)}` :
@@ -1066,7 +1063,7 @@ async function markPaymentFailed({
   }, {merge: true});
 
   const adminMessage =
-    `⚠️ TurfKings payment not completed.\n` +
+    "⚠️ TurfKings payment not completed.\n" +
     `${safeString(paymentData.displayName || "Player")}` +
     (safeString(paymentData.secondDisplayName) ?
       ` + ${safeString(paymentData.secondDisplayName)}` :
@@ -1407,7 +1404,7 @@ exports.createYocoCheckout = onRequest(
       Promise.resolve().then(async () => {
         try {
           await notifyAdminOnWhatsApp(
-            `🧾 TurfKings payment started.\n` +
+            "🧾 TurfKings payment started.\n" +
             `${displayName}` +
             (secondDisplayName ? ` + ${secondDisplayName}` : "") +
             `\nAmount: ${formatCurrency(paymentState.outstandingAmount)}` +
@@ -1703,7 +1700,7 @@ exports.createPaystackCheckout = onRequest(
       Promise.resolve().then(async () => {
         try {
           await notifyAdminOnWhatsApp(
-            `🧾 5 Asides Near Me payment started.\n` +
+            "🧾 5 Asides Near Me payment started.\n" +
             `${displayName}` +
             (secondDisplayName ? ` + ${secondDisplayName}` : "") +
             `\nAmount: ${formatCurrency(paymentState.outstandingAmount)}` +
@@ -2715,9 +2712,9 @@ async function collectReminderCandidates({
       todayKey,
       message:
         `Reminder: You still have ${selectedWeeks.length} selected ` +
-        `TurfKings week(s) awaiting payment. Please open the app to ` +
-        `complete payment. To stop reminders, open the app and uncheck ` +
-        `your selected weeks.`,
+        "TurfKings week(s) awaiting payment. Please open the app to " +
+        "complete payment. To stop reminders, open the app and uncheck " +
+        "your selected weeks.",
     };
 
     reminders.push(reminder);
@@ -2951,7 +2948,7 @@ exports.verifyWhatsAppNumber = onRequest(
           whatsappVerificationStatus: "failed_twice",
           adminContactName: ADMIN_CONTACT_NAME,
           message:
-            `This number could not be verified twice. ` +
+            "This number could not be verified twice. " +
             `Please contact admin ${ADMIN_CONTACT_NAME}.`,
         });
       }
@@ -5840,4 +5837,89 @@ installFieldLogoStudio(exports, {
   db,
   onRequest,
   region: REGION,
+});
+
+// Confirm both Google accounts; preserve the Firebase UID and football records.
+exports.changePlayerGoogleAccount = onRequest({region: REGION, cors: true, timeoutSeconds: 60}, async (req, res) => {
+  if (req.method !== "POST") {res.status(405).json({error:"Use POST."});return;}
+  try {
+    const bearer=String(req.headers.authorization || "").match(/^Bearer (.+)$/);
+    if (!bearer) {res.status(401).json({error:"Sign in again."});return;}
+    const firebase=await admin.auth().verifyIdToken(bearer[1],true);
+    const {OAuth2Client}=require("google-auth-library");
+    const verifier=new OAuth2Client();
+    const verifyGoogle=async idToken => {
+      if (typeof idToken !== "string" || idToken.length>20000) throw new Error("Invalid Google confirmation.");
+      const ticket=await verifier.verifyIdToken({idToken});
+      return ticket.getPayload();
+    };
+    const result=await require("./playerGoogleAccountService.js").changePlayerGoogleAccount({admin,db,firebase,body:req.body || {},verifyGoogle});
+    res.json(result);
+  } catch(error) {
+    console.error("[Player Google account change]",error.code || error.message);
+    res.status(error.status || (error.code?.startsWith("auth/") ? 403 : 400)).json({error:error.message || "Your account change could not be completed."});
+  }
+});
+
+// Retry only server-recorded, already-confirmed account changes after an interrupted sync.
+exports.syncPlayerProfileAccountChanges = onSchedule({region: REGION, schedule: "every 15 minutes", retryCount: 3}, async () => {
+  const jobs=await db.collection("profileAccountChanges").where("status","in",["changing","profile_sync_pending"]).limit(30).get();
+  for (const job of jobs.docs) {
+    const proof=job.data();
+    if (proof.status==="changing" && Date.now()-Number(proof.startedAtMs)<120000) continue;
+    const user=await admin.auth().getUser(job.id);
+    const provider=user.providerData.find(item=>item.providerId==="google.com");
+    if (user.uid!==proof.uid || provider?.uid!==proof.newSubject || user.email!==proof.newEmail) {
+      if (Date.now()-Number(proof.startedAtMs)>600000) await job.ref.set({status:"failed",failureCode:"provider-not-changed"},{merge:true});
+      continue;
+    }
+    await require("./playerGoogleAccountService.js").synchronizePlayerAccountDetails({admin,db,proof,membershipPaths:proof.members,clubPaths:proof.clubs});
+  }
+});
+
+// Private player records never pass through public roster reads.
+exports.playerPrivacy = onRequest({region: REGION, cors: true, timeoutSeconds: 120}, async (req, res) => {
+  if (req.method !== "POST") {res.status(405).json({error:"Use POST."});return;}
+  try {
+    const bearer = String(req.headers.authorization || "").match(/^Bearer (.+)$/);
+    if (!bearer) {res.status(401).json({error:"Sign in with your own Google account."});return;}
+    const user = await admin.auth().verifyIdToken(bearer[1], true);
+    if (!user.email_verified || user.cameraSession === true) throw new Error("Sign in with your verified Google account.");
+    res.json(await require("./playerPrivacy.cjs").handle({db,user,body:req.body || {}}));
+  } catch (error) {res.status(403).json({error:error.message || "Profile access denied."});}
+});
+for (const [kind, name] of Object.entries({members:"publishPlayerRoster",players:"publishFootballPlayers",playerPhotos:"publishFootballPortraits",pendingSignups:"publishPendingFootballBookings",matchSignups:"publishFootballBookings"})) {
+  exports[name] = onDocumentWritten({document:`clubs/{clubId}/${kind}/{id}`,region:REGION}, async event => {
+    await require("./playerPrivacy.cjs").projectDocument(db,kind,db.doc(`clubs/${event.params.clubId}/${kind}/${event.params.id}`));
+  });
+}
+exports.preparePlayerPrivacy = onSchedule({region:REGION,schedule:"every 5 minutes",timeoutSeconds:540}, async () => {
+  const privacy = require("./playerPrivacy.cjs");
+  // One-time backfill of existing clubs. Triggers maintain projections afterwards.
+  const clubs = await db.collection("clubs").get();
+  for (const club of clubs.docs) {
+    const done = await db.doc(`playerPrivacyMigrations/${club.id}`).get();
+    if (done.data()?.version === 1) continue;
+    await privacy.prepareClub(db,club.id);
+  }
+});
+exports.verifyMatchPlayerNumbers = onRequest({region:REGION,cors:true}, async (req,res) => {
+  if (req.method !== "POST") {res.status(405).json({error:"Use POST."});return;}
+  try {
+    const bearer = String(req.headers.authorization || "").match(/^Bearer (.+)$/);
+    if (!bearer) {res.status(401).json({error:"Sign in as the referee."});return;}
+    const user = await admin.auth().verifyIdToken(bearer[1],true);
+    res.json(await require("./matchPlayerNumbers.cjs").save({db,user,body:req.body || {}}));
+  } catch (error) {res.status(403).json({error:error.message || "Kit verification failed."});}
+});
+
+exports.clubPlayerNumbers = onRequest({region:REGION,cors:true}, async (req,res)=>{
+ if(req.method!=="POST"){res.status(405).json({error:"Use POST."});return;}
+ try{const bearer=String(req.headers.authorization||"").match(/^Bearer (.+)$/);if(!bearer)throw new Error("Sign in first.");const user=await admin.auth().verifyIdToken(bearer[1],true);res.json(await require("./clubNumbers.cjs").handle({db,user,body:req.body||{}}));}catch(error){res.status(403).json({error:error.message||"Number operation failed."});}
+});
+
+// Public readiness signal contains no membership or contact data.
+exports.playerPrivacyStatus = onRequest({region:REGION,cors:true},async(req,res)=>{
+ if(req.method!=="GET"){res.status(405).json({ready:false});return;}
+ try{const clubs=await db.collection("clubs").get();let ready=true;for(const club of clubs.docs){if((await db.doc(`playerPrivacyMigrations/${club.id}`).get()).data()?.version!==1){ready=false;break;}}res.set("Cache-Control","no-store");res.json({ready});}catch{res.status(503).json({ready:false});}
 });

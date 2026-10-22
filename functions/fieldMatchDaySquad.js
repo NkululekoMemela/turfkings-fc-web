@@ -31,7 +31,12 @@ function project({scope, day, fixture, candidates, saved}) {
     fixtureId: fixture.id, fingerprint: revision,
     confirmed, needsSelection: candidates.length > 6 && !validSelection,
     selectedMemberIds: draftIds,
-    players: draftIds.map(id => byId.get(id)),
+    kitNumbers: saved?.kitNumbers || {},
+    players: draftIds.map(id => {
+      const player=byId.get(id);
+      return Object.hasOwn(saved?.kitNumbers || {},player.sourcePlayerId)
+        ? {...player,jerseyNumber:saved.kitNumbers[player.sourcePlayerId],kitNumberSource:"captain"}:player;
+    }),
     submittedAtMs: confirmed ? Number(saved.submittedAtMs || 0) : 0,
   };
 }
@@ -117,6 +122,9 @@ async function loadDay({tx, db, scope, matchDayId}) {
       player = {
         memberId: cover.memberId, sourcePlayerId: cover.sourcePlayerId,
         fullName, clubId: scope.clubId,
+        jerseyNumber: profile.jerseyNumber ?? member.jerseyNumber ?? null,
+        ownsNumberedBib: profile.ownsNumberedBib ?? member.ownsNumberedBib ?? false,
+        bibColor: profile.bibColor || member.bibColor || "",
         mentality: profile.mentality ?? null,
         shooting: profile.shooting ?? null,
         originalMemberId: original.memberId, isFillIn: true,
@@ -164,6 +172,7 @@ async function submit({db, user, body, now = Date.now()}) {
       !memberIds.every(validId)) {
     throw new Error("Select five or six different players. Six is the maximum.");
   }
+  const kitPolicy=await import("./playerKitPolicy.mjs");
   return db.runTransaction(async tx => {
     const data = await loadDay({tx, db, scope, matchDayId});
     if (!service.canManageSquad(data.club, user)) {
@@ -179,6 +188,13 @@ async function submit({db, user, body, now = Date.now()}) {
     if (!memberIds.every(id => eligible.has(id))) {
       throw new Error("A selected player is unavailable or no longer eligible. Review the matrix.");
     }
+    const requested=body.kitNumbers || {};
+    if(Object.keys(requested).some(key=>!memberIds.some(memberId=>data.candidates.find(player=>player.memberId===memberId)?.sourcePlayerId===key)))throw new Error("Only assign numbers to selected squad players.");
+    const checkedKit=kitPolicy.validateKitTeams([{id:clubId,label:data.club.name || clubId,players:memberIds.map(memberId=>{
+      const player=data.candidates.find(item=>item.memberId===memberId);
+      return {key:player.sourcePlayerId,name:player.fullName,number:Object.hasOwn(requested,player.sourcePlayerId)?requested[player.sourcePlayerId]:player.jerseyNumber ?? null};
+    })}])[0];
+    const kitNumbers=Object.fromEntries(checkedKit.players.map(row=>[row.key,row.number]));
     // Field-owned copy of the captain's submitted match-day roster.
     const selectedPlayers = memberIds.map(memberId =>
       data.candidates.find(player => player.memberId === memberId)
@@ -187,6 +203,10 @@ async function submit({db, user, body, now = Date.now()}) {
       memberId: player.memberId,
       sourcePlayerId: player.sourcePlayerId,
       fullName: player.fullName,
+      jerseyNumber: kitNumbers[player.sourcePlayerId] ?? null,
+      kitNumberSource: "captain",
+      ownsNumberedBib: player.ownsNumberedBib === true,
+      bibColor: player.bibColor || "",
       photoData: player.photoData || "",
       mentality: player.mentality ?? null,
       shooting: player.shooting ?? null,
@@ -216,7 +236,7 @@ async function submit({db, user, body, now = Date.now()}) {
     });
     tx.update(data.squadRef, {
       [`matchDaySubmissions.${matchDayId}`]: {
-        memberIds, fingerprint: data.submission.fingerprint,
+        memberIds, kitNumbers, fingerprint: data.submission.fingerprint,
         submittedByUid: user.uid, submittedAtMs: now,
         submittedAt: FieldValue.serverTimestamp(),
       },

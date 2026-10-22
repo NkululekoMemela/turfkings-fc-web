@@ -1,3 +1,4 @@
+import {usePlayerNumberLabel} from "../components/PlayerNumberContext.jsx";
 // src/pages/Friendly_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTeamById } from "../core/teams.js";
@@ -2366,9 +2367,11 @@ export function FriendlyLiveMatchPage({
     [playerResolver]
   );
 
+  const numberLabel=usePlayerNumberLabel();
+
   const displayCompactPlayerName = useMemo(
-    () => (raw) => playerResolver.compactName(raw),
-    [playerResolver]
+    () => (raw,teamId="") => numberLabel(raw,playerResolver.compactName(raw),teamId),
+    [playerResolver,numberLabel]
   );
 
   const playerKeyFor = useMemo(
@@ -4467,7 +4470,7 @@ export function FriendlyLiveMatchPage({
     defaultFormationId,
   ]);
 
-  const handleConfirmLineups = () => {
+  const handleConfirmLineups = async () => {
     if (!canControlMatch) {
       window.alert("Only captains or admin can confirm match lineups.");
       return;
@@ -4521,6 +4524,11 @@ export function FriendlyLiveMatchPage({
       [teamBId]: snapshotB,
     };
 
+    let checkedSnapshot;
+    try { checkedSnapshot=await onConfirmPreMatchLineups?.(merged); }
+    catch(error){window.alert(error.message || "Kit verification failed.");return;}
+    if(checkedSnapshot===false)return;
+    if(checkedSnapshot)Object.assign(merged,checkedSnapshot);
     setLocalConfirmedSnapshots(merged);
 
     const confirmationTimeSeconds =
@@ -4535,7 +4543,7 @@ export function FriendlyLiveMatchPage({
       confirmationTimeSeconds
     );
 
-    onConfirmPreMatchLineups?.(merged);
+
     setShowVerifyModal(false);
   };
 

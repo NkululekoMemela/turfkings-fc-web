@@ -59,6 +59,9 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
       memberId: player.memberId,
       sourcePlayerId: player.sourcePlayerId,
       fullName, clubId,
+      jerseyNumber: profile.jerseyNumber ?? member.jerseyNumber ?? null,
+      ownsNumberedBib: profile.ownsNumberedBib ?? member.ownsNumberedBib ?? false,
+      bibColor: profile.bibColor || member.bibColor || "",
       photoData: profile.photoData || profile.photoUrl ||
         profile.photoURL || profile.avatarUrl || "",
       mentality: profile.mentality ?? null,

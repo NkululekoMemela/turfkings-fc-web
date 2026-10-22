@@ -1,3 +1,7 @@
+import {subscribeClubMemberDirectory} from "../storage/clubMemberDirectory.js";
+import {playerPrivacyRequest} from "../storage/playerPrivacyGateway.js";
+import {fileToDataUrl, makePortraitPhotoDataUrl} from "../core/playerPortrait.js";
+import {findExistingPhotoDataByIdentity, savePlayerPhotoForIdentity} from "../storage/playerPhotoRepository.js";
 import { ClubFieldSeasonInvitation } from "../components/FieldSeasonInvitations.jsx";
 // src/pages/EntryPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -328,14 +332,7 @@ function looksLikeWhatsAppNumber(value) {
 }
 
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+
 
 async function makeLandscapePhotoDataUrl(file, width = 900, height = 506) {
   const raw = await fileToDataUrl(file);
@@ -374,175 +371,10 @@ async function makeLandscapePhotoDataUrl(file, width = 900, height = 506) {
   });
 }
 
-async function makePortraitPhotoDataUrl(file, width = 420, height = 520) {
-  const raw = await fileToDataUrl(file);
-
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-
-        if (!ctx) {
-          resolve(raw);
-          return;
-        }
-
-        ctx.fillStyle = "#0f172a";
-        ctx.fillRect(0, 0, width, height);
-
-        const scale = Math.max(width / img.width, height / img.height);
-        const drawW = img.width * scale;
-        const drawH = img.height * scale;
-        const dx = (width - drawW) / 2;
-        const dy = (height - drawH) / 2;
-
-        ctx.drawImage(img, dx, dy, drawW, drawH);
-        resolve(canvas.toDataURL("image/jpeg", 0.92));
-      } catch (err) {
-        reject(err);
-      }
-    };
-    img.onerror = reject;
-    img.src = raw;
-  });
-}
-
-function getPhotoDocIdsFromIdentity({ fullName = "", shortName = "", playerId = "" }) {
-  const ids = [
-    String(playerId || "").trim(),
-    slugFromName(toTitleCase(fullName || "")),
-    slugFromName(toTitleCase(shortName || "")),
-    slugFromName(toTitleCase(shortName || fullName || "")),
-  ].filter(Boolean);
-
-  return Array.from(new Set(ids));
-}
-
-async function findExistingPhotoDataByIdentity(identityLike, clubId = DEFAULT_CLUB_ID) {
-  const ids = getPhotoDocIdsFromIdentity(identityLike);
-
-  for (const id of ids) {
-    try {
-      const snap = await getDoc(playerPhotoDocRef(clubId, id));
-      if (snap.exists()) {
-        const data = snap.data() || {};
-        if (data.photoData) {
-          return {
-            id,
-            photoData: data.photoData,
-            data,
-          };
-        }
-      }
-    } catch (err) {
-      console.error("[EntryPage] Failed checking player photo:", err);
-    }
-  }
-
-  return null;
-}
-
-async function savePlayerPhotoForIdentity({
-  clubId = DEFAULT_CLUB_ID,
-  fullName = "",
-  shortName = "",
-  playerId = "",
-  email = "",
-  role = "player",
-  status = "active",
-  sourceMemberId = "",
-  photoData = "",
-}) {
-  const preferredId =
-    String(playerId || "").trim() ||
-    slugFromName(toTitleCase(shortName || fullName || ""));
-
-  if (!preferredId || !photoData) return null;
-
-  await setDoc(
-    playerPhotoDocRef(clubId, preferredId),
-    {
-      name: toTitleCase(fullName || shortName || preferredId),
-      shortName: toTitleCase(shortName || fullName || preferredId),
-      email: String(email || "").trim(),
-      sourceMemberId: sourceMemberId || null,
-      role,
-      status,
-      photoData,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  return preferredId;
-}
-
 async function upsertPlayerFromMember(member, clubId = DEFAULT_CLUB_ID) {
-  if (!member) return null;
-
-  const shortName = (member.shortName || "").trim();
-  const fullName = (member.fullName || "").trim();
-  const displayName = toTitleCase(shortName || fullName);
-
-  if (!displayName) {
-    console.warn("[EntryPage] upsertPlayerFromMember: empty name, skipping");
-    return null;
-  }
-
-  const playerId = member.playerId || slugFromName(displayName);
-
-  try {
-    await setDoc(
-      playerDocRef(clubId, playerId),
-      {
-        name: displayName,
-        fullName: fullName || displayName,
-        shortName: shortName || displayName,
-        email: member.email || "",
-        whatsappNumber: member.whatsappNumber || "",
-        phoneNumber:
-          member.phoneNumber ||
-          member.whatsappNumber ||
-          "",
-        photoUrl: member.photoUrl || "",
-        platformIdentityUid:
-          member.platformIdentityUid ||
-          member.uid ||
-          "",
-        platformIdentityConfirmed:
-          member.platformIdentityConfirmed === true,
-        platformIdentitySourceClubId:
-          member.platformIdentitySourceClubId || "",
-        platformIdentitySourceMemberId:
-          member.platformIdentitySourceMemberId || "",
-        roles: {
-          player: true,
-          captain: member.role === "captain",
-          coach: member.role === "coach",
-          admin: member.role === "admin",
-        },
-        sourceMemberId: member.id,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    await updateDoc(memberDocRef(clubId, member.id), {
-      playerId,
-      updatedAt: serverTimestamp(),
-    });
-    return playerId;
-  } catch (err) {
-    console.error(
-      "[EntryPage] Failed to sync member into players collection:",
-      err
-    );
-    return null;
-  }
+  if(!member?.id)return null;
+  const result=await playerPrivacyRequest({action:"bind",clubId,memberId:member.id});
+  return result.playerId;
 }
 
 async function resolveSignedInRoleFromPlayerDoc(member, emailFromGoogle = "", clubId = DEFAULT_CLUB_ID) {
@@ -563,7 +395,7 @@ async function resolveSignedInRoleFromPlayerDoc(member, emailFromGoogle = "", cl
 
   for (const pid of candidateIds) {
     try {
-      const snap = await getDoc(playerDocRef(clubId, pid));
+      const snap = await getDoc(doc(db,"clubs",clubId,"publicPlayers",pid));
       if (!snap.exists()) continue;
 
       const data = snap.data() || {};
@@ -951,10 +783,8 @@ export function EntryPage({
     setLoadingMembers(true);
     setMembersError("");
 
-    const colRef = membersCollectionRef(activeClubId);
-
-    const unsub = onSnapshot(
-      colRef,
+    const unsub = subscribeClubMemberDirectory(
+      activeClubId,
       (snap) => {
         const list = snap.docs.map((d) => {
           const data = d.data() || {};
@@ -1629,7 +1459,7 @@ export function EntryPage({
 
       const memberPatch = {
         fullName,
-        shortName: fullName,
+        shortName: profileMember.shortName || fullName,
         email,
         whatsappNumber,
         phoneNumber: whatsappNumber,
@@ -1658,7 +1488,7 @@ export function EntryPage({
           {
             name: fullName,
             fullName,
-            shortName: fullName,
+            shortName: profileMember.shortName || fullName,
             email,
             whatsappNumber,
             phoneNumber: whatsappNumber,
@@ -1679,7 +1509,7 @@ export function EntryPage({
         await savePlayerPhotoForIdentity({
           clubId: activeClubId,
           fullName,
-          shortName: fullName,
+          shortName: profileMember.shortName || fullName,
           playerId: existingPlayerId,
           email,
           role: profileMember.role || "player",
@@ -2945,8 +2775,15 @@ export function EntryPage({
       setSigninStatus("Google account verified...");
     }
 
+    let verifiedMember;
+    try {
+      verifiedMember = (await playerPrivacyRequest({action:"load",clubId:activeClubId,memberId:selectedMember.id})).member;
+    } catch (error) {
+      setVerifyError(error.message || "This membership does not belong to your signed-in account.");
+      return;
+    }
     const googleEmail = u.email.toLowerCase().trim();
-    const memberEmail = (selectedMember.email || "").toLowerCase().trim();
+    const memberEmail = (verifiedMember.email || "").toLowerCase().trim();
 
     if (memberEmail && googleEmail !== memberEmail) {
       setVerifyError(
@@ -2976,6 +2813,7 @@ export function EntryPage({
 
     const playerId = await upsertPlayerFromMember({
       ...selectedMember,
+      ...verifiedMember,
       id: selectedMember.id,
       email: googleEmail,
       uid: u.uid,
@@ -3477,9 +3315,12 @@ export function EntryPage({
 
     try {
       await performVerifyPlayer();
+    } catch (error) {
+      console.error("[EntryPage] Sign-in completion failed:", error);
+      setVerifyStatus("");
+      setVerifyError(`Sign-in could not finish: ${error?.message || "Unknown error"}`);
     } finally {
       setSigninProgress(100);
-      setSigninStatus("Ready. Entering your football world...");
 
       window.setTimeout(() => {
         setShowSigninLoading(false);

@@ -1,3 +1,4 @@
+import {ClubKitColours} from "../ClubKitColours.jsx";
 // src/components/HomePage_HUB/HomePage_HUB_ClubRegisterForm.jsx
 
 import React, { useMemo } from "react";
@@ -135,6 +136,7 @@ export default function HomePage_HUB_ClubRegisterForm({
       </div>
 
       <div className="hub-form-grid">
+        <ClubKitColours draft={clubDraft||{}} onChange={onChange}/>
         <label className="hub-field hub-field--wide">
           <span>Club name</span>
 

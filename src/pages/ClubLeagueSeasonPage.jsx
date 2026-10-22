@@ -69,8 +69,8 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
             String(activeRole || "").trim().toLowerCase()
           )) {
         const [members, profiles] = await Promise.all([
-          getDocs(collection(db, "clubs", clubId, "members")),
-          getDocs(collection(db, "clubs", clubId, "players")),
+          getDocs(collection(db, "clubs", clubId, "publicMembers")),
+          getDocs(collection(db, "clubs", clubId, "publicPlayers")),
         ]);
         const profileMap = new Map(profiles.docs.map(item => [item.id, item.data()]));
         directory = members.docs.flatMap(item => {

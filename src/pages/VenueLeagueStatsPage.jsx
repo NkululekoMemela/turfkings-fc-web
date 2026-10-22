@@ -104,6 +104,7 @@ export default function VenueLeagueStatsPage({
     ? venueLeagueRootPath(resolvedScope) : "";
   const isPractice = resolvedScope?.environment === "practice";
   const requireOfficialWrite = () => {
+    if (!canCorrectResults) throw new Error("Only authorized Field staff may correct results.");
     if (isPractice) {
       throw new Error(
         "This correction needs its sandbox adapter. Official data was not changed."
@@ -638,6 +639,7 @@ export default function VenueLeagueStatsPage({
                   };
 
                   const openGoalEditor = (action, event = null) => {
+                    if (!canCorrectResults) return;
                     setCorrectionError("");
                     setGoalDraft({
                       action,
@@ -651,7 +653,7 @@ export default function VenueLeagueStatsPage({
                   };
 
                   const renderInlineEditor = () => {
-                    if (!goalDraft || goalDraft.fixtureId !== resultId) return null;
+                    if (!canCorrectResults || !goalDraft || goalDraft.fixtureId !== resultId) return null;
                     const choices = [...new Set([
                       ...(playerNamesByClub[goalDraft.teamId] || []),
                       goalDraft.scorer,

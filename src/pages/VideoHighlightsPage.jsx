@@ -3420,6 +3420,11 @@ export function VideoHighlightsPage({
             ? "MOM-ish moment"
             : `MOM-ish moment by ${cleanPlayerName}`
           : cleanPlayerName === PENDING_PLAYER ? "Match clip" : `Highlight by ${cleanPlayerName}`,
+      playerMemberId: (() => {
+        const matching = members.filter(member => [member.fullName, member.shortName, ...(member.profileNameAliases || [])]
+          .some(name => String(name || "").trim().toLowerCase() === cleanPlayerName.toLowerCase()));
+        return matching.length === 1 ? matching[0].id : null;
+      })(),
       metadataComplete: cleanPlayerName !== PENDING_PLAYER && cleanTeamName !== PENDING_TEAM,
       needsPlayer: cleanPlayerName === PENDING_PLAYER,
       needsTeam: cleanTeamName === PENDING_TEAM,

@@ -1,3 +1,5 @@
+import {KitRows} from "./PlayerKitEditor.jsx";
+import {validateKitTeams} from "../core/playerKit.js";
 import React, {useEffect, useState} from "react";
 import {collection, getDocs} from "firebase/firestore";
 import {db} from "../firebaseConfig.js";
@@ -20,6 +22,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
   const [dayId, setDayId] = useState("");
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState([]);
+  const [kitNumbers,setKitNumbers]=useState({});
   const [directory, setDirectory] = useState(null);
   const [coverFor, setCoverFor] = useState("");
   const [coverId, setCoverId] = useState("");
@@ -60,6 +63,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
         if (disposed) return;
         setData(result);
         setSelected(result.selectedMemberIds || []);
+        setKitNumbers(result.kitNumbers || {});
       })
       .catch(failure => {if (!disposed) setError(failure.message);})
       .finally(() => {if (!disposed) setLoading(false);});
@@ -72,8 +76,8 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
     try {
       if (directory) return;
       const [members, profiles] = await Promise.all([
-        getDocs(collection(db, "clubs", scope.clubId, "members")),
-        getDocs(collection(db, "clubs", scope.clubId, "players")),
+        getDocs(collection(db, "clubs", scope.clubId, "publicMembers")),
+        getDocs(collection(db, "clubs", scope.clubId, "publicPlayers")),
       ]);
       const byId = new Map(profiles.docs.map(item => [item.id, item.data()]));
       setDirectory(members.docs.flatMap(item => {
@@ -108,7 +112,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
     new Set(selected).size === selected.length &&
     selected.every(id => data?.candidates?.some(player => player.memberId === id));
   const unchanged = data?.confirmed &&
-    JSON.stringify(selected) === JSON.stringify(data.selectedMemberIds);
+    JSON.stringify(selected) === JSON.stringify(data.selectedMemberIds) && JSON.stringify(kitNumbers) === JSON.stringify(data.kitNumbers || {});
   if (!upcoming.length) return null;
 
   return (
@@ -154,6 +158,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
               );
             })}
           </div>
+          {selected.length>0&&<div className="league-captain-kit"><h3>Match shirt numbers</h3><KitRows disabled={busy} teams={[{id:scope.clubId,label:"Your squad",players:selected.map(memberId=>data.candidates.find(player=>player.memberId===memberId)).filter(Boolean).map(player=>({key:player.sourcePlayerId,name:player.fullName,number:Object.hasOwn(kitNumbers,player.sourcePlayerId)?kitNumbers[player.sourcePlayerId]:player.jerseyNumber ?? null,source:Object.hasOwn(kitNumbers,player.sourcePlayerId)?"captain":"profile"}))}]} onChange={teams=>setKitNumbers(Object.fromEntries(teams[0].players.map(row=>[row.key,row.number])))}/></div>}
           {data.vacancies.map(player => (
             <div className="league-send-vacancy" key={player.memberId}>
               <span>{player.fullName} · unavailable</span>
@@ -202,7 +207,13 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
             <button type="button"
               className={`primary-btn league-send-button ${ready && !unchanged ? "is-ready" : ""}`}
               disabled={!ready || unchanged}
-              onClick={() => run(submitClubMatchDaySquad, {memberIds: selected})}>
+              onClick={() => {
+                const selectedPlayers=selected.map(id=>data.candidates.find(player=>player.memberId===id)).filter(Boolean);
+                const numbers=Object.fromEntries(selectedPlayers.map(player=>[player.sourcePlayerId,Object.hasOwn(kitNumbers,player.sourcePlayerId)?kitNumbers[player.sourcePlayerId]:player.jerseyNumber ?? null]));
+                try{validateKitTeams([{id:scope.clubId,label:"Your squad",players:selectedPlayers.map(player=>({key:player.sourcePlayerId,name:player.fullName,number:numbers[player.sourcePlayerId]}))}]);}
+                catch(error){setError(error.message);return;}
+                run(submitClubMatchDaySquad, {memberIds:selected,kitNumbers:numbers});
+              }}>
               {busy ? "Saving…" : unchanged ? "✓ Squad sent" : "Send Squad"}
             </button>
           ) : (

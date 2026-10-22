@@ -5589,6 +5589,7 @@ export default function VenueEntryPage({
           season={venueSeason}
           clubs={mappedTeams}
           canCorrectResults={Boolean(
+            canAccessFieldSettings &&
             currentUser?.uid && venue?.ownerUid === currentUser.uid
           )}
           onBack={() => setVenuePage("landing")}

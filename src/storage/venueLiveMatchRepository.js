@@ -484,6 +484,7 @@ function compactFieldMatchTeam(team) {
     "kitColor",
     "kit",
     "kitColors",
+    "kitNumbers",
     "teamColor",
     "logoUrl",
     "logo",

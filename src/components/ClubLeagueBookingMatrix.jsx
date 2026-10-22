@@ -1,7 +1,8 @@
+import {ownMembershipSnapshots} from "../storage/playerPrivacyGateway.js";
 import React, { useEffect, useMemo, useState } from "react";
 import { doc, getDocs, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig.js";
-import { getMembersCollection } from "../core/clubFirestorePaths.js";
+import { getPublicMembersCollection } from "../core/clubFirestorePaths.js";
 import { canManageClubField } from "../storage/clubFieldMembershipRepository.js";
 import {
   changeLeagueBooking, watchLeagueBooking,
@@ -39,7 +40,7 @@ function LeagueMatrix({ clubId, club, venue, players, beneficiary }) {
     let cancelled = false;
     setActorMemberId("");
     if (!user?.uid) return undefined;
-    getDocs(getMembersCollection(db, clubId)).then(snapshot => {
+    ownMembershipSnapshots(clubId).then(snapshot => {
       if (cancelled) return;
       const matches = snapshot.docs.filter(item => {
         const member = item.data();

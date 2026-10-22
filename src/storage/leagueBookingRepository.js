@@ -34,7 +34,7 @@ export async function changeLeagueBooking({
     const memberSnap = actorMemberId ? await transaction.get(
       doc(db, "clubs", scope.clubId, "members", actorMemberId)) : null;
     const profileSnap = player?.sourcePlayerId ? await transaction.get(
-      getPlayerDoc(db, player.sourcePlayerId, scope.clubId)) : null;
+      doc(db,"clubs",scope.clubId,"publicPlayers",player.sourcePlayerId)) : null;
 
     if (!clubSnap.exists() || !venueSnap.exists()) {
       throw new Error("The Club or Field is unavailable.");
