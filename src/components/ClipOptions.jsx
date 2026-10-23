@@ -1,0 +1,8 @@
+import React,{useEffect,useRef,useState} from "react";
+import {createPortal} from "react-dom";
+export default function ClipOptions({title,children,onClose}){
+ const [open,setOpen]=useState(false),panel=useRef(null),origin=useRef(null);
+ const close=()=>{setOpen(false);onClose?.();};
+ useEffect(()=>{if(!open)return;origin.current=document.activeElement;const node=panel.current;node?.querySelector('button')?.focus();return()=>{if(document.activeElement===document.body||node?.contains(document.activeElement))origin.current?.focus?.();};},[open]);
+ return <><button type="button" className="fanm-clip-options-toggle" aria-label={title} aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(true)}>⋯</button>{open&&createPortal(<div className="fanm-clip-options-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close();}} onKeyDown={e=>{if(e.key==='Escape'){e.stopPropagation();close();}if(e.key==='Tab'){const buttons=[...panel.current.querySelectorAll('button:not(:disabled),a[href],input,select,textarea')];const first=buttons[0],last=buttons.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}}}><section ref={panel} className="fanm-clip-options-panel" role="dialog" aria-modal="true" aria-label={title} onClick={e=>{const button=e.target.closest('button');if(button&&!button.hasAttribute('data-keep-clip-options'))close();}}><header><h2>{title}</h2><button type="button" aria-label="Close clip options" onClick={close}>×</button></header><div className="fanm-clip-options-content">{children}</div></section></div>,document.body)}</>;
+}

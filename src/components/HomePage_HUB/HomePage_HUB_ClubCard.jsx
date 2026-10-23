@@ -1,3 +1,4 @@
+import HubClubLogo from "./HubClubLogo.jsx";
 // src/components/HomePage_HUB/HomePage_HUB_ClubCard.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -250,17 +251,7 @@ export default function HomePage_HUB_ClubCard({
 <div className={`hub-club-card__cube hub-club-card__cube--face-${faceIndex}`}>
         <section className="hub-club-card__face hub-club-card__face--logo">
           <div className="hub-club-card__logo-ring">
-            {club.image || club.logoUrl ? (
-              <img
-                src={club.image || club.logoUrl}
-                alt={`${club.name || "Club"} logo`}
-                onError={(event) => {
-                  event.currentTarget.style.display = "none";
-                }}
-              />
-            ) : (
-              <span>{club.logoText || initials}</span>
-            )}
+            <HubClubLogo src={club.image || club.logoUrl || ""} name={club.name || entityLabel} initials={club.logoText || initials}/>
           </div>
 
           <strong>{club.name || `Football ${entityLabel}`}</strong>

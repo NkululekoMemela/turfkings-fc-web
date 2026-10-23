@@ -15,6 +15,9 @@ function project({scope, day, fixture, candidates, saved}) {
     players: candidates.map(player => ({
       memberId: player.memberId, sourcePlayerId: player.sourcePlayerId,
       fullName: player.fullName,
+      jerseyNumber: player.jerseyNumber ?? null,
+      ownsNumberedBib: player.ownsNumberedBib === true,
+      bibColor: player.bibColor || "",
       originalMemberId: player.originalMemberId || "",
     })).sort((a, b) => a.memberId.localeCompare(b.memberId)),
   });
@@ -23,7 +26,15 @@ function project({scope, day, fixture, candidates, saved}) {
   const validSelection = selected.length >= 5 && selected.length <= 6 &&
     new Set(selected).size === selected.length &&
     selected.every(id => byId.has(id));
-  const confirmed = validSelection && saved?.fingerprint === revision;
+  const selectedPlayers = selected.map(id => byId.get(id)).filter(Boolean);
+  const deadline = Date.parse(`${fixture.scheduledLocal}+02:00`) - 86400000;
+  const kitReady = new Set(selectedPlayers.map(player=>Number(player.jerseyNumber))).size === selected.length && selectedPlayers.every(player => player.ownsNumberedBib === true &&
+    String(player.bibColor || "").trim() && player.jerseyNumber !== null && player.jerseyNumber !== undefined &&
+    /^\d{1,3}$/.test(String(player.jerseyNumber)) &&
+    saved?.kitNumbers?.[player.sourcePlayerId] !== null && saved?.kitNumbers?.[player.sourcePlayerId] !== undefined &&
+    Number(saved.kitNumbers[player.sourcePlayerId]) === Number(player.jerseyNumber));
+  const confirmed = validSelection && saved?.fingerprint === revision && kitReady &&
+    saved?.kitConfirmed === true && Number(saved.submittedAtMs) <= deadline;
   const draftIds = validSelection ? selected :
     candidates.length <= 6 ? candidates.map(player => player.memberId) : [];
   return {
@@ -41,19 +52,18 @@ function project({scope, day, fixture, candidates, saved}) {
   };
 }
 
-function sendWindow({day, fixture, now = Date.now(), testMode = false,
-  projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || ""}) {
-  const opensAtMs = Date.parse(`${day.dateLocal}T00:00:00+02:00`) - 86400000;
-  const closesAtMs = Date.parse(`${fixture.scheduledLocal}+02:00`);
-  if (!Number.isFinite(opensAtMs) || !Number.isFinite(closesAtMs)) {
+function sendWindow({day, fixture, now = Date.now()}) {
+  // Fixtures have already been released by loadDay. Clubs may prepare early.
+  const opensAtMs = 0;
+  const closesAtMs = Date.parse(`${fixture.scheduledLocal}+02:00`) - 86400000;
+  if (!day?.dateLocal || fixture.scheduledLocal?.slice(0, 10) !== day.dateLocal || !Number.isFinite(closesAtMs)) {
     throw new Error("The fixture needs a valid date and kickoff time.");
   }
-  const testException = testMode === true &&
-    projectId === "five-asides-near-me-staging" &&
-    now < opensAtMs;
+  // No staging flag can bypass the official 24-hour submission deadline.
+  const testException = false;
   return {
-    opensAtMs, closesAtMs, testException,
-    sendAllowed: testException || (now >= opensAtMs && now < closesAtMs),
+    opensAtMs, closesAtMs, deadlineAtMs: closesAtMs, testException,
+    sendAllowed: testException || (now >= opensAtMs && now <= closesAtMs),
   };
 }
 
@@ -173,6 +183,7 @@ async function submit({db, user, body, now = Date.now()}) {
     throw new Error("Select five or six different players. Six is the maximum.");
   }
   const kitPolicy=await import("./playerKitPolicy.mjs");
+  const {assertLeagueBibs}=await import("./leagueBibPolicy.mjs");
   return db.runTransaction(async tx => {
     const data = await loadDay({tx, db, scope, matchDayId});
     if (!service.canManageSquad(data.club, user)) {
@@ -182,13 +193,15 @@ async function submit({db, user, body, now = Date.now()}) {
       day: data.day, fixture: data.fixture, now, testMode: body.testMode,
     });
     if (!window.sendAllowed) {
-      throw new Error("Send Squad opens the day before the fixture and closes at kickoff.");
+      throw new Error("The numbered teamsheet is due at least 24 hours before kickoff. Contact Field management about a missed deadline or a late change.");
     }
     const eligible = new Set(data.candidates.map(player => player.memberId));
     if (!memberIds.every(id => eligible.has(id))) {
       throw new Error("A selected player is unavailable or no longer eligible. Review the matrix.");
     }
+    if(body.kitConfirmed !== true)throw new Error("The captain must confirm every selected player's actual numbered bib.");
     const requested=body.kitNumbers || {};
+    assertLeagueBibs(data.candidates.filter(player=>memberIds.includes(player.memberId)),requested);
     if(Object.keys(requested).some(key=>!memberIds.some(memberId=>data.candidates.find(player=>player.memberId===memberId)?.sourcePlayerId===key)))throw new Error("Only assign numbers to selected squad players.");
     const checkedKit=kitPolicy.validateKitTeams([{id:clubId,label:data.club.name || clubId,players:memberIds.map(memberId=>{
       const player=data.candidates.find(item=>item.memberId===memberId);
@@ -229,6 +242,8 @@ async function submit({db, user, body, now = Date.now()}) {
       selectedMemberIds: memberIds,
       players: selectedPlayers,
       confirmed: true,
+      kitConfirmed: true, kitConfirmedByUid: user.uid, kitRequirementVersion: 1,
+      submissionDeadlineAtMs: window.deadlineAtMs,
       status: "confirmed",
       submittedByUid: user.uid,
       submittedAtMs: now,
@@ -236,7 +251,7 @@ async function submit({db, user, body, now = Date.now()}) {
     });
     tx.update(data.squadRef, {
       [`matchDaySubmissions.${matchDayId}`]: {
-        memberIds, kitNumbers, fingerprint: data.submission.fingerprint,
+        memberIds, kitNumbers, kitConfirmed: true, fingerprint: data.submission.fingerprint,
         submittedByUid: user.uid, submittedAtMs: now,
         submittedAt: FieldValue.serverTimestamp(),
       },
@@ -251,6 +266,7 @@ async function getFieldDay({db, user, body}) {
   if (![venueId, seasonId, matchDayId].every(validId)) {
     throw new Error("Choose a valid Field match day.");
   }
+  const {leagueBibIssues,leagueSubmissionDeadline}=await import("./leagueBibPolicy.mjs");
   return db.runTransaction(async tx => {
     const venueRef = db.doc(`leagueVenues/${venueId}`);
     const [venueSnap, staffSnap] = await tx.getAll(
@@ -326,7 +342,10 @@ async function getFieldDay({db, user, body}) {
         manifest.dateLocal === day.dateLocal &&
         manifest.scheduledLocal === (fixture.scheduledLocal || "") &&
         Array.isArray(manifest.players) &&
-        manifest.players.length >= 5 && manifest.players.length <= 6;
+        manifest.players.length >= 5 && manifest.players.length <= 6 &&
+        manifest.kitConfirmed === true && manifest.kitRequirementVersion === 1 &&
+        leagueBibIssues(manifest.players).length === 0 &&
+        Number(manifest.submittedAtMs) <= leagueSubmissionDeadline(fixture.scheduledLocal);
       if (!valid) return {
         ...club, confirmed: false, status: "awaiting_confirmation", players: [],
       };

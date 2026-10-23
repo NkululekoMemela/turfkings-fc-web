@@ -1,3 +1,4 @@
+import PlayerNameSelectionButton from "../components/PlayerNameSelectionButton.jsx";
 import {subscribeClubMemberDirectory} from "../storage/clubMemberDirectory.js";
 import {playerPrivacyRequest} from "../storage/playerPrivacyGateway.js";
 import {fileToDataUrl, makePortraitPhotoDataUrl} from "../core/playerPortrait.js";
@@ -18,6 +19,7 @@ import {
   db,
   reauthenticateWithGoogle,
   signInWithGoogle,
+  logOut,
 } from "../firebaseConfig";
 import {
   collection,
@@ -1063,6 +1065,11 @@ export function EntryPage({
     if (identity?.clubId === activeClubId && identity?.memberId) return identity.memberId;
     return "";
   });
+
+  useEffect(()=>{
+    if(identity?.clubId===activeClubId && identity?.memberId)
+      setSelectedMemberId(previous=>previous || identity.memberId);
+  },[activeClubId,identity?.clubId,identity?.memberId]);
 
   const [playerPickerOpen, setPlayerPickerOpen] =
     useState(false);
@@ -2199,7 +2206,7 @@ export function EntryPage({
       /*
        * GPI Stage 1 — fresh club join.
        *
-       * The Gmail entered in the join form is the discovery key.
+       * The Google account entered in the join form is the discovery key.
        * No existing profile is copied yet. We first show the user
        * the candidate and require Google authentication if they
        * choose to reuse it.
@@ -2345,7 +2352,7 @@ export function EntryPage({
 
     if (!expectedEmail) {
       setNewReqError(
-        "We could not determine the Gmail address for this profile."
+        "We could not determine the Google account email for this profile."
       );
       return;
     }
@@ -2356,7 +2363,7 @@ export function EntryPage({
     );
 
     /*
-     * Never ask for or handle a Gmail password inside FANM.
+     * Never ask for or handle a Google password inside FANM.
      * Google performs the authentication using the existing
      * sign-in flow already trusted by the application.
      */
@@ -2379,14 +2386,14 @@ export function EntryPage({
 
     if (!authenticatedEmail) {
       setNewReqError(
-        "We could not read the Gmail address from the Google account."
+        "We could not read the Google account email from the Google account."
       );
       return;
     }
 
     if (authenticatedEmail !== expectedEmail) {
       setNewReqError(
-        `That Google account does not match ${expectedEmail}. Please use the Gmail account attached to this player profile.`
+        "This Google account does not match the selected profile. Choose another account or use the account recovery help below."
       );
       return;
     }
@@ -2517,7 +2524,7 @@ export function EntryPage({
 
     if (!expectedEmail) {
       setExistingMemberGpiError(
-        "We could not determine the Gmail address attached to this profile."
+        "We could not determine the Google account email attached to this profile."
       );
       return;
     }
@@ -2529,7 +2536,7 @@ export function EntryPage({
       let authenticatedUser = auth.currentUser;
 
       /*
-       * FANM never sees or stores a Gmail password.
+       * FANM never sees or stores a Google password.
        * Google itself performs the account confirmation.
        */
       if (authenticatedUser) {
@@ -2558,7 +2565,7 @@ export function EntryPage({
 
       if (authenticatedEmail !== expectedEmail) {
         setExistingMemberGpiError(
-          `That Google account does not match ${expectedEmail}. Please use the Gmail account attached to this player profile.`
+          "This Google account does not match the selected profile. Choose another account or use the account recovery help below."
         );
         return;
       }
@@ -2878,6 +2885,7 @@ export function EntryPage({
     const memberData = memberSnap.exists() ? memberSnap.data() || {} : {};
 
     const completionPayload = {
+      uid: u.uid,
       clubId: activeClubId,
       clubName: activeClubName,
       // Keep the app UI fully aligned with the selected preview mode.
@@ -3821,7 +3829,7 @@ export function EntryPage({
 
     if (!adminPrivilegesMemberEmail) {
       setAdminPrivilegesError(
-        "This member needs a verified Gmail address before administrator privileges can be assigned."
+        "This member needs a verified Google account email before administrator privileges can be assigned."
       );
       return;
     }
@@ -5216,9 +5224,9 @@ export function EntryPage({
               Select your name ({activeClubName} player list)
             </span>
 
-            <button
+            <PlayerNameSelectionButton
               type="button"
-              className="field-staff-picker__trigger"
+              selected={Boolean(selectedMember)}
               disabled={loadingMembers}
               aria-busy={loadingMembers}
               aria-haspopup="listbox"
@@ -5235,7 +5243,7 @@ export function EntryPage({
             >
               <span>
                 <strong>
-                  {selectedMember?.fullName ||
+                  {selectedMember && <span aria-hidden="true">✓ </span>}{selectedMember?.fullName ||
                     selectedMember?.shortName ||
                     (
                       loadingMembers
@@ -5264,7 +5272,7 @@ export function EntryPage({
               <span aria-hidden="true">
                 {playerPickerOpen ? "▴" : "▾"}
               </span>
-            </button>
+            </PlayerNameSelectionButton>
 
             {playerPickerOpen && (
               <div
@@ -5441,7 +5449,7 @@ export function EntryPage({
               style={brightPrimaryStyle}
               onClick={handleVerifyPlayer}
             >
-              Sign in with Gmail
+              Continue with Google
             </button>
 
             {!showNewPlayerForm && (
@@ -5526,7 +5534,7 @@ export function EntryPage({
                 Request to join player list
               </h3>
               <p className="muted small" style={{ marginTop: 0, marginBottom: "0.95rem" }}>
-                New players can start here. Add your name, Gmail, and optional details in one clean step.
+                New players can start here. Add your name, Google account, and optional details in one clean step.
               </p>
 
               <div className="field-column">
@@ -5541,11 +5549,11 @@ export function EntryPage({
               </div>
 
               <div className="field-column">
-                <label>Gmail address</label>
+                <label>Google account email</label>
                 <input
                   type="email"
                   className="text-input"
-                  placeholder="e.g. yourname@gmail.com"
+                  placeholder="e.g. you@example.com"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                 />
@@ -6065,7 +6073,7 @@ export function EntryPage({
               style={{ marginTop: "0.9rem" }}
             >
               Google will confirm that you
-              control the Gmail account attached
+              control the Google account attached
               to this player profile before
               anything is copied.
             </p>

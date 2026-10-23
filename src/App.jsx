@@ -1,5 +1,8 @@
+import {PremiumNotificationToast} from "./components/PremiumNotification.jsx";
+import KitShopPage from "./pages/KitShopPage.jsx";
 import BookingPageBoundary from "./components/BookingPageBoundary.jsx";
 import {preloadOwnPlayerProfile, cachedOwnPlayerProfile} from "./storage/playerProfileRepository.js";
+import {canUsePlayerFeatures} from "./core/playerFeatureAccess.mjs";
 import NumberOfferNotification from "./components/NumberOfferNotification.jsx";
 import {finalizePlayerProfileVideoAwards} from "./storage/playerProfileAwardsRepository.js";
 import FieldPageFrame from "./components/FieldPageFrame.jsx";
@@ -127,6 +130,7 @@ const PAGE_PLAYER_MENTALITIES = "player-mentalities";
 const PAGE_SPECTATOR = "spectator";
 const PAGE_NEWS = "news";
 const PAGE_PLAYER_PROFILE = "player-profile";
+const PAGE_SHOP = "shop";
 const PAGE_PLAYER_CARDS = "player-cards";
 const PAGE_PEER_REVIEW = "peer-review";
 const PAGE_MIGRATION = "migration";
@@ -603,7 +607,7 @@ function deriveActiveRole(identity, teams = []) {
 
   const isDynamicCaptain = isCaptainFromTeams(identity, teams);
 
-  if (storedRole === "spectator" && !isDynamicCaptain) return "spectator";
+  if (storedRole === "spectator") return "spectator";
   if (storedRole === "admin") return "admin";
   if (isDynamicCaptain || storedRole === "captain") return "captain";
 
@@ -2938,7 +2942,7 @@ export default function App() {
           }
           return;
         }
-        if (data.type === "field_match_day_review" ||
+        if (data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_match_day_review" ||
             data.type === "field_manager_approval") {
           const venueId = String(data.venueId || "").trim();
           if (!/^[A-Za-z0-9_-]{1,150}$/.test(venueId)) return;
@@ -2963,7 +2967,7 @@ export default function App() {
             setSessionMode("official");
             writeSessionModeIntent("official");
             setFieldNavTarget({
-              page: data.approvalKind === "banking_activation" ? "signup" : "landing",
+              page: data.type === "field_chat" ? "chat" : data.approvalKind === "banking_activation" ? "signup" : "landing",
               openBanking: data.approvalKind === "banking_activation",
               id: Date.now(),
             });
@@ -3317,13 +3321,10 @@ export default function App() {
     }
   }, [activeClubId]);
 
+  const [shopPreference,setShopPreference]=useState("");
+  const [shopPollDraft,setShopPollDraft]=useState(null);
   const members = useMembers(activeClubId);
-  useEffect(()=>{
-    // Warm the private portrait and kit before the player opens Profile.
-    if(!authUser){cachedOwnPlayerProfile(activeClubId);return;}
-    if(!isPracticeMode && identity?.memberId && auth.currentUser?.emailVerified)
-      preloadOwnPlayerProfile(activeClubId,identity.memberId).catch(()=>{});
-  },[activeClubId,identity?.memberId,authUser,isPracticeMode]);
+
   const [showAdminReclaimNudge, setShowAdminReclaimNudge] = useState(true);
   const [preloadedPlayerPhotosByName, setPreloadedPlayerPhotosByName] = useState({});
 
@@ -4309,6 +4310,13 @@ export default function App() {
     () => deriveActiveRole(identity, captainRoleTeams || []),
     [identity, captainRoleTeams]
   );
+
+  const canAccessPlayerFeatures=canUsePlayerFeatures({user:authUser,identity,clubId:activeClubId,activeRole});
+  useEffect(()=>{
+    if(!authUser){cachedOwnPlayerProfile(activeClubId);return;}
+    if(canAccessPlayerFeatures && !isPracticeMode)
+      preloadOwnPlayerProfile(activeClubId,identity.memberId).catch(()=>{});
+  },[activeClubId,identity?.memberId,authUser,isPracticeMode,canAccessPlayerFeatures]);
 
   const realRole = useMemo(() => getRealStoredRole(identity), [identity]);
   const isAdminPreviewingAnotherRole = realRole === "admin" && activeRole !== "admin";
@@ -8428,6 +8436,7 @@ export default function App() {
   }, [page, isPracticeMode, activeSeasonId, matchType, teams, fiveVFiveTeams]);
 
   const pagesWithBottomNav = new Set([
+    PAGE_SHOP,
     PAGE_PLAYER_PROFILE,
     PAGE_LANDING,
     PAGE_MATCH_SIGNUP,
@@ -8481,6 +8490,8 @@ export default function App() {
     }
 
 
+    if(targetPage===PAGE_PLAYER_PROFILE && !canAccessPlayerFeatures)return;
+    if(targetPage===PAGE_SHOP){setShopPreference("");setPage(PAGE_SHOP);return;}
     if (targetPage === PAGE_STATS) {
       handleGoToStats(page);
       return;
@@ -9790,7 +9801,7 @@ export default function App() {
             venue={selectedLeagueVenue}
             onFieldNavState={setFieldNav}
             fieldNavTarget={fieldNavTarget}
-            portalClubIdentity={portalOriginClubId ? {
+            portalClubIdentity={portalOriginClubId && canAccessPlayerFeatures ? {
               clubId: portalOriginClubId,
               clubName: activeClubName,
               memberId: pageIdentity?.memberId || "",
@@ -10202,6 +10213,7 @@ export default function App() {
           activeClubName={activeClubName}
           clubIdentity={activeClubIdentity}
           onEnterField={(field) => {
+            if(!canAccessPlayerFeatures)return;
             setPortalOriginClubId(activeClubId);
             setSelectedLeagueVenue(field);
             setPage(PAGE_VENUE_ENTRY);
@@ -10507,16 +10519,20 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_PLAYER_PROFILE && (
+      {page === PAGE_SHOP && <KitShopPage key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
+      {page === PAGE_PLAYER_PROFILE && !canAccessPlayerFeatures && <main className="page"><section className="card"><h1>Player Profile</h1><p>Enter your club as a verified player to open your profile. Spectator mode does not use player details.</p><button type="button" className="primary-btn" onClick={()=>setPage(PAGE_ENTRY)}>Go to club sign-in</button><button type="button" className="secondary-btn" onClick={handleBackToLanding}>Back to Home</button></section></main>}
+      {page === PAGE_PLAYER_PROFILE && canAccessPlayerFeatures && (
         <PlayerProfilePage
           key={`${activeClubId}:${authUser?.uid || "guest"}`}
           clubId={activeClubId}
           clubName={activeClubName}
           clubLogo={activeClubIdentity?.logoUrl || activeClubIdentity?.logo || ""}
-          identity={identity}
+          identity={pageIdentity}
+          activeRole={activeRole}
           user={authUser}
           isPracticeMode={isPracticeMode}
           onBack={handleBackToLanding}
+          onOpenShop={color=>{setShopPreference(color||"");setPage(PAGE_SHOP);}}
           onProfileUpdated={patch => setIdentity(previous =>
             previous?.memberId === patch.memberId
               ? {...previous, ...patch}
@@ -10630,6 +10646,8 @@ export default function App() {
           practiceSessionId={practiceRuntime?.practiceSessionId || null}
           dataScope={footballDataScope}
           initialPollOpen={nativePollOpenRequest}
+          initialMerchandisePoll={shopPollDraft}
+          onMerchandisePollConsumed={()=>setShopPollDraft(null)}
         />
       )}
 
@@ -11877,7 +11895,8 @@ export default function App() {
           </>
         )}
 
-      {authUser?.uid&&page!==PAGE_PLAYER_PROFILE&&page!==PAGE_VENUE_ENTRY&&<NumberOfferNotification clubId={activeClubId} enabled={!isPracticeMode} onOpen={()=>setPage(PAGE_PLAYER_PROFILE)}/>}
+      {authUser?.uid&&!authUser.isAnonymous&&<PremiumNotificationToast key={`notification:${authUser.uid}`}/>}
+      {canAccessPlayerFeatures&&page!==PAGE_PLAYER_PROFILE&&page!==PAGE_VENUE_ENTRY&&<NumberOfferNotification clubId={activeClubId} enabled={!isPracticeMode} onOpen={()=>setPage(PAGE_PLAYER_PROFILE)}/>}
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav
@@ -11888,6 +11907,7 @@ export default function App() {
           hasLiveMatch={hasLiveMatch || running}
           canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
           canManageSquads={canManageSquads}
+          canAccessProfile={canAccessPlayerFeatures}
           canAccessPayments={canAccessMatchSignup}
           canAccessPeerReview={activeRole !== "spectator"}
           locked={isRefereeStatsView}

@@ -248,3 +248,18 @@
 
 /* FANM always available profile editing controls */
 .player-profile-page.profile-is-editing{padding-bottom:210px}.player-profile-page .profile-save-actions{position:fixed;z-index:10000;left:50%;bottom:var(--profile-edit-bottom,92px);transform:translateX(-50%);width:min(480px,calc(100% - 24px));box-sizing:border-box;padding:10px;display:flex;gap:10px;border:1px solid rgba(110,231,183,.4);border-radius:18px;background:rgba(5,22,37,.97);box-shadow:0 8px 32px rgba(0,0,0,.45);backdrop-filter:blur(14px)}.player-profile-page .profile-save-actions button{flex:1;min-width:0;min-height:46px}.kit-legacy-bibs{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.kit-legacy-bibs small{font-size:.72rem}.kit-legacy-bibs button{font-size:.72rem}.kit-ownership-buttons button:disabled{opacity:.5}
+
+/* FANM square kit tiles with concise ownership */
+.player-profile-page .profile-studio-card{row-gap:12px}.player-profile-page .profile-studio-card .profile-jersey{padding-top:8px}.player-profile-page .profile-kit-inventory{margin-top:0;width:100%}.profile-kit-inventory-heading{margin-bottom:8px}.player-profile-page .profile-studio-card .profile-kit-inventory .studio-kit-rail{grid-template-columns:repeat(2,minmax(0,118px));justify-content:center;max-width:100%;gap:8px}.player-profile-page .profile-studio-card .profile-owned-kit{aspect-ratio:1;box-sizing:border-box;padding:7px;display:flex;flex-direction:column;justify-content:center;border-radius:15px}.player-profile-page .profile-studio-card .profile-owned-kit .studio-kit{flex-direction:column;gap:3px;padding:2px 0;text-align:center}.player-profile-page .profile-studio-card .profile-owned-kit .studio-kit svg{width:54px;height:59px}.player-profile-page .profile-studio-card .profile-owned-kit .studio-kit figcaption{font-size:.67rem}.player-profile-page .profile-studio-card .profile-owned-kit .studio-kit small{display:none}.profile-kit-inventory>.kit-edit-hint{margin-top:6px;text-align:center}.profile-kit-inventory .kit-ownership-status{font-size:.65rem}@media(min-width:700px){.player-profile-page .profile-studio-card .profile-kit-inventory .studio-kit-rail{grid-template-columns:repeat(4,minmax(0,118px))}}
+
+/* FANM balanced kit spacing and horizontal Field portal */
+.player-profile-page .profile-studio-card .profile-kit-inventory .studio-kit-rail{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:340px;width:100%}.player-profile-page .profile-studio-card .profile-owned-kit{padding:8px}.field-travel-tile-slot .field-portal-tile>span:first-child{width:46px!important;height:50px!important;flex-shrink:0}.field-travel-tile-slot .field-portal-tile>strong{font-size:.82rem}@media(min-width:700px){.player-profile-page .profile-studio-card .profile-kit-inventory .studio-kit-rail{grid-template-columns:repeat(4,minmax(0,1fr));max-width:640px}}
+
+/* Portalled dialog needs its own colours, independent of the profile page. */
+.kit-purchase-backdrop{background:rgba(7,18,29,.48);backdrop-filter:blur(4px)}
+.kit-purchase-backdrop .kit-purchase-dialog{background:#f8faf8!important;color:#152e25;border:1px solid #d9e5dc;box-shadow:0 24px 70px #0005;padding:24px;border-radius:22px;width:min(440px,calc(100vw - 32px));box-sizing:border-box}
+.kit-purchase-backdrop .kit-purchase-dialog h2{color:#123d2c;margin:0 0 12px}
+.kit-purchase-backdrop .kit-purchase-dialog p{color:#3f554a;line-height:1.65}
+.kit-purchase-backdrop .kit-purchase-dialog .secondary-btn{background:#e9f0eb;color:#214634;border-color:#c0d0c6;box-shadow:none}
+.kit-purchase-backdrop .kit-purchase-dialog .primary-btn{background:#147d48;color:white}
+.kit-purchase-dialog .actions-row{display:flex;gap:10px}.kit-purchase-dialog .actions-row button{flex:1;min-height:44px}

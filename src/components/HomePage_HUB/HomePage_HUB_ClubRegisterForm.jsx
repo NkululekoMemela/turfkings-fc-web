@@ -136,7 +136,6 @@ export default function HomePage_HUB_ClubRegisterForm({
       </div>
 
       <div className="hub-form-grid">
-        <ClubKitColours draft={clubDraft||{}} onChange={onChange}/>
         <label className="hub-field hub-field--wide">
           <span>Club name</span>
 
@@ -261,6 +260,8 @@ export default function HomePage_HUB_ClubRegisterForm({
 
         </>}
 
+        <ClubKitColours draft={clubDraft||{}} onChange={onChange}/>
+
         <label className="hub-field">
           <span>First name</span>
 
@@ -294,7 +295,7 @@ export default function HomePage_HUB_ClubRegisterForm({
         </label>
 
         <label className="hub-field">
-          <span>Email / Gmail</span>
+          <span>Google account email</span>
 
           <input
             type="email"
@@ -306,7 +307,7 @@ export default function HomePage_HUB_ClubRegisterForm({
                 event.target.value
               )
             }
-            placeholder="captain@gmail.com"
+            placeholder="captain@example.com"
           />
         </label>
 

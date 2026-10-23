@@ -1903,9 +1903,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Orders, contacts, stock and payment states are accessed through the authenticated shop service.
+    match /kitShopProducts/{document=**} { allow read, write: if false; }
+    match /kitShopConfig/{document=**} { allow read, write: if false; }
+    match /kitShopOrders/{document=**} { allow read, write: if false; }
+    match /kitShopCustomers/{document=**} { allow read, write: if false; }
+
     match /{topLevel}/{document=**} {
       allow read, write: if isSignedIn()
                          && !isCameraSession()
+                         && !(topLevel in ["kitShopProducts","kitShopConfig","kitShopOrders","kitShopCustomers"])
                          && topLevel != "profileAccountChanges"
                          && topLevel != "playerPrivacyMigrations"
                          && topLevel != "matchNumberSheets"

@@ -13,7 +13,7 @@ async function save({db,user,body,now=Date.now()}) {
   const inputScope=body.scope || {};
   const scope=inputScope.venueId?{environment:"official",venueId:inputScope.venueId,seasonId:inputScope.seasonId}:{environment:"official",clubId:inputScope.clubId,seasonId:inputScope.seasonId || ""};
   const key = sheetId(scope,body.matchKey);
-  const teams = policy.validateKitTeams(body.teams,{referee:true});
+  const teams = policy.validateKitTeams(body.teams,{referee:true,requireNumbered:Boolean(scope.venueId)});
   if (teams.length !== 2) throw new Error("Verify both participating teams.");
   const ref = db.doc(`matchNumberSheets/${key}`);
   return db.runTransaction(async tx => {

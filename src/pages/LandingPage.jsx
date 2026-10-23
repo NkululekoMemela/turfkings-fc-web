@@ -1,6 +1,7 @@
 import MatchTeamChooser from "../components/MatchTeamChooser.jsx";
 // src/pages/LandingPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import {canUsePlayerFeatures} from "../core/playerFeatureAccess.mjs";
 import ClubFieldPortal from "../components/ClubFieldPortal.jsx";
 import { getTeamById } from "../core/teams.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
@@ -424,6 +425,7 @@ export function LandingPage({
     return getIdentityRole(identity);
   }, [activeRole, identity]);
 
+  const canUsePlayerPortal=canUsePlayerFeatures({user:currentUser,identity,clubId:activeClubId,activeRole:resolvedRole});
   const teamA = getTeamById(teams, teamAId);
   const teamB = getTeamById(teams, teamBId);
   const standbyTeam = getTeamById(teams, standbyId);
@@ -2346,9 +2348,10 @@ export function LandingPage({
               </button>
             )}
 
-            {currentUser && activeClubId &&
+            {canUsePlayerPortal && activeClubId &&
               typeof onEnterField === "function" && (
               <ClubFieldPortal
+                playerAccess={canUsePlayerPortal}
                 clubId={activeClubId}
                 onEnterField={onEnterField}
                 onExploreFields={onExploreFields}
@@ -2579,9 +2582,10 @@ export function LandingPage({
                 })}
               </button>
 
-            {currentUser && activeClubId &&
+            {canUsePlayerPortal && activeClubId &&
               typeof onEnterField === "function" && (
               <ClubFieldPortal
+                playerAccess={canUsePlayerPortal}
                 clubId={activeClubId}
                 onEnterField={onEnterField}
                 onExploreFields={onExploreFields}

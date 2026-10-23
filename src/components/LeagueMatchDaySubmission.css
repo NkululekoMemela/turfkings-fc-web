@@ -37,3 +37,5 @@
 @media(prefers-reduced-motion:reduce) {
   .league-send-button.is-ready { animation: none; box-shadow: 0 0 12px rgba(230,180,95,.3); }
 }
+
+.league-bib-issues{padding-left:20px;color:#fca5a5;font-size:.82rem;line-height:1.6}.league-bib-confirm{display:flex;align-items:flex-start;gap:10px;font-size:.85rem;line-height:1.6}.league-bib-confirm input{width:20px;height:20px;flex:none;margin-top:4px}.league-captain-kit p{font-size:.83rem;line-height:1.6}

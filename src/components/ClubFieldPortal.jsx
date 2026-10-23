@@ -1,3 +1,4 @@
+import {fieldEntryHeroImage} from "../core/fieldEntryHeroImage.mjs";
 import FieldChoiceCards from "./FieldChoiceCards.jsx";
 import FieldPortalTile, { FieldPortalDialog } from "./FieldPortalTile.jsx";
 import React, { useEffect, useState } from "react";
@@ -10,7 +11,7 @@ import {
 } from "../storage/clubFieldMembershipRepository.js";
 
 export default function ClubFieldPortal({
-  clubId, onEnterField, onExploreFields, tileStyle,
+  clubId, onEnterField, onExploreFields, tileStyle, playerAccess=false,
 }) {
   const [portalOpen, setPortalOpen] = useState(false);
   const [user, setUser] = useState(auth.currentUser);
@@ -26,7 +27,7 @@ export default function ClubFieldPortal({
 
   useEffect(() => onAuthStateChanged(auth, setUser), []);
   useEffect(() => {
-    if (!clubId) return undefined;
+    if (!clubId || !playerAccess || !user?.uid || !user.emailVerified) return undefined;
     setLoading(true);
     setMembership(null);
     setChanging(false);
@@ -50,18 +51,18 @@ export default function ClubFieldPortal({
       stopMembership();
       stopFields();
     };
-  }, [clubId]);
+  }, [clubId,playerAccess,user?.uid,user?.emailVerified]);
 
   useEffect(() => {
     setField(null);
-    if (!membership?.venueId) return undefined;
+    if (!playerAccess || !user?.emailVerified || !membership?.venueId) return undefined;
     return onSnapshot(doc(db, "leagueVenues", membership.venueId),
       snapshot => setField(snapshot.exists()
         ? { ...snapshot.data(), id: snapshot.id } : null),
       cause => setError(cause.message || "Could not load your Field."));
-  }, [membership?.venueId]);
+  }, [membership?.venueId,playerAccess,user?.uid,user?.emailVerified]);
 
-  if (!clubId) return null;
+  if (!clubId || !playerAccess || !user?.uid || !user.emailVerified) return null;
   const canManage = canManageClubField(club, user);
   const hasMembership = membership?.status === "active";
   const chooseField = !hasMembership || changing;
@@ -90,8 +91,9 @@ export default function ClubFieldPortal({
 
   return (
     <>
-      <div className="field-travel-tile-slot" style={{ position: "relative", minWidth: 0 }}>
-        <FieldPortalTile
+      <div className="field-travel-tile-slot" style={{ position: "relative", minWidth: 0, gridColumn: "span 2" }}>
+        <FieldPortalTile wide
+          backgroundImage={fieldEntryHeroImage(field) || "/HomePage/fieldManager1.jpeg"}
           style={{
             ...tileStyle, width: "100%",
             ...(canManage ? { paddingBottom: "40px" } : {}),

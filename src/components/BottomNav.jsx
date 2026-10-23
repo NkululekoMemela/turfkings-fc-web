@@ -2,23 +2,19 @@
 // Flat integrated footer version with NO rounded outer edges.
 // Keeps every navigation item visible, highlights the current page in green,
 // and centres the ribbon neatly on wide desktop screens.
-// Uses public/strategy.png for the Lineups icon.
 
 import React, { useEffect, useState } from "react";
 
 const items = [
   { key: "player-profile", emoji: "👤", label: "Profile" },
   { key: "landing", emoji: "🏡", label: "Home" },
-  { key: "stats", emoji: "📊", label: "Stats" },
   //{ key: "live", emoji: "⚽", label: "Live" },
   { key: "squads", emoji: "👥", label: "Squads" },
-  { key: "formations", image: "/formations-icon.png", label: "Lineups" },
   { key: "player-mentalities", emoji: "🧠", label: "Mentality" },
   { key: "peer-review", emoji: "⭐", label: "Rate" },
   { key: "player-cards", emoji: "🪪", label: "Cards" },
-  { key: "news", emoji: "📰", label: "News" },
-  { key: "view-highlights", image: "/videotape.png", label: "Videos" },
   { key: "match-signup", emoji: "💳", label: "Pay" },
+  { key: "shop", emoji: "🛍️", label: "Shop" },
 ];
 
 export default function BottomNav({
@@ -26,6 +22,7 @@ export default function BottomNav({
   onNavigate,
   activeClub = null,
   activeClubName = "Club",
+  canAccessProfile = false,
   canAccessPayments = true,
   canAccessPeerReview = true,
   hidden = false,
@@ -71,6 +68,7 @@ export default function BottomNav({
   }, [currentPage]);
 
   const visible = items.filter((item) => {
+    if(item.key === "player-profile" && !canAccessProfile)return false;
     if (
       item.key === "match-signup" &&
       !canAccessPayments

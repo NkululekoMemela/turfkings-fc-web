@@ -1914,7 +1914,7 @@ export default function VenueLandingPage({
 
 
                 {typeof onReturnToClub === "function" && (
-                <FieldPortalTile style={tileButtonStyle(isMobile)}
+                <FieldPortalTile wide style={tileButtonStyle(isMobile)}
                   clubId={identity?.clubId}
                   label={`Return to ${portalClubName || "your Club"}`}
                   subtitle=""
@@ -2159,7 +2159,7 @@ export default function VenueLandingPage({
 
 
               {typeof onReturnToClub === "function" && (
-                <FieldPortalTile style={tileButtonStyle(isMobile)}
+                <FieldPortalTile wide style={tileButtonStyle(isMobile)}
                   clubId={identity?.clubId}
                   label={`Return to ${portalClubName || "your Club"}`}
                   subtitle=""

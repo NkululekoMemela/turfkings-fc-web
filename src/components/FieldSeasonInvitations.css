@@ -208,3 +208,8 @@
   display: block; width: 100%; height: 100%;
   object-fit: contain; padding: 3px; box-sizing: border-box;
 }
+
+/* Notification branding stays left; the inviting Field badge stays right. */
+.field-season-dialog .tk-admin-notification-icon.fanm-invitation-brand{font-size:10px!important;letter-spacing:.03em;font-weight:950}
+.field-season-dialog .tk-admin-notification-title-wrap{min-width:0;flex:1}
+.field-season-dialog .tk-admin-notification-topline>.field-invitation-logo{width:54px;height:54px;flex:0 0 54px}

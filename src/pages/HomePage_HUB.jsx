@@ -381,7 +381,7 @@ const HUB_INFO_CONTENT = {
     body: [
       "Browse clubs using the rotating club cards or the interactive map.",
       "Select a club, open its club page, then choose Join Club.",
-      "Complete the sign-up form with your name, surname, Gmail address and contact number.",
+      "Complete the sign-up form with your name, surname, Google account email and contact number.",
       "Once registered, you can sign up for upcoming match days inside that club.",
     ],
   },

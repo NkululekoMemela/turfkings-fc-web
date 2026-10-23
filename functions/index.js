@@ -2134,9 +2134,10 @@ async function sendPaymentNotificationBatch({
         body,
         ...(/^https:\/\//i.test(imageUrl) ? {imageUrl} : {}),
       },
-      data,
+      data: {...data,...(/^https:\/\//i.test(imageUrl)?{imageUrl}: {})},
       android: {
         priority: "high",
+        notification: {channelId: "field_invitations"},
       },
     });
 
@@ -3645,6 +3646,8 @@ exports.onClubChatMessageCreated = onDocumentCreated(
       message.clubName || "Club Chat"
     );
 
+    const senderPhotoUrl = await require("./notificationMedia.cjs").senderPortrait(db,clubId,senderUid);
+
     const devicesSnapshot = await db
       .collection("clubs")
       .doc(clubId)
@@ -3700,6 +3703,7 @@ exports.onClubChatMessageCreated = onDocumentCreated(
           notification: {
             title: `💬 ${senderName} • ${clubName}`,
             body: buildClubChatNotificationBody(message),
+            ...(senderPhotoUrl?{imageUrl:senderPhotoUrl}:{}),
           },
           data: {
             type: "club_chat",
@@ -3708,9 +3712,11 @@ exports.onClubChatMessageCreated = onDocumentCreated(
             messageId,
             senderUid,
             senderName,
+            senderPhotoUrl,
           },
           android: {
             priority: "high",
+            notification: {channelId: "field_invitations"},
           },
         });
 
@@ -5923,3 +5929,7 @@ exports.playerPrivacyStatus = onRequest({region:REGION,cors:true},async(req,res)
  if(req.method!=="GET"){res.status(405).json({ready:false});return;}
  try{const clubs=await db.collection("clubs").get();let ready=true;for(const club of clubs.docs){if((await db.doc(`playerPrivacyMigrations/${club.id}`).get()).data()?.version!==1){ready=false;break;}}res.set("Cache-Control","no-store");res.json({ready});}catch{res.status(503).json({ready:false});}
 });
+
+exports.kitShop = require("./kitShopHttp.cjs").kitShop;
+
+Object.assign(exports, require("./fieldPremiumNotifications.cjs").buildHandlers({db,region:REGION,sendBatch:sendPaymentNotificationBatch}));

@@ -14,7 +14,7 @@ function loadGoogleIdentity() {
 }
 export async function confirmCurrentGoogleAccount() {
   const current=auth.currentUser;
-  if (!current) throw new Error("Sign in before changing your Gmail.");
+  if (!current) throw new Error("Sign in before changing your Google account.");
   const result=await reauthenticateWithGoogle(current);
   const originalGoogleIdToken=GoogleAuthProvider.credentialFromResult(result)?.idToken;
   if (!originalGoogleIdToken || auth.currentUser?.uid!==current.uid) throw new Error("Confirm the Google account currently linked to your profile.");
@@ -51,7 +51,7 @@ export async function replacePlayerGoogleAccount({proof,replacementGoogleIdToken
   const result=await response.json().catch(()=>({error:"Account change service did not respond. Reopen Profile to check your sign-in details."}));
   if (!response.ok) throw new Error(result.error || "Your Google account could not be changed.");
   const signed = await signInWithCredential(auth, GoogleAuthProvider.credential(replacementGoogleIdToken));
-  if (signed.user.uid !== proof.uid) throw new Error("Your Gmail was changed, but the sign-in identity needs review. Reopen FANM before editing any records.");
+  if (signed.user.uid !== proof.uid) throw new Error("Your Google account was changed, but the sign-in identity needs review. Reopen FANM before editing any records.");
   await signed.user.getIdToken(true);
   return result;
 }

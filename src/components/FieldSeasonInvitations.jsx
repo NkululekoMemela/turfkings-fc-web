@@ -70,18 +70,12 @@ function SeasonDialog({ title, children, busy, onClose, premium = false, logoUrl
         role="dialog" aria-modal="true" aria-label={title}>
         {premium ? (
           <div className="tk-admin-notification-topline">
-            <span className="tk-admin-notification-icon" aria-hidden="true">
-              {logoUrl
-                ? <img src={logoUrl} alt="" className="field-invitation-logo"
-                    onError={event => {
-                      event.currentTarget.style.display = "none";
-                    }} />
-                : <span>🔔</span>}
-            </span>
+            <span className="tk-admin-notification-icon fanm-invitation-brand" aria-label="FANM" style={{fontSize:".62rem",fontWeight:950,letterSpacing:".02em"}}>FANM</span>
             <div className="tk-admin-notification-title-wrap">
               <div className="tk-admin-notification-title">{title}</div>
               <span className="tk-admin-notification-tag">Field season invitation</span>
             </div>
+            {logoUrl&&<img src={logoUrl} alt="Field logo" className="field-invitation-logo" style={{width:54,height:54,objectFit:"contain",borderRadius:12,flexShrink:0,background:"#f4f8f0"}} onError={e=>{e.currentTarget.style.visibility="hidden";}}/>}
           </div>
         ) : <h2>{title}</h2>}
         <div className={premium ? "tk-admin-notification-body" : ""}>

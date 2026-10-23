@@ -39,7 +39,7 @@ export function buildKitRoster(teams = [], profiles = [], snapshots = {}) {
     return {id,label:team.label || team.name || id,clubId:team.clubId || "",homeColor:team.homeColor||clubProfile.clubHomeColor||"",awayColor:team.awayColor||clubProfile.clubAwayColor||"",kitChoice:team.kitChoice||"",kitColor:team.kitColor||"",players:[...rows.values()]};
   });
 }
-export function validateKitTeams(teams, {referee = false} = {}) {
+export function validateKitTeams(teams, {referee = false, requireNumbered = false} = {}) {
   if (!Array.isArray(teams) || teams.length < 1 || teams.length > 4) throw new Error("Choose the participating teams.");
   const teamIds = new Set();
   return teams.map(team => {
@@ -50,6 +50,7 @@ export function validateKitTeams(teams, {referee = false} = {}) {
       if (!row.key || seenKeys.has(row.key) || String(row.key).length > 200 || typeof row.name !== "string" || !row.name.trim() || row.name.length > 150) throw new Error("Each player must have a distinct lineup identity.");
       seenKeys.add(row.key);
       const number = jerseyNumber(row.number);
+      if(requireNumbered && number === null)throw new Error(`${row.name}: a visible numbered bib is required for official league play. Unnumbered or inside-out bibs cannot be approved.`);
       const noNumberReason = number === null ? String(row.noNumberReason || "") : "";
       if (number !== null) {
         if (numbers.has(number)) throw new Error(`${team.label || team.id}: #${number} is assigned to ${numbers.get(number)} and ${row.name}. Use a spare number or let the referee approve an unnumbered kit.`);

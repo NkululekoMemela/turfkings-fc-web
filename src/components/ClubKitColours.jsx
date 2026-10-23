@@ -2,7 +2,7 @@ import React,{useState} from "react";
 import {KitColourPicker} from "./ProfileKitEditor.jsx";
 import {numberRequest} from "./ProfileNumberStudio.jsx";
 export function ClubKitColours({draft,onChange,disabled=false}){
- return <section className="club-traditional-colours hub-field--wide"><h3>Traditional club colours</h3><p className="muted">Set Home and Away once for the club. Every player’s jersey uses these saved colours.</p>{["Home","Away"].map(kind=><KitColourPicker key={kind} label={`${kind} club colour`} value={draft[`${kind.toLowerCase()}Color`]||""} disabled={disabled} onChange={value=>onChange({...draft,[`${kind.toLowerCase()}Color`]:value})}/>)}</section>;
+ return <section className="club-traditional-colours hub-field--wide"><style>{`.club-traditional-colours .kit-colour-picker legend,.club-traditional-colours .kit-colour-picker legend span{color:#26364a;opacity:1}.club-traditional-colours .kit-colour-picker{color:#26364a}.club-traditional-colours .muted{color:#526174;opacity:1}`}</style><h3>Traditional club colours</h3><p className="muted">Set Home and Away once for the club. Every player’s jersey uses these saved colours.</p>{["Home","Away"].map(kind=><KitColourPicker key={kind} label={`${kind} club colour`} value={draft[`${kind.toLowerCase()}Color`]||""} disabled={disabled} onChange={value=>onChange({...draft,[`${kind.toLowerCase()}Color`]:value})}/>)}</section>;
 }
 export function CaptainClubColoursEditor({club,onSaved,onClose}){
  const [draft,setDraft]=useState({homeColor:club.homeColor||club.raw?.homeColor||"",awayColor:club.awayColor||club.raw?.awayColor||""}),[busy,setBusy]=useState(false),[error,setError]=useState("");
