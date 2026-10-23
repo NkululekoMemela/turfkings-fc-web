@@ -8,7 +8,7 @@ export function HighlightPlaybackProvider({children}){
  const [placement,setPlacement]=useState(null);
  useLayoutEffect(()=>{
   if(!selected)return;
-  let frame=0;
+  let frame=0,docked=false;
   const measure=()=>{
    frame=0;
    const anchor=selectedRef.current?.anchor;
@@ -21,8 +21,16 @@ export function HighlightPlaybackProvider({children}){
     if(box.top<=1)top=Math.max(top,box.bottom);
     else if(box.bottom>=window.innerHeight-1)bottom=Math.min(bottom,box.top);
    }
-   const visible=rect.width>0&&rect.top>=top+8&&rect.bottom<=bottom-8;
-   setPlacement(visible?{position:'fixed',top:rect.top,left:rect.left,width:rect.width,height:rect.height,right:'auto',bottom:'auto',borderRadius:12}:null);
+   // Leave the card only after it has left the usable viewport.
+   // A wider return boundary prevents repeated switching near the edge.
+   if(!docked&&(rect.bottom<=top||rect.top>=bottom||rect.width<=0))docked=true;
+   else if(docked&&rect.top>=top+32&&rect.bottom<=bottom-32&&rect.width>0)docked=false;
+   const next=docked?null:{position:'absolute',top:rect.top+window.scrollY,left:rect.left+window.scrollX,width:rect.width,height:rect.height,right:'auto',bottom:'auto',borderRadius:12,zIndex:30};
+   setPlacement(previous=>{
+    if(previous===null&&next===null)return previous;
+    if(previous&&next&&['top','left','width','height'].every(key=>Math.abs(previous[key]-next[key])<0.5))return previous;
+    return next;
+   });
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
   measure();window.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);
@@ -39,8 +47,8 @@ export function HighlightThumbnail({highlight,onWatched,onFinish}){
  const [previewing,setPreviewing]=useState(false),[previewError,setPreviewError]=useState("");
  const stop=()=>{clearTimeout(timer.current);preview.current?.pause();if(preview.current)preview.current.currentTime=0;setPreviewing(false);};
  useEffect(()=>{const hide=()=>{if(document.hidden)stop();};document.addEventListener("visibilitychange",hide);return()=>{clearTimeout(timer.current);preview.current?.pause();document.removeEventListener("visibilitychange",hide);};},[]);
- const down=e=>{if(e.button!==0||playback?.selectedUrl===highlight.mediaUrl)return;held.current=false;point.current={x:e.clientX,y:e.clientY};timer.current=setTimeout(()=>{held.current=true;setPreviewError("");setPreviewing(true);const promise=preview.current?.play();promise?.catch(()=>{setPreviewError("Preview unavailable. Tap to watch.");setPreviewing(false);});},450);};
+ const down=e=>{if(e.button!==0||playback?.selectedUrl===highlight.mediaUrl)return;held.current=false;point.current={x:e.clientX,y:e.clientY};timer.current=setTimeout(()=>{held.current=true;setPreviewError("");setPreviewing(true);const element=preview.current;if(element){element.defaultMuted=true;element.muted=true;element.volume=0;}const promise=element?.play();promise?.catch(()=>{setPreviewError("Preview unavailable. Tap to watch.");setPreviewing(false);});},450);};
  return <button type="button" className="fanm-clip-thumb" aria-label={`Watch ${highlight.playerName||"player"} ${highlight.normalizedType||"highlight"}. Hold for muted preview.`} onPointerDown={down} onPointerMove={e=>{if(point.current&&Math.hypot(e.clientX-point.current.x,e.clientY-point.current.y)>12){held.current=true;stop();}}} onPointerUp={stop} onPointerCancel={()=>{held.current=true;stop();}} onPointerLeave={stop} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(held.current){e.preventDefault();held.current=false;return;}playback?.select(highlight,()=>onWatched?.(highlight),onFinish,e.currentTarget);}}>
-  <video ref={preview} className="fanm-clip-preview" src={highlight.mediaUrl} poster={highlight.thumbnailUrl||highlight.posterUrl||highlight.previewImageUrl||undefined} muted playsInline preload="metadata" loop tabIndex={-1}/><span className="fanm-clip-overlay"><strong>{highlight.playerName||"Player"}</strong><span>{previewError||(previewing?"Muted preview":playback?.selectedUrl===highlight.mediaUrl?"Now selected":"▶ Hold to preview")}</span></span>
+  <video ref={preview} className="fanm-clip-preview" src={highlight.mediaUrl} poster={highlight.thumbnailUrl||highlight.posterUrl||highlight.previewImageUrl||undefined} muted onVolumeChange={e=>{const element=e.currentTarget;if(!element.muted)element.muted=true;if(element.volume!==0)element.volume=0;}} playsInline preload="metadata" loop tabIndex={-1}/><span className="fanm-clip-overlay"><strong>{highlight.playerName||"Player"}</strong><span>{previewError||(previewing?"Muted preview":playback?.selectedUrl===highlight.mediaUrl?"Now selected":"▶ Hold to preview")}</span></span>
  </button>;
 }
