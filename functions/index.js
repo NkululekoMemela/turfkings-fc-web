@@ -5933,3 +5933,5 @@ exports.playerPrivacyStatus = onRequest({region:REGION,cors:true},async(req,res)
 exports.kitShop = require("./kitShopHttp.cjs").kitShop;
 
 Object.assign(exports, require("./fieldPremiumNotifications.cjs").buildHandlers({db,region:REGION,sendBatch:sendPaymentNotificationBatch}));
+
+exports.poolNight = require("./poolNightHttp.cjs").poolNight;

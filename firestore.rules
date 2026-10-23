@@ -1909,10 +1909,14 @@ service cloud.firestore {
     match /kitShopOrders/{document=**} { allow read, write: if false; }
     match /kitShopCustomers/{document=**} { allow read, write: if false; }
 
+    // Shared pool nights are accessed only through the verified server service.
+    match /poolNights/{document=**} { allow read, write: if false; }
+
     match /{topLevel}/{document=**} {
       allow read, write: if isSignedIn()
                          && !isCameraSession()
                          && !(topLevel in ["kitShopProducts","kitShopConfig","kitShopOrders","kitShopCustomers"])
+                         && topLevel != "poolNights"
                          && topLevel != "profileAccountChanges"
                          && topLevel != "playerPrivacyMigrations"
                          && topLevel != "matchNumberSheets"
