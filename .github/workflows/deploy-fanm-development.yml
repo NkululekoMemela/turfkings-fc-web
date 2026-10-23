@@ -28,9 +28,9 @@ jobs:
         run: npm ci
 
       - name: Build development site
-        run: npm run build:production
+        run: npm run build:staging
         env:
-          VITE_FIREBASE_ENV: production
+          VITE_FIREBASE_ENV: staging
           VITE_FANM_DEVELOPMENT_SITE: "true"
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
 
