@@ -42,6 +42,38 @@ function clean(value) {
   return String(value || "").trim();
 }
 
+function compactPlayerName(value) {
+  const parts = clean(value)
+    .replace(/\\s+/g, " ")
+    .split(" ")
+    .filter(Boolean);
+
+  if (parts.length < 2) {
+    return parts[0] || "Player";
+  }
+
+  return `${parts[0]} ${parts.at(-1).charAt(0).toUpperCase()}.`;
+}
+
+function compactClubName(value) {
+  const parts = clean(value)
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean);
+
+  if (!parts.length) {
+    return "Club";
+  }
+
+  const firstWord = parts[0].slice(0, 4);
+
+  if (parts.length === 1) {
+    return firstWord;
+  }
+
+  return `${firstWord} ${parts[1].charAt(0).toUpperCase()}`;
+}
+
 function seasonLabel(season) {
   return clean(
     season?.name ||
@@ -72,6 +104,7 @@ export default function VenueLeagueStatsPage({
     ? venueLeagueRootPath(resolvedScope) : "";
   const isPractice = resolvedScope?.environment === "practice";
   const requireOfficialWrite = () => {
+    if (!canCorrectResults) throw new Error("Only authorized Field staff may correct results.");
     if (isPractice) {
       throw new Error(
         "This correction needs its sandbox adapter. Official data was not changed."
@@ -606,6 +639,7 @@ export default function VenueLeagueStatsPage({
                   };
 
                   const openGoalEditor = (action, event = null) => {
+                    if (!canCorrectResults) return;
                     setCorrectionError("");
                     setGoalDraft({
                       action,
@@ -619,7 +653,7 @@ export default function VenueLeagueStatsPage({
                   };
 
                   const renderInlineEditor = () => {
-                    if (!goalDraft || goalDraft.fixtureId !== resultId) return null;
+                    if (!canCorrectResults || !goalDraft || goalDraft.fixtureId !== resultId) return null;
                     const choices = [...new Set([
                       ...(playerNamesByClub[goalDraft.teamId] || []),
                       goalDraft.scorer,
@@ -860,11 +894,26 @@ export default function VenueLeagueStatsPage({
             </table>
           </div>
         ) : (
-          <div className={`venue-table-wrap table-wrapper tk-scroll-table-wrapper tk-player-identity-table ${
-            activeTab === "combined"
-              ? "tk-player-summary-table"
-              : "tk-player-small-table"
-          }`}>
+          <div
+            className={`venue-table-wrap table-wrapper tk-scroll-table-wrapper tk-player-identity-table ${
+              activeTab === "combined"
+                ? "tk-player-summary-table"
+                : "tk-player-small-table"
+            }`}
+            style={{
+              "--venue-player-club-width": `${
+                Math.max(
+                  7,
+                  2.9 + Math.max(
+                    0,
+                    ...statRows.map((player) =>
+                      clean(player.teamName).length
+                    )
+                  ) * 0.52
+                )
+              }rem`,
+            }}
+          >
             <table className="venue-standings-table stats-table">
               <thead>
                 <tr>
@@ -883,8 +932,42 @@ export default function VenueLeagueStatsPage({
                 {statRows.map((player, index) => (
                   <tr key={`${player.teamId}:${player.name}`}>
                     <td>{index + 1}</td>
-                    <td>{player.displayName || player.name}</td>
-                    <td>{player.teamName}</td>
+                    <td
+                      className="venue-player-name-cell"
+                      title={player.displayName || player.name}
+                    >
+                      {compactPlayerName(
+                        player.displayName || player.name
+                      )}
+                    </td>
+
+                    <td
+                      className="venue-player-club-logo-cell"
+                      title={player.teamName}
+                      aria-label={player.teamName}
+                    >
+                      <span className="venue-player-club-identity">
+                        {clubLogos[player.teamId] ? (
+                          <img
+                            src={clubLogos[player.teamId]}
+                            alt={`${player.teamName} logo`}
+                            className="venue-club-logo"
+                          />
+                        ) : (
+                          <span
+                            className="venue-club-logo venue-club-logo-fallback"
+                            role="img"
+                            aria-label={`${player.teamName} logo unavailable`}
+                          >
+                            ⚽
+                          </span>
+                        )}
+
+                        <span className="venue-player-club-short-name">
+                          {player.teamName}
+                        </span>
+                      </span>
+                    </td>
                     {activeTab === "combined" ? (
                       <>
                         <td>{player.goals}</td><td>{player.assists}</td>

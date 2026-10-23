@@ -1,35 +1,10 @@
-// src/hooks/useMembers.js
-import { useEffect, useState } from "react";
-import { onSnapshot, orderBy, query } from "firebase/firestore";
-import { db } from "../firebaseConfig";
-import { getMembersCollection } from "../core/clubFirestorePaths";
-
-/**
- * Live subscription to club-scoped Firestore members collection.
- */
-export function useMembers() {
-  const [members, setMembers] = useState([]);
-
-  useEffect(() => {
-    const colRef = getMembersCollection(db);
-    const q = query(colRef, orderBy("fullName"));
-
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const list = [];
-
-      snap.forEach((doc) => {
-        const data = doc.data() || {};
-        list.push({
-          id: doc.id,
-          ...data,
-        });
-      });
-
-      setMembers(list);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  return members;
+import {useEffect,useState} from "react";
+import {subscribeClubMemberDirectory} from "../storage/clubMemberDirectory.js";
+export function useMembers(clubId="turf-kings") {
+  const [loaded,setLoaded]=useState({clubId:null,members:[]});
+  useEffect(()=>subscribeClubMemberDirectory(clubId,snapshot=>{
+    const members=snapshot.docs.map(item=>({...item.data(),id:item.id})).sort((a,b)=>String(a.fullName||"").localeCompare(String(b.fullName||"")));
+    setLoaded({clubId,members});
+  },()=>setLoaded({clubId,members:[]})),[clubId]);
+  return loaded.clubId===clubId?loaded.members:[];
 }

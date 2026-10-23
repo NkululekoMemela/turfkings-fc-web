@@ -1,3 +1,7 @@
+import {FieldAcceptedTeams} from "../components/PremiumNotification.jsx";
+import {fieldEntryHeroImage} from "../core/fieldEntryHeroImage.mjs";
+import {resolvePortalClubMember} from "../core/portalClubMemberPolicy.mjs";
+import {ownMembershipSnapshots} from "../storage/playerPrivacyGateway.js";
 import {buildFieldClubTeam} from "../core/fieldClubTeam.js";
 import FieldEndMatchDay from "../components/FieldEndMatchDay.jsx";
 import {resolveFieldUpcomingMatch} from "../core/fieldUpcomingMatch.js";
@@ -17,7 +21,7 @@ import { buildClubIdentity, DEFAULT_PLATFORM_LOGO } from "../core/clubIdentity.j
 import FieldTravelSplash from "../components/FieldTravelSplash.jsx";
 import FieldChatBoundary from "../components/FieldChatBoundary.jsx";
 import {
-  readPortalMembership, readPortalMember, readPortalMembers, readPortalClub,
+  readPortalMembership, readPortalClub,
 } from "../storage/clubFieldPortalReadClient.js";
 import {
   FieldSeasonStartModal, FieldSeasonEndModal,
@@ -829,29 +833,11 @@ export default function VenueEntryPage({
           throw new Error("Your Club is not a member of this Field.");
         }
 
-        const email = user.email.trim().toLowerCase();
-        const matchesAccount = member =>
-          member?.status === "active" &&
-          String(member.email || "").trim().toLowerCase() === email &&
-          (!member.uid || member.uid === user.uid);
-
-        let memberId = String(portalClubIdentity.memberId || "").trim();
-        let snapshot = memberId
-          ? await readPortalMember(clubId, memberId)
-          : null;
-
-        if (!snapshot?.exists() || !matchesAccount(snapshot.data())) {
-          const candidates = await readPortalMembers(clubId);
-          const matches = candidates.docs.filter(candidate =>
-            matchesAccount(candidate.data()));
-          if (matches.length !== 1) {
-            throw new Error("Could not identify one active Club player profile for this account.");
-          }
-          snapshot = matches[0];
-          memberId = snapshot.id;
-        }
-
-        const member = snapshot.data();
+        // Public football projections intentionally have no email or UID.
+        // Resolve only memberships verified for this signed-in account by the server.
+        const owned=await ownMembershipSnapshots(clubId);
+        const member=resolvePortalClubMember(owned.docs.map(item=>({...item.data(),id:item.id})),user,portalClubIdentity.memberId);
+        const memberId=member.id;
         if (cancelled || attempt !== generation ||
             auth.currentUser?.uid !== user.uid) return;
         window.clearTimeout(timer);
@@ -1106,10 +1092,7 @@ export default function VenueEntryPage({
   // Field photos take precedence over the rotating stock artwork.
   const fieldUploadedHeroImage =
     clubHeroOverride ||
-    activeClub?.heroImage ||
-    activeClub?.teamPhoto ||
-    activeClub?.media?.coverImageUrl ||
-    "";
+    fieldEntryHeroImage(activeClub);
 
   const fieldEntryStockImages = [
     "/HomePage/fieldManager1.jpeg",
@@ -2788,7 +2771,7 @@ export default function VenueEntryPage({
       /*
        * GPI Stage 1 — fresh club join.
        *
-       * The Gmail entered in the join form is the discovery key.
+       * The Google account entered in the join form is the discovery key.
        * No existing profile is copied yet. We first show the user
        * the candidate and require Google authentication if they
        * choose to reuse it.
@@ -2934,7 +2917,7 @@ export default function VenueEntryPage({
 
     if (!expectedEmail) {
       setNewReqError(
-        "We could not determine the Gmail address for this profile."
+        "We could not determine the Google account email for this profile."
       );
       return;
     }
@@ -2945,7 +2928,7 @@ export default function VenueEntryPage({
     );
 
     /*
-     * Never ask for or handle a Gmail password inside FANM.
+     * Never ask for or handle a Google password inside FANM.
      * Google performs the authentication using the existing
      * sign-in flow already trusted by the application.
      */
@@ -2968,14 +2951,14 @@ export default function VenueEntryPage({
 
     if (!authenticatedEmail) {
       setNewReqError(
-        "We could not read the Gmail address from the Google account."
+        "We could not read the Google account email from the Google account."
       );
       return;
     }
 
     if (authenticatedEmail !== expectedEmail) {
       setNewReqError(
-        `That Google account does not match ${expectedEmail}. Please use the Gmail account attached to this player profile.`
+        "This Google account does not match the selected profile. Choose another account or use the account recovery help below."
       );
       return;
     }
@@ -3106,7 +3089,7 @@ export default function VenueEntryPage({
 
     if (!expectedEmail) {
       setExistingMemberGpiError(
-        "We could not determine the Gmail address attached to this profile."
+        "We could not determine the Google account email attached to this profile."
       );
       return;
     }
@@ -3118,7 +3101,7 @@ export default function VenueEntryPage({
       let authenticatedUser = auth.currentUser;
 
       /*
-       * FANM never sees or stores a Gmail password.
+       * FANM never sees or stores a Google password.
        * Google itself performs the account confirmation.
        */
       if (authenticatedUser) {
@@ -3147,7 +3130,7 @@ export default function VenueEntryPage({
 
       if (authenticatedEmail !== expectedEmail) {
         setExistingMemberGpiError(
-          `That Google account does not match ${expectedEmail}. Please use the Gmail account attached to this player profile.`
+          "This Google account does not match the selected profile. Choose another account or use the account recovery help below."
         );
         return;
       }
@@ -4410,7 +4393,7 @@ export default function VenueEntryPage({
 
     if (!adminPrivilegesMemberEmail) {
       setAdminPrivilegesError(
-        "This member needs a verified Gmail address before administrator privileges can be assigned."
+        "This member needs a verified Google account email before administrator privileges can be assigned."
       );
       return;
     }
@@ -5589,6 +5572,7 @@ export default function VenueEntryPage({
           season={venueSeason}
           clubs={mappedTeams}
           canCorrectResults={Boolean(
+            canAccessFieldSettings &&
             currentUser?.uid && venue?.ownerUid === currentUser.uid
           )}
           onBack={() => setVenuePage("landing")}
@@ -5647,6 +5631,7 @@ export default function VenueEntryPage({
 
     return (
       <>
+      <FieldAcceptedTeams venueId={venue?.id} season={venueSeason} clubs={fieldClubProfiles} userId={currentUser?.uid} enabled={Boolean(currentUser?.uid&&(venue?.ownerUid===currentUser.uid||authenticatedFieldStaff?.status==="active"))}/>
       {isFieldAdministrator && <FieldPracticeEntry
         key={`${venue.id}:${currentUser?.uid}`}
         venue={venue} userId={currentUser?.uid}
@@ -6082,6 +6067,7 @@ export default function VenueEntryPage({
 
   return (
     <div className="page entry-page">
+      <FieldAcceptedTeams venueId={venue?.id} season={venueSeason} clubs={fieldClubProfiles} userId={currentUser?.uid} enabled={Boolean(currentUser?.uid&&(venue?.ownerUid===currentUser.uid||authenticatedFieldStaff?.status==="active"))}/>
       {showMemberLoadingWelcome && !showSigninLoading && (
         <div
           className="entry-member-loading-backdrop"
@@ -6735,7 +6721,7 @@ export default function VenueEntryPage({
               style={{ marginTop: "0.9rem" }}
             >
               Google will confirm that you
-              control the Gmail account attached
+              control the Google account attached
               to this player profile before
               anything is copied.
             </p>

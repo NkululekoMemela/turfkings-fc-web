@@ -3,6 +3,7 @@ const {loadSeasonStartSquad} = require("./fieldSeasonStartSquad.js");
 async function loadFieldMatchRoster({
   transaction, db, venueId, season, fixture, requireMinimum = true,
 }) {
+  const {assertLeagueBibs} = await import("./leagueBibPolicy.mjs");
   const minimum = {
     "5_V_5": 5, "6_V_6": 6, "7_V_7": 7, "11_V_11": 11,
   }[season.gameFormat];
@@ -71,6 +72,9 @@ async function loadFieldMatchRoster({
           eligible.push({
             playerId: entry.playerId, sourcePlayerId: entry.sourcePlayerId,
             fullName: entry.fullName, clubId,
+            jerseyNumber: profile.data().jerseyNumber ?? null,
+            ownsNumberedBib: profile.data().ownsNumberedBib === true,
+            bibColor: profile.data().bibColor || "",
           });
         }
       }
@@ -81,6 +85,7 @@ async function loadFieldMatchRoster({
         `${clubId} needs ${minimum} active paid players; ${eligible.length} are eligible.`
       );
     }
+    if(requireMinimum)assertLeagueBibs(eligible);
     squads[clubId] = eligible;
   }
   return {squads, bookingVersions, squadVersions, squadFingerprints};

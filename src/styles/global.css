@@ -21114,3 +21114,204 @@ footer.club-marketing-footer > section {
     border-radius: 20px;
   }
 }
+
+
+/* FIELD MANUAL MARKETING CAROUSEL */
+.field-marketing-carousel {
+  position: relative;
+  overflow: hidden;
+}
+
+.field-marketing-carousel__arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 2.9rem;
+  height: 2.9rem;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(186, 230, 253, 0.72);
+  border-radius: 999px;
+  color: #f8fafc;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(8, 47, 73, 0.92),
+      rgba(15, 23, 42, 0.88)
+    );
+  box-shadow:
+    0 12px 30px rgba(2, 6, 23, 0.42),
+    0 0 22px rgba(34, 211, 238, 0.2);
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(-50%);
+  backdrop-filter: blur(10px);
+}
+
+.field-marketing-carousel__arrow--previous {
+  left: 0.85rem;
+}
+
+.field-marketing-carousel__arrow--next {
+  right: 0.85rem;
+}
+
+.field-marketing-carousel__arrow:hover,
+.field-marketing-carousel__arrow:focus-visible {
+  border-color: #67e8f9;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(8, 145, 178, 0.96),
+      rgba(37, 99, 235, 0.92)
+    );
+}
+
+.field-marketing-carousel__dots {
+  position: absolute;
+  left: 50%;
+  bottom: 0.85rem;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.38rem 0.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.68);
+  transform: translateX(-50%);
+  backdrop-filter: blur(9px);
+}
+
+.field-marketing-carousel__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.48);
+  cursor: pointer;
+}
+
+.field-marketing-carousel__dot.is-active {
+  width: 1.45rem;
+  background: linear-gradient(90deg, #22d3ee, #60a5fa);
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.58);
+}
+
+@media (max-width: 640px) {
+  .field-marketing-carousel__arrow {
+    width: 2.45rem;
+    height: 2.45rem;
+    font-size: 1.65rem;
+  }
+
+  .field-marketing-carousel__arrow--previous {
+    left: 0.45rem;
+  }
+
+  .field-marketing-carousel__arrow--next {
+    right: 0.45rem;
+  }
+}
+
+
+/* FIELD CAROUSEL AND STATS VISUAL CLEANUP */
+.field-marketing-carousel__arrow {
+  width: 2rem;
+  height: 2rem;
+  border-color: rgba(226, 232, 240, 0.38);
+  color: rgba(248, 250, 252, 0.88);
+  background: rgba(2, 6, 23, 0.48);
+  box-shadow: 0 4px 12px rgba(2, 6, 23, 0.22);
+  font-size: 1.25rem;
+  opacity: 0.76;
+  backdrop-filter: blur(5px);
+}
+
+.field-marketing-carousel__arrow--previous {
+  left: 0.5rem;
+}
+
+.field-marketing-carousel__arrow--next {
+  right: 0.5rem;
+}
+
+.field-marketing-carousel__arrow:hover,
+.field-marketing-carousel__arrow:focus-visible,
+.field-marketing-carousel__arrow:active {
+  border-color: rgba(103, 232, 249, 0.72);
+  color: #ffffff;
+  background: rgba(8, 47, 73, 0.78);
+  box-shadow: 0 5px 15px rgba(2, 6, 23, 0.3);
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .field-marketing-carousel__arrow {
+    width: 1.9rem;
+    height: 1.9rem;
+    font-size: 1.15rem;
+  }
+
+  .field-marketing-carousel__arrow--previous {
+    left: 0.42rem;
+  }
+
+  .field-marketing-carousel__arrow--next {
+    right: 0.42rem;
+  }
+}
+
+
+/* DEFINITIVE FIELD CAROUSEL CONTROL PLACEMENT */
+.field-marketing-carousel__arrow {
+  top: auto !important;
+  bottom: 0.55rem !important;
+  width: 1.65rem !important;
+  height: 1.65rem !important;
+  border: 1px solid rgba(226, 232, 240, 0.28) !important;
+  color: rgba(255, 255, 255, 0.82) !important;
+  background: rgba(2, 6, 23, 0.42) !important;
+  box-shadow: none !important;
+  font-size: 1rem !important;
+  opacity: 0.7 !important;
+  transform: none !important;
+  backdrop-filter: blur(4px);
+}
+
+.field-marketing-carousel__arrow--previous {
+  left: 0.55rem !important;
+  right: auto !important;
+}
+
+.field-marketing-carousel__arrow--next {
+  right: 0.55rem !important;
+  left: auto !important;
+}
+
+.field-marketing-carousel__arrow:hover,
+.field-marketing-carousel__arrow:focus-visible,
+.field-marketing-carousel__arrow:active {
+  border-color: rgba(255, 255, 255, 0.58) !important;
+  color: #ffffff !important;
+  background: rgba(2, 6, 23, 0.72) !important;
+  opacity: 1 !important;
+}
+
+.field-marketing-carousel__dots {
+  bottom: 0.65rem !important;
+  padding: 0.25rem 0.4rem !important;
+  background: rgba(2, 6, 23, 0.42) !important;
+}
+
+.field-marketing-carousel__dot {
+  width: 0.4rem !important;
+  height: 0.4rem !important;
+}
+
+.field-marketing-carousel__dot.is-active {
+  width: 1rem !important;
+}

@@ -77,14 +77,6 @@ export default function VenueMarketingFooter() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!secondAdvertReady) return;
-    const timer = window.setInterval(() => {
-      setAdvertIndex(index => (index + 1) % 2);
-    }, 6000);
-    return () => window.clearInterval(timer);
-  }, [secondAdvertReady]);
-
   const [infoModal, setInfoModal] =
     useState(null);
 
@@ -275,19 +267,79 @@ export default function VenueMarketingFooter() {
   return (
     <>
       <section
-        className="fanm-venues__closing-visual"
+        className="fanm-venues__closing-visual field-marketing-carousel"
         aria-label="5 Asides Near Me Field experience"
       >
         <img
-          src={secondAdvertReady && advertIndex === 1
-            ? FIELD_MARKETING_IMAGE_TWO
-            : FIELD_MARKETING_IMAGE}
+          src={
+            secondAdvertReady && advertIndex === 1
+              ? FIELD_MARKETING_IMAGE_TWO
+              : FIELD_MARKETING_IMAGE
+          }
           onError={() => {
             setSecondAdvertReady(false);
             setAdvertIndex(0);
           }}
-          alt="5 Asides Near Me Field and league experience"
+          alt={
+            advertIndex === 1
+              ? "5 Asides Near Me Field football experience"
+              : "5 Asides Near Me Field and league experience"
+          }
         />
+
+        {secondAdvertReady && (
+          <>
+            <button
+              type="button"
+              className="field-marketing-carousel__arrow field-marketing-carousel__arrow--previous"
+              aria-label="Show previous marketing image"
+              onClick={() =>
+                setAdvertIndex((index) =>
+                  index === 0 ? 1 : 0
+                )
+              }
+            >
+              ‹
+            </button>
+
+            <button
+              type="button"
+              className="field-marketing-carousel__arrow field-marketing-carousel__arrow--next"
+              aria-label="Show next marketing image"
+              onClick={() =>
+                setAdvertIndex((index) =>
+                  index === 0 ? 1 : 0
+                )
+              }
+            >
+              ›
+            </button>
+
+            <div
+              className="field-marketing-carousel__dots"
+              aria-label={`Marketing image ${advertIndex + 1} of 2`}
+            >
+              {[0, 1].map((index) => (
+                <button
+                  key={index}
+                  type="button"
+                  className={
+                    index === advertIndex
+                      ? "field-marketing-carousel__dot is-active"
+                      : "field-marketing-carousel__dot"
+                  }
+                  aria-label={`Show marketing image ${index + 1}`}
+                  aria-current={
+                    index === advertIndex
+                      ? "true"
+                      : undefined
+                  }
+                  onClick={() => setAdvertIndex(index)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       <footer className="hub-footer-brand fanm-venues__marketing-footer">

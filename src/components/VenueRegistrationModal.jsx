@@ -521,7 +521,7 @@ export default function VenueRegistrationModal({
               </label>
 
               <label className="hub-field">
-                <span>Email / Gmail</span>
+                <span>Google account email</span>
                 <input
                   type="email"
                   value={draft.staffEmail}

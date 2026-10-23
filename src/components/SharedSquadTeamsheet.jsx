@@ -117,7 +117,7 @@ export default function SharedSquadTeamsheet({
                     {players.length ? (
                       players.map((pid) => (
                         <li key={`teamsheet-${team.id}-${pid}`}>
-                          {displayNameOf(pid)}
+                          {displayNameOf(pid,team.id)}
                           {team.captainId === pid ? " (C)" : ""}
                         </li>
                       ))

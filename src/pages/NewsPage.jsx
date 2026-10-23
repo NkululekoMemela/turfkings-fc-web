@@ -1,5 +1,6 @@
 // src/pages/NewsPage.jsx
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import {clubKitInterestDraft,pollMerchandiseId} from "../core/merchandisePoll.mjs";
 import JerseyImage from "../assets/Jersey.jpeg";
 import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
@@ -286,6 +287,8 @@ export function NewsPage({
   dataScope = null,
   activeClub = null,
   initialPollOpen = null,
+  initialMerchandisePoll = null,
+  onMerchandisePollConsumed,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
   const isTurfKingsClub = safeActiveClubId === "turf-kings";
@@ -1984,6 +1987,7 @@ This will remove it from live news and archives for everyone.`
   const createEmptyPollDraft = () => ({
     question: "",
     icon: "🗳️",
+    merchandiseId: "",
     options: ["", ""],
   });
 
@@ -1995,6 +1999,17 @@ This will remove it from live news and archives for everyone.`
   const [pollFormNotice, setPollFormNotice] = useState("");
   const [editingPollId, setEditingPollId] = useState("");
   const [focusedPollId, setFocusedPollId] = useState("");
+  useEffect(() => {
+    if (!initialMerchandisePoll || initialMerchandisePoll.clubId !== safeActiveClubId || !canManageCustomStories) return;
+    setEditingPollId("");
+    setPollDraft(clubKitInterestDraft());
+    setShowCreatePollForm(true);
+    setPollFormError("");
+    setPollFormNotice("Kit attached. Review the question and choices, then save to publish. Interest only; no payment or order is taken.");
+    const frame=requestAnimationFrame(()=>{document.getElementById("club-poll-studio")?.scrollIntoView({block:"start"});onMerchandisePollConsumed?.();});
+    return()=>cancelAnimationFrame(frame);
+  }, [initialMerchandisePoll, safeActiveClubId, canManageCustomStories, onMerchandisePollConsumed]);
+
 
   useEffect(() => {
     const requestedClubId = String(
@@ -2299,6 +2314,7 @@ This will remove it from live news and archives for everyone.`
           ];
 
     setPollDraft({
+      merchandiseId: pollMerchandiseId(poll.merchandiseId),
       question: String(poll.question || ""),
       icon: String(poll.icon || "🗳️"),
       options: existingOptions.slice(0, 6),
@@ -2347,6 +2363,7 @@ This will remove it from live news and archives for everyone.`
         const practicePoll = {
           id: pollId,
           question,
+          merchandiseId: pollMerchandiseId(pollDraft.merchandiseId),
           icon,
           options,
           optionA: options[0]?.label || "",
@@ -2382,6 +2399,7 @@ This will remove it from live news and archives for everyone.`
         {
           clubId: safeActiveClubId,
           question,
+          merchandiseId: pollMerchandiseId(pollDraft.merchandiseId),
           icon,
           options,
           optionA: options[0]?.label || "",
@@ -2555,7 +2573,7 @@ Votes for this poll will no longer be shown.`
 
     const playerName = String(poll.playerName || "").trim();
     const playerPhotoUrl = playerName ? getPlayerPhoto(playerName) : null;
-    const displayImageUrl = playerPhotoUrl || String(poll.imageUrl || "").trim() || null;
+    const displayImageUrl = poll.merchandiseId === "club-kit" ? JerseyImage : playerPhotoUrl || String(poll.imageUrl || "").trim() || null;
     const pollDateMs = resolveDateMs(poll.publishDateMs || poll.createdAtMs, Date.now());
     const freshness = getFreshnessBadge(pollDateMs, archivedView || poll.archived);
     const pollOptions =
@@ -3336,7 +3354,7 @@ Votes for this poll will no longer be shown.`
 
 
       {canManageCustomStories && (
-        <section className="card" style={{ overflow: "hidden" }}>
+        <section id="club-poll-studio" className="card" style={{ overflow: "hidden", scrollMarginTop: 100 }}>
           <div
             style={{
               display: "flex",
@@ -3405,6 +3423,7 @@ Votes for this poll will no longer be shown.`
                   gap: "0.85rem",
                 }}
               >
+                <label style={{display:"grid",gap:".35rem",gridColumn:"1/-1"}}><span style={{fontWeight:700}}>Attach merchandise</span><select style={newsInputStyle} value={pollDraft.merchandiseId || ""} onChange={e=>handlePollDraftChange("merchandiseId",e.target.value)}><option value="">No merchandise</option><option value="club-kit">Club kit · Turf Kings example · R400 top / R300 shorts</option></select>{pollDraft.merchandiseId === "club-kit" && <><img src={JerseyImage} alt="Attached Turf Kings kit example" style={{width:"100%",maxWidth:240,maxHeight:180,objectFit:"contain",background:"#fff",borderRadius:12}}/><small>Interest only. Final club design and ordering will be confirmed separately.</small></>}</label>
                 <label style={{ display: "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Poll question</span>
                   <input

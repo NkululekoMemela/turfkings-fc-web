@@ -1,3 +1,4 @@
+import {buildKitRoster,labelWithNumber} from "../core/playerKit.js";
 import {saveFieldPracticeFormation} from "../storage/fieldPracticeFormationRepository.js";
 import {subscribeFieldManifest} from "../storage/fieldManifestSubscription.js";
 import {fieldPageKey, readFieldPage, saveFieldPage} from "../storage/fieldPageMemory.js";
@@ -1164,6 +1165,8 @@ export function FormationsPage({
             fullName,
             shortName,
             aliases,
+            jerseyNumber: data.jerseyNumber ?? null,
+            kitNumberSource: data.kitNumberSource || "profile",
             status: data.status || "active",
             squadOrder: data.squadOrder ?? null,
             mentality: rating(data.mentality),
@@ -1761,8 +1764,9 @@ export function FormationsPage({
     return normKey(name) === normKey(effectiveCaptainName);
   };
 
+  const formationKitTeams=useMemo(()=>buildKitRoster(sourceTeams,players),[sourceTeams,players]);
   const withCaptainTag = (name) => {
-    const label = displayCompactName(name);
+    const label = labelWithNumber(formationKitTeams,name,displayCompactName(name),selectedTeamId || "");
     return isCaptainPlayer(name) ? `${label} (C)` : label;
   };
 

@@ -1,3 +1,4 @@
+import {clubKitColours} from "../core/clubKitColours.mjs";
 // src/storage/homePageHubClubRepository.js
 
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -40,8 +41,8 @@ async function buildUniqueClubPersonId(clubId, preferredId) {
   let suffix = 2;
 
   while (true) {
-    const memberSnap = await getDoc(doc(db, "clubs", clubId, "members", candidate));
-    const playerSnap = await getDoc(doc(db, "clubs", clubId, "players", candidate));
+    const memberSnap = await getDoc(doc(db, "clubs", clubId, "publicMembers", candidate));
+    const playerSnap = await getDoc(doc(db, "clubs", clubId, "publicPlayers", candidate));
 
     if (!memberSnap.exists() && !playerSnap.exists()) return candidate;
 
@@ -242,6 +243,7 @@ export async function createHomePageHubClub({
   bankingDraft = {},
 }) {
   const safeClubId = cleanText(clubId);
+  clubKitColours(clubDraft);
   const clubName = cleanText(clubDraft.clubName);
   const captainName = toTitleCase(cleanText(clubDraft.captainName));
   const captainEmail = cleanEmail(clubDraft.captainEmail);
@@ -290,6 +292,7 @@ export async function createHomePageHubClub({
   const clubPayload = {
     id: safeClubId,
     name: clubName,
+    ...clubKitColours(clubDraft),
 
     location: locationDisplay,
     area: cleanText(clubDraft.suburb) || cleanText(clubDraft.city) || locationDisplay,
@@ -519,6 +522,7 @@ export async function updateHomePageHubClub({
   bankingDraft = {},
 }) {
   const safeClubId = cleanText(clubId);
+  clubKitColours(clubDraft);
 
   if (!safeClubId) throw new Error("Club ID is required.");
 
@@ -577,6 +581,7 @@ export async function updateHomePageHubClub({
 
   const payload = {
     name: cleanText(clubDraft.clubName || clubDraft.name),
+    ...clubKitColours(clubDraft),
     location: locationDisplay,
     area: cleanText(clubDraft.suburb) || cleanText(clubDraft.city) || locationDisplay,
     weeklyPlayTime: weeklyPlayTime || "Play time to be confirmed",

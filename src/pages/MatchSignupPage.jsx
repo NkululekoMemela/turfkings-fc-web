@@ -1,3 +1,4 @@
+import {playerPrivacyRequest} from "../storage/playerPrivacyGateway.js";
 import useSignupPlayerPhotos from "../hooks/useSignupPlayerPhotos.js";
 import SignupHeroHeader from "../components/SignupHeroHeader.jsx";
 import { saveSignupWithCapacity } from "../core/payments/saveSignupWithCapacity.js";
@@ -981,15 +982,26 @@ export default function MatchSignupPage({
     [clubWeeklyScheduleText]
   );
 
+
+  const canManageSignupsAsAdmin = useMemo(() => {
+    const effectiveRole = String(
+      activeRole || identity?.actingRole || identity?.role || currentUser?.role || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    return effectiveRole === "admin";
+  }, [activeRole, identity, currentUser]);
+
   const pendingSignupsCollectionRef = () =>
     isPracticeMode
       ? getScopedPendingSignupsCollection(db, dataScope)
-      : getPendingSignupsCollection(db, activeClubId);
+      : canManageSignupsAsAdmin ? getClubCollection(db,"pendingSignups",activeClubId) : getPendingSignupsCollection(db, activeClubId);
 
   const matchSignupsCollectionRef = () =>
     isPracticeMode
       ? getScopedMatchSignupsCollection(db, dataScope)
-      : getMatchSignupsCollection(db, activeClubId);
+      : canManageSignupsAsAdmin ? getClubCollection(db,"matchSignups",activeClubId) : getMatchSignupsCollection(db, activeClubId);
 
   const pendingSignupDocRef = (docId) =>
     isPracticeMode
@@ -2201,7 +2213,7 @@ export default function MatchSignupPage({
       unsubscribePending();
       unsubscribeMatchSignups();
     };
-  }, [calendarMonthKey, signupScopeId, weeks, visibleWeekIds]);
+  }, [calendarMonthKey, signupScopeId, weeks, visibleWeekIds, canManageSignupsAsAdmin, activeClubId, isPracticeMode, dataScope]);
 
   const paidWeekSet = useMemo(() => new Set(paidWeeks), [paidWeeks]);
 
@@ -2369,6 +2381,12 @@ export default function MatchSignupPage({
   const getCostForWeekId = (weekId) => Number(weekById.get(weekId)?.costPerGame || matchSignupSettings.weeklyPrice || COST_PER_GAME);
 
   async function setDoc(ref, data, options) {
+    if(!isPracticeMode && ref.path.startsWith(`clubs/${activeClubId}/`) && ["pendingSignups","matchSignups"].includes(ref.parent.id)){
+      const fixtureLimits=Object.fromEntries(allMonthWeeks.filter(week=>week.isChallenge).map(week=>[week.id,week.maxPlayers]));
+      await playerPrivacyRequest({action:"signup",clubId:activeClubId,kind:ref.parent.id,docId:ref.id,data,merge:options?.merge===true,defaultLimit:MAX_PLAYERS,fixtureLimits});
+      return;
+    }
+
     const signupCollections = [
       pendingSignupDocRef(pendingId).parent,
       matchSignupDocRef(pendingId).parent,
@@ -3838,15 +3856,7 @@ export default function MatchSignupPage({
     [liveCommittedUsers]
   );
 
-  const canManageSignupsAsAdmin = useMemo(() => {
-    const effectiveRole = String(
-      activeRole || identity?.actingRole || identity?.role || currentUser?.role || ""
-    )
-      .trim()
-      .toLowerCase();
 
-    return effectiveRole === "admin";
-  }, [activeRole, identity, currentUser]);
 
   const BULK_PAID_MAX_PLAYERS = 18;
 

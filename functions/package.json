@@ -2,7 +2,7 @@
   "name": "functions",
   "description": "Cloud Functions for Firebase",
   "scripts": {
-    "lint": "eslint index.js",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint --no-eslintrc --config .eslintrc.js index.js playerGoogleAccountService.js playerGoogleAccountPolicy.cjs playerPrivacy.cjs privateSignup.cjs matchPlayerNumbers.cjs playerKitPolicy.mjs clubNumbers.cjs kitShop.cjs functionsBootstrap.cjs kitShopHttp.cjs leagueBibPolicy.mjs fieldMatchDaySquad.js fieldMatchRoster.js fieldSquadReadyNotifications.js fieldPremiumNotifications.cjs fieldAcceptancePolicy.cjs notificationMedia.cjs",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
@@ -12,10 +12,11 @@
   "engines": {
     "node": "22"
   },
-  "main": "index.js",
+  "main": "functionsBootstrap.cjs",
   "dependencies": {
     "firebase-admin": "^13.6.0",
     "firebase-functions": "^7.0.0",
+    "google-auth-library": "^10.9.1",
     "node-fetch": "^2.7.0",
     "twilio": "^5.5.3"
   },

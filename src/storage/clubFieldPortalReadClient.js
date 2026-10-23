@@ -12,9 +12,9 @@ if (import.meta.env.VITE_USE_FIRESTORE_EMULATOR === "true" &&
 export const readPortalMembership = clubId =>
   getDoc(doc(portalDb, "clubFieldMemberships", clubId));
 export const readPortalMember = (clubId, memberId) =>
-  getDoc(doc(portalDb, "clubs", clubId, "members", memberId));
+  getDoc(doc(portalDb, "clubs", clubId, "publicMembers", memberId));
 export const readPortalMembers = clubId =>
-  getDocs(collection(portalDb, "clubs", clubId, "members"));
+  getDocs(collection(portalDb, "clubs", clubId, "publicMembers"));
 
 export function readPortalClub(clubId) {
   return getDoc(doc(portalDb, "clubs", clubId));

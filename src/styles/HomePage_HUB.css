@@ -8877,3 +8877,6 @@
 .homepage-hub-shell footer.hub-footer-brand--flush-photo > details {
   margin: 16px !important;
 }
+
+/* FANM legible light card labels and visible logo loading */
+.hub-club-card .hub-club-card__face--logo>small{color:#334155!important;opacity:1!important}.hub-club-card__logo-ring{position:relative}.hub-club-card__logo-ring .hub-logo-fallback{position:absolute;inset:0;display:grid;place-items:center;color:#14532d;font-size:1.8rem;font-weight:850}.hub-club-card__logo-ring .hub-logo-image{position:relative;z-index:1;object-fit:contain;transition:opacity .15s}.hub-club-card__logo-ring .hub-logo-status{position:absolute;z-index:2;bottom:1px;left:0;right:0;text-align:center;color:#334155;font-size:.58rem;line-height:1.2;background:rgba(255,255,255,.92);border-radius:5px;padding:2px}.field-staff-picker__trigger.is-selected strong,.field-staff-picker__trigger.is-selected small{color:#ecfdf5!important}

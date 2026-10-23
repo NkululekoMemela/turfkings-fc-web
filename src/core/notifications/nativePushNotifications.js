@@ -26,42 +26,6 @@ function foregroundNotificationId(notification = {}) {
 
 const FieldNotifications = registerPlugin("FieldNotifications");
 
-function fieldBadgeBase64(url) {
-  if (!/^https:\/\//i.test(String(url || ""))) return Promise.resolve("");
-  return new Promise(resolve => {
-    const image = new Image();
-    let finished = false;
-    const finish = value => {
-      if (finished) return;
-      finished = true;
-      window.clearTimeout(timer);
-      image.onload = null;
-      image.onerror = null;
-      resolve(value);
-    };
-    const timer = window.setTimeout(() => finish(""), 3000);
-    image.crossOrigin = "anonymous";
-    image.onerror = () => finish("");
-    image.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = 192;
-        canvas.height = 192;
-        const context = canvas.getContext("2d");
-        const width = image.naturalWidth || image.width;
-        const height = image.naturalHeight || image.height;
-        if (!width || !height || !context) return finish("");
-        const scale = Math.min(176 / width, 176 / height);
-        context.drawImage(image,
-          (192 - width * scale) / 2, (192 - height * scale) / 2,
-          width * scale, height * scale);
-        finish(canvas.toDataURL("image/png").split(",")[1]);
-      } catch { finish(""); }
-    };
-    image.src = url;
-  });
-}
-
 async function showForegroundNotification(notification = {}) {
   const title = String(
     notification.title ||
@@ -75,15 +39,16 @@ async function showForegroundNotification(notification = {}) {
     "You have a new notification."
   );
 
-  if (["field_season_invitation", "field_match_day_review"]
-      .includes(notification.data?.type) &&
-      Capacitor.getPlatform() === "android" &&
+  window.dispatchEvent(new CustomEvent("fanm-notification",{detail:{...notification,title,body}}));
+
+  if (Capacitor.getPlatform() === "android" &&
       Capacitor.isPluginAvailable("FieldNotifications")) {
     try {
       await FieldNotifications.show({
         id: foregroundNotificationId(notification),
         title, body,
-        badge: await fieldBadgeBase64(notification.data.fieldLogoUrl),
+        imageUrl: notification.data?.senderPhotoUrl || notification.data?.fieldLogoUrl || notification.data?.imageUrl || "",
+        portrait: Boolean(notification.data?.senderPhotoUrl),
         notification: { ...notification, title, body, data: notification.data },
       });
       return;

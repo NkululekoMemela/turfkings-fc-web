@@ -629,3 +629,29 @@
   background: rgba(28, 135, 100, .22);
   border: 1px solid rgba(95, 221, 166, .30);
 }
+
+/* Season studio: shared ribbon, one booking and compact management. */
+.club-league-season-page .league-studio-header{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%}
+.club-league-season-page .league-studio-header .header-title{display:block;min-width:0}
+.club-league-season-page .league-studio-header h1{margin:0;font-size:clamp(1.25rem,4.5vw,1.9rem);line-height:1.15}
+.league-studio-context{margin-top:.18rem;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#ffffffc2}
+.league-studio-home{width:46px;height:46px;flex:none;padding:0}
+.league-season-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0;font-size:.8rem;color:#c1d6ce}
+.league-season-meta button{font-size:.72rem;min-height:40px;white-space:nowrap}
+.league-personal-attendance{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0 18px;font-size:.74rem;color:#b7d9c9}
+.league-personal-attendance strong{background:#103b31;border:1px solid #5aa68766;border-radius:30px;padding:7px 12px;color:#bcf3d4}
+.club-league-season-page .league-commit-card{background:linear-gradient(130deg,#103e35,#102638);border:1px solid #79b99d66;padding:22px}
+.league-commit-card h2{font-size:1.3rem;margin:8px 0 12px}.league-studio-eyebrow{font-size:.65rem;letter-spacing:.14em;color:#abd5be;font-weight:800}
+.league-commit-card>.primary-btn{width:100%;min-height:48px;margin:10px 0}.league-decline-link{display:block;background:none;border:0;color:#b7c8c2;text-decoration:underline;padding:12px 0;cursor:pointer;font:inherit;font-size:.75rem}
+.league-admin-management>summary{cursor:pointer;font-weight:800;padding:4px 0}.league-admin-management>summary>span{display:block;font-size:.72rem;font-weight:500;margin:8px 0;color:#afc6bd}
+.league-admin-management .league-squad-player{padding:9px 0!important}.league-admin-management .league-squad-grid{display:block}
+.league-join-price{display:grid;grid-template-columns:1fr auto;gap:14px;font-size:.85rem}.league-join-price dd{margin:0;text-align:right}
+.league-review-dates{margin:18px 0;border-top:1px solid #8db5a444;border-bottom:1px solid #8db5a444;padding:14px 0}.league-review-dates summary{cursor:pointer;font-size:.8rem;font-weight:750}
+.league-review-dates label,.league-join-consent{display:flex;align-items:flex-start;gap:10px;font-size:.8rem;line-height:1.65;margin:14px 0}.league-review-dates input,.league-join-consent input{width:18px;height:18px;flex:none;margin:4px 0}
+.league-join-submit{width:100%;min-height:48px}.league-commit-card .small{line-height:1.65}
+@media(max-width:640px){.league-season-meta{font-size:.72rem}.club-league-season-page .league-commit-card{padding:18px}.league-personal-attendance{gap:6px}.league-studio-context{font-size:.65rem}}
+
+.league-squad-availability>summary{cursor:pointer;font-size:.9rem;font-weight:800;padding:6px 0}
+
+.app-root:has(.club-league-season-page){overflow-x:clip}
+.league-kit-reminder{margin:16px 0;font-size:.75rem;color:#b9cfc4}.league-kit-reminder summary{cursor:pointer;font-weight:700}

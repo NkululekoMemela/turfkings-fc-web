@@ -122,6 +122,8 @@ export async function startPracticeFixture({scope, fixtureId = "", teams, contro
       practiceSessionId: scope.practiceSessionId,
       paidSquads: squads,
       confirmedLineupSnapshot: startingLineups,
+      running: false,
+      awaitingKitVerification: true,
       clockVersion: 1, clockPhase: "first_half",
       halftimeSeconds: Number(season.scheduleSettings?.halftimeMinutes ?? 5) * 60,
       halftimeEndsAtMs: 0,

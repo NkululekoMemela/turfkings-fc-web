@@ -104,7 +104,7 @@ service cloud.firestore {
               "adminUids", "adminEmails", "adminNames",
               "captain", "captainEmail", "captainEmails",
               "status", "deleted", "deletedAt", "deletedByUid",
-              "deletedByEmail", "bookingSettings", "paymentSettings"
+              "deletedByEmail", "bookingSettings", "paymentSettings", "homeColor", "awayColor", "currency"
             ])
         );
 
@@ -119,14 +119,14 @@ service cloud.firestore {
           && request.auth.token.get("email", "") != ""
           && (
             resource.data.get("uid", "") == request.auth.uid
-            || resource.data.get("email", "") ==
-              request.auth.token.email
+            || (resource.data.get("uid", "") == ""
+              && resource.data.get("email", "") == request.auth.token.email)
           );
       }
 
-      allow read: if true;
+      allow read: if ownMembership() || clubAdministrator(clubId);
 
-      allow create: if clubAdministrator(clubId)
+      allow create: if request.resource.data.get("jerseyNumber", null) == null && (clubAdministrator(clubId)
         || (
           isSignedIn()
           && !isCameraSession()
@@ -137,11 +137,36 @@ service cloud.firestore {
             request.auth.uid
           && request.resource.data.get("status", "") == "pending"
           && request.resource.data.get("role", "") == "player"
-        );
+        ));
 
-      allow update: if clubAdministrator(clubId)
+      allow update: if request.resource.data.get("jerseyNumber", null) == resource.data.get("jerseyNumber", null) && (clubAdministrator(clubId)
         || (
           ownMembership()
+          && request.resource.data.get("ownsNumberedBib", false) is bool
+          && request.resource.data.get("bibColor", "") is string
+          && request.resource.data.get("bibColor", "").size() <= 40
+          && request.resource.data.get("profileNameAliases", []) is list
+          && request.resource.data.get("profileNameAliases", []).size() <= 20
+          && (
+            request.resource.data.get("playerId", "") == resource.data.get("playerId", "")
+            || (
+              resource.data.get("playerId", "") == ""
+              && request.resource.data.get("playerId", "") is string
+              && request.resource.data.playerId.size() > 0
+              && request.resource.data.playerId.size() <= 150
+              && getAfter(
+                /databases/$(database)/documents/clubs/$(clubId)/players/$(request.resource.data.playerId)
+              ).data.get("sourceMemberId", "") == memberId
+            )
+          )
+          && (
+            request.resource.data.get("jerseyNumber", null) == null
+            || (
+              request.resource.data.get("jerseyNumber", null) is int
+              && request.resource.data.jerseyNumber >= 0
+              && request.resource.data.jerseyNumber <= 999
+            )
+          )
           && (
             request.resource.data.get("uid", "") ==
               resource.data.get("uid", "")
@@ -163,7 +188,8 @@ service cloud.firestore {
                 .affectedKeys().hasOnly([
                   "fullName", "shortName", "email",
                   "whatsappNumber", "phoneNumber",
-                  "photoData", "photoUrl", "profileUpdatedAt",
+                  "photoData", "photoUrl", "jerseyNumber", "playerId",
+                  "ownsNumberedBib", "bibColor", "profileNameAliases", "profileUpdatedAt",
                   "profileUpdatedByUid", "profileUpdatedByRole",
                   "updatedAt"
                 ])
@@ -195,18 +221,109 @@ service cloud.firestore {
               ) == request.auth.uid
             )
           )
-        );
+        ));
 
       allow delete: if clubAdministrator(clubId);
     }
 
     // Preserve the legacy access of unrelated Club subcollections.
     // The root and members are governed by the rules above.
-    match /clubs/{clubId}/{collectionName}/{document=**} {
+    // Private source records and public football projections are separate documents.
+    function ownsClubMember(clubId, memberId) {
+      let path = /databases/$(database)/documents/clubs/$(clubId)/members/$(memberId);
+      return isSignedIn() && !isCameraSession()
+        && request.auth.token.get("email_verified", false) == true
+        && exists(path)
+        && (get(path).data.get("uid", "") == request.auth.uid
+          || (get(path).data.get("uid", "") == ""
+            && get(path).data.get("email", "") == request.auth.token.get("email", "!")));
+    }
+    function clubCaptain(clubId) {
+      let club = get(/databases/$(database)/documents/clubs/$(clubId)).data;
+      return isSignedIn() && !isCameraSession()
+        && request.auth.token.get("email_verified", false) == true
+        && request.auth.token.get("email", "!") in club.get("captainEmails", [])
+        || (isSignedIn() && !isCameraSession()
+          && request.auth.token.get("email_verified", false) == true
+          && request.auth.token.get("email", "!") == club.get("captainEmail", ""));
+    }
+    function ownsPrivatePlayer(clubId, data) {
+      return ownsClubMember(clubId, data.get("sourceMemberId", "!"))
+        || (isSignedIn() && !isCameraSession()
+          && request.auth.token.get("email_verified", false) == true
+          && data.get("platformIdentityUid", "") == request.auth.uid);
+    }
+    match /clubs/{clubId}/players/{playerId} {
+      allow read: if clubAdministrator(clubId) || ownsPrivatePlayer(clubId, resource.data);
+      allow create: if request.resource.data.get("jerseyNumber", null) == null && (clubAdministrator(clubId)
+        || (ownsPrivatePlayer(clubId, request.resource.data)
+          && request.resource.data.get("email", "") == request.auth.token.get("email", "!")
+          && request.resource.data.get("roles", {}).get("admin", false) == false
+          && request.resource.data.get("roles", {}).get("captain", false) == false));
+      allow update: if request.resource.data.get("jerseyNumber", null) == resource.data.get("jerseyNumber", null) && (clubAdministrator(clubId)
+        || (clubCaptain(clubId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["roles", "mentality", "shooting", "updatedAt"])
+          && request.resource.data.get("roles", {}).get("admin", false) == resource.data.get("roles", {}).get("admin", false))
+        || (ownsPrivatePlayer(clubId, resource.data)
+          && ownsPrivatePlayer(clubId, request.resource.data)
+          && request.resource.data.get("sourceMemberId", "") == resource.data.get("sourceMemberId", "")
+          && request.resource.data.get("roles", {}) == resource.data.get("roles", {})
+          && request.resource.data.get("email", "") == request.auth.token.get("email", "!")));
+      allow delete: if clubAdministrator(clubId);
+    }
+    match /clubs/{clubId}/playerPhotos/{photoId} {
+      allow read: if clubAdministrator(clubId) || ownsPrivatePlayer(clubId, resource.data);
+      allow create, update: if clubAdministrator(clubId)
+        || (ownsPrivatePlayer(clubId, request.resource.data)
+          && request.resource.data.get("email", "") == request.auth.token.get("email", "!"));
+      allow delete: if clubAdministrator(clubId);
+    }
+    match /clubs/{clubId}/humanMembers/{memberId} {
+      allow read, write: if clubAdministrator(clubId) || ownsClubMember(clubId, memberId);
+    }
+    match /clubs/{clubId}/{publicKind}/{id} {
+      allow read: if publicKind in ["publicMembers", "publicPlayers", "publicPlayerPhotos", "publicPendingSignups", "publicMatchSignups"];
+      allow write: if false;
+    }
+    function ownsSignup(clubId, data) {
+      let payer = data.get("payerUserId", data.get("userId", "!"));
+      let playerPath = /databases/$(database)/documents/clubs/$(clubId)/players/$(payer);
+      return isSignedIn() && !isCameraSession()
+        && request.auth.token.get("email_verified", false) == true
+        && (data.get("profileOwnerUid", "") == request.auth.uid
+          || payer == request.auth.uid
+          || (exists(playerPath) && ownsPrivatePlayer(clubId, get(playerPath).data)));
+    }
+    match /clubs/{clubId}/{signupKind}/{signupId} {
+      allow get: if signupKind in ["pendingSignups", "matchSignups"]
+        && (clubAdministrator(clubId) || ownsSignup(clubId,resource.data)
+          || (isSignedIn() && !isCameraSession()
+            && request.auth.token.get("email_verified", false) == true
+            && !exists(/databases/$(database)/documents/clubs/$(clubId)/$(signupKind)/$(signupId))));
+      allow list: if signupKind in ["pendingSignups", "matchSignups"] && clubAdministrator(clubId);
+      // Server transactions handle capacity and keep contact fields out of public views.
+      allow create: if signupKind in ["pendingSignups", "matchSignups"]
+        && (clubAdministrator(clubId) || (isSignedIn() && !isCameraSession()
+          && request.auth.token.get("email_verified", false) == true
+          && request.resource.data.get("profileOwnerUid", "") == request.auth.uid));
+      allow update: if signupKind in ["pendingSignups", "matchSignups"]
+        && (clubAdministrator(clubId) || (ownsSignup(clubId,resource.data)
+          && request.resource.data.get("payerUserId", "") == resource.data.get("payerUserId", "")
+          && request.resource.data.get("profileOwnerUid", "") in [resource.data.get("profileOwnerUid", ""),request.auth.uid]));
+      allow delete: if signupKind in ["pendingSignups", "matchSignups"] && clubAdministrator(clubId);
+    }
+    match /matchNumberSheets/{sheetId} {
       allow read: if true;
-      allow write: if isSignedIn()
-        && !isCameraSession()
-        && collectionName != "members";
+      allow write: if false;
+    }
+    match /playerPrivacyMigrations/{id} {
+      allow read, write: if false;
+    }
+    match /clubs/{clubId}/{collectionName}/{document=**} {
+      allow read: if !(collectionName in ["members", "players", "playerPhotos", "humanMembers", "pendingSignups", "matchSignups", "numberReservations", "numberOffers", "numberQuotes"]);
+      allow write: if isSignedIn() && !isCameraSession()
+        && !(collectionName in ["members", "players", "playerPhotos", "humanMembers", "pendingSignups", "matchSignups",
+          "publicMembers", "publicPlayers", "publicPlayerPhotos", "publicPendingSignups", "publicMatchSignups", "numberReservations", "numberOffers", "numberQuotes"]);
     }
 
     // ---------------------------------------------------------
@@ -1782,9 +1899,23 @@ service cloud.firestore {
     // Recursive wildcard matches are ORed with other matches.
     // Therefore protected Practice roots are excluded here.
     // ---------------------------------------------------------
+    match /profileAccountChanges/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Orders, contacts, stock and payment states are accessed through the authenticated shop service.
+    match /kitShopProducts/{document=**} { allow read, write: if false; }
+    match /kitShopConfig/{document=**} { allow read, write: if false; }
+    match /kitShopOrders/{document=**} { allow read, write: if false; }
+    match /kitShopCustomers/{document=**} { allow read, write: if false; }
+
     match /{topLevel}/{document=**} {
       allow read, write: if isSignedIn()
                          && !isCameraSession()
+                         && !(topLevel in ["kitShopProducts","kitShopConfig","kitShopOrders","kitShopCustomers"])
+                         && topLevel != "profileAccountChanges"
+                         && topLevel != "playerPrivacyMigrations"
+                         && topLevel != "matchNumberSheets"
                          && topLevel != "practiceControl"
                          && topLevel != "practiceSessions"
                          && topLevel != "sandboxes"

@@ -11,7 +11,7 @@ const projectId="demo-field-matchday-six";
 const app=admin.initializeApp({projectId},"field-matchday-six");
 const db=getFirestore(app);
 const scope={venueId:"field",seasonId:"season",clubId:"club"};
-const body={...scope,matchDayId:"day"};
+const body={...scope,matchDayId:"day",kitConfirmed:true};
 const user={uid:"captain"};
 const ref=db.doc("leagueSeasonSquads/field~season~club");
 let environment;
@@ -40,7 +40,7 @@ beforeEach(async()=>{
       status:"active",playerId:sourcePlayerId,uid:`user-${index}`,
     });
     batch.set(db.doc(`clubs/club/players/${sourcePlayerId}`),{
-      status:"active",fullName:`Player ${index}`,
+      status:"active",fullName:`Player ${index}`,jerseyNumber:index,ownsNumberedBib:true,bibColor:"Blue",
     });
     if(index===6)continue;
     entries[memberId]={memberId,sourcePlayerId,fullName:`Player ${index}`,
@@ -111,14 +111,14 @@ test("withdrawn or relinked fill-in invalidates confirmation",async()=>{
 });
 
 
-test("production cannot use the staging early-send exception", async()=>{
+test("all environments allow early preparation and enforce the 24-hour deadline", async()=>{
   const {sendWindow}=require("../functions/fieldMatchDaySquad");
   const day={dateLocal:"2030-10-10"};
   const fixture={scheduledLocal:"2030-10-10T18:00"};
   const early=Date.parse("2030-10-08T12:00:00+02:00");
   assert.equal(sendWindow({
     day,fixture,now:early,testMode:true,projectId:"five-asides-near-me",
-  }).sendAllowed,false);
+  }).sendAllowed,true);
   assert.equal(sendWindow({
     day,fixture,now:early,testMode:true,projectId:"five-asides-near-me-staging",
   }).sendAllowed,true);

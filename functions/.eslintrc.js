@@ -8,11 +8,13 @@ module.exports = {
     ecmaVersion: 12,
     sourceType: "script",
   },
+  overrides: [{files:["*.mjs"],parserOptions:{sourceType:"module"}}],
   extends: [
     "eslint:recommended",
-    "google",
   ],
   rules: {
+    "quotes": ["error", "double"],
+    "semi": ["error", "always"],
     "max-len": "off",
     "comma-dangle": "off",
     "object-curly-spacing": "off",

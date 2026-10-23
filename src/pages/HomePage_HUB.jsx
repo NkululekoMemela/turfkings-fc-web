@@ -1,3 +1,4 @@
+import {ownMembershipSnapshots} from "../storage/playerPrivacyGateway.js";
 import FirebaseEnvironmentControl from "../components/FirebaseEnvironmentControl.jsx";
 import { LEGAL } from "../legal/policies.js";
 import LegalSignature from "../components/LegalSignature.jsx";
@@ -380,7 +381,7 @@ const HUB_INFO_CONTENT = {
     body: [
       "Browse clubs using the rotating club cards or the interactive map.",
       "Select a club, open its club page, then choose Join Club.",
-      "Complete the sign-up form with your name, surname, Gmail address and contact number.",
+      "Complete the sign-up form with your name, surname, Google account email and contact number.",
       "Once registered, you can sign up for upcoming match days inside that club.",
     ],
   },
@@ -579,9 +580,7 @@ export default function HomePage_HUB({
         if (!clubId) continue;
 
         try {
-          const membersSnap = await getDocs(
-            collection(db, "clubs", clubId, "members")
-          );
+          const membersSnap = await ownMembershipSnapshots(clubId);
 
           const matchedMemberDoc = membersSnap.docs.find((memberDoc) => {
             const member = memberDoc.data() || {};
@@ -714,7 +713,7 @@ export default function HomePage_HUB({
 
             try {
               const membersSnap = await getDocs(
-                collection(db, "clubs", clubId, "members")
+                collection(db, "clubs", clubId, "publicMembers")
               );
 
               const platformSuperAdminEmail =

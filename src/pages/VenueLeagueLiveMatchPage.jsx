@@ -1,3 +1,4 @@
+import {usePlayerNumberLabel} from "../components/PlayerNumberContext.jsx";
 import { fieldHalfSecondsLeft } from "../core/fieldMatchClock.js";
 // src/pages/ThreeTeamLeague_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -3092,9 +3093,11 @@ export function VenueLeagueLiveMatchPage({
     [playerResolver]
   );
 
+  const numberLabel=usePlayerNumberLabel();
+
   const displayCompactPlayerName = useMemo(
-    () => (raw) => playerResolver.compactName(raw),
-    [playerResolver]
+    () => (raw,teamId="") => numberLabel(raw,playerResolver.compactName(raw),teamId),
+    [playerResolver,numberLabel]
   );
 
   const playerKeyFor = useMemo(
@@ -4990,7 +4993,7 @@ export function VenueLeagueLiveMatchPage({
   const teamAAccent = getTeamAccent(teamA || {});
   const teamBAccent = getTeamAccent(teamB || {});
 
-  const handleConfirmLineups = () => {
+  const handleConfirmLineups = async () => {
     if (!canControlMatch) {
       setLineupErrorModal({
         title: "Lineup access",
@@ -5067,9 +5070,14 @@ export function VenueLeagueLiveMatchPage({
       [teamBId]: snapshotB,
     };
 
+    let checkedSnapshot;
+    try { checkedSnapshot=await onConfirmPreMatchLineups?.(merged); }
+    catch(error){window.alert(error.message || "Kit verification failed.");return;}
+    if(checkedSnapshot===false)return;
+    if(checkedSnapshot)Object.assign(merged,checkedSnapshot);
     setLocalConfirmedSnapshots(merged);
     setLocalConfirmedMatchKey(currentLineupMatchKey);
-    onConfirmPreMatchLineups?.(merged);
+
     setShowVerifyModal(false);
 
     if (pendingBenchParticipant?.name) {
@@ -8231,7 +8239,7 @@ export function VenueLeagueLiveMatchPage({
                               entry
                             )
                           }
-                          displayCompactPlayerName={displayCompactPlayerName}
+                          displayCompactPlayerName={name=>displayCompactPlayerName(name,teamAId)}
                           getPlayerPhoto={getPlayerPhoto}
                           guestSnapshotChecker={(name) =>
                             isGuestPlayerInSnapshot(verifiedLineupA, name)
@@ -8256,7 +8264,7 @@ export function VenueLeagueLiveMatchPage({
                               entry
                             )
                           }
-                          displayCompactPlayerName={displayCompactPlayerName}
+                          displayCompactPlayerName={name=>displayCompactPlayerName(name,teamBId)}
                           getPlayerPhoto={getPlayerPhoto}
                           guestSnapshotChecker={(name) =>
                             isGuestPlayerInSnapshot(verifiedLineupB, name)
@@ -8924,7 +8932,7 @@ export function VenueLeagueLiveMatchPage({
                       playerKeyFor
                     )}
                     canonicalName={canonicalName}
-                    displayCompactPlayerName={displayCompactPlayerName}
+                    displayCompactPlayerName={name=>displayCompactPlayerName(name,teamAId)}
                     playerKeyFor={playerKeyFor}
                     getPlayerPhoto={getPlayerPhoto}
                     disabled={!canControlMatch}
@@ -8950,7 +8958,7 @@ export function VenueLeagueLiveMatchPage({
                       playerKeyFor
                     )}
                     canonicalName={canonicalName}
-                    displayCompactPlayerName={displayCompactPlayerName}
+                    displayCompactPlayerName={name=>displayCompactPlayerName(name,teamBId)}
                     playerKeyFor={playerKeyFor}
                     getPlayerPhoto={getPlayerPhoto}
                     disabled={!canControlMatch}

@@ -510,7 +510,7 @@ export default function VenueLeagueAccessPanel({
 
       if (!clubAdminMatches(club, user)) {
         throw new Error(
-          "This Gmail account is not registered as an administrator of the selected club."
+          "This Google account is not registered as an administrator of the selected club."
         );
       }
 
@@ -640,7 +640,7 @@ export default function VenueLeagueAccessPanel({
         isAdministrator = true;
       } else {
         throw new Error(
-          "This Gmail account is not registered as active Field staff."
+          "This Google account is not registered as active Field staff."
         );
       }
 
@@ -777,7 +777,7 @@ export default function VenueLeagueAccessPanel({
           </h2>
 
           <p className="muted small" style={{ marginTop: 0 }}>
-            Select your club, then sign in with its registered administrator Gmail account.
+            Select your club, then sign in with its registered administrator Google account.
           </p>
 
           <div
@@ -1407,11 +1407,11 @@ export default function VenueLeagueAccessPanel({
               </label>
 
               <label className="field-column">
-                <span>Gmail address</span>
+                <span>Google account email</span>
                 <input
                   type="email"
                   className="text-input"
-                  placeholder="e.g. yourname@gmail.com"
+                  placeholder="e.g. you@example.com"
                   value={joinEmail}
                   onChange={(event) => {
                     setJoinEmail(event.target.value);

@@ -3,7 +3,6 @@ const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {FieldValue} = require("firebase-admin/firestore");
 const {getAuth} = require("firebase-admin/auth");
 const {createHash, randomUUID} = require("node:crypto");
-const service = require("./fieldSeasonSquadService");
 const hash = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const address = value => String(value || "").trim().toLowerCase();
 
@@ -53,10 +52,10 @@ function buildHandlers({db, region, sendBatch}) {
       }
       const result = await sendBatch({
         tokenRecords,
-        title: kind === "reminder" ? "Confirm tomorrow’s six" : "League fixtures released",
+        title: kind === "reminder" ? "Numbered teamsheet due tomorrow" : "League fixtures released",
         body: kind === "reminder"
-          ? "Review availability, arrange any fill-ins and send your six-player squad to the Field."
-          : "Your league dates are ready. Open the matrix and mark any days you cannot play.",
+          ? "Your numbered teamsheet is due 24 hours before kickoff. Check that every selected player owns and will wear a numbered bib, arrange fill-ins, then send your 5 or 6-player squad."
+          : "League fixtures are ready. Own a numbered bib before official play and record its number and colour in Profile. Captains: prepare kit now and submit numbered teamsheets 24 hours before kickoff.",
         imageUrl: "",
         data: {
           type: kind === "reminder" ? "field_squad_ready_reminder" : "field_squad_fixtures_released",
@@ -154,12 +153,14 @@ function buildHandlers({db, region, sendBatch}) {
     remindFieldSquadCaptains: onSchedule({
       schedule: "0 8-20 * * *", timeZone: "Africa/Johannesburg", region,
     }, async () => {
-      const tomorrow = new Date(Date.now() + 86400000);
+      const tomorrow = new Date(Date.now() + 2 * 86400000);
       const date = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Africa/Johannesburg", year: "numeric",
         month: "2-digit", day: "2-digit",
       }).format(tomorrow);
       let cursor = null;
+      // Pagination stops when the final bounded page is reached.
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         let query = db.collection("leagueVenues").orderBy("__name__").limit(100);
         if (cursor) query = query.startAfter(cursor);

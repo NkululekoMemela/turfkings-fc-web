@@ -395,7 +395,7 @@ export async function requestVenueStaffAccess({
     !cleanEmail ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)
   ) {
-    throw new Error("Please enter a valid Gmail address.");
+    throw new Error("Please enter a valid Google account email.");
   }
 
   if (
@@ -427,8 +427,8 @@ export async function requestVenueStaffAccess({
   if (duplicate) {
     throw new Error(
       duplicate.data()?.status === "pending"
-        ? "This Gmail already has a request awaiting approval."
-        : "This Gmail is already registered with the Field Team."
+        ? "This Google account already has a request awaiting approval."
+        : "This Google account is already registered with the Field Team."
     );
   }
 
@@ -479,7 +479,7 @@ export async function claimApprovedVenueStaffProfile({
 
   if (!user?.uid || !user?.email) {
     throw new Error(
-      "Sign in with the Gmail address on the approved profile."
+      "Sign in with the Google account email on the approved profile."
     );
   }
 
@@ -512,7 +512,7 @@ export async function claimApprovedVenueStaffProfile({
 
   if (clean(source.email).toLowerCase() !== signedInEmail) {
     throw new Error(
-      "This Google account does not match the Gmail on the selected Field staff profile."
+      "This Google account does not match the Google account on the selected Field staff profile."
     );
   }
 

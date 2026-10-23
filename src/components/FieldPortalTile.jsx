@@ -7,12 +7,13 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export default function FieldPortalTile({
-  style, label, subtitle, onClick, destination, disabled = false, clubId,
+  style, label, subtitle, onClick, destination, disabled = false, clubId, backgroundImage = "", wide = false,
 }) {
   const [travelling, setTravelling] = useState(false);
   const actionRef = useRef(null);
   const [returnClub, setReturnClub] = useState(null);
   const [logoFailed, setLogoFailed] = useState(false);
+  const [clubPicture,setClubPicture]=useState({clubId:"",image:""});
 
   useEffect(() => {
     let cancelled = false;
@@ -20,10 +21,15 @@ export default function FieldPortalTile({
     setReturnClub(null);
     if (!clubId) return undefined;
 
-    setReturnClub(buildClubIdentity({ id: clubId, name: destination }));
+    const fallback=buildClubIdentity({id:clubId,name:destination});
+    setReturnClub(fallback);
+    setClubPicture({clubId,image:fallback.isTurfKings?fallback.heroImage:""});
     readPortalClub(clubId).then(snapshot => {
       if (cancelled) return;
       setLogoFailed(false);
+      const data=snapshot.data() || {};
+      // Match the Club entry page: uploaded hero, team photo, then its built-in fallback.
+      setClubPicture({clubId,image:data.heroImage || data.teamPhoto || (fallback.isTurfKings?fallback.heroImage:"")});
       setReturnClub(buildClubIdentity({
         ...(snapshot.data() || {}),
         id: clubId,
@@ -35,6 +41,7 @@ export default function FieldPortalTile({
     return () => { cancelled = true; };
   }, [clubId, destination]);
 
+  const portalBackground=backgroundImage || (clubPicture.clubId===clubId?clubPicture.image:"");
   const clubLogo = returnClub?.transparentLogoUrl || returnClub?.logoUrl;
   const showClubLogo = clubLogo && clubLogo !== DEFAULT_PLATFORM_LOGO && !logoFailed;
   const clubInitials = String(destination || "Club")
@@ -54,13 +61,18 @@ export default function FieldPortalTile({
     <>
     <style>{`
       @media (max-width: 480px) {
-        .field-portal-tile,
-        .field-travel-tile-slot {
+        .field-portal-tile:not(.is-wide) {
           grid-column: 1 !important;
         }
+        .field-travel-tile-slot {
+          grid-column: span 2 !important;
+        }
+      }
+      .field-portal-tile.is-wide > span:first-child {
+        width:50px!important;height:50px!important;flex-shrink:0;
       }
     `}</style>
-    <button type="button" className="field-portal-tile"
+    <button type="button" className={`field-portal-tile${wide?" is-wide":""}`}
       disabled={disabled || travelling}
       onClick={() => {
         if (disabled || travelling) return;
@@ -70,11 +82,14 @@ export default function FieldPortalTile({
       }}
       style={{
         ...style,
-        gridColumn: "auto",
+        gridColumn: wide ? "span 2" : "auto",
+        ...(wide?{width:"100%",aspectRatio:"auto",height:"138px",minHeight:"138px",maxHeight:"138px"}:{}),
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center", gap: "12px",
         position: "relative", overflow: "hidden", color: "#fff",
-        background: "radial-gradient(ellipse at 50% 35%, rgba(34,211,238,.22), transparent 60%), linear-gradient(145deg,#17112e,#071426)",
+        background: portalBackground
+          ? `linear-gradient(90deg,rgba(3,12,27,.8),rgba(3,12,27,.35),rgba(3,12,27,.75)),url(${JSON.stringify(portalBackground)}) center / cover no-repeat`
+          : "radial-gradient(ellipse at 50% 35%, rgba(34,211,238,.22), transparent 60%), linear-gradient(145deg,#17112e,#071426)",
         border: "1px solid rgba(167,139,250,.65)",
         boxShadow: "inset 0 0 24px rgba(139,92,246,.12), 0 0 20px rgba(34,211,238,.1)",
       }}>
@@ -113,7 +128,7 @@ export default function FieldPortalTile({
           fontSize: "28px", color: "#a5f3fc",
         }}>🏟️</span>
       )}
-      <strong style={{ lineHeight: 1.3, textAlign: "center" }}>{label}</strong>
+      <strong style={{ lineHeight: 1.3, textAlign: "center", textShadow: portalBackground ? "0 2px 8px #000" : undefined }}>{label}</strong>
       {subtitle && <small style={{
         maxWidth: "100%", overflowWrap: "anywhere",
         textAlign: "center", color: "#c4b5fd", lineHeight: 1.3,

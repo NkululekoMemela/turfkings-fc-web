@@ -1,3 +1,5 @@
+import {CaptainKitEditor} from "../components/PlayerKitEditor.jsx";
+import {buildKitRoster,validateKitTeams} from "../core/playerKit.js";
 import SharedSquadTeamsheet from "../components/SharedSquadTeamsheet.jsx";
 import SharedSquadPitchPreview from "../components/SharedSquadPitchPreview.jsx";
 // src/pages/SquadsPage.jsx
@@ -2728,6 +2730,8 @@ export function SquadsPage({
 
   const handleConfirmSave = async () => {
     if (!canEdit) return;
+    try {validateKitTeams(buildKitRoster(sourceTeams.filter(team=>(team.players || []).length>0),allPlayers));}
+    catch(error){setSaveError(error.message);return;}
 
     const trimmedCode = String(saveCode || "").trim();
 
@@ -3529,7 +3533,10 @@ export function SquadsPage({
         getPreviewTeamName={getPreviewTeamName}
         getTeamIdentityVisual={getTeamIdentityVisual}
         resolveSquadTeamIdentity={resolveSquadTeamIdentity}
-        displayNameOf={displayNameOf}
+        displayNameOf={(pid,teamId)=>{
+          const rows=buildKitRoster(sourceTeams,allPlayers).filter(team=>!teamId || team.id===String(teamId)).flatMap(team=>team.players.filter(row=>row.key===pid));
+          return rows.length===1&&rows[0].number!==null?`#${rows[0].number} · ${displayNameOf(pid)}`:displayNameOf(pid);
+        }}
       />
     );
   };
@@ -3634,6 +3641,16 @@ export function SquadsPage({
           </div>
         </header>
       </div>
+
+      {sourceTeams.some(team=>(team.players || []).length>0)&&<CaptainKitEditor
+        teams={buildKitRoster(sourceTeams.filter(team=>(team.players || []).length>0),allPlayers)} profiles={allPlayers} canEdit={canEdit}
+        onChange={kitTeams=>{
+          const apply=list=>list.map(team=>{
+            const kit=kitTeams.find(item=>item.id===String(team.id));
+            return kit?{...team,kitChoice:kit.kitChoice,kitColor:kit.kitColor,kitNumbers:Object.fromEntries(kit.players.map(row=>[row.key,{number:row.number,source:"captain"}]))}:team;
+          });
+          if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);
+        }}/>}
 
       {canEdit && (
         <div

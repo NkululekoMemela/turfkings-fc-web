@@ -9,6 +9,7 @@ const candidates = Array.from({length: 7}, (_, index) => ({
   memberId: `member${index}`,
   sourcePlayerId: `player${index}`,
   fullName: `Player ${index}`,
+  jerseyNumber:index,ownsNumberedBib:true,bibColor:"Blue",
   mentality: index % 5 + 1,
   shooting: 5 - index % 5,
 }));
@@ -18,6 +19,7 @@ function submission(ids) {
   const draft = project(args);
   return project({...args, saved: {
     memberIds: ids, fingerprint: draft.fingerprint, submittedAtMs: 1,
+    kitConfirmed:true,kitNumbers:Object.fromEntries(candidates.map(p=>[p.sourcePlayerId,p.jerseyNumber])),
   }});
 }
 

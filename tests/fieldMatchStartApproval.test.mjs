@@ -41,7 +41,9 @@ async function confirmFormation(clubId, count = 6) {
       memberIds: selected.map(p => p.memberId),
       fingerprint: day.submission.fingerprint,
       submittedByUid: `captain-${clubId}`,
-      submittedAtMs: Date.now(),
+      submittedAtMs: Date.parse("2025-12-31T09:00:00+02:00"),
+      kitConfirmed:true,
+      kitNumbers:Object.fromEntries(selected.map(p=>[p.sourcePlayerId,p.jerseyNumber])),
     },
     updatedAt: Timestamp.now(),
   });
@@ -104,7 +106,7 @@ beforeEach(async () => {
         status: "active", playerId: sourcePlayerId,
       });
       batch.set(db.doc(`clubs/${clubId}/players/${sourcePlayerId}`), {
-        status: "active", fullName: `Player ${i}`,
+        status: "active", fullName: `Player ${i}`,jerseyNumber:i,ownsNumberedBib:true,bibColor:"Blue",
         mentality: i % 5 + 1, shooting: 5 - i % 5,
       });
       entries[memberId] = {

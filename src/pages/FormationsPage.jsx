@@ -1,9 +1,12 @@
+import {CLUB_COLLECTIONS} from "../core/clubPaths.js";
+import {buildKitRoster,labelWithNumber} from "../core/playerKit.js";
 // src/pages/FormationsPage.jsx
 import { FANM_PRO_CLUBS } from "../data/fanm/fanmTeamLibrary.js";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { db } from "../firebaseConfig";
 import {
+  getClubDoc,
   getPlayersCollection,
   getMembersCollection,
   getPlayerPhotosCollection,
@@ -1136,6 +1139,8 @@ export function FormationsPage({
             fullName,
             shortName,
             aliases,
+            jerseyNumber: data.jerseyNumber ?? null,
+            kitNumberSource: data.kitNumberSource || "profile",
             status: data.status || "active",
             mentality,
             shooting,
@@ -1395,7 +1400,7 @@ export function FormationsPage({
       // but never mutate the real club's permanent playerPhotos records.
       if (!isPracticeMode) {
         await setDoc(
-          getClubDoc(db, CLUB_COLLECTIONS.playerPhotos, docId),
+          getClubDoc(db, CLUB_COLLECTIONS.playerPhotos, docId, activeClubId),
           {
             name: photoPlayer,
             teamId: selectedTeamCanonical ? selectedTeamCanonical.id : "turf_kings",
@@ -1624,8 +1629,9 @@ export function FormationsPage({
     return normKey(name) === normKey(effectiveCaptainName);
   };
 
+  const formationKitTeams=useMemo(()=>buildKitRoster(sourceTeams,players),[sourceTeams,players]);
   const withCaptainTag = (name) => {
-    const label = displayCompactName(name);
+    const label = labelWithNumber(formationKitTeams,name,displayCompactName(name),selectedTeamId || "");
     return isCaptainPlayer(name) ? `${label} (C)` : label;
   };
 
@@ -2504,7 +2510,7 @@ export function FormationsPage({
                         fontWeight: 700,
                       }}
                     >
-                      💪 {displayCompactName(name)}
+                      💪 {withCaptainTag(name)}
                     </span>
                   ))}
                 </div>
@@ -2548,7 +2554,7 @@ export function FormationsPage({
                         }}
                       >
                         {selected ? "💪 " : ""}
-                        {displayCompactName(name)}
+                        {withCaptainTag(name)}
                       </button>
                     );
                   })}
@@ -2891,7 +2897,7 @@ export function FormationsPage({
                       ) : (
                         teamPhotoUploadPlayers.map((name) => (
                           <option key={`guest-photo-${name}`} value={name}>
-                            {displayCompactName(name)}
+                            {withCaptainTag(name)}
                           </option>
                         ))
                       )}

@@ -1,5 +1,4 @@
 import LeagueMatchDaySubmission from "../components/LeagueMatchDaySubmission.jsx";
-import SignupHeroHeader from "../components/SignupHeroHeader.jsx";
 import useSignupPlayerPhotos from "../hooks/useSignupPlayerPhotos.js";
 import useLeagueSignupAttendanceBadge from "../hooks/useLeagueSignupAttendanceBadge.js";
 import LeagueSeasonMarkPaid from "../components/LeagueSeasonMarkPaid.jsx";
@@ -21,6 +20,8 @@ const money = cents => new Intl.NumberFormat("en-ZA", {
 
 export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identity, onOpenField, playerPhotosByName}) {
   const [user, setUser] = useState(null);
+  const [headerScrolled,setHeaderScrolled]=useState(false);
+  useEffect(()=>{const update=()=>setHeaderScrolled(window.scrollY>6);update();window.addEventListener("scroll",update,{passive:true});return()=>window.removeEventListener("scroll",update);},[]);
   const getPlayerPhoto = useSignupPlayerPhotos(clubId, playerPhotosByName);
   const [showLeagueCalendar, setShowLeagueCalendar] = useState(false);
   const [fixtureClubs, setFixtureClubs] = useState({});
@@ -69,8 +70,8 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
             String(activeRole || "").trim().toLowerCase()
           )) {
         const [members, profiles] = await Promise.all([
-          getDocs(collection(db, "clubs", clubId, "members")),
-          getDocs(collection(db, "clubs", clubId, "players")),
+          getDocs(collection(db, "clubs", clubId, "publicMembers")),
+          getDocs(collection(db, "clubs", clubId, "publicPlayers")),
         ]);
         const profileMap = new Map(profiles.docs.map(item => [item.id, item.data()]));
         directory = members.docs.flatMap(item => {
@@ -158,9 +159,6 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
     (canManageUi ? entries.filter(entry => entry.invitationStatus === "accepted")
       : invitation?.invitationStatus === "accepted" ? [invitation] : []);
 
-  const ownPhoto = getPlayerPhoto(invitation?.fullName ||
-    identity?.fullName || identity?.displayName || "") ||
-    identity?.photoUrl || user?.photoURL || "";
   const ownName = invitation?.fullName || identity?.fullName ||
     identity?.displayName || identity?.shortName || user?.displayName || "Player";
 
@@ -237,45 +235,17 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
       invitation.paymentStatus !== "paid") {
     return (
       <FieldSeasonPayment scope={context.scope}
-        invitation={invitation} paymentPage
-        onBack={() => setSeasonPaymentOpen(false)} />
+        invitation={invitation} paymentPage games={context.season.schedulePublishedAtMs?games:[]}
+        onCommitted={()=>setRevision(value=>value+1)}
+        onBack={() => {setSeasonPaymentOpen(false);setRevision(value=>value+1);}} />
     );
   }
 
   return (
     <div className="page club-league-season-page">
-      <button type="button" className="secondary-btn" onClick={onBack}>
-        ← Club Home
-      </button>
-      <SignupHeroHeader
-        photoData={ownPhoto}
-        beneficiary={beneficiary}
-        attendanceBadgeText={attendanceBadgeText}
-        attendanceSubtext={attendanceSubtext}
-        isMobile={window.innerWidth <= 640}
-        matchTicketBusy={busy || loading}
-        showPullOut={false}
-        title="Official League Squad"
-        subtext={`${context?.venue?.name || "Field league"} · ${
-          context?.season?.name || "Season squad"
-        }`}
-        onPullOut={() => {
-          document.querySelector(".league-attendance-card")?.scrollIntoView({
-            behavior: "smooth", block: "center",
-          });
-          setMessage("Tap × on the days you cannot play.");
-        }}
-        onOpenCalendar={() => setShowLeagueCalendar(true)}
-      />
-      {publishedDates.length > 0 && (
-        <section className="card" style={{padding: 16, marginBottom: 14}}>
-          <strong>Starts {formatDay(publishedDates[0])} · Weekly games</strong>
-          {publishedDates.length > 1 && <p className="muted small">
-            Published schedule: {formatDay(publishedDates[0])}
-            {" – "}{formatDay(publishedDates[publishedDates.length - 1])}
-          </p>}
-        </section>
-      )}
+      <div className={`landing-header-sticky ${headerScrolled?"is-scrolled":""}`}><header className="header"><div className="league-studio-header"><div className="header-title"><h1>Official League Squad</h1><div className="league-studio-context">{context?.venue?.name||"Field league"} · {context?.season?.name||"Season squad"}</div></div><button type="button" className="secondary-btn league-studio-home" onClick={onBack} aria-label="Home">🏠</button></div></header></div>
+      <div className="league-season-meta"><span>{publishedDates.length?`Starts ${formatDay(publishedDates[0])} · ${games.length} match day${games.length===1?"":"s"}`:"Fixtures to be announced"}</span><button type="button" className="secondary-btn" onClick={()=>setShowLeagueCalendar(true)}>View fixtures</button></div>
+      <div className="league-personal-attendance" aria-label="Your attendance"><strong>{attendanceBadgeText}</strong>{attendanceSubtext&&<span>{attendanceSubtext}</span>}</div>
       {error && <p role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
       {loading ? <p role="status">Loading your league…</p> :
@@ -286,6 +256,7 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
         Try again
       </button>}
 
+      {context&&(!canManageUi||invitation)&&<section className="card league-own-booking league-commit-card"><span className="league-studio-eyebrow">YOUR SEASON PLACE</span>{!invitation?<p>Your captain has not invited you to this season squad yet.</p>:<><h2>{invitation.fullName}</h2>{invitation.paymentStatus==="paid"?<><p className="league-own-paid" role="status">✓ Season booked</p><p className="muted small">You are available for the season. Only update the days you cannot play. Your captain selects each match-day team.</p></>:invitation.invitationStatus==="declined"?<p>Invitation declined. Contact your captain if your plans change.</p>:<><p className="muted">One season commitment. Review the dates and payment together.</p><FieldSeasonPayment scope={context.scope} invitation={invitation} onOpenPayment={()=>{setSeasonPaymentOpen(true);window.scrollTo(0,0);}}/>{invitation.invitationStatus==="accepted"&&<p className="muted small">Commitment saved · {invitation.seasonCheckoutPaymentId?"Resume payment to complete your booking.":"Payment confirmation pending."}</p>}{invitation.invitationStatus==="pending"&&<button type="button" className="league-decline-link" disabled={busy} onClick={()=>{if(window.confirm("Decline this season invitation?"))act(respondSeasonInvitation,{memberId:invitation.memberId,response:"declined"},"Invitation declined.");}}>I cannot join this season</button>}</>}</>}</section>}
       {context && canManageUi && !squad && (
         <section className="card" style={{
           border: "1px solid rgba(167,139,250,.6)", padding: 18,
@@ -358,7 +329,7 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
       )}
 
       {canManageUi && squad && (
-        <section className="card" style={{padding: 18}}>
+        <details className="card league-admin-management"><summary>Manage squad &amp; payments <span>{entries.length} invited · {entries.filter(entry=>entry.paymentStatus==="paid").length} booked</span></summary>
           <h3>Season squad</h3>
           <LeagueSeasonMarkPaid
             scope={context.scope}
@@ -402,14 +373,14 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
             </div>
           ))}
           </div>
-        </section>
+        </details>
       )}
 
       {context && availabilityPlayers.length > 0 && (
         <section className="card league-attendance-card">
-          <h3>Match-day availability</h3>
+          <details className="league-squad-availability" open={canManageUi}><summary>Squad &amp; availability · {availabilityPlayers.length} players</summary>
           <p className="muted small">
-            ✓ Available · × Unavailable. Tap a day you cannot play.
+            Your season commitment covers all games. Change only the dates you cannot play. ✓ Available · × Unavailable.
           </p>
           {!games.length ? (
             <p className="muted small">Your Field has not scheduled your games yet.</p>
@@ -517,9 +488,11 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
               </table>
             </div>
           )}
+          </details>
         </section>
       )}
 
+      {context && <details className="league-kit-reminder"><summary>Numbered bib required for official play</summary><p className="muted small">Own and wear a numbered bib, with its number recorded in Profile. Your captain checks kit and submits the numbered teamsheet at least 24 hours before kickoff.</p></details>}
       {context && canManageUi && context.season.schedulePublishedAtMs && (
         <LeagueMatchDaySubmission
           scope={context.scope} games={games} revision={revision}
@@ -582,49 +555,7 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
         </div>
       )}
 
-      {context && (!canManageUi || invitation) && (
-        <section className="card league-own-booking">
-          {!invitation ? <p>You have no season squad invitation yet.</p> : (
-            <>
-              <h3>{invitation.fullName}</h3>
-              {invitation.paymentStatus === "paid" ? (
-                <p className="league-own-paid" role="status">✓ Paid · Season place booked</p>
-              ) : (
-                <>
-                  <h2>{money(Number(invitation.contributionCents) + (
-                    invitation.platformFeePaymentStatus === "paid" ? 0 : 7900
-                  ))}</h2>
-                  <p className="muted small">Whole season · total payable</p>
-                  <FieldSeasonPayment scope={context.scope}
-                    invitation={invitation}
-                    onOpenPayment={() => setSeasonPaymentOpen(true)} />
-                </>
-              )}
-              <p>{invitation.paymentStatus === "paid"
-                ? "Your club contribution is confirmed."
-                : invitation.invitationStatus === "accepted"
-                ? invitation.seasonCheckoutPaymentId
-                  ? "Checkout opened · admin confirmation pending."
-                  : "Invitation accepted · payment not yet confirmed."
-                : invitation.invitationStatus === "declined"
-                ? "Invitation declined." : "Your captain has invited you to the squad."}</p>
-              {invitation.invitationStatus === "pending" && (
-                <div style={{display: "flex", flexWrap: "wrap", gap: 12}}>
-                  {["accepted", "declined"].map(response => (
-                    <button key={response} type="button"
-                      className={response === "accepted" ? "primary-btn" : "secondary-btn"}
-                      disabled={busy} onClick={() => act(respondSeasonInvitation,
-                        {memberId: invitation.memberId, response},
-                        response === "accepted" ? "Invitation accepted." : "Invitation declined.")}>
-                      {response === "accepted" ? "Accept invitation" : "Decline"}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </section>
-      )}
+
     </div>
   );
 }

@@ -1,0 +1,7 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {SHOP_PRICES,BIB_PACK_SIZES,bibPackTotal,previewBibColour,conceptColours} from '../src/core/shopShowcase.mjs';
+test('agreed prices use integer cents and a complete kit costs R700',()=>{assert.equal(SHOP_PRICES.bib,9500);assert.equal(SHOP_PRICES.top,40000);assert.equal(SHOP_PRICES.shorts,30000);assert.equal(SHOP_PRICES.top+SHOP_PRICES.shorts,70000);assert.equal(SHOP_PRICES.hirePerMatch,500);});
+test('6 and 12-bib packs charge R95 per player without an invented discount',()=>{assert.deepEqual(BIB_PACK_SIZES,[6,12]);assert.equal(bibPackTotal(6),57000);assert.equal(bibPackTotal(12),114000);for(const size of [0,5,13,'6'])assert.throws(()=>bibPackTotal(size));});
+test('concept uses the captain’s saved colours without modifying club data',()=>{const club={homeColor:'#2563eb',awayColor:'#ffffff'};assert.deepEqual(conceptColours(club),{home:'#2563eb',away:'#ffffff',usesClubColours:true});assert.equal(club.homeColor,'#2563eb');});
+test('missing or unsafe colour values are labelled as samples and cannot enter SVG styles',()=>{for(const club of [{},{homeColor:'url(evil)',awayColor:'#ffffff'}]){const p=conceptColours(club);assert.equal(p.usesClubColours,false);assert.match(p.home,/^#[0-9a-f]{6}$/i);}});
+test('colour browsing supports profile entry points and falls back to a supplied product photo',()=>{assert.equal(previewBibColour('#15803d'),'green');assert.equal(previewBibColour('Orange'),'orange');assert.equal(previewBibColour('unknown'),'blue');});
