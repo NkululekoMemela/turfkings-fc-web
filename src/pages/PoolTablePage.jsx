@@ -6,9 +6,9 @@ const MASCOTS=Array.from({length:8},(_,i)=>`warrior-${String(i+1).padStart(2,'0'
 const SHIRTS=['#24a46d','#2563eb','#dc3545','#f3f4f6','#171717','#f5bf26','#9333ea','#f97316'];
 const HAIR=['#211b18','#65402a','#c89645','#d2d4d8','#a74128'];
 function loadPool(){try{const p=JSON.parse(localStorage.getItem(POOL_STORAGE_KEY));if(p?.version===1&&Array.isArray(p.players)&&Array.isArray(p.matches))return migratePool(p);}catch{}return migratePool(emptyPool());}
-export default function PoolTablePage({onBack}){
+export default function PoolTablePage({onBack,notificationRoute}){
  const [shared,setShared]=useState(true);
- return shared?<PoolNightOnline onBack={onBack} onLocal={()=>setShared(false)}/>:<LocalPoolTablePage onBack={onBack} onOnline={()=>setShared(true)}/>;
+ return shared?<PoolNightOnline initialRoute={notificationRoute} onBack={onBack} onLocal={()=>setShared(false)}/>:<LocalPoolTablePage onBack={onBack} onOnline={()=>setShared(true)}/>;
 }
 function LocalPoolTablePage({onBack,onOnline}){
  const [activeTab,setActiveTab]=useState('tables');
@@ -27,7 +27,7 @@ function LocalPoolTablePage({onBack,onOnline}){
  const floorPairs=suggestedPoolPairs(pool);
  const opponentRows=inspect?opponents(pool,inspect):[];
  return <main className="pool-page pool-premium pool-local" data-pool-tab={activeTab}><div className="pool-shell"><header className="pool-header"><button className="pool-icon-back" onClick={onBack} aria-label="Back">‹</button><EightBall/><div><span className="pool-eyebrow">THE POOL ROOM</span><h1>Pool Table</h1></div><span className="pool-session">THIS DEVICE</span></header>
- <nav className="pool-jump-nav" aria-label="Pool sections">{[['tables','Tables'],['players','Players'],['standings','Standings'],['recent','Games'],['settings','Setup']].map(([id,label])=><button key={id} type="button" data-tone={id} aria-current={activeTab===id?'page':undefined} onClick={()=>goTo(id)}>{label}</button>)}</nav><div className="pool-local-banner"><span>Saved on this device</span><button onClick={onOnline}>Play on your own phones →</button></div>{error&&<p className="pool-error" role="alert">{error}</p>}
+ <nav className="pool-jump-nav" aria-label="Pool sections">{[['tables','Tables'],['players','Players'],['standings','Standings'],['recent','Games'],['settings','Setup']].map(([id,label])=><button key={id} type="button" data-tone={id} aria-current={activeTab===id?'page':undefined} onClick={()=>goTo(id)}>{label}</button>)}</nav><div className="pool-local-banner"><span>Previous device-only games · Not shared online</span><button onClick={onOnline}>Back to shared nights →</button></div>{error&&<p className="pool-error" role="alert">{error}</p>}
  <PoolSection id="settings" title="Tonight" tone="amber" recap={pool.coins===null?'Set coins to begin':`${coinsLeft(pool)} unused coins · ${pool.tables} tables · ${pool.mode==='winner'?'Winner stays':'Fixtures'}`} open={isOpen('settings',pool.coins===null)} onToggle={v=>toggleSection('settings',v)}><p>{pool.coins===null?'How many coins do you have for tonight?':`${coinsLeft(pool)} unused coins · ${pool.active.length} coins in active games`}</p>{coinReminder(pool)&&<p id="pool-coin-reminder" role="status" className="pool-error">{coinsLeft(pool)<=3?`You have ${coinsLeft(pool)} remaining unused coins?`:'Halfway coin check: how many unused coins are actually left?'} Include coins added by friends. Coins already in active tables are excluded.</p>}
  <form onSubmit={coinUpdate} className="pool-add"><input aria-label="Actual unused coins" type="number" min="0" step="1" required placeholder="Unused coins" value={coinInput} onChange={e=>setCoinInput(e.target.value)}/><button>{pool.coins===null?'Set coins':'Update coins'}</button></form><p className="pool-rule">One coin per game. Active games reserve coins; cancelled games release them. Update this count if a coin was spent on a cancelled game.</p>
 

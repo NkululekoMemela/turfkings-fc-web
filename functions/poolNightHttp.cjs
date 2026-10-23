@@ -8,6 +8,7 @@ exports.poolNight=onRequest({region:"us-central1",cors:true,timeoutSeconds:60,ma
   if(!admin.apps.length)admin.initializeApp();
   const user=await admin.auth().verifyIdToken(bearer[1],true);
   const {getFirestore}=require("firebase-admin/firestore");
-  res.json(await require("./poolNightService.cjs").handle({db:getFirestore(),user,body:req.body||{}}));
+  const context={db:getFirestore(),user,body:req.body||{}};
+  res.json(["pushConfig","registerPush"].includes(context.body.action)?await require("./poolPush.cjs").register(context):await require("./poolNightService.cjs").handle(context));
  }catch(error){res.status(400).json({error:error.message||"Could not update this pool night."});}
 });

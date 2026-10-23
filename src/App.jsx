@@ -1,3 +1,4 @@
+import PoolNotificationBridge from "./components/PoolNotificationBridge.jsx";
 import {PremiumNotificationToast} from "./components/PremiumNotification.jsx";
 import KitShopPage from "./pages/KitShopPage.jsx";
 import BookingPageBoundary from "./components/BookingPageBoundary.jsx";
@@ -2884,6 +2885,10 @@ export default function App() {
       activeClubId,
       onNotificationOpened: async notification => {
         const data = notification?.data || {};
+        if (data.type === "pool_alert") {
+          window.dispatchEvent(new CustomEvent("pool-native-open", {detail: data}));
+          return;
+        }
 
         if ([
           "field_season_squad_invitation",
@@ -11895,7 +11900,7 @@ export default function App() {
           </>
         )}
 
-      {authUser?.uid&&!authUser.isAnonymous&&<PremiumNotificationToast key={`notification:${authUser.uid}`}/>}
+      <PoolNotificationBridge key="pool-notification-bridge"/>{authUser?.uid&&!authUser.isAnonymous&&<PremiumNotificationToast key={`notification:${authUser.uid}`}/>}
       {canAccessPlayerFeatures&&page!==PAGE_PLAYER_PROFILE&&page!==PAGE_VENUE_ENTRY&&<NumberOfferNotification clubId={activeClubId} enabled={!isPracticeMode} onOpen={()=>setPage(PAGE_PLAYER_PROFILE)}/>}
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (

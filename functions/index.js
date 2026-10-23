@@ -5935,3 +5935,5 @@ exports.kitShop = require("./kitShopHttp.cjs").kitShop;
 Object.assign(exports, require("./fieldPremiumNotifications.cjs").buildHandlers({db,region:REGION,sendBatch:sendPaymentNotificationBatch}));
 
 exports.poolNight = require("./poolNightHttp.cjs").poolNight;
+
+exports.onPoolAlertCreated = require("./poolPush.cjs").buildHandler();

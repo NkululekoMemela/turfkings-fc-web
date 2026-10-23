@@ -1,4 +1,4 @@
-const {randomBytes,randomUUID}=require("node:crypto");
+const {randomBytes,randomUUID,createHash}=require("node:crypto");
 const validUser=user=>Boolean(user?.uid&&user.email_verified===true&&!user.cameraSession);
 const fail=message=>{throw new Error(message);};
 const integer=(value,min,max,label)=>Number.isInteger(value)&&value>=min&&value<=max?value:fail(label);
@@ -7,15 +7,32 @@ async function handle({db,user,body}){
  if(!validUser(user))fail("Sign in with a verified account to join the night.");
  const engine=await import("./poolEngine.mjs");
  const action=body.action,code=String(body.code||"").trim().toUpperCase();
+ if(action==="list"){
+  const {FieldPath}=require("firebase-admin/firestore");
+  const nights=db.collection("poolNights");
+  const snapshots=await Promise.all([nights.where("ownerUid","==",user.uid).limit(100).get(),nights.where(new FieldPath("members",user.uid,"status"),"in",["approved","pending"]).limit(100).get()]);
+  const unique=new Map();for(const snapshot of snapshots)for(const doc of snapshot.docs){
+   if(!/^[A-F0-9]{10}$/.test(doc.id))continue;const night=doc.data(),owner=night.ownerUid===user.uid,status=night.members?.[user.uid]?.status;
+   if(!owner&&!["approved","pending"].includes(status))continue;
+   unique.set(doc.id,{code:doc.id,title:night.title,role:owner?"admin":status==="pending"?"pending":"player",updatedAt:night.updatedAt||night.createdAt||0,playing:owner||status==="approved"?night.pool.active.length:0,games:owner||status==="approved"?night.pool.matches.length:0});
+  }
+  return {nights:[...unique.values()].sort((a,b)=>b.updatedAt-a.updatedAt),hasMore:snapshots.some(snapshot=>snapshot.docs.length===100)};
+ }
+
  if(action==="create"){
+  const requestId=body.requestId?String(body.requestId):"";
+  if(requestId&&!/^[A-Fa-f0-9-]{36}$/.test(requestId))fail("Invalid night creation request.");
   const name=text(body.name||user.name);if(!name)fail("Enter your player name.");
   const tables=integer(body.tables,1,20,"Choose 1 to 20 tables.");
   const coins=integer(body.coins,0,10000,"Enter a whole number of coins.");
   for(let attempt=0;attempt<3;attempt++){
-   const id=randomBytes(5).toString("hex").toUpperCase(),ref=db.doc(`poolNights/${id}`);
+   const id=requestId?createHash("sha256").update(`${user.uid}:${requestId}:${attempt}`).digest("hex").slice(0,10).toUpperCase():randomBytes(5).toString("hex").toUpperCase(),ref=db.doc(`poolNights/${id}`);
    const pool={...engine.migratePool(engine.emptyPool()),tables,coins,coinSpan:coins,players:[{id:user.uid,name,present:true,arrival:"normal",joinedAtGame:0}],matches:[]};
-   const data={version:1,revision:1,ownerUid:user.uid,title:text(body.title||"Pool night",60),createdAt:Date.now(),updatedAt:Date.now(),members:{[user.uid]:{name,status:"approved",joinedAt:Date.now()}},pool,audit:[]};
-   try{await ref.create(data);return {code:id,...data};}catch(error){if(error.code!==6&&error.code!=="already-exists")throw error;}
+   const data={version:1,revision:1,ownerUid:user.uid,createdByUid:user.uid,createRequestId:requestId,title:text(body.title||"Pool night",60),createdAt:Date.now(),updatedAt:Date.now(),members:{[user.uid]:{name,status:"approved",joinedAt:Date.now()}},pool,audit:[]};
+   try{await ref.create(data);return {code:id,...data};}catch(error){
+    if(error.code!==6&&error.code!=="already-exists")throw error;
+    if(requestId){const existing=(await ref.get()).data();if(existing?.createdByUid===user.uid&&existing.createRequestId===requestId)return {code:id,...existing};}
+   }
   }
   fail("Could not create a night. Please retry.");
  }
@@ -31,21 +48,36 @@ async function handle({db,user,body}){
   };
   if(action==="load")return view(current);
   if(action==="join"){
-   if(member)return view(current);
+   if(member&&member.status!=="removed")return view(current);
    if(Object.keys(current.members).length>=100)fail("This night has reached its player limit.");
    const name=text(body.name||user.name);if(!name)fail("Enter your player name.");
    const next={...current,revision:current.revision+1,updatedAt:Date.now(),members:{...current.members,[user.uid]:{name,status:"pending",joinedAt:Date.now()}}};
-   tx.set(ref,next);return view(next);
+   tx.set(ref,next);tx.set(db.doc(`poolNights/${code}/alerts/join-${randomUUID()}`),{kind:"join",subjectUid:user.uid,createdAt:Date.now()});return view(next);
   }
   if(!owner&&member?.status!=="approved")fail("The host must approve you before you can log scores.");
   if(body.revision!==current.revision)fail("The night changed on another phone. Refresh and try again.");
   let next={...current,pool:{...current.pool}};
-  const adminOnly=new Set(["approveMember","rejectMember","settings","presence","cancel","verify","correct"]);
+  const adminOnly=new Set(["approveMember","rejectMember","settings","presence","cancel","verify","correct","transferAdmin","removePlayer"]);
   if(adminOnly.has(action)&&!owner)fail("Only the night admin can do that.");
-  if(action==="approveMember"||action==="rejectMember"){
+  if(action==="removePlayer"){
+   const target=String(body.uid||"");
+   if(target===current.ownerUid)fail("Hand admin duties to another player before removing yourself.");
+   if(current.members?.[target]?.status!=="approved"||!next.pool.players.some(player=>player.id===target))fail("Choose an approved player in this night.");
+   if(next.pool.active.some(game=>[game.a,game.b].includes(target)))fail("Finish or cancel their active game before removing them.");
+   const hasHistory=next.pool.matches.some(game=>[game.a,game.b].includes(target));
+   next.pool.players=hasHistory?next.pool.players.map(player=>player.id===target?{...player,present:false,removed:true}:player):next.pool.players.filter(player=>player.id!==target);
+   next.members={...current.members,[target]:{...current.members[target],status:"removed",removedAt:Date.now(),removedByUid:user.uid}};
+   next.audit=[...(current.audit||[]),{id:randomUUID(),action:"removePlayer",subjectUid:target,byUid:user.uid,at:Date.now(),historyPreserved:hasHistory}];
+  }else if(action==="transferAdmin"){
+   const target=String(body.uid||"");
+   if(target===user.uid)fail("You are already the night admin.");
+   if(current.members?.[target]?.status!=="approved"||!next.pool.players.some(player=>player.id===target&&player.present!==false))fail("Choose an approved player who is here tonight.");
+   next.ownerUid=target;
+   next.audit=[...(current.audit||[]),{id:randomUUID(),action:"transferAdmin",byUid:user.uid,previousOwnerUid:current.ownerUid,nextOwnerUid:target,at:Date.now()}];
+  }else if(action==="approveMember"||action==="rejectMember"){
    const target=String(body.uid||""),entry=current.members[target];if(!entry||entry.status!=="pending")fail("This join request is no longer pending.");
    next.members={...current.members,[target]:{...entry,status:action==="approveMember"?"approved":"rejected"}};
-   if(action==="approveMember")next.pool.players=[...next.pool.players,{id:target,name:entry.name,present:true,arrival:"normal",joinedAtGame:next.pool.matches.length}];
+   if(action==="approveMember")next.pool.players=next.pool.players.some(player=>player.id===target)?next.pool.players.map(player=>player.id===target?{...player,name:entry.name,present:true,removed:false,joinedAtGame:next.pool.matches.length}:player):[...next.pool.players,{id:target,name:entry.name,present:true,arrival:"normal",joinedAtGame:next.pool.matches.length}];
   }else if(action==="settings"){
    const tables=integer(body.tables,1,20,"Choose 1 to 20 tables.");
    if(next.pool.active.some(game=>game.table>tables))fail("Finish games before removing those tables.");
@@ -83,7 +115,10 @@ async function handle({db,user,body}){
   }else fail("Choose a valid pool action.");
   next={...next,revision:current.revision+1,updatedAt:Date.now()};
   if(Buffer.byteLength(JSON.stringify(next))>800000)fail("This night is full. Start a new night.");
-  tx.set(ref,next);return view(next);
+  tx.set(ref,next);
+  const event=action==="transferAdmin"?{kind:"admin",subjectUid:next.ownerUid}:action==="approveMember"?{kind:"approved",subjectUid:String(body.uid)}:action==="submit"?{kind:"score",matchId:String(body.matchId)}:null;
+  if(event)tx.set(db.doc(`poolNights/${code}/alerts/${randomUUID()}`),{...event,createdAt:Date.now()});
+  return view(next);
  });
 }
 module.exports={handle,validUser};

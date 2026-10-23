@@ -31,7 +31,7 @@ export default function WelcomePage({
   onExploreLeagues,
   onJoinNearbyClub,
 }) {
-  const [poolOpen, setPoolOpen] = useState(false);
+  const [poolOpen, setPoolOpen] = useState(() => /^[A-F0-9]{10}$/.test(new URLSearchParams(window.location.search).get("poolNight") || ""));
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerStatus, setPickerStatus] = useState("intro");
   const [loadPhase, setLoadPhase] = useState("location");
