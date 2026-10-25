@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import FieldScheduleFixtures, {FieldFixtureCard} from "./FieldScheduleFixtures.jsx";
 import React, { useState } from "react";
 import { setVenueScheduleTesting, prepareVenueSeasonForMatch } from "../storage/leagueSeasonRepository.js";
@@ -182,7 +183,7 @@ export default function FieldMatchDaySchedule({
         {isCreator && (
           <button type="button" className="secondary-btn" disabled={savingTesting}
             onClick={async () => {
-              if (!window.confirm("Publish fixtures and close Club registration?")) return;
+              if (!(await fieldConfirm("Publish fixtures and close Club registration?"))) return;
               setSavingTesting(true);
               setTestingError("");
               try {

@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {useLostFoundSummary} from "../storage/fieldLostFoundRepository.js";
 import MatchTeamChooser from "../components/MatchTeamChooser.jsx";
 import FieldPortalTile from "../components/FieldPortalTile.jsx";
@@ -1037,9 +1038,8 @@ export default function VenueLandingPage({
         error
       );
 
-      window.alert(
-        "The next 12 fixtures could not be downloaded."
-      );
+      (await fieldAlert("The next 12 fixtures could not be downloaded."
+      ));
     } finally {
       setDownloadingFixtures(false);
     }
@@ -1143,11 +1143,11 @@ export default function VenueLandingPage({
     }));
 
     if (!canStartMatch) {
-      window.alert(startMatchDeniedMessage);
+      (await fieldAlert(startMatchDeniedMessage));
       return;
     }
     if (typeof onStartMatch !== "function") {
-      window.alert("The Field match start handler is missing.");
+      (await fieldAlert("The Field match start handler is missing."));
       return;
     }
 
@@ -1166,7 +1166,7 @@ export default function VenueLandingPage({
     } catch (error) {
       console.error("[Field Start Trace] failed",
         error?.code || "", error?.message || String(error));
-      window.alert(error?.message || "The Field match could not start.");
+      (await fieldAlert(error?.message || "The Field match could not start."));
     } finally {
       window.clearTimeout(timer);
       button.disabled = false;
@@ -1358,24 +1358,23 @@ export default function VenueLandingPage({
     onGenerateScheduledPlan?.(Math.round(numericTarget));
   };
 
-  const handleApplyMatchDuration = () => {
+  const handleApplyMatchDuration = async () => {
     if (durationSwitchLocked) {
-      window.alert("Finish or discard the live match before changing match length.");
+      (await fieldAlert("Finish or discard the live match before changing match length."));
       return;
     }
 
     const minutes = Number(durationDraftMinutes);
     if (!Number.isFinite(minutes) || minutes <= 0) {
-      window.alert("Please enter a valid match length in minutes.");
+      (await fieldAlert("Please enter a valid match length in minutes."));
       return;
     }
 
     const nextSeconds = Math.round(minutes * 60);
 
     if (Math.round(nextSeconds) !== Math.round(resolvedDefaultMatchSeconds)) {
-      const ok = window.confirm(
-        `${isThreeTeamLeague ? "League" : "Friendly"} default is ${defaultDurationLabel}.\n\nYou are changing this match type to ${formatMatchDurationLabel(nextSeconds)}. Continue only if this is intentional.`
-      );
+      const ok = (await fieldConfirm(`${isThreeTeamLeague ? "League" : "Friendly"} default is ${defaultDurationLabel}.\n\nYou are changing this match type to ${formatMatchDurationLabel(nextSeconds)}. Continue only if this is intentional.`
+      ));
       if (!ok) return;
     }
 
@@ -1383,9 +1382,9 @@ export default function VenueLandingPage({
     closeDurationModal();
   };
 
-  const handleResetMatchDuration = () => {
+  const handleResetMatchDuration = async () => {
     if (durationSwitchLocked) {
-      window.alert("Finish or discard the live match before changing match length.");
+      (await fieldAlert("Finish or discard the live match before changing match length."));
       return;
     }
 

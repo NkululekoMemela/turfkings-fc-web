@@ -2574,6 +2574,7 @@ const FANM_ENVIRONMENT_BADGE = FANM_DEVELOPMENT_DEPLOYMENT
     : null;
 
 export default function App() {
+  const [nearbyClubRequest, setNearbyClubRequest] = useState(false);
 
 
   const [entryPageIntent, setEntryPageIntent] = useState(null);
@@ -9767,6 +9768,8 @@ export default function App() {
 
       {page === PAGE_WELCOME && (
         <WelcomePage
+          nearbyClubRequest={nearbyClubRequest}
+          onNearbyClubRequestHandled={() => setNearbyClubRequest(false)}
           onExploreClubs={() => setPage(PAGE_HOME)}
           onExploreLeagues={() => setPage(PAGE_LEAGUE_VENUES)}
           onJoinNearbyClub={(club) => {
@@ -9828,7 +9831,8 @@ export default function App() {
             window.alert("Club registration wizard is coming next.");
           }}
           onFindClub={() => {
-            window.alert("Club search will be connected next.");
+            setNearbyClubRequest(true);
+            setPage(PAGE_WELCOME);
           }}
           onViewClub={(club) => {
             setSelectedHomeClub(buildClubIdentity(club || { id: DEFAULT_CLUB_ID }));

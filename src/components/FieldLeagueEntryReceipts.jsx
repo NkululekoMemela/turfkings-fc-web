@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import React, {useEffect, useRef, useState} from "react";
 import {fieldTeamPaymentRequest} from "../storage/fieldTeamPaymentRepository.js";
 
@@ -52,11 +53,10 @@ export default function FieldLeagueEntryReceipts({venueId, seasonId}) {
 
   async function markPaid(club) {
     if (lock.current || club.paid) return;
-    if (!window.confirm(
-      `Confirm the Field has received ${money(club.amountCents)} ` +
+    if (!(await fieldConfirm(`Confirm the Field has received ${money(club.amountCents)} ` +
       `for ${club.clubName}'s league entry? ` +
       "Confirm only after receiving their cash, EFT or other agreed payment."
-    )) return;
+    ))) return;
     lock.current = true;
     setBusyId(club.clubId);
     setError("");

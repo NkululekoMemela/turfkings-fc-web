@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {buildKitRoster,labelWithNumber} from "../core/playerKit.js";
 import {saveFieldPracticeFormation} from "../storage/fieldPracticeFormationRepository.js";
 import {subscribeFieldManifest} from "../storage/fieldManifestSubscription.js";
@@ -1752,9 +1753,8 @@ export function FormationsPage({
         "[Formations] Failed to update Hand injury list:",
         error
       );
-      window.alert(
-        "The Hand injury list could not be updated. Please try again."
-      );
+      (await fieldAlert("The Hand injury list could not be updated. Please try again."
+      ));
     } finally {
       setHandInjurySaving(false);
     }
@@ -2069,7 +2069,7 @@ export function FormationsPage({
     setPhotoMessage("");
   };
 
-  const saveTeamLineup = (teamId, updatedLineup) => {
+  const saveTeamLineup = async (teamId, updatedLineup) => {
     if (!teamId) return;
 
     let previewLineup = makeSavedLineup(
@@ -2190,11 +2190,10 @@ export function FormationsPage({
       currentDefaultRole === LINEUP_SAVE_ROLE_CAPTAIN;
 
     if (isAdminTryingToOverrideCaptain) {
-      const ok = window.confirm(
-        `The current default squad was last set by ${currentDefaultName}${
+      const ok = (await fieldConfirm(`The current default squad was last set by ${currentDefaultName}${
           currentDefaultTime ? ` on ${new Date(currentDefaultTime).toLocaleString()}` : ""
         }.\n\nHave you agreed with the captain to change his default squad?`
-      );
+      ));
 
       if (!ok) return;
     }
@@ -2214,9 +2213,9 @@ export function FormationsPage({
           updatedMap,
           "updatedAt",
           serverTimestamp()
-        ).catch((error) => {
+        ).catch(async (error) => {
           console.error("[Field formations save]", error);
-          window.alert("Could not save the Field lineup.");
+          (await fieldAlert("Could not save the Field lineup."));
         });
       } else {
         saveLineups(updatedMap, activeClubId, lineupStorageOptions);
@@ -2335,7 +2334,7 @@ export function FormationsPage({
     setSelectedPlayer({ from: "reserve", name: playerName });
   };
 
-  const handlePitchClick = (posId) => {
+  const handlePitchClick = async (posId) => {
     if (!canEditLineups) return;
 
     const currentAtPos = lineup.positions[posId] || null;
@@ -2347,7 +2346,7 @@ export function FormationsPage({
     }
 
     if (selectedPlayer.from === "reserve") {
-      window.alert("A reserve must first swap with a sub before entering the lineup.");
+      (await fieldAlert("A reserve must first swap with a sub before entering the lineup."));
       return;
     }
 
@@ -2472,7 +2471,7 @@ export function FormationsPage({
       link.click();
     } catch (err) {
       console.error("Failed to save formation image:", err);
-      window.alert("Could not save this formation as an image.");
+      (await fieldAlert("Could not save this formation as an image."));
     } finally {
       setSavingFormationImage(false);
     }

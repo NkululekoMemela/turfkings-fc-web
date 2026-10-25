@@ -1,3 +1,4 @@
+const {adminIds}=require("./poolAdminPolicy.cjs");
 const {createHash,randomUUID}=require("node:crypto");
 const {onDocumentCreated}=require("firebase-functions/v2/firestore");
 const hash=value=>createHash("sha256").update(value).digest("hex");
@@ -34,9 +35,10 @@ async function register({db,user,body}){
  return {ok:true};
 }
 function audience(night,alert){
- if(!night)return [];
- if(alert.kind==="join"&&night.members?.[alert.subjectUid]?.status==="pending")return [night.ownerUid];
- if(alert.kind==="score"&&night.pool?.matches.some(m=>m.id===alert.matchId&&m.verification==="pending"))return [night.ownerUid];
+ if(!night||night.lifecycle==="deleted")return [];
+ if(alert.kind==="contribution"&&night.contribution?.requestedUid===alert.subjectUid&&night.members?.[alert.subjectUid]?.status==="approved"&&!["paid","coupon"].includes(night.contribution.state))return [alert.subjectUid];
+ if(alert.kind==="join"&&night.members?.[alert.subjectUid]?.status==="pending")return adminIds(night);
+ if(alert.kind==="score"&&night.pool?.matches.some(m=>m.id===alert.matchId&&m.verification!=="verified"))return adminIds(night);
  if(alert.kind==="admin"&&night.ownerUid===alert.subjectUid)return [night.ownerUid];
  if(alert.kind==="approved"&&night.members?.[alert.subjectUid]?.status==="approved")return [alert.subjectUid];
  return [];
@@ -44,9 +46,9 @@ function audience(night,alert){
 async function deliver({db,code,alertId,alert,sendWeb,sendNative}){
  const nightRef=db.doc(`poolNights/${code}`),night=(await nightRef.get()).data(),uids=audience(night,alert);
  if(!uids.length)return;
- const title=alert.kind==="join"?"Pool · Player wants to join":alert.kind==="score"?"Pool · Score needs verification":alert.kind==="admin"?"Pool · You are now the admin":"Pool · You’re approved";
+ const title=alert.kind==="contribution"?"Pool · A teammate invited you to contribute":alert.kind==="join"?"Pool · Player wants to join":alert.kind==="score"?"Pool · Score needs verification":alert.kind==="admin"?"Pool · You are now the admin":"Pool · You’re approved";
  const name=String(night.members?.[alert.subjectUid]?.name||"A player").slice(0,40);
- const body=alert.kind==="join"?`${name} asked to join ${night.title}.`:alert.kind==="score"?`A result is ready to verify in ${night.title}.`:alert.kind==="admin"?`You now manage ${night.title}.`:`You can now play and log scores in ${night.title}.`;
+ const body=alert.kind==="contribution"?`${night.members?.[night.contribution?.requestedByUid]?.name||"Your admin"} kindly asks if you can cover our R15 session contribution. It’s entirely your choice.`:alert.kind==="join"?`${name} asked to join ${night.title}.`:alert.kind==="score"?`A result is ready to verify in ${night.title}.`:alert.kind==="admin"?`You now manage ${night.title}.`:`You can now play and log scores in ${night.title}.`;
  const tab=alert.kind==="score"?"results":alert.kind==="join"?"players":"tables";
  for(const uid of uids){
   const devices=await db.collection("poolNights/_pushDevices/devices").where("uid","==",uid).get();

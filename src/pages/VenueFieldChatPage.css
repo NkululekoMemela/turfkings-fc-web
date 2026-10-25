@@ -175,3 +175,38 @@
 .field-chat-page .field-chat-card .field-chat-compose .fanm-premium-send-btn::after {
   content: none !important;
 }
+
+/* Compact Field conversation; isolate from legacy Club bubble dimensions. */
+.field-chat-page .field-chat-card .field-chat-messages .field-chat-message-row {
+  width: 100%; margin: 0 0 6px !important; gap: 7px !important;
+}
+.field-chat-page .field-chat-card .field-chat-messages .field-chat-message {
+  width: fit-content !important; min-width: 0 !important; min-height: 0 !important;
+  max-width: calc(100% - 40px) !important; padding: 8px 10px !important;
+  margin: 0 !important; border-radius: 13px !important; box-shadow: none !important;
+}
+.field-chat-page .field-chat-card .field-chat-messages .field-chat-meta {
+  display: flex !important; flex-wrap: wrap !important; gap: 2px 7px !important;
+  margin: 0 0 3px !important; padding: 0 !important;
+}
+.field-chat-page .field-chat-card .field-chat-messages .field-chat-meta span {
+  display: inline !important; width: auto !important; padding: 0 !important;
+  border: 0 !important; border-radius: 0 !important; background: none !important;
+  font-size: .65rem !important; color: #a5b8ca !important;
+}
+.field-chat-page .field-chat-card .field-chat-messages .field-chat-message p {
+  margin: 0 !important; padding: 0 !important; line-height: 1.4 !important;
+}
+.field-chat-page .field-chat-card .field-chat-messages .field-chat-message-footer {
+  margin-top: 3px !important; gap: 4px !important; justify-content: flex-end;
+}
+.field-chat-page .field-chat-card .field-chat-messages .field-chat-avatar {
+  height: 28px !important; width: 28px !important; flex: 0 0 28px !important;
+  overflow: hidden; border-radius: 50%;
+}
+.field-chat-page .field-chat-card .field-chat-messages .field-chat-avatar img {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+}
+.field-chat-page .field-chat-card .field-chat-messages .field-chat-date-chip {
+  margin: 10px auto !important; padding: 4px 9px !important;
+}

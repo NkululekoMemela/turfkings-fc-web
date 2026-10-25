@@ -1,7 +1,7 @@
 import PoolTablePage from "./PoolTablePage.jsx";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 import FiveAsideLoadingPitch from "../components/FiveAsideLoadingPitch.jsx";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import HomePage_HUB_ClubCard from "../components/HomePage_HUB/HomePage_HUB_ClubCard.jsx";
@@ -30,6 +30,8 @@ export default function WelcomePage({
   onExploreClubs,
   onExploreLeagues,
   onJoinNearbyClub,
+  nearbyClubRequest = false,
+  onNearbyClubRequestHandled,
 }) {
   const [poolOpen, setPoolOpen] = useState(() => /^[A-F0-9]{10}$/.test(new URLSearchParams(window.location.search).get("poolNight") || ""));
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -41,6 +43,12 @@ export default function WelcomePage({
   const [locationAccuracyM, setLocationAccuracyM] = useState(null);
   const [clubsWithoutCoordinates, setClubsWithoutCoordinates] = useState(0);
   const [pickerError, setPickerError] = useState("");
+
+  useEffect(() => {
+    if (!nearbyClubRequest) return;
+    onNearbyClubRequestHandled?.();
+    openNearbyPicker();
+  }, [nearbyClubRequest]);
 
   function closePicker() {
     requestId.current += 1;

@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import React, { useEffect, useRef, useState } from "react";
 import {
   collection, deleteDoc, doc, getDoc, limit, onSnapshot,
@@ -6,6 +7,7 @@ import {
 import { db } from "../firebaseConfig";
 import "./VenueFieldChatPage.css";
 import FieldVideoRepository from "../storage/venueVideoHighlightsRepository.js";
+import FieldChatAvatar from "../components/FieldChatAvatar.jsx";
 
 const reactions = ["⚽", "🔥", "🧤", "👏", "😂", "❤️", "👍", "👎", "😩", "🤯"];
 const path = (venueId, collectionName, id) =>
@@ -333,13 +335,13 @@ export default function VenueFieldChatPage({
     return onSnapshot(
       query(
         collection(db, "leagueVenues", venueId, "chatMessages"),
-        orderBy("createdAt", "asc"),
+        orderBy("createdAt", "desc"),
         limit(100),
       ),
       (snapshot) => {
         setMessages(snapshot.docs.map((item) => ({
           id: item.id, ...item.data(),
-        })));
+        })).reverse());
         setAccessError("");
       },
       () => {
@@ -428,7 +430,7 @@ export default function VenueFieldChatPage({
   };
 
   const remove = async (message) => {
-    if (!isAdmin || !window.confirm("Remove this message from Field chat?")) return;
+    if (!isAdmin || !(await fieldConfirm("Remove this message from Field chat?"))) return;
     try {
       await deleteDoc(path(venueId, "chatMessages", message.id));
     } catch (error) {
@@ -438,7 +440,7 @@ export default function VenueFieldChatPage({
 
   const mute = async (message) => {
     if (!isAdmin || !message.senderUid || message.senderUid === uid) return;
-    if (!window.confirm(`Mute ${message.senderName} from sending and reacting?`)) return;
+    if (!(await fieldConfirm(`Mute ${message.senderName} from sending and reacting?`))) return;
     setModeratingUid(message.senderUid);
     try {
       await setDoc(path(venueId, "chatRestrictions", message.senderUid), {
@@ -497,6 +499,8 @@ export default function VenueFieldChatPage({
               !showDate && previous &&
               message.senderUid &&
               previous.senderUid === message.senderUid &&
+              previous.senderRole === message.senderRole &&
+              previous.clubId === message.clubId &&
               date && previousDate &&
               Math.abs(date.getTime() - previousDate.getTime()) <= 300000 &&
               !message.replyToId && !previous.replyToId
@@ -517,12 +521,9 @@ export default function VenueFieldChatPage({
                   {grouped ? (
                     <span className="fanm-chat-sender-avatar-spacer" />
                   ) : (
-                    <span className="fanm-chat-sender-avatar field-chat-avatar"
-                      aria-hidden="true">
-                      {String(message.senderName || "Field member")
-                        .trim().split(/\s+/).slice(0, 2)
-                        .map(part => part[0]).join("").toUpperCase()}
-                    </span>
+                    <FieldChatAvatar message={message}
+                      staffPhoto={mine ? staff?.photoData || staff?.photoUrl || "" : ""}
+                      fieldLogo={venue?.logoUrl || venue?.logo || ""} />
                   )}
               <article
                 className={`fanm-club-chat-message field-chat-message ${mine ? "is-mine" : ""} ${grouped ? "is-grouped" : ""}`}>

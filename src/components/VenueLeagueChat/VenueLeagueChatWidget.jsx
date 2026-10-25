@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../FieldDialog.jsx';
 /*
  * VENUE LEAGUE UI CLONE
  *
@@ -453,7 +454,7 @@ export function VenueLeagueChatWidget({
       setActiveReactionPickerMessageId(null);
     } catch (err) {
       console.error("[VenueLeagueChatWidget] Failed updating reaction:", err);
-      window.alert("Could not update reaction just now.");
+      (await fieldAlert("Could not update reaction just now."));
     }
   };
 
@@ -996,7 +997,7 @@ export function VenueLeagueChatWidget({
       await deleteDoc(doc(db, "leagueVenues", activeClubId, "chatMessages", message.id));
     } catch (err) {
       console.error("[VenueLeagueChatWidget] Failed deleting chat message:", err);
-      window.alert("Could not delete this message just now.");
+      (await fieldAlert("Could not delete this message just now."));
     }
   };
 
@@ -1038,7 +1039,7 @@ export function VenueLeagueChatWidget({
       setChallengerChatEmojiOpen(false);
     } catch (err) {
       console.error("[VenueLeagueChatWidget] Failed sending challenger chat message:", err);
-      window.alert("Could not send this challenger chat message just now.");
+      (await fieldAlert("Could not send this challenger chat message just now."));
     }
   };
 
@@ -1098,7 +1099,7 @@ export function VenueLeagueChatWidget({
       setClubChatEmojiOpen(false);
     } catch (err) {
       console.error("[VenueLeagueChatWidget] Failed sending club chat message:", err);
-      window.alert("Could not send this club chat message just now.");
+      (await fieldAlert("Could not send this club chat message just now."));
     }
   };
 

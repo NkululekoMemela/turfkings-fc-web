@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import { createPortal } from "react-dom";
 import {
   FIELD_GAME_FORMATS, fieldSeasonHasPlayRecords,
@@ -362,8 +363,8 @@ export function ClubFieldSeasonInvitation({ clubId }) {
         <button type="button" className="tk-admin-notification-secondary" disabled={busy}
           onClick={later}>Not now</button>
         <button type="button" className="tk-admin-notification-secondary" disabled={busy}
-          onClick={() => {
-            if (window.confirm("Decline this season invitation for your Club?")) {
+          onClick={async () => {
+            if ((await fieldConfirm("Decline this season invitation for your Club?"))) {
               respond("declined");
             }
           }}>Decline</button>

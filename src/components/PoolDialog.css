@@ -1,0 +1,43 @@
+/* One visual language for every Pool Room popup. */
+.pool-dialog-backdrop,.pool-inbox-backdrop,.pool-contribution-backdrop,.pool-share-sheet-backdrop,.pool-picker-backdrop {
+ background:rgba(2,12,9,.76)!important;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+ padding:20px!important;box-sizing:border-box;
+}
+.pool-dialog-backdrop {position:fixed;inset:0;z-index:19000;display:grid;place-items:center;font-family:Inter,system-ui,sans-serif;}
+.pool-dialog,.pool-inbox-dialog,.pool-contribution-dialog,.pool-share-sheet,.pool-picker {
+ box-sizing:border-box!important;border:1px solid #8ca98a55!important;border-radius:26px!important;
+ background:linear-gradient(145deg,#203e30,#10251c 70%)!important;color:#f1f6eb!important;
+ box-shadow:0 30px 100px #0008,inset 0 1px #ffffff12!important;
+ width:min(460px,100%)!important;max-height:calc(100dvh - 40px)!important;overflow-y:auto!important;
+ padding:24px!important;animation:pool-dialog-enter .18s ease-out;
+}
+.pool-dialog * {box-sizing:border-box;}
+.pool-dialog header {display:flex;align-items:center;gap:14px;padding-bottom:18px;border-bottom:1px solid #ffffff16;}
+.pool-dialog header small {font-size:9px;letter-spacing:.2em;color:#b4c9a9;font-weight:700;}
+.pool-dialog h2 {margin:6px 0 0;font-size:22px;letter-spacing:-.04em;line-height:1.2;color:#f1f6eb;}
+.pool-dialog p {font-size:14px;line-height:1.65;color:#c6d6bf;margin:20px 0;white-space:pre-wrap;}
+.pool-dialog-ball {width:48px;height:48px;flex-shrink:0;display:grid;place-items:center;border-radius:50%;background:radial-gradient(circle at 30% 20%,#626a64,#101710 40%,#000);border:1px solid #7b8678;box-shadow:0 5px 12px #0005;}
+.pool-dialog-ball i {display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:#fbf9ee;color:#080b08;font:bold 21px Georgia,serif;}
+.pool-dialog-actions {display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:24px;}
+.pool-dialog button {min-height:46px;border:1px solid #77916a66;border-radius:13px;background:#ffffff07;color:#dce8d4;font:600 13px Inter,system-ui,sans-serif;padding:12px;cursor:pointer;}
+.pool-dialog button[type=submit] {background:#c6e6ac;color:#152610;border-color:#c6e6ac;}
+.pool-dialog button.is-danger {background:#663c37;color:#ffe5da;border-color:#b77d6d;}
+.pool-dialog button:disabled {opacity:.45;cursor:default;}
+.pool-dialog label {display:grid;gap:8px;color:#c6d6bf;font-size:12px;}
+.pool-dialog input {width:100%;background:#071b13;color:#f1f6eb;border:1px solid #8ca98a66;border-radius:12px;padding:14px;font:16px inherit;}
+.pool-dialog :focus-visible {outline:3px solid #d7f0b7;outline-offset:3px;}
+.pool-inbox-dialog h2,.pool-share-sheet h2 {letter-spacing:-.035em!important;line-height:1.2!important;}
+.pool-contribution-dialog h2 {font-size:25px!important;letter-spacing:-.04em!important;}
+.pool-inbox-dialog button,.pool-share-sheet button,.pool-contribution-dialog button {min-height:44px;border-radius:12px;}
+.pool-contribution-dialog .pool-contribution-pay {box-shadow:0 5px 22px #a7e86b22;}
+.pool-share-sheet-backdrop {align-items:center!important;}
+.pool-inbox-dialog .pool-inbox-request {padding:16px 0;border-bottom:1px solid #ffffff12;}
+@keyframes pool-dialog-enter {from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.pool-dialog,.pool-inbox-dialog,.pool-contribution-dialog,.pool-share-sheet,.pool-picker{animation:none;}}
+@media(max-width:380px){.pool-dialog,.pool-inbox-dialog,.pool-contribution-dialog,.pool-share-sheet,.pool-picker{padding:20px!important;border-radius:22px!important}.pool-dialog-actions{gap:8px;}}
+
+.field-premium-dialog{background:linear-gradient(145deg,#173f50,#0d2232 75%)!important;border-color:#68bdd15c!important}
+.field-premium-dialog .pool-dialog-ball{background:radial-gradient(circle at 30% 20%,#427a87,#13394d 70%);border-color:#79c9db66;font-size:25px}
+.field-premium-dialog header small{color:#9edce6}
+.field-premium-dialog button[type=submit]{background:#a3e0eb;border-color:#b9eff5;color:#0b2935}
+.field-premium-dialog .pool-dialog-actions:has(>button:only-child){grid-template-columns:1fr}

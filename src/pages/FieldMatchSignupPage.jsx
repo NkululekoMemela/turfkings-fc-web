@@ -1,3 +1,4 @@
+import {fieldAlert} from "../components/FieldDialog.jsx";
 import {playerPrivacyRequest} from "../storage/playerPrivacyGateway.js";
 import {fieldTeamPaymentRequest} from "../storage/fieldTeamPaymentRepository.js";
 import SignupHeroHeader from "../components/SignupHeroHeader.jsx";
@@ -4381,7 +4382,7 @@ export default function FieldMatchSignupPage({
       });
     } catch (error) {
       console.error("Failed to prepare payment:", error);
-      window.alert(error?.message || "Your signup could not be saved. Please retry.");
+      await fieldAlert(error?.message || "Your signup could not be saved. Please retry.");
     } finally {
       fieldBookingSaveLock.current = false;
     }
@@ -4404,7 +4405,7 @@ export default function FieldMatchSignupPage({
       onBack?.();
     } catch (error) {
       console.error("Pay later save failed", error);
-      window.alert(error?.message || "Your signup could not be saved. Please retry.");
+      await fieldAlert(error?.message || "Your signup could not be saved. Please retry.");
     } finally {
       fieldBookingSaveLock.current = false;
     }

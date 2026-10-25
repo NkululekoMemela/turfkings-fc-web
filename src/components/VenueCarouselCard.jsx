@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import React, {useEffect, useState} from "react";
 import {onAuthStateChanged} from "firebase/auth";
 import {auth} from "../firebaseConfig.js";
@@ -13,10 +14,10 @@ export default function VenueCarouselCard({venue, onEnter}) {
     user.emailVerified && String(user.email || "").toLowerCase() === "nkululekolerato@gmail.com"));
   async function deleteField() {
     if (!canDelete || deleting) return;
-    if (window.prompt(`Type DELETE to remove ${venue.name} from the public hub. A record will be kept for audit purposes.`) !== "DELETE") return;
+    if ((await fieldPrompt(`Type DELETE to remove ${venue.name} from the public hub. A record will be kept for audit purposes.`)) !== "DELETE") return;
     setDeleting(true);
     try {await fieldLogoStudioRequest({action: "delete", venueId: venue.id});}
-    catch (error) {window.alert(error.message || "Could not delete this Field. Please try again.");}
+    catch (error) {(await fieldAlert(error.message || "Could not delete this Field. Please try again."));}
     finally {setDeleting(false);}
   }
   const location = [venue.location?.suburb, venue.location?.city].filter(Boolean).join(", ");
