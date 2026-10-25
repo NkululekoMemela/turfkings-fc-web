@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {usePlayerNumberLabel} from "../components/PlayerNumberContext.jsx";
 import { fieldHalfSecondsLeft } from "../core/fieldMatchClock.js";
 // src/pages/ThreeTeamLeague_LiveMatchPage.jsx
@@ -4150,9 +4151,8 @@ export function VenueLeagueLiveMatchPage({
         "[LiveMatch] Failed to update Hand injury list:",
         error
       );
-      window.alert(
-        "The Hand injury list could not be updated. Please try again."
-      );
+      (await fieldAlert("The Hand injury list could not be updated. Please try again."
+      ));
     } finally {
       setHandInjurySavingKey("");
     }
@@ -5072,7 +5072,7 @@ export function VenueLeagueLiveMatchPage({
 
     let checkedSnapshot;
     try { checkedSnapshot=await onConfirmPreMatchLineups?.(merged); }
-    catch(error){window.alert(error.message || "Kit verification failed.");return;}
+    catch(error){(await fieldAlert(error.message || "Kit verification failed."));return;}
     if(checkedSnapshot===false)return;
     if(checkedSnapshot)Object.assign(merged,checkedSnapshot);
     setLocalConfirmedSnapshots(merged);
@@ -6408,11 +6408,10 @@ export function VenueLeagueLiveMatchPage({
         error
       );
 
-      window.alert(
-        `The injury incident could not be recorded: ${
+      (await fieldAlert(`The injury incident could not be recorded: ${
           error?.message || "Unknown error"
         }`
-      );
+      ));
     } finally {
       setInjurySavingPlayerId(null);
     }
@@ -6463,13 +6462,13 @@ export function VenueLeagueLiveMatchPage({
     return () => clearInterval(id);
   }, [additionalTimeRunning, additionalTimeSecondsLeft]);
 
-  const handleStartGoalRecord = () => {
+  const handleStartGoalRecord = async () => {
     if (!canControlMatch) {
-      window.alert("Only captains or admin can record goals.");
+      (await fieldAlert("Only captains or admin can record goals."));
       return;
     }
     if (!hasVerifiedLineups) {
-      window.alert("Verify lineups before recording goals.");
+      (await fieldAlert("Verify lineups before recording goals."));
       return;
     }
 
@@ -6499,17 +6498,17 @@ export function VenueLeagueLiveMatchPage({
 
   const handleAddEvent = async () => {
     if (!canControlMatch) {
-      window.alert("Only captains or admin can record goals.");
+      (await fieldAlert("Only captains or admin can record goals."));
       return;
     }
 
     if (!hasVerifiedLineups) {
-      window.alert("Verify lineups before recording goals.");
+      (await fieldAlert("Verify lineups before recording goals."));
       return;
     }
 
     if (!scoringTeamId) {
-      window.alert("Select the team that scored first.");
+      (await fieldAlert("Select the team that scored first."));
       return;
     }
 
@@ -6698,9 +6697,9 @@ export function VenueLeagueLiveMatchPage({
     setGoalStep("scorer");
   };
 
-  const handleEndMatchClick = () => {
+  const handleEndMatchClick = async () => {
     if (!canControlMatch) {
-      window.alert("Only captains or admin can end the match.");
+      (await fieldAlert("Only captains or admin can end the match."));
       return;
     }
     setShowConfirmModal(true);
@@ -6726,9 +6725,9 @@ export function VenueLeagueLiveMatchPage({
     setConfirmCountdown(15);
   };
 
-  const handleConfirmFinal = () => {
+  const handleConfirmFinal = async () => {
     if (!canControlMatch) {
-      window.alert("Only captains or admin can end the match.");
+      (await fieldAlert("Only captains or admin can end the match."));
       return;
     }
 

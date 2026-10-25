@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import "./VenueStatsToggles.css";
 import {
   normalizeVenueLeagueScope,
@@ -318,7 +319,7 @@ export default function VenueLeagueStatsPage({
       setGoalDraft(null);
     } catch (error) {
       const message = error?.message || "Correction failed.";
-      if (draft.action === "delete") window.alert(message);
+      if (draft.action === "delete") (await fieldAlert(message));
       else setCorrectionError(message);
     } finally {
       setSavingCorrection(false);
@@ -440,9 +441,8 @@ export default function VenueLeagueStatsPage({
               className="tk-danger-btn"
               disabled={deletingEmptySeason}
               onClick={async () => {
-                if (!window.confirm(
-                  "Delete this empty current season and restore the previous season? The Field will return to the previous season."
-                )) return;
+                if (!(await fieldConfirm("Delete this empty current season and restore the previous season? The Field will return to the previous season."
+                ))) return;
                 setDeletingEmptySeason(true);
                 setDeleteSeasonError("");
                 try {
@@ -770,10 +770,9 @@ export default function VenueLeagueStatsPage({
                                     onClick={() => openGoalEditor("edit", event)}>✎</button>
                                   <button type="button" className="tk-mini-admin-btn danger"
                                     title="Delete goal" aria-label="Delete goal"
-                                    onClick={() => {
-                                      if (!window.confirm(
-                                        "Delete this recorded goal and recalculate the match score?"
-                                      )) return;
+                                    onClick={async () => {
+                                      if (!(await fieldConfirm("Delete this recorded goal and recalculate the match score?"
+                                      ))) return;
                                       saveGoalDraft({
                                         action: "delete",
                                         fixtureId: resultId,
@@ -856,10 +855,9 @@ export default function VenueLeagueStatsPage({
                                   </button>
                                   <button type="button" className="tk-admin-compact-btn danger"
                                     onClick={async () => {
-                                      const ok = window.confirm(
-                                        `Delete saved match #${result.matchNo}?\n\n` +
+                                      const ok = (await fieldConfirm(`Delete saved match #${result.matchNo}?\n\n` +
                                         "This will remove the match result and all linked scorer/assist events for that match."
-                                      );
+                                      ));
                                       if (!ok) return;
                                       try {
                                         requireOfficialWrite();
@@ -870,7 +868,7 @@ export default function VenueLeagueStatsPage({
                                         setExpandedResultId(null);
                                         setGoalDraft(null);
                                       } catch (error) {
-                                        window.alert(error?.message || "Could not delete the match.");
+                                        (await fieldAlert(error?.message || "Could not delete the match."));
                                       }
                                     }}>
                                     Delete match

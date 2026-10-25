@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import {normalizeVenueLeagueScope} from "../core/venueLeaguePaths.js";
 import FieldMatchHalfClock from "./FieldMatchHalfClock.jsx";
 import { tickFieldMatchClock, startFieldSecondHalf } from "../core/fieldMatchClock.js";
@@ -640,9 +641,8 @@ export default function VenueLiveMatchRuntime({
         if (
           !canControlCurrentLiveMatch
         ) {
-          window.alert(
-            "Only the controlling Field official can end this match."
-          );
+          (await fieldAlert("Only the controlling Field official can end this match."
+          ));
           return;
         }
 
@@ -658,9 +658,8 @@ export default function VenueLiveMatchRuntime({
           ).trim();
 
         if (!fixtureId) {
-          window.alert(
-            "The Field fixture reference is missing."
-          );
+          (await fieldAlert("The Field fixture reference is missing."
+          ));
           return;
         }
 
@@ -690,10 +689,9 @@ export default function VenueLiveMatchRuntime({
             error
           );
 
-          window.alert(
-            error?.message ||
+          (await fieldAlert(error?.message ||
             "The Field match could not be completed."
-          );
+          ));
         }
       },
       [

@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 // src/pages/NewsPage.jsx
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import JerseyImage from "../assets/Jersey.jpeg";
@@ -986,11 +987,10 @@ export function NewsPage({
     if (!storyToDelete) return;
 
     if (typeof window !== "undefined") {
-      const confirmed = window.confirm(
-        `Delete "${storyToDelete.title || "this story"}" permanently?
+      const confirmed = (await fieldConfirm(`Delete "${storyToDelete.title || "this story"}" permanently?
 
 This will remove it from live news and archives for everyone.`
-      );
+      ));
       if (!confirmed) return;
     }
 
@@ -2456,11 +2456,10 @@ This will remove it from live news and archives for everyone.`
     if (!pollToDelete) return;
 
     if (typeof window !== "undefined") {
-      const confirmed = window.confirm(
-        `Delete "${pollToDelete.question || "this poll"}" permanently?
+      const confirmed = (await fieldConfirm(`Delete "${pollToDelete.question || "this poll"}" permanently?
 
 Votes for this poll will no longer be shown.`
-      );
+      ));
       if (!confirmed) return;
     }
 

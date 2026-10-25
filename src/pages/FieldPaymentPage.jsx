@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {fieldTeamPaymentRequest} from "../storage/fieldTeamPaymentRepository.js";
 import { calculateLateBookingFee } from "../../functions/lateBookingPolicy.mjs";
 import { getActiveFirebaseFunctionsBaseUrl } from "../firebaseConfig.js";
@@ -223,10 +224,9 @@ export default function FieldPaymentPage({
       setError("Enter a valid received amount.");
       return;
     }
-    if (!window.confirm(
-      `Confirm ${formatCurrency(receivedCents / 100)} received in total for ` +
+    if (!(await fieldConfirm(`Confirm ${formatCurrency(receivedCents / 100)} received in total for ` +
       `${booking.clubName}, reference ${booking.reference}?`
-    )) return;
+    ))) return;
 
     actionLock.current = true;
     const current = generation.current;

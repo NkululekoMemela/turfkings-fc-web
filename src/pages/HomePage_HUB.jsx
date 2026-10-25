@@ -1183,6 +1183,10 @@ export default function HomePage_HUB({
     setActiveClub(null);
     setCompletionPromptClub(null);
 
+    if (!club) {
+      onFindClub?.();
+      return;
+    }
     if (club) {
       onJoinClub?.(club);
     }

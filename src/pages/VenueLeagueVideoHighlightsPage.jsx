@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 // src/pages/VideoHighlightsPage.jsx
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -3585,7 +3586,7 @@ export function VideoHighlightsPage({
       setSelectedTab("approved");
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Approve failed:", error);
-      window.alert(error?.message || "Could not approve this highlight.");
+      (await fieldAlert(error?.message || "Could not approve this highlight."));
     }
   };
 
@@ -3595,12 +3596,12 @@ export function VideoHighlightsPage({
       await onRejectHighlight?.(updated);
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Reject failed:", error);
-      window.alert(error?.message || "Could not reject this highlight.");
+      (await fieldAlert(error?.message || "Could not reject this highlight."));
     }
   };
 
   const handleDelete = async (highlight) => {
-    const confirmed = window.confirm("Delete this highlight permanently?");
+    const confirmed = (await fieldConfirm("Delete this highlight permanently?"));
     if (!confirmed) return;
 
     try {
@@ -3617,7 +3618,7 @@ export function VideoHighlightsPage({
       await onDeleteHighlight?.(highlight);
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Delete failed:", error);
-      window.alert(error?.message || "Could not delete this highlight.");
+      (await fieldAlert(error?.message || "Could not delete this highlight."));
       await loadHighlights();
     }
   };
@@ -3884,7 +3885,7 @@ export function VideoHighlightsPage({
       closeIdentifyPlayer();
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Player identification failed:", error);
-      window.alert(error?.message || "Could not save player identification.");
+      (await fieldAlert(error?.message || "Could not save player identification."));
     }
   };
 
@@ -3914,7 +3915,7 @@ export function VideoHighlightsPage({
       setSelectedFilter("all");
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Curation failed:", error);
-      window.alert(error?.message || "Could not run curation.");
+      (await fieldAlert(error?.message || "Could not run curation."));
     } finally {
       setRunningCuration(false);
     }
@@ -3929,9 +3930,8 @@ export function VideoHighlightsPage({
 
     const winners = getCurationWinners(curationResult);
 
-    const confirmed = window.confirm(
-      `Confirm cleanup? ${winners.length} winning clip${winners.length === 1 ? "" : "s"} will be archived permanently and ${cleanupCandidates.length} non-winning clip${cleanupCandidates.length === 1 ? "" : "s"} will be removed from the server.`
-    );
+    const confirmed = (await fieldConfirm(`Confirm cleanup? ${winners.length} winning clip${winners.length === 1 ? "" : "s"} will be archived permanently and ${cleanupCandidates.length} non-winning clip${cleanupCandidates.length === 1 ? "" : "s"} will be removed from the server.`
+    ));
 
     if (!confirmed) return;
 
@@ -3967,7 +3967,7 @@ export function VideoHighlightsPage({
       setCurationResult(null);
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Cleanup failed:", error);
-      window.alert(error?.message || "Could not complete cleanup.");
+      (await fieldAlert(error?.message || "Could not complete cleanup."));
       await loadHighlights();
     } finally {
       setCleanupInProgress(false);
@@ -3996,9 +3996,8 @@ export function VideoHighlightsPage({
     ).trim();
 
     if (!clipId || !clipMatchId) {
-      window.alert(
-        "This clip is missing its match identity and cannot be liked yet."
-      );
+      (await fieldAlert("This clip is missing its match identity and cannot be liked yet."
+      ));
       return;
     }
 
@@ -4071,10 +4070,9 @@ export function VideoHighlightsPage({
         ),
       }));
 
-      window.alert(
-        error?.message ||
+      (await fieldAlert(error?.message ||
         "Could not update this like."
-      );
+      ));
     }
   };
 

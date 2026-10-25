@@ -27,6 +27,7 @@ function foregroundNotificationId(notification = {}) {
 const FieldNotifications = registerPlugin("FieldNotifications");
 
 async function showForegroundNotification(notification = {}) {
+  if (notification.data?.type === "pool_alert") return;
   const title = String(
     notification.title ||
     notification.data?.title ||

@@ -1,3 +1,4 @@
+import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {FieldAcceptedTeams} from "../components/PremiumNotification.jsx";
 import {fieldEntryHeroImage} from "../core/fieldEntryHeroImage.mjs";
 import {resolvePortalClubMember} from "../core/portalClubMemberPolicy.mjs";
@@ -78,6 +79,7 @@ const FANM_HOME_LOGO = "/HomePage/Logo_icon.jpeg";
 import {
   auth,
   db,
+  activeFirebaseProjectId,
   reauthenticateWithGoogle,
   signInWithGoogle,
 } from "../firebaseConfig";
@@ -4154,7 +4156,7 @@ export default function VenueEntryPage({
       setChallengerChatEmojiOpen(false);
     } catch (err) {
       console.error("[VenueEntryPage] Failed sending challenger chat message:", err);
-      window.alert("Could not send this challenger chat message just now.");
+      (await fieldAlert("Could not send this challenger chat message just now."));
     }
   };
 
@@ -4228,7 +4230,7 @@ export default function VenueEntryPage({
       setClubChatEmojiOpen(false);
     } catch (err) {
       console.error("[VenueEntryPage] Failed sending club chat message:", err);
-      window.alert("Could not send this club chat message just now.");
+      (await fieldAlert("Could not send this club chat message just now."));
     }
   };
 
@@ -4374,7 +4376,7 @@ export default function VenueEntryPage({
       }, activeClubId);
     } catch (err) {
       console.error("Approve failed:", err);
-      alert("Could not approve member. Check console for details.");
+      (await fieldAlert("Could not approve member. Check console for details."));
     }
   };
 
@@ -4798,7 +4800,7 @@ export default function VenueEntryPage({
       );
     } catch (err) {
       console.error("[VenueEntryPage] Failed acknowledging departure notice:", err);
-      window.alert("Could not close this departure notice just now. Please try again.");
+      (await fieldAlert("Could not close this departure notice just now. Please try again."));
     }
   };
 
@@ -4870,7 +4872,7 @@ export default function VenueEntryPage({
       setFixtureDiscussionDraft("");
     } catch (err) {
       console.error("[VenueEntryPage] Failed sending fixture discussion message:", err);
-      window.alert("Could not send this discussion message just now.");
+      (await fieldAlert("Could not send this discussion message just now."));
     }
   };
 
@@ -4914,7 +4916,7 @@ export default function VenueEntryPage({
       await markChallengeNoticeAcknowledged(noticePayload);
     } catch (err) {
       console.error("[VenueEntryPage] Failed accepting fixture alternative:", err);
-      window.alert("Could not accept this alternative just now.");
+      (await fieldAlert("Could not accept this alternative just now."));
     }
   };
 
@@ -4925,7 +4927,7 @@ export default function VenueEntryPage({
       await markChallengeNoticeAcknowledged(noticePayload);
     } catch (err) {
       console.error("[VenueEntryPage] Failed continuing fixture request:", err);
-      window.alert("Could not close this alternative just now.");
+      (await fieldAlert("Could not close this alternative just now."));
     }
   };
 
@@ -4972,7 +4974,7 @@ export default function VenueEntryPage({
       await markChallengeNoticeAcknowledged(noticePayload);
     } catch (err) {
       console.error("[VenueEntryPage] Failed accepting fixture change:", err);
-      window.alert("Could not accept this fixture update just now.");
+      (await fieldAlert("Could not accept this fixture update just now."));
     }
   };
 
@@ -5018,7 +5020,7 @@ export default function VenueEntryPage({
       setFixtureAlternativeMessage("");
     } catch (err) {
       console.error("[VenueEntryPage] Failed sending alternative fixture suggestion:", err);
-      window.alert("Could not send your alternative suggestion just now.");
+      (await fieldAlert("Could not send your alternative suggestion just now."));
     }
   };
 
@@ -5044,7 +5046,7 @@ export default function VenueEntryPage({
           );
         } catch (err) {
           console.error("[VenueEntryPage] Failed acknowledging challenge notice:", err);
-          window.alert("Could not close this challenge notice just now.");
+          (await fieldAlert("Could not close this challenge notice just now."));
           return;
         }
       }
@@ -5219,7 +5221,7 @@ export default function VenueEntryPage({
       await batch.commit();
     } catch (err) {
       console.error("[VenueEntryPage] Failed accepting challenge:", err);
-      window.alert("Could not accept challenge.");
+      (await fieldAlert("Could not accept challenge."));
     }
   };
 
@@ -5237,7 +5239,7 @@ export default function VenueEntryPage({
       );
     } catch (err) {
       console.error("[VenueEntryPage] Failed rejecting challenge:", err);
-      window.alert("Could not reject challenge.");
+      (await fieldAlert("Could not reject challenge."));
     }
   };
 
@@ -5251,7 +5253,7 @@ export default function VenueEntryPage({
       });
     } catch (err) {
       console.error("Reject failed:", err);
-      alert("Could not reject member. Check console for details.");
+      (await fieldAlert("Could not reject member. Check console for details."));
     }
   };
 
@@ -5784,14 +5786,13 @@ export default function VenueEntryPage({
             setVenuePage("live");
           } catch (error) {
             console.error("[Field Start Match]", startStep, error);
-            window.alert(
-              `${startStep}: ${error?.message || "The Field match could not be started."}`
-            );
+            (await fieldAlert(`${startStep}: ${error?.message || "The Field match could not be started."}`
+            ));
           }
         }}
-        onGoToLiveAsSpectator={() => {
+        onGoToLiveAsSpectator={async () => {
           if (!venueSeason?.id) {
-            window.alert("No Field match is live yet.");
+            (await fieldAlert("No Field match is live yet."));
             return;
           }
           setVenuePage("live");
@@ -5803,9 +5804,8 @@ export default function VenueEntryPage({
         onGoToHighlights={() => setVenuePage("videos")}
         onOpenHighlightsCamera={async () => {
           if (!/Android/i.test(window.navigator.userAgent || "")) {
-            window.alert(
-              "Highlights Camera opens on Android with the 5 Asides Near Me Camera app installed."
-            );
+            (await fieldAlert("Highlights Camera opens on Android with the 5 Asides Near Me Camera app installed."
+            ));
             return;
           }
 
@@ -5816,16 +5816,14 @@ export default function VenueEntryPage({
             : nextFixture;
           if (!fixture?.id || !venueSeason?.id) {
             if (liveMatch) {
-              window.alert(
-                "The live match's fixture could not be loaded. Return to the live match and retry Camera."
-              );
+              (await fieldAlert("The live match's fixture could not be loaded. Return to the live match and retry Camera."
+              ));
               return;
             }
 
-            const proceed = window.confirm(
-              "No Field fixture is ready yet. Open Camera for phone-only recording? " +
+            const proceed = (await fieldConfirm("No Field fixture is ready yet. Open Camera for phone-only recording? " +
               "This recording will not be uploaded to the Field League."
-            );
+            ));
             if (!proceed) return;
 
             const payload = {
@@ -5835,7 +5833,7 @@ export default function VenueEntryPage({
               gameFormat: venueSeason?.gameFormat || "5_V_5",
             };
             window.location.href =
-              "fiveasidesnearmecamera://open?payload=" +
+              ((activeFirebaseProjectId === "five-asides-near-me-staging" ? "fiveasidesnearmecamera-staging://open" : "fiveasidesnearmecamera://open") + "?payload=") +
               encodeURIComponent(JSON.stringify(payload));
             return;
           }
@@ -5893,8 +5891,8 @@ export default function VenueEntryPage({
             teamB,
           };
 
-          const openPhoneOnlyCamera = (message) => {
-            window.alert(message);
+          const openPhoneOnlyCamera = async (message) => {
+            (await fieldAlert(message));
             const payload = {
               sourceApp: "5 Asides Near Me",
               canUseOutsideOfficialMatch: true,
@@ -5915,7 +5913,7 @@ export default function VenueEntryPage({
               teamBPlayers: teamB.players,
             };
             window.location.href =
-              "fiveasidesnearmecamera://open?payload=" +
+              ((activeFirebaseProjectId === "five-asides-near-me-staging" ? "fiveasidesnearmecamera-staging://open" : "fiveasidesnearmecamera://open") + "?payload=") +
               encodeURIComponent(JSON.stringify(payload));
           };
 
@@ -5939,7 +5937,7 @@ export default function VenueEntryPage({
           } catch (error) {
             if (error?.code !== "camera/not-authorized") {
               console.error("[Field Camera] handoff failed", error);
-              window.alert(error?.message || "Could not open the Field camera.");
+              (await fieldAlert(error?.message || "Could not open the Field camera."));
               return;
             }
 

@@ -5933,3 +5933,12 @@ exports.playerPrivacyStatus = onRequest({region:REGION,cors:true},async(req,res)
 exports.kitShop = require("./kitShopHttp.cjs").kitShop;
 
 Object.assign(exports, require("./fieldPremiumNotifications.cjs").buildHandlers({db,region:REGION,sendBatch:sendPaymentNotificationBatch}));
+
+exports.poolNight = require("./poolNightHttp.cjs").poolNight;
+
+exports.onPoolAlertCreated = require("./poolPush.cjs").buildHandler();
+
+exports.poolCheckout = require("./poolCheckout.cjs").poolCheckout;
+exports.closeIdlePoolNights = require("./poolLifecycle.cjs").closeIdlePoolNights;
+
+exports.cleanupOldPoolNights = require("./poolRetention.cjs").cleanupOldPoolNights;
