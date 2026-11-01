@@ -28,9 +28,9 @@ function buildHandlers({db,region,sendBatch,testOnly=false,authService=null,port
   const message=event.data?.data(),{venueId,messageId}=event.params;if(!message?.senderUid)return;
   await deliverOnce(db,`field-chat:${venueId}:${messageId}`,async()=>{
    const venue=(await db.doc(`leagueVenues/${venueId}`).get()).data();if(!venue||venue.deleted)return;
-   const audience=await fieldAudience(db,venueId,venue,true,authService);if(!audience.includes(message.senderUid)){console.info("[Field chat] Sender is no longer eligible",{venueId,messageId});return;}
-   const tokenRecords=await require("./chatNotificationPolicy.cjs").filterChatRecipients(db,await tokensFor(db,audience.filter(uid=>includeSenderForTesting||uid!==message.senderUid)),"field",venueId);if(!tokenRecords.length){console.info("[Field chat] No enabled recipient devices",{venueId,messageId,audience:audience.length});return;}
-   const senderImage=message.clubId?await portrait(db,message.clubId,message.senderUid):https((await db.doc(`leagueVenues/${venueId}/staff/${message.senderUid}`).get()).data()?.photoUrl||"");
+   const policy=await require("./fieldChatAudience.cjs").audience(db,venueId,venue,authService),audience=[...policy.eligible];if(!audience.includes(message.senderUid)){console.info("[Field chat] Sender is no longer eligible",{venueId,messageId});return;}
+   const tokenRecords=await require("./chatNotificationPolicy.cjs").filterChatRecipients(db,await tokensFor(db,audience.filter(uid=>includeSenderForTesting||uid!==message.senderUid)),"field",venueId,{defaultEnabled:policy.defaults});if(!tokenRecords.length){console.info("[Field chat] No enabled recipient devices",{venueId,messageId,audience:audience.length});return;}
+   const senderImage=message.clubId?await portrait(db,message.clubId,message.senderUid):await require("./notificationMedia.cjs").publicImage((await db.doc(`leagueVenues/${venueId}/staff/${message.senderUid}`).get()).data()?.photoUrl||"");
    const result=await sendBatch({tokenRecords,title:`${message.senderName||"Field member"} · ${venue.name||"Field chat"}`,body:String(message.text||"Shared a highlight").slice(0,180),imageUrl:senderImage,data:{type:"field_chat",route:"field-chat",venueId,messageId,senderUid:message.senderUid,senderName:String(message.senderName||"Field member"),senderPhotoUrl:senderImage,sourceName:String(venue.name||"Field chat"),groupLogoUrl:await require("./notificationRuntime.cjs").groupImage(venue)}});if(!result.successCount)throw new Error("No chat notifications delivered.");
   });
  })

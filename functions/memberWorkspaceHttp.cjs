@@ -12,3 +12,5 @@ exports.clubTeamChat=endpoint("./clubTeamChat.cjs");
 exports.manageFieldStaff=endpoint("./fieldStaffManagement.cjs");
 
 exports.fieldClubChat=endpoint("./fieldClubChat.cjs");
+
+exports.fieldChatPreferences=endpoint("./fieldChatAudience.cjs");

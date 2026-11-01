@@ -4,6 +4,13 @@ import {createPortal} from "react-dom";
 import "./PremiumNotification.css";
 const safeImage=value=>/^https:\/\//i.test(value||'')?value:'';
 function Badge({src,label,portrait=false}){const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[src]);return src&&!failed?<img className={`fanm-notice-picture ${portrait?"is-portrait":""}`} src={src} alt="" onError={()=>setFailed(true)}/>:<span className="fanm-notice-picture fanm-notice-fallback" aria-label={label}>{String(label||'⚽').slice(0,2).toUpperCase()}</span>;}
+function NoticeArtwork({item}){
+ const data=item.data||{},[switched,setSwitched]=useState(null);
+ const portrait=safeImage(data.senderPhotoUrl),logo=safeImage(data.groupLogoUrl);
+ useEffect(()=>{if(!portrait||!logo)return;const timer=setTimeout(()=>setSwitched(item),3000);return()=>clearTimeout(timer);},[item,portrait,logo]);
+ const showPortrait=!!portrait&&switched!==item;
+ return <span className="fanm-notice-source"><Badge portrait={showPortrait} src={showPortrait?portrait:logo||safeImage(data.fieldLogoUrl||data.imageUrl)||portrait} label={data.senderName||data.sourceName||data.clubName||"⚽"}/></span>;
+}
 export function PremiumNotificationToast(){
  const [queue,setQueue]=useState([]);
  useEffect(()=>{let active=true;const receive=event=>{shouldPresentChatNotification(event.detail?.data).then(show=>{if(active&&show)setQueue(old=>[...old.slice(-3),event.detail]);}).catch(()=>{});};window.addEventListener('fanm-notification',receive);return()=>{active=false;window.removeEventListener('fanm-notification',receive);};},[]);
@@ -12,7 +19,7 @@ export function PremiumNotificationToast(){
  const open=()=>{window.dispatchEvent(new CustomEvent("fanm-notification-open",{detail:item}));setQueue(old=>old.slice(1));};
  return createPortal(<aside className="fanm-premium-notice" role="status" aria-live="polite">
  <button className="fanm-notice-open" type="button" onClick={open} aria-label={`Open ${item.title||"notification"}`}>
- <span className="fanm-notice-source"><Badge portrait={Boolean(data.senderPhotoUrl)} src={safeImage(data.senderPhotoUrl||data.groupLogoUrl||data.fieldLogoUrl||data.imageUrl)} label={data.senderName||data.sourceName||data.clubName||"⚽"}/>{data.senderPhotoUrl&&data.groupLogoUrl&&<img className="fanm-notice-group" src={safeImage(data.groupLogoUrl)} alt={data.sourceName||"Group"} onError={event=>{event.currentTarget.style.display="none";}}/>}</span>
+ <NoticeArtwork item={item}/>
  <span className="fanm-notice-copy"><small>{data.sourceName||data.clubName||data.fieldName||"FANM"}</small><strong>{item.title||"FANM update"}</strong><span className="fanm-notice-body">{item.body}</span></span>
  {safeImage(data.contentImageUrl)&&<img className="fanm-notice-content" src={safeImage(data.contentImageUrl)} alt="" onError={event=>{event.currentTarget.style.display="none";}}/>}
  <img className="fanm-notice-brand-logo" src="/pwa/fanm-app-icon.png" alt="FANM"/>

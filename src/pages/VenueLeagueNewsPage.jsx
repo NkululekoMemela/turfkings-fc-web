@@ -1,3 +1,4 @@
+import {storyDateInput, storyPublicationTime} from "../core/storyPublication.mjs";
 import StoryPhotoPicker from "../components/StoryPhotoPicker.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 // src/pages/NewsPage.jsx
@@ -227,17 +228,11 @@ function resolveDateMs(rawMs, fallback = Date.now()) {
 }
 
 function makeDateInputValue(ms) {
-  const d = new Date(resolveDateMs(ms));
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
-  return d.toISOString().slice(0, 10);
+  return storyDateInput(resolveDateMs(ms));
 }
 
 function dateInputToMs(value, fallback = Date.now()) {
-  const raw = String(value || "").trim();
-  if (!raw) return fallback;
-  const parsed = new Date(`${raw}T12:00:00`);
-  const ms = parsed.getTime();
-  return Number.isNaN(ms) ? fallback : ms;
+  return storyPublicationTime(value, fallback);
 }
 
 function getFreshnessBadge(createdAtMs, archived = false) {
@@ -900,7 +895,7 @@ export function NewsPage({
         setStoryFormNotice(
           editingStoryId
             ? "Story updated."
-            : "Story created and published."
+            : (publishDateMs > Date.now() ? "Story saved and scheduled for the selected date." : "Story created and published.")
         );
         setStoryDraft(createEmptyStoryDraft());
         setEditingStoryId("");
@@ -947,7 +942,7 @@ export function NewsPage({
         { merge: true }
       );
 
-      setStoryFormNotice(editingStoryId ? "Story updated." : "Story created and published.");
+      setStoryFormNotice(editingStoryId ? "Story updated." : (publishDateMs > Date.now() ? "Story saved and scheduled for the selected date." : "Story created and published."));
       setStoryDraft(createEmptyStoryDraft());
       setEditingStoryId("");
       setShowCreateStoryForm(false);
@@ -3262,7 +3257,7 @@ Votes for this poll will no longer be shown.`
                 </label>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Publish date</span>
+                  <span style={{ fontWeight: 700 }}>Publish date · today sends now</span>
                   <input
                     type="date"
                     value={storyDraft.publishDate}
