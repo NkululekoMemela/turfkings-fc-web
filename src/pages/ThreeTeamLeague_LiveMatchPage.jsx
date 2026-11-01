@@ -1,4 +1,6 @@
-import {usePlayerNumberLabel} from "../components/PlayerNumberContext.jsx";
+import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
+import {splitNumberDisplay} from "../core/playerNumberDisplay.mjs";
+import {usePlayerNumberLabel,InlineLineupNumber} from "../components/PlayerNumberContext.jsx";
 // src/pages/ThreeTeamLeague_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1221,6 +1223,7 @@ async function writeFinalSummaryToFirestore(
 
 function PlayerBenchChip({
   name,
+  numberBelow=false,
   isSelected,
   onClick,
   photoData,
@@ -1229,6 +1232,7 @@ function PlayerBenchChip({
   isSub = false,
   roleTag = "",
 }) {
+  const separated=numberBelow?splitNumberDisplay(name):{name,number:""};
   const roleStyle = getRoleBadgeStyle(roleTag, isSub);
 
   return (
@@ -1281,8 +1285,7 @@ function PlayerBenchChip({
       </span>
 
       <span className={isSub ? "live-bench-chip-text is-sub" : ""}>
-        {name}
-        {suffix}
+        {numberBelow?<><span className="live-chip-player-name">{separated.name}{suffix}</span>{separated.number&&<span className="live-chip-player-number">{separated.number}</span>}</>:<>{name}{suffix}</>}
       </span>
     </button>
   );
@@ -1338,7 +1341,7 @@ function PlayerChoiceGrid({
       {players.length === 0 ? (
         <p className="muted small">No players available.</p>
       ) : (
-        <div className="live-player-choice-grid">
+        <div className="live-player-choice-grid live-scorer-choice-grid">
           {players.map((entry, idx) => {
             const rawName =
               typeof entry === "string" ? entry : entry?.name || "";
@@ -1419,6 +1422,7 @@ function PlayerChoiceGrid({
                   }
                 >
                   <PlayerBenchChip
+                    numberBelow
                     name={displayCompactPlayerName(rawName)}
                     isSelected={isSelected}
                     onClick={() => {
@@ -2275,6 +2279,7 @@ function LineupBoard({
                     </>
                   ) : (
                     <>
+                      <div className="live-lineup-number-pin"><InlineLineupNumber raw={name} teamId={team?.id}/></div>
                       <div
                         className={`player-shirt ${photoData ? "with-photo" : ""}`}
                         style={
@@ -2285,9 +2290,7 @@ function LineupBoard({
                       />
                       <div className="live-player-meta">
                         <span className="player-name">
-                          {name
-                            ? displayCompactPlayerName(name)
-                            : "Empty"}
+                          {name?<>{displayCompactPlayerName(name).replace(/^\((?:\d+|-)\)\s*/,"")}</>:"Empty"}
                         </span>
                         <span className="position-tag">
                           {pos.label}
@@ -2773,8 +2776,8 @@ function LineupBoard({
                   }}
                   onDragEnd={() => setDraggedPlayer(null)}
                 >
-                  <PlayerBenchChip
-                    name={displayCompactPlayerName(p)}
+                  <InlineLineupNumber raw={p} teamId={team?.id}/><PlayerBenchChip
+                    name={displayCompactPlayerName(p).replace(/^\((?:\d+|-)\)\s*/,"")}
                     isSelected={isSelected}
                     onClick={() => handleBenchClick(p)}
                     photoData={photoData}
@@ -3368,113 +3371,10 @@ export function ThreeTeamLeagueLiveMatchPage({
     standbyId
   );
 
-  const [mergedPlayerPhotos, setMergedPlayerPhotos] = useState(
-    playerPhotosByName || {}
-  );
-
-  useEffect(() => {
-    setMergedPlayerPhotos((prev) => ({
-      ...prev,
-      ...(playerPhotosByName || {}),
-    }));
-  }, [playerPhotosByName]);
-
-  useEffect(() => {
-    const alreadyLoaded =
-      playerPhotosByName &&
-      Object.keys(playerPhotosByName).length > 20;
-
-    if (alreadyLoaded) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadPhotos() {
-      try {
-        const snap = await getDocs(getPlayerPhotosCollection(db, activeClubId));
-        if (cancelled) return;
-
-        const loaded = {};
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          const photoData = data?.photoData || "";
-          const rawName = data?.name || docSnap.id || "";
-          if (!photoData) return;
-
-          const canonical = canonicalName(rawName);
-          const compact = displayCompactPlayerName(rawName);
-          const slug = slugFromLooseName(canonical || rawName);
-          const firstCanon = firstNameOf(canonical);
-          const firstCompact = firstNameOf(compact);
-
-          [
-            rawName,
-            toTitleCaseLoose(rawName),
-            canonical,
-            compact,
-            slug,
-            firstCanon,
-            firstCompact,
-          ]
-            .map((x) => String(x || "").trim())
-            .filter(Boolean)
-            .forEach((key) => {
-              loaded[key] = photoData;
-            });
-        });
-
-        setMergedPlayerPhotos((prev) => ({
-          ...loaded,
-          ...prev,
-        }));
-      } catch (err) {
-        console.error("Failed to load player photos in LiveMatchPage:", err);
-      }
-    }
-
-    loadPhotos();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeClubId]);
-
-  const getPlayerPhoto = useMemo(() => {
-    return (playerName = "") => {
-      const raw = String(playerName || "").trim();
-      if (!raw) return null;
-
-      const canonical = canonicalName(raw);
-      const compact = displayCompactPlayerName(raw);
-      const slug = slugFromLooseName(canonical || raw);
-      const firstCanonical = firstNameOf(canonical);
-      const firstCompact = firstNameOf(compact);
-
-      const candidates = [
-        raw,
-        toTitleCaseLoose(raw),
-        canonical,
-        compact,
-        slug,
-        firstCanonical,
-        firstCompact,
-      ]
-        .map((x) => String(x || "").trim())
-        .filter(Boolean);
-
-      for (const key of candidates) {
-        if (mergedPlayerPhotos[key]) return mergedPlayerPhotos[key];
-        const matchedKey = Object.keys(mergedPlayerPhotos).find(
-          (k) => normKey(k) === normKey(key)
-        );
-        if (matchedKey && mergedPlayerPhotos[matchedKey]) {
-          return matchedKey ? mergedPlayerPhotos[matchedKey] : null;
-        }
-      }
-
-      return null;
-    };
-  }, [mergedPlayerPhotos, canonicalName, displayCompactPlayerName]);
+  const [mergedPlayerPhotos,setMergedPlayerPhotos]=useState(playerPhotosByName||{});
+  useEffect(()=>setMergedPlayerPhotos(playerPhotosByName||{}),[activeClubId,playerPhotosByName]);
+  useEffect(()=>{let cancelled=false;getDocs(getPlayerPhotosCollection(db,activeClubId)).then(snapshot=>{if(!cancelled){const loaded=indexPlayerPortraits(snapshot.docs.map(doc=>({id:doc.id,data:doc.data()||{}})));setMergedPlayerPhotos(old=>({...old,...loaded}));}}).catch(error=>console.warn("[Player portraits] Could not refresh",error.code||error.name));return()=>{cancelled=true;};},[activeClubId]);
+  const getPlayerPhoto=useMemo(()=>raw=>resolvePlayerPortrait(raw,players||[],mergedPlayerPhotos),[players,mergedPlayerPhotos]);
 
   const [scoringTeamId, setScoringTeamId] = useState("");
   const [scorerName, setScorerName] = useState("");
@@ -3547,6 +3447,8 @@ export function ThreeTeamLeagueLiveMatchPage({
   const [undoError, setUndoError] = useState("");
 
   const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [handInjuryHint,setHandInjuryHint]=useState(false);
+  useEffect(()=>{setHandInjuryHint(false);if(!showVerifyModal)return;const reveal=setTimeout(()=>setHandInjuryHint(true),5000),hide=setTimeout(()=>setHandInjuryHint(false),10000);return()=>{clearTimeout(reveal);clearTimeout(hide);};},[showVerifyModal]);
   const [
     goalkeeperRestrictionsByTeam,
     setGoalkeeperRestrictionsByTeam,
@@ -8234,7 +8136,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                         </strong>
                       </div>
 
-                      <div className="live-player-choice-grid">
+                      <div className="live-player-choice-grid live-scorer-choice-grid">
                         {assistOptions.map((entry) => {
                           const rawName =
                             typeof entry === "string"
@@ -8251,7 +8153,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                           return (
                             <PlayerBenchChip
                               key={rawName}
-                              name={displayCompactPlayerName(rawName)}
+                              numberBelow name={displayCompactPlayerName(rawName)}
                               isSelected={assistName === rawName}
                               onClick={() =>
                                 handleGoalAssistSelection(
@@ -8404,168 +8306,7 @@ export function ThreeTeamLeagueLiveMatchPage({
           <div className="modal live-verify-modal">
             <h3 className="live-lineups-title">Edit lineup positions</h3>
 
-            {canManageLiveHandInjury &&
-              Number(currentMatchNo) === 1 &&
-              !hasVerifiedLineups && (
-                <section
-                  style={{
-                    marginBottom: 12,
-                    padding: 13,
-                    borderRadius: 17,
-                    border:
-                      "1px solid rgba(245,158,11,0.34)",
-                    background:
-                      "linear-gradient(145deg, rgba(15,23,42,0.98), rgba(69,38,8,0.78))",
-                    boxShadow:
-                      "0 15px 34px rgba(2,6,23,0.28)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: 38,
-                        height: 38,
-                        flex: "0 0 38px",
-                        display: "grid",
-                        placeItems: "center",
-                        borderRadius: 12,
-                        background:
-                          "rgba(245,158,11,0.16)",
-                        border:
-                          "1px solid rgba(245,158,11,0.3)",
-                        fontSize: 18,
-                      }}
-                    >
-                      🧤
-                    </span>
-
-                    <div style={{ minWidth: 0 }}>
-                      <strong
-                        style={{
-                          display: "block",
-                          fontSize: 14,
-                        }}
-                      >
-                        Set tonight’s rotation foundation
-                      </strong>
-                      <small
-                        style={{
-                          display: "block",
-                          marginTop: 3,
-                          lineHeight: 1.4,
-                          color:
-                            "rgba(226,232,240,0.76)",
-                        }}
-                      >
-                        Check each goalkeeper and substitute before
-                        confirming the first match.
-                      </small>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 7,
-                      marginTop: 11,
-                    }}
-                  >
-                    <span
-                      style={{
-                        padding: "5px 8px",
-                        borderRadius: 999,
-                        background:
-                          "rgba(34,197,94,0.11)",
-                        border:
-                          "1px solid rgba(34,197,94,0.23)",
-                        color: "#bbf7d0",
-                        fontSize: 11,
-                        fontWeight: 750,
-                      }}
-                    >
-                      GK checked
-                    </span>
-
-                    <span
-                      style={{
-                        padding: "5px 8px",
-                        borderRadius: 999,
-                        background:
-                          "rgba(56,189,248,0.1)",
-                        border:
-                          "1px solid rgba(56,189,248,0.22)",
-                        color: "#bae6fd",
-                        fontSize: 11,
-                        fontWeight: 750,
-                      }}
-                    >
-                      Sub checked
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowHandInjuryManager(
-                          (visible) => !visible
-                        )
-                      }
-                      aria-expanded={showHandInjuryManager}
-                      style={{
-                        padding: "5px 9px",
-                        borderRadius: 999,
-                        background:
-                          "rgba(245,158,11,0.14)",
-                        border:
-                          "1px solid rgba(245,158,11,0.3)",
-                        color: "#fde68a",
-                        fontSize: 11,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      💪 Hand injury ·{" "}
-                      {teamARestrictedPlayerKeys.length +
-                        teamBRestrictedPlayerKeys.length +
-                        standbyRestrictedPlayerKeys.length}
-                    </button>
-                  </div>
-                </section>
-              )}
-
-            {canManageLiveHandInjury &&
-              !(
-                Number(currentMatchNo) === 1 &&
-                !hasVerifiedLineups
-              ) && (
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={() =>
-                    setShowHandInjuryManager(
-                      (visible) => !visible
-                    )
-                  }
-                  aria-expanded={showHandInjuryManager}
-                  style={{
-                    width: "100%",
-                    marginBottom: 10,
-                    minHeight: 38,
-                  }}
-                >
-                  💪 Hand injury ·{" "}
-                  {teamARestrictedPlayerKeys.length +
-                    teamBRestrictedPlayerKeys.length +
-                        standbyRestrictedPlayerKeys.length}
-                </button>
-              )}
+            {canManageLiveHandInjury&&<div className="live-hand-injury-control"><button type="button" aria-label="Hand injury goalkeeper restrictions" aria-expanded={showHandInjuryManager} title="Hand injury" onClick={()=>setShowHandInjuryManager(visible=>!visible)}>✋</button>{handInjuryHint&&<span role="status">Check hand injuries before choosing a goalkeeper.</span>}</div>}
 
             {canManageLiveHandInjury &&
               showHandInjuryManager && (

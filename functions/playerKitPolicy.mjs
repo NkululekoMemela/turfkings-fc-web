@@ -4,7 +4,7 @@ export function jerseyNumber(value) {
   if (!/^\d{1,3}$/.test(String(value).trim())) throw new Error("Use a number from 0 to 999, or leave it unassigned.");
   return Number(value);
 }
-export const NO_NUMBER_REASONS = Object.freeze({inside_out:"Bib turned inside out",no_bib:"Playing without a bib",spare_unnumbered:"Spare unnumbered kit"});
+export const NO_NUMBER_REASONS = Object.freeze({not_recorded:"Number not recorded",not_used:"Player numbers not used",inside_out:"Bib turned inside out",no_bib:"Playing without a bib",spare_unnumbered:"Spare unnumbered kit"});
 const rawName = value => typeof value === "string" ? value : value?.fullName || value?.name || value?.displayName || value?.id || "";
 export function profileForKit(raw, profiles, clubId = "") {
   const prefixed=typeof raw==="string" && raw.includes("::")?raw.split("::"):null;
@@ -30,7 +30,7 @@ export function buildKitRoster(teams = [], profiles = [], snapshots = {}) {
       const aliases = [...new Set([key,name,rawName(raw),profile?.shortName,...(profile?.aliases || []),...(profile?.profileNameAliases || [])].filter(Boolean).map(normalizeKitName))];
       const saved = team.kitNumbers?.[key] ?? team.kitNumbers?.[normalizeKitName(rawName(raw))];
       const hasSaved = saved !== undefined;
-      const value = hasSaved ? (typeof saved === "object" ? saved?.number : saved) : profile?.jerseyNumber;
+      const value = team.usePlayerNumbers===false?null:hasSaved ? (typeof saved === "object" ? saved?.number : saved) : profile?.jerseyNumber;
       let number = null;
       try {number = jerseyNumber(value);} catch { number=hasSaved?value:null; }
       rows.set(key,{key,name,aliases,number,noNumberReason:"",source:hasSaved?"captain":number===null?"unassigned":"profile"});
@@ -53,7 +53,7 @@ export function validateKitTeams(teams, {referee = false, requireNumbered = fals
       if(requireNumbered && number === null)throw new Error(`${row.name}: a visible numbered bib is required for official league play. Unnumbered or inside-out bibs cannot be approved.`);
       const noNumberReason = number === null ? String(row.noNumberReason || "") : "";
       if (number !== null) {
-        if (numbers.has(number)) throw new Error(`${team.label || team.id}: #${number} is assigned to ${numbers.get(number)} and ${row.name}. Use a spare number or let the referee approve an unnumbered kit.`);
+        if (numbers.has(number)) throw new Error(`${team.label || team.id}: (${number}) is assigned to ${numbers.get(number)} and ${row.name}. Use a spare number or let the referee approve an unnumbered kit.`);
         numbers.set(number,row.name);
       } else if (referee && !Object.hasOwn(NO_NUMBER_REASONS,noNumberReason)) {
         throw new Error(`Verify ${row.name}'s kit, or select why their number is hidden.`);
@@ -71,10 +71,10 @@ export function kitRosterSignature(teams) {
 export function numberForName(teams, name, teamId = "") {
   const key = normalizeKitName(name);
   const matches = teams.filter(team=>!teamId || String(team.id)===String(teamId)).flatMap(team=>team.players.filter(row=>row.key===name || (row.aliases || []).includes(key) || normalizeKitName(row.name)===key));
-  if (matches.length !== 1) return "";
-  return matches[0].number === null ? "No number" : `#${matches[0].number}`;
+  if (matches.length !== 1) return "(-)";
+  return matches[0].number == null ? "(-)" : `(${matches[0].number})`;
 }
 export function labelWithNumber(teams, raw, label, teamId = "") {
   const prefix = numberForName(teams,raw,teamId);
-  return prefix ? `${prefix} · ${label}` : label;
+  return prefix ? `${prefix} ${label}` : label;
 }

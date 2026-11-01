@@ -1,3 +1,5 @@
+import useNotificationFocus from "../hooks/useNotificationFocus.js";
+import "../components/NotificationFocus.css";
 import {storyDateInput, storyPublicationTime} from "../core/storyPublication.mjs";
 import StoryPhotoPicker from "../components/StoryPhotoPicker.jsx";
 // src/pages/NewsPage.jsx
@@ -743,12 +745,7 @@ export function NewsPage({
     return () => unsubscribe();
   }, [isPracticeMode, practiceSessionId, safeActiveClubId]);
 
-  useEffect(() => {
-    const id=String(initialPollOpen?.storyId||"");
-    if(initialPollOpen?.clubId!==safeActiveClubId || !customStories.some(story=>story.id===id&&!story.archived))return;
-    const timer=setTimeout(()=>document.getElementById(`fanm-story-${id}`)?.scrollIntoView({behavior:"smooth",block:"center"}),200);
-    return()=>clearTimeout(timer);
-  },[initialPollOpen,customStories,safeActiveClubId]);
+  const focusedStoryId=useNotificationFocus(initialPollOpen,safeActiveClubId,customStories,"fanm-story-");
 
   const activeCustomStories = useMemo(
     () => customStories.filter((story) => story && !story.archived),
@@ -2857,7 +2854,7 @@ Votes for this poll will no longer be shown.`
     const panelWidthPercent = Math.round(imageScale * 100);
 
     return (
-      <section key={story.id} id={`fanm-story-${story.id}`} className="card" style={{ overflow: "hidden", scrollMarginTop: 100 }}>
+      <section key={story.id} id={`fanm-story-${story.id}`} className={`card ${focusedStoryId===story.id ? "fanm-notification-focus fanm-story-focus" : ""}`} style={{ overflow: "hidden", scrollMarginTop: 100 }}>
         <div
           style={{
             display: "grid",

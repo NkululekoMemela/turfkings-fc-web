@@ -107,7 +107,7 @@ export default function VenueSquadsPage({
             displayNameOf={(id,teamId)=>{
               const player = people.get(id);
               const team = teams.find(item=>item.players.includes(id));
-              return `${player?.jerseyNumber==null?"":`#${player.jerseyNumber} · `}${player?.fullName || ""}${
+              return `${player?.jerseyNumber==null?"(-) ":`(${player.jerseyNumber}) `}${player?.fullName || ""}${
                 team?.players.indexOf(id) === 5 ? " (Sub)" : ""
               }${player?.isFillIn ? " · Fill-in" : ""}`;
             }}

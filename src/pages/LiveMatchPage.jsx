@@ -1,9 +1,8 @@
 // src/pages/LiveMatchPage.jsx
-import React, {useEffect,useMemo,useRef,useState} from "react";
+import React, {useEffect,useMemo,useState} from "react";
 import {auth} from "../firebaseConfig.js";
 import {useFootballProfiles,useMatchNumberSheet,verifyPlayerKit} from "../hooks/usePlayerKit.js";
-import {buildKitRoster,kitRosterSignature,labelWithNumber} from "../core/playerKit.js";
-import {RefereeKitDialog} from "../components/PlayerKitEditor.jsx";
+import {buildKitRoster,kitRosterSignature,labelWithNumber,jerseyNumber,validateKitTeams,normalizeKitName} from "../core/playerKit.js";
 import {PlayerNumberContext} from "../components/PlayerNumberContext.jsx";
 import ThreeTeamLeagueLiveMatchPage from "./ThreeTeamLeague_LiveMatchPage.jsx";
 import FriendlyLiveMatchPage from "./Friendly_LiveMatchPage";
@@ -51,49 +50,40 @@ export function LiveMatchPage(props) {
   const playingIds=[liveCurrentMatch?.teamAId || liveCurrentMatch?.clubAId,liveCurrentMatch?.teamBId || liveCurrentMatch?.clubBId].filter(Boolean).map(String);
   const participating=rawTeams.filter(team=>!playingIds.length || playingIds.includes(String(team.id))).slice(0,2);
   const {sheet,error:sheetError}=useMatchNumberSheet(scope,matchKey);
-  const [localSheet,setLocalSheet]=useState(null),[dialog,setDialog]=useState(null);
-  const resolver=useRef(null);
+  const [localSheet,setLocalSheet]=useState(null),[overrides,setOverrides]=useState({}),[numberError,setNumberError]=useState("");
   const workspaceKey=JSON.stringify([scope,matchKey]);
-  useEffect(()=>{setLocalSheet(null);setDialog(null);resolver.current?.(false);resolver.current=null;},[workspaceKey]);
-  useEffect(()=>()=>{resolver.current?.(false);},[]);
-  const currentSheet=localSheet?.matchKey===matchKey && (!sheet || localSheet.revision>=sheet.revision)?localSheet:sheet;
-  const draftKit=buildKitRoster(participating,profiles,props.confirmedLineupSnapshot || {});
+  useEffect(()=>{setLocalSheet(null);setOverrides({});setNumberError("");},[workspaceKey]);
+  const numbersEnabled=Boolean(scope.venueId)||rawTeams.some(team=>team.usePlayerNumbers!==false);
+  const currentSheet=localSheet?.matchKey===matchKey&&(!sheet||localSheet.revision>=sheet.revision)?localSheet:sheet;
+  const draftKit=buildKitRoster(participating,profiles,props.confirmedLineupSnapshot||{});
+  const applyNumbers=teams=>teams.map(team=>({...team,players:team.players.map(row=>({...row,number:!numbersEnabled?null:Object.hasOwn(overrides,`${team.id}:${row.key}`)?overrides[`${team.id}:${row.key}`]:row.number,noNumberReason:!numbersEnabled?"not_used":row.noNumberReason||"not_recorded"}))}));
   const rosterMatches=currentSheet?.rosterSignature===kitRosterSignature(draftKit);
-  const visibleKit=rosterMatches?currentSheet.teams:draftKit;
-  const numberLabel=useMemo(()=>(raw,label,teamId="")=>labelWithNumber(visibleKit,raw,label,teamId),[JSON.stringify(visibleKit)]);
-  const canVerify=Boolean(props.canControlCurrentLiveMatch && auth.currentUser?.uid && auth.currentUser.emailVerified);
-  const openNumbers=(snapshots,continueLineup=false)=>{
-    if(!canVerify)return Promise.resolve(false);
-    const base=buildKitRoster(participating,profiles,snapshots || props.confirmedLineupSnapshot || {});
-    const teams=base.map(team=>({...team,players:team.players.map(row=>{
-      const saved=currentSheet?.teams?.find(item=>item.id===team.id)?.players.find(item=>item.key===row.key);
-      return saved?{...row,number:saved.number,noNumberReason:saved.noNumberReason}:row;
-    })}));
-    return new Promise(resolve=>{resolver.current?.(false);resolver.current=resolve;setDialog({teams,snapshots,continueLineup});});
+  const visibleKit=applyNumbers(rosterMatches?currentSheet.teams:draftKit);
+  const canVerify=Boolean(props.canControlCurrentLiveMatch&&auth.currentUser?.uid&&auth.currentUser.emailVerified);
+  const saveNumbers=async(teams,snapshots=props.confirmedLineupSnapshot||{})=>{
+    if(!canVerify)throw Error("Sign in as the controlling referee to update numbers.");
+    const checked=validateKitTeams(teams,{referee:true,requireNumbered:Boolean(scope.venueId)&&scope.environment!=="practice"});
+    const saved=scope.environment==="practice"?{teams:checked,matchKey,rosterSignature:kitRosterSignature(checked),revision:(currentSheet?.revision||0)+1,verifiedAtMs:Date.now()}:await verifyPlayerKit({scope,matchKey,teams:checked,expectedRevision:currentSheet?.revision||0});
+    const enriched=Object.fromEntries(Object.entries(snapshots).map(([teamId,snapshot])=>[teamId,{...snapshot,kitNumbers:checked.find(team=>team.id===teamId)?.players||[],kitVerification:{sheetId:saved.sheetId||"practice",revision:saved.revision,verifiedAtMs:saved.verifiedAtMs}}]));
+    await props.onConfirmPreMatchLineups?.(enriched);setLocalSheet(saved);setOverrides({});setNumberError("");return enriched;
   };
-  const confirmLineups=async snapshots=>openNumbers(snapshots,true);
-  const saveNumbers=async teams=>{
-    if(!auth.currentUser?.uid || !auth.currentUser.emailVerified)throw new Error("Sign in as the referee to verify kit.");
-    const saved=scope.environment==="practice"?{teams,matchKey,rosterSignature:kitRosterSignature(teams),revision:(currentSheet?.revision || 0)+1,verifiedAtMs:Date.now()}:await verifyPlayerKit({scope,matchKey,teams,expectedRevision:currentSheet?.revision || 0});
-    const snapshots=dialog?.snapshots || props.confirmedLineupSnapshot || {};
-    const enriched=Object.fromEntries(Object.entries(snapshots).map(([teamId,snapshot])=>[teamId,{...snapshot,kitNumbers:teams.find(team=>team.id===teamId)?.players || [],kitVerification:{sheetId:saved.sheetId || "practice",revision:saved.revision,verifiedAtMs:saved.verifiedAtMs}}]));
-    if(dialog?.continueLineup || Object.keys(snapshots).length)await props.onConfirmPreMatchLineups?.(enriched);
-    setLocalSheet(saved);setDialog(null);resolver.current?.(enriched);resolver.current=null;
+  const confirmLineups=async snapshots=>saveNumbers(applyNumbers(buildKitRoster(participating,profiles,snapshots)),snapshots);
+  const editNumber=async(teamId,key,value)=>{
+    const number=jerseyNumber(value),next=visibleKit.map(team=>team.id!==String(teamId)?team:{...team,players:team.players.map(row=>row.key!==key?row:{...row,number,noNumberReason:number===null?"not_recorded":""})});
+    validateKitTeams(next);
+    if(rosterMatches)await saveNumbers(next);else setOverrides(old=>({...old,[`${teamId}:${key}`]:number}));
   };
-
-  useEffect(()=>{
-    if(props.awaitingKitVerification && canVerify && !dialog && !rosterMatches && profiles.length){
-      openNumbers(props.confirmedLineupSnapshot || {});
-    }
-  },[props.awaitingKitVerification,canVerify,profiles.length,workspaceKey]);
+  const numberLabel=useMemo(()=>(raw,label,teamId="")=>numbersEnabled?labelWithNumber(visibleKit,raw,label,teamId):label,[JSON.stringify(visibleKit),numbersEnabled]);
+  numberLabel.enabled=numbersEnabled;numberLabel.canEdit=canVerify;numberLabel.edit=editNumber;
+  numberLabel.resolve=(raw,teamId)=>visibleKit.filter(team=>!teamId||team.id===String(teamId)).flatMap(team=>team.players).find(row=>row.key===raw||(row.aliases||[]).includes(normalizeKitName(raw)));
 
   const sharedProps = {
     ...props,
     onConfirmPreMatchLineups:confirmLineups,
     onAddEvent:event=>{
-      if(!rosterMatches){openNumbers(props.confirmedLineupSnapshot || {});return false;}
+      if(!rosterMatches){setNumberError("Confirm the lineups before recording events.");return false;}
       const team=currentSheet.teams.find(item=>item.id===String(event.teamId || ""));
-      const numberOf=name=>{const candidates=(team?.players || []).filter(row=>row.aliases.includes(String(name || "").trim().toLowerCase()));return candidates.length===1?candidates[0].number:null;};
+      const numberOf=name=>{if(!numbersEnabled)return null;const candidates=(team?.players || []).filter(row=>row.aliases.includes(String(name || "").trim().toLowerCase()));return candidates.length===1?candidates[0].number:null;};
       return props.onAddEvent?.({...event,playerNumber:numberOf(event.playerName || event.scorer),assistNumber:numberOf(event.assist),kitSheetId:currentSheet.sheetId || "",kitRevision:currentSheet.revision});
     },
     currentMatch: liveCurrentMatch,
@@ -119,8 +109,7 @@ export function LiveMatchPage(props) {
       <PlayerNumberContext.Provider value={numberLabel}>
       {routedLivePage}
       </PlayerNumberContext.Provider>
-      {props.canControlCurrentLiveMatch&&<div className={`live-kit-status ${rosterMatches?"":"is-unverified"}`}><div><strong>{rosterMatches?"Player numbers verified":"Player numbers need verification"}</strong><span className="muted">{sheetError || (rosterMatches?"The referee's match numbers appear beside player names.":"Check the actual shirts before confirming lineups.")}</span></div><button className="secondary-btn" type="button" disabled={!canVerify} onClick={()=>openNumbers(props.confirmedLineupSnapshot || {})}>Check / edit numbers</button></div>}
-      {dialog&&<RefereeKitDialog key={workspaceKey} initialTeams={dialog.teams} scope={scope} onSave={saveNumbers} onCancel={()=>{setDialog(null);resolver.current?.(false);resolver.current=null;}}/>}
+      {(numberError||sheetError)&&canVerify&&<p className="live-number-note" role="alert">{numberError||sheetError}</p>}
 
       <RefereeVarReview
         enabled={Boolean(props.canControlCurrentLiveMatch)}

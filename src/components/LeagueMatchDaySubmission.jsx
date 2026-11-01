@@ -156,7 +156,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
                         ? current.filter(id => id !== player.memberId)
                         : current.length < 6 ? [...current, player.memberId] : current
                     );}} />
-                  <span>{player.jerseyNumber != null ? `#${player.jerseyNumber} · ` : "— · "}{player.fullName}
+                  <span>{player.jerseyNumber != null ? `(${player.jerseyNumber}) ` : "(-) "}{player.fullName}
                     <small>{player.ownsNumberedBib === true ? "Numbered bib recorded" : "Numbered bib required"}</small>
                     {player.isFillIn && <small>Fill-in · no season charge</small>}
                   </span>

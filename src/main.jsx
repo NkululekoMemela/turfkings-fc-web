@@ -5,6 +5,7 @@ import ReactDOM from "react-dom/client";
 import { FirebaseEnvironmentGate } from "./components/FirebaseEnvironmentControl.jsx";
 const App = React.lazy(() => import("./App.jsx"));
 import "./styles/global.css";
+import "./styles/ResponsiveLayout.css";
 import { AuthProvider } from "./auth/AuthContext.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(

@@ -22,36 +22,44 @@ async function context(db,user,body,tx){
 }
 async function handle({db,user,body,now=Date.now()}){
  if(body.action==="rooms"){
-  const ctx=await context(db,user,body);return {canManage:false,hasTeams:!!ctx,rooms:ctx?[{id:body.clubId,name:ctx.club.name||ctx.club.clubName||"Your Club",seasonId:ctx.season.id,captains:ctx.members.filter(m=>m.role==="captain").map(m=>m.shortName||m.fullName||"Captain")}]:[]};
+  const ctx=await context(db,user,body);return {canManage:false,hasTeams:!!ctx,rooms:ctx?[{logoUrl:await require("./notificationRuntime.cjs").groupImage({...ctx.club,id:body.clubId}),unreadCount:await require("./teamChatReadState.cjs").unread(db,`privateFieldClubChats/${ctx.roomId}`,user.uid),id:body.clubId,name:ctx.club.name||ctx.club.clubName||"Your Club",seasonId:ctx.season.id,captains:ctx.members.filter(m=>m.role==="captain").map(m=>m.shortName||m.fullName||"Captain")}]:[]};
  }
  if(body.action==="send"){
-  const text=String(body.text||"").trim();if(!text||text.length>2000||!valid(body.requestId))throw Error("Write a message of up to 2,000 characters.");
+  const text=String(body.text||"").trim();if((!text&&!body.highlight)||text.length>2000||!valid(body.requestId))throw Error("Write a message of up to 2,000 characters.");
   return db.runTransaction(async tx=>{
    const ctx=await context(db,user,body,tx);if(!ctx)throw Error("Only members of an accepted season Club may use this room.");
    const id=createHash("sha256").update(user.uid+":"+body.requestId).digest("hex"),ref=db.doc(`privateFieldClubChats/${ctx.roomId}/messages/${id}`);
    if((await tx.get(ref)).exists)return {sent:true};
-   tx.set(ref,{venueId:body.venueId,clubId:body.clubId,seasonId:ctx.season.id,senderUid:user.uid,senderName:ctx.member.shortName||ctx.member.fullName||"Player",senderIsCaptain:ctx.member.role==="captain",text,createdAtMs:now,createdAt:FieldValue.serverTimestamp()});return {sent:true};
+   const extras=await require("./teamChatFeatures.cjs").extra({db,tx,body,path:`privateFieldClubChats/${ctx.roomId}`,clubId:body.clubId,members:ctx.members});
+   tx.set(ref,{...extras,venueId:body.venueId,clubId:body.clubId,seasonId:ctx.season.id,senderUid:user.uid,senderName:ctx.member.shortName||ctx.member.fullName||"Player",senderIsCaptain:ctx.member.role==="captain",text:text||"Shared a highlight",createdAtMs:now,createdAt:FieldValue.serverTimestamp()});return {sent:true};
   });
  }
+ if(["react","delete"].includes(body.action))return db.runTransaction(async tx=>{
+  const ctx=await context(db,user,body,tx);if(!ctx)throw Error("Only members of an accepted season Club may use this room.");
+  return require("./teamChatFeatures.cjs").mutate({db,tx,path:`privateFieldClubChats/${ctx.roomId}`,user,body,canModerate:["captain","admin"].includes(ctx.member.role)});
+ });
  const ctx=await context(db,user,body);if(!ctx)throw Error("Only members of an accepted season Club may use this room.");
  const preference=db.doc(`privateFieldClubChats/${ctx.roomId}/preferences/${user.uid}`);
- if(body.action==="mute"){if(typeof body.muted!=="boolean")throw Error("Choose a notification setting.");await preference.set({muted:body.muted});return {muted:body.muted};}
+ if(body.action==="mute"){if(typeof body.muted!=="boolean")throw Error("Choose a notification setting.");await preference.set({muted:body.muted},{merge:true});return {muted:body.muted};}
+ if(body.action==="highlights")return require("./teamChatFeatures.cjs").highlights(db,body.clubId);
  if(body.action!=="messages")throw Error("Unknown Club chat action.");
  const [messages,pref]=await Promise.all([db.collection(`privateFieldClubChats/${ctx.roomId}/messages`).orderBy("createdAtMs","desc").limit(60).get(),preference.get()]);
- return {messages:messages.docs.map(d=>({id:d.id,senderName:d.data().senderName,senderUid:d.data().senderUid,senderIsCaptain:d.data().senderIsCaptain===true,text:d.data().text,createdAtMs:d.data().createdAtMs})).reverse(),muted:pref.data()?.muted===true};
+ if(body.markRead===true)await require("./teamChatReadState.cjs").markRead(db,preference,messages.docs);
+ return {...await require("./teamChatFeatures.cjs").view({db,clubId:body.clubId,members:ctx.members,captainIds:ctx.members.filter(m=>["captain","admin"].includes(m.role)).map(m=>m.id),messages}),canModerate:["captain","admin"].includes(ctx.member.role),muted:pref.data()?.muted===true};
 }
-async function notify({db,messaging,auth,event}){
+async function notify({db,messaging,auth,event,includeSenderForTesting=false}){
  const message=event.data?.data();if(!message)return;
  let sender;try{sender=await auth.getUser(message.senderUid);}catch(e){if(e.code==="auth/user-not-found")return;throw e;}
  if(!sender.emailVerified||sender.disabled)return;
  const ctx=await context(db,{uid:message.senderUid,email_verified:true},message);if(!ctx)return;
  const uids=[];
- for(const uid of [...new Set(ctx.members.filter(m=>m.uid&&m.uid!==message.senderUid).map(m=>m.uid))]){
+ for(const uid of [...new Set(ctx.members.filter(m=>m.uid&&(includeSenderForTesting||m.uid!==message.senderUid)).map(m=>m.uid))]){
   let account;try{account=await auth.getUser(uid);}catch(e){if(e.code==="auth/user-not-found")continue;throw e;}
   if(!account.emailVerified||account.disabled)continue;
   const pref=await db.doc(`privateFieldClubChats/${ctx.roomId}/preferences/${uid}`).get();if(!pref.data()?.muted)uids.push(uid);
  }
  const runtime=require("./notificationRuntime.cjs"),media=require("./notificationMedia.cjs"),name=ctx.club.name||ctx.club.clubName||"Your Club";
- await runtime.reliableBatch({db,messaging,tokenRecords:await runtime.registeredTokens(db,uids),title:`${message.senderName} · ${name} · ${ctx.venue.name||"Field"}`,body:message.text.slice(0,170),data:{type:"field_club_chat",route:"field-chat",venueId:message.venueId,clubId:message.clubId,seasonId:message.seasonId,messageId:event.params.messageId,groupLogoUrl:await runtime.groupImage({...ctx.club,id:message.clubId}),sourceName:name,senderPhotoUrl:await media.senderPortrait(db,message.clubId,message.senderUid)}});
+ const senderName=await require("./notificationSender.cjs").displayName(db,{uid:message.senderUid,clubId:message.clubId,fallback:message.senderName});
+ await runtime.reliableBatch({db,messaging,tokenRecords:await runtime.registeredTokens(db,uids),title:`${senderName} · ${name} · ${ctx.venue.name||"Field"}`,body:message.text.slice(0,170),data:{type:"field_club_chat",route:"field-chat",venueId:message.venueId,clubId:message.clubId,seasonId:message.seasonId,messageId:event.params.messageId,senderName,senderUid:message.senderUid,sentAtMs:String(message.createdAtMs||Date.now()),groupLogoUrl:await runtime.groupImage({...ctx.club,id:message.clubId}),sourceName:name,senderPhotoUrl:await media.senderPortrait(db,message.clubId,message.senderUid)}});
 }
 module.exports={handle,notify,roomKey};

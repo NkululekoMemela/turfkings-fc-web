@@ -8,8 +8,8 @@ test("zero is a real number; blanks are unassigned and malformed numbers are rej
  for(const input of [-1,"1.5","1e2",1000,"#4",false])assert.throws(()=>jerseyNumber(input));
 });
 test("duplicates are rejected within a team, including zero, but allowed across opponents",()=>{
- assert.throws(()=>validateKitTeams([team("A",[row("one",0),row("two","0")])]),/#0/);
- assert.throws(()=>validateKitTeams([team("A",[row("one",8),row("two","08")])]),/#8/);
+ assert.throws(()=>validateKitTeams([team("A",[row("one",0),row("two","0")])]),/\(0\)/);
+ assert.throws(()=>validateKitTeams([team("A",[row("one",8),row("two","08")])]),/\(8\)/);
  assert.equal(validateKitTeams([team("A",[row("one",8)]),team("B",[row("two",8)])]).length,2);
 });
 test("captains can leave unresolved numbers, referees must record a real kit exception",()=>{
@@ -32,12 +32,12 @@ test("Field submitted numbers take precedence over the player's current profile"
 });
 test("lineup guest and bench players are included once; identity aliases resolve renamed players",()=>{
  const teams=buildKitRoster([{id:"A",players:["ace"]}],[{id:"ace",fullName:"Alex Player",aliases:["Old Name"],jerseyNumber:0}],{A:{positions:{p1:"Old Name"},benchSnapshot:["Guest"],guestPlayers:["Guest"]}});
- assert.equal(teams[0].players.length,2);assert.equal(numberForName(teams,"Old Name","A"),"#0");
- assert.equal(numberForName(teams,"Guest","A"),"No number");
+ assert.equal(teams[0].players.length,2);assert.equal(numberForName(teams,"Old Name","A"),"(0)");
+ assert.equal(numberForName(teams,"Guest","A"),"(-)");
 });
 test("ambiguous names never receive another player's number",()=>{
  const teams=buildKitRoster([{id:"A",players:["one"]},{id:"B",players:["two"]}],[{id:"one",fullName:"Same Name",jerseyNumber:4},{id:"two",fullName:"Same Name",jerseyNumber:9}]);
- assert.equal(numberForName(teams,"Same Name"),"");assert.equal(numberForName(teams,"Same Name","B"),"#9");
+ assert.equal(numberForName(teams,"Same Name"),"(-)");assert.equal(numberForName(teams,"Same Name","B"),"(9)");
 });
 test("a roster change invalidates verification while number changes do not change player identity",()=>{
  const a=[team("A",[row("one",4)])],b=[team("A",[row("one",5)])],c=[team("A",[row("two",4)])];

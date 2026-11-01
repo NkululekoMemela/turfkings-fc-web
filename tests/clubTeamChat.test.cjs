@@ -13,7 +13,7 @@ test('cross-team sends and forged team IDs cannot read or write',async()=>{
  const data=f();for(const action of ['messages','send'])await assert.rejects(handle({db:data.db,user,body:{action,clubId:'club',teamId:'blue',text:'private',requestId:'one'}}),/current team members/);
  assert.equal([...data.records.keys()].some(p=>p.startsWith('privateTeamChats/')),false);
 });
-test('sending is idempotent and revalidates approved access before the next read or send',async()=>{
+test('sending is idempotent and revalidates current roster before the next read or send',async()=>{
  const data=f(),body={action:'send',clubId:'club',teamId:'red',text:'Tactics',requestId:'same'};
  await handle({db:data.db,user,body,now:1000});await handle({db:data.db,user,body,now:1001});assert.equal([...data.records.keys()].filter(p=>p.includes('/messages/')).length,1);
  const changed=JSON.parse(JSON.stringify(state));changed.seasons[0].teams[0].players=[];data.records.set('clubs/club/state/main',{state:changed});data.records.get(`privateTeamChatAccess/club/rooms/${roomKey('club','s1','red')}`).memberIds=[];
@@ -39,28 +39,23 @@ test('private push targets current teammates only, respects team mute and carrie
  data.records.set(`privateTeamChats/${roomKey('club','s1','red')}/preferences/u4`,{muted:true});await require('../functions/clubTeamChat.cjs').notify(args);assert.equal(sent.length,1);
 });
 
-test('editing shared football state cannot grant private chat access; only reviewed admin approval can',async()=>{
- const data=f(),tampered=JSON.parse(JSON.stringify(state));tampered.seasons[0].teams[1].players.push('p1');data.records.set('clubs/club/state/main',{state:tampered});
- await assert.rejects(handle({db:data.db,user,body:{action:'messages',clubId:'club',teamId:'blue'}}),/current team members/);
- await assert.rejects(handle({db:data.db,user,body:{action:'setupPreview',clubId:'club'}}),/Only a Club admin/);
- const admin={uid:'admin',email_verified:true},preview=await handle({db:data.db,user:admin,body:{action:'setupPreview',clubId:'club'}});
- await assert.rejects(handle({db:data.db,user:admin,body:{action:'setupSave',clubId:'club',fingerprint:'stale'}}),/changed/);
- await handle({db:data.db,user:admin,body:{action:'setupSave',clubId:'club',fingerprint:preview.fingerprint}});
- assert.ok((await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}})).rooms.some(r=>r.id==='blue'));
+test('assigned teammates get immediate access with no approval document or setup action',async()=>{
+ const data=f();for(const key of [...data.records.keys()])if(key.startsWith('privateTeamChatAccess/'))data.records.delete(key);
+ const result=await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}});assert.deepEqual(result.rooms.map(r=>r.id),['red']);assert.equal(result.canManage,false);
+ await handle({db:data.db,user,body:{action:'send',clubId:'club',teamId:'red',text:'Ready',requestId:'instant'}});
+ for(const action of ['setupPreview','setupSave'])await assert.rejects(handle({db:data.db,user,body:{action,clubId:'club'}}));
 });
 test('league room history survives later weeks; rooms are limited to the active mode and season',async()=>{
  const data=f(),s=JSON.parse(JSON.stringify(state));s.seasons[0].matchDayHistory=[{id:'week1'},{id:'week2'}];data.records.set('clubs/club/state/main',{state:s});
  assert.equal((await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}})).rooms[0].id,'red');
  s.seasons[0].matchType='FRIENDLY';s.seasons[0].fiveVFiveTeams=[{id:'dark',players:['p1'],captainId:'p1'}];s.seasons[0].friendlyMatchDayHistory=[];
- data.records.set('clubs/club/state/main',{state:s});assert.equal((await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}})).rooms.length,0);
- const admin={uid:'admin',email_verified:true},preview=await handle({db:data.db,user:admin,body:{action:'setupPreview',clubId:'club'}});
- await handle({db:data.db,user:admin,body:{action:'setupSave',clubId:'club',fingerprint:preview.fingerprint}});
+ data.records.set('clubs/club/state/main',{state:s});
  const rooms=await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}});assert.equal(rooms.rooms[0].id,'dark');assert.ok(rooms.rooms[0].captains.includes('Alex One'));
  await handle({db:data.db,user,body:{action:'send',clubId:'club',teamId:'dark',text:'Defend together',requestId:'captain'}});
  assert.equal([...data.records.values()].find(r=>r.text==='Defend together').senderIsCaptain,true);
  s.seasons[0].friendlyMatchDayHistory.push({id:'ended'});data.records.set('clubs/club/state/main',{state:s});
- assert.equal((await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}})).rooms.length,0);
- await assert.rejects(handle({db:data.db,user,body:{action:'send',clubId:'club',teamId:'dark',text:'Old room',requestId:'ended'}}),/current team members/);
+ assert.equal((await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}})).rooms[0].seasonId,'s1:friendly:1');
+ await assert.rejects(handle({db:data.db,user,body:{action:'send',clubId:'club',teamId:'dark',seasonId:'s1:friendly:0',text:'Old room',requestId:'ended'}}),/session has changed/);
 });
 test('no assigned squads means no team launcher; friendly expiry is enforced',async()=>{
  const data=f();data.records.set('clubs/club/state/main',{state:{activeSeasonId:'s1',seasons:[{seasonId:'s1',teams:[{id:'red',players:[]}]}]}});
@@ -74,9 +69,6 @@ test('ending a friendly permanently closes its room and cannot close a newer app
  const event={params:{clubId:'club'},data:{before:{data:()=>before},after:{exists:true,data:()=>after,updateTime:{toMillis:()=>2000}}}};
  await require('../functions/clubTeamChat.cjs').closeFriendly({db,event});assert.equal(records[0].active,false);assert.equal(records[1].active,true);assert.equal(records[2].active,true);
 });
-test('expired friendly rooms stay inaccessible and roster removal can restrict an approved room immediately',async()=>{
+test('obsolete approvals cannot grant a removed player access',async()=>{
  const data=f(),s=JSON.parse(JSON.stringify(state));s.seasons[0].teams[0].players=[];data.records.set('clubs/club/state/main',{state:s});assert.equal((await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}})).rooms.length,0);
- s.seasons[0].matchType='FRIENDLY';s.seasons[0].fiveVFiveTeams=[{id:'dark',players:['p1']}];s.seasons[0].friendlyMatchDayHistory=[];data.records.set('clubs/club/state/main',{state:s});
- const room={active:true,mode:'friendly',scopeKey:'s1:friendly:0',seasonId:'s1:friendly:0:session',baseSeasonId:'s1',team:s.seasons[0].fiveVFiveTeams[0],memberIds:['m1'],expiresAtMs:Date.now()-100};data.records.set(`privateTeamChatAccess/club/rooms/${roomKey('club',room.seasonId,'dark')}`,room);
- assert.equal((await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}})).rooms.length,0);room.expiresAtMs=Date.now()+60000;assert.equal((await handle({db:data.db,user,body:{action:'rooms',clubId:'club'}})).rooms.length,1);
 });

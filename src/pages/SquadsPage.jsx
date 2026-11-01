@@ -1,5 +1,6 @@
-import {CaptainKitEditor} from "../components/PlayerKitEditor.jsx";
-import {buildKitRoster,validateKitTeams} from "../core/playerKit.js";
+import {saveClubMatchNumber} from "../storage/clubMatchNumberGateway.js";
+import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
+import {buildKitRoster,validateKitTeams,jerseyNumber} from "../core/playerKit.js";
 import SharedSquadTeamsheet from "../components/SharedSquadTeamsheet.jsx";
 import SharedSquadPitchPreview from "../components/SharedSquadPitchPreview.jsx";
 // src/pages/SquadsPage.jsx
@@ -791,6 +792,7 @@ export function SquadsPage({
   teams = [],
   fiveVFiveTeams = [],
   onUpdateTeams,
+  onMatchNumberChange,
   onUpdateFiveVFiveTeams,
   onBack,
   identity = null,
@@ -3534,8 +3536,13 @@ export function SquadsPage({
         getTeamIdentityVisual={getTeamIdentityVisual}
         resolveSquadTeamIdentity={resolveSquadTeamIdentity}
         displayNameOf={(pid,teamId)=>{
-          const rows=buildKitRoster(sourceTeams,allPlayers).filter(team=>!teamId || team.id===String(teamId)).flatMap(team=>team.players.filter(row=>row.key===pid));
-          return rows.length===1&&rows[0].number!==null?`#${rows[0].number} · ${displayNameOf(pid)}`:displayNameOf(pid);
+          const roster=buildKitRoster(sourceTeams,allPlayers),team=roster.find(t=>t.id===String(teamId)),row=team?.players.find(r=>r.key===pid),enabled=sourceTeams.find(t=>String(t.id)===String(teamId))?.usePlayerNumbers!==false;
+          return <>{enabled&&<CompactPlayerNumber number={row?.number??null} name={displayNameOf(pid)} disabled={!canEdit} onCommit={canEdit&&row?async raw=>{
+            const number=jerseyNumber(raw),next=roster.map(t=>t.id!==String(teamId)?t:{...t,players:t.players.map(r=>r.key===row.key?{...r,number}:r)});validateKitTeams(next.filter(t=>t.players.length));
+            if(onMatchNumberChange)await onMatchNumberChange(teamId,row.key,number,isFiveVFive?"friendly":"league");else if(!isPracticeMode)await saveClubMatchNumber({clubId:activeClubId,seasonId:activeSeasonId,teamId,playerKey:row.key,number,teamKind:isFiveVFive?"friendly":"league"});
+            const apply=list=>list.map(t=>String(t.id)!==String(teamId)?t:{...t,kitNumbers:{...t.kitNumbers,[row.key]:{number,source:"captain"}}});if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);
+            if(isPracticeMode&&!onMatchNumberChange){if(isFiveVFive)onUpdateFiveVFiveTeams?.(apply(sourceTeams));else onUpdateTeams?.(apply(sourceTeams));}
+          }:undefined}/>}<span>{displayNameOf(pid)}</span></>;
         }}
       />
     );
@@ -3642,15 +3649,8 @@ export function SquadsPage({
         </header>
       </div>
 
-      {sourceTeams.some(team=>(team.players || []).length>0)&&<CaptainKitEditor
-        teams={buildKitRoster(sourceTeams.filter(team=>(team.players || []).length>0),allPlayers)} profiles={allPlayers} canEdit={canEdit}
-        onChange={kitTeams=>{
-          const apply=list=>list.map(team=>{
-            const kit=kitTeams.find(item=>item.id===String(team.id));
-            return kit?{...team,kitChoice:kit.kitChoice,kitColor:kit.kitColor,kitNumbers:Object.fromEntries(kit.players.map(row=>[row.key,{number:row.number,source:"captain"}]))}:team;
-          });
-          if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);
-        }}/>}
+      {canEdit&&<label className="squad-number-toggle"><input type="checkbox" checked={sourceTeams.some(team=>team.usePlayerNumbers!==false)} onChange={event=>{const enabled=event.target.checked,apply=list=>list.map(team=>({...team,usePlayerNumbers:enabled}));if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);}}/>Player numbers</label>}
+
 
       {canEdit && (
         <div

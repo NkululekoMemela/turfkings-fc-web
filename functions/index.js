@@ -3648,9 +3648,9 @@ exports.onClubChatMessageCreated = onDocumentCreated(
     const clubId = String(event.params.clubId || "");
     const messageId = String(event.params.messageId || "");
     const senderUid = String(message.senderUid || "");
-    const senderName = String(
-      message.senderName || "Club member"
-    );
+    const senderName = await require("./notificationSender.cjs").displayName(db,{
+      uid:senderUid,clubId,fallback:message.senderName||"Player",
+    });
     const clubName = String(
       message.clubName || "Club Chat"
     );
@@ -5963,10 +5963,10 @@ exports.cleanupOldPoolNights = require("./poolRetention.cjs").cleanupOldPoolNigh
 
 exports.clubTeamChat = require("./memberWorkspaceHttp.cjs").clubTeamChat;
 exports.manageFieldStaff = require("./memberWorkspaceHttp.cjs").manageFieldStaff;
-exports.onClubTeamChatMessageCreated = onDocumentCreated({document:"privateTeamChats/{roomId}/messages/{messageId}",region:REGION,retry:true,timeoutSeconds:180},event=>require("./clubTeamChat.cjs").notify({db,messaging:admin.messaging(),auth:admin.auth(),event}));
+exports.onClubTeamChatMessageCreated = onDocumentCreated({document:"privateTeamChats/{roomId}/messages/{messageId}",region:REGION,retry:true,timeoutSeconds:180},event=>require("./clubTeamChat.cjs").notify({db,messaging:admin.messaging(),auth:admin.auth(),event,includeSenderForTesting:process.env.GCLOUD_PROJECT==="five-asides-near-me-staging"&&INCLUDE_CHAT_SENDER_DURING_NATIVE_TESTING}));
 
 exports.fieldClubChat=require("./memberWorkspaceHttp.cjs").fieldClubChat;
-exports.onFieldClubChatMessageCreated=onDocumentCreated({document:"privateFieldClubChats/{roomId}/messages/{messageId}",region:REGION,retry:true,timeoutSeconds:180},event=>require("./fieldClubChat.cjs").notify({db,messaging:admin.messaging(),auth:admin.auth(),event}));
+exports.onFieldClubChatMessageCreated=onDocumentCreated({document:"privateFieldClubChats/{roomId}/messages/{messageId}",region:REGION,retry:true,timeoutSeconds:180},event=>require("./fieldClubChat.cjs").notify({db,messaging:admin.messaging(),auth:admin.auth(),event,includeSenderForTesting:process.env.GCLOUD_PROJECT==="five-asides-near-me-staging"&&INCLUDE_CHAT_SENDER_DURING_NATIVE_TESTING}));
 exports.closeFriendlyTeamChats=onDocumentWritten({document:"clubs/{clubId}/state/main",region:REGION,retry:true},event=>require("./clubTeamChat.cjs").closeFriendly({db,event}));
 
 exports.fieldChatPreferences = require("./memberWorkspaceHttp.cjs").fieldChatPreferences;
