@@ -5968,3 +5968,5 @@ exports.onClubTeamChatMessageCreated = onDocumentCreated({document:"privateTeamC
 exports.fieldClubChat=require("./memberWorkspaceHttp.cjs").fieldClubChat;
 exports.onFieldClubChatMessageCreated=onDocumentCreated({document:"privateFieldClubChats/{roomId}/messages/{messageId}",region:REGION,retry:true,timeoutSeconds:180},event=>require("./fieldClubChat.cjs").notify({db,messaging:admin.messaging(),auth:admin.auth(),event}));
 exports.closeFriendlyTeamChats=onDocumentWritten({document:"clubs/{clubId}/state/main",region:REGION,retry:true},event=>require("./clubTeamChat.cjs").closeFriendly({db,event}));
+
+exports.fieldChatPreferences = require("./memberWorkspaceHttp.cjs").fieldChatPreferences;

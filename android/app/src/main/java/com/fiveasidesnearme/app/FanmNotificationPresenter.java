@@ -193,17 +193,8 @@ public final class FanmNotificationPresenter {
             if (badge.isEmpty()) {
                 Bitmap picture = notificationPicture(data.optString("senderPhotoUrl", ""), true);
                 Bitmap group = notificationPicture(data.optString("groupLogoUrl", ""), false);
-                if (picture != null && group != null && !data.optString("senderPhotoUrl", "").isEmpty()) {
-                    Bitmap composite = Bitmap.createBitmap(288, 288, Bitmap.Config.ARGB_8888);
-                    Canvas canvas = new Canvas(composite);
-                    Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-                    // Diagonal neighbours: portrait upper left, badge lower right, no overlap.
-                    canvas.drawBitmap(picture, null, new android.graphics.Rect(0, 0, 196, 196), paint);
-                    paint.setColor(android.graphics.Color.WHITE);
-                    canvas.drawRoundRect(new android.graphics.RectF(164, 164, 288, 288), 25, 25, paint);
-                    canvas.drawBitmap(group, null, new android.graphics.Rect(168, 168, 286, 286), paint);
-                    builder.setLargeIcon(composite);
-                } else if (picture != null) builder.setLargeIcon(picture);
+                // Give the sender the entire native icon slot. Other updates use their source logo.
+                if (picture != null) builder.setLargeIcon(picture);
                 else if (group != null) builder.setLargeIcon(group);
             }
             Bitmap content = notificationPicture(data.optString("contentImageUrl", ""), false, 720);
