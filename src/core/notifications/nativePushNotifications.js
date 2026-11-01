@@ -1,33 +1,17 @@
+import {shouldPresentChatNotification} from "../chatNotificationPreferences.js";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import { db } from "../../firebaseConfig.js";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { auth, db } from "../../firebaseConfig.js";
 
 const DEVICE_ID_KEY = "fanm_native_push_device_id_v1";
-
-function foregroundNotificationId(notification = {}) {
-  const source = String(
-    notification.id ||
-    notification.data?.messageId ||
-    notification.data?.paymentId ||
-    `${Date.now()}_${Math.random()}`
-  );
-
-  let hash = 0;
-
-  for (let index = 0; index < source.length; index += 1) {
-    hash = ((hash << 5) - hash) + source.charCodeAt(index);
-    hash |= 0;
-  }
-
-  return Math.max(1, Math.abs(hash));
-}
 
 const FieldNotifications = registerPlugin("FieldNotifications");
 
 async function showForegroundNotification(notification = {}) {
   if (notification.data?.type === "pool_alert") return;
+  if (!await shouldPresentChatNotification(notification.data)) return;
   const title = String(
     notification.title ||
     notification.data?.title ||
@@ -40,44 +24,17 @@ async function showForegroundNotification(notification = {}) {
     "You have a new notification."
   );
 
-  window.dispatchEvent(new CustomEvent("fanm-notification",{detail:{...notification,title,body}}));
-
-  if (Capacitor.getPlatform() === "android" &&
-      Capacitor.isPluginAvailable("FieldNotifications")) {
-    try {
-      await FieldNotifications.show({
-        id: foregroundNotificationId(notification),
-        title, body,
-        imageUrl: notification.data?.senderPhotoUrl || notification.data?.fieldLogoUrl || notification.data?.imageUrl || "",
-        portrait: Boolean(notification.data?.senderPhotoUrl),
-        notification: { ...notification, title, body, data: notification.data },
-      });
-      return;
-    } catch (error) {
-      console.error("[Field invitation presentation]", error);
+  const data=notification.data||{};
+  if(Capacitor.getPlatform()==="android"){
+    if(data.nativePresented!=="true"){
+      const key=String(notification.id||data.pollId||data.storyId||data.matchDayId||Date.now());
+      let id=0;for(let i=0;i<key.length;i++)id=((id<<5)-id+key.charCodeAt(i))|0;
+      await FieldNotifications.show({id:Math.max(1,id&0x7fffffff),title,body,notification:{...notification,title,body,data}});
     }
+    return;
   }
-
-  await LocalNotifications.schedule({
-    notifications: [
-      {
-        id: foregroundNotificationId(notification),
-        title,
-        body,
-        extra: notification.data || {},
-
-        /*
-         * This is an immediate foreground presentation, not an
-         * alarm-clock event. Prevent Android from opening the
-         * separate "Alarms and reminders" permission screen.
-         */
-        isExactNotification: false,
-        schedule: {
-          at: new Date(Date.now() + 100),
-        },
-      },
-    ],
-  });
+  window.dispatchEvent(new CustomEvent("fanm-notification",{detail:{...notification,title,body}}));
+  // Android uses the notification tray; web keeps the compact banner.
 }
 
 function getOrCreateDeviceId() {
@@ -107,9 +64,16 @@ export async function initialiseNativePushNotifications({
   onNotificationOpened,
 }) {
   if (!isNativePushAvailable()) return () => {};
-  if (!authUser?.uid || !activeClubId) return () => {};
+  if (!authUser?.uid) return () => {};
+  const firebaseUser=auth.currentUser;
+  if(firebaseUser?.uid!==authUser.uid)return () => {};
+  const claims=(await firebaseUser.getIdTokenResult()).claims;
+  if(claims.cameraSession || !claims.email_verified)return () => {};
 
   const listenerHandles = [];
+  const onToastOpen=event=>onNotificationOpened?.(event.detail);
+  window.addEventListener("fanm-notification-open",onToastOpen);
+  listenerHandles.push({remove:()=>window.removeEventListener("fanm-notification-open",onToastOpen)});
   const deviceId = getOrCreateDeviceId();
   if (Capacitor.getPlatform() === "android" &&
       Capacitor.isPluginAvailable("FieldNotifications")) {
@@ -124,8 +88,13 @@ export async function initialiseNativePushNotifications({
       "registration",
       async ({ value: token }) => {
         try {
+          if(auth.currentUser?.uid!==authUser.uid)return;
           const registrationId = `${authUser.uid}_${deviceId}`;
-
+          await setDoc(doc(db,"notificationRegistrations",deviceId),{
+            token,enabled:true,firebaseUid:authUser.uid,deviceId,
+            platform:Capacitor.getPlatform(),rendererVersion:"2",updatedAt:serverTimestamp(),
+          });
+          if(!activeClubId)return;
           await setDoc(
             doc(
               db,
@@ -165,8 +134,7 @@ export async function initialiseNativePushNotifications({
           );
 
           console.info(
-            "[NativePush] Registration saved:",
-            token
+            "[NativePush] Registration saved."
           );
         } catch (error) {
           console.error(
@@ -193,7 +161,7 @@ export async function initialiseNativePushNotifications({
       async notification => {
         console.info(
           "[NativePush] Notification received:",
-          notification
+          notification.data?.type || "update"
         );
 
         try {
@@ -268,4 +236,11 @@ export async function initialiseNativePushNotifications({
   return () => {
     listenerHandles.forEach(handle => handle.remove());
   };
+}
+
+export async function disableNativeNotificationRegistration(){
+  const uid=auth.currentUser?.uid;if(!uid||!Capacitor.isNativePlatform())return;
+  const ref=doc(db,"notificationRegistrations",getOrCreateDeviceId()),snapshot=await getDoc(ref);
+  if(snapshot.exists()&&snapshot.data().firebaseUid===uid)await setDoc(ref,{enabled:false,updatedAt:serverTimestamp()},{merge:true});
+  await PushNotifications.unregister();
 }

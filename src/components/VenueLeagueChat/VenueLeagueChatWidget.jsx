@@ -1,3 +1,4 @@
+import ChatNotificationToggle from "../ChatNotificationToggle.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../FieldDialog.jsx';
 /*
  * VENUE LEAGUE UI CLONE
@@ -1381,6 +1382,7 @@ export function VenueLeagueChatWidget({
 
       {clubChatOpen && (
         <>
+          {activeChatRoom==="club"&&<ChatNotificationToggle scope="field" groupId={activeClubId}/>}
           <div className="fanm-club-chat-head">
             <div>
               <h2>

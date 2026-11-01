@@ -1912,10 +1912,84 @@ service cloud.firestore {
     // Shared pool nights are accessed only through the verified server service.
     match /poolNights/{document=**} { allow read, write: if false; }
 
+    match /notificationPreferences/{uid}/chats/{chatKey} {
+      allow read: if isSignedIn() && !isCameraSession()
+        && request.auth.uid == uid;
+      allow create, update: if isSignedIn() && !isCameraSession()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(["scope","groupId","muted","updatedAt"])
+        && request.resource.data.keys().hasOnly(["scope","groupId","muted","updatedAt"])
+        && request.resource.data.scope in ["club","field"]
+        && request.resource.data.groupId is string
+        && request.resource.data.groupId.matches('^[A-Za-z0-9_-]{1,150}$')
+        && chatKey == request.resource.data.scope + "__" + request.resource.data.groupId
+        && request.resource.data.muted is bool
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /notificationRegistrations/{deviceId} {
+      allow read: if isSignedIn() && !isCameraSession()
+        && resource.data.firebaseUid == request.auth.uid;
+      allow create, update: if isSignedIn() && !isCameraSession()
+        && request.auth.token.get("email_verified", false) == true
+        && request.resource.data.keys().hasOnly(["token","enabled","firebaseUid","deviceId","platform","rendererVersion","updatedAt"])
+        && request.resource.data.keys().hasAll(["token","enabled","firebaseUid","deviceId","platform","rendererVersion","updatedAt"])
+        && request.resource.data.firebaseUid == request.auth.uid
+        && request.resource.data.deviceId == deviceId
+        && deviceId.matches('^[A-Za-z0-9_-]{1,150}$')
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 20
+        && request.resource.data.token.size() < 4096
+        && request.resource.data.enabled is bool
+        && request.resource.data.platform in ["android","ios"]
+        && request.resource.data.rendererVersion == "2"
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isSignedIn() && !isCameraSession()
+        && resource.data.firebaseUid == request.auth.uid;
+    }
+    function publicationManager(clubId, memberId) {
+      let safeMemberId = memberId is string && memberId != "" ? memberId : "__none__";
+      let memberPath=/databases/$(database)/documents/clubs/$(clubId)/members/$(safeMemberId);
+      return clubAdministrator(clubId) || clubCaptain(clubId)
+        || (memberId is string && memberId != ""
+          && exists(memberPath) && ownsClubMember(clubId,memberId)
+          && get(memberPath).data.get("status", "") == "active"
+          && get(memberPath).data.get("role", "") in ["admin","captain"]);
+    }
+    match /newsStories/{storyId} {
+      allow read: if true;
+      allow create: if isSignedIn() && !isCameraSession()
+        && request.resource.data.clubId is string
+        && request.resource.data.createdByUid == request.auth.uid
+        && publicationManager(request.resource.data.clubId, request.resource.data.get("createdByMemberId", ""));
+      allow update: if isSignedIn() && !isCameraSession()
+        && request.resource.data.get("clubId", "turf-kings") == resource.data.get("clubId", "turf-kings")
+        && publicationManager(resource.data.get("clubId", "turf-kings"), request.resource.data.get("lastEditorMemberId", request.resource.data.get("createdByMemberId", "")));
+      allow delete: if publicationManager(resource.data.get("clubId", "turf-kings"), resource.data.get("lastEditorMemberId", resource.data.get("createdByMemberId", "")));
+    }
+    match /newsPolls/{pollId} {
+      allow read: if true;
+      allow create: if isSignedIn() && !isCameraSession()
+        && publicationManager(request.resource.data.get("clubId", "turf-kings"), request.resource.data.get("createdByMemberId", ""));
+      allow update: if isSignedIn() && !isCameraSession()
+        && request.resource.data.get("clubId", "turf-kings") == resource.data.get("clubId", "turf-kings")
+        && publicationManager(resource.data.get("clubId", "turf-kings"), request.resource.data.get("lastEditorMemberId", request.resource.data.get("createdByMemberId", "")));
+      allow delete: if publicationManager(resource.data.get("clubId", "turf-kings"), resource.data.get("lastEditorMemberId", resource.data.get("createdByMemberId", "")));
+    }
+
+    match /privateFieldClubChats/{document=**} { allow read, write: if false; }
+
+    match /privateTeamChatAccess/{document=**} { allow read, write: if false; }
+
+    match /privateTeamChats/{document=**} { allow read, write: if false; }
+
     match /{topLevel}/{document=**} {
       allow read, write: if isSignedIn()
                          && !isCameraSession()
                          && !(topLevel in ["kitShopProducts","kitShopConfig","kitShopOrders","kitShopCustomers"])
+                         && !(topLevel in ["privateFieldClubChats","privateTeamChatAccess","privateTeamChats","notificationRegistrations","notificationOutbox","notificationReceipts","notificationDeliveries","newsStories","newsPolls"])
+                         && topLevel != "notificationPreferences"
                          && topLevel != "poolNights"
                          && topLevel != "profileAccountChanges"
                          && topLevel != "playerPrivacyMigrations"

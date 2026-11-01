@@ -1741,60 +1741,13 @@ export default function VenueLandingPage({
 
 
 
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={onGoToFormations}
-              style={tileButtonStyle(isMobile)}
-            >
-              {renderTileContent({
-                isMobile,
-                icon: (
-                  <img
-                    src="/formations-icon.png"
-                    alt=""
-                    style={{
-                      width: isMobile ? 30 : 26,
-                      height: isMobile ? 30 : 26,
-                      objectFit: "contain",
-                    }}
-                    draggable="false"
-                  />
-                ),
-                desktopLines: ["Lineups &", "Formations"],
-                mobileLines: ["Lineups &", "Formations"],
-              })}
-            </button>
-
-            <button type="button" className="secondary-btn"
-                  onClick={onGoToLostFound}
-                  aria-label={`Lost and Found${lostFoundOpenCount ?
-                    `, ${lostFoundOpenCount} open tickets` : ""}`}
-                  style={{...tileButtonStyle(isMobile), position: "relative",
-                    width: "100%", minWidth: 0}}>
-                  {renderTileContent({
-                    isMobile,
-                    icon: <span aria-hidden="true"
-                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
-                    desktopLines: ["Lost &", "Found"],
-                    mobileLines: ["Lost &", "Found"],
-                  })}
-                  {lostFoundOpenCount > 0 && <span style={{
-                    position: "absolute", top: 7, right: 8,
-                    minWidth: 21, height: 21, padding: "0 4px",
-                    display: "grid", placeItems: "center", borderRadius: 999,
-                    color: "#fff", background: "#dc354b",
-                    fontSize: 11, fontWeight: 800,
-                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
-                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
-                </button>
-
 
 
             <button
               type="button"
               onClick={() => onOpenHighlightsCamera?.()}
               style={{
+                gridColumn: "1",
                 ...tileButtonStyle(isMobile, {
                   background:
                     "radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08), transparent 60%), linear-gradient(145deg, rgba(8,15,35,0.98), rgba(3,8,23,0.98))",
@@ -1890,25 +1843,34 @@ export default function VenueLandingPage({
               </span>
             </button>
 
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => onGoToHighlights?.()}
-              style={tileButtonStyle(isMobile)}
-            >
-              {renderTileContent({
-                isMobile,
-                icon: renderPublicImageIcon({
-                  src: "/videotape.png",
-                  alt: "",
-                  isMobile,
-                  mobileSize: 31,
-                  desktopSize: 28,
-                }),
-                desktopLines: ["Match", "Highlights"],
-                mobileLines: ["Match", "Highlights"],
-              })}
-            </button>
+<button type="button" className="secondary-btn"
+                  onClick={onGoToLostFound}
+                  aria-label={`Lost and Found${lostFoundOpenCount ?
+                    `, ${lostFoundOpenCount} open tickets` : ""}`}
+                  style={{...tileButtonStyle(isMobile), position: "relative",
+                    width: "100%", minWidth: 0}}>
+                  {renderTileContent({
+                    isMobile,
+                    icon: <span aria-hidden="true"
+                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
+                    desktopLines: ["Lost &", "Found"],
+                    mobileLines: ["Lost &", "Found"],
+                  })}
+                  {lostFoundOpenCount > 0 && <span style={{
+                    position: "absolute", top: 7, right: 8,
+                    minWidth: 21, height: 21, padding: "0 4px",
+                    display: "grid", placeItems: "center", borderRadius: 999,
+                    color: "#fff", background: "#dc354b",
+                    fontSize: 11, fontWeight: 800,
+                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
+                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
+                </button>
+
+
+
+
+
+
 
 
 
@@ -1941,7 +1903,7 @@ export default function VenueLandingPage({
               }
             >
               {isPlayer
-                ? "Players can view the setup, lineups and stats, but only captains or admin can start a match."
+                ? "Match start: captains and admins only."
                 : "You can follow the live game."}
             </p>
 
@@ -1987,60 +1949,13 @@ export default function VenueLandingPage({
 
 
 
-            <button
-                type="button"
-                className="secondary-btn"
-                onClick={onGoToFormations}
-                style={tileButtonStyle(isMobile)}
-              >
-                {renderTileContent({
-                isMobile,
-                icon: (
-                  <img
-                    src="/formations-icon.png"
-                    alt=""
-                    style={{
-                      width: isMobile ? 30 : 26,
-                      height: isMobile ? 30 : 26,
-                      objectFit: "contain",
-                    }}
-                    draggable="false"
-                  />
-                ),
-                desktopLines: ["Lineups &", "Formations"],
-                mobileLines: ["Lineups &", "Formations"],
-              })}
-              </button>
-
-              <button type="button" className="secondary-btn"
-                  onClick={onGoToLostFound}
-                  aria-label={`Lost and Found${lostFoundOpenCount ?
-                    `, ${lostFoundOpenCount} open tickets` : ""}`}
-                  style={{...tileButtonStyle(isMobile), position: "relative",
-                    width: "100%", minWidth: 0}}>
-                  {renderTileContent({
-                    isMobile,
-                    icon: <span aria-hidden="true"
-                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
-                    desktopLines: ["Lost &", "Found"],
-                    mobileLines: ["Lost &", "Found"],
-                  })}
-                  {lostFoundOpenCount > 0 && <span style={{
-                    position: "absolute", top: 7, right: 8,
-                    minWidth: 21, height: 21, padding: "0 4px",
-                    display: "grid", placeItems: "center", borderRadius: 999,
-                    color: "#fff", background: "#dc354b",
-                    fontSize: 11, fontWeight: 800,
-                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
-                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
-                </button>
-
 
 
               <button
                 type="button"
                 onClick={() => onOpenHighlightsCamera?.()}
                 style={{
+                gridColumn: "1",
                   ...tileButtonStyle(isMobile, {
                     background:
                       "radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08), transparent 60%), linear-gradient(145deg, rgba(8,15,35,0.98), rgba(3,8,23,0.98))",
@@ -2136,25 +2051,34 @@ export default function VenueLandingPage({
                 </span>
               </button>
 
-              <button
-                className="secondary-btn"
-                type="button"
-                onClick={() => onGoToHighlights?.()}
-                style={tileButtonStyle(isMobile)}
-              >
-                {renderTileContent({
-                  isMobile,
-                  icon: renderPublicImageIcon({
-                    src: "/videotape.png",
-                    alt: "",
+<button type="button" className="secondary-btn"
+                  onClick={onGoToLostFound}
+                  aria-label={`Lost and Found${lostFoundOpenCount ?
+                    `, ${lostFoundOpenCount} open tickets` : ""}`}
+                  style={{...tileButtonStyle(isMobile), position: "relative",
+                    width: "100%", minWidth: 0}}>
+                  {renderTileContent({
                     isMobile,
-                    mobileSize: 31,
-                    desktopSize: 28,
-                  }),
-                  desktopLines: ["Match", "Highlights"],
-                  mobileLines: ["Match", "Highlights"],
-                })}
-              </button>
+                    icon: <span aria-hidden="true"
+                      style={{fontSize: isMobile ? "1.55rem" : "1.38rem"}}>🔎</span>,
+                    desktopLines: ["Lost &", "Found"],
+                    mobileLines: ["Lost &", "Found"],
+                  })}
+                  {lostFoundOpenCount > 0 && <span style={{
+                    position: "absolute", top: 7, right: 8,
+                    minWidth: 21, height: 21, padding: "0 4px",
+                    display: "grid", placeItems: "center", borderRadius: 999,
+                    color: "#fff", background: "#dc354b",
+                    fontSize: 11, fontWeight: 800,
+                    boxShadow: "0 2px 9px rgba(220,53,75,.35)",
+                  }}>{lostFoundOpenCount > 99 ? "99+" : lostFoundOpenCount}</span>}
+                </button>
+
+
+
+
+
+
 
 
               {typeof onReturnToClub === "function" && (

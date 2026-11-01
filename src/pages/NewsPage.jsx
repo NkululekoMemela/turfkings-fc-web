@@ -1,3 +1,4 @@
+import StoryPhotoPicker from "../components/StoryPhotoPicker.jsx";
 // src/pages/NewsPage.jsx
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import {clubKitInterestDraft,pollMerchandiseId} from "../core/merchandisePoll.mjs";
@@ -5,7 +6,7 @@ import JerseyImage from "../assets/Jersey.jpeg";
 import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
 import { useMemberNameMap } from "../core/nameMapping.js";
-import { db } from "../firebaseConfig.js";
+import { auth, db } from "../firebaseConfig.js";
 import {
   getClubStateDoc,
   getPlayersCollection,
@@ -732,7 +733,7 @@ export function NewsPage({
               ...data,
             };
           })
-          .filter(Boolean);
+          .filter(story => (story.clubId || "turf-kings") === safeActiveClubId);
 
         setCustomStories(nextStories);
         setLoadingStories(false);
@@ -745,7 +746,14 @@ export function NewsPage({
     );
 
     return () => unsubscribe();
-  }, [isPracticeMode, practiceSessionId]);
+  }, [isPracticeMode, practiceSessionId, safeActiveClubId]);
+
+  useEffect(() => {
+    const id=String(initialPollOpen?.storyId||"");
+    if(initialPollOpen?.clubId!==safeActiveClubId || !customStories.some(story=>story.id===id&&!story.archived))return;
+    const timer=setTimeout(()=>document.getElementById(`fanm-story-${id}`)?.scrollIntoView({behavior:"smooth",block:"center"}),200);
+    return()=>clearTimeout(timer);
+  },[initialPollOpen,customStories,safeActiveClubId]);
 
   const activeCustomStories = useMemo(
     () => customStories.filter((story) => story && !story.archived),
@@ -796,6 +804,8 @@ export function NewsPage({
     setStoryDraft({
       title: String(story.title || ""),
       tag: String(story.tag || "Story"),
+      winnersAnnouncement: Boolean(story.winnersAnnouncement),
+      announcementSeasonId: String(story.announcementSeasonId||""),
       body: String(story.body || ""),
       slotKey: String(story.slotKey || "after-hero"),
       playerName: String(story.playerName || ""),
@@ -824,6 +834,8 @@ export function NewsPage({
     const tag = String(storyDraft.tag || "").trim() || "Story";
     const playerName = String(storyDraft.playerName || "").trim();
     const imageUrl = String(storyDraft.imageUrl || "").trim();
+    if(storyDraft.winnersAnnouncement&&!imageUrl){setStoryFormError("Add a photo of the winners before publishing this announcement.");return;}
+
     const imageSize = String(storyDraft.imageSize || "100");
     const imageFit = String(storyDraft.imageFit || "auto");
     const slotKey = String(storyDraft.slotKey || "after-hero");
@@ -864,6 +876,7 @@ export function NewsPage({
           slotKey,
           playerName,
           imageUrl,
+          notificationImageUrl: (playerName && getPlayerPhoto(playerName)) || imageUrl,
           imageSize,
           imageFit,
           archived: false,
@@ -904,12 +917,19 @@ export function NewsPage({
       await setDoc(
         storyRef,
         {
+          clubId: safeActiveClubId,
+          createdByUid: auth.currentUser?.uid || "",
+          createdByMemberId: identity?.memberId || "",
+          lastEditorMemberId: identity?.memberId || "",
+          winnersAnnouncement: Boolean(storyDraft.winnersAnnouncement),
+          announcementSeasonId: String(storyDraft.announcementSeasonId||""),
           title,
           body,
           tag,
           slotKey,
           playerName,
           imageUrl,
+          notificationImageUrl: (playerName && getPlayerPhoto(playerName)) || imageUrl,
           imageSize,
           imageFit,
           archived: false,
@@ -956,6 +976,7 @@ export function NewsPage({
               ? {
                   ...story,
                   archived: !targetStory.archived,
+          lastEditorMemberId: identity?.memberId || "",
                   archivedAtMs: !targetStory.archived ? Date.now() : null,
                   updatedAtMs: Date.now(),
                 }
@@ -973,6 +994,7 @@ export function NewsPage({
         doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId),
         {
           archived: !targetStory.archived,
+          lastEditorMemberId: identity?.memberId || "",
           archivedAtMs: !targetStory.archived ? Date.now() : null,
           updatedAtMs: Date.now(),
           updatedAt: serverTimestamp(),
@@ -1013,6 +1035,7 @@ This will remove it from live news and archives for everyone.`
         return;
       }
 
+      await setDoc(doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId), {lastEditorMemberId: identity?.memberId || ""}, {merge:true});
       await deleteDoc(doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId));
       if (editingStoryId === storyId) resetStoryDraft();
       setStoryFormError("");
@@ -2398,6 +2421,9 @@ This will remove it from live news and archives for everyone.`
         doc(db, CUSTOM_POLLS_COLLECTION, pollId),
         {
           clubId: safeActiveClubId,
+          createdByUid: auth.currentUser?.uid || "",
+          createdByMemberId: identity?.memberId || "",
+          lastEditorMemberId: identity?.memberId || "",
           question,
           merchandiseId: pollMerchandiseId(pollDraft.merchandiseId),
           icon,
@@ -2444,6 +2470,7 @@ This will remove it from live news and archives for everyone.`
               ? {
                   ...poll,
                   archived: !targetPoll.archived,
+          lastEditorMemberId: identity?.memberId || "",
                   archivedAtMs: !targetPoll.archived ? Date.now() : null,
                   updatedAtMs: Date.now(),
                 }
@@ -2461,6 +2488,7 @@ This will remove it from live news and archives for everyone.`
         doc(db, CUSTOM_POLLS_COLLECTION, pollId),
         {
           archived: !targetPoll.archived,
+          lastEditorMemberId: identity?.memberId || "",
           archivedAtMs: !targetPoll.archived ? Date.now() : null,
           updatedAtMs: Date.now(),
           updatedAt: serverTimestamp(),
@@ -2503,6 +2531,7 @@ Votes for this poll will no longer be shown.`
         return;
       }
 
+      await setDoc(doc(db, CUSTOM_POLLS_COLLECTION, pollId), {lastEditorMemberId: identity?.memberId || ""}, {merge:true});
       await deleteDoc(doc(db, CUSTOM_POLLS_COLLECTION, pollId));
       if (editingPollId === pollId) resetPollDraft();
       setPollFormError("");
@@ -2833,7 +2862,7 @@ Votes for this poll will no longer be shown.`
     const panelWidthPercent = Math.round(imageScale * 100);
 
     return (
-      <section key={story.id} className="card" style={{ overflow: "hidden" }}>
+      <section key={story.id} id={`fanm-story-${story.id}`} className="card" style={{ overflow: "hidden", scrollMarginTop: 100 }}>
         <div
           style={{
             display: "grid",
@@ -3264,16 +3293,17 @@ Votes for this poll will no longer be shown.`
                   </select>
                 </label>
 
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Custom image URL (optional)</span>
-                  <input
+                <div style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Story photo</span>
+                  <StoryPhotoPicker value={storyDraft.imageUrl} onChange={value=>handleStoryDraftChange("imageUrl",value)}/>
+                  <input aria-label="Story image link"
                     type="text"
-                    value={storyDraft.imageUrl}
+                    value={String(storyDraft.imageUrl||"").startsWith("data:")?"":storyDraft.imageUrl}
                     onChange={(e) => handleStoryDraftChange("imageUrl", e.target.value)}
                     placeholder="https://..."
                     style={newsInputStyle}
                   />
-                </label>
+                </div>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Photo size</span>

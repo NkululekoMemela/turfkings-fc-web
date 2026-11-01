@@ -1,3 +1,5 @@
+import TeamChatLauncher from "../components/TeamChatLauncher.jsx";
+import ChatNotificationToggle from "../components/ChatNotificationToggle.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -42,7 +44,7 @@ function fieldChatDateLabel(date) {
 }
 
 export default function VenueFieldChatPage({
-  venue, season, identity, currentUser, staff, isAdmin, onBack,
+  venue, season, identity, currentUser, staff, isAdmin, onBack, initialPrivateChat=null,
 }) {
   const venueId = venue?.id || "";
   const uid = currentUser?.uid || "";
@@ -473,6 +475,7 @@ export default function VenueFieldChatPage({
         </div>
 
 
+        {actor&&<div className="fanm-chat-actions"><ChatNotificationToggle scope="field" groupId={venueId}/><TeamChatLauncher venueId={venueId} clubId={actor.clubId||initialPrivateChat?.clubId||""} initialRequest={initialPrivateChat}/></div>}
         {accessError && <p className="field-chat-error" role="alert">{accessError}</p>}
         {muted && <p className="field-chat-muted">You can read chat, but sending and reactions are restricted.</p>}
 

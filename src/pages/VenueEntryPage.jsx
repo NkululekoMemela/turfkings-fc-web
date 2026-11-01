@@ -11,6 +11,7 @@ import FieldPracticePage from "./FieldPracticePage.jsx";
 import VenueSignupPage from "./VenueSignupPage.jsx";
 import VenueLostFoundPage from "./VenueLostFoundPage.jsx";
 import VenueSquadsPage from "./VenueSquadsPage.jsx";
+import FieldTeamManagement from "../components/FieldTeamManagement.jsx";
 import VenueFixturesPage from "./VenueFixturesPage.jsx";
 import FieldDecisionReview from "../components/FieldDecisionReview.jsx";
 import FieldTestSeasonDeletion from "../components/FieldTestSeasonDeletion.jsx";
@@ -901,6 +902,9 @@ export default function VenueEntryPage({
   const [authenticatedFieldStaff, setAuthenticatedFieldStaff] = useState(null);
   const [fieldStaffPowers, setFieldStaffPowers] = useState(null);
   const [showStaffPowersPanel, setShowStaffPowersPanel] = useState(false);
+  const [showFieldTeamManager,setShowFieldTeamManager]=useState(false);
+  const canManageFieldTeam=Boolean(currentUser?.uid&&(venue?.ownerUid===currentUser.uid||(authenticatedFieldStaff?.uid===currentUser.uid&&authenticatedFieldStaff?.status==="active"&&authenticatedFieldStaff?.role==="field_manager"&&authenticatedFieldStaff?.isAdministrator===true)));
+  useEffect(()=>setShowFieldTeamManager(false),[venue?.id,currentUser?.uid,canManageFieldTeam]);
 
   useEffect(() => {
     setFieldStaffPowers(null);
@@ -5492,6 +5496,7 @@ export default function VenueEntryPage({
           activeClubId={venue?.id}
           fieldSeason={venueSeason}
           canManageFieldNews={isFieldAdministrator}
+          initialPollOpen={fieldNavTarget?.publication || null}
           onBack={() => setVenuePage("landing")}
           onGoToSignIn={() => setEnteredIdentity(null)}
         />
@@ -5587,6 +5592,7 @@ export default function VenueEntryPage({
         <FieldChatBoundary key={venue?.id}
           onBack={() => setVenuePage("landing")}>
         <VenueFieldChatPage
+          initialPrivateChat={fieldNavTarget?.privateChat||null}
           venue={venue}
           season={venueSeason}
           identity={enteredIdentity}
@@ -6276,8 +6282,9 @@ export default function VenueEntryPage({
             <small className="field-entry-eyebrow">ENTRY PAGE</small>
             <h1>{activeClubName}</h1>
           </div>
-        {isAdminViewer ? (
+        {(isAdminViewer||canManageFieldTeam) ? (
           <div className="field-entry-edit-row">
+
           <button
             type="button"
             className="tk-entry-club-edit-btn"
@@ -6473,12 +6480,15 @@ export default function VenueEntryPage({
         </div>
       </section>
 
+      {showFieldTeamManager&&canManageFieldTeam&&<FieldTeamManagement venueId={venue.id} onClose={()=>setShowFieldTeamManager(false)}/>}
+
       <VenueLeagueAccessPanel
         venue={activeClub}
         season={venueSeason}
         onEnter={onComplete}
         premiumPanelStyle={premiumPanelStyle}
         brightPrimaryStyle={brightPrimaryStyle}
+        onManageStaff={canManageFieldTeam?()=>setShowFieldTeamManager(true):undefined}
       />
 
       {isAdminViewer &&

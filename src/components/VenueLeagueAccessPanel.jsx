@@ -1,3 +1,5 @@
+import EntryManagementButton from "./EntryManagementButton.jsx";
+import PlayerNameSelectionButton from "./PlayerNameSelectionButton.jsx";
 import { onAuthStateChanged } from "firebase/auth";
 import React, {
   useEffect,
@@ -71,6 +73,7 @@ export default function VenueLeagueAccessPanel({
   onEnter,
   premiumPanelStyle,
   brightPrimaryStyle,
+  onManageStaff,
 }) {
   const [mode, setMode] = useState("field_staff");
   const [staffPickerOpen, setStaffPickerOpen] = useState(false);
@@ -434,7 +437,8 @@ export default function VenueLeagueAccessPanel({
   }
 
   useEffect(() => {
-    if (!venue?.id || selectedStaffUid) return;
+    if (!venue?.id) return;
+    if(selectedStaffUid&&selectableStaff.some(staff=>normalize(staff.id||staff.uid)===normalize(selectedStaffUid)&&staff.status==="active"))return;
     const active = selectableStaff.filter(staff => staff.status === "active");
     const userUid = normalize(recallUser?.uid);
     const userEmail = normalizeEmail(recallUser?.email);
@@ -446,7 +450,10 @@ export default function VenueLeagueAccessPanel({
 
     let remembered = "";
     try {
-      remembered = localStorage.getItem(
+      const prefix = `${db.app.options.projectId}:field-staff-profile:${venue.id}`;
+      remembered = localStorage.getItem(`${prefix}:${userUid || "last"}`)
+      || localStorage.getItem(`${prefix}:last`)
+      || localStorage.getItem(
         `field-staff-profile:${venue.id}:${userUid || "last"}`
       ) || localStorage.getItem(
         `field-staff-profile:${venue.id}:last`
@@ -458,7 +465,7 @@ export default function VenueLeagueAccessPanel({
     );
     if (profile) {
       setSelectedStaffUid(normalize(profile.id || profile.uid));
-    }
+    } else if(selectedStaffUid) { setSelectedStaffUid(""); }
   }, [venue?.id, recallUser, selectableStaff, selectedStaffUid]);
 
   function chooseMode(nextMode) {
@@ -694,6 +701,9 @@ export default function VenueLeagueAccessPanel({
       status: "guest",
     });
   }
+
+  const selectedStaffProfile=selectableStaff.find(staff=>normalize(staff.id||staff.uid)===normalize(selectedStaffUid)&&staff.status==="active")||null;
+  const staffRoleLabel=role=>({field_manager:"Field Manager",assistant_manager:"Assistant Manager",field_assistant:"Field Assistant",other_staff:"Field staff",referee:"Referee"}[role]||"Field staff");
 
   const tabs = [
     ["field_staff", "Field staff member"],
@@ -1052,6 +1062,7 @@ export default function VenueLeagueAccessPanel({
           className="card"
           style={premiumPanelStyle}
         >
+          <div style={{display:"flex",flexWrap:"wrap",gap:"0.6rem",alignItems:"center",justifyContent:"space-between"}}>
           <span style={{
             display: "inline-flex",
             borderRadius: "999px",
@@ -1067,6 +1078,8 @@ export default function VenueLeagueAccessPanel({
           }}>
             Field staff
           </span>
+          {onManageStaff&&<EntryManagementButton aria-label="Field team management" title="Manage Field team" onClick={onManageStaff}/>}
+          </div>
 
           <h2 style={{
             marginTop: "0.85rem",
@@ -1083,7 +1096,7 @@ export default function VenueLeagueAccessPanel({
             <span className="field-staff-picker__label">
               Registered Field staff
             </span>
-            <button
+            <PlayerNameSelectionButton selected={Boolean(selectedStaffProfile)}
               type="button"
               className="field-staff-picker__trigger"
               disabled={busy}
@@ -1096,20 +1109,18 @@ export default function VenueLeagueAccessPanel({
             >
               <span>
                 <strong>
-                  {selectableStaff.find(staff =>
-                    normalize(staff.id || staff.uid) === normalize(selectedStaffUid)
-                  )?.name || "Select staff profile"}
+                  {selectedStaffProfile&&<span aria-hidden="true">✓ </span>}{selectedStaffProfile?.name || "Select staff profile"}
                 </strong>
                 <small>
-                  {selectedStaffUid
-                    ? "Your profile · Tap to switch"
+                  {selectedStaffProfile
+                    ? `${staffRoleLabel(selectedStaffProfile.role)} · Tap to switch`
                     : "Choose your registered Field identity"}
                 </small>
               </span>
               <span aria-hidden="true">
                 {staffPickerOpen ? "▴" : "▾"}
               </span>
-            </button>
+            </PlayerNameSelectionButton>
             {staffPickerOpen && (
               <div
                 id="field-staff-profile-options"
@@ -1140,9 +1151,15 @@ export default function VenueLeagueAccessPanel({
                       type="button"
                       className="field-staff-picker__option"
                       aria-pressed={selected}
+                      style={selected ? {background:"linear-gradient(120deg,#064e3b,#065f46)",borderColor:"#34d399",color:"#ecfdf5"} : undefined}
                       disabled={busy || staff.status !== "active"}
                       onClick={() => {
                         setSelectedStaffUid(id);
+                        try {
+                          const prefix = `${db.app.options.projectId}:field-staff-profile:${venue.id}`;
+                          localStorage.setItem(`${prefix}:${recallUser?.uid || "last"}`, id);
+                          localStorage.setItem(`${prefix}:last`, id);
+                        } catch {}
                         setStaffPickerOpen(false);
                         setError("");
                         setStatus("");
