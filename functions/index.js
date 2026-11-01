@@ -1104,6 +1104,13 @@ exports.createYocoCheckout = onRequest(
 
     try {
       const body = req.body && typeof req.body === "object" ? req.body : {};
+      if (body.purpose === "club_bib") {
+        const bearer=String(req.headers.authorization||"").match(/^Bearer (.+)$/);
+        if(!bearer)throw Error("Sign in to pay your captain.");
+        const user=await admin.auth().verifyIdToken(bearer[1],true);
+        const result=await require("./kitBibPayments.cjs").checkout({db,user,body,secret:YOCO_SECRET_KEY});
+        return res.status(200).json(result);
+      }
       if (body.purpose === "field_season") {
         const result = await require("./fieldSeasonCheckout").checkout({
           db, admin, req, body, FieldValue,
@@ -1766,6 +1773,10 @@ exports.handleYocoWebhook = onRequest(
     }
 
     try {
+      if(payload.payload?.metadata?.purpose === "club_bib") {
+        await require("./kitBibPayments.cjs").settle(db,payload);
+        return res.status(200).send("Bib contribution received");
+      }
       console.log(
         "YOCO WEBHOOK PAYLOAD",
         JSON.stringify(payload, null, 2)
@@ -5948,6 +5959,8 @@ exports.playerPrivacyStatus = onRequest({region:REGION,cors:true},async(req,res)
 });
 
 exports.kitShop = require("./kitShopHttp.cjs").kitShop;
+
+exports.onBibPackReady=require("./kitBulkNotifications.cjs").buildHandler({db,region:REGION,sendBatch:options=>require("./notificationRuntime.cjs").reliableBatch({db,messaging:admin.messaging(),...options})});
 
 Object.assign(exports, require("./fieldPremiumNotifications.cjs").buildHandlers({db,region:REGION,includeSenderForTesting:process.env.GCLOUD_PROJECT==="five-asides-near-me-staging",sendBatch:options=>require("./notificationRuntime.cjs").reliableBatch({db,messaging:admin.messaging(),...options})}));
 Object.assign(exports, require("./notificationRuntime.cjs").publicationHandlers({db,region:REGION,auth:admin.auth(),messaging:admin.messaging()}));

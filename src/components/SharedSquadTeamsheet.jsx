@@ -15,6 +15,7 @@ export default function SharedSquadTeamsheet({
   resolveSquadTeamIdentity,
   displayNameOf,
   fieldTeamsheet = false,
+  headerActions = null,
 }) {
     return (
       <div className="teamsheet-export-wrap">
@@ -26,6 +27,8 @@ export default function SharedSquadTeamsheet({
             </p>
           </div>
 
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8,minWidth:0}}>
+          {headerActions}
           <button
             type="button"
             className="secondary-btn"
@@ -33,6 +36,7 @@ export default function SharedSquadTeamsheet({
           >
             Download team-sheet
           </button>
+          </div>
         </div>
 
         <div

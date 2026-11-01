@@ -1,6 +1,6 @@
 const {onRequest} = require("firebase-functions/v2/https");
 
-exports.kitShop = onRequest({region: "us-central1", cors: true}, async (req, res) => {
+exports.kitShop = onRequest({region: "us-central1", cors: true, invoker: "public"}, async (req, res) => {
   res.set("Cache-Control", "no-store");
   if (req.method !== "POST") {
     res.status(405).json({error: "Use POST."});

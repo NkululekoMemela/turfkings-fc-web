@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const shop=require('../functions/kitShop.cjs'),{fixture}=require('./helpers/playerWorkflowFirestore.cjs');
 const buyer={uid:'buyer',email:'buyer@example.com',email_verified:true},staff={uid:'operator',email:'operator@example.com',email_verified:true};
-const config={enabled:true,currency:'ZAR',countryCode:'ZA',collectionEnabled:true,collectionAddress:'Club office',deliveryEnabled:true,zones:[{id:'local',label:'Local',feeMinor:5000}],paymentInstructions:'Use the verified shop payment details',revision:1};
+const config={bulkOnly:false,enabled:true,currency:'ZAR',countryCode:'ZA',collectionEnabled:true,collectionAddress:'Club office',deliveryEnabled:true,zones:[{id:'local',label:'Local',feeMinor:5000}],paymentInstructions:'Use the verified shop payment details',revision:1};
 const bib={title:'Training bib',description:'Mesh',kind:'bib',color:'#2563eb',size:'Adult M',priceMinor:10000,stock:5,active:true,currency:'ZAR',revision:1};
 function setup(extra={}){
  const f=fixture({'kitShopConfig/store':config,'kitShopConfig/operators':{uids:['operator']},'kitShopProducts/blue':bib,...extra});

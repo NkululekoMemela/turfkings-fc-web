@@ -1,3 +1,4 @@
+import {cachedTeamRooms,teamRoomCacheKey} from "../core/teamChatPreload.mjs";
 import {teamChatCacheKey,getTeamChatCache,putTeamChatCache,beginTeamChatWarm,endTeamChatWarm} from "../core/teamChatCache.mjs";
 import React,{useEffect,useRef,useState} from 'react';
 import {onAuthStateChanged} from 'firebase/auth';
@@ -7,10 +8,10 @@ import TeamChatBadge from './TeamChatBadge.jsx';
 import ClubTeamChat from './ClubTeamChat.jsx';
 import './MemberWorkspace.css';
 export default function TeamChatLauncher({clubId,venueId='',initialRequest=null}){
- const [uid,setUid]=useState(auth.currentUser?.uid||''),[value,setValue]=useState(null),[selected,setSelected]=useState(''),[refresh,setRefresh]=useState(0);
+ const [uid,setUid]=useState(auth.currentUser?.uid||''),[value,setValue]=useState(()=>{const result=cachedTeamRooms(teamRoomCacheKey(auth.currentUser?.uid,clubId,venueId));return result?{key:`${auth.currentUser?.uid}:${clubId}:${venueId}`,...result}:null;}),[selected,setSelected]=useState(''),[refresh,setRefresh]=useState(0);
  const key=`${uid}:${clubId}:${venueId}`,current=useRef(key),opened=useRef(selected);current.current=key;opened.current=selected;
  useEffect(()=>onAuthStateChanged(auth,user=>setUid(user?.uid||'')),[]);
- useEffect(()=>{setValue(null);setSelected('');},[key]);
+ useEffect(()=>{const cached=cachedTeamRooms(teamRoomCacheKey(uid,clubId,venueId));setValue(cached?{key,...cached}:null);setSelected('');},[key]);
  useEffect(()=>{
   if(!uid||!clubId)return;let stopped=false,timer;
   async function load(){clearTimeout(timer);if(document.hidden){timer=setTimeout(load,6000);return;}

@@ -3522,6 +3522,7 @@ export function SquadsPage({
 
     return (
       <SharedSquadTeamsheet
+        headerActions={canEdit&&<label className="squad-number-toggle"><input type="checkbox" checked={sourceTeams.some(team=>team.usePlayerNumbers!==false)} onChange={event=>{const enabled=event.target.checked,apply=list=>list.map(team=>({...team,usePlayerNumbers:enabled}));if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);}}/>Player numbers</label>}
         matchTeams={matchTeams}
         isClubChallengeTeamsheet={isClubChallengeTeamsheet}
         teamsheetCardRef={teamsheetCardRef}
@@ -3649,7 +3650,7 @@ export function SquadsPage({
         </header>
       </div>
 
-      {canEdit&&<label className="squad-number-toggle"><input type="checkbox" checked={sourceTeams.some(team=>team.usePlayerNumbers!==false)} onChange={event=>{const enabled=event.target.checked,apply=list=>list.map(team=>({...team,usePlayerNumbers:enabled}));if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);}}/>Player numbers</label>}
+
 
 
       {canEdit && (

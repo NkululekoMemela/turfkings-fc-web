@@ -1,3 +1,7 @@
+import "../components/NewsPagePolish.css";
+import CompactNewsPoll from "../components/CompactNewsPoll.jsx";
+import {compactKitPollQuestion} from "../core/merchandisePoll.mjs";
+import "../components/PlayerNewsLayout.css";
 import useNotificationFocus from "../hooks/useNotificationFocus.js";
 import "../components/NotificationFocus.css";
 import {storyDateInput, storyPublicationTime} from "../core/storyPublication.mjs";
@@ -689,6 +693,7 @@ export function NewsPage({
     imageUrl: "",
     imageSize: "100",
     imageFit: "auto",
+    playerPhotoSide: "left",
     publishDate: makeDateInputValue(Date.now()),
   });
 
@@ -807,6 +812,7 @@ export function NewsPage({
       imageUrl: String(story.imageUrl || ""),
       imageSize: String(story.imageSize || "100"),
       imageFit: String(story.imageFit || "auto"),
+      playerPhotoSide: story.playerPhotoSide === "right" ? "right" : "left",
       publishDate: makeDateInputValue(story.publishDateMs || story.createdAtMs || Date.now()),
     });
     setShowCreateStoryForm(true);
@@ -874,6 +880,7 @@ export function NewsPage({
           notificationImageUrl: (playerName && getPlayerPhoto(playerName)) || imageUrl,
           imageSize,
           imageFit,
+          playerPhotoSide: storyDraft.playerPhotoSide === "right" ? "right" : "left",
           archived: false,
           createdAtMs: publishDateMs || createdAtMs,
           publishDateMs: publishDateMs || createdAtMs,
@@ -927,6 +934,7 @@ export function NewsPage({
           notificationImageUrl: (playerName && getPlayerPhoto(playerName)) || imageUrl,
           imageSize,
           imageFit,
+          playerPhotoSide: storyDraft.playerPhotoSide === "right" ? "right" : "left",
           archived: false,
           createdAtMs: publishDateMs || createdAtMs,
           publishDateMs: publishDateMs || createdAtMs,
@@ -2525,6 +2533,7 @@ Votes for this poll will no longer be shown.`
       return;
     }
 
+    const clearing = pollVotesByPollId[poll.id]?.byVoter?.[voterId] === choice;
     try {
       if (isPracticeMode) {
         const voteId = `${poll.id}__${voterId}`;
@@ -2545,11 +2554,15 @@ Votes for this poll will no longer be shown.`
           const withoutCurrent = current.filter(
             (vote) => vote?.id !== voteId
           );
-          return [...withoutCurrent, practiceVote];
+          return clearing ? withoutCurrent : [...withoutCurrent, practiceVote];
         });
         return;
       }
 
+      if (clearing) {
+        await deleteDoc(fieldNewsDoc(CUSTOM_POLL_VOTES_COLLECTION, `${poll.id}__${voterId}`));
+        return;
+      }
       await setDoc(
         fieldNewsDoc(CUSTOM_POLL_VOTES_COLLECTION, `${poll.id}__${voterId}`),
         {
@@ -2631,10 +2644,10 @@ Votes for this poll will no longer be shown.`
     };
 
     return (
-      <section
+      <section data-player-photo-side={"left"}
         id={`club-poll-${poll.id}`}
         key={poll.id}
-        className="card"
+        className={`card ${playerName && poll.merchandiseId !== "club-kit" ? "fanm-player-news" : ""}`}
         style={{
           overflow: "hidden",
           outline:
@@ -2649,7 +2662,8 @@ Votes for this poll will no longer be shown.`
             "outline-color 220ms ease, box-shadow 220ms ease",
         }}
       >
-        <div
+        <CompactNewsPoll totalVotes={totalVotes} forceOpen={focusedPollId===poll.id}>
+        <div className={playerName && poll.merchandiseId !== "club-kit" ? "fanm-player-news-layout" : undefined}
           style={{
             display: "grid",
             gridTemplateColumns: displayImageUrl || playerName ? (isNarrow ? "1fr" : "0.8fr 1.2fr") : "1fr",
@@ -2658,7 +2672,8 @@ Votes for this poll will no longer be shown.`
           }}
         >
           {(displayImageUrl || playerName) && (
-            <div
+            <div className="compact-poll-media" data-player-portrait={Boolean(playerName&&poll.merchandiseId!=="club-kit")}>
+            <div className={playerName && poll.merchandiseId !== "club-kit" ? "fanm-player-news-photo compact-poll-media-content" : "compact-poll-media-content"}
               style={{
                 minHeight: isNarrow ? 180 : 220,
                 borderRadius: "1rem",
@@ -2705,9 +2720,10 @@ Votes for this poll will no longer be shown.`
                 </div>
               )}
             </div>
+            </div>
           )}
 
-          <div style={{ minWidth: 0 }}>
+          <div className="compact-poll-copy" style={{ minWidth: 0 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem", marginBottom: "0.7rem" }}>
               <span style={metaChipStyle}>🗳️ {poll.tag || "Poll"}</span>
               <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(pollDateMs))}</span>
@@ -2740,10 +2756,10 @@ Votes for this poll will no longer be shown.`
               >
                 {poll.icon || "🗳️"}
               </span>
-              <h2 style={{ margin: 0 }}>{poll.question}</h2>
+              <h2 style={{ margin: 0 }}>{poll.merchandiseId==="club-kit"?compactKitPollQuestion(poll.question):poll.question}</h2>
             </div>
 
-            <div
+            <div className="compact-poll-options"
               style={{
                 display: "grid",
                 gap: "0.55rem",
@@ -2759,7 +2775,7 @@ Votes for this poll will no longer be shown.`
               )}
             </div>
 
-            <p className="muted small" style={{ marginTop: "0.65rem" }}>
+            <p className="muted small compact-poll-totals" style={{ marginTop: "0.65rem" }}>
               Total votes: <strong>{totalVotes}</strong>
               {myChoiceLabel
                 ? ` · You voted ${myChoiceLabel}`
@@ -2767,7 +2783,7 @@ Votes for this poll will no longer be shown.`
             </p>
 
             {canManageCustomStories && (
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.8rem" }}>
+              <div className="compact-poll-admin" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.8rem" }}>
                 {!archivedView && (
                   <button type="button" className="secondary-btn" onClick={() => handleEditCustomPoll(poll)} style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}>
                     Edit
@@ -2783,6 +2799,7 @@ Votes for this poll will no longer be shown.`
             )}
           </div>
         </div>
+        </CompactNewsPoll>
       </section>
     );
   };
@@ -2832,8 +2849,8 @@ Votes for this poll will no longer be shown.`
     const panelWidthPercent = Math.round(imageScale * 100);
 
     return (
-      <section key={story.id} id={`fanm-story-${story.id}`} className={`card ${focusedStoryId===story.id ? "fanm-notification-focus fanm-story-focus" : ""}`} style={{ overflow: "hidden", scrollMarginTop: 100 }}>
-        <div
+      <section data-player-photo-side={story.playerPhotoSide === "right" ? "right" : "left"} key={story.id} id={`fanm-story-${story.id}`} className={`card ${playerName ? "fanm-player-news" : ""} ${focusedStoryId===story.id ? "fanm-notification-focus fanm-story-focus" : ""}`} style={{ overflow: "hidden", scrollMarginTop: 100 }}>
+        <div className={playerName ? "fanm-player-news-layout" : undefined}
           style={{
             display: "grid",
             gridTemplateColumns:
@@ -2843,7 +2860,7 @@ Votes for this poll will no longer be shown.`
           }}
         >
           {(displayImageUrl || playerName) && (
-            <div
+            <div className={playerName ? "fanm-player-news-photo" : undefined}
               style={{
                 width: "100%",
                 maxWidth: isAvatarImage ? imageColumnWidth : `${panelWidthPercent}%`,
@@ -2918,7 +2935,7 @@ Votes for this poll will no longer be shown.`
               )}
 
               {playerName && (
-                <div
+                <div className="fanm-player-news-name"
                   style={{
                     position: "absolute",
                     left: isAvatarImage ? "50%" : "0.8rem",
@@ -2939,17 +2956,7 @@ Votes for this poll will no longer be shown.`
             </div>
           )}
 
-          <div style={{ minWidth: 0, position: "relative" }}>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.5rem",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: "0.7rem",
-              }}
-            >
+          {playerName&&<div className="fanm-player-news-meta">
               <div
                 style={{
                   display: "inline-flex",
@@ -2982,6 +2989,56 @@ Votes for this poll will no longer be shown.`
                   {freshness.label}
                 </span>
               </div>
+
+          </div>}
+
+          <div className={playerName ? "fanm-player-news-copy" : undefined} style={{ minWidth: 0, position: "relative" }}>
+            {playerName&&<small className="fanm-player-news-byline">{playerName}</small>}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.5rem",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "0.7rem",
+              }}
+            >
+              {!playerName&&<>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.45rem",
+                  padding: "0.25rem 0.65rem",
+                  borderRadius: "999px",
+                  background: "rgba(59,130,246,0.16)",
+                  border: "1px solid rgba(59,130,246,0.28)",
+                  fontWeight: 700,
+                  maxWidth: "100%",
+                }}
+              >
+                <span>📰</span>
+                <span>{story.tag || "Story"}</span>
+              </div>
+
+              <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", alignItems: "center" }}>
+                <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(storyDateMs))}</span>
+                <span
+                  style={{
+                    ...metaChipStyle,
+                    background: freshness.tone,
+                    border: `1px solid ${freshness.border}`,
+                    color: freshness.color,
+                    fontWeight: 900,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {freshness.label}
+                </span>
+              </div>
+
+              </>}
 
               {!archivedView && canManageCustomStories && (
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -3223,7 +3280,8 @@ Votes for this poll will no longer be shown.`
                   />
                 </div>
 
-                <label style={{ display: "grid", gap: "0.35rem" }}>
+                {storyDraft.playerName&&<label style={{display:"grid",gap:".35rem"}}><span>Player portrait</span><select style={newsInputStyle} value={storyDraft.playerPhotoSide||"left"} onChange={e=>handleStoryDraftChange("playerPhotoSide",e.target.value)}><option value="left">Top left</option><option value="right">Top right</option></select></label>}
+                <label hidden={Boolean(storyDraft.playerName)} style={{ display: storyDraft.playerName ? "none" : "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Photo size</span>
                   <select
                     value={storyDraft.imageSize}

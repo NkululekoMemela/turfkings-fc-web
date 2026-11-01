@@ -21315,3 +21315,6 @@ footer.club-marketing-footer > section {
 .field-marketing-carousel__dot.is-active {
   width: 1rem !important;
 }
+
+/* Remove the Android/WebKit tap tint; existing pressed and keyboard focus styles remain. */
+*{-webkit-tap-highlight-color:transparent}

@@ -1,3 +1,4 @@
+import TeamChatWarmup from "./components/TeamChatWarmup.jsx";
 import {saveClubMatchNumber} from "./storage/clubMatchNumberGateway.js";
 import {notificationDestination} from "./core/notificationDestination.mjs";
 import PoolNotificationBridge from "./components/PoolNotificationBridge.jsx";
@@ -3101,7 +3102,7 @@ export default function App() {
         }
 
         setNativePollOpenRequest(null);
-        setPage(PAGE_LANDING);
+        setPage(data.type === "bib_pack_ready" ? PAGE_SHOP : PAGE_LANDING);
 
         if (opensClubChat) {
           setNativeChatOpenRequest({
@@ -5882,6 +5883,13 @@ export default function App() {
     setPage(PAGE_LIVE);
   };
 
+  useEffect(()=>{
+    if(!authUser?.uid||!authUser.emailVerified||activeClubId!=="turf-kings")return;
+    const params=new URLSearchParams(window.location.search);
+    if(!params.has("bibPayment"))return;
+    setPage(PAGE_SHOP);params.delete("bibPayment");
+    window.history.replaceState(null,"",window.location.pathname+(params.size?"?"+params.toString():"")+window.location.hash);
+  },[authUser?.uid,authUser?.emailVerified,activeClubId]);
   const numberSaveScope=JSON.stringify([activeClubId,activeSeasonId,isPracticeMode]);
   const numberSaveScopeRef=useRef(numberSaveScope);numberSaveScopeRef.current=numberSaveScope;
   const saveConfirmedPlayerNumber=async(teamId,key,number,teamKind)=>{
@@ -10571,7 +10579,7 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_SHOP && <KitShopPage key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
+      {page === PAGE_SHOP && <KitShopPage clubId={activeClubId} key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
       {page === PAGE_PLAYER_PROFILE && !canAccessPlayerFeatures && <main className="page"><section className="card"><h1>Player Profile</h1><p>Enter your club as a verified player to open your profile. Spectator mode does not use player details.</p><button type="button" className="primary-btn" onClick={()=>setPage(PAGE_ENTRY)}>Go to club sign-in</button><button type="button" className="secondary-btn" onClick={handleBackToLanding}>Back to Home</button></section></main>}
       {page === PAGE_PLAYER_PROFILE && canAccessPlayerFeatures && (
         <PlayerProfilePage
@@ -11953,7 +11961,8 @@ export default function App() {
           </>
         )}
 
-      <PoolNotificationBridge key="pool-notification-bridge"/>{authUser?.uid&&!authUser.isAnonymous&&<PremiumNotificationToast key={`notification:${authUser.uid}`}/>}
+      {canAccessPlayerFeatures&&!isPracticeMode&&<TeamChatWarmup uid={authUser?.uid} clubId={activeClubId}/>}
+      {page===PAGE_VENUE_ENTRY&&portalOriginClubId&&!isPracticeMode&&<TeamChatWarmup uid={authUser?.uid} clubId={portalOriginClubId} venueId={selectedLeagueVenue?.id}/>}<PoolNotificationBridge key="pool-notification-bridge"/>{authUser?.uid&&!authUser.isAnonymous&&<PremiumNotificationToast key={`notification:${authUser.uid}`}/>}
       {canAccessPlayerFeatures&&page!==PAGE_PLAYER_PROFILE&&page!==PAGE_VENUE_ENTRY&&<NumberOfferNotification clubId={activeClubId} enabled={!isPracticeMode} onOpen={()=>setPage(PAGE_PLAYER_PROFILE)}/>}
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (

@@ -1293,7 +1293,9 @@ service cloud.firestore {
           && !isCameraSession()
           && request.resource.data.voterId == request.auth.uid
           && voteId == request.resource.data.pollId + "__" + request.auth.uid;
-        allow delete: if false;
+        allow delete: if isSignedIn() && !isCameraSession()
+          && resource.data.voterId == request.auth.uid
+          && voteId == resource.data.pollId + "__" + request.auth.uid;
       }
 
       // Field chat participation points to an existing Club member record.
