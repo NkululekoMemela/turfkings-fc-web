@@ -52,34 +52,17 @@
 
 /* Fixtures page and export controls */
 .field-fixtures-open {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 24px;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  margin-bottom: 16px;
-  padding: 18px;
-  color: #f8fafc;
-  text-align: left;
-  border: 2px solid rgba(56,189,248,.65);
-  border-radius: 18px;
-  background: linear-gradient(125deg, #18385a, #102139);
-  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 9px;
+  width: auto; max-width: 100%; min-height: 42px; align-self: flex-start; justify-self: start;
+  margin-bottom: 12px; padding: 9px 13px;
+  color: #e2e8f0; text-align: left;
+  border: 1px solid rgba(148,163,184,.3); border-radius: 12px;
+  background: linear-gradient(125deg,#172a3f,#101e30); cursor: pointer;
 }
-.field-fixtures-open strong {
-  display: block;
-  font-size: 20px;
-}
-.field-fixtures-open small {
-  display: block;
-  margin-top: 5px;
-  color: #bae6fd;
-  line-height: 1.4;
-}
-.field-fixtures-open__icon {
-  font-size: 34px;
-  color: #7dd3fc;
-}
+.field-fixtures-open strong { display: block; font-size: 14px; font-weight: 750; }
+.field-fixtures-open small { display: none; }
+.field-fixtures-open__icon { font-size: 19px; color: #7dd3fc; }
+.field-fixtures-open:focus-visible { outline: 2px solid #38bdf8; outline-offset: 3px; }
 .field-fixtures .field-fixtures-download {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));

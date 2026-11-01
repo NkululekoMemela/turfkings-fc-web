@@ -2873,7 +2873,7 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if (authLoading || !authUser?.uid || !activeClubId) {
+    if (authLoading || !authUser?.uid) {
       return undefined;
     }
 
@@ -2948,8 +2948,8 @@ export default function App() {
           }
           return;
         }
-        if (data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_match_day_review" ||
-            data.type === "field_manager_approval") {
+        if (data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_club_chat" || data.type === "field_match_day_review" ||
+            data.type === "field_manager_approval" || data.type === "field_story" || data.type === "field_poll" || data.type === "field_winners_story_request") {
           const venueId = String(data.venueId || "").trim();
           if (!/^[A-Za-z0-9_-]{1,150}$/.test(venueId)) return;
           try {
@@ -2973,8 +2973,10 @@ export default function App() {
             setSessionMode("official");
             writeSessionModeIntent("official");
             setFieldNavTarget({
-              page: data.type === "field_chat" ? "chat" : data.approvalKind === "banking_activation" ? "signup" : "landing",
+              page: ["field_chat","field_club_chat"].includes(data.type) ? "chat" : ["field_story","field_poll","field_winners_story_request"].includes(data.type) ? "news" : data.approvalKind === "banking_activation" ? "signup" : "landing",
+              privateChat:data.type==="field_club_chat"?{clubId:String(data.clubId||""),openedAt:Date.now()}:null,
               openBanking: data.approvalKind === "banking_activation",
+              publication: {clubId:venueId,pollId:String(data.pollId||""),storyId:String(data.storyId||""),winners:data.type==="field_winners_story_request",seasonId:String(data.seasonId||""),openedAt:Date.now()},
               id: Date.now(),
             });
             setSelectedLeagueVenue({...snapshot.data(), id: snapshot.id});
@@ -2987,12 +2989,12 @@ export default function App() {
         }
 
         const opensClubChat =
-          data.type === "club_chat" ||
+          data.type === "club_chat" || data.type === "club_team_chat" ||
           data.route === "club-chat";
 
         const opensClubPoll =
           data.type === "club_poll" ||
-          data.route === "club-poll";
+          data.route === "club-poll" || data.type === "club_story" || data.route === "club-story";
 
         const opensAdminEntry =
           data.type === "club_member_pending" ||
@@ -3062,12 +3064,13 @@ export default function App() {
         if (opensClubPoll) {
           const pollId = String(data.pollId || "").trim();
 
-          if (!pollId) return;
+          if (!pollId && !data.storyId) return;
 
           setNativeChatOpenRequest(null);
           setNativePollOpenRequest({
             clubId: notificationClubId,
             pollId,
+            storyId: String(data.storyId || ""),
             openedAt: Date.now(),
           });
           setPage(PAGE_NEWS);
@@ -3081,6 +3084,8 @@ export default function App() {
           setNativeChatOpenRequest({
             clubId: notificationClubId,
             messageId: String(data.messageId || ""),
+            type: String(data.type||""),
+            teamId: String(data.teamId||""),
             openedAt: Date.now(),
           });
         } else {

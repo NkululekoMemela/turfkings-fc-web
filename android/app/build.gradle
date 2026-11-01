@@ -62,3 +62,14 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+// FANM direct Firebase Messaging dependency
+def fanmNotificationMessagingVersion = rootProject.ext.has('firebaseMessagingVersion') ? rootProject.ext.firebaseMessagingVersion : '25.0.1'
+dependencies {
+    implementation "com.google.firebase:firebase-messaging:${fanmNotificationMessagingVersion}"
+}
+
+// FANM SVG notification badges
+dependencies {
+    implementation 'com.caverock:androidsvg-aar:1.4'
+}

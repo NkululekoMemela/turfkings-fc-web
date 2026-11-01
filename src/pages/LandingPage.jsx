@@ -2144,60 +2144,13 @@ export function LandingPage({
               })}
             </button>
 
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={onGoToFormations}
-              style={tileButtonStyle(isMobile)}
-            >
-              {renderTileContent({
-                isMobile,
-                icon: (
-                  <img
-                    src="/formations-icon.png"
-                    alt=""
-                    style={{
-                      width: isMobile ? 30 : 26,
-                      height: isMobile ? 30 : 26,
-                      objectFit: "contain",
-                    }}
-                    draggable="false"
-                  />
-                ),
-                desktopLines: ["Lineups &", "Formations"],
-                mobileLines: ["Lineups &", "Formations"],
-              })}
-            </button>
 
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={onGoToNews}
-              style={tileButtonStyle(isMobile)}
-            >
-              {renderTileContent({
-                isMobile,
-                icon: (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      fontSize: isMobile ? "1.55rem" : "1.38rem",
-                      lineHeight: 1,
-                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
-                    }}
-                  >
-                    📰
-                  </span>
-                ),
-                desktopLines: ["News &", "Highlights"],
-                mobileLines: ["News &", "Highlights"],
-              })}
-            </button>
 
             <button
               type="button"
               onClick={() => onOpenHighlightsCamera?.()}
               style={{
+                gridColumn: "1",
                 ...tileButtonStyle(isMobile, {
                   background:
                     "radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08), transparent 60%), linear-gradient(145deg, rgba(8,15,35,0.98), rgba(3,8,23,0.98))",
@@ -2293,25 +2246,34 @@ export function LandingPage({
               </span>
             </button>
 
-            <button
-              type="button"
+<button
               className="secondary-btn"
-              onClick={() => onGoToHighlights?.()}
+              type="button"
+              onClick={onGoToNews}
               style={tileButtonStyle(isMobile)}
             >
               {renderTileContent({
                 isMobile,
-                icon: renderPublicImageIcon({
-                  src: "/videotape.png",
-                  alt: "",
-                  isMobile,
-                  mobileSize: 31,
-                  desktopSize: 28,
-                }),
-                desktopLines: ["Video", "Highlights"],
-                mobileLines: ["Video", "Highlights"],
+                icon: (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: isMobile ? "1.55rem" : "1.38rem",
+                      lineHeight: 1,
+                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
+                    }}
+                  >
+                    📰
+                  </span>
+                ),
+                desktopLines: ["News &", "Highlights"],
+                mobileLines: ["News &", "Highlights"],
               })}
             </button>
+
+
+
+
 
             {isThreeTeamLeague && isAdmin && (
               <button
@@ -2369,7 +2331,7 @@ export function LandingPage({
               }
             >
               {isPlayer
-                ? "Players can view the setup, lineups and stats, but only captains or admin can start a match."
+                ? "Match start: captains and admins only."
                 : "You can follow the live game."}
             </p>
 
@@ -2413,60 +2375,13 @@ export function LandingPage({
                 })}
               </button>
 
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={onGoToFormations}
-                style={tileButtonStyle(isMobile)}
-              >
-                {renderTileContent({
-                isMobile,
-                icon: (
-                  <img
-                    src="/formations-icon.png"
-                    alt=""
-                    style={{
-                      width: isMobile ? 30 : 26,
-                      height: isMobile ? 30 : 26,
-                      objectFit: "contain",
-                    }}
-                    draggable="false"
-                  />
-                ),
-                desktopLines: ["Lineups &", "Formations"],
-                mobileLines: ["Lineups &", "Formations"],
-              })}
-              </button>
 
-              <button
-                className="secondary-btn"
-                type="button"
-                onClick={onGoToNews}
-                style={tileButtonStyle(isMobile)}
-              >
-                {renderTileContent({
-                  isMobile,
-                  icon: (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      fontSize: isMobile ? "1.55rem" : "1.38rem",
-                      lineHeight: 1,
-                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
-                    }}
-                  >
-                    📰
-                  </span>
-                ),
-                  desktopLines: ["News &", "Highlights"],
-                  mobileLines: ["News &", "Highlights"],
-                })}
-              </button>
 
               <button
                 type="button"
                 onClick={() => onOpenHighlightsCamera?.()}
                 style={{
+                gridColumn: "1",
                   ...tileButtonStyle(isMobile, {
                     background:
                       "radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08), transparent 60%), linear-gradient(145deg, rgba(8,15,35,0.98), rgba(3,8,23,0.98))",
@@ -2562,25 +2477,34 @@ export function LandingPage({
                 </span>
               </button>
 
-              <button
+<button
                 className="secondary-btn"
                 type="button"
-                onClick={() => onGoToHighlights?.()}
+                onClick={onGoToNews}
                 style={tileButtonStyle(isMobile)}
               >
                 {renderTileContent({
                   isMobile,
-                  icon: renderPublicImageIcon({
-                    src: "/videotape.png",
-                    alt: "",
-                    isMobile,
-                    mobileSize: 31,
-                    desktopSize: 28,
-                  }),
-                  desktopLines: ["Video", "Highlights"],
-                  mobileLines: ["Video", "Highlights"],
+                  icon: (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: isMobile ? "1.55rem" : "1.38rem",
+                      lineHeight: 1,
+                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
+                    }}
+                  >
+                    📰
+                  </span>
+                ),
+                  desktopLines: ["News &", "Highlights"],
+                  mobileLines: ["News &", "Highlights"],
                 })}
               </button>
+
+
+
+
 
             {canUsePlayerPortal && activeClubId &&
               typeof onEnterField === "function" && (

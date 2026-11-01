@@ -2116,6 +2116,15 @@ async function sendPaymentNotificationBatch({
   data,
   imageUrl = "",
 }) {
+  try {
+    const scopeId=data?.venueId||data?.clubId;
+    if(require("./notificationRuntime.cjs").valid(scopeId)){
+      const group=(await db.doc(`${data?.venueId?"leagueVenues":"clubs"}/${scopeId}`).get()).data();
+      const groupLogoUrl=await require("./notificationRuntime.cjs").groupImage(group);
+      data={sourceName:String(group?.name||group?.clubName||"FANM"),groupLogoUrl,...data};
+      if(!imageUrl)imageUrl=groupLogoUrl;
+    }
+  } catch { console.warn("[FANM notification] Source image unavailable."); }
   let successCount = 0;
   let failureCount = 0;
   const invalidRefs = [];
@@ -2127,7 +2136,7 @@ async function sendPaymentNotificationBatch({
   ) {
     const batch = tokenRecords.slice(start, start + 500);
 
-    const response = await admin.messaging().sendEachForMulticast({
+    const response = await require("./notificationRuntime.cjs").sendMulticast(db,admin.messaging(),{
       tokens: batch.map((record) => record.token),
       notification: {
         title,
@@ -2139,7 +2148,7 @@ async function sendPaymentNotificationBatch({
         priority: "high",
         notification: {channelId: "field_invitations"},
       },
-    });
+    },batch);
 
     successCount += response.successCount;
     failureCount += response.failureCount;
@@ -3647,6 +3656,8 @@ exports.onClubChatMessageCreated = onDocumentCreated(
     );
 
     const senderPhotoUrl = await require("./notificationMedia.cjs").senderPortrait(db,clubId,senderUid);
+    const notificationClub=(await db.doc(`clubs/${clubId}`).get()).data();
+    const groupLogoUrl=await require("./notificationRuntime.cjs").groupImage(notificationClub);
 
     const devicesSnapshot = await db
       .collection("clubs")
@@ -3654,7 +3665,7 @@ exports.onClubChatMessageCreated = onDocumentCreated(
       .collection("notificationDevices")
       .get();
 
-    const tokenRecords = [];
+    let tokenRecords = [];
     const seenTokens = new Set();
 
     devicesSnapshot.docs.forEach((deviceDoc) => {
@@ -3674,10 +3685,14 @@ exports.onClubChatMessageCreated = onDocumentCreated(
 
       seenTokens.add(token);
       tokenRecords.push({
+        uid: String(device.firebaseUid || ""),
+        deviceId: String(device.deviceId || ""),
         token,
         ref: deviceDoc.ref,
       });
     });
+
+    tokenRecords = await require("./chatNotificationPolicy.cjs").filterChatRecipients(db,tokenRecords,"club",clubId);
 
     if (!tokenRecords.length) {
       console.log(
@@ -3698,7 +3713,7 @@ exports.onClubChatMessageCreated = onDocumentCreated(
       const batch = tokenRecords.slice(start, start + 500);
 
       const response =
-        await admin.messaging().sendEachForMulticast({
+        await require("./notificationRuntime.cjs").sendMulticast(db,admin.messaging(),{
           tokens: batch.map((record) => record.token),
           notification: {
             title: `💬 ${senderName} • ${clubName}`,
@@ -3713,12 +3728,14 @@ exports.onClubChatMessageCreated = onDocumentCreated(
             senderUid,
             senderName,
             senderPhotoUrl,
+            sourceName: clubName,
+            groupLogoUrl,
           },
           android: {
             priority: "high",
             notification: {channelId: "field_invitations"},
           },
-        });
+        },batch);
 
       successCount += response.successCount;
       failureCount += response.failureCount;
@@ -5932,7 +5949,8 @@ exports.playerPrivacyStatus = onRequest({region:REGION,cors:true},async(req,res)
 
 exports.kitShop = require("./kitShopHttp.cjs").kitShop;
 
-Object.assign(exports, require("./fieldPremiumNotifications.cjs").buildHandlers({db,region:REGION,sendBatch:sendPaymentNotificationBatch}));
+Object.assign(exports, require("./fieldPremiumNotifications.cjs").buildHandlers({db,region:REGION,includeSenderForTesting:process.env.GCLOUD_PROJECT==="five-asides-near-me-staging",sendBatch:options=>require("./notificationRuntime.cjs").reliableBatch({db,messaging:admin.messaging(),...options})}));
+Object.assign(exports, require("./notificationRuntime.cjs").publicationHandlers({db,region:REGION,auth:admin.auth(),messaging:admin.messaging()}));
 
 exports.poolNight = require("./poolNightHttp.cjs").poolNight;
 
@@ -5942,3 +5960,11 @@ exports.poolCheckout = require("./poolCheckout.cjs").poolCheckout;
 exports.closeIdlePoolNights = require("./poolLifecycle.cjs").closeIdlePoolNights;
 
 exports.cleanupOldPoolNights = require("./poolRetention.cjs").cleanupOldPoolNights;
+
+exports.clubTeamChat = require("./memberWorkspaceHttp.cjs").clubTeamChat;
+exports.manageFieldStaff = require("./memberWorkspaceHttp.cjs").manageFieldStaff;
+exports.onClubTeamChatMessageCreated = onDocumentCreated({document:"privateTeamChats/{roomId}/messages/{messageId}",region:REGION,retry:true,timeoutSeconds:180},event=>require("./clubTeamChat.cjs").notify({db,messaging:admin.messaging(),auth:admin.auth(),event}));
+
+exports.fieldClubChat=require("./memberWorkspaceHttp.cjs").fieldClubChat;
+exports.onFieldClubChatMessageCreated=onDocumentCreated({document:"privateFieldClubChats/{roomId}/messages/{messageId}",region:REGION,retry:true,timeoutSeconds:180},event=>require("./fieldClubChat.cjs").notify({db,messaging:admin.messaging(),auth:admin.auth(),event}));
+exports.closeFriendlyTeamChats=onDocumentWritten({document:"clubs/{clubId}/state/main",region:REGION,retry:true},event=>require("./clubTeamChat.cjs").closeFriendly({db,event}));

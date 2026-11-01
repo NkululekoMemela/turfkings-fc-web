@@ -1,3 +1,4 @@
+import {shouldPresentChatNotification} from "../core/chatNotificationPreferences.js";
 import React,{useEffect,useState} from "react";
 import {createPortal} from "react-dom";
 import "./PremiumNotification.css";
@@ -5,10 +6,17 @@ const safeImage=value=>/^https:\/\//i.test(value||'')?value:'';
 function Badge({src,label,portrait=false}){const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[src]);return src&&!failed?<img className={`fanm-notice-picture ${portrait?"is-portrait":""}`} src={src} alt="" onError={()=>setFailed(true)}/>:<span className="fanm-notice-picture fanm-notice-fallback" aria-label={label}>{String(label||'⚽').slice(0,2).toUpperCase()}</span>;}
 export function PremiumNotificationToast(){
  const [queue,setQueue]=useState([]);
- useEffect(()=>{const receive=event=>setQueue(old=>[...old.slice(-3),event.detail]);window.addEventListener('fanm-notification',receive);return()=>window.removeEventListener('fanm-notification',receive);},[]);
- useEffect(()=>{if(!queue.length)return;const timer=setTimeout(()=>setQueue(old=>old.slice(1)),7000);return()=>clearTimeout(timer);},[queue]);
+ useEffect(()=>{let active=true;const receive=event=>{shouldPresentChatNotification(event.detail?.data).then(show=>{if(active&&show)setQueue(old=>[...old.slice(-3),event.detail]);}).catch(()=>{});};window.addEventListener('fanm-notification',receive);return()=>{active=false;window.removeEventListener('fanm-notification',receive);};},[]);
+ useEffect(()=>{if(!queue.length)return;const timer=setTimeout(()=>setQueue(old=>old.slice(1)),4000);return()=>clearTimeout(timer);},[queue[0]]);
  const item=queue[0];if(!item)return null;const data=item.data||{};
- return createPortal(<aside className="fanm-premium-notice" role="status" aria-live="polite"><span className="fanm-notice-brand" aria-label="FANM">FANM</span><div className="fanm-notice-copy"><strong>{item.title||'FANM update'}</strong><p>{item.body}</p></div><Badge portrait={Boolean(data.senderPhotoUrl)} src={safeImage(data.senderPhotoUrl||data.fieldLogoUrl||data.imageUrl)} label={data.senderName||data.fieldName||data.clubName||'⚽'}/><button type="button" aria-label="Dismiss notification" onClick={()=>setQueue(old=>old.slice(1))}>×</button></aside>,document.body);
+ const open=()=>{window.dispatchEvent(new CustomEvent("fanm-notification-open",{detail:item}));setQueue(old=>old.slice(1));};
+ return createPortal(<aside className="fanm-premium-notice" role="status" aria-live="polite">
+ <button className="fanm-notice-open" type="button" onClick={open} aria-label={`Open ${item.title||"notification"}`}>
+ <span className="fanm-notice-source"><Badge portrait={Boolean(data.senderPhotoUrl)} src={safeImage(data.senderPhotoUrl||data.groupLogoUrl||data.fieldLogoUrl||data.imageUrl)} label={data.senderName||data.sourceName||data.clubName||"⚽"}/>{data.senderPhotoUrl&&data.groupLogoUrl&&<img className="fanm-notice-group" src={safeImage(data.groupLogoUrl)} alt={data.sourceName||"Group"} onError={event=>{event.currentTarget.style.display="none";}}/>}</span>
+ <span className="fanm-notice-copy"><small>{data.sourceName||data.clubName||data.fieldName||"FANM"}</small><strong>{item.title||"FANM update"}</strong><span className="fanm-notice-body">{item.body}</span></span>
+ {safeImage(data.contentImageUrl)&&<img className="fanm-notice-content" src={safeImage(data.contentImageUrl)} alt="" onError={event=>{event.currentTarget.style.display="none";}}/>}
+ <img className="fanm-notice-brand-logo" src="/pwa/fanm-app-icon.png" alt="FANM"/>
+ </button><button type="button" aria-label="Dismiss notification" onClick={()=>setQueue(old=>old.slice(1))}>×</button></aside>,document.body);
 }
 export function FieldAcceptedTeams({venueId,season,clubs={},userId,enabled=false}){
  const key=`field-accepted:${userId}:${venueId}:${season?.id}`;

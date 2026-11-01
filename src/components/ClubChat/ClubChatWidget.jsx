@@ -1,3 +1,5 @@
+import TeamChatLauncher from "../TeamChatLauncher.jsx";
+import ChatNotificationToggle from "../ChatNotificationToggle.jsx";
 // src/components/ClubChat/ClubChatWidget.jsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { db } from "../../firebaseConfig";
@@ -1373,6 +1375,7 @@ export function ClubChatWidget({
 
       {clubChatOpen && (
         <>
+          {activeChatRoom==="club"&&<div className="fanm-chat-actions"><ChatNotificationToggle scope="club" groupId={activeClubId}/><TeamChatLauncher clubId={activeClubId} initialRequest={nativeOpenRequest?.type==="club_team_chat"?nativeOpenRequest:null}/></div>}
           <div className="fanm-club-chat-head">
             <div>
               <h2>

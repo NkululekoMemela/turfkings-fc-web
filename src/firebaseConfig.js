@@ -183,6 +183,12 @@ export async function reauthenticateWithGoogle(user) {
 }
 
 export async function logOut() {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const {disableNativeNotificationRegistration}=await import("./core/notifications/nativePushNotifications.js");
+      await Promise.race([disableNativeNotificationRegistration(),new Promise(resolve=>setTimeout(resolve,3000))]);
+    } catch { console.warn("[NativePush] Device cleanup will retry on next sign-in."); }
+  }
   try {
     await signOut(auth);
   } finally {
