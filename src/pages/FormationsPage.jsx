@@ -1,5 +1,7 @@
+import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
+import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
 import {CLUB_COLLECTIONS} from "../core/clubPaths.js";
-import {buildKitRoster,labelWithNumber} from "../core/playerKit.js";
+import {buildKitRoster,labelWithNumber,jerseyNumber,validateKitTeams,normalizeKitName} from "../core/playerKit.js";
 // src/pages/FormationsPage.jsx
 import { FANM_PRO_CLUBS } from "../data/fanm/fanmTeamLibrary.js";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -952,6 +954,7 @@ const LONG_PRESS_MS = 650;
 const MAX_SUBS = 6;
 
 export function FormationsPage({
+  canEditNumbers=false,onNumberChange,
   activeClubId = "turf-kings",
   isPracticeMode = false,
   practiceSessionId = null,
@@ -1257,94 +1260,8 @@ export function FormationsPage({
     }));
   }, [playerPhotosByName]);
 
-  useEffect(() => {
-    const alreadyLoaded =
-      playerPhotosByName &&
-      Object.keys(playerPhotosByName).length > 20;
-
-    if (alreadyLoaded) {
-      return;
-    }
-
-    async function loadPhotos() {
-      try {
-        const snap = await getDocs(getPlayerPhotosCollection(db, activeClubId));
-        const rawPhotos = [];
-
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          if (data?.photoData) {
-            rawPhotos.push({
-              docId: docSnap.id,
-              name: data.name || "",
-              photoData: data.photoData,
-            });
-          }
-        });
-
-        setPlayerPhotos((prev) => {
-          const next = { ...prev };
-
-          rawPhotos.forEach((p) => {
-            const candidates = [
-              p.name,
-              toTitleCase(p.name),
-              p.docId,
-              toTitleCase(String(p.docId || "").replace(/_/g, " ")),
-              firstNameOf(p.name),
-            ].filter(Boolean);
-
-            let assignedKey = null;
-
-            for (const c of candidates) {
-              const resolved = playerResolver.resolve(c);
-              if (resolved?.display) {
-                assignedKey = resolved.display;
-                break;
-              }
-            }
-
-            const fallbackKey = toTitleCase(p.name || p.docId || "Unknown");
-            next[assignedKey || fallbackKey] = p.photoData;
-          });
-
-          return next;
-        });
-      } catch (err) {
-        console.error("Failed to load player photos:", err);
-      }
-    }
-
-    loadPhotos();
-  }, [playerResolver]);
-
-  const getPlayerPhoto = (name) => {
-    if (!name) return null;
-
-    const canon = canonicalName(name);
-    const compact = displayCompactName(name);
-
-    const candidates = [
-      canon,
-      compact,
-      firstNameOf(canon),
-      firstNameOf(compact),
-      slugFromName(canon),
-      slugFromName(compact),
-      name,
-      toTitleCase(name),
-    ].filter(Boolean);
-
-    for (const candidate of candidates) {
-      if (playerPhotos[candidate]) return playerPhotos[candidate];
-      const key = Object.keys(playerPhotos).find(
-        (k) => normKey(k) === normKey(candidate)
-      );
-      if (key && playerPhotos[key]) return playerPhotos[key];
-    }
-
-    return null;
-  };
+  useEffect(()=>{let cancelled=false;getDocs(getPlayerPhotosCollection(db,activeClubId)).then(snapshot=>{if(!cancelled){const loaded=indexPlayerPortraits(snapshot.docs.map(doc=>({id:doc.id,data:doc.data()||{}})));setPlayerPhotos(old=>({...old,...loaded}));}}).catch(error=>console.warn("[Player portraits] Could not refresh",error.code||error.name));return()=>{cancelled=true;};},[activeClubId]);
+  const getPlayerPhoto=name=>resolvePlayerPortrait(name,players||[],playerPhotos);
 
   const verifiedPlayerName = useMemo(() => {
     const role = identity?.role || authUser?.role || null;
@@ -1631,7 +1548,7 @@ export function FormationsPage({
 
   const formationKitTeams=useMemo(()=>buildKitRoster(sourceTeams,players),[sourceTeams,players]);
   const withCaptainTag = (name) => {
-    const label = labelWithNumber(formationKitTeams,name,displayCompactName(name),selectedTeamId || "");
+    const label = sourceTeams.find(t=>String(t.id)===String(selectedTeamId))?.usePlayerNumbers===false?displayCompactName(name):labelWithNumber(formationKitTeams,name,displayCompactName(name),selectedTeamId || "");
     return isCaptainPlayer(name) ? `${label} (C)` : label;
   };
 
@@ -2768,7 +2685,8 @@ export function FormationsPage({
                           touchAction: "manipulation",
                         }}
                       >
-                        <div
+                        <div className="live-lineup-number-pin">{sourceTeams.find(t=>String(t.id)===String(selectedTeamId))?.usePlayerNumbers!==false&&(()=>{const team=formationKitTeams.find(t=>t.id===String(selectedTeamId)),row=team?.players.find(r=>r.key===name||r.aliases.includes(normalizeKitName(name)));return <CompactPlayerNumber number={row?.number??null} name={displayCompactName(name)} disabled={!canEditNumbers} onCommit={canEditNumbers&&row?raw=>{const number=jerseyNumber(raw);validateKitTeams(formationKitTeams.filter(t=>t.players.length).map(t=>t.id!==team.id?t:{...t,players:t.players.map(r=>r.key!==row.key?r:{...r,number})}));return onNumberChange?.(team.id,row.key,number,isFriendlyMatch?"friendly":"league");}:undefined}/>;})()}</div>
+                      <div
                           className={`player-shirt ${photoData ? "with-photo" : ""}`}
                           style={photoData ? { backgroundImage: `url(${photoData})` } : {}}
                         />
@@ -2778,7 +2696,7 @@ export function FormationsPage({
 
 
                       <div className="player-label">
-                        <span className="player-name">{name ? withCaptainTag(name) : "Empty"}</span>
+                        <span className="player-name">{name?<>{withCaptainTag(name).replace(/^\((?:\d+|-)\)\s*/,"")}</>:"Empty"}</span>
                         <span className="position-tag">{pos.label}</span>
                       </div>
                     </div>

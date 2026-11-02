@@ -21,6 +21,10 @@ import java.util.concurrent.Executors;
 import android.os.Build;
 import android.util.Base64;
 import androidx.core.app.NotificationCompat;
+import android.widget.RemoteViews;
+import android.view.View;
+import android.os.Bundle;
+import android.service.notification.StatusBarNotification;
 import com.getcapacitor.JSObject;
 
 public final class FanmNotificationPresenter {
@@ -126,6 +130,18 @@ public final class FanmNotificationPresenter {
         return result;
     }
 
+    private static Bitmap flagBadge(String flag) {
+        int[] points=flag.codePoints().toArray();
+        if(points.length!=2 || points[0]<0x1F1E6 || points[0]>0x1F1FF || points[1]<0x1F1E6 || points[1]>0x1F1FF)return null;
+        Bitmap bitmap=Bitmap.createBitmap(192,192,Bitmap.Config.ARGB_8888);
+        Canvas canvas=new Canvas(bitmap);Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(android.graphics.Color.WHITE);
+        canvas.drawRoundRect(new android.graphics.RectF(2,2,190,190),36,36,paint);
+        paint.setTextSize(126);paint.setTextAlign(Paint.Align.CENTER);
+        canvas.drawText(flag,96,96-(paint.ascent()+paint.descent())/2,paint);
+        return bitmap;
+    }
+
     private static Bitmap sourcePlaceholder(String name) {
         Bitmap result = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(result);
@@ -144,66 +160,122 @@ public final class FanmNotificationPresenter {
         return result;
     }
 
-    public static void show(Context context, int id, String title, String body, JSObject payload) {
-        try {
-            NotificationManager manager = (NotificationManager)
-                context.getSystemService(Context.NOTIFICATION_SERVICE);
-            String channelId = "field_invitations";
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                manager.createNotificationChannel(new NotificationChannel(
-                    channelId, "FANM updates", NotificationManager.IMPORTANCE_HIGH
-                ));
-            }
+    private static final String GROUP = "fanm.updates";
+    private static final int SUMMARY_ID = 2100000001;
+    private static final String THREAD = "fanm.thread";
+    private static final String EVENT = "fanm.event";
 
-            Intent intent = new Intent(context, MainActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            intent.setData(Uri.parse("field-invitation://open/" + id));
-            intent.putExtra(EXTRA, payload.toString());
-            PendingIntent tap = PendingIntent.getActivity(
-                context, id, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-            );
+    private static android.app.Notification active(NotificationManager manager, int id) {
+        for (StatusBarNotification item : manager.getActiveNotifications())
+            if (item.getId() == id && item.getTag() == null) return item.getNotification();
+        return null;
+    }
 
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(
-                context, channelId
-            ).setSmallIcon(context.getApplicationInfo().icon)
-             .setContentTitle(title)
-             .setContentText(body)
-             .setStyle(new NotificationCompat.BigTextStyle()
-                .bigText(body))
-             .setContentIntent(tap)
-             .setAutoCancel(true)
-             .setOnlyAlertOnce(true)
-             .setPriority(NotificationCompat.PRIORITY_HIGH);
-
-            final org.json.JSONObject data = payload.optJSONObject("data") == null ? new org.json.JSONObject() : payload.optJSONObject("data");
-            builder.setLargeIcon(sourcePlaceholder(data.optString("sourceName", data.optString("clubName", "FANM"))));
-            android.util.Log.i("FANM_PUSH", "native_requested allowed=" + manager.areNotificationsEnabled());
-            manager.notify(id, builder.build());
-            PICTURES.execute(() -> {
-            try {
-            String badge = data.optString("badge", "");
-            if (!badge.isEmpty()) {
-                try {
-                    byte[] bytes = Base64.decode(badge, Base64.DEFAULT);
-                    Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-                    if (bitmap != null) builder.setLargeIcon(framedBadge(bitmap));
-                } catch (Exception ignored) {}
-            }
-            if (badge.isEmpty()) {
-                Bitmap picture = notificationPicture(data.optString("senderPhotoUrl", ""), true);
-                Bitmap group = notificationPicture(data.optString("groupLogoUrl", ""), false);
-                // Give the sender the entire native icon slot. Other updates use their source logo.
-                if (picture != null) builder.setLargeIcon(picture);
-                else if (group != null) builder.setLargeIcon(group);
-            }
-            Bitmap content = notificationPicture(data.optString("contentImageUrl", ""), false, 720);
-            if (content != null) builder.setStyle(new NotificationCompat.BigPictureStyle().bigPicture(content).setSummaryText(body));
-            manager.notify(id, builder.build());
-            } catch (Exception error) { android.util.Log.w("FANM", "Notification image unavailable", error); }
-            });
-        } catch (Exception error) {
-            android.util.Log.w("FANM", "Notification could not be displayed", error);
+    private static void summary(Context context, NotificationManager manager, PendingIntent tap, String channelId) {
+        NotificationCompat.InboxStyle lines = new NotificationCompat.InboxStyle();
+        int count = 0;
+        for (StatusBarNotification item : manager.getActiveNotifications()) {
+            if (item.getId() == SUMMARY_ID || !GROUP.equals(item.getNotification().getGroup())) continue;
+            count++;
+            if (count <= 6) lines.addLine(item.getNotification().extras.getCharSequence("android.title", "FANM update"));
         }
+        if (count < 2) { manager.cancel(SUMMARY_ID); return; }
+        manager.notify(SUMMARY_ID, new NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(context.getApplicationInfo().icon).setContentTitle("5 Asides Near Me")
+            .setContentText(count + " conversations and updates").setStyle(lines)
+            .setGroup(GROUP).setGroupSummary(true).setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+            .setOnlyAlertOnce(true).setSilent(true).setContentIntent(tap).setAutoCancel(true).build());
+    }
+
+    private static CharSequence previewText(org.json.JSONArray thread) {
+        android.text.SpannableStringBuilder text=new android.text.SpannableStringBuilder();
+        // A native expanded notification has bounded height; keep the latest exchanges.
+        for(int i=Math.max(0,thread.length()-7);i<thread.length();i++) {
+            org.json.JSONObject line=thread.optJSONObject(i);if(line==null)continue;
+            if(text.length()>0)text.append("\n\n");
+            int start=text.length();
+            text.append(line.optString("name","Player"));
+            text.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),start,text.length(),android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            text.append(": ").append(line.optString("body", ""));
+        }
+        return text;
+    }
+
+    private static void chatPreview(Context context, NotificationCompat.Builder builder,
+            org.json.JSONArray thread, String source, Bitmap portrait) {
+        RemoteViews view=new RemoteViews(context.getPackageName(),R.layout.fanm_chat_thread_preview);
+        view.setTextViewText(R.id.fanm_thread_source,source);
+        view.setTextViewText(R.id.fanm_thread_messages,previewText(thread));
+        view.setViewVisibility(R.id.fanm_thread_portrait,portrait==null?View.GONE:View.VISIBLE);
+        if(portrait!=null)view.setImageViewBitmap(R.id.fanm_thread_portrait,portrait);
+        builder.setStyle(new NotificationCompat.DecoratedCustomViewStyle()).setCustomBigContentView(view);
+    }
+
+    public static synchronized void show(Context context, int suppliedId, String title, String body, JSObject payload) {
+        try {
+            NotificationManager manager=(NotificationManager)context.getSystemService(Context.NOTIFICATION_SERVICE);
+            String channelId="field_invitations";
+            if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O)manager.createNotificationChannel(new NotificationChannel(channelId,"FANM updates",NotificationManager.IMPORTANCE_HIGH));
+            final org.json.JSONObject data=payload.optJSONObject("data")==null?new org.json.JSONObject():payload.optJSONObject("data");
+            final boolean chat=FanmNotificationIdentity.isChat(data.optString("type"));
+            String conversation=FanmNotificationIdentity.conversation(data.optString("type"),data.optString("recipientUid"),data.optString("clubId"),data.optString("venueId"),data.optString("teamId"),data.optString("seasonId"));
+            final int id=chat?FanmNotificationIdentity.id(conversation):suppliedId;
+            final String event=data.optString("notificationKey",data.optString("messageId",String.valueOf(suppliedId)));
+            org.json.JSONArray history=new org.json.JSONArray();
+            android.app.Notification previous=active(manager,id);
+            if(chat && previous!=null) {
+                try { history=new org.json.JSONArray(previous.extras.getString(THREAD,"[]")); } catch(Exception ignored) {}
+            }
+            boolean seen=false;
+            for(int i=0;i<history.length();i++)if(event.equals(history.optJSONObject(i).optString("event")))seen=true;
+            if(chat && seen)return;
+            if(chat) {
+                org.json.JSONObject line=new org.json.JSONObject();line.put("event",event);line.put("name",data.optString("senderName","Player"));
+                line.put("uid",data.optString("senderUid"));line.put("photoUrl",data.optString("senderPhotoUrl",""));line.put("body",body);line.put("time",data.optLong("sentAtMs",System.currentTimeMillis()));history.put(line);
+            }
+            final org.json.JSONArray thread=new org.json.JSONArray();
+            for(int i=Math.max(0,history.length()-25);i<history.length();i++)thread.put(history.get(i));
+            final Bitmap cachedPortrait=CACHE.get(data.optString("senderPhotoUrl","")+":circle192");
+            final boolean teamChat="club_team_chat".equals(data.optString("type"));
+            JSObject destination=new JSObject(payload.toString());destination.put("id",String.valueOf(id));
+            Intent intent=new Intent(context,MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            intent.setData(Uri.parse("field-invitation://open/"+id));intent.putExtra(EXTRA,destination.toString());
+            PendingIntent tap=PendingIntent.getActivity(context,id,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+            Bundle extras=new Bundle();extras.putString(THREAD,thread.toString());extras.putString(EVENT,event);
+            NotificationCompat.Builder builder=new NotificationCompat.Builder(context,channelId)
+                .setSmallIcon(context.getApplicationInfo().icon).setContentTitle(title).setContentText(body)
+                .setContentIntent(tap).setAutoCancel(true).setOnlyAlertOnce(false)
+                .setGroup(GROUP).setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+                .setPriority(NotificationCompat.PRIORITY_HIGH).addExtras(extras);
+            if(chat)chatPreview(context,builder,thread,data.optString("sourceName",title),cachedPortrait);
+            else builder.setStyle(new NotificationCompat.BigTextStyle().bigText(body));
+            builder.setLargeIcon(sourcePlaceholder(data.optString("sourceName",data.optString("clubName","FANM"))));
+            if(chat && cachedPortrait!=null && !teamChat)builder.setLargeIcon(cachedPortrait);
+            manager.notify(id,builder.build());summary(context,manager,tap,channelId);
+            PICTURES.execute(()->{
+                try {
+                    Bitmap portrait=notificationPicture(data.optString("senderPhotoUrl",""),true);
+                    Bitmap group=(!chat||teamChat||portrait==null)?notificationPicture(data.optString("groupLogoUrl",""),false):null;
+                    if(teamChat && group==null)group=flagBadge(data.optString("groupFlag",""));
+                    Bitmap content=chat?null:notificationPicture(data.optString("contentImageUrl",""),false,720);
+                    if(teamChat){if(group!=null)builder.setLargeIcon(group);}
+                    else if(portrait!=null)builder.setLargeIcon(portrait);else if(group!=null)builder.setLargeIcon(group);
+                    String badge=data.optString("badge","");
+                    if(portrait==null && group==null && !badge.isEmpty())try {
+                        byte[] bytes=Base64.decode(badge,Base64.DEFAULT);Bitmap bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                        if(bitmap!=null)builder.setLargeIcon(framedBadge(bitmap));
+                    }catch(Exception ignored){}
+                    if(chat)chatPreview(context,builder,thread,data.optString("sourceName",title),portrait);
+                    else if(content!=null)builder.setStyle(new NotificationCompat.BigPictureStyle().bigPicture(content).setSummaryText(body));
+                    synchronized(FanmNotificationPresenter.class){
+                        android.app.Notification current=active(manager,id);
+                        // Never resurrect a dismissed message or let a slow old image replace newer exchanges.
+                        if(current==null || !event.equals(current.extras.getString(EVENT)))return;
+                        builder.setOnlyAlertOnce(true);manager.notify(id,builder.build());summary(context,manager,tap,channelId);
+                    }
+                }catch(Exception error){android.util.Log.w("FANM","Notification image unavailable",error);}
+            });
+        }catch(Exception error){android.util.Log.w("FANM","Notification could not be displayed",error);}
     }
 }

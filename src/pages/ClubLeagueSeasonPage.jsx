@@ -492,7 +492,7 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
         </section>
       )}
 
-      {context && <details className="league-kit-reminder"><summary>Numbered bib required for official play</summary><p className="muted small">Own and wear a numbered bib, with its number recorded in Profile. Your captain checks kit and submits the numbered teamsheet at least 24 hours before kickoff.</p></details>}
+      {context && <details className="league-kit-reminder"><summary>Numbered bib required for official play</summary><p className="muted small">Wear a numbered bib: owned, supplied by your Club or hired. Your captain can assign match bibs without changing profile ownership. Your eligible season squad carries forward each week. Captains confirm availability and change only what is needed.</p></details>}
       {context && canManageUi && context.season.schedulePublishedAtMs && (
         <LeagueMatchDaySubmission
           scope={context.scope} games={games} revision={revision}

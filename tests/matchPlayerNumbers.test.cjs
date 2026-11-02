@@ -22,7 +22,7 @@ test("stale revisions cannot overwrite a different referee's correction",async()
 });
 test("duplicate visible numbers and unapproved blank shirts cannot be verified",async()=>{
  const f=fixture(initial);
- await assert.rejects(service.save({db:f.db,user,body:{...body,teams:[{id:"A",label:"A",players:[...team("A","one",8).players,...team("A","three","08").players]},team("B","two",1)]}}),/#8/);
+ await assert.rejects(service.save({db:f.db,user,body:{...body,teams:[{id:"A",label:"A",players:[...team("A","one",8).players,...team("A","three","08").players]},team("B","two",1)]}}),/\(8\)/);
  await assert.rejects(service.save({db:f.db,user,body:{...body,teams:[team("A","one",null),team("B","two",4)]}}),/Verify/);
 });
 test("Field club representatives cannot act as staff, and a staff member must control the match",async()=>{

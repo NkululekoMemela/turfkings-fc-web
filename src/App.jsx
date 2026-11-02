@@ -1,3 +1,6 @@
+import TeamChatWarmup from "./components/TeamChatWarmup.jsx";
+import {saveClubMatchNumber} from "./storage/clubMatchNumberGateway.js";
+import {notificationDestination} from "./core/notificationDestination.mjs";
 import PoolNotificationBridge from "./components/PoolNotificationBridge.jsx";
 import {PremiumNotificationToast} from "./components/PremiumNotification.jsx";
 import KitShopPage from "./pages/KitShopPage.jsx";
@@ -2615,12 +2618,8 @@ export default function App() {
     useState(null);
   const [nativePollOpenRequest, setNativePollOpenRequest] =
     useState(null);
+  const [nativeTicketOpenRequest,setNativeTicketOpenRequest]=useState(null);
 
-  useEffect(() => {
-    if (page !== PAGE_LANDING) {
-      setLandingVisualReady(false);
-    }
-  }, [page]);
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
   const [selectedLeagueVenue, setSelectedLeagueVenue] = useState(null);
   const [portalOriginClubId, setPortalOriginClubId] = useState("");
@@ -2886,6 +2885,23 @@ export default function App() {
       activeClubId,
       onNotificationOpened: async notification => {
         const data = notification?.data || {};
+        const directDestination=notificationDestination(data);
+        if(directDestination){
+          // A notification is an explicit Official destination, including on cold launch.
+          nativeStartupRoutedRef.current=true;
+          setNativeStartupReady(true);
+          setNativeChatOpenRequest(null);
+          setSessionMode("official");writeSessionModeIntent("official");setShowSessionSelector(false);
+          if(directDestination.clubId!==activeClubId)setSelectedHomeClub(buildClubIdentity({id:directDestination.clubId}));
+          if(directDestination.kind==="news"){
+            setNativeTicketOpenRequest(null);
+            setNativePollOpenRequest({...directDestination,openedAt:Date.now()});setPage(PAGE_NEWS);
+          }else{
+            setNativePollOpenRequest(null);
+            setNativeTicketOpenRequest({...directDestination,openedAt:Date.now()});setPage(PAGE_MATCH_SIGNUP);
+          }
+          return;
+        }
         if (data.type === "pool_alert") {
           window.dispatchEvent(new CustomEvent("pool-native-open", {detail: data}));
           return;
@@ -2972,9 +2988,17 @@ export default function App() {
             setNativePollOpenRequest(null);
             setSessionMode("official");
             writeSessionModeIntent("official");
+            nativeStartupRoutedRef.current=true;
+            setNativeStartupReady(true);
+            setShowSessionSelector(false);
+            setPortalOriginClubId("");
             setFieldNavTarget({
               page: ["field_chat","field_club_chat"].includes(data.type) ? "chat" : ["field_story","field_poll","field_winners_story_request"].includes(data.type) ? "news" : data.approvalKind === "banking_activation" ? "signup" : "landing",
               privateChat:data.type==="field_club_chat"?{clubId:String(data.clubId||""),openedAt:Date.now()}:null,
+              entryRequest:["field_chat","field_club_chat"].includes(data.type)?{
+                venueId,privateClubId:data.type==="field_club_chat"?String(data.clubId||""):"",
+                preferredClubId:activeClubId,preferredMemberId:identity?.memberId||"",openedAt:Date.now(),
+              }:null,
               openBanking: data.approvalKind === "banking_activation",
               publication: {clubId:venueId,pollId:String(data.pollId||""),storyId:String(data.storyId||""),winners:data.type==="field_winners_story_request",seasonId:String(data.seasonId||""),openedAt:Date.now()},
               id: Date.now(),
@@ -3078,7 +3102,7 @@ export default function App() {
         }
 
         setNativePollOpenRequest(null);
-        setPage(PAGE_LANDING);
+        setPage(data.type === "bib_pack_ready" ? PAGE_SHOP : PAGE_LANDING);
 
         if (opensClubChat) {
           setNativeChatOpenRequest({
@@ -3899,6 +3923,7 @@ export default function App() {
     // Disabled localStorage bootstrap for V2.
     authoritativeFootballStateReceivedRef.current = false;
     setFootballStateReady(false);
+    setLandingVisualReady(false);
 
     const unsubscribe = USE_V2
       ? subscribeToStateV2(
@@ -5856,6 +5881,26 @@ export default function App() {
     setRunning(false);
     setHasLiveMatch(true);
     setPage(PAGE_LIVE);
+  };
+
+  useEffect(()=>{
+    if(!authUser?.uid||!authUser.emailVerified||activeClubId!=="turf-kings")return;
+    const params=new URLSearchParams(window.location.search);
+    if(!params.has("bibPayment"))return;
+    setPage(PAGE_SHOP);params.delete("bibPayment");
+    window.history.replaceState(null,"",window.location.pathname+(params.size?"?"+params.toString():"")+window.location.hash);
+  },[authUser?.uid,authUser?.emailVerified,activeClubId]);
+  const numberSaveScope=JSON.stringify([activeClubId,activeSeasonId,isPracticeMode]);
+  const numberSaveScopeRef=useRef(numberSaveScope);numberSaveScopeRef.current=numberSaveScope;
+  const saveConfirmedPlayerNumber=async(teamId,key,number,teamKind)=>{
+    if(!canManageSquads)throw Error("Only the captain or admin can edit numbers.");
+    const patch=season=>{const field=teamKind==="friendly"?"fiveVFiveTeams":"teams";return {...season,[field]:(season[field]||[]).map(team=>String(team.id)!==String(teamId)?team:{...team,kitNumbers:{...team.kitNumbers,[key]:{number,source:"captain"}}})};};
+    if(isPracticeMode||footballDataScope?.environment==="practice"){updateActiveSeason(patch);return;}
+    const scope=numberSaveScopeRef.current,result=await saveClubMatchNumber({clubId:activeClubId,seasonId:activeSeasonId,teamId,playerKey:key,number,teamKind});
+    if(scope!==numberSaveScopeRef.current)return result;
+    // Mirror the acknowledged delta locally, without sending a stale full-state save.
+    setState(prev=>prev.seasons?{...prev,updatedAt:result.updatedAt,seasons:prev.seasons.map(season=>season.seasonId===prev.activeSeasonId?patch(season):season)}:{...patch(prev),updatedAt:result.updatedAt});
+    return result;
   };
 
   const handleConfirmPreMatchLineups = (snapshot) => {
@@ -10318,6 +10363,7 @@ export default function App() {
           playerPhotosByName={effectivePlayerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
+          initialTicketOpen={nativeTicketOpenRequest}
         />
         </BookingPageBoundary>
       )}
@@ -10533,7 +10579,7 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_SHOP && <KitShopPage key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
+      {page === PAGE_SHOP && <KitShopPage clubId={activeClubId} key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
       {page === PAGE_PLAYER_PROFILE && !canAccessPlayerFeatures && <main className="page"><section className="card"><h1>Player Profile</h1><p>Enter your club as a verified player to open your profile. Spectator mode does not use player details.</p><button type="button" className="primary-btn" onClick={()=>setPage(PAGE_ENTRY)}>Go to club sign-in</button><button type="button" className="secondary-btn" onClick={handleBackToLanding}>Back to Home</button></section></main>}
       {page === PAGE_PLAYER_PROFILE && canAccessPlayerFeatures && (
         <PlayerProfilePage
@@ -10739,6 +10785,7 @@ export default function App() {
           teams={formationTeams}
           fiveVFiveTeams={formationFiveVFiveTeams}
           onUpdateTeams={handleUpdateTeams}
+          onMatchNumberChange={saveConfirmedPlayerNumber}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
           identity={pageIdentity}
@@ -10778,6 +10825,8 @@ export default function App() {
 
       {page === PAGE_FORMATIONS && (
         <FormationsPage
+          canEditNumbers={canManageSquads}
+          onNumberChange={saveConfirmedPlayerNumber}
           teams={formationTeams}
           fiveVFiveTeams={formationFiveVFiveTeams}
           currentMatch={effectiveLiveMatch}
@@ -11869,6 +11918,9 @@ export default function App() {
           gameFormat={gameFormat}
           members={members}
           nativeOpenRequest={nativeChatOpenRequest}
+          onNativeOpenRequestHandled={(request) => {
+            setNativeChatOpenRequest((pending) => pending === request ? null : pending);
+          }}
           onOpenHighlight={handleGoToViewHighlights}
           variant="launcher"
         />
@@ -11909,7 +11961,8 @@ export default function App() {
           </>
         )}
 
-      <PoolNotificationBridge key="pool-notification-bridge"/>{authUser?.uid&&!authUser.isAnonymous&&<PremiumNotificationToast key={`notification:${authUser.uid}`}/>}
+      {canAccessPlayerFeatures&&!isPracticeMode&&<TeamChatWarmup uid={authUser?.uid} clubId={activeClubId}/>}
+      {page===PAGE_VENUE_ENTRY&&portalOriginClubId&&!isPracticeMode&&<TeamChatWarmup uid={authUser?.uid} clubId={portalOriginClubId} venueId={selectedLeagueVenue?.id}/>}<PoolNotificationBridge key="pool-notification-bridge"/>{authUser?.uid&&!authUser.isAnonymous&&<PremiumNotificationToast key={`notification:${authUser.uid}`}/>}
       {canAccessPlayerFeatures&&page!==PAGE_PLAYER_PROFILE&&page!==PAGE_VENUE_ENTRY&&<NumberOfferNotification clubId={activeClubId} enabled={!isPracticeMode} onOpen={()=>setPage(PAGE_PLAYER_PROFILE)}/>}
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (

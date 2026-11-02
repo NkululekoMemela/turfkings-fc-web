@@ -79,7 +79,7 @@ async function sendMulticast(db,messaging,payload,records=[]){
   let expectedUid=record?.uid;
   if(!expectedUid&&record?.ref)expectedUid=(await record.ref.get()).data()?.firebaseUid;
   if(registration&&(registration.enabled!==true||(expectedUid&&registration.firebaseUid!==expectedUid))){responses.push({success:true,messageId:"inactive-device-skipped"});continue;}
-  const data=Object.fromEntries(Object.entries({...payload.data,title:payload.notification?.title||payload.data?.title||"FANM update",body:payload.notification?.body||payload.data?.body||""}).map(([k,v])=>[k,String(v??"")]));
+  const data=Object.fromEntries(Object.entries({...payload.data,recipientUid:expectedUid||registration?.firebaseUid||"",title:payload.notification?.title||payload.data?.title||"FANM update",body:payload.notification?.body||payload.data?.body||""}).map(([k,v])=>[k,String(v??"")]));
   const key=[data.type,data.venueId||data.clubId,data.messageId||data.storyId||data.pollId||data.paymentId||data.matchDayId||data.seasonId||"",data.clubId||""].join(":");
   const native=registration?.rendererVersion==="2"&&registration.platform==="android";
   const {tokens,...base}=payload;void tokens;

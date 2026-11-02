@@ -1,3 +1,6 @@
+import NotificationTicketNotice from "../components/NotificationTicketNotice.jsx";
+import {selectNotificationCredit} from "../core/notificationDestination.mjs";
+import "../components/NotificationFocus.css";
 import {playerPrivacyRequest} from "../storage/playerPrivacyGateway.js";
 import useSignupPlayerPhotos from "../hooks/useSignupPlayerPhotos.js";
 import SignupHeroHeader from "../components/SignupHeroHeader.jsx";
@@ -966,6 +969,7 @@ export default function MatchSignupPage({
   dataScope = null,
   onBack,
   onProceedToPayment,
+  initialTicketOpen=null,
 }) {
   const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
 
@@ -1062,6 +1066,25 @@ export default function MatchSignupPage({
   const [paidWeeks, setPaidWeeks] = useState([]);
 
   const [availableMatchCredits, setAvailableMatchCredits] = useState([]);
+  const [creditRefresh,setCreditRefresh]=useState(0);
+  const ticketRequest=initialTicketOpen?.clubId===activeClubId&&!isPracticeMode?initialTicketOpen:null;
+  const focusedCredit=selectNotificationCredit(availableMatchCredits,ticketRequest);
+  const ticketFocusKey=`${ticketRequest?.openedAt||""}:${focusedCredit?.id||""}`;
+  const [ticketFocus,setTicketFocus]=useState("");
+  useEffect(()=>{
+    if(!ticketRequest||focusedCredit)return;
+    let stopped=false,attempts=0,timer;
+    const retry=()=>{if(stopped||++attempts>10)return;setCreditRefresh(v=>v+1);timer=setTimeout(retry,3000);};
+    timer=setTimeout(retry,3000);return()=>{stopped=true;clearTimeout(timer);};
+  },[ticketRequest?.openedAt,Boolean(focusedCredit)]);
+  useEffect(()=>{
+    if(!focusedCredit||!ticketRequest)return;
+    setTicketFocus(ticketFocusKey);setMatchTicketMinimized(false);
+    const scroll=setTimeout(()=>document.getElementById("fanm-notification-ticket")?.scrollIntoView({behavior:"smooth",block:"center"}),150);
+    const clear=setTimeout(()=>setTicketFocus(""),5000);
+    return()=>{clearTimeout(scroll);clearTimeout(clear);};
+  },[ticketFocusKey]);
+
   const [clubMatchCredits, setClubMatchCredits] = useState([]);
   const [matchCreditsLoading, setMatchCreditsLoading] = useState(false);
   const [matchCreditBusyWeekId, setMatchCreditBusyWeekId] = useState("");
@@ -1807,6 +1830,7 @@ export default function MatchSignupPage({
     beneficiary?.isGuest,
     isPracticeMode,
     dataScope,
+    creditRefresh,
   ]);
 
   const currentUserDocKey = useMemo(
@@ -3310,7 +3334,7 @@ export default function MatchSignupPage({
   const handleUseMatchTicket = async (week) => {
     if (!week?.id || matchTicketBusy) return;
 
-    const credit = availableMatchCredits[0];
+    const credit = focusedCredit || availableMatchCredits[0];
 
     if (!credit?.id) {
       setMatchCreditMessage("You do not currently have a Match Ticket.");
@@ -5492,6 +5516,8 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
           setShowCalendarPopup(true);
         }}
       />
+
+      <NotificationTicketNotice request={ticketRequest} credit={focusedCredit} loading={matchCreditsLoading} focused={ticketFocus===ticketFocusKey} onUse={()=>{setMatchTicketWalletMode("use");setShowMatchTicketWallet(true);}}/>
 
       {matchCreditMessage ? (
         <div

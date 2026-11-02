@@ -169,13 +169,13 @@ export default function FieldMatchDaySchedule({
   }
   if (!season.matchDays?.length) {
     return (
-      <details style={{
+      <details open style={{
       padding: "14px",
       border: "2px solid rgba(56,189,248,.65)",
       borderRadius: "1rem",
       marginBottom: "0.9rem",
     }}>
-        <summary style={{ cursor: "pointer", fontWeight: 800 }}>League settings</summary>
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>Publish league fixtures</summary>
         <p className="muted small">
           Publish dated fixtures when Club registration is complete.
           Publishing closes registration for this season.

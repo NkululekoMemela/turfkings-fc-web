@@ -53,7 +53,7 @@
           padding: 16px 12px 0 12px;
           box-sizing: border-box;
           width: 100%;
-          max-width: 920px;
+          max-width: var(--fanm-page-max-width);
           margin: 0 auto;
         }
 
@@ -321,7 +321,7 @@
 }
 
 
-/* Full-width ribbon and Sandstone appearance */
+/* Field uses the same centred canvas limit as Club pages. */
 .app-root.app-root--field {
   padding-left: 0 !important;
   padding-right: 0 !important;
@@ -329,7 +329,8 @@
 }
 .app-root--field > .field-ribbon-frame {
   width: 100% !important;
-  max-width: none !important;
+  max-width: var(--fanm-page-max-width) !important;
+  margin-inline: auto;
   min-width: 0;
 }
 .app-root--field .field-ribbon-frame > .landing-header-sticky {

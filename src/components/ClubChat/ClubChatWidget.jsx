@@ -1,3 +1,4 @@
+import TeamChatBadge from "../TeamChatBadge.jsx";
 import TeamChatLauncher from "../TeamChatLauncher.jsx";
 import ChatNotificationToggle from "../ChatNotificationToggle.jsx";
 // src/components/ClubChat/ClubChatWidget.jsx
@@ -46,6 +47,7 @@ function isChallengerChatActive(fixture = {}) {
 export function ClubChatWidget({
   activeClubId,
   activeClubName,
+  privateRoom = null,
   currentUser,
   selectedMember,
   identity,
@@ -58,6 +60,7 @@ export function ClubChatWidget({
   members = [],
   variant = "inline",
   nativeOpenRequest = null,
+  onNativeOpenRequestHandled,
   onOpenFullChat,
   onOpenHighlight,
 }) {
@@ -92,7 +95,8 @@ export function ClubChatWidget({
 
     clubChatShouldFollowBottomRef.current =
       distanceFromBottom <= 80;
-  }, []);
+    privateRoom?.onReading(distanceFromBottom <= 80);
+  }, [privateRoom]);
 
 
   const isLauncherOnly = variant === "launcher";
@@ -107,6 +111,7 @@ export function ClubChatWidget({
   const [clubChatMessages, setClubChatMessages] = useState([]);
   const [clubChatDraft, setClubChatDraft] = useState("");
   const [clubChatOpen, setClubChatOpen] = useState(isPageMode);
+  const [teamChatOpenRequest, setTeamChatOpenRequest] = useState(null);
   const [clubChatTeaseOpen, setClubChatTeaseOpen] = useState(false);
 
   useEffect(() => {
@@ -123,12 +128,16 @@ export function ClubChatWidget({
       return;
     }
 
+    setTeamChatOpenRequest(nativeOpenRequest.type === "club_team_chat" && nativeOpenRequest.teamId
+      ? nativeOpenRequest : null);
     setActiveChatRoom("club");
     setClubChatTeaseOpen(false);
     setClubChatOpen(true);
-  }, [nativeOpenRequest, activeClubId]);
+    onNativeOpenRequestHandled?.(nativeOpenRequest);
+  }, [nativeOpenRequest, activeClubId, onNativeOpenRequestHandled]);
   const [clubChatEmojiOpen, setClubChatEmojiOpen] = useState(false);
   const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
+  const [highlightPickerLoading, setHighlightPickerLoading] = useState(false);
   const [availableHighlights, setAvailableHighlights] = useState([]);
   const [selectedHighlight, setSelectedHighlight] = useState(null);
   const [mentionQuery, setMentionQuery] = useState("");
@@ -184,6 +193,7 @@ export function ClubChatWidget({
       .replace(/[^a-z0-9_]/g, "");
 
   const getChatSenderPhoto = (message) => {
+    if (message?.senderPhotoUrl) return message.senderPhotoUrl;
     const candidates = [
       message?.senderName,
       message?.senderEmail,
@@ -213,6 +223,7 @@ export function ClubChatWidget({
     let cancelled = false;
 
     async function loadClubChatPhotos() {
+      if (privateRoom) return;
       if (!activeClubId) {
         setClubChatPhotoIndex({});
         return;
@@ -283,7 +294,7 @@ export function ClubChatWidget({
   }, [activeClubId]);
 
   const getCurrentReactorKey = () =>
-    String(
+    privateRoom ? String(currentUser?.uid || "") : String(
       currentUser?.uid ||
       selectedMember?.id ||
       identity?.memberId ||
@@ -440,13 +451,14 @@ export function ClubChatWidget({
     const nextEmoji = currentEmoji === emoji ? "" : emoji;
 
     try {
-      await updateDoc(doc(db, "clubs", activeClubId, "chatMessages", message.id), {
+      if (privateRoom) await privateRoom.react(message.id,nextEmoji);
+      else await updateDoc(doc(db, "clubs", activeClubId, "chatMessages", message.id), {
         [`reactionsByUser.${key}`]: nextEmoji,
       });
       setActiveReactionPickerMessageId(null);
     } catch (err) {
       console.error("[ClubChatWidget] Failed updating reaction:", err);
-      window.alert("Could not update reaction just now.");
+      if(privateRoom)privateRoom.onError(err.message);else window.alert("Could not update reaction just now.");
     }
   };
 
@@ -461,6 +473,7 @@ export function ClubChatWidget({
   }, [activeClubId]);
 
   useEffect(() => {
+    if (privateRoom) return;
     const handleAttachHighlightToChat = (event) => {
       const highlight = event?.detail || {};
       if (!highlight?.id) return;
@@ -556,7 +569,7 @@ export function ClubChatWidget({
   };
 
   if (typeof window !== "undefined") {
-    console.log("[ClubChat mention debug]", {
+    if(!privateRoom)console.log("[ClubChat mention debug]", {
       membersCount: Array.isArray(members) ? members.length : 0,
       sampleMember: Array.isArray(members) ? members[0] : null,
       mentionQuery,
@@ -702,6 +715,7 @@ export function ClubChatWidget({
   };
 
   const loadChatHighlights = async () => {
+    if(privateRoom){setHighlightPickerLoading(true);try{setAvailableHighlights(await privateRoom.highlights());}catch(error){privateRoom.onError(error.message);}finally{setHighlightPickerLoading(false);}return;}
     const matchId = buildChatHighlightMatchId();
     if (!matchId) return;
 
@@ -806,7 +820,7 @@ export function ClubChatWidget({
 
 
   useEffect(() => {
-    if (!activeClubId) {
+    if (privateRoom || !activeClubId) {
       setChallengerChatFixture(null);
       return;
     }
@@ -883,6 +897,7 @@ export function ClubChatWidget({
   }, [challengerChatFixture?.fixtureId]);
 
   useEffect(() => {
+    if(privateRoom){setClubChatMessages(privateRoom.messages);return;}
     if (!activeClubId) {
       setClubChatMessages([]);
       return;
@@ -904,9 +919,10 @@ export function ClubChatWidget({
     });
 
     return () => unsub();
-  }, [activeClubId]);
+  }, [activeClubId,privateRoom?.messages,Boolean(privateRoom)]);
 
   useEffect(() => {
+    if(privateRoom&&!clubChatShouldFollowBottomRef.current)return;
     clubChatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [clubChatMessages.length]);
 
@@ -926,7 +942,7 @@ export function ClubChatWidget({
     Boolean(challengerChatFixture?.fixtureId) &&
     (Boolean(selectedMember?.id) || Boolean(isAdminViewer));
 
-  const canSendClubChat =
+  const canSendClubChat = privateRoom ? privateRoom.canSend&&!privateRoom.busy :
     Boolean(currentUser) &&
     Boolean(activeClubId) &&
     (Boolean(selectedMember?.id) || Boolean(isAdminViewer));
@@ -988,10 +1004,11 @@ export function ClubChatWidget({
     if (!isOwnMessage && !canAdminDelete) return;
 
     try {
-      await deleteDoc(doc(db, "clubs", activeClubId, "chatMessages", message.id));
+      if(privateRoom)await privateRoom.remove(message.id);
+      else await deleteDoc(doc(db, "clubs", activeClubId, "chatMessages", message.id));
     } catch (err) {
       console.error("[ClubChatWidget] Failed deleting chat message:", err);
-      window.alert("Could not delete this message just now.");
+      if(privateRoom)privateRoom.onError(err.message);else window.alert("Could not delete this message just now.");
     }
   };
 
@@ -1053,7 +1070,8 @@ export function ClubChatWidget({
       : selectedMember?.role || identity?.role || "player";
 
     try {
-      await addDoc(collection(db, "clubs", activeClubId, "chatMessages"), {
+      if(privateRoom)await privateRoom.send({text,mentions:selectedMentions.map(m=>m.id),replyToId:replyTarget?.id||"",highlight:selectedHighlight?{id:selectedHighlight.id,matchId:selectedHighlight.matchId,bucket:selectedHighlight.bucket,legacy:selectedHighlight.legacy===true}:null});
+      else await addDoc(collection(db, "clubs", activeClubId, "chatMessages"), {
         text: text || "Shared a club highlight",
         senderName,
         senderRole,
@@ -1093,7 +1111,7 @@ export function ClubChatWidget({
       setClubChatEmojiOpen(false);
     } catch (err) {
       console.error("[ClubChatWidget] Failed sending club chat message:", err);
-      window.alert("Could not send this club chat message just now.");
+      if(privateRoom)privateRoom.onError(err.message);else window.alert("Could not send this club chat message just now.");
     }
   };
 
@@ -1120,14 +1138,14 @@ export function ClubChatWidget({
   ).length;
 
   const totalChatUnreadCount = clubChatUnreadCount + challengerChatUnreadCount;
-  const showChatToast = ({ room, senderName, text }) => {
+  const showChatToast = ({ room, senderName, senderUid, text }) => {
     if (!isLauncherOnly || clubChatOpen) return;
 
     window.clearTimeout(toastTimerRef.current);
 
     setChatToast({
       room,
-      senderName: senderName || "Club member",
+      senderName: (()=>{const member=(Array.isArray(members)?members:[]).find(m=>m?.uid&&m.uid===senderUid);return member?.shortName||member?.nickname||member?.nickName||String(senderName||"Player").trim().split(/\s+/)[0];})(),
       text: text || "New chat message",
     });
 
@@ -1162,6 +1180,7 @@ export function ClubChatWidget({
       showChatToast({
         room: "club",
         senderName: latestMessage?.senderName,
+        senderUid: latestMessage?.senderUid,
         text: latestMessage?.text,
       });
     }
@@ -1189,6 +1208,7 @@ export function ClubChatWidget({
       showChatToast({
         room: "challenger",
         senderName: latestMessage?.senderName || latestMessage?.fromClubName,
+        senderUid: latestMessage?.senderUid,
         text: latestMessage?.text || latestMessage?.message,
       });
     }
@@ -1214,7 +1234,7 @@ export function ClubChatWidget({
   }, [activeChatRoom, challengerChatFixture?.fixtureId, challengerChatLatestMessageMs]);
 
   useEffect(() => {
-    if (!clubChatOpen || !activeClubId || !clubChatLatestMessageMs) return;
+    if (privateRoom || !clubChatOpen || !activeClubId || !clubChatLatestMessageMs) return;
 
     try {
       window.localStorage.setItem(
@@ -1327,6 +1347,7 @@ export function ClubChatWidget({
         ...(isLauncherOnly && !clubChatOpen ? { bottom: `${launcherBottom}px` } : {}),
       }}
     >
+      {privateRoom?<header className="team-chat-private-head"><TeamChatBadge room={privateRoom.room}/><div><h2>{activeClubName} chat</h2><small>{privateRoom.room.captains?.length?`Captain: ${privateRoom.room.captains.join(", ")}`:"Private team chat"} · Team tactics</small></div><button type="button" aria-label="Close team chat" onClick={privateRoom.onClose}>×</button></header>:(
       <button
         type="button"
         className="fanm-club-chat-launcher"
@@ -1371,12 +1392,13 @@ export function ClubChatWidget({
             </span>
           ) : null}
         </span>
-      </button>
+      </button>)}
+
 
       {clubChatOpen && (
         <>
-          {activeChatRoom==="club"&&<div className="fanm-chat-actions"><ChatNotificationToggle scope="club" groupId={activeClubId}/><TeamChatLauncher clubId={activeClubId} initialRequest={nativeOpenRequest?.type==="club_team_chat"?nativeOpenRequest:null}/></div>}
-          <div className="fanm-club-chat-head">
+          {privateRoom?<div className="fanm-chat-actions team-chat-private-actions"><button type="button" className="team-chat-members-button" onClick={privateRoom.onMembers}>👥 {privateRoom.members.length?`${privateRoom.members.length} members`:"Members"}</button><button type="button" disabled={privateRoom.busy} onClick={()=>privateRoom.mute().catch(e=>privateRoom.onError(e.message))}>{privateRoom.muted?"Unmute team":"Mute team"}</button></div>:activeChatRoom==="club"&&<div className="fanm-chat-actions"><ChatNotificationToggle scope="club" groupId={activeClubId}/><TeamChatLauncher clubId={activeClubId} initialRequest={teamChatOpenRequest?.clubId===activeClubId?teamChatOpenRequest:null}/></div>}
+          {!privateRoom&&<div className="fanm-club-chat-head">
             <div>
               <h2>
                 {activeChatRoom === "challenger"
@@ -1389,7 +1411,7 @@ export function ClubChatWidget({
                   : "Private messages for approved club members, captains and admins."}
               </p>
             </div>
-          </div>
+          </div>}
 
           {challengerChatFixture?.fixtureId ? (
             <div className="fanm-chat-room-switcher fanm-chat-room-switcher--compact">
@@ -1460,7 +1482,7 @@ export function ClubChatWidget({
                     .map((value) => String(value || "").trim().toLowerCase())
                     .filter(Boolean);
 
-                  const mine = messageSenderKeys.some((key) => currentViewerKeys.includes(key));
+                  const mine = privateRoom?message.senderUid===currentUser?.uid:messageSenderKeys.some((key) => currentViewerKeys.includes(key));
 
                   const isAdminMessage =
                     String(message.senderRole || "").toLowerCase().includes("admin") ||
@@ -1536,7 +1558,7 @@ export function ClubChatWidget({
                       {!groupedWithPrevious ? (
                         <div className="fanm-club-chat-message-meta">
                           <strong>{message.senderName || "Club member"}</strong>
-                          {isAdminMessage ? <span>Captain/Admin</span> : null}
+                          {isAdminMessage ? <span>{privateRoom?"Captain":"Captain/Admin"}</span> : null}
                         </div>
                       ) : null}
                       {message.replyToId ? (
@@ -1630,7 +1652,7 @@ export function ClubChatWidget({
                       ) : null}
 
                       <div className="fanm-chat-message-actions">
-                        <button
+                        {!message.deleted&&<button
                           type="button"
                           className="fanm-chat-reply-btn"
                           onClick={() => setReplyTarget({
@@ -1640,9 +1662,9 @@ export function ClubChatWidget({
                           })}
                         >
                           Reply
-                        </button>
+                        </button>}
 
-                        {!getMyReaction(message) ? (
+                        {!message.deleted && !getMyReaction(message) ? (
                           <button
                             type="button"
                             className="fanm-chat-react-btn"
@@ -1675,7 +1697,7 @@ export function ClubChatWidget({
                 })
               ) : (
                 <div className="fanm-club-chat-empty">
-                  No messages yet. Start the club conversation.
+                  {privateRoom?privateRoom.loading?"Loading messages…":"Your team’s tactics start here.":"No messages yet. Start the club conversation."}
                 </div>
               )}
 
@@ -1734,11 +1756,12 @@ export function ClubChatWidget({
                   className="text-input"
                   rows={1}
                   value={clubChatDraft}
-                  onChange={(event) => handleClubChatDraftChange(event.target.value)}
+                  maxLength={2000}
+                  onChange={(event) => {handleClubChatDraftChange(event.target.value);if(privateRoom){event.target.style.height="auto";event.target.style.height=`${Math.min(event.target.scrollHeight,150)}px`;}}}
                   placeholder={
                     canSendClubChat
                       ? "Message"
-                      : "Select your name and sign in to chat."
+                      : privateRoom?"Loading chat…":"Select your name and sign in to chat."
                   }
                   disabled={!canSendClubChat}
                 />
@@ -1770,8 +1793,8 @@ export function ClubChatWidget({
                   className="fanm-club-chat-attach-btn"
                   disabled={!canSendClubChat}
                   onClick={() => {
-                    onOpenHighlight?.({ mode: "attach" });
-                    setClubChatOpen(false);
+                    if(privateRoom){setHighlightPickerOpen(true);loadChatHighlights();}
+                    else {onOpenHighlight?.({ mode: "attach" });setClubChatOpen(false);}
                   }}
                   title="Attach highlight"
                 >
@@ -1835,8 +1858,8 @@ export function ClubChatWidget({
 
               {highlightPickerOpen && (
                 <div className="fanm-chat-highlight-picker">
-                  <strong>Attach highlight</strong>
-                  {availableHighlights.length ? (
+                  <strong>Attach highlight</strong><button type="button" onClick={()=>setHighlightPickerOpen(false)} aria-label="Close attachment picker">×</button>
+                  {highlightPickerLoading?<p>Loading highlights…</p>:availableHighlights.length ? (
                     availableHighlights.map((highlight) => (
                       <button
                         type="button"

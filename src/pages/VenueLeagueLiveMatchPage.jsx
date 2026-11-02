@@ -1,3 +1,5 @@
+import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
+import {InlineLineupNumber} from "../components/PlayerNumberContext.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {usePlayerNumberLabel} from "../components/PlayerNumberContext.jsx";
 import { fieldHalfSecondsLeft } from "../core/fieldMatchClock.js";
@@ -1030,6 +1032,7 @@ function TeamColorBadge({ team, short = false }) {
   const accent = getTeamAccent(team);
   const identity = resolveLiveTeamIdentity(team);
   const label = short ? getLiveTeamAbbrev(team) : getLiveTeamLabel(team, false);
+  const clubLogo=team?.transparentLogoUrl||team?.branding?.logoUrl||team?.logoUrl||"";
 
   return (
     <span
@@ -1040,7 +1043,7 @@ function TeamColorBadge({ team, short = false }) {
         "--team-badge-text": accent.text,
       }}
     >
-      {identity?.type === "national" && identity.flag ? (
+      {clubLogo ? <img src={clubLogo} alt="" className="fanm-live-team-logo" onError={event=>{event.currentTarget.style.display="none";}}/> : identity?.type === "national" && identity.flag ? (
         <span className="fanm-live-team-flag">{identity.flag}</span>
       ) : identity?.logo32 ? (
         <img
@@ -2269,6 +2272,7 @@ function LineupBoard({
                     </>
                   ) : (
                     <>
+                      <div className="live-lineup-number-pin"><InlineLineupNumber raw={name} teamId={team?.id}/></div>
                       <div
                         className={`player-shirt ${photoData ? "with-photo" : ""}`}
                         style={
@@ -2280,7 +2284,7 @@ function LineupBoard({
                       <div className="live-player-meta">
                         <span className="player-name">
                           {name
-                            ? displayCompactPlayerName(name)
+                            ? displayCompactPlayerName(name,team?.id).replace(/^\((?:\d+|-)\)\s*/,"")
                             : "Empty"}
                         </span>
                         <span className="position-tag">
@@ -2867,6 +2871,8 @@ export function VenueLeagueLiveMatchPage({
   confirmedLineupsByMatchNo = {},
   playerPhotosByName = {},
   activeClubId = "turf-kings",
+  fieldPaidSquads = null,
+  awaitingKitVerification = false,
   dataScope = null,
   activeClub = null,
   onConfirmPreMatchLineups,
@@ -2984,6 +2990,8 @@ export function VenueLeagueLiveMatchPage({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  const paidSquadKey = JSON.stringify(fieldPaidSquads || null);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -2991,7 +2999,9 @@ export function VenueLeagueLiveMatchPage({
       setPlayersLoading(true);
 
       try {
-        const snap = await loadVenuePaidMatchPlayers({
+        const supplied=fieldPaidSquads&&Object.keys(fieldPaidSquads).length>0;
+        const suppliedDocs=supplied?Object.entries(fieldPaidSquads).flatMap(([clubId,rows])=>rows.map(player=>({id:`${clubId}::${player.sourcePlayerId}`,data:()=>({...player,clubId,status:"active"})}))):null;
+        const snap = supplied ? {docs:suppliedDocs} : await loadVenuePaidMatchPlayers({
           firestore: db,
           scope: dataScope,
           fixtureId: rawLiveCurrentMatch?.fixtureId,
@@ -3023,6 +3033,9 @@ export function VenueLeagueLiveMatchPage({
 
           return {
             id: d.id,
+            jerseyNumber:data.jerseyNumber??null,
+            photoData:data.photoData||data.photoUrl||data.photoURL||"",
+            matchBib:data.matchBib||null,
             clubId: data.clubId || "",
             sourcePlayerId: data.sourcePlayerId || "",
             fullName,
@@ -3082,7 +3095,7 @@ export function VenueLeagueLiveMatchPage({
     };
   }, [
     dataScope?.venueId, dataScope?.seasonId, dataScope?.environment,
-    dataScope?.practiceSessionId, rawLiveCurrentMatch?.fixtureId,
+    dataScope?.practiceSessionId, rawLiveCurrentMatch?.fixtureId, paidSquadKey,
   ]);
 
   const playersReady = !playersLoading;
@@ -3456,39 +3469,8 @@ export function VenueLeagueLiveMatchPage({
               }));
         if (cancelled) return;
 
-        const loaded = {};
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          const photoData = data?.photoData || "";
-          const rawName = data?.fullName || data?.name || docSnap.id || "";
-          if (!photoData) return;
-
-          const canonical = canonicalName(rawName);
-          const compact = displayCompactPlayerName(rawName);
-          const slug = slugFromLooseName(canonical || rawName);
-          const firstCanon = firstNameOf(canonical);
-          const firstCompact = firstNameOf(compact);
-
-          [
-            rawName,
-            toTitleCaseLoose(rawName),
-            canonical,
-            compact,
-            slug,
-            firstCanon,
-            firstCompact,
-          ]
-            .map((x) => String(x || "").trim())
-            .filter(Boolean)
-            .forEach((key) => {
-              loaded[key] = photoData;
-            });
-        });
-
-        setMergedPlayerPhotos((prev) => ({
-          ...loaded,
-          ...prev,
-        }));
+        const loaded=indexPlayerPortraits(snap.docs.map(doc=>({id:doc.id,data:doc.data()||{}})));
+        setMergedPlayerPhotos(prev=>({...prev,...loaded}));
       } catch (err) {
         console.error("Failed to load player photos in LiveMatchPage:", err);
       }
@@ -3500,42 +3482,7 @@ export function VenueLeagueLiveMatchPage({
     };
   }, [liveTeams]);
 
-  const getPlayerPhoto = useMemo(() => {
-    return (playerName = "") => {
-      const raw = String(playerName || "").trim();
-      if (!raw) return null;
-
-      const canonical = canonicalName(raw);
-      const compact = displayCompactPlayerName(raw);
-      const slug = slugFromLooseName(canonical || raw);
-      const firstCanonical = firstNameOf(canonical);
-      const firstCompact = firstNameOf(compact);
-
-      const candidates = [
-        raw,
-        toTitleCaseLoose(raw),
-        canonical,
-        compact,
-        slug,
-        firstCanonical,
-        firstCompact,
-      ]
-        .map((x) => String(x || "").trim())
-        .filter(Boolean);
-
-      for (const key of candidates) {
-        if (mergedPlayerPhotos[key]) return mergedPlayerPhotos[key];
-        const matchedKey = Object.keys(mergedPlayerPhotos).find(
-          (k) => normKey(k) === normKey(key)
-        );
-        if (matchedKey && mergedPlayerPhotos[matchedKey]) {
-          return matchedKey ? mergedPlayerPhotos[matchedKey] : null;
-        }
-      }
-
-      return null;
-    };
-  }, [mergedPlayerPhotos, canonicalName, displayCompactPlayerName]);
+  const getPlayerPhoto = useMemo(()=>raw=>resolvePlayerPortrait(raw,players,mergedPlayerPhotos),[players,mergedPlayerPhotos]);
 
   const [scoringTeamId, setScoringTeamId] = useState("");
   const [scorerName, setScorerName] = useState("");
@@ -4262,7 +4209,7 @@ export function VenueLeagueLiveMatchPage({
     liveDefaultFormationId,
   ]);
 
-  const hasVerifiedLineups = Boolean(
+  const hasVerifiedLineups = !awaitingKitVerification && Boolean(
     sanitizedConfirmedSnapshots?.[teamAId] && sanitizedConfirmedSnapshots?.[teamBId]
   );
 
@@ -7052,7 +6999,7 @@ export function VenueLeagueLiveMatchPage({
             <span className="muted small">
               {fieldClockPhase === "halftime"
                 ? "Halftime · playing time paused"
-                : "Match not running yet"}
+                : awaitingKitVerification ? "Confirm lineups to start the clock" : "Match paused"}
             </span>
           )}
         </div>

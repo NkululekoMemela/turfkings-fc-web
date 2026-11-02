@@ -1,3 +1,5 @@
+import {enterFieldFromNotification} from "../storage/fieldNotificationEntryGateway.js";
+import {fieldEntryMemoryKey,fieldEntryHint} from "../core/fieldNotificationEntry.mjs";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {FieldAcceptedTeams} from "../components/PremiumNotification.jsx";
 import {fieldEntryHeroImage} from "../core/fieldEntryHeroImage.mjs";
@@ -738,6 +740,9 @@ export default function VenueEntryPage({
   const [entryClubProfileOverride, setEntryClubProfileOverride] = useState(null);
   const [showEntryClubEditor, setShowEntryClubEditor] = useState(false);
   const [enteredIdentity, setEnteredIdentity] = useState(null);
+  const [notificationEntryRetry,setNotificationEntryRetry]=useState(0);
+  const [notificationEntryStatus,setNotificationEntryStatus]=useState("");
+
   const [fieldTheme, setFieldTheme] = useState(() => {
     try {
       return (["dark", "pearl", "sandstone"].includes(localStorage.getItem("field-theme")) ? localStorage.getItem("field-theme") : "dark");
@@ -774,6 +779,24 @@ export default function VenueEntryPage({
   }, [venue?.id, enteredIdentity?.uid, Boolean(enteredIdentity)]);
 
   const [venueSeason, setVenueSeason] = useState(null);
+  useEffect(()=>{
+    const request=fieldNavTarget?.entryRequest;
+    if(!request||request.venueId!==venue?.id)return;
+    let active=true;
+    setEnteredIdentity(null);setNotificationEntryStatus("Checking your Field access…");
+    if(!currentUser?.uid)return ()=>{active=false;};
+    enterFieldFromNotification(venue,request).then(identity=>{
+      if(!active||auth.currentUser?.uid!==identity.uid)return;
+      setEnteredIdentity(identity);setFieldSessionChoice("official");setVenuePage("chat");setNotificationEntryStatus("");
+    }).catch(error=>{if(active)setNotificationEntryStatus(error.message||"Could not open this Field chat. Please retry.");});
+    return()=>{active=false;};
+  },[fieldNavTarget?.entryRequest?.openedAt,currentUser?.uid,venue?.id,notificationEntryRetry]);
+  useEffect(()=>{
+    if(!enteredIdentity||enteredIdentity.uid!==currentUser?.uid||enteredIdentity.venueId!==venue?.id)return;
+    const hint=fieldEntryHint(enteredIdentity);if(!hint)return;
+    try{localStorage.setItem(fieldEntryMemoryKey(activeFirebaseProjectId,venue.id,currentUser.uid),JSON.stringify(hint));}catch{}
+  },[enteredIdentity,currentUser?.uid,venue?.id]);
+
   const [fieldClubProfiles, setFieldClubProfiles] = useState({});
   const fieldClubIdsKey = JSON.stringify([...new Set([
     ...(venueSeason?.clubIds || []),
@@ -903,6 +926,10 @@ export default function VenueEntryPage({
   const [fieldStaffPowers, setFieldStaffPowers] = useState(null);
   const [showStaffPowersPanel, setShowStaffPowersPanel] = useState(false);
   const [showFieldTeamManager,setShowFieldTeamManager]=useState(false);
+  useEffect(()=>{
+    if(fieldNavTarget?.page!=="news"||enteredIdentity||!currentUser?.uid||authenticatedFieldStaff?.uid!==currentUser.uid||authenticatedFieldStaff?.status!=="active")return;
+    setEnteredIdentity({...authenticatedFieldStaff,uid:currentUser.uid,venueId:venue?.id,role:authenticatedFieldStaff.role,actingRole:authenticatedFieldStaff.role});
+  },[fieldNavTarget,currentUser?.uid,authenticatedFieldStaff,enteredIdentity,venue?.id]);
   const canManageFieldTeam=Boolean(currentUser?.uid&&(venue?.ownerUid===currentUser.uid||(authenticatedFieldStaff?.uid===currentUser.uid&&authenticatedFieldStaff?.status==="active"&&authenticatedFieldStaff?.role==="field_manager"&&authenticatedFieldStaff?.isAdministrator===true)));
   useEffect(()=>setShowFieldTeamManager(false),[venue?.id,currentUser?.uid,canManageFieldTeam]);
 
@@ -947,7 +974,7 @@ export default function VenueEntryPage({
     if (fieldNavTarget?.page) {
       setVenuePage(fieldNavTarget.page === "settings" && !canAccessFieldSettings ? "landing" : fieldNavTarget.page);
     }
-  }, [fieldNavTarget, canAccessFieldSettings]);
+  }, [fieldNavTarget, canAccessFieldSettings, Boolean(enteredIdentity)]);
 
 
   useEffect(() => {
@@ -1155,6 +1182,7 @@ export default function VenueEntryPage({
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user || null);
+      setEnteredIdentity(previous=>previous?.uid&&previous.uid!==user?.uid?null:previous);
     });
     return () => unsub();
   }, []);
@@ -5262,6 +5290,14 @@ export default function VenueEntryPage({
   };
 
 
+    if(fieldNavTarget?.page==="chat" && fieldNavTarget?.entryRequest && !enteredIdentity){
+      return <FieldTravelSplash destination={venue?.name||"your Field"} status={notificationEntryStatus||"Opening Field chat…"} onRetry={()=>setNotificationEntryRetry(v=>v+1)} onReturn={onBack}/>;
+    }
+
+    if(fieldNavTarget?.page==="news" && venuePage==="news" && !enteredIdentity){
+      return <VenueLeagueNewsPage matchType="LEAGUE" teams={[]} results={venueSeason?.results||[]} allEvents={venueSeason?.allEvents||[]} currentResults={venueSeason?.results||[]} currentEvents={venueSeason?.allEvents||[]} matchDayHistory={[]} playerPhotosByName={{}} members={[]} identity={null} activeClub={venue} activeClubId={venue?.id} fieldSeason={venueSeason} canManageFieldNews={false} initialPollOpen={fieldNavTarget.publication||null} onBack={onBack} onGoToSignIn={()=>setVenuePage("landing")}/>;
+    }
+
     if (portalClubIdentity && !enteredIdentity) {
       return (
         <FieldTravelSplash
@@ -5681,7 +5717,8 @@ export default function VenueEntryPage({
       )}</>
         }
         fieldSeason={venueSeason}
-        fieldScheduleView={
+        fieldScheduleView={<>
+          {isVenueOwner && venueSeason?.scheduleVersion === 1 && !venueSeason?.schedulePublishedAtMs && <FieldMatchDaySchedule venueId={venue.id} season={venueSeason} teams={teams} isCreator readOnly={false}/>}
           <button type="button" className="field-fixtures-open"
             onClick={() => setVenuePage("fixtures")}>
             <span className="field-fixtures-open__icon" aria-hidden="true">▦</span>
@@ -5691,7 +5728,7 @@ export default function VenueEntryPage({
             </span>
             <span aria-hidden="true">→</span>
           </button>
-        }
+        </>}
         fieldScheduleControls={isFieldAdministrator ? (
           <>
             <FieldMatchDaySchedule venueId={venue.id} season={venueSeason}
@@ -5762,16 +5799,11 @@ export default function VenueEntryPage({
           }
           let startStep = "Prepare Field season";
           try {
-            let fixtureId = nextFixture?.id;
-            if (
-              !venueSeason?.id ||
-              (venueSeason.clubIds || []).length < 3 ||
-              !fixtureId
-            ) {
-              const prepared = await prepareVenueSeasonForMatch({
-                venueId: venue?.id,
-              });
-              fixtureId = prepared.fixtureId;
+            const fixtureId = nextFixture?.id;
+            if (!venueSeason?.schedulePublishedAtMs || !fixtureId) {
+              await fieldAlert("Publish fixtures first. Clubs will receive their schedule before match day.");
+              setVenuePage(isVenueOwner ? "settings" : "fixtures");
+              return;
             }
 
             startStep = "Start Field fixture";

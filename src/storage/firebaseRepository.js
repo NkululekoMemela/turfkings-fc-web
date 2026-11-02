@@ -1,6 +1,6 @@
 // src/storage/firebaseRepository.js
 
-import { db } from "../firebaseConfig.js";
+import { db, auth } from "../firebaseConfig.js";
 import {
   doc,
   getDoc,
@@ -19,6 +19,20 @@ import {
   getPeerRatingsCollection,
   getScopedStateDoc,
 } from "../core/clubFirestorePaths.js";
+
+import {memberWorkspaceRequest} from "./memberWorkspaceGateway.js";
+const operatorReady = new Map();
+async function prepareClubStateOperator(clubId) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw Error("Sign in before changing your Club setup.");
+  const key = `${uid}:${clubId}`;
+  if (!operatorReady.has(key)) {
+    const ready = memberWorkspaceRequest("clubTeamChat", {action:"prepareOperator",clubId})
+      .catch(error => { operatorReady.delete(key); throw error; });
+    operatorReady.set(key, ready);
+  }
+  await operatorReady.get(key);
+}
 
 const DEFAULT_CLUB_ID = "turf-kings";
 
@@ -247,6 +261,7 @@ export async function saveStateToFirebaseV2(
     console.table(topLevelSizes);
     console.table(seasonSizes);
 
+    if (dataScope?.environment !== "practice") await prepareClubStateOperator(clubId);
     await setDoc(
       ref,
       {

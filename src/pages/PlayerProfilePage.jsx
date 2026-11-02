@@ -1,3 +1,4 @@
+import {PendingBibNotice} from "../components/ClubBibOrders.jsx";
 import {canUsePlayerFeatures} from "../core/playerFeatureAccess.mjs";
 import {buildPlayerProfileStory} from "../core/playerProfileStory.mjs";
 import ProfileKitEditor from "../components/ProfileKitEditor.jsx";
@@ -163,6 +164,7 @@ export default function PlayerProfilePage({clubId,clubName="Your club",identity,
         {editing&&<div className="actions-row profile-save-actions" role="region" aria-label="Profile edit actions"><button type="button" className="secondary-btn" disabled={saving||preparing} onClick={cancelEdit}>Cancel</button><button type="submit" className="primary-btn" disabled={saving||preparing||!member||isPracticeMode}>{saving?"Saving…":"Save profile"}</button></div>}
       </div>
     </form>
+    {member&&<PendingBibNotice clubId={clubId} isPracticeMode={isPracticeMode}/>}
     {member&&canEditProfile&&!isPracticeMode&&<ProfileNumberStudio clubId={clubId} member={member} club={club} onChanged={()=>{if(!dirty.current)setRefresh(value=>value+1);}}/>}
     {!report.loading&&!report.error&&(story.highlights.length>0||story.honours.length>0)&&<section className="card profile-football-story" aria-labelledby="profile-story-heading">
       <span className="profile-studio-eyebrow">ON THE PITCH</span><h2 id="profile-story-heading">My football story</h2>

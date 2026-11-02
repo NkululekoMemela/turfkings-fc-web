@@ -56,8 +56,8 @@ function activeSeason(context, seasonId) {
   return season;
 }
 
-async function view({db, user, venueId, seasonId, loadContext}) {
-  const context = await loadContext(db, db, venueId, user);
+async function view({db, user, venueId, seasonId, loadContext, context: suppliedContext}) {
+  const context = suppliedContext || await loadContext(db, db, venueId, user);
   if (!context.isAdmin) {
     throw new Error("Only a Field administrator can view entry receipts.");
   }

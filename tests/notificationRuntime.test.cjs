@@ -50,3 +50,11 @@ test("source enrichment preserves sender portraits, story pictures and an explic
  const result=await notificationSource(f.db,{clubId:"team",senderPhotoUrl:"https://example.com/person.jpg",contentImageUrl:"https://example.com/story.jpg",groupLogoUrl:"https://example.com/current.png"});
  assert.equal(result.groupLogoUrl,"https://example.com/current.png");assert.equal(result.senderPhotoUrl,"https://example.com/person.jpg");assert.equal(result.contentImageUrl,"https://example.com/story.jpg");
 });
+
+ test("native notification payload binds grouping to its verified recipient account",async()=>{
+  const {sendMulticast}=require("../functions/notificationRuntime.cjs");
+  const data=initial();data["notificationRegistrations/device"]={firebaseUid:"player",token:"token",enabled:true,rendererVersion:"2",platform:"android"};
+  const f=fixture(data),sent=[];
+  await sendMulticast(f.db,{send:async p=>sent.push(p)},{tokens:["token"],notification:{title:"Alex · Reds",body:"Press together"},data:{type:"club_team_chat",clubId:"team",teamId:"reds",seasonId:"s1",messageId:"m1",senderName:"Alex",senderUid:"alex"}},[{uid:"player",token:"token"}]);
+  assert.equal(sent[0].data.recipientUid,"player");assert.equal(sent[0].data.senderName,"Alex");assert.equal(sent[0].data.senderUid,"alex");assert.equal(sent[0].data.fanmRenderer,"2");assert.equal(sent[0].notification,undefined);
+ });

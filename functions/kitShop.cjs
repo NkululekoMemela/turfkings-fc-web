@@ -5,7 +5,7 @@ const id=value=>{const s=text(value,100);if(!/^[a-zA-Z0-9_-]{1,100}$/.test(s))th
 const integer=(value,min,max,label)=>{if(!Number.isSafeInteger(value)||value<min||value>max)throw new Error(`Check ${label}.`);return value;};
 function signed(user){if(!user?.uid||!user.email_verified||user.cameraSession)throw new Error("Sign in with your verified Google account.");}
 const operator=(user,access)=>String(user.email||"").toLowerCase()===OWNER_EMAIL||(access?.uids||[]).includes(user.uid);
-const DEFAULT={enabled:false,currency:"ZAR",countryCode:"ZA",collectionEnabled:false,collectionAddress:"",deliveryEnabled:false,zones:[],paymentInstructions:"",paymentMethod:"manual"};
+const DEFAULT={enabled:false,currency:"ZAR",countryCode:"ZA",collectionEnabled:false,collectionAddress:"",deliveryEnabled:false,zones:[],paymentInstructions:"",paymentMethod:"manual",bulkOnly:true};
 function settings(draft){
  const s={...DEFAULT,enabled:draft.enabled===true,collectionEnabled:draft.collectionEnabled===true,collectionAddress:text(draft.collectionAddress,500),deliveryEnabled:draft.deliveryEnabled===true,paymentInstructions:text(draft.paymentInstructions,1500),zones:(Array.isArray(draft.zones)?draft.zones:[]).slice(0,30).map(zone=>({id:id(zone.id),label:text(zone.label,100),feeMinor:integer(zone.feeMinor,0,10000000,"delivery fee")}))};
  if(new Set(s.zones.map(z=>z.id)).size!==s.zones.length||s.zones.some(z=>!z.label))throw new Error("Delivery areas need distinct references and names.");
@@ -31,8 +31,13 @@ function requestData(body){
 }
 async function handle({db,user,body}){
  signed(user);const action=body.action;
+ if(["requestBib","confirmBibContribution"].includes(action))return require("./kitBulk.cjs").handle({db,user,body});
  const configRef=db.doc("kitShopConfig/store"),accessRef=db.doc("kitShopConfig/operators");
  const access=(await accessRef.get()).data(),isOperator=operator(user,access);
+ if(action==="bibView"){
+  const [view,snapshot]=await Promise.all([require("./kitBulk.cjs").handle({db,user,body}),configRef.get()]);
+  return {...view,isOperator,settings:{...Object.fromEntries(Object.keys(DEFAULT).map(key=>[key,snapshot.data()?.[key]??DEFAULT[key]])),revision:snapshot.data()?.revision||0}};
+ }
  if(action==="catalogue"){
   const [s,products]=await Promise.all([configRef.get(),db.collection("kitShopProducts").get()]);
   return {settings:{...Object.fromEntries(Object.keys(DEFAULT).map(key=>[key,s.data()?.[key]??DEFAULT[key]])),revision:s.data()?.revision||0},isOperator,products:products.docs.map(d=>({...Object.fromEntries(["title","description","kind","color","size","priceMinor","stock","active","currency","revision"].map(key=>[key,d.data()[key]])),id:d.id})).filter(p=>isOperator||p.active)};
@@ -55,10 +60,12 @@ async function handle({db,user,body}){
  }
  if(action==="placeOrder"){
   const data=requestData(body),requestId=id(body.requestId),orderId=crypto.createHash("sha256").update(`${user.uid}|${requestId}`).digest("hex");
-  const requestHash=crypto.createHash("sha256").update(JSON.stringify(data)).digest("hex"),orderRef=db.doc(`kitShopOrders/${orderId}`);
+  const requestHash=crypto.createHash("sha256").update(JSON.stringify({...data,...(body.clubId?{clubId:body.clubId,allocations:body.allocations}: {})})).digest("hex"),orderRef=db.doc(`kitShopOrders/${orderId}`);
   return db.runTransaction(async tx=>{
+   const plan=body.clubId?await require("./kitBulk.cjs").prepare({db,tx,user,body,orderId}):null;
    const existing=(await tx.get(orderRef)).data();if(existing){if(existing.ownerUid!==user.uid||existing.requestHash!==requestHash)throw new Error("That submission reference was already used for another order.");return {order:{...existing,id:orderId}};}
    const config={...DEFAULT,...(await tx.get(configRef)).data()};if(!config.enabled)throw new Error("The shop is not accepting orders yet.");
+   if(config.bulkOnly!==false&&!plan)throw new Error("Your captain places the bulk order. Submit a Club bib request instead.");
    const delivery=data.fulfilment.method==="delivery";if(delivery&&!config.deliveryEnabled||!delivery&&!config.collectionEnabled)throw new Error("This fulfilment option is unavailable.");
    const zone=delivery?config.zones.find(z=>z.id===data.fulfilment.zoneId):null;if(delivery&&!zone)throw new Error("Choose a supported delivery area.");
    const unpaid=await tx.get(db.collection(`kitShopCustomers/${user.uid}/orders`).where("status","==","awaiting_payment").limit(3));
@@ -67,9 +74,9 @@ async function handle({db,user,body}){
    const lines=data.items.map((item,index)=>{const p=docs[index].data();if(!p?.active||p.stock<item.quantity)throw new Error("A bib variant is unavailable or has insufficient stock. Refresh your basket.");return {...item,title:p.title,color:p.color,size:p.size,unitPriceMinor:p.priceMinor,lineTotalMinor:p.priceMinor*item.quantity};});
    const subtotalMinor=lines.reduce((sum,line)=>sum+line.lineTotalMinor,0),deliveryMinor=zone?.feeMinor||0,totalMinor=subtotalMinor+deliveryMinor;
    if(totalMinor!==data.expectedTotalMinor)throw new Error("Prices or delivery fees changed. Refresh and review the order total.");
-   const now=Date.now(),order={ownerUid:user.uid,email:user.email,requestHash,items:lines,customer:data.customer,fulfilment:{...data.fulfilment,countryCode:config.countryCode,...(zone?{area:zone.label}:{collectionAddress:config.collectionAddress})},currency:config.currency,subtotalMinor,deliveryMinor,totalMinor,paymentInstructions:config.paymentInstructions,paymentMethod:"manual",paymentStatus:"unpaid",status:"awaiting_payment",createdAtMs:now,updatedAtMs:now,revision:1,timeline:[{status:"awaiting_payment",atMs:now}],cancellationRequested:false};
+   const now=Date.now(),order={...(plan?{clubId:plan.clubId,bulkAllocations:plan.allocations.map(a=>({memberName:a.memberName,memberId:a.memberId,ownerUid:a.ownerUid,side:a.side,productId:a.productId,number:a.number}))}:{}),ownerUid:user.uid,email:user.email,requestHash,items:lines,customer:data.customer,fulfilment:{...data.fulfilment,countryCode:config.countryCode,...(zone?{area:zone.label}:{collectionAddress:config.collectionAddress})},currency:config.currency,subtotalMinor,deliveryMinor,totalMinor,paymentInstructions:config.paymentInstructions,paymentMethod:"manual",paymentStatus:"unpaid",status:"awaiting_payment",createdAtMs:now,updatedAtMs:now,revision:1,timeline:[{status:"awaiting_payment",atMs:now}],cancellationRequested:false};
    docs.forEach((snap,index)=>tx.update(snap.ref,{stock:snap.data().stock-lines[index].quantity,revision:(snap.data().revision||0)+1}));
-   tx.set(orderRef,order);tx.set(db.doc(`kitShopCustomers/${user.uid}/orders/${orderId}`),order);return {order:{...order,id:orderId}};
+   tx.set(orderRef,order);tx.set(db.doc(`kitShopCustomers/${user.uid}/orders/${orderId}`),order);if(plan)require("./kitBulk.cjs").write({db,tx,plan,order:{...order,id:orderId}});return {order:{...order,id:orderId}};
   });
  }
  if(action!=="updateOrder")throw new Error("Unknown shop operation.");
@@ -98,8 +105,10 @@ async function handle({db,user,body}){
    status=decision;
   }
   const restock=status==="cancelled"?await tx.getAll(...order.items.map(item=>db.doc(`kitShopProducts/${item.productId}`))):[];
+  const bibRequests=order.bulkAllocations?.length?await tx.getAll(...order.bulkAllocations.map(a=>db.doc(`${require("./kitBulk.cjs").root(order.clubId)}/requests/${a.memberId}_${a.side}`))):[];
   const atMs=Date.now(),updated={...order,status,paymentStatus,updatedAtMs:atMs,revision:order.revision+1,cancellationRequested:false,timeline:[...order.timeline,{status,atMs,note,byUid:user.uid}],...(status==="dispatched"?{courier:text(body.courier,100),trackingReference:text(body.trackingReference,100)}:{})};
   restock.forEach((snap,index)=>{if(snap.data())tx.update(snap.ref,{stock:snap.data().stock+order.items[index].quantity,revision:(snap.data().revision||0)+1});});
+  for(const snap of bibRequests)if(snap.data()?.orderId===orderId)tx.set(snap.ref,{...snap.data(),status,updatedAtMs:atMs,revision:snap.data().revision+1});
   tx.set(orderRef,updated);tx.set(db.doc(`kitShopCustomers/${order.ownerUid}/orders/${orderId}`),updated);return {ok:true};
  });
 }

@@ -1,3 +1,4 @@
+import {subscribeCarriedFieldRoster} from "./fieldCarriedRosterSubscription.js";
 import {collection, onSnapshot} from "firebase/firestore";
 import {db} from "../firebaseConfig.js";
 import {venueLeagueRootPath} from "../core/venueLeaguePaths.js";
@@ -13,6 +14,9 @@ export function subscribeFieldManifest({
     : `leagueVenues/${venueId}`;
   if (scope && scope.venueId !== venueId) {
     throw new Error("Field manifest scope mismatch.");
+  }
+  if (!scope || scope.environment === "official") {
+    return subscribeCarriedFieldRoster({venueId,season,matchDayId,onData,onError});
   }
   const day = (season.matchDays || []).find(item => item.id === matchDayId);
   const fixtures = (season.fixtures || []).filter(

@@ -10,3 +10,11 @@
 .fanm-venues .fanm-venues__carousel {
   overflow-anchor: none;
 }
+
+/* These wrappers must not add another grid or shrink the shared Club card. */
+.fanm-venues--live .fanm-venues__carousel.hub-club-carousel .field-carousel-shared > .hub-club-card {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  box-sizing: border-box;
+}

@@ -23,8 +23,8 @@ async function loadFieldMatchRoster({
       const data = await loadDay({
         tx: transaction, db, scope, matchDayId: fixture.matchDayId,
       });
-      if (requireMinimum && !data.submission.confirmed) {
-        throw new Error(`${clubId}: the captain must send its confirmed five or six-player squad.`);
+      if (requireMinimum && !data.submission.ready) {
+        throw new Error(`${clubId}: check the season roster: five or six eligible players with complete kit are needed.`);
       }
       squadFingerprints[clubId] = data.submission.fingerprint;
       seasonSquad = {
@@ -88,6 +88,7 @@ async function loadFieldMatchRoster({
     if(requireMinimum)assertLeagueBibs(eligible);
     squads[clubId] = eligible;
   }
+  if(requireMinimum){const {assertOpponentColours}=await import("./opponentKitColours.mjs");assertOpponentColours(squads);}
   return {squads, bookingVersions, squadVersions, squadFingerprints};
 }
 exports.loadFieldMatchRoster = loadFieldMatchRoster;

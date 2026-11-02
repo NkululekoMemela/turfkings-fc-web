@@ -39,9 +39,9 @@ async function save({db, user, body, now = Date.now()}) {
     }
 
     const day = await squads.loadDay({tx, db, scope, matchDayId});
-    if (!day.submission.confirmed || day.submission.players.length < 5 ||
+    if (!day.submission.ready || day.submission.players.length < 5 ||
         day.submission.players.length > 6) {
-      throw new Error("Confirm this Club's five or six-player squad before saving its formation.");
+      throw new Error("Resolve this Club's roster or kit warnings before saving its formation.");
     }
 
     if (expectedFingerprint !== day.submission.fingerprint) {

@@ -10,7 +10,7 @@ function run(script,target='kitShop'){
 }
 test('Shop target starts without importing the shared club/field/payment entry point',()=>{
  const result=run(`const f=require('./functionsBootstrap.cjs');console.log(JSON.stringify({keys:Object.keys(f),endpoint:f.kitShop.__endpoint,legacyLoaded:Boolean(require.cache[require.resolve('./index.js')]),shopServiceLoaded:Boolean(require.cache[require.resolve('./kitShop.cjs')])}));process.exit(0);`);
- assert.deepEqual(result.keys,['kitShop']);assert.equal(result.legacyLoaded,false);assert.equal(result.shopServiceLoaded,false);assert.equal(result.endpoint.platform,'gcfv2');assert.deepEqual(result.endpoint.region,['us-central1']);
+ assert.deepEqual(result.keys,['kitShop']);assert.equal(result.legacyLoaded,false);assert.equal(result.shopServiceLoaded,false);assert.equal(result.endpoint.platform,'gcfv2');assert.deepEqual(result.endpoint.region,['us-central1']);assert.deepEqual(result.endpoint.httpsTrigger.invoker,['public']);
 });
 test('discovery and existing targets keep the complete original function export object',()=>{
  for(const target of ['', 'playerPrivacy', 'clubPlayerNumbers']){

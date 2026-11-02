@@ -319,10 +319,27 @@ service cloud.firestore {
     match /playerPrivacyMigrations/{id} {
       allow read, write: if false;
     }
+    function clubStateOperator(clubId) {
+      let pointer=/databases/$(database)/documents/clubStateOperators/$(clubId)/users/$(request.auth.uid);
+      let memberId=exists(pointer)?get(pointer).data.get("memberId", "__none__"):"__none__";
+      let member=/databases/$(database)/documents/clubs/$(clubId)/members/$(memberId);
+      return clubAdministrator(clubId) || (exists(pointer) && exists(member)
+        && get(member).data.get("status", "") == "active"
+        && get(member).data.get("role", "") in ["admin","captain"]
+        && ownsClubMember(clubId,memberId));
+    }
+    match /clubs/{clubId}/state/{stateId} {
+      allow read: if true;
+      allow write: if isSignedIn() && !isCameraSession()
+        && request.auth.token.get("email_verified", false) == true
+        && clubStateOperator(clubId);
+    }
+    match /clubStateOperators/{document=**} { allow read, write: if false; }
+
     match /clubs/{clubId}/{collectionName}/{document=**} {
       allow read: if !(collectionName in ["members", "players", "playerPhotos", "humanMembers", "pendingSignups", "matchSignups", "numberReservations", "numberOffers", "numberQuotes"]);
       allow write: if isSignedIn() && !isCameraSession()
-        && !(collectionName in ["members", "players", "playerPhotos", "humanMembers", "pendingSignups", "matchSignups",
+        && !(collectionName in ["state", "members", "players", "playerPhotos", "humanMembers", "pendingSignups", "matchSignups",
           "publicMembers", "publicPlayers", "publicPlayerPhotos", "publicPendingSignups", "publicMatchSignups", "numberReservations", "numberOffers", "numberQuotes"]);
     }
 
@@ -1276,7 +1293,9 @@ service cloud.firestore {
           && !isCameraSession()
           && request.resource.data.voterId == request.auth.uid
           && voteId == request.resource.data.pollId + "__" + request.auth.uid;
-        allow delete: if false;
+        allow delete: if isSignedIn() && !isCameraSession()
+          && resource.data.voterId == request.auth.uid
+          && voteId == resource.data.pollId + "__" + request.auth.uid;
       }
 
       // Field chat participation points to an existing Club member record.
@@ -2000,6 +2019,7 @@ service cloud.firestore {
                          && topLevel != "leagueVenues"
                          && topLevel != "legalAcceptances"
                          && topLevel != "clubs"
+                         && topLevel != "clubStateOperators"
                          && topLevel != "clubFieldMemberships"
                           && topLevel != "leagueClubBookings"
                           && topLevel != "leagueSeasonSquads"

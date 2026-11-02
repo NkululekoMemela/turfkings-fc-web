@@ -170,10 +170,11 @@
   position: relative;
   display: flex !important;
   flex-wrap: nowrap !important;
-  justify-content: flex-start !important;
+  justify-content: safe center !important;
   gap: 6px !important;
   width: 100%;
-  max-width: 100%;
+  max-width: 920px;
+  margin-inline: auto;
   min-width: 0;
   padding: 6px 8px;
   box-sizing: border-box;
@@ -195,4 +196,14 @@
   white-space: normal;
   text-align: center;
   line-height: 1.1;
+}
+
+@media (min-width: 641px) {
+  .field-bottom-nav .field-bottom-nav__inner { gap: 8px !important; }
+  .field-bottom-nav .field-bottom-nav__pill {
+    flex-basis: 72px !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+  }
 }

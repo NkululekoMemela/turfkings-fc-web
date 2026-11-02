@@ -1,4 +1,6 @@
-import {usePlayerNumberLabel} from "../components/PlayerNumberContext.jsx";
+import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
+import {splitNumberDisplay} from "../core/playerNumberDisplay.mjs";
+import {usePlayerNumberLabel,InlineLineupNumber} from "../components/PlayerNumberContext.jsx";
 // src/pages/Friendly_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTeamById } from "../core/teams.js";
@@ -1192,6 +1194,7 @@ async function writeFinalSummaryToFirestore(
 
 function PlayerBenchChip({
   name,
+  numberBelow=false,
   isSelected,
   onClick,
   photoData,
@@ -1200,6 +1203,7 @@ function PlayerBenchChip({
   isSub = false,
   roleTag = "",
 }) {
+  const separated=numberBelow?splitNumberDisplay(name):{name,number:""};
   const roleStyle = getRoleBadgeStyle(roleTag, isSub);
 
   return (
@@ -1267,8 +1271,7 @@ function PlayerBenchChip({
       </span>
 
       <span className={isSub ? "live-bench-chip-text is-sub" : ""}>
-        {name}
-        {suffix}
+        {numberBelow?<><span className="live-chip-player-name">{separated.name}{suffix}</span>{separated.number&&<span className="live-chip-player-number">{separated.number}</span>}</>:<>{name}{suffix}</>}
       </span>
     </button>
   );
@@ -1308,7 +1311,7 @@ function PlayerChoiceGrid({
       {players.length === 0 ? (
         <p className="muted small">No players available.</p>
       ) : (
-        <div className="live-player-choice-grid">
+        <div className="live-player-choice-grid live-scorer-choice-grid">
           {players.map((entry, idx) => {
             const rawName =
               typeof entry === "string" ? entry : entry?.name || "";
@@ -1327,6 +1330,7 @@ function PlayerChoiceGrid({
 
             return (
               <PlayerBenchChip
+                    numberBelow
                 key={`${rawName}-${isSub ? "sub" : "field"}-${
                   roleTag || "norole"
                 }`}
@@ -1841,6 +1845,7 @@ function LineupBoard({
                     </>
                   ) : (
                     <>
+                      <div className="live-lineup-number-pin"><InlineLineupNumber raw={name} teamId={team?.id}/></div>
                       <div
                         className={`player-shirt ${
                           photoData
@@ -1859,11 +1864,7 @@ function LineupBoard({
 
                       <div className="live-player-meta">
                         <span className="player-name">
-                          {name
-                            ? displayCompactPlayerName(
-                                name
-                              )
-                            : "Empty"}
+                          {name?<>{displayCompactPlayerName(name).replace(/^\((?:\d+|-)\)\s*/,"")}</>:"Empty"}
                         </span>
 
                         <span className="position-tag">
@@ -1898,8 +1899,8 @@ function LineupBoard({
 
               return (
                 <li key={p} className="live-bench-item">
-                  <PlayerBenchChip
-                    name={displayCompactPlayerName(p)}
+                  <InlineLineupNumber raw={p} teamId={team?.id}/><PlayerBenchChip
+                    name={displayCompactPlayerName(p).replace(/^\((?:\d+|-)\)\s*/,"")}
                     isSelected={isSelected}
                     onClick={() => handleBenchClick(p)}
                     photoData={photoData}
@@ -2520,113 +2521,10 @@ export function FriendlyLiveMatchPage({
     teamBId
   );
 
-  const [mergedPlayerPhotos, setMergedPlayerPhotos] = useState(
-    playerPhotosByName || {}
-  );
-
-  useEffect(() => {
-    setMergedPlayerPhotos((prev) => ({
-      ...prev,
-      ...(playerPhotosByName || {}),
-    }));
-  }, [playerPhotosByName]);
-
-  useEffect(() => {
-    const alreadyLoaded =
-      playerPhotosByName &&
-      Object.keys(playerPhotosByName).length > 20;
-
-    if (alreadyLoaded) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadPhotos() {
-      try {
-        const snap = await getDocs(getPlayerPhotosCollection(db, safeActiveClubId));
-        if (cancelled) return;
-
-        const loaded = {};
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          const photoData = data?.photoData || "";
-          const rawName = data?.name || docSnap.id || "";
-          if (!photoData) return;
-
-          const canonical = canonicalName(rawName);
-          const compact = displayCompactPlayerName(rawName);
-          const slug = slugFromLooseName(canonical || rawName);
-          const firstCanon = firstNameOf(canonical);
-          const firstCompact = firstNameOf(compact);
-
-          [
-            rawName,
-            toTitleCaseLoose(rawName),
-            canonical,
-            compact,
-            slug,
-            firstCanon,
-            firstCompact,
-          ]
-            .map((x) => String(x || "").trim())
-            .filter(Boolean)
-            .forEach((key) => {
-              loaded[key] = photoData;
-            });
-        });
-
-        setMergedPlayerPhotos((prev) => ({
-          ...loaded,
-          ...prev,
-        }));
-      } catch (err) {
-        console.error("Failed to load player photos in 5v5LiveMatchPage:", err);
-      }
-    }
-
-    loadPhotos();
-    return () => {
-      cancelled = true;
-    };
-  }, [canonicalName, displayCompactPlayerName]);
-
-  const getPlayerPhoto = useMemo(() => {
-    return (playerName = "") => {
-      const raw = String(playerName || "").trim();
-      if (!raw) return null;
-
-      const canonical = canonicalName(raw);
-      const compact = displayCompactPlayerName(raw);
-      const slug = slugFromLooseName(canonical || raw);
-      const firstCanonical = firstNameOf(canonical);
-      const firstCompact = firstNameOf(compact);
-
-      const candidates = [
-        raw,
-        toTitleCaseLoose(raw),
-        canonical,
-        compact,
-        slug,
-        firstCanonical,
-        firstCompact,
-      ]
-        .map((x) => String(x || "").trim())
-        .filter(Boolean);
-
-      for (const key of candidates) {
-        if (mergedPlayerPhotos[key]) return mergedPlayerPhotos[key];
-        const matchedKey = Object.keys(mergedPlayerPhotos).find(
-          (k) => normKey(k) === normKey(key)
-        );
-        if (matchedKey && mergedPlayerPhotos[matchedKey]) {
-          return mergedPlayerPhotos[matchedKey];
-        }
-      }
-
-      return null;
-    };
-  }, [mergedPlayerPhotos, canonicalName, displayCompactPlayerName]);
+  const [mergedPlayerPhotos,setMergedPlayerPhotos]=useState(playerPhotosByName||{});
+  useEffect(()=>setMergedPlayerPhotos(playerPhotosByName||{}),[safeActiveClubId,playerPhotosByName]);
+  useEffect(()=>{let cancelled=false;getDocs(getPlayerPhotosCollection(db,safeActiveClubId)).then(snapshot=>{if(!cancelled){const loaded=indexPlayerPortraits(snapshot.docs.map(doc=>({id:doc.id,data:doc.data()||{}})));setMergedPlayerPhotos(old=>({...old,...loaded}));}}).catch(error=>console.warn("[Player portraits] Could not refresh",error.code||error.name));return()=>{cancelled=true;};},[safeActiveClubId]);
+  const getPlayerPhoto=useMemo(()=>raw=>resolvePlayerPortrait(raw,players||[],mergedPlayerPhotos),[players,mergedPlayerPhotos]);
 
   const defaultTeamALineup = useMemo(
     () =>
