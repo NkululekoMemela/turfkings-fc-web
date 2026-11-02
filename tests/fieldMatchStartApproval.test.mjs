@@ -129,7 +129,7 @@ beforeEach(async () => {
   for (const clubId of clubs) await confirmFormation(clubId);
 });
 
-async function request(uid = "referee", headers = {authorization: "Bearer test"}) {
+async function request(uid = "referee", headers = {authorization: "Bearer test"}, confirmed = true) {
   let status = 200;
   let body;
   const res = {
@@ -138,7 +138,7 @@ async function request(uid = "referee", headers = {authorization: "Bearer test"}
   };
   await approvalHandler({
     method: "POST", headers,
-    body: {venueId: "field-one", seasonId: "season-one", fixtureId: "fixture-one"},
+    body: {venueId: "field-one", seasonId: "season-one", fixtureId: "fixture-one", earlyStartConfirmed: confirmed},
   }, res, {
     db,
     verifyToken: async (token, revoked) => {
@@ -252,7 +252,7 @@ test("Unauthorized users and missing authentication are rejected", async () => {
   assert.equal((await request("referee", {})).status, 401);
 });
 
-test("Future dates require the creator's testing setting", async () => {
+test("Future dates require this fixture's explicit Official confirmation", async () => {
   await db.doc(venuePath).update({
     "league.activeSeason.matchDays": [{
       id: "day-one", status: "scheduled", dateLocal: "2099-01-01",
@@ -263,10 +263,10 @@ test("Future dates require the creator's testing setting", async () => {
       clubAId: "club-a", clubBId: "club-b", scheduledLocal: "2099-01-01T18:00",
     }],
   });
-  assert.equal((await request()).status, 400);
+  assert.equal((await request("referee", {authorization:"Bearer test"}, false)).status, 400);
   for (const clubId of clubs) await confirmFormation(clubId);
-  await db.doc(venuePath).update({"league.activeSeason.allowEarlyStarts": true});
   await approved();
+  assert.notEqual((await db.doc(venuePath).get()).data().league.activeSeason.allowEarlyStarts, true);
 });
 
 test("A live fixture blocks another approval", async () => {

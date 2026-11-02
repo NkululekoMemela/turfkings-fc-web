@@ -1,7 +1,7 @@
 import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import FieldScheduleFixtures, {FieldFixtureCard} from "./FieldScheduleFixtures.jsx";
 import React, { useState } from "react";
-import { setVenueScheduleTesting, prepareVenueSeasonForMatch } from "../storage/leagueSeasonRepository.js";
+import { prepareVenueSeasonForMatch } from "../storage/leagueSeasonRepository.js";
 import {submitFieldDecision} from "../storage/fieldDecisionRepository.js";
 
 function RemainingKickoffEditor({scope, venueId, season, day, fixtures}) {
@@ -214,31 +214,7 @@ export default function FieldMatchDaySchedule({
       <summary style={{ cursor: "pointer", fontWeight: 800 }}>League settings</summary>
       <p className="muted small">View the published games using Fixtures on Field Home.</p>
       <small className="muted">Schedule change requests</small>
-      {season.allowEarlyStarts === true && (
-        <p role="status" style={{ color: "#fbbf24", fontWeight: 700 }}>
-          Testing mode · early match starts allowed
-        </p>
-      )}
-      {isCreator && (
-        <label style={{ display: "flex", alignItems: "center", gap: 10, margin: "14px 0" }}>
-          <input type="checkbox" checked={season.allowEarlyStarts === true}
-            disabled={savingTesting}
-            onChange={async event => {
-              const enabled = event.target.checked;
-              setSavingTesting(true);
-              setTestingError("");
-              try {
-                await setVenueScheduleTesting({
-                  scope, venueId, seasonId: season.id, enabled,
-                });
-              } catch (error) {
-                setTestingError(error.message || "Could not change testing mode.");
-              } finally { setSavingTesting(false); }
-            }} />
-          Allow early starts for testing
-        </label>
-      )}
-      {testingError && <p role="alert">{testingError}</p>}
+      <p className="muted small">Starting outside fixture time asks you to choose Practice or confirm Official play.</p>
       {season.matchDays.map(day => (
         <MatchDayEditor key={`${season.id}-${day.id}-${day.dateLocal}-${
           day.startTime || season.fixtures?.find(f => f.matchDayId === day.id)?.scheduledLocal

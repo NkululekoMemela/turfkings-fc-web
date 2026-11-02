@@ -71,7 +71,7 @@ function SeasonDialog({ title, children, busy, onClose, premium = false, logoUrl
         role="dialog" aria-modal="true" aria-label={title}>
         {premium ? (
           <div className="tk-admin-notification-topline">
-            <span className="tk-admin-notification-icon fanm-invitation-brand" aria-label="FANM" style={{fontSize:".62rem",fontWeight:950,letterSpacing:".02em"}}>FANM</span>
+            <img src="/favicon_nobackground.png" alt="FANM" className="fanm-invitation-brand" style={{width:44,height:44,objectFit:"contain",flexShrink:0}} />
             <div className="tk-admin-notification-title-wrap">
               <div className="tk-admin-notification-title">{title}</div>
               <span className="tk-admin-notification-tag">Field season invitation</span>
@@ -117,7 +117,7 @@ export function FieldSeasonStartModal({
       busy={busy} onClose={onClose}>
       {sent ? (
         <>
-          <p>{sent} member Clubs have received an invitation.</p>
+          <p>{isPractice?`${sent} sandbox Club copies accepted.`:`${sent} member Clubs have received an invitation.`}</p>
           <p>{isPractice
             ? "Sandbox captains have accepted. No real Clubs were contacted."
             : "Their administrators can sign up from their Club entry page."}</p>
@@ -146,7 +146,7 @@ export function FieldSeasonStartModal({
             setError(failure.message || "Could not announce this season.");
           } finally { setBusy(false); }
         }}>
-          <p>Invite all member Clubs at {venue.name} to the upcoming season.</p>
+          <p>{isPractice?"Use your Field’s clubs first, then available public squads. Acceptance is simulated; no real clubs are contacted.":`Invite all member Clubs at ${venue.name} to the upcoming season.`}</p>
           {[
             ["Season name", "text", name, setName],
             ["First match day", "date", date, setDate],
@@ -378,6 +378,7 @@ export function ClubFieldSeasonInvitation({ clubId }) {
 export function FieldSeasonEndModal({
   venue, season, onClose, scope = null,
 }) {
+  const practice=scope?.environment==="practice";
   const cancelling = !fieldSeasonHasPlayRecords(season);
   const [reason, setReason] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -404,11 +405,11 @@ export function FieldSeasonEndModal({
         } finally { setBusy(false); }
       }}>
         <p>{cancelling
-          ? "No play is recorded. Cancel this season with an explanation, such as insufficient Club signups."
+          ? practice ? "Discard this unplayed Practice season and start fresh." : "No play is recorded. Cancel this season with an explanation, such as insufficient Club signups."
           : "Archive the completed season. End every completed Match Day first."
         }</p>
-        <p>The season remains in the archive and a new draft season is created.</p>
-        {cancelling && (
+        <p>{practice && cancelling ? "No season archive is kept. A new draft is created." : "An audit record is kept and a new draft season is created."}</p>
+        {cancelling && !practice && (
           <label style={{ display: "grid", gap: ".4rem", margin: "1rem 0" }}>
             Cancellation reason
             <textarea className="text-input" rows={4}
@@ -429,7 +430,7 @@ export function FieldSeasonEndModal({
             disabled={busy} onClick={onClose}>Go back</button>
           <button type="submit" className="primary-btn" disabled={
             busy || confirmation.trim() !== venue.name?.trim()
-            || (cancelling && reason.trim().length < 10)
+            || (cancelling && !practice && reason.trim().length < 10)
           }>{busy ? "Saving…" : action}</button>
         </div>
       </form>

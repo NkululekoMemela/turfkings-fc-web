@@ -1,3 +1,5 @@
+import "../components/LandingDesktopLayout.css";
+import {matchTeamCaption} from "../core/matchTeamCaption.mjs";
 import MatchTeamChooser from "../components/MatchTeamChooser.jsx";
 // src/pages/LandingPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
@@ -1074,7 +1076,7 @@ export function LandingPage({
   const optionsForTeamB = teams.filter((t) => t.id !== teamAId);
 
   const renderOptionLabel = (team) =>
-    isMobile ? team.label : `${team.label} (c: ${team.captain})`;
+    isMobile ? team.label : matchTeamCaption(team);
 
   const handleSpectatorLiveClick = () => {
     onGoToLiveAsSpectator();
@@ -2105,7 +2107,7 @@ export function LandingPage({
 
         {canStartMatch ? (
           <div
-            className="actions-row landing-actions"
+            className="actions-row landing-actions landing-actions--operator"
             style={{
               display: "grid",
               gridTemplateColumns: isMobile
@@ -2336,7 +2338,7 @@ export function LandingPage({
             </p>
 
             <div
-              className="actions-row landing-actions"
+              className="actions-row landing-actions landing-actions--viewer"
               style={{
                 display: "grid",
                 gridTemplateColumns: isMobile

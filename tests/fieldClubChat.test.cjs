@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {fixture}=require('./helpers/playerWorkflowFirestore.cjs'),{handle,roomKey}=require('../functions/fieldClubChat.cjs');
-function setup(){const f=fixture({'leagueVenues/field':{ownerUid:'staff',league:{activeSeason:{id:'season',status:'active',clubIds:['club'],invitations:{club:{status:'accepted'}}}}},'clubs/club':{name:'My Club'},'clubFieldMemberships/club':{venueId:'field',status:'active'},'clubs/club/members/captain':{uid:'captain',status:'active',fullName:'Captain',role:'captain'},'clubs/club/members/player':{uid:'player',playerId:'p-player',status:'active',fullName:'Player',role:'player'},'leagueSeasonSquads/field~season~club':{status:'active',entries:{player:{invitationStatus:'accepted',sourcePlayerId:'p-player'}}}});const collection=f.db.collection;f.db.collection=path=>{const q=collection(path);q.orderBy=()=>q;return q;};return f;}
+function setup(){const f=fixture({'leagueVenues/field':{ownerUid:'staff',league:{activeSeason:{id:'season',status:'active',clubIds:['club'],invitations:{club:{status:'accepted'}}}}},'clubs/club':{name:'My Club'},'clubFieldMemberships/club':{venueId:'field',status:'active'},'clubs/club/members/captain':{uid:'captain',playerId:'p-captain',status:'active',fullName:'Captain',role:'captain'},'clubs/club/members/player':{uid:'player',playerId:'p-player',status:'active',fullName:'Player',role:'player'},'leagueSeasonSquads/field~season~club':{status:'active',entries:{captain:{invitationStatus:'accepted',sourcePlayerId:'p-captain'},player:{invitationStatus:'accepted',sourcePlayerId:'p-player'}}}});const collection=f.db.collection;f.db.collection=path=>{const q=collection(path);q.orderBy=()=>q;return q;};return f;}
 const body={venueId:'field',clubId:'club'},user={uid:'captain',email_verified:true};
 test('only a verified member of an accepted official Club gets its season room; Field staff have no bypass',async()=>{
  const f=setup(),rooms=await handle({db:f.db,user,body:{...body,action:'rooms'}});assert.equal(rooms.rooms[0].id,'club');assert.equal(rooms.rooms[0].captains[0],'Captain');
@@ -24,4 +24,19 @@ test('Club players outside the accepted season squad cannot read its tactics roo
  assert.equal((await handle({db:f.db,user:{uid:'bench',email_verified:true},body:{...body,action:'rooms'}})).rooms.length,0);
  f.records.get('leagueSeasonSquads/field~season~club').entries.player.invitationStatus='declined';
  await assert.rejects(handle({db:f.db,user:{uid:'player',email_verified:true},body:{...body,action:'messages'}}),/Only members/);
+});
+
+test('a captain outside the league squad has no tactics-chat bypass',async()=>{
+ const f=setup();delete f.records.get('leagueSeasonSquads/field~season~club').entries.captain;
+ assert.equal((await handle({db:f.db,user,body:{...body,action:'rooms'}})).rooms.length,0);
+ for(const action of ['messages','send','highlights','react','delete','mute'])await assert.rejects(handle({db:f.db,user,body:{...body,action,text:'Hello',requestId:'blocked',muted:true}}),/Only members/);
+});
+test('a former squad player retains access after a recorded on-pitch appearance that season',async()=>{
+ const f=setup();delete f.records.get('leagueSeasonSquads/field~season~club').entries.player;
+ const season=f.records.get('leagueVenues/field').league.activeSeason;
+ season.results=[{status:'completed',clubAId:'club',clubBId:'other',confirmedLineupSnapshot:{club:{positions:{p1:'Player'},kitNumbers:[{key:'p-player',name:'Player'}]}}}];
+ const account={uid:'player',email_verified:true};
+ assert.equal((await handle({db:f.db,user:account,body:{...body,action:'rooms'}})).rooms.length,1);
+ season.results=[];
+ assert.equal((await handle({db:f.db,user:account,body:{...body,action:'rooms'}})).rooms.length,0);
 });

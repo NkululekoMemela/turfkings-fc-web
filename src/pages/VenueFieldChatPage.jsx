@@ -1,3 +1,4 @@
+import {uploadFormationChatImage} from "../storage/formationChatImage.js";
 import TeamChatLauncher from "../components/TeamChatLauncher.jsx";
 import ChatNotificationToggle from "../components/ChatNotificationToggle.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
@@ -44,7 +45,7 @@ function fieldChatDateLabel(date) {
 }
 
 export default function VenueFieldChatPage({
-  venue, season, identity, currentUser, staff, isAdmin, onBack, initialPrivateChat=null,
+  venue, season, identity, currentUser, staff, isAdmin, onBack, initialPrivateChat=null, initialFormation=null,onFormationConsumed=null,
 }) {
   const venueId = venue?.id || "";
   const uid = currentUser?.uid || "";
@@ -65,6 +66,8 @@ export default function VenueFieldChatPage({
   const [fieldSelectedClip, setFieldSelectedClip] =
     useState(null);
 
+  useEffect(()=>{setFieldSelectedClip(null);},[uid,venueId]);
+  useEffect(()=>{if(initialFormation?.venueId!==venueId||initialFormation?.ownerUid!==currentUser?.uid)return;setFieldSelectedClip(initialFormation);onFormationConsumed?.();},[initialFormation?.clipId,venueId,currentUser?.uid]);
   async function openFieldClipPicker() {
     setFieldClipPickerOpen(true);
     setFieldClipsLoading(true);
@@ -383,6 +386,8 @@ export default function VenueFieldChatPage({
       const messageRef = doc(
         collection(db, "leagueVenues", venueId, "chatMessages"),
       );
+      const attachment=fieldSelectedClip?.kind==="formation"&&fieldSelectedClip.imageData?await uploadFormationChatImage(fieldSelectedClip,venueId):fieldSelectedClip;
+      if(attachment)setFieldSelectedClip(attachment);
       await setDoc(messageRef, {
         text: (
           text ||
@@ -390,7 +395,7 @@ export default function VenueFieldChatPage({
           "Field highlight"
         ).slice(0, 2000),
         ...(fieldSelectedClip
-          ? { attachment: fieldSelectedClip }
+          ? { attachment }
           : {}),
         senderUid: actor.uid,
         senderName: actor.name,
@@ -549,12 +554,12 @@ export default function VenueFieldChatPage({
                         "Field highlight"}
                     </strong>
 
-                    <video
+                    {message.attachment.kind==="formation"?<a href={message.attachment.mediaUrl} target="_blank" rel="noreferrer"><img loading="lazy" alt={message.attachment.title||"Formation"} src={message.attachment.mediaUrl} style={{width:"100%",height:"auto",borderRadius:12}}/></a>:<video
                       controls
                       playsInline
                       preload="none"
                       src={message.attachment.mediaUrl}
-                    />
+                    />}
                   </div>
                 )}
 
@@ -629,13 +634,13 @@ export default function VenueFieldChatPage({
         {fieldSelectedClip && (
           <div className="field-chat-selected-clip">
             <span>
-              <strong>Video attached</strong>
-              <small>{fieldSelectedClip.title}</small>
+              <strong>{fieldSelectedClip.kind==="formation"?"Formation attached":"Video attached"}</strong>
+              <small>{fieldSelectedClip.title}</small>{fieldSelectedClip.kind==="formation"&&<img alt="Formation preview" src={fieldSelectedClip.imageData||fieldSelectedClip.mediaUrl} style={{width:72,height:"auto",borderRadius:8}}/>}
             </span>
 
             <button
               type="button"
-              aria-label="Remove attached video"
+              aria-label="Remove attachment"
               onClick={() => setFieldSelectedClip(null)}
             >
               ×

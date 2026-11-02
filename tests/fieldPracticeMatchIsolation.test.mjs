@@ -266,11 +266,11 @@ test("Practice kickoff, events and completion remain inside their session", asyn
     const nextScope = {...scope, seasonId: next.id};
     await api.endVenueSeason({
       scope: nextScope, venueId: "field", seasonId: next.id,
-      mode: "cancel", cancellationReason: "Practising season cancellation",
+      mode: "cancel", cancellationReason: "",
     });
     assert.equal(
-      (await getDoc(doc(db, `${root}/seasons/${next.id}`))).data().status,
-      "cancelled"
+      (await getDoc(doc(db, `${root}/seasons/${next.id}`))).exists(),
+      false
     );
 
     await env.withSecurityRulesDisabled(async context => {

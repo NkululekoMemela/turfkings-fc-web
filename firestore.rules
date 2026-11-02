@@ -965,8 +965,8 @@ service cloud.firestore {
             && season.matchDays[di].status == "scheduled"
             && season.matchDays[di].opensAtMs is int
             && (
-              season.get("allowEarlyStarts", false) == true
-              || request.time >= timestamp.value(season.matchDays[di].opensAtMs)
+              request.time.toMillis() >= season.matchDays[di].opensAtMs
+              || get(/databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/startApprovals/$(data.get("startApprovalId", ""))).data.get("earlyStartConfirmed", false) == true
             )
           )
         );
@@ -1548,7 +1548,7 @@ service cloud.firestore {
                   "clipId",
                   "matchId",
                   "title",
-                  "mediaUrl"
+                  "mediaUrl", "kind"
                 ])
               && request.resource.data.attachment
                 .keys().hasAll([
@@ -1580,6 +1580,9 @@ service cloud.firestore {
                 .mediaUrl.size() <= 8000
               && request.resource.data.attachment
                 .mediaUrl.matches("https://.*")
+              && request.resource.data.attachment.get("kind", "highlight") in ["highlight", "formation"]
+              && (request.resource.data.attachment.get("kind", "highlight") != "formation"
+                || request.resource.data.attachment.mediaUrl.matches("https://firebasestorage.googleapis.com/v0/b/[^/]+/o/leagueVenues%2F" + venueId + "%2FchatImages%2F" + request.auth.uid + "%2F.*"))
             )
           );
 

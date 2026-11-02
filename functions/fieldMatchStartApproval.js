@@ -59,11 +59,9 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
         const {assertFieldMatchDayProgression} =
           await import("./fieldMatchDayProgression.mjs");
         assertFieldMatchDayProgression({season, matchDayId: day.id});
-        const opensAtMs = Date.parse(`${day.dateLocal}T00:00:00+02:00`);
-        if (!Number.isFinite(opensAtMs) ||
-            (season.allowEarlyStarts !== true && Date.now() < opensAtMs)) {
-          throw new Error("This match day has not opened.");
-        }
+        const earlyStartConfirmed = req.body?.earlyStartConfirmed === true;
+        const {assertFieldStartTiming} = await import("./fieldStartTiming.mjs");
+        assertFieldStartTiming({season, fixture, confirmed: earlyStartConfirmed});
         const minimum = {
           "5_V_5": 5, "6_V_6": 6, "7_V_7": 7, "11_V_11": 11,
         }[season.gameFormat];
@@ -87,6 +85,7 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
         transaction.set(approvalRef, {
           venueId, seasonId, fixtureId, matchDayId: day.id,
           actorUid: user.uid, gameFormat: season.gameFormat,
+          earlyStartConfirmed, earlyStartConfirmedAtMs: earlyStartConfirmed ? Date.now() : null,
           clubAId: fixture.clubAId, clubBId: fixture.clubBId,
           bookingVersions, squadVersions, squads, used: false,
           startingLineups, sourceFormations,

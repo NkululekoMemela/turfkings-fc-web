@@ -649,7 +649,7 @@ export async function scheduleVenueFixture({
 
 export async function startVenueFixture({
   venueId, fixtureId, teams = [], matchSeconds = 3600,
-  currentMatchNo = 1, controller = null,
+  currentMatchNo = 1, controller = null, earlyStartConfirmed = false,
 }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the field manager.");
@@ -667,7 +667,7 @@ export async function startVenueFixture({
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({venueId, seasonId: approvalSeasonId, fixtureId}),
+      body: JSON.stringify({venueId, seasonId: approvalSeasonId, fixtureId, earlyStartConfirmed: earlyStartConfirmed === true}),
     }
   );
   const approvalResponse = await response.json();
@@ -755,7 +755,7 @@ export async function startVenueFixture({
       if (!Number.isFinite(opensAtMs)) {
         throw new Error("This match day has an invalid date.");
       }
-      if (season.allowEarlyStarts !== true && Date.now() < opensAtMs) {
+      if (approval.earlyStartConfirmed !== true && Date.now() < opensAtMs) {
         throw new Error(`This match day opens on ${day.dateLocal}.`);
       }
     }
@@ -1487,7 +1487,7 @@ export async function endVenueSeason({
       throw new Error("No play is recorded. Cancel the season with an explanation.");
     }
     const reason = cancelling
-      ? fieldSeasonCancellationReason(cancellationReason) : "";
+      ? practice ? "Practice reset" : fieldSeasonCancellationReason(cancellationReason) : "";
 
     const archivedIds = new Set(
       (season.matchDayHistory || []).flatMap((day) =>
@@ -1523,7 +1523,8 @@ export async function endVenueSeason({
       matchSeconds: Number(season.matchSeconds) || 3600,
     };
 
-    transaction.set(archiveRef, {
+    if (practice && cancelling) transaction.delete(archiveRef);
+    else transaction.set(archiveRef, {
       ...season,
       status: cancelling ? "cancelled" : "completed",
       registrationOpen: false,

@@ -30,6 +30,7 @@ import VenueFixturesPage from "./VenueFixturesPage.jsx";
 import VenueSquadsPage from "./VenueSquadsPage.jsx";
 import VenueLeagueFormationsPage from "./VenueLeagueFormationsPage.jsx";
 import VenueLeagueStatsPage from "./VenueLeagueStatsPage.jsx";
+import {fieldAlert} from "../components/FieldDialog.jsx";
 import {fieldPracticeRequest} from "../storage/fieldPracticeGateway.js";
 import {
   createPracticeVenueLeagueScope, venueLeagueRootPath,
@@ -128,6 +129,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   const [showEndSeason, setShowEndSeason] = useState(false);
   const [error, setError] = useState("");
   const [expired, setExpired] = useState(false);
+  useEffect(()=>{if(expired)onExit?.();},[expired,onExit]);
   const [busy, setBusy] = useState(false);
   const season = data?.league?.activeSeason || null;
   const scope = useMemo(() => createPracticeVenueLeagueScope({
@@ -183,8 +185,8 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       setPage("live");
       return;
     }
-    if (!season) {
-      setShowStart(true);
+    if (fieldSeasonNeedsAnnouncement(season)) {
+      await fieldAlert("Start the league first, then start its first match.");
       return;
     }
     setBusy(true); setError("");
@@ -221,7 +223,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   if (expired) return <div className="page">
     <section className="card">
       <h2>Practice session finished</h2>
-      <button className="primary-btn" onClick={onExit}>Return to Official</button>
+      <button className="primary-btn" onClick={onExit}>Choose Session</button>
     </section>
   </div>;
 
@@ -356,9 +358,10 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   }
 
   return <div style={{paddingBottom: 90}}>
-    {page !== "live" && <FieldPracticeTimer expiresAt={session.expiresAt} onExit={onExit}/>}
+    <FieldPracticeTimer expiresAt={session.expiresAt} onExit={onExit}/>
     {error && <p role="alert">{error}</p>}
     {busy && <p role="status">Preparing sandbox fixtures and squads…</p>}
+    {page==="landing"&&<p className="muted small">Practice copies: your Field’s clubs first, then public squads. Real clubs are not contacted.</p>}
     {content}
     {page === "landing" && season && <FieldDecisionReview
       scope={scope} venueId={venue.id} seasonId={season.id} isCreator

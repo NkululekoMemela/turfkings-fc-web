@@ -6,8 +6,8 @@ const {createHash, randomUUID} = require("node:crypto");
 const hash = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const address = value => String(value || "").trim().toLowerCase();
 
-function buildHandlers({db, region, sendBatch}) {
-  const auth = getAuth();
+function buildHandlers({db, region, sendBatch, auth: suppliedAuth}) {
+  const auth = suppliedAuth || getAuth();
   async function resolve(member) {
     try {
       if (member.uid) return (await auth.getUser(member.uid)).uid;
@@ -20,7 +20,7 @@ function buildHandlers({db, region, sendBatch}) {
     }
   }
   async function deliver({venueId, seasonId, clubId, matchDayId = "",
-    uid, memberId = "", kind, revision}) {
+    uid, memberId = "", kind, revision, squadNames = "", needsAttention = false}) {
     const key = hash({venueId, seasonId, clubId, matchDayId, uid, kind, revision});
     const ref = db.doc(`fieldSquadNotificationDeliveries/${key}`);
     const claim = randomUUID();
@@ -54,7 +54,7 @@ function buildHandlers({db, region, sendBatch}) {
         tokenRecords,
         title: kind === "reminder" ? "Check your next match" : "League fixtures released",
         body: kind === "reminder"
-          ? "Your season squad is carried forward. Captain: check availability and arrange cover only where needed."
+          ? needsAttention ? "Your next squad needs attention. Review missing players or eligibility." : `${squadNames ? squadNames + ". " : "Your squad carries forward. "}Confirm or change players. No action keeps this squad.`
           : "Fixtures are ready. View your opponents and kickoff times. Your eligible season squad carries into every match.",
         imageUrl: "",
         data: {
@@ -93,6 +93,8 @@ function buildHandlers({db, region, sendBatch}) {
     const ids = [club.ownerUid, club.createdByUid, ...(club.adminUids || [])].filter(Boolean);
     const emails = [...(club.adminEmails || []), ...(club.captainEmails || []),
       club.captainEmail, club.captain?.email].filter(Boolean);
+    const captains=await db.collection(`clubs/${clubId}/members`).get();
+    for(const doc of captains.docs){const member=doc.data();if(member.status!=="active"||!["captain","admin"].includes(member.role))continue;const uid=await resolve(member);if(uid)recipients.set(uid,doc.id);}
     for (const uid of ids) {
       const resolved = await resolve({uid});
       if (resolved) recipients.set(resolved, "");
@@ -121,16 +123,37 @@ function buildHandlers({db, region, sendBatch}) {
       if (matchDayId && !(season.fixtures || []).some(fixture =>
         fixture.matchDayId === matchDayId && fixture.status === "scheduled" &&
         [fixture.clubAId, fixture.clubBId].includes(clubId))) continue;
+      let squadNames="",needsAttention=false;
+      if(kind==="reminder"&&matchDayId){
+        try{const roster=await db.runTransaction(tx=>require("./fieldMatchDaySquad").loadDay({db,tx,scope:{venueId,seasonId:season.id,clubId},matchDayId}));needsAttention=roster.submission.ready===false;squadNames=roster.submission.players.map(p=>p.fullName).join(", ").slice(0,500);}catch(error){console.warn("[Field squad review]",clubId,error.message);}
+      }
       const recipients = await clubRecipients(venueId, season, clubId, kind);
       for (const recipient of recipients) {
         await deliver({
           venueId, seasonId: season.id, clubId, matchDayId,
-          kind, revision, ...recipient,
+          kind, revision, squadNames, needsAttention, ...recipient,
         });
       }
     }
   }
   return {
+    fieldSquadRosterChanged: onDocumentUpdated({document:"leagueSeasonSquads/{squadId}",region,retry:true},async event=>{
+      const squad=event.data.after.data();if(!squad||squad.status!=="active")return;
+      const venue=(await db.doc(`leagueVenues/${squad.venueId}`).get()).data(),season=venue?.league?.activeSeason;
+      if(season?.id!==squad.seasonId||season.status!=="active")return;
+      const revision=hash({entries:squad.entries,availability:squad.matchDayAvailability,replacements:squad.matchDayReplacements,submissions:squad.matchDaySubmissions});
+      const old=event.data.before.data()||{};
+      if(revision===hash({entries:old.entries,availability:old.matchDayAvailability,replacements:old.matchDayReplacements,submissions:old.matchDaySubmissions}))return;
+      await Promise.all((season.matchDays||[]).filter(day=>day.status==="scheduled"&&(season.fixtures||[]).some(f=>f.matchDayId===day.id&&f.status==="scheduled"&&[f.clubAId,f.clubBId].includes(squad.clubId))).map(day=>db.doc(`leagueVenues/${squad.venueId}/seasons/${season.id}/fieldMatchDayManifests/${day.id}/clubs/${squad.clubId}`).set({clubId:squad.clubId,sourceRevision:revision,updatedAt:FieldValue.serverTimestamp()},{merge:true})));
+    }),
+    fieldSquadNextFixtureReview: onDocumentUpdated({document:"leagueVenues/{venueId}",region,retry:true},async event=>{
+      const before=event.data.before.data()?.league?.activeSeason,season=event.data.after.data()?.league?.activeSeason;
+      if(!season||season.status!=="active"||!season.schedulePublishedAtMs||season.gameFormat!=="5_V_5")return;
+      const signature=s=>hash({id:s?.id,published:s?.schedulePublishedAtMs,results:(s?.results||[]).map(r=>r.fixtureId),history:(s?.matchDayHistory||[]).map(d=>d.id)});
+      if(signature(before)===signature(season))return;
+      const day=(season.matchDays||[]).filter(d=>d.status==="scheduled"&&(season.fixtures||[]).some(f=>f.matchDayId===d.id&&f.status==="scheduled"&&!season.liveMatches?.[f.id])).sort((a,b)=>a.dateLocal.localeCompare(b.dateLocal))[0];
+      if(day)await notify(event.params.venueId,season,"reminder",day.id,day.id);
+    }),
     fieldSquadFixturesPublished: onDocumentUpdated({
       document: "leagueVenues/{venueId}", region, retry: true,
     }, async event => {
@@ -171,7 +194,7 @@ function buildHandlers({db, region, sendBatch}) {
               !season.schedulePublishedAtMs) continue;
           for (const day of season.matchDays || []) {
             if (day.dateLocal === date && day.status === "scheduled") {
-              await notify(venue.id, season, "reminder", day.id, date);
+              await notify(venue.id, season, "reminder", day.id, day.id);
             }
           }
         }

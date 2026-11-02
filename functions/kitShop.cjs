@@ -5,13 +5,13 @@ const id=value=>{const s=text(value,100);if(!/^[a-zA-Z0-9_-]{1,100}$/.test(s))th
 const integer=(value,min,max,label)=>{if(!Number.isSafeInteger(value)||value<min||value>max)throw new Error(`Check ${label}.`);return value;};
 function signed(user){if(!user?.uid||!user.email_verified||user.cameraSession)throw new Error("Sign in with your verified Google account.");}
 const operator=(user,access)=>String(user.email||"").toLowerCase()===OWNER_EMAIL||(access?.uids||[]).includes(user.uid);
-const DEFAULT={enabled:false,currency:"ZAR",countryCode:"ZA",collectionEnabled:false,collectionAddress:"",deliveryEnabled:false,zones:[],paymentInstructions:"",paymentMethod:"manual",bulkOnly:true};
+const DEFAULT={enabled:false,currency:"ZAR",countryCode:"ZA",collectionEnabled:false,collectionAddress:"",deliveryEnabled:false,zones:[],paymentInstructions:"",paymentMethod:"yoco",bulkOnly:true};
 function settings(draft){
  const s={...DEFAULT,enabled:draft.enabled===true,collectionEnabled:draft.collectionEnabled===true,collectionAddress:text(draft.collectionAddress,500),deliveryEnabled:draft.deliveryEnabled===true,paymentInstructions:text(draft.paymentInstructions,1500),zones:(Array.isArray(draft.zones)?draft.zones:[]).slice(0,30).map(zone=>({id:id(zone.id),label:text(zone.label,100),feeMinor:integer(zone.feeMinor,0,10000000,"delivery fee")}))};
  if(new Set(s.zones.map(z=>z.id)).size!==s.zones.length||s.zones.some(z=>!z.label))throw new Error("Delivery areas need distinct references and names.");
  if(s.collectionEnabled&&!s.collectionAddress)throw new Error("Add the collection point.");
  if(s.deliveryEnabled&&!s.zones.length)throw new Error("Add at least one delivery area and fee.");
- if(s.enabled&&(!s.paymentInstructions||(!s.collectionEnabled&&!s.deliveryEnabled)))throw new Error("Configure payment instructions and delivery or collection before opening checkout.");
+ if(s.enabled&&(!s.collectionEnabled&&!s.deliveryEnabled))throw new Error("Configure delivery or collection before opening checkout.");
  return s;
 }
 function product(draft){
@@ -74,7 +74,7 @@ async function handle({db,user,body}){
    const lines=data.items.map((item,index)=>{const p=docs[index].data();if(!p?.active||p.stock<item.quantity)throw new Error("A bib variant is unavailable or has insufficient stock. Refresh your basket.");return {...item,title:p.title,color:p.color,size:p.size,unitPriceMinor:p.priceMinor,lineTotalMinor:p.priceMinor*item.quantity};});
    const subtotalMinor=lines.reduce((sum,line)=>sum+line.lineTotalMinor,0),deliveryMinor=zone?.feeMinor||0,totalMinor=subtotalMinor+deliveryMinor;
    if(totalMinor!==data.expectedTotalMinor)throw new Error("Prices or delivery fees changed. Refresh and review the order total.");
-   const now=Date.now(),order={...(plan?{clubId:plan.clubId,bulkAllocations:plan.allocations.map(a=>({memberName:a.memberName,memberId:a.memberId,ownerUid:a.ownerUid,side:a.side,productId:a.productId,number:a.number}))}:{}),ownerUid:user.uid,email:user.email,requestHash,items:lines,customer:data.customer,fulfilment:{...data.fulfilment,countryCode:config.countryCode,...(zone?{area:zone.label}:{collectionAddress:config.collectionAddress})},currency:config.currency,subtotalMinor,deliveryMinor,totalMinor,paymentInstructions:config.paymentInstructions,paymentMethod:"manual",paymentStatus:"unpaid",status:"awaiting_payment",createdAtMs:now,updatedAtMs:now,revision:1,timeline:[{status:"awaiting_payment",atMs:now}],cancellationRequested:false};
+   const now=Date.now(),order={...(plan?{clubId:plan.clubId,bulkAllocations:plan.allocations.map(a=>({memberName:a.memberName,memberId:a.memberId,ownerUid:a.ownerUid,side:a.side,productId:a.productId,number:a.number}))}:{}),ownerUid:user.uid,email:user.email,requestHash,items:lines,customer:data.customer,fulfilment:{...data.fulfilment,countryCode:config.countryCode,...(zone?{area:zone.label}:{collectionAddress:config.collectionAddress})},currency:config.currency,subtotalMinor,deliveryMinor,totalMinor,paymentInstructions:config.paymentInstructions,paymentMethod:"yoco",paymentStatus:"unpaid",status:"awaiting_payment",createdAtMs:now,updatedAtMs:now,revision:1,timeline:[{status:"awaiting_payment",atMs:now}],cancellationRequested:false};
    docs.forEach((snap,index)=>tx.update(snap.ref,{stock:snap.data().stock-lines[index].quantity,revision:(snap.data().revision||0)+1}));
    tx.set(orderRef,order);tx.set(db.doc(`kitShopCustomers/${user.uid}/orders/${orderId}`),order);if(plan)require("./kitBulk.cjs").write({db,tx,plan,order:{...order,id:orderId}});return {order:{...order,id:orderId}};
   });
@@ -91,6 +91,8 @@ async function handle({db,user,body}){
    if(!owns||["cancelled","delivered","collected"].includes(status))throw new Error("This order cannot request cancellation.");
    const updated={...order,cancellationRequested:true,revision:order.revision+1,updatedAtMs:Date.now()};tx.set(orderRef,updated);tx.set(db.doc(`kitShopCustomers/${order.ownerUid}/orders/${orderId}`),updated);return {ok:true};
   }
+  if(["cancel","processing"].includes(decision)&&order.paymentStatus==="pending"&&order.yoco)throw new Error("Yoco payment is awaiting confirmation. Request a review instead of cancelling or confirming it manually.");
+  if(decision==="cancel"&&order.yoco?.checkoutId&&order.paymentStatus!=="confirmed")throw new Error("Request a payment review before cancelling a Yoco checkout. Stock stays reserved until payment is resolved.");
   if(decision==="cancel"){
    if(status==="cancelled"||["delivered","collected"].includes(status))throw new Error("This order cannot be cancelled.");
    if(!staff&&(!owns||status!=="awaiting_payment"))throw new Error("Ask the shop operator about cancelling this order.");

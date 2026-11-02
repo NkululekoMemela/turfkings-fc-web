@@ -93,6 +93,34 @@ service firebase.storage {
       allow read: if signedIn();
     }
 
+    match /leagueVenues/{venueId}/chatImages/{uid}/{imageName} {
+      function canPostFormation() {
+        let venue = firestore.get(/databases/(default)/documents/leagueVenues/$(venueId)).data;
+        let staffPath = /databases/(default)/documents/leagueVenues/$(venueId)/staff/$(uid);
+        let participantPath = /databases/(default)/documents/leagueVenues/$(venueId)/chatParticipants/$(uid);
+        return venue.ownerUid == uid
+          || (firestore.exists(staffPath) && firestore.get(staffPath).data.status == "active")
+          || (firestore.exists(participantPath) && activeFormationClubMember(firestore.get(participantPath).data));
+      }
+      function activeFormationClubMember(participant) {
+        let membership = firestore.get(/databases/(default)/documents/clubFieldMemberships/$(participant.clubId)).data;
+        let member = firestore.get(/databases/(default)/documents/clubs/$(participant.clubId)/members/$(participant.memberId)).data;
+        return membership.status == "active" && membership.venueId == venueId
+          && member.status == "active"
+          && (member.get("uid", "") == uid || (member.get("email", "") != "" && member.get("email", "") == request.auth.token.get("email", "")));
+      }
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.auth.token.get("email_verified", false) == true
+        && request.auth.token.get("cameraSession", false) == false
+        && imageName.matches("[A-Za-z0-9_-]+[.]png")
+        && request.resource.contentType == "image/png"
+        && request.resource.size <= 1024 * 1024 && canPostFormation();
+      allow update: if false;
+      allow delete: if signedIn() && request.auth.uid == uid
+        && request.auth.token.get("cameraSession", false) == false;
+    }
+
     match /leagueVenues/{venueId}/video_highlights/{matchId}/raw/{source}/{fileName} {
       function fieldVideoWriter() {
         let venue = firestore.get(

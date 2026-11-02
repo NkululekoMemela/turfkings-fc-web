@@ -1,3 +1,5 @@
+import {Capacitor} from "@capacitor/core";
+import {openShopPaymentWindow} from "../core/shopPaymentWindow.mjs";
 import {auth,getActiveFirebaseFunctionsBaseUrl} from "../firebaseConfig.js";
 async function performShopRequest(body){
  const user=auth.currentUser;if(!user?.uid||!user.emailVerified)throw new Error("Sign in with your verified Google account.");
@@ -17,4 +19,21 @@ export async function kitShopRequest(body){
  const key=JSON.stringify([user.uid,getActiveFirebaseFunctionsBaseUrl(),body]);
  if(pendingShopReads.has(key))return pendingShopReads.get(key);
  const request=performShopRequest(body).finally(()=>pendingShopReads.delete(key));pendingShopReads.set(key,request);return request;
+}
+
+export async function openShopYocoPayment(orderId){
+ const user=auth.currentUser;
+ if(!user?.uid||!user.emailVerified)throw new Error("Sign in to pay for your order.");
+ let response;
+ try{response=await fetch(`${getActiveFirebaseFunctionsBaseUrl()}/createYocoCheckout`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({purpose:"kit_shop",orderId,origin:window.location.origin}),signal:AbortSignal.timeout(20000)});}
+ catch{throw new Error("Yoco could not connect. Your order is saved. Retry payment from your bill.");}
+ if(auth.currentUser?.uid!==user.uid)throw new Error("Your account changed. Reopen your order.");
+ let result;try{result=await response.json();}catch{throw new Error("Payment is temporarily unavailable. Your order is saved.");}
+ if(!response.ok||result.error)throw new Error(result.error||"Yoco checkout could not open.");
+ if(result.paid)return result;
+ let url;try{url=new URL(result.redirectUrl);}catch{throw new Error("Yoco did not return a payment page.");}
+ if(url.protocol!=="https:"||!/(^|\.)yoco\.com$/.test(url.hostname))throw new Error("Invalid Yoco payment destination.");
+ const native=Capacitor.isNativePlatform();
+ const browser=native?(await import("@capacitor/browser")).Browser:null;
+ await openShopPaymentWindow(url.href,{native,browser,location:window.location,onReturn:()=>window.dispatchEvent(new Event("focus"))});return result;
 }

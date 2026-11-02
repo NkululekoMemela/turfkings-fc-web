@@ -1,3 +1,7 @@
+import {futsalCardDecision,futsalReductions,compactRefereeName,futsalMustAbandon} from "../core/fieldFutsalDiscipline.mjs";
+import "../components/FieldRefereePlayers.css";
+import {splitNumberDisplay} from "../core/playerNumberDisplay.mjs";
+import "../components/CompactPlayerNumber.css";
 import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
 import {InlineLineupNumber} from "../components/PlayerNumberContext.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
@@ -1225,8 +1229,10 @@ function PlayerBenchChip({
   suffix = "",
   isSub = false,
   roleTag = "",
+  numberBelow = false,
 }) {
   const roleStyle = getRoleBadgeStyle(roleTag, isSub);
+  const separated=numberBelow?splitNumberDisplay(name):{name,number:""};
 
   return (
     <button
@@ -1278,8 +1284,7 @@ function PlayerBenchChip({
       </span>
 
       <span className={isSub ? "live-bench-chip-text is-sub" : ""}>
-        {name}
-        {suffix}
+        {numberBelow?<><span className="live-chip-player-name">{separated.name}{suffix}</span>{separated.number&&<span className="live-chip-player-number">{separated.number}</span>}</>:<>{name}{suffix}</>}
       </span>
     </button>
   );
@@ -1335,7 +1340,7 @@ function PlayerChoiceGrid({
       {players.length === 0 ? (
         <p className="muted small">No players available.</p>
       ) : (
-        <div className="live-player-choice-grid">
+        <div className="live-player-choice-grid live-scorer-choice-grid">
           {players.map((entry, idx) => {
             const rawName =
               typeof entry === "string" ? entry : entry?.name || "";
@@ -1416,6 +1421,7 @@ function PlayerChoiceGrid({
                   }
                 >
                   <PlayerBenchChip
+                    numberBelow
                     name={displayCompactPlayerName(rawName)}
                     isSelected={isSelected}
                     onClick={() => {
@@ -2557,6 +2563,7 @@ function LineupBoard({
                   }}
                 >
                   <PlayerBenchChip
+                    numberBelow
                     name={displayCompactPlayerName(name)}
                     isSelected={false}
                     onClick={() => {}}
@@ -2772,6 +2779,7 @@ function LineupBoard({
                   onDragEnd={() => setDraggedPlayer(null)}
                 >
                   <PlayerBenchChip
+                    numberBelow
                     name={displayCompactPlayerName(p)}
                     isSelected={isSelected}
                     onClick={() => handleBenchClick(p)}
@@ -2886,7 +2894,8 @@ export function VenueLeagueLiveMatchPage({
   onOpenHighlightsCamera,
   onUpdateMatchSeconds,
   onCameraTimingStateChange = null,
-  redCardRule = "permanent",
+  onFutsalAbandonment = null,
+  redCardRule = "two_minute",
   onUpdateRedCardRule = null,
   matchTeamColorOverrides = {},
   onUpdateMatchTeamColorOverride = null,
@@ -5078,10 +5087,14 @@ export function VenueLeagueLiveMatchPage({
     }
   };
 
-  const normalizedActiveRedCardRule =
-    String(redCardRule || "").trim().toLowerCase() === "two_minute"
-      ? "two_minute"
-      : "permanent";
+  const disciplineWritePending=useRef(false);
+  const normalizedActiveRedCardRule = "two_minute";
+  const futsalPlayingSeconds=Math.max(0,Number(matchSeconds||0)-Number(displaySeconds||0)) + Math.max(0,Number(additionalTimeTotalSeconds||0)-Number(additionalTimeSecondsLeft||0));
+  const refereeLabel=player=>{
+    const peers=disciplinePlayers.filter(p=>p.teamId===player.teamId).map(p=>p.name);
+    const number=numberLabel.resolve?.(player.name,player.teamId)?.number ?? splitNumberDisplay(displayCompactPlayerName(player.name,player.teamId)).number.replace(/[()]/g, "");
+    return <strong className="field-referee-player-label" title={player.name}><b>({number||"-"})</b><span>{compactRefereeName(player.name,peers)}</span></strong>;
+  };
 
   const buildLeagueDisciplinePlayers = () => {
     const buildForTeam = (teamId, snapshot) => {
@@ -5516,26 +5529,13 @@ export function VenueLeagueLiveMatchPage({
       return;
     }
 
-    const normalizedType =
-      cardType === "red_card"
-        ? "red_card"
-        : "yellow_card";
-
+    if(disciplineWritePending.current)return;
+    disciplineWritePending.current=true;
+    try{
     const status = getLeagueDisciplineStatus(player);
-
-    if (
-      normalizedType === "yellow_card" &&
-      status.yellowEvents.length > 0
-    ) {
-      return;
-    }
-
-    if (
-      normalizedType === "red_card" &&
-      status.redEvents.length > 0
-    ) {
-      return;
-    }
+    const decision=futsalCardDecision(cardType,status.yellowEvents.length,status.redEvents.length>0);
+    if(!decision)return;
+    const normalizedType=decision.type;
 
     let dismissalDetails = {
       removedPositionId: null,
@@ -5557,6 +5557,10 @@ export function VenueLeagueLiveMatchPage({
         `discipline-${Date.now()}-` +
         Math.random().toString(36).slice(2, 8),
       type: normalizedType,
+      secondCaution: decision.secondCaution,
+      cautionNumber: decision.secondCaution ? 2 : normalizedType==="yellow_card" ? 1 : null,
+      disciplineRules: "fifa_futsal_2025_26",
+      requiresAbandonment: normalizedType==="red_card" && futsalMustAbandon(Object.values(relevantSnapshot?.positions||{}).filter(Boolean).length,dismissalDetails.wasSubstitute),
       teamId: player.teamId,
       playerName: canonicalName(player.name),
       playerType: isGuestPlayerInSnapshot(
@@ -5570,11 +5574,7 @@ export function VenueLeagueLiveMatchPage({
         dismissalDetails.removedPositionId || null,
       wasSubstitute:
         dismissalDetails.wasSubstitute,
-      timeSeconds: Math.max(
-        Number(matchSeconds || 0) -
-          Number(displaySeconds || 0),
-        0
-      ),
+      timeSeconds: futsalPlayingSeconds,
       dismissalRule:
         normalizedType === "red_card"
           ? normalizedActiveRedCardRule
@@ -5597,7 +5597,13 @@ export function VenueLeagueLiveMatchPage({
       activeClubId
     );
 
+    if(event.requiresAbandonment){
+      await onFutsalAbandonment?.(true);
+      await fieldAlert("Fewer than three players. Stop play and abandon the match.");
+    }
     setSelectedDisciplinePlayer(null);
+    }catch(error){await fieldAlert(error.message||"Could not record this card.");}
+    finally{disciplineWritePending.current=false;}
   };
 
   const reverseLeagueDisciplineCard = async (cardEvent) => {
@@ -5609,6 +5615,9 @@ export function VenueLeagueLiveMatchPage({
       return;
     }
 
+    if(cardEvent.type==="yellow_card" && getLeagueDisciplineStatus({name:cardEvent.playerName,teamId:cardEvent.teamId}).redEvents.some(e=>e.secondCaution)){
+      await fieldAlert("Undo the second-yellow dismissal first.");return;
+    }
     if (cardEvent.type === "red_card") {
       restoreLeagueDismissedPlayer(cardEvent);
     }
@@ -5628,6 +5637,7 @@ export function VenueLeagueLiveMatchPage({
       activeClubId
     );
 
+    if(cardEvent.requiresAbandonment && !nextEvents.some(e=>e.requiresAbandonment))await onFutsalAbandonment?.(false);
     setSelectedDisciplinePlayer(null);
   };
 
@@ -5768,11 +5778,8 @@ export function VenueLeagueLiveMatchPage({
   const leagueProtectedVacanciesForTeam = (teamId) => {
     const vacancies = {};
 
-    const currentDisciplineMatchSeconds = Math.max(
-      Number(matchSeconds || 0) -
-        Number(displaySeconds || 0),
-      0
-    );
+    const currentDisciplineMatchSeconds = futsalPlayingSeconds;
+    const reductions=futsalReductions({events:currentEvents,teamIds:[teamAId,teamBId],nowSeconds:currentDisciplineMatchSeconds});
 
     disciplineCardEvents
       .filter(
@@ -5812,18 +5819,9 @@ export function VenueLeagueLiveMatchPage({
           0
         );
 
-        const remainingSeconds =
-          isTwoMinuteRule
-            ? Math.max(
-                penaltySeconds -
-                  elapsedSinceCard,
-                0
-              )
-            : null;
-
-        const expired =
-          isTwoMinuteRule &&
-          remainingSeconds <= 0;
+        const reduction=reductions[event.id];
+        const remainingSeconds=isTwoMinuteRule ? reduction?.remainingSeconds ?? Math.max(0,penaltySeconds-elapsedSinceCard) : null;
+        const expired=isTwoMinuteRule && (reduction?.replacementAllowed || remainingSeconds<=0);
 
         vacancies[positionId] = {
           eventId: event?.id || null,
@@ -6419,6 +6417,7 @@ export function VenueLeagueLiveMatchPage({
       return;
     }
 
+    if(currentEvents.some(e=>e.requiresAbandonment)){await fieldAlert("Fewer than three players. This match cannot continue.");return;}
     setEditingGoalIndex(null);
     setShowGoalRecorder(true);
     setGoalStep("scorer");
@@ -6481,7 +6480,11 @@ export function VenueLeagueLiveMatchPage({
           ? "guest"
           : "registered"
         : null,
-      timeSeconds: matchSeconds - displaySeconds,
+      timeSeconds: futsalPlayingSeconds,
+      onFieldCounts: {
+        [teamAId]:Object.values(verifiedLineupA?.positions||{}).filter(Boolean).length,
+        [teamBId]:Object.values(verifiedLineupB?.positions||{}).filter(Boolean).length,
+      },
     };
 
     onAddEvent(event);
@@ -7300,85 +7303,11 @@ export function VenueLeagueLiveMatchPage({
               </div>
             </div>
 
-            <section className="fanm-discipline-rules">
-              <div className="fanm-discipline-rules-heading">
-                <span aria-hidden="true">⚖️</span>
-
-                <div>
-                  <strong>Competition Rules</strong>
-                  <small>
-                    Red-card consequence for this match
-                  </small>
-                </div>
-              </div>
-
-              <div className="fanm-discipline-rule-options">
-                <button
-                  type="button"
-                  className={`fanm-discipline-rule-option ${
-                    normalizedActiveRedCardRule === "permanent"
-                      ? "is-selected"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    onUpdateRedCardRule?.("permanent")
-                  }
-                  disabled={
-                    typeof onUpdateRedCardRule !== "function"
-                  }
-                >
-                  <span
-                    className="fanm-discipline-rule-radio"
-                    aria-hidden="true"
-                  />
-                  <span aria-hidden="true">🚫</span>
-
-                  <span>
-                    <strong>
-                      Send off for remainder of match
-                    </strong>
-                    <small>
-                      Player cannot return and the team stays short.
-                    </small>
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className={`fanm-discipline-rule-option ${
-                    normalizedActiveRedCardRule === "two_minute"
-                      ? "is-selected"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    onUpdateRedCardRule?.("two_minute")
-                  }
-                  disabled={
-                    typeof onUpdateRedCardRule !== "function"
-                  }
-                >
-                  <span
-                    className="fanm-discipline-rule-radio"
-                    aria-hidden="true"
-                  />
-                  <span aria-hidden="true">⏱️</span>
-
-                  <span>
-                    <strong>
-                      Team plays short for 2 minutes
-                    </strong>
-                    <small>
-                      Sent-off player cannot return, but another
-                      substitute may restore the team after the penalty.
-                    </small>
-                  </span>
-                </button>
-              </div>
-
-              <p className="fanm-discipline-rules-default">
-                Permanent dismissal is the default unless changed.
-              </p>
-            </section>
+            <details className="field-futsal-rules">
+              <summary>FIFA futsal · card rules</summary>
+              <p>Two yellows mean red. A dismissed player cannot return. An on-court dismissal leaves the team short for two minutes of playing time. A qualifying opposition goal can release one replacement place sooner. The referee authorises the replacement.</p>
+              <p>Equal numbers, or a goal by the team with fewer players, do not release a place. Sending off a substitute does not reduce the on-court team. Without an eligible substitute, the team stays short. A match cannot continue with fewer than three players.</p>
+            </details>
 
             <div className="fanm-discipline-teams">
               {[
@@ -7516,9 +7445,7 @@ export function VenueLeagueLiveMatchPage({
                                     </span>
 
                                     <span className="fanm-discipline-player-copy">
-                                      <strong>
-                                        {player.name}
-                                      </strong>
+                                      {refereeLabel(player)}
                                       <small>
                                         {player.roleLabel}
                                       </small>
@@ -7574,8 +7501,8 @@ export function VenueLeagueLiveMatchPage({
 
                                   {selected ? (
                                     <div className="fanm-discipline-actions">
-                                      {!yellowEvent &&
-                                      !redEvent ? (
+                                      <p className="field-referee-full-name" style={{gridColumn:"1 / -1"}}>{player.name}</p>
+                                      {!redEvent ? (
                                         <button
                                           type="button"
                                           className="fanm-discipline-yellow"
@@ -7591,7 +7518,7 @@ export function VenueLeagueLiveMatchPage({
                                           <span aria-hidden="true">
                                             🟨
                                           </span>
-                                          Yellow card
+                                          {yellowEvent ? "Second yellow → red" : "Yellow card"}
                                         </button>
                                       ) : null}
 
@@ -7893,9 +7820,7 @@ export function VenueLeagueLiveMatchPage({
                                     </span>
 
                                     <span className="fanm-discipline-player-copy">
-                                      <strong>
-                                        {player.name}
-                                      </strong>
+                                      {refereeLabel(player)}
 
                                       <small>
                                         {status ===
@@ -7956,6 +7881,7 @@ export function VenueLeagueLiveMatchPage({
 
                                   {selected ? (
                                     <div className="fanm-discipline-actions">
+                                      <p className="field-referee-full-name" style={{gridColumn:"1 / -1"}}>{player.name}</p>
                                       {!status ? (
                                         <button
                                           type="button"
@@ -8245,7 +8171,7 @@ export function VenueLeagueLiveMatchPage({
                         </strong>
                       </div>
 
-                      <div className="live-player-choice-grid">
+                      <div className="live-player-choice-grid live-scorer-choice-grid">
                         {assistOptions.map((entry) => {
                           const rawName =
                             typeof entry === "string"
@@ -8261,6 +8187,7 @@ export function VenueLeagueLiveMatchPage({
 
                           return (
                             <PlayerBenchChip
+                              numberBelow
                               key={rawName}
                               name={displayCompactPlayerName(rawName)}
                               isSelected={assistName === rawName}

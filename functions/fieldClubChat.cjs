@@ -11,11 +11,8 @@ async function context(db,user,body,tx){
  const season=venue.data()?.league?.activeSeason;
  if(!season?.id||season.status!=="active"||season.isTest||season.isPracticeMode||!acceptedClubs(season).includes(body.clubId)||link.data()?.status!=="active"||link.data()?.venueId!==body.venueId||!club.exists||club.data().deleted)return null;
  const squad=await read(db.doc(`leagueSeasonSquads/${body.venueId}~${season.id}~${body.clubId}`));
- const leaders=new Set([club.data().ownerUid,club.data().createdByUid,...(club.data().adminUids||[])]);
- const active=members.docs.map(d=>({...d.data(),id:d.id})).filter(m=>m.status==="active"&&(
-  ["admin","captain"].includes(m.role)||leaders.has(m.uid)||
-  (squad.data()?.status==="active"&&squad.data()?.entries?.[m.id]?.invitationStatus==="accepted"&&squad.data()?.entries?.[m.id]?.sourcePlayerId===m.playerId)
- )),mine=active.filter(m=>m.uid===user.uid);
+ const active=require("./fieldClubTacticsAccess.cjs").tacticsMembers({season,clubId:body.clubId,squad:squad.data(),members:members.docs.map(d=>({...d.data(),id:d.id}))});
+ const mine=active.filter(m=>m.uid===user.uid);
  if(mine.length!==1)return null;
  if(body.seasonId&&body.seasonId!==season.id)throw Error("This season has changed. Reopen your Club chat.");
  return {venue:venue.data(),club:club.data(),season,member:mine[0],members:active,roomId:roomKey(body.venueId,season.id,body.clubId)};
@@ -27,7 +24,7 @@ async function handle({db,user,body,now=Date.now()}){
  if(body.action==="send"){
   const text=String(body.text||"").trim();if((!text&&!body.highlight)||text.length>2000||!valid(body.requestId))throw Error("Write a message of up to 2,000 characters.");
   return db.runTransaction(async tx=>{
-   const ctx=await context(db,user,body,tx);if(!ctx)throw Error("Only members of an accepted season Club may use this room.");
+   const ctx=await context(db,user,body,tx);if(!ctx)throw Error("Only members of the selected league squad or players with a season appearance may use this tactics room.");
    const id=createHash("sha256").update(user.uid+":"+body.requestId).digest("hex"),ref=db.doc(`privateFieldClubChats/${ctx.roomId}/messages/${id}`);
    if((await tx.get(ref)).exists)return {sent:true};
    const extras=await require("./teamChatFeatures.cjs").extra({db,tx,body,path:`privateFieldClubChats/${ctx.roomId}`,clubId:body.clubId,members:ctx.members});
@@ -35,10 +32,10 @@ async function handle({db,user,body,now=Date.now()}){
   });
  }
  if(["react","delete"].includes(body.action))return db.runTransaction(async tx=>{
-  const ctx=await context(db,user,body,tx);if(!ctx)throw Error("Only members of an accepted season Club may use this room.");
+  const ctx=await context(db,user,body,tx);if(!ctx)throw Error("Only members of the selected league squad or players with a season appearance may use this tactics room.");
   return require("./teamChatFeatures.cjs").mutate({db,tx,path:`privateFieldClubChats/${ctx.roomId}`,user,body,canModerate:["captain","admin"].includes(ctx.member.role)});
  });
- const ctx=await context(db,user,body);if(!ctx)throw Error("Only members of an accepted season Club may use this room.");
+ const ctx=await context(db,user,body);if(!ctx)throw Error("Only members of the selected league squad or players with a season appearance may use this tactics room.");
  const preference=db.doc(`privateFieldClubChats/${ctx.roomId}/preferences/${user.uid}`);
  if(body.action==="mute"){if(typeof body.muted!=="boolean")throw Error("Choose a notification setting.");await preference.set({muted:body.muted},{merge:true});return {muted:body.muted};}
  if(body.action==="highlights")return require("./teamChatFeatures.cjs").highlights(db,body.clubId);

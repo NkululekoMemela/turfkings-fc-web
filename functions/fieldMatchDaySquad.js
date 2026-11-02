@@ -9,7 +9,7 @@ const validId = value => typeof value === "string" &&
 const fingerprint = value => createHash("sha256")
   .update(JSON.stringify(value)).digest("hex");
 
-function project({scope, day, fixture, candidates, saved}) {
+function project({scope, day, fixture, candidates, saved, carried = []}) {
   const revision = fingerprint({
     scope, date: day.dateLocal, fixtureId: fixture.id,
     scheduledLocal: fixture.scheduledLocal || "",
@@ -27,7 +27,7 @@ function project({scope, day, fixture, candidates, saved}) {
   const validSelection = selected.length >= 5 && selected.length <= 6 &&
     new Set(selected).size === selected.length && selected.every(id => byId.has(id));
   const currentSelection = validSelection && saved?.fingerprint === revision;
-  const draftIds = currentSelection ? selected :
+  const draftIds = validSelection ? selected : carried.length ? carried :
     candidates.length <= 6 ? candidates.map(player => player.memberId) : [];
   const numbers = currentSelection ? saved?.kitNumbers || {} : {};
   const allocated = applyMatchBibs(draftIds.map(id=>byId.get(id)),currentSelection ? saved?.kitAssignments || {} : {});
@@ -45,8 +45,8 @@ function project({scope, day, fixture, candidates, saved}) {
   return {
     matchDayId: day.id, dateLocal: day.dateLocal,
     fixtureId: fixture.id, fingerprint: revision,
-    confirmed, ready: kitReady, rosterSource: currentSelection ? "captain" : "season",
-    needsSelection: candidates.length > 6 && !currentSelection,
+    confirmed, ready: kitReady, rosterSource: validSelection ? "captain" : carried.length ? "carried" : "season",
+    needsSelection: draftIds.length < 5,
     selectedMemberIds: draftIds, players, kitAssignments: currentSelection ? saved?.kitAssignments || {} : {},
     kitNumbers: Object.fromEntries(players.map(player => [player.sourcePlayerId, player.jerseyNumber ?? null])),
     submittedAtMs: confirmed ? Number(saved.submittedAtMs || 0) : 0,
@@ -158,6 +158,7 @@ async function loadDay({tx, db, scope, matchDayId}) {
   const submission = project({
     scope, day, fixture, candidates,
     saved: context.squad?.matchDaySubmissions?.[matchDayId],
+    carried: require("./rollingFieldSquad.cjs").carriedMemberIds({season:context.season,squad:context.squad,day,clubId:scope.clubId,candidates}),
   });
   submission.matchColour=matchColour;
   submission.automaticKit=true;
@@ -350,10 +351,15 @@ async function getFieldDay({db, user, body}) {
       });
     }
     if (!allowed) throw new Error("Sign in as Field staff or a participating Club member.");
+    const currentLive=(await tx.get(db.doc(`leagueVenues/${venueId}/seasons/${seasonId}/matches/current`))).data();
     const result = await Promise.all(clubs.map(async club => {
       const fixture = (season.fixtures || []).find(item => item.matchDayId === matchDayId &&
         [item.clubAId, item.clubBId].includes(club.clubId));
       if (!fixture) return {...club, status: "bye", players: []};
+      const liveRoster=require("./rollingFieldSquad.cjs").liveDayRoster({live:currentLive,season,matchDayId,clubId:club.clubId});
+      if(liveRoster)return {...club,...liveRoster};
+      const completed=require("./rollingFieldSquad.cjs").completedDayRoster({season,fixture,clubId:club.clubId});
+      if(completed)return {...club,...completed};
       const data = await loadDay({tx, db, scope: {venueId, seasonId, clubId: club.clubId}, matchDayId});
       const squad = data.submission;
       return {...club, ...squad,

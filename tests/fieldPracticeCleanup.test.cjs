@@ -8,30 +8,11 @@ const {cleanExpired} = requireFunctions("./fieldPracticeCleanup");
 const {loadPracticeClubCopies} =
   requireFunctions("./fieldPracticeSessionService");
 
-test("Copied Club contains at most six active players", async () => {
-  const db = {
-    collection: path => path === "clubFieldMemberships" ? {
-      where: () => ({get: async () => ({docs: [{
-        id: "club", data: () => ({status: "active"}),
-      }]})}),
-    } : {
-      get: async () => ({docs: Array.from({length: 12}, (_, i) => ({
-        id: `p${String(i).padStart(2, "0")}`,
-        data: () => ({
-          fullName: `Player ${i}`,
-          status: i === 0 ? "removed" : "active",
-          mentality: 4, shooting: 5, photoUrl: `photo${i}`,
-        }),
-      }))}),
-    },
-    doc: () => ({
-      get: async () => ({exists: true, data: () => ({name: "Club"})}),
-    }),
-  };
-  const clubs = await loadPracticeClubCopies({db, venueId: "field"});
-  assert.equal(clubs[0].players.length, 6);
-  assert.equal(clubs[0].players[0].fullName, "Player 1");
-  assert.equal(clubs[0].players[0].mentality, 4);
+test("Sandbox copies contain six actual public players per Club",async()=>{
+ const {practicePublicFixture}=require('./helpers/practicePublicClubs.cjs');const f=practicePublicFixture();
+ const clubs=await loadPracticeClubCopies({db:f.db,venueId:'field'});
+ assert.equal(clubs[0].players.length,6);assert.equal(clubs[0].players.every(p=>p.fullName.includes('Club')),true);
+ assert.equal(clubs[0].players[0].mentality,4);
 });
 
 test("Cleanup recursively deletes only expired Field Practice data", async () => {

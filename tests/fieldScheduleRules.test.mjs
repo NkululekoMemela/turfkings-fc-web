@@ -59,6 +59,7 @@ async function seed({ future = true, testing = false, legacy = false } = {}) {
         venueId: "schedule-test", seasonId: "season-one",
         fixtureId: "fixture-one", matchDayId: "day-one",
         actorUid: uid, gameFormat: "5_V_5",
+        startingLineups: {"club-a": {positions:{p1:"Player A"}}, "club-b":{positions:{p1:"Player B"}}},
         clubAId: "club-a", clubBId: "club-b",
         bookingVersions: {"club-a": version, "club-b": version},
         matchDayHistory: seededSeason.matchDayHistory,
@@ -81,6 +82,7 @@ const live = extra => ({
   venueId: "schedule-test", seasonId: "season-one",
   fixtureId: "fixture-one", fixtureIndex: 0, matchDayIndex: 0,
   status: "live", startedByUid: "referee", secondsLeft: 2400,
+  confirmedLineupSnapshot: {"club-a": {positions:{p1:"Player A"}}, "club-b":{positions:{p1:"Player B"}}},
   ...extra,
 });
 const approvalPath = uid =>
@@ -116,9 +118,19 @@ test("an arrived date permits play and timer updates", async () => {
   }));
 });
 
-test("testing mode permits an early start", async () => {
+test("a season testing flag alone does not authorize an early start", async () => {
   await seed({ testing: true });
+  await assertFails(start());
+});
+test("a server-issued confirmation permits only its approved fixture", async () => {
+  await seed();
+  await changeApproval({earlyStartConfirmed:true});
+  await assertFails(start("referee", {fixtureId:"different"}));
   await assertSucceeds(start());
+});
+test("client-provided confirmation cannot replace a server approval", async () => {
+  await seed();
+  await assertFails(start("referee", {earlyStartConfirmed:true}));
 });
 
 test("only the creator can enable testing mode", async () => {

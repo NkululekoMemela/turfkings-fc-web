@@ -1104,6 +1104,13 @@ exports.createYocoCheckout = onRequest(
 
     try {
       const body = req.body && typeof req.body === "object" ? req.body : {};
+      if (body.purpose === "kit_shop") {
+        const bearer=String(req.headers.authorization||"").match(/^Bearer (.+)$/);
+        if(!bearer)throw Error("Sign in to pay for your order.");
+        const user=await admin.auth().verifyIdToken(bearer[1],true);
+        const result=await require("./kitShopPayments.cjs").checkout({db,user,body,secret:YOCO_SECRET_KEY});
+        return res.status(200).json(result);
+      }
       if (body.purpose === "club_bib") {
         const bearer=String(req.headers.authorization||"").match(/^Bearer (.+)$/);
         if(!bearer)throw Error("Sign in to pay your captain.");
@@ -1773,6 +1780,10 @@ exports.handleYocoWebhook = onRequest(
     }
 
     try {
+      if(payload.payload?.metadata?.purpose === "kit_shop") {
+        await require("./kitShopPayments.cjs").settle(db,payload);
+        return res.status(200).send("Shop payment received");
+      }
       if(payload.payload?.metadata?.purpose === "club_bib") {
         await require("./kitBibPayments.cjs").settle(db,payload);
         return res.status(200).send("Bib contribution received");

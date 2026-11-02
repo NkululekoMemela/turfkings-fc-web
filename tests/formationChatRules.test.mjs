@@ -1,0 +1,20 @@
+import test from 'node:test';
+import fs from 'node:fs';
+import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
+import {doc,setDoc,serverTimestamp} from 'firebase/firestore';
+import {ref,uploadBytes} from 'firebase/storage';
+let env;
+test.before(async()=>{env=await initializeTestEnvironment({projectId:'demo-fanm-formation',firestore:{rules:fs.readFileSync('firestore.rules','utf8')},storage:{rules:fs.readFileSync('storage.rules','utf8')}});});
+test.after(async()=>{await env?.cleanup();});
+test('only authorised uploaders can post their own formation image',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),'leagueVenues','field'),{ownerUid:'owner'});});
+ const owner=env.authenticatedContext('owner',{email_verified:true,email:'owner@example.com'}),outsider=env.authenticatedContext('outsider',{email_verified:true});
+ const path='leagueVenues/field/chatImages/owner/card.png',data=new Uint8Array([1,2,3]),metadata={contentType:'image/png'};
+ await assertSucceeds(uploadBytes(ref(owner.storage(),path),data,metadata));
+ await assertFails(uploadBytes(ref(outsider.storage(),'leagueVenues/field/chatImages/outsider/card.png'),data,metadata));
+ await assertFails(uploadBytes(ref(owner.storage(),'leagueVenues/field/chatImages/other/card.png'),data,metadata));
+ const attachment={kind:'formation',venueId:'field',clipId:'card',matchId:'formation__week',title:'Club · 2026-11-01',mediaUrl:'https://firebasestorage.googleapis.com/v0/b/demo-fanm-formation.appspot.com/o/'+encodeURIComponent(path)+'?alt=media'};
+ const message={text:'Our match',senderUid:'owner',senderName:'owner@example.com',senderRole:'field_manager',clubId:'',clubName:'',createdAt:serverTimestamp(),createdAtMs:Date.now(),reactionsByUser:{},attachment};
+ await assertSucceeds(setDoc(doc(owner.firestore(),'leagueVenues','field','chatMessages','valid'),message));
+ for(const [id,patch] of [['wrong-user',{mediaUrl:attachment.mediaUrl.replace('%2Fowner%2F','%2Fother%2F')}],['wrong-field',{mediaUrl:attachment.mediaUrl.replace('%2Ffield%2F','%2Fother%2F')}],['wrong-kind',{kind:'arbitrary'}]])await assertFails(setDoc(doc(owner.firestore(),'leagueVenues','field','chatMessages',id),{...message,attachment:{...attachment,...patch}}));
+});
