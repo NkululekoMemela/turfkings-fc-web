@@ -73,40 +73,9 @@ test("Practice starts without an Official season and writes only isolated data",
   assert.equal(root.data.practiceClubLimit, 6);
 });
 
-test("Invitation candidates are automatic, active and capped at six", async () => {
-  const {loadPracticeClubCopies} =
-    requireFunctions("./fieldPracticeSessionService");
-  const db = {
-    collection: path => path === "clubFieldMemberships" ? {
-      where: (field, op, value) => {
-        assert.deepEqual([field, op, value], ["venueId", "==", "field"]);
-        return {get: async () => ({
-          docs: Array.from({length: 9}, (_, i) => ({
-            id: `club${i}`,
-            data: () => ({status: i === 0 ? "removed" : "active"}),
-          })),
-        })};
-      },
-    } : {
-      get: async () => ({docs: [{
-        id: "player", data: () => ({
-          fullName: "Registered Player", memberId: "member",
-          mentality: 4, shooting: 5, photoUrl: "photo",
-          email: "private@example.com",
-        }),
-      }]}),
-    },
-    doc: () => ({
-      get: async () => ({
-        exists: true, data: () => ({name: "Example Club", logoUrl: "logo"}),
-      }),
-    }),
-  };
-  const copies = await loadPracticeClubCopies({db, venueId: "field"});
-  assert.equal(copies.length, 6);
-  assert.deepEqual(copies.map(c => c.clubId),
-    ["club1", "club2", "club3", "club4", "club5", "club6"]);
-  assert.equal(copies[0].players[0].mentality, 4);
-  assert.equal(copies[0].players[0].photoData, "photo");
-  assert.equal(copies[0].players[0].email, undefined);
+test("Practice uses published squads from real Clubs and never reads private player records",async()=>{
+ const {practicePublicFixture}=require('./helpers/practicePublicClubs.cjs');
+ const f=practicePublicFixture({count:6,fieldIds:['club2']});
+ const copies=await requireFunctions('./fieldPracticeSessionService').loadPracticeClubCopies({db:f.db,venueId:'field'});
+ assert.equal(copies.length,6);assert.equal(copies[0].clubId,'club2');assert.equal(copies[0].poolSource,'field');assert.equal(copies[0].players.length,6);assert.equal(copies[0].players[0].mentality,4);assert.equal(copies[0].players[0].photoData,'https://example.com/photo.png');assert.equal(copies[0].players[0].email,undefined);
 });

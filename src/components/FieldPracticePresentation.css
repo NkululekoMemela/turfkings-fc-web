@@ -1,0 +1,38 @@
+.field-practice-reminder {
+  pointer-events: none;
+  animation: field-practice-drift 2.8s ease-in-out infinite alternate;
+  text-align: center;
+  padding: 8px 0 12px;
+  font-size: clamp(25px, 7vw, 42px);
+  line-height: 1.05;
+  font-weight: 950;
+  letter-spacing: .045em;
+  color: #f3c6ff;
+  text-shadow: 0 0 18px #e879f980, 0 2px 2px #3b0764;
+}
+.field-season-start-cue { position: relative; overflow: hidden; isolation: isolate; }
+.field-season-start-cue::after {
+  content: "";
+  position: absolute;
+  inset: -30% -70%;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 38%, #facc1510 44%, #fff0b8a8 50%, #facc1526 56%, transparent 62%);
+  transform: translateX(-75%);
+  animation: field-season-gold 5s ease-in-out 3;
+}
+@keyframes field-season-gold {
+  0%, 25% { transform: translateX(-75%); }
+  100% { transform: translateX(75%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-season-start-cue::after { animation: none; background: none; }
+  .field-season-start-cue { border-color: #facc15 !important; }
+}
+
+@keyframes field-practice-drift {
+  from { transform: translateX(-4px); }
+  to { transform: translateX(4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-practice-reminder { animation: none; }
+}

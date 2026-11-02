@@ -1,3 +1,6 @@
+import "../components/LandingDesktopLayout.css";
+import {matchTeamCaption} from "../core/matchTeamCaption.mjs";
+import "../components/FieldPracticePresentation.css";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {useLostFoundSummary} from "../storage/fieldLostFoundRepository.js";
 import MatchTeamChooser from "../components/MatchTeamChooser.jsx";
@@ -336,6 +339,14 @@ export default function VenueLandingPage({
   pendingFieldStaffCount = 0,
   onReady,
 }) {
+  const [showSeasonCue,setShowSeasonCue]=useState(false);
+  useEffect(()=>{
+    if(seasonActionLabel!=="Start Season"){setShowSeasonCue(false);return;}
+    setShowSeasonCue(true);
+    const timer=setTimeout(()=>setShowSeasonCue(false),15000);
+    return()=>clearTimeout(timer);
+  },[seasonActionLabel]);
+
   const { teamAId, teamBId, standbyId } = currentMatch || {};
 
   const lostFoundOpenCount = useLostFoundSummary(activeClubId || activeClub?.id, isAdmin, dataScope?.environment || "official");
@@ -1128,7 +1139,7 @@ export default function VenueLandingPage({
   const optionsForTeamB = teams.filter((t) => t.id !== teamAId);
 
   const renderOptionLabel = (team) =>
-    isMobile ? team.label : `${team.label} (c: ${team.captain})`;
+    isMobile ? team.label : matchTeamCaption(team);
 
   const handleSpectatorLiveClick = () => {
     onGoToLiveAsSpectator();
@@ -1665,7 +1676,7 @@ export default function VenueLandingPage({
 
         {canStartMatch ? (
           <div
-            className="actions-row landing-actions"
+            className="actions-row landing-actions landing-actions--operator"
             style={{
               display: "grid",
               gridTemplateColumns: isMobile
@@ -1678,7 +1689,7 @@ export default function VenueLandingPage({
           >
             {typeof onOpenEndSeasonModal === "function" && (
               <button
-                className="secondary-btn"
+                className={`secondary-btn ${showSeasonCue ? "field-season-start-cue" : ""}`}
                 onClick={onOpenEndSeasonModal}
                 type="button"
                 style={tileButtonStyle(isMobile, {
@@ -1908,7 +1919,7 @@ export default function VenueLandingPage({
             </p>
 
             <div
-              className="actions-row landing-actions"
+              className="actions-row landing-actions landing-actions--viewer"
               style={{
                 display: "grid",
                 gridTemplateColumns: isMobile

@@ -1,0 +1,17 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {futsalCardDecision,futsalReductions,compactRefereeName,futsalMustAbandon} from '../src/core/fieldFutsalDiscipline.mjs';
+const red=(id,teamId='b',timeSeconds=0,extra={})=>({id,type:'red_card',teamId,timeSeconds,removedPositionId:id,dismissalRule:'two_minute',...extra});
+const goal=(a,b,teamId='a',timeSeconds=30)=>({id:'goal',type:'goal',teamId,timeSeconds,onFieldCounts:{a,b}});
+const run=(events,nowSeconds=60)=>futsalReductions({events,teamIds:['a','b'],nowSeconds});
+test('second caution produces a reasoned dismissal; direct red and first yellow remain distinct',()=>{assert.deepEqual(futsalCardDecision('yellow_card',0),{type:'yellow_card',secondCaution:false});assert.deepEqual(futsalCardDecision('yellow_card',1),{type:'red_card',secondCaution:true});assert.deepEqual(futsalCardDecision('red_card',0),{type:'red_card',secondCaution:false});assert.equal(futsalCardDecision('yellow_card',1,true),null);});
+test('penalty uses playing seconds and authorises replacement at exactly two minutes',()=>{assert.equal(run([red('r')],119).r.replacementAllowed,false);assert.equal(run([red('r')],120).r.replacementAllowed,true);assert.equal(run([red('r')],119).r.remainingSeconds,1);});
+for(const [a,b] of [[5,4],[5,3],[4,3]])test(`${a} versus ${b}: larger team scoring releases exactly one place`,()=>{const state=run([red('r'),red('s','b',1),goal(a,b)]);assert.equal(state.r.replacementAllowed,true);assert.equal(state.s.replacementAllowed,false);assert.equal(state.r.releasedByGoal,'goal');});
+for(const [a,b,scorer] of [[4,4,'a'],[3,3,'a'],[5,4,'b'],[5,3,'b'],[4,3,'b']])test(`${a} versus ${b}, ${scorer} scoring does not release a place`,()=>{assert.equal(run([red('r'),goal(a,b,scorer)]).r.replacementAllowed,false);});
+test('substitute dismissal creates no numerical penalty',()=>{assert.deepEqual(run([red('r','b',0,{wasSubstitute:true})]),{});});
+test('goal undo restores the reduction and red undo removes it',()=>{assert.equal(run([red('r'),goal(5,4)]).r.replacementAllowed,true);assert.equal(run([red('r')]).r.replacementAllowed,false);assert.deepEqual(run([goal(5,4)]),{});});
+test('an expired penalty is not released again by a goal',()=>{const value=run([red('old','b',0),red('new','b',110),goal(5,4,'a',130)],131);assert.equal(value.old.releasedByGoal,null);assert.equal(value.new.replacementAllowed,true);});
+test('legacy permanent dismissals remain locked; legacy goals without counts do not guess',()=>{assert.equal(run([red('r','b',0,{dismissalRule:'permanent'}),goal(5,4)],300).r.replacementAllowed,false);assert.equal(run([red('r'),{id:'g',type:'goal',teamId:'a',timeSeconds:20}]).r.replacementAllowed,false);});
+test('labels keep first names and distinguish duplicate first names',()=>{assert.equal(compactRefereeName('Bongani Makhanya',['Bongani Makhanya','Davi Smith']),'Bongani');assert.equal(compactRefereeName('Bongani Makhanya',['Bongani Makhanya','Bongani Nkosi']),'Bongani M.');});
+
+test('no substitute never restores the dismissed player; only eligibility changes after 120 seconds',()=>{const state=run([red('r')],120);assert.equal(state.r.replacementAllowed,true);assert.equal(state.r.teamId,'b');assert.equal(state.r.id,'r');assert.equal(state.r.playerRestored,undefined);});
+test('dismissal below three requires abandonment, but dismissing a bench player does not',()=>{assert.equal(futsalMustAbandon(3),true);assert.equal(futsalMustAbandon(4),false);assert.equal(futsalMustAbandon(3,true),false);});

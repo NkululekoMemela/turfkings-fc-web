@@ -832,6 +832,13 @@ export default function VenueLiveMatchRuntime({
     onBackToLanding: onBack,
     onBack,
     onGoToStats,
+    onFutsalAbandonment: async stopped=>{
+      if(!canControlCurrentLiveMatch)return;
+      const live=liveStateRef.current;
+      const running=!stopped && Number(live?.secondsLeft)>0 && live?.clockPhase!=="halftime" && !live?.timeUp;
+      await persistPatch({running});
+      setLiveState(previous=>({...previous,running}));
+    },
   };
 
   const halfClock = (

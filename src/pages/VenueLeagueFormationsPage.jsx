@@ -1,3 +1,4 @@
+import {fieldFormationWeek} from "../core/fieldFormationWeek.mjs";
 import {resolvePlayerPortrait} from "../core/playerPortrait.mjs";
 import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
@@ -975,6 +976,7 @@ const MAX_SUBS = 6;
 
 export function FormationsPage({
   fieldSeason = null,
+  onShareFormation = null,
   paidFixtureId = "",
   activeClubId = "turf-kings",
   fieldLeagueScope = null,
@@ -1872,6 +1874,9 @@ export function FormationsPage({
     formationsMap[defaultFormationId] ||
     Object.values(formationsMap)[0];
 
+  const [recapNow,setRecapNow]=useState(Date.now);
+  useEffect(()=>{const timer=setInterval(()=>setRecapNow(Date.now()),60000);return()=>clearInterval(timer);},[]);
+  const fieldWeek=useMemo(()=>fieldLeagueScope ? fieldFormationWeek({season:fieldSeason||activeClub?.league?.activeSeason||{},teamId:selectedTeamCanonical?.id||"",now:recapNow}):null,[fieldSeason,activeClub?.league?.activeSeason,selectedTeamCanonical?.id,recapNow,fieldLeagueScope?.venueId]);
   const currentMatchDayEvents = useMemo(() => {
     const combined = [...(allEvents || []), ...(currentEvents || [])];
 
@@ -1987,13 +1992,17 @@ export function FormationsPage({
 
     // Use the whole selected team, not only the 5 players on the pitch,
     // so substitutes also show rating / goals / assists after the match day.
-    const teamPlayers = selectedTeamCanonical?.players || [];
+    const recordedNames=new Set((fieldWeek?.results||[]).flatMap(result=>{
+      const snapshot=result.confirmedLineupSnapshot?.[selectedTeamCanonical.id];
+      return [...Object.values(snapshot?.positions||{}),...(snapshot?.benchSnapshot||[]),...(snapshot?.kitNumbers||[]).map(row=>row.name)].filter(Boolean).map(canonicalName);
+    }));
+    const teamPlayers = (selectedTeamCanonical?.players || []).filter(name=>!fieldWeek||!recordedNames.size||recordedNames.has(canonicalName(name)));
 
     return buildFormationDecorations({
       teamId: selectedTeamCanonical.id,
       players: teamPlayers,
-      events: formationEventsForDecorations,
-      results: formationResultsForDecorations,
+      events: fieldWeek ? fieldWeek.events : formationEventsForDecorations,
+      results: fieldWeek ? fieldWeek.results : formationResultsForDecorations,
       resolveCanonicalName: canonicalName,
     });
   }, [
@@ -2001,6 +2010,7 @@ export function FormationsPage({
     selectedTeamCanonical,
     formationEventsForDecorations,
     formationResultsForDecorations,
+    fieldWeek,
     canonicalName,
   ]);
 
@@ -2449,6 +2459,19 @@ export function FormationsPage({
     }
   };
 
+  const shareFormationToChat = async () => {
+    if(!onShareFormation||fieldLeagueScope?.environment!=="official")return;
+    try{
+      setSavingFormationImage(true);
+      const target=exportRef.current?.querySelector(".pitch-wrapper")||exportRef.current;
+      if(!target)return;
+      const imageData=await toPng(target,{cacheBust:true,pixelRatio:2,backgroundColor:"#0f172a"});
+      if(imageData.length>1300000)throw Error("The image is too large. Try saving it first.");
+      onShareFormation({kind:"formation",clipId:crypto.randomUUID(),venueId:fieldLeagueScope.venueId,environment:"official",ownerUid:authUser?.uid,matchId:`formation__${fieldLeagueScope.seasonId}__${fieldWeek?.matchDayId||"upcoming"}`,title:`${selectedTeamCanonical?.label||"Team"} · ${fieldWeek?.dateLocal||"Next match day"}`,imageData});
+    }catch(error){await fieldAlert(error.message||"Could not prepare this formation.");}
+    finally{setSavingFormationImage(false);}
+  };
+
   const startLongPressSave = () => {
     clearLongPress();
     longPressTimerRef.current = window.setTimeout(() => {
@@ -2545,6 +2568,7 @@ export function FormationsPage({
         <p role="status" className="muted small">{fieldFormationMessage}</p>
       )}
 
+      {fieldWeek&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}><small>{fieldWeek.label}</small>{onShareFormation&&fieldLeagueScope?.environment==="official"&&<button type="button" className="secondary-btn" disabled={savingFormationImage} onClick={shareFormationToChat}>Share to chat</button>}</div>}
       <section
         ref={exportRef}
         className="card lineups-card"

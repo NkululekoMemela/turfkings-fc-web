@@ -1,3 +1,5 @@
+import {fieldFixtureStartTiming} from "../../functions/fieldStartTiming.mjs";
+import {chooseFieldOfficialStart} from "../components/FieldOfficialStartPrompt.jsx";
 import {enterFieldFromNotification} from "../storage/fieldNotificationEntryGateway.js";
 import {fieldEntryMemoryKey,fieldEntryHint} from "../core/fieldNotificationEntry.mjs";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
@@ -767,12 +769,15 @@ export default function VenueEntryPage({
   const [portalRetry, setPortalRetry] = useState(0);
 
   const [venuePage, setVenuePage] = useState("landing");
-  const [fieldSessionChoice, setFieldSessionChoice] = useState("official");
+  const [fieldSessionChoice, setFieldSessionChoice] = useState(()=>fieldNavTarget?.entryRequest ? "official" : "choose");
   const [fieldPracticeSession, setFieldPracticeSession] = useState(null);
+  const [practiceStartRequest, setPracticeStartRequest] = useState(0);
+  const fieldStartPendingRef = useRef(false);
   const [practicePage, setPracticePage] = useState("landing");
+  const [formationChatDraft,setFormationChatDraft]=useState(null);
 
   useEffect(() => {
-    setFieldSessionChoice("official");
+    setFieldSessionChoice(fieldNavTarget?.entryRequest ? "official" : "choose");
     setFieldPracticeSession(null);
     setVenuePage("landing");
     setPracticePage("landing");
@@ -962,7 +967,7 @@ export default function VenueEntryPage({
   useEffect(() => {
     const requestedPage = fieldSessionChoice === "practice" ? practicePage : venuePage;
     onFieldNavState?.({
-      ready: Boolean(enteredIdentity) && Boolean(fieldSessionChoice),
+      ready: Boolean(enteredIdentity) && Boolean(fieldSessionChoice) && fieldSessionChoice !== "choose",
       page: requestedPage === "settings" && !canAccessFieldSettings ? "landing" : requestedPage,
       canAccessSettings: canAccessFieldSettings,
     });
@@ -5421,13 +5426,20 @@ export default function VenueEntryPage({
           authenticatedFieldStaff?.isAdministrator === true)
       );
 
-    if (fieldSessionChoice === "practice" && fieldPracticeSession && isFieldAdministrator) {
+    const canUseFieldPractice = isFieldAdministrator || (hasActiveFieldRole && ["field_manager","assistant_manager","field_assistant","other_staff","referee"].includes(effectiveRole));
+    if (canUseFieldPractice && fieldSessionChoice === "choose") {
+      return <FieldPracticeEntry key={`${venue.id}:${currentUser?.uid}:selector`}
+        venue={venue} userId={currentUser?.uid} showSessionSelector
+        onOfficial={()=>{setFieldSessionChoice("official");setVenuePage("landing");}}
+        onPractice={session=>{setFieldPracticeSession(session);setPracticePage("landing");setFieldSessionChoice("practice");}}/>;
+    }
+    if (fieldSessionChoice === "practice" && fieldPracticeSession && canUseFieldPractice) {
       return <FieldPracticePage
         venue={venue} session={fieldPracticeSession}
         onPageChange={setPracticePage} fieldNavTarget={fieldNavTarget}
         onExit={() => {
           setFieldPracticeSession(null);
-          setFieldSessionChoice("official");
+          setFieldSessionChoice("choose");
           setVenuePage("landing");
           setPracticePage("landing");
         }}
@@ -5564,7 +5576,8 @@ export default function VenueEntryPage({
       return (
         <VenueLeagueFormationsPage
           fieldSeason={venueSeason}
-          paidFixtureId=""
+          paidFixtureId={liveMatch?.fixtureId||liveMatch?.id||nextFixture?.id||""}
+          onShareFormation={draft=>{setFormationChatDraft(draft);setVenuePage("chat");}}
           activeClubId={venue.id}
           activeClub={venue}
           fieldLeagueScope={{
@@ -5629,6 +5642,8 @@ export default function VenueEntryPage({
           onBack={() => setVenuePage("landing")}>
         <VenueFieldChatPage
           initialPrivateChat={fieldNavTarget?.privateChat||null}
+          initialFormation={formationChatDraft?.venueId===venue.id&&formationChatDraft?.ownerUid===currentUser?.uid?formationChatDraft:null}
+          onFormationConsumed={()=>setFormationChatDraft(null)}
           venue={venue}
           season={venueSeason}
           identity={enteredIdentity}
@@ -5676,9 +5691,9 @@ export default function VenueEntryPage({
     return (
       <>
       <FieldAcceptedTeams venueId={venue?.id} season={venueSeason} clubs={fieldClubProfiles} userId={currentUser?.uid} enabled={Boolean(currentUser?.uid&&(venue?.ownerUid===currentUser.uid||authenticatedFieldStaff?.status==="active"))}/>
-      {isFieldAdministrator && <FieldPracticeEntry
+      {canUseFieldPractice && <FieldPracticeEntry
         key={`${venue.id}:${currentUser?.uid}`}
-        venue={venue} userId={currentUser?.uid}
+        venue={venue} userId={currentUser?.uid} onChooseSession={()=>setFieldSessionChoice("choose")} launchRequest={practiceStartRequest} onLaunchConsumed={()=>setPracticeStartRequest(0)}
         onPractice={session => {
           setFieldPracticeSession(session);
           setPracticePage("landing");
@@ -5793,10 +5808,16 @@ export default function VenueEntryPage({
           "Only an authorized Field official or referee can start this match."
         }
         onStartMatch={async () => {
+          if (fieldSeasonNeedsAnnouncement(venueSeason)) {
+            await fieldAlert("Start the league first, then start its first match.");
+            return;
+          }
           if (liveMatch) {
             setVenuePage("live");
             return;
           }
+          if (fieldStartPendingRef.current) return;
+          fieldStartPendingRef.current = true;
           let startStep = "Prepare Field season";
           try {
             const fixtureId = nextFixture?.id;
@@ -5806,10 +5827,18 @@ export default function VenueEntryPage({
               return;
             }
 
+            const timing = fieldFixtureStartTiming({season:venueSeason,fixture:nextFixture});
+            let earlyStartConfirmed = false;
+            if (timing.needsConfirmation) {
+              const choice = await chooseFieldOfficialStart(timing.scheduledLocal);
+              if (choice === "cancel") return;
+              if (choice === "practice") {setPracticeStartRequest(value=>value+1);return;}
+              earlyStartConfirmed = choice === "official";
+            }
             startStep = "Start Field fixture";
             await startVenueFixture({
               venueId: venue?.id,
-              fixtureId,
+              fixtureId, earlyStartConfirmed,
               controller: buildVenueRefereeController({
                 deviceId: getVenueRefereeDeviceId(),
                 identity: enteredIdentity,
@@ -5826,6 +5855,8 @@ export default function VenueEntryPage({
             console.error("[Field Start Match]", startStep, error);
             (await fieldAlert(`${startStep}: ${error?.message || "The Field match could not be started."}`
             ));
+          } finally {
+            fieldStartPendingRef.current = false;
           }
         }}
         onGoToLiveAsSpectator={async () => {

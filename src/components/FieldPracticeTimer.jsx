@@ -1,5 +1,7 @@
 import React, {useContext, useEffect, useId, useState} from "react";
 import {createPortal} from "react-dom";
+import {practiceReminderVisible} from "../core/fieldPracticePresentation.mjs";
+import "./FieldPracticePresentation.css";
 import {FieldRibbonContext} from "./FieldRibbonContext.jsx";
 
 export default function FieldPracticeTimer({expiresAt, onExit}) {
@@ -31,12 +33,12 @@ export default function FieldPracticeTimer({expiresAt, onExit}) {
   return <>
     {ribbonHost && onExit && createPortal(
       <button type="button" onClick={onExit}
-        title="Return to Official" aria-label="Return to Official"
+        title="Choose Session" aria-label="Choose Session"
         style={{width: 80, minHeight: 32, padding: "4px 6px",
           fontSize: 10, lineHeight: 1.15, borderRadius: 10, fontWeight: 800,
           background: "linear-gradient(100deg,#581c87,#86198f)",
           color: "#fff", border: "1px solid #d8b4fe", cursor: "pointer"}}>
-        Return to Official
+        Choose Session
       </button>, ribbonHost)}
     <section aria-label="Practice session ribbon"
     style={{
@@ -48,6 +50,7 @@ export default function FieldPracticeTimer({expiresAt, onExit}) {
       background: "linear-gradient(100deg,#581c87,#86198f)",
       color: "white", border: "1px solid rgba(255,255,255,.2)",
     }}>
+    {practiceReminderVisible(expiry, Date.now()) && <div className="field-practice-reminder" role="status">PRACTICE MODE</div>}
     <div style={{display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8}}>
       {!minimized && <strong style={{fontSize: 12, marginRight: "auto"}}>
         Practice session
@@ -83,7 +86,7 @@ export default function FieldPracticeTimer({expiresAt, onExit}) {
       <p style={{margin: 0}}>
         Official is for real seasons, match results and standings.
         Practice activity stays separate. The countdown shows the time
-        left in this session. Choose Return to Official on the top ribbon to return to your real Field.
+        left in this session. Choose Choose Session on the top ribbon to choose your next session.
       </p>
     </div>}
   </section>

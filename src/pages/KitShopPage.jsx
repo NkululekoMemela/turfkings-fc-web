@@ -6,7 +6,8 @@ import "./KitShopPage.css";
 import "../components/ShopShowcase.css";
 
 export default function KitShopPage({onBack,preferredColor="",isPracticeMode=false,club=null,canCreatePoll=false,onCreatePoll,clubId=""}) {
-  const [ordersOpen,setOrdersOpen]=useState(false);
+  const [ordersOpen,setOrdersOpen]=useState(()=>typeof window!=="undefined"&&new URLSearchParams(window.location.search).has("shopOrder"));
+  const [initialOrder,setInitialOrder]=useState(null);
   const [workspaceTab,setWorkspaceTab]=useState("orders");
   const [orderColour,setOrderColour]=useState(preferredColor);
   const [scrolled,setScrolled]=useState(false);
@@ -14,7 +15,7 @@ export default function KitShopPage({onBack,preferredColor="",isPracticeMode=fal
   return <main className="page kit-shop-page shop-preview-page">
     <div className={`landing-header-sticky ${scrolled?"is-scrolled":""}`}><header className="header"><div className="shop-page-header-row"><div className="header-title"><h1>FANM Shop</h1><div className="shop-header-context">Kit &amp; merchandise</div></div>{!ordersOpen&&<button type="button" className="secondary-btn shop-home-button" onClick={onBack} aria-label="Home" title="Home">🏠</button>}</div></header></div>
     <div className="shop-opening-corner" role="status"><strong>Club bulk orders</strong></div>
-    {!ordersOpen&&<div id="club-bib-order-panel"><ClubBibOrders preferredColor={orderColour} clubId={clubId} isPracticeMode={isPracticeMode} onOpenSetup={()=>{setWorkspaceTab("setup");setOrdersOpen(true);window.scrollTo(0,0);}} onOrderPlaced={()=>{setWorkspaceTab("orders");setOrdersOpen(true);window.scrollTo(0,0);}}/></div>}
-    {ordersOpen?<ShopOrderWorkspace initialTab={workspaceTab} onBack={()=>{setOrdersOpen(false);window.scrollTo(0,0);}} preferredColor={preferredColor} isPracticeMode={isPracticeMode}/>:<ShopShowcase canCreatePoll={canCreatePoll} onCreatePoll={onCreatePoll} club={club} preferredColor={preferredColor} onViewOrders={intent=>{if(intent?.kind==="bibs"){setOrderColour(intent.color||"");document.getElementById("club-bib-order-panel")?.scrollIntoView({behavior:"smooth",block:"start"});}else{setWorkspaceTab("orders");setOrdersOpen(true);window.scrollTo(0,0);}}}/>}
+    {!ordersOpen&&<div id="club-bib-order-panel"><ClubBibOrders preferredColor={orderColour} clubId={clubId} isPracticeMode={isPracticeMode} onOpenSetup={()=>{setWorkspaceTab("setup");setOrdersOpen(true);window.scrollTo(0,0);}} onOrderPlaced={order=>{setInitialOrder(order);setWorkspaceTab("orders");setOrdersOpen(true);window.scrollTo(0,0);}}/></div>}
+    {ordersOpen?<ShopOrderWorkspace initialOrder={initialOrder} initialTab={workspaceTab} onBack={()=>{setOrdersOpen(false);window.scrollTo(0,0);}} preferredColor={preferredColor} isPracticeMode={isPracticeMode}/>:<ShopShowcase canCreatePoll={canCreatePoll} onCreatePoll={onCreatePoll} club={club} preferredColor={preferredColor} onViewOrders={intent=>{if(intent?.kind==="bibs"){setOrderColour(intent.color||"");document.getElementById("club-bib-order-panel")?.scrollIntoView({behavior:"smooth",block:"start"});}else{setWorkspaceTab("orders");setOrdersOpen(true);window.scrollTo(0,0);}}}/>}
   </main>;
 }

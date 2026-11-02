@@ -80,8 +80,8 @@ async function announce({
   validateSession((await sessionRef.get()).data(),
     user, venueId, sessionId, now);
 
-  const clubs = await loadCopies({db, venueId});
-  if (!clubs.length) throw new Error("No active member Clubs are available.");
+  const clubs = await loadCopies({db, venueId, minimumClubs:config.minimumClubs});
+  if (!clubs.length) throw new Error("No suitable published Club squads are available.");
   if (clubs.length > 6 || clubs.some(c => c.players.length > 6)) {
     throw new Error("Practice supports six Clubs with six players each.");
   }

@@ -1,3 +1,4 @@
+import SessionSelector from "./SessionSelector.jsx";
 import {createPortal} from "react-dom";
 import {FieldRibbonContext} from "./FieldRibbonContext.jsx";
 import React, {useContext, useEffect, useRef, useState} from "react";
@@ -9,14 +10,10 @@ import {
   createPracticeVenueLeagueScope, venueLeagueRootPath,
 } from "../core/venueLeaguePaths.js";
 
-export default function FieldPracticeEntry({venue, userId, onPractice}) {
+export default function FieldPracticeEntry({venue, userId, onPractice, launchRequest = 0, onLaunchConsumed, showSessionSelector = false, onOfficial, onChooseSession}) {
   const ribbonHost = useContext(FieldRibbonContext);
-  const preferenceKey = `fanm:field:${venue.id}:user:${userId}:show-practice`;
-  const [visible, setVisible] = useState(() => {
-    try {return localStorage.getItem(preferenceKey) !== "hidden";}
-    catch {return true;}
-  });
   const [busy, setBusy] = useState(false);
+  const [pendingSession,setPendingSession] = useState(null);
   const [error, setError] = useState("");
   const mounted = useRef(true);
   const lock = useRef(false);
@@ -41,7 +38,7 @@ export default function FieldPracticeEntry({venue, userId, onPractice}) {
       if (!Number.isFinite(expiry) || expiry <= Date.now()) {
         throw new Error("This Practice session expired. Start another session.");
       }
-      if (mounted.current) onPractice(session);
+      if (mounted.current) setPendingSession(session);
     } catch (failure) {
       if (mounted.current) setError(failure.message || "Could not start Practice.");
     } finally {
@@ -50,28 +47,17 @@ export default function FieldPracticeEntry({venue, userId, onPractice}) {
     }
   }
 
+  useEffect(() => {if (launchRequest > 0) {onLaunchConsumed?.();startPractice();}}, [launchRequest]);
+
   return <>
-    {ribbonHost && createPortal(<div className="field-practice-entry">
-      {visible && <button type="button" className="secondary-btn"
-        disabled={busy} onClick={startPractice}>
-        Try practice session?
-      </button>}
-      <details className="field-practice-settings">
-        <summary aria-label="Practice settings" title="Practice settings">⚙</summary>
-        <label>
-          <input type="checkbox" checked={visible} disabled={busy}
-            onChange={event => {
-              const next = event.target.checked;
-              setVisible(next);
-              try {localStorage.setItem(preferenceKey, next ? "shown" : "hidden");}
-              catch { /* The preference still works during this visit. */ }
-            }}/>
-          Show practice session button
-        </label>
-      </details>
-    </div>, ribbonHost)}
-    {error && <p className="error-text" role="alert">{error}</p>}
-    {busy && <FieldPracticeStartupSplash practiceBootstrapping/>}
+    {showSessionSelector && <SessionSelector recordScope="Field" busy={busy || Boolean(pendingSession)} error={error} onOfficial={onOfficial} onPractice={startPractice}/>}
+    {!showSessionSelector && ribbonHost && createPortal(<div className="field-practice-entry"><button type="button" className="secondary-btn" disabled={busy} onClick={onChooseSession}>Choose Session</button></div>,ribbonHost)}
+    {!showSessionSelector && error && <p className="error-text" role="alert">{error}</p>}
+    {(busy || pendingSession) && <FieldPracticeStartupSplash practiceBootstrapping={busy} onProceed={()=>{
+      if(!pendingSession)return;
+      if(Date.parse(pendingSession.expiresAt)<=Date.now()){setPendingSession(null);setError("This Practice session expired. Start another session.");return;}
+      const ready=pendingSession;setPendingSession(null);onPractice(ready);
+    }}/>}
     <style>{`
       .field-ribbon-practice-slot:empty {display: none;}
       .field-ribbon-practice-slot {flex: 0 0 auto;}

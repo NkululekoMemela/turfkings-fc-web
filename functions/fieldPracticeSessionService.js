@@ -11,7 +11,7 @@ function canPractice(venue, staff, user) {
   return Boolean(user?.uid && !user.cameraSession && (
     venue.ownerUid === user.uid ||
     (staff?.status === "active" && (
-      staff.isAdministrator === true || staff.role === "referee"
+      staff.isAdministrator === true || ["field_manager","assistant_manager","field_assistant","other_staff","referee"].includes(staff.role)
     ))
   ));
 }
@@ -53,73 +53,10 @@ function cleanSeason(source, now) {
   };
 }
 
-// Called when a Practice invitation is announced, not on session entry.
-async function loadPracticeClubCopies({db, venueId}) {
-  if (!validId(venueId)) throw new Error("Choose a valid Field.");
-  const memberships = await db.collection("clubFieldMemberships")
-    .where("venueId", "==", venueId).get();
-
-  const eligible = memberships.docs
-    .filter(doc => doc.data().status === "active")
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .slice(0, 6);
-
-  const copies = await Promise.all(eligible.map(async membership => {
-    const clubId = membership.id;
-    const [clubSnap, playersSnap] = await Promise.all([
-      db.doc(`clubs/${clubId}`).get(),
-      db.collection(`clubs/${clubId}/players`).get(),
-    ]);
-    const club = clubSnap.data() || {};
-    if (!clubSnap.exists) return null;
-
-    const players = playersSnap.docs
-      .filter(doc =>
-        String(doc.data().status || "active").toLowerCase() === "active"
-      )
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map(doc => {
-        const p = doc.data();
-        const fullName = String(
-          p.fullName || p.name || p.displayName || p.playerName || ""
-        ).trim();
-        return {
-          sourcePlayerId: doc.id,
-          memberId: String(p.memberId || doc.id),
-          fullName,
-          shortName: String(p.shortName || fullName.split(" ")[0]),
-          mentality: p.mentality ?? null,
-          shooting: p.shooting ?? null,
-          photoData: p.photoData || p.photoUrl || p.photoURL || p.avatarUrl || "",
-          status: "active",
-        };
-      })
-      .filter(p => p.fullName)
-      .slice(0, 6);
-
-    return {
-      clubId,
-      name: club.name || clubId,
-      // Preserve the same identity inputs used by Official's buildClubIdentity.
-      logoUrl: club.logoUrl || "",
-      branding: {
-        uploadedLogoUrl: club.branding?.uploadedLogoUrl || "",
-        transparentLogoUrl: club.branding?.transparentLogoUrl || "",
-      },
-      media: {
-        logoOriginalUrl: club.media?.logoOriginalUrl || "",
-        logoTransparentUrl: club.media?.logoTransparentUrl || "",
-      },
-      logo: club.logo || club.branding?.logoUrl || "",
-      logoPath: club.logoPath || "",
-      badgeUrl: club.badgeUrl || club.badge || "",
-      image: club.image || "",
-      environment: "practice",
-      simulated: true,
-      players,
-    };
-  }));
-  return copies.filter(Boolean);
+// Prefer the Field's own Clubs, then public football data from other Clubs.
+// All resulting records are session-local copies; no private player data is read.
+async function loadPracticeClubCopies({db, venueId, minimumClubs = 3}) {
+  return require("./fieldPracticeClubPool.cjs").loadPublicPracticeClubs({db,venueId,minimumClubs});
 }
 
 async function start({db, user, venueId, now = Date.now()}) {
