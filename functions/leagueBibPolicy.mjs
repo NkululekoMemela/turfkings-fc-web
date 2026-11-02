@@ -7,14 +7,17 @@ export function leagueBibIssues(players, numbers = {}) {
   const issues = [], seen = new Map();
   for (const player of players) {
     const name = player.fullName || player.name || "Player";
+    const assigned = ["club","hired"].includes(player.matchBib?.source) && (player.matchBib.available === true || (player.matchBib.assigned===true && player.matchBib.allocationSource==="field")) &&
+      bibNumber(player.matchBib.number) === bibNumber(player.jerseyNumber) &&
+      String(player.matchBib.color || "").trim() === String(player.bibColor || "").trim();
     const registered = bibNumber(player.jerseyNumber);
     const chosen = Object.hasOwn(numbers, player.sourcePlayerId) ? bibNumber(numbers[player.sourcePlayerId]) : registered;
-    if (player.ownsNumberedBib !== true) issues.push(`${name}: own a numbered bib and record it in Profile.`);
-    if (!String(player.bibColor || "").trim()) issues.push(`${name}: record the colour of your numbered bib in Profile.`);
+    if (player.ownsNumberedBib !== true && !assigned) issues.push(`${name}: assign an available numbered club or hired bib, or record an owned bib in Profile.`);
+    if (!String(player.bibColor || "").trim()) issues.push(`${name}: confirm the bib colour.`);
     if (registered === null || chosen === null) issues.push(`${name}: a visible bib number is required for official league play.`);
     else {
       if (chosen !== registered) issues.push(`${name}: the teamsheet number must match the owned bib number in Profile.`);
-      if (seen.has(chosen)) issues.push(`#${chosen}: ${seen.get(chosen)} and ${name} cannot share a bib number in the same squad.`);
+      if (seen.has(chosen)) issues.push(`(${chosen}): ${seen.get(chosen)} and ${name} cannot share a bib number in the same squad.`);
       seen.set(chosen, name);
     }
   }
@@ -23,9 +26,4 @@ export function leagueBibIssues(players, numbers = {}) {
 export function assertLeagueBibs(players, numbers = {}) {
   const issues = leagueBibIssues(players, numbers);
   if (issues.length) throw new Error(`Official league kit is incomplete. ${issues.join(" ")}`);
-}
-export function leagueSubmissionDeadline(scheduledLocal) {
-  const kickoff = Date.parse(`${scheduledLocal}+02:00`);
-  if (!Number.isFinite(kickoff)) throw new Error("The fixture needs a valid kickoff time.");
-  return kickoff - 86400000;
 }

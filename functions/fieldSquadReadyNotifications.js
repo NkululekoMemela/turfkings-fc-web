@@ -52,10 +52,10 @@ function buildHandlers({db, region, sendBatch}) {
       }
       const result = await sendBatch({
         tokenRecords,
-        title: kind === "reminder" ? "Numbered teamsheet due tomorrow" : "League fixtures released",
+        title: kind === "reminder" ? "Check your next match" : "League fixtures released",
         body: kind === "reminder"
-          ? "Your numbered teamsheet is due 24 hours before kickoff. Check that every selected player owns and will wear a numbered bib, arrange fill-ins, then send your 5 or 6-player squad."
-          : "League fixtures are ready. Own a numbered bib before official play and record its number and colour in Profile. Captains: prepare kit now and submit numbered teamsheets 24 hours before kickoff.",
+          ? "Your season squad is carried forward. Captain: check availability and arrange cover only where needed."
+          : "Fixtures are ready. View your opponents and kickoff times. Your eligible season squad carries into every match.",
         imageUrl: "",
         data: {
           type: kind === "reminder" ? "field_squad_ready_reminder" : "field_squad_fixtures_released",
@@ -153,7 +153,7 @@ function buildHandlers({db, region, sendBatch}) {
     remindFieldSquadCaptains: onSchedule({
       schedule: "0 8-20 * * *", timeZone: "Africa/Johannesburg", region,
     }, async () => {
-      const tomorrow = new Date(Date.now() + 2 * 86400000);
+      const tomorrow = new Date(Date.now() + 86400000);
       const date = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Africa/Johannesburg", year: "numeric",
         month: "2-digit", day: "2-digit",

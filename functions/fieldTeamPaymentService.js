@@ -204,7 +204,11 @@ async function signupView({db, user, venueId, clubId = ""}) {
   const season = policy.availableSeason(context.venue);
   const approved = policy.bankReady(context.settings.bank) &&
     Boolean(context.settings.authorizedByUid);
+  const active=context.venue.league?.activeSeason;
+  const entries=context.isAdmin&&active?.id&&active.status==="active"&&active.announcedAtMs
+    ? await require("./fieldLeagueEntryReceipt.js").view({db,user,venueId,seasonId:active.id,context}) : null;
   return {
+    leagueEntryClubs:entries?.clubs||null,
     canBook,
     canManageBanking: context.canSubmitSettings,
     isManager: context.isManager,

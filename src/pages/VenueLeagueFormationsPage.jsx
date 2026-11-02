@@ -1,3 +1,5 @@
+import {resolvePlayerPortrait} from "../core/playerPortrait.mjs";
+import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {buildKitRoster,labelWithNumber} from "../core/playerKit.js";
 import {saveFieldPracticeFormation} from "../storage/fieldPracticeFormationRepository.js";
@@ -1186,6 +1188,9 @@ export function FormationsPage({
     function consumeResult(result) {
       if (cancelled) return;
       latest = result;
+      if (fieldLeagueScope?.environment !== "practice") {
+        for (const club of result.clubs || []) permissions.set(club.clubId,club.canManageFormation === true);
+      }
       setManifestClubs(result.clubs || []);
       const clubs = (result.clubs || []).map(club => ({
         ...club,
@@ -1196,7 +1201,7 @@ export function FormationsPage({
         seasonId: fieldLeagueScope.seasonId, matchDayId, clubs,
       };
       consumeSnap({docs: clubs
-        .filter(club => club.confirmed === true)
+        .filter(club => club.ready === true || club.confirmed === true)
         .flatMap(club => (club.players || []).map((player, index) => ({
           id: `${club.clubId}::${player.sourcePlayerId}`,
           data: () => ({
@@ -1223,17 +1228,7 @@ export function FormationsPage({
           season, matchDayId, scope: fieldLeagueScope,
           onData: consumeResult, onError: failed,
         });
-        // Permission lookup runs separately and never holds up the players.
-        if (fieldLeagueScope.environment !== "practice") getFieldMatchDaySquads({
-          venueId: fieldLeagueScope.venueId,
-          seasonId: fieldLeagueScope.seasonId, matchDayId,
-        }).then(result => {
-          if (cancelled) return;
-          for (const club of result.clubs || []) {
-            permissions.set(club.clubId, club.canManageFormation === true);
-          }
-          if (latest) consumeResult(latest);
-        }).catch(() => {});
+
       }
     } else {
       loadVenueLeaguePlayers({firestore: db, teams: sourceTeams})
@@ -1418,33 +1413,8 @@ export function FormationsPage({
     loadPhotos();
   }, [playerResolver]);
 
-  const getPlayerPhoto = (name) => {
-    if (!name) return null;
-
-    const canon = canonicalName(name);
-    const compact = displayCompactName(name);
-
-    const candidates = [
-      canon,
-      compact,
-      firstNameOf(canon),
-      firstNameOf(compact),
-      slugFromName(canon),
-      slugFromName(compact),
-      name,
-      toTitleCase(name),
-    ].filter(Boolean);
-
-    for (const candidate of candidates) {
-      if (playerPhotos[candidate]) return playerPhotos[candidate];
-      const key = Object.keys(playerPhotos).find(
-        (k) => normKey(k) === normKey(candidate)
-      );
-      if (key && playerPhotos[key]) return playerPhotos[key];
-    }
-
-    return null;
-  };
+  const getPlayerPhoto = (name) => resolvePlayerPortrait(name,
+    players.filter(player => !fieldLeagueScope || String(player.clubId) === String(selectedTeamId)), playerPhotos);
 
   const verifiedPlayerName = useMemo(() => {
     const role = identity?.role || authUser?.role || null;
@@ -1764,7 +1734,9 @@ export function FormationsPage({
     return normKey(name) === normKey(effectiveCaptainName);
   };
 
-  const formationKitTeams=useMemo(()=>buildKitRoster(sourceTeams,players),[sourceTeams,players]);
+  const formationKitTeams=useMemo(()=>buildKitRoster(fieldLeagueScope ? canonicalTeams.map(team=>({
+    ...team,clubId:String(team.id),players:players.filter(player=>String(player.clubId)===String(team.id)),
+  })) : canonicalTeams,players),[canonicalTeams,players,fieldLeagueScope]);
   const withCaptainTag = (name) => {
     const label = labelWithNumber(formationKitTeams,name,displayCompactName(name),selectedTeamId || "");
     return isCaptainPlayer(name) ? `${label} (C)` : label;
@@ -1813,7 +1785,7 @@ export function FormationsPage({
       club => club.clubId === targetTeam?.id
     );
     const hasCurrentFieldFormation = Boolean(
-      fieldSaved && manifest?.confirmed &&
+      fieldSaved && (manifest?.ready || manifest?.confirmed) &&
       fieldSaved.matchDayId === fieldFormationContext.current?.matchDayId &&
       fieldSaved.squadFingerprint === manifest.fingerprint &&
       ["p1", "p2", "p3", "p4", "p5"].every(slot =>
@@ -2092,7 +2064,7 @@ export function FormationsPage({
     if (fieldLeagueScope) {
       const context = fieldFormationContext.current;
       const club = context?.clubs.find(item => item.clubId === teamId);
-      if (!club?.confirmed ||
+      if (!(club?.ready || club?.confirmed) ||
           context.venueId !== fieldLeagueScope.venueId ||
           context.seasonId !== fieldLeagueScope.seasonId) return;
       if (!club.canManageFormation && !canManageFieldFormations) return;
@@ -2229,7 +2201,7 @@ export function FormationsPage({
     const context = fieldFormationContext.current;
     const club = context?.clubs.find(item =>
       item.clubId === selectedTeamCanonical?.id);
-    if (!club?.confirmed ||
+    if (!(club?.ready || club?.confirmed) ||
         !(club.canManageFormation || canManageFieldFormations)) return;
     const names = ["p1", "p2", "p3", "p4", "p5"]
       .map(slot => lineup.positions?.[slot]);
@@ -3034,6 +3006,10 @@ export function FormationsPage({
                           touchAction: "manipulation",
                         }}
                       >
+                        {name && <div className="live-lineup-number-pin"><CompactPlayerNumber number={(() => {
+                          const label=labelWithNumber(formationKitTeams,name,"",selectedTeamId || "");
+                          const match=label.match(/^\((\d+)\)/);return match?Number(match[1]):null;
+                        })()} name={name}/></div>}
                         <div
                           className={`player-shirt ${photoData ? "with-photo" : ""}`}
                           style={photoData ? { backgroundImage: `url(${photoData})` } : {}}
@@ -3044,7 +3020,7 @@ export function FormationsPage({
 
 
                       <div className="player-label">
-                        <span className="player-name">{name ? withCaptainTag(name) : "Empty"}</span>
+                        <span className="player-name">{name ? withCaptainTag(name).replace(/^\((?:\d+|-)\)\s*/, "") : "Empty"}</span>
                         <span className="position-tag">{pos.label}</span>
                       </div>
                     </div>

@@ -80,6 +80,7 @@ export default function VenueSquadsPage({
             Preparing the upcoming teamsheet…
           </p>}
 
+          {data&&<p className="muted small">Fixture colours and numbers assigned automatically. Check the bibs on the pitch.</p>}
           {data && <SharedSquadTeamsheet
             fieldTeamsheet
             matchTeams={teams}
@@ -97,9 +98,7 @@ export default function VenueSquadsPage({
                 : "",
               scheduleLabel: "Five starters · one substitute",
             }}
-            getTeamTheme={()=>({
-              accent:"#e7b974",glow:"rgba(231,185,116,.18)",
-            })}
+            getTeamTheme={team=>({accent:team.matchColour||"#e7b974",glow:"rgba(231,185,116,.18)"})}
             getChallengeTeamLogo={team=>team.logoUrl || ""}
             getPreviewTeamName={team=>team.name}
             getTeamIdentityVisual={()=>null}

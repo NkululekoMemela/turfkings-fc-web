@@ -31,9 +31,13 @@ function requestData(body){
 }
 async function handle({db,user,body}){
  signed(user);const action=body.action;
- if(["bibView","requestBib","confirmBibContribution"].includes(action))return require("./kitBulk.cjs").handle({db,user,body});
+ if(["requestBib","confirmBibContribution"].includes(action))return require("./kitBulk.cjs").handle({db,user,body});
  const configRef=db.doc("kitShopConfig/store"),accessRef=db.doc("kitShopConfig/operators");
  const access=(await accessRef.get()).data(),isOperator=operator(user,access);
+ if(action==="bibView"){
+  const [view,snapshot]=await Promise.all([require("./kitBulk.cjs").handle({db,user,body}),configRef.get()]);
+  return {...view,isOperator,settings:{...Object.fromEntries(Object.keys(DEFAULT).map(key=>[key,snapshot.data()?.[key]??DEFAULT[key]])),revision:snapshot.data()?.revision||0}};
+ }
  if(action==="catalogue"){
   const [s,products]=await Promise.all([configRef.get(),db.collection("kitShopProducts").get()]);
   return {settings:{...Object.fromEntries(Object.keys(DEFAULT).map(key=>[key,s.data()?.[key]??DEFAULT[key]])),revision:s.data()?.revision||0},isOperator,products:products.docs.map(d=>({...Object.fromEntries(["title","description","kind","color","size","priceMinor","stock","active","currency","revision"].map(key=>[key,d.data()[key]])),id:d.id})).filter(p=>isOperator||p.active)};

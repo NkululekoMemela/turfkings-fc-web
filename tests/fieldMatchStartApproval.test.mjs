@@ -106,7 +106,7 @@ beforeEach(async () => {
         status: "active", playerId: sourcePlayerId,
       });
       batch.set(db.doc(`clubs/${clubId}/players/${sourcePlayerId}`), {
-        status: "active", fullName: `Player ${i}`,jerseyNumber:i,ownsNumberedBib:true,bibColor:"Blue",
+        status: "active", fullName: `Player ${i}`,jerseyNumber:i,ownsNumberedBib:true,bibColor:clubId===clubs[0]?"Blue":"Orange",
         mentality: i % 5 + 1, shooting: 5 - i % 5,
       });
       entries[memberId] = {
@@ -195,14 +195,18 @@ test("Unaccepted invitations block play but Club entry payment does not", async 
   await approved();
 });
 
-test("Unpaid player invalidates the confirmed squad", async () => {
+test("Unpaid player is excluded and the remaining five can start", async () => {
   await squadRef("club-a").update({"entries.member-1.paymentStatus": "pending"});
-  assert.equal((await request()).status, 400);
+  const result=await approved();
+  assert.equal(result.squads["club-a"].length,5);
+  assert.equal(result.squads["club-a"].some(player=>player.memberId==="member-1"),false);
 });
 
-test("Inactive or relinked player cannot enter the starting lineup", async () => {
+test("Relinked player is excluded and the remaining five can start", async () => {
   await db.doc("clubs/club-a/members/member-1").update({playerId: "player-2"});
-  assert.equal((await request()).status, 400);
+  const result=await approved();
+  assert.equal(result.squads["club-a"].length,5);
+  assert.equal(result.squads["club-a"].some(player=>player.memberId==="member-1"),false);
 });
 
 test("Missing player receipt cannot fall back to legacy daily bookings", async () => {

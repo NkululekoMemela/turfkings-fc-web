@@ -7,6 +7,8 @@ export function resolvePlayerPortrait(raw,profiles=[],photos={}){
  if(!matches.length)matches=profiles.filter(p=>names(p).some(name=>norm(name)===target));
  if(matches.length>1)return null;
  const profile=matches[0];
+ const ownImage=profile?.photoData||profile?.photoUrl||profile?.photoURL||profile?.avatarUrl;
+ if(typeof ownImage==='string'&&ownImage)return ownImage;
  const uniqueAlias=value=>profiles.filter(p=>names(p).some(name=>norm(name)===norm(value))).length===1;
  const candidates=profile?[...ids(profile),...names(profile).filter(uniqueAlias)]:/\s/.test(target)?[raw]:[];
  for(const value of candidates){

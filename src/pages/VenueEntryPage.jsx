@@ -5717,7 +5717,8 @@ export default function VenueEntryPage({
       )}</>
         }
         fieldSeason={venueSeason}
-        fieldScheduleView={
+        fieldScheduleView={<>
+          {isVenueOwner && venueSeason?.scheduleVersion === 1 && !venueSeason?.schedulePublishedAtMs && <FieldMatchDaySchedule venueId={venue.id} season={venueSeason} teams={teams} isCreator readOnly={false}/>}
           <button type="button" className="field-fixtures-open"
             onClick={() => setVenuePage("fixtures")}>
             <span className="field-fixtures-open__icon" aria-hidden="true">▦</span>
@@ -5727,7 +5728,7 @@ export default function VenueEntryPage({
             </span>
             <span aria-hidden="true">→</span>
           </button>
-        }
+        </>}
         fieldScheduleControls={isFieldAdministrator ? (
           <>
             <FieldMatchDaySchedule venueId={venue.id} season={venueSeason}
@@ -5798,16 +5799,11 @@ export default function VenueEntryPage({
           }
           let startStep = "Prepare Field season";
           try {
-            let fixtureId = nextFixture?.id;
-            if (
-              !venueSeason?.id ||
-              (venueSeason.clubIds || []).length < 3 ||
-              !fixtureId
-            ) {
-              const prepared = await prepareVenueSeasonForMatch({
-                venueId: venue?.id,
-              });
-              fixtureId = prepared.fixtureId;
+            const fixtureId = nextFixture?.id;
+            if (!venueSeason?.schedulePublishedAtMs || !fixtureId) {
+              await fieldAlert("Publish fixtures first. Clubs will receive their schedule before match day.");
+              setVenuePage(isVenueOwner ? "settings" : "fixtures");
+              return;
             }
 
             startStep = "Start Field fixture";

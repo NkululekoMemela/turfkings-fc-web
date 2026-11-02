@@ -111,7 +111,7 @@ test("withdrawn or relinked fill-in invalidates confirmation",async()=>{
 });
 
 
-test("all environments allow early preparation and enforce the 24-hour deadline", async()=>{
+test("all environments allow early preparation and close at kickoff", async()=>{
   const {sendWindow}=require("../functions/fieldMatchDaySquad");
   const day={dateLocal:"2030-10-10"};
   const fixture={scheduledLocal:"2030-10-10T18:00"};

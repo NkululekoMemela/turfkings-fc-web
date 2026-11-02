@@ -98,7 +98,7 @@ export default function VenueSignupPage({
         </section>
       )}
       {showLeague && canManageBanking && data?.isAdmin && (
-        <FieldLeagueEntryReceipts
+        <FieldLeagueEntryReceipts initialClubs={data?.leagueEntryClubs}
           key={`${venue.id}:${leagueSeason.id}`}
           venueId={venue.id}
           seasonId={leagueSeason.id}

@@ -748,6 +748,8 @@ export default function VenueLiveMatchRuntime({
 
     return {
       ...team,
+      clubId:teamId,
+      kitNumbers:Object.fromEntries(squadPlayers.map(player=>[player.sourcePlayerId,player.jerseyNumber??null])),
       players: squadPlayers.map((player) => {
         const fullName = String(
           player?.fullName ||
@@ -805,11 +807,8 @@ export default function VenueLiveMatchRuntime({
       liveState.timeUp === true,
     running:
       liveState.running === true,
-    teams:
-      safeArray(liveState.teams)
-        .length
-        ? liveState.teams
-        : teams,
+    teams: fieldLiveTeams,
+    fieldPaidSquads: liveState.paidSquads || null,
     currentMatchNo:
       Number(
         liveState.currentMatchNo

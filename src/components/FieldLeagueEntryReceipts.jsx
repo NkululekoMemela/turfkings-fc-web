@@ -1,3 +1,4 @@
+import {fieldPageKey,readFieldPage,saveFieldPage} from "../storage/fieldPageMemory.js";
 import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import React, {useEffect, useRef, useState} from "react";
 import {fieldTeamPaymentRequest} from "../storage/fieldTeamPaymentRepository.js";
@@ -6,8 +7,9 @@ const money = cents => new Intl.NumberFormat("en-ZA", {
   style: "currency", currency: "ZAR",
 }).format(cents / 100);
 
-export default function FieldLeagueEntryReceipts({venueId, seasonId}) {
-  const [clubs, setClubs] = useState([]);
+export default function FieldLeagueEntryReceipts({venueId, seasonId, initialClubs=null}) {
+  const memoryKey=fieldPageKey("league-entry-receipts",venueId,seasonId);
+  const [clubs, setClubs] = useState(()=>readFieldPage(memoryKey)?.clubs||initialClubs||[]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
@@ -17,8 +19,14 @@ export default function FieldLeagueEntryReceipts({venueId, seasonId}) {
   useEffect(() => {
     let disposed = false;
     let sequence = 0;
+    let inFlight=false,queued=false;
+    setClubs(readFieldPage(memoryKey)?.clubs||initialClubs||[]);
+    setLoading(true);
     let controller;
     async function load() {
+      if(disposed)return;
+      if(inFlight){queued=true;return;}
+      inFlight=true;
       const current = ++sequence;
       controller?.abort();
       controller = new AbortController();
@@ -28,6 +36,7 @@ export default function FieldLeagueEntryReceipts({venueId, seasonId}) {
           venueId, "leagueEntryView", {seasonId}, signal
         );
         if (disposed || signal.aborted || current !== sequence) return;
+        saveFieldPage(memoryKey,result);
         setClubs(result.clubs);
         setError("");
       } catch (failure) {
@@ -35,21 +44,23 @@ export default function FieldLeagueEntryReceipts({venueId, seasonId}) {
           setError(failure.message || "Could not load Club receipts.");
         }
       } finally {
+        inFlight=false;
         if (!disposed && current === sequence) setLoading(false);
+        if(queued&&!disposed){queued=false;load();}
       }
     }
     refresh.current = load;
-    load();
+    if(Array.isArray(initialClubs)){setClubs(initialClubs);saveFieldPage(memoryKey,{clubs:initialClubs});setLoading(false);}else load();
     const interval = window.setInterval(() => {
-      if (!lock.current) load();
-    }, 15000);
+      if (!lock.current && !document.hidden) load();
+    }, 30000);
     return () => {
       disposed = true;
       controller?.abort();
       window.clearInterval(interval);
       refresh.current = null;
     };
-  }, [venueId, seasonId]);
+  }, [venueId, seasonId, memoryKey, initialClubs]);
 
   async function markPaid(club) {
     if (lock.current || club.paid) return;
@@ -83,7 +94,7 @@ export default function FieldLeagueEntryReceipts({venueId, seasonId}) {
         Acceptance reserves their place in preparation. Confirm entry payment
         received through your existing arrangement before they play.
       </p>
-      {loading && <p role="status">Loading accepted Clubs…</p>}
+      {loading && <p role="status">{clubs.length ? "Updating receipts…" : "Loading accepted Clubs…"}</p>}
       {!loading && !clubs.length && !error && (
         <p className="muted small">No Clubs have accepted yet.</p>
       )}
@@ -134,7 +145,7 @@ export default function FieldLeagueEntryReceipts({venueId, seasonId}) {
             ) : (
               <button type="button" className="primary-btn"
                 style={{minHeight: 44, padding: "8px 14px", fontSize: 13}}
-                disabled={Boolean(busyId)}
+                disabled={Boolean(busyId)||loading||Boolean(error)}
                 onClick={() => markPaid(club)}>
                 {busyId === club.clubId ? "Recording…" : "Mark paid"}
               </button>

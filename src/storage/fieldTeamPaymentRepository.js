@@ -30,6 +30,7 @@ export async function fieldTeamPaymentRequest(
       body: JSON.stringify({...details, venueId, action}),
     });
     const result = await response.json();
+    if(auth.currentUser?.uid!==user.uid)throw new Error("Your account changed. Reopen Field payments.");
     if (!response.ok) {
       throw new Error(result.error || "Could not update Field payments.");
     }

@@ -20,6 +20,10 @@ export function buildKitRoster(teams = [], profiles = [], snapshots = {}) {
     const inputs = [...(team.players || []),...Object.values(snapshot.positions || {}),...(snapshot.benchSnapshot || []),...(snapshot.guestPlayers || [])].filter(Boolean);
     const rows = new Map();
     for (const raw of inputs) {
+      if(typeof raw === "string"){
+        const alias=normalizeKitName(raw),matches=[...rows.values()].filter(row=>row.key===raw||row.aliases.includes(alias));
+        if(matches.length===1)continue;
+      }
       const embedded = typeof raw === "object" ? raw : null;
       const resolved = profileForKit(raw,profiles,team.clubId || "");
       const profile = embedded ? {...(resolved || {}),...embedded} : resolved;
