@@ -132,3 +132,83 @@ body #fanm-welcome-hero .fanm-hero__actions {
     width:calc(100% - 8px)!important;
   }
 }
+
+
+/* Desktop six-square landing correction */
+@media (min-width:901px) {
+  body .app-root .page .landing-actions {
+    display:grid!important;
+    grid-template-columns:repeat(6,minmax(0,1fr))!important;
+    grid-auto-flow:row!important;
+    width:100%!important;
+    max-width:none!important;
+    gap:14px!important;
+    align-items:stretch!important;
+  }
+  body .app-root .page .landing-actions::before {
+    content:none!important;
+    display:none!important;
+  }
+  body .app-root .page .landing-actions > button:not(.field-portal-tile) {
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    aspect-ratio:1/1!important;
+    grid-column:auto!important;
+    box-sizing:border-box;
+  }
+  body .app-root .page .landing-actions > .field-travel-tile-slot,
+  body .app-root .page .landing-actions > .field-portal-tile.is-wide {
+    grid-column:span 2!important;
+    grid-row:2!important;
+    width:100%!important;
+    max-width:none!important;
+    min-width:0;
+    justify-self:stretch;
+  }
+}
+
+@media (min-width:901px) {
+  body .app-root .page .landing-actions > .field-travel-tile-slot,
+  body .app-root .page .landing-actions > .field-portal-tile.is-wide {
+    grid-column:3 / span 2!important;
+    grid-row:2!important;
+    justify-self:center;
+    width:100%!important;
+  }
+}
+
+@media(min-width:901px) {
+  body .app-root .page .landing-actions {
+    display:flex!important;
+    flex-wrap:wrap!important;
+    justify-content:center!important;
+    gap:14px!important;
+  }
+  body .app-root .page .landing-actions > button:not(.field-portal-tile) {
+    flex:0 0 calc((100% - 70px)/6)!important;
+    width:calc((100% - 70px)/6)!important;
+    min-width:0!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    aspect-ratio:1/1!important;
+    order:0!important;
+  }
+  body .app-root .page .landing-actions:has(.field-portal-tile)::before {
+    content:""!important;
+    display:block!important;
+    flex:0 0 100%!important;
+    height:0!important;
+    order:1!important;
+  }
+  body .app-root .page .landing-actions > .field-travel-tile-slot,
+  body .app-root .page .landing-actions > .field-portal-tile.is-wide {
+    flex:0 1 360px!important;
+    width:min(360px,100%)!important;
+    order:2!important;
+  }
+}
