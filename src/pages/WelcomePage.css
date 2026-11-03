@@ -1,0 +1,224 @@
+.fanm-welcome, .fanm-venues {
+  min-height: 100dvh;
+  box-sizing: border-box;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #123044;
+  background: radial-gradient(circle at 88% 5%, #c4f0d4 0, transparent 32%),
+              linear-gradient(155deg, #e9f4ff, #f7fbff 55%, #e9f7eb);
+  padding: max(20px, env(safe-area-inset-top)) 16px 28px;
+}
+.fanm-welcome *,.fanm-venues * { box-sizing: border-box; }
+.fanm-welcome__shell,.fanm-venues__shell { width: min(100%, 430px); margin: auto; }
+.fanm-welcome__top { display: flex; align-items: center; height: 48px; }
+.fanm-welcome__brand { display: flex; align-items: center; gap: 10px; font-weight: 850; }
+.fanm-welcome__mark { width: 36px; height: 36px; border-radius: 50%; display: grid;
+  place-items: center; background: #fff; color: #167553; box-shadow: 0 3px 14px #2c856535; }
+.fanm-welcome__pitch { height: 230px; display: grid; place-items: center; position: relative;
+  margin: 10px -16px 0; background: radial-gradient(ellipse, #b0e4ca, transparent 72%); }
+.fanm-welcome__field { position: relative; width: 210px; height: 150px; border: 2px solid #ecfff2;
+  border-radius: 10px; transform: perspective(450px) rotateX(30deg) rotateZ(-14deg);
+  background: repeating-linear-gradient(90deg, #3f9b73 0 35px, #48aa7b 35px 70px);
+  box-shadow: 0 22px 30px #26765450, 0 0 0 9px #61bd8e30; }
+.fanm-welcome__field:before { content: ""; position: absolute; left: 50%; height: 100%;
+  border-left: 2px solid #ecfff2; }
+.fanm-welcome__centre { position: absolute; width: 58px; height: 58px; border: 2px solid #ecfff2;
+  border-radius: 50%; left: calc(50% - 29px); top: calc(50% - 29px); }
+.fanm-welcome__goal { position: absolute; top: 32px; height: 82px; width: 33px; border: 2px solid #ecfff2; }
+.fanm-welcome__goal--left { left: -2px; border-left: 0; }
+.fanm-welcome__goal--right { right: -2px; border-right: 0; }
+.fanm-welcome__ball { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px;
+  transform: translate(-50%, -50%); border-radius: 50%; background: #fff; box-shadow: 0 3px 9px #15493170; }
+.fanm-welcome__tag { position: absolute; padding: 7px 11px; border-radius: 30px;
+  background: #fff; color: #176747; box-shadow: 0 8px 20px #23684e32; font-size: 11px; font-weight: 850; }
+.fanm-welcome__tag--clubs { left: 13%; top: 45px; }
+.fanm-welcome__tag--leagues { right: 10%; bottom: 32px; }
+.fanm-welcome__eyebrow { color: #13865c; letter-spacing: .13em; font-size: 10px; font-weight: 850; }
+.fanm-welcome__copy h1 { font-size: clamp(34px, 9vw, 43px); line-height: 1.05; letter-spacing: -.04em;
+  margin: 9px 0; }
+.fanm-welcome__copy p { color: #536b78; font-size: 14px; line-height: 1.45; margin: 0 0 19px; }
+.fanm-welcome__choices { display: grid; gap: 10px; }
+.fanm-welcome__choices button,.fanm-welcome__join { cursor: pointer; font: inherit; width: 100%;
+  text-align: left; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; border-radius: 16px; padding: 14px 16px; min-height: 72px; }
+.fanm-welcome__choices button { border: 1px solid #d4e2e6; background: #fff; color: #123044;
+  box-shadow: 0 8px 24px #41678414; }
+.fanm-welcome__choices strong,.fanm-welcome__join strong { display: block; font-size: 17px; }
+.fanm-welcome__choices small,.fanm-welcome__join small { display: block; margin-top: 3px;
+  font-size: 12px; color: #60757d; }
+.fanm-welcome__join { margin-top: 12px; border: 0; background: #bcecc7; color: #153c2a;
+  box-shadow: 0 8px 23px #389b6432; }
+.fanm-welcome__join small { color: #366349; }
+.fanm-welcome__shell footer { text-align: center; color: #758b93; font-size: 11px; padding-top: 22px; }
+.fanm-venues__shell header { display: flex; justify-content: space-between; align-items: center;
+  background: #fff; border-radius: 18px; padding: 14px; }
+.fanm-venues__shell button { font: inherit; cursor: pointer; }
+.fanm-venues__shell header button { border: 0; background: transparent; color: #176747; }
+.fanm-venues__intro { margin: 38px 0 22px; }
+.fanm-venues__intro span { font-size: 11px; letter-spacing: .12em; color: #147c56; font-weight: 850; }
+.fanm-venues__intro h1 { font-size: 32px; margin: 8px 0; }
+.fanm-venues__intro p { color: #60757d; }
+.fanm-venues__filters { display: flex; gap: 18px; padding: 13px; background: #fff;
+  border-radius: 16px; font-size: 13px; }
+.fanm-venues__carousel { display: flex; gap: 12px; overflow-x: auto; margin-top: 16px; }
+.fanm-venues__carousel > * { flex: 0 0 170px; min-height: 190px; border-radius: 20px; padding: 16px; }
+.fanm-venues__carousel button { border: 1px solid #8accb0; background: #e8fbef;
+  display: flex; flex-direction: column; justify-content: center; color: #1b543a; }
+.fanm-venues__plus { font-size: 36px; }
+.fanm-venues__carousel strong { margin: 12px 0 5px; }
+.fanm-venues__carousel small { font-size: 12px; }
+.fanm-venues__empty { background: #fff; color: #60757d; display: grid; place-items: center; font-size: 13px; }
+.fanm-venues__overlay { position: fixed; inset: 0; background: #102c3a80; display: grid;
+  place-items: center; padding: 20px; z-index: 100; }
+.fanm-venues__overlay section { position: relative; width: min(100%, 390px); background: #fff;
+  padding: 25px; border-radius: 21px; }
+.fanm-venues__overlay p { line-height: 1.5; }
+.fanm-venues__close { position: absolute; top: 9px; right: 12px; border: 0; background: transparent; font-size: 25px !important; }
+.fanm-venues__overlay section > button:last-child { border: 0; background: #bcecc7;
+  padding: 12px 16px; border-radius: 10px; }
+
+/* Full-screen FANM welcome splash */
+.fanm-welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  padding: max(22px, env(safe-area-inset-top)) 24px
+           max(22px, env(safe-area-inset-bottom));
+  color: #f8fff9;
+  background:
+    radial-gradient(ellipse at 82% 75%, rgba(25, 202, 123, .72), transparent 38%),
+    radial-gradient(ellipse at 5% 5%, rgba(50, 106, 240, .88), transparent 43%),
+    radial-gradient(ellipse at 86% 4%, rgba(151, 99, 225, .55), transparent 40%),
+    linear-gradient(135deg, #102456 0%, #17285d 42%, #143e51 76%, #09644b 100%);
+}
+.fanm-welcome__shell {
+  width: min(100%, 1080px);
+  min-height: calc(100dvh - 44px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.fanm-welcome__top { min-height: 54px; }
+.fanm-welcome__brand { color: #fff; font-size: 16px; }
+.fanm-welcome__mark {
+  width: 41px;
+  height: 41px;
+  background: #e7fff0;
+  color: #145b45;
+  box-shadow: 0 0 0 5px rgba(255,255,255,.12),
+              0 12px 36px rgba(0,0,0,.2);
+}
+.fanm-welcome__pitch {
+  height: 300px;
+  margin: 8px 0 4px;
+  background: radial-gradient(ellipse, rgba(102,225,169,.45), transparent 67%);
+}
+.fanm-welcome__field {
+  width: 270px;
+  height: 185px;
+  background: repeating-linear-gradient(
+    90deg, #278767 0 45px, #319c71 45px 90px
+  );
+  box-shadow: 0 32px 40px rgba(2,23,42,.55),
+              0 0 0 12px rgba(156,247,194,.15),
+              0 0 95px rgba(98,238,174,.5);
+}
+.fanm-welcome__centre {
+  width: 76px;
+  height: 76px;
+  left: calc(50% - 38px);
+  top: calc(50% - 38px);
+}
+.fanm-welcome__goal { top: 43px; height: 98px; width: 45px; }
+.fanm-welcome__ball { width: 24px; height: 24px; }
+.fanm-welcome__tag {
+  background: rgba(12,40,52,.92);
+  color: #d2ffe3;
+  border: 1px solid rgba(189,255,218,.55);
+  box-shadow: 0 12px 28px rgba(0,14,36,.34);
+  font-size: 12px;
+}
+.fanm-welcome__tag--clubs { left: 13%; top: 45px; }
+.fanm-welcome__tag--leagues { right: 12%; bottom: 42px; }
+.fanm-welcome__eyebrow { color: #b9ffca; font-size: 11px; }
+.fanm-welcome__copy h1 {
+  color: #fff;
+  font-size: clamp(40px, 6vw, 72px);
+  line-height: 1.02;
+  text-shadow: 0 8px 34px rgba(0,17,50,.23);
+}
+.fanm-welcome__copy p {
+  color: #e2ebf7;
+  font-size: 16px;
+  max-width: 440px;
+}
+.fanm-welcome__choices button {
+  background: rgba(11,29,62,.72);
+  border: 1px solid rgba(216,241,255,.28);
+  color: #fff;
+  box-shadow: 0 12px 38px rgba(4,17,45,.22),
+              inset 0 1px 0 rgba(255,255,255,.16);
+  backdrop-filter: blur(18px);
+}
+.fanm-welcome__choices button:hover,
+.fanm-welcome__choices button:focus-visible {
+  background: rgba(26,57,95,.92);
+  border-color: rgba(196,255,219,.7);
+}
+.fanm-welcome__choices strong,
+.fanm-welcome__join strong { font-size: 19px; }
+.fanm-welcome__choices small { color: #cfdef0; }
+.fanm-welcome__join {
+  background: linear-gradient(120deg, #d6f8c5, #97eabe);
+  color: #16392d;
+  box-shadow: 0 16px 38px rgba(8,37,38,.3),
+              inset 0 1px 0 rgba(255,255,255,.7);
+}
+.fanm-welcome__join:hover,
+.fanm-welcome__join:focus-visible {
+  background: linear-gradient(120deg, #ebffda, #b5f7d1);
+}
+.fanm-welcome__join small { color: #32674d; }
+.fanm-welcome__shell footer { color: #d0e4ef; }
+
+@media (min-width: 760px) {
+  .fanm-welcome__shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
+    grid-template-areas:
+      "top top"
+      "art copy"
+      "art choices"
+      "art join"
+      "foot foot";
+    column-gap: clamp(30px, 7vw, 110px);
+    align-content: center;
+  }
+  .fanm-welcome__top { grid-area: top; margin-bottom: 35px; }
+  .fanm-welcome__pitch { grid-area: art; height: 470px; }
+  .fanm-welcome__field { width: 380px; height: 260px; }
+  .fanm-welcome__goal { top: 62px; height: 132px; width: 59px; }
+  .fanm-welcome__copy { grid-area: copy; align-self: end; }
+  .fanm-welcome__choices { grid-area: choices; }
+  .fanm-welcome__join { grid-area: join; }
+  .fanm-welcome__shell footer { grid-area: foot; text-align: left; }
+}
+@media (max-width: 759px) {
+  .fanm-welcome { padding-inline: 20px; }
+  .fanm-welcome__shell { width: min(100%, 470px); }
+  .fanm-welcome__pitch { height: 225px; margin: 0 -14px; }
+  .fanm-welcome__field { width: 225px; height: 157px; }
+  .fanm-welcome__goal { top: 35px; height: 84px; width: 36px; }
+  .fanm-welcome__copy h1 { font-size: clamp(36px, 10vw, 48px); }
+  .fanm-welcome__copy p { font-size: 14px; }
+  .fanm-welcome__choices button { min-height: 66px; }
+}
+@media (max-height: 690px) and (max-width: 759px) {
+  .fanm-welcome__pitch { height: 175px; }
+  .fanm-welcome__field { width: 190px; height: 135px; }
+  .fanm-welcome__goal { top: 29px; height: 74px; }
+  .fanm-welcome__shell footer { padding-top: 10px; }
+}

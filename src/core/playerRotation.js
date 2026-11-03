@@ -831,6 +831,9 @@ export function buildNextAppearanceParticipationRotation({
 export function buildNextAppearanceGoalkeeperConstraint({
   participationRotation = null,
   formation = null,
+  appearanceHistory = [],
+  goalkeeperRestrictedPlayerKeys = [],
+  allowGoalkeeperOnlyRotation = false,
 } = {}) {
   const positions = Array.isArray(formation?.positions)
     ? formation.positions
@@ -844,88 +847,282 @@ export function buildNextAppearanceGoalkeeperConstraint({
           .toUpperCase() === "GK"
     ) || null;
 
-  if (!goalkeeperPosition) {
-    return {
-      resolved: false,
-      reason: "goalkeeper_slot_not_found",
-      goalkeeperPositionId: null,
-      goalkeeperPlayer: null,
-      positions: {},
-      outfieldPlayers: [],
-    };
-  }
-
   const startingPlayers = Array.isArray(
     participationRotation?.nextStartingPlayers
   )
     ? participationRotation.nextStartingPlayers
+        .map(safeName)
+        .filter(Boolean)
     : [];
+
+  const unresolved = (
+    reason,
+    extra = {}
+  ) => ({
+    resolved: false,
+    reason,
+    goalkeeperPositionId:
+      goalkeeperPosition?.id || null,
+    goalkeeperPlayer: null,
+    positions: {},
+    outfieldPlayers: startingPlayers.slice(),
+    ...extra,
+  });
+
+  if (!goalkeeperPosition) {
+    return unresolved(
+      "goalkeeper_slot_not_found"
+    );
+  }
+
+  const restrictedKeys = new Set(
+    (
+      Array.isArray(
+        goalkeeperRestrictedPlayerKeys
+      )
+        ? goalkeeperRestrictedPlayerKeys
+        : []
+    )
+      .map((value) =>
+        playerKey(value)
+      )
+      .filter(Boolean)
+  );
+
+  const isGoalkeeperEligible = (name) => {
+    const key = playerKey(name);
+
+    return Boolean(
+      key &&
+      !restrictedKeys.has(key)
+    );
+  };
 
   const incomingStarter =
     safeName(
       participationRotation?.incomingStarter
     ) || null;
 
-  /*
-   * No participation rotation means there is no special
-   * "incoming substitute must start at GK" constraint.
-   *
-   * We intentionally do NOT invent a goalkeeper here.
-   */
-  if (
-    !participationRotation?.rotationRequired ||
-    !incomingStarter
-  ) {
-    return {
-      resolved: false,
-      reason: "no_incoming_rotation_player",
-      goalkeeperPositionId: goalkeeperPosition.id,
-      goalkeeperPlayer: null,
-      positions: {},
-      outfieldPlayers: startingPlayers.slice(),
-    };
-  }
-
-  const incomingKey = playerKey(incomingStarter);
-
   const incomingIsStarter =
+    incomingStarter &&
     startingPlayers.some(
       (name) =>
-        playerKey(name) === incomingKey
+        playerKey(name) ===
+        playerKey(incomingStarter)
     );
 
-  if (!incomingIsStarter) {
-    return {
-      resolved: false,
-      reason: "incoming_player_not_in_starting_group",
-      goalkeeperPositionId: goalkeeperPosition.id,
-      goalkeeperPlayer: null,
-      positions: {},
-      outfieldPlayers: startingPlayers.slice(),
-    };
+  const hasParticipationRotation =
+    Boolean(
+      participationRotation?.rotationRequired &&
+      incomingStarter &&
+      incomingIsStarter
+    );
+
+  if (
+    !hasParticipationRotation &&
+    !allowGoalkeeperOnlyRotation
+  ) {
+    return unresolved(
+      incomingStarter && !incomingIsStarter
+        ? "incoming_player_not_in_starting_group"
+        : "no_incoming_rotation_player"
+    );
   }
 
-  const outfieldPlayers =
+  const eligibleStarters =
     startingPlayers.filter(
-      (name) =>
-        playerKey(name) !== incomingKey
+      isGoalkeeperEligible
     );
+
+  if (!eligibleStarters.length) {
+    return unresolved(
+      "no_goalkeeper_eligible_starter",
+      {
+        requiresManualGoalkeeperDecision: true,
+      }
+    );
+  }
+
+  /*
+   * Count confirmed goalkeeper duties from the team's
+   * previous appearances. Restricted players keep no
+   * goalkeeper debt: they are simply absent from the
+   * candidate list until the restriction is cleared.
+   */
+  const goalkeeperDutyByKey = new Map();
+
+  const safeHistory =
+    Array.isArray(appearanceHistory)
+      ? appearanceHistory
+      : [];
+
+  safeHistory.forEach((entry, historyIndex) => {
+    const snapshot =
+      entry?.snapshot || entry;
+
+    const goalkeeperName = safeName(
+      snapshot?.positions?.[
+        goalkeeperPosition.id
+      ]
+    );
+
+    const key =
+      playerKey(goalkeeperName);
+
+    if (!key) return;
+
+    const existing =
+      goalkeeperDutyByKey.get(key) || {
+        count: 0,
+        lastDutyIndex: -1,
+      };
+
+    goalkeeperDutyByKey.set(key, {
+      count: existing.count + 1,
+      lastDutyIndex: historyIndex,
+    });
+  });
+
+  const currentGoalkeeper = safeName(
+    safeHistory?.[0]?.snapshot
+      ?.positions?.[goalkeeperPosition.id] ||
+    safeHistory?.[0]
+      ?.positions?.[goalkeeperPosition.id]
+  );
+
+  /*
+   * The normal league rule remains authoritative:
+   * an unrestricted incoming substitute starts at GK.
+   *
+   * Only when that player is restricted, or when there
+   * is no bench rotation, do we use goalkeeper fairness.
+   */
+  let goalkeeperPlayer = null;
+  let reason = "";
+
+  if (
+    hasParticipationRotation &&
+    isGoalkeeperEligible(incomingStarter)
+  ) {
+    goalkeeperPlayer = incomingStarter;
+    reason =
+      "incoming_rotation_player_starts_as_goalkeeper";
+  } else {
+    let candidates =
+      eligibleStarters.slice();
+
+    /*
+     * During a no-bench rotation, give the current GK a
+     * break when at least one alternative is available.
+     */
+    if (
+      !hasParticipationRotation &&
+      currentGoalkeeper &&
+      candidates.length > 1
+    ) {
+      const withoutCurrent =
+        candidates.filter(
+          (name) =>
+            playerKey(name) !==
+            playerKey(currentGoalkeeper)
+        );
+
+      if (withoutCurrent.length) {
+        candidates = withoutCurrent;
+      }
+    }
+
+    goalkeeperPlayer =
+      candidates
+        .map((name, originalIndex) => {
+          const duty =
+            goalkeeperDutyByKey.get(
+              playerKey(name)
+            ) || {
+              count: 0,
+              lastDutyIndex: -1,
+            };
+
+          return {
+            name,
+            originalIndex,
+            dutyCount: duty.count,
+            lastDutyIndex:
+              duty.lastDutyIndex,
+          };
+        })
+        .sort((left, right) => {
+          if (
+            left.dutyCount !==
+            right.dutyCount
+          ) {
+            return (
+              left.dutyCount -
+              right.dutyCount
+            );
+          }
+
+          if (
+            left.lastDutyIndex !==
+            right.lastDutyIndex
+          ) {
+            return (
+              left.lastDutyIndex -
+              right.lastDutyIndex
+            );
+          }
+
+          return (
+            left.originalIndex -
+            right.originalIndex
+          );
+        })[0]?.name || null;
+
+    reason = hasParticipationRotation
+      ? "restricted_incoming_player_starts_outfield"
+      : "goalkeeper_only_fairness_rotation";
+  }
+
+  if (!goalkeeperPlayer) {
+    return unresolved(
+      "goalkeeper_player_not_resolved",
+      {
+        requiresManualGoalkeeperDecision: true,
+      }
+    );
+  }
+
+  const goalkeeperKey =
+    playerKey(goalkeeperPlayer);
 
   return {
     resolved: true,
-    reason: "incoming_rotation_player_starts_as_goalkeeper",
-    goalkeeperPositionId: goalkeeperPosition.id,
-    goalkeeperPlayer: incomingStarter,
+    reason,
+    goalkeeperPositionId:
+      goalkeeperPosition.id,
+    goalkeeperPlayer,
+    incomingStarter:
+      incomingStarter || null,
+    incomingGoalkeeperRestricted:
+      Boolean(
+        hasParticipationRotation &&
+        !isGoalkeeperEligible(
+          incomingStarter
+        )
+      ),
+    requiresManualGoalkeeperDecision: false,
 
-    /*
-     * Only GK is assigned at Stage 5C.
-     * Stage 5D owns every outfield position.
-     */
     positions: {
-      [goalkeeperPosition.id]: incomingStarter,
+      [goalkeeperPosition.id]:
+        goalkeeperPlayer,
     },
 
-    outfieldPlayers,
+    outfieldPlayers:
+      startingPlayers.filter(
+        (name) =>
+          playerKey(name) !==
+          goalkeeperKey
+      ),
   };
 }
 

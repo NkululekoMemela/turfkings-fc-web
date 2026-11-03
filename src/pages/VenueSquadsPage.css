@@ -1,0 +1,54 @@
+
+/* Compact Field teamsheet logos */
+.field-matchday-squads-page {
+  padding-bottom: calc(90px + env(safe-area-inset-bottom));
+}
+.field-matchday-squads-page .teamsheet-card-team-logo {
+  width: 32px !important;
+  height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  min-width: 0 !important;
+  flex: 0 0 32px;
+  object-fit: contain;
+}
+.field-matchday-squads-page .teamsheet-card-club > img {
+  width: 42px !important;
+  height: 42px !important;
+  max-width: 42px !important;
+  max-height: 42px !important;
+  object-fit: contain;
+  flex: 0 0 42px;
+}
+.field-matchday-squads-page .teamsheet-card-team-title {
+  min-width: 0;
+  align-items: center;
+}
+.field-matchday-squads-page .teamsheet-card-team-name-with-identity {
+  min-width: 0;
+}
+.field-matchday-squads-page .teamsheet-card-team-name-stack {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+
+/* Field teamsheet fills the same content width as the other Field pages. */
+.app-root--field .field-ribbon-frame .field-matchday-squads-page {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  box-sizing: border-box;
+}
+.app-root--field .field-ribbon-frame .field-matchday-squads-page .teamsheet-card {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  box-sizing: border-box;
+}

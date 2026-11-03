@@ -34,18 +34,23 @@ test("tester entitlement has authoritative expiry", () => {
   );
 });
 
-test("ordinary users remain subject to weekly exhaustion", () => {
-  assert.match(
-    service,
-    /!isPlatformTester\s*&&\s*availableBeforeStart\s*<=\s*0/
+test("ordinary users receive unlimited Practice starts", () => {
+  const start = service.slice(
+    service.indexOf("async function startPracticeSession"),
+    service.indexOf("async function transferPracticeCredit")
   );
+  assert.match(start, /unlimitedPractice:\s*true/);
+  assert.match(start, /weeklyLimitApplied:\s*false/);
+  assert.doesNotMatch(start, /practice\/no-credits/);
 });
 
-test("tester does not consume ordinary weekly credits", () => {
-  assert.match(
-    service,
-    /isPlatformTester\s*\?\s*consumed\s*:\s*consumed\s*\+\s*1/
+test("Practice starts consume no weekly credits", () => {
+  const start = service.slice(
+    service.indexOf("async function startPracticeSession"),
+    service.indexOf("async function transferPracticeCredit")
   );
+  assert.match(start, /creditConsumed:\s*false/);
+  assert.doesNotMatch(start, /creditsConsumed:\s*nextConsumed/);
 });
 
 test("cross-club tester access requires explicit permission", () => {
@@ -67,9 +72,15 @@ test("tester sessions retain the normal authoritative production duration", () =
   assert.match(service, /testerOverrideUsed:\s*isPlatformTester/);
 });
 
-test("tester activity is separately auditable", () => {
-  assert.match(service, /testerStartsThisWeek/);
-  assert.match(service, /testerOverrideLastUsedAt/);
+test("tester session records retain their audit identity", () => {
+  const start = service.slice(
+    service.indexOf("async function startPracticeSession"),
+    service.indexOf("async function transferPracticeCredit")
+  );
+  assert.match(start, /testerOverrideUsed:\s*isPlatformTester/);
+  assert.match(start, /testerOverrideExpiresAt/);
+  assert.match(start, /userId:\s*uid/);
+  assert.match(start, /startedAt/);
 });
 
 test("endpoint exposes informational tester state", () => {

@@ -1,0 +1,34 @@
+.fanm-premium-notice{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(520px,calc(100vw - 24px));box-sizing:border-box;z-index:15000;display:flex;align-items:center;gap:12px;background:linear-gradient(120deg,#153c3bf5,#101d32fa);border:1px solid #8cb7aa66;border-radius:22px;padding:14px;color:#f4f9f5;box-shadow:0 18px 55px #0007;backdrop-filter:blur(16px);font-family:inherit}
+.fanm-notice-brand{display:grid;place-items:center;flex:none;width:42px;height:42px;font-size:.6rem;letter-spacing:.03em;font-weight:950;border-radius:13px;background:linear-gradient(140deg,#b8f3d4,#54c9ce);color:#08392d}
+.fanm-notice-copy{min-width:0;flex:1}.fanm-notice-copy strong{font-size:.82rem}.fanm-notice-copy p{font-size:.74rem;line-height:1.45;margin:5px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#c7d8d0}
+.fanm-notice-picture{width:48px;height:48px;object-fit:contain;background:#f4f7f0;border:1px solid #a1ccb144;border-radius:14px;flex:none}.fanm-notice-fallback{display:grid;place-items:center;background:#24514a;color:#d1f1dc;font-size:.8rem;font-weight:850}
+.fanm-premium-notice button{border:0;background:transparent;color:#c3d3cc;cursor:pointer;font-size:1.2rem;padding:6px;min-width:30px;min-height:36px}
+.fanm-accepted-notice{display:block;top:calc(85px + env(safe-area-inset-top,0px));max-height:65vh;overflow-y:auto}.fanm-accepted-heading{display:flex;align-items:center;gap:12px}.fanm-accepted-heading>div{flex:1}.fanm-accepted-heading strong{font-size:.9rem}.fanm-accepted-heading small,.fanm-accepted-notice li small{display:block;font-size:.68rem;color:#abc4b8;margin-top:4px}.fanm-accepted-notice ul{list-style:none;padding:0;margin:12px 0 0}.fanm-accepted-notice li{display:flex;align-items:center;gap:14px;padding:11px 0;border-top:1px solid #a2c3b22a}.fanm-accepted-notice li>div{flex:1}.fanm-accepted-notice li strong{font-size:.84rem}
+
+.fanm-notice-picture.is-portrait{border-radius:50%;object-fit:cover}
+
+.fanm-premium-notice .fanm-notice-open{display:flex;align-items:center;gap:11px;flex:1;min-width:0;text-align:left;padding:0;color:inherit;font:inherit}
+.fanm-notice-source{position:relative;display:block;flex:none;width:49px;height:49px}
+.fanm-notice-source .fanm-notice-picture{width:46px;height:46px}
+.fanm-notice-group{position:absolute;right:-4px;bottom:-3px;width:23px;height:23px;border-radius:8px;object-fit:contain;background:#fff;border:2px solid #173333}
+.fanm-notice-brand-logo{width:34px;height:34px;object-fit:contain;flex:none;border-radius:9px}
+.fanm-notice-copy small{display:block;font-size:10px;line-height:1.3;letter-spacing:.03em;color:#9ed5bf;margin-bottom:3px}
+.fanm-notice-copy strong{display:block;line-height:1.3}
+.fanm-notice-body{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#d9e5df;font-size:12px;line-height:1.4;margin-top:4px}
+.fanm-notice-content{width:44px;height:48px;object-fit:cover;border-radius:9px;flex:none}
+.fanm-notice-open:focus-visible{outline:2px solid #9eeac5;outline-offset:5px;border-radius:12px}
+
+/* A quiet, compact arrival banner. No modal backdrop or blocking interaction. */
+.fanm-premium-notice:not(.fanm-accepted-notice){top:calc(8px + env(safe-area-inset-top,0px));width:min(420px,calc(100vw - 20px));gap:5px;border-radius:15px;padding:9px 10px;background:#162827f5;border-color:#9bb7ad33;box-shadow:0 7px 22px #0004;backdrop-filter:blur(8px)}
+.fanm-premium-notice .fanm-notice-open{gap:9px}
+.fanm-notice-source{width:37px;height:37px}
+.fanm-notice-source .fanm-notice-picture{width:34px;height:34px;border-radius:10px}
+.fanm-notice-source .fanm-notice-picture.is-portrait{border-radius:50%}
+.fanm-notice-group{width:18px;height:18px;border-radius:6px;right:-2px;bottom:-1px}
+.fanm-notice-brand-logo{width:24px;height:24px;border-radius:6px}
+.fanm-notice-copy small{font-size:9px;margin-bottom:2px;color:#a8c4b8}
+.fanm-notice-copy strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fanm-notice-body{font-size:11px;line-height:1.35;-webkit-line-clamp:1;margin-top:3px}
+.fanm-notice-content{width:34px;height:37px;border-radius:7px}
+.fanm-premium-notice:not(.fanm-accepted-notice)>button{font-size:18px;padding:3px;min-width:24px;min-height:30px}
+@media(prefers-reduced-motion:no-preference){.fanm-premium-notice:not(.fanm-accepted-notice){animation:fanm-notice-arrive .16s ease-out}@keyframes fanm-notice-arrive{from{opacity:0;translate:0 -5px}to{opacity:1;translate:0 0}}}

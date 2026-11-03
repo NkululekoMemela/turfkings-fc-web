@@ -23,6 +23,11 @@ export function normaliseName(value) {
       if (m.fullName) {
         byFull.set(normaliseName(m.fullName), m);
       }
+      for (const alias of (m.profileNameAliases || [])) {
+        const key = normaliseName(alias);
+        if (!key) continue;
+        byFull.set(key, byFull.has(key) && byFull.get(key)?.id !== m.id ? null : m);
+      }
       if (m.email) {
         byEmail.set(normaliseName(m.email), m);
       }

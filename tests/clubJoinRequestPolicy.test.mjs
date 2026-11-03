@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {isClubJoinAdministrator,resolveClubJoinIdentity} from '../src/core/clubJoinRequestPolicy.mjs';
+const club={ownerUid:'owner',adminUids:['admin'],adminEmails:['admin@example.com']};
+const player={uid:'player',email:'player@example.com',emailVerified:true};
+assert.throws(()=>resolveClubJoinIdentity(club,null,player.email));
+assert.throws(()=>resolveClubJoinIdentity(club,{...player,emailVerified:false},player.email));
+assert.throws(()=>resolveClubJoinIdentity(club,player,'someone@example.com'));
+assert.deepEqual(resolveClubJoinIdentity(club,player,' PLAYER@example.com '),{email:player.email,uid:'player',delegated:false});
+assert.deepEqual(resolveClubJoinIdentity(club,{uid:'owner',email:'owner@example.com',emailVerified:true},player.email),{email:player.email,uid:'',delegated:true});
+assert(isClubJoinAdministrator(club,{uid:'other',email:'admin@example.com',emailVerified:true}));
+assert(!isClubJoinAdministrator(club,{uid:'other',email:'admin@example.com',emailVerified:false}));
+assert(!isClubJoinAdministrator({captainEmail:player.email},player));
+assert.deepEqual(resolveClubJoinIdentity(club,{uid:'admin',email:'admin@example.com',emailVerified:true},'admin@example.com'),{email:'admin@example.com',uid:'admin',delegated:false});
+console.log('PASS join identity: authentication, verified email, matching applicant, real club admin delegation and correct UID binding.');

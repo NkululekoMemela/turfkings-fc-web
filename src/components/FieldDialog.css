@@ -1,0 +1,4 @@
+/* Keep existing Field workflows and dimensions; unify dialog surfaces. */
+body:has(.app-root--field) :is(.modal,.tkh-modal)[role=dialog]{background:linear-gradient(145deg,#173f50,#0d2232 75%);color:#edf8fb;border:1px solid #68bdd15c;border-radius:24px;box-shadow:0 24px 90px #0007}
+body:has(.app-root--field) :is(.modal,.tkh-modal)[role=dialog] :is(h2,h3){letter-spacing:-.025em;color:#edf8fb}
+body:has(.app-root--field) :is(.modal,.tkh-modal)[role=dialog] button{border-radius:11px;min-height:42px}

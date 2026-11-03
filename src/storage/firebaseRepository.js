@@ -1,6 +1,7 @@
+import {bindClubState} from "../core/clubStateBoundary.mjs";
 // src/storage/firebaseRepository.js
 
-import { db } from "../firebaseConfig.js";
+import { db, auth } from "../firebaseConfig.js";
 import {
   doc,
   getDoc,
@@ -19,6 +20,20 @@ import {
   getPeerRatingsCollection,
   getScopedStateDoc,
 } from "../core/clubFirestorePaths.js";
+
+import {memberWorkspaceRequest} from "./memberWorkspaceGateway.js";
+const operatorReady = new Map();
+async function prepareClubStateOperator(clubId) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw Error("Sign in before changing your Club setup.");
+  const key = `${uid}:${clubId}`;
+  if (!operatorReady.has(key)) {
+    const ready = memberWorkspaceRequest("clubTeamChat", {action:"prepareOperator",clubId})
+      .catch(error => { operatorReady.delete(key); throw error; });
+    operatorReady.set(key, ready);
+  }
+  await operatorReady.get(key);
+}
 
 const DEFAULT_CLUB_ID = "turf-kings";
 
@@ -187,6 +202,8 @@ export async function saveStateToFirebaseV2(
   dataScope = null
 ) {
   try {
+    if(dataScope?.clubId&&dataScope.clubId!==clubId)throw Error("Club and data scope do not match.");
+    state=bindClubState(state,clubId);
     const ref = resolveV2StateDoc(clubId, dataScope);
     const compactState =
       compactArchivedPlayerCardSnapshots(state);
@@ -247,6 +264,7 @@ export async function saveStateToFirebaseV2(
     console.table(topLevelSizes);
     console.table(seasonSizes);
 
+    if (dataScope?.environment !== "practice") await prepareClubStateOperator(clubId);
     await setDoc(
       ref,
       {
@@ -288,22 +306,19 @@ export function subscribeToStateV2(
   clubId = DEFAULT_CLUB_ID,
   dataScope = null
 ) {
-  const ref = resolveV2StateDoc(clubId, dataScope);
-
-  return onSnapshot(
-    ref,
-    (snap) => {
-      if (!snap.exists()) {
-        callback(null);
-        return;
-      }
-
-      callback(snap.data()?.state ?? null);
-    },
-    (err) => {
-      console.error("State subscription error (V2):", err);
-    }
-  );
+ if(dataScope?.clubId&&dataScope.clubId!==clubId)throw Error("Club and data scope do not match.");
+ let stopped=false;
+ const stop=onSnapshot(resolveV2StateDoc(clubId,dataScope),snap=>{
+  if(stopped)return;
+  const state=snap.exists()?snap.data()?.state:null;
+  let scopedState;
+  try{scopedState=state?bindClubState(state,clubId):null;}catch(error){
+   console.error("Club football state was rejected:",error);
+   callback(null,{scopeMismatch:true});return;
+  }
+  callback(scopedState,{unbound:Boolean(state&&!state.clubId)});
+ },error=>{if(!stopped)console.error("State subscription error (V2):",error);});
+ return()=>{stopped=true;stop();};
 }
 
 export async function submitPeerRating(payload, clubId = DEFAULT_CLUB_ID) {

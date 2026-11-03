@@ -55,6 +55,7 @@ function normalizePracticePlayer(docSnap) {
   );
 
   return {
+    ...data,
     id: docSnap.id,
     playerId: safeString(data.playerId || docSnap.id),
     memberId: safeString(data.memberId),

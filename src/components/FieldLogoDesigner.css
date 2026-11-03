@@ -1,0 +1,26 @@
+.field-logo-designer {color:#10243a;}
+.field-logo-designer h3 {font-size:1.65rem;margin:12px 0;}
+.field-logo-designer h4 {font-size:1.15rem;margin:26px 0 8px;}
+.field-logo-designer p {color:#4b6075;line-height:1.55;}
+.field-logo-designer label {display:grid;gap:8px;font-weight:700;}
+.field-logo-designer input,.field-logo-designer textarea,.field-logo-designer select {width:100%;box-sizing:border-box;padding:10px;border:1px solid #a5b8c5;border-radius:10px;background:#fff;color:#142c3a;font:inherit;}
+.field-logo-designer textarea {min-height:80px;resize:vertical;margin-bottom:12px;}
+.field-logo-designer__grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;}
+.field-logo-designer__grid button {padding:10px;border:1px solid #c8d6dd;border-radius:16px;background:#f5faf7;color:#123a30;cursor:pointer;text-transform:capitalize;}
+.field-logo-designer__grid button[aria-pressed=true] {border:2px solid #059669;box-shadow:0 0 0 3px #10b98120;}
+.field-logo-designer__grid img {display:block;width:100%;aspect-ratio:1;object-fit:contain;}
+.field-logo-designer__controls {display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin:20px 0;}
+.field-logo-designer__preview {display:grid;justify-items:center;gap:10px;background:#eef6f2;border:1px solid #c5ded3;border-radius:20px;padding:20px;}
+.field-logo-designer__preview img {width:min(100%,280px);height:280px;object-fit:contain;}
+.field-logo-designer__preview small {color:#47695b;}
+
+/* Identity studio refinement: larger artwork, neutral canvas, stronger focus. */
+.field-logo-designer__grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.field-logo-designer__grid button {padding:8px 6px 12px;background:#fff;border-color:#dce4ee;border-radius:18px;color:#142c45;box-shadow:0 5px 16px #15274308;}
+.field-logo-designer__grid img {width:100%;margin:0 auto 5px;}
+.field-logo-designer__grid strong {display:block;font-size:13px;line-height:1.4;}
+.field-logo-designer__grid small {display:block;font-size:11px;color:#627487;margin-top:4px;}
+.field-logo-designer__grid button[aria-pressed=true] {border:2px solid #087f62;background:#f1fff9;box-shadow:0 0 0 3px #00c98c20;}
+.field-logo-designer__preview {background:#fff;border-color:#dce4ee;padding:14px;}
+.field-logo-designer__preview img {width:min(100%,420px);height:auto;aspect-ratio:1;}
+@media(min-width:700px) {.field-logo-designer__grid {grid-template-columns:repeat(3,minmax(0,1fr));}}

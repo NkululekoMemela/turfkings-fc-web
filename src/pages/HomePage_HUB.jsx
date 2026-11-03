@@ -1,3 +1,14 @@
+import { clubFounderName } from "../core/clubFounderCredit.mjs";
+import HubMarketingAdvert from "../components/HubMarketingAdvert.jsx";
+import CompanyClubWorkspace from "../components/CompanyClubWorkspace.jsx";
+import {clubsInCategory} from "../core/clubCategory.mjs";
+import "../styles/FieldIdentityHub.css";
+import {ownMembershipSnapshots} from "../storage/playerPrivacyGateway.js";
+import FirebaseEnvironmentControl from "../components/FirebaseEnvironmentControl.jsx";
+import { LEGAL } from "../legal/policies.js";
+import LegalSignature from "../components/LegalSignature.jsx";
+const CLUB_POLICY = LEGAL.club;
+import { ABOUT_RELEASE } from "../content/aboutRelease.js";
 // src/pages/HomePage_HUB.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -324,9 +335,9 @@ function getMissingClubRequirements(club = {}) {
 
   if (!club?.completion?.hasLogo) missing.push("Upload a club logo");
   if (!club?.completion?.hasPhotos) missing.push("Add up to 3 club/team photos");
-  if (!club?.completion?.hasBanking) missing.push("Add banking details");
+  if (club.clubType!=="company" && !club?.completion?.hasBanking) missing.push("Add banking details");
   if (!club?.completion?.hasLocation) missing.push("Complete club location");
-  if (!club?.completion?.hasSchedule) missing.push("Add weekly play day/time");
+  if (club.clubType!=="company" && !club?.completion?.hasSchedule) missing.push("Add weekly play day/time");
 
   return missing;
 }
@@ -375,7 +386,7 @@ const HUB_INFO_CONTENT = {
     body: [
       "Browse clubs using the rotating club cards or the interactive map.",
       "Select a club, open its club page, then choose Join Club.",
-      "Complete the sign-up form with your name, surname, Gmail address and contact number.",
+      "Complete the sign-up form with your name, surname, Google account email and contact number.",
       "Once registered, you can sign up for upcoming match days inside that club.",
     ],
   },
@@ -399,29 +410,11 @@ const HUB_INFO_CONTENT = {
   },
   about: {
     title: "About 5 Asides Near Me",
-    body: [
-      "September 2026 · Matchday Intelligence Edition",
-      "This release makes match-day planning, player development and club presentation smarter and clearer.",
-      "• Smarter lineup placement using player mentality and shooting profiles.",
-      "• Fairer goalkeeper, substitute, and positional rotations.",
-      "• Dedicated Mentality & Shooting player profiles.",
-      "• Improved club-badge visibility across cards, formations, tables, and team sheets.",
-      "• Unlimited isolated 15-minute Practice sessions.",
-      "• Improved News archiving and the renamed Video Highlights experience.",
-    ],
+    body: ABOUT_RELEASE,
   },
   terms: {
-    title: "Terms & Privacy",
-    body: [
-      "5 Asides Near Me is a football discovery, club management and match coordination platform.",
-      "Players and captains must provide honest and accurate information when joining or creating clubs.",
-      "Captains confirm that they are authorised to manage the club they create and must not create fake clubs, impersonate other clubs or collect money dishonestly.",
-      "Captains are responsible for using player contributions for legitimate football-related club costs, including field bookings and agreed club expenses.",
-      "The platform must not be used for fraud, money laundering, unlawful fundraising, fake club creation or any illegal financial activity.",
-      "5 Asides Near Me may suspend, hide, investigate or remove clubs that appear fraudulent, misleading, abusive or unlawful.",
-      "User information is used to operate the platform, manage club membership, support match coordination and communicate important club or support updates.",
-      "This is a starter platform policy and should be reviewed by a qualified legal professional before full commercial launch.",
-    ],
+    title: CLUB_POLICY.title,
+    body: CLUB_POLICY.sections.map(([heading, detail]) => `${heading}: ${detail}`),
   },
 };
 
@@ -482,6 +475,7 @@ export default function HomePage_HUB({
   onJoinClub,
   onChallengeClub,
   onNavigateToEntryPage,
+  onBackToWelcome,
 }) {
   const [showTour, setShowTour] = React.useState(false);
   const [clubFeaturedVideos, setClubFeaturedVideos] = useState({});
@@ -526,6 +520,9 @@ export default function HomePage_HUB({
   const [locationStatus, setLocationStatus] = useState("idle");
   const [clubSearchQuery, setClubSearchQuery] = useState("");
   const [clubFilter, setClubFilter] = useState("all");
+  const [clubCategoryView,setClubCategoryView]=useState(()=>{try{return sessionStorage.getItem("fanm:club-category")==="company"?"company":"community";}catch{return "community";}});
+  useEffect(()=>{try{sessionStorage.setItem("fanm:club-category",clubCategoryView);}catch{}},[clubCategoryView]);
+  const [companyWorkspaceOpen,setCompanyWorkspaceOpen]=useState(false);
   const [challengeClub, setChallengeClub] = useState(null);
   const [challengeFormat, setChallengeFormat] = useState("5v5");
   const [challengeDate, setChallengeDate] = useState("");
@@ -591,9 +588,7 @@ export default function HomePage_HUB({
         if (!clubId) continue;
 
         try {
-          const membersSnap = await getDocs(
-            collection(db, "clubs", clubId, "members")
-          );
+          const membersSnap = await ownMembershipSnapshots(clubId);
 
           const matchedMemberDoc = membersSnap.docs.find((memberDoc) => {
             const member = memberDoc.data() || {};
@@ -726,59 +721,15 @@ export default function HomePage_HUB({
 
             try {
               const membersSnap = await getDocs(
-                collection(db, "clubs", clubId, "members")
+                collection(db, "clubs", clubId, "publicMembers")
               );
 
-              const platformSuperAdminEmail =
-                "nkululekolerato@gmail.com";
-
               const activeAdministrators = membersSnap.docs
-                .map((memberDoc) => ({
-                  id: memberDoc.id,
-                  ...(memberDoc.data() || {}),
-                }))
-                .filter((member) => {
-                  const role = String(member?.role || "")
-                    .trim()
-                    .toLowerCase();
-
-                  const status = String(member?.status || "active")
-                    .trim()
-                    .toLowerCase();
-
-                  return (
-                    role === "admin" &&
-                    !["deleted", "withdrawn", "terminated"].includes(status)
-                  );
-                });
-
-              const delegatedAdministrator =
-                activeAdministrators.find((member) => {
-                  const email = String(member?.email || "")
-                    .trim()
-                    .toLowerCase();
-
-                  return (
-                    email &&
-                    email !== platformSuperAdminEmail
-                  );
-                }) || null;
-
-              const fallbackAdministrator =
-                activeAdministrators[0] || null;
-
-              const recognisedAdministrator =
-                delegatedAdministrator || fallbackAdministrator;
-
-              const displayLeaderName = String(
-                recognisedAdministrator?.fullName ||
-                recognisedAdministrator?.shortName ||
-                recognisedAdministrator?.name ||
-                hydratedClub?.captain?.name ||
-                hydratedClub?.captainName ||
-                hydratedClub?.captainFirstName ||
-                ""
-              ).trim();
+                .map(memberDoc => ({ id: memberDoc.id, ...(memberDoc.data() || {}) }))
+                .filter(member => String(member.role || "").toLowerCase() === "admin" &&
+                  !["deleted", "withdrawn", "terminated", "removed"].includes(
+                    String(member.status || "active").toLowerCase()));
+              const displayLeaderName = clubFounderName(hydratedClub, activeAdministrators);
 
               return {
                 ...hydratedClub,
@@ -928,7 +879,7 @@ export default function HomePage_HUB({
   const filteredVisibleClubs = useMemo(() => {
     const query = String(clubSearchQuery || "").trim().toLowerCase();
 
-    let nextClubs = [...visibleClubs];
+    let nextClubs = clubsInCategory(visibleClubs,clubCategoryView);
 
     if (clubFilter === "mine") {
       nextClubs = nextClubs.filter((club) => isUsersOwnClub(club));
@@ -947,7 +898,7 @@ export default function HomePage_HUB({
     }
 
     if (clubFilter === "admin") {
-      nextClubs = [...visibleClubs];
+      nextClubs = clubsInCategory(visibleClubs,clubCategoryView);
     }
 
     if (clubFilter === "new") {
@@ -995,7 +946,7 @@ export default function HomePage_HUB({
 
       return haystack.includes(query);
     });
-  }, [visibleClubs, clubSearchQuery, clubFilter, identity]);
+  }, [visibleClubs, clubSearchQuery, clubFilter, identity, clubCategoryView]);
 
   function normalizeNewClubForHome(club) {
     const fakeDocSnap = {
@@ -1196,6 +1147,10 @@ export default function HomePage_HUB({
     setActiveClub(null);
     setCompletionPromptClub(null);
 
+    if (!club) {
+      onFindClub?.();
+      return;
+    }
     if (club) {
       onJoinClub?.(club);
     }
@@ -1413,7 +1368,7 @@ export default function HomePage_HUB({
             <button
               type="button"
               className="hub-nav__primary"
-              onClick={() => setSignupOpen(true)}
+              onClick={() => clubCategoryView==="company"?setCompanyWorkspaceOpen(true):setSignupOpen(true)}
             >
               Sign up free
             </button>
@@ -1425,6 +1380,9 @@ export default function HomePage_HUB({
         <div className="hub-section-head hub-section-head--clubs-first">
           <div>
             <span className="hub-kicker">Discover clubs near you</span>
+            <div style={{
+              display: "flex", alignItems: "center", gap: "10px",
+            }}>
             {isSuperAdmin(currentUser) ? (
               <button
                 type="button"
@@ -1437,9 +1395,28 @@ export default function HomePage_HUB({
                 Admin
               </button>
             ) : null}
+              <button
+                type="button"
+                onClick={() => onBackToWelcome?.()}
+                aria-label="Back to welcome"
+                title="Back to welcome"
+                style={{
+                  width: "44px", height: "44px", flexShrink: 0,
+                  display: "grid", placeItems: "center",
+                  borderRadius: "50%",
+                  border: "1px solid rgba(148,163,184,.3)",
+                  background: "rgba(15,23,42,.6)",
+                  color: "#a7f3d0", fontSize: "30px",
+                  lineHeight: 1, cursor: "pointer",
+                }}
+              >
+                <span aria-hidden="true">↶</span>
+              </button>
+            </div>
           </div>
         </div>
 
+        <p className="club-category-heading" aria-live="polite"><strong>{clubCategoryView==="company"?"Company clubs":"Community clubs"}</strong><span>{clubCategoryView==="company"?"Company-funded football":"Community-organised football"}</span></p>
         <div className="hub-club-filter-ribbon">
           <div className="hub-club-filter-ribbon__scroll">
             <button
@@ -1491,15 +1468,15 @@ export default function HomePage_HUB({
           <div className="hub-loading-card">Loading clubs...</div>
         ) : null}
 
-        <div className="hub-club-carousel" aria-label="Club carousel">
+        <div key={clubCategoryView} className="hub-club-carousel" aria-label={clubCategoryView==="company"?"Company Club carousel":"Community Club carousel"}>
           <button
             type="button"
-            className="hub-register-card"
-            onClick={() => setSignupOpen(true)}
+            className={`hub-register-card${clubCategoryView==="company"?" company-request-card":""}`}
+            onClick={() => clubCategoryView==="company"?setCompanyWorkspaceOpen(true):setSignupOpen(true)}
           >
             <span>+</span>
-            <strong>Register your club</strong>
-            <small>Free setup for captains</small>
+            <strong>{clubCategoryView==="company"?"Create a Company Club":"Register your club"}</strong>
+            <small>{clubCategoryView==="company"?"Free setup for creating a company team":"Free setup for captains"}</small>
           </button>
 
           {filteredVisibleClubs.map((club) => {
@@ -1518,12 +1495,15 @@ export default function HomePage_HUB({
                 onChallengeClub={openChallengeRequest}
                 onDeleteClub={handleDeleteClub}
                 canJoin={!isUsersOwnClub(club)}
-                canChallenge={canCurrentUserSendChallenge() && !isUsersOwnClub(club)}
+                canChallenge={clubCategoryView==="community" && canCurrentUserSendChallenge() && !isUsersOwnClub(club)}
                 canDelete={isSuperAdmin(currentUser)}
               />
             );
           })}
         </div>
+        <div className="club-category-switch" role="group" aria-label="Choose Club category">{[["community","Community"],["company","Company"]].map(([key,label])=><button key={key} type="button" data-category={key} aria-pressed={clubCategoryView===key} onClick={()=>{setClubCategoryView(key);setActiveMapClub(null);}}>{key==="company"&&<span className="club-category-crown" aria-hidden="true">♛</span>}{label} clubs</button>)}</div>
+
+
       </section>
 
       <section className="hub-map-section" aria-label="Club map preview">
@@ -1540,7 +1520,7 @@ export default function HomePage_HUB({
           <div className="hub-map-surface hub-map-surface--google">
             <HomePage_HUB_ClubGoogleMap
               apiKey={HAS_GOOGLE_MAPS_API_KEY ? GOOGLE_MAPS_API_KEY : ""}
-              clubs={clubFilter === "admin" ? visibleClubs : filteredVisibleClubs}
+              clubs={filteredVisibleClubs}
               onSelectClub={setActiveMapClub}
             />
           </div>
@@ -1577,7 +1557,12 @@ export default function HomePage_HUB({
         </div>
       </section>
 
-      <footer className="hub-footer-brand">
+      {isSuperAdmin(currentUser) && (
+        <FirebaseEnvironmentControl user={currentUser} />
+      )}
+
+      <HubMarketingAdvert audience="club"/>
+      <footer className="hub-footer-brand hub-footer-brand--flush-photo club-marketing-footer fanm-marketing-split">
         <div className="hub-footer-logo-stage">
           {footerLogoRotation.map((logo, index) => (
             <img
@@ -1596,8 +1581,7 @@ export default function HomePage_HUB({
           <span className="hub-kicker">Club-first football</span>
           <h2>Find football. Play today.</h2>
           <p>
-            5 Asides Near Me connects players, captains, payments, highlights
-            and club discovery in one clean football platform.
+            Community clubs organise their own football. Company clubs join through FANM for company-funded football. Play, connect and share your best moments.
           </p>
           <div className="hub-footer-actions">
             <button
@@ -1607,132 +1591,55 @@ export default function HomePage_HUB({
             >
               Take the tour
             </button>
+            <button type="button" className="hub-footer-help-button"
+              aria-haspopup="dialog"
+              onClick={() => setHubInfoModal({
+                title: "How can we help?", body: [], isHelp: true,
+              })}>
+              Help? <span aria-hidden="true">🎧</span>
+            </button>
           </div>
 
         </section>
-
-        <div className="hub-premium-footer-panels" aria-label="5 Asides Near Me support, FAQs and quick links">
-          <section className="hub-premium-footer-card">
-            <h3>Need help? <span>🎧</span></h3>
-
-            <a className="hub-premium-footer-row" href="mailto:support@5asidesnearme.com">
-              <span className="hub-premium-footer-icon">✉️</span>
-              <span>
-                <strong>Email us</strong>
-                <small>support@5asidesnearme.com</small>
-              </span>
-              <em>›</em>
-            </a>
-
-            <a className="hub-premium-footer-row" href="https://wa.me/27762849740" target="_blank" rel="noreferrer">
-              <span className="hub-premium-footer-icon">💬</span>
-              <span>
-                <strong>Chat on WhatsApp</strong>
-                <small>We’re here to help</small>
-              </span>
-              <em>›</em>
-            </a>
-
-            <div className="hub-premium-footer-row hub-premium-footer-row--static">
-              <span className="hub-premium-footer-icon">🕒</span>
-              <span>
-                <strong>Support hours</strong>
-                <small>Mon–Fri: 08:00–18:00 SAST</small>
-              </span>
-            </div>
-          </section>
-
-          <section className="hub-premium-footer-card">
-            <h3>FAQs <span>❔</span></h3>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("joinClub")}>
-              <span><strong>How do I join a club?</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("payments")}>
-              <span><strong>How do payments work?</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("challengeClub")}>
-              <span><strong>How do I challenge another club?</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-view-all" onClick={() => openHubInfoModal("joinClub")}>
-              View FAQs <span>›</span>
-            </button>
-          </section>
-
-          <section className="hub-premium-footer-card">
-            <h3>Quick links <span>🔗</span></h3>
-            <button
-              type="button"
-              className="hub-premium-footer-row"
-              onClick={() => openHubInfoModal("about")}
-            >
-              <span className="hub-premium-footer-icon">👥</span>
-              <span><strong>About 5 Asides Near Me</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("terms")}>
-              <span className="hub-premium-footer-icon">📄</span>
-              <span><strong>Terms & Privacy</strong></span>
-              <em>›</em>
-            </button>
-            <button type="button" className="hub-premium-footer-row" onClick={() => openHubContactModal("feedback")}>
-              <span className="hub-premium-footer-icon">💬</span>
-              <span><strong>Send feedback</strong></span>
-              <em>›</em>
-            </button>
-          </section>
-        </div>
-
-        <details className="hub-mobile-help-accordion">
-          <summary>Help? <span>🎧</span></summary>
-
-          <details className="hub-mobile-help-group">
-            <summary>✉️ Need help?</summary>
-            <a href="mailto:support@5asidesnearme.com">Email support</a>
-            <a href="https://wa.me/27762849740" target="_blank" rel="noreferrer">Chat on WhatsApp</a>
-            <span>Mon–Fri: 08:00–18:00 SAST</span>
-          </details>
-
-          <details className="hub-mobile-help-group">
-            <summary>❔ FAQs</summary>
-            <button type="button" onClick={() => openHubInfoModal("joinClub")}>How do I join a club?</button>
-            <button type="button" onClick={() => openHubInfoModal("payments")}>How do payments work?</button>
-            <button type="button" onClick={() => openHubInfoModal("challengeClub")}>How do I challenge another club?</button>
-          </details>
-
-          <details className="hub-mobile-help-group">
-            <summary>🔗 Quick links</summary>
-            <button
-              type="button"
-              onClick={() => openHubInfoModal("about")}
-            >
-              About 5 Asides Near Me
-            </button>
-            <button type="button" onClick={() => openHubInfoModal("terms")}>Terms & Privacy</button>
-            <button type="button" onClick={() => openHubContactModal("feedback")}>Send feedback</button>
-          </details>
-        </details>
 
       </footer>
 
 
       {hubInfoModal ? (
-        <div className="hub-action-sheet-backdrop" onMouseDown={(event) => {
+        <div className="hub-action-sheet-backdrop field-support-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setHubInfoModal(null);
         }}>
-          <section className="hub-info-modal" aria-label={hubInfoModal.title}>
+          <section
+            className={`hub-info-modal field-support-modal ${
+              hubInfoModal.isHelp ? "field-support-modal--help" : ""
+            }`}
+            role="dialog" aria-modal="true"
+            aria-label={hubInfoModal.title}>
             <button type="button" className="hub-action-sheet__close" onClick={() => setHubInfoModal(null)}>
               ×
             </button>
             <span className="hub-kicker">5 Asides Near Me</span>
             <h2>{hubInfoModal.title}</h2>
+            {hubInfoModal.isHelp && (
+              <p className="field-support-intro">
+                Support, answers and everything you need to get started.
+              </p>
+            )}
             <div className="hub-info-modal__body">
-              {hubInfoModal.body.map((item, index) => (
+              {hubInfoModal.isHelp ? (
+                <ClubHubSupport openHubInfoModal={openHubInfoModal} />
+              ) : hubInfoModal.body === ABOUT_RELEASE ? (
+                <ul>
+                  {ABOUT_RELEASE.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              ) : hubInfoModal.body.map((item, index) => (
                 <p key={index}>{item}</p>
               ))}
             </div>
+            {hubInfoModal === HUB_INFO_CONTENT.terms &&
+              <LegalSignature scope="club" />}
           </section>
         </div>
       ) : null}
@@ -2021,10 +1928,11 @@ export default function HomePage_HUB({
         </div>
       ) : null}
 
+      {companyWorkspaceOpen&&<CompanyClubWorkspace onClubCreated={async id=>{const snap=await getDoc(doc(db,"clubs",id));if(snap.exists()){const company=normalizeClub(snap);setClubs(current=>[...current.filter(c=>c.id!==id),company]);}}} onClose={()=>setCompanyWorkspaceOpen(false)}/>}
       <HomePage_HUB_SignupModal
         isOpen={signupOpen}
         onClose={() => setSignupOpen(false)}
-        onJoinExistingClub={() => handleJoinExistingClub(null)}
+        onRequestCompanyClub={() => {setClubCategoryView("company");setCompanyWorkspaceOpen(true);}}
         onClubCreated={handleClubCreated}
       />
 
@@ -2034,7 +1942,7 @@ export default function HomePage_HUB({
         onClose={() => setProfileEditorClub(null)}
         onSaved={handleClubUpdated}
       />
-    
+
       {showTour ? (
         <div className="hub-tour-modal-backdrop" onClick={() => setShowTour(false)}>
           <section className="hub-tour-modal" onClick={(event) => event.stopPropagation()}>
@@ -2074,5 +1982,80 @@ export default function HomePage_HUB({
       ) : null}
 
     </main>
+  );
+}
+
+
+function ClubHubSupport({ openHubInfoModal }) {
+  return (
+<div className="hub-premium-footer-panels" aria-label="5 Asides Near Me support, FAQs and quick links">
+          <section className="hub-premium-footer-card">
+            <h3>Need help? <span>🎧</span></h3>
+
+            <a className="hub-premium-footer-row" href="mailto:support@5asidesnearme.com">
+              <span className="hub-premium-footer-icon">✉️</span>
+              <span>
+                <strong>Email us</strong>
+                <small>support@5asidesnearme.com</small>
+              </span>
+              <em>›</em>
+            </a>
+
+            <a className="hub-premium-footer-row" href="https://wa.me/27762849740" target="_blank" rel="noreferrer">
+              <span className="hub-premium-footer-icon">💬</span>
+              <span>
+                <strong>Chat on WhatsApp</strong>
+                <small>We’re here to help</small>
+              </span>
+              <em>›</em>
+            </a>
+
+            <div className="hub-premium-footer-row hub-premium-footer-row--static">
+              <span className="hub-premium-footer-icon">🕒</span>
+              <span>
+                <strong>Support hours</strong>
+                <small>Mon–Fri: 08:00–18:00 SAST</small>
+              </span>
+            </div>
+          </section>
+
+          <section className="hub-premium-footer-card">
+            <h3>FAQs <span>❔</span></h3>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("joinClub")}>
+              <span><strong>How do I join a club?</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("payments")}>
+              <span><strong>How do payments work?</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("challengeClub")}>
+              <span><strong>How do I challenge another club?</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-view-all" onClick={() => openHubInfoModal("joinClub")}>
+              View FAQs <span>›</span>
+            </button>
+          </section>
+
+          <section className="hub-premium-footer-card">
+            <h3>Quick links <span>🔗</span></h3>
+            <button
+              type="button"
+              className="hub-premium-footer-row"
+              onClick={() => openHubInfoModal("about")}
+            >
+              <span className="hub-premium-footer-icon">👥</span>
+              <span><strong>About 5 Asides Near Me</strong></span>
+              <em>›</em>
+            </button>
+            <button type="button" className="hub-premium-footer-row" onClick={() => openHubInfoModal("terms")}>
+              <span className="hub-premium-footer-icon">📄</span>
+              <span><strong>Terms & Privacy</strong></span>
+              <em>›</em>
+            </button>
+
+          </section>
+        </div>
   );
 }

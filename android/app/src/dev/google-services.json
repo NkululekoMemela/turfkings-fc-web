@@ -1,0 +1,105 @@
+{
+  "project_info": {
+    "project_number": "236261073578",
+    "project_id": "five-asides-near-me-staging",
+    "storage_bucket": "five-asides-near-me-staging.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:236261073578:android:8297383776a1b9cd8b26d3",
+        "android_client_info": {
+          "package_name": "com.fiveasidesnearme.app.dev"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "236261073578-nk47hu3p8vuc769shlon52j659mm50fu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fiveasidesnearme.app.dev",
+            "certificate_hash": "a1f164ae7e02a0cc77d2604f044b7dccd80a5892"
+          }
+        },
+        {
+          "client_id": "236261073578-k9lspugbjlhkjegiv1ljholdepos4vh3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHsq-6utUwiPG6Sc_mxwsjyaQCwtq4NDY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "236261073578-k9lspugbjlhkjegiv1ljholdepos4vh3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:236261073578:android:0547ee7cd69304808b26d3",
+        "android_client_info": {
+          "package_name": "com.fiveasidesnearme.camera"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "236261073578-k9lspugbjlhkjegiv1ljholdepos4vh3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHsq-6utUwiPG6Sc_mxwsjyaQCwtq4NDY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "236261073578-k9lspugbjlhkjegiv1ljholdepos4vh3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:236261073578:android:f7cebe5bb0d446468b26d3",
+        "android_client_info": {
+          "package_name": "com.fiveasidesnearme.camera.staging"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "236261073578-k9lspugbjlhkjegiv1ljholdepos4vh3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHsq-6utUwiPG6Sc_mxwsjyaQCwtq4NDY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "236261073578-k9lspugbjlhkjegiv1ljholdepos4vh3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

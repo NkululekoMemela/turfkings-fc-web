@@ -1,0 +1,9 @@
+.fanm-discipline-player-copy strong.field-referee-player-label {
+  display: flex; align-items: baseline; gap: 4px; min-width: 0;
+}
+.field-referee-player-label > b { color: #ffc75a; font-size: 13px; flex: 0 0 auto; }
+.field-referee-player-label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.field-referee-full-name { padding: 5px 7px; margin: 0; font-size: 11px; color: #cbd5e1; overflow-wrap: anywhere; }
+.field-futsal-rules { padding: 10px; border: 1px solid #5c78934d; border-radius: 12px; margin-bottom: 10px; font-size: 12px; }
+.field-futsal-rules summary { cursor: pointer; font-weight: 750; color: #dbeafe; }
+.field-futsal-rules p { margin: 8px 0 0; font-size: 12px; line-height: 1.45; }

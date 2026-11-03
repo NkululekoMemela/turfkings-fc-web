@@ -1,0 +1,42 @@
+.fanm-clip-thumb{position:relative;display:block;width:100%;padding:0;border:0;border-radius:12px;overflow:hidden;background:#07131f;cursor:pointer;touch-action:pan-y;-webkit-touch-callout:none;user-select:none;color:white;text-align:left;min-width:0}
+.fanm-clip-preview{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;pointer-events:none}
+.fanm-clip-overlay{position:absolute;inset:auto 0 0;padding:22px 10px 8px;background:linear-gradient(transparent,#020617e8);display:grid;gap:3px;pointer-events:none}
+.fanm-clip-overlay strong{font-size:.85rem;color:white;text-shadow:0 1px 3px #000}.fanm-clip-overlay>span{font-size:.59rem;color:#d6e7dd}
+.fanm-highlight-player{position:fixed;right:14px;bottom:calc(110px + env(safe-area-inset-bottom,0px));width:min(420px,58vw);z-index:90;border:1px solid #8bcab1;border-radius:14px;overflow:hidden;background:#081a24;box-shadow:0 12px 35px #0008;color:white}
+.fanm-highlight-player-bar{display:flex;align-items:center;gap:6px;padding:5px 8px}.fanm-highlight-player-bar strong{flex:1;font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fanm-highlight-player-bar button{background:#173c3c;border:0;border-radius:6px;width:30px;height:30px;color:white;cursor:pointer;font-size:1.1rem}
+.fanm-highlight-player video{width:100%;aspect-ratio:16/9;max-height:40vh;display:block;background:#000}.fanm-highlight-player.is-minimized video{display:none}
+.video-highlights-page .fanm-clip-details{font-size:.66rem;color:#b8c9c0;margin:6px 0}.fanm-clip-details summary{cursor:pointer}.fanm-clip-details p{line-height:1.55}
+@media(max-width:640px){
+ .video-highlights-page .tkh-grid{display:grid!important;grid-template-columns:1fr!important;gap:9px!important}
+ .video-highlights-page .tkh-card{padding:9px!important;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:6px 10px;align-items:start;border-radius:15px!important}
+ .video-highlights-page .tkh-card-progress,.video-highlights-page .tkh-card-top{display:none!important}
+ .video-highlights-page .fanm-clip-thumb{grid-column:1;grid-row:1/5;align-self:start}
+ .video-highlights-page .fanm-clip-preview{aspect-ratio:4/3;max-height:132px}
+ .video-highlights-page .tkh-card .tkh-badge-row{grid-column:2;margin:0!important;gap:4px!important;flex-wrap:wrap!important}
+ .video-highlights-page .tkh-card .tkh-card-actions{grid-column:2;margin:0!important;display:flex!important;gap:4px!important;flex-wrap:wrap!important}
+ .video-highlights-page .tkh-card .tkh-btn{font-size:.66rem!important;padding:5px 7px!important;min-height:32px!important}
+ .video-highlights-page .tkh-card .tkh-type-badge{font-size:.6rem!important;padding:4px 6px!important}
+ .video-highlights-page .fanm-clip-details{grid-column:2;margin:0}
+ .video-highlights-page .tkh-watched-summary{grid-column:1/-1}
+ .video-highlights-page .tkh-throwback-divider{margin:3px 0!important;padding:6px 10px!important}.video-highlights-page .tkh-throwback-divider>span{display:none}
+ .fanm-highlight-player{right:10px;width:58vw}.fanm-highlight-player-bar{padding:4px 6px}.fanm-highlight-player-bar button{width:28px;height:28px}
+}
+
+/* Full-width clip; only social actions stay over the picture. */
+.video-highlights-page .tkh-card{padding:7px!important;display:block!important;position:relative}
+.fanm-clip-surface{position:relative;width:100%;min-width:0}
+.video-highlights-page .fanm-clip-thumb{display:block;width:100%;grid-column:auto;grid-row:auto}
+.video-highlights-page .fanm-clip-preview{aspect-ratio:16/9;max-height:174px;object-fit:contain;background:#000}
+.fanm-clip-type{position:absolute;left:8px;top:8px;pointer-events:none;background:#071420b8;color:#e7f6ef;border:1px solid #e0f4e52b;padding:4px 7px;border-radius:20px;font-size:.6rem;line-height:1.3}
+.fanm-clip-options-toggle{position:absolute;top:6px;right:7px;width:36px;height:32px;border-radius:12px;background:#071420d9;border:1px solid #c0e1cf55;color:white;font-size:1.6rem;font-weight:850;line-height:1;cursor:pointer}
+.video-highlights-page .tkh-card .fanm-clip-social{position:absolute;bottom:7px;right:7px;display:flex!important;align-items:center;gap:5px!important;padding:0;margin:0!important;grid-column:auto;flex-wrap:nowrap!important;max-width:65%}
+.video-highlights-page .tkh-card .fanm-clip-social .tkh-btn{min-height:32px!important;padding:5px 7px!important;background:#071420d9!important;border:1px solid #c0e1cf66!important;border-radius:18px!important;color:#ecfff2!important;font-size:.65rem!important;white-space:nowrap}
+.fanm-clip-social .tkh-btn .tkh-like-heart-outline{font-size:.9rem}
+.fanm-clip-overlay{padding-right:46%;padding-top:32px}
+.fanm-clip-options-backdrop{position:fixed;inset:0;z-index:11800;display:flex;align-items:flex-end;justify-content:center;background:#02081780;padding:18px 16px calc(24px + env(safe-area-inset-bottom,0px));box-sizing:border-box;backdrop-filter:blur(5px)}
+.fanm-clip-options-panel{width:min(480px,100%);max-height:80vh;overflow:auto;background:linear-gradient(150deg,#153a39,#0f1c30);border:1px solid #a1cdb166;border-radius:24px;box-shadow:0 24px 60px #0008;padding:18px;color:#edf8ef;box-sizing:border-box}
+.fanm-clip-options-panel>header{display:flex;align-items:center;gap:12px;margin-bottom:16px}.fanm-clip-options-panel h2{font-size:1rem;margin:0;flex:1}.fanm-clip-options-panel>header>button{width:36px;height:36px;background:#173a40;border:0;border-radius:12px;color:#dff7e7;font-size:1.3rem;cursor:pointer}
+.fanm-clip-options-content .tkh-badge-row{display:block}.fanm-clip-options-content .tkh-badge-row>div{flex-wrap:wrap;justify-content:flex-start}
+.fanm-clip-options-content .tkh-btn{padding:11px 14px!important;min-height:42px!important;font-size:.8rem!important;color:#e2f3e8;background:#123b3c;border:1px solid #8aaea555;border-radius:12px;cursor:pointer;margin:3px 0}
+.fanm-clip-options-content .fanm-clip-details{border-top:1px solid #a2c7b733;padding-top:12px;margin-top:12px;font-size:.8rem;color:#bcd5c7}.fanm-clip-options-content .fanm-clip-details h3{font-size:.8rem;color:#e1f1e7;margin:0 0 8px}.fanm-clip-options-content .fanm-clip-details p{font-size:.75rem;line-height:1.65;margin:8px 0}
+@media(min-width:641px){.video-highlights-page .fanm-clip-preview{max-height:260px}.fanm-clip-options-backdrop{align-items:center}}

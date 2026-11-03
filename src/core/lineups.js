@@ -929,6 +929,15 @@ export function createVerifiedLineupSnapshot({
     latePlayers: normalizeLineupNames(lineup?.latePlayers || []),
 
     /*
+     * Players who remain available outfield but must not be
+     * assigned goalkeeper. Preserve the list used for this
+     * confirmed appearance as historical match truth.
+     */
+    goalkeeperRestrictedPlayerKeys: normalizeLineupNames(
+      lineup?.goalkeeperRestrictedPlayerKeys || []
+    ),
+
+    /*
      * Registered player temporarily borrowed from another
      * ThreeTeamLeague team as goalkeeper.
      *

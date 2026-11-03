@@ -1,0 +1,44 @@
+.field-practice-reminder {
+  pointer-events: none;
+  animation: field-practice-drift 2.8s ease-in-out infinite alternate;
+  text-align: center;
+  padding: 8px 0 12px;
+  font-size: clamp(25px, 7vw, 42px);
+  line-height: 1.05;
+  font-weight: 950;
+  letter-spacing: .045em;
+  color: #f3c6ff;
+  text-shadow: 0 0 18px #e879f980, 0 2px 2px #3b0764;
+}
+.field-season-start-cue { position: relative; overflow: hidden; isolation: isolate; }
+.field-season-start-cue::after {
+  content: "";
+  position: absolute;
+  inset: -30% -70%;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 38%, #facc1510 44%, #fff0b8a8 50%, #facc1526 56%, transparent 62%);
+  transform: translateX(-75%);
+  animation: field-season-gold 2.5s ease-in-out 6;
+}
+@keyframes field-season-gold {
+  0%, 25% { transform: translateX(-75%); }
+  100% { transform: translateX(75%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-season-start-cue::after { animation: none; background: none; }
+  .field-season-start-cue { border-color: #facc15 !important; }
+}
+
+@keyframes field-practice-drift {
+  from { transform: translateX(-4px); }
+  to { transform: translateX(4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-practice-reminder { animation: none; }
+}
+
+/* Landing-only session control keeps a stable, accessible tap target. */
+.field-session-control{min-width:80px;min-height:32px;padding:6px 10px;border:1px solid #d5a9f35c;border-radius:12px;background:linear-gradient(135deg,#542076,#862ca1);color:#fff;font-family:inherit;font-weight:700;font-size:10px;line-height:1.2;cursor:pointer;box-shadow:0 3px 12px #13092540;}
+.field-session-control.is-compact{min-width:32px;width:32px;padding:10px;background:#20142a80;border-color:transparent;}
+.field-session-control__dot{display:block;width:8px;height:8px;margin:auto;border-radius:50%;background:#d1a1f4;box-shadow:0 0 8px #c270ec66;}
+.field-session-control:focus-visible{outline:2px solid #e2b8ff;outline-offset:3px;}

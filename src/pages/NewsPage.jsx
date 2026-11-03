@@ -1,10 +1,20 @@
+import "../components/NewsPagePolish.css";
+import CompactNewsPoll from "../components/CompactNewsPoll.jsx";
+import {compactKitPollQuestion} from "../core/merchandisePoll.mjs";
+import "../components/PlayerNewsLayout.css";
+import {compactKitPollOption} from "../core/merchandisePoll.mjs";
+import useNotificationFocus from "../hooks/useNotificationFocus.js";
+import "../components/NotificationFocus.css";
+import {storyDateInput, storyPublicationTime} from "../core/storyPublication.mjs";
+import StoryPhotoPicker from "../components/StoryPhotoPicker.jsx";
 // src/pages/NewsPage.jsx
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import {clubKitInterestDraft,pollMerchandiseId} from "../core/merchandisePoll.mjs";
 import JerseyImage from "../assets/Jersey.jpeg";
 import { RSVPModal } from "../components/RSVPModal.jsx";
 import { YearEndProgramModal } from "../components/YearEndProgramModal.jsx";
 import { useMemberNameMap } from "../core/nameMapping.js";
-import { db } from "../firebaseConfig.js";
+import { auth, db } from "../firebaseConfig.js";
 import {
   getClubStateDoc,
   getPlayersCollection,
@@ -25,7 +35,6 @@ import {
   upsertKitOrder,
   removeKitOrder,
 } from "../storage/firebaseRepository.js";
-import VideoHighlightsRepository from "../storage/VideoHighlightsRepository.js";
 
 const BAD_MATCH_NUMBERS = new Set();
 
@@ -227,17 +236,11 @@ function resolveDateMs(rawMs, fallback = Date.now()) {
 }
 
 function makeDateInputValue(ms) {
-  const d = new Date(resolveDateMs(ms));
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
-  return d.toISOString().slice(0, 10);
+  return storyDateInput(resolveDateMs(ms));
 }
 
 function dateInputToMs(value, fallback = Date.now()) {
-  const raw = String(value || "").trim();
-  if (!raw) return fallback;
-  const parsed = new Date(`${raw}T12:00:00`);
-  const ms = parsed.getTime();
-  return Number.isNaN(ms) ? fallback : ms;
+  return storyPublicationTime(value, fallback);
 }
 
 function getFreshnessBadge(createdAtMs, archived = false) {
@@ -286,6 +289,9 @@ export function NewsPage({
   practiceSessionId = null,
   dataScope = null,
   activeClub = null,
+  initialPollOpen = null,
+  initialMerchandisePoll = null,
+  onMerchandisePollConsumed,
 }) {
   const safeActiveClubId = activeClubId || "turf-kings";
   const isTurfKingsClub = safeActiveClubId === "turf-kings";
@@ -294,309 +300,9 @@ export function NewsPage({
   const [cloudPhotosIndex, setCloudPhotosIndex] = useState({});
   const [newsSeasonState, setNewsSeasonState] = useState(null);
 
-  const [awardHighlightLeaders, setAwardHighlightLeaders] = useState({
-    puskas: null,
-    skill: null,
-    save: null,
-  });
-  const [awardHighlightsLoading, setAwardHighlightsLoading] = useState(false);
-  const [activeAwardHighlightIndex, setActiveAwardHighlightIndex] = useState(0);
-
-  const awardCarouselRef = useRef(null);
-  const awardCardRefs = useRef([]);
-  const awardVideoRefs = useRef([]);
-
-  const { normalizeName } = useMemberNameMap(Array.isArray(members) ? members : []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadAwardHighlightLeaders() {
-      // Practice v2:
-      // Video Highlights are a real external/shared system and are not
-      // sandboxed. Keep the News UI intact, but never enter the real
-      // Highlights repository from Practice.
-      if (isPracticeMode) {
-        setAwardHighlightLeaders({
-          puskas: null,
-          skill: null,
-          save: null,
-        });
-        setAwardHighlightsLoading(false);
-        setActiveAwardHighlightIndex(0);
-        return;
-      }
-
-      try {
-        setAwardHighlightsLoading(true);
-
-        const leaders =
-          await VideoHighlightsRepository
-            .loadCurrentAwardLeadersFromFirebase(
-              safeActiveClubId,
-              { visibilityDays: 5 }
-            );
-
-        if (cancelled) return;
-
-        setAwardHighlightLeaders({
-          puskas: leaders?.puskas || null,
-          skill: leaders?.skill || null,
-          save: leaders?.save || null,
-        });
-
-        setActiveAwardHighlightIndex(0);
-      } catch (error) {
-        console.warn(
-          "[NewsPage] Could not load current award highlight leaders:",
-          error
-        );
-
-        if (!cancelled) {
-          setAwardHighlightLeaders({
-            puskas: null,
-            skill: null,
-            save: null,
-          });
-        }
-      } finally {
-        if (!cancelled) {
-          setAwardHighlightsLoading(false);
-        }
-      }
-    }
-
-    loadAwardHighlightLeaders();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [safeActiveClubId, isPracticeMode]);
-
-  const rotatingAwardHighlights = useMemo(() => {
-    const getVideoUrl = (clip) =>
-      String(
-        clip?.videoUrl ||
-        clip?.downloadUrl ||
-        clip?.mediaUrl ||
-        clip?.fileUrl ||
-        clip?.uri ||
-        ""
-      ).trim();
-
-    const getPlayerName = (clip) =>
-      normalizeName(
-        clip?.playerName ||
-        clip?.goalScorerName ||
-        clip?.scorer ||
-        clip?.keeperName ||
-        clip?.skillPlayer ||
-        ""
-      );
-
-    return [
-      {
-        key: "puskas",
-        title: "Puskas Award",
-        icon: "🏆",
-        clip: awardHighlightLeaders.puskas,
-      },
-      {
-        key: "skill",
-        title: "Skill of the Season",
-        icon: "✨",
-        clip: awardHighlightLeaders.skill,
-      },
-      {
-        key: "save",
-        title: "Save of the Season",
-        icon: "🧤",
-        clip: awardHighlightLeaders.save,
-      },
-    ]
-      .filter((item) => item.clip && getVideoUrl(item.clip))
-      .map((item) => ({
-        ...item,
-        videoUrl: getVideoUrl(item.clip),
-        playerName: getPlayerName(item.clip),
-        voteCount: Number(
-          item.clip?.voteCount ||
-          item.clip?.votes ||
-          0
-        ),
-      }));
-  }, [
-    awardHighlightLeaders,
-    normalizeName,
-  ]);
-
-  useEffect(() => {
-    if (rotatingAwardHighlights.length <= 1) {
-      setActiveAwardHighlightIndex(0);
-      return undefined;
-    }
-
-    const timer = window.setInterval(() => {
-      setActiveAwardHighlightIndex((current) =>
-        (current + 1) % rotatingAwardHighlights.length
-      );
-    }, 14000);
-
-    return () => window.clearInterval(timer);
-  }, [rotatingAwardHighlights.length]);
-
-  useEffect(() => {
-    if (
-      activeAwardHighlightIndex >=
-      rotatingAwardHighlights.length
-    ) {
-      setActiveAwardHighlightIndex(0);
-    }
-  }, [
-    activeAwardHighlightIndex,
-    rotatingAwardHighlights.length,
-  ]);
-
-  /*
-   * Keep the active award card centred and play only its video.
-   * Active video plays naturally from the beginning.
-   * Carousel movement is horizontal only and must never move the page.
-   */
-  useEffect(() => {
-    if (!rotatingAwardHighlights.length) return;
-
-    const container =
-      awardCarouselRef.current;
-
-    const card =
-      awardCardRefs.current[
-        activeAwardHighlightIndex
-      ];
-
-    if (container && card) {
-      const targetLeft =
-        card.offsetLeft -
-        (container.clientWidth - card.offsetWidth) / 2;
-
-      container.scrollTo({
-        left: Math.max(0, targetLeft),
-        behavior: "smooth",
-      });
-    }
-
-    awardVideoRefs.current.forEach((video, index) => {
-      if (!video) return;
-
-      if (index !== activeAwardHighlightIndex) {
-        try {
-          video.pause();
-        } catch {}
-        return;
-      }
-
-      const startActiveVideo = async () => {
-        try {
-          video.muted = true;
-          await video.play();
-        } catch {
-          /*
-           * Some browsers can still reject autoplay.
-           * Native video controls remain available as fallback.
-           */
-        }
-      };
-
-      if (video.readyState >= 1) {
-        startActiveVideo();
-      } else {
-        video.addEventListener(
-          "loadedmetadata",
-          startActiveVideo,
-          { once: true }
-        );
-      }
-    });
-  }, [
-    activeAwardHighlightIndex,
-    rotatingAwardHighlights,
-  ]);
-
-  const moveAwardHighlight = useCallback(
-    (direction) => {
-      const count = rotatingAwardHighlights.length;
-      if (!count) return;
-
-      setActiveAwardHighlightIndex((current) => {
-        const next =
-          direction > 0
-            ? (current + 1) % count
-            : (current - 1 + count) % count;
-
-        return next;
-      });
-    },
-    [rotatingAwardHighlights.length]
+  const { normalizeName } = useMemberNameMap(
+    Array.isArray(members) ? members : []
   );
-
-  const awardScrollTimerRef = useRef(null);
-
-  const syncAwardIndexFromScroll = useCallback(() => {
-    const container = awardCarouselRef.current;
-
-    if (
-      !container ||
-      !rotatingAwardHighlights.length
-    ) {
-      return;
-    }
-
-    if (awardScrollTimerRef.current) {
-      window.clearTimeout(
-        awardScrollTimerRef.current
-      );
-    }
-
-    awardScrollTimerRef.current =
-      window.setTimeout(() => {
-        const containerRect =
-          container.getBoundingClientRect();
-
-        const centre =
-          containerRect.left +
-          containerRect.width / 2;
-
-        let closestIndex = 0;
-        let closestDistance =
-          Number.POSITIVE_INFINITY;
-
-        awardCardRefs.current.forEach(
-          (card, index) => {
-            if (!card) return;
-
-            const rect =
-              card.getBoundingClientRect();
-
-            const cardCentre =
-              rect.left + rect.width / 2;
-
-            const distance =
-              Math.abs(cardCentre - centre);
-
-            if (distance < closestDistance) {
-              closestDistance = distance;
-              closestIndex = index;
-            }
-          }
-        );
-
-        setActiveAwardHighlightIndex(
-          (current) =>
-            current === closestIndex
-              ? current
-              : closestIndex
-        );
-      }, 140);
-  }, [rotatingAwardHighlights.length]);
 
   const shortDisplayByNormalized = useMemo(() => {
     const out = {};
@@ -995,6 +701,7 @@ export function NewsPage({
     imageUrl: "",
     imageSize: "100",
     imageFit: "auto",
+    playerPhotoSide: "left",
     publishDate: makeDateInputValue(Date.now()),
   });
 
@@ -1029,7 +736,7 @@ export function NewsPage({
               ...data,
             };
           })
-          .filter(Boolean);
+          .filter(story => (story.clubId || "turf-kings") === safeActiveClubId);
 
         setCustomStories(nextStories);
         setLoadingStories(false);
@@ -1042,7 +749,9 @@ export function NewsPage({
     );
 
     return () => unsubscribe();
-  }, [isPracticeMode, practiceSessionId]);
+  }, [isPracticeMode, practiceSessionId, safeActiveClubId]);
+
+  const focusedStoryId=useNotificationFocus(initialPollOpen,safeActiveClubId,customStories,"fanm-story-");
 
   const activeCustomStories = useMemo(
     () => customStories.filter((story) => story && !story.archived),
@@ -1093,12 +802,15 @@ export function NewsPage({
     setStoryDraft({
       title: String(story.title || ""),
       tag: String(story.tag || "Story"),
+      winnersAnnouncement: Boolean(story.winnersAnnouncement),
+      announcementSeasonId: String(story.announcementSeasonId||""),
       body: String(story.body || ""),
       slotKey: String(story.slotKey || "after-hero"),
       playerName: String(story.playerName || ""),
       imageUrl: String(story.imageUrl || ""),
       imageSize: String(story.imageSize || "100"),
       imageFit: String(story.imageFit || "auto"),
+      playerPhotoSide: story.playerPhotoSide === "right" ? "right" : "left",
       publishDate: makeDateInputValue(story.publishDateMs || story.createdAtMs || Date.now()),
     });
     setShowCreateStoryForm(true);
@@ -1121,6 +833,8 @@ export function NewsPage({
     const tag = String(storyDraft.tag || "").trim() || "Story";
     const playerName = String(storyDraft.playerName || "").trim();
     const imageUrl = String(storyDraft.imageUrl || "").trim();
+    if(storyDraft.winnersAnnouncement&&!imageUrl){setStoryFormError("Add a photo of the winners before publishing this announcement.");return;}
+
     const imageSize = String(storyDraft.imageSize || "100");
     const imageFit = String(storyDraft.imageFit || "auto");
     const slotKey = String(storyDraft.slotKey || "after-hero");
@@ -1161,8 +875,10 @@ export function NewsPage({
           slotKey,
           playerName,
           imageUrl,
+          notificationImageUrl: (playerName && getPlayerPhoto(playerName)) || imageUrl,
           imageSize,
           imageFit,
+          playerPhotoSide: storyDraft.playerPhotoSide === "right" ? "right" : "left",
           archived: false,
           createdAtMs: publishDateMs || createdAtMs,
           publishDateMs: publishDateMs || createdAtMs,
@@ -1181,7 +897,7 @@ export function NewsPage({
         setStoryFormNotice(
           editingStoryId
             ? "Story updated."
-            : "Story created and published."
+            : (publishDateMs > Date.now() ? "Story saved and scheduled for the selected date." : "Story created and published.")
         );
         setStoryDraft(createEmptyStoryDraft());
         setEditingStoryId("");
@@ -1201,14 +917,22 @@ export function NewsPage({
       await setDoc(
         storyRef,
         {
+          clubId: safeActiveClubId,
+          createdByUid: auth.currentUser?.uid || "",
+          createdByMemberId: identity?.memberId || "",
+          lastEditorMemberId: identity?.memberId || "",
+          winnersAnnouncement: Boolean(storyDraft.winnersAnnouncement),
+          announcementSeasonId: String(storyDraft.announcementSeasonId||""),
           title,
           body,
           tag,
           slotKey,
           playerName,
           imageUrl,
+          notificationImageUrl: (playerName && getPlayerPhoto(playerName)) || imageUrl,
           imageSize,
           imageFit,
+          playerPhotoSide: storyDraft.playerPhotoSide === "right" ? "right" : "left",
           archived: false,
           createdAtMs: publishDateMs || createdAtMs,
           publishDateMs: publishDateMs || createdAtMs,
@@ -1221,7 +945,7 @@ export function NewsPage({
         { merge: true }
       );
 
-      setStoryFormNotice(editingStoryId ? "Story updated." : "Story created and published.");
+      setStoryFormNotice(editingStoryId ? "Story updated." : (publishDateMs > Date.now() ? "Story saved and scheduled for the selected date." : "Story created and published."));
       setStoryDraft(createEmptyStoryDraft());
       setEditingStoryId("");
       setShowCreateStoryForm(false);
@@ -1253,6 +977,7 @@ export function NewsPage({
               ? {
                   ...story,
                   archived: !targetStory.archived,
+          lastEditorMemberId: identity?.memberId || "",
                   archivedAtMs: !targetStory.archived ? Date.now() : null,
                   updatedAtMs: Date.now(),
                 }
@@ -1270,6 +995,7 @@ export function NewsPage({
         doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId),
         {
           archived: !targetStory.archived,
+          lastEditorMemberId: identity?.memberId || "",
           archivedAtMs: !targetStory.archived ? Date.now() : null,
           updatedAtMs: Date.now(),
           updatedAt: serverTimestamp(),
@@ -1310,6 +1036,7 @@ This will remove it from live news and archives for everyone.`
         return;
       }
 
+      await setDoc(doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId), {lastEditorMemberId: identity?.memberId || ""}, {merge:true});
       await deleteDoc(doc(db, CUSTOM_NEWS_STORIES_COLLECTION, storyId));
       if (editingStoryId === storyId) resetStoryDraft();
       setStoryFormError("");
@@ -2283,12 +2010,9 @@ This will remove it from live news and archives for everyone.`
   // ---------------- CUSTOM POLL STATE ----------------
   const createEmptyPollDraft = () => ({
     question: "",
-    tag: "Poll",
-    optionA: "",
-    optionB: "",
-    playerName: "",
-    imageUrl: "",
-    publishDate: makeDateInputValue(Date.now()),
+    icon: "🗳️",
+    merchandiseId: "",
+    options: ["", ""],
   });
 
   const [customPolls, setCustomPolls] = useState([]);
@@ -2298,6 +2022,61 @@ This will remove it from live news and archives for everyone.`
   const [pollFormError, setPollFormError] = useState("");
   const [pollFormNotice, setPollFormNotice] = useState("");
   const [editingPollId, setEditingPollId] = useState("");
+  const [focusedPollId, setFocusedPollId] = useState("");
+  useEffect(() => {
+    if (!initialMerchandisePoll || initialMerchandisePoll.clubId !== safeActiveClubId || !canManageCustomStories) return;
+    setEditingPollId("");
+    setPollDraft(clubKitInterestDraft());
+    setShowCreatePollForm(true);
+    setPollFormError("");
+    setPollFormNotice("Kit attached. Review the question and choices, then save to publish. Interest only; no payment or order is taken.");
+    const frame=requestAnimationFrame(()=>{document.getElementById("club-poll-studio")?.scrollIntoView({block:"start"});onMerchandisePollConsumed?.();});
+    return()=>cancelAnimationFrame(frame);
+  }, [initialMerchandisePoll, safeActiveClubId, canManageCustomStories, onMerchandisePollConsumed]);
+
+
+  useEffect(() => {
+    const requestedClubId = String(
+      initialPollOpen?.clubId || ""
+    ).trim();
+    const requestedPollId = String(
+      initialPollOpen?.pollId || ""
+    ).trim();
+
+    if (
+      !requestedPollId ||
+      requestedClubId !== safeActiveClubId ||
+      !customPolls.some((poll) => poll?.id === requestedPollId)
+    ) {
+      return undefined;
+    }
+
+    setFocusedPollId(requestedPollId);
+
+    const scrollTimer = window.setTimeout(() => {
+      document
+        .getElementById(`club-poll-${requestedPollId}`)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+    }, 150);
+
+    const highlightTimer = window.setTimeout(() => {
+      setFocusedPollId((current) =>
+        current === requestedPollId ? "" : current
+      );
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(highlightTimer);
+    };
+  }, [
+    initialPollOpen,
+    safeActiveClubId,
+    customPolls,
+  ]);
 
   useEffect(() => {
     if (isPracticeMode) {
@@ -2310,10 +2089,23 @@ This will remove it from live news and archives for everyone.`
     const unsubscribe = onSnapshot(
       pollsRef,
       (snapshot) => {
-        const nextPolls = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...(docSnap.data() || {}),
-        }));
+        const nextPolls = snapshot.docs
+          .map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() || {}),
+          }))
+          .filter((poll) => {
+            const pollClubId = String(
+              poll?.clubId || ""
+            ).trim();
+
+            if (pollClubId) {
+              return pollClubId === safeActiveClubId;
+            }
+
+            return safeActiveClubId === "turf-kings";
+          });
+
         setCustomPolls(nextPolls);
       },
       (error) => {
@@ -2323,7 +2115,11 @@ This will remove it from live news and archives for everyone.`
     );
 
     return () => unsubscribe();
-  }, [isPracticeMode, practiceSessionId]);
+  }, [
+    isPracticeMode,
+    practiceSessionId,
+    safeActiveClubId,
+  ]);
 
   useEffect(() => {
     if (isPracticeMode) {
@@ -2468,9 +2264,14 @@ This will remove it from live news and archives for everyone.`
       const pollId = String(vote?.pollId || "");
       const choice = String(vote?.choice || "");
       if (!pollId || !choice) return;
-      if (!out[pollId]) out[pollId] = { A: 0, B: 0, byVoter: {} };
-      if (choice === "A" || choice === "B") out[pollId][choice] += 1;
-      if (vote?.voterId) out[pollId].byVoter[vote.voterId] = choice;
+      if (!out[pollId]) {
+        out[pollId] = { byVoter: {} };
+      }
+      out[pollId][choice] =
+        Number(out[pollId][choice] || 0) + 1;
+      if (vote?.voterId) {
+        out[pollId].byVoter[vote.voterId] = choice;
+      }
     });
     return out;
   }, [pollVotes]);
@@ -2484,6 +2285,38 @@ This will remove it from live news and archives for everyone.`
     setPollFormNotice("");
   };
 
+  const handlePollOptionChange = (index, value) => {
+    setPollDraft((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) =>
+        optionIndex === index ? value : option
+      ),
+    }));
+    setPollFormError("");
+  };
+
+  const addPollOption = () => {
+    setPollDraft((current) => ({
+      ...current,
+      options:
+        current.options.length >= 6
+          ? current.options
+          : [...current.options, ""],
+    }));
+  };
+
+  const removePollOption = (index) => {
+    setPollDraft((current) => ({
+      ...current,
+      options:
+        current.options.length <= 2
+          ? current.options
+          : current.options.filter(
+              (_, optionIndex) => optionIndex !== index
+            ),
+    }));
+  };
+
   const resetPollDraft = () => {
     setPollDraft(createEmptyPollDraft());
     setEditingPollId("");
@@ -2494,14 +2327,21 @@ This will remove it from live news and archives for everyone.`
   const handleEditCustomPoll = (poll) => {
     if (!canManageCustomStories || !poll) return;
     setEditingPollId(poll.id || "");
+    const existingOptions =
+      Array.isArray(poll.options) && poll.options.length >= 2
+        ? poll.options.map((option) =>
+            String(option?.label ?? option ?? "")
+          )
+        : [
+            String(poll.optionA || ""),
+            String(poll.optionB || ""),
+          ];
+
     setPollDraft({
+      merchandiseId: pollMerchandiseId(poll.merchandiseId),
       question: String(poll.question || ""),
-      tag: String(poll.tag || "Poll"),
-      optionA: String(poll.optionA || ""),
-      optionB: String(poll.optionB || ""),
-      playerName: String(poll.playerName || ""),
-      imageUrl: String(poll.imageUrl || ""),
-      publishDate: makeDateInputValue(poll.publishDateMs || poll.createdAtMs || Date.now()),
+      icon: String(poll.icon || "🗳️"),
+      options: existingOptions.slice(0, 6),
     });
     setShowCreatePollForm(true);
     setPollFormError("");
@@ -2512,19 +2352,22 @@ This will remove it from live news and archives for everyone.`
     if (!canManageCustomStories) return;
 
     const question = String(pollDraft.question || "").trim();
-    const tag = String(pollDraft.tag || "").trim() || "Poll";
-    const optionA = String(pollDraft.optionA || "").trim();
-    const optionB = String(pollDraft.optionB || "").trim();
-    const playerName = String(pollDraft.playerName || "").trim();
-    const imageUrl = String(pollDraft.imageUrl || "").trim();
-    const publishDateMs = dateInputToMs(pollDraft.publishDate, Date.now());
+    const icon = String(pollDraft.icon || "🗳️").trim() || "🗳️";
+    const options = (pollDraft.options || [])
+      .map((label, index) => ({
+        id: String.fromCharCode(65 + index),
+        label: String(label || "").trim(),
+      }))
+      .filter((option) => option.label)
+      .slice(0, 6);
+    const publishDateMs = Date.now();
 
     if (!question) {
       setPollFormError("Please add a poll question.");
       return;
     }
-    if (!optionA || !optionB) {
-      setPollFormError("Please add two poll options.");
+    if (options.length < 2) {
+      setPollFormError("Please add at least two poll choices.");
       return;
     }
     if (!editingPollId && hasReachedCustomPollLimit) {
@@ -2544,11 +2387,11 @@ This will remove it from live news and archives for everyone.`
         const practicePoll = {
           id: pollId,
           question,
-          tag,
-          optionA,
-          optionB,
-          playerName,
-          imageUrl,
+          merchandiseId: pollMerchandiseId(pollDraft.merchandiseId),
+          icon,
+          options,
+          optionA: options[0]?.label || "",
+          optionB: options[1]?.label || "",
           archived: false,
           createdAtMs,
           publishDateMs,
@@ -2578,12 +2421,16 @@ This will remove it from live news and archives for everyone.`
       await setDoc(
         doc(db, CUSTOM_POLLS_COLLECTION, pollId),
         {
+          clubId: safeActiveClubId,
+          createdByUid: auth.currentUser?.uid || "",
+          createdByMemberId: identity?.memberId || "",
+          lastEditorMemberId: identity?.memberId || "",
           question,
-          tag,
-          optionA,
-          optionB,
-          playerName,
-          imageUrl,
+          merchandiseId: pollMerchandiseId(pollDraft.merchandiseId),
+          icon,
+          options,
+          optionA: options[0]?.label || "",
+          optionB: options[1]?.label || "",
           archived: false,
           createdAtMs,
           publishDateMs,
@@ -2624,6 +2471,7 @@ This will remove it from live news and archives for everyone.`
               ? {
                   ...poll,
                   archived: !targetPoll.archived,
+          lastEditorMemberId: identity?.memberId || "",
                   archivedAtMs: !targetPoll.archived ? Date.now() : null,
                   updatedAtMs: Date.now(),
                 }
@@ -2641,6 +2489,7 @@ This will remove it from live news and archives for everyone.`
         doc(db, CUSTOM_POLLS_COLLECTION, pollId),
         {
           archived: !targetPoll.archived,
+          lastEditorMemberId: identity?.memberId || "",
           archivedAtMs: !targetPoll.archived ? Date.now() : null,
           updatedAtMs: Date.now(),
           updatedAt: serverTimestamp(),
@@ -2683,6 +2532,7 @@ Votes for this poll will no longer be shown.`
         return;
       }
 
+      await setDoc(doc(db, CUSTOM_POLLS_COLLECTION, pollId), {lastEditorMemberId: identity?.memberId || ""}, {merge:true});
       await deleteDoc(doc(db, CUSTOM_POLLS_COLLECTION, pollId));
       if (editingPollId === pollId) resetPollDraft();
       setPollFormError("");
@@ -2706,6 +2556,7 @@ Votes for this poll will no longer be shown.`
       return;
     }
 
+    const clearing = pollVotesByPollId[poll.id]?.byVoter?.[voterId] === choice;
     try {
       if (isPracticeMode) {
         const voteId = `${poll.id}__${voterId}`;
@@ -2726,11 +2577,15 @@ Votes for this poll will no longer be shown.`
           const withoutCurrent = current.filter(
             (vote) => vote?.id !== voteId
           );
-          return [...withoutCurrent, practiceVote];
+          return clearing ? withoutCurrent : [...withoutCurrent, practiceVote];
         });
         return;
       }
 
+      if (clearing) {
+        await deleteDoc(doc(db, CUSTOM_POLL_VOTES_COLLECTION, `${poll.id}__${voterId}`));
+        return;
+      }
       await setDoc(
         doc(db, CUSTOM_POLL_VOTES_COLLECTION, `${poll.id}__${voterId}`),
         {
@@ -2753,15 +2608,42 @@ Votes for this poll will no longer be shown.`
 
     const playerName = String(poll.playerName || "").trim();
     const playerPhotoUrl = playerName ? getPlayerPhoto(playerName) : null;
-    const displayImageUrl = playerPhotoUrl || String(poll.imageUrl || "").trim() || null;
+    const displayImageUrl = poll.merchandiseId === "club-kit" ? JerseyImage : playerPhotoUrl || String(poll.imageUrl || "").trim() || null;
     const pollDateMs = resolveDateMs(poll.publishDateMs || poll.createdAtMs, Date.now());
     const freshness = getFreshnessBadge(pollDateMs, archivedView || poll.archived);
-    const counts = pollVotesByPollId[poll.id] || { A: 0, B: 0, byVoter: {} };
-    const totalVotes = Number(counts.A || 0) + Number(counts.B || 0);
+    const pollOptions =
+      Array.isArray(poll.options) && poll.options.length >= 2
+        ? poll.options
+            .map((option, index) => ({
+              id: String(
+                option?.id ||
+                String.fromCharCode(65 + index)
+              ),
+              label: String(option?.label ?? option ?? ""),
+            }))
+            .filter((option) => option.label)
+        : [
+            { id: "A", label: poll.optionA || "Option A" },
+            { id: "B", label: poll.optionB || "Option B" },
+          ];
+
+    const counts =
+      pollVotesByPollId[poll.id] || { byVoter: {} };
+    const totalVotes = pollOptions.reduce(
+      (sum, option) =>
+        sum + Number(counts[option.id] || 0),
+      0
+    );
     const voterId = makeVoterId(identity);
-    const myChoice = voterId ? counts.byVoter?.[voterId] : "";
+    const myChoice = voterId
+      ? counts.byVoter?.[voterId]
+      : "";
+    const myChoiceLabel =
+      pollOptions.find((option) => option.id === myChoice)
+        ?.label || myChoice;
 
     const optionButton = (choice, label, count) => {
+      if(poll.merchandiseId === "club-kit")label=compactKitPollOption(label);
       const pct = totalVotes > 0 ? Math.round((Number(count || 0) / totalVotes) * 100) : 0;
       const selected = myChoice === choice;
       return (
@@ -2786,8 +2668,26 @@ Votes for this poll will no longer be shown.`
     };
 
     return (
-      <section key={poll.id} className="card" style={{ overflow: "hidden" }}>
-        <div
+      <section data-player-photo-side={"left"}
+        id={`club-poll-${poll.id}`}
+        key={poll.id}
+        className={`card ${playerName && poll.merchandiseId !== "club-kit" ? "fanm-player-news" : ""}`}
+        style={{
+          overflow: "hidden",
+          outline:
+            focusedPollId === poll.id
+              ? "2px solid #f6c945"
+              : "2px solid transparent",
+          boxShadow:
+            focusedPollId === poll.id
+              ? "0 0 28px rgba(246, 201, 69, 0.32)"
+              : undefined,
+          transition:
+            "outline-color 220ms ease, box-shadow 220ms ease",
+        }}
+      >
+        <CompactNewsPoll totalVotes={totalVotes} forceOpen={focusedPollId===poll.id}>
+        <div className={playerName && poll.merchandiseId !== "club-kit" ? "fanm-player-news-layout" : undefined}
           style={{
             display: "grid",
             gridTemplateColumns: displayImageUrl || playerName ? (isNarrow ? "1fr" : "0.8fr 1.2fr") : "1fr",
@@ -2796,7 +2696,8 @@ Votes for this poll will no longer be shown.`
           }}
         >
           {(displayImageUrl || playerName) && (
-            <div
+            <div className="compact-poll-media" data-player-portrait={Boolean(playerName&&poll.merchandiseId!=="club-kit")}>
+            <div className={playerName && poll.merchandiseId !== "club-kit" ? "fanm-player-news-photo compact-poll-media-content" : "compact-poll-media-content"}
               style={{
                 minHeight: isNarrow ? 180 : 220,
                 borderRadius: "1rem",
@@ -2843,9 +2744,10 @@ Votes for this poll will no longer be shown.`
                 </div>
               )}
             </div>
+            </div>
           )}
 
-          <div style={{ minWidth: 0 }}>
+          <div className="compact-poll-copy" style={{ minWidth: 0 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem", marginBottom: "0.7rem" }}>
               <span style={metaChipStyle}>🗳️ {poll.tag || "Poll"}</span>
               <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(pollDateMs))}</span>
@@ -2862,21 +2764,50 @@ Votes for this poll will no longer be shown.`
               </span>
             </div>
 
-            <h2 style={{ marginTop: 0 }}>{poll.question}</h2>
-            {playerName ? <p className="muted small">Featuring {playerName}</p> : null}
-
-            <div style={{ display: "grid", gap: "0.55rem", marginTop: "0.9rem" }}>
-              {optionButton("A", poll.optionA || "Option A", counts.A || 0)}
-              {optionButton("B", poll.optionB || "Option B", counts.B || 0)}
+            <div
+              style={{
+                display: "flex",
+                gap: "0.7rem",
+                alignItems: "flex-start",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  fontSize: "1.7rem",
+                  lineHeight: 1,
+                }}
+              >
+                {poll.icon || "🗳️"}
+              </span>
+              <h2 style={{ margin: 0 }}>{poll.merchandiseId==="club-kit"?compactKitPollQuestion(poll.question):poll.question}</h2>
             </div>
 
-            <p className="muted small" style={{ marginTop: "0.65rem" }}>
+            <div className="compact-poll-options"
+              style={{
+                display: "grid",
+                gap: "0.55rem",
+                marginTop: "0.9rem",
+              }}
+            >
+              {pollOptions.map((option) =>
+                optionButton(
+                  option.id,
+                  option.label,
+                  counts[option.id] || 0
+                )
+              )}
+            </div>
+
+            <p className="muted small compact-poll-totals" style={{ marginTop: "0.65rem" }}>
               Total votes: <strong>{totalVotes}</strong>
-              {myChoice ? ` · You voted ${myChoice}` : ""}
+              {myChoiceLabel
+                ? ` · You voted ${myChoiceLabel}`
+                : ""}
             </p>
 
             {canManageCustomStories && (
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.8rem" }}>
+              <div className="compact-poll-admin" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.8rem" }}>
                 {!archivedView && (
                   <button type="button" className="secondary-btn" onClick={() => handleEditCustomPoll(poll)} style={{ padding: "0.48rem 0.8rem", fontSize: "0.82rem" }}>
                     Edit
@@ -2892,6 +2823,7 @@ Votes for this poll will no longer be shown.`
             )}
           </div>
         </div>
+        </CompactNewsPoll>
       </section>
     );
   };
@@ -2941,8 +2873,8 @@ Votes for this poll will no longer be shown.`
     const panelWidthPercent = Math.round(imageScale * 100);
 
     return (
-      <section key={story.id} className="card" style={{ overflow: "hidden" }}>
-        <div
+      <section data-player-photo-side={story.playerPhotoSide === "right" ? "right" : "left"} key={story.id} id={`fanm-story-${story.id}`} className={`card ${playerName ? "fanm-player-news" : ""} ${focusedStoryId===story.id ? "fanm-notification-focus fanm-story-focus" : ""}`} style={{ overflow: "hidden", scrollMarginTop: 100 }}>
+        <div className={playerName ? "fanm-player-news-layout" : undefined}
           style={{
             display: "grid",
             gridTemplateColumns:
@@ -2952,7 +2884,7 @@ Votes for this poll will no longer be shown.`
           }}
         >
           {(displayImageUrl || playerName) && (
-            <div
+            <div className={playerName ? "fanm-player-news-photo" : undefined}
               style={{
                 width: "100%",
                 maxWidth: isAvatarImage ? imageColumnWidth : `${panelWidthPercent}%`,
@@ -3027,7 +2959,7 @@ Votes for this poll will no longer be shown.`
               )}
 
               {playerName && (
-                <div
+                <div className="fanm-player-news-name"
                   style={{
                     position: "absolute",
                     left: isAvatarImage ? "50%" : "0.8rem",
@@ -3048,17 +2980,7 @@ Votes for this poll will no longer be shown.`
             </div>
           )}
 
-          <div style={{ minWidth: 0, position: "relative" }}>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.5rem",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: "0.7rem",
-              }}
-            >
+          {playerName&&<div className="fanm-player-news-meta">
               <div
                 style={{
                   display: "inline-flex",
@@ -3091,6 +3013,56 @@ Votes for this poll will no longer be shown.`
                   {freshness.label}
                 </span>
               </div>
+
+          </div>}
+
+          <div className={playerName ? "fanm-player-news-copy" : undefined} style={{ minWidth: 0, position: "relative" }}>
+            {playerName&&<small className="fanm-player-news-byline">{playerName}</small>}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.5rem",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "0.7rem",
+              }}
+            >
+              {!playerName&&<>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.45rem",
+                  padding: "0.25rem 0.65rem",
+                  borderRadius: "999px",
+                  background: "rgba(59,130,246,0.16)",
+                  border: "1px solid rgba(59,130,246,0.28)",
+                  fontWeight: 700,
+                  maxWidth: "100%",
+                }}
+              >
+                <span>📰</span>
+                <span>{story.tag || "Story"}</span>
+              </div>
+
+              <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", alignItems: "center" }}>
+                <span style={metaChipStyle}>🗓 {formatMatchDayDate(new Date(storyDateMs))}</span>
+                <span
+                  style={{
+                    ...metaChipStyle,
+                    background: freshness.tone,
+                    border: `1px solid ${freshness.border}`,
+                    color: freshness.color,
+                    fontWeight: 900,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {freshness.label}
+                </span>
+              </div>
+
+              </>}
 
               {!archivedView && canManageCustomStories && (
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -3372,18 +3344,20 @@ Votes for this poll will no longer be shown.`
                   </select>
                 </label>
 
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Custom image URL (optional)</span>
-                  <input
+                <div style={{ display: "grid", gap: "0.35rem" }}>
+                  <span style={{ fontWeight: 700 }}>Story photo</span>
+                  <StoryPhotoPicker value={storyDraft.imageUrl} onChange={value=>handleStoryDraftChange("imageUrl",value)}/>
+                  <input aria-label="Story image link"
                     type="text"
-                    value={storyDraft.imageUrl}
+                    value={String(storyDraft.imageUrl||"").startsWith("data:")?"":storyDraft.imageUrl}
                     onChange={(e) => handleStoryDraftChange("imageUrl", e.target.value)}
                     placeholder="https://..."
                     style={newsInputStyle}
                   />
-                </label>
+                </div>
 
-                <label style={{ display: "grid", gap: "0.35rem" }}>
+                {storyDraft.playerName&&<label style={{display:"grid",gap:".35rem"}}><span>Player portrait</span><select style={newsInputStyle} value={storyDraft.playerPhotoSide||"left"} onChange={e=>handleStoryDraftChange("playerPhotoSide",e.target.value)}><option value="left">Top left</option><option value="right">Top right</option></select></label>}
+                <label hidden={Boolean(storyDraft.playerName)} style={{ display: storyDraft.playerName ? "none" : "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Photo size</span>
                   <select
                     value={storyDraft.imageSize}
@@ -3414,7 +3388,7 @@ Votes for this poll will no longer be shown.`
                 </label>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Publish date</span>
+                  <span style={{ fontWeight: 700 }}>Publish date · today sends now</span>
                   <input
                     type="date"
                     value={storyDraft.publishDate}
@@ -3462,7 +3436,7 @@ Votes for this poll will no longer be shown.`
 
 
       {canManageCustomStories && (
-        <section className="card" style={{ overflow: "hidden" }}>
+        <section id="club-poll-studio" className="card" style={{ overflow: "hidden", scrollMarginTop: 100 }}>
           <div
             style={{
               display: "flex",
@@ -3475,7 +3449,7 @@ Votes for this poll will no longer be shown.`
             <div style={{ minWidth: 0 }}>
               <h2 style={{ marginTop: 0, marginBottom: "0.35rem" }}>Custom poll studio</h2>
               <p className="muted" style={{ margin: 0 }}>
-                Create up to 2 active polls. Votes are saved in Firebase, not local storage.
+                Create a quick club vote with up to 6 choices.
               </p>
             </div>
 
@@ -3531,6 +3505,7 @@ Votes for this poll will no longer be shown.`
                   gap: "0.85rem",
                 }}
               >
+                <label style={{display:"grid",gap:".35rem",gridColumn:"1/-1"}}><span style={{fontWeight:700}}>Attach merchandise</span><select style={newsInputStyle} value={pollDraft.merchandiseId || ""} onChange={e=>handlePollDraftChange("merchandiseId",e.target.value)}><option value="">No merchandise</option><option value="club-kit">Club kit · Turf Kings example · R400 top / R300 shorts</option></select>{pollDraft.merchandiseId === "club-kit" && <><img src={JerseyImage} alt="Attached Turf Kings kit example" style={{width:"100%",maxWidth:240,maxHeight:180,objectFit:"contain",background:"#fff",borderRadius:12}}/><small>Interest only. Final club design and ordering will be confirmed separately.</small></>}</label>
                 <label style={{ display: "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Poll question</span>
                   <input
@@ -3543,89 +3518,90 @@ Votes for this poll will no longer be shown.`
                 </label>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Poll tag</span>
-                  <input
-                    type="text"
-                    value={pollDraft.tag}
-                    onChange={(e) => handlePollDraftChange("tag", e.target.value)}
-                    placeholder="Poll / Vote / Fan choice"
-                    style={newsInputStyle}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Option A</span>
-                  <input
-                    type="text"
-                    value={pollDraft.optionA}
-                    onChange={(e) => handlePollDraftChange("optionA", e.target.value)}
-                    placeholder="First option"
-                    style={newsInputStyle}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Option B</span>
-                  <input
-                    type="text"
-                    value={pollDraft.optionB}
-                    onChange={(e) => handlePollDraftChange("optionB", e.target.value)}
-                    placeholder="Second option"
-                    style={newsInputStyle}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Player picture (optional)</span>
+                  <span style={{ fontWeight: 700 }}>Poll icon</span>
                   <select
-                    value={pollDraft.playerName}
-                    onChange={(e) => handlePollDraftChange("playerName", e.target.value)}
+                    value={pollDraft.icon}
+                    onChange={(e) =>
+                      handlePollDraftChange("icon", e.target.value)
+                    }
                     style={newsInputStyle}
                   >
-                    <option value="">No player selected</option>
-                    {allKnownPlayers.map((playerName) => (
-                      <option key={playerName} value={playerName}>
-                        {playerName}
-                      </option>
-                    ))}
+                    <option value="🗳️">🗳️ General vote</option>
+                    <option value="⚽">⚽ Football</option>
+                    <option value="🔥">🔥 Hot topic</option>
+                    <option value="🏆">🏆 Award</option>
+                    <option value="👥">👥 Team decision</option>
+                    <option value="📣">📣 Club announcement</option>
                   </select>
                 </label>
 
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Outside image URL (optional)</span>
-                  <input
-                    type="text"
-                    value={pollDraft.imageUrl}
-                    onChange={(e) => handlePollDraftChange("imageUrl", e.target.value)}
-                    placeholder="https://..."
-                    style={newsInputStyle}
-                  />
-                </label>
+                <div style={{ display: "grid", gap: "0.65rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                    }}
+                  >
+                    <strong>Choices</strong>
+                    <small className="muted">
+                      {pollDraft.options.length}/6
+                    </small>
+                  </div>
 
-                <label style={{ display: "grid", gap: "0.35rem" }}>
-                  <span style={{ fontWeight: 700 }}>Publish date</span>
-                  <input
-                    type="date"
-                    value={pollDraft.publishDate}
-                    onChange={(e) => handlePollDraftChange("publishDate", e.target.value)}
-                    style={newsInputStyle}
-                  />
-                </label>
-              </div>
+                  {pollDraft.options.map((option, index) => (
+                    <div
+                      key={`poll-option-${index}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          index >= 2 ? "1fr auto" : "1fr",
+                        gap: "0.5rem",
+                        alignItems: "center",
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={option}
+                        onChange={(e) =>
+                          handlePollOptionChange(
+                            index,
+                            e.target.value
+                          )
+                        }
+                        placeholder={`Choice ${index + 1}`}
+                        style={newsInputStyle}
+                      />
 
-              {pollFormError && (
-                <div style={{ marginTop: "0.85rem", color: "#fca5a5", fontWeight: 600 }}>
-                  {pollFormError}
+                      {index >= 2 ? (
+                        <button
+                          type="button"
+                          className="secondary-btn"
+                          onClick={() => removePollOption(index)}
+                          aria-label={`Remove choice ${index + 1}`}
+                          style={{
+                            minWidth: "2.6rem",
+                            padding: "0.65rem",
+                          }}
+                        >
+                          ×
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+
+                  {pollDraft.options.length < 6 ? (
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={addPollOption}
+                    >
+                      + Add choice
+                    </button>
+                  ) : null}
                 </div>
-              )}
 
-              {pollFormNotice && !pollFormError && (
-                <div style={{ marginTop: "0.85rem", color: "#86efac", fontWeight: 600 }}>
-                  {pollFormNotice}
-                </div>
-              )}
-
-              <div style={{ display: "flex", gap: "0.65rem", flexWrap: "wrap", marginTop: "1rem" }}>
                 <button type="button" className="primary-btn" onClick={handleSaveCustomPoll}>
                   {editingPollId ? "Update poll" : "Save poll"}
                 </button>
@@ -4030,357 +4006,6 @@ Votes for this poll will no longer be shown.`
               </strong>
             </div>
           </div>
-        </section>
-      )}
-
-      {(awardHighlightsLoading || rotatingAwardHighlights.length > 0) && (
-        <section
-          className="card"
-          style={{
-            padding: "1rem",
-            overflow: "hidden",
-            border: "1px solid rgba(250,204,21,0.22)",
-            background:
-              "linear-gradient(145deg, rgba(8,15,31,0.98), rgba(15,23,42,0.98))",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.65rem",
-              marginBottom: "0.8rem",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                minWidth: 0,
-              }}
-            >
-              <span style={{ fontSize: "1.15rem" }}>🏆</span>
-
-              <strong
-                style={{
-                  color: "#facc15",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  fontSize: "0.84rem",
-                }}
-              >
-                Awards Watch
-              </strong>
-            </div>
-
-            {rotatingAwardHighlights.length > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                }}
-              >
-                <span
-                  style={{
-                    color: "#cbd5e1",
-                    fontSize: "0.72rem",
-                    fontWeight: 800,
-                  }}
-                >
-                  {activeAwardHighlightIndex + 1} /{" "}
-                  {rotatingAwardHighlights.length}
-                </span>
-
-                <button
-                  type="button"
-                  aria-label="Previous award"
-                  onClick={() => moveAwardHighlight(-1)}
-                  style={{
-                    width: "34px",
-                    height: "34px",
-                    borderRadius: "999px",
-                    border: "1px solid rgba(148,163,184,0.3)",
-                    background: "rgba(15,23,42,0.9)",
-                    color: "#f8fafc",
-                    cursor: "pointer",
-                    fontSize: "1rem",
-                  }}
-                >
-                  ‹
-                </button>
-
-                <button
-                  type="button"
-                  aria-label="Next award"
-                  onClick={() => moveAwardHighlight(1)}
-                  style={{
-                    width: "34px",
-                    height: "34px",
-                    borderRadius: "999px",
-                    border: "1px solid rgba(148,163,184,0.3)",
-                    background: "rgba(15,23,42,0.9)",
-                    color: "#f8fafc",
-                    cursor: "pointer",
-                    fontSize: "1rem",
-                  }}
-                >
-                  ›
-                </button>
-              </div>
-            )}
-          </div>
-
-          {awardHighlightsLoading &&
-          rotatingAwardHighlights.length === 0 ? (
-            <p className="muted" style={{ margin: 0 }}>
-              Loading awards race…
-            </p>
-          ) : (
-            <>
-              <div
-                ref={awardCarouselRef}
-                onScroll={syncAwardIndexFromScroll}
-                style={{
-                  display: "flex",
-                  gap: "0.85rem",
-                  overflowX: "auto",
-                  scrollSnapType: "x mandatory",
-                  scrollBehavior: "smooth",
-                  WebkitOverflowScrolling: "touch",
-                  overscrollBehaviorX: "contain",
-                  scrollbarWidth: "none",
-
-                  /*
-                   * Premium mobile safe gutter:
-                   * keeps the active award card border/glow away from
-                   * the clipping edge on narrow phone screens.
-                   */
-                  padding: "4px 7px 0.35rem",
-                  scrollPaddingInline: "7px",
-                }}
-              >
-                {rotatingAwardHighlights.map(
-                  (highlight, index) => {
-                    const isActive =
-                      index === activeAwardHighlightIndex;
-
-                    const isPuskas =
-                      highlight.key === "puskas";
-                    const isSkill =
-                      highlight.key === "skill";
-
-                    const accent = isPuskas
-                      ? "#facc15"
-                      : isSkill
-                      ? "#e879f9"
-                      : "#4ade80";
-
-                    const awardLabel = isPuskas
-                      ? "Puskas Award"
-                      : isSkill
-                      ? "Skill of the Season"
-                      : "Save of the Season";
-
-                    const headline = highlight.playerName
-                      ? isPuskas
-                        ? `${highlight.playerName} leads the Puskas race`
-                        : isSkill
-                        ? `${highlight.playerName} tops the skills race`
-                        : `${highlight.playerName} leads the save race`
-                      : isPuskas
-                      ? "The goal leading the Puskas race"
-                      : isSkill
-                      ? "The moment leading the skills race"
-                      : "The stop leading the save race";
-
-                    return (
-                      <article
-                        key={highlight.key}
-                        ref={(node) => {
-                          awardCardRefs.current[index] = node;
-                        }}
-                        onClick={() =>
-                          setActiveAwardHighlightIndex(index)
-                        }
-                        style={{
-                          flex:
-                            "0 0 min(calc(100% - 24px), 430px)",
-                          scrollSnapAlign: "center",
-                          overflow: "hidden",
-                          boxSizing: "border-box",
-                          borderRadius: "16px",
-                          border: isActive
-                            ? `2px solid ${accent}`
-                            : "1px solid rgba(148,163,184,0.24)",
-                          background:
-                            "linear-gradient(160deg, rgba(20,29,48,0.98), rgba(8,15,29,0.98))",
-                          boxShadow: isActive
-                            ? `0 0 22px ${accent}30`
-                            : "none",
-                          transition:
-                            "border-color 180ms ease, box-shadow 180ms ease",
-                        }}
-                      >
-                        <div
-                          style={{
-                            padding: "0.9rem 0.9rem 0.8rem",
-                          }}
-                        >
-                          <div
-                            style={{
-                              color: accent,
-                              fontWeight: 900,
-                              fontSize: "0.76rem",
-                              letterSpacing: "0.07em",
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            {isPuskas
-                              ? "🏆"
-                              : isSkill
-                              ? "✨"
-                              : "🧤"}{" "}
-                            {awardLabel}
-                          </div>
-
-                          <h3
-                            style={{
-                              margin: "0.45rem 0 0",
-                              color: "#f8fafc",
-                              fontSize: "1.2rem",
-                              lineHeight: 1.12,
-                            }}
-                          >
-                            {headline}
-                          </h3>
-
-                          <div
-                            style={{
-                              marginTop: "0.65rem",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              padding: "0.26rem 0.55rem",
-                              borderRadius: "999px",
-                              border: `1px solid ${accent}60`,
-                              background: `${accent}14`,
-                              color: accent,
-                              fontWeight: 900,
-                              fontSize: "0.72rem",
-                            }}
-                          >
-                            {highlight.voteCount}{" "}
-                            vote
-                            {highlight.voteCount === 1
-                              ? ""
-                              : "s"}
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            background: "transparent",
-                            position: "relative",
-                            padding: "0 10px 10px",
-                          }}
-                        >
-                          <video
-                            ref={(node) => {
-                              awardVideoRefs.current[index] =
-                                node;
-                            }}
-                            src={highlight.videoUrl}
-                            controls
-                            muted
-                            playsInline
-                            preload="metadata"
-                            onEnded={() => {
-                              if (
-                                index ===
-                                activeAwardHighlightIndex
-                              ) {
-                                moveAwardHighlight(1);
-                              }
-                            }}
-                            style={{
-                              display: "block",
-                              width: "100%",
-                              maxWidth: "100%",
-                              aspectRatio: "16 / 9",
-                              background: "#000",
-                              objectFit: "cover",
-                              borderRadius: "14px",
-                              overflow: "hidden",
-                              boxSizing: "border-box",
-                            }}
-                          />
-                        </div>
-                      </article>
-                    );
-                  }
-                )}
-              </div>
-
-              {rotatingAwardHighlights.length > 1 && (
-                <div
-                  style={{
-                    marginTop: "0.7rem",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.4rem",
-                  }}
-                >
-                  {rotatingAwardHighlights.map(
-                    (item, index) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        aria-label={`Show ${item.title}`}
-                        onClick={() =>
-                          setActiveAwardHighlightIndex(index)
-                        }
-                        style={{
-                          width:
-                            index ===
-                            activeAwardHighlightIndex
-                              ? "24px"
-                              : "8px",
-                          height: "8px",
-                          padding: 0,
-                          border: "none",
-                          borderRadius: "999px",
-                          cursor: "pointer",
-                          background:
-                            index ===
-                            activeAwardHighlightIndex
-                              ? "#facc15"
-                              : "rgba(148,163,184,0.45)",
-                          transition:
-                            "width 180ms ease",
-                        }}
-                      />
-                    )
-                  )}
-                </div>
-              )}
-
-              <div
-                style={{
-                  marginTop: "0.55rem",
-                  textAlign: "center",
-                  color: "#94a3b8",
-                  fontSize: "0.7rem",
-                  fontWeight: 700,
-                }}
-              >
-                Next award in 14 seconds • swipe or tap to
-                move faster
-              </div>
-            </>
-          )}
         </section>
       )}
 

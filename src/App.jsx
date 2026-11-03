@@ -1,5 +1,33 @@
+import {emptyClubState} from "./core/clubStateBoundary.mjs";
+import FieldRouteBoundary from "./components/FieldRouteBoundary.jsx";
+import FieldPracticeTimer from "./components/FieldPracticeTimer.jsx";
+import SessionSelector from "./components/SessionSelector.jsx";
+import TeamChatWarmup from "./components/TeamChatWarmup.jsx";
+import {saveClubMatchNumber} from "./storage/clubMatchNumberGateway.js";
+import {notificationDestination} from "./core/notificationDestination.mjs";
+import PoolNotificationBridge from "./components/PoolNotificationBridge.jsx";
+import {PremiumNotificationToast} from "./components/PremiumNotification.jsx";
+import KitShopPage from "./pages/KitShopPage.jsx";
+import BookingPageBoundary from "./components/BookingPageBoundary.jsx";
+import {preloadOwnPlayerProfile, cachedOwnPlayerProfile} from "./storage/playerProfileRepository.js";
+import {canUsePlayerFeatures} from "./core/playerFeatureAccess.mjs";
+import NumberOfferNotification from "./components/NumberOfferNotification.jsx";
+import {finalizePlayerProfileVideoAwards} from "./storage/playerProfileAwardsRepository.js";
+import FieldPageFrame from "./components/FieldPageFrame.jsx";
+import ClubLeagueSeasonPage from "./pages/ClubLeagueSeasonPage.jsx";
+import ClubLeagueSeasonEntry from "./components/ClubLeagueSeasonEntry.jsx";
+import { db as notificationFieldDb } from "./firebaseConfig.js";
+import {
+  doc as notificationFieldDoc, getDoc as loadNotificationFieldDoc,
+} from "firebase/firestore";
 // src/App.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { EntryPage } from "./pages/EntryPage.jsx";
 import { ClubChatPage } from "./pages/ClubChat/ClubChatPage.jsx";
 import { ClubChatWidget } from "./components/ClubChat/ClubChatWidget.jsx";
@@ -18,8 +46,14 @@ import MatchSignupPage from "./pages/MatchSignupPage.jsx";
 import PaymentPage from "./pages/PaymentPage.jsx";
 import VideoHighlightsPage from "./pages/VideoHighlightsPage.jsx";
 import HomePage_HUB from "./pages/HomePage_HUB.jsx";
+import WelcomePage from "./pages/WelcomePage.jsx";
+import LeagueVenuesHub from "./pages/LeagueVenuesHub.jsx";
+import VenueEntryPage from "./pages/VenueEntryPage.jsx";
 import VideoHighlightsRepository from "./storage/VideoHighlightsRepository.js";
+import PlayerProfilePage from "./pages/PlayerProfilePage.jsx";
 import BottomNav from "./components/BottomNav.jsx";
+import FieldBottomNav from "./components/FieldBottomNav.jsx";
+import LegalAcceptanceGate from "./components/LegalAcceptanceGate.jsx";
 import { buildClubIdentity, DEFAULT_CLUB_ID } from "./core/clubIdentity.js";
 import {
   MATCH_MODE as MATCH_TYPE,
@@ -66,6 +100,8 @@ import {
   buildAuthorizedCameraDeepLink,
 } from "./storage/cameraHandoffGateway.js";
 import { useAuth } from "./auth/AuthContext.jsx";
+import { Capacitor } from "@capacitor/core";
+import { initialiseNativePushNotifications } from "./core/notifications/nativePushNotifications.js";
 import { FANM_PRO_CLUBS } from "./data/fanm/fanmTeamLibrary.js";
 
 import {
@@ -76,7 +112,7 @@ import {
   markScheduledFixtureCompleted,
 } from "./core/scheduledFixtures.js";
 
-import { db } from "./firebaseConfig.js";
+import { db, auth } from "./firebaseConfig.js";
 import { clubCollectionPath, clubDocPath } from "./core/clubPaths.js";
 import { getPlayerPhotosCollection } from "./core/clubFirestorePaths.js";
 import {
@@ -86,6 +122,9 @@ import {
 import { doc, writeBatch, serverTimestamp, setDoc, collection, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 
 // Page constants
+const PAGE_WELCOME = "welcome";
+const PAGE_LEAGUE_VENUES = "league-venues";
+const PAGE_VENUE_ENTRY = "venue-entry";
 const PAGE_HOME = "home";
 const PAGE_ENTRY = "entry";
 const PAGE_SESSION_SELECTOR = "session-selector";
@@ -98,10 +137,13 @@ const PAGE_FORMATIONS = "formations";
 const PAGE_PLAYER_MENTALITIES = "player-mentalities";
 const PAGE_SPECTATOR = "spectator";
 const PAGE_NEWS = "news";
+const PAGE_PLAYER_PROFILE = "player-profile";
+const PAGE_SHOP = "shop";
 const PAGE_PLAYER_CARDS = "player-cards";
 const PAGE_PEER_REVIEW = "peer-review";
 const PAGE_MIGRATION = "migration";
 const PAGE_MATCH_SIGNUP = "match-signup";
+const PAGE_CLUB_LEAGUE_SEASON = "club-league-season";
 const PAGE_PAYMENT = "payment";
 const PAGE_VIEW_HIGHLIGHTS = "view-highlights";
 
@@ -139,7 +181,6 @@ function writeSessionModeIntent(mode) {
   }
 }
 
-const MASTER_CODE = "3333";
 const DEFAULT_LEAGUE_MATCH_SECONDS = 5 * 60;
 const DEFAULT_FRIENDLY_MATCH_SECONDS = 60 * 60;
 const DEFAULT_MATCH_SECONDS = DEFAULT_FRIENDLY_MATCH_SECONDS;
@@ -574,7 +615,7 @@ function deriveActiveRole(identity, teams = []) {
 
   const isDynamicCaptain = isCaptainFromTeams(identity, teams);
 
-  if (storedRole === "spectator" && !isDynamicCaptain) return "spectator";
+  if (storedRole === "spectator") return "spectator";
   if (storedRole === "admin") return "admin";
   if (isDynamicCaptain || storedRole === "captain") return "captain";
 
@@ -810,7 +851,7 @@ window.__TEST_NORMALIZE__ = ensureSeasonSchedulingShape;
 
 
 function ensureV2StateShape(s) {
-  const fallback = createDefaultStateV2();
+  const fallback = emptyClubState("unselected");
   if (!s || typeof s !== "object") return fallback;
 
   const activeSeasonId =
@@ -1510,6 +1551,8 @@ async function saveParticipationForMatchDay({
         )
       : doc(
           db,
+          "clubs",
+          dataScope?.clubId || DEFAULT_CLUB_ID,
           "seasons",
           safeSeasonId,
           "attendance",
@@ -2538,8 +2581,15 @@ const FANM_ENVIRONMENT_BADGE = FANM_DEVELOPMENT_DEPLOYMENT
     : null;
 
 export default function App() {
+  const [nearbyClubRequest, setNearbyClubRequest] = useState(false);
+
+
+  const [entryPageIntent, setEntryPageIntent] = useState(null);
+  const [page, setPage] = useState(() =>
+    Capacitor.isNativePlatform() ? PAGE_ENTRY : PAGE_WELCOME
+  );
   useEffect(() => {
-    if (!FANM_ENVIRONMENT_BADGE || typeof document === "undefined") {
+    if (!FANM_ENVIRONMENT_BADGE || typeof document === "undefined" || page === PAGE_WELCOME) {
       return undefined;
     }
 
@@ -2560,11 +2610,25 @@ export default function App() {
     return () => {
       badge.remove();
     };
-  }, []);
+  }, [page]);
 
-  const [entryPageIntent, setEntryPageIntent] = useState(null);
-  const [page, setPage] = useState(PAGE_HOME);
+  const nativeStartupRoutedRef = useRef(false);
+  const [nativeStartupReady, setNativeStartupReady] = useState(
+    () => !Capacitor.isNativePlatform()
+  );
+  const [landingVisualReady, setLandingVisualReady] =
+    useState(false);
+  const [nativeChatOpenRequest, setNativeChatOpenRequest] =
+    useState(null);
+  const [nativePollOpenRequest, setNativePollOpenRequest] =
+    useState(null);
+  const [nativeTicketOpenRequest,setNativeTicketOpenRequest]=useState(null);
+
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
+  const [selectedLeagueVenue, setSelectedLeagueVenue] = useState(null);
+  const [portalOriginClubId, setPortalOriginClubId] = useState("");
+  const [fieldNav, setFieldNav] = useState({ ready: false, page: "landing" });
+  const [fieldNavTarget, setFieldNavTarget] = useState(null);
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
   const {
@@ -2590,7 +2654,6 @@ export default function App() {
   // Temporary visual cue on Choose Session:
   // after 4 seconds, alternate emphasis between Official and Practice
   // every 2 seconds for 10 seconds, then return both to normal size.
-  const [sessionChoiceEmphasis, setSessionChoiceEmphasis] = useState(null);
 
   // Practice ribbon presentation only.
   // "open" = full persistent warning.
@@ -2616,50 +2679,7 @@ export default function App() {
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("practiceDebug") === "1";
 
-  useEffect(() => {
-    if (!showSessionSelector) {
-      setSessionChoiceEmphasis(null);
-      return undefined;
-    }
 
-    // Initial 4-second pause, then:
-    // 04s Official highlighted
-    // 06s Practice highlighted
-    // 08s Official highlighted
-    // 10s Practice highlighted
-    // 12s Official highlighted
-    // 14s animation ends and both return to 100%.
-    const timers = [
-      window.setTimeout(
-        () => setSessionChoiceEmphasis("official"),
-        4000
-      ),
-      window.setTimeout(
-        () => setSessionChoiceEmphasis("practice"),
-        6000
-      ),
-      window.setTimeout(
-        () => setSessionChoiceEmphasis("official"),
-        8000
-      ),
-      window.setTimeout(
-        () => setSessionChoiceEmphasis("practice"),
-        10000
-      ),
-      window.setTimeout(
-        () => setSessionChoiceEmphasis("official"),
-        12000
-      ),
-      window.setTimeout(
-        () => setSessionChoiceEmphasis(null),
-        14000
-      ),
-    ];
-
-    return () => {
-      timers.forEach((timerId) => window.clearTimeout(timerId));
-    };
-  }, [showSessionSelector]);
 
   useEffect(() => {
     if (!isPracticeMode || !practiceRuntime?.expiresAt) {
@@ -2741,6 +2761,366 @@ export default function App() {
   ]);
 
   const activeClubId = activeClubIdentity.id;
+
+  /*
+   * Native startup:
+   * - signed-out users start at their club Entry page;
+   * - returning players, captains and spectators skip discovery/Entry;
+   * - real administrators remain on Entry so they can choose Official
+   *   or Practice intentionally.
+   *
+   * This runs once per native launch. Notification taps can still
+   * override it afterwards and open their requested destination.
+   */
+  useEffect(() => {
+    if (
+      !Capacitor.isNativePlatform() ||
+      authLoading ||
+      nativeStartupRoutedRef.current
+    ) {
+      return;
+    }
+
+    nativeStartupRoutedRef.current = true;
+
+    if (!authUser?.uid) {
+      setNativeStartupReady(true);
+      setEntryPageIntent(null);
+      setPage(PAGE_ENTRY);
+      return;
+    }
+
+    const storedEmail = String(identity?.email || "")
+      .trim()
+      .toLowerCase();
+    const authenticatedEmail = String(authUser?.email || "")
+      .trim()
+      .toLowerCase();
+
+    const identityMatchesAuthenticatedUser =
+      !storedEmail ||
+      !authenticatedEmail ||
+      storedEmail === authenticatedEmail;
+
+    if (!identity || !identityMatchesAuthenticatedUser) {
+      setNativeStartupReady(true);
+      setEntryPageIntent(null);
+      setPage(PAGE_ENTRY);
+      return;
+    }
+
+    const storedRealRole = getRealStoredRole(identity);
+
+    setSessionMode("official");
+    writeSessionModeIntent("official");
+    setShowSessionSelector(false);
+    setEntryPageIntent(null);
+
+    if (storedRealRole === "admin") {
+      setPage(PAGE_ENTRY);
+      setNativeStartupReady(true);
+      return;
+    }
+
+    setPage(PAGE_LANDING);
+    setNativeStartupReady(true);
+  }, [
+    authLoading,
+    authUser?.uid,
+    authUser?.email,
+    identity,
+  ]);
+
+  useEffect(() => {
+    if (authLoading || !authUser?.uid) {
+      return undefined;
+    }
+
+    let disposed = false;
+    let removePushListeners = () => {};
+
+    initialiseNativePushNotifications({
+      authUser,
+      identity,
+      activeClubId,
+      onNotificationOpened: async notification => {
+        const data = notification?.data || {};
+        if(data.type === "facebook_highlight_ready" && /^[a-f0-9]{64}$/.test(data.draftId||"")){
+          if(data.recipientUid && data.recipientUid !== auth.currentUser?.uid)return;
+          const url=new URL(window.location.href);url.searchParams.set("facebookReview",data.draftId);
+          window.history.replaceState({},"",url);
+          nativeStartupRoutedRef.current=true;setNativeStartupReady(true);
+          setPage(PAGE_WELCOME);
+          window.dispatchEvent(new Event("facebook-review-open"));
+          return;
+        }
+        const directDestination=notificationDestination(data);
+        if(directDestination){
+          // A notification is an explicit Official destination, including on cold launch.
+          nativeStartupRoutedRef.current=true;
+          setNativeStartupReady(true);
+          setNativeChatOpenRequest(null);
+          setSessionMode("official");writeSessionModeIntent("official");setShowSessionSelector(false);
+          if(directDestination.clubId!==activeClubId)setSelectedHomeClub(buildClubIdentity({id:directDestination.clubId}));
+          if(directDestination.kind==="news"){
+            setNativeTicketOpenRequest(null);
+            setNativePollOpenRequest({...directDestination,openedAt:Date.now()});setPage(PAGE_NEWS);
+          }else{
+            setNativePollOpenRequest(null);
+            setNativeTicketOpenRequest({...directDestination,openedAt:Date.now()});setPage(PAGE_MATCH_SIGNUP);
+          }
+          return;
+        }
+        if (data.type === "pool_alert") {
+          window.dispatchEvent(new CustomEvent("pool-native-open", {detail: data}));
+          return;
+        }
+
+        if ([
+          "field_season_squad_invitation",
+          "field_squad_ready_reminder",
+          "field_squad_fixtures_released",
+        ].includes(data.type)) {
+          const scope = {
+            clubId: String(data.clubId || "").trim(),
+            venueId: String(data.venueId || "").trim(),
+            seasonId: String(data.seasonId || "").trim(),
+          };
+          const memberId = String(data.memberId || "").trim();
+          if (!Object.values(scope).every(
+            value => /^[A-Za-z0-9_-]{1,150}$/.test(value)
+          ) || (data.type === "field_season_squad_invitation" &&
+            !/^[A-Za-z0-9_-]{1,150}$/.test(memberId))) return;
+
+          try {
+            const {getSeasonSquadView} = await import(
+              "./storage/fieldSeasonSquadRepository.js"
+            );
+            const view = await getSeasonSquadView(scope);
+            if ((data.type === "field_squad_ready_reminder" && !view.canManage) ||
+                (!view.canManage && (
+                  view.invitation?.memberId !== memberId ||
+                  (data.type !== "field_season_squad_invitation" &&
+                    view.invitation?.invitationStatus !== "accepted")
+                ))) {
+              window.alert("This league invitation is not available for your account.");
+              return;
+            }
+
+            setNativeChatOpenRequest(null);
+            setNativePollOpenRequest(null);
+            setSessionMode("official");
+            writeSessionModeIntent("official");
+            setShowSessionSelector(false);
+            if (scope.clubId !== activeClubId) {
+              setSelectedHomeClub(buildClubIdentity({id: scope.clubId}));
+            }
+            if (data.type !== "field_season_squad_invitation") {
+              try {
+                sessionStorage.setItem(`league-squad-focus:${scope.clubId}`, JSON.stringify({
+                  seasonId: scope.seasonId,
+                  matchDayId: String(data.matchDayId || ""),
+                }));
+              } catch {}
+            }
+            setPage(PAGE_CLUB_LEAGUE_SEASON);
+          } catch (error) {
+            console.error("[League invitation navigation]", error);
+            window.alert(
+              "Could not open this invitation. It may belong to a previous season. " +
+              "Please check your Club’s league page."
+            );
+          }
+          return;
+        }
+        if (data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_club_chat" || data.type === "field_match_day_review" || data.type === "field_match_day_squads" ||
+            data.type === "field_manager_approval" || data.type === "field_story" || data.type === "field_poll" || data.type === "field_winners_story_request") {
+          const venueId = String(data.venueId || "").trim();
+          if (!/^[A-Za-z0-9_-]{1,150}$/.test(venueId)) return;
+          try {
+            const snapshot = await loadNotificationFieldDoc(
+              notificationFieldDoc(notificationFieldDb, "leagueVenues", venueId)
+            );
+            if (!snapshot.exists()) {
+              window.alert("This Field is no longer available.");
+              return;
+            }
+            if (data.type==="field_match_day_review" && data.seasonId && data.matchDayId) {
+              try {
+                sessionStorage.setItem(
+                  `field-review-open:${venueId}:${data.seasonId}:${data.matchDayId}`,
+                  "1"
+                );
+              } catch {}
+            }
+            setNativeChatOpenRequest(null);
+            setNativePollOpenRequest(null);
+            setSessionMode("official");
+            writeSessionModeIntent("official");
+            nativeStartupRoutedRef.current=true;
+            setNativeStartupReady(true);
+            setShowSessionSelector(false);
+            setPortalOriginClubId("");
+            setFieldNavTarget({
+              page: data.type==="field_match_day_squads" ? "squads" : ["field_chat","field_club_chat"].includes(data.type) ? "chat" : ["field_story","field_poll","field_winners_story_request"].includes(data.type) ? "news" : data.approvalKind === "banking_activation" ? "signup" : "landing",
+              privateChat:data.type==="field_club_chat"?{clubId:String(data.clubId||""),openedAt:Date.now()}:null,
+              entryRequest:["field_chat","field_club_chat"].includes(data.type)?{
+                venueId,privateClubId:data.type==="field_club_chat"?String(data.clubId||""):"",
+                preferredClubId:activeClubId,preferredMemberId:identity?.memberId||"",openedAt:Date.now(),
+              }:null,
+              openBanking: data.approvalKind === "banking_activation",
+              publication: {clubId:venueId,pollId:String(data.pollId||""),storyId:String(data.storyId||""),winners:data.type==="field_winners_story_request",seasonId:String(data.seasonId||""),openedAt:Date.now()},
+              id: Date.now(),
+            });
+            setSelectedLeagueVenue({...snapshot.data(), id: snapshot.id});
+            setPage(PAGE_VENUE_ENTRY);
+          } catch (error) {
+            console.error("[Field review navigation]", error);
+            window.alert("Could not open this Field. Please try again.");
+          }
+          return;
+        }
+
+        const opensClubChat =
+          data.type === "club_chat" || data.type === "club_team_chat" ||
+          data.route === "club-chat";
+
+        const opensClubPoll =
+          data.type === "club_poll" ||
+          data.route === "club-poll" || data.type === "club_story" || data.route === "club-story";
+
+        const opensAdminEntry =
+          data.type === "club_member_pending" ||
+          data.type === "incoming_club_challenge" ||
+          data.route === "admin-entry";
+
+        const opensLanding =
+          opensClubChat ||
+          opensClubPoll ||
+          opensAdminEntry ||
+          data.route === "landing" ||
+          data.type === "payment_confirmation" ||
+          data.type === "payment_received_admin" ||
+          data.type === "match_day_reminder" ||
+          data.type === "match_day_cancelled";
+
+        if (!opensLanding) return;
+
+        const notificationClubId = String(
+          data.clubId || ""
+        ).trim();
+
+        if (!notificationClubId) return;
+
+        if (notificationClubId !== activeClubId) {
+          setSelectedHomeClub(
+            buildClubIdentity({
+              id: notificationClubId,
+            })
+          );
+        }
+
+        if (opensAdminEntry) {
+          if (data.type === "field_season_invitation" &&
+              data.venueId && data.seasonId) {
+            try {
+              window.localStorage.removeItem(
+                `field-season-invitation-seen:${notificationClubId}:${data.venueId}:${data.seasonId}`
+              );
+            } catch {}
+            window.dispatchEvent(new CustomEvent("field-season-invitation-open", {
+              detail: {
+                clubId: notificationClubId,
+                venueId: String(data.venueId),
+                seasonId: String(data.seasonId),
+              },
+            }));
+          }
+          setNativeChatOpenRequest(null);
+          setNativePollOpenRequest(null);
+          setEntryPageIntent({
+            type: String(data.type || ""),
+            clubId: notificationClubId,
+            memberId: String(data.memberId || ""),
+            challengeId: String(data.challengeId || ""),
+            venueId: String(data.venueId || ""),
+            seasonId: String(data.seasonId || ""),
+            openedAt: Date.now(),
+          });
+          setSessionMode("official");
+          writeSessionModeIntent("official");
+          setShowSessionSelector(false);
+          setPage(PAGE_ENTRY);
+          return;
+        }
+
+        if (opensClubPoll) {
+          const pollId = String(data.pollId || "").trim();
+
+          if (!pollId && !data.storyId) return;
+
+          setNativeChatOpenRequest(null);
+          setNativePollOpenRequest({
+            clubId: notificationClubId,
+            pollId,
+            storyId: String(data.storyId || ""),
+            openedAt: Date.now(),
+          });
+          setPage(PAGE_NEWS);
+          return;
+        }
+
+        setNativePollOpenRequest(null);
+        setPage(data.type === "bib_pack_ready" ? PAGE_SHOP : PAGE_LANDING);
+
+        if (opensClubChat) {
+          setNativeChatOpenRequest({
+            clubId: notificationClubId,
+            messageId: String(data.messageId || ""),
+            type: String(data.type||""),
+            teamId: String(data.teamId||""),
+            openedAt: Date.now(),
+          });
+        } else {
+          setNativeChatOpenRequest(null);
+        }
+      },
+    })
+      .then(cleanup => {
+        if (disposed) {
+          cleanup();
+          return;
+        }
+
+        removePushListeners = cleanup;
+      })
+      .catch(error => {
+        console.error(
+          "[NativePush] Initialisation failed:",
+          error
+        );
+      });
+
+    return () => {
+      disposed = true;
+      removePushListeners();
+    };
+  }, [
+    authLoading,
+    authUser?.uid,
+    authUser?.email,
+    authUser?.memberId,
+    authUser?.playerId,
+    authUser?.role,
+    identity?.memberId,
+    identity?.playerId,
+    identity?.email,
+    identity?.fullName,
+    identity?.shortName,
+    identity?.role,
+    identity?.actingRole,
+    activeClubId,
+  ]);
 
   useEffect(() => {
     practiceExpiryWarningAcknowledgedRef.current = false;
@@ -2922,6 +3302,7 @@ export default function App() {
       : null;
 
   const activeClub = activeClubIdentity;
+  const isCompanyClub=activeClubIdentity?.raw?.clubType==="company";
   const activeClubName = activeClubIdentity.name;
 
   useEffect(() => {
@@ -2945,7 +3326,10 @@ export default function App() {
     }
   }, [activeClubId]);
 
-  const members = useMembers();
+  const [shopPreference,setShopPreference]=useState("");
+  const [shopPollDraft,setShopPollDraft]=useState(null);
+  const members = useMembers(activeClubId);
+
   const [showAdminReclaimNudge, setShowAdminReclaimNudge] = useState(true);
   const [preloadedPlayerPhotosByName, setPreloadedPlayerPhotosByName] = useState({});
 
@@ -2996,14 +3380,26 @@ export default function App() {
   };
 
   const [state, setState] = useState(() =>
-    USE_V2 ? createDefaultStateV2() : loadState()
+    USE_V2 ? emptyClubState(activeClubId) : loadState()
   );
+
+  /*
+   * Prevent the default Friendly state from appearing before the
+   * authoritative club configuration arrives from Firestore.
+   */
+  const [footballStateReady, setFootballStateReady] =
+    useState(false);
+  const authoritativeFootballStateReceivedRef =
+    useRef(false);
 
   /*
    * Protect optimistic local changes from an older Firestore
    * snapshot while the latest V2 write is still pending.
    */
   const pendingStateWriteUpdatedAtRef = useRef(null);
+  const footballLoadedScopeRef=useRef(null);
+  const [footballStateError,setFootballStateError]=useState("");
+  const footballScopeKey=JSON.stringify([activeClubId,footballDataScope]);
 
   /*
    * A coded Practice squad save must remain authoritative while
@@ -3363,6 +3759,8 @@ export default function App() {
   });
 
   const [showEndSeasonModal, setShowEndSeasonModal] = useState(false);
+  const endingProfileSeason = useRef(false);
+  const [finalizingProfileAwards, setFinalizingProfileAwards] = useState(false);
   const [endSeasonCode, setEndSeasonCode] = useState("");
   const [endSeasonError, setEndSeasonError] = useState("");
   const [showSeasonCompleteModal, setShowSeasonCompleteModal] = useState(false);
@@ -3432,7 +3830,9 @@ export default function App() {
 
 
   const updateState = (updater) => {
+    if(USE_V2&&footballLoadedScopeRef.current!==footballScopeKey){console.warn("Club setup is still loading. No football write was made.");return;}
     setState((prev) => {
+      if(USE_V2&&(footballLoadedScopeRef.current!==footballScopeKey||prev.clubId!==activeClubId))return prev;
       const next = typeof updater === "function" ? updater(prev) : updater;
       if (USE_V2) {
         const safe = ensureV2StateShape(next);
@@ -3494,13 +3894,38 @@ export default function App() {
     });
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    let disposed=false;
+    footballLoadedScopeRef.current=null;
+    setFootballStateError("");
+    pendingStateWriteUpdatedAtRef.current=null;
+    if(USE_V2)setState(ensureV2StateShape(emptyClubState(activeClubId)));
+    setPreloadedPlayerPhotosByName({});
+    setPracticeSavedLeagueTeams(null);setPracticeSavedFiveVFiveTeams(null);
     // Disabled localStorage bootstrap for V2.
+    authoritativeFootballStateReceivedRef.current = false;
+    setFootballStateReady(false);
+    setLandingVisualReady(false);
 
     const unsubscribe = USE_V2
       ? subscribeToStateV2(
-          (cloudState) => {
-            if (!cloudState) return;
+          (cloudState,sourceInfo={}) => {
+            if(disposed)return;
+            if(sourceInfo.scopeMismatch || (isCompanyClub&&!isPracticeMode&&sourceInfo.unbound)){
+              footballLoadedScopeRef.current=null;
+              authoritativeFootballStateReceivedRef.current=true;
+              setState(ensureV2StateShape(emptyClubState(activeClubId)));
+              setFootballStateReady(true);
+              setFootballStateError("This Club has older football data without a verified Club ownership marker. It is hidden and editing is blocked pending review; no records have been deleted.");
+              return;
+            }
+            footballLoadedScopeRef.current=footballScopeKey;
+            authoritativeFootballStateReceivedRef.current=true;
+            if (!cloudState) {
+              setState(ensureV2StateShape(emptyClubState(activeClubId)));
+              setFootballStateReady(true);
+              return;
+            }
 
             const nextCloudState = ensureV2StateShape(cloudState);
 
@@ -3524,7 +3949,10 @@ export default function App() {
                   }))
                 : [],
             });
+            authoritativeFootballStateReceivedRef.current = true;
+
             setState((prev) => {
+              if(disposed)return prev;
               const pendingWriteVersion =
                 pendingStateWriteUpdatedAtRef.current;
 
@@ -3586,11 +4014,25 @@ export default function App() {
           setState(cloudState);
         });
 
-    return () => unsubscribe && unsubscribe();
+    return () => {disposed=true;unsubscribe?.();};
   }, [
     footballStateClubId,
     footballDataScope,
+    isCompanyClub,
   ]);
+
+  /*
+   * Release the native splash only after React has committed the
+   * authoritative football state. A layout effect runs before paint,
+   * preventing even one frame of the default Friendly configuration.
+   */
+  useLayoutEffect(() => {
+    if (!authoritativeFootballStateReceivedRef.current) {
+      return;
+    }
+
+    setFootballStateReady(true);
+  }, [state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3900,6 +4342,13 @@ export default function App() {
     () => deriveActiveRole(identity, captainRoleTeams || []),
     [identity, captainRoleTeams]
   );
+
+  const canAccessPlayerFeatures=canUsePlayerFeatures({user:authUser,identity,clubId:activeClubId,activeRole});
+  useEffect(()=>{
+    if(!authUser){cachedOwnPlayerProfile(activeClubId);return;}
+    if(canAccessPlayerFeatures && !isPracticeMode)
+      preloadOwnPlayerProfile(activeClubId,identity.memberId).catch(()=>{});
+  },[activeClubId,identity?.memberId,authUser,isPracticeMode,canAccessPlayerFeatures]);
 
   const realRole = useMemo(() => getRealStoredRole(identity), [identity]);
   const isAdminPreviewingAnotherRole = realRole === "admin" && activeRole !== "admin";
@@ -4711,7 +5160,7 @@ export default function App() {
     );
     setSecondsLeft(Math.max(0, safeSeconds));
     setTimeUp(safeSeconds <= 0);
-    setRunning(safeSeconds > 0);
+    setRunning(safeSeconds > 0 && !draft.awaitingKitVerification);
     setHasLiveMatch(true);
     setPage(PAGE_LIVE);
   };
@@ -5379,6 +5828,7 @@ export default function App() {
     const liveDraft = {
       id: `live-${activeSeasonId || "season"}-${activeMatchNo}-${Date.now()}`,
       status: "running",
+      awaitingKitVerification: true,
       activeSeasonId,
       activeClubId,
       matchNo: activeMatchNo,
@@ -5424,13 +5874,41 @@ export default function App() {
     setPendingMatchStartContext(startContext);
     setSecondsLeft(initialSecondsLeft);
     setTimeUp(initialSecondsLeft <= 0);
-    setRunning(true);
+    setRunning(false);
     setHasLiveMatch(true);
     setPage(PAGE_LIVE);
   };
 
+  useEffect(()=>{
+    if(!authUser?.uid||!authUser.emailVerified||activeClubId!=="turf-kings")return;
+    const params=new URLSearchParams(window.location.search);
+    if(!params.has("bibPayment"))return;
+    setPage(PAGE_SHOP);params.delete("bibPayment");
+    window.history.replaceState(null,"",window.location.pathname+(params.size?"?"+params.toString():"")+window.location.hash);
+  },[authUser?.uid,authUser?.emailVerified,activeClubId]);
+  useEffect(()=>{
+    if(!authUser?.uid||!authUser.emailVerified)return;
+    const params=new URLSearchParams(window.location.search);
+    if(params.has("shopOrder"))setPage(PAGE_SHOP);
+  },[authUser?.uid,authUser?.emailVerified,activeClubId]);
+  const numberSaveScope=JSON.stringify([activeClubId,activeSeasonId,isPracticeMode]);
+  const numberSaveScopeRef=useRef(numberSaveScope);numberSaveScopeRef.current=numberSaveScope;
+  const saveConfirmedPlayerNumber=async(teamId,key,number,teamKind)=>{
+    if(!canManageSquads)throw Error("Only the captain or admin can edit numbers.");
+    const patch=season=>{const field=teamKind==="friendly"?"fiveVFiveTeams":"teams";return {...season,[field]:(season[field]||[]).map(team=>String(team.id)!==String(teamId)?team:{...team,kitNumbers:{...team.kitNumbers,[key]:{number,source:"captain"}}})};};
+    if(isPracticeMode||footballDataScope?.environment==="practice"){updateActiveSeason(patch);return;}
+    const scope=numberSaveScopeRef.current,result=await saveClubMatchNumber({clubId:activeClubId,seasonId:activeSeasonId,teamId,playerKey:key,number,teamKind});
+    if(scope!==numberSaveScopeRef.current)return result;
+    // Mirror the acknowledged delta locally, without sending a stale full-state save.
+    setState(prev=>prev.seasons?{...prev,updatedAt:result.updatedAt,seasons:prev.seasons.map(season=>season.seasonId===prev.activeSeasonId?patch(season):season)}:{...patch(prev),updatedAt:result.updatedAt});
+    return result;
+  };
+
   const handleConfirmPreMatchLineups = (snapshot) => {
     const safeSnapshot = snapshot || null;
+    if(!auth.currentUser?.uid || !auth.currentUser.emailVerified || !canControlCurrentLiveMatch)throw new Error("Sign in as the controlling referee before confirming lineups.");
+    if(!safeSnapshot || Object.values(safeSnapshot).some(team=>!team.kitVerification))throw new Error("Verify every player's kit before confirming lineups.");
+    if(pendingMatchStartContext || liveMatchDraft?.awaitingKitVerification)setRunning(true);
     setCurrentConfirmedLineupSnapshot(safeSnapshot);
 
     if (safeSnapshot) {
@@ -5514,6 +5992,9 @@ export default function App() {
             prevSeason.liveMatchDraft,
             {
               confirmedLineupSnapshot: safeSnapshot,
+              awaitingKitVerification: false,
+              ...(prevSeason.liveMatchDraft?.awaitingKitVerification && matchType===MATCH_TYPE.LEAGUE
+                ? {expectedEndAtISO:addSecondsToISO(new Date().toISOString(),matchSeconds),startedAtISO:new Date().toISOString()} : {}),
               lineupTimeline: nextTimeline,
             }
           ),
@@ -5566,6 +6047,19 @@ export default function App() {
   const handleGoToFormations = () => setPage(PAGE_FORMATIONS);
 
   const handleAddEvent = (event) => {
+    const resolveEventMember = value => {
+      const key = String(value || "").trim().toLowerCase();
+      if (!key) return null;
+      const matches = members.filter(member => [member.fullName,member.shortName,...(member.profileNameAliases || [])]
+        .some(name => String(name || "").trim().toLowerCase() === key));
+      return matches.length === 1 ? matches[0] : null;
+    };
+    event = {...event,
+      scorerMemberId: event.scorerMemberId || resolveEventMember(event.scorer)?.id || null,
+      assistMemberId: event.assistMemberId || resolveEventMember(event.assist)?.id || null,
+      playerMemberId: event.playerMemberId || resolveEventMember(event.playerName)?.id || null,
+    };
+
     if (USE_V2) {
       updateActiveSeason((prevSeason) => {
         const eventMeta = buildMatchMetadata({
@@ -6927,8 +7421,8 @@ export default function App() {
   };
 
   const requireAdminCode = () => {
-    if (backupCode.trim() !== MASTER_CODE) {
-      setBackupError("Invalid admin code.");
+    if (!isAdmin || backupCode.trim().toUpperCase() !== "ADMIN") {
+      setBackupError("Type ADMIN to confirm.");
       return false;
     }
     return true;
@@ -6987,8 +7481,8 @@ export default function App() {
   };
 
   const handleConfirmClearOnly = () => {
-    if (clearOnlyConfirmCode.trim() !== MASTER_CODE) {
-      setClearOnlyConfirmError("Invalid admin code. Nothing has been cleared.");
+    if (!isAdmin || clearOnlyConfirmCode.trim().toUpperCase() !== "DELETE") {
+      setClearOnlyConfirmError("Type DELETE to confirm. Nothing has been cleared.");
       return;
     }
 
@@ -7072,8 +7566,8 @@ export default function App() {
   };
 
   const handleSaveAndClearMatchDay = async () => {
-    if (saveConfirmCode.trim() !== MASTER_CODE) {
-      setSaveConfirmError("Invalid admin code. Nothing has been saved or cleared.");
+    if (!isAdmin || saveConfirmCode.trim().toUpperCase() !== "ADMIN") {
+      setSaveConfirmError("Type ADMIN to confirm. Nothing has been saved or cleared.");
       return;
     }
 
@@ -7371,19 +7865,32 @@ export default function App() {
   };
 
   const requireAdminCodeEndSeason = () => {
-    if (endSeasonCode.trim() !== MASTER_CODE) {
-      setEndSeasonError("Invalid admin code.");
+    if (!isAdmin || endSeasonCode.trim().toUpperCase() !== "ADMIN") {
+      setEndSeasonError("Type ADMIN to confirm.");
       return false;
     }
     return true;
   };
 
-  const handleEndSeasonAndCreateNew = () => {
-    if (!USE_V2) return;
+  const handleEndSeasonAndCreateNew = async () => {
+    if (!USE_V2 || endingProfileSeason.current) return;
     if (!requireAdminCodeEndSeason()) return;
+    const endingSeasonId = safeV2ForStats?.activeSeasonId;
+    let profileSeasonAwards = [];
+    endingProfileSeason.current = true;
+    setFinalizingProfileAwards(true);
+    try {
+      if (!isPracticeMode) profileSeasonAwards = await finalizePlayerProfileVideoAwards({clubId: activeClubId, seasonId: endingSeasonId, members});
+    } catch (error) {
+      endingProfileSeason.current = false;
+      setFinalizingProfileAwards(false);
+      setEndSeasonError(error.message || "Video awards could not be preserved. The season has not been ended.");
+      return;
+    }
 
     updateState((prev) => {
       const safePrev = ensureV2StateShape(prev);
+      if (safePrev.activeSeasonId !== endingSeasonId) return safePrev;
 
       setRunning(false);
       setTimeUp(false);
@@ -7407,6 +7914,8 @@ export default function App() {
 
       const archivedActiveSeason = {
         ...activeSeason,
+        profileSeasonAwards,
+        profileAwardsFinalizedAt: new Date().toISOString(),
         finalPlayerCardSnapshot,
         finalPlayerCardSnapshotCreatedAt:
           finalPlayerCardSnapshot?.createdAt || new Date().toISOString(),
@@ -7478,6 +7987,8 @@ export default function App() {
       };
     });
 
+    endingProfileSeason.current = false;
+    setFinalizingProfileAwards(false);
     closeEndSeasonModal();
     setShowSeasonCompleteModal(false);
     setSeasonCompleteDismissedKey(null);
@@ -7982,6 +8493,8 @@ export default function App() {
   }, [page, isPracticeMode, activeSeasonId, matchType, teams, fiveVFiveTeams]);
 
   const pagesWithBottomNav = new Set([
+    PAGE_SHOP,
+    PAGE_PLAYER_PROFILE,
     PAGE_LANDING,
     PAGE_MATCH_SIGNUP,
     PAGE_PAYMENT,
@@ -8020,7 +8533,8 @@ export default function App() {
   }, [isRefereeStatsView]);
 
   const showBottomNav =
-    pagesWithBottomNav.has(page) &&
+    (pagesWithBottomNav.has(page) ||
+      (page === PAGE_CLUB_LEAGUE_SEASON && !isPracticeMode)) &&
     !hideBottomNavForSquadAdmin &&
     page !== PAGE_LIVE;
 
@@ -8033,6 +8547,8 @@ export default function App() {
     }
 
 
+    if(targetPage===PAGE_PLAYER_PROFILE && !canAccessPlayerFeatures)return;
+    if(targetPage===PAGE_SHOP){setShopPreference("");setPage(PAGE_SHOP);return;}
     if (targetPage === PAGE_STATS) {
       handleGoToStats(page);
       return;
@@ -8091,8 +8607,68 @@ export default function App() {
     <div
       className={`app-root ${showBottomNav ? "has-bottom-nav" : ""} ${
         page === PAGE_LANDING ? "app-root--landing" : ""
-      }`}
+      } ${page === PAGE_VENUE_ENTRY ? "app-root--field" : ""}`}
     >
+      {Capacitor.isNativePlatform() &&
+        (
+          !nativeStartupReady ||
+          (
+            page === PAGE_LANDING &&
+            (!footballStateReady || !landingVisualReady)
+          )
+        ) && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Opening 5 Asides Near Me"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 25000,
+            display: "grid",
+            placeItems: "center",
+            padding: "1.5rem",
+            background:
+              "radial-gradient(circle at 50% 32%, rgba(14,165,233,0.22), transparent 32%), linear-gradient(180deg, #020617, #071426)",
+            color: "#f8fafc",
+          }}
+        >
+          <div style={{ textAlign: "center" }}>
+            <img
+              src="/favicon.png"
+              alt=""
+              aria-hidden="true"
+              style={{
+                width: "84px",
+                height: "84px",
+                borderRadius: "24px",
+                objectFit: "cover",
+                boxShadow: "0 18px 48px rgba(14,165,233,0.24)",
+              }}
+            loading="eager" decoding="sync" fetchPriority="high" />
+            <div
+              style={{
+                marginTop: "1rem",
+                fontSize: "1.05rem",
+                fontWeight: 800,
+                letterSpacing: "0.01em",
+              }}
+            >
+              5 Asides Near Me
+            </div>
+            <div
+              style={{
+                marginTop: "0.4rem",
+                color: "#94a3b8",
+                fontSize: "0.82rem",
+              }}
+            >
+              Opening your club…
+            </div>
+          </div>
+        </div>
+      )}
+
       {(practiceBootstrapping || practiceReadyForEntry) && (
         <div
           className="practice-startup-overlay"
@@ -8481,106 +9057,7 @@ export default function App() {
         </div>
       )}
 
-      {isPracticeMode && practiceRuntime?.expiresAt && (
-        <div
-          role="status"
-          aria-label={`Practice Session ${practiceTimerLabel} remaining`}
-          style={{
-            position: "fixed",
-            top: "4.25rem",
-            left:
-              practiceRibbonPosition === "left"
-                ? 0
-                : practiceRibbonPosition === "right"
-                  ? "auto"
-                  : "54%",
-            right: practiceRibbonPosition === "right" ? 0 : "auto",
-            transform:
-              practiceRibbonPosition === "open"
-                ? "translateX(-50%)"
-                : "none",
-            zIndex: 12000,
-            display: "flex",
-            alignItems: "center",
-            gap: practiceRibbonPosition === "open" ? "0.5rem" : "0.35rem",
-            padding:
-              practiceRibbonPosition === "open"
-                ? "0.62rem 0.95rem"
-                : practiceRibbonPosition === "left"
-                  ? "0.58rem 0.65rem 0.58rem 0.45rem"
-                  : "0.58rem 0.45rem 0.58rem 0.65rem",
-            borderRadius:
-              practiceRibbonPosition === "open"
-                ? 999
-                : practiceRibbonPosition === "left"
-                  ? "0 999px 999px 0"
-                  : "999px 0 0 999px",
-            border: "2px solid rgba(232,121,249,0.95)",
-            background:
-              "linear-gradient(135deg, rgba(76,29,149,0.98), rgba(88,28,135,0.98), rgba(30,12,48,0.98))",
-            color: "#fff7ff",
-            boxShadow:
-              "0 0 0 1px rgba(250,204,255,0.28), 0 0 20px rgba(217,70,239,0.42), 0 10px 30px rgba(30,12,48,0.48)",
-            backdropFilter: "blur(14px)",
-            fontWeight: 850,
-            fontSize: practiceRibbonPosition === "open" ? "0.9rem" : "0.82rem",
-            letterSpacing: "0.01em",
-            cursor: "pointer",
-            userSelect: "none",
-            transition:
-              "left 180ms ease, right 180ms ease, transform 180ms ease, padding 180ms ease, box-shadow 180ms ease",
-          }}
-          title={
-            practiceRibbonPosition === "open"
-              ? "Tap to move the Practice Session warning to the right edge"
-              : "Tap to move or expand the Practice Session warning"
-          }
-          onClick={() => {
-            setPracticeRibbonPosition((current) => {
-              if (current === "open") return "right";
-              if (current === "right") return "left";
-              return "open";
-            });
-          }}
-        >
-          <span aria-hidden="true">🧪</span>
-
-          {practiceRibbonPosition === "open" && (
-            <>
-              <span>Practice session</span>
-              <span
-                style={{ opacity: 0.65 }}
-                aria-hidden="true"
-              >
-                •
-              </span>
-            </>
-          )}
-
-          <span
-            style={{
-              fontVariantNumeric: "tabular-nums",
-              minWidth:
-                practiceRibbonPosition === "open" ? "3.2rem" : "2.95rem",
-              textAlign: "center",
-            }}
-          >
-            {practiceTimerLabel}
-          </span>
-
-          {practiceRibbonPosition !== "open" && (
-            <span
-              aria-hidden="true"
-              style={{
-                fontSize: "0.72rem",
-                opacity: 0.8,
-              }}
-            >
-              {practiceRibbonPosition === "right" ? "◀" : "▶"}
-            </span>
-          )}
-        </div>
-      )}
+      {isPracticeMode && practiceRuntime?.expiresAt && <FieldPracticeTimer expiresAt={practiceRuntime.expiresAt} clubMode />}
 
       {officialStartWarning && (
         <div className="tk-referee-lock-backdrop" onClick={() => setOfficialStartWarning(null)}>
@@ -9241,14 +9718,79 @@ export default function App() {
         </button>
       )}
 
+      {footballStateError&&page!==PAGE_HOME&&page!==PAGE_WELCOME&&page!==PAGE_VENUE_ENTRY&&<aside role="alert" style={{margin:"12px",padding:"16px",background:"#321c28",color:"#ffe2e2",border:"1px solid #c76e7c",borderRadius:14}}>{footballStateError}</aside>}
+
+      {page === PAGE_WELCOME && (
+        <WelcomePage
+          nearbyClubRequest={nearbyClubRequest}
+          onNearbyClubRequestHandled={() => setNearbyClubRequest(false)}
+          onExploreClubs={() => setPage(PAGE_HOME)}
+          onExploreLeagues={() => setPage(PAGE_LEAGUE_VENUES)}
+          onJoinNearbyClub={(club) => {
+            setSelectedHomeClub(buildClubIdentity(club));
+            setEntryPageIntent("join-club");
+            setPage(PAGE_ENTRY);
+          }}
+        />
+      )}
+
+      {page === PAGE_LEAGUE_VENUES && (
+        <LeagueVenuesHub
+          onBack={() => setPage(PAGE_WELCOME)}
+          onViewVenue={(venue) => {
+            setPortalOriginClubId("");
+            setSelectedLeagueVenue(venue);
+            setPage(PAGE_VENUE_ENTRY);
+          }}
+        />
+      )}
+
+      {page === PAGE_VENUE_ENTRY && (
+        <>
+          <FieldPageFrame
+            refereeMode={fieldNav.canAccessSettings===true}
+            venue={selectedLeagueVenue}
+            page={fieldNav.ready ? fieldNav.page : "entry"}
+            onHome={() => {
+              if (fieldNav.ready) {
+                setFieldNavTarget({page: "landing", id: Date.now()});
+              } else {
+                setPage(PAGE_LEAGUE_VENUES);
+              }
+            }}
+          >
+            <FieldRouteBoundary key={selectedLeagueVenue?.id||"field"} onBack={()=>setPage(PAGE_LEAGUE_VENUES)}>
+            <VenueEntryPage
+            key={selectedLeagueVenue?.id || "field-entry"}
+            venue={selectedLeagueVenue}
+            onFieldNavState={setFieldNav}
+            onVenueUpdated={updated=>setSelectedLeagueVenue(current=>current?.id===updated?.id?{...current,...updated}:current)}
+            fieldNavTarget={fieldNavTarget}
+            portalClubIdentity={portalOriginClubId && canAccessPlayerFeatures ? {
+              clubId: portalOriginClubId,
+              clubName: activeClubName,
+              memberId: pageIdentity?.memberId || "",
+            } : null}
+            onBack={() => setPage(
+              portalOriginClubId ? PAGE_LANDING : PAGE_LEAGUE_VENUES
+            )}
+          />
+          </FieldRouteBoundary>
+          </FieldPageFrame>
+
+        </>
+      )}
+
       {page === PAGE_HOME && (
         <HomePage_HUB
+          onBackToWelcome={() => setPage(PAGE_WELCOME)}
           identity={identity}
           onRegisterClub={() => {
             window.alert("Club registration wizard is coming next.");
           }}
           onFindClub={() => {
-            window.alert("Club search will be connected next.");
+            setNearbyClubRequest(true);
+            setPage(PAGE_WELCOME);
           }}
           onViewClub={(club) => {
             setSelectedHomeClub(buildClubIdentity(club || { id: DEFAULT_CLUB_ID }));
@@ -9361,143 +9903,16 @@ export default function App() {
         </div>
       )}
 
-      {showSessionSelector &&
-        canChooseSessionMode &&
-        page === PAGE_SESSION_SELECTOR && (
-        <div
-          className="session-selector-overlay"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "clamp(0.35rem, 1.2vh, 0.8rem)",
-            overflowX: "hidden",
-            overflowY: "auto",
-            WebkitOverflowScrolling: "touch",
-            background:
-              "radial-gradient(circle at top, rgba(30, 144, 255, 0.18), rgba(2, 6, 23, 0.96) 55%, rgba(0,0,0,0.98))",
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          <div
-            className="session-selector-shell"
-            style={{
-              width: "min(920px, 98vw)",
-              height: "auto",
-              maxHeight: "none",
-              overflow: "visible",
-              border: "1px solid rgba(147, 197, 253, 0.55)",
-              borderRadius: "28px",
-              padding:
-                "clamp(0.55rem, 1.25vh, 1.1rem) clamp(0.65rem, 1.6vh, 1.25rem) clamp(0.3rem, 0.65vh, 0.55rem)",
-              display: "flex",
-              flexDirection: "column",
-              background:
-                "linear-gradient(145deg, rgba(2, 8, 23, 0.98), rgba(7, 18, 38, 0.96))",
-              boxShadow:
-                "0 0 50px rgba(14, 165, 233, 0.25), 0 0 90px rgba(168, 85, 247, 0.18)",
-              color: "white",
-              position: "relative",
-            }}
-          >
-            <div className="session-selector-header" style={{ textAlign: "center", marginBottom: "clamp(0.45rem, 1vh, 1rem)", flexShrink: 0 }}>
-              <div style={{ fontSize: "clamp(1.8rem, 5vh, 2.7rem)", lineHeight: 1, filter: "drop-shadow(0 0 18px rgba(251,191,36,0.8))" }}>
-                👑
-              </div>
-              <h1 style={{ fontSize: "clamp(1.55rem, 4.5vh, 3rem)", margin: "0.2rem 0 0" }}>
-                Choose Session
-              </h1>
-              <p style={{ color: "#dbeafe", fontSize: "clamp(0.78rem, 2vh, 1.05rem)", margin: "0.25rem 0 0" }}>
-                Choose how you want to enter the platform.
-              </p>
-              <div
-                style={{
-                  width: 110,
-                  height: 5,
-                  margin: "clamp(0.35rem, 0.8vh, 0.7rem) auto 0",
-                  borderRadius: 999,
-                  background: "linear-gradient(90deg, #0ea5e9, #d946ef)",
-                }}
-              />
-            </div>
-
-            <div
-              className="session-selector-grid"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                gridAutoRows: "auto",
-                gap: "clamp(0.25rem, 0.55vh, 0.55rem)",
-                flex: "0 0 auto",
-                minHeight: 0,
-              }}
-            >
-              <button
-                type="button"
-                className="session-choice-card session-choice-card-official"
-                onClick={() => {
+      {showSessionSelector && canChooseSessionMode && page === PAGE_SESSION_SELECTOR && (
+        <SessionSelector
+          onOfficial={() => {
                   writeSessionModeIntent("official");
                   setPracticeRuntime(null);
                   setSessionMode("official");
                   setShowSessionSelector(false);
                   setPage(PAGE_LANDING);
                 }}
-                style={{
-                  border: "1px solid #0ea5e9",
-                  borderRadius: "24px",
-                  padding: "clamp(0.65rem, 1.4vh, 1.1rem)",
-                  minHeight: 0,
-                  overflow: "hidden",
-                  background:
-                    "linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.96)), url('/session/official-session-bg.png'), radial-gradient(circle at top, rgba(14,165,233,0.42), rgba(2,6,23,0.96) 58%)",
-                  backgroundSize: "cover, cover, cover",
-                  backgroundPosition: "center, center, center",
-                  backgroundRepeat: "no-repeat",
-                  color: "white",
-                  textAlign: "left",
-                  cursor: "pointer",
-                  boxShadow: "0 0 35px rgba(14,165,233,0.35)",
-                  transform:
-                    sessionChoiceEmphasis === "practice"
-                      ? "scale(0.85)"
-                      : "scale(0.90)",
-                  transformOrigin: "center",
-                  transition:
-                    "transform 420ms ease, opacity 420ms ease, box-shadow 420ms ease",
-                  opacity:
-                    sessionChoiceEmphasis === "practice"
-                      ? 0.92
-                      : 1,
-                }}
-              >
-                <div style={{ textAlign: "center", fontSize: "clamp(2rem, 5vh, 3.2rem)", marginBottom: "0.25rem", lineHeight: 1 }}>🏃‍♂️⚽</div>
-                <h2 style={{ fontSize: "clamp(1.35rem, 3.5vh, 1.9rem)", textAlign: "center", margin: 0, lineHeight: 1.05 }}>Official<br />Session</h2>
-                <hr style={{ borderColor: "rgba(14,165,233,0.55)", margin: "1rem 0" }} />
-                <p>📊 Real standings & records</p>
-                <p>🎥 Videos & highlights enabled</p>
-                <p>🏅 Official stats & club history</p>
-                <p>🔒 Permanent club records</p>
-                <div
-                  style={{
-                    marginTop: "1rem",
-                    padding: "0.9rem",
-                    borderRadius: "14px",
-                    textAlign: "center",
-                    background: "linear-gradient(90deg, #0f52ba, #0284c7)",
-                    fontWeight: 800,
-                  }}
-                >
-                  Continue Officially ›
-                </div>
-              </button>
-
-              <button
-                type="button"
-                className="session-choice-card session-choice-card-practice"
-                onClick={async () => {
+          onPractice={async () => {
                   const weeklyPlayTime =
                     activeClubIdentity?.weeklyPlayTime ||
                     activeClubIdentity?.schedule?.weeklyPlayTime ||
@@ -9570,66 +9985,32 @@ export default function App() {
                     );
                   }
                 }}
-                style={{
-                  border: "1px solid #d946ef",
-                  borderRadius: "24px",
-                  padding: "clamp(0.65rem, 1.4vh, 1.1rem)",
-                  minHeight: 0,
-                  overflow: "hidden",
-                  background:
-                    "linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.96)), url('/session/practice-session-bg.png'), radial-gradient(circle at top, rgba(168,85,247,0.48), rgba(2,6,23,0.96) 58%)",
-                  backgroundSize: "cover, cover, cover",
-                  backgroundPosition: "center, center, center",
-                  backgroundRepeat: "no-repeat",
-                  color: "white",
-                  textAlign: "left",
-                  cursor: "pointer",
-                  boxShadow: "0 0 35px rgba(217,70,239,0.35)",
-                  transform:
-                    sessionChoiceEmphasis === "official"
-                      ? "scale(0.85)"
-                      : "scale(0.90)",
-                  transformOrigin: "center",
-                  transition:
-                    "transform 420ms ease, opacity 420ms ease, box-shadow 420ms ease",
-                  opacity:
-                    sessionChoiceEmphasis === "official"
-                      ? 0.92
-                      : 1,
-                }}
-              >
-                <div style={{ textAlign: "center", fontSize: "clamp(2rem, 5vh, 3.2rem)", marginBottom: "0.25rem", lineHeight: 1 }}>🎮</div>
-                <h2 style={{ fontSize: "clamp(1.35rem, 3.5vh, 1.9rem)", textAlign: "center", margin: 0, lineHeight: 1.05 }}>Practice<br />Session</h2>
-                <hr style={{ borderColor: "rgba(217,70,239,0.55)", margin: "1rem 0" }} />
-                <p>🎯 For learning the app purposes</p>
-                <p>🧱 Isolated practice database</p>
-                <p>🛡️ Never affects official club records</p>
-                <div
-                  style={{
-                    marginTop: "1rem",
-                    padding: "0.9rem",
-                    borderRadius: "14px",
-                    textAlign: "center",
-                    background: "linear-gradient(90deg, #7e22ce, #c026d3)",
-                    fontWeight: 800,
-                  }}
-                >
-                  Enter Practice Mode ›
-                </div>
-              </button>
-            </div>
-
-
-          </div>
-        </div>
+        />
       )}
 
       {page === PAGE_LANDING && (
         <LandingPage
+          leagueSeasonEntry={!isPracticeMode ? (
+            <ClubLeagueSeasonEntry
+              key={activeClubId}
+              clubId={activeClubId}
+              onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}
+            />
+          ) : null}
           activeClub={activeClubIdentity}
           activeClubId={activeClubId}
           activeClubName={activeClubName}
           clubIdentity={activeClubIdentity}
+          onEnterField={(field) => {
+            if(!canAccessPlayerFeatures)return;
+            setPortalOriginClubId(activeClubId);
+            setSelectedLeagueVenue(field);
+            setPage(PAGE_VENUE_ENTRY);
+          }}
+          onExploreFields={() => {
+            setPortalOriginClubId("");
+            setPage(PAGE_LEAGUE_VENUES);
+          }}
           teams={teams}
           currentMatchNo={activeMatchNo}
           currentMatch={effectiveLiveMatch}
@@ -9676,10 +10057,28 @@ export default function App() {
           isSpectator={isSpectator}
           canStartMatch={canStartMatch}
           hasRecordedMatchDayState={hasRecordedMatchDayState}
+          onReady={() => setLandingVisualReady(true)}
         />
       )}
 
-      {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (
+      {page === PAGE_CLUB_LEAGUE_SEASON && !isPracticeMode && (
+        <ClubLeagueSeasonPage
+          key={activeClubId}
+          clubId={activeClubId}
+          playerPhotosByName={effectivePlayerPhotosByName}
+          activeRole={activeRole}
+          identity={pageIdentity}
+          onOpenField={(field) => {
+            setPortalOriginClubId(activeClubId);
+            setSelectedLeagueVenue(field);
+            setPage(PAGE_VENUE_ENTRY);
+          }}
+          onBack={() => setPage(PAGE_LANDING)}
+        />
+      )}
+
+      {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && !isCompanyClub && (
+        <BookingPageBoundary key={activeClubId} onBack={() => setPage(PAGE_LANDING)}>
         <MatchSignupPage
           identity={pageIdentity}
           activeRole={activeRole}
@@ -9694,7 +10093,9 @@ export default function App() {
           playerPhotosByName={effectivePlayerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
+          initialTicketOpen={nativeTicketOpenRequest}
         />
+        </BookingPageBoundary>
       )}
 
       {page === PAGE_MATCH_SIGNUP && !canAccessMatchSignup && (
@@ -9708,7 +10109,7 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_PAYMENT && (
+      {page === PAGE_PAYMENT && !isCompanyClub && (
         <PaymentPage
           identity={pageIdentity}
           activeRole={activeRole}
@@ -9731,6 +10132,7 @@ export default function App() {
 
       {page === PAGE_LIVE && (
         <LiveMatchPage
+          activeSeasonId={activeSeasonId}
           matchSeconds={matchSeconds}
           secondsLeft={secondsLeft}
           timeUp={timeUp}
@@ -9907,6 +10309,29 @@ export default function App() {
         />
       )}
 
+      {isCompanyClub&&[PAGE_MATCH_SIGNUP,PAGE_PAYMENT,PAGE_SHOP].includes(page)&&<main className="page"><section className="card"><h2>Company-funded football</h2><p>Your company covers approved games and merchandise. Players and captains do not pay personally.</p><p>Company booking fulfilment, merchandise orders and invoices will open in the next rollout. You can accept your Field season invitation and confirm availability now.</p><button className="secondary-btn" onClick={handleBackToLanding}>Back to Club</button></section></main>}
+      {page === PAGE_SHOP && !isCompanyClub && <KitShopPage clubId={activeClubId} key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
+      {page === PAGE_PLAYER_PROFILE && !canAccessPlayerFeatures && <main className="page"><section className="card"><h1>Player Profile</h1><p>Enter your club as a verified player to open your profile. Spectator mode does not use player details.</p><button type="button" className="primary-btn" onClick={()=>setPage(PAGE_ENTRY)}>Go to club sign-in</button><button type="button" className="secondary-btn" onClick={handleBackToLanding}>Back to Home</button></section></main>}
+      {page === PAGE_PLAYER_PROFILE && canAccessPlayerFeatures && (
+        <PlayerProfilePage
+          key={`${activeClubId}:${authUser?.uid || "guest"}`}
+          clubId={activeClubId}
+          clubName={activeClubName}
+          clubLogo={activeClubIdentity?.logoUrl || activeClubIdentity?.logo || ""}
+          identity={pageIdentity}
+          activeRole={activeRole}
+          user={authUser}
+          isPracticeMode={isPracticeMode}
+          onBack={handleBackToLanding}
+          onOpenShop={color=>{setShopPreference(color||"");setPage(PAGE_SHOP);}}
+          onProfileUpdated={patch => setIdentity(previous =>
+            previous?.memberId === patch.memberId
+              ? {...previous, ...patch}
+              : previous
+          )}
+        />
+      )}
+
       {page === PAGE_VIEW_HIGHLIGHTS && (
         <VideoHighlightsPage
           matchId={currentVideoHighlightsMatchId}
@@ -10011,6 +10436,9 @@ export default function App() {
           isPracticeMode={isPracticeMode}
           practiceSessionId={practiceRuntime?.practiceSessionId || null}
           dataScope={footballDataScope}
+          initialPollOpen={nativePollOpenRequest}
+          initialMerchandisePoll={shopPollDraft}
+          onMerchandisePollConsumed={()=>setShopPollDraft(null)}
         />
       )}
 
@@ -10088,6 +10516,7 @@ export default function App() {
           teams={formationTeams}
           fiveVFiveTeams={formationFiveVFiveTeams}
           onUpdateTeams={handleUpdateTeams}
+          onMatchNumberChange={saveConfirmedPlayerNumber}
           onUpdateFiveVFiveTeams={handleUpdateFiveVFiveTeams}
           onBack={() => setPage(PAGE_FORMATIONS)}
           identity={pageIdentity}
@@ -10127,6 +10556,8 @@ export default function App() {
 
       {page === PAGE_FORMATIONS && (
         <FormationsPage
+          canEditNumbers={canManageSquads}
+          onNumberChange={saveConfirmedPlayerNumber}
           teams={formationTeams}
           fiveVFiveTeams={formationFiveVFiveTeams}
           currentMatch={effectiveLiveMatch}
@@ -10869,10 +11300,10 @@ export default function App() {
 
             <div className="field-row">
               <label>
-  Admin code {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}
+  Type ADMIN to confirm {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}
 </label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 style={{
                   width: "100%",
@@ -10967,15 +11398,15 @@ export default function App() {
               go back and use <strong>Save to server &amp; clear</strong> instead.
             </p>
             <p style={{ lineHeight: 1.5, color: "#fde68a", fontWeight: 800 }}>
-              Do not enter the code unless you are intentionally deleting test data.
+              Type DELETE only if you intend to discard this match-day data.
             </p>
 
             <div className="field-row">
               <label>
-  Re-enter admin code {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""} to confirm discard
+  Type DELETE {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""} to confirm discard
 </label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 style={{
                   width: "100%",
@@ -11133,9 +11564,9 @@ export default function App() {
               Match Day is separate.)
             </p>
             <div className="field-row">
-              <label>Admin code {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}</label>
+              <label>Type ADMIN to confirm {endMatchDayAdminName ? `(${endMatchDayAdminName})` : ""}</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 style={{
                   width: "100%",
@@ -11172,8 +11603,9 @@ export default function App() {
               <button
                 className="primary-btn"
                 onClick={handleEndSeasonAndCreateNew}
+                disabled={finalizingProfileAwards}
               >
-                Create new season
+                {finalizingProfileAwards ? "Preserving season awards…" : "Create new season"}
               </button>
             </div>
           </div>
@@ -11190,20 +11622,10 @@ export default function App() {
         PAGE_NEWS,
         PAGE_PLAYER_CARDS,
         PAGE_PEER_REVIEW,
+        PAGE_PLAYER_MENTALITIES,
         PAGE_SQUADS,
         PAGE_FORMATIONS,
-      ].includes(page) &&
-      !(
-        page === PAGE_LIVE &&
-        normalizeMatchMode(matchType, MATCH_TYPE.FRIENDLY) ===
-          MATCH_TYPE.FRIENDLY
-      ) &&
-      (
-        page === PAGE_SPECTATOR ||
-        isAdmin ||
-        isCaptain ||
-        Boolean(identity?.memberId || identity?.playerId)
-      ) ? (
+      ].includes(page) ? (
         <ClubChatWidget
           activeClubId={activeClubId}
           activeClubName={activeClubName}
@@ -11226,13 +11648,57 @@ export default function App() {
           matchType={matchType}
           gameFormat={gameFormat}
           members={members}
+          nativeOpenRequest={nativeChatOpenRequest}
+          onNativeOpenRequestHandled={(request) => {
+            setNativeChatOpenRequest((pending) => pending === request ? null : pending);
+          }}
           onOpenHighlight={handleGoToViewHighlights}
           variant="launcher"
         />
       ) : null}
 
+      {!authLoading && authUser?.uid && page !== PAGE_WELCOME &&
+        page !== PAGE_LEAGUE_VENUES && (
+        <LegalAcceptanceGate
+          user={authUser}
+          scope={page === PAGE_VENUE_ENTRY ? "field" : "club"}
+        />
+      )}
+
+      {page === PAGE_VENUE_ENTRY &&
+        fieldNav.ready &&
+        (fieldNav.page !== "live" || !fieldNav.canAccessSettings) &&
+        fieldNav.page !== "chat" && (
+          <>
+            <FieldBottomNav
+              canAccessSettings={fieldNav.canAccessSettings === true}
+              currentPage={fieldNav.page}
+              onNavigate={(target) =>
+                setFieldNavTarget({ page: target, id: Date.now() })
+              }
+            />
+            {fieldNav.page !== "chat" && (
+              <button
+                type="button"
+                className="field-chat-launcher"
+                aria-label="Open Field chat"
+                onClick={() =>
+                  setFieldNavTarget({ page: "chat", id: Date.now() })
+                }
+              >
+                <span aria-hidden="true">💬</span>
+              </button>
+            )}
+          </>
+        )}
+
+      {canAccessPlayerFeatures&&!isPracticeMode&&<TeamChatWarmup uid={authUser?.uid} clubId={activeClubId}/>}
+      {page===PAGE_VENUE_ENTRY&&portalOriginClubId&&!isPracticeMode&&<TeamChatWarmup uid={authUser?.uid} clubId={portalOriginClubId} venueId={selectedLeagueVenue?.id}/>}<PoolNotificationBridge key="pool-notification-bridge"/>{authUser?.uid&&!authUser.isAnonymous&&<PremiumNotificationToast key={`notification:${authUser.uid}`}/>}
+      {canAccessPlayerFeatures&&page!==PAGE_PLAYER_PROFILE&&page!==PAGE_VENUE_ENTRY&&<NumberOfferNotification clubId={activeClubId} enabled={!isPracticeMode} onOpen={()=>setPage(PAGE_PLAYER_PROFILE)}/>}
+
       {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav
+          persistent={activeRole==="spectator"}
           currentPage={page}
           activeClub={activeClubIdentity}
           activeClubName={activeClubName}
@@ -11240,7 +11706,8 @@ export default function App() {
           hasLiveMatch={hasLiveMatch || running}
           canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
           canManageSquads={canManageSquads}
-          canAccessPayments={canAccessMatchSignup}
+          canAccessProfile={canAccessPlayerFeatures}
+          canAccessPayments={canAccessMatchSignup&&!isCompanyClub}
           canAccessPeerReview={activeRole !== "spectator"}
           locked={isRefereeStatsView}
           lockedMessage="You Are A Referee, have you forgotten? Return to the Game Controls"

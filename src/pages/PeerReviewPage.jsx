@@ -4,7 +4,7 @@ import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import {
   getPlayersCollection,
-  getMembersCollection,
+  getPublicMembersCollection,
   getPlayerPhotosCollection,
   getPeerRatingsCollection,
   getPeerRatingBaselinesCollection,
@@ -233,7 +233,7 @@ export function PeerReviewPage({
           playerPhotosByName &&
           Object.keys(playerPhotosByName).length > 20;
 
-        const membersSnap = await getDocs(getMembersCollection(db, safeActiveClubId));
+        const membersSnap = await getDocs(getPublicMembersCollection(db, safeActiveClubId));
         const photosSnap = alreadyLoaded
           ? null
           : await getDocs(getPlayerPhotosCollection(db, safeActiveClubId));

@@ -1,0 +1,117 @@
+/* Scoped to the Field banking editor; Club forms are unaffected. */
+.field-banking-form {
+  margin-top: 16px;
+  padding: clamp(18px, 5vw, 28px);
+  border: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 20px;
+  background: linear-gradient(145deg, #142238, #0d1929);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .16);
+  color: #f1f5f9;
+}
+.field-banking-form__heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.field-banking-form__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 46px;
+  height: 46px;
+  font-size: 24px;
+  border-radius: 14px;
+  background: rgba(56, 189, 248, .1);
+  border: 1px solid rgba(56, 189, 248, .2);
+}
+.field-banking-form__eyebrow {
+  margin: 0 0 5px;
+  color: #7dd3fc;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+.field-banking-form .field-banking-form__heading h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
+}
+.field-banking-form > .muted {
+  margin: 0 0 24px;
+  color: #a7b5c9;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.field-banking-form .form-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin: 0 0 18px;
+  min-width: 0;
+}
+.field-banking-form .form-row label {
+  display: block;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.field-banking-form .form-row input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  min-height: 48px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #34465f;
+  border-radius: 12px;
+  background: #0b1627;
+  color: #f8fafc;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field-banking-form .form-row input:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, .15);
+}
+.field-banking-form .field-banking-form__rate {
+  margin-top: 26px;
+  margin-bottom: 0;
+  padding-top: 22px;
+  border-top: 1px solid rgba(148, 163, 184, .18);
+}
+.field-banking-form .field-banking-form__save {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  margin: 24px 0 0;
+  padding: 13px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+  white-space: normal;
+  box-shadow: 0 6px 18px rgba(34, 197, 94, .16);
+}
+.field-banking-form fieldset:disabled {
+  opacity: .65;
+}
+.field-banking-form [role="alert"] {
+  margin-top: 16px;
+  color: #fca5a5;
+}
+.field-banking-form [role="status"] {
+  margin-top: 16px;
+  color: #86efac;
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-banking-form .form-row input {
+    transition: none;
+  }
+}

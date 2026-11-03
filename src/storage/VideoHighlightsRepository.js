@@ -644,166 +644,33 @@ export async function loadArchivedHighlightsFromFirebase(
 }
 
 
-export async function loadClubArchivedHighlightsFromFirebase(clubId) {
-  const safeClubId =
-    String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() ||
-    DEFAULT_CLUB_ID;
-
-  const collected = [];
-
-  const belongsToClub = (item = {}, matchId = "") => {
-    const explicitClubId =
-      item.clubId ||
-      item.clubID ||
-      item.clubSlug ||
-      item.activeClubId ||
-      item.matchContext?.clubId ||
-      item.matchContext?.activeClubId ||
-      item.matchContext?.clubSlug ||
-      item.metadata?.clubId ||
-      item.metadata?.activeClubId ||
-      "";
-
-    if (explicitClubId) {
-      return (
-        String(explicitClubId).trim().toLowerCase() === safeClubId
-      );
-    }
-
-    const safeMatchId = String(matchId || item.matchId || "")
-      .trim()
-      .toLowerCase();
-
-    if (
-      safeClubId !== DEFAULT_CLUB_ID &&
-      safeMatchId.startsWith(`${safeClubId}__`)
-    ) {
-      return true;
-    }
-
-    const clubName =
-      item.clubName ||
-      item.activeClubName ||
-      item.matchContext?.clubName ||
-      item.matchContext?.activeClubName ||
-      item.metadata?.clubName ||
-      "";
-
-    if (
-      safeClubId === DEFAULT_CLUB_ID &&
-      String(clubName).trim().toLowerCase().includes("turf")
-    ) {
-      return true;
-    }
-
-    // Legacy untagged archive records belong to Turf Kings only.
-    return (
-      safeClubId === DEFAULT_CLUB_ID &&
-      !explicitClubId &&
-      !safeMatchId.includes("__")
-    );
-  };
-
+export async function loadClubArchivedHighlightsFromFirebase(clubId, {strict = false} = {}) {
+  const safeClubId = String(clubId || DEFAULT_CLUB_ID).trim().toLowerCase() || DEFAULT_CLUB_ID;
   try {
-    const snap = await getDocs(
-      query(collectionGroup(db, "archived"), limit(250))
-    );
-
-    console.log("[TK ARCHIVED HIGHLIGHTS DEBUG] collectionGroup result", {
-      clubId: safeClubId,
-      size: snap.size,
-    });
-
-    for (const clipDoc of snap.docs) {
-      const data = clipDoc.data() || {};
-      const parentMatchRef = clipDoc.ref.parent?.parent;
-      const matchId =
-        String(data.matchId || parentMatchRef?.id || "").trim();
-
-      if (!belongsToClub(data, matchId)) continue;
-
-      let resolvedUrl =
-        data.downloadUrl ||
-        data.videoUrl ||
-        data.mediaUrl ||
-        data.fileUrl ||
-        data.publicUrl ||
-        data.previewUrl ||
-        data.url ||
-        data.uri ||
-        "";
-
-      if (!resolvedUrl && data.storagePath) {
-        try {
-          resolvedUrl = await getDownloadURL(
-            ref(storage, data.storagePath)
-          );
-        } catch (error) {
-          console.warn(
-            "[TK ARCHIVED HIGHLIGHTS] Could not resolve archived clip URL:",
-            data.storagePath,
-            error
-          );
+    const roots = [collection(db, "clubs", safeClubId, CLUB_COLLECTIONS.videoHighlights)];
+    // Preserve the original Turf Kings legacy namespace without querying other clubs.
+    if (safeClubId === DEFAULT_CLUB_ID) roots.push(collection(db, CLUB_COLLECTIONS.videoHighlights));
+    const parentSnapshots = await Promise.all(roots.map(root => getDocs(root)));
+    const buckets = await Promise.all(parentSnapshots.flatMap(snapshot => snapshot.docs).map(async parent => {
+      const archive = await getDocs(collection(parent.ref, "archived"));
+      return Promise.all(archive.docs.map(async item => {
+        const data = item.data() || {};
+        const explicitClubId = data.clubId || data.activeClubId || data.matchContext?.clubId;
+        if (explicitClubId && String(explicitClubId).toLowerCase() !== safeClubId) return null;
+        let url = data.downloadUrl || data.videoUrl || data.mediaUrl || data.fileUrl || data.publicUrl || data.previewUrl || data.url || data.uri || "";
+        if (!url && data.storagePath) {
+          try { url = await getDownloadURL(ref(storage, data.storagePath)); } catch (_) { /* Metadata remains usable for historical reporting. */ }
         }
-      }
-
-      const frozenWeeklyVoteCount = Number(
-        data.frozenWeeklyVoteCount ??
-        data.weeklyVoteCount ??
-        data.voteCount ??
-        data.votesCount ??
-        data.totalVotes ??
-        data.likesCount ??
-        data.likeCount ??
-        0
-      ) || 0;
-
-      collected.push({
-        id: clipDoc.id,
-        clipId: data.clipId || clipDoc.id,
-        ...data,
-        matchId,
-        videoUrl: data.videoUrl || resolvedUrl,
-        downloadUrl: data.downloadUrl || resolvedUrl,
-        mediaUrl: data.mediaUrl || resolvedUrl,
-
-        // Archived weekly results are historical and immutable in the UI.
-        archivedClubFeed: true,
-        weeklyVotingClosed: true,
-        votingLocked: true,
-        frozenWeeklyVoteCount,
-      });
-    }
-
-    const seen = new Set();
-
-    console.log("[TK ARCHIVED HIGHLIGHTS DEBUG] club-filtered", {
-      clubId: safeClubId,
-      count: collected.length,
-      clips: collected.map((clip) => ({
-        id: clip.clipId || clip.id,
-        matchId: clip.matchId,
-        clubId: clip.clubId || clip.activeClubId || "",
-      })),
-    });
-
-    return collected.filter((clip) => {
-      const key = String(
-        clip?.clipId || clip?.id || ""
-      ).trim();
-
-      if (!key) return true;
-      if (seen.has(key)) return false;
-
-      seen.add(key);
-      return true;
-    });
-  } catch (error) {
-    console.warn(
-      "[TK ARCHIVED HIGHLIGHTS] Failed to load club archive:",
-      safeClubId,
-      error
-    );
+        return {...data, id:item.id, clipId:data.clipId || item.id, matchId:data.matchId || parent.id,
+          clubId:safeClubId, videoUrl:data.videoUrl || url, downloadUrl:data.downloadUrl || url, mediaUrl:data.mediaUrl || url,
+          archivedClubFeed:true, weeklyVotingClosed:true, votingLocked:true,
+          frozenWeeklyVoteCount:Number(data.frozenWeeklyVoteCount ?? data.weeklyVoteCount ?? data.voteCount ?? data.votesCount ?? data.totalVotes ?? data.likesCount ?? data.likeCount ?? 0) || 0};
+      }));
+    }));
+    return [...new Map(buckets.flat().filter(Boolean).map(clip => [`${clip.matchId}/${clip.clipId}`,clip])).values()];
+  } catch(error) {
+    console.warn("[FANM archived highlights] Could not load the club archive",error);
+    if (strict) throw error;
     return [];
   }
 }
@@ -1857,7 +1724,7 @@ export async function loadCurrentAwardLeadersFromFirebase(
   ];
 
   const likesResult =
-    await loadHighlightLikesForMatchesFromFirebase(matchIds);
+    await loadHighlightLikesForMatchesFromFirebase(matchIds, safeClubId);
 
   const likeCounts =
     likesResult?.countsByClip &&

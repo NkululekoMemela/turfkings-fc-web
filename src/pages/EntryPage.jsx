@@ -1,14 +1,27 @@
+import EntryManagementButton from "../components/EntryManagementButton.jsx";
+import PlayerNameSelectionButton from "../components/PlayerNameSelectionButton.jsx";
+import {subscribeClubMemberDirectory} from "../storage/clubMemberDirectory.js";
+import {playerPrivacyRequest} from "../storage/playerPrivacyGateway.js";
+import {fileToDataUrl, makePortraitPhotoDataUrl} from "../core/playerPortrait.js";
+import {findExistingPhotoDataByIdentity, savePlayerPhotoForIdentity} from "../storage/playerPhotoRepository.js";
+import { ClubFieldSeasonInvitation } from "../components/FieldSeasonInvitations.jsx";
 // src/pages/EntryPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
 import TeamPhoto from "../assets/TurfKings.jpg";
 import { buildClubIdentity } from "../core/clubIdentity.js";
+import { isClubJoinAdministrator, resolveClubJoinIdentity } from "../core/clubJoinRequestPolicy.mjs";
 import { removePlayerFromSavedLineups } from "../core/lineups.js";
 
 const FANM_HOME_LOGO = "/HomePage/Logo_icon.jpeg";
 
-import { auth, signInWithGoogle } from "../firebaseConfig";
-import { db } from "../firebaseConfig";
+import {
+  auth,
+  db,
+  reauthenticateWithGoogle,
+  signInWithGoogle,
+  logOut,
+} from "../firebaseConfig";
 import {
   collection,
   onSnapshot,
@@ -31,8 +44,6 @@ import {
 } from "firebase/firestore";
 import {
   onAuthStateChanged,
-  GoogleAuthProvider,
-  reauthenticateWithPopup,
 } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
 import { ClubChatWidget } from "../components/ClubChat/ClubChatWidget.jsx";
@@ -324,14 +335,7 @@ function looksLikeWhatsAppNumber(value) {
 }
 
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+
 
 async function makeLandscapePhotoDataUrl(file, width = 900, height = 506) {
   const raw = await fileToDataUrl(file);
@@ -370,171 +374,10 @@ async function makeLandscapePhotoDataUrl(file, width = 900, height = 506) {
   });
 }
 
-async function makePortraitPhotoDataUrl(file, width = 420, height = 520) {
-  const raw = await fileToDataUrl(file);
-
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-
-        if (!ctx) {
-          resolve(raw);
-          return;
-        }
-
-        ctx.fillStyle = "#0f172a";
-        ctx.fillRect(0, 0, width, height);
-
-        const scale = Math.max(width / img.width, height / img.height);
-        const drawW = img.width * scale;
-        const drawH = img.height * scale;
-        const dx = (width - drawW) / 2;
-        const dy = (height - drawH) / 2;
-
-        ctx.drawImage(img, dx, dy, drawW, drawH);
-        resolve(canvas.toDataURL("image/jpeg", 0.92));
-      } catch (err) {
-        reject(err);
-      }
-    };
-    img.onerror = reject;
-    img.src = raw;
-  });
-}
-
-function getPhotoDocIdsFromIdentity({ fullName = "", shortName = "", playerId = "" }) {
-  const ids = [
-    String(playerId || "").trim(),
-    slugFromName(toTitleCase(fullName || "")),
-    slugFromName(toTitleCase(shortName || "")),
-    slugFromName(toTitleCase(shortName || fullName || "")),
-  ].filter(Boolean);
-
-  return Array.from(new Set(ids));
-}
-
-async function findExistingPhotoDataByIdentity(identityLike, clubId = DEFAULT_CLUB_ID) {
-  const ids = getPhotoDocIdsFromIdentity(identityLike);
-
-  for (const id of ids) {
-    try {
-      const snap = await getDoc(playerPhotoDocRef(clubId, id));
-      if (snap.exists()) {
-        const data = snap.data() || {};
-        if (data.photoData) {
-          return {
-            id,
-            photoData: data.photoData,
-            data,
-          };
-        }
-      }
-    } catch (err) {
-      console.error("[EntryPage] Failed checking player photo:", err);
-    }
-  }
-
-  return null;
-}
-
-async function savePlayerPhotoForIdentity({
-  clubId = DEFAULT_CLUB_ID,
-  fullName = "",
-  shortName = "",
-  playerId = "",
-  email = "",
-  role = "player",
-  status = "active",
-  sourceMemberId = "",
-  photoData = "",
-}) {
-  const preferredId =
-    String(playerId || "").trim() ||
-    slugFromName(toTitleCase(shortName || fullName || ""));
-
-  if (!preferredId || !photoData) return null;
-
-  await setDoc(
-    playerPhotoDocRef(clubId, preferredId),
-    {
-      name: toTitleCase(fullName || shortName || preferredId),
-      shortName: toTitleCase(shortName || fullName || preferredId),
-      email: String(email || "").trim(),
-      sourceMemberId: sourceMemberId || null,
-      role,
-      status,
-      photoData,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  return preferredId;
-}
-
 async function upsertPlayerFromMember(member, clubId = DEFAULT_CLUB_ID) {
-  if (!member) return null;
-
-  const shortName = (member.shortName || "").trim();
-  const fullName = (member.fullName || "").trim();
-  const displayName = toTitleCase(shortName || fullName);
-
-  if (!displayName) {
-    console.warn("[EntryPage] upsertPlayerFromMember: empty name, skipping");
-    return null;
-  }
-
-  const playerId = slugFromName(displayName);
-
-  try {
-    await setDoc(
-      playerDocRef(clubId, playerId),
-      {
-        name: displayName,
-        fullName: fullName || displayName,
-        shortName: shortName || displayName,
-        email: member.email || "",
-        whatsappNumber: member.whatsappNumber || "",
-        phoneNumber:
-          member.phoneNumber ||
-          member.whatsappNumber ||
-          "",
-        photoUrl: member.photoUrl || "",
-        platformIdentityUid:
-          member.platformIdentityUid ||
-          member.uid ||
-          "",
-        platformIdentityConfirmed:
-          member.platformIdentityConfirmed === true,
-        platformIdentitySourceClubId:
-          member.platformIdentitySourceClubId || "",
-        platformIdentitySourceMemberId:
-          member.platformIdentitySourceMemberId || "",
-        roles: {
-          player: true,
-          captain: member.role === "captain",
-          coach: member.role === "coach",
-          admin: member.role === "admin",
-        },
-        sourceMemberId: member.id,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    return playerId;
-  } catch (err) {
-    console.error(
-      "[EntryPage] Failed to sync member into players collection:",
-      err
-    );
-    return null;
-  }
+  if(!member?.id)return null;
+  const result=await playerPrivacyRequest({action:"bind",clubId,memberId:member.id});
+  return result.playerId;
 }
 
 async function resolveSignedInRoleFromPlayerDoc(member, emailFromGoogle = "", clubId = DEFAULT_CLUB_ID) {
@@ -555,7 +398,7 @@ async function resolveSignedInRoleFromPlayerDoc(member, emailFromGoogle = "", cl
 
   for (const pid of candidateIds) {
     try {
-      const snap = await getDoc(playerDocRef(clubId, pid));
+      const snap = await getDoc(doc(db,"clubs",clubId,"publicPlayers",pid));
       if (!snap.exists()) continue;
 
       const data = snap.data() || {};
@@ -943,10 +786,8 @@ export function EntryPage({
     setLoadingMembers(true);
     setMembersError("");
 
-    const colRef = membersCollectionRef(activeClubId);
-
-    const unsub = onSnapshot(
-      colRef,
+    const unsub = subscribeClubMemberDirectory(
+      activeClubId,
       (snap) => {
         const list = snap.docs.map((d) => {
           const data = d.data() || {};
@@ -1226,8 +1067,17 @@ export function EntryPage({
     return "";
   });
 
+  useEffect(()=>{
+    if(identity?.clubId===activeClubId && identity?.memberId)
+      setSelectedMemberId(previous=>previous || identity.memberId);
+  },[activeClubId,identity?.clubId,identity?.memberId]);
+
+  const [playerPickerOpen, setPlayerPickerOpen] =
+    useState(false);
+
   useEffect(() => {
     setSelectedMemberId(identity?.clubId === activeClubId && identity?.memberId ? identity.memberId : "");
+    setPlayerPickerOpen(false);
     setVerifyError("");
     setVerifyStatus("");
 
@@ -1257,7 +1107,13 @@ export function EntryPage({
       setShowNewPlayerForm(true);
       setNewReqError("");
       setNewReqStatus("");
+      const timer = window.setTimeout(() => {
+        document.getElementById("entry-join-request-panel")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 180);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [entryPageIntent]);
   const [newFullName, setNewFullName] = useState("");
   const [newEmail, setNewEmail] = useState("");
@@ -1611,7 +1467,7 @@ export function EntryPage({
 
       const memberPatch = {
         fullName,
-        shortName: fullName,
+        shortName: profileMember.shortName || fullName,
         email,
         whatsappNumber,
         phoneNumber: whatsappNumber,
@@ -1640,7 +1496,7 @@ export function EntryPage({
           {
             name: fullName,
             fullName,
-            shortName: fullName,
+            shortName: profileMember.shortName || fullName,
             email,
             whatsappNumber,
             phoneNumber: whatsappNumber,
@@ -1661,7 +1517,7 @@ export function EntryPage({
         await savePlayerPhotoForIdentity({
           clubId: activeClubId,
           fullName,
-          shortName: fullName,
+          shortName: profileMember.shortName || fullName,
           playerId: existingPlayerId,
           email,
           role: profileMember.role || "player",
@@ -2119,7 +1975,7 @@ export function EntryPage({
     setNewPhotoStatus("");
 
     const fullName = newFullName.trim();
-    const email = newEmail.trim();
+    let email = newEmail.trim();
 
     const inheritedWhatsApp =
       confirmedIdentity?.whatsappNumber ||
@@ -2130,7 +1986,7 @@ export function EntryPage({
       newWhatsApp || inheritedWhatsApp
     );
 
-    const platformIdentityUid =
+    let platformIdentityUid =
       confirmedIdentity?.platformIdentityUid ||
       confirmedIdentity?.uid ||
       "";
@@ -2146,6 +2002,30 @@ export function EntryPage({
     }
     if (!email || !email.includes("@")) {
       setNewReqError("Please enter a valid email address.");
+      return;
+    }
+
+    let joinSubjectUid = "";
+    try {
+      const clubSnapshot = await getDoc(doc(db, "clubs", activeClubId));
+      if (!clubSnapshot.exists()) throw new Error("This club could not be found. Your request has not been sent.");
+      const club = clubSnapshot.data();
+      let applicant = auth.currentUser;
+      const matchesEmail = String(applicant?.email || "").trim().toLowerCase() === email.toLowerCase();
+      if (!isClubJoinAdministrator(club, applicant) && (!applicant || !matchesEmail || !applicant.emailVerified)) {
+        setNewReqStatus("Verify your Google account to send this request.");
+        await signInWithGoogle();
+        applicant = auth.currentUser;
+      }
+      if (applicant) await applicant.getIdToken(true);
+      const identity = resolveClubJoinIdentity(club, applicant, email);
+      email = identity.email;
+      joinSubjectUid = identity.uid;
+      if (!identity.delegated) platformIdentityUid = identity.uid;
+      setNewReqStatus("");
+    } catch (error) {
+      setNewReqStatus("");
+      setNewReqError(error?.message || "Google verification failed. Your request has not been sent.");
       return;
     }
 
@@ -2165,6 +2045,7 @@ export function EntryPage({
       if (existingMember.status === "withdrawn") {
         try {
           await updateDoc(memberDocRef(activeClubId, existingMember.id), {
+            ...(joinSubjectUid ? { uid: existingMember.uid || joinSubjectUid } : {}),
             fullName,
             shortName,
             email,
@@ -2183,6 +2064,7 @@ export function EntryPage({
           });
 
           if (newPhotoFile || inheritedPhoto) {
+            try {
             const portraitData = newPhotoFile
               ? await makePortraitPhotoDataUrl(newPhotoFile)
               : inheritedPhoto;
@@ -2198,11 +2080,16 @@ export function EntryPage({
               sourceMemberId: existingMember.id,
               photoData: portraitData,
             });
+              setNewPhotoStatus("Photo saved for admin review.");
+            } catch (photoError) {
+              console.warn("Join request saved; optional photo failed:", photoError);
+              setNewPhotoStatus("Your request was sent, but the photo could not be saved. You can add it after approval.");
+            }
           }
 
           setNewReqStatus(
             newPhotoFile || inheritedPhoto
-              ? "Rejoin request captured and your profile photo has been saved for admin review."
+              ? "Rejoin request captured for admin review. Check the photo status below."
               : "Rejoin request captured. An admin will approve you again."
           );
           setNewFullName("");
@@ -2228,6 +2115,7 @@ export function EntryPage({
 
     try {
       const requestRef = await addDoc(membersCollectionRef(activeClubId), {
+        ...(joinSubjectUid ? { uid: joinSubjectUid } : {}),
         fullName,
         shortName,
         email,
@@ -2245,6 +2133,7 @@ export function EntryPage({
       });
 
       if (newPhotoFile || inheritedPhoto) {
+        try {
         const portraitData = newPhotoFile
           ? await makePortraitPhotoDataUrl(newPhotoFile)
           : inheritedPhoto;
@@ -2260,11 +2149,16 @@ export function EntryPage({
           sourceMemberId: requestRef.id,
           photoData: portraitData,
         });
+          setNewPhotoStatus("Photo saved for admin review.");
+        } catch (photoError) {
+          console.warn("Join request saved; optional photo failed:", photoError);
+          setNewPhotoStatus("Your request was sent, but the photo could not be saved. You can add it after approval.");
+        }
       }
 
       setNewReqStatus(
         newPhotoFile || inheritedPhoto
-          ? "Request captured and your profile photo has been copied into this club for admin review."
+          ? "Request captured for admin review. Check the photo status below."
           : "Request captured. An admin will approve you and you’ll appear on the list."
       );
       setNewFullName("");
@@ -2313,7 +2207,7 @@ export function EntryPage({
       /*
        * GPI Stage 1 — fresh club join.
        *
-       * The Gmail entered in the join form is the discovery key.
+       * The Google account entered in the join form is the discovery key.
        * No existing profile is copied yet. We first show the user
        * the candidate and require Google authentication if they
        * choose to reuse it.
@@ -2459,7 +2353,7 @@ export function EntryPage({
 
     if (!expectedEmail) {
       setNewReqError(
-        "We could not determine the Gmail address for this profile."
+        "We could not determine the Google account email for this profile."
       );
       return;
     }
@@ -2470,7 +2364,7 @@ export function EntryPage({
     );
 
     /*
-     * Never ask for or handle a Gmail password inside FANM.
+     * Never ask for or handle a Google password inside FANM.
      * Google performs the authentication using the existing
      * sign-in flow already trusted by the application.
      */
@@ -2493,14 +2387,14 @@ export function EntryPage({
 
     if (!authenticatedEmail) {
       setNewReqError(
-        "We could not read the Gmail address from the Google account."
+        "We could not read the Google account email from the Google account."
       );
       return;
     }
 
     if (authenticatedEmail !== expectedEmail) {
       setNewReqError(
-        `That Google account does not match ${expectedEmail}. Please use the Gmail account attached to this player profile.`
+        "This Google account does not match the selected profile. Choose another account or use the account recovery help below."
       );
       return;
     }
@@ -2631,7 +2525,7 @@ export function EntryPage({
 
     if (!expectedEmail) {
       setExistingMemberGpiError(
-        "We could not determine the Gmail address attached to this profile."
+        "We could not determine the Google account email attached to this profile."
       );
       return;
     }
@@ -2643,19 +2537,12 @@ export function EntryPage({
       let authenticatedUser = auth.currentUser;
 
       /*
-       * FANM never sees or stores a Gmail password.
+       * FANM never sees or stores a Google password.
        * Google itself performs the account confirmation.
        */
       if (authenticatedUser) {
-        const provider = new GoogleAuthProvider();
-
-        provider.setCustomParameters({
-          prompt: "select_account",
-        });
-
-        await reauthenticateWithPopup(
-          authenticatedUser,
-          provider
+        await reauthenticateWithGoogle(
+          authenticatedUser
         );
 
         authenticatedUser = auth.currentUser;
@@ -2679,7 +2566,7 @@ export function EntryPage({
 
       if (authenticatedEmail !== expectedEmail) {
         setExistingMemberGpiError(
-          `That Google account does not match ${expectedEmail}. Please use the Gmail account attached to this player profile.`
+          "This Google account does not match the selected profile. Choose another account or use the account recovery help below."
         );
         return;
       }
@@ -2896,8 +2783,15 @@ export function EntryPage({
       setSigninStatus("Google account verified...");
     }
 
+    let verifiedMember;
+    try {
+      verifiedMember = (await playerPrivacyRequest({action:"load",clubId:activeClubId,memberId:selectedMember.id})).member;
+    } catch (error) {
+      setVerifyError(error.message || "This membership does not belong to your signed-in account.");
+      return;
+    }
     const googleEmail = u.email.toLowerCase().trim();
-    const memberEmail = (selectedMember.email || "").toLowerCase().trim();
+    const memberEmail = (verifiedMember.email || "").toLowerCase().trim();
 
     if (memberEmail && googleEmail !== memberEmail) {
       setVerifyError(
@@ -2927,6 +2821,7 @@ export function EntryPage({
 
     const playerId = await upsertPlayerFromMember({
       ...selectedMember,
+      ...verifiedMember,
       id: selectedMember.id,
       email: googleEmail,
       uid: u.uid,
@@ -2991,6 +2886,7 @@ export function EntryPage({
     const memberData = memberSnap.exists() ? memberSnap.data() || {} : {};
 
     const completionPayload = {
+      uid: u.uid,
       clubId: activeClubId,
       clubName: activeClubName,
       // Keep the app UI fully aligned with the selected preview mode.
@@ -3428,9 +3324,12 @@ export function EntryPage({
 
     try {
       await performVerifyPlayer();
+    } catch (error) {
+      console.error("[EntryPage] Sign-in completion failed:", error);
+      setVerifyStatus("");
+      setVerifyError(`Sign-in could not finish: ${error?.message || "Unknown error"}`);
     } finally {
       setSigninProgress(100);
-      setSigninStatus("Ready. Entering your football world...");
 
       window.setTimeout(() => {
         setShowSigninLoading(false);
@@ -3931,7 +3830,7 @@ export function EntryPage({
 
     if (!adminPrivilegesMemberEmail) {
       setAdminPrivilegesError(
-        "This member needs a verified Gmail address before administrator privileges can be assigned."
+        "This member needs a verified Google account email before administrator privileges can be assigned."
       );
       return;
     }
@@ -4795,6 +4694,7 @@ export function EntryPage({
 
   return (
     <div className="page entry-page">
+      <ClubFieldSeasonInvitation clubId={activeClubId} />
       {showMemberLoadingWelcome && !showSigninLoading && (
         <div
           className="entry-member-loading-backdrop"
@@ -5041,16 +4941,9 @@ export function EntryPage({
         </div>
       </header>
 
-      <section className="card" style={heroCardStyle}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: "1rem",
-            alignItems: "center",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
+      <section className="card" style={{ ...heroCardStyle, padding: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)" }}>
+          <div className="entry-marketing-copy" style={{ minWidth: 0 }}>
             <div style={labelCapsuleStyle}>{activeClubShortName} Entry</div>
             <h2
               style={{
@@ -5079,12 +4972,12 @@ export function EntryPage({
 
           <div
             style={{
-              borderRadius: "22px",
+              borderRadius: "0",
               overflow: "hidden",
-              border: "1px solid rgba(148,163,184,0.16)",
+              border: "none",
               boxShadow: "0 18px 42px rgba(2,6,23,0.32)",
               background: "#020617",
-              padding: "0.5rem",
+              padding: 0,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -5103,11 +4996,11 @@ export function EntryPage({
                   style={{
                     width: "100%",
                     height: "auto",
-                    maxHeight: "320px",
+                    maxHeight: "none",
                     objectFit: "contain",
                     objectPosition: "center",
                     display: "block",
-                    borderRadius: "16px",
+                    borderRadius: "0",
                   }}
                 />
               ) : (
@@ -5132,7 +5025,7 @@ export function EntryPage({
               )}
 
               {realCanEditClubHero ? (
-                <div style={{ marginTop: "0.75rem" }}>
+                <div style={{ marginTop: 0 }}>
                   <label
                     title="Change main club photo"
                     style={{
@@ -5265,11 +5158,10 @@ export function EntryPage({
             <span style={labelCapsuleStyle}>Player entry</span>
 
             {canOpenClubManagement && (
-              <button
-                type="button"
-                aria-label="Manage club administrator privileges"
-                title="Manage club administrators"
-                onClick={() => {
+              <EntryManagementButton type="button"
+aria-label="Manage club administrator privileges"
+title="Manage club administrators"
+onClick={() => {
                   setClubManagementSection(null);
                   setProfileMemberId(
                     isAdminViewer ? "" : signedInMember?.id || ""
@@ -5284,37 +5176,7 @@ export function EntryPage({
                   setIdentitySafetyAudit(null);
                   setIdentitySafetyAuditError("");
                   setShowAdminPrivilegesModal(true);
-                }}
-                style={{
-                  width: "2.35rem",
-                  height: "2.35rem",
-                  marginLeft: "auto",
-                  display: "inline-grid",
-                  placeItems: "center",
-                  borderRadius: "999px",
-                  border: "1px solid rgba(56,189,248,0.28)",
-                  background:
-                    "linear-gradient(180deg, rgba(56,189,248,0.13), rgba(15,23,42,0.18))",
-                  color: "#bae6fd",
-                  cursor: "pointer",
-                  boxShadow: "0 8px 22px rgba(2,6,23,0.18)",
-                }}
-              >
-                <svg
-                  width="19"
-                  height="19"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.36.36.68.64.94.29.26.67.4 1.06.4H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.66Z" />
-                </svg>
-              </button>
+                }}/>
             )}
           </div>
           <h2 style={{ marginTop: "0.85rem", marginBottom: "0.35rem" }}>
@@ -5324,44 +5186,160 @@ export function EntryPage({
             Verify yourself quickly, then we can personalize the app around your profile.
           </p>
 
-          <div className="field-column" style={{ marginTop: "1rem" }}>
-            <label>Select your name ({activeClubName} player list)</label>
-            <p className="muted small" style={{ marginTop: "0.25rem" }}>
-              {loadingMembers
-                ? "Getting the latest player list."
-                : `There are ${activeMembers.length} players on the list – scroll down.`}
-            </p>
+          <div
+            className="field-staff-picker"
+            style={{ marginTop: "1rem" }}
+          >
+            <span className="field-staff-picker__label">
+              Select your name ({activeClubName} player list)
+            </span>
 
-            <select
-              className="text-input"
-              value={selectedMemberId}
+            <PlayerNameSelectionButton
+              type="button"
+              selected={Boolean(selectedMember)}
               disabled={loadingMembers}
               aria-busy={loadingMembers}
-              onChange={(e) => {
-                setSelectedMemberId(e.target.value);
-                setVerifyError("");
-                setVerifyStatus("");
+              aria-haspopup="listbox"
+              aria-expanded={playerPickerOpen}
+              aria-controls="club-player-profile-options"
+              onClick={() =>
+                setPlayerPickerOpen(open => !open)
+              }
+              onKeyDown={event => {
+                if (event.key === "Escape") {
+                  setPlayerPickerOpen(false);
+                }
               }}
             >
-              <option value="">
-                {loadingMembers
-                  ? "Loading club players…"
-                  : "Select your name..."}
-              </option>
+              <span>
+                <strong>
+                  {selectedMember && <span aria-hidden="true">✓ </span>}{selectedMember?.fullName ||
+                    selectedMember?.shortName ||
+                    (
+                      loadingMembers
+                        ? "Loading club players…"
+                        : "Select your name"
+                    )}
+                </strong>
 
-              {activeMembers.map((m, idx) => (
-                <option key={m.id} value={m.id}>
-                  {idx + 1}. {m.fullName}
-                </option>
-              ))}
+                <small>
+                  {selectedMember
+                    ? selectedMember.status === "pending"
+                      ? "Pending approval · Tap to switch"
+                      : selectedMember.role === "admin"
+                        ? "Club administrator · Tap to switch"
+                        : selectedMember.role === "captain"
+                          ? "Club captain · Tap to switch"
+                          : "Registered player · Tap to switch"
+                    : loadingMembers
+                      ? "Getting the latest player list"
+                      : `${activeMembers.length} registered player${
+                          activeMembers.length === 1 ? "" : "s"
+                        }`}
+                </small>
+              </span>
 
-              {pendingMembers.map((m, idx) => (
-                <option key={m.id} value={m.id}>
-                  {activeMembers.length + idx + 1}. {m.fullName} (pending
-                  approval)
-                </option>
-              ))}
-            </select>
+              <span aria-hidden="true">
+                {playerPickerOpen ? "▴" : "▾"}
+              </span>
+            </PlayerNameSelectionButton>
+
+            {playerPickerOpen && (
+              <div
+                id="club-player-profile-options"
+                className="field-staff-picker__options"
+                role="listbox"
+                aria-label={`${activeClubName} player list`}
+                onKeyDown={event => {
+                  if (event.key === "Escape") {
+                    setPlayerPickerOpen(false);
+                    event.currentTarget
+                      .previousElementSibling
+                      ?.focus();
+                  }
+                }}
+              >
+                {!loadingMembers &&
+                !activeMembers.length &&
+                !pendingMembers.length && (
+                  <p>No registered player profiles yet.</p>
+                )}
+
+                {[
+                  ...activeMembers.map(member => ({
+                    ...member,
+                    entryStatus: "active",
+                  })),
+                  ...pendingMembers.map(member => ({
+                    ...member,
+                    entryStatus: "pending",
+                  })),
+                ].map((member, index) => {
+                  const selected =
+                    member.id === selectedMemberId;
+
+                  const initials = String(
+                    member.fullName ||
+                    member.shortName ||
+                    "Player"
+                  )
+                    .trim()
+                    .split(/\s+/)
+                    .slice(0, 2)
+                    .map(part => part[0])
+                    .join("")
+                    .toUpperCase();
+
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      role="option"
+                      className="field-staff-picker__option"
+                      aria-selected={selected}
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setSelectedMemberId(member.id);
+                        setPlayerPickerOpen(false);
+                        setVerifyError("");
+                        setVerifyStatus("");
+                      }}
+                    >
+                      <span
+                        className="field-staff-picker__avatar"
+                        aria-hidden="true"
+                      >
+                        {initials}
+                      </span>
+
+                      <span className="field-staff-picker__identity">
+                        <strong>
+                          {index + 1}. {
+                            member.fullName ||
+                            member.shortName ||
+                            "Player"
+                          }
+                        </strong>
+
+                        <small>
+                          {member.entryStatus === "pending"
+                            ? "Pending approval"
+                            : member.role === "admin"
+                              ? "Club administrator"
+                              : member.role === "captain"
+                                ? "Club captain"
+                                : "Registered player"}
+                        </small>
+                      </span>
+
+                      <span aria-hidden="true">
+                        {selected ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {isAdminViewer && (
@@ -5441,7 +5419,7 @@ export function EntryPage({
               style={brightPrimaryStyle}
               onClick={handleVerifyPlayer}
             >
-              Sign in with Gmail
+              Continue with Google
             </button>
 
             {!showNewPlayerForm && (
@@ -5526,7 +5504,7 @@ export function EntryPage({
                 Request to join player list
               </h3>
               <p className="muted small" style={{ marginTop: 0, marginBottom: "0.95rem" }}>
-                New players can start here. Add your name, Gmail, and optional details in one clean step.
+                New players can start here. Add your name, Google account, and optional details in one clean step.
               </p>
 
               <div className="field-column">
@@ -5541,11 +5519,11 @@ export function EntryPage({
               </div>
 
               <div className="field-column">
-                <label>Gmail address</label>
+                <label>Google account email</label>
                 <input
                   type="email"
                   className="text-input"
-                  placeholder="e.g. yourname@gmail.com"
+                  placeholder="e.g. you@example.com"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                 />
@@ -6065,7 +6043,7 @@ export function EntryPage({
               style={{ marginTop: "0.9rem" }}
             >
               Google will confirm that you
-              control the Gmail account attached
+              control the Google account attached
               to this player profile before
               anything is copied.
             </p>

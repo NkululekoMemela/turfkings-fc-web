@@ -2,22 +2,21 @@
 // Flat integrated footer version with NO rounded outer edges.
 // Keeps every navigation item visible, highlights the current page in green,
 // and centres the ribbon neatly on wide desktop screens.
-// Uses public/strategy.png for the Lineups icon.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 const items = [
+  { key: "player-profile", emoji: "👤", label: "Profile" },
   { key: "landing", emoji: "🏡", label: "Home" },
-  { key: "stats", emoji: "📊", label: "Stats" },
   //{ key: "live", emoji: "⚽", label: "Live" },
   { key: "squads", emoji: "👥", label: "Squads" },
   { key: "formations", image: "/formations-icon.png", label: "Lineups" },
+  { key: "view-highlights", image: "/videotape.png", label: "Videos" },
   { key: "player-mentalities", emoji: "🧠", label: "Mentality" },
   { key: "peer-review", emoji: "⭐", label: "Rate" },
   { key: "player-cards", emoji: "🪪", label: "Cards" },
-  { key: "news", emoji: "📰", label: "News" },
-  { key: "view-highlights", image: "/videotape.png", label: "Videos" },
   { key: "match-signup", emoji: "💳", label: "Pay" },
+  { key: "shop", emoji: "🛍️", label: "Shop" },
 ];
 
 export default function BottomNav({
@@ -25,17 +24,30 @@ export default function BottomNav({
   onNavigate,
   activeClub = null,
   activeClubName = "Club",
+  canAccessProfile = false,
   canAccessPayments = true,
   canAccessPeerReview = true,
   hidden = false,
+  persistent = false,
   locked = false,
   lockedMessage = "Return to the live match first.",
 }) {
   const [isHidden, setIsHidden] = useState(false);
+  const navScroller = useRef(null);
+  useEffect(() => {
+    const scroller = navScroller.current;
+    const current = scroller?.querySelector('[aria-current="page"]');
+    if (!scroller || !current) return;
+    scroller.scrollTo({
+      left: current.offsetLeft - scroller.clientWidth / 2 + current.offsetWidth / 2,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }, [currentPage, canAccessProfile, canAccessPayments, canAccessPeerReview]);
   const navClubName = String(activeClub?.name || activeClubName || "Club").trim() || "Club";
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
+    if(persistent){setIsHidden(false);return undefined;}
 
     let hideTimer = null;
 
@@ -67,9 +79,10 @@ export default function BottomNav({
         });
       });
     };
-  }, [currentPage]);
+  }, [currentPage,persistent]);
 
   const visible = items.filter((item) => {
+    if(item.key === "player-profile" && !canAccessProfile)return false;
     if (
       item.key === "match-signup" &&
       !canAccessPayments
@@ -91,7 +104,7 @@ export default function BottomNav({
     <>
       <nav className={`tk-bottom-nav-flat ${isHidden || hidden ? "is-hidden" : ""}`} aria-label={`${navClubName} navigation`}>
         <div className="tk-bottom-nav-inner">
-          <div className="tk-bottom-nav-scroll">
+          <div ref={navScroller} className="tk-bottom-nav-scroll">
             {visible.map((item) => {
               const isCurrent = item.key === currentPage;
 
@@ -197,7 +210,7 @@ export default function BottomNav({
 
         .tk-bottom-nav-scroll {
           display: flex;
-          justify-content: center;
+          justify-content: safe center;
           gap: 8px;
           overflow-x: auto;
           scrollbar-width: none;

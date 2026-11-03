@@ -22,10 +22,12 @@ function normaliseSouthAfricanPhone(value = "") {
 
 export default function HomePage_HUB_CaptainVerification({
   clubDraft,
+  entityType = "club",
   onClubDraftChange,
   verificationConfirmed,
   onVerificationConfirmed,
 }) {
+  const isField=entityType==="field";
   const captainName = [clubDraft?.founderFirstName, clubDraft?.founderSurname]
     .filter(Boolean)
     .join(" ")
@@ -44,15 +46,15 @@ export default function HomePage_HUB_CaptainVerification({
   }
 
   const whatsappMessage = encodeURIComponent(
-`⚽ the app Captain Verification
+`⚽ ${isField?"FANM Field Contact Verification":"the app Captain Verification"}
 
-Club: ${clubDraft?.clubName || ""}
+${isField?"Field":"Club"}: ${clubDraft?.clubName || ""}
 
-Captain: ${captainName || "Captain name to be confirmed"}
+${isField?"Field contact":"Captain"}: ${captainName || "Name to be confirmed"}
 
 WhatsApp: ${phoneCheck.value || whatsappNumber}
 
-I confirm that I am the captain or authorised organiser of this club.`
+${isField?"I confirm that I am an authorised contact for this Field.":"I confirm that I am the captain or authorised organiser of this club."}`
   );
 
   const whatsappUrl = `https://wa.me/27762849740?text=${whatsappMessage}`;
@@ -61,7 +63,7 @@ I confirm that I am the captain or authorised organiser of this club.`
     <div className="hub-form-panel">
       <div className="hub-form-panel__head">
         <span>Step 2</span>
-        <h3>Verify captain</h3>
+        <h3>{isField?"Verify Field contact":"Verify captain"}</h3>
         <p>Verify now, or continue and complete this later.</p>
       </div>
 
@@ -81,7 +83,7 @@ I confirm that I am the captain or authorised organiser of this club.`
         </label>
 
         <div className="hub-field hub-field--wide hub-captain-verify-card">
-          <strong>Captain verification</strong>
+          <strong>{isField?"Field contact verification":"Captain verification"}</strong>
           <p>Send the prepared message from your WhatsApp.</p>
 
           <a

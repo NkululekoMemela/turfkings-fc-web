@@ -1,3 +1,5 @@
+import {prepareLogoImage} from "../core/prepareLogoImage.js";
+import {clubKitColours} from "../core/clubKitColours.mjs";
 // src/storage/homePageHubClubRepository.js
 
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -40,8 +42,8 @@ async function buildUniqueClubPersonId(clubId, preferredId) {
   let suffix = 2;
 
   while (true) {
-    const memberSnap = await getDoc(doc(db, "clubs", clubId, "members", candidate));
-    const playerSnap = await getDoc(doc(db, "clubs", clubId, "players", candidate));
+    const memberSnap = await getDoc(doc(db, "clubs", clubId, "publicMembers", candidate));
+    const playerSnap = await getDoc(doc(db, "clubs", clubId, "publicPlayers", candidate));
 
     if (!memberSnap.exists() && !playerSnap.exists()) return candidate;
 
@@ -123,91 +125,12 @@ async function uploadFileToStorage({ clubId, file, folder, prefix }) {
   const path = `clubs/${clubId}/${folder}/${Date.now()}_${prefix}_${safeFileName(file.name)}`;
   const fileRef = ref(storage, path);
 
-  await uploadBytes(fileRef, file, {
-    contentType: file.type || "application/octet-stream",
+  const prepared=["branding","gallery"].includes(folder) ? await (await fetch(await prepareLogoImage(file))).blob() : file;
+  await uploadBytes(fileRef, prepared, {
+    contentType: prepared.type || "application/octet-stream",
   });
 
   return getDownloadURL(fileRef);
-}
-
-async function uploadBlobToStorage({ clubId, blob, folder, prefix, fileName = "logo-transparent.png" }) {
-  if (!blob) return "";
-
-  const storage = getStorage();
-  const path = `clubs/${clubId}/${folder}/${Date.now()}_${prefix}_${safeFileName(fileName)}`;
-  const fileRef = ref(storage, path);
-
-  await uploadBytes(fileRef, blob, {
-    contentType: blob.type || "image/png",
-  });
-
-  return getDownloadURL(fileRef);
-}
-
-function loadImageFromFile(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-
-    img.onerror = (error) => {
-      URL.revokeObjectURL(url);
-      reject(error);
-    };
-
-    img.src = url;
-  });
-}
-
-async function makeTransparentLogoBlob(file) {
-  if (!file || typeof document === "undefined") return null;
-
-  const img = await loadImageFromFile(file);
-  const size = 512;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-
-  const scale = Math.min(size / img.width, size / img.height) * 0.92;
-  const drawW = Math.round(img.width * scale);
-  const drawH = Math.round(img.height * scale);
-  const x = Math.round((size - drawW) / 2);
-  const y = Math.round((size - drawH) / 2);
-
-  ctx.clearRect(0, 0, size, size);
-  ctx.drawImage(img, x, y, drawW, drawH);
-
-  const imageData = ctx.getImageData(0, 0, size, size);
-  const data = imageData.data;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-
-    const isPaleBackground =
-      r > 238 &&
-      g > 238 &&
-      b > 238 &&
-      Math.max(r, g, b) - Math.min(r, g, b) < 22;
-
-    if (isPaleBackground) {
-      data[i + 3] = 0;
-    }
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), "image/png", 0.92);
-  });
 }
 
 async function uploadGalleryFiles({ clubId, files = [] }) {
@@ -242,6 +165,7 @@ export async function createHomePageHubClub({
   bankingDraft = {},
 }) {
   const safeClubId = cleanText(clubId);
+  clubKitColours(clubDraft);
   const clubName = cleanText(clubDraft.clubName);
   const captainName = toTitleCase(cleanText(clubDraft.captainName));
   const captainEmail = cleanEmail(clubDraft.captainEmail);
@@ -290,6 +214,7 @@ export async function createHomePageHubClub({
   const clubPayload = {
     id: safeClubId,
     name: clubName,
+    ...clubKitColours(clubDraft),
 
     location: locationDisplay,
     area: cleanText(clubDraft.suburb) || cleanText(clubDraft.city) || locationDisplay,
@@ -519,6 +444,7 @@ export async function updateHomePageHubClub({
   bankingDraft = {},
 }) {
   const safeClubId = cleanText(clubId);
+  clubKitColours(clubDraft);
 
   if (!safeClubId) throw new Error("Club ID is required.");
 
@@ -534,15 +460,7 @@ export async function updateHomePageHubClub({
     prefix: "logo_update",
   });
 
-  const uploadedTransparentLogoUrlFromFile = logoDraft.logoFile
-    ? await uploadBlobToStorage({
-        clubId: safeClubId,
-        blob: await makeTransparentLogoBlob(logoDraft.logoFile),
-        folder: "branding",
-        prefix: "logo_transparent_update",
-        fileName: "logo-transparent.png",
-      })
-    : "";
+  const uploadedTransparentLogoUrlFromFile = uploadedLogoUrlFromFile;
 
   const uploadedGallery = await uploadGalleryFiles({
     clubId: safeClubId,
@@ -577,6 +495,7 @@ export async function updateHomePageHubClub({
 
   const payload = {
     name: cleanText(clubDraft.clubName || clubDraft.name),
+    ...clubKitColours(clubDraft),
     location: locationDisplay,
     area: cleanText(clubDraft.suburb) || cleanText(clubDraft.city) || locationDisplay,
     weeklyPlayTime: weeklyPlayTime || "Play time to be confirmed",
