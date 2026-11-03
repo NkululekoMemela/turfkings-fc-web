@@ -1,4 +1,7 @@
-import MatchEventCard from "../components/MatchEventCard.jsx";
+import RefereeEventList from "../components/RefereeEventList.jsx";
+import RefereeReplacementAlert from "../components/RefereeReplacementAlert.jsx";
+import RefereePlayerLabel from "../components/RefereePlayerLabel.jsx";
+import {confirmsRefereeAction} from "../core/refereeActions.mjs";
 import DigitalRefereeCard from "../components/DigitalRefereeCard.jsx";
 import {futsalCardDecision,futsalReductions,compactRefereeName,futsalMustAbandon} from "../core/fieldFutsalDiscipline.mjs";
 import "../components/FieldRefereePlayers.css";
@@ -70,7 +73,6 @@ import {
   PLAYER_AVAILABILITY,
 } from "../core/playerRotation.js";
 
-const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 
 function resolveLiveMatchDoc(
@@ -5093,11 +5095,7 @@ export function VenueLeagueLiveMatchPage({
   const disciplineWritePending=useRef(false);
   const normalizedActiveRedCardRule = "two_minute";
   const futsalPlayingSeconds=Math.max(0,Number(matchSeconds||0)-Number(displaySeconds||0)) + Math.max(0,Number(additionalTimeTotalSeconds||0)-Number(additionalTimeSecondsLeft||0));
-  const refereeLabel=player=>{
-    const peers=disciplinePlayers.filter(p=>p.teamId===player.teamId).map(p=>p.name);
-    const number=numberLabel.resolve?.(player.name,player.teamId)?.number ?? splitNumberDisplay(displayCompactPlayerName(player.name,player.teamId)).number.replace(/[()]/g, "");
-    return <strong className="field-referee-player-label" title={player.name}><b>({number||"-"})</b><span>{compactRefereeName(player.name,peers)}</span></strong>;
-  };
+  const refereeLabel=player=><RefereePlayerLabel player={player} peers={disciplinePlayers.filter(p=>p.teamId===player.teamId).map(p=>p.name)} numberLabel={numberLabel} displayName={displayCompactPlayerName}/>;
 
   const buildLeagueDisciplinePlayers = () => {
     const buildForTeam = (teamId, snapshot) => {
@@ -6739,9 +6737,8 @@ export function VenueLeagueLiveMatchPage({
       return;
     }
 
-    const password = deletePassword.trim();
-    if (!CAPTAIN_PASSWORDS.includes(password)) {
-      setDeleteError("Invalid captain password.");
+    if (!confirmsRefereeAction(deletePassword, "DELETE")) {
+      setDeleteError("Type DELETE to confirm.");
       return;
     }
 
@@ -6752,7 +6749,9 @@ export function VenueLeagueLiveMatchPage({
         newEvents,
         basicSummary,
         displaySeconds,
-        matchSeconds
+        matchSeconds,
+        dataScope,
+        activeClubId
       );
     }
 
@@ -6821,9 +6820,8 @@ export function VenueLeagueLiveMatchPage({
       return;
     }
 
-    const password = undoPassword.trim();
-    if (!CAPTAIN_PASSWORDS.includes(password)) {
-      setUndoError("Invalid captain password.");
+    if (!confirmsRefereeAction(undoPassword, "CONFIRM")) {
+      setUndoError("Type CONFIRM to confirm.");
       return;
     }
 
@@ -6855,6 +6853,11 @@ export function VenueLeagueLiveMatchPage({
         transition: "opacity 0.8s ease",
       }}
     >
+      <RefereeReplacementAlert enabled={canControlMatch} teams={[
+        {teamId:teamAId,label:teamA?.name||teamA?.label||"Team A",positions:verifiedLineupA?.positions||{},vacancies:leagueProtectedVacanciesA},
+        {teamId:teamBId,label:teamB?.name||teamB?.label||"Team B",positions:verifiedLineupB?.positions||{},vacancies:leagueProtectedVacanciesB}
+      ]} onOpenLineups={()=>{setShowCardRecorder(false);setShowVerifyModal(true);}}/>
+
       <DigitalRefereeCard card={digitalCard} onClose={()=>setDigitalCard(null)}/>
       <div className="field-page-context">
         <p className="muted small">Match #{currentMatchNo}</p>
@@ -7080,77 +7083,7 @@ export function VenueLeagueLiveMatchPage({
             </p>
           ) : null}
 
-          <ul>
-            {currentEvents.map((e, idx) => {
-              const team =
-                e.teamId === teamAId
-                  ? teamA
-                  : e.teamId === teamBId
-                  ? teamB
-                  : null;
-
-              const teamAbbrev =
-                getLiveTeamAbbrev(team);
-
-              const theme =
-                getTeamAccent(team || {});
-
-              const isGoal =
-                e.type === "goal";
-
-              const isYellow =
-                e.type === "yellow_card";
-
-              const isRed =
-                e.type === "red_card";
-
-              const isKnock =
-                e.type === "injury_knock";
-
-              const isSittingOut =
-                e.type === "injury_sitting_out";
-
-              const isRecovered =
-                e.type === "injury_recovered";
-
-              const playerName =
-                isGoal
-                  ? e.scorer
-                  : e.playerName;
-
-              const icon =
-                isGoal
-                  ? "⚽"
-                  : isYellow
-                  ? "🟨"
-                  : isRed
-                  ? "🟥"
-                  : isKnock
-                  ? "🩹"
-                  : isSittingOut
-                  ? "🤕"
-                  : isRecovered
-                  ? "✅"
-                  : "•";
-
-              const label =
-                isGoal
-                  ? "Goal"
-                  : isYellow
-                  ? "Yellow card"
-                  : isRed
-                  ? "Dismissed"
-                  : isKnock
-                  ? "Playing with a knock"
-                  : isSittingOut
-                  ? "Sitting out"
-                  : isRecovered
-                  ? "Recovered"
-                  : String(e.type || "Event");
-
-              return <MatchEventCard key={e.id || `${e.type}-${idx}`} event={e} teamLabel={teamAbbrev} teamName={team?.name||team?.clubName||''} logo={team?.logoUrl||team?.branding?.logoUrl||''} theme={theme} playerLabel={displayCompactPlayerName(playerName||'')} assistLabel={e.assist?displayCompactPlayerName(e.assist):''} label={label} icon={icon} clock={formatSeconds(e.timeSeconds)} canEdit={canControlMatch} onEdit={()=>handleEditMatchEvent(idx)} onDelete={()=>handleRequestDelete(idx)}/>;
-            })}
-          </ul>
+          <RefereeEventList events={currentEvents} getTeam={id=>id===teamAId?effectiveTeamA:id===teamBId?effectiveTeamB:null} getTeamAbbrev={getLiveTeamAbbrev} getTeamTheme={getTeamAccent} displayPlayer={displayCompactPlayerName} formatClock={formatSeconds} canEdit={canControlMatch} onEdit={handleEditMatchEvent} onDelete={handleRequestDelete}/>
         </div>
 
         <div className="actions-row">
@@ -8830,18 +8763,18 @@ export function VenueLeagueLiveMatchPage({
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal">
             <h3>Confirm Delete Event</h3>
-            <p>To delete an event, enter any team captain&apos;s password.</p>
+            <p>Type DELETE to delete this event.</p>
             <div className="field-row">
-              <label>Captain password</label>
+              <label>Type DELETE to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={deletePassword}
                 onChange={(e) => {
                   setDeletePassword(e.target.value);
                   setDeleteError("");
                 }}
-                maxLength={4}
+                maxLength={7}
               />
               {deleteError && <p className="error-text">{deleteError}</p>}
             </div>
@@ -8911,18 +8844,18 @@ export function VenueLeagueLiveMatchPage({
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal">
             <h3>Undo last event?</h3>
-            <p>To undo the last event, enter any team captain&apos;s password.</p>
+            <p>Type CONFIRM to undo the last event.</p>
             <div className="field-row">
-              <label>Captain password</label>
+              <label>Type CONFIRM to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={undoPassword}
                 onChange={(e) => {
                   setUndoPassword(e.target.value);
                   setUndoError("");
                 }}
-                maxLength={4}
+                maxLength={7}
               />
               {undoError && <p className="error-text">{undoError}</p>}
             </div>

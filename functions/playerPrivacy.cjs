@@ -74,6 +74,11 @@ async function handle({db, user, body}) {
   const action = body.action;
   if (action === "memberships") {
     const docs = await ownMemberships(db, user, body.clubId || "");
+    const active=new Map();for(const item of docs)if(item.data()?.status==="active")active.set(item.ref.parent.parent.id,item.id);
+    await Promise.all([...active].map(([clubId,memberId])=>db.runTransaction(async tx=>{
+      const memberRef=db.doc(`clubs/${clubId}/members/${memberId}`),current=(await tx.get(memberRef)).data();
+      if(current?.status==="active"&&owns(current,user))tx.set(db.doc(`clubDataAccess/${clubId}/users/${user.uid}`),{memberId,uid:user.uid});
+    })));
     return {members: docs.map(item => ({path:item.ref.path, id:item.id, clubId:item.ref.parent.parent.id, data:item.data()}))};
   }
   const clubId = id(body.clubId);

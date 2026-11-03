@@ -1,4 +1,9 @@
-import MatchEventCard from "../components/MatchEventCard.jsx";
+import RefereeEventList from "../components/RefereeEventList.jsx";
+import RefereeReplacementAlert from "../components/RefereeReplacementAlert.jsx";
+import RefereePlayerLabel from "../components/RefereePlayerLabel.jsx";
+import {confirmsRefereeAction} from "../core/refereeActions.mjs";
+import DigitalRefereeCard from "../components/DigitalRefereeCard.jsx";
+import {futsalCardDecision} from "../core/fieldFutsalDiscipline.mjs";
 import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
 import {splitNumberDisplay} from "../core/playerNumberDisplay.mjs";
 import {usePlayerNumberLabel,InlineLineupNumber} from "../components/PlayerNumberContext.jsx";
@@ -68,7 +73,6 @@ import {
   PLAYER_AVAILABILITY,
 } from "../core/playerRotation.js";
 
-const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 
 function resolveLiveMatchDoc(
@@ -4968,6 +4972,8 @@ export function ThreeTeamLeagueLiveMatchPage({
     }
   };
 
+  const [digitalCard,setDigitalCard]=useState(null);
+  const refereePlayingSeconds=Math.max(0,Number(matchSeconds||0)-Number(displaySeconds||0))+Math.max(0,Number(additionalTimeTotalSeconds||0)-Number(additionalTimeSecondsLeft||0));
   const normalizedActiveRedCardRule =
     String(redCardRule || "").trim().toLowerCase() === "two_minute"
       ? "two_minute"
@@ -5406,26 +5412,10 @@ export function ThreeTeamLeagueLiveMatchPage({
       return;
     }
 
-    const normalizedType =
-      cardType === "red_card"
-        ? "red_card"
-        : "yellow_card";
-
     const status = getLeagueDisciplineStatus(player);
-
-    if (
-      normalizedType === "yellow_card" &&
-      status.yellowEvents.length > 0
-    ) {
-      return;
-    }
-
-    if (
-      normalizedType === "red_card" &&
-      status.redEvents.length > 0
-    ) {
-      return;
-    }
+    const decision=futsalCardDecision(cardType,status.yellowEvents.length,status.redEvents.length>0);
+    if(!decision)return;
+    const normalizedType=decision.type;
 
     let dismissalDetails = {
       removedPositionId: null,
@@ -5447,6 +5437,8 @@ export function ThreeTeamLeagueLiveMatchPage({
         `discipline-${Date.now()}-` +
         Math.random().toString(36).slice(2, 8),
       type: normalizedType,
+      secondCaution: decision.secondCaution,
+      cautionNumber: decision.secondCaution ? 2 : normalizedType === "yellow_card" ? 1 : null,
       teamId: player.teamId,
       playerName: canonicalName(player.name),
       playerType: isGuestPlayerInSnapshot(
@@ -5460,11 +5452,7 @@ export function ThreeTeamLeagueLiveMatchPage({
         dismissalDetails.removedPositionId || null,
       wasSubstitute:
         dismissalDetails.wasSubstitute,
-      timeSeconds: Math.max(
-        Number(matchSeconds || 0) -
-          Number(displaySeconds || 0),
-        0
-      ),
+      timeSeconds: refereePlayingSeconds,
       dismissalRule:
         normalizedType === "red_card"
           ? normalizedActiveRedCardRule
@@ -5487,6 +5475,7 @@ export function ThreeTeamLeagueLiveMatchPage({
       activeClubId
     );
 
+    setDigitalCard({type:event.type,name:displayCompactPlayerName(player.name,player.teamId),secondCaution:event.secondCaution});
     setSelectedDisciplinePlayer(null);
   };
 
@@ -5499,6 +5488,7 @@ export function ThreeTeamLeagueLiveMatchPage({
       return;
     }
 
+    if(cardEvent.type==="yellow_card" && getLeagueDisciplineStatus({name:cardEvent.playerName,teamId:cardEvent.teamId}).redEvents.some(event=>event.secondCaution)){window.alert("Undo the second-yellow dismissal first.");return;}
     if (cardEvent.type === "red_card") {
       restoreLeagueDismissedPlayer(cardEvent);
     }
@@ -5658,11 +5648,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   const leagueProtectedVacanciesForTeam = (teamId) => {
     const vacancies = {};
 
-    const currentDisciplineMatchSeconds = Math.max(
-      Number(matchSeconds || 0) -
-        Number(displaySeconds || 0),
-      0
-    );
+    const currentDisciplineMatchSeconds = refereePlayingSeconds;
 
     disciplineCardEvents
       .filter(
@@ -6623,9 +6609,8 @@ export function ThreeTeamLeagueLiveMatchPage({
       return;
     }
 
-    const password = deletePassword.trim();
-    if (!CAPTAIN_PASSWORDS.includes(password)) {
-      setDeleteError("Invalid captain password.");
+    if (!confirmsRefereeAction(deletePassword, "DELETE")) {
+      setDeleteError("Type DELETE to confirm.");
       return;
     }
 
@@ -6636,7 +6621,9 @@ export function ThreeTeamLeagueLiveMatchPage({
         newEvents,
         basicSummary,
         displaySeconds,
-        matchSeconds
+        matchSeconds,
+        dataScope,
+        activeClubId
       );
     }
 
@@ -6666,9 +6653,8 @@ export function ThreeTeamLeagueLiveMatchPage({
       return;
     }
 
-    const password = backPassword.trim();
-    if (!CAPTAIN_PASSWORDS.includes(password)) {
-      setBackError("Invalid captain password.");
+    if (!confirmsRefereeAction(backPassword, "CANCEL")) {
+      setBackError("Type CANCEL to confirm.");
       return;
     }
 
@@ -6715,9 +6701,8 @@ export function ThreeTeamLeagueLiveMatchPage({
       return;
     }
 
-    const password = undoPassword.trim();
-    if (!CAPTAIN_PASSWORDS.includes(password)) {
-      setUndoError("Invalid captain password.");
+    if (!confirmsRefereeAction(undoPassword, "CONFIRM")) {
+      setUndoError("Type CONFIRM to confirm.");
       return;
     }
 
@@ -6749,6 +6734,12 @@ export function ThreeTeamLeagueLiveMatchPage({
         transition: "opacity 0.8s ease",
       }}
     >
+      <RefereeReplacementAlert enabled={canControlMatch} teams={[
+        {teamId:teamAId,label:teamA?.name||teamA?.label||"Team A",positions:verifiedLineupA?.positions||{},vacancies:leagueProtectedVacanciesA},
+        {teamId:teamBId,label:teamB?.name||teamB?.label||"Team B",positions:verifiedLineupB?.positions||{},vacancies:leagueProtectedVacanciesB}
+      ]} onOpenLineups={()=>{setShowCardRecorder(false);setShowVerifyModal(true);}}/>
+      <DigitalRefereeCard card={digitalCard} onClose={()=>setDigitalCard(null)}/>
+
       <header className="header">
         <h1>Match #{currentMatchNo}</h1>
 
@@ -6964,77 +6955,7 @@ export function ThreeTeamLeagueLiveMatchPage({
             </p>
           ) : null}
 
-          <ul>
-            {currentEvents.map((e, idx) => {
-              const team =
-                e.teamId === teamAId
-                  ? teamA
-                  : e.teamId === teamBId
-                  ? teamB
-                  : null;
-
-              const teamAbbrev =
-                getLiveTeamAbbrev(team);
-
-              const theme =
-                getTeamAccent(team || {});
-
-              const isGoal =
-                e.type === "goal";
-
-              const isYellow =
-                e.type === "yellow_card";
-
-              const isRed =
-                e.type === "red_card";
-
-              const isKnock =
-                e.type === "injury_knock";
-
-              const isSittingOut =
-                e.type === "injury_sitting_out";
-
-              const isRecovered =
-                e.type === "injury_recovered";
-
-              const playerName =
-                isGoal
-                  ? e.scorer
-                  : e.playerName;
-
-              const icon =
-                isGoal
-                  ? "⚽"
-                  : isYellow
-                  ? "🟨"
-                  : isRed
-                  ? "🟥"
-                  : isKnock
-                  ? "🩹"
-                  : isSittingOut
-                  ? "🤕"
-                  : isRecovered
-                  ? "✅"
-                  : "•";
-
-              const label =
-                isGoal
-                  ? "Goal"
-                  : isYellow
-                  ? "Yellow card"
-                  : isRed
-                  ? "Dismissed"
-                  : isKnock
-                  ? "Playing with a knock"
-                  : isSittingOut
-                  ? "Sitting out"
-                  : isRecovered
-                  ? "Recovered"
-                  : String(e.type || "Event");
-
-              return <MatchEventCard key={e.id || `${e.type}-${idx}`} event={e} teamLabel={teamAbbrev} teamName={team?.name||team?.clubName||''} logo={team?.logoUrl||team?.branding?.logoUrl||''} theme={theme} playerLabel={displayCompactPlayerName(playerName||'')} assistLabel={e.assist?displayCompactPlayerName(e.assist):''} label={label} icon={icon} clock={formatSeconds(e.timeSeconds)} canEdit={canControlMatch} onEdit={()=>handleEditMatchEvent(idx)} onDelete={()=>handleRequestDelete(idx)}/>;
-            })}
-          </ul>
+          <RefereeEventList events={currentEvents} getTeam={id=>id===teamAId?effectiveTeamA:id===teamBId?effectiveTeamB:null} getTeamAbbrev={getLiveTeamAbbrev} getTeamTheme={getTeamAccent} displayPlayer={displayCompactPlayerName} formatClock={formatSeconds} canEdit={canControlMatch} onEdit={handleEditMatchEvent} onDelete={handleRequestDelete}/>
         </div>
 
         <div className="actions-row">
@@ -7105,7 +7026,8 @@ export function ThreeTeamLeagueLiveMatchPage({
               </div>
             </div>
 
-            <section className="fanm-discipline-rules">
+            <details className="fanm-discipline-rules field-futsal-rules">
+              <summary>Competition rules · cards &amp; replacements</summary>
               <div className="fanm-discipline-rules-heading">
                 <span aria-hidden="true">⚖️</span>
 
@@ -7183,7 +7105,7 @@ export function ThreeTeamLeagueLiveMatchPage({
               <p className="fanm-discipline-rules-default">
                 Permanent dismissal is the default unless changed.
               </p>
-            </section>
+            </details>
 
             <div className="fanm-discipline-teams">
               {[
@@ -7321,9 +7243,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                                     </span>
 
                                     <span className="fanm-discipline-player-copy">
-                                      <strong>
-                                        {player.name}
-                                      </strong>
+                                      <RefereePlayerLabel player={player} peers={[...disciplinePlayers].filter(p=>p.teamId===player.teamId).map(p=>p.name)} numberLabel={numberLabel} displayName={displayCompactPlayerName}/>
                                       <small>
                                         {player.roleLabel}
                                       </small>
@@ -7379,8 +7299,8 @@ export function ThreeTeamLeagueLiveMatchPage({
 
                                   {selected ? (
                                     <div className="fanm-discipline-actions">
-                                      {!yellowEvent &&
-                                      !redEvent ? (
+                                      <p className="field-referee-full-name" style={{gridColumn:"1 / -1"}}>{player.name}</p>
+                                      {!redEvent ? (
                                         <button
                                           type="button"
                                           className="fanm-discipline-yellow"
@@ -7396,7 +7316,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                                           <span aria-hidden="true">
                                             🟨
                                           </span>
-                                          Yellow card
+                                          {yellowEvent ? "Second yellow → red" : "Yellow card"}
                                         </button>
                                       ) : null}
 
@@ -7698,9 +7618,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                                     </span>
 
                                     <span className="fanm-discipline-player-copy">
-                                      <strong>
-                                        {player.name}
-                                      </strong>
+                                      <RefereePlayerLabel player={player} peers={[...disciplinePlayers].filter(p=>p.teamId===player.teamId).map(p=>p.name)} numberLabel={numberLabel} displayName={displayCompactPlayerName}/>
 
                                       <small>
                                         {status ===
@@ -7761,6 +7679,7 @@ export function ThreeTeamLeagueLiveMatchPage({
 
                                   {selected ? (
                                     <div className="fanm-discipline-actions">
+                                      <p className="field-referee-full-name" style={{gridColumn:"1 / -1"}}>{player.name}</p>
                                       {!status ? (
                                         <button
                                           type="button"
@@ -8627,18 +8546,18 @@ export function ThreeTeamLeagueLiveMatchPage({
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal">
             <h3>Confirm Delete Event</h3>
-            <p>To delete an event, enter any team captain&apos;s password.</p>
+            <p>Type DELETE to delete this event.</p>
             <div className="field-row">
-              <label>Captain password</label>
+              <label>Type DELETE to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={deletePassword}
                 onChange={(e) => {
                   setDeletePassword(e.target.value);
                   setDeleteError("");
                 }}
-                maxLength={4}
+                maxLength={7}
               />
               {deleteError && <p className="error-text">{deleteError}</p>}
             </div>
@@ -8671,16 +8590,16 @@ export function ThreeTeamLeagueLiveMatchPage({
               and return to the main screen.
             </p>
             <div className="field-row">
-              <label>Captain password</label>
+              <label>Type CANCEL to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={backPassword}
                 onChange={(e) => {
                   setBackPassword(e.target.value);
                   setBackError("");
                 }}
-                maxLength={4}
+                maxLength={7}
               />
               {backError && <p className="error-text">{backError}</p>}
             </div>
@@ -8708,18 +8627,18 @@ export function ThreeTeamLeagueLiveMatchPage({
         <div className="modal-backdrop" style={{ zIndex: 12000 }}>
           <div className="modal">
             <h3>Undo last event?</h3>
-            <p>To undo the last event, enter any team captain&apos;s password.</p>
+            <p>Type CONFIRM to undo the last event.</p>
             <div className="field-row">
-              <label>Captain password</label>
+              <label>Type CONFIRM to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={undoPassword}
                 onChange={(e) => {
                   setUndoPassword(e.target.value);
                   setUndoError("");
                 }}
-                maxLength={4}
+                maxLength={7}
               />
               {undoError && <p className="error-text">{undoError}</p>}
             </div>

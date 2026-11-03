@@ -292,7 +292,7 @@ export default function HomePage_HUB_SignupModal({
           <div className="hub-choice-grid">
             <button type="button" className="hub-company-choice" onClick={() => {resetAndClose();onRequestCompanyClub?.();}}>
               <span>⚽</span>
-              <strong>Request a Company Club</strong>
+              <strong>Create a Company Club</strong>
               <small>
                 Company-funded football. Send a join request and FANM will help set up your club.
               </small>

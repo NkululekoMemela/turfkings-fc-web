@@ -26,7 +26,7 @@ export default function HomePage_HUB_ClubRegisterForm({
   entityType = "club",
 }) {
   const isField=entityType==="field";
-  const nameLimit=isField?100:16;
+  const nameLimit=isField||entityType==="company"?100:16;
   const clubId = useMemo(
     () => slugifyClubName(clubDraft?.clubName),
     [clubDraft?.clubName]
