@@ -1,3 +1,4 @@
+import {fieldOperatingHoursLine} from "../core/fieldOperatingHours.mjs";
 import "../components/LandingDesktopLayout.css";
 import {matchTeamCaption} from "../core/matchTeamCaption.mjs";
 import "../components/FieldPracticePresentation.css";
@@ -644,12 +645,7 @@ export default function VenueLandingPage({
   const modeLipLabel = isThreeTeamLeague ? "LEAGUE MODE" : "FRIENDLY MODE";
   const modeLipDotColor = isThreeTeamLeague ? "#facc15" : "#38bdf8";
 
-  const clubWeeklyPlayTime =
-    activeClub?.weeklyPlayTime ||
-    activeClub?.schedule?.weeklyPlayTime ||
-    activeClub?.schedule?.playTime ||
-    activeClub?.playTime ||
-    "";
+  const fieldHoursLine = fieldOperatingHoursLine(activeClub || {});
 
   const structuredLocation =
     activeClub?.location &&
@@ -675,7 +671,7 @@ export default function VenueLandingPage({
     activeClub?.venue ||
     "";
 
-  const clubHeaderInfoLine = [clubWeeklyPlayTime, clubVenueLine]
+  const clubHeaderInfoLine = [fieldHoursLine, clubVenueLine]
     .map((value) => String(value || "").trim())
     .filter(Boolean)
     .join(" • ");

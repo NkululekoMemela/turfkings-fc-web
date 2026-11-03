@@ -130,7 +130,7 @@ function buildHandlers({
         title: "You’re invited to the league squad",
         body: `${current.club.name || "Your Club"}: ` +
           `your captain has selected you for ${current.season.name || "the league"}. ` +
-          "Open to review your whole-season contribution.",
+          (current.club.clubType==="company"?"Your company covers this season. Open to accept your invitation; no personal payment is required.":"Open to review your whole-season contribution."),
         imageUrl: logo,
         data: {
           type: "field_season_squad_invitation", route: "club-league",

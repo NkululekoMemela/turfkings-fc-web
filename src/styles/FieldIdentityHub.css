@@ -79,4 +79,72 @@
 
 
 .homepage-hub-shell .hub-clubs-section--hero .hub-section-head{max-width:none !important;width:calc(100% + 32px) !important;margin-inline:-16px;}
-.fanm-venues--live .fanm-venues__intro{max-width:none !important;width:calc(100% + 32px) !important;margin-inline:-16px;}
+/* Match the carousel reveal while keeping the return button inside the card. */
+.fanm-venues.fanm-venues--live :is(.fanm-venues__intro,.hub-club-filter-ribbon){max-width:none !important;width:calc(100% + 32px) !important;margin-inline:-16px;box-sizing:border-box;}
+.fanm-venues--live .fanm-venues__discovery-row{display:grid;grid-template-columns:minmax(0,1fr) 40px;gap:8px;padding-inline:8px;box-sizing:border-box;}
+.fanm-venues--live .fanm-venues__intro .hub-kicker{min-width:0;max-width:100%;font-size:clamp(8px,2.3vw,11px);letter-spacing:.07em;padding:8px 10px;box-sizing:border-box;}
+.fanm-venues--live .fanm-venues__welcome-return{width:36px;height:36px;justify-self:end;}
+.app-root--field .field-theme-picker{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,max-content);align-items:center;gap:5px;font-size:12px;}
+.app-root--field .field-theme-picker button{white-space:nowrap;padding:6px 9px;font-size:12px;line-height:1.2;}
+.app-root--field .field-theme-picker > span{white-space:nowrap;min-width:0;}
+.app-root--field .field-entry-heading-logo{border-radius:50%;overflow:hidden;}
+
+/* Club search follows the carousel's full-width reveal. */
+.homepage-hub-shell .hub-clubs-section .hub-club-filter-ribbon{width:calc(100% + 32px) !important;max-width:none !important;margin-inline:-16px;box-sizing:border-box;}
+.club-category-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:10px 0;color:#f3f7ff;}
+.club-category-heading span{font-size:12px;color:#b9c8da;}
+.club-category-switch{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:5px;margin-top:16px;border-radius:16px;background:#071325;border:1px solid #b8d8f322;}
+.club-category-switch button{font-size:clamp(12px,3.4vw,15px);white-space:nowrap;padding:9px 6px;min-height:42px;border:0;border-radius:12px;background:transparent;color:#b9c8da;font-weight:750;cursor:pointer;}
+.club-category-switch button[aria-pressed="true"]{background:linear-gradient(120deg,#17483f,#153749);color:#effff9;box-shadow:inset 0 0 0 1px #83e4ca40;}
+.company-account-button{margin-top:10px;width:100%;}
+.company-workspace-backdrop{position:fixed;inset:0;background:#020817cc;z-index:10000;display:grid;place-items:center;padding:12px;}
+.company-workspace{width:min(100%,720px);max-height:90dvh;overflow:auto;box-sizing:border-box;}
+.company-workspace header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.company-workspace h2{margin-top:6px;font-size:24px;}
+.company-workspace article{border-top:1px solid #93acc733;padding-block:16px;}
+.company-workspace details{margin-block:14px;}
+.company-workspace label{display:grid;gap:5px;margin-block:10px;}
+.company-workspace :is(input,select){width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid #8aa8c644;background:#0c1d2c;color:#fff;}
+.company-workspace fieldset{border:0;padding:0;min-width:0;}
+
+/* Keep phone composition; give tablet and desktop a compact editorial layout. */
+.fanm-advert-copy,.fanm-club-advert{display:none;}
+@media(min-width:721px){
+ body .fanm-marketing-split.fanm-advert-row,
+ body .fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer.fanm-marketing-split,
+ body .homepage-hub-shell footer.hub-footer-brand.club-marketing-footer.fanm-marketing-split{
+  display:grid!important;grid-template-columns:minmax(0,300px) minmax(0,1fr)!important;gap:28px!important;align-items:center!important;padding:24px!important;box-sizing:border-box;
+ }
+ body .fanm-advert-copy{display:block;min-width:0;color:#eef6ff;}
+ body .fanm-advert-copy h3{font-size:clamp(24px,2.6vw,34px);line-height:1.15;margin:12px 0;}
+ body .fanm-advert-copy p{font-size:15px;line-height:1.6;max-width:56ch;color:#bac9d9;}
+ body .fanm-marketing-split.fanm-advert-row{margin:18px 0;border:1px solid #9ab8da24;border-radius:24px;background:#091325;}
+ body .fanm-marketing-split.fanm-advert-row>.field-marketing-carousel,
+ body .fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer.fanm-marketing-split>.hub-footer-logo-stage,
+ body .homepage-hub-shell footer.hub-footer-brand.club-marketing-footer.fanm-marketing-split>.hub-footer-logo-stage{
+  width:100%!important;max-width:300px!important;height:auto!important;aspect-ratio:5/3!important;margin:0!important;min-width:0;overflow:hidden;border-radius:18px;
+ }
+ body footer.fanm-marketing-split>section{margin:0!important;padding:0!important;min-width:0;}
+ body footer.fanm-marketing-split :is(h1,h2){font-size:clamp(25px,2.8vw,36px)!important;line-height:1.15!important;margin:12px 0!important;}
+ body footer.fanm-marketing-split p{font-size:15px!important;line-height:1.6!important;max-width:58ch;}
+}
+
+/* Company requests have an explicit palette, independent of the host theme. */
+body .company-workspace.card{background:linear-gradient(145deg,#132438,#091522)!important;color:#f2f6fc!important;border:1px solid #d8b76a55;box-shadow:0 24px 70px #0009;}
+body .company-workspace :is(h2,h3,p,label,summary,small,strong,legend){color:#edf3fc!important;}
+body .company-workspace :is(p,small){line-height:1.55;}
+body .company-workspace .muted{color:#bbcadb!important;}
+body .company-workspace header>button{flex:0 0 36px;min-height:36px;padding:4px;}
+body .company-workspace header small{color:#e8c67f!important;letter-spacing:.12em;font-size:10px;}
+body .company-workspace h2{font-size:clamp(22px,5vw,28px);line-height:1.15;}
+body .company-workspace :is(input,select){color:#fff!important;background:#0a1b2b!important;min-height:44px;}
+body .company-workspace input::placeholder{color:#aebed0;}
+body .company-workspace input[type=file]{font-size:12px;}
+body .company-workspace input::file-selector-button{border:0;border-radius:7px;padding:6px 8px;margin-right:8px;background:#e6d2a5;color:#202838;font-weight:700;}
+body .company-workspace [role=alert]{color:#ffb5b5!important;}
+body .club-category-switch button[data-category=company][aria-pressed=true]{background:linear-gradient(120deg,#403325,#152f39);color:#ffe5a8;box-shadow:inset 0 0 0 1px #eac77c66;}
+.club-category-crown{color:#f4d58a;margin-right:5px;}
+body .company-request-card{border-color:#d9bd7859!important;background:radial-gradient(ellipse at 90% 100%,#6b4e353b,transparent 65%),linear-gradient(145deg,#092433,#141728)!important;}
+
+body .hub-choice-grid .hub-company-choice{border:1px solid #b8975570;background:radial-gradient(ellipse at top left,#b58a2922,transparent 65%),linear-gradient(145deg,#0a2730,#111d31);}
+body .hub-choice-grid .hub-company-choice strong{color:#ffe6b0;}

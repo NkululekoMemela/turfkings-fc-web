@@ -28,6 +28,7 @@ export default function BottomNav({
   canAccessPayments = true,
   canAccessPeerReview = true,
   hidden = false,
+  persistent = false,
   locked = false,
   lockedMessage = "Return to the live match first.",
 }) {
@@ -46,6 +47,7 @@ export default function BottomNav({
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
+    if(persistent){setIsHidden(false);return undefined;}
 
     let hideTimer = null;
 
@@ -77,7 +79,7 @@ export default function BottomNav({
         });
       });
     };
-  }, [currentPage]);
+  }, [currentPage,persistent]);
 
   const visible = items.filter((item) => {
     if(item.key === "player-profile" && !canAccessProfile)return false;

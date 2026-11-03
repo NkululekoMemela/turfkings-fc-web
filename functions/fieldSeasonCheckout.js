@@ -22,6 +22,7 @@ exports.checkout = async ({
   const paymentRef = db.collection("payments").doc();
   const prepared = await db.runTransaction(async tx => {
     const context = await service.loadContext(tx, db, scope);
+    if(context.club.clubType==="company")throw new Error("Your company funds this season. No personal payment is required.");
     const entry = context.squad?.entries?.[body.memberId];
     if (!entry || entry.invitationStatus !== "accepted") {
       throw new Error("Accept your season invitation before paying.");

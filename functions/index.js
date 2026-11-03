@@ -5994,3 +5994,4 @@ exports.onFieldClubChatMessageCreated=onDocumentCreated({document:"privateFieldC
 exports.closeFriendlyTeamChats=onDocumentWritten({document:"clubs/{clubId}/state/main",region:REGION,retry:true},event=>require("./clubTeamChat.cjs").closeFriendly({db,event}));
 
 exports.fieldChatPreferences = require("./memberWorkspaceHttp.cjs").fieldChatPreferences;
+exports.companyClubs = require("./companyClubsHttp.cjs").companyClubs;

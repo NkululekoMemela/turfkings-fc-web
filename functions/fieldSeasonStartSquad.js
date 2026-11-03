@@ -7,7 +7,7 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
   const snapshot = await transaction.get(squadRef);
   if (!snapshot.exists) return null;
   const squad = snapshot.data();
-  const manifest = seasonPaidManifest({scope, squad});
+
   if (!squad.updatedAt) throw new Error("The season squad needs a valid revision.");
 
   const clubRef = db.doc(`clubs/${clubId}`);
@@ -21,6 +21,9 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
     throw new Error("This Club is no longer an active member of the Field.");
   }
 
+  const companyMode=club.clubType==="company";
+  const sponsored=await require("./companyClubs.cjs").sponsoredMembers({db,tx:transaction,club,scope,squad});
+  const manifest=seasonPaidManifest({scope,squad,sponsoredMembers:sponsored,companyMode});
   const eligible = [];
   const playerRefs = manifest.flatMap(player => [
     clubRef.collection("members").doc(player.memberId),
@@ -41,13 +44,13 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
     }
     const receipt = receiptSnap.data();
     const entry = squad.entries[player.memberId];
-    if (!entry || !receipt ||
+    if (player.fundingType!=="company" && (!entry || !receipt ||
         ["venueId", "seasonId", "clubId"].some(key => receipt[key] !== scope[key]) ||
         receipt.memberId !== player.memberId ||
         receipt.sourcePlayerId !== player.sourcePlayerId ||
         receipt.currency !== "ZAR" ||
         receipt.amountCents !== player.contributionCents ||
-        receipt.confirmedByUid !== entry.paymentConfirmedByUid) {
+        receipt.confirmedByUid !== entry.paymentConfirmedByUid)) {
       throw new Error("A season payment receipt does not match its player.");
     }
     const fullName = String(
@@ -59,6 +62,7 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
       memberId: player.memberId,
       sourcePlayerId: player.sourcePlayerId,
       fullName, clubId,
+      ...(player.fundingType==="company"?{fundingType:"company"}:{}),
       jerseyNumber: profile.jerseyNumber ?? member.jerseyNumber ?? null,
       ownsNumberedBib: profile.ownsNumberedBib ?? member.ownsNumberedBib ?? false,
       bibColor: profile.bibColor || member.bibColor || "",

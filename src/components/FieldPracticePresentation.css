@@ -36,3 +36,9 @@
 @media (prefers-reduced-motion: reduce) {
   .field-practice-reminder { animation: none; }
 }
+
+/* Landing-only session control keeps a stable, accessible tap target. */
+.field-session-control{min-width:80px;min-height:32px;padding:6px 10px;border:1px solid #d5a9f35c;border-radius:12px;background:linear-gradient(135deg,#542076,#862ca1);color:#fff;font-family:inherit;font-weight:700;font-size:10px;line-height:1.2;cursor:pointer;box-shadow:0 3px 12px #13092540;}
+.field-session-control.is-compact{min-width:32px;width:32px;padding:10px;background:#20142a80;border-color:transparent;}
+.field-session-control__dot{display:block;width:8px;height:8px;margin:auto;border-radius:50%;background:#d1a1f4;box-shadow:0 0 8px #c270ec66;}
+.field-session-control:focus-visible{outline:2px solid #e2b8ff;outline-offset:3px;}

@@ -39,11 +39,11 @@ export function nextPlayerAvailability({entry, available, actorMemberId}) {
 }
 
 export function createMatchDayReplacement({
-  original, originalAvailability, replacement, actorUid,
+  original, originalAvailability, replacement, actorUid, companyFunded = false,
 }) {
   if (!actorUid || !original ||
       original.invitationStatus !== "accepted" ||
-      original.paymentStatus !== "paid") {
+      (original.paymentStatus !== "paid" && !companyFunded)) {
     throw new Error("A captain-approved paid season place is required.");
   }
   if (originalAvailability !== "unavailable") {

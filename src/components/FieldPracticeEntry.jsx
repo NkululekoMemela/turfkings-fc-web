@@ -1,3 +1,4 @@
+import FieldSessionControl from "./FieldSessionControl.jsx";
 import SessionSelector from "./SessionSelector.jsx";
 import {createPortal} from "react-dom";
 import {FieldRibbonContext} from "./FieldRibbonContext.jsx";
@@ -51,7 +52,7 @@ export default function FieldPracticeEntry({venue, userId, onPractice, launchReq
 
   return <>
     {showSessionSelector && <SessionSelector recordScope="Field" busy={busy || Boolean(pendingSession)} error={error} onOfficial={onOfficial} onPractice={startPractice}/>}
-    {!showSessionSelector && ribbonHost && createPortal(<div className="field-practice-entry"><button type="button" className="secondary-btn" disabled={busy} onClick={onChooseSession}>Choose Session</button></div>,ribbonHost)}
+    {!showSessionSelector && ribbonHost && createPortal(<FieldSessionControl disabled={busy} onClick={onChooseSession}/>,ribbonHost)}
     {!showSessionSelector && error && <p className="error-text" role="alert">{error}</p>}
     {(busy || pendingSession) && <FieldPracticeStartupSplash practiceBootstrapping={busy} onProceed={()=>{
       if(!pendingSession)return;

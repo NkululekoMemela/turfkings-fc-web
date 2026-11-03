@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import "./FieldBottomNav.css";
 
 const items = [
@@ -8,12 +8,12 @@ const items = [
   { key: "formations", image: "/formations-icon.png", label: "Lineups" },
   { key: "news", emoji: "📰", label: "News" },
   { key: "videos", image: "/videotape.png", label: "Videos" },
+  { key: "hireStock", emoji: "👕", label: "Bib Stock" },
   { key: "settings", emoji: "⚙️", label: "Settings" },
 ];
 
 export default function FieldBottomNav({ currentPage, onNavigate, canAccessSettings = false }) {
-  const visibleItems = items.filter(item => item.key !== "settings" || canAccessSettings);
-  const [isHidden, setIsHidden] = useState(false);
+  const visibleItems = items.filter(item => !["settings","hireStock"].includes(item.key) || canAccessSettings);
   const navScroller = useRef(null);
 
   useEffect(() => {
@@ -28,37 +28,11 @@ export default function FieldBottomNav({ currentPage, onNavigate, canAccessSetti
   }, [currentPage]);
 
 
-  useEffect(() => {
-    let timer;
 
-    const showThenScheduleHide = () => {
-      setIsHidden(false);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setIsHidden(true), 5000);
-    };
-
-    showThenScheduleHide();
-    const events = ["touchstart", "mousedown", "keydown", "scroll"];
-    for (const name of events) {
-      window.addEventListener(name, showThenScheduleHide, {
-        passive: true,
-        capture: true,
-      });
-    }
-
-    return () => {
-      window.clearTimeout(timer);
-      for (const name of events) {
-        window.removeEventListener(name, showThenScheduleHide, {
-          capture: true,
-        });
-      }
-    };
-  }, [currentPage]);
 
   return (
     <nav
-      className={`field-bottom-nav ${isHidden ? "is-hidden" : ""}`}
+      className="field-bottom-nav"
       aria-label="Field navigation"
     >
       <div ref={navScroller} className="field-bottom-nav__inner"
@@ -73,7 +47,6 @@ export default function FieldBottomNav({ currentPage, onNavigate, canAccessSetti
               style={{flex: "1 1 0", minWidth: 0}}
               aria-current={current ? "page" : undefined}
               onClick={() => {
-                setIsHidden(false);
                 if (!current) onNavigate?.(key);
               }}
             >

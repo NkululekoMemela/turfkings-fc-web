@@ -49,3 +49,12 @@ test('multiple fixtures reserve each required colour and charge only rented play
  t.mock.method(require('../functions/fieldMatchDaySquad'),'loadDay',async()=>({submission:{ready:true,players:[{sourcePlayerId:'owner',fullName:'Own Red',ownsNumberedBib:true,jerseyNumber:1,bibColor:'Blue',personalBib:{number:22,color:'Red'},matchBib:{source:'hired',number:1,color:'Blue'}},{sourcePlayerId:'p',fullName:'Other',jerseyNumber:2,bibColor:'Blue',matchBib:{source:'hired',number:2,color:'Blue'}}]}}));
  const {order}=await handle({...f,user:captain,body:hire});assert.equal(order.totalMinor,1500);assert.equal(order.fixtureCount,2);assert.equal(order.hirePlayers.filter(p=>p.fixtureId==='game').length,2);assert.equal(order.hirePlayers.filter(p=>p.fixtureId==='game-two').length,1);assert.equal(Object.hasOwn(order.hireNeeds,'red_22'),false);
 });
+
+test('stock-only staff view skips reservation reads; hires are loaded explicitly',async()=>{
+ const f=setup();f.records.set('leagueVenues/f/bibHireDays/day',{orders:{order:true}});f.records.set('kitShopOrders/order',{orderType:'bib_hire',status:'processing',hireStatus:'reserved'});
+ const collection=f.db.collection;let reservationQueries=0;f.db.collection=name=>{if(name.endsWith('/bibHireDays'))reservationQueries++;return collection(name);};
+ const fast=await handle({...f,user:manager,body:{action:'hireView',venueId:'f',stockOnly:true}});
+ assert.equal(reservationQueries,0);assert.deepEqual(fast.orders,[]);
+ const full=await handle({...f,user:manager,body:{action:'hireView',venueId:'f'}});
+ assert.equal(reservationQueries,1);assert.equal(full.orders.length,1);
+});

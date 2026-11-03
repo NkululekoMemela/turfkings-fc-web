@@ -1,3 +1,4 @@
+import {fieldMatchDays,fieldDateLabel} from "../core/fieldRouteSafety.mjs";
 import {subscribeFieldManifest} from "../storage/fieldManifestSubscription.js";
 import {fieldPageKey, readFieldPage, saveFieldPage} from "../storage/fieldPageMemory.js";
 import "./VenueSquadsPage.css";
@@ -16,13 +17,13 @@ const today = () => new Intl.DateTimeFormat("en-CA", {
 }).format(new Date());
 
 export default function VenueSquadsPage({
-  venue, season, onBack, scope = null,
+  venue = {}, season = null, onBack, scope = null,
 }) {
-  const days = (season?.matchDays || []).filter(day =>
+  const days = fieldMatchDays(season).filter(day =>
     day.status === "scheduled" && day.dateLocal >= today()
   ).sort((a,b) => a.dateLocal.localeCompare(b.dateLocal));
   const [dayId,setDayId] = useState(days[0]?.id || "");
-  const memoryKey = fieldPageKey("squads", venue.id, season?.id, dayId,scope?.environment||"official",scope?.practiceSessionId||"");
+  const memoryKey = fieldPageKey("squads", venue?.id, season?.id, dayId,scope?.environment||"official",scope?.practiceSessionId||"");
   const [data,setData] = useState(() => readFieldPage(memoryKey));
   const [error,setError] = useState("");
   const teamsheetRef = useRef(null);
@@ -46,23 +47,25 @@ export default function VenueSquadsPage({
   useEffect(() => {
     setError("");
     setData(readFieldPage(memoryKey));
-    if (!dayId) return undefined;
+    if (!dayId || !season?.id || !venue?.id || !season.schedulePublishedAtMs) return undefined;
+    try{
     return subscribeFieldManifest({
-      venueId: venue.id, season, matchDayId: dayId, scope,
+      venueId: venue?.id, season, matchDayId: dayId, scope,
       onData: result => {saveFieldPage(memoryKey,result);setData(result); setError("");},
       onError: failure => setError(failure.message),
     });
+    }catch(failure){setError(failure.message||"Could not load squads.");return undefined;}
   }, [
-    venue.id, season, dayId,
+    venue?.id, season, dayId,
     scope?.environment, scope?.practiceSessionId,
   ]);
 
-  const clubs = data?.clubs || [];
+  const clubs = (Array.isArray(data?.clubs)?data.clubs:[]).filter(Boolean);
   const teams = clubs.filter(club => club.status !== "bye").map(club => ({
     ...club,id:club.clubId,
-    players:(club.players || []).map(player => `${club.clubId}::${player.sourcePlayerId}`),
+    players:(Array.isArray(club.players)?club.players:[]).filter(Boolean).map(player => `${club.clubId}::${player.sourcePlayerId}`),
   }));
-  const people = new Map(clubs.flatMap(club => (club.players || []).map(player => [
+  const people = new Map(clubs.flatMap(club => (Array.isArray(club.players)?club.players:[]).filter(Boolean).map(player => [
     `${club.clubId}::${player.sourcePlayerId}`,player,
   ])));
 
@@ -71,7 +74,7 @@ export default function VenueSquadsPage({
     <div className="page squads-page field-matchday-squads-page">
 
       {!season?.schedulePublishedAtMs || !days.length ? (
-        <section className="card"><p>No upcoming published match day yet.</p></section>
+        <section className="card"><p>No upcoming published match day yet. Squads will appear once the Field publishes its fixtures.</p></section>
       ) : (
         <>
 
@@ -91,11 +94,7 @@ export default function VenueSquadsPage({
             TURF_KINGS_LOGO_URL="/pwa/icon-192.png"
             activeClubName={venue.name}
             teamsheetDisplayDateParts={{
-              dateLabel: data?.dateLocal
-                ? new Intl.DateTimeFormat("en-ZA", {
-                    day:"2-digit",month:"short",year:"numeric",
-                  }).format(new Date(`${data.dateLocal}T12:00:00+02:00`))
-                : "",
+              dateLabel: fieldDateLabel(data?.dateLocal),
               scheduleLabel: "Five starters · one substitute",
             }}
             getTeamTheme={team=>({accent:team.matchColour||"#e7b974",glow:"rgba(231,185,116,.18)"})}

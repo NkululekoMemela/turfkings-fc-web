@@ -17,11 +17,13 @@ const titles = {
   actionLog: "Action Log",
   lostFound: "Lost & Found",
   settings: "Settings",
+  hireStock: "Field Bib Stock",
 };
 
 export default function FieldPageFrame({
-  venue, page = "landing", onHome, children,
+  venue, page = "landing", onHome, children, refereeMode = false,
 }) {
+  const isRefereeView=page==="live"&&refereeMode;
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [ribbonHost, setRibbonHost] = useState(null);
   const ribbonId = useId().replace(/:/g, "");
@@ -43,9 +45,9 @@ export default function FieldPageFrame({
 
 
   return (
-    <FieldRibbonContext.Provider value={page === "live" ? null : ribbonHost}>
-    <div className={page === "live" ? "field-referee-booth" : "field-ribbon-frame"} data-field-page={page}>
-      {page !== "entry" && page !== "live" && <div
+    <FieldRibbonContext.Provider value={isRefereeView ? null : ribbonHost}>
+    <div className={isRefereeView ? "field-referee-booth" : "field-ribbon-frame"} data-field-page={page}>
+      {page !== "entry" && !isRefereeView && <div
         className={`landing-header-sticky ${
           headerScrolled ? "is-scrolled" : ""
         }`}

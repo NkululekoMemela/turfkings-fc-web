@@ -1,3 +1,4 @@
+import MatchEventCard from "../components/MatchEventCard.jsx";
 import DigitalRefereeCard from "../components/DigitalRefereeCard.jsx";
 import {futsalCardDecision,futsalReductions,compactRefereeName,futsalMustAbandon} from "../core/fieldFutsalDiscipline.mjs";
 import "../components/FieldRefereePlayers.css";
@@ -7147,94 +7148,7 @@ export function VenueLeagueLiveMatchPage({
                   ? "Recovered"
                   : String(e.type || "Event");
 
-              return (
-                <li
-                  key={e.id || `${e.type}-${idx}`}
-                  className="event-item premium-goal-event"
-                  style={{
-                    "--goal-team-soft":
-                      theme.soft,
-                    "--goal-team-border":
-                      theme.border,
-                    "--goal-team-dot":
-                      theme.dot,
-                  }}
-                >
-                  <div className="premium-goal-main">
-                    <span
-                      className="premium-goal-icon"
-                      style={{
-                        fontSize:
-                          isYellow ||
-                          isRed ||
-                          isKnock ||
-                          isSittingOut
-                            ? "1.3rem"
-                            : undefined,
-                      }}
-                    >
-                      {icon}
-                    </span>
-
-                    <div className="premium-goal-text">
-                      <div className="premium-goal-topline">
-                        <span className="premium-goal-clock">
-                          {formatSeconds(
-                            e.timeSeconds
-                          )}
-                        </span>
-                      </div>
-
-                      <div className="premium-goal-scorer">
-                        {displayCompactPlayerName(
-                          playerName || ""
-                        )}{" "}
-                        <span className="premium-goal-abbrev">
-                          ({teamAbbrev})
-                        </span>
-                      </div>
-
-                      <div className="premium-goal-assist">
-                        {label}
-
-                        {isGoal && e.assist
-                          ? ` · Assist: ${displayCompactPlayerName(
-                              e.assist
-                            )}`
-                          : ""}
-                      </div>
-                    </div>
-                  </div>
-
-                  {canControlMatch ? (
-                    <div className="event-actions premium-goal-actions">
-                      <button
-                        className="link-btn premium-goal-edit"
-                        type="button"
-                        onClick={() =>
-                          handleEditMatchEvent(idx)
-                        }
-                        title={`Edit ${label.toLowerCase()}`}
-                        aria-label={`Edit ${label.toLowerCase()}`}
-                      >
-                        ✎
-                      </button>
-
-                      <button
-                        className="link-btn premium-goal-delete"
-                        type="button"
-                        onClick={() =>
-                          handleRequestDelete(idx)
-                        }
-                        title={`Delete ${label.toLowerCase()}`}
-                        aria-label={`Delete ${label.toLowerCase()}`}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ) : null}
-                </li>
-              );
+              return <MatchEventCard key={e.id || `${e.type}-${idx}`} event={e} teamLabel={teamAbbrev} teamName={team?.name||team?.clubName||''} logo={team?.logoUrl||team?.branding?.logoUrl||''} theme={theme} playerLabel={displayCompactPlayerName(playerName||'')} assistLabel={e.assist?displayCompactPlayerName(e.assist):''} label={label} icon={icon} clock={formatSeconds(e.timeSeconds)} canEdit={canControlMatch} onEdit={()=>handleEditMatchEvent(idx)} onDelete={()=>handleRequestDelete(idx)}/>;
             })}
           </ul>
         </div>

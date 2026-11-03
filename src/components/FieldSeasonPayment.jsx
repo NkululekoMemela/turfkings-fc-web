@@ -6,6 +6,7 @@ const money=cents=>new Intl.NumberFormat("en-ZA",{style:"currency",currency:"ZAR
 export default function FieldSeasonPayment({scope,invitation,paymentPage=false,onOpenPayment,onBack,games=[],onCommitted}){
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[paid,setPaid]=useState(false),[committed,setCommitted]=useState(false),[consent,setConsent]=useState(false),[absences,setAbsences]=useState([]);
  const working=useRef(false);
+ if(invitation?.fundingType==="company")return <section className="card"><h2>Company-funded season</h2><p>{invitation.fundingStatus==="authorised"?"Your company funding is authorised. No personal payment is required.":"Your company covers this season. FANM will confirm funding with your company contact. No personal payment is required."}</p>{error&&<p role="alert">{error}</p>}{invitation.invitationStatus==="pending"&&<button className="primary-btn" disabled={busy} onClick={async()=>{setBusy(true);setError("");try{await respondSeasonInvitation({...scope,memberId:invitation.memberId,response:"accepted"});onCommitted?.();}catch(e){setError(e.message);}finally{setBusy(false);}}}>Accept season invitation</button>}{onBack&&<button className="secondary-btn" onClick={onBack}>Back</button>}</section>;
  if(!invitation)return null;
  const booked=paid||invitation.paymentStatus==="paid",online=scope.clubId==="turf-kings";
  const balance=seasonBalance(invitation),eligible=["pending","accepted"].includes(invitation.invitationStatus);

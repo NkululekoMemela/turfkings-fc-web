@@ -36,7 +36,7 @@ async function handle({db,user,body}){
   const season=ctx.venue.league?.activeSeason;
   if(body.action==='hireView'){
    const days=(season?.matchDays||[]).filter(d=>d.status==='scheduled'&&(season.fixtures||[]).some(f=>f.matchDayId===d.id&&f.status==='scheduled'&&(!body.clubId||[f.clubAId,f.clubBId].includes(body.clubId))));
-   const reservations=ctx.manager?await tx.get(db.collection(`${base}/bibHireDays`)):null;
+   const reservations=ctx.manager&&body.stockOnly!==true?await tx.get(db.collection(`${base}/bibHireDays`)):null;
    const ids=[...new Set((reservations?.docs||[]).flatMap(d=>Object.keys(d.data().orders||{})))];
    const orders=ids.length?await tx.getAll(...ids.map(id=>db.doc(`kitShopOrders/${id}`))):[];
    return {venueId:ctx.venueId,fieldName:ctx.venue.name||'Field',manager:ctx.manager,captain:ctx.club?.captain||false,config,seasonId:season?.id||'',days:days.map(d=>({id:d.id,dateLocal:d.dateLocal})),orders:orders.map((s,i)=>({...s.data(),id:ids[i]})).filter(o=>o.orderType==='bib_hire'&&o.status!=='cancelled'&&o.hireStatus!=='returned')};
@@ -51,6 +51,7 @@ async function handle({db,user,body}){
    tx.set(configRef,{stock,collectionAddress:address,revision:config.revision+1,confirmedBy:user.uid,confirmedAtMs:Date.now()});return {ok:true};
   }
   if(body.action==='placeHire'){
+   if(ctx.club?.club?.clubType==='company')throw Error('Company hire is billed through the company account. Do not pay personally.');
    if(!ctx.club?.captain)throw Error('Your captain books the team’s hire.');
    if(!safe(body.requestId)||!safe(body.matchDayId)||season?.id!==body.seasonId)throw Error('Choose the upcoming match day.');
    const day=(season.matchDays||[]).find(d=>d.id===body.matchDayId&&d.status==='scheduled');if(!day)throw Error('Match day is unavailable.');

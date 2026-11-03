@@ -128,19 +128,32 @@ test("verified member email works; an unverified email cannot impersonate a memb
   await accept({...user, email_verified: true});
 });
 
-test("payment requires acceptance and Club authority; repeated confirmation creates one receipt", async () => {
+test("authorised offline confirmation accepts a pending commitment and preserves the first receipt", async () => {
   await create();
-  await assert.rejects(pay(), /accept/);
-  await accept();
   await assert.rejects(pay({uid: "user-0"}), /administrator or captain/);
+  assert.equal((await squadRef.get()).data().entries["member-0"].invitationStatus, "pending");
   await pay(captain);
+  const first = (await squadRef.collection("paymentConfirmations").get()).docs[0].data();
+  const entry = (await squadRef.get()).data().entries["member-0"];
+  assert.equal(entry.invitationStatus, "accepted");
+  assert.equal(entry.acceptedByUid, "captain");
+  assert.equal(entry.acceptanceMethod, "captain_recorded_offline_commitment");
+  assert.equal(entry.paymentStatus, "paid");
   await pay(owner);
   const receipts = await squadRef.collection("paymentConfirmations").get();
   assert.equal(receipts.size, 1);
-  assert.equal(receipts.docs[0].data().amountCents, 75000);
-  assert.equal(receipts.docs[0].data().confirmedByUid, "captain");
-  assert.equal((await squadRef.get()).data().entries["member-0"].paymentStatus,
-    "paid");
+  assert.deepEqual(receipts.docs[0].data(), first);
+  assert.equal(first.amountCents, 75000);
+  assert.equal(first.confirmedByUid, "captain");
+});
+
+test("player acceptance still supports captain payment and declined invitations cannot be paid", async () => {
+  await create();
+  await accept();
+  await pay(captain);
+  assert.equal((await squadRef.get()).data().entries["member-0"].paymentStatus, "paid");
+  await squadRef.update({"entries.member-0.invitationStatus": "declined", "entries.member-0.paymentStatus": "pending"});
+  await assert.rejects(pay(captain), /declined/);
 });
 
 test("a changed season or Field membership blocks further operations", async () => {

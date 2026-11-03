@@ -1,3 +1,4 @@
+import FieldRouteBoundary from "./components/FieldRouteBoundary.jsx";
 import FieldPracticeTimer from "./components/FieldPracticeTimer.jsx";
 import SessionSelector from "./components/SessionSelector.jsx";
 import TeamChatWarmup from "./components/TeamChatWarmup.jsx";
@@ -3291,6 +3292,7 @@ export default function App() {
       : null;
 
   const activeClub = activeClubIdentity;
+  const isCompanyClub=activeClubIdentity?.raw?.clubType==="company";
   const activeClubName = activeClubIdentity.name;
 
   useEffect(() => {
@@ -9708,6 +9710,7 @@ export default function App() {
       {page === PAGE_VENUE_ENTRY && (
         <>
           <FieldPageFrame
+            refereeMode={fieldNav.canAccessSettings===true}
             venue={selectedLeagueVenue}
             page={fieldNav.ready ? fieldNav.page : "entry"}
             onHome={() => {
@@ -9718,10 +9721,12 @@ export default function App() {
               }
             }}
           >
+            <FieldRouteBoundary key={selectedLeagueVenue?.id||"field"} onBack={()=>setPage(PAGE_LEAGUE_VENUES)}>
             <VenueEntryPage
             key={selectedLeagueVenue?.id || "field-entry"}
             venue={selectedLeagueVenue}
             onFieldNavState={setFieldNav}
+            onVenueUpdated={updated=>setSelectedLeagueVenue(current=>current?.id===updated?.id?{...current,...updated}:current)}
             fieldNavTarget={fieldNavTarget}
             portalClubIdentity={portalOriginClubId && canAccessPlayerFeatures ? {
               clubId: portalOriginClubId,
@@ -9732,6 +9737,7 @@ export default function App() {
               portalOriginClubId ? PAGE_LANDING : PAGE_LEAGUE_VENUES
             )}
           />
+          </FieldRouteBoundary>
           </FieldPageFrame>
 
         </>
@@ -10033,7 +10039,7 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (
+      {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && !isCompanyClub && (
         <BookingPageBoundary key={activeClubId} onBack={() => setPage(PAGE_LANDING)}>
         <MatchSignupPage
           identity={pageIdentity}
@@ -10065,7 +10071,7 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_PAYMENT && (
+      {page === PAGE_PAYMENT && !isCompanyClub && (
         <PaymentPage
           identity={pageIdentity}
           activeRole={activeRole}
@@ -10265,7 +10271,8 @@ export default function App() {
         />
       )}
 
-      {page === PAGE_SHOP && <KitShopPage clubId={activeClubId} key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
+      {isCompanyClub&&[PAGE_MATCH_SIGNUP,PAGE_PAYMENT,PAGE_SHOP].includes(page)&&<main className="page"><section className="card"><h2>Company-funded football</h2><p>Your company covers approved games and merchandise. Players and captains do not pay personally.</p><p>Company booking fulfilment, merchandise orders and invoices will open in the next rollout. You can accept your Field season invitation and confirm availability now.</p><button className="secondary-btn" onClick={handleBackToLanding}>Back to Club</button></section></main>}
+      {page === PAGE_SHOP && !isCompanyClub && <KitShopPage clubId={activeClubId} key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
       {page === PAGE_PLAYER_PROFILE && !canAccessPlayerFeatures && <main className="page"><section className="card"><h1>Player Profile</h1><p>Enter your club as a verified player to open your profile. Spectator mode does not use player details.</p><button type="button" className="primary-btn" onClick={()=>setPage(PAGE_ENTRY)}>Go to club sign-in</button><button type="button" className="secondary-btn" onClick={handleBackToLanding}>Back to Home</button></section></main>}
       {page === PAGE_PLAYER_PROFILE && canAccessPlayerFeatures && (
         <PlayerProfilePage
@@ -11622,7 +11629,7 @@ export default function App() {
 
       {page === PAGE_VENUE_ENTRY &&
         fieldNav.ready &&
-        fieldNav.page !== "live" &&
+        (fieldNav.page !== "live" || !fieldNav.canAccessSettings) &&
         fieldNav.page !== "chat" && (
           <>
             <FieldBottomNav
@@ -11653,6 +11660,7 @@ export default function App() {
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav
+          persistent={activeRole==="spectator"}
           currentPage={page}
           activeClub={activeClubIdentity}
           activeClubName={activeClubName}
@@ -11661,7 +11669,7 @@ export default function App() {
           canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
           canManageSquads={canManageSquads}
           canAccessProfile={canAccessPlayerFeatures}
-          canAccessPayments={canAccessMatchSignup}
+          canAccessPayments={canAccessMatchSignup&&!isCompanyClub}
           canAccessPeerReview={activeRole !== "spectator"}
           locked={isRefereeStatsView}
           lockedMessage="You Are A Referee, have you forgotten? Return to the Game Controls"

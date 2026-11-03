@@ -1,4 +1,3 @@
-// Discovery and existing functions keep the original entry point.
-// Shop instances load only the HTTP endpoint needed for their target.
-module.exports = process.env.FUNCTION_TARGET === "kitShop" ?
-  require("./kitShopHttp.cjs") : require("./index.js");
+// Keep discovery complete; isolate frequently used HTTP targets on cold start.
+const targets={kitShop:"./kitShopHttp.cjs",companyClubs:"./companyClubsHttp.cjs"};
+module.exports=require(targets[process.env.FUNCTION_TARGET]||"./index.js");
